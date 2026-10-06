@@ -78,6 +78,7 @@ export {
 	IndexeddbPersistence,
 	WebsocketProvider,
 	PresenceWriter,
+	DEFAULT_PRESENCE_THROTTLE,
 	type PresenceOptions,
 	type PresenceShare
 } from './collaboration/index.js';

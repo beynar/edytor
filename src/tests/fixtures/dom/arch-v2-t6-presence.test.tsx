@@ -47,8 +47,16 @@ const caret = (edytor: Edytor, offset: number) =>
 /** Two mounted views of one document, each with a published caret; returns their keys. */
 const siblings = async () => {
 	const document = createDocument({ value: structuredClone(input.value) as JSONDoc });
-	const v1 = await renderDomEdytor(input, { document, autoSelectFixture: false });
-	const v2 = await renderDomEdytor(input, { document, autoSelectFixture: false });
+	const v1 = await renderDomEdytor(input, {
+		document,
+		autoSelectFixture: false,
+		presence: { throttle: 0 }
+	});
+	const v2 = await renderDomEdytor(input, {
+		document,
+		autoSelectFixture: false,
+		presence: { throttle: 0 }
+	});
 	caret(v1.edytor, 2);
 	const [k1] = Object.keys(entries(document));
 	caret(v2.edytor, 7);
@@ -162,7 +170,10 @@ describe('T6 — one presence entry per view key, written by its view', () => {
 	});
 
 	pin('a peer renders one caret per client: its freshest valid entry', async () => {
-		const { container, edytor } = await renderDomEdytor(input, { autoSelectFixture: false });
+		const { container, edytor } = await renderDomEdytor(input, {
+			autoSelectFixture: false,
+			presence: { throttle: 0 }
+		});
 		caret(edytor, 1);
 		const [early] = Object.values(entries(edytor.document));
 		caret(edytor, 4);

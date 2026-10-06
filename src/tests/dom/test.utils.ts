@@ -12,7 +12,7 @@ import type { JSONDoc } from '$lib/utils/json.js';
 import { Text as ModelText } from '$lib/text/text.svelte.js';
 import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 import type { Awareness, EdytorDocument, YDoc } from '$lib/crdt/index.js';
-import type { EdytorSync } from '$lib/collaboration/index.js';
+import type { EdytorSync, PresenceOptions } from '$lib/collaboration/index.js';
 import type { RenderedNode } from '../jsx/types.js';
 import {
 	expectEdytorValue,
@@ -37,6 +37,8 @@ export type RenderDomEdytorOptions = {
 	awareness?: Awareness;
 	document?: EdytorDocument;
 	sync?: EdytorSync;
+	/** The view's presence options (rows about what is published pass `{ throttle: 0 }`). */
+	presence?: PresenceOptions;
 	value?: JSONDoc;
 	autoSelectFixture?: boolean;
 	onChange?: (value: JSONBlock) => void;
@@ -362,6 +364,7 @@ export const renderDomEdytor = async (
 			awareness: options.awareness,
 			document: options.document,
 			sync: options.sync,
+			presence: options.presence,
 			onChange: options.onChange,
 			onSelectionChange: options.onSelectionChange,
 			onReady: (nextEdytor: Edytor) => {

@@ -53,7 +53,7 @@ Most props are read once, when the component is created. Changing them later has
 | `translate` | `'yes' \| 'no'` | `'no'` | Yes | The root's `translate` attribute. `'no'` keeps page translators from rewriting the editable text. |
 | `doc` | `YDoc` | | | Advanced: build the view's own document around an existing engine document. Cannot be combined with `document`. |
 | `awareness` | `Awareness` | | | Advanced: the presence instance for the view's own document. Cannot be combined with `document`. |
-| `presence` | `{ share?: 'caret' \| 'block' \| 'none'; throttle?: number }` | `{ share: 'caret', throttle: 0 }` | | What this view shares of its selection with peers, and the least ms between two writes. Follows changes. See [Sharing less at scale](/docs/collaboration/presence#sharing-less-at-scale). |
+| `presence` | `{ share?: 'caret' \| 'block' \| 'none'; throttle?: number }` | `{ share: 'caret', throttle: 50 }` | | What this view shares of its selection with peers, and the least ms between two writes. Follows changes. See [Sharing less at scale](/docs/collaboration/presence#sharing-less-at-scale). |
 
 `value` is the initial content, not a binding: `bind:value` fails type-checking. Read changes with `onChange` or `edytor.value`.
 

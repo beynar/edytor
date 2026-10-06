@@ -90,7 +90,7 @@ describe('V2 — one commit point', () => {
 					<paragraph>First</paragraph>
 					<paragraph>Second</paragraph>
 				</root>,
-				{ autoSelectFixture: false, onSelectionChange }
+				{ autoSelectFixture: false, onSelectionChange, presence: { throttle: 0 } }
 			);
 			const [first, second] = edytor.root!.children;
 			await setNativeSelection(edytor, second!.firstText!, 3);
@@ -125,7 +125,7 @@ describe('V2 — one commit point', () => {
 				<paragraph>aa</paragraph>
 				<paragraph>bb</paragraph>
 			</root>,
-			{ autoSelectFixture: false, onSelectionChange }
+			{ autoSelectFixture: false, onSelectionChange, presence: { throttle: 0 } }
 		);
 		const [aa, bb] = edytor.root!.children;
 		await setNativeSelection(edytor, aa!.firstText!, 1);
@@ -148,7 +148,7 @@ describe('V2 — one commit point', () => {
 					<paragraph>bb</paragraph>
 					<paragraph>cc</paragraph>
 				</root>,
-				{ autoSelectFixture: false, onSelectionChange }
+				{ autoSelectFixture: false, onSelectionChange, presence: { throttle: 0 } }
 			);
 			const [, bb, cc] = edytor.root!.children;
 			await setNativeSelection(edytor, bb!.firstText!, 1);

@@ -5,7 +5,7 @@
 	import type { JSONBlock } from '$lib/utils/json.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import type { Awareness, EdytorDocument, YDoc } from '$lib/crdt/index.js';
-	import type { EdytorSync } from '$lib/collaboration/index.js';
+	import type { EdytorSync, PresenceOptions } from '$lib/collaboration/index.js';
 
 	type Props = {
 		value: JSONDoc;
@@ -23,6 +23,7 @@
 		doc?: YDoc;
 		awareness?: Awareness;
 		sync?: EdytorSync;
+		presence?: PresenceOptions;
 		onChange?: (value: JSONBlock) => void;
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		onReady?: (edytor: EdytorContext) => void;
@@ -44,6 +45,7 @@
 		doc,
 		awareness,
 		sync,
+		presence,
 		onChange,
 		onSelectionChange,
 		onReady = () => {}
@@ -76,6 +78,7 @@
 	{doc}
 	{awareness}
 	{sync}
+	{presence}
 	{onChange}
 	{onSelectionChange}
 />

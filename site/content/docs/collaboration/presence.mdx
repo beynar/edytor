@@ -60,7 +60,7 @@ Target these attributes from your stylesheet to restyle them. Positions and colo
 
 ## Sharing less at scale
 
-Every caret move is a presence write, and the room relays each one to every peer: with many people in one document, that traffic grows with the square of the crowd. The `presence` prop trims it per view:
+Every caret move is a presence write, and the room relays each one to every peer: with many people in one document, that traffic grows with the square of the crowd. A view writes its presence at most once every 50 ms by default (`DEFAULT_PRESENCE_THROTTLE`), so an arrow key held down or a drag costs about 20 writes a second instead of one per selection change, and the room, a single Durable Object per document, relays about 20 × (people − 1) writes a second for each person moving. The `presence` prop trims it further per view:
 
 ```svelte
 <Edytor {room} {server} presence={{ share: 'block', throttle: 250 }} />
@@ -69,7 +69,7 @@ Every caret move is a presence write, and the room relays each one to every peer
 | Option | Values | Default | Effect |
 | --- | --- | --- | --- |
 | `share` | `'caret'`, `'block'`, `'none'` | `'caret'` | `'caret'` publishes the selection. `'block'` publishes only the block holding the selection's focus (`{ blocks: [id] }`; a block selection publishes its blocks): moving or typing inside a block publishes nothing, and peers see a bar beside the block instead of a caret. `'none'` publishes nothing and removes the view's entry. |
-| `throttle` | milliseconds | `0` | The least time between two presence writes of this view. The first write goes at once; later ones within the window collapse into one write of the newest selection at its end, so peers always end on where the user is. |
+| `throttle` | milliseconds | `50` | The least time between two presence writes of this view. The first write goes at once; later ones within the window collapse into one write of the newest selection at its end, so peers always end on where the user is. `0` writes every change at once. |
 
 The prop follows changes, so an app can narrow presence as a room fills up. Outside the component, set `edytor.presence.share` and `edytor.presence.throttle`, or pass `presence` to `new Edytor({ presence })`. Destroying the view drops a write still waiting and removes its entry. The `user` and `actor` fields are not affected: who is online stays visible with `'none'`.
 

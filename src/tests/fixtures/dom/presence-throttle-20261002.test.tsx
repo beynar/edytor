@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/svelte';
 
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { DEFAULT_PRESENCE_THROTTLE } from '$lib/collaboration/awarenessSelection.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 
 const input = (
@@ -35,13 +36,35 @@ const strip = ({ t: _t, ...entry }: Entry) => entry;
 const caret = (edytor: Edytor, block: number, offset: number) =>
 	edytor.selection.setAtTextOffset(edytor.root!.children[block]!.firstText!, offset);
 
-const mount = async () => {
+/** A view; `throttle` set (the rows of other rules publish every change: `0`). */
+const mount = async (throttle?: number) => {
 	const view = await renderDomEdytor(input, { autoSelectFixture: false });
+	if (throttle !== undefined) view.edytor.presence.throttle = throttle;
 	const writes = vi.spyOn(view.edytor.awareness, 'setLocalState');
 	return { ...view, writes };
 };
 
 describe('presence throttle', () => {
+	it('a view throttles its presence writes to one per 50 ms by default (P9)', async () => {
+		const { edytor, writes } = await mount();
+		expect(DEFAULT_PRESENCE_THROTTLE).toBe(50);
+		expect(edytor.presence.throttle).toBe(50);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+		caret(edytor, 0, 1);
+		caret(edytor, 0, 2);
+		caret(edytor, 0, 3);
+		expect(writes).toHaveBeenCalledTimes(1);
+		vi.advanceTimersByTime(50);
+		expect(writes).toHaveBeenCalledTimes(2);
+		const [entry] = entries(edytor);
+		expect(entry!.start).toEqual((edytor.selection.value as { anchor: unknown }).anchor);
+		// `0` publishes every change at once.
+		edytor.presence.throttle = 0;
+		caret(edytor, 0, 4);
+		caret(edytor, 0, 5);
+		expect(writes).toHaveBeenCalledTimes(4);
+	});
+
 	it('the first write goes at once; writes within the window collapse into one trailing write of the newest', async () => {
 		const { edytor, writes } = await mount();
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
@@ -79,8 +102,8 @@ describe('presence throttle', () => {
 		expect(writes).toHaveBeenCalledTimes(after);
 	});
 
-	it('no throttle (the default) writes every change at once', async () => {
-		const { edytor, writes } = await mount();
+	it('no throttle (`0`) writes every change at once', async () => {
+		const { edytor, writes } = await mount(0);
 		expect(edytor.presence.throttle).toBe(0);
 		caret(edytor, 0, 1);
 		caret(edytor, 0, 2);
@@ -90,7 +113,7 @@ describe('presence throttle', () => {
 
 describe("presence share: 'block'", () => {
 	it('publishes the focused block only; moving inside it publishes nothing', async () => {
-		const { edytor, writes } = await mount();
+		const { edytor, writes } = await mount(0);
 		edytor.presence.share = 'block';
 		const [first, second] = edytor.root!.children.map((block) => block.id);
 
@@ -105,7 +128,7 @@ describe("presence share: 'block'", () => {
 	});
 
 	it('a range across blocks publishes the block holding its focus', async () => {
-		const { edytor } = await mount();
+		const { edytor } = await mount(0);
 		edytor.presence.share = 'block';
 		const [first, second] = edytor.root!.children;
 		edytor.selection.setAtRange(first!.firstText!, 2, second!.firstText!, 3);
@@ -115,7 +138,7 @@ describe("presence share: 'block'", () => {
 	});
 
 	it("'none' publishes nothing and removes the view's entry", async () => {
-		const { edytor } = await mount();
+		const { edytor } = await mount(0);
 		caret(edytor, 0, 2);
 		expect(entries(edytor)).toHaveLength(1);
 		edytor.presence.share = 'none';

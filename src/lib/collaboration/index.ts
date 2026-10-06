@@ -2,6 +2,7 @@ export {
 	freshestPublishedSelection,
 	publishPresence,
 	PresenceWriter,
+	DEFAULT_PRESENCE_THROTTLE,
 	type PresenceOptions,
 	type PresenceShare,
 	type EdytorAwarenessSelection,

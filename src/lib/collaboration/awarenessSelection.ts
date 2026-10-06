@@ -101,10 +101,17 @@ export const publishPresence = (
 /** What a view shares of its selection: the selection itself, the block holding its focus, or nothing. */
 export type PresenceShare = 'caret' | 'block' | 'none';
 
+/**
+ * The least ms between two presence writes of a view by default (P9): a
+ * caret held down or a drag publishes about 20 writes a second instead of
+ * one per selection change, which every peer and the room relay.
+ */
+export const DEFAULT_PRESENCE_THROTTLE = 50;
+
 export type PresenceOptions = {
 	/** `'caret'` (default): the selection; `'block'`: the focused block only, so moving inside it publishes nothing; `'none'`: nothing. */
 	share?: PresenceShare;
-	/** Minimum ms between two presence writes (default `0`). The first goes at once; later ones collapse into one write of the newest at the window's end. */
+	/** Minimum ms between two presence writes (default {@link DEFAULT_PRESENCE_THROTTLE}, 50; `0`: every change). The first goes at once; later ones collapse into one write of the newest at the window's end. */
 	throttle?: number;
 };
 
@@ -126,7 +133,7 @@ export class PresenceWriter {
 	constructor(
 		private readonly awareness: AwarenessLike,
 		private readonly key: string,
-		{ share = 'caret', throttle = 0 }: PresenceOptions = {}
+		{ share = 'caret', throttle = DEFAULT_PRESENCE_THROTTLE }: PresenceOptions = {}
 	) {
 		this.#share = share;
 		this.throttle = throttle;

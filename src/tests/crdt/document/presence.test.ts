@@ -38,7 +38,9 @@ const docValue = (text = 'shared'): JSONDoc => ({
 	children: [{ type: 'paragraph', content: [{ text }] }]
 });
 
-const makeView = (document: EdytorDocument) => new Edytor({ document, plugins: [richTextPlugin] });
+/** A headless view publishing every change at once: these rows test what is written, not when (P9). */
+const makeView = (document: EdytorDocument) =>
+	new Edytor({ document, plugins: [richTextPlugin], presence: { throttle: 0 } });
 
 type PresenceSelections = Record<string, { t?: number; start?: unknown }>;
 

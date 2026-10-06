@@ -12,7 +12,10 @@
 	} from '../crdt/index.js';
 	import { CLOSE, validRoomId } from '../crdt/providers/room.js';
 	import type { EdytorSync, WebsocketSyncOptions } from '$lib/collaboration/index.js';
-	import type { PresenceOptions } from '$lib/collaboration/awarenessSelection.js';
+	import {
+		DEFAULT_PRESENCE_THROTTLE,
+		type PresenceOptions
+	} from '$lib/collaboration/awarenessSelection.js';
 	import { createIndexeddbSync, createWebsocketSync } from '$lib/collaboration/providers.js';
 	export { EdytorClass as EdytorContext, useEdytor };
 	import type { Placeholder, Plugin } from '$lib/plugins.js';
@@ -273,7 +276,7 @@
 		edytor.readonly = readonly;
 	});
 	$effect(() => {
-		edytor.presence.throttle = presence?.throttle ?? 0;
+		edytor.presence.throttle = presence?.throttle ?? DEFAULT_PRESENCE_THROTTLE;
 		edytor.presence.share = presence?.share ?? 'caret';
 	});
 	// A readonly change shows or hides chrome: the overlay repositions it.

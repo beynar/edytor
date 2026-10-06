@@ -159,7 +159,13 @@ import {
 } from './text/runs.js';
 import { callEach } from './protocols/observable.js';
 import { bindNodes, type DocBlock } from './nodes.js';
-import { followRedone, holdsPending, walkIdSetStructs, type IdSetLike } from './structs.js';
+import {
+	followRedone,
+	holdsPending,
+	walkIdSetStructs,
+	type IdSetLike,
+	type StoreStruct
+} from './structs.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
@@ -1572,19 +1578,30 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			// and the engine collects their content now, as it would have at
 			// the delete without a history (the doc's `gcFilter` still decides:
 			// a text copy another replica may have to copy again stays, P11).
-			// Only the items themselves are released: a kept container's flag
-			// may guard a newer step's items inside it.
+			// An item is released only once every step that deleted part of it
+			// fell off (the engine merges deleted items across steps): never
+			// split, so the store keeps its merged items. Only the items
+			// themselves are released: a kept container's flag may guard a
+			// newer step's items inside it.
+			const released = Y.createIdSet() as unknown as IdSetLike;
+			const covered = (st: { id: { client: number; clock: number }; length: number }) => {
+				const end = st.id.clock + st.length;
+				return (released.clients.get(st.id.client)?.getIds() ?? []).some(
+					(r) => r.clock <= st.id.clock && end <= r.clock + r.len
+				);
+			};
 			const trim = ({ type }: { type: string }): void => {
 				const over = um.undoStack.length - limit;
 				if (type !== 'undo' || !(over > 0)) return;
 				const dropped = um.undoStack.splice(0, over) as unknown as UndoStep[];
+				for (const step of dropped) Y.insertIntoIdSet(released as never, step.deletes as never);
 				const gc = (doc as unknown as { gc: boolean }).gc;
 				const keepIt = (doc as unknown as { gcFilter: (it: unknown) => boolean }).gcFilter;
 				doc.transact((tr) => {
 					for (const step of dropped)
-						Y.iterateStructsByIdSet(tr as never, step.deletes as never, (s: unknown) => {
-							const it = s as { keep?: boolean; deleted: boolean; content?: unknown; gc?: unknown };
-							if (it.content === undefined || it.keep !== true) return;
+						walkIdSetStructs(Y, doc, step.deletes, (st) => {
+							const it = st as StoreStruct & { content?: unknown };
+							if (it.content === undefined || it.keep !== true || !covered(it)) return;
 							it.keep = false;
 							if (gc && it.deleted && keepIt(it))
 								(it as unknown as { gc(tr: unknown, parentGCd: boolean): void }).gc(tr, false);

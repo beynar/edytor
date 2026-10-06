@@ -50,7 +50,10 @@ const SYMBOLS = {
 	// text delete marks (P11)
 	iterateStructsByIdSet: 1,
 	getItemCleanStart: 1,
-	redoItem: 1
+	redoItem: 1,
+	// a folded delete record (P4)
+	ContentAny: 1,
+	createID: 1
 } satisfies Record<EngineSymbol, 1>;
 
 describe('engine object (named imports)', () => {

@@ -38,6 +38,8 @@ export type EngineSymbol =
 	| 'decodeContentMap'
 	| 'iterateStructsByIdSet'
 	| 'getItemCleanStart'
-	| 'redoItem';
+	| 'redoItem'
+	| 'ContentAny'
+	| 'createID';
 
 export declare const Y: Pick<typeof V, EngineSymbol>;

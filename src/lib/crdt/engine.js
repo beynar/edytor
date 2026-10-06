@@ -53,5 +53,8 @@ export const Y = {
 	// text delete marks (`text/deletes.ts`, fork patch P11)
 	iterateStructsByIdSet: V.iterateStructsByIdSet,
 	getItemCleanStart: V.getItemCleanStart,
-	redoItem: V.redoItem
+	redoItem: V.redoItem,
+	// a folded delete record appended after the one it replaces (P4)
+	ContentAny: V.ContentAny,
+	createID: V.createID
 };

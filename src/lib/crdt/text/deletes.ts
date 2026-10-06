@@ -109,7 +109,7 @@ type State = {
 	/** The purge horizon's root (H7): a transaction that changes it is a purge. */
 	horizon: EngineNode;
 	/** Marks by root client: the root spans each holds (and by mark key). */
-	held: Map<number, { k: number; n: number; mark: Rec }[]>;
+	held: Map<number, Map<string, { k: number; n: number; mark: Rec }[]>>;
 	holds: Map<string, Span[]>;
 	/** Copies by copy client, root client and origin client. */
 	copies: Map<number, Copy[]>;
@@ -117,6 +117,8 @@ type State = {
 	byOrigin: Map<number, Copy[]>;
 	copyKeys: Set<string>;
 	policies: Set<Policy>;
+	/** P4: this replica's last delete record (its id), the one a delete may fold into. */
+	lastMark: { c: number; k: number } | null;
 };
 
 const REACT = Symbol('edytor.text-deletes');
@@ -130,6 +132,19 @@ const push = <T>(map: Map<number, T[]>, key: number, v: T): void => {
 	else list.push(v);
 };
 const keyOf = (r: Rec): string => `${r.client}:${r.clock}`;
+/** P4: the most spans a folded delete record holds (a backspace run merges into one). */
+const FOLD_SPANS = 8;
+/** `spans` sorted, with touching and overlapping spans of one client merged. */
+const mergeSpans = (spans: readonly Span[]): Span[] => {
+	const out: Span[] = [];
+	for (const sp of [...spans].sort((a, b) => a.c - b.c || a.k - b.k)) {
+		const last = out[out.length - 1];
+		if (last !== undefined && last.c === sp.c && sp.k <= last.k + last.n)
+			last.n = Math.max(last.n, sp.k + sp.n - last.k);
+		else out.push({ ...sp });
+	}
+	return out;
+};
 /** `m` narrowed to root characters `[lo, hi)`. */
 const clip = (m: Member, lo: number, hi: number): Member => ({
 	c: m.c,
@@ -300,9 +315,13 @@ export const bindDeletes = (Y: EngineApi) => {
 	const alive = (s: State, r: Rec): boolean =>
 		structAt(Y, clientsOf(s.doc).get(r.client) ?? [], r.clock)?.deleted === false;
 
+	/** Every hold on root characters of client `c`. */
+	const heldOf = (s: State, c: number): { k: number; n: number; mark: Rec }[] =>
+		[...(s.held.get(c)?.values() ?? [])].flat();
+
 	/** Live marks holding any character of `r`, except those `skip` names. */
 	const holders = (s: State, r: Span, skip?: (mark: Rec) => boolean): Rec[] =>
-		(s.held.get(r.c) ?? [])
+		heldOf(s, r.c)
 			.filter((h) => overlaps(h, r) && !skip?.(h.mark) && alive(s, h.mark))
 			.map((h) => h.mark);
 
@@ -325,7 +344,7 @@ export const bindDeletes = (Y: EngineApi) => {
 	const parts = (s: State, r: Span): Span[] => {
 		const cuts = new Set([r.k, r.k + r.n]);
 		const edge = (k: number) => k > r.k && k < r.k + r.n && cuts.add(k);
-		for (const h of s.held.get(r.c) ?? [])
+		for (const h of heldOf(s, r.c))
 			if (overlaps(h, r) && alive(s, h.mark)) [h.k, h.k + h.n].forEach(edge);
 		for (const m of members(s, r)) for (const p of liveRoots(s, m)) [p.k, p.k + p.n].forEach(edge);
 		const at = [...cuts].sort((a, b) => a - b);
@@ -353,24 +372,30 @@ export const bindDeletes = (Y: EngineApi) => {
 		if (s.holds.has(key)) return false;
 		const roots = decode(bytes, 3).flatMap(([c, k, n]) => rootSpans(s, { c, k, n }));
 		s.holds.set(key, roots);
-		for (const r of roots) push(s.held, r.c, { k: r.k, n: r.n, mark });
+		for (const r of roots) {
+			let byMark = s.held.get(r.c);
+			if (byMark === undefined) s.held.set(r.c, (byMark = new Map()));
+			const list = byMark.get(key);
+			if (list === undefined) byMark.set(key, [{ k: r.k, n: r.n, mark }]);
+			else list.push({ k: r.k, n: r.n, mark });
+		}
 		return true;
 	};
-	/** Drop the marks `marks` from the index, in one pass over the holds; whether any was indexed. */
+	/** Drop the marks `marks` from the index (by mark: P4 folds drop one per delete); whether any was indexed. */
 	const dropMarks = (s: State, marks: readonly Rec[]): boolean => {
-		const keys = new Set(marks.map(keyOf).filter((key) => s.holds.has(key)));
-		if (keys.size === 0) return false;
-		const clients = new Set<number>();
-		for (const key of keys) {
-			for (const r of s.holds.get(key)!) clients.add(r.c);
+		let any = false;
+		for (const key of marks.map(keyOf)) {
+			const roots = s.holds.get(key);
+			if (roots === undefined) continue;
+			any = true;
 			s.holds.delete(key);
+			for (const r of roots) {
+				const byMark = s.held.get(r.c);
+				byMark?.delete(key);
+				if (byMark?.size === 0) s.held.delete(r.c);
+			}
 		}
-		for (const c of clients)
-			s.held.set(
-				c,
-				(s.held.get(c) ?? []).filter((h) => !keys.has(keyOf(h.mark)))
-			);
-		return true;
+		return any;
 	};
 
 	/** The records `st` (a struct of a records list) holds that `ids` names, with their bytes. */
@@ -459,7 +484,8 @@ export const bindDeletes = (Y: EngineApi) => {
 			byRoot: new Map(),
 			byOrigin: new Map(),
 			copyKeys: new Set(),
-			policies: new Set()
+			policies: new Set(),
+			lastMark: null
 		};
 		states.set(doc, s);
 		const st = s;
@@ -668,6 +694,71 @@ export const bindDeletes = (Y: EngineApi) => {
 		}, REACT);
 	};
 
+	/**
+	 * P4: the spans of this writer's last record merged with `spans`, when a
+	 * delete may fold into it — it is the records list's last element, live,
+	 * this replica's, written in this transaction or in the step still
+	 * capturing (`open`: the history steps whose capture group is open), or
+	 * anywhere when no history records steps here; and the merged record
+	 * stays small ({@link FOLD_SPANS}). `null`: write a record of its own.
+	 */
+	const foldInto = (
+		s: State,
+		tr: Tr | null,
+		open: readonly IdSet[],
+		spans: readonly Span[]
+	): Span[] | null => {
+		const at = s.lastMark;
+		if (at === null || at.c !== s.doc.clientID) return null;
+		const last = structAt(Y, clientsOf(s.doc).get(at.c) ?? [], at.k) as
+			| (Unit & { right: Unit | null })
+			| null;
+		if (
+			last === null ||
+			last.deleted ||
+			last.parent !== s.marks ||
+			last.right !== null ||
+			last.id.clock + last.length - 1 !== at.k
+		)
+			return null;
+		const same =
+			tr?.insertSet.has(at.c, at.k) === true ||
+			open.some((ids) => ids.has(at.c, at.k)) ||
+			s.policies.size === 0;
+		if (!same) return null;
+		const [, bytes] = recordsIn(last, null).at(-1) ?? [];
+		if (bytes === undefined) return null;
+		const merged = mergeSpans([...decode(bytes, 3).map(([c, k, n]) => ({ c, k, n })), ...spans]);
+		return merged.length <= FOLD_SPANS ? merged : null;
+	};
+
+	/**
+	 * P4: delete this replica's last record (the list's tail, {@link foldInto})
+	 * and append `bytes` right after it, by item: no index walk over the
+	 * list's tombstones. The list's search markers are dropped (their
+	 * positions no longer hold).
+	 */
+	const replaceLast = (s: State, tr: Tr, bytes: Uint8Array): void => {
+		const at = s.lastMark!;
+		const tail = Y.getItemCleanStart(
+			tr as never,
+			Y.createID(at.c, at.k) as never
+		) as unknown as Unit;
+		tail.delete(tr);
+		dropSearchMarkers(s.marks);
+		const item = new Y.Item(
+			Y.createID(s.doc.clientID, nextClock(s.doc, s.doc.clientID)) as never,
+			tail as never,
+			(tail as unknown as { lastId: unknown }).lastId as never,
+			null,
+			null,
+			s.marks as never,
+			null,
+			new Y.ContentAny([bytes]) as never
+		);
+		(item as unknown as { integrate(tr: unknown, offset: number): void }).integrate(tr, 0);
+	};
+
 	/** The text units `ids` names, as spans. */
 	const unitsIn = (s: State, ids: IdSet): Span[] => {
 		const out: Span[] = [];
@@ -717,6 +808,7 @@ export const bindDeletes = (Y: EngineApi) => {
 					Date.now() - um.lastChange < um.captureTimeout;
 				return open ? [top.inserts] : [];
 			});
+			const tr = s.doc._transaction;
 			const spans = deleted.flatMap((sp) => {
 				const out: Span[] = [];
 				for (let k = sp.k; k < sp.k + sp.n; k++) {
@@ -728,8 +820,17 @@ export const bindDeletes = (Y: EngineApi) => {
 				return out;
 			});
 			if (spans.length === 0) return;
-			s.marks.insert(s.marks.length, [encode(spans.map((sp) => [sp.c, sp.k, sp.n]))]);
-			const tr = s.doc._transaction;
+			// P4: a delete in the step that wrote this writer's last record
+			// (a backspace run) folds into it, its spans merged — one record per
+			// step, not per keystroke. The record is replaced (deleted and
+			// written again), never edited, so an undo of the step still takes
+			// back exactly what the step deleted.
+			const folded = tr === null ? null : foldInto(s, tr, fresh, spans);
+			const k = nextClock(s.doc, s.doc.clientID);
+			const bytes = encode((folded ?? spans).map((sp) => [sp.c, sp.k, sp.n]));
+			if (folded === null) s.marks.insert(s.marks.length, [bytes]);
+			else replaceLast(s, tr!, bytes);
+			s.lastMark = { c: s.doc.clientID, k };
 			if (tr !== null)
 				remove(
 					tr,

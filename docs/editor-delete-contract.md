@@ -1073,6 +1073,20 @@ cuts nothing, like a typed insertion. Undo and redo are the bare engine
 calls (never inside a transaction, no tracked write after them); the
 issuing view selects the step's recorded `before` (undo) or `after` (redo).
 
+### `hist.delete-marks.fold` — one delete record per step (P4)
+
+A text delete writes the writer's record (P11, `text/deletes.ts`). A delete
+made in the step that wrote this replica's last record — the records
+list's tail, written in the same transaction, in the history step still
+capturing, or anywhere when no history records steps on this replica —
+folds into it: the record is deleted and written again, its spans merged,
+while it holds at most 8 spans (`FOLD_SPANS`). A backspace run is one
+record. The record is replaced, never edited, so an undo of the step takes
+back exactly what the step deleted, a writer's undo never restores what
+another writer's record holds, and a redo writes it again
+(`p4-delete-marks-fold.test.ts`, `text-delete-marks.test.ts`). The purge
+(H7) drops folded records like any other.
+
 ### `sel.presence.wire` — one presence entry per view
 
 `selections[viewKey] = serialize(value) + t`: a text value is

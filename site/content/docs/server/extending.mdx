@@ -82,7 +82,7 @@ A Durable Object has one alarm. The document sets it `saveAfter` ms after an uns
 | `onLoad` | | Returns the document for a room that stores nothing yet. See [Load](#load). |
 | `onSave` | | Receives `{ value, update, replicas }` after edits. See [Save](#save). |
 | `saveAfter` | `2000` | ms between the first unsaved edit and `onSave`. |
-| `compactAfter` | `500` | Stored updates before they are merged into one snapshot. |
+| `compactAfter` | `500` | Stored updates before the rows are replaced by one snapshot of the live document. |
 | `maxRowBytes` | 1,995,904 | Largest stored row. Can only be lowered. |
 | `maxFrameBytes` | 32 MiB | Largest frame sent whole; larger ones are chunked. Can only be lowered. |
 | `tablePrefix` | `'edytor_'` | Prefix of the document's two tables. |

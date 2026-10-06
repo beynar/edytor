@@ -34,8 +34,9 @@
  *   what storage does not.
  * - every INTEGRATED update is appended to SQLite as one record split into
  *   rows ≤ `maxRowBytes` (2 MB row cap) in one `transactionSync`, then
- *   broadcast; after `compactAfter` update records the rows are merged
- *   (`mergeUpdates`) into one snapshot record, after the message is
+ *   broadcast; after `compactAfter` update records the rows are replaced
+ *   by one snapshot record of the live document's state (its healed
+ *   state, deleted content collected: P2), after the message is
  *   acknowledged — never inside the engine's `update` observer, where one
  *   throw would silence every later emit. Memory never runs ahead of
  *   storage: when an append fails, nothing is relayed or acknowledged, the
@@ -636,18 +637,48 @@ const heldIds = (doc: YDoc, ds: Decoded['ds'], deleted = false): Decoded['ds'] =
  */
 const heldDeletes = (doc: YDoc, ds: Decoded['ds']): Decoded['ds'] => heldIds(doc, ds, true);
 
-/** A Step2 of what the room STORED: the engine's pending store (never stored) is left out. */
-const storedStep2 = (doc: YDoc, sv: Uint8Array): Uint8Array => {
+/**
+ * `read` with the engine's pending store set aside: what waits for a
+ * dependency (structs, deletes of items it lacks) is never part of the
+ * stored state — waiting deletes are stored apart, as `pending` records.
+ */
+const withoutPending = <T>(doc: YDoc, read: () => T): T => {
 	const { store } = doc;
 	const held = [store.pendingStructs, store.pendingDs] as const;
 	store.pendingStructs = null;
 	store.pendingDs = null;
 	try {
-		return E.frame(E.messageSync, (e) => sync.writeSyncStep2(e, doc, sv));
+		return read();
 	} finally {
 		[store.pendingStructs, store.pendingDs] = held;
 	}
 };
+
+/** A Step2 of what the room STORED: the engine's pending store (never stored) is left out. */
+const storedStep2 = (doc: YDoc, sv: Uint8Array): Uint8Array =>
+	withoutPending(doc, () => E.frame(E.messageSync, (e) => sync.writeSyncStep2(e, doc, sv)));
+
+/**
+ * The live document as one update (P2): its healed state — the engine
+ * merged what each keystroke wrote and collected deleted content, sparing
+ * the text a replica may copy again (`keepCopies`, P11) —, without what
+ * waits (`withoutPending`). Memory never runs ahead of storage, so it
+ * holds exactly what the stored records hold, collected.
+ */
+const liveState = (doc: YDoc): Uint8Array => withoutPending(doc, () => Y.encodeStateAsUpdate(doc));
+
+/** A fresh room document: it keeps what an editing replica keeps (P11). */
+const roomDoc = (): YDoc => {
+	const doc = crdt.createDoc();
+	crdt.doc.keepCopies(doc as never);
+	return doc;
+};
+
+/** Admit stored or loaded updates into a room document (`roomDoc`'s collection rules). */
+const admit = (updates: Uint8Array | Uint8Array[], name: string): YDoc =>
+	crdt.admission.admitUpdate(updates, name, {
+		prepare: (doc) => crdt.doc.keepCopies(doc as never)
+	});
 
 /** What {@link attachDocument} (and `DocumentRoom`) takes. */
 export type AttachDocumentOptions = {
@@ -989,16 +1020,13 @@ export class AttachedDocument {
 					scratch.destroy();
 					return update;
 				});
-				doc = crdt.admission.admitUpdate(loaded.update, `room ${this.ctx.id} onLoad`);
+				doc = admit(loaded.update, `room ${this.ctx.id} onLoad`);
 				replicas = loaded.replicas;
 			} catch (error) {
 				return this.fail(error, false);
 			}
 			const waiting = pendingDeletes(doc);
-			const { pendingDs } = doc.store;
-			doc.store.pendingDs = null;
-			const snapshot = Y.encodeStateAsUpdate(doc);
-			doc.store.pendingDs = pendingDs;
+			const snapshot = liveState(doc);
 			try {
 				this.ctx.storage.transactionSync(() => {
 					this.insert('snapshot', snapshot);
@@ -1062,7 +1090,7 @@ export class AttachedDocument {
 				// A fresh room: the generation record is written with the first stored record.
 				this.origin = { kind: 'fresh' };
 				this.storedWaiting = Y.createIdSet();
-				this.adopt(crdt.createDoc());
+				this.adopt(roomDoc());
 				return;
 			}
 			const [generation, ...rest] = records;
@@ -1070,8 +1098,12 @@ export class AttachedDocument {
 			if (generation.kind !== 'generation' || !isGenerationRecord(found)) {
 				throw new E.GenerationMismatchError(`room ${this.ctx.id}`, found);
 			}
-			const merged = Y.mergeUpdates(rest.map((record) => record.bytes));
-			const doc = crdt.admission.admitUpdate(merged, `room ${this.ctx.id}`);
+			// Applied in one transaction, never merged first: a merge of the
+			// records keeps every keystroke's struct and the deleted content.
+			const doc = admit(
+				rest.map((record) => record.bytes),
+				`room ${this.ctx.id}`
+			);
 			this.adopt(doc);
 			// Every delete the engine holds waiting came from the rows.
 			this.storedWaiting = pendingDeletes(doc);
@@ -1131,7 +1163,10 @@ export class AttachedDocument {
 
 	/**
 	 * Compaction: the rows become the generation record + one chunked
-	 * snapshot, `mergeUpdates` of every stored record, atomically, + one
+	 * snapshot of the live document's state (P2: the healed state, deleted
+	 * content collected but the text a replica may copy again, P11 —
+	 * never a merge of the records, which keeps every keystroke's struct
+	 * and every deleted character), atomically, + one
 	 * `pending` record of the stored deletes still waiting. A waiting delete
 	 * of a client id no user registered and no socket holds is reclaimed,
 	 * in memory too: nothing can deliver its item (a made-up id) — the
@@ -1146,9 +1181,9 @@ export class AttachedDocument {
 			this.heal();
 			const doc = this.requireDoc();
 			const records = this.records().slice(1);
-			const merged = Y.mergeUpdates(
-				records.filter((record) => record.kind !== 'pending').map((record) => record.bytes)
-			);
+			// The live state, never a merge of the records (P2): memory never
+			// runs ahead of storage, so it is what they hold, collected.
+			const snapshot = liveState(doc);
 			const sockets = new Set<number>();
 			for (const ws of this.ctx.getWebSockets(SOCKET_TAG)) {
 				const replica = (ws.deserializeAttachment() as Attachment | null)?.replica;
@@ -1170,7 +1205,7 @@ export class AttachedDocument {
 			this.ctx.storage.transactionSync(() => {
 				this.sql.exec(`DELETE FROM ${this.rowsTable}`);
 				this.insert('generation', encodeJSON(E.GENERATION_RECORD));
-				this.insert('snapshot', merged);
+				this.insert('snapshot', snapshot);
 				if (!still.isEmpty()) this.insert('pending', deletesUpdate(still));
 				for (const replica of registered) {
 					if (!kept.has(replica)) {

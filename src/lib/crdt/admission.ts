@@ -177,10 +177,23 @@ export const bindAdmission = (Y: EngineApi) => ({
 	 * Throws {@link UndecodableUpdateError} for payloads that fail to
 	 * decode/integrate at all, then the usual typed refusals.
 	 */
-	admitUpdate: (update: Uint8Array, docName = 'loaded document'): YDoc => {
+	admitUpdate: (
+		update: Uint8Array | readonly Uint8Array[],
+		docName = 'loaded document',
+		options: {
+			/** Prepare the scratch doc before anything is applied (e.g. its `gcFilter`). */
+			prepare?: (doc: YDoc) => void;
+			/** The updates' encoding (default `1`). */
+			v2?: boolean;
+		} = {}
+	): YDoc => {
 		const doc = new Y.Doc();
+		options.prepare?.(doc);
+		const apply = options.v2 ? Y.applyUpdateV2 : Y.applyUpdate;
 		try {
-			Y.applyUpdate(doc, update);
+			// Several updates are applied in one transaction (no merge pass).
+			if (update instanceof Uint8Array) apply(doc, update);
+			else Y.transact(doc, () => update.forEach((part) => apply(doc, part)));
 		} catch (cause) {
 			throw new UndecodableUpdateError(docName, cause);
 		}

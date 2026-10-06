@@ -3447,6 +3447,14 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		SchemaMismatchError,
 		/** Attach the per-doc facade. */
 		create,
+		/**
+		 * Keep, on `doc`, the text a replica may have to copy again (P11): its
+		 * `gcFilter` then spares a deleted copy's content, as every facade's
+		 * history does. A doc that only relays updates (the room) calls it
+		 * before applying anything, so what it collects and encodes matches
+		 * what an editing replica keeps.
+		 */
+		keepCopies: (doc: EngineDoc): void => void D.scope(doc),
 		/** The bound engine layers (same instances the facades use). */
 		model: M,
 		text: T,

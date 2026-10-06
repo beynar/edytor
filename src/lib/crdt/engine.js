@@ -30,6 +30,13 @@ export const Y = {
 	UpdateEncoderV1: V.UpdateEncoderV1,
 	writeIdSet: V.writeIdSet,
 	mergeUpdates: V.mergeUpdates,
+	// storage in the v2 (columnar) encoding (P5): room rows and the IndexedDB store
+	applyUpdateV2: V.applyUpdateV2,
+	encodeStateAsUpdateV2: V.encodeStateAsUpdateV2,
+	mergeUpdatesV2: V.mergeUpdatesV2,
+	convertUpdateFormatV2ToV1: V.convertUpdateFormatV2ToV1,
+	UpdateDecoderV1: V.UpdateDecoderV1,
+	UpdateEncoderV2: V.UpdateEncoderV2,
 	Skip: V.Skip,
 	findIndexSS: V.findIndexSS,
 	createRelativePositionFromTypeIndex: V.createRelativePositionFromTypeIndex,

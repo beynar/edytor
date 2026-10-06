@@ -1628,6 +1628,42 @@ neutralized by remote edits) without applying a change or growing the
 opposite stack. The legal oracle is **source stack shrank OR opposite
 grew** — not both. A dead command shows neither and still fails.
 
+## The room (server, `edytor/cloudflare`)
+
+Rows of the room's own storage and admission (Phase 2 of the 2026-10 CRDT
+study, `docs/research/crdt-fix-plan-2026-10.md`). Pins live in `tests/do`.
+
+### `room.compact.live` — compaction stores the live state (P2)
+
+A compaction replaces the rows with one snapshot of the room's live
+document, `encodeStateAsUpdate` with the engine's pending store set aside
+(`liveState`, `withoutPending`): the healed state, where the engine merged
+what each keystroke wrote and collected deleted content. It is never a
+merge of the records, which keeps every keystroke's struct and every
+deleted character (`automerge-paper`: 6.69 MB merged, 1.60 MB live).
+Memory never runs ahead of storage, so the live state is exactly what
+the records hold, collected: a reload holds the same state vector,
+delete set, encoding and JSON (`p2-live-compaction.test.ts`). A load
+applies the records in one transaction, never merged first.
+
+### `room.compact.waiting` — what waits stays apart (P2)
+
+Structs waiting for a dependency are never stored (the engine's
+`pendingStructs`), so compaction leaves them out; when the dependency
+arrives, they integrate and are stored with it, and a reload holds them.
+Deletes of items the room lacks stay in their own `pending` record,
+compacted to the ones still waiting (site `server/room#storage`).
+
+### `room.compact.copies` — the room keeps what a replica may copy again (P11)
+
+The room's document applies the text-delete `gcFilter` from its creation
+(`crdt.doc.keepCopies`, before any update applies, on a fresh, restored or
+`onLoad` document): a deleted restoration copy keeps its content, as on an
+editing replica, so the live state, its Step2 and its snapshot hold the
+text a peer's undo may copy again. Before Phase 2 the room's live document
+collected it (its Step2 served the copy deleted) while the merged records
+still held it.
+
 ## Transport / evidence
 
 ### `net.delete-only-leak`

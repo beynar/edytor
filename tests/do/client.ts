@@ -93,6 +93,23 @@ export const updateFrameWithWord = (word: number, update: Uint8Array): Uint8Arra
 	return Uint8Array.from([...varUint(word), ...ours.subarray(varUint(E.GENERATION).length)]);
 };
 
+/**
+ * What the room stored, as one v1 update: its records (`records()`) read
+ * as a restart reads them — a v2 container's snapshot (`v2`) converted.
+ */
+export const storedUpdate = (
+	records: Array<{ kind: string; bytes: Uint8Array<ArrayBuffer>; v2?: boolean }>
+): Uint8Array =>
+	Y.mergeUpdates(
+		records
+			.filter((record) => record.kind !== 'generation')
+			.map((record) =>
+				record.v2
+					? (Y.convertUpdateFormatV2ToV1(record.bytes) as Uint8Array<ArrayBuffer>)
+					: record.bytes
+			)
+	);
+
 type Facade = ReturnType<typeof crdt.doc.create>;
 
 /**

@@ -10,7 +10,17 @@ import { env } from 'cloudflare:workers';
 import { evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import type { DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
-import { E, Y, crdt, RawClient, SelfWebSocket, ORIGIN, para, readFacade } from './client';
+import {
+	E,
+	Y,
+	crdt,
+	RawClient,
+	SelfWebSocket,
+	ORIGIN,
+	para,
+	readFacade,
+	storedUpdate
+} from './client';
 
 /** The schema version of an engine doc (typed through the facade's parameter). */
 const versionOf = (doc: unknown) => E.schemaVersion(doc as Parameters<typeof E.schemaVersion>[0]);
@@ -35,15 +45,7 @@ describe('independent review: real room boundaries', () => {
 		);
 		const beforeRestart = await runInDurableObject(stub, (r: Room) => {
 			const stored = crdt.createDoc();
-			Y.applyUpdate(
-				stored,
-				Y.mergeUpdates(
-					r
-						.records()
-						.slice(1)
-						.map((x) => x.bytes)
-				)
-			);
+			Y.applyUpdate(stored, storedUpdate(r.records()));
 			return {
 				live: r.doc && versionOf(r.doc),
 				stored: versionOf(stored),
@@ -125,15 +127,7 @@ describe('independent review: real room boundaries', () => {
 		await vi.waitFor(() => expect(author.closed).not.toBeNull());
 		const afterFailure = await runInDurableObject(stub, (r: Room, state) => {
 			const stored = crdt.createDoc();
-			Y.applyUpdate(
-				stored,
-				Y.mergeUpdates(
-					r
-						.records()
-						.slice(1)
-						.map((x) => x.bytes)
-				)
-			);
+			Y.applyUpdate(stored, storedUpdate(r.records()));
 			const observed = {
 				live: readFacade(r.doc!, (f) => f.blockText('p')),
 				stored: readFacade(stored, (f) => f.blockText('p'))
@@ -145,15 +139,7 @@ describe('independent review: real room boundaries', () => {
 		await vi.waitFor(() => expect(reconnect.acks.length).toBeGreaterThan(0));
 		const afterReconnect = await runInDurableObject(stub, (r: Room) => {
 			const stored = crdt.createDoc();
-			Y.applyUpdate(
-				stored,
-				Y.mergeUpdates(
-					r
-						.records()
-						.slice(1)
-						.map((x) => x.bytes)
-				)
-			);
+			Y.applyUpdate(stored, storedUpdate(r.records()));
 			return readFacade(stored, (f) => f.blockText('p'));
 		});
 		const clock = Y.decodeStateVector(Y.encodeStateVector(document.doc)).get(document.doc.clientID);
@@ -173,15 +159,7 @@ describe('independent review: real room boundaries', () => {
 
 	const storedText = (r: Room) => {
 		const stored = crdt.createDoc();
-		Y.applyUpdate(
-			stored,
-			Y.mergeUpdates(
-				r
-					.records()
-					.slice(1)
-					.map((x) => x.bytes)
-			)
-		);
+		Y.applyUpdate(stored, storedUpdate(r.records()));
 		return readFacade(stored, (f) => f.blockText('p'));
 	};
 
@@ -273,15 +251,7 @@ describe('independent review: real room boundaries', () => {
 		await vi.waitFor(() => expect(joiner.acks.length).toBeGreaterThan(1));
 		const beforeRestart = await runInDurableObject(stub, (r: Room) => {
 			const stored = crdt.createDoc();
-			Y.applyUpdate(
-				stored,
-				Y.mergeUpdates(
-					r
-						.records()
-						.slice(1)
-						.map((x) => x.bytes)
-				)
-			);
+			Y.applyUpdate(stored, storedUpdate(r.records()));
 			return {
 				live: r.doc && versionOf(r.doc),
 				stored: versionOf(stored),

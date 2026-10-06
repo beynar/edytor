@@ -166,7 +166,8 @@ describe('P2 · compaction stores the live state', () => {
 		);
 		const snapshot = await inRoom(room, (r) => {
 			r.compact();
-			return r.records().find((record) => record.kind === 'snapshot')!.bytes;
+			const { bytes, v2 } = r.records().find((record) => record.kind === 'snapshot')!;
+			return v2 ? Y.convertUpdateFormatV2ToV1(bytes) : bytes;
 		});
 		/** Ids of the characters an update carries with their text. */
 		const characters = (update: Uint8Array) =>

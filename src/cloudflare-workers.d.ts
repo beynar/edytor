@@ -40,6 +40,7 @@ interface DurableObjectState {
 	getWebSockets(tag?: string): WebSocket[];
 	getTags(ws: WebSocket): string[];
 	blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
+	waitUntil?(promise: Promise<unknown>): void;
 	setWebSocketAutoResponse?(pair?: WebSocketRequestResponsePair): void;
 	getWebSocketAutoResponse?(): WebSocketRequestResponsePair | null;
 }

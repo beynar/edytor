@@ -25,7 +25,8 @@ export {
 	type Refusal,
 	type ReplicaOwner,
 	type SavedDocument,
-	type SocketIdentity
+	type SocketIdentity,
+	type StoredRecord
 } from './DocumentRoom.js';
 export {
 	routeDocumentSocket,

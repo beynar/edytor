@@ -178,22 +178,22 @@ export const bindAdmission = (Y: EngineApi) => ({
 	 * decode/integrate at all, then the usual typed refusals.
 	 */
 	admitUpdate: (
-		update: Uint8Array | readonly Uint8Array[],
+		update: Uint8Array | ReadonlyArray<Uint8Array | { v2: Uint8Array }>,
 		docName = 'loaded document',
 		options: {
 			/** Prepare the scratch doc before anything is applied (e.g. its `gcFilter`). */
 			prepare?: (doc: YDoc) => void;
-			/** The updates' encoding (default `1`). */
-			v2?: boolean;
 		} = {}
 	): YDoc => {
 		const doc = new Y.Doc();
 		options.prepare?.(doc);
-		const apply = options.v2 ? Y.applyUpdateV2 : Y.applyUpdate;
+		const apply = (part: Uint8Array | { v2: Uint8Array }) =>
+			part instanceof Uint8Array ? Y.applyUpdate(doc, part) : Y.applyUpdateV2(doc, part.v2);
 		try {
-			// Several updates are applied in one transaction (no merge pass).
-			if (update instanceof Uint8Array) apply(doc, update);
-			else Y.transact(doc, () => update.forEach((part) => apply(doc, part)));
+			// Several updates (`{ v2 }`: in the v2 encoding) are applied in one
+			// transaction, with no merge pass.
+			if (update instanceof Uint8Array) apply(update);
+			else Y.transact(doc, () => update.forEach(apply));
 		} catch (cause) {
 			throw new UndecodableUpdateError(docName, cause);
 		}

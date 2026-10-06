@@ -38,6 +38,7 @@ import {
 	CUSTOM,
 	decodeRow,
 	encodeRow,
+	readRow,
 	openContainer,
 	openIfExists,
 	UPDATES,
@@ -269,7 +270,12 @@ export const bindMigration = (Y: EngineApi) => {
 			if (force) {
 				const [updates, custom] = idb.transact(db, [UPDATES, CUSTOM]);
 				await verifyOrStamp(name, updates, custom);
-				for (const row of await idb.getAll(updates)) Y.applyUpdate(doc, decodeRow(row));
+				// Rows first (one transaction), then inflate: a snapshot row is v2, maybe gzip (P5).
+				for (const row of await idb.getAll(updates)) {
+					const update = await readRow(row);
+					if (update instanceof Uint8Array) Y.applyUpdate(doc, update);
+					else Y.applyUpdateV2(doc, update.v2);
+				}
 			}
 			const base = Y.encodeStateVector(doc);
 			edytorDoc.restore(

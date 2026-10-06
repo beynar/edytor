@@ -42,7 +42,8 @@ import {
 	dialOutcome,
 	para,
 	readFacade,
-	shape
+	shape,
+	storedUpdate
 } from './client';
 
 const url = `${ORIGIN.replace('https', 'wss')}/rooms`;
@@ -58,15 +59,7 @@ const kinds = (room: string) => inHooked(room, (r) => r.records().map((record) =
 const storedBlock = (room: string) =>
 	inHooked(room, (r) => {
 		const stored = crdt.createDoc();
-		Y.applyUpdate(
-			stored,
-			Y.mergeUpdates(
-				r
-					.records()
-					.slice(1)
-					.map((x) => x.bytes)
-			)
-		);
+		Y.applyUpdate(stored, storedUpdate(r.records()));
 		return blockOf(stored);
 	});
 

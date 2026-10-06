@@ -334,9 +334,12 @@ export {
 	frame,
 	PROTOCOL_VERSION,
 	GENERATION_RECORD,
+	STORED_GENERATION_RECORD,
+	STORAGE_FORMAT,
 	GenerationMismatchError,
 	readProtocolVersion,
-	type GenerationRecord
+	type GenerationRecord,
+	type StorageFormat
 } from './protocols/envelope.js';
 
 export {

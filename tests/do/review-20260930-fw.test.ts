@@ -28,7 +28,8 @@ import {
 	crdt,
 	dialOutcome,
 	readFacade,
-	shape
+	shape,
+	storedUpdate
 } from './client';
 
 const hooked = (room: string) => env.HOOKED.getByName(room);
@@ -43,15 +44,7 @@ type Facade = Parameters<Parameters<typeof readFacade>[1]>[0];
 /** The document as the room STORED it (its rows, merged), read with `read`. */
 const stored = <T>(r: Room, read: (facade: Facade) => T) => {
 	const doc = crdt.createDoc();
-	Y.applyUpdate(
-		doc,
-		Y.mergeUpdates(
-			r
-				.records()
-				.slice(1)
-				.map((x) => x.bytes)
-		)
-	);
+	Y.applyUpdate(doc, storedUpdate(r.records()));
 	return readFacade(doc, read);
 };
 

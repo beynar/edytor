@@ -1,6 +1,6 @@
 /**
  * The v14 IndexedDB container (L58) — one owner for the store names, the row
- * codec, the open, the non-creating probe and the ONE verify-or-stamp rule,
+ * codec (v1 update rows, v2 snapshot rows: P5), the open, the non-creating probe and the ONE verify-or-stamp rule,
  * shared by the provider and the migrator. Rows are append-only for every
  * writer (a provider's compaction appends its snapshot before deleting the
  * rows it subsumes).
@@ -8,10 +8,11 @@
 import * as idb from 'lib0-v14/indexeddb';
 import {
 	GENERATION_KEY,
-	GENERATION_RECORD,
 	GenerationMismatchError,
-	isGenerationRecord
+	isGenerationRecord,
+	STORED_GENERATION_RECORD
 } from '../protocols/envelope.js';
+import { gunzip, packed } from '../storage.js';
 
 export const UPDATES = 'updates';
 export const CUSTOM = 'custom';
@@ -30,6 +31,29 @@ export const decodeRow = (row: unknown): Uint8Array => {
 };
 
 /**
+ * A snapshot row (P5, storage `'v2'`): the document in the v2 encoding,
+ * gzip-compressed where the platform has `CompressionStream` (and that
+ * makes it smaller). Update rows stay v1 `ArrayBuffer`s. A build before
+ * 0.1.0-next.23 reads such a row as no update at all (`decodeRow` throws),
+ * so it fails to load the store instead of misreading it.
+ */
+export type SnapshotRow = { v2: ArrayBuffer };
+
+export const snapshotRow = async (updateV2: Uint8Array): Promise<SnapshotRow> => ({
+	v2: (await packed(updateV2)).slice().buffer
+});
+
+/** A stored row as the update to apply: `{ v2 }` for a snapshot row (inflated). */
+export const readRow = async (row: unknown): Promise<Uint8Array | { v2: Uint8Array }> => {
+	if (typeof row === 'object' && row !== null && 'v2' in row) {
+		const bytes = (row as SnapshotRow).v2;
+		if (!(bytes instanceof ArrayBuffer)) throw new TypeError('Stored snapshot is not binary data');
+		return { v2: await gunzip(new Uint8Array(bytes)) };
+	}
+	return decodeRow(row);
+};
+
+/**
  * The one verify-or-stamp rule: a container carrying this generation's
  * record passes; an EMPTY container without a record is stamped; anything
  * else (a populated store without a record, a foreign record) throws
@@ -42,7 +66,7 @@ export const verifyOrStamp = async (
 ): Promise<void> => {
 	const found = await idb.get(custom, GENERATION_KEY);
 	if (found === undefined && (await idb.count(updates)) === 0) {
-		await idb.rtop(custom.put({ ...GENERATION_RECORD }, GENERATION_KEY));
+		await idb.rtop(custom.put({ ...STORED_GENERATION_RECORD }, GENERATION_KEY));
 	} else if (!isGenerationRecord(found)) {
 		throw new GenerationMismatchError(name, found);
 	}

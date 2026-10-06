@@ -41,12 +41,18 @@ import * as encoding from 'lib0-v14/encoding';
 import { Awareness } from '../protocols/awareness.js';
 import { IsolatedObservable } from '../protocols/observable.js';
 import { bindSync, type SyncProtocol } from '../protocols/sync.js';
-import { generationDbName } from '../protocols/envelope.js';
+import {
+	GENERATION_KEY,
+	generationDbName,
+	STORED_GENERATION_RECORD
+} from '../protocols/envelope.js';
 import {
 	CUSTOM as customStoreName,
-	decodeRow,
 	encodeRow,
 	openContainer,
+	readRow,
+	snapshotRow,
+	type SnapshotRow,
 	UPDATES as updatesStoreName,
 	verifyOrStamp
 } from './container.js';
@@ -109,53 +115,88 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	/**
 	 * Apply all stored update rows (from `_dbref` on) to the doc. Verifies the
 	 * generation record before touching the doc — rows from a foreign (v13 or
-	 * otherwise-mismatched) generation are never applied.
+	 * otherwise-mismatched) generation are never applied. The storage
+	 * transaction reads everything it needs first (rows, last key, count):
+	 * a snapshot row inflates asynchronously (P5), after it ends.
 	 */
 	const fetchUpdates = (
 		idbPersistence: IdbPersistenceLike,
 		beforeApplyUpdatesCallback: (store: IDBObjectStore) => void = () => {},
-		afterApplyUpdatesCallback: (store: IDBObjectStore) => void = () => {}
-	) => {
+		afterApplyUpdatesCallback: () => void = () => {}
+	): Promise<void> => {
 		const db = idbPersistence.db as IDBDatabase;
 		const [updatesStore, customStore] = idb.transact(db, [updatesStoreName, customStoreName]);
 		return verifyOrStamp(idbPersistence.name, updatesStore, customStore)
 			.then(() =>
 				idb.getAll(updatesStore, idb.createIDBKeyRangeLowerBound(idbPersistence._dbref, false))
 			)
-			.then((updates) => {
-				if (!idbPersistence._destroyed) {
-					beforeApplyUpdatesCallback(updatesStore);
-					Y.transact(
-						idbPersistence.doc,
-						() => {
-							updates.forEach((update) => Y.applyUpdate(idbPersistence.doc, decodeRow(update)));
-						},
-						idbPersistence,
-						false
-					);
-					afterApplyUpdatesCallback(updatesStore);
-				}
+			.then((rows) => {
+				// The pre-hydration state row is written before the last key is read.
+				if (!idbPersistence._destroyed) beforeApplyUpdatesCallback(updatesStore);
+				return promise
+					.all([idb.getLastKey(updatesStore), idb.count(updatesStore)])
+					.then(([lastKey, cnt]) => {
+						idbPersistence._dbref = (lastKey as number) + 1;
+						idbPersistence._dbsize = cnt;
+						return promise.all(rows.map(readRow));
+					});
 			})
-			.then(() =>
-				idb.getLastKey(updatesStore).then((lastKey) => {
-					idbPersistence._dbref = (lastKey as number) + 1;
-				})
-			)
-			.then(() =>
-				idb.count(updatesStore).then((cnt) => {
-					idbPersistence._dbsize = cnt;
-				})
-			)
-			.then(() => updatesStore);
+			.then((updates) => {
+				if (idbPersistence._destroyed) return;
+				Y.transact(
+					idbPersistence.doc,
+					() => {
+						for (const update of updates) {
+							if (update instanceof Uint8Array) Y.applyUpdate(idbPersistence.doc, update);
+							else Y.applyUpdateV2(idbPersistence.doc, update.v2);
+						}
+					},
+					idbPersistence,
+					false
+				);
+				afterApplyUpdatesCallback();
+			});
+	};
+
+	/** One transaction: the snapshot row, the rows below `below` deleted, the record stamped `'v2'`. */
+	const writeSnapshot = (idbPersistence: IdbPersistenceLike, row: SnapshotRow, below: number) => {
+		const db = idbPersistence.db as IDBDatabase;
+		const [updatesStore, customStore] = idb.transact(db, [updatesStoreName, customStoreName]);
+		// Track transaction commit: listeners attach while it is still active.
+		const tx = updatesStore.transaction;
+		const transactionDone = promise.create((resolve, reject) => {
+			tx.addEventListener('complete', () => resolve(undefined));
+			tx.addEventListener('abort', () =>
+				reject(new Error(`IndexedDB transaction aborted${tx.error ? `: ${String(tx.error)}` : ''}`))
+			);
+		});
+		return promise
+			.all([
+				idb
+					// A structured-clone object row (lib0 types rows as binary).
+					.addAutoKey(updatesStore, row as unknown as ArrayBuffer)
+					.then(() => idb.del(updatesStore, idb.createIDBKeyRangeUpperBound(below, true)))
+					.then(() => idb.rtop(customStore.put({ ...STORED_GENERATION_RECORD }, GENERATION_KEY)))
+					.then(() =>
+						idb.count(updatesStore).then((cnt) => {
+							idbPersistence._dbsize = cnt;
+						})
+					),
+				transactionDone
+			])
+			.then(() => undefined);
 	};
 
 	/**
 	 * Persist the current state: fetch pending rows, then (when `forceStore`
 	 * or past `PREFERRED_TRIM_SIZE`) append a compacted snapshot and delete
-	 * the rows it subsumes.
+	 * the rows it subsumes. The snapshot is v2, gzip-compressed where the
+	 * platform can (P5), and the container's generation record is stamped
+	 * with its storage format in the same transaction.
 	 *
 	 * Every applied row is represented in the snapshot, so deleting
-	 * `key < _dbref` is always safe; a read-only document (outbound
+	 * `key < _dbref` (read before the snapshot is compressed: rows stored
+	 * meanwhile stay) is always safe; a read-only document (outbound
 	 * quarantine) never compacts.
 	 *
 	 * The returned promise settles only after the storage transaction
@@ -170,39 +211,15 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			// Deferred: a synchronous transact/fetch failure (closed or
 			// missing handle) must surface as a rejection, not a throw.
 			.then(() => fetchUpdates(idbPersistence))
-			.then((updatesStore) => {
+			.then(() => {
 				if (quarantined(idbPersistence.doc)) return undefined;
 				if (!forceStore && idbPersistence._dbsize < PREFERRED_TRIM_SIZE) {
 					return undefined;
 				}
-				// Track transaction commit: listeners attach while the
-				// transaction is still active — this callback runs inside
-				// the last fetch request's success microtask, before the
-				// transaction can finish.
-				const tx = updatesStore.transaction;
-				const transactionDone = promise.create((resolve, reject) => {
-					tx.addEventListener('complete', () => resolve(undefined));
-					tx.addEventListener('abort', () =>
-						reject(
-							new Error(`IndexedDB transaction aborted${tx.error ? `: ${String(tx.error)}` : ''}`)
-						)
-					);
-				});
-				return promise
-					.all([
-						idb
-							.addAutoKey(updatesStore, encodeRow(Y.encodeStateAsUpdate(idbPersistence.doc)))
-							.then(() =>
-								idb.del(updatesStore, idb.createIDBKeyRangeUpperBound(idbPersistence._dbref, true))
-							)
-							.then(() =>
-								idb.count(updatesStore).then((cnt) => {
-									idbPersistence._dbsize = cnt;
-								})
-							),
-						transactionDone
-					])
-					.then(() => undefined);
+				const below = idbPersistence._dbref;
+				return snapshotRow(Y.encodeStateAsUpdateV2(idbPersistence.doc)).then((row) =>
+					idbPersistence._destroyed ? undefined : writeSnapshot(idbPersistence, row, below)
+				);
 			});
 
 	/**

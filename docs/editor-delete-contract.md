@@ -1664,6 +1664,24 @@ text a peer's undo may copy again. Before Phase 2 the room's live document
 collected it (its Step2 served the copy deleted) while the merged records
 still held it.
 
+### `room.store.v2` — snapshots in v2, compressed, tagged (P5)
+
+A container's generation record carries its storage format (`storage`,
+absent = `'v1'`, the only format before 0.1.0-next.23). This build writes
+`'v2'`: snapshots in the v2 encoding (`encodeStateAsUpdateV2`), gzip-
+compressed where the platform has `CompressionStream` (a compressed
+snapshot starts with `1f 8b`, a v2 update with `00`); update and waiting
+records, and the IndexedDB store's update rows, stay v1, which is smaller
+for one edit (24 against 28 bytes for a keystroke, 13 against 24 for a
+one-character delete). The room compresses a snapshot in place after
+storing it raw (`compressLater`; the store-before-ack path is
+synchronous) and inflates it when it starts (`inflate`), keeping the raw
+bytes for a rebuild. A v1 container loads as it is, takes v1 update
+records, and is rewritten in v2 by its next compaction (`p5-storage-v2`,
+`storage-v2.test.ts`). The IndexedDB store writes a snapshot as an
+object row `{ v2 }`, which a build before 0.1.0-next.23 refuses to read
+(its row codec throws) instead of misreading. The wire stays v1.
+
 ## Transport / evidence
 
 ### `net.delete-only-leak`

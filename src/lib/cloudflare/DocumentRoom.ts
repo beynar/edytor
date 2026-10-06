@@ -52,6 +52,11 @@
  *   left out of the ack), the rest applied. Compaction reclaims the
  *   waiting deletes of client ids no user registered and no socket holds;
  *   `dropWaitingDeletes()` every one.
+ * - storage format (P5): the generation record says `storage: 'v2'` —
+ *   snapshots in the v2 encoding, compressed in place after they are
+ *   stored (`compressLater`), inflated at start (`inflate`); update and
+ *   pending records stay v1. A container without `storage` (0.1.0-next.22)
+ *   is all v1, and its next compaction rewrites it.
  * - a Step2 serves the STORED state: the engine's pending structs (waiting
  *   for a dependency, never stored) are not served.
  * - a frame larger than `maxFrameBytes` (32 MiB) goes out as chunks the
@@ -93,7 +98,13 @@ import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../crdt/engine.js';
 import * as E from '../crdt/index.js';
 import { READ_ONLY_DENIAL } from '../crdt/protocols/auth.js';
-import { isGenerationRecord } from '../crdt/protocols/envelope.js';
+import {
+	isGenerationRecord,
+	STORED_GENERATION_RECORD,
+	storageOf,
+	type StorageFormat
+} from '../crdt/protocols/envelope.js';
+import { gunzip, isGzip, packed } from '../crdt/storage.js';
 import { CLOSE } from '../crdt/providers/room.js';
 import type {
 	AwarenessEntry,
@@ -232,12 +243,27 @@ export const closedSocket = (code: number, reason: string): Response => {
 class MalformedFrame extends Error {}
 /** A SQLite fault outside the append path (the replica registry). */
 class StorageFault extends Error {}
-/** A stored record missing some of its rows: the container is corrupt, not the read. */
+/** A stored record missing some of its rows, or one that does not inflate: the container is corrupt, not the read. */
 class TornRecord extends Error {
-	constructor() {
-		super('torn record');
+	constructor(detail = 'torn record') {
+		super(detail);
 	}
 }
+
+/** A compressed record this instance has not inflated (only `start` can): the next dial reads it again. */
+class CompressedRecord extends Error {
+	constructor() {
+		super('compressed record not inflated');
+	}
+}
+
+/** A stored record, reassembled: its kind, record number, bytes, and whether they are v2 (a v2 container's snapshot). */
+export type StoredRecord = {
+	kind: RowKind;
+	record: number;
+	bytes: Uint8Array<ArrayBuffer>;
+	v2: boolean;
+};
 
 /** Decode the client's bytes: a throw is theirs (`malformed`), not the room's. */
 const decode = <T>(read: () => T): T => {
@@ -580,6 +606,29 @@ const addIds = (
 	return into;
 };
 
+/** Rows grouped into their records, in write order; a record missing rows throws. */
+const reassemble = (
+	rows: Row[]
+): Array<{ kind: RowKind; record: number; bytes: Uint8Array<ArrayBuffer> }> => {
+	const byRecord = new Map<number, Row[]>();
+	for (const row of rows) {
+		const parts = byRecord.get(row.record) ?? [];
+		parts.push(row);
+		byRecord.set(row.record, parts);
+	}
+	return [...byRecord.values()].map((parts) => {
+		if (parts.length !== parts[0].parts) throw new TornRecord();
+		parts.sort((a, b) => a.part - b.part);
+		const bytes = new Uint8Array(parts.reduce((n, p) => n + p.bytes.byteLength, 0));
+		let at = 0;
+		for (const part of parts) {
+			bytes.set(new Uint8Array(part.bytes), at);
+			at += part.bytes.byteLength;
+		}
+		return { kind: parts[0].kind, record: parts[0].record, bytes };
+	});
+};
+
 /** The deletes of the `pending` records among `records`. */
 const storedPending = (
 	records: Array<{ kind: RowKind; bytes: Uint8Array<ArrayBuffer> }>
@@ -665,7 +714,8 @@ const storedStep2 = (doc: YDoc, sv: Uint8Array): Uint8Array =>
  * waits (`withoutPending`). Memory never runs ahead of storage, so it
  * holds exactly what the stored records hold, collected.
  */
-const liveState = (doc: YDoc): Uint8Array => withoutPending(doc, () => Y.encodeStateAsUpdate(doc));
+const liveState = (doc: YDoc): Uint8Array =>
+	withoutPending(doc, () => Y.encodeStateAsUpdateV2(doc));
 
 /** A fresh room document: it keeps what an editing replica keeps (P11). */
 const roomDoc = (): YDoc => {
@@ -675,7 +725,7 @@ const roomDoc = (): YDoc => {
 };
 
 /** Admit stored or loaded updates into a room document (`roomDoc`'s collection rules). */
-const admit = (updates: Uint8Array | Uint8Array[], name: string): YDoc =>
+const admit = (updates: Uint8Array | Array<Uint8Array | { v2: Uint8Array }>, name: string): YDoc =>
 	crdt.admission.admitUpdate(updates, name, {
 		prepare: (doc) => crdt.doc.keepCopies(doc as never)
 	});
@@ -761,6 +811,12 @@ export class AttachedDocument {
 	private running = false;
 	/** Inside a client frame's apply, its events included: the frame's handler settles it. */
 	private handling = false;
+	/** How the container stores its snapshots (its generation record says; a fresh one: this build's). */
+	private format: StorageFormat = 'v2';
+	/** The snapshot compression in flight (`compressed()`). */
+	private compressing: Promise<unknown> = Promise.resolve();
+	/** The raw bytes of the compressed snapshot record (`records` reads it; only `start` can inflate). */
+	private inflated: { record: number; bytes: Uint8Array<ArrayBuffer> } | null = null;
 	/** The waiting deletes stored as `pending` records (the engine may hold more, in memory). */
 	private storedWaiting: Decoded['ds'] = Y.createIdSet();
 	/** The failure is the storage's (a failed read, `onLoad`'s store down): the next dial starts again. */
@@ -802,10 +858,38 @@ export class AttachedDocument {
 		try {
 			// A wake keeps a pending save: re-arming it would push `onSave` back at every wake.
 			if (this.options.onSave) this.saveScheduled = (await this.ctx.storage.getAlarm()) !== null;
+			await this.inflate();
 			noTimers(() => this.load());
 			if (this.origin.kind === 'fresh' && this.live !== null) await this.seed();
 		} catch (error) {
-			this.fail(error, true);
+			this.fail(error, !(error instanceof TornRecord));
+		}
+	}
+
+	/**
+	 * Inflate a compressed snapshot record (P5) for `records`, which reads
+	 * synchronously (a rebuild does): decompression is asynchronous, so
+	 * only `start` can. One that does not inflate is a corrupt container.
+	 */
+	private async inflate() {
+		this.inflated = null;
+		let rows: Row[];
+		try {
+			rows = this.sql
+				.exec<Row>(
+					`SELECT kind, record, part, parts, bytes FROM ${this.rowsTable} WHERE kind = 'snapshot' ORDER BY seq`
+				)
+				.toArray();
+		} catch {
+			return; // no table yet, or a failed read: `load` reports it
+		}
+		for (const { record, bytes } of reassemble(rows)) {
+			if (!isGzip(bytes)) continue;
+			try {
+				this.inflated = { record, bytes: (await gunzip(bytes)) as Uint8Array<ArrayBuffer> };
+			} catch (error) {
+				throw new TornRecord(`snapshot does not inflate: ${String(error)}`);
+			}
 		}
 	}
 
@@ -1027,9 +1111,10 @@ export class AttachedDocument {
 			}
 			const waiting = pendingDeletes(doc);
 			const snapshot = liveState(doc);
+			let record = -1;
 			try {
 				this.ctx.storage.transactionSync(() => {
-					this.insert('snapshot', snapshot);
+					record = this.insert('snapshot', snapshot);
 					if (!waiting.isEmpty()) this.insert('pending', deletesUpdate(waiting));
 					// Without a registry, every id with content is left claimable (user
 					// ''). As in `register`, an unowned row never replaces an owner a
@@ -1048,8 +1133,10 @@ export class AttachedDocument {
 				return this.fail(error, true);
 			}
 			this.live?.destroy();
+			this.format = STORED_GENERATION_RECORD.storage!;
 			this.adopt(doc);
 			this.storedWaiting = waiting;
+			this.compressLater(record, snapshot);
 		});
 	}
 
@@ -1089,6 +1176,7 @@ export class AttachedDocument {
 			if (records.length === 0) {
 				// A fresh room: the generation record is written with the first stored record.
 				this.origin = { kind: 'fresh' };
+				this.format = STORED_GENERATION_RECORD.storage!;
 				this.storedWaiting = Y.createIdSet();
 				this.adopt(roomDoc());
 				return;
@@ -1101,9 +1189,10 @@ export class AttachedDocument {
 			// Applied in one transaction, never merged first: a merge of the
 			// records keeps every keystroke's struct and the deleted content.
 			const doc = admit(
-				rest.map((record) => record.bytes),
+				rest.map((record) => (record.v2 ? { v2: record.bytes } : record.bytes)),
 				`room ${this.ctx.id}`
 			);
+			this.format = storageOf(found);
 			this.adopt(doc);
 			// Every delete the engine holds waiting came from the rows.
 			this.storedWaiting = pendingDeletes(doc);
@@ -1114,27 +1203,35 @@ export class AttachedDocument {
 		}
 	}
 
-	/** Reassembled logical records in write order; a torn record throws. */
-	records(): Array<{ kind: RowKind; bytes: Uint8Array<ArrayBuffer> }> {
-		const byRecord = new Map<number, Row[]>();
-		for (const row of this.sql.exec<Row>(
-			`SELECT kind, record, part, parts, bytes FROM ${this.rowsTable} ORDER BY seq`
-		)) {
-			const parts = byRecord.get(row.record) ?? [];
-			parts.push(row);
-			byRecord.set(row.record, parts);
-			this.nextRecord = Math.max(this.nextRecord, row.record + 1);
-		}
-		return [...byRecord.values()].map((parts) => {
-			if (parts.length !== parts[0].parts) throw new TornRecord();
-			parts.sort((a, b) => a.part - b.part);
-			const bytes = new Uint8Array(parts.reduce((n, p) => n + p.bytes.byteLength, 0));
-			let at = 0;
-			for (const part of parts) {
-				bytes.set(new Uint8Array(part.bytes), at);
-				at += part.bytes.byteLength;
+	/**
+	 * Reassembled logical records in write order (of one kind, with
+	 * `only`); a torn record throws. A v2 container's snapshot is v2
+	 * (`v2`), inflated when it is stored compressed (P5).
+	 */
+	records(only?: RowKind): StoredRecord[] {
+		const rows = this.sql
+			.exec<Row>(
+				`SELECT kind, record, part, parts, bytes FROM ${this.rowsTable}${only ? ' WHERE kind = ?' : ''} ORDER BY seq`,
+				...(only ? [only] : [])
+			)
+			.toArray();
+		for (const row of rows) this.nextRecord = Math.max(this.nextRecord, row.record + 1);
+		const records = reassemble(rows);
+		// The container's storage format, from its generation record.
+		let format: StorageFormat = 'v1';
+		if (records[0]?.kind === 'generation') {
+			try {
+				const found = JSON.parse(new TextDecoder().decode(records[0].bytes));
+				if (isGenerationRecord(found)) format = storageOf(found);
+			} catch {
+				// `load` refuses it
 			}
-			return { kind: parts[0].kind, bytes };
+		}
+		return records.map((record) => {
+			const v2 = format === 'v2' && record.kind === 'snapshot';
+			if (!v2 || !isGzip(record.bytes)) return { ...record, v2 };
+			if (this.inflated?.record !== record.record) throw new CompressedRecord();
+			return { ...record, bytes: this.inflated.bytes, v2 };
 		});
 	}
 
@@ -1143,22 +1240,90 @@ export class AttachedDocument {
 	 * a transaction). The first record of an empty container brings the
 	 * generation record with it.
 	 */
-	private insert(kind: RowKind, bytes: Uint8Array) {
+	private insert(kind: RowKind, bytes: Uint8Array): number {
 		if (this.nextRecord === 0 && kind !== 'generation') {
-			this.insert('generation', encodeJSON(E.GENERATION_RECORD));
+			this.insert('generation', encodeJSON(STORED_GENERATION_RECORD));
 		}
 		const record = this.nextRecord++;
+		this.writeRecord(kind, record, bytes);
+		return record;
+	}
+
+	/** Record `record`'s rows (at the row positions `seqs`, when given). */
+	private writeRecord(kind: RowKind, record: number, bytes: Uint8Array, seqs?: number[]) {
 		const parts = Math.max(1, Math.ceil(bytes.length / this.maxRowBytes));
 		for (let part = 0; part < parts; part++) {
-			this.sql.exec(
-				`INSERT INTO ${this.rowsTable} (kind, record, part, parts, bytes) VALUES (?, ?, ?, ?, ?)`,
-				kind,
-				record,
-				part,
-				parts,
-				bytes.slice(part * this.maxRowBytes, (part + 1) * this.maxRowBytes)
-			);
+			const row = bytes.slice(part * this.maxRowBytes, (part + 1) * this.maxRowBytes);
+			if (seqs) {
+				this.sql.exec(
+					`INSERT INTO ${this.rowsTable} (seq, kind, record, part, parts, bytes) VALUES (?, ?, ?, ?, ?, ?)`,
+					seqs[part],
+					kind,
+					record,
+					part,
+					parts,
+					row
+				);
+			} else {
+				this.sql.exec(
+					`INSERT INTO ${this.rowsTable} (kind, record, part, parts, bytes) VALUES (?, ?, ?, ?, ?)`,
+					kind,
+					record,
+					part,
+					parts,
+					row
+				);
+			}
 		}
+	}
+
+	/**
+	 * Compress snapshot `record` in place once it is stored (P5): gzip is
+	 * asynchronous, and the store-before-ack path is not. Its rows are
+	 * rewritten (at their positions) only while it is still the stored
+	 * snapshot and only when that shrinks it; the raw bytes stay in memory
+	 * (`inflated`) for a rebuild's synchronous read. A platform without
+	 * `CompressionStream` keeps it raw.
+	 */
+	private compressLater(record: number, raw: Uint8Array) {
+		const job = packed(raw)
+			.then((bytes) =>
+				noTimers(() => {
+					if (bytes === raw) return;
+					const rows = this.sql
+						.exec<{
+							seq: number;
+						}>(
+							`SELECT seq FROM ${this.rowsTable} WHERE record = ? AND kind = 'snapshot' ORDER BY part`,
+							record
+						)
+						.toArray();
+					// Replaced since (a compaction, a reset): nothing to do.
+					if (rows.length !== Math.max(1, Math.ceil(raw.length / this.maxRowBytes))) return;
+					this.ctx.storage.transactionSync(() => {
+						this.sql.exec(`DELETE FROM ${this.rowsTable} WHERE record = ?`, record);
+						this.writeRecord(
+							'snapshot',
+							record,
+							bytes,
+							rows.map((row) => row.seq)
+						);
+					});
+					this.inflated = { record, bytes: raw.slice() };
+				})
+			)
+			.catch((error) => this.note({ reason: 'storage', detail: `compression: ${String(error)}` }));
+		this.compressing = job;
+		this.ctx.waitUntil?.(job);
+	}
+
+	/**
+	 * Resolves once the snapshot compression in flight, if any, is stored
+	 * (P5): a compaction stores its snapshot raw, then compresses it in
+	 * place. Wait for it before reading the rows' sizes.
+	 */
+	async compressed(): Promise<void> {
+		await this.compressing;
 	}
 
 	/**
@@ -1180,7 +1345,8 @@ export class AttachedDocument {
 		return noTimers(() => {
 			this.heal();
 			const doc = this.requireDoc();
-			const records = this.records().slice(1);
+			// Only the waiting deletes are read back: the snapshot is the live doc.
+			const pending = this.records('pending');
 			// The live state, never a merge of the records (P2): memory never
 			// runs ahead of storage, so it is what they hold, collected.
 			const snapshot = liveState(doc);
@@ -1197,15 +1363,17 @@ export class AttachedDocument {
 			// Waiting deletes stay apart (a discarded forgery drops them,
 			// `settleDeletes`): the stored ones the engine still holds waiting.
 			const all = pendingDeletes(doc);
-			const stored = storedPending(records);
+			const stored = storedPending(pending);
 			const waiting = Y.diffIdSet(stored, Y.diffIdSet(stored, all));
 			const still = addIds(Y.createIdSet(), waiting, (client) => known.has(client));
 			// Memory never runs ahead of storage: the live state vector is the stored one.
 			const kept = new Set([...stateVector(doc).keys(), ...sockets, ...still.clients.keys()]);
+			let record = -1;
 			this.ctx.storage.transactionSync(() => {
 				this.sql.exec(`DELETE FROM ${this.rowsTable}`);
-				this.insert('generation', encodeJSON(E.GENERATION_RECORD));
-				this.insert('snapshot', snapshot);
+				// The container is now this build's format (a v1 one migrates here).
+				this.insert('generation', encodeJSON(STORED_GENERATION_RECORD));
+				record = this.insert('snapshot', snapshot);
 				if (!still.isEmpty()) this.insert('pending', deletesUpdate(still));
 				for (const replica of registered) {
 					if (!kept.has(replica)) {
@@ -1214,7 +1382,9 @@ export class AttachedDocument {
 				}
 			});
 			this.updates = 0;
+			this.format = STORED_GENERATION_RECORD.storage!;
 			this.storedWaiting = still;
+			this.compressLater(record, snapshot);
 			// Unknown ids' deletes go, the ones waiting in memory with a rewrite too.
 			forgetWaiting(
 				doc,
@@ -1918,6 +2088,10 @@ export class DocumentRoom<
 	/** Compaction, also over RPC. */
 	compact(): { rows: number } {
 		return this.room.compact();
+	}
+	/** The snapshot compression in flight, also over RPC — see {@link AttachedDocument.compressed}. */
+	compressed(): Promise<void> {
+		return this.room.compressed();
 	}
 	/** Drop the stored waiting deletes, also over RPC — see {@link AttachedDocument.dropWaitingDeletes}. */
 	dropWaitingDeletes(): { ranges: number } {

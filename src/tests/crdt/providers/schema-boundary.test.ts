@@ -37,6 +37,7 @@ import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import * as bc from 'lib0-v14/broadcastchannel';
 import * as idb from 'lib0-v14/indexeddb';
+import { readRow } from '../../../lib/crdt/providers/container.js';
 import * as envelope from '../../../lib/crdt/protocols/envelope.js';
 import {
 	writeProtocolVersion,
@@ -398,7 +399,10 @@ describe('same-generation forged stamp — BroadcastChannel (IndexeddbPersistenc
 		const rows = await readRows(name);
 		for (const row of rows) {
 			const probe = new Y.Doc();
-			Y.applyUpdate(probe, new Uint8Array(row));
+			// The compacted snapshot row is v2, maybe gzip (P5).
+			const update = await readRow(row);
+			if (update instanceof Uint8Array) Y.applyUpdate(probe, update);
+			else Y.applyUpdateV2(probe, update.v2);
 			expect(E.schemaVersion(probe)).not.toBe(99);
 		}
 		await pA.destroy();

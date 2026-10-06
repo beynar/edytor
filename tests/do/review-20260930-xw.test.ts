@@ -22,7 +22,17 @@ import * as encoding from 'lib0-v14/encoding';
 import { describe, expect, it, vi } from 'vitest';
 import { MAX_WAITING_DELETES, type DocumentRoom } from '../../src/lib/cloudflare/index.js';
 import type { HookedRoom } from './worker';
-import { E, ORIGIN, RawClient, SelfWebSocket, Y, crdt, readFacade, shape } from './client';
+import {
+	E,
+	ORIGIN,
+	RawClient,
+	SelfWebSocket,
+	Y,
+	crdt,
+	readFacade,
+	shape,
+	storedUpdate
+} from './client';
 
 const textOf = (client: RawClient) => shape(client.json()).children[0]?.text;
 const url = `${ORIGIN.replace('https', 'wss')}/rooms`;
@@ -227,8 +237,7 @@ const clockOf = (doc: E.YDoc) => Y.decodeStateVector(Y.encodeStateVector(doc)).g
 const storedText = (room: string, id: string) =>
 	inHooked(room, (r) => {
 		const stored = crdt.createDoc();
-		const rows = r.records().slice(1);
-		Y.applyUpdate(stored, Y.mergeUpdates(rows.map((x) => x.bytes)));
+		Y.applyUpdate(stored, storedUpdate(r.records()));
 		return readFacade(stored, (f) => f.blockText(id));
 	});
 

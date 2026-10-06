@@ -20,7 +20,17 @@ import { env } from 'cloudflare:workers';
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import type { HookedRoom } from './worker';
-import { E, ORIGIN, RawClient, SelfWebSocket, Y, crdt, readFacade, shape } from './client';
+import {
+	E,
+	ORIGIN,
+	RawClient,
+	SelfWebSocket,
+	Y,
+	crdt,
+	readFacade,
+	shape,
+	storedUpdate
+} from './client';
 
 const hooked = (room: string) => env.HOOKED.getByName(room);
 const inHooked = <T>(room: string, fn: (r: HookedRoom, state: DurableObjectState) => T) =>
@@ -34,15 +44,7 @@ const roomBlock = (room: string) => inHooked(room, (r) => shape(r.read()).childr
 const storedBlock = (room: string) =>
 	inHooked(room, (r) => {
 		const stored = crdt.createDoc();
-		Y.applyUpdate(
-			stored,
-			Y.mergeUpdates(
-				r
-					.records()
-					.slice(1)
-					.map((x) => x.bytes)
-			)
-		);
+		Y.applyUpdate(stored, storedUpdate(r.records()));
 		return blockOf(stored);
 	});
 

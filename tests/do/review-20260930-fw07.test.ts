@@ -17,7 +17,17 @@ import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from 'c
 import { describe, expect, it, vi } from 'vitest';
 import type { DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
 import type { HookedRoom } from './worker';
-import { E, ORIGIN, RawClient, SelfWebSocket, Y, crdt, readFacade, shape } from './client';
+import {
+	E,
+	ORIGIN,
+	RawClient,
+	SelfWebSocket,
+	Y,
+	crdt,
+	readFacade,
+	shape,
+	storedUpdate
+} from './client';
 
 const hooked = (room: string) => env.HOOKED.getByName(room);
 const inHooked = <T>(room: string, fn: (r: HookedRoom, state: DurableObjectState) => T) =>
@@ -29,15 +39,7 @@ const textOf = (client: RawClient) => shape(client.json()).children[0]?.text;
 /** The text of block `id` in what the room STORED (its rows, merged). */
 const storedText = (r: Room, id: string) => {
 	const stored = crdt.createDoc();
-	Y.applyUpdate(
-		stored,
-		Y.mergeUpdates(
-			r
-				.records()
-				.slice(1)
-				.map((x) => x.bytes)
-		)
-	);
+	Y.applyUpdate(stored, storedUpdate(r.records()));
 	return readFacade(stored, (f) => f.blockText(id));
 };
 

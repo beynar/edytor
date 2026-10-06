@@ -31,6 +31,8 @@ document.attachSync(createIndexeddbSync('notes/today'), { value });
 
 Every edit is written as it happens. Past 500 stored updates, the provider writes one compacted snapshot and drops the rows it replaces. The browser database is named `edytor-v14:<name>`.
 
+The snapshot is stored in the compact (v2) update encoding and gzip-compressed where the browser has `CompressionStream` (every current one), typically a fifth to a tenth of the uncompressed v1 size; the edits written between snapshots stay one v1 row each, which is smaller for a keystroke. The store's generation record says `storage: 'v2'` once it holds such a snapshot. A store written by 0.1.0-next.22 or earlier loads as before, and its next compaction rewrites it. A tab still running 0.1.0-next.22 cannot read a store a newer tab compacted: it reports `load-error` instead of misreading it, and a reload picks up the new build.
+
 ## The local copy of a WebSocket document
 
 A view with a `server` keeps an IndexedDB store beside the socket, so a synced document also survives reloads. With an `actor`, the view names it `edytor:<actor.id>@<server>/<room>`, and without one `edytor:<server>/<room>`; trailing slashes are removed from `server` in both, so `wss://x/rooms/` and `wss://x/rooms` share one store. The factory form sets the name yourself:

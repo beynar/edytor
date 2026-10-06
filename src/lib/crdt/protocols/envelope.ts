@@ -44,31 +44,56 @@ export const GENERATION_PREFIX = 'edytor-v14:';
 /** The IndexedDB name a v14 provider uses for logical document `name`. */
 export const generationDbName = (name: string): string => GENERATION_PREFIX + name;
 
+/**
+ * How a container stores its snapshots (P5, 0.1.0-next.23): `'v1'` (the
+ * update encoding, every container before it) or `'v2'` (the columnar
+ * encoding, gzip-compressed where the platform has `CompressionStream`;
+ * a compressed snapshot starts with gzip's `1f 8b`, a v2 update with
+ * `00`). Update rows stay v1 in both: a keystroke's update is smaller in
+ * v1 (24 bytes against 28, a one-character delete 13 against 24).
+ */
+export type StorageFormat = 'v1' | 'v2';
+
 /** Record written to the `custom` store marking a DB as this generation's. */
 export type GenerationRecord = {
 	engine: 'yjs-v14';
 	protocol: number;
 	schema: number;
+	/** Absent: `'v1'` (written before 0.1.0-next.23). */
+	storage?: StorageFormat;
 };
 
 export const GENERATION_KEY = 'generation';
+/** This generation's wire and schema (the storage format aside: {@link STORED_GENERATION_RECORD}). */
 export const GENERATION_RECORD: GenerationRecord = {
 	engine: 'yjs-v14',
 	protocol: PROTOCOL_VERSION,
 	schema: SCHEMA_VERSION
 };
+/** The storage format this build writes its snapshots in. */
+export const STORAGE_FORMAT: StorageFormat = 'v2';
+/** The record this build stamps a container with (its generation and its storage format). */
+export const STORED_GENERATION_RECORD: GenerationRecord = {
+	...GENERATION_RECORD,
+	storage: STORAGE_FORMAT
+};
 
 /**
  * Is `v` this generation's container record? A record without `schema` was
  * written before the schema joined the generation, by builds that spoke
- * schema 1 only — it is a schema-1 record.
+ * schema 1 only — it is a schema-1 record. A storage format this build
+ * does not read (a later one) is another generation's.
  */
 export const isGenerationRecord = (v: unknown): v is GenerationRecord =>
 	typeof v === 'object' &&
 	v !== null &&
 	(v as GenerationRecord).engine === GENERATION_RECORD.engine &&
 	(v as GenerationRecord).protocol === GENERATION_RECORD.protocol &&
-	((v as Partial<GenerationRecord>).schema ?? 1) === SCHEMA_VERSION;
+	((v as Partial<GenerationRecord>).schema ?? 1) === SCHEMA_VERSION &&
+	[undefined, 'v1', 'v2'].includes((v as GenerationRecord).storage);
+
+/** The storage format of a container record ({@link isGenerationRecord} first). */
+export const storageOf = (record: GenerationRecord): StorageFormat => record.storage ?? 'v1';
 
 export class GenerationMismatchError extends Error {
 	constructor(

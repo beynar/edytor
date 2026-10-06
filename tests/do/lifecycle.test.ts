@@ -27,7 +27,8 @@ import {
 	para,
 	readFacade,
 	shape,
-	upgrade
+	upgrade,
+	storedUpdate
 } from './client';
 
 const COMPACT_AFTER = 40; // tests/do/vitest.config.ts EDYTOR_COMPACT_AFTER
@@ -44,15 +45,7 @@ const count = (state: DurableObjectState, table: string) =>
 /** The text of block `id` in what the room STORED (its rows, merged). */
 const storedText = (r: Room, id: string) => {
 	const stored = crdt.createDoc();
-	Y.applyUpdate(
-		stored,
-		Y.mergeUpdates(
-			r
-				.records()
-				.slice(1)
-				.map((x) => x.bytes)
-		)
-	);
+	Y.applyUpdate(stored, storedUpdate(r.records()));
 	return readFacade(stored, (f) => f.blockText(id));
 };
 

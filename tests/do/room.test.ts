@@ -24,7 +24,8 @@ import {
 	para,
 	presenceFrame,
 	shape,
-	updateFrameWithWord
+	updateFrameWithWord,
+	storedUpdate
 } from './client';
 
 declare global {
@@ -402,7 +403,12 @@ describe('room Durable Object — storage', () => {
 
 	it('compaction replaces the rows with a chunked snapshot; a tail then a restore rebuild the doc', async () => {
 		const room = 'storage-compaction';
-		const long = 'lorem ipsum '.repeat(1000); // 12 000 chars → a multi-row snapshot
+		// 12 000 pseudo-random chars → a multi-row snapshot, compressed or not (P5).
+		let seed = 7;
+		const long = Array.from({ length: 12_000 }, () => {
+			seed = (seed * 1103515245 + 12345) % 2 ** 31;
+			return String.fromCharCode(48 + ((seed >>> 16) % 64));
+		}).join('');
 		const a = seeded([para('p1', 'head'), para('p2', long)], 'ada');
 		const ca = await RawClient.connect(room, a.doc);
 		await vi.waitFor(() => expect(ca.synced).toBe(true));
@@ -416,6 +422,8 @@ describe('room Durable Object — storage', () => {
 
 		const response = await SELF.fetch(`${ORIGIN}/rooms/${room}/compact`, { method: 'POST' });
 		expect(response.status).toBe(200);
+		// The snapshot is stored, then compressed in place (P5).
+		await runInDurableObject(stubOf(room), (instance: Room) => instance.compressed());
 		const compacted = await rowsOf(room);
 		expect(compacted.map((r) => r.kind).filter((k) => k === 'update')).toEqual([]);
 		expect(compacted[0]).toMatchObject({ kind: 'generation', part: 0, parts: 1 });
@@ -424,7 +432,8 @@ describe('room Durable Object — storage', () => {
 		expect(new Set(snapshot.map((r) => r.record)).size).toBe(1);
 		expect(snapshot.map((r) => r.part)).toEqual(snapshot.map((_, i) => i));
 		expect(snapshot.every((r) => r.parts === snapshot.length && r.size <= ROW_BYTES)).toBe(true);
-		expect(await response.json()).toEqual({ rows: compacted.length });
+		// Rows left by the compaction, before compression.
+		expect((await response.json<{ rows: number }>()).rows).toBeGreaterThanOrEqual(compacted.length);
 
 		// A tail after the snapshot.
 		applied(a.transact(() => a.facade.insertText('p1', 12, ' three')));
@@ -889,15 +898,7 @@ describe('room Durable Object — store-before-ack', () => {
 		// The stored records alone, rebuilt into a fresh doc (P8 pruned `createDocFromUpdate`).
 		const stored = await runInDurableObject(stubOf(room), (r: Room) => {
 			const rebuilt = crdt.createDoc();
-			Y.applyUpdate(
-				rebuilt,
-				Y.mergeUpdates(
-					r
-						.records()
-						.slice(1)
-						.map((x) => x.bytes)
-				)
-			);
+			Y.applyUpdate(rebuilt, storedUpdate(r.records()));
 			return Y.decodeStateVector(Y.encodeStateVector(rebuilt)).get(own);
 		});
 		expect(stored).toBe(clock);

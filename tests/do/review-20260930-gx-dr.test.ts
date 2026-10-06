@@ -14,7 +14,7 @@ import { env } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import type { DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
-import { E, RawClient, Y, crdt, para, readFacade } from './client';
+import { E, RawClient, Y, crdt, para, readFacade, storedUpdate } from './client';
 
 const inRoom = <T>(room: string, fn: (r: Room, state: DurableObjectState) => T) =>
 	runInDurableObject(env.ROOM.getByName(room), (r: Room, state) => fn(r, state));
@@ -22,15 +22,7 @@ const inRoom = <T>(room: string, fn: (r: Room, state: DurableObjectState) => T) 
 /** Block `p` as the room STORED it (its rows, merged): its text and `data.seen`. */
 const stored = (r: Room) => {
 	const doc = crdt.createDoc();
-	Y.applyUpdate(
-		doc,
-		Y.mergeUpdates(
-			r
-				.records()
-				.slice(1)
-				.map((x) => x.bytes)
-		)
-	);
+	Y.applyUpdate(doc, storedUpdate(r.records()));
 	return readFacade(doc, (f) => ({
 		text: f.blockText('p'),
 		seen: f.toJSON().children[0].data?.seen ?? null

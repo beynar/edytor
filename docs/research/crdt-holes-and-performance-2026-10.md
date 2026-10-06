@@ -276,3 +276,77 @@ Residuals:
   publishes a children list that differs from its rebuild; they fail the
   same way with the purge disabled (a pre-existing index/report bug, left
   for its own fix). The default campaign (80 seeds, 60 steps) passes.
+
+## Phase 4 results (0.1.0-next.25, schema generation 5)
+
+Measured on the same machine as Phases 1 to 3. The trace rows replay
+`automerge-paper` (259,778 edits) through one edytor client with no
+history (scratch `trace-bench.mjs`) and through a client into a room-like
+document compacting every 500 records (`room-trace.mjs`); "before" is
+0.1.0-next.24 (`9ff2f94`, the index fix aside), "after" this release.
+
+| Item | Measure                                                                               | Before                         | After                             |
+| ---- | ------------------------------------------------------------------------------------- | ------------------------------ | --------------------------------- |
+| P4   | Text delete records on the trace                                                      | 77,463                         | 809                               |
+| P4   | Encoded trace, v1 / v2                                                                | 1,601,845 / 1,339,888 B        | 544,171 / 273,894 B               |
+| P4   | Load heap (v1)                                                                        | 13.8 MB                        | 5.4 MB                            |
+| P4   | Apply, ops/s; average update                                                          | 73,412; 43.5 B                 | 65,787; 57 B                      |
+| P4   | Room: stored (v2 / gzip); wake (load + first read)                                    | 1,339,884 / 223,621 B; 110 ms  | 273,895 / 115,230 B; 22–25 ms     |
+| P4   | Room: compaction, 520 runs, total / worst                                             | 1.9 s / 29 ms                  | 0.55 s / 19 ms                    |
+| P7   | Longest rank, 300 / 1,000 Enters, outline, reorders (27-bit client id)                | 256 / 576 / 112 / 16           | 129 / 342 / 60 / 23               |
+| P7   | The same with a 53-bit client id                                                      | 256 / 576 / 112 / 16           | 165 / 446 / 72 / 17               |
+| P7   | Document after 300 / 1,000 Enters, outline                                            | 133,150 / 604,280 / 112,451 B  | 116,088 / 484,154 / 104,100 B     |
+| P5   | SyncStep2 of a 1,000-block document (v2 now)                                          | 280,557 B (gzip 55,016)        | 220,444 B (gzip 28,476)           |
+| P5   | Updates (v1, unchanged): keystroke, one-character delete, block move, block delete    | 60, 13, 62, 43 B               | same (v2 would be 60, 24, 84, 65) |
+| H9   | Split one paragraph 5,000 times: per split                                            | 0.81 ms                        | 1.15 ms                           |
+| H9   | Former residual (unseen edit after one's split point), outcomes on 48 client-id pairs | text order wrong on every pair | serial order on every pair        |
+| H5   | Peritext rows (`h5-marks.test.ts`) failing                                            | 7 of 17                        | 0                                 |
+
+What changed:
+
+- **Index (item 0).** The relay-room fuzz's seeds 651 and 1271 (rich lane,
+  120 steps): a remote commit's cleanup starts the delete marks' follow-up
+  transaction (P11) before the commit's report; the report read the child
+  lists, then folded the follow-up at its first content read and moved
+  them. The report folds every queued transaction first. The 2,000-seed
+  campaign passes on both lanes.
+- **H5.** Paired marks (fork patch P13): a mark write is a start (value,
+  Lamport timestamp, id, side) and an end naming its start; the open
+  operation with the greatest timestamp shows. Overlapping marks of one
+  value union, a later write wins where it covers, no tail clearing. Each
+  item's side orders it among one origin's items (left-side marks, content,
+  right-side marks), so a mark record's `edge` decides concurrent inserts at
+  its ends on every client-id pair (a link set while text is typed after it
+  stays a link of its own). Comments are one mark per thread
+  (`comment:<id>`, reading the `comment` record).
+- **P4.** A text delete folds into the delete record its step wrote (the
+  records list's tail: the same transaction, the history step still
+  capturing, or anywhere without a history), up to 8 spans; the replacement
+  is appended by item, and the index drops a record in constant time.
+- **P7.** Variable-length digits (a length character and base-64 places),
+  a client tie only on the last segment and where two bounds differ by
+  ties alone; a run's members (H1) keep their ties.
+- **H9.** Pieces of one text that stand where they were made show in the
+  text's order between clients (D-18, `order.split.text`).
+- **P5 wire.** A SyncStep2 is v2; updates stay v1, smaller for most
+  single edits.
+- **Generation 5.** Wire word `14005`; a generation-4 container, browser
+  store or history version is read as JSON and seeded as generation 5's
+  (a room at load, a local-only store at open); generation-4 frames are
+  refused (`1008`, `refused: generation`).
+
+Residuals:
+
+- Ranks: the ties a run keeps on every level are most of a long rank, so a
+  53-bit client id leaves Enter-heavy ranks 1.3–1.6× shorter, not 2–3×
+  (with the tests' 27-bit id, 1.7–2×). Dropping a run prefix's tie halved
+  them again but let a peer's rank of the same digit sort inside the run
+  (DR-arrays-1), so it is not done.
+- H9's second half, merge claims anchored to the head stream's last item
+  (R4, "heworld" / "llo"), is not done: the claim graph would read text
+  positions the incremental index does not track. R3 (a new block stays
+  beside a block a peer moves out) remains.
+- P4 makes a delete's update larger (57 B on average on the trace, from
+  43.5): it carries its step's whole record, up to 8 spans.
+- The cutover does not carry undo history, attribution or what a client of
+  generation 4 never sent; a room-backed browser store starts from the room.

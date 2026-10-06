@@ -14,7 +14,7 @@ Every frame is three parts, written with lib0 variable-length integers:
 varuint GENERATION | varuint messageType | payload
 ```
 
-`GENERATION` names the engine, the wire protocol and the document schema together: `PROTOCOL_VERSION * 1000 + SCHEMA_VERSION`, which is `14005` in this release (`generationWord(SCHEMA_VERSION)`; `14004` up to 0.1.0-next.24). Check it before decoding anything else and drop frames of any other generation: a v13 `yjs` peer's first word is its message type (0 to 3), and another edytor schema writes `14000 + schema`. `readProtocolVersion(decoder)` reads and checks it.
+`GENERATION` names the engine, the wire protocol and the document schema together: `PROTOCOL_VERSION * 1000 + SCHEMA_VERSION`, which is `14005` in this release (`generationWord(SCHEMA_VERSION)`; `14004` at schema generation 4). Check it before decoding anything else and drop frames of any other generation: a v13 `yjs` peer's first word is its message type (0 to 3), and another edytor schema writes `14000 + schema`. `readProtocolVersion(decoder)` reads and checks it.
 
 | Type | Constant | Direction | Payload |
 | --- | --- | --- | --- |

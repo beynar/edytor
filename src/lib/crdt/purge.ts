@@ -223,7 +223,8 @@ export const bindPurge = (Y: EngineApi) => {
 		const registry = doc.get(REGISTRY_KEY);
 		const attribution = doc.get(BLOCK_ATTR_ROOT);
 		for (const [id, rec] of blocks) {
-			if (removable.has(id) || rec.claimsNode === undefined) continue;
+			// An emptied block's claims are gone already (above).
+			if (removable.has(id) || dead.has(id) || rec.claimsNode === undefined) continue;
 			const named = rec.claims.filter((c) => removable.has(c.m)).map((c) => c.seqIndex);
 			for (const at of named.sort((a, b) => b - a)) rec.claimsNode.delete(at, 1);
 			report.claims += named.length;

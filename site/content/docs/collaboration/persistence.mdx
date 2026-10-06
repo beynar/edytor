@@ -62,6 +62,7 @@ Where there is no `indexedDB` (Node, Workers, SSR), the store is skipped and the
 - **Editing offline.** Every edit is written to the local copy. Closing every tab loses nothing.
 - **Reconnecting.** On every connection the client and the room exchange what the other lacks, so edits made offline, including those restored from the local copy after a reload, reach the room without any replay logic on your side.
 - **Knowing it is saved.** The WebSocket provider reports when the room has stored your edits; see [saved state](/docs/collaboration/websocket#saved-state).
+- **Offline for more than 30 days.** The room purges content deleted more than 30 days ago, from itself and every client. A device that comes back after that keeps its edits to content that still exists; what it typed into content deleted and purged meanwhile is dropped. See [the purge](/docs/server/history#the-purge).
 
 :::warning
 A first visit made offline seeds `value` locally and keeps that seed. When the device reconnects, the seed merges into the room's content. Seeds are deterministic, so if every client seeds the same `value`, the copies merge into one; a different `value` adds its blocks next to the room's. Set [`requireHydration`](/docs/collaboration/documents#require-hydration) to seed nothing until the document was fetched once.

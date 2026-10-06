@@ -374,6 +374,8 @@ export const bindDeletes = (Y: EngineApi) => {
 		const out: [Rec, Uint8Array][] = [];
 		for (let j = 0; j < st.length; j++) {
 			const r = { client: st.id.client, clock: st.id.clock + j };
+			// A collected record (its content gone) names nothing.
+			if (!(content[j] instanceof Uint8Array)) continue;
 			if (ids === null || ids.has(r.client, r.clock)) out.push([r, content[j] as Uint8Array]);
 		}
 		return out;
@@ -388,7 +390,7 @@ export const bindDeletes = (Y: EngineApi) => {
 			if (st.parent === s.restored || st.parent === s.marks) inserted.push(st);
 		});
 		for (const st of inserted)
-			if (st.parent === s.restored)
+			if (st.parent === s.restored && !st.deleted)
 				for (const [r, bytes] of recordsIn(st, tr.insertSet))
 					fresh.copies.push(...indexRecord(s, r, bytes));
 		for (const st of inserted)
@@ -399,8 +401,43 @@ export const bindDeletes = (Y: EngineApi) => {
 			if (st.parent === s.marks)
 				for (const [r] of recordsIn(st, tr.deleteSet))
 					fresh.released = dropMark(s, r) || fresh.released;
+			// A restoration record only the purge deletes (H7): its copies are
+			// forgotten and collected on every replica, as on the room.
+			if (st.parent === s.restored && !tr.insertSet.has(st.id.client, st.id.clock))
+				for (const [r, bytes] of recordsIn(st, null)) {
+					const copies = copiesOf(r, bytes);
+					forget(s, copies);
+					collect(s, tr, copies);
+				}
 		});
 		return fresh;
+	};
+
+	/** The copies record `r` names. */
+	const copiesOf = (r: Rec, bytes: Uint8Array): Copy[] =>
+		decode(bytes, 6).map(([k, n, rc, rk, oc, ok]) => ({ c: r.client, k, n, rc, rk, oc, ok }));
+
+	/** Drop `copies` from the index: the `gcFilter` no longer keeps them. */
+	const forget = (s: State, copies: readonly Copy[]): void => {
+		const gone = new Set(copies.map((e) => `${e.c}:${e.k}`));
+		const keep = (e: Copy) => !gone.has(`${e.c}:${e.k}`);
+		for (const map of [s.copies, s.byRoot, s.byOrigin])
+			for (const [c, list] of map) map.set(c, list.filter(keep));
+		for (const key of gone) s.copyKeys.delete(key);
+	};
+
+	/** Collect the deleted items wholly inside `copies` (none a history keeps). */
+	const collect = (s: State, tr: unknown, copies: readonly Copy[]): void => {
+		const d = s.doc as unknown as { gc: boolean; gcFilter: (it: Unit) => boolean };
+		if (!d.gc || copies.length === 0) return;
+		walkIdSetStructs(Y, s.doc, idSet(copies), (st) => {
+			const it = st as Unit & { keep?: boolean; content: { constructor: { name: string } } };
+			const inside = copies.some(
+				(e) => e.c === it.id.client && e.k <= it.id.clock && it.id.clock + it.length <= e.k + e.n
+			);
+			if (inside && it.deleted && it.keep !== true && it.parent !== undefined && d.gcFilter(it))
+				(it as unknown as { gc(tr: unknown, parentGCd: boolean): void }).gc(tr, false);
+		});
 	};
 
 	const attach = (doc: EngineDoc): State => {
@@ -426,7 +463,8 @@ export const bindDeletes = (Y: EngineApi) => {
 				if (!it.deleted) for (const [r, bytes] of recordsIn(it, null)) fn(r, bytes);
 		};
 		(st.restored as unknown as { _map: Map<string, Unit> })._map.forEach((it) => {
-			for (const [r, bytes] of recordsIn(it, null)) indexRecord(st, r, bytes);
+			// A record the purge deleted names nothing any more (H7).
+			if (!it.deleted) for (const [r, bytes] of recordsIn(it, null)) indexRecord(st, r, bytes);
 		});
 		records(st.marks, (r, bytes) => indexMark(st, r, bytes));
 		// A deleted copy may have to be copied again by any replica (holds,
@@ -748,17 +786,9 @@ export const bindDeletes = (Y: EngineApi) => {
 			const doomed: { key: string; copies: Copy[] }[] = [];
 			(s.restored as unknown as { _map: Map<string, Unit> })._map.forEach((it, key) => {
 				if (it.deleted || !old(it.id.client, it.id.clock)) return;
-				const [, bytes] = recordsIn(it, null)[0] ?? [];
+				const [record, bytes] = recordsIn(it, null)[0] ?? [];
 				if (bytes === undefined) return;
-				const copies = decode(bytes, 6).map(([k, n, rc, rk, oc, ok]) => ({
-					c: it.id.client,
-					k,
-					n,
-					rc,
-					rk,
-					oc,
-					ok
-				}));
+				const copies = copiesOf(record, bytes);
 				const dead = copies.every(
 					(e) =>
 						liveRoots(s, { c: e.c, k: e.k, n: e.n, rk: e.k }).length === 0 &&
@@ -766,19 +796,10 @@ export const bindDeletes = (Y: EngineApi) => {
 				);
 				if (dead) doomed.push({ key, copies });
 			});
-			const d = doc as unknown as { gc: boolean; gcFilter: (it: Unit) => boolean };
 			for (const { key, copies } of doomed) {
 				s.restored.deleteAttr(key);
-				const gone = new Set(copies.map((e) => `${e.c}:${e.k}`));
-				const keep = (e: Copy) => !gone.has(`${e.c}:${e.k}`);
-				for (const map of [s.copies, s.byRoot, s.byOrigin])
-					for (const [c, list] of map) map.set(c, list.filter(keep));
-				for (const k of gone) s.copyKeys.delete(k);
-				each(tr, copies, (it) => {
-					const kept = (it as { keep?: boolean }).keep === true;
-					if (d.gc && it.deleted && !kept && d.gcFilter(it))
-						(it as unknown as { gc(tr: unknown, parentGCd: boolean): void }).gc(tr, false);
-				});
+				forget(s, copies);
+				collect(s, tr, copies);
 			}
 			return { marks, records: doomed.length };
 		},

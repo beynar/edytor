@@ -1528,7 +1528,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			walkIdSetStructs(Y, doc, step.deletes, (s) => {
 				const node = s.parent as EngineNode;
 				const key = s.parentSub;
-				if (key === null) return;
+				// A collected struct (a node the room's purge removed, H7) has no key.
+				if (typeof key !== 'string') return;
 				if (!key.startsWith(DATA_LEAF_PREFIX) && !REPAIRED[node?.name]?.includes(key)) return;
 				if (step.inserts.has(s.id.client, s.id.clock)) return;
 				const values = (s as unknown as { content: { getContent(): unknown[] } }).content;

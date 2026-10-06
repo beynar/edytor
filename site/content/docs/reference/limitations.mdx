@@ -10,7 +10,7 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 
 - **No hosted infrastructure.** Edytor ships the [Durable Object room](/docs/server/quick-start); you deploy and operate it on your own Cloudflare account. There is no edytor cloud.
 - **No authentication or permission rules.** No accounts, sessions, sharing model or roles. The room calls your [`authorize`](/docs/server/authorization) and enforces what it returns (user, replica, read-only), nothing more.
-- **No backups or document management.** The room stores one document in its Durable Object's SQLite storage. Listing, exporting, backing up and deleting documents are up to your application (`document.encode()` and `facade.toJSON()` give you the content).
+- **No backups or document management.** The room stores one document in its Durable Object's SQLite storage. Listing, exporting, backing up and deleting documents are up to your application (`document.encode()` and `facade.toJSON()` give you the content). The room's [version history](/docs/server/history) keeps two versions a day for 30 days, in your KV namespace: it is not a backup of the namespace itself.
 - **IndexedDB is not durability.** The local copy lives in the browser and can be cleared by the user or the browser. Durable storage is the room's.
 
 ## Not finished
@@ -61,3 +61,12 @@ The WebSocket's bound starts when the socket opens (or first fails to), so a roo
 - After a room wakes from hibernation, presence refills as clients renew it, within 15 seconds.
 - Deleted content stays in the document so undo and offline peers keep working: a withdrawn block keeps its node (about 100 bytes), and each text delete adds about 12 bytes to the stored document. Compacting the room's rows stores the live document, which drops deleted text no one can restore, but keeps what undo and offline peers may still need.
 - With `lineage` enabled, history entries trimmed from a block's ring leave small tombstones in storage.
+- Deleted content is purged after 30 days ([`purgeAfterDays`](/docs/server/history#the-purge)). A purged block leaves its id behind (about 5 bytes stored, compressed); a deleted block a visible one still depends on (its text holds the text of blocks split from it, or a block moved into it while it was deleted shows in its place) keeps its bare structure, about 100 bytes.
+- A [version](/docs/server/history) over KV's 25 MiB value limit is skipped, not split; versions are two a day, and only one restore can be undone, until the next restore or the purge horizon.
+
+## History and purge
+
+- **Two versions a day, not every edit.** The history keeps the state at local noon and midnight of each half-day that changed; finer history is the per-block attribution and the undo history.
+- **A restore undone revives with the room's delete.** A restore that brought back a block someone deleted, then undone, deletes it again as the room: that person's own undo of their delete no longer brings it back (restore a version instead).
+- **An undo older than 30 days restores nothing.** Once the room's purge passed it, an undo history drops the step.
+- **A device offline past the purge horizon** keeps its edits to content that still exists; its edits to content purged meanwhile (typed into a block deleted 30 days ago and more) are dropped, a block it moved under a purged block shows at the top level, and a split of such a block keeps no text. See [the purge](/docs/server/history#undo-and-clients-offline-for-long).

@@ -24,6 +24,7 @@ Both see `hello` after step 2 and `hello world` after step 3, never `hello world
 
 - A restoration made before a peer's concurrent delete arrived is hidden as soon as that delete arrives. It becomes part of the peer's delete, and the peer's undo brings it back.
 - Text typed and deleted within one undo step leaves no trace; no undo can bring it back.
+- Deletes are kept for 30 days, then purged by the room ([`purgeAfterDays`](/docs/server/history#the-purge)): after that, an undo of the delete restores nothing, and nobody's delete record is left to hold the text. A [version](/docs/server/history) of the document restores anything within those 30 days.
 
 ## Deleting a block keeps its children
 

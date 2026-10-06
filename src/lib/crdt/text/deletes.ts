@@ -356,18 +356,23 @@ export const bindDeletes = (Y: EngineApi) => {
 		for (const r of roots) push(s.held, r.c, { k: r.k, n: r.n, mark });
 		return true;
 	};
-	const dropMark = (s: State, mark: Rec): boolean => {
-		const key = keyOf(mark);
-		const roots = s.holds.get(key);
-		if (roots === undefined) return false;
-		for (const r of roots)
+	/** Drop the marks `marks` from the index, in one pass over the holds; whether any was indexed. */
+	const dropMarks = (s: State, marks: readonly Rec[]): boolean => {
+		const keys = new Set(marks.map(keyOf).filter((key) => s.holds.has(key)));
+		if (keys.size === 0) return false;
+		const clients = new Set<number>();
+		for (const key of keys) {
+			for (const r of s.holds.get(key)!) clients.add(r.c);
+			s.holds.delete(key);
+		}
+		for (const c of clients)
 			s.held.set(
-				r.c,
-				(s.held.get(r.c) ?? []).filter((h) => keyOf(h.mark) !== key)
+				c,
+				(s.held.get(c) ?? []).filter((h) => !keys.has(keyOf(h.mark)))
 			);
-		s.holds.delete(key);
 		return true;
 	};
+
 	/** The records `st` (a struct of a records list) holds that `ids` names, with their bytes. */
 	const recordsIn = (st: StoreStruct, ids: IdSetLike | null): [Rec, Uint8Array][] => {
 		const content = (st as Unit).content?.getContent?.() ?? [];
@@ -397,10 +402,9 @@ export const bindDeletes = (Y: EngineApi) => {
 			if (st.parent === s.marks && !st.deleted)
 				for (const [r, bytes] of recordsIn(st, tr.insertSet))
 					if (indexMark(s, r, bytes)) fresh.marks.push(r);
+		const dropped: Rec[] = [];
 		walkIdSetStructs(Y, s.doc, tr.deleteSet, (st) => {
-			if (st.parent === s.marks)
-				for (const [r] of recordsIn(st, tr.deleteSet))
-					fresh.released = dropMark(s, r) || fresh.released;
+			if (st.parent === s.marks) for (const [r] of recordsIn(st, tr.deleteSet)) dropped.push(r);
 			// A restoration record only the purge deletes (H7): its copies are
 			// forgotten and collected on every replica, as on the room.
 			if (st.parent === s.restored && !tr.insertSet.has(st.id.client, st.id.clock))
@@ -410,6 +414,7 @@ export const bindDeletes = (Y: EngineApi) => {
 					collect(s, tr, copies);
 				}
 		});
+		fresh.released = dropMarks(s, dropped);
 		return fresh;
 	};
 
@@ -766,7 +771,7 @@ export const bindDeletes = (Y: EngineApi) => {
 			const tr = s.doc._transaction;
 			if (tr === null) throw new Error('purge: outside a transaction');
 			const spans: Span[] = [];
-			let marks = 0;
+			const dropped: Rec[] = [];
 			for (
 				let it = (s.marks as unknown as { _start: Unit | null })._start;
 				it;
@@ -776,12 +781,13 @@ export const bindDeletes = (Y: EngineApi) => {
 					for (let j = 0; j < it.length; j++) {
 						const r = { client: it.id.client, clock: it.id.clock + j };
 						if (!old(r.client, r.clock)) continue;
-						dropMark(s, r);
-						marks++;
+						dropped.push(r);
 						const last = spans[spans.length - 1];
 						if (last !== undefined && last.c === r.client && last.k + last.n === r.clock) last.n++;
 						else spans.push({ c: r.client, k: r.clock, n: 1 });
 					}
+			dropMarks(s, dropped);
+			const marks = dropped.length;
 			remove(tr, spans);
 			const doomed: { key: string; copies: Copy[] }[] = [];
 			(s.restored as unknown as { _map: Map<string, Unit> })._map.forEach((it, key) => {

@@ -61,7 +61,7 @@ The WebSocket's bound starts when the socket opens (or first fails to), so a roo
 - After a room wakes from hibernation, presence refills as clients renew it, within 15 seconds.
 - Deleted content stays in the document so undo and offline peers keep working: a withdrawn block keeps its node (about 100 bytes), and each text delete adds about 12 bytes to the stored document. Compacting the room's rows stores the live document, which drops deleted text no one can restore, but keeps what undo and offline peers may still need.
 - With `lineage` enabled, history entries trimmed from a block's ring leave small tombstones in storage.
-- Deleted content is purged after 30 days ([`purgeAfterDays`](/docs/server/history#the-purge)). A purged block leaves its id behind (about 5 bytes stored, compressed); a deleted block a visible one still depends on (its text holds the text of blocks split from it, or a block moved into it while it was deleted shows in its place) keeps its bare structure, about 100 bytes.
+- Deleted content is purged after 30 days ([`purgeAfterDays`](/docs/server/history#the-purge)). A purged block leaves its id behind (about 5 bytes stored, compressed). A deleted block a visible one still depends on keeps its bare structure (its id, kind, place and delete marks, about 25 bytes stored, compressed): a line split from a paragraph that is still there (Enter makes most lines so) shares that paragraph's text, and a block moved into a deleted one shows in its place. Its text and properties are purged all the same.
 - A [version](/docs/server/history) over KV's 25 MiB value limit is skipped, not split; versions are two a day, and only one restore can be undone, until the next restore or the purge horizon.
 
 ## History and purge

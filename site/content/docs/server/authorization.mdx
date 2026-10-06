@@ -47,6 +47,7 @@ The document id is the room id the client dials: any string of 1 to 256 characte
 | `4401` `expired` | `authorize` returned `{ expired: true }`. | Emits `expired` and redials after its backoff, with `params` read again. |
 | `4403` `document access denied` | `authorize` returned `null` or an invalid identity: a `userId` that is empty or not a string, over 256 characters or with a lone surrogate, or a `replica` that is not a client id. | Final: emits `refused` and stops dialing. |
 | `4409` `replica bound to another user` | The room: the dial's replica belongs to another user (see [replicas](#replicas)). | Final: emits `refused` and stops dialing. |
+| `4413` `quota: <name>` | The room: a write past a [quota](/docs/server/room#quotas) (`document`, `rate`, `frame`). | Final: emits `refused` and stops dialing. |
 
 Your Worker may turn a dial away itself, before `routeDocumentSocket`: a document that does not exist, an origin you do not serve. Answer the upgrade with `closedSocket(code, reason)` from `edytor/cloudflare` rather than an HTTP error, which the browser reports as `1006` and the provider redials forever. It accepts the upgrade and closes it at once with `code`: use a `4xxx` code other than `4401` for a final refusal (`4404` for a document that does not exist, say), or `1011` for a fault the provider should retry.
 

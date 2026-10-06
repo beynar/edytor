@@ -105,7 +105,7 @@ import {
 	type StorageFormat
 } from '../crdt/protocols/envelope.js';
 import { gunzip, isGzip, packed } from '../crdt/storage.js';
-import { CLOSE } from '../crdt/providers/room.js';
+import { ChunkLimitError, ChunkSequenceError, CLOSE } from '../crdt/providers/room.js';
 import type {
 	AwarenessEntry,
 	DocumentSemanticsConfig,
@@ -123,6 +123,27 @@ export const DEFAULT_MAX_ROW_BYTES = 2_000_000 - 4096;
 export const DEFAULT_COMPACT_AFTER = 500;
 /** ms between the first unsaved change and `onSave`. */
 export const DEFAULT_SAVE_AFTER = 2000;
+/**
+ * Room quotas (H3), each refused with `4413` (`quota: <name>`). The
+ * document's size: what its records hold (uncompressed) and the updates the
+ * engine holds waiting — the live document holds about that, several
+ * times over in memory for text (an isolate has 128 MB). Raise or lower
+ * it for your documents.
+ */
+export const DEFAULT_MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
+/** The largest frame a socket may send, reassembled from chunks (the platform caps one message at 32 MiB). */
+export const DEFAULT_MAX_INBOUND_FRAME_BYTES = 64 * 1024 * 1024;
+/**
+ * Sync messages a socket may send per second, sustained; a burst of ten
+ * seconds' worth is allowed (a reconnect, a paste). Far above typing
+ * speed: a script should batch its edits into transactions.
+ */
+export const DEFAULT_MAX_UPDATES_PER_SECOND = 50;
+/** Seconds of the update rate a socket may spend at once. */
+const BURST_SECONDS = 10;
+/** The ceiling of a quota knob (a host may raise the defaults up to it). */
+const QUOTA_CEILING = 2 ** 40;
+
 /** Longest wait between the save alarms of a room that cannot read its rows. */
 const MAX_SAVE_RETRY = 5 * 60_000;
 
@@ -184,6 +205,9 @@ export type DocumentRoomEnv = {
 	EDYTOR_MAX_FRAME_BYTES?: string | number;
 	EDYTOR_COMPACT_AFTER?: string | number;
 	EDYTOR_SAVE_AFTER?: string | number;
+	EDYTOR_MAX_DOCUMENT_BYTES?: string | number;
+	EDYTOR_MAX_INBOUND_FRAME_BYTES?: string | number;
+	EDYTOR_MAX_UPDATES_PER_SECOND?: string | number;
 };
 
 /** What a socket is bound to: its verified user, its replica (Yjs client id), its access. */
@@ -212,6 +236,8 @@ export type Refusal = {
 		| 'storage'
 		// A fault of the room itself (the engine, a send): the socket is closed 1011.
 		| 'internal'
+		// A room quota refused the frame ({ user, quota, … }): the socket is closed 4413.
+		| 'quota'
 		// Not a refusal: an id a registry-less restore left unowned, claimed ({ replica, user }).
 		| 'orphan'
 		// Not a refusal: structs under an id the room held nothing of, delivered by
@@ -564,6 +590,26 @@ const unheldDeletes = (
 	return unheld;
 };
 
+/** The content `ds` deletes of what `doc` holds live (an item's length: characters, atoms). */
+const freedBy = (doc: YDoc, ds: Decoded['ds']): number => {
+	let freed = 0;
+	for (const [client, ranges] of ds.clients) {
+		const structs = doc.store.clients.get(client) ?? [];
+		const stored = heldClock(doc, client);
+		for (const { clock, len } of ranges.getIds()) {
+			if (clock >= stored) continue;
+			for (let i = Y.findIndexSS(structs, clock); i < structs.length; i++) {
+				const struct = structs[i];
+				if (struct.id.clock >= clock + len) break;
+				if (struct.deleted || struct instanceof Y.Skip) continue;
+				freed +=
+					Math.min(clock + len, struct.id.clock + struct.length) - Math.max(clock, struct.id.clock);
+			}
+		}
+	}
+	return freed;
+};
+
 /** How many ranges `ids` holds. */
 const rangeCount = (ids: Decoded['ds']): number => {
 	let count = 0;
@@ -758,6 +804,12 @@ export type AttachDocumentOptions = {
 	maxFrameBytes?: number;
 	/** Prefix of the document's SQL tables, beside your own (default `'edytor_'`). */
 	tablePrefix?: string;
+	/** Largest document, in stored bytes (default {@link DEFAULT_MAX_DOCUMENT_BYTES}). */
+	maxDocumentBytes?: number;
+	/** Largest frame a socket may send, reassembled (default {@link DEFAULT_MAX_INBOUND_FRAME_BYTES}). */
+	maxInboundFrameBytes?: number;
+	/** Sync messages per second a socket may send (default {@link DEFAULT_MAX_UPDATES_PER_SECOND}). */
+	maxUpdatesPerSecond?: number;
 	/**
 	 * The block roles `transact` edits obey — the document semantics your
 	 * clients' plugins declare (`defaultType` also names the block an empty
@@ -790,6 +842,9 @@ export class AttachedDocument {
 	readonly maxFrameBytes: number;
 	readonly compactAfter: number;
 	readonly saveAfter: number;
+	readonly maxDocumentBytes: number;
+	readonly maxInboundFrameBytes: number;
+	readonly maxUpdatesPerSecond: number;
 	private live: YDoc | null = null;
 	/** Why the stored container was refused (another generation, a torn record, `onLoad`…). */
 	failure: Error | null = null;
@@ -803,6 +858,12 @@ export class AttachedDocument {
 	origin: { kind: 'fresh' } | { kind: 'restored'; records: number } = { kind: 'fresh' };
 	private nextRecord = 0;
 	private updates = 0;
+	/** What the records hold, uncompressed (the generation record aside): the document quota's measure. */
+	private documentBytes = 0;
+	/** Each socket's update allowance (a token bucket; memory: a wake refills it). */
+	private readonly allowances = new WeakMap<WebSocket, { tokens: number; at: number }>();
+	/** Each socket's chunked frame in flight (memory: a wake loses it, and the socket is faulted). */
+	private readonly chunkReaders = new WeakMap<WebSocket, ReturnType<typeof E.createChunkReader>>();
 	/** A failed append: the live doc holds what storage does not, until it is rebuilt. */
 	private unstored: unknown = null;
 	/** Inside `transact`, its commit included (a nested call is refused but while `fn` runs). */
@@ -839,6 +900,21 @@ export class AttachedDocument {
 		this.maxFrameBytes = knob(options.maxFrameBytes, E.MAX_FRAME_BYTES);
 		this.compactAfter = knob(options.compactAfter, DEFAULT_COMPACT_AFTER, 1e9);
 		this.saveAfter = knob(options.saveAfter, DEFAULT_SAVE_AFTER, 1e9);
+		this.maxDocumentBytes = knob(
+			options.maxDocumentBytes,
+			DEFAULT_MAX_DOCUMENT_BYTES,
+			QUOTA_CEILING
+		);
+		this.maxInboundFrameBytes = knob(
+			options.maxInboundFrameBytes,
+			DEFAULT_MAX_INBOUND_FRAME_BYTES,
+			QUOTA_CEILING
+		);
+		this.maxUpdatesPerSecond = knob(
+			options.maxUpdatesPerSecond,
+			DEFAULT_MAX_UPDATES_PER_SECOND,
+			QUOTA_CEILING
+		);
 		const prefix = options.tablePrefix ?? 'edytor_';
 		if (!/^\w*$/.test(prefix)) throw new Error(`invalid table prefix ${prefix}`);
 		this.rowsTable = `${prefix}rows`;
@@ -1176,6 +1252,7 @@ export class AttachedDocument {
 			if (records.length === 0) {
 				// A fresh room: the generation record is written with the first stored record.
 				this.origin = { kind: 'fresh' };
+				this.documentBytes = 0;
 				this.format = STORED_GENERATION_RECORD.storage!;
 				this.storedWaiting = Y.createIdSet();
 				this.adopt(roomDoc());
@@ -1193,6 +1270,7 @@ export class AttachedDocument {
 				`room ${this.ctx.id}`
 			);
 			this.format = storageOf(found);
+			this.documentBytes = rest.reduce((n, record) => n + record.bytes.length, 0);
 			this.adopt(doc);
 			// Every delete the engine holds waiting came from the rows.
 			this.storedWaiting = pendingDeletes(doc);
@@ -1201,6 +1279,17 @@ export class AttachedDocument {
 		} catch (error) {
 			this.fail(error, false);
 		}
+	}
+
+	/** The bytes of the stored `pending` records (uncompressed, as every record but a snapshot). */
+	private pendingBytes(): number {
+		return (
+			this.sql
+				.exec<{
+					n: number | null;
+				}>(`SELECT SUM(length(bytes)) AS n FROM ${this.rowsTable} WHERE kind = 'pending'`)
+				.one().n ?? 0
+		);
 	}
 
 	/**
@@ -1246,6 +1335,7 @@ export class AttachedDocument {
 		}
 		const record = this.nextRecord++;
 		this.writeRecord(kind, record, bytes);
+		if (kind !== 'generation') this.documentBytes += bytes.length;
 		return record;
 	}
 
@@ -1369,18 +1459,25 @@ export class AttachedDocument {
 			// Memory never runs ahead of storage: the live state vector is the stored one.
 			const kept = new Set([...stateVector(doc).keys(), ...sockets, ...still.clients.keys()]);
 			let record = -1;
-			this.ctx.storage.transactionSync(() => {
-				this.sql.exec(`DELETE FROM ${this.rowsTable}`);
-				// The container is now this build's format (a v1 one migrates here).
-				this.insert('generation', encodeJSON(STORED_GENERATION_RECORD));
-				record = this.insert('snapshot', snapshot);
-				if (!still.isEmpty()) this.insert('pending', deletesUpdate(still));
-				for (const replica of registered) {
-					if (!kept.has(replica)) {
-						this.sql.exec(`DELETE FROM ${this.replicasTable} WHERE replica = ?`, replica);
+			const measured = this.documentBytes;
+			try {
+				this.ctx.storage.transactionSync(() => {
+					this.sql.exec(`DELETE FROM ${this.rowsTable}`);
+					this.documentBytes = 0;
+					// The container is now this build's format (a v1 one migrates here).
+					this.insert('generation', encodeJSON(STORED_GENERATION_RECORD));
+					record = this.insert('snapshot', snapshot);
+					if (!still.isEmpty()) this.insert('pending', deletesUpdate(still));
+					for (const replica of registered) {
+						if (!kept.has(replica)) {
+							this.sql.exec(`DELETE FROM ${this.replicasTable} WHERE replica = ?`, replica);
+						}
 					}
-				}
-			});
+				});
+			} catch (error) {
+				this.documentBytes = measured;
+				throw error;
+			}
 			this.updates = 0;
 			this.format = STORED_GENERATION_RECORD.storage!;
 			this.storedWaiting = still;
@@ -1409,9 +1506,11 @@ export class AttachedDocument {
 			this.heal();
 			const doc = this.requireDoc();
 			const dropped = pendingDeletes(doc);
+			const pending = this.pendingBytes();
 			this.ctx.storage.transactionSync(() => {
 				this.sql.exec(`DELETE FROM ${this.rowsTable} WHERE kind = 'pending'`);
 			});
+			this.documentBytes -= pending;
 			this.storedWaiting = Y.createIdSet();
 			forgetWaiting(doc, dropped);
 			this.scheduleSave();
@@ -1700,33 +1799,143 @@ export class AttachedDocument {
 			if (doc === null) return this.refuseContainer(ws);
 			const attachment = ws.deserializeAttachment() as Attachment | null;
 			if (!attachment?.user) return this.refuse(ws, { reason: 'identity', detail: null });
-			const bytes = new Uint8Array(message);
-			const decoder = E.createDecoder(bytes);
-			// 1 · Admission: the generation word, before anything is decoded.
-			if (!E.readProtocolVersion(decoder)) {
-				return this.refuse(ws, { reason: 'generation', detail: bytes[0] });
-			}
-			try {
-				const type = decode(() => E.readVarUint(decoder));
-				if (type === E.messageSync) return this.onSync(ws, attachment, doc, decoder);
-				if (type === E.messageAwareness) {
-					const entries = decode(() => E.readAwarenessEntries(E.readVarUint8Array(decoder)));
-					return this.onPresence(ws, attachment, doc, entries);
-				}
-				if (type === E.messageQueryAwareness) {
-					return this.send(ws, presenceFrame([...this.presence.values()]));
-				}
-				this.refuse(ws, { reason: 'malformed', detail: `message type ${type}` });
-			} catch (error) {
-				// Only the client's bytes are its fault: the room's own faults close 1011.
-				if (error instanceof MalformedFrame) {
-					this.refuse(ws, { reason: 'malformed', detail: error.message });
-				} else {
-					this.fault(ws, error);
-				}
-			}
+			this.onFrame(ws, attachment, doc, new Uint8Array(message));
 		});
 		return true;
+	}
+
+	/** One frame: whole as it came, or reassembled from its chunks. */
+	private onFrame(ws: WebSocket, attachment: Attachment, doc: YDoc, bytes: Uint8Array) {
+		// The frame quota (H3): never decoded past it.
+		if (bytes.length > this.maxInboundFrameBytes) {
+			return this.overQuota(ws, attachment.user, 'frame', {
+				bytes: bytes.length,
+				limit: this.maxInboundFrameBytes
+			});
+		}
+		const decoder = E.createDecoder(bytes);
+		// 1 · Admission: the generation word, before anything is decoded.
+		if (!E.readProtocolVersion(decoder)) {
+			return this.refuse(ws, { reason: 'generation', detail: bytes[0] });
+		}
+		try {
+			const type = decode(() => E.readVarUint(decoder));
+			if (type === E.messageChunk) return this.onChunk(ws, attachment, doc, decoder);
+			if (type === E.messageSync) return this.onSync(ws, attachment, doc, decoder);
+			if (type === E.messageAwareness) {
+				const entries = decode(() => E.readAwarenessEntries(E.readVarUint8Array(decoder)));
+				return this.onPresence(ws, attachment, doc, entries);
+			}
+			if (type === E.messageQueryAwareness) {
+				return this.send(ws, presenceFrame([...this.presence.values()]));
+			}
+			this.refuse(ws, { reason: 'malformed', detail: `message type ${type}` });
+		} catch (error) {
+			// Only the client's bytes are its fault: the room's own faults close 1011.
+			if (error instanceof MalformedFrame) {
+				this.refuse(ws, { reason: 'malformed', detail: error.message });
+			} else {
+				this.fault(ws, error);
+			}
+		}
+	}
+
+	/**
+	 * One chunk of a frame too large to send whole (H6: a provider's
+	 * reconnect diff): buffered per socket, the whole frame handled once its
+	 * sequence ends. A sequence announcing more than `maxInboundFrameBytes`
+	 * is a frame quota refusal, before anything is buffered. A part with no
+	 * sequence started — the room woke between two chunks and lost the
+	 * buffer — faults the socket (1011): its provider redials and resends.
+	 */
+	private onChunk(ws: WebSocket, attachment: Attachment, doc: YDoc, decoder: E.Decoder) {
+		let read = this.chunkReaders.get(ws);
+		if (read === undefined) {
+			read = E.createChunkReader(this.maxInboundFrameBytes);
+			this.chunkReaders.set(ws, read);
+		}
+		let whole: Uint8Array | null;
+		try {
+			whole = read(decoder);
+		} catch (error) {
+			this.chunkReaders.delete(ws);
+			if (error instanceof ChunkLimitError) {
+				return this.overQuota(ws, attachment.user, 'frame', {
+					bytes: error.total,
+					limit: error.limit
+				});
+			}
+			if (error instanceof ChunkSequenceError) {
+				this.note({ reason: 'internal', detail: `chunks: ${error.message}` });
+				this.depart(ws);
+				return this.close(ws, CLOSE.fault, 'chunk sequence lost');
+			}
+			throw new MalformedFrame(String(error));
+		}
+		if (whole !== null) this.onFrame(ws, attachment, doc, whole);
+	}
+
+	/**
+	 * A quota refused the socket's frame (H3): it is not applied, and the
+	 * socket is closed `4413` (`quota: <name>`), a refusal its provider
+	 * reports (`onSyncRefused`) and does not redial. Never a dropped frame
+	 * on a live socket: the sender's later frames would build on it and
+	 * wait in the room's memory for good, unstored and unacknowledged; and
+	 * a redial would resend it and meet the same quota.
+	 */
+	private overQuota(
+		ws: WebSocket,
+		user: string,
+		quota: 'document' | 'rate' | 'frame',
+		detail: Record<string, number>
+	) {
+		this.note({ reason: 'quota', detail: { user, quota, ...detail } });
+		this.chunkReaders.delete(ws);
+		this.depart(ws);
+		this.close(ws, CLOSE.quota, `quota: ${quota}`);
+	}
+
+	/**
+	 * The update rate quota (H3): a token bucket per socket, refilled at
+	 * `maxUpdatesPerSecond` up to ten seconds' worth. `false`: over it.
+	 */
+	private allow(ws: WebSocket): boolean {
+		const now = Date.now();
+		const burst = this.maxUpdatesPerSecond * BURST_SECONDS;
+		const held = this.allowances.get(ws) ?? { tokens: burst, at: now };
+		const tokens = Math.min(
+			burst,
+			held.tokens + ((now - held.at) / 1000) * this.maxUpdatesPerSecond
+		);
+		if (tokens < 1) {
+			this.allowances.set(ws, { tokens, at: now });
+			return false;
+		}
+		this.allowances.set(ws, { tokens: tokens - 1, at: now });
+		return true;
+	}
+
+	/**
+	 * The document quota (H3): would `incoming` bytes take the document
+	 * past `maxDocumentBytes`? Its measure is what its records hold and what
+	 * the engine holds waiting; update records count until compaction
+	 * collapses them, so it compacts first when they would.
+	 */
+	private overDocument(incoming: number, freed: number): boolean {
+		// A frame that deletes at least what it adds always applies: a full
+		// document can still be trimmed.
+		if (incoming <= freed) return false;
+		const usage = () =>
+			this.documentBytes + (this.live?.store.pendingStructs?.update.length ?? 0) + incoming - freed;
+		if (usage() <= this.maxDocumentBytes) return false;
+		if (this.updates > 0) {
+			try {
+				this.compact();
+			} catch (error) {
+				this.note({ reason: 'storage', detail: `compaction: ${String(error)}` });
+			}
+		}
+		return usage() > this.maxDocumentBytes;
 	}
 
 	webSocketClose(ws: WebSocket, code: number, reason: string): boolean {
@@ -1763,6 +1972,12 @@ export class AttachedDocument {
 
 	private onSync(ws: WebSocket, attachment: Attachment, doc: YDoc, decoder: E.Decoder) {
 		const syncType = decode(() => E.readVarUint(decoder));
+		// The rate quota (H3) counts every sync message, a Step1 too (it costs a Step2).
+		if (!this.allow(ws)) {
+			return this.overQuota(ws, attachment.user, 'rate', {
+				perSecond: this.maxUpdatesPerSecond
+			});
+		}
 		if (syncType === E.messageYjsSyncStep1) {
 			const sv = decode(() => {
 				const sv = E.readVarUint8Array(decoder);
@@ -1785,6 +2000,17 @@ export class AttachedDocument {
 		// 3 · Attribution: new structs only under client ids this user may
 		// write under; another user's are stripped, the rest applied.
 		const decoded = decode(() => Y.decodeUpdate(update));
+		// The document quota (H3), net of what the frame deletes.
+		if (
+			decoded.structs.some((struct) => !(struct instanceof Y.Skip)) &&
+			this.overDocument(update.length, freedBy(doc, decoded.ds))
+		) {
+			return this.overQuota(ws, attachment.user, 'document', {
+				bytes: this.documentBytes,
+				incoming: update.length,
+				limit: this.maxDocumentBytes
+			});
+		}
 		const sv = stateVector(doc);
 		const stripped = this.attribute(attachment, newWriters(decoded, sv), sv);
 		// Waiting deletes are capped: a frame that would pass the cap has them dropped.
@@ -1876,13 +2102,17 @@ export class AttachedDocument {
 		const added = Y.diffIdSet(discarded ? now : Y.diffIdSet(now, waiting), stay);
 		const released = heldDeletes(doc, Y.diffIdSet(waiting, now));
 		if (discarded || !added.isEmpty()) {
+			const before = this.documentBytes;
+			const pending = discarded ? this.pendingBytes() : 0;
 			try {
 				this.ctx.storage.transactionSync(() => {
 					if (discarded) this.sql.exec(`DELETE FROM ${this.rowsTable} WHERE kind = 'pending'`);
 					if (!added.isEmpty()) this.insert('pending', deletesUpdate(added));
 				});
+				this.documentBytes -= pending;
 				this.updates++;
 			} catch (error) {
+				this.documentBytes = before;
 				this.unstored = error;
 				return released;
 			}
@@ -2042,6 +2272,9 @@ export class DocumentRoom<
 			maxFrameBytes: Number(knobs.EDYTOR_MAX_FRAME_BYTES),
 			compactAfter: Number(knobs.EDYTOR_COMPACT_AFTER),
 			saveAfter: Number(knobs.EDYTOR_SAVE_AFTER),
+			maxDocumentBytes: Number(knobs.EDYTOR_MAX_DOCUMENT_BYTES),
+			maxInboundFrameBytes: Number(knobs.EDYTOR_MAX_INBOUND_FRAME_BYTES),
+			maxUpdatesPerSecond: Number(knobs.EDYTOR_MAX_UPDATES_PER_SECOND),
 			tablePrefix: '',
 			// A getter: a subclass's fields do not exist yet in this constructor.
 			get semantics() {

@@ -117,6 +117,21 @@ export class FieldRoom extends DocumentRoom<Env> {
 	}
 }
 
+/**
+ * A room with low quotas (rooms `quota-*`), set the way a host sets them:
+ * the `EDYTOR_MAX_*` vars.
+ */
+export class QuotaRoom extends DocumentRoom<Env> {
+	constructor(ctx: DurableObjectState, env: Env) {
+		super(ctx, {
+			...env,
+			EDYTOR_MAX_DOCUMENT_BYTES: '20000',
+			EDYTOR_MAX_INBOUND_FRAME_BYTES: '30000',
+			EDYTOR_MAX_UPDATES_PER_SECOND: '2'
+		});
+	}
+}
+
 /** Any Durable Object: `attachDocument` installs every handler (rooms `plain-*`). */
 export class PlainObject extends DurableObject<Env> {
 	document = attachDocument(this, { onLoad: () => LOADED });
@@ -155,6 +170,7 @@ export type Env = DocumentRoomEnv & {
 	PLAIN: DurableObjectNamespace<PlainObject>;
 	HOST: DurableObjectNamespace<HostObject>;
 	FIELDS: DurableObjectNamespace<FieldRoom>;
+	QUOTA: DurableObjectNamespace<QuotaRoom>;
 };
 
 export const ROOM_ROUTE = /^\/rooms\/([^/]+)(\/compact)?\/?$/;
@@ -196,6 +212,9 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 	}
 	if (name.startsWith('hooked-')) {
 		return routeDocumentSocket(request, env.HOOKED, name, authorizeFromQuery);
+	}
+	if (name.startsWith('quota-')) {
+		return routeDocumentSocket(request, env.QUOTA, name, authorizeFromQuery);
 	}
 	if (name.startsWith('plain-')) {
 		return routeDocumentSocket(request, env.PLAIN, name, authorizeFromQuery);

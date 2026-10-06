@@ -1682,6 +1682,24 @@ records, and is rewritten in v2 by its next compaction (`p5-storage-v2`,
 object row `{ v2 }`, which a build before 0.1.0-next.23 refuses to read
 (its row codec throws) instead of misreading. The wire stays v1.
 
+### `room.quota` — a write past a quota is refused, the socket closed `4413` (H3)
+
+Three quotas, each a `vars` setting and an `attachDocument` option:
+`maxDocumentBytes` (64 MiB: what the records hold, uncompressed, plus the
+engine's waiting structs; checked after compacting the update records,
+net of the content the frame deletes, so a frame that deletes at least
+what it adds always applies), `maxUpdatesPerSecond` (50 sync messages a
+second per socket, a token bucket with a ten-second burst; every sync
+message counts, a Step1 too) and `maxInboundFrameBytes` (64 MiB, one
+frame reassembled; a chunk sequence announcing more is refused at its
+start). A frame past one is not applied, logged `quota`
+(`{ user, quota, … }`), and its socket closed `4413` (`quota: <name>`,
+`CLOSE.quota`, a refusal by `isRefusal`): the provider emits `refused`,
+the document records `syncRefusal`, and nothing redials. Not a drop on a
+live socket (the sender's later frames would wait on the dropped one in
+the room's memory, unacknowledged, for good), not a redial (it resends
+the same frame into the same quota). Pins: `h3-quotas.test.ts`.
+
 ## Transport / evidence
 
 ### `net.delete-only-leak`

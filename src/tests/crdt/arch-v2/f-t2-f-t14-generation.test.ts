@@ -28,6 +28,7 @@ import * as bc from 'lib0-v14/broadcastchannel';
 import * as idb from 'lib0-v14/indexeddb';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
+import { readRow } from '../../../lib/crdt/providers/container.js';
 import { bindWebsocketProvider } from '../../../lib/crdt/providers/websocket.js';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 import * as envelope from '../../../lib/crdt/protocols/envelope.js';
@@ -89,10 +90,21 @@ const readRows = async (name) => {
 	}
 };
 
-/** The state the container's rows reconstruct. */
+/** The state the container's rows reconstruct (a compacted snapshot row is v2, P5). */
 const containerDoc = async (name) => {
+	const db = await openDb(name);
+	let rows;
+	try {
+		rows = await idb.getAll(idb.transact(db, ['updates'], 'readonly')[0]);
+	} finally {
+		db.close();
+	}
 	const doc = new Y.Doc();
-	for (const row of await readRows(name)) Y.applyUpdate(doc, row);
+	for (const row of rows) {
+		const update = await readRow(row);
+		if (update instanceof Uint8Array) Y.applyUpdate(doc, update);
+		else Y.applyUpdateV2(doc, update.v2);
+	}
 	return doc;
 };
 

@@ -22,7 +22,8 @@ export default defineConfig({
 					HOOKED: { className: 'HookedRoom', useSQLite: true },
 					PLAIN: { className: 'PlainObject', useSQLite: true },
 					HOST: { className: 'HostObject', useSQLite: true },
-					FIELDS: { className: 'FieldRoom', useSQLite: true }
+					FIELDS: { className: 'FieldRoom', useSQLite: true },
+					QUOTA: { className: 'QuotaRoom', useSQLite: true }
 				}
 			}
 		})

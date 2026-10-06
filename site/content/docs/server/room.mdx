@@ -21,6 +21,8 @@ Every frame a socket sends is checked in this order. A refused frame is never ap
 
 A refused socket is closed with code `1008` and reason `refused: <reason>` (`generation`, `replica`, `schema`, `malformed`, `identity`, `container`). Only bytes the room cannot decode, a text frame other than the keepalive `ping`, or an unknown message type count as `malformed`. A refusal is final: the provider stops dialing instead of reconnecting. A dial `authorize` denies never reaches the room: `routeDocumentSocket` closes it with `4403` (see [authorization](/docs/server/authorization#authorize)), which is final too, and so is `4400` (`invalid document id`: empty, `.`, `..`, over 256 characters or with a lone surrogate, closed before `authorize` runs). `authorize` returning `{ expired: true }` closes the dial with `4401`, the one `4xxx` code the provider retries, with the `params` it re-reads. A dial with a replica another user owns is accepted, then closed with `4409` (`replica bound to another user`), also final. A dial your own Worker turns away before `routeDocumentSocket` gets the same kind of close from `closedSocket(code, reason)`, never an HTTP error, which the browser reports as `1006` and the provider redials.
 
+A write past a [quota](#quotas) is closed with `4413` and reason `quota: <name>`; it is not applied, and the provider stops dialing too.
+
 A fault of the room itself is never a refusal. A storage error (writing a client-id registration, say) closes the socket with `1011` and reason `storage failure`; an error of the CRDT engine or of a send closes it with `1011` and reason `internal error`, after the live document is rebuilt from the stored rows. The provider redials, and the handshake resends what the room does not hold. A fault that persists (a full store, an update the engine cannot apply) does not make it redial every 100 ms: each `1011` doubles its backoff, and emits `unreachable`, until the room acknowledges its edits again.
 
 ## Identity and presence
@@ -54,6 +56,20 @@ A client that catches up receives what the room has stored, never updates still 
 
 Cloudflare limits a WebSocket message to 32 MiB. A frame the room sends that is larger than `EDYTOR_MAX_FRAME_BYTES` (32 MiB by default) goes out as a sequence of chunks, and the provider applies it only once the sequence is complete. Smaller frames are sent whole, so clients without chunk support still sync small documents.
 
+## Quotas
+
+Three limits keep one client from filling the object's storage or keeping it busy. Each is a `vars` setting (and an `attachDocument` option), and a socket past one is closed with `4413` (`quota: document`, `quota: rate` or `quota: frame`), its write not applied, logged as a `quota` refusal with `{ user, quota, … }`:
+
+| Variable | Option | Default | Limit |
+| --- | --- | --- | --- |
+| `EDYTOR_MAX_DOCUMENT_BYTES` | `maxDocumentBytes` | 67,108,864 (64 MiB) | The document's size: what its records hold, uncompressed, plus the updates it holds waiting for a dependency. A frame that would take it past the limit is refused once the room has compacted its update records (they collapse into the live state). A frame that deletes at least as much content as it adds always applies, so a full document can still be trimmed. |
+| `EDYTOR_MAX_UPDATES_PER_SECOND` | `maxUpdatesPerSecond` | 50 | Sync messages per second and socket, sustained, with a burst of ten seconds' worth (a reconnect, a paste). The editor sends one per transaction; a script driving the provider should batch its edits into transactions. |
+| `EDYTOR_MAX_INBOUND_FRAME_BYTES` | `maxInboundFrameBytes` | 67,108,864 (64 MiB) | One frame a socket sends, reassembled from its chunks; a chunked frame announcing more is refused at its first chunk, before anything is buffered. The platform caps one message at 32 MiB. |
+
+The quota closes the socket rather than dropping the frame: the sender's later edits build on the one dropped, so the room would hold them waiting, in memory, for good, and never acknowledge them. It is final rather than redialed, because a redial resends the same edits through the handshake and meets the same quota. The edits stay in the client's document and its local copy, and `saved` stays `false`.
+
+Size the document quota for the room's memory: an isolate has 128 MB, and a text-heavy document takes several times its stored size in memory (images, stored as text, about their size). Your own server edits ([`transact`](/docs/server/extending#edit-on-the-server)) are not limited.
+
 ## Hibernation
 
 The room schedules no timers: each entry point runs with `setTimeout` and `setInterval` disabled (the exported `noTimers` helper), because a Durable Object with a pending timer cannot hibernate. Sockets stay connected while the object sleeps; identity comes back from the socket attachments and the document from storage.
@@ -72,6 +88,9 @@ Set these as `vars` in `wrangler.jsonc`. All are optional.
 | `EDYTOR_MAX_FRAME_BYTES` | 33,554,432 (32 MiB) | Largest frame sent whole; larger ones are chunked. Can only be lowered. |
 | `EDYTOR_COMPACT_AFTER` | 500 | Update records before the room compacts its rows into one snapshot. |
 | `EDYTOR_SAVE_AFTER` | 2000 | ms between the first unsaved change and [`onSave`](/docs/server/extending#save). |
+| `EDYTOR_MAX_DOCUMENT_BYTES` | 67,108,864 (64 MiB) | The document [quota](#quotas). Can be raised. |
+| `EDYTOR_MAX_UPDATES_PER_SECOND` | 50 | The update rate [quota](#quotas), per socket. Can be raised. |
+| `EDYTOR_MAX_INBOUND_FRAME_BYTES` | 67,108,864 (64 MiB) | The frame [quota](#quotas). Can be raised. |
 
 ```jsonc wrangler.jsonc
 {
@@ -99,7 +118,7 @@ const { ranges } = await env.ROOMS.getByName(documentId).dropWaitingDeletes();
 
 ## Diagnostics
 
-`refusals` holds the newest 100 refusals (`MAX_REFUSALS`) of the running instance, each with its `reason` and `detail`; `refusalCounts` counts every refusal by reason. Both live in memory and restart empty; read them inside the object, or return them from an RPC method of your own. A `storage` entry is a failed append, compaction or registration, an `internal` entry an error of the engine or a send, and a `waiting` entry the deletes of unheld items a frame carried past `MAX_WAITING_DELETES` (`{ user, ranges }`; the rest of the frame applied). Two entries are not refusals: `orphan` is an unowned id claimed by its dial (after a [restore without a registry](/docs/server/extending#load), or a relay), and `relayed` is content under an id the room held nothing of, delivered by another replica and kept unowned (see [replicas](/docs/server/authorization#replicas)).
+`refusals` holds the newest 100 refusals (`MAX_REFUSALS`) of the running instance, each with its `reason` and `detail`; `refusalCounts` counts every refusal by reason. Both live in memory and restart empty; read them inside the object, or return them from an RPC method of your own. A `storage` entry is a failed append, compaction or registration, an `internal` entry an error of the engine or a send, a `waiting` entry the deletes of unheld items a frame carried past `MAX_WAITING_DELETES` (`{ user, ranges }`; the rest of the frame applied), and a `quota` entry a write past a [quota](#quotas) (`{ user, quota, … }`; the socket closed `4413`). Two entries are not refusals: `orphan` is an unowned id claimed by its dial (after a [restore without a registry](/docs/server/extending#load), or a relay), and `relayed` is content under an id the room held nothing of, delivered by another replica and kept unowned (see [replicas](/docs/server/authorization#replicas)).
 
 ## Generation cutover
 

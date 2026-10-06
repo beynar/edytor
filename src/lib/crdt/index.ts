@@ -351,7 +351,9 @@ export {
 	messageChunk,
 	MAX_FRAME_BYTES,
 	chunkFrame,
-	createChunkReader
+	createChunkReader,
+	ChunkLimitError,
+	CLOSE
 } from './providers/room.js';
 
 export {

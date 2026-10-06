@@ -106,27 +106,44 @@ export const chunkFrame = (whole: Uint8Array, maxFrameBytes = MAX_FRAME_BYTES): 
 	return frames;
 };
 
+/** A chunk sequence announces a frame larger than its reader takes ({@link createChunkReader}). */
+export class ChunkLimitError extends Error {
+	constructor(
+		readonly total: number,
+		readonly limit: number
+	) {
+		super(`chunked frame of ${total} bytes exceeds ${limit}`);
+		this.name = 'ChunkLimitError';
+	}
+}
+
+/** A chunk part or end with no sequence started (one lost, or never sent). */
+export class ChunkSequenceError extends Error {}
+
 /**
  * The receiving half of {@link chunkFrame}, one per connection: feed it
  * each chunk frame's body (after the message type); it returns the whole
  * frame on `end`, `null` before. An out-of-order or oversized sequence
- * throws and resets.
+ * throws and resets; a sequence announcing more than `maxBytes` throws
+ * {@link ChunkLimitError} at its start, before anything is buffered.
  */
-export const createChunkReader = () => {
+export const createChunkReader = (maxBytes = Infinity) => {
 	let parts: Uint8Array[] | null = null;
 	let total = 0;
 	let received = 0;
 	return (decoder: decoding.Decoder): Uint8Array | null => {
 		const kind = decoding.readVarUint(decoder);
 		if (kind === chunkStart) {
-			parts = [];
+			parts = null;
 			total = decoding.readVarUint(decoder);
+			if (total > maxBytes) throw new ChunkLimitError(total, maxBytes);
+			parts = [];
 			received = 0;
 			return null;
 		}
 		const current = parts;
 		parts = null;
-		if (current === null) throw new Error(`chunk ${kind} without a start`);
+		if (current === null) throw new ChunkSequenceError(`chunk ${kind} without a start`);
 		if (kind === chunkPart) {
 			const bytes = decoding.readVarUint8Array(decoder);
 			received += bytes.length;
@@ -262,7 +279,13 @@ export const CLOSE = {
 	/** The host's authorization denied the dial. */
 	denied: 4403,
 	/** The dialed replica is bound to another user. */
-	replicaTaken: 4409
+	replicaTaken: 4409,
+	/**
+	 * A room quota refused the socket's write (`quota: document`,
+	 * `quota: rate`, `quota: frame`): the frame was not applied, and a
+	 * redial would resend it and meet the same quota.
+	 */
+	quota: 4413
 } as const;
 
 /**

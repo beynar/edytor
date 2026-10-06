@@ -23,14 +23,14 @@ import {
 	kvHistory,
 	r2History,
 	roomHistory,
+	type LockOptions,
+	type MoveNamespace,
 	type HistoryOptions,
 	type KVLike,
 	type R2BucketLike,
 	type AuthorizeDocumentSocket,
 	type DocumentRoomEnv,
-	type FrameValidation,
 	type RoomLogEntry,
-	type ValidatedBlock,
 	type LoadedDocument,
 	type SavedDocument
 } from '../../src/lib/cloudflare/index.js';
@@ -150,25 +150,55 @@ export class QuotaRoom extends DocumentRoom<Env> {
 }
 
 /**
- * Per-block locks through `validate` (rooms `locked-*`): a block whose
- * `data.lockedBy` names a user is that user's alone. A frame touching it
- * from anyone else — its text, data, type, place or its deletion — is
- * denied, and so is one locking a block for someone else; the room then
- * writes the frame's inverse.
+ * Per-block locks (rooms `locked-*`), the shipped helper (`lockedBlocks`,
+ * through `locks()`): a block whose `data.lockedBy` names a user is that
+ * user's alone. A frame touching it from anyone else — its text, data,
+ * type, place or its deletion — is denied, and so is one locking a block
+ * for someone else; the room then writes the frame's inverse. By name:
+ * `locked-tree-*` locks subtrees, `locked-admin-*` lets `admin` through,
+ * `locked-env-*` reads the `EDYTOR_LOCKS` var (`lockedBy`).
  */
 export class LockedRoom extends DocumentRoom<Env> {
 	/** Its log entries (H14), kept instead of printed. */
 	readonly logged: RoomLogEntry[] = [];
+	constructor(ctx: DurableObjectState, env: Env) {
+		const name = ctx.id.name ?? '';
+		super(ctx, name.startsWith('locked-env-') ? { ...env, EDYTOR_LOCKS: 'lockedBy' } : env);
+	}
 	protected override log(entry: RoomLogEntry) {
 		this.logged.push(entry);
 	}
-	protected override validate({ user, touched, before, after }: FrameValidation) {
-		const owner = (block: ValidatedBlock | null) => block?.data.lockedBy as string | undefined;
-		return touched.every((id) => {
-			const was = owner(before(id));
-			const now = owner(after(id));
-			return (was === undefined || was === user) && (now === undefined || now === user);
-		});
+	protected override locks(): LockOptions | undefined {
+		const name = this.ctx.id.name ?? '';
+		if (name.startsWith('locked-env-')) return super.locks();
+		return {
+			key: 'lockedBy',
+			subtree: name.startsWith('locked-tree-'),
+			bypass: name.startsWith('locked-admin-') ? (user) => user === 'admin' : undefined
+		};
+	}
+}
+
+/**
+ * Rooms that move blocks between them (`moving-*`, H10): late edits are
+ * forwarded by the room itself, through the `MOVES` namespace (`rooms()`),
+ * on its alarm; a fake clock (`test_clock`) drives the grace period, and
+ * the log is kept.
+ */
+export class MoveRoom extends DocumentRoom<Env> {
+	readonly logged: RoomLogEntry[] = [];
+	constructor(ctx: DurableObjectState, env: Env) {
+		fakeAlarms(ctx);
+		super(ctx, env);
+	}
+	protected override log(entry: RoomLogEntry) {
+		this.logged.push(entry);
+	}
+	protected override now(): number {
+		return fakeNow(this.ctx.storage.sql);
+	}
+	protected override rooms(): MoveNamespace {
+		return this.env.MOVES as unknown as MoveNamespace;
 	}
 }
 
@@ -366,6 +396,32 @@ export const setNow = (sql: SqlStorage, now: number) => {
 	sql.exec('INSERT INTO test_clock VALUES (?)', now);
 };
 
+/**
+ * Alarms on a fake clock: the room arms its alarm at times of its fake
+ * clock, which the runtime would fire at once whenever they are past the
+ * real clock. The real alarm is set far ahead instead (tests fire it with
+ * `runDurableObjectAlarm`), and `getAlarm` answers the time the room asked
+ * for, kept in `test_alarm` (it survives an eviction).
+ */
+const fakeAlarms = (ctx: DurableObjectState) => {
+	const storage = ctx.storage;
+	const sql = storage.sql;
+	sql.exec('CREATE TABLE IF NOT EXISTS test_alarm (at INTEGER)');
+	const setAlarm = storage.setAlarm.bind(storage);
+	const getAlarm = storage.getAlarm.bind(storage);
+	Object.assign(storage, {
+		setAlarm: async (at: number | Date) => {
+			sql.exec('DELETE FROM test_alarm');
+			sql.exec('INSERT INTO test_alarm VALUES (?)', Number(at));
+			return setAlarm(Date.now() + 10 * 365 * 86_400_000);
+		},
+		getAlarm: async () => {
+			if ((await getAlarm()) === null) return null;
+			return sql.exec<{ at: number }>('SELECT at FROM test_alarm').toArray()[0]?.at ?? null;
+		}
+	});
+};
+
 /** The time zone a `timed-*` room's name asks for. */
 const zoneOf = (name: string): string =>
 	name.includes('-paris-')
@@ -409,6 +465,7 @@ export class TimedRoom extends DocumentRoom<Env> {
 	readonly logged: RoomLogEntry[] = [];
 	constructor(ctx: DurableObjectState, env: Env) {
 		const name = ctx.id.name ?? '';
+		fakeAlarms(ctx);
 		super(
 			ctx,
 			name.startsWith('timed-env-')
@@ -481,6 +538,7 @@ export type Env = DocumentRoomEnv & {
 	FIELDS: DurableObjectNamespace<FieldRoom>;
 	QUOTA: DurableObjectNamespace<QuotaRoom>;
 	LOCKED: DurableObjectNamespace<LockedRoom>;
+	MOVES: DurableObjectNamespace<MoveRoom>;
 	TIMED: DurableObjectNamespace<TimedRoom>;
 	DEMO: DurableObjectNamespace<DocumentRoom>;
 	HISTORY: KVNamespace;
@@ -545,6 +603,9 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 	}
 	if (name.startsWith('locked-')) {
 		return routeDocumentSocket(request, env.LOCKED, name, authorizeFromQuery);
+	}
+	if (name.startsWith('moving-')) {
+		return routeDocumentSocket(request, env.MOVES, name, authorizeFromQuery);
 	}
 	if (name.startsWith('quota-')) {
 		return routeDocumentSocket(request, env.QUOTA, name, authorizeFromQuery);

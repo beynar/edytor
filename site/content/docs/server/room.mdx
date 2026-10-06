@@ -98,8 +98,9 @@ Set these as `vars` in `wrangler.jsonc`. All are optional.
 | `EDYTOR_PURGE_AFTER_DAYS` | the retention, else 30 | Days after which deleted content is [purged](/docs/server/history#the-purge); `off` never purges. |
 | `EDYTOR_HISTORY_RETENTION_DAYS` | 30 | Days a [version](/docs/server/history) is kept. |
 | `EDYTOR_HISTORY_TIME_ZONE` | `UTC` | The IANA time zone of the history's half-day slots. |
+| `EDYTOR_LOCKS` | | The data key that [locks](/docs/server/extending#per-block-locks) a block to the user it names, e.g. `lockedBy`. Unset: no locks. |
 
-The [history](/docs/server/history)'s store is `EDYTOR_HISTORY`: a KV namespace or an R2 bucket binding, or the variable `"room"` for the room's own storage. Without it, the room keeps no history.
+The rooms blocks [move](/docs/server/moves) to are the `EDYTOR_ROOMS` binding, a Durable Object namespace (usually the room's own). The [history](/docs/server/history)'s store is `EDYTOR_HISTORY`: a KV namespace or an R2 bucket binding, or the variable `"room"` for the room's own storage. Without it, the room keeps no history.
 
 ```jsonc wrangler.jsonc
 {

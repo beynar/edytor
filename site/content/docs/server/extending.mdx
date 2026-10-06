@@ -40,10 +40,10 @@ This `attachDocument` comes from `edytor/cloudflare` and hosts a document in a D
 
 ## What `attachDocument(this, options)` does
 
-- **Storage.** The document lives in the object's SQLite storage, in tables named `edytor_rows`, `edytor_replicas` and `edytor_meta` (with `edytor_epochs`, `edytor_editors` and `edytor_restore` for the [history and the purge](/docs/server/history#storage)), beside your own tables. Every edit is stored there before it is acknowledged, whatever your hooks do. `tablePrefix` changes the prefix.
+- **Storage.** The document lives in the object's SQLite storage, in tables named `edytor_rows`, `edytor_replicas` and `edytor_meta` (with `edytor_epochs`, `edytor_editors` and `edytor_restore` for the [history and the purge](/docs/server/history#storage), `edytor_history` for a [history in the room](/docs/server/history#the-rooms-own-storage), and `edytor_moves` and `edytor_late` for [moves](/docs/server/moves)), beside your own tables. Every edit is stored there before it is acknowledged, whatever your hooks do. `tablePrefix` changes the prefix.
 - **Sockets.** The document's sockets carry the tag `edytor` (`SOCKET_TAG`). Other sockets of the object are yours.
 - **Handlers.** Each handler your class does not define is installed on the object: `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and `alarm`, which runs `onSave`, the [history](/docs/server/history) and the [purge](/docs/server/history#the-purge) (not installed only when none applies: no `onSave`, no `history`, `purgeAfterDays: false`).
-- **Return value.** An `AttachedDocument` with the same handlers, plus the methods `transact`, `read`, `compact`, `compressed`, `metrics`, `lastUpdated`, `dropWaitingDeletes`, `reset`, `records`, `owns(ws)`, the [history](/docs/server/history#list-preview-restore)'s `listHistory`, `readHistory`, `restoreHistory`, `undoRestore` and `historyWritten`, and `purge` (the [purge](/docs/server/history#the-purge) task, now), and the fields `facade`, `doc`, `failure`, `refusals`, `refusalCounts`, `presence` and `origin` (see [the room](/docs/server/room#diagnostics)).
+- **Return value.** An `AttachedDocument` with the same handlers, plus the methods `transact`, `read`, `compact`, `compressed`, `metrics`, `lastUpdated`, `dropWaitingDeletes`, `reset`, `records`, `owns(ws)`, the [history](/docs/server/history#list-preview-restore)'s `listHistory`, `readHistory`, `restoreHistory`, `undoRestore` and `historyWritten`, `purge` (the [purge](/docs/server/history#the-purge) task, now), and the [moves](/docs/server/moves)' `exportBlocks`, `importBlocks`, `commitMove`, `abortMove`, `lateEdits`, `ackLateEdits` and `applyLateEdits`, and the fields `facade`, `doc`, `failure`, `refusals`, `refusalCounts`, `presence` and `origin` (see [the room](/docs/server/room#diagnostics)).
 - **RPC.** Durable Object RPC reaches only your class's own methods, not the returned document's. Forward the ones you call from a Worker or an admin route, for example `dropWaitingDeletes() { return this.document.dropWaitingDeletes(); }`.
 
 Call it once, in a field or the constructor.
@@ -92,6 +92,8 @@ A Durable Object has one alarm, which the document shares among its tasks: `onSa
 | `semantics` | `defaultSemantics` | The block roles server edits obey. See [Block roles on the server](#block-roles-on-the-server). |
 | `validate` | | Asked after each client frame that changed blocks; `false` makes the room undo it. See [Validate edits](#validate-edits). |
 | `log` | `console.log` of JSON | Receives the room's [log entries](/docs/server/room#metrics-and-log); `false` logs nothing. |
+| `locks` | | `{ key, subtree, bypass }`: [per-block locks](#per-block-locks), checked before `validate`. |
+| `rooms` | | `() => namespace`: the rooms blocks [move](/docs/server/moves) to; the room then forwards late edits itself. |
 | `history` | | `{ store, retentionDays, timeZone, maxValueBytes }`: keep two versions a day in a store (`roomHistory()`, `kvHistory(namespace)`, `r2History(bucket)` or your own `HistoryStore`). See [History and purge](/docs/server/history). |
 | `purgeAfterDays` | the retention, else `30` | Days after which deleted content is [purged](/docs/server/history#the-purge); `false` never purges. |
 | `now` | `Date.now` | The room's clock (its slots, epochs and alarm read it), for tests. |
@@ -267,25 +269,46 @@ The room applies a client's frame, stores it and relays it, then asks `validate`
 
 The inverse is the undo of exactly that frame, with the history's rules: text it typed is deleted, text it deleted comes back (except where another writer's delete still holds it), blocks it deleted show again, a block it created is withdrawn (it stays only if it holds someone else's content), a move returns the block where it was, and data and types return to the values it replaced. Edits other clients made in between are kept. The frame that created the document (its first seed, which no history records) has its blocks deleted instead.
 
-`validate` is synchronous and runs only when set; the room then keeps an index of every block's state, updated at each commit, and a history of the frame being validated, released after each frame so it keeps no deleted content alive. Per-block locks, for example (a `DocumentRoom` subclass overrides `validate`):
+`validate` is synchronous and runs only when set; the room then keeps an index of every block's state, updated at each commit, and a history of the frame being validated, released after each frame so it keeps no deleted content alive. Your own server edits (`transact`) are never validated. For example, only the users your app lists as a block's editors may change it:
 
-```ts src/locked-room.ts check
-import { DocumentRoom, type FrameValidation, type ValidatedBlock } from 'edytor/cloudflare';
+```ts src/editors-room.ts check
+import { DocumentRoom, type FrameValidation } from 'edytor/cloudflare';
 
-/** A block whose `data.lockedBy` names a user is that user's alone. */
-export class LockedRoom extends DocumentRoom<Env> {
+/** A block whose `data.editors` lists users may be changed by them alone. */
+export class EditorsRoom extends DocumentRoom<Env> {
   protected override validate({ user, touched, before, after }: FrameValidation) {
-    const owner = (block: ValidatedBlock | null) => block?.data.lockedBy as string | undefined;
-    return touched.every((id) => {
-      const was = owner(before(id));
-      const now = owner(after(id));
-      return (was === undefined || was === user) && (now === undefined || now === user);
-    });
+    const allows = (id: string, read: typeof before) => {
+      const editors = read(id)?.data.editors;
+      return !Array.isArray(editors) || editors.includes(user);
+    };
+    return touched.every((id) => allows(id, before) && allows(id, after));
   }
 }
 ```
 
-Another user typing into, retyping, moving, unlocking or deleting a locked block sees the edit undone; a block inserted before it is not a change of it. Your own server edits (`transact`) are never validated.
+### Per-block locks
+
+Locks are built in: `lockedBlocks` is a `validate` hook that keeps a locked block its owner's. A block is locked when its data names a user under `key` (default `lockedBy`); another user typing into it, retyping, moving, deleting, unlocking it, or locking a block for someone else, sees the edit undone. A block inserted before a locked one is not a change of it.
+
+| Option | Default | |
+| --- | --- | --- |
+| `key` | `'lockedBy'` | The data key naming the owner. |
+| `subtree` | `false` | A lock also holds every block shown under the locked one (its children, theirs, …): typing into a child, adding one, moving a block in or out are the owner's alone. The nearest locked ancestor decides. |
+| `bypass` | | `(user) => boolean`: users who edit locked blocks anyway (an admin). |
+
+With `DocumentRoom`, set the `EDYTOR_LOCKS` variable to the key (`"EDYTOR_LOCKS": "lockedBy"`), or override `locks()`:
+
+```ts src/locked-room.ts check
+import { DocumentRoom, type LockOptions } from 'edytor/cloudflare';
+
+export class LockedRoom extends DocumentRoom<Env> {
+  protected override locks(): LockOptions {
+    return { key: 'lockedBy', subtree: true, bypass: (user) => user.startsWith('admin:') };
+  }
+}
+```
+
+With `attachDocument`, pass `locks: { key: 'lockedBy' }`. Locks are checked before your own `validate`, and both must accept a frame. To lock a block, a client writes its own user into the block's data (`block.data.lockedBy = userId`, or `facade.setBlockData`); to unlock it, the owner removes the key. A view does not know about locks: an edit to a locked block shows locally, then the room's inverse removes it. Read the key in your kind's rendering to show the lock and make the block read-only for others (`contenteditable` on its content, or a readonly view).
 
 The room also enforces one rule itself: a block's per-writer marks (`del.<n>` for a delete, `wd.<n>` for an undone creation) are written and deleted only by client `n`. A frame writing another client's mark has that client's new content stripped, as content under [another user's client id](/docs/server/authorization#replicas) is, and a delete of another user's mark is dropped (unless its block goes with it), both logged as a `mark` entry; the rest of the frame applies.
 
@@ -315,4 +338,4 @@ export class Room extends DocumentRoom<Env> {
 }
 ```
 
-Bind and migrate the subclass by its own class name (`"class_name": "Room"`, `"new_sqlite_classes": ["Room"]`). If it defines `alarm()`, call `await super.alarm()` from it. Override `protected validate(frame)` to [validate edits](#validate-edits), and `protected history()` to keep a [history](/docs/server/history). `transact`, `read`, `compact`, `metrics`, `compressed`, `lastUpdated`, `dropWaitingDeletes`, `reset`, `listHistory`, `readHistory`, `restoreHistory`, `undoRestore`, `historyWritten` and `purge` are methods of the room itself, so RPC reaches them without forwarding.
+Bind and migrate the subclass by its own class name (`"class_name": "Room"`, `"new_sqlite_classes": ["Room"]`). If it defines `alarm()`, call `await super.alarm()` from it. Override `protected validate(frame)` to [validate edits](#validate-edits), `protected locks()` for [per-block locks](#per-block-locks), `protected rooms()` to name the rooms blocks [move](/docs/server/moves) to, and `protected history()` to keep a [history](/docs/server/history). `transact`, `read`, `compact`, `metrics`, `compressed`, `lastUpdated`, `dropWaitingDeletes`, `reset`, `listHistory`, `readHistory`, `restoreHistory`, `undoRestore`, `historyWritten`, `purge`, `exportBlocks`, `importBlocks`, `commitMove`, `abortMove`, `lateEdits`, `ackLateEdits` and `applyLateEdits` are methods of the room itself, so RPC reaches them without forwarding.

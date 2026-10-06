@@ -130,6 +130,26 @@ import {
 	type R2BucketLike
 } from './history.js';
 import { ChunkLimitError, ChunkSequenceError, CLOSE } from '../crdt/providers/room.js';
+import { lockedBlocks, type LockOptions } from './locks.js';
+import {
+	DEFAULT_MOVE_GRACE_DAYS,
+	contentOf,
+	flattenMoved,
+	hunk,
+	mergeData,
+	subtreesOf,
+	threeWay,
+	unitsOf,
+	type CommitResult,
+	type ExportedBlocks,
+	type ImportReceipt,
+	type ImportRequest,
+	type LateEdit,
+	type LateEditBatch,
+	type MoveNamespace,
+	type MovedState
+} from './move.js';
+import { toBlockSpec } from '../utils/json.js';
 import type {
 	AwarenessEntry,
 	DocChange,
@@ -236,8 +256,16 @@ export const HISTORY_KEY_HEADER = 'X-Edytor-History-Key';
 /** A day, in ms: the purge task's period (H7). */
 const DAY = 86_400_000;
 /** The room's alarm tasks (`room.alarm.tasks`), in the order an alarm runs them. */
-type Task = 'history' | 'save' | 'purge' | 'retention';
-const TASKS: readonly Task[] = ['history', 'save', 'purge', 'retention'];
+type Task = 'history' | 'save' | 'purge' | 'retention' | 'forward';
+const TASKS: readonly Task[] = ['history', 'save', 'purge', 'retention', 'forward'];
+/** A forward of late edits that failed runs again this much later (`room.move.late`). */
+const FORWARD_RETRY = 60_000;
+/** The registry node surface the moves read and write. */
+type RegistryNode = {
+	forEachAttr(f: (value: unknown, key: string) => void): void;
+	getAttr(key: string): unknown;
+	deleteAttr(key: string): void;
+};
 /** A retention sweep that failed runs again this much later (`room.history.retention`). */
 const RETENTION_RETRY = 3600_000;
 /** The last restore (H11): its step, kept for `undoRestore`. */
@@ -290,6 +318,14 @@ export type DocumentRoomEnv = {
 	EDYTOR_HISTORY_RETENTION_DAYS?: string | number;
 	/** The IANA time zone of the history's half-day slots (default `UTC`). */
 	EDYTOR_HISTORY_TIME_ZONE?: string;
+	/** Per-block locks (`locks()`): the data key naming a block's owner, e.g. `lockedBy`. Unset: none. */
+	EDYTOR_LOCKS?: string;
+	/**
+	 * The namespace of the rooms blocks move to (`rooms()`, H10): the room
+	 * forwards late edits of moved blocks there itself. Unset: they wait
+	 * for the host's `forwardLateEdits`.
+	 */
+	EDYTOR_ROOMS?: MoveNamespace;
 };
 
 /** What a socket is bound to: its verified user, its replica (Yjs client id), its access. */
@@ -389,7 +425,16 @@ export type RoomLogEntry =
 	| { edytor: 'quota'; user: string; quota: string }
 	| { edytor: 'denied'; user: string; touched: number }
 	| { edytor: 'fault'; reason: 'storage' | 'internal'; detail: string }
-	| { edytor: 'convert'; from: number; to: number; blocks: number; bytes: number };
+	| { edytor: 'convert'; from: number; to: number; blocks: number; bytes: number }
+	| { edytor: 'move'; moveId: string; role: 'out' | 'in'; peer: string; blocks: number }
+	| {
+			edytor: 'late';
+			moveId: string;
+			seq: number;
+			edits: number;
+			structural: number;
+			forwarded: boolean;
+	  };
 
 const now = (): number =>
 	typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -1210,6 +1255,19 @@ export type AttachDocumentOptions = {
 	 */
 	validate?: (frame: FrameValidation) => boolean | void;
 	/**
+	 * Per-block locks (H10, `room.locks`): a block whose data names a user
+	 * under `key` (default `lockedBy`) is that user's alone — a frame from
+	 * anyone else touching it is denied and compensated, as `validate`'s
+	 * denials are ({@link lockedBlocks}). Asked before `validate`.
+	 */
+	locks?: LockOptions;
+	/**
+	 * The rooms blocks move to (H10, `room.move`): with it, the room forwards
+	 * the late edits of blocks it moved out to their destination itself, on
+	 * its alarm; without it, they wait for the host's `forwardLateEdits`.
+	 */
+	rooms?: () => MoveNamespace | undefined;
+	/**
 	 * The room's log (H14): one entry per compaction, quota hit, denial or
 	 * fault. Default: `console.log` of the entry as JSON (Workers Logs and
 	 * `wrangler tail` collect it); `false` logs nothing.
@@ -1360,8 +1418,13 @@ export class AttachedDocument {
 	private readonly epochsTable: string;
 	private readonly editorsTable: string;
 	private readonly restoreTable: string;
+	private readonly movesTable: string;
+	private readonly lateTable: string;
+	/** The blocks moved out and watched for late edits, by id → their move (`null`: not read yet). */
+	private watched: Map<string, string> | null = null;
 	private _lookups: ReturnType<typeof lookups> | null = null;
 	private readonly tablePrefix: string;
+	private _validator: ((frame: FrameValidation) => boolean | void) | null | undefined;
 	private _history:
 		| (Required<Omit<HistoryOptions, 'store'>> & { store: HistoryStore })
 		| null
@@ -1399,6 +1462,8 @@ export class AttachedDocument {
 		this.epochsTable = `${prefix}epochs`;
 		this.editorsTable = `${prefix}editors`;
 		this.restoreTable = `${prefix}restore`;
+		this.movesTable = `${prefix}moves`;
+		this.lateTable = `${prefix}late`;
 		this.clock = options.now ?? Date.now;
 		// The provider pings a silent socket: answer without waking the object.
 		if (ctx.setWebSocketAutoResponse && !ctx.getWebSocketAutoResponse?.()) {
@@ -1600,6 +1665,7 @@ export class AttachedDocument {
 				if (task === 'history') await this.closeSlot();
 				else if (task === 'save') await this.save();
 				else if (task === 'retention') await this.expireVersions();
+				else if (task === 'forward') await this.forwardMoves();
 				else this.tick();
 			} catch (error) {
 				failure ??= { error };
@@ -1721,11 +1787,18 @@ export class AttachedDocument {
 				this.sql.exec(`DELETE FROM ${this.rowsTable}`);
 				this.sql.exec(`DELETE FROM ${this.replicasTable}`);
 				this.sql.exec(`DELETE FROM ${this.metaTable}`);
-				for (const table of [this.epochsTable, this.editorsTable, this.restoreTable])
+				for (const table of [
+					this.epochsTable,
+					this.editorsTable,
+					this.restoreTable,
+					this.movesTable,
+					this.lateTable
+				])
 					this.sql.exec(`DROP TABLE IF EXISTS ${table}`);
 			});
 			this.dues = {};
 			this.restoreStep = null;
+			this.watched = null;
 			this.slotEditors.clear();
 			this.presence.clear();
 			await this.start();
@@ -2208,6 +2281,23 @@ export class AttachedDocument {
 		return this.ctx.id.name ?? this.ctx.id.toString();
 	}
 
+	/**
+	 * The frame check, resolved at first use: per-block locks (`locks`),
+	 * then `validate`; `null` when neither is set (no block index is kept).
+	 */
+	private get validator(): ((frame: FrameValidation) => boolean | void) | null {
+		if (this._validator !== undefined) return this._validator;
+		const locks = this.options.locks;
+		const validate = this.options.validate;
+		const locked = locks ? lockedBlocks(locks) : null;
+		return (this._validator =
+			locked === null
+				? (validate ?? null)
+				: validate === undefined
+					? locked
+					: (frame) => locked(frame) && validate(frame) !== false);
+	}
+
 	/** The history settings, resolved at first use (`null`: none; an unknown time zone is noted `history`). */
 	private get historyConfig() {
 		if (this._history !== undefined) return this._history;
@@ -2640,6 +2730,509 @@ export class AttachedDocument {
 		});
 	}
 
+	// ── Moves (H10, `room.move`) ─────────────────────────────────────────
+
+	private ensureMoves() {
+		this.sql.exec(
+			`CREATE TABLE IF NOT EXISTS ${this.movesTable} (
+				id TEXT PRIMARY KEY,
+				role TEXT NOT NULL,
+				state TEXT NOT NULL,
+				peer TEXT,
+				roots TEXT NOT NULL DEFAULT '[]',
+				map TEXT NOT NULL DEFAULT '{}',
+				sent TEXT NOT NULL DEFAULT '[]',
+				watched TEXT NOT NULL DEFAULT '[]',
+				marker INTEGER NOT NULL DEFAULT 0,
+				c0 INTEGER NOT NULL DEFAULT 0,
+				c1 INTEGER NOT NULL DEFAULT 0,
+				at INTEGER NOT NULL,
+				dirty INTEGER NOT NULL DEFAULT 0,
+				seq INTEGER NOT NULL DEFAULT 0
+			)`
+		);
+		this.sql.exec(
+			`CREATE TABLE IF NOT EXISTS ${this.lateTable} (move TEXT NOT NULL, seq INTEGER NOT NULL, edits TEXT NOT NULL, PRIMARY KEY (move, seq))`
+		);
+	}
+
+	/** One move's row. */
+	private moveRow(id: string, role: 'out' | 'in') {
+		this.ensureMoves();
+		return this.sql
+			.exec<{
+				id: string;
+				state: string;
+				peer: string | null;
+				roots: string;
+				map: string;
+				sent: string;
+				watched: string;
+				marker: number;
+				c0: number;
+				c1: number;
+				at: number;
+				dirty: number;
+				seq: number;
+			}>(`SELECT * FROM ${this.movesTable} WHERE id = ? AND role = ?`, id, role)
+			.toArray()[0];
+	}
+
+	/** Days a moved-out block is watched for late edits: the purge horizon, else {@link DEFAULT_MOVE_GRACE_DAYS}. */
+	private get graceMs(): number {
+		return (this.purgeDays ?? DEFAULT_MOVE_GRACE_DAYS) * DAY;
+	}
+
+	/**
+	 * Export blocks `ids` for a move (`room.move`, step 1): their visible
+	 * subtrees as JSON, the outermost only, in document order. Writes
+	 * nothing to the document; records the export (`moveId`) for
+	 * `commitMove`. Throws when none of them shows.
+	 */
+	exportBlocks(ids: string[]): ExportedBlocks {
+		return noTimers(() => {
+			this.heal();
+			this.requireDoc();
+			const blocks = subtreesOf(this.facade.toJSON().children, new Set(ids));
+			if (blocks.length === 0) throw new Error('exportBlocks: none of these blocks shows');
+			const moveId = crypto.randomUUID();
+			this.ensureMoves();
+			this.sql.exec(
+				`INSERT INTO ${this.movesTable} (id, role, state, roots, sent, at) VALUES (?, 'out', 'exported', ?, ?, ?)`,
+				moveId,
+				JSON.stringify(blocks.map((b) => b.id)),
+				JSON.stringify(blocks),
+				this.clock()
+			);
+			return { moveId, blocks };
+		});
+	}
+
+	/**
+	 * Import a move's blocks (`room.move`, step 2) under `dest.parent` at
+	 * `dest.index`, as one room transaction: each keeps its id unless this
+	 * document holds it already (then `<id>~<n>`). Idempotent: a second
+	 * call with the same `moveId` writes nothing and returns the same ids,
+	 * the acknowledgement `commitMove` needs.
+	 */
+	importBlocks(request: ImportRequest): ImportReceipt {
+		return noTimers(() => {
+			const known = this.moveRow(request.moveId, 'in');
+			if (known !== undefined)
+				return { moveId: request.moveId, status: 'applied', ids: JSON.parse(known.map) };
+			const facade = this.facade;
+			const ids: Record<string, string> = {};
+			const taken = new Set<string>();
+			const rename = (block: JSONBlock): JSONBlock => {
+				let id = block.id;
+				if (id !== undefined) {
+					let to = id;
+					for (let n = 2; facade.hasBlock(to) || taken.has(to); n++) to = `${id}~${n}`;
+					taken.add(to);
+					ids[id] = to;
+					id = to;
+				}
+				return { ...block, id, children: block.children?.map(rename) };
+			};
+			const specs = request.blocks.map(rename).map((block) => toBlockSpec(block));
+			const parent = request.dest.parent;
+			if (parent !== null && !facade.isVisibleBlock(parent))
+				return { moveId: request.moveId, status: 'refused', ids: {}, reason: 'no such parent' };
+			let status = 'refused';
+			this.transact((f) => {
+				const index = Math.max(0, Math.min(request.dest.index, f.childrenIds(parent).length));
+				status = f.apply(f.prepare.insertBlocks({ parent, index }, specs)).status;
+			});
+			if (status !== 'applied')
+				return { moveId: request.moveId, status: 'refused', ids: {}, reason: 'insert refused' };
+			this.sql.exec(
+				`INSERT INTO ${this.movesTable} (id, role, state, peer, map, at, seq) VALUES (?, 'in', 'imported', ?, ?, ?, 0)`,
+				request.moveId,
+				request.from,
+				JSON.stringify(ids),
+				this.clock()
+			);
+			this.log({
+				edytor: 'move',
+				moveId: request.moveId,
+				role: 'in',
+				peer: request.from,
+				blocks: Object.keys(ids).length
+			});
+			return { moveId: request.moveId, status: 'applied', ids };
+		});
+	}
+
+	/**
+	 * Commit a move (`room.move`, step 3), with the destination's
+	 * acknowledgement: delete the exported blocks with their subtrees, as
+	 * one room transaction, and watch them for late edits (`room.move.late`)
+	 * for the grace period. Idempotent; `refused` for an unknown or aborted
+	 * move.
+	 */
+	commitMove(moveId: string, receipt: { to: string; ids: Record<string, string> }): CommitResult {
+		return noTimers(() => {
+			const row = this.moveRow(moveId, 'out');
+			if (row === undefined) return { moveId, status: 'refused', reason: 'unknown move' };
+			if (row.state === 'moved' || row.state === 'done') return { moveId, status: 'applied' };
+			if (row.state !== 'exported') return { moveId, status: 'refused', reason: row.state };
+			const roots = JSON.parse(row.roots) as string[];
+			const doc = this.requireDoc();
+			const marker = doc.clientID;
+			const c0 = doc.store.getClock(marker);
+			this.transact((f) => {
+				for (const id of roots)
+					if (f.isVisibleBlock(id)) f.apply(f.prepare.deleteBlock(id, { keepChildren: false }));
+			});
+			const c1 = doc.store.getClock(marker);
+			const watched = this.markedBetween(this.requireDoc(), marker, c0, c1);
+			this.sql.exec(
+				`UPDATE ${this.movesTable} SET state = 'moved', peer = ?, map = ?, marker = ?, c0 = ?, c1 = ?, watched = ?, at = ?, dirty = 1 WHERE id = ? AND role = 'out'`,
+				receipt.to,
+				JSON.stringify(receipt.ids),
+				marker,
+				c0,
+				c1,
+				JSON.stringify(watched),
+				this.clock(),
+				moveId
+			);
+			this.watched = null;
+			this.schedule('forward', this.clock(), 'earlier');
+			this.log({ edytor: 'move', moveId, role: 'out', peer: receipt.to, blocks: roots.length });
+			return { moveId, status: 'applied' };
+		});
+	}
+
+	/** Drop an export that was not committed (`room.move`): the blocks stay. */
+	abortMove(moveId: string): { moveId: string; status: 'applied' | 'noop' } {
+		this.ensureMoves();
+		const row = this.moveRow(moveId, 'out');
+		if (row?.state !== 'exported') return { moveId, status: 'noop' };
+		this.sql.exec(
+			`UPDATE ${this.movesTable} SET state = 'aborted', sent = '[]' WHERE id = ? AND role = 'out'`,
+			moveId
+		);
+		return { moveId, status: 'applied' };
+	}
+
+	/** The late edits waiting to reach their destination (`room.move.late`), oldest first. */
+	lateEdits(): LateEditBatch[] {
+		this.ensureMoves();
+		return this.sql
+			.exec<{
+				move: string;
+				seq: number;
+				edits: string;
+				peer: string | null;
+			}>(
+				`SELECT l.move AS move, l.seq AS seq, l.edits AS edits, m.peer AS peer FROM ${this.lateTable} l JOIN ${this.movesTable} m ON m.id = l.move AND m.role = 'out' ORDER BY l.move, l.seq`
+			)
+			.toArray()
+			.map((row) => ({
+				moveId: row.move,
+				from: this.roomId,
+				...(row.peer === null ? {} : { to: row.peer }),
+				seq: row.seq,
+				edits: JSON.parse(row.edits) as LateEdit[]
+			}));
+	}
+
+	/** The destination applied a move's late edits through `seq`: they are dropped here. */
+	ackLateEdits(moveId: string, seq: number): void {
+		this.ensureMoves();
+		this.sql.exec(`DELETE FROM ${this.lateTable} WHERE move = ? AND seq <= ?`, moveId, seq);
+	}
+
+	/**
+	 * Apply a batch of late edits of a move this room imported
+	 * (`room.move.late`): each block's content and data merged three ways
+	 * into what it holds now (what was written here since stays), as one
+	 * room transaction. Idempotent by sequence number; a block that no
+	 * longer shows is skipped. Returns the last sequence applied.
+	 */
+	applyLateEdits(batch: LateEditBatch): { applied: number; skipped: string[] } {
+		return noTimers(() => {
+			const row = this.moveRow(batch.moveId, 'in');
+			if (row === undefined) return { applied: 0, skipped: batch.edits.map((e) => e.block) };
+			if (row.seq >= batch.seq) return { applied: row.seq, skipped: [] };
+			const skipped: string[] = [];
+			this.transact((f) => {
+				for (const edit of batch.edits) {
+					if (!f.isVisibleBlock(edit.block)) {
+						skipped.push(edit.block);
+						continue;
+					}
+					this.mergeLateEdit(f, edit);
+				}
+			});
+			this.sql.exec(
+				`UPDATE ${this.movesTable} SET seq = ? WHERE id = ? AND role = 'in'`,
+				batch.seq,
+				batch.moveId
+			);
+			return { applied: batch.seq, skipped };
+		});
+	}
+
+	/** One block's late edit, merged into what it holds (inside a room transaction). */
+	private mergeLateEdit(f: EdytorDoc, edit: LateEdit) {
+		const id = edit.block;
+		const dst = unitsOf(
+			f.contentItems(id).map((item) =>
+				item.kind === 'text'
+					? { text: item.text, ...(item.marks === undefined ? {} : { marks: item.marks }) }
+					: {
+							id: item.id,
+							type: item.type,
+							...(item.data === undefined ? {} : { data: item.data })
+						}
+			) as JSONBlock['content']
+		);
+		const merged = threeWay(unitsOf(edit.base.content), unitsOf(edit.src.content), dst);
+		const { p, e, mid } = hunk(dst, merged);
+		const width = (u: (typeof dst)[number]) => (u.text === undefined ? 1 : u.text.length);
+		let at = dst.slice(0, p).reduce((n, u) => n + width(u), 0);
+		const gone = dst.slice(p, e).reduce((n, u) => n + width(u), 0);
+		if (gone > 0) f.apply(f.prepare.deleteText(id, at, gone));
+		for (const item of contentOf(mid)) {
+			if ('text' in item && typeof item.text === 'string') {
+				f.apply(f.prepare.insertText(id, at, item.text, item.marks as Record<string, unknown>));
+				at += item.text.length;
+			} else {
+				const atom = item as { id?: string; type: string; data?: Record<string, unknown> };
+				f.apply(
+					f.prepare.insertInline(id, at, {
+						id: atom.id ?? crypto.randomUUID(),
+						type: atom.type,
+						...(atom.data === undefined ? {} : { data: atom.data })
+					})
+				);
+				at += 1;
+			}
+		}
+		const now = subtreesOf(f.toJSON().children, new Set([id]))[0];
+		const data = (now?.data ?? {}) as Record<string, unknown>;
+		const next = mergeData(edit.base.data, edit.src.data, data);
+		if (JSON.stringify(next) !== JSON.stringify(data)) f.apply(f.prepare.setBlockData(id, next));
+	}
+
+	/** The registry entries carrying a `del.<marker>` mark written between clocks `c0` and `c1`. */
+	private markedBetween(doc: YDoc, marker: number, c0: number, c1: number): string[] {
+		const out: string[] = [];
+		const key = `${DEL_PREFIX}${marker}`;
+		(doc.get(REGISTRY_KEY) as unknown as RegistryNode).forEachAttr((node: unknown, id: string) => {
+			const item = (
+				node as { _map?: Map<string, { id: { client: number; clock: number } }> }
+			)._map?.get(key);
+			if (
+				item !== undefined &&
+				item.id.client === marker &&
+				item.id.clock >= c0 &&
+				item.id.clock < c1
+			)
+				out.push(id);
+		});
+		return out;
+	}
+
+	/** The moved-out blocks watched for late edits (`room.move.late`), by id → their move. */
+	private watchedBlocks(): Map<string, string> {
+		if (this.watched !== null) return this.watched;
+		this.ensureMoves();
+		const out = new Map<string, string>();
+		for (const row of this.sql
+			.exec<{
+				id: string;
+				watched: string;
+			}>(`SELECT id, watched FROM ${this.movesTable} WHERE role = 'out' AND state = 'moved'`)
+			.toArray())
+			for (const id of JSON.parse(row.watched) as string[]) out.set(id, row.id);
+		return (this.watched = out);
+	}
+
+	/** A transaction that changed a watched block marks its move dirty (inside the `update` emit: no doc write). */
+	private noteLateEdits(tr: { changed?: Map<unknown, Set<string | null>> }) {
+		if (this.watched !== null && this.watched.size === 0) return;
+		if (tr?.changed === undefined || this.live === null) return;
+		let watched: Map<string, string> | null = null;
+		const registry = this.live.get(REGISTRY_KEY) as unknown;
+		const dirty = new Set<string>();
+		for (const [type, subs] of tr.changed) {
+			let key: string | null = null;
+			if (type === registry) {
+				for (const sub of subs) {
+					watched ??= this.watchedBlocks();
+					const move = sub === null ? undefined : watched.get(sub);
+					if (move !== undefined) dirty.add(move);
+				}
+				continue;
+			}
+			for (
+				let t = type as { _item: { parent: unknown; parentSub: string | null } | null } | null;
+				t;
+			) {
+				const it = t._item;
+				if (it === null) break;
+				if (it.parent === registry) {
+					key = it.parentSub;
+					break;
+				}
+				t = it.parent as typeof t;
+			}
+			if (key === null) continue;
+			watched ??= this.watchedBlocks();
+			if (watched.size === 0) return;
+			const move = watched.get(key);
+			if (move !== undefined) dirty.add(move);
+		}
+		if (dirty.size === 0) return;
+		for (const move of dirty)
+			this.sql.exec(`UPDATE ${this.movesTable} SET dirty = 1 WHERE id = ? AND role = 'out'`, move);
+		this.schedule('forward', this.clock(), 'earlier');
+	}
+
+	/**
+	 * The `forward` task (`room.move.late`): turn each dirty move's changes
+	 * into a batch of late edits — read on a copy of the document with the
+	 * move's own deletes left out — then forward the waiting batches to
+	 * their destinations (with `rooms`), and stop watching moves past the
+	 * grace period. A forward that fails runs again a minute later.
+	 */
+	private async forwardMoves(): Promise<void> {
+		this.unschedule('forward');
+		this.ensureMoves();
+		const now = this.clock();
+		// Past the grace period: no longer watched.
+		this.sql.exec(
+			`UPDATE ${this.movesTable} SET state = 'done', sent = '[]', watched = '[]' WHERE role = 'out' AND state = 'moved' AND at <= ?`,
+			now - this.graceMs
+		);
+		this.watched = null;
+		const dirty = this.sql
+			.exec<{
+				id: string;
+				roots: string;
+				sent: string;
+				map: string;
+				watched: string;
+				marker: number;
+				c0: number;
+				c1: number;
+				seq: number;
+			}>(
+				`SELECT id, roots, sent, map, watched, marker, c0, c1, seq FROM ${this.movesTable} WHERE role = 'out' AND state = 'moved' AND dirty = 1`
+			)
+			.toArray();
+		if (dirty.length > 0 && this.live !== null) {
+			const children = noTimers(() => this.withoutMoveDeletes(dirty));
+			for (const row of dirty) this.collectLateEdits(row, children);
+		}
+		const rooms = this.options.rooms?.();
+		let retry = false;
+		if (rooms !== undefined) {
+			for (const batch of this.lateEdits()) {
+				if (batch.to === undefined) continue;
+				try {
+					const { applied } = await rooms.getByName(batch.to).applyLateEdits(batch);
+					this.ackLateEdits(batch.moveId, applied);
+				} catch (error) {
+					retry = true;
+					this.note({ reason: 'internal', detail: `move ${batch.moveId}: ${String(error)}` });
+				}
+			}
+		}
+		if (retry) return this.schedule('forward', this.clock() + FORWARD_RETRY, 'earlier');
+		const next = this.sql
+			.exec<{
+				at: number | null;
+			}>(`SELECT MIN(at) AS at FROM ${this.movesTable} WHERE role = 'out' AND state = 'moved'`)
+			.one().at;
+		if (next !== null) this.schedule('forward', next + this.graceMs, 'earlier');
+	}
+
+	/** The document's blocks as they show without the deletes of `moves`' commits: a copy, read once. */
+	private withoutMoveDeletes(
+		moves: readonly { watched: string; marker: number; c0: number; c1: number }[]
+	): JSONBlock[] {
+		const copy = crdt.createDoc();
+		Y.applyUpdateV2(copy, Y.encodeStateAsUpdateV2(this.requireDoc()));
+		const facade = this.facadeOf(copy);
+		try {
+			const registry = copy.get(REGISTRY_KEY) as unknown as RegistryNode;
+			copy.transact(() => {
+				for (const move of moves) {
+					const key = `${DEL_PREFIX}${move.marker}`;
+					for (const id of JSON.parse(move.watched) as string[]) {
+						const node = registry.getAttr(id) as RegistryNode | undefined;
+						const item = (
+							node as unknown as {
+								_map?: Map<string, { deleted: boolean; id: { client: number; clock: number } }>;
+							}
+						)?._map?.get(key);
+						if (
+							item !== undefined &&
+							!item.deleted &&
+							item.id.client === move.marker &&
+							item.id.clock >= move.c0 &&
+							item.id.clock < move.c1
+						)
+							node!.deleteAttr(key);
+					}
+				}
+			});
+			return facade.toJSON().children;
+		} finally {
+			facade.dispose();
+			copy.destroy();
+		}
+	}
+
+	/** One dirty move's changes since its last batch, as a new batch of late edits (or a report). */
+	private collectLateEdits(
+		row: { id: string; roots: string; sent: string; map: string; seq: number },
+		children: JSONBlock[]
+	) {
+		const roots = new Set(JSON.parse(row.roots) as string[]);
+		const now = subtreesOf(children, roots);
+		const sent = flattenMoved(JSON.parse(row.sent) as JSONBlock[]);
+		const cur = flattenMoved(now);
+		const map = JSON.parse(row.map) as Record<string, string>;
+		const same = (a: MovedState, b: MovedState) =>
+			JSON.stringify([a.content, a.data]) === JSON.stringify([b.content, b.data]);
+		const edits: LateEdit[] = [];
+		let structural = 0;
+		for (const [id, base] of sent) {
+			const src = cur.get(id);
+			if (src === undefined) structural++;
+			else if (!same(base, src)) edits.push({ block: map[id] ?? id, base, src });
+		}
+		for (const id of cur.keys()) if (!sent.has(id)) structural++;
+		// A structural late edit (a split, a new or deleted block) stays at the
+		// source, visible there: the move's content edits stop being forwarded.
+		const forwarded = structural === 0 && edits.length > 0;
+		const seq = forwarded ? row.seq + 1 : row.seq;
+		this.ctx.storage.transactionSync(() => {
+			if (forwarded)
+				this.sql.exec(
+					`INSERT INTO ${this.lateTable} (move, seq, edits) VALUES (?, ?, ?)`,
+					row.id,
+					seq,
+					JSON.stringify(edits)
+				);
+			this.sql.exec(
+				`UPDATE ${this.movesTable} SET sent = ?, seq = ?, dirty = 0, state = ? WHERE id = ? AND role = 'out'`,
+				JSON.stringify(now),
+				seq,
+				structural > 0 ? 'diverged' : 'moved',
+				row.id
+			);
+		});
+		if (structural > 0) this.watched = null;
+		if (edits.length > 0 || structural > 0)
+			this.log({ edytor: 'late', moveId: row.id, seq, edits: edits.length, structural, forwarded });
+	}
+
 	// ── Purge (H7) ───────────────────────────────────────────────────────
 
 	/**
@@ -2935,7 +3528,7 @@ export class AttachedDocument {
 		// A failed append relays nothing; the sender's handler rebuilds.
 		// Nothing may throw out of here: the engine would never emit
 		// `update` again (compaction runs later, in `compactIfDue`).
-		doc.on('update', (update: Uint8Array, origin: unknown) => {
+		doc.on('update', (update: Uint8Array, origin: unknown, _doc: unknown, tr: unknown) => {
 			if (this.unstored !== null) return;
 			const editor = this.editorOf(origin);
 			try {
@@ -2953,6 +3546,11 @@ export class AttachedDocument {
 				this.noteChange(origin);
 			} catch (error) {
 				this.unstored = error;
+			}
+			try {
+				this.noteLateEdits(tr as { changed?: Map<unknown, Set<string | null>> });
+			} catch (error) {
+				this.note({ reason: 'internal', detail: `move: ${String(error)}` });
 			}
 		});
 	}
@@ -3443,7 +4041,7 @@ export class AttachedDocument {
 		// A history slot past its end is written as it was, before the frame (H11).
 		this.closeSlotIfPast();
 		// Validation (H2) reads the document as it was, and records the frame.
-		const validation = this.options.validate ? this.validating(doc, ws) : null;
+		const validation = this.validator ? this.validating(doc, ws) : null;
 		// 4 · Schema: the inbound refusal of a foreign stamp (the update's,
 		// or a pending one it would release — discarded, the sender kept).
 		// Integrating persists (the doc's update handler) before the ack.
@@ -3611,7 +4209,7 @@ export class AttachedDocument {
 		let allowed: boolean;
 		try {
 			allowed =
-				this.options.validate!({
+				this.validator!({
 					user: attachment.user,
 					replica: attachment.replica,
 					touched,
@@ -3850,6 +4448,7 @@ export class DocumentRoom<
 		const validates = this.validate !== DocumentRoom.prototype.validate;
 		const semantics = () => this.semantics();
 		const history = () => this.history();
+		const locks = () => this.locks();
 		this.room = new AttachedDocument(ctx, {
 			maxRowBytes: Number(knobs.EDYTOR_MAX_ROW_BYTES),
 			maxFrameBytes: Number(knobs.EDYTOR_MAX_FRAME_BYTES),
@@ -3868,6 +4467,10 @@ export class DocumentRoom<
 			get history() {
 				return history();
 			},
+			get locks() {
+				return locks();
+			},
+			rooms: () => this.rooms(),
 			onLoad: () => this.onLoad(),
 			onSave: saves ? (document) => this.onSave(document) : undefined,
 			validate: validates ? (frame) => this.validate(frame) : undefined,
@@ -3934,6 +4537,24 @@ export class DocumentRoom<
 		};
 	}
 
+	/**
+	 * Per-block locks — see {@link AttachDocumentOptions.locks}. Default: the
+	 * `EDYTOR_LOCKS` var names the data key (`{ key }`); none without it.
+	 * Read once, at the first frame.
+	 */
+	protected locks(): LockOptions | undefined {
+		const key = (this.env as DocumentRoomEnv).EDYTOR_LOCKS;
+		return typeof key === 'string' && key !== '' ? { key } : undefined;
+	}
+
+	/**
+	 * The rooms blocks move to — see {@link AttachDocumentOptions.rooms}.
+	 * Default: the `EDYTOR_ROOMS` binding; none without it.
+	 */
+	protected rooms(): MoveNamespace | undefined {
+		return (this.env as DocumentRoomEnv).EDYTOR_ROOMS;
+	}
+
 	/** The room's clock — see {@link AttachDocumentOptions.now}. */
 	protected now(): number {
 		return Date.now();
@@ -3975,6 +4596,34 @@ export class DocumentRoom<
 	/** The version writes in flight, also over RPC — see {@link AttachedDocument.historyWritten}. */
 	historyWritten(): Promise<void> {
 		return this.room.historyWritten();
+	}
+	/** Export blocks for a move, also over RPC — see {@link AttachedDocument.exportBlocks}. */
+	exportBlocks(ids: string[]): ExportedBlocks {
+		return this.room.exportBlocks(ids);
+	}
+	/** Import a move's blocks, also over RPC — see {@link AttachedDocument.importBlocks}. */
+	importBlocks(request: ImportRequest): ImportReceipt {
+		return this.room.importBlocks(request);
+	}
+	/** Commit a move, also over RPC — see {@link AttachedDocument.commitMove}. */
+	commitMove(moveId: string, receipt: { to: string; ids: Record<string, string> }): CommitResult {
+		return this.room.commitMove(moveId, receipt);
+	}
+	/** Abort an export, also over RPC — see {@link AttachedDocument.abortMove}. */
+	abortMove(moveId: string): { moveId: string; status: 'applied' | 'noop' } {
+		return this.room.abortMove(moveId);
+	}
+	/** The late edits waiting, also over RPC — see {@link AttachedDocument.lateEdits}. */
+	lateEdits(): LateEditBatch[] {
+		return this.room.lateEdits();
+	}
+	/** Drop forwarded late edits, also over RPC — see {@link AttachedDocument.ackLateEdits}. */
+	ackLateEdits(moveId: string, seq: number): void {
+		this.room.ackLateEdits(moveId, seq);
+	}
+	/** Apply late edits, also over RPC — see {@link AttachedDocument.applyLateEdits}. */
+	applyLateEdits(batch: LateEditBatch): { applied: number; skipped: string[] } {
+		return this.room.applyLateEdits(batch);
 	}
 	/** Run the purge task now, also over RPC — see {@link AttachedDocument.purge}. */
 	purge(): (PurgeReport & { horizon: number }) | null {

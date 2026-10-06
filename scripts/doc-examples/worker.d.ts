@@ -6,4 +6,5 @@ interface Env {
 	DOCS: R2Bucket;
 	HISTORY: KVNamespace;
 	VERSIONS: R2Bucket;
+	ROOMS: DurableObjectNamespace;
 }

@@ -60,6 +60,22 @@ export {
 	type R2BucketLike
 } from './history.js';
 export { type PurgeReport } from '../crdt/purge.js';
+export { lockedBlocks, type LockOptions } from './locks.js';
+export {
+	moveBlocks,
+	forwardLateEdits,
+	DEFAULT_MOVE_GRACE_DAYS,
+	type CommitResult,
+	type ExportedBlocks,
+	type ImportReceipt,
+	type ImportRequest,
+	type LateEdit,
+	type LateEditBatch,
+	type MoveDestination,
+	type MovedState,
+	type MoveNamespace,
+	type MoveRoom
+} from './move.js';
 export {
 	routeDocumentSocket,
 	routeDocumentHistory,

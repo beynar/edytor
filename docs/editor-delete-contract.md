@@ -2104,6 +2104,68 @@ undone, replaced by the next restore, or older than the purge horizon; a
 woken room rebuilds the step from the table. One level: a second
 `undoRestore` is a `noop`.
 
+### `room.locks` — per-block locks (H10)
+
+`lockedBlocks({ key = 'lockedBy', subtree = false, bypass })`
+(`cloudflare/locks.ts`) is a `validate` hook (`room.validate.inverse`
+compensates its denials): a block whose data holds a non-empty string user
+under `key` is locked to that user. A frame is denied when, for any block
+it touched, the owner before the frame or after it is another user than
+the sender (so editing, retyping, moving, deleting, unlocking a locked
+block, or locking a block for someone else). With `subtree`, a block's
+owner is its nearest locked ancestor-or-self along `parent` (before and
+after the frame), so children, new children and moves into or out of a
+locked subtree are the owner's; `bypass(user)` admits a user outright. The
+room composes it before `validate` (`locks` option; `DocumentRoom.locks()`,
+default `{ key: EDYTOR_LOCKS }` when that var is set); both must accept.
+Pins: `tests/do/h10-locks.test.ts`, `h2-validation.test.ts` (the plain
+lock, on the helper).
+
+### `room.move` — moving blocks between documents (H10)
+
+Three room calls, each idempotent, run by `moveBlocks(namespace, { from,
+to, ids, dest })` (`cloudflare/move.ts`):
+
+1. `exportBlocks(ids)` at the source: the visible subtrees of `ids` as JSON
+   (outermost only, document order), recorded (`moves` row, role `out`,
+   state `exported`); no document write.
+2. `importBlocks({ moveId, from, blocks, dest })` at the destination: one
+   room transaction inserting them under `dest.parent` at `dest.index`
+   (clamped), each id kept unless the registry holds it (`<id>~<n>`, the
+   receipt's map); recorded (role `in`); a second call returns the same
+   receipt and writes nothing. A parent that does not show refuses it.
+3. `commitMove(moveId, { to, ids })` at the source, only with an applied
+   receipt: one room transaction deleting the roots with their subtrees
+   (`keepChildren: false`); the move records the registry entries whose
+   `del.<room client>` mark that transaction wrote (`watched`: the roots,
+   their descendants and the blocks they display) and the clock range of
+   its marks. A refused import aborts the export (`abortMove`): the source
+   is untouched.
+
+### `room.move.late` — edits that reach the source after a move (H10)
+
+A transaction that changes a watched block (any type under its registry
+entry) marks its move dirty and arms the `forward` task now. The task reads
+the source's document on a copy with the move's own delete marks removed
+(only those of its clock range), compares each moved block's content and
+data with what was last sent, and queues one batch (`late` table, `seq` +
+
+1. of `{ block (destination id), base, src }`. A structural difference (a
+   block of the move missing or new) is reported (log `late`, `structural`)
+   and the move is `diverged`: nothing more is forwarded for it. Batches are
+   forwarded to the destination's `applyLateEdits` by the room itself when it
+   has `rooms()` (`EDYTOR_ROOMS`), retried a minute later on failure, else
+   listed by `lateEdits()` for the host's `forwardLateEdits`, and dropped by
+   `ackLateEdits(moveId, seq)`. The destination applies a batch once (its
+   `seq` recorded), in one room transaction: per block that still shows, the
+   content three ways (`threeWay`: each side's change read as one stretch of
+   units; disjoint stretches both apply, overlapping ones keep the
+   destination's and add the source's new units after it) through the
+   per-stream delete and insert, and data per top-level key (a key the source
+   changed and the destination did not). The source watches a move for the
+   purge horizon (`purgeAfterDays`, default 30); then its state is `done`.
+   Pins: `tests/do/h10-move.test.ts`.
+
 ### `room.purge.timing` — when the room saw a delete (H7)
 
 The room's `purge` task runs at most once a day (armed by the first

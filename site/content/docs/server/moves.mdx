@@ -1,0 +1,93 @@
+---
+title: Moving blocks between documents
+description: Move blocks from one document to another without losing an edit made concurrently, and why a page should be a document of its own.
+icon: arrow-right-left
+---
+
+A block belongs to one document. Moving it to another document is a copy and a delete, and done naively it loses work: someone who typed into the block while it moved, or who was offline and comes back later, writes into a block that no longer shows anywhere. The room moves blocks with a protocol that loses nothing: the destination writes the blocks first, the source deletes them only once the destination acknowledged, and edits that reach the source afterwards follow the blocks.
+
+## A page is a document
+
+Model each page as its own document (one room per page), and a subpage as a block that links to it: an inline block or a block kind of your own whose data holds the page's id (`{ "type": "page-link", "data": { "page": "doc-42" } }`). This is what Notion does, and it is what scales here:
+
+- **Loading and syncing** cost what one page costs, not the whole workspace. A room holds one page's blocks in memory and on its socket.
+- **Permissions** follow pages: [`authorize`](/docs/server/authorization) admits a user to a page, read-only or not, and [per-block locks](/docs/server/extending#per-block-locks) refine it inside one.
+- **History and purge** run per page, on each room's alarm.
+- **Moving a subpage** to another parent is a change of one link block (move it, or delete it here and insert it there): the page itself, its content and its history, does not move.
+
+Move blocks between documents only to move content: a few paragraphs from a draft into a published page, a section split out into a page of its own.
+
+## Move blocks
+
+`moveBlocks` runs the move from your Worker, between two rooms of one Durable Object namespace:
+
+```ts src/worker.ts check
+import { DocumentRoom, moveBlocks, type MoveNamespace } from 'edytor/cloudflare';
+
+export { DocumentRoom };
+
+type Env = { ROOMS: DurableObjectNamespace<DocumentRoom> };
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    // An admin route of yours: authorize the user for both documents first.
+    const { from, to, ids, parent, index } = await request.json<{
+      from: string;
+      to: string;
+      ids: string[];
+      parent: string | null;
+      index: number;
+    }>();
+    const receipt = await moveBlocks(env.ROOMS as unknown as MoveNamespace, {
+      from,
+      to,
+      ids,
+      dest: { parent, index }
+    });
+    return Response.json(receipt); // { moveId, status, ids: { [sourceId]: destinationId } }
+  }
+} satisfies ExportedHandler<Env>;
+```
+
+Three steps, each one call to a room:
+
+1. **Export** (`exportBlocks(ids)` at the source) reads the blocks with their subtrees, data and marks, and records the export. It writes nothing to the document.
+2. **Import** (`importBlocks({ moveId, from, blocks, dest })` at the destination) writes them under `dest.parent` at `dest.index`, as one edit every client of the destination receives. Each block keeps its id unless the destination already holds that id (then `<id>~2`, `<id>~3`, …); the receipt maps each source id to its destination id. Importing the same `moveId` again writes nothing and returns the same receipt.
+3. **Commit** (`commitMove(moveId, { to, ids })` at the source), with that receipt only, deletes the blocks and their subtrees, as one edit every client of the source receives, and starts watching them for late edits. Committing again does nothing.
+
+If the import is refused (its parent does not show) or fails, `moveBlocks` aborts the export (`abortMove`) and the source keeps its blocks. If the commit fails after the import, the blocks are in both documents and `moveBlocks` throws: call `commitMove` again with the same `moveId` (it is idempotent), or delete the imported blocks.
+
+Clients of the source see the blocks disappear, clients of the destination see them appear, each as an ordinary edit (undo does not undo a move: it is the room's edit, not theirs).
+
+## Late edits
+
+An edit can reach the source after the commit: from a client that was offline during the move, or one made between the export and the commit. The source keeps it (it lands in the deleted blocks, so it shows nowhere there) and turns it into a **late edit**: for each moved block whose text or data changed, its state last sent and its state now. The destination merges each one into the block as it is now, three ways: what the source's edit changed is applied where it changed, and what was written at the destination since stays. Text both changed in the same place keeps both insertions; a deletion that overlaps the destination's own edit is dropped.
+
+Late edits travel by sequence number and are applied once each:
+
+- **With `rooms()`** (or the `EDYTOR_ROOMS` binding: the namespace of the destination rooms, usually the room's own), the source forwards them itself, on its alarm, right after they arrive, and retries a minute later if the destination does not answer.
+- **Without it**, they wait at the source: `lateEdits()` lists them, and `forwardLateEdits(namespace, from)` (from your Worker, on a schedule or after a move) sends them and acknowledges them (`ackLateEdits`).
+
+```ts src/room.ts check
+import { DocumentRoom, type MoveNamespace } from 'edytor/cloudflare';
+
+export class Room extends DocumentRoom<Env> {
+  protected override rooms(): MoveNamespace {
+    return this.env.ROOMS as unknown as MoveNamespace; // the namespace this class is bound to
+  }
+}
+```
+
+The source watches moved blocks for a **grace period**: the [purge horizon](/docs/server/history#the-purge) (30 days by default), after which the deleted blocks' content is purged anyway. An edit arriving later stays in the source's deleted blocks until the purge removes it, as any edit to a deleted block does.
+
+### Limits
+
+- **Structural late edits are not forwarded.** A split of a moved block, a block added under it or deleted, made at the source after the move, is reported (a `late` log entry with `structural`) and stays at the source, where it shows (a block whose parent was deleted takes its place). The move stops forwarding that move's edits, since its blocks no longer match. Move the block again, or copy the text by hand.
+- **Late edits are read on a copy.** To read what a late edit did to deleted blocks, the source loads a copy of its document, once per batch: a cost proportional to the document, paid only when a late edit arrives.
+- **One stretch per block and side.** The merge reads each side's change as one stretch of the block's text (from its first to its last difference): two distant edits on one side are merged as one stretch.
+- **Ids.** A block keeps its id in the destination unless the destination holds it; links and comments that name a renamed block need the receipt's map.
+- **Attribution and history** do not move: the destination's blocks are written by the room, and the source's version history keeps the blocks as they were.
+
+## Log
+
+Each move logs `{ "edytor": "move", "moveId", "role": "out" | "in", "peer", "blocks" }` in both rooms, and each batch of late edits `{ "edytor": "late", "moveId", "seq", "edits", "structural", "forwarded" }` at the source. The moves live in two tables beside the document's, `moves` and `late` (`edytor_moves`, `edytor_late` with `attachDocument`).

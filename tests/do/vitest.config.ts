@@ -26,6 +26,7 @@ export default defineConfig({
 					FIELDS: { className: 'FieldRoom', useSQLite: true },
 					QUOTA: { className: 'QuotaRoom', useSQLite: true },
 					LOCKED: { className: 'LockedRoom', useSQLite: true },
+					MOVES: { className: 'MoveRoom', useSQLite: true },
 					TIMED: { className: 'TimedRoom', useSQLite: true },
 					// The site's demo room class (site/room), its history in a real (Miniflare) KV.
 					DEMO: { className: 'DemoRoom', useSQLite: true }

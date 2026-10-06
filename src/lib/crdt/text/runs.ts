@@ -1879,6 +1879,10 @@ export const bindRuns = (Y: EngineApi) => {
 
 		/** {@link indexChecks}: every incrementally maintained fact equals its rebuild. */
 		const check = (): void => {
+			// A queued transaction whose writes this fold has not seen yet
+			// (a follow-up a cleanup started): the index lags it until its
+			// own fold, so there is nothing to compare yet.
+			if (unfolded()) return;
 			const fail = (what: string): never => {
 				throw new Error(`[edytor index] ${what} differs from its rebuild`);
 			};
@@ -2008,6 +2012,15 @@ export const bindRuns = (Y: EngineApi) => {
 		const syncAll = (): void => {
 			for (const tr of queuedTransactions(doc) as Tx[]) if (!committed.has(tr)) syncPending(tr);
 		};
+		/** Some queued transaction holds writes no fold has seen. */
+		const unfolded = (): boolean =>
+			(queuedTransactions(doc) as Tx[]).some(
+				(tr) =>
+					!committed.has(tr) &&
+					tr.insertSet !== undefined &&
+					tr.deleteSet !== undefined &&
+					lengthOf(tr.insertSet) + lengthOf(tr.deleteSet) !== (cursors.get(tr)?.mark ?? 0)
+			);
 
 		/** The commit: fold `transaction.changed` once (the report publishes from `update`). */
 		const onCommit = (e: EngineDeepEvent): void => {
@@ -2222,6 +2235,11 @@ export const bindRuns = (Y: EngineApi) => {
 		/** Build the commit's report and advance the published index to it. */
 		const report = (): IndexReport | null => {
 			const before = published!;
+			// Fold every queued transaction first: a follow-up a cleanup
+			// started (a delete-mark repair) has already written, and the
+			// first content read below would fold it mid-report, after the
+			// child lists were read (H7 fuzz, rich lane, seeds 651 and 1271).
+			syncAll();
 			ensurePlacements();
 			const r: IndexReport = {
 				added: new Map(),

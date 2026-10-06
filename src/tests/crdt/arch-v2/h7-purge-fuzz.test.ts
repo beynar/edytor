@@ -168,7 +168,12 @@ const client = (
 
 const env = (k: string, d: number) => Number(process.env[k] ?? d);
 
-const campaign = (seed: number, length: number, lane: Lane) => {
+const campaign = (
+	seed: number,
+	length: number,
+	lane: Lane,
+	purge = !process.env.H7_FUZZ_NOPURGE
+) => {
 	// The index checks (`indexChecks`) throw inside the engine's update
 	// emit, which logs and swallows: a logged index error is a failure.
 	const logged: string[] = [];
@@ -179,13 +184,13 @@ const campaign = (seed: number, length: number, lane: Lane) => {
 		else error(...args);
 	};
 	try {
-		return run(seed, length, lane, logged);
+		return run(seed, length, lane, logged, purge);
 	} finally {
 		console.error = error;
 	}
 };
 
-const run = (seed: number, length: number, lane: Lane, logged: string[]) => {
+const run = (seed: number, length: number, lane: Lane, logged: string[], purge: boolean) => {
 	const next = rngOf(seed * 104729);
 	const bytes = seedUpdate(lane.seeds, lane.semantics);
 	const r = simRoom(bytes, lane);
@@ -220,7 +225,7 @@ const run = (seed: number, length: number, lane: Lane, logged: string[]) => {
 			r.tick();
 			trail.push('tick');
 		} else {
-			const report = process.env.H7_FUZZ_NOPURGE ? null : r.purge();
+			const report = purge ? r.purge() : null;
 			trail.push(`purge ${JSON.stringify(report)}`);
 			if (report) {
 				stats.purges++;
@@ -272,4 +277,23 @@ describe('H7 purge fuzz — a relay room purging under random concurrent histori
 			expect(total.marks).toBeGreaterThan(0);
 		});
 	}
+});
+
+/**
+ * Pinned (Phase 4, item 0): the rich lane's seeds 651 and 1271 of the
+ * 2,000-seed campaign at 120 steps, with and without the purge. A remote
+ * commit's cleanup starts a follow-up transaction (the delete marks'
+ * repair, P11) whose writes are in the document before the commit's
+ * report; the report read the child lists, then its first content read
+ * folded the follow-up (read-your-writes) and moved them, so the published
+ * tree differed from its rebuild. The report folds every queued
+ * transaction first.
+ */
+describe('H7 purge fuzz — pinned seeds', () => {
+	for (const seed of [651, 1271])
+		for (const purge of [true, false])
+			it(`rich seed ${seed}, 120 steps, purge ${purge ? 'on' : 'off'}: no index divergence`, () => {
+				const { failures } = campaign(seed, 120, RICH, purge);
+				expect(failures).toEqual([]);
+			});
 });

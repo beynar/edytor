@@ -291,16 +291,17 @@ export const bindProviders = (Y: EngineApi) => {
 			{ disableBc: true }
 		);
 		let socket: InstanceType<typeof ws.WebsocketProvider> | null = null;
-		let timer: ReturnType<typeof setTimeout> | undefined;
+		/** Prefetch's one timer: its deadline (`timeout`), cleared when it closes. */
+		let deadline: ReturnType<typeof setTimeout> | undefined;
 		const close = async () => {
-			clearTimeout(timer);
+			clearTimeout(deadline);
 			socket?.destroy();
 			await local.destroy();
 			doc.destroy();
 		};
 		return new Promise<PrefetchResult>((resolve, reject) => {
 			const fail = (error: unknown) => void close().then(() => reject(error));
-			timer = setTimeout(
+			deadline = setTimeout(
 				() => fail(new Error(`prefetch of ${room} timed out`)),
 				options.timeout ?? 30_000
 			);

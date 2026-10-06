@@ -11,7 +11,7 @@ The `edytor` package has four code entry points and one stylesheet. Only the roo
 | `edytor` | The `<Edytor>` component, bundled plugins, handles, the document API, sync factories | A Svelte bundler (SvelteKit, Vite) |
 | `edytor/crdt/edytor` | The document API and its types, `bindCrdt`, awareness, the wire protocol helpers | Browser, Node 22+, Workers |
 | `edytor/crdt` | The vendored CRDT engine itself (Yjs v14 fork) | Browser, Node 22+, Workers |
-| `edytor/cloudflare` | `DocumentRoom` (a Durable Object), `attachDocument` (for your own Durable Object), `routeDocumentSocket` with `requestedReplica`, and `closedSocket` | Cloudflare Workers only |
+| `edytor/cloudflare` | `DocumentRoom` (a Durable Object), `attachDocument` (for your own Durable Object), `routeDocumentSocket` with `requestedReplica`, `routeDocumentHistory` (the [version history](/docs/server/history)), and `closedSocket` | Cloudflare Workers only |
 | `edytor/themes/notion.css` | The [Notion theme](/docs/customization/styling#notion-theme) stylesheet | Any bundler that imports CSS |
 
 No other path is exported. Imports such as `edytor/dist/...` or `edytor/crdt/vendor/...` fail with `ERR_PACKAGE_PATH_NOT_EXPORTED`.

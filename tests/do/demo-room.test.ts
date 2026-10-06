@@ -7,10 +7,22 @@
  * would redial forever.
  */
 import { env } from 'cloudflare:workers';
+import { runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
+import type { DocumentRoom } from '../../src/lib/cloudflare/index.js';
+import { slotAt, slotEnd } from '../../src/lib/cloudflare/history.js';
 import demo from '../../site/room/src/worker';
 import { demoRoomAt, isOpenDemoRoom } from '../../site/room/src/rooms';
 import { E, SelfWebSocket, crdt } from './client';
+
+declare global {
+	namespace Cloudflare {
+		interface Env {
+			DEMO: DurableObjectNamespace<DocumentRoom>;
+			HISTORY: KVNamespace;
+		}
+	}
+}
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -35,7 +47,11 @@ describe('site demo room', () => {
 });
 
 const DOCS = 'https://docs.edytor.test';
-const demoEnv = { ROOMS: env.ROOM, ALLOWED_ORIGINS: `${DOCS}, https://other-docs.test` };
+const demoEnv = {
+	ROOMS: env.ROOM,
+	HISTORY: env.HISTORY,
+	ALLOWED_ORIGINS: `${DOCS}, https://other-docs.test`
+};
 
 /** The shipped provider dialing the demo Worker from the page at `origin`. */
 const dialDemo = (room: string, origin: string) => {
@@ -124,5 +140,31 @@ describe('FW-16 · the demo refuses a closed room or another origin with a final
 			demoEnv
 		);
 		expect(response.status).toBe(404);
+	});
+});
+
+describe('H11 · the demo room keeps its history in its KV binding', () => {
+	it('a change opens the UTC slot; closing it writes a version the room lists and reads', async () => {
+		const room = `demo-history-${Date.now()}`;
+		const stub = env.DEMO.getByName(room);
+		const due = await runInDurableObject(stub, async (r: DocumentRoom, state) => {
+			r.transact((facade) => facade.insertText(facade.listBlockIds()[0], 0, 'hello'));
+			return state.storage.sql
+				.exec<{ value: number }>("SELECT value FROM meta WHERE key = 'due.history'")
+				.one().value;
+		});
+		const { date, slot } = slotAt(Date.now(), 'UTC');
+		expect(due).toBe(slotEnd(Date.now(), 'UTC'));
+		const listed = await runInDurableObject(stub, async (r: DocumentRoom) => {
+			// The slot's end, now: what the alarm does at UTC noon or midnight.
+			await (r.room as unknown as { closeSlot(): Promise<void> }).closeSlot();
+			return r.listHistory();
+		});
+		const key = `history/${room}/${date}-${slot}`;
+		expect(listed).toMatchObject([{ key, date, slot, blocks: 1, editors: [] }]);
+		const stored = await env.HISTORY.getWithMetadata(key, 'arrayBuffer');
+		expect(stored.value!.byteLength).toBe(listed[0].bytes);
+		const json = await runInDurableObject(stub, (r: DocumentRoom) => r.readHistory(key));
+		expect(json!.children[0].content).toEqual([{ text: 'hello' }]);
 	});
 });

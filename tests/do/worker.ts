@@ -18,7 +18,10 @@ import {
 	attachDocument,
 	closedSocket,
 	requestedReplica,
+	routeDocumentHistory,
 	routeDocumentSocket,
+	type HistoryOptions,
+	type KVLike,
 	type AuthorizeDocumentSocket,
 	type DocumentRoomEnv,
 	type FrameValidation,
@@ -36,6 +39,8 @@ import {
 } from '../../src/lib/crdt/index.js';
 
 export { DocumentRoom };
+// The site's demo room (site/room): its history in the `HISTORY` KV binding.
+export { DocumentRoom as DemoRoom } from '../../site/room/src/worker';
 
 export const LOADED: JSONDoc = {
 	children: [{ id: 'seed', type: 'paragraph', content: [{ text: 'from onLoad' }] }]
@@ -163,6 +168,142 @@ export class LockedRoom extends DocumentRoom<Env> {
 	}
 }
 
+/**
+ * An in-memory KV namespace (the `KVLike` subset) over the object's own
+ * SQLite storage, so it survives an eviction like the real one: KV's
+ * limits (512-byte keys, 25 MiB values, 1,024-byte metadata, a TTL of at
+ * least 60 s) are enforced and expiry follows the room's clock. A row in
+ * `fake_kv_fail` makes the next puts throw.
+ */
+export class FakeKV implements KVLike {
+	constructor(
+		private readonly sql: SqlStorage,
+		private readonly now: () => number
+	) {
+		sql.exec(
+			'CREATE TABLE IF NOT EXISTS fake_kv (key TEXT PRIMARY KEY, value BLOB, expires INTEGER, metadata TEXT, ttl INTEGER)'
+		);
+		sql.exec('CREATE TABLE IF NOT EXISTS fake_kv_fail (n INTEGER)');
+	}
+
+	async put(
+		key: string,
+		value: ArrayBuffer | ArrayBufferView | string,
+		options: { expirationTtl?: number; metadata?: unknown } = {}
+	) {
+		const failing = this.sql.exec<{ n: number }>('SELECT n FROM fake_kv_fail').toArray()[0];
+		if (failing && failing.n > 0) {
+			this.sql.exec('UPDATE fake_kv_fail SET n = n - 1');
+			throw new Error('KV put failed (injected)');
+		}
+		const bytes =
+			typeof value === 'string'
+				? new TextEncoder().encode(value)
+				: value instanceof ArrayBuffer
+					? new Uint8Array(value)
+					: new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+		if (new TextEncoder().encode(key).length > 512) throw new Error('KV key too long');
+		if (bytes.length > 25 * 1024 * 1024) throw new Error('KV value too large');
+		const metadata = options.metadata === undefined ? null : JSON.stringify(options.metadata);
+		if (metadata !== null && new TextEncoder().encode(metadata).length > 1024) {
+			throw new Error('KV metadata too large');
+		}
+		const ttl = options.expirationTtl;
+		if (ttl !== undefined && ttl < 60) throw new Error('KV expirationTtl below 60 s');
+		this.sql.exec(
+			'INSERT OR REPLACE INTO fake_kv (key, value, expires, metadata, ttl) VALUES (?, ?, ?, ?, ?)',
+			key,
+			bytes,
+			ttl === undefined ? null : this.now() + ttl * 1000,
+			metadata,
+			ttl ?? null
+		);
+	}
+
+	private live() {
+		return this.sql
+			.exec<{
+				key: string;
+				value: ArrayBuffer;
+				expires: number | null;
+				metadata: string | null;
+			}>('SELECT key, value, expires, metadata FROM fake_kv ORDER BY key')
+			.toArray()
+			.filter((row) => row.expires === null || row.expires > this.now());
+	}
+
+	async get(key: string, _type: 'arrayBuffer'): Promise<ArrayBuffer | null> {
+		const row = this.live().find((r) => r.key === key);
+		return row ? row.value.slice(0) : null;
+	}
+
+	async list(options: { prefix?: string; cursor?: string; limit?: number } = {}) {
+		const limit = options.limit ?? 2;
+		const all = this.live().filter((r) => r.key.startsWith(options.prefix ?? ''));
+		const from = options.cursor ? Number(options.cursor) : 0;
+		const page = all.slice(from, from + limit);
+		const complete = from + limit >= all.length;
+		return {
+			keys: page.map((r) => ({
+				name: r.key,
+				metadata: r.metadata === null ? undefined : JSON.parse(r.metadata)
+			})),
+			list_complete: complete,
+			cursor: complete ? undefined : String(from + limit)
+		};
+	}
+}
+
+/** The fake clock of a `timed-*` room (`test_clock`), or the real one. */
+export const fakeNow = (sql: SqlStorage): number => {
+	sql.exec('CREATE TABLE IF NOT EXISTS test_clock (now INTEGER)');
+	return sql.exec<{ now: number }>('SELECT now FROM test_clock').toArray()[0]?.now ?? Date.now();
+};
+
+/** Set the fake clock of a `timed-*` room. */
+export const setNow = (sql: SqlStorage, now: number) => {
+	sql.exec('CREATE TABLE IF NOT EXISTS test_clock (now INTEGER)');
+	sql.exec('DELETE FROM test_clock');
+	sql.exec('INSERT INTO test_clock VALUES (?)', now);
+};
+
+/** The time zone a `timed-*` room's name asks for. */
+const zoneOf = (name: string): string =>
+	name.includes('-paris-')
+		? 'Europe/Paris'
+		: name.includes('-ny-')
+			? 'America/New_York'
+			: name.includes('-kolkata-')
+				? 'Asia/Kolkata'
+				: name.includes('-badzone-')
+					? 'Mars/Olympus_Mons'
+					: 'UTC';
+
+/**
+ * Rooms with a fake clock (`timed-*`, Phase 3): history in a {@link FakeKV}
+ * (none for `timed-nohistory-*`), its time zone by name (`-paris-`, `-ny-`,
+ * `-kolkata-`, else UTC), a 600-byte value cap for `timed-cap-*`, purge
+ * after 30 days (the retention). Log entries are kept.
+ */
+export class TimedRoom extends DocumentRoom<Env> {
+	readonly logged: RoomLogEntry[] = [];
+	protected override log(entry: RoomLogEntry) {
+		this.logged.push(entry);
+	}
+	protected override now(): number {
+		return fakeNow(this.ctx.storage.sql);
+	}
+	protected override history(): HistoryOptions | undefined {
+		const name = this.ctx.id.name ?? '';
+		if (name.startsWith('timed-nohistory')) return undefined;
+		return {
+			store: new FakeKV(this.ctx.storage.sql, () => this.now()),
+			timeZone: zoneOf(name),
+			maxValueBytes: name.startsWith('timed-cap') ? 600 : undefined
+		};
+	}
+}
+
 /** Any Durable Object: `attachDocument` installs every handler (rooms `plain-*`). */
 export class PlainObject extends DurableObject<Env> {
 	document = attachDocument(this, { onLoad: () => LOADED });
@@ -203,9 +344,14 @@ export type Env = DocumentRoomEnv & {
 	FIELDS: DurableObjectNamespace<FieldRoom>;
 	QUOTA: DurableObjectNamespace<QuotaRoom>;
 	LOCKED: DurableObjectNamespace<LockedRoom>;
+	TIMED: DurableObjectNamespace<TimedRoom>;
+	DEMO: DurableObjectNamespace<DocumentRoom>;
+	HISTORY: KVNamespace;
 };
 
 export const ROOM_ROUTE = /^\/rooms\/([^/]+)(\/compact)?\/?$/;
+/** `/history/<name>`: the room's version history (`routeDocumentHistory`). */
+export const HISTORY_ROUTE = /^\/history\/([^/]+)\/?$/;
 
 export const authorizeFromQuery: AuthorizeDocumentSocket = (request) => {
 	const query = new URL(request.url).searchParams;
@@ -234,6 +380,17 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 	if (url.pathname.startsWith('/echo/')) {
 		return env.HOST.getByName(url.pathname.slice('/echo/'.length)).fetch(request);
 	}
+	const history = HISTORY_ROUTE.exec(url.pathname);
+	if (history) {
+		const name = roomOf(history[1]);
+		if (name === null) return new Response('invalid document id', { status: 400 });
+		return routeDocumentHistory(
+			request,
+			name.startsWith('timed-') ? env.TIMED : env.ROOM,
+			name,
+			authorizeFromQuery
+		);
+	}
 	const match = ROOM_ROUTE.exec(url.pathname);
 	if (!match) return new Response('not found', { status: 404 });
 	const name = roomOf(match[1]);
@@ -244,6 +401,9 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 	}
 	if (name.startsWith('hooked-')) {
 		return routeDocumentSocket(request, env.HOOKED, name, authorizeFromQuery);
+	}
+	if (name.startsWith('timed-')) {
+		return routeDocumentSocket(request, env.TIMED, name, authorizeFromQuery);
 	}
 	if (name.startsWith('locked-')) {
 		return routeDocumentSocket(request, env.LOCKED, name, authorizeFromQuery);

@@ -25,8 +25,12 @@ export default defineConfig({
 					HOST: { className: 'HostObject', useSQLite: true },
 					FIELDS: { className: 'FieldRoom', useSQLite: true },
 					QUOTA: { className: 'QuotaRoom', useSQLite: true },
-					LOCKED: { className: 'LockedRoom', useSQLite: true }
-				}
+					LOCKED: { className: 'LockedRoom', useSQLite: true },
+					TIMED: { className: 'TimedRoom', useSQLite: true },
+					// The site's demo room class (site/room), its history in a real (Miniflare) KV.
+					DEMO: { className: 'DemoRoom', useSQLite: true }
+				},
+				kvNamespaces: ['HISTORY']
 			}
 		})
 	],

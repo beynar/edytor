@@ -1778,6 +1778,165 @@ decides. `prefetch` (sync a local store once, both ways, then close) and
 keep documents fresh before a device goes offline
 (`require-hydration.test.ts`, `h12-offline.test.ts`).
 
+### `room.alarm.tasks` — one alarm, the earliest due task (Phase 3)
+
+The room has one Durable Object alarm and three tasks on it: `save`
+(`onSave`, `saveAfter` after the first unsaved change; while the rows
+cannot be read, again later, up to 5 minutes), `history` (the open
+half-day slot's end, `room.history.slots`) and `purge` (the daily tick,
+`room.purge.timing`). Each task's due time is stored in the meta table
+(`due.save`, `due.history`, `due.purge`), so a wake knows what is due;
+arming a task keeps an earlier due time (a wake or an edit never pushes a
+pending save back). The alarm runs every task due at its time, each
+re-arms itself or clears its row, then sets the alarm to the earliest due
+time left (none: no alarm). A start that finds a due time already past
+leaves it to the alarm, but a slot past its end is written at once
+(`room.history.slots`). An alarm armed by 0.1.0-next.23 (no due rows)
+counts as a due save at its time. The scheduler is the only writer of the
+alarm (`schedule`, `alarm` in `cloudflare/DocumentRoom.ts`).
+
+### `room.history.slots` — two snapshots a day, only when changed (H11)
+
+With `history` (`{ store, retentionDays = 30, timeZone = 'UTC' }`, a KV
+namespace or any `KVLike`), a date has two slots in `timeZone` (IANA, read
+with `Intl`): `am` covers what the room stores before 12:00, `pm` until
+24:00. A slot opens at the first change the room stores in it (a client
+frame, a `transact`, a restore, a purge), recording each writer's verified
+user (`editors`); it closes at its end, by whichever comes first: the
+alarm at the boundary, the first write after the boundary (its snapshot
+is read before that write applies, so it holds the slot's state exactly),
+or a start that finds it past its end (a room that slept through the
+boundary writes it at wake). Closing writes one KV value; a slot nobody
+changed writes nothing. Key: `history/<room>/<YYYY-MM-DD>-am|pm`, the room
+id percent-encoded (`encodeURIComponent`, so a `/` in an id never shares
+another room's prefix; a key past KV's 512 bytes is refused, logged
+`history`).
+
+### `room.history.value` — what a slot stores (H11)
+
+The value is the room's live state, `liveState` (v2, pending set aside),
+gzip-compressed (`packed`), the bytes a compaction stores. Its KV
+metadata is `{ bytes, blocks, editors, at }` (stored bytes, visible
+blocks, the slot's users, when it was written), kept under KV's 1,024
+bytes by dropping the last editors and counting them (`more`).
+`expirationTtl` = `retentionDays` days. A value over KV's 25 MiB is not
+written: the slot is skipped, logged `history` (`{ key, bytes, limit }`),
+and the next slot tries again. It is never split: KV writes parts one by
+one, so a failure between two would list a version that cannot be read,
+and a compressed state past 25 MiB is beyond the document quota's 64 MiB
+of uncompressed records unless it holds incompressible data, which
+belongs in an upload store. A failed write is logged `history` and the
+slot stays open (retried at the next alarm).
+
+### `room.history.restore` — restore is a forward edit (H11)
+
+`restoreHistory(key, { user })` reads the slot (only this room's keys) and
+makes the visible document equal to it in ONE room transaction
+(`RESTORE_ORIGIN`): stored, relayed, one step of the room's restore
+history. Ids are kept wherever the registry still holds them:
+
+- a snapshot block whose node exists keeps it: its delete and withdraw
+  marks are removed, a merge claim another block holds on it is removed,
+  its type and data are written only where they differ (per leaf);
+- its content, when it differs from the snapshot's: its own merge claims
+  are removed, then its own stream's text is replaced through the
+  per-stream delete and insert, keeping the common prefix and suffix
+  (unchanged text keeps its identity: carets and attribution stay);
+- its place: under its snapshot parent, in the snapshot's order; the
+  longest run of the parent's children already in that order stays, the
+  others get a new placement candidate between their neighbours;
+- a snapshot block the registry no longer holds (purged, possible only
+  when `purgeAfterDays` is shorter than the retention) is created;
+- every other visible block gets the room's delete mark; the document's
+  data is patched to the snapshot's.
+
+A client edit concurrent with the restore merges as any concurrent edit
+(text typed into a block the restore rewrites stays). `user` is recorded
+(the slot's editors, the log), never written as attribution.
+
+### `room.history.undo` — undo of the last restore (H11)
+
+`undoRestore()` writes the history undo of exactly the last restore's
+transaction, as `room.validate.inverse` does: its inserts deleted (blocks
+it created withdrawn, `hist.undo.withdraw`), its deletes restored (text
+by copy where no other writer's mark holds it, P11; marks it removed
+written again), its attr writes reverted (`repairAttrs`). Edits made since
+the restore are kept: it is an undo, not a restore of the earlier state.
+The step's insert and delete sets are stored (table `restore`) and the
+content it deleted is kept from collection (the room document's
+`gcFilter`, installed before any update applies) until the step is
+undone, replaced by the next restore, or older than the purge horizon; a
+woken room rebuilds the step from the table. One level: a second
+`undoRestore` is a `noop`.
+
+### `room.purge.timing` — when the room saw a delete (H7)
+
+The room's `purge` task runs at most once a day (armed by the first
+stored change, re-armed daily while an epoch waits to pass the horizon):
+it records an epoch, the room's state vector and the time (table
+`epochs`), when the document changed since the last one. An item the
+room stored before an epoch's time has a clock below its vector. The
+horizon is the newest epoch at least `purgeAfterDays` old (default: the
+history retention, 30 days without history; `false` turns purging off).
+A deletion's time is the room's storing of the struct that made it: a
+block's oldest live delete (or withdraw) mark, a text delete mark record,
+a placement candidate. Content deleted before the horizon is purged, so
+deleted content goes within two days of passing `purgeAfterDays`; epochs
+older than the horizon are dropped.
+
+### `room.purge.what` — real deletes, written by the room (H7)
+
+The purge is one room transaction (`PURGE_ORIGIN`, tracked by no
+history), relayed like any edit, so every replica applies it and the
+engine collects the content everywhere (`crdt.doc.purge`):
+
+- a block deleted before the horizon (a live `del.*` mark that old, or a
+  hidden withdrawn block whose `wd.*` mark is, holding no claims) is
+  removed — its registry entry deleted, with its attribution record and
+  every claim naming it — when its whole text family (the backing text it
+  owns or streams in, and every block with a stream in that text) is
+  removable and no remaining block is placed under it; the engine then
+  collects its node: attrs, data leaves, placement candidates, claims,
+  backing text;
+- any other block deleted before the horizon keeps its node: its own
+  stream's text is deleted (per stream, boundaries kept, so the stream
+  still delimits and stays hidden), with its data leaves and claims;
+- a text delete mark record older than the horizon is deleted; a
+  restoration record older than it whose copies are all deleted and held
+  by no remaining mark is deleted, and those copies collected;
+- a block whose winning placement candidate is older than the horizon
+  and accepted drops its other candidates (the runner-up);
+- the horizon record, root `horizon`, attr `h` = `{ at, sv }`, written
+  last.
+
+The room then collects what it kept (a restore step past the horizon
+released) and compacts. Only the room writes the `horizon` root: a client
+frame writing or deleting it is stripped (`mark`).
+
+### `room.purge.stale` — a replica older than the horizon reconnects (H7)
+
+A replica offline past the horizon reconnects as any replica, with no
+close code of its own: its update integrates (an item whose parent the
+purge collected integrates as a collected struct, `getMissing`; an item
+inserted into a purged stream lands in that dead stream, hidden; a move
+under a removed block resolves to the root, as for a parent never
+integrated). Its edits to live content are kept; its edits inside content
+deleted before the horizon are dropped on every replica (the room's
+Step2 carries the deletes, the replica applies them). Residuals: a stale
+split of a block deleted past the horizon rescues no text (ST02a's tail
+is purged), and a stale replica's own undo of a step past the horizon,
+made before it heard the horizon, is an edit like any other.
+
+### `hist.purge.horizon` — an undo older than the horizon restores nothing (H7)
+
+When a horizon record arrives, every history on the document drops (and
+releases, P6) each undo or redo step whose inserts all lie below its
+vector: an undo of a step the room stored before the horizon restores
+nothing (`dispatcher.last` is `noop` when nothing else is left to undo,
+`applied` for a newer step). A purge transaction never triggers a
+pending P11 restoration: `react` skips the marks it releases, and drops
+the pending characters no mark holds any more.
+
 ## Transport / evidence
 
 ### `net.delete-only-leak`

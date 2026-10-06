@@ -40,10 +40,10 @@ This `attachDocument` comes from `edytor/cloudflare` and hosts a document in a D
 
 ## What `attachDocument(this, options)` does
 
-- **Storage.** The document lives in the object's SQLite storage, in two tables named `edytor_rows` and `edytor_replicas`, beside your own tables. Every edit is stored there before it is acknowledged, whatever your hooks do. `tablePrefix` changes the prefix.
+- **Storage.** The document lives in the object's SQLite storage, in tables named `edytor_rows`, `edytor_replicas` and `edytor_meta` (with `edytor_epochs`, `edytor_editors` and `edytor_restore` for the [history and the purge](/docs/server/history#storage)), beside your own tables. Every edit is stored there before it is acknowledged, whatever your hooks do. `tablePrefix` changes the prefix.
 - **Sockets.** The document's sockets carry the tag `edytor` (`SOCKET_TAG`). Other sockets of the object are yours.
-- **Handlers.** Each handler your class does not define is installed on the object: `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and `alarm` when you pass `onSave`.
-- **Return value.** An `AttachedDocument` with the same handlers, plus the methods `transact`, `read`, `compact`, `compressed`, `metrics`, `lastUpdated`, `dropWaitingDeletes`, `reset`, `records` and `owns(ws)`, and the fields `facade`, `doc`, `failure`, `refusals`, `refusalCounts`, `presence` and `origin` (see [the room](/docs/server/room#diagnostics)).
+- **Handlers.** Each handler your class does not define is installed on the object: `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and `alarm`, which runs `onSave`, the [history](/docs/server/history) and the [purge](/docs/server/history#the-purge) (not installed only when none applies: no `onSave`, no `history`, `purgeAfterDays: false`).
+- **Return value.** An `AttachedDocument` with the same handlers, plus the methods `transact`, `read`, `compact`, `compressed`, `metrics`, `lastUpdated`, `dropWaitingDeletes`, `reset`, `records`, `owns(ws)`, the [history](/docs/server/history#list-preview-restore)'s `listHistory`, `readHistory`, `restoreHistory`, `undoRestore` and `historyWritten`, and `purge` (the [purge](/docs/server/history#the-purge) task, now), and the fields `facade`, `doc`, `failure`, `refusals`, `refusalCounts`, `presence` and `origin` (see [the room](/docs/server/room#diagnostics)).
 - **RPC.** Durable Object RPC reaches only your class's own methods, not the returned document's. Forward the ones you call from a Worker or an admin route, for example `dropWaitingDeletes() { return this.document.dropWaitingDeletes(); }`.
 
 Call it once, in a field or the constructor.
@@ -67,13 +67,13 @@ export class Workspace extends DurableObject<Env> {
   }
 
   async alarm() {
-    await this.document.alarm(); // runs onSave
+    await this.document.alarm(); // runs onSave, the history's slots, the purge
     // …your own scheduled work
   }
 }
 ```
 
-A Durable Object has one alarm. The document sets it `saveAfter` ms after an unsaved edit, which replaces a time you set earlier. An alarm already pending when the object wakes is kept: the document does not move it, so frequent wakes never push `onSave` back. If your class also uses alarms, re-arm your own schedule from `alarm()`, and call `document.alarm()` from it.
+A Durable Object has one alarm, which the document shares among its tasks: `onSave` (`saveAfter` ms after an unsaved edit), the [history](/docs/server/history)'s half-day slots and the [purge](/docs/server/history#the-purge)'s daily tick. It stores each task's due time and sets the alarm to the earliest, which replaces a time you set earlier. A task already due keeps its time, so frequent edits or wakes never push `onSave` back. If your class also uses alarms, re-arm your own schedule from `alarm()`, and call `document.alarm()` from it.
 
 ## Options
 
@@ -92,8 +92,11 @@ A Durable Object has one alarm. The document sets it `saveAfter` ms after an uns
 | `semantics` | `defaultSemantics` | The block roles server edits obey. See [Block roles on the server](#block-roles-on-the-server). |
 | `validate` | | Asked after each client frame that changed blocks; `false` makes the room undo it. See [Validate edits](#validate-edits). |
 | `log` | `console.log` of JSON | Receives the room's [log entries](/docs/server/room#metrics-and-log); `false` logs nothing. |
+| `history` | | `{ store, retentionDays, timeZone }`: keep two versions a day in a KV namespace. See [History and purge](/docs/server/history). |
+| `purgeAfterDays` | the retention, else `30` | Days after which deleted content is [purged](/docs/server/history#the-purge); `false` never purges. |
+| `now` | `Date.now` | The room's clock (its slots, epochs and alarm read it), for tests. |
 
-`DocumentRoom` reads the same settings from `vars` (`EDYTOR_SAVE_AFTER`, `EDYTOR_COMPACT_AFTER`, …; see [the room](/docs/server/room#settings)) and uses the unprefixed tables `rows` and `replicas`. It takes `semantics` from its `semantics()` method, read at first use, so it may return a field of your subclass.
+`DocumentRoom` reads the same settings from `vars` (`EDYTOR_SAVE_AFTER`, `EDYTOR_COMPACT_AFTER`, …; see [the room](/docs/server/room#settings)) and uses the unprefixed tables `rows`, `replicas` and `meta`. It takes `semantics` from its `semantics()` method and `history` from its `history()` method (the `EDYTOR_HISTORY` KV binding by default), each read at first use, so they may return a field of your subclass; `now()` is its clock.
 
 ## Load
 
@@ -118,7 +121,7 @@ A saved copy can be older than the room's last edits (it is written `saveAfter` 
 
 ## Save
 
-`onSave({ value, update, replicas })` runs `saveAfter` ms after the first edit it has not saved (a stored [waiting delete](/docs/server/room#storage) counts), on the object's alarm, so it does not keep the object from hibernating. If it throws, the platform retries the alarm with backoff. If the alarm fires while the room cannot read its rows (a storage fault), it reads them again first; if that fails too, the save stays due and the alarm is set again, backing off up to 5 minutes, so `onSave` runs once the room recovers. Without `onSave`, no alarm is ever set.
+`onSave({ value, update, replicas })` runs `saveAfter` ms after the first edit it has not saved (a stored [waiting delete](/docs/server/room#storage) counts), on the object's alarm, so it does not keep the object from hibernating. If it throws, the save stays due and the platform retries the alarm with backoff. If the alarm fires while the room cannot read its rows (a storage fault), it reads them again first; if that fails too, the save stays due and the alarm is set again, backing off up to 5 minutes, so `onSave` runs once the room recovers. The same alarm runs the [history and the purge](/docs/server/history#the-rooms-alarm).
 
 | Field | Content |
 | --- | --- |
@@ -312,4 +315,4 @@ export class Room extends DocumentRoom<Env> {
 }
 ```
 
-Bind and migrate the subclass by its own class name (`"class_name": "Room"`, `"new_sqlite_classes": ["Room"]`). If it defines `alarm()`, call `await super.alarm()` from it. Override `protected validate(frame)` to [validate edits](#validate-edits). `transact`, `read`, `compact`, `metrics`, `compressed`, `lastUpdated`, `dropWaitingDeletes` and `reset` are methods of the room itself, so RPC reaches them without forwarding.
+Bind and migrate the subclass by its own class name (`"class_name": "Room"`, `"new_sqlite_classes": ["Room"]`). If it defines `alarm()`, call `await super.alarm()` from it. Override `protected validate(frame)` to [validate edits](#validate-edits), and `protected history()` to keep a [history](/docs/server/history). `transact`, `read`, `compact`, `metrics`, `compressed`, `lastUpdated`, `dropWaitingDeletes`, `reset`, `listHistory`, `readHistory`, `restoreHistory`, `undoRestore`, `historyWritten` and `purge` are methods of the room itself, so RPC reaches them without forwarding.

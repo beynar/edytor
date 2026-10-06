@@ -4,7 +4,7 @@ description: What the DocumentRoom Durable Object enforces, how it stores and ac
 icon: server
 ---
 
-`DocumentRoom` is a Durable Object that coordinates one document: deploy one object per document, reached through [`routeDocumentSocket`](/docs/server/authorization). Everything on this page also holds for a document attached to your own Durable Object with [`attachDocument`](/docs/server/extending); only its table names differ (`edytor_rows`, `edytor_replicas`, `edytor_meta`). This page describes what the room checks on every message, how it stores the document, and the settings and limits you can tune.
+`DocumentRoom` is a Durable Object that coordinates one document: deploy one object per document, reached through [`routeDocumentSocket`](/docs/server/authorization). Everything on this page also holds for a document attached to your own Durable Object with [`attachDocument`](/docs/server/extending); only its table names differ (`edytor_rows`, `edytor_replicas`, `edytor_meta`, and `edytor_epochs`, `edytor_editors`, `edytor_restore` for the [history and the purge](/docs/server/history)). This page describes what the room checks on every message, how it stores the document, and the settings and limits you can tune.
 
 ## One room per document
 
@@ -45,6 +45,7 @@ The room stores the document in its own SQLite tables:
 - Memory never runs ahead of storage. If an append fails, nothing is relayed or acknowledged, the live document is rebuilt from the stored rows as a restart would, and the sender's socket is closed with `1011`. Its provider reconnects and the handshake resends the edit. If the append of the room's own edit fails ([`transact`](/docs/server/extending#edit-on-the-server)), `transact` throws the storage error and the edit is lost: nothing resends it. The room rebuilds from its rows too, but unlike after a client's failed append it keeps the updates it holds waiting for a missing dependency. A rebuild replaces the room's `doc` and `facade`. If reading the rows fails, during that rebuild or when the room starts, it has no document until a dial reads them again: sockets are closed with `1011` (`room unavailable`), their providers redial, and each dial retries the read.
 - A woken room rebuilds the document from its rows before it accepts any message. A room whose rows read but cannot be restored (another edytor generation, a torn record) refuses every socket with `1008` and reason `refused: container`, and the object keeps answering. See [generation cutover](#generation-cutover).
 - The client-id registrations used for [identity](/docs/server/authorization#replicas) are stored next to the document, and handed to [`onSave`](/docs/server/extending#save) with it. Compaction drops the registrations of ids that hold no content and belong to no open socket (a page that loaded and never wrote); such an id registers again at its next dial or write.
+- Deleted content is kept for undo and for edits made concurrently elsewhere, then purged: content deleted more than 30 days ago (`EDYTOR_PURGE_AFTER_DAYS`) is removed from the rows and from every client by the room's own edit. A version history in KV (two versions a day) keeps those 30 days restorable. See [History and purge](/docs/server/history).
 
 ## Store before acknowledge
 
@@ -94,6 +95,11 @@ Set these as `vars` in `wrangler.jsonc`. All are optional.
 | `EDYTOR_MAX_UPDATES_PER_SECOND` | 50 | The update rate [quota](#quotas), per socket. Can be raised. |
 | `EDYTOR_MAX_INBOUND_FRAME_BYTES` | 67,108,864 (64 MiB) | The frame [quota](#quotas). Can be raised. |
 | `EDYTOR_LOG` | | `off` silences the room's [log](#metrics-and-log). |
+| `EDYTOR_PURGE_AFTER_DAYS` | the retention, else 30 | Days after which deleted content is [purged](/docs/server/history#the-purge); `off` never purges. |
+| `EDYTOR_HISTORY_RETENTION_DAYS` | 30 | Days a [version](/docs/server/history) is kept. |
+| `EDYTOR_HISTORY_TIME_ZONE` | `UTC` | The IANA time zone of the history's half-day slots. |
+
+The [history](/docs/server/history) itself is a KV binding, `EDYTOR_HISTORY`, not a variable.
 
 ```jsonc wrangler.jsonc
 {
@@ -121,7 +127,7 @@ const { ranges } = await env.ROOMS.getByName(documentId).dropWaitingDeletes();
 
 ## Diagnostics
 
-`refusals` holds the newest 100 refusals (`MAX_REFUSALS`) of the running instance, each with its `reason` and `detail`; `refusalCounts` counts every refusal by reason. Both live in memory and restart empty; read them inside the object, or return them from an RPC method of your own. A `storage` entry is a failed append, compaction or registration, an `internal` entry an error of the engine or a send, a `waiting` entry the deletes of unheld items a frame carried past `MAX_WAITING_DELETES` (`{ user, ranges }`; the rest of the frame applied), a `quota` entry a write past a [quota](#quotas) (`{ user, quota, … }`; the socket closed `4413`), and a `mark` entry another writer's per-writer block marks a frame wrote or deleted (`{ user, writers, ranges }`, stripped). `denied` is not a refusal either: a frame [`validate`](/docs/server/extending#validate-edits) denied (`{ user, touched }`), undone by the room. Two entries are not refusals: `orphan` is an unowned id claimed by its dial (after a [restore without a registry](/docs/server/extending#load), or a relay), and `relayed` is content under an id the room held nothing of, delivered by another replica and kept unowned (see [replicas](/docs/server/authorization#replicas)).
+`refusals` holds the newest 100 refusals (`MAX_REFUSALS`) of the running instance, each with its `reason` and `detail`; `refusalCounts` counts every refusal by reason. Both live in memory and restart empty; read them inside the object, or return them from an RPC method of your own. A `storage` entry is a failed append, compaction or registration, an `internal` entry an error of the engine or a send, a `waiting` entry the deletes of unheld items a frame carried past `MAX_WAITING_DELETES` (`{ user, ranges }`; the rest of the frame applied), a `quota` entry a write past a [quota](#quotas) (`{ user, quota, … }`; the socket closed `4413`), and a `mark` entry another writer's per-writer block marks a frame wrote or deleted (`{ user, writers, ranges }`, stripped). `denied` is not a refusal either: a frame [`validate`](/docs/server/extending#validate-edits) denied (`{ user, touched }`), undone by the room. A `history` entry is a [version](/docs/server/history) the room skipped (`{ key, bytes, limit }` past KV's 25 MiB, `{ key, error }` when KV failed) or a time zone it does not know. Two entries are not refusals: `orphan` is an unowned id claimed by its dial (after a [restore without a registry](/docs/server/extending#load), or a relay), and `relayed` is content under an id the room held nothing of, delivered by another replica and kept unowned (see [replicas](/docs/server/authorization#replicas)).
 
 ## Metrics and log
 
@@ -139,6 +145,8 @@ const { ranges } = await env.ROOMS.getByName(documentId).dropWaitingDeletes();
 | `fanOut` | Frames sent to other sockets (`messages`, a chunk counting as one) and their `bytes`. |
 | `quotaHits`, `validationDenials` | Writes refused by a [quota](#quotas), frames [`validate`](/docs/server/extending#validate-edits) denied. |
 | `refusals` | Every refusal by reason (as `refusalCounts`). |
+| `history` | [Versions](/docs/server/history) written and skipped, and the last key written. |
+| `purge` | [Purges](/docs/server/history#the-purge) run, the last horizon purged, and what they deleted (`removed`, `emptied`, `marks`, `records`, `candidates`, `claims`). |
 | `since` | When the instance started. |
 
 ```ts
@@ -149,7 +157,7 @@ const metrics = await env.ROOMS.getByName(documentId).metrics();
 
 Times are what the runtime's clock reports. Workers advance the clock only across I/O, so synchronous work such as a compaction often reads `0` ms in production; sizes and counts are exact.
 
-The room also logs one JSON line per compaction (`{ "edytor": "compaction", "ms", "bytes", "records", "rows" }`), quota hit (`{ "edytor": "quota", "user", "quota" }`), denial (`{ "edytor": "denied", "user", "touched" }`) and fault (`{ "edytor": "fault", "reason", "detail" }`), with `console.log`, which [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/) and `wrangler tail` collect. Set `EDYTOR_LOG` to `off` to silence it, override `protected log(entry)` in a `DocumentRoom` subclass to send entries elsewhere, or pass `log` to `attachDocument` (`false` for none).
+The room also logs one JSON line per compaction (`{ "edytor": "compaction", "ms", "bytes", "records", "rows" }`), quota hit (`{ "edytor": "quota", "user", "quota" }`), denial (`{ "edytor": "denied", "user", "touched" }`), fault (`{ "edytor": "fault", "reason", "detail" }`), version written (`{ "edytor": "history", … }`), restore (`{ "edytor": "restore", … }`) and purge (`{ "edytor": "purge", … }`; see [History and purge](/docs/server/history#metrics-and-log)), with `console.log`, which [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/) and `wrangler tail` collect. Set `EDYTOR_LOG` to `off` to silence it, override `protected log(entry)` in a `DocumentRoom` subclass to send entries elsewhere, or pass `log` to `attachDocument` (`false` for none).
 
 ## Generation cutover
 
@@ -157,7 +165,7 @@ A room refuses storage written by another edytor generation (see [migration](/do
 
 1. Before deploying the new version, make sure `onSave` has mirrored the document as JSON (`value`).
 2. Deploy. Rooms of the old generation refuse every socket (`1008`, `refused: container`); `failure` is a `GenerationMismatchError`.
-3. Call `reset()` on the room, for example from an admin route. It deletes both tables in one transaction and starts again from `onLoad`.
+3. Call `reset()` on the room, for example from an admin route. It deletes the document's tables in one transaction and starts again from `onLoad`.
 4. Have `onLoad` return the saved JSON. The room seeds it as the new generation's document.
 
 ```ts
@@ -173,5 +181,6 @@ await env.ROOMS.getByName(documentId).reset();
 - **Presence** refills over up to 15 seconds after the room wakes.
 - **One document per room.** Rooms do not share state; listing, searching or aggregating documents is up to your application.
 - **No auth rules ship with it.** `authorize` is yours; see [Authorization](/docs/server/authorization).
+- **Deleted content goes after 30 days** (`EDYTOR_PURGE_AFTER_DAYS`), from the room and every client; a version or an undo brings it back within them. See [History and purge](/docs/server/history).
 
 For the frame format, or to write a room of your own, see [the protocol](/docs/server/protocol).

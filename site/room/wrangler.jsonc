@@ -9,6 +9,8 @@
 		"bindings": [{ "name": "ROOMS", "class_name": "DocumentRoom" }]
 	},
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["DocumentRoom"] }],
+	// The rooms' version history (H11): two versions a day, kept 30 days.
+	"kv_namespaces": [{ "binding": "HISTORY", "id": "fecd8d9e405641b98ef763bb6056af08" }],
 	"vars": {
 		// Origins allowed to open a socket, besides localhost.
 		"ALLOWED_ORIGINS": "https://edytor.dev,https://edytor-docs.beynar.workers.dev"

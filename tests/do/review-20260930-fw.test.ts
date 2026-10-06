@@ -225,8 +225,9 @@ describe('FW-11 · an alarm during a retryable failure keeps the save due', () =
 		});
 		expect(await runDurableObjectAlarm(hooked(room))).toBe(true);
 		expect(await mirrored(room)).toEqual(['ada: from onLoad']);
-		// Nothing is left due.
-		expect(await runDurableObjectAlarm(hooked(room))).toBe(false);
+		// No save is left due: the alarm left is the daily purge tick (H7, `room.alarm.tasks`).
+		const alarm = await inHooked(room, (_r, state) => state.storage.getAlarm());
+		expect(alarm).toBeGreaterThan(Date.now() + 23 * 3600_000);
 		ada.destroy();
 	});
 });

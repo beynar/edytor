@@ -37,6 +37,15 @@ export const RESTORED_ROOT = 'restored';
  */
 export const DOC_DATA_ROOT = 'docdata';
 
+/**
+ * The purge horizon (H7): attr {@link HORIZON_ATTR} holds `{ at, sv }`, the
+ * time and state vector of the room's epoch before which it purged deleted
+ * content. Written only by the room's purge (a client's write is stripped);
+ * histories drop the steps below it (`hist.purge.horizon`).
+ */
+export const HORIZON_ROOT = 'horizon';
+export const HORIZON_ATTR = 'h';
+
 /** Named node roles (`SCHEMA.nodes`). */
 export const BLOCK_NODE = 'block';
 export const CONTENT_NODE = 'content';

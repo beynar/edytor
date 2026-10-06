@@ -656,6 +656,24 @@ export const bindText = (Y: EngineApi) => {
 			plain(r.text, () => r.text.format(r.a, r.b - r.a, formats));
 	};
 
+	/**
+	 * Delete the content of streams `streams` (H7, the room's purge of a
+	 * block deleted past the horizon): every piece, so no boundary goes and
+	 * each stream still delimits, renderer-free, writing no delete mark.
+	 * Streams of one text are deleted from its end, so the indices the
+	 * caller read stay valid.
+	 */
+	const purgeStreams = (streams: readonly Stream[]): void => {
+		const ordered = [...streams].sort((a, b) => b.start - a.start);
+		for (const s of ordered) {
+			const parts = pieces(s).filter(([a, b]) => b > a);
+			for (let i = parts.length - 1; i >= 0; i--) {
+				const [a, b] = parts[i];
+				plain(s.text, () => s.text.delete(a, b - a));
+			}
+		}
+	};
+
 	/** The inline atom `inlineId` in `b`'s display: its text, engine index and node. */
 	const findAtom = (own: Ownership, b: BlockId, inlineId: string) => {
 		for (const s of own.display(b) ?? []) {
@@ -778,6 +796,7 @@ export const bindText = (Y: EngineApi) => {
 		insertIntoText,
 		deleteRange,
 		formatRangeIn,
+		purgeStreams,
 		findAtom,
 		splitAt,
 		claimInto,

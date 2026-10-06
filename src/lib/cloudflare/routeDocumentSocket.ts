@@ -20,7 +20,14 @@
  * `403` as an HTTP status.
  */
 import { CLOSE, validRoomId } from '../crdt/providers/room.js';
-import { IDENTITY_HEADERS, PROBE_HEADER, closedSocket, parseReplica } from './DocumentRoom.js';
+import {
+	HISTORY_HEADER,
+	HISTORY_KEY_HEADER,
+	IDENTITY_HEADERS,
+	PROBE_HEADER,
+	closedSocket,
+	parseReplica
+} from './DocumentRoom.js';
 
 /** A namespace whose objects host a document (`DocumentRoom`, or any object with `attachDocument`). */
 export type DocumentNamespace = {
@@ -70,29 +77,16 @@ const PROBE_STATUS: Record<number, number> = {
 export const requestedReplica = (request: Request, param = 'replica'): number | null =>
 	parseReplica(new URL(request.url).searchParams.get(param));
 
-export async function routeDocumentSocket(
+/**
+ * The host's decision: the verified identity, or `refuse`'s answer to the
+ * dial or request it turns away (one refusal path for every route).
+ */
+const authorized = async (
 	request: Request,
-	rooms: DocumentNamespace,
 	documentId: string,
-	authorize: AuthorizeDocumentSocket
-): Promise<Response> {
-	// The `lastUpdated` probe (H12): a plain GET, authorized like a dial,
-	// answered with JSON (`{ lastUpdated }`) or an HTTP status.
-	const probe =
-		request.method === 'GET' &&
-		request.headers.get('Upgrade') === null &&
-		new URL(request.url).searchParams.has('lastUpdated');
-	if (
-		!probe &&
-		(request.method !== 'GET' || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
-	) {
-		return new Response('WebSocket upgrade required', { status: 426 });
-	}
-	// One refusal path: a dial gets the close the provider reads, a probe its HTTP status.
-	const refuse = (code: number, reason: string): Response =>
-		probe
-			? new Response(reason, { status: PROBE_STATUS[code] ?? 403 })
-			: closedSocket(code, reason);
+	authorize: AuthorizeDocumentSocket,
+	refuse: (code: number, reason: string) => Response
+): Promise<DocumentIdentity | Response> => {
 	if (!validRoomId(documentId)) {
 		return refuse(CLOSE.invalidDocument, 'invalid document id');
 	}
@@ -113,12 +107,101 @@ export async function routeDocumentSocket(
 	) {
 		return refuse(CLOSE.denied, 'document access denied');
 	}
+	return identity;
+};
+
+/** A refusal as an HTTP status (a probe, a history request). */
+const statusOf = (code: number, reason: string): Response =>
+	new Response(reason, { status: PROBE_STATUS[code] ?? 403 });
+
+/** The verified identity as the headers the room trusts. */
+const identityHeaders = (identity: DocumentIdentity): Headers => {
 	const headers = new Headers({
 		[IDENTITY_HEADERS.user]: encodeURIComponent(identity.userId),
 		[IDENTITY_HEADERS.access]: identity.readOnly ? 'read' : 'write'
 	});
+	const replica = identity.replica ?? null;
+	if (replica !== null) headers.set(IDENTITY_HEADERS.replica, String(replica));
+	return headers;
+};
+
+/**
+ * The host Worker's door to a document's version history (H11),
+ * authorized as {@link routeDocumentSocket} authorizes a dial, forwarding
+ * only the verified identity:
+ *
+ * - `GET <url>` → the versions, newest first (`listHistory`), as JSON;
+ * - `GET <url>?key=<key>` → that version as JSON (`readHistory`), `404` when
+ *   the room holds none;
+ * - `POST <url>?restore=<key>` → restore it as a forward edit
+ *   (`restoreHistory`, as the verified user), `404` when the room holds none;
+ * - `POST <url>?undo` → undo the last restore (`undoRestore`).
+ *
+ * A refusal is an HTTP status: `400` (an invalid document id), `401`
+ * (`{ expired: true }`), `403` (denied, or a read-only identity's
+ * restore), `404` (the room keeps no history), `405` (another method).
+ */
+export async function routeDocumentHistory(
+	request: Request,
+	rooms: DocumentNamespace,
+	documentId: string,
+	authorize: AuthorizeDocumentSocket
+): Promise<Response> {
+	const query = new URL(request.url).searchParams;
+	const op =
+		request.method === 'GET'
+			? query.has('key')
+				? 'read'
+				: 'list'
+			: request.method === 'POST'
+				? query.has('restore')
+					? 'restore'
+					: query.has('undo')
+						? 'undo'
+						: null
+				: null;
+	if (op === null) return new Response('method not allowed', { status: 405 });
+	const identity = await authorized(request, documentId, authorize, statusOf);
+	if (identity instanceof Response) return identity;
+	if ((op === 'restore' || op === 'undo') && identity.readOnly) {
+		return new Response('read-only', { status: 403 });
+	}
+	const headers = identityHeaders(identity);
+	headers.set(HISTORY_HEADER, op);
+	const key = op === 'read' ? query.get('key') : op === 'restore' ? query.get('restore') : null;
+	try {
+		if (key !== null) headers.set(HISTORY_KEY_HEADER, key);
+	} catch {
+		return new Response('no such version', { status: 404 }); // no header carries it: no key is one
+	}
+	return rooms.getByName(documentId).fetch(new Request(request.url, { method: 'GET', headers }));
+}
+
+export async function routeDocumentSocket(
+	request: Request,
+	rooms: DocumentNamespace,
+	documentId: string,
+	authorize: AuthorizeDocumentSocket
+): Promise<Response> {
+	// The `lastUpdated` probe (H12): a plain GET, authorized like a dial,
+	// answered with JSON (`{ lastUpdated }`) or an HTTP status.
+	const probe =
+		request.method === 'GET' &&
+		request.headers.get('Upgrade') === null &&
+		new URL(request.url).searchParams.has('lastUpdated');
+	if (
+		!probe &&
+		(request.method !== 'GET' || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
+	) {
+		return new Response('WebSocket upgrade required', { status: 426 });
+	}
+	// One refusal path: a dial gets the close the provider reads, a probe its HTTP status.
+	const refuse = (code: number, reason: string): Response =>
+		probe ? statusOf(code, reason) : closedSocket(code, reason);
+	const identity = await authorized(request, documentId, authorize, refuse);
+	if (identity instanceof Response) return identity;
+	const headers = identityHeaders(identity);
 	if (probe) headers.set(PROBE_HEADER, 'lastUpdated');
 	else headers.set('Upgrade', 'websocket');
-	if (replica !== null) headers.set(IDENTITY_HEADERS.replica, String(replica));
 	return rooms.getByName(documentId).fetch(new Request(request.url, { method: 'GET', headers }));
 }

@@ -29,7 +29,7 @@ interface SqlStorage {
 }
 
 interface DurableObjectState {
-	readonly id: { toString(): string };
+	readonly id: { toString(): string; readonly name?: string };
 	readonly storage: {
 		readonly sql: SqlStorage;
 		transactionSync<T>(closure: () => T): T;

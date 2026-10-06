@@ -1,0 +1,188 @@
+---
+title: History and purge
+description: Keep two versions of each document a day in Cloudflare KV, list, preview and restore them, and how the room purges deleted content after the same retention.
+icon: history
+---
+
+The room can keep a version history of its document in a [Workers KV](https://developers.cloudflare.com/kv/) namespace you bind: two versions a day, kept 30 days. Any version can be previewed as JSON and restored as an ordinary edit, which every client receives and which can be undone. Together with the per-block attribution edytor already keeps (`lastChangedBy`, see [attribution](/docs/reference/document-api#attribution)), this is the history story: who changed a block last, and what the document looked like this morning or yesterday evening.
+
+The room also purges deleted content. Content deleted more than 30 days ago (the history's retention by default) is removed from the room's storage and from every client, so a deleted paragraph does not stay in the document's storage forever. Within those 30 days, a version or an undo still brings it back.
+
+## Bind a KV namespace
+
+Create the namespace, then bind it to the Worker that hosts the room:
+
+```bash
+npx wrangler kv namespace create edytor-history
+```
+
+```jsonc wrangler.jsonc
+{
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "DocumentRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DocumentRoom"] }],
+  "kv_namespaces": [{ "binding": "EDYTOR_HISTORY", "id": "<the namespace id>" }],
+  "vars": { "EDYTOR_HISTORY_TIME_ZONE": "Europe/Paris" }
+}
+```
+
+The ready-made `DocumentRoom` keeps its history in the `EDYTOR_HISTORY` binding when there is one, and none without it. `EDYTOR_HISTORY_RETENTION_DAYS` (30) and `EDYTOR_HISTORY_TIME_ZONE` (`UTC`) tune it. To use another binding, or to decide per room, override `history()`:
+
+```ts src/room.ts check
+import { DocumentRoom, type HistoryOptions } from 'edytor/cloudflare';
+
+export class Room extends DocumentRoom<Env> {
+  protected override history(): HistoryOptions | undefined {
+    return { store: this.env.HISTORY, retentionDays: 30, timeZone: 'Europe/Paris' };
+  }
+}
+```
+
+With `attachDocument`, pass the same object as the `history` option: `attachDocument(this, { history: { store: this.env.HISTORY } })`. `store` is anything with KV's `put`, `get(key, 'arrayBuffer')` and `list({ prefix })` (`KVLike`), so tests can pass an in-memory fake.
+
+## Two versions a day
+
+The day has two slots in the configured time zone (an IANA name such as `Europe/Paris`, read with `Intl`): the morning, before 12:00, and the evening, until midnight. A slot that saw a change gets one version, written at its end:
+
+- at local noon for the morning and local midnight for the evening, by the room's alarm;
+- or, if a client writes first after the boundary, just before that write is applied: the version holds the slot's state exactly;
+- or, if the room slept through the boundary, when it wakes.
+
+A slot nobody changed writes nothing, so a document left alone for a week keeps its last versions and writes no new ones. The editors of a slot are the verified users whose edits the room stored in it (a server [`transact`](/docs/server/extending#edit-on-the-server) has none; a restore counts its restorer). A day with a daylight-saving change has a 13 or 11 hour morning; the slots follow the local clock.
+
+Each version is one KV value:
+
+| | |
+| --- | --- |
+| Key | `history/<room id>/<YYYY-MM-DD>-am` or `-pm`, the room id percent-encoded, the date local. |
+| Value | The document's state, as the room's compaction stores it (the compact v2 encoding, gzip-compressed). |
+| Metadata | `{ bytes, blocks, editors, at }`: its size, its visible blocks, the slot's editors, when it was written. Kept under KV's 1,024 bytes: past it, the last editors are left out and counted in `more`. |
+| Expiry | `expirationTtl` of the retention (30 days). |
+
+A version larger than KV's 25 MiB value limit is not written: the room skips that slot, logs a `history` refusal (`{ key, bytes, limit }`) and writes the next one if it fits. Versions are never split into parts, because KV writes parts one by one and a failure between two would list a version nobody can read; a compressed state that large holds incompressible data (inline images, say), which belongs in an upload store. A KV write that fails is logged the same way, and that slot is skipped.
+
+## List, preview, restore
+
+The room's methods are also callable over Durable Object RPC:
+
+```ts
+const room = env.ROOMS.getByName(documentId);
+const versions = await room.listHistory(); // newest first
+// [{ key, date: '2026-10-06', slot: 'am', bytes, blocks, editors, more, at }, …]
+const preview = await room.readHistory(versions[0].key); // the version as JSON, or null
+const result = await room.restoreHistory(versions[0].key, { user: 'ada' });
+await room.undoRestore(); // the last restore, once
+```
+
+- `listHistory()` reads the keys of this room only (its prefix), with their metadata.
+- `readHistory(key)` returns the version as a [`JSONDoc`](/docs/reference/document-api), for a preview; `null` when this room holds no such version (expired, or another room's key).
+- `restoreHistory(key, { user })` restores it (below) and returns `{ status, key, revived, moved, rewritten, created, deleted }`: `applied`, `noop` (the document already equals it) or `refused` (no such version).
+- `undoRestore({ user })` undoes the last restore: `applied`, or `noop` when there is none to undo.
+- `historyWritten()` resolves once the versions being written are stored (a slot a write closed is written in the background).
+
+A room without history throws from `listHistory`, `readHistory` and `restoreHistory`.
+
+### Over HTTP
+
+`routeDocumentHistory` is the HTTP door to the same methods, authorized as [`routeDocumentSocket`](/docs/server/authorization) authorizes a dial (the same `authorize`, the same refusals, as HTTP statuses):
+
+```ts src/worker.ts check
+import {
+  DocumentRoom,
+  closedSocket,
+  routeDocumentHistory,
+  routeDocumentSocket
+} from 'edytor/cloudflare';
+
+export { DocumentRoom };
+
+type Env = { ROOMS: DurableObjectNamespace<DocumentRoom> };
+
+const authorize = async (request: Request) => {
+  const userId = new URL(request.url).searchParams.get('user'); // check a session instead
+  return userId ? { userId } : null;
+};
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const { pathname } = new URL(request.url);
+    const match = /^\/(?:rooms|history)\/([^/]+)$/.exec(pathname);
+    if (!match) return new Response('not found', { status: 404 });
+    let documentId: string; // percent-encoded, as the provider sends it
+    try {
+      documentId = decodeURIComponent(match[1]);
+    } catch {
+      return closedSocket(4400, 'invalid document id');
+    }
+    if (pathname.startsWith('/history/')) {
+      return routeDocumentHistory(request, env.ROOMS, documentId, authorize);
+    }
+    return routeDocumentSocket(request, env.ROOMS, documentId, authorize);
+  }
+} satisfies ExportedHandler<Env>;
+```
+
+Encode the document id in the URL as the provider does (`encodeURIComponent`), and the key too: `/history/${encodeURIComponent(id)}?key=${encodeURIComponent(key)}`.
+
+| Request | Answer |
+| --- | --- |
+| `GET <url>` | The versions, newest first, as JSON. |
+| `GET <url>?key=<key>` | That version as JSON; `404` when the room holds none. |
+| `POST <url>?restore=<key>` | Restores it as the verified user; `404` when the room holds none. |
+| `POST <url>?undo` | Undoes the last restore. |
+
+A refusal is a status: `400` for an invalid document id, `401` when `authorize` returns `{ expired: true }`, `403` when it denies the request or a read-only identity restores, `404` when the room keeps no history, `405` for another method, `503` when the room cannot serve it.
+
+## What a restore does
+
+A restore is a forward edit, not a reset: the room writes, in one transaction of its own, what makes the visible document equal the version. It is stored and relayed like any edit, so every client sees it at once, and edits made concurrently merge with it as with any edit (text typed into a block the restore rewrites stays). Block ids are kept wherever the document still holds them:
+
+- **A block of the version that still exists** keeps its id. If it was deleted since, it shows again. If it was merged into another block since, it is separated again. Its type and data are written only where they differ.
+- **Its text**, when it differs, is rewritten from the first difference to the last: the unchanged beginning and end of the text keep their identity, so carets and attribution in them stay.
+- **Its place**: under its parent in the version, in the version's order. The blocks already in that order stay where they are; the others move.
+- **A block the version holds that the document no longer has** (purged, possible only when the purge horizon is shorter than the retention) is created.
+- **A block the version does not hold** is deleted.
+- The document's own data is set back to the version's.
+
+`undoRestore()` undoes exactly the restore's transaction, as an undo would: the blocks it deleted show again, the blocks it brought back are deleted, the text it rewrote comes back, and edits made since the restore are kept. Its step is stored with the room, so the undo works after the room slept, until the next restore replaces it or the restore is older than the purge horizon. One level: a second `undoRestore()` is a `noop`. A restore that revived a block someone had deleted, then undone, deletes it again as the room's own delete: that person's own undo of their delete no longer brings the block back (a version does).
+
+## The purge
+
+Deleting in a CRDT keeps what was deleted, for undo and for edits made concurrently elsewhere. The room removes it once it is old enough that neither applies: content deleted more than `purgeAfterDays` ago is purged from the room and from every client. The default is the history's retention (30 days), or 30 days without history.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `purgeAfterDays` (option) or `EDYTOR_PURGE_AFTER_DAYS` (var) | the retention, else 30 | Days after which deleted content is purged. `false` (`off`) never purges. |
+
+What is purged, once deleted that long ago:
+
+- **Deleted blocks.** A deleted block nothing depends on is removed whole: its text, data, placement and attribution. A deleted block that a visible block still depends on (its text holds the text of blocks split from it, or a block another person moved into it while it was being deleted shows in its place) keeps its bare structure; its text and data are purged.
+- **Deleted text.** The record of who deleted which characters (what lets an undo bring them back) is removed, and the deleted characters are collected.
+- **Undone creations.** A block whose creation was undone, and that holds nothing, is removed.
+- **Old placements.** A moved block keeps only the placement it shows at.
+
+The purge is the room's own edit: one transaction, stored and sent to every client, which apply it and collect the content too; a client that loads the document later never receives it. A purged block leaves its id behind as a tombstone (a few bytes): deleting 1,000 of 1,001 blocks and purging them leaves 5.3 KB of stored state for 366 bytes of visible content, from 28.9 KB before the purge.
+
+### When
+
+The room learns when content was deleted from when it stored the deletion. Once a day while the document changes, its alarm records an epoch, the room's state at that time; content whose deletion the room stored before the newest epoch at least `purgeAfterDays` old is purged. A deletion is purged within two days of passing `purgeAfterDays`. The ticks stop once every epoch has passed the horizon, and start again at the next change.
+
+### Undo and clients offline for long
+
+- The purge writes its horizon into the document. Every client's undo history then drops the steps the room stored before it: an undo of such a step restores nothing (`dispatcher.last` is `noop` when nothing newer is left to undo), and an undo of a newer step works as before.
+- A client offline for longer than the horizon reconnects as any client does, with no special close code: its edits to content that still exists are kept, and its edits to content purged meanwhile (text typed into a block deleted 40 days ago, say) are dropped on every replica. A block it moved under a purged block shows at the top level. A split of a block deleted past the horizon keeps no text, and an undo it made offline of a step past the horizon is an edit like any other.
+
+Only the room writes the horizon: a client update that writes it is stripped (logged `mark`).
+
+## The room's alarm
+
+A Durable Object has one alarm. The room runs three tasks on it: [`onSave`](/docs/server/extending#save), the history's slots and the purge's daily tick. Each task's due time is stored with the room, the alarm is set to the earliest one, and when it fires every task due at its time runs, then the alarm is set to the next. A task already due keeps its time, so frequent edits or wakes never push a save back. In your own Durable Object, define `alarm()` only to add work of your own, and call `await this.document.alarm()` from it.
+
+## Metrics and log
+
+[`metrics()`](/docs/server/room#metrics-and-log) has two more fields: `history` (`{ written, skipped, lastKey }`) and `purge` (`{ runs, horizon, removed, emptied, marks, records, candidates, claims }`: purges run, the last horizon purged, and what they deleted). The room logs one JSON line per version written (`{ "edytor": "history", "key", "bytes", "editors" }`), restore and undo (`{ "edytor": "restore", "key", "user", "undo" }`) and purge (`{ "edytor": "purge", "horizon", "bytes", "removed", … }`).
+
+## Storage
+
+The room keeps three more tables beside its rows: `epochs` (the purge's daily state vectors), `editors` (the open slot's editors) and `restore` (the last restore's step); with `attachDocument`, `edytor_epochs`, `edytor_editors` and `edytor_restore`. The due times live in `meta`.

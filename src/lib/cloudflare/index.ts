@@ -20,6 +20,8 @@ export {
 	MAX_REFUSALS,
 	MAX_WAITING_DELETES,
 	ROOM_ORIGIN,
+	RESTORE_ORIGIN,
+	PURGE_ORIGIN,
 	IDENTITY_HEADERS,
 	PROBE_HEADER,
 	noTimers,
@@ -35,10 +37,20 @@ export {
 	type ValidatedBlock,
 	type RoomMetrics,
 	type RoomLogEntry,
+	type RestoreResult,
 	type Timing
 } from './DocumentRoom.js';
 export {
+	DEFAULT_RETENTION_DAYS,
+	HISTORY_MAX_VALUE_BYTES,
+	type HistoryEntry,
+	type HistoryOptions,
+	type KVLike
+} from './history.js';
+export { type PurgeReport } from '../crdt/purge.js';
+export {
 	routeDocumentSocket,
+	routeDocumentHistory,
 	requestedReplica,
 	type AuthorizeDocumentSocket,
 	type ExpiredCredential,

@@ -114,6 +114,7 @@ import {
 	DATA_LEAF_PREFIX,
 	DEL_PREFIX,
 	DOC_DATA_ROOT,
+	HORIZON_ROOT,
 	ID,
 	INLINE_NODE,
 	isNodeLike,
@@ -148,6 +149,8 @@ import {
 	type Anchor
 } from './text/model.js';
 import { bindDeletes } from './text/deletes.js';
+import { bindPurge, readHorizon } from './purge.js';
+import { restoreDocument } from './restore.js';
 import {
 	bindRuns,
 	ENTRY_FACET,
@@ -731,6 +734,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	const M = bindModel(Y);
 	const T = bindText(Y);
 	const D = bindDeletes(Y);
+	const P = bindPurge(Y);
 	/** Each history's release of all its steps (`releaseHistory`). */
 	const releasers = new WeakMap<YUndoManager, () => void>();
 	// U1 — compact per-block attribution writes (`attribution/block.ts`).
@@ -1618,6 +1622,38 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			releasers.set(um, () =>
 				release([...um.undoStack.splice(0), ...um.redoStack.splice(0)] as unknown as UndoStep[])
 			);
+			// H7 (`hist.purge.horizon`): when the room's purge horizon arrives,
+			// every step all of whose inserts the room stored before it is
+			// dropped and released — an undo of it would bring back content
+			// the purge removed. A step that inserted nothing is kept.
+			const horizonRoot = doc.get(HORIZON_ROOT);
+			const pastHorizon = (step: UndoStep, sv: Map<number, number>): boolean => {
+				let any = false;
+				for (const [client, ranges] of step.inserts.clients)
+					for (const r of ranges.getIds()) {
+						any = true;
+						if (r.clock + r.len > (sv.get(client) ?? 0)) return false;
+					}
+				return any;
+			};
+			const prune = (): void => {
+				const horizon = readHorizon(doc);
+				if (horizon === null) return;
+				const sv = Y.decodeStateVector(horizon.sv) as Map<number, number>;
+				const dropped: UndoStep[] = [];
+				for (const stack of [um.undoStack, um.redoStack] as unknown as UndoStep[][]) {
+					const kept = stack.filter((step) => !pastHorizon(step, sv) || !dropped.push(step));
+					stack.splice(0, stack.length, ...kept);
+				}
+				release(dropped);
+			};
+			(
+				doc as unknown as {
+					on(e: string, f: (tr: { changed: Map<unknown, unknown> }) => void): void;
+				}
+			).on('afterTransaction', (tr) => {
+				if (tr.changed.has(horizonRoot)) prune();
+			});
 			// Lineage for undo/redo (O19, F4): the replay displaces the state
 			// every block the popped stack item touches, so each one's subtree
 			// is captured (`force`: lost whoever owns `l`) from the history
@@ -3472,6 +3508,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * what an editing replica keeps.
 		 */
 		keepCopies: (doc: EngineDoc): void => void D.scope(doc),
+		/**
+		 * Purge from `doc` what was deleted before `horizon` (H7,
+		 * `room.purge.what`): real deletes, inside the caller's transaction,
+		 * and the horizon record every history reads (`hist.purge.horizon`).
+		 * The room's purge task runs it; `facade` is a facade over `doc`.
+		 */
+		purge: P.purge,
+		/** The purge horizon `doc` holds, or `null`. */
+		horizonOf: (doc: EngineDoc) => readHorizon(doc),
+		/**
+		 * Make the visible document `doc` equal `json`, keeping the ids the
+		 * registry holds and writing only what differs (H11,
+		 * `room.history.restore`), inside the caller's transaction.
+		 */
+		restoreTo: restoreDocument,
 		/** The bound engine layers (same instances the facades use). */
 		model: M,
 		text: T,

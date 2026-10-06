@@ -47,7 +47,13 @@
 import * as decoding from 'lib0-v14/decoding';
 import * as encoding from 'lib0-v14/encoding';
 import type { EngineApi, EngineDoc, EngineNode, YUndoManager } from '../engine-api.js';
-import { CONTENT_NODE, INLINE_NODE, RESTORED_ROOT, TEXT_DELETES_ROOT } from '../schema.js';
+import {
+	CONTENT_NODE,
+	HORIZON_ROOT,
+	INLINE_NODE,
+	RESTORED_ROOT,
+	TEXT_DELETES_ROOT
+} from '../schema.js';
 import {
 	clientsOf,
 	dropSearchMarkers,
@@ -100,6 +106,8 @@ type State = {
 	doc: EngineDoc & { clientID: number; _transaction: Tr | null };
 	marks: EngineNode;
 	restored: EngineNode;
+	/** The purge horizon's root (H7): a transaction that changes it is a purge. */
+	horizon: EngineNode;
 	/** Marks by root client: the root spans each holds (and by mark key). */
 	held: Map<number, { k: number; n: number; mark: Rec }[]>;
 	holds: Map<string, Span[]>;
@@ -402,6 +410,7 @@ export const bindDeletes = (Y: EngineApi) => {
 			doc: doc as State['doc'],
 			marks: doc.get(TEXT_DELETES_ROOT),
 			restored: doc.get(RESTORED_ROOT),
+			horizon: doc.get(HORIZON_ROOT),
 			held: new Map(),
 			holds: new Map(),
 			copies: new Map(),
@@ -600,6 +609,13 @@ export const bindDeletes = (Y: EngineApi) => {
 	/** After every commit: index its records; after a remote one, keep this replica's facts. */
 	const react = (s: State, tr: Tr): void => {
 		const fresh = sync(s, tr);
+		// A purge (H7) deletes marks past the horizon: nothing comes back for
+		// it, and a pending character only they held stays deleted.
+		if ((tr.changed as Map<unknown, unknown>).has(s.horizon)) {
+			for (const p of s.policies)
+				p.watch = p.watch.filter((w) => holders(s, w).length > 0 || shown(s, [w]).length > 0);
+			return;
+		}
 		if (tr.local || s.policies.size === 0) return;
 		if (fresh.copies.length === 0 && !fresh.released && !watchedDied(s, tr)) return;
 		s.doc.transact((t) => {
@@ -679,6 +695,92 @@ export const bindDeletes = (Y: EngineApi) => {
 						spans.flatMap((sp) => rootSpans(s, sp))
 					)
 				);
+		},
+
+		/**
+		 * Whether every live mark holding a character of `spans` was written
+		 * where `old` says (H7: a withdrawn block's content was deleted
+		 * before the horizon). Characters no mark holds count as old.
+		 */
+		heldBefore: (
+			doc: EngineDoc,
+			spans: readonly Span[],
+			old: (client: number, clock: number) => boolean
+		): boolean => {
+			const s = attach(doc);
+			return spans
+				.flatMap((sp) => rootSpans(s, sp))
+				.every((r) => holders(s, r).every((mark) => old(mark.client, mark.clock)));
+		},
+
+		/**
+		 * The purge's part (H7, `room.purge.what`), inside the purge
+		 * transaction: delete every text delete mark record `old` names, and
+		 * every restoration record `old` names whose copies are all deleted
+		 * and that no remaining mark holds; its copies are forgotten (the
+		 * `gcFilter` no longer keeps them) and collected. Writes no mark.
+		 */
+		purge: (
+			doc: EngineDoc,
+			old: (client: number, clock: number) => boolean
+		): { marks: number; records: number } => {
+			const s = attach(doc);
+			const tr = s.doc._transaction;
+			if (tr === null) throw new Error('purge: outside a transaction');
+			const spans: Span[] = [];
+			let marks = 0;
+			for (
+				let it = (s.marks as unknown as { _start: Unit | null })._start;
+				it;
+				it = it.right as Unit
+			)
+				if (!it.deleted)
+					for (let j = 0; j < it.length; j++) {
+						const r = { client: it.id.client, clock: it.id.clock + j };
+						if (!old(r.client, r.clock)) continue;
+						dropMark(s, r);
+						marks++;
+						const last = spans[spans.length - 1];
+						if (last !== undefined && last.c === r.client && last.k + last.n === r.clock) last.n++;
+						else spans.push({ c: r.client, k: r.clock, n: 1 });
+					}
+			remove(tr, spans);
+			const doomed: { key: string; copies: Copy[] }[] = [];
+			(s.restored as unknown as { _map: Map<string, Unit> })._map.forEach((it, key) => {
+				if (it.deleted || !old(it.id.client, it.id.clock)) return;
+				const [, bytes] = recordsIn(it, null)[0] ?? [];
+				if (bytes === undefined) return;
+				const copies = decode(bytes, 6).map(([k, n, rc, rk, oc, ok]) => ({
+					c: it.id.client,
+					k,
+					n,
+					rc,
+					rk,
+					oc,
+					ok
+				}));
+				const dead = copies.every(
+					(e) =>
+						liveRoots(s, { c: e.c, k: e.k, n: e.n, rk: e.k }).length === 0 &&
+						holders(s, { c: e.rc, k: e.rk, n: e.n }).length === 0
+				);
+				if (dead) doomed.push({ key, copies });
+			});
+			const d = doc as unknown as { gc: boolean; gcFilter: (it: Unit) => boolean };
+			for (const { key, copies } of doomed) {
+				s.restored.deleteAttr(key);
+				const gone = new Set(copies.map((e) => `${e.c}:${e.k}`));
+				const keep = (e: Copy) => !gone.has(`${e.c}:${e.k}`);
+				for (const map of [s.copies, s.byRoot, s.byOrigin])
+					for (const [c, list] of map) map.set(c, list.filter(keep));
+				for (const k of gone) s.copyKeys.delete(k);
+				each(tr, copies, (it) => {
+					const kept = (it as { keep?: boolean }).keep === true;
+					if (d.gc && it.deleted && !kept && d.gcFilter(it))
+						(it as unknown as { gc(tr: unknown, parentGCd: boolean): void }).gc(tr, false);
+				});
+			}
+			return { marks, records: doomed.length };
 		},
 
 		/** The `restoreFilter` and `onApply` options of a history on `doc` (P11). */

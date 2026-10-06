@@ -105,7 +105,23 @@ import {
 	type StorageFormat
 } from '../crdt/protocols/envelope.js';
 import { gunzip, isGzip, packed } from '../crdt/storage.js';
-import { DEL_PREFIX, REGISTRY_KEY, WITHDRAW_PREFIX } from '../crdt/schema.js';
+import { DEL_PREFIX, HORIZON_ROOT, REGISTRY_KEY, WITHDRAW_PREFIX } from '../crdt/schema.js';
+import type { PurgeReport } from '../crdt/purge.js';
+import {
+	DEFAULT_RETENTION_DAYS,
+	HISTORY_MAX_VALUE_BYTES,
+	fitMetadata,
+	historyEntry,
+	historyKey,
+	historyPrefix,
+	parseHistoryKey,
+	slotAt,
+	slotEnd,
+	validTimeZone,
+	type HistoryEntry,
+	type HistoryOptions,
+	type KVLike
+} from './history.js';
 import { ChunkLimitError, ChunkSequenceError, CLOSE } from '../crdt/providers/room.js';
 import type {
 	AwarenessEntry,
@@ -168,6 +184,17 @@ export const MAX_REFUSALS = 100;
  */
 export type ReplicaOwner = { replica: number; user: string };
 
+/** What `restoreHistory` did (`room.history.restore`): `refused` when the room holds no such version. */
+export type RestoreResult = {
+	status: 'applied' | 'noop' | 'refused';
+	key: string;
+	revived?: number;
+	moved?: number;
+	rewritten?: number;
+	created?: number;
+	deleted?: number;
+};
+
 /** The document as `onSave` receives it. */
 export type SavedDocument = {
 	/** The document as JSON. */
@@ -190,6 +217,28 @@ export const PROBE_HEADER = 'X-Edytor-Probe';
 
 /** The transaction origin of the room's own edits (`transact`, `onLoad` seeds). */
 export const ROOM_ORIGIN = Symbol('edytor-room');
+/** The transaction origin of a history restore (H11): the room's restore history tracks it. */
+export const RESTORE_ORIGIN = Symbol('edytor-restore');
+/** The transaction origin of the room's purge (H7): tracked by no history. */
+export const PURGE_ORIGIN = Symbol('edytor-purge');
+/** The header `routeDocumentHistory` sets on an authorized history request (H11). */
+export const HISTORY_HEADER = 'X-Edytor-History';
+/** The version key of a history `read` or `restore` request. */
+export const HISTORY_KEY_HEADER = 'X-Edytor-History-Key';
+
+/** A day, in ms: the purge task's period (H7). */
+const DAY = 86_400_000;
+/** The room's alarm tasks (`room.alarm.tasks`), in the order an alarm runs them. */
+type Task = 'history' | 'save' | 'purge';
+const TASKS: readonly Task[] = ['history', 'save', 'purge'];
+/** The last restore (H11): its step, kept for `undoRestore`. */
+type RestoreStep = {
+	key: string;
+	user: string | null;
+	at: number;
+	inserts: Decoded['ds'];
+	deletes: Decoded['ds'];
+};
 
 /**
  * Headers carrying the identity `routeDocumentSocket` verified — never the
@@ -217,6 +266,17 @@ export type DocumentRoomEnv = {
 	EDYTOR_MAX_UPDATES_PER_SECOND?: string | number;
 	/** `off`: the room logs nothing (default: one JSON line per compaction, quota hit, denial, fault). */
 	EDYTOR_LOG?: string;
+	/**
+	 * Days after which deleted content is purged (H7; default: the history
+	 * retention, else 30); `off` never purges.
+	 */
+	EDYTOR_PURGE_AFTER_DAYS?: string | number;
+	/** A KV namespace binding: the room keeps its version history there (H11, `history()`). */
+	EDYTOR_HISTORY?: KVLike;
+	/** Days a version is kept (default 30). */
+	EDYTOR_HISTORY_RETENTION_DAYS?: string | number;
+	/** The IANA time zone of the history's half-day slots (default `UTC`). */
+	EDYTOR_HISTORY_TIME_ZONE?: string;
 };
 
 /** What a socket is bound to: its verified user, its replica (Yjs client id), its access. */
@@ -256,7 +316,10 @@ export type Refusal = {
 		| 'orphan'
 		// Not a refusal: structs under an id the room held nothing of, delivered by
 		// another replica ({ replica, user }) and stored unowned.
-		| 'relayed';
+		| 'relayed'
+		// A version the history could not write ({ key, bytes, limit } past the
+		// size limit, { key, error } when KV failed, { room } past KV's key limit): skipped.
+		| 'history';
 	detail: unknown;
 };
 
@@ -295,6 +358,10 @@ export type RoomMetrics = {
 	validationDenials: number;
 	/** Every refusal, by reason (as `refusalCounts`). */
 	refusals: Partial<Record<Refusal['reason'], number>>;
+	/** Versions written to the history (H11), skipped (`history` refusals), and the last key written. */
+	history: { written: number; skipped: number; lastKey: string | null };
+	/** Purges run (H7) and what they wrote, summed; the last horizon purged (ms since the epoch). */
+	purge: PurgeReport & { runs: number; horizon: number | null };
 	/** When this instance started (ms since the epoch). */
 	since: number;
 };
@@ -302,6 +369,9 @@ export type RoomMetrics = {
 /** One line of the room's log (H14): a compaction, a quota hit, a denial, a fault. */
 export type RoomLogEntry =
 	| { edytor: 'compaction'; ms: number; bytes: number; records: number; rows: number }
+	| { edytor: 'history'; key: string; bytes: number; editors: number }
+	| { edytor: 'restore'; key: string; user: string | null; undo: boolean }
+	| ({ edytor: 'purge'; horizon: number; bytes: number } & PurgeReport)
 	| { edytor: 'quota'; user: string; quota: string }
 	| { edytor: 'denied'; user: string; touched: number }
 	| { edytor: 'fault'; reason: 'storage' | 'internal'; detail: string };
@@ -759,6 +829,10 @@ const storedPending = (
 };
 
 /** A V1 update carrying only `deletes`. */
+/** Whether two byte strings are equal. */
+const sameBytes = (a: Uint8Array, b: Uint8Array): boolean =>
+	a.length === b.length && a.every((byte, i) => byte === b[i]);
+
 const deletesUpdate = (deletes: Decoded['ds']): Uint8Array => {
 	const encoder = new Y.UpdateEncoderV1();
 	encoding.writeVarUint(encoder.restEncoder, 0); // no structs
@@ -836,18 +910,33 @@ const storedStep2 = (doc: YDoc, sv: Uint8Array): Uint8Array =>
 const liveState = (doc: YDoc): Uint8Array =>
 	withoutPending(doc, () => Y.encodeStateAsUpdateV2(doc));
 
-/** A fresh room document: it keeps what an editing replica keeps (P11). */
-const roomDoc = (): YDoc => {
-	const doc = crdt.createDoc();
+/**
+ * A room document's collection rules, before any update applies: it keeps
+ * what an editing replica keeps (P11), and the content the last restore
+ * deleted while its undo stands (`keep`, `room.history.undo`).
+ */
+const prepareRoomDoc = (doc: YDoc, keep: () => Decoded['ds'] | null): void => {
 	crdt.doc.keepCopies(doc as never);
+	const d = doc as unknown as { gcFilter: (it: Item) => boolean };
+	const gc = d.gcFilter;
+	d.gcFilter = (it) =>
+		gc(it) && !(keep()?.intersects(it.id.client, it.id.clock, it.length) ?? false);
+};
+
+/** A fresh room document (`prepareRoomDoc`'s collection rules). */
+const roomDoc = (keep: () => Decoded['ds'] | null): YDoc => {
+	const doc = crdt.createDoc();
+	prepareRoomDoc(doc, keep);
 	return doc;
 };
 
-/** Admit stored or loaded updates into a room document (`roomDoc`'s collection rules). */
-const admit = (updates: Uint8Array | Array<Uint8Array | { v2: Uint8Array }>, name: string): YDoc =>
-	crdt.admission.admitUpdate(updates, name, {
-		prepare: (doc) => crdt.doc.keepCopies(doc as never)
-	});
+/** Admit stored or loaded updates into a room document (`prepareRoomDoc`'s collection rules). */
+const admit = (
+	updates: Uint8Array | Array<Uint8Array | { v2: Uint8Array }>,
+	name: string,
+	keep: () => Decoded['ds'] | null
+): YDoc =>
+	crdt.admission.admitUpdate(updates, name, { prepare: (doc) => prepareRoomDoc(doc, keep) });
 
 // ── Per-writer marks (H2) ──────────────────────────────────────────
 
@@ -922,10 +1011,16 @@ const isBlockNode = (doc: YDoc, frame: Map<number, Struct[]>, parent: unknown): 
 	return item?.parent === registry && registry !== undefined;
 };
 
+/** Is `parent` (a {@link Place}'s) the purge horizon's root, which only the room writes (H7)? */
+const isHorizon = (doc: YDoc, parent: unknown): boolean =>
+	parent === HORIZON_ROOT ||
+	(parent != null && parent === (doc.share.get(HORIZON_ROOT) as unknown));
+
 /**
  * The clients of a frame (but `skip`) that write a per-writer block mark
  * of another writer: a struct whose key is `del.<n>` or `wd.<n>` on a
  * block node, from a client other than `n` (H2). Only `n` writes its mark.
+ * A struct in the purge horizon's root forges the room's (H7).
  */
 const forgedWriters = (doc: YDoc, structs: Struct[], skip: Set<number>): Set<number> => {
 	const frame = runsOf(structs);
@@ -936,7 +1031,10 @@ const forgedWriters = (doc: YDoc, structs: Struct[], skip: Set<number>): Set<num
 		if (storedStruct(doc, client, clock) !== null) continue;
 		const place = placeOf(doc, frame, struct.id);
 		const writer = markWriter(place?.key);
-		if (writer !== null && writer !== client && isBlockNode(doc, frame, place!.parent)) {
+		if (
+			(place !== null && isHorizon(doc, place.parent)) ||
+			(writer !== null && writer !== client && isBlockNode(doc, frame, place!.parent))
+		) {
 			forged.add(client);
 		}
 	}
@@ -966,11 +1064,14 @@ const forgedDeletes = (
 				const struct = structs[i];
 				if (struct.id.clock >= clock + len) break;
 				if (!(struct instanceof Y.Item) || struct.deleted) continue;
-				const writer = markWriter(struct.parentSub);
-				if (writer === null || mayDelete(writer)) continue;
-				const node = (struct.parent as { _item?: Item | null } | null)?._item;
-				if (!node || node.parent !== registry) continue;
-				if (node.deleted || ds.has(node.id.client, node.id.clock)) continue;
+				// The purge horizon is the room's alone (H7).
+				if (!isHorizon(doc, struct.parent)) {
+					const writer = markWriter(struct.parentSub);
+					if (writer === null || mayDelete(writer)) continue;
+					const node = (struct.parent as { _item?: Item | null } | null)?._item;
+					if (!node || node.parent !== registry) continue;
+					if (node.deleted || ds.has(node.id.client, node.id.clock)) continue;
+				}
 				const from = Math.max(clock, struct.id.clock);
 				forged.add(client, from, Math.min(clock + len, struct.id.clock + struct.length) - from);
 			}
@@ -1115,6 +1216,29 @@ export type AttachDocumentOptions = {
 	 * {@link E.defaultSemantics} (the bundled rich-text, code and image kinds).
 	 */
 	semantics?: DocumentSemanticsConfig;
+	/**
+	 * Version history in KV (H11, `room.history.*`): the room writes its
+	 * state twice a day — the morning's at local noon, the evening's at
+	 * midnight, in `timeZone` — when it changed, for `retentionDays`; read
+	 * and restore them with `listHistory`, `readHistory`, `restoreHistory`
+	 * and `undoRestore` (or `routeDocumentHistory`). Without it, no history.
+	 */
+	history?: HistoryOptions;
+	/**
+	 * Days after which deleted content is purged from the room and every
+	 * replica (H7, `room.purge.*`): default the history's `retentionDays`,
+	 * else 30; `false` never purges.
+	 */
+	purgeAfterDays?: number | false;
+	/** The room's clock, ms since the epoch (default `Date.now`): its slots, epochs and alarm read it. */
+	now?: () => number;
+};
+
+/** `EDYTOR_PURGE_AFTER_DAYS`: `off` (or `false`) never purges; a number of days; anything else the default. */
+const purgeAfterDays = (value: unknown): number | false | undefined => {
+	if (value === 'off' || value === 'false' || value === false) return false;
+	const n = Number(value);
+	return Number.isInteger(n) && n > 0 ? n : undefined;
 };
 
 /** The tag of the document's sockets: other sockets of the object are left to you. */
@@ -1163,6 +1287,17 @@ export class AttachedDocument {
 		compaction: { ...timing(), lastBytes: 0 },
 		fold: timing(),
 		fanOut: { messages: 0, bytes: 0 },
+		history: { written: 0, skipped: 0, lastKey: null as string | null },
+		purge: {
+			runs: 0,
+			horizon: null as number | null,
+			removed: 0,
+			emptied: 0,
+			marks: 0,
+			records: 0,
+			candidates: 0,
+			claims: 0
+		},
 		since: Date.now()
 	};
 	/** The index `validate` reads (built at its first frame, for the live document). */
@@ -1191,14 +1326,36 @@ export class AttachedDocument {
 	private retryable = false;
 	private readonly sql: SqlStorage;
 	private _facade: EdytorDoc | null = null;
-	private saveScheduled = false;
 	/** Alarms in a row that found the rows unreadable: each re-arms later. */
 	private saveRetries = 0;
+	/** Each alarm task's due time (`room.alarm.tasks`), mirrored in the meta table (`due.<task>`). */
+	private dues: Partial<Record<Task, number>> = {};
+	/** The alarm this instance set, or found set at its start (`null`: none). */
+	private armed: number | null = null;
+	/** The room's clock (`now`). */
+	private readonly clock: () => number;
+	/** The verified users the open slot recorded (memory: a wake records them again, `OR IGNORE`). */
+	private readonly slotEditors = new Set<string>();
+	/** Who the room writes for while a restore or its undo runs (the slot's editor). */
+	private writer: string | null = null;
+	/** The last restore's step (`room.history.undo`), read from the `restore` table at load. */
+	private restoreStep: RestoreStep | null = null;
+	/** The history recording restores (`RESTORE_ORIGIN`), on the live facade. */
+	private restoreManager: YUndoManager | null = null;
+	/** The version writes in flight (`historyWritten()`). */
+	private writing: Promise<unknown> = Promise.resolve();
 	private readonly options: AttachDocumentOptions;
 	private readonly rowsTable: string;
 	private readonly replicasTable: string;
 	private readonly metaTable: string;
+	private readonly epochsTable: string;
+	private readonly editorsTable: string;
+	private readonly restoreTable: string;
 	private _lookups: ReturnType<typeof lookups> | null = null;
+	private _history:
+		| (Required<Omit<HistoryOptions, 'store'>> & { store: KVLike })
+		| null
+		| undefined;
 
 	constructor(ctx: DurableObjectState, options: AttachDocumentOptions = {}) {
 		this.ctx = ctx;
@@ -1228,6 +1385,10 @@ export class AttachedDocument {
 		this.rowsTable = `${prefix}rows`;
 		this.replicasTable = `${prefix}replicas`;
 		this.metaTable = `${prefix}meta`;
+		this.epochsTable = `${prefix}epochs`;
+		this.editorsTable = `${prefix}editors`;
+		this.restoreTable = `${prefix}restore`;
+		this.clock = options.now ?? Date.now;
 		// The provider pings a silent socket: answer without waking the object.
 		if (ctx.setWebSocketAutoResponse && !ctx.getWebSocketAutoResponse?.()) {
 			ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING, PONG));
@@ -1241,11 +1402,15 @@ export class AttachedDocument {
 	 */
 	private async start() {
 		try {
-			// A wake keeps a pending save: re-arming it would push `onSave` back at every wake.
-			if (this.options.onSave) this.saveScheduled = (await this.ctx.storage.getAlarm()) !== null;
+			// The alarm already set: a wake keeps every task due (`room.alarm.tasks`).
+			this.armed = await this.ctx.storage.getAlarm();
 			await this.inflate();
 			noTimers(() => this.load());
 			if (this.origin.kind === 'fresh' && this.live !== null) await this.seed();
+			// A slot that ended while the room slept is written now (`room.history.slots`).
+			if (this.live !== null && (this.dues.history ?? Infinity) <= this.clock()) {
+				await this.closeSlot();
+			}
 		} catch (error) {
 			this.fail(error, !(error instanceof TornRecord));
 		}
@@ -1364,6 +1529,7 @@ export class AttachedDocument {
 			}
 			this.heal();
 			const doc = this.requireDoc();
+			this.closeSlotIfPast();
 			if (!crdt.doc.isInitialized(doc as never)) this.facade.seed([]);
 			let result!: T;
 			let thrown = null as { error: unknown } | null;
@@ -1401,25 +1567,48 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * Runs `onSave` — the object's alarm, `saveAfter` ms after the first
-	 * unsaved change. While the rows cannot be read (a retryable failure),
-	 * it starts the room again; if that fails too, the save stays due: the
-	 * alarm is set again, later at each failure (up to 5 minutes), so the
-	 * mirror never silently lags what the room stored.
+	 * The room's one alarm (`room.alarm.tasks`): every task due at its time
+	 * runs — the history slot (`room.history.slots`), `onSave`, the purge
+	 * (`room.purge.timing`) — each re-arming itself or clearing its due
+	 * row; then the alarm is set to the earliest due time left. While the
+	 * rows cannot be read (a retryable failure), it starts the room again;
+	 * if that fails too, the save stays due, later at each failure (up to 5
+	 * minutes), so the mirror never silently lags what the room stored. A
+	 * throw from `onSave` keeps it due and is rethrown (the platform retries).
 	 */
 	async alarm(): Promise<void> {
-		if (!this.options.onSave) return;
+		const at = Math.max(this.clock(), this.armed ?? -Infinity);
+		this.armed = null;
 		await this.retryStart();
 		noTimers(() => this.heal());
-		// Set after `start()`, which reads the alarm this handler is running.
-		this.saveScheduled = false;
+		let failure: { error: unknown } | null = null;
+		for (const task of TASKS) {
+			const due = this.dues[task];
+			if (due === undefined || due > at) continue;
+			try {
+				if (task === 'history') await this.closeSlot();
+				else if (task === 'save') await this.save();
+				else this.tick();
+			} catch (error) {
+				failure ??= { error };
+			}
+		}
+		this.arm();
+		if (failure !== null) throw failure.error;
+	}
+
+	/** The `save` task: `onSave` with the document, or the save kept due while the rows cannot be read. */
+	private async save(): Promise<void> {
+		if (!this.options.onSave) return this.unschedule('save');
 		if (this.live === null) {
-			if (!this.retryable) return;
-			this.saveScheduled = true;
+			if (!this.retryable) return this.unschedule('save');
 			const wait = Math.min(this.saveAfter * 2 ** ++this.saveRetries, MAX_SAVE_RETRY);
-			return this.ctx.storage.setAlarm(Date.now() + wait);
+			return this.schedule('save', this.clock() + wait, 'replace');
 		}
 		this.saveRetries = 0;
+		const due = this.dues.save!;
+		// Cleared first: a change during `onSave` arms the next one.
+		this.unschedule('save');
 		// One synchronous read: the registry matches the state it is saved with.
 		const saved = {
 			value: this.read(),
@@ -1428,14 +1617,78 @@ export class AttachedDocument {
 				.exec<ReplicaOwner>(`SELECT replica, user FROM ${this.replicasTable} ORDER BY replica`)
 				.toArray()
 		};
-		await this.options.onSave(saved);
+		try {
+			await this.options.onSave(saved);
+		} catch (error) {
+			this.schedule('save', due);
+			throw error;
+		}
 	}
 
-	/** The first unsaved change arms the save alarm; a wake keeps one already armed (`start`). */
+	/** The first unsaved change arms the save alarm; a save already due keeps its time. */
 	private scheduleSave() {
-		if (this.saveScheduled || !this.options.onSave) return;
-		this.saveScheduled = true;
-		void this.ctx.storage.setAlarm(Date.now() + this.saveAfter);
+		if (this.options.onSave) this.schedule('save', this.clock() + this.saveAfter);
+	}
+
+	/**
+	 * Arm `task` at `at` (`room.alarm.tasks`): a task already due keeps its
+	 * time (a wake or an edit never moves a pending save), unless `earlier`
+	 * (an earlier time wins: the purge tick) or `replace`.
+	 * The due time is stored (meta `due.<task>`) and the alarm set when it
+	 * is earlier than the one set.
+	 */
+	private schedule(task: Task, at: number, mode: 'keep' | 'earlier' | 'replace' = 'keep') {
+		const due = this.dues[task];
+		if (due !== undefined && (mode === 'keep' || (mode === 'earlier' && due <= at))) return;
+		this.dues[task] = at;
+		try {
+			this.sql.exec(
+				`INSERT OR REPLACE INTO ${this.metaTable} (key, value) VALUES (?, ?)`,
+				`due.${task}`,
+				at
+			);
+		} catch {
+			// the rows cannot be written: memory and the alarm still hold it
+		}
+		this.arm();
+	}
+
+	/** Clear `task`'s due time. */
+	private unschedule(task: Task) {
+		if (this.dues[task] === undefined) return;
+		delete this.dues[task];
+		try {
+			this.sql.exec(`DELETE FROM ${this.metaTable} WHERE key = ?`, `due.${task}`);
+		} catch {
+			// a stale row re-arms a task that finds nothing to do
+		}
+	}
+
+	/** Set the alarm to the earliest due time (none due: the alarm set is left, and finds nothing). */
+	private arm() {
+		const next = Math.min(...Object.values(this.dues));
+		if (!Number.isFinite(next) || this.armed === next) return;
+		this.armed = next;
+		void this.ctx.storage.setAlarm(next);
+	}
+
+	/** The due times stored (`due.<task>`); an alarm armed by 0.1.0-next.23 (none stored) is a due save. */
+	private readDues() {
+		const rows = this.sql
+			.exec<{
+				key: string;
+				value: number;
+			}>(`SELECT key, value FROM ${this.metaTable} WHERE key LIKE 'due.%'`)
+			.toArray();
+		this.dues = {};
+		for (const { key, value } of rows) {
+			const task = key.slice('due.'.length) as Task;
+			if (TASKS.includes(task)) this.dues[task] = value;
+		}
+		if (rows.length === 0 && this.armed !== null && this.options.onSave) {
+			this.schedule('save', this.armed);
+		}
+		this.arm();
 	}
 
 	/**
@@ -1452,7 +1705,12 @@ export class AttachedDocument {
 				this.sql.exec(`DELETE FROM ${this.rowsTable}`);
 				this.sql.exec(`DELETE FROM ${this.replicasTable}`);
 				this.sql.exec(`DELETE FROM ${this.metaTable}`);
+				for (const table of [this.epochsTable, this.editorsTable, this.restoreTable])
+					this.sql.exec(`DROP TABLE IF EXISTS ${table}`);
 			});
+			this.dues = {};
+			this.restoreStep = null;
+			this.slotEditors.clear();
 			this.presence.clear();
 			await this.start();
 		});
@@ -1490,7 +1748,7 @@ export class AttachedDocument {
 					scratch.destroy();
 					return update;
 				});
-				doc = admit(loaded.update, `room ${this.ctx.id} onLoad`);
+				doc = admit(loaded.update, `room ${this.ctx.id} onLoad`, () => this.restoreKeep);
 				replicas = loaded.replicas;
 			} catch (error) {
 				return this.fail(error, false);
@@ -1557,6 +1815,22 @@ export class AttachedDocument {
 			this.sql.exec(
 				`CREATE TABLE IF NOT EXISTS ${this.metaTable} (key TEXT PRIMARY KEY, value INTEGER NOT NULL)`
 			);
+			this.sql.exec(
+				`CREATE TABLE IF NOT EXISTS ${this.epochsTable} (at INTEGER PRIMARY KEY, sv BLOB NOT NULL)`
+			);
+			this.sql.exec(`CREATE TABLE IF NOT EXISTS ${this.editorsTable} (user TEXT PRIMARY KEY)`);
+			this.sql.exec(
+				`CREATE TABLE IF NOT EXISTS ${this.restoreTable} (
+					id INTEGER PRIMARY KEY CHECK (id = 0),
+					key TEXT NOT NULL,
+					user TEXT,
+					at INTEGER NOT NULL,
+					inserts BLOB NOT NULL,
+					deletes BLOB NOT NULL
+				)`
+			);
+			this.readDues();
+			this.restoreStep = this.readRestore();
 			this.nextRecord = 0;
 			records = this.records();
 		} catch (error) {
@@ -1569,7 +1843,7 @@ export class AttachedDocument {
 				this.documentBytes = 0;
 				this.format = STORED_GENERATION_RECORD.storage!;
 				this.storedWaiting = Y.createIdSet();
-				this.adopt(roomDoc());
+				this.adopt(roomDoc(() => this.restoreKeep));
 				return;
 			}
 			const [generation, ...rest] = records;
@@ -1581,7 +1855,8 @@ export class AttachedDocument {
 			// records keeps every keystroke's struct and the deleted content.
 			const doc = admit(
 				rest.map((record) => (record.v2 ? { v2: record.bytes } : record.bytes)),
-				`room ${this.ctx.id}`
+				`room ${this.ctx.id}`,
+				() => this.restoreKeep
 			);
 			this.format = storageOf(found);
 			this.documentBytes = rest.reduce((n, record) => n + record.bytes.length, 0);
@@ -1847,6 +2122,492 @@ export class AttachedDocument {
 		}
 	}
 
+	// ── History (H11) ────────────────────────────────────────────────────
+
+	/** The room's id: its name (`getByName`), else the object's id. */
+	private get roomId(): string {
+		return this.ctx.id.name ?? this.ctx.id.toString();
+	}
+
+	/** The history settings, resolved at first use (`null`: none; an unknown time zone is noted `history`). */
+	private get historyConfig() {
+		if (this._history !== undefined) return this._history;
+		const h = this.options.history;
+		if (!h?.store) return (this._history = null);
+		const timeZone = h.timeZone ?? 'UTC';
+		if (!validTimeZone(timeZone)) {
+			this.note({ reason: 'history', detail: { timeZone } });
+			return (this._history = null);
+		}
+		return (this._history = {
+			store: h.store,
+			retentionDays: knob(h.retentionDays, DEFAULT_RETENTION_DAYS, 36_500),
+			timeZone,
+			maxValueBytes: knob(h.maxValueBytes, HISTORY_MAX_VALUE_BYTES)
+		});
+	}
+
+	/** Days after which deleted content is purged (`null`: never), `room.purge.timing`. */
+	private get purgeDays(): number | null {
+		const days = this.options.purgeAfterDays;
+		if (days === false) return null;
+		return knob(days, this.historyConfig?.retentionDays ?? DEFAULT_RETENTION_DAYS, 36_500);
+	}
+
+	/** The last restore's deleted content, kept for its undo (`prepareRoomDoc`). */
+	private get restoreKeep(): Decoded['ds'] | null {
+		return this.restoreStep?.deletes ?? null;
+	}
+
+	/** The verified user a stored change is written for (a socket's, or the restorer's), or `null`. */
+	private editorOf(origin: unknown): string | null {
+		if (this.writer !== null) return this.writer;
+		const socket = origin as { deserializeAttachment?: () => unknown } | null;
+		if (typeof socket?.deserializeAttachment !== 'function') return null;
+		const user = (socket.deserializeAttachment() as Attachment | null)?.user;
+		return typeof user === 'string' && user !== '' && !this.slotEditors.has(user) ? user : null;
+	}
+
+	/**
+	 * A change was stored: arm the purge tick (`room.purge.timing`) and open
+	 * the history slot it falls in (`room.history.slots`) — a purge opens
+	 * none: it changes nothing a reader sees.
+	 */
+	private noteChange(origin: unknown) {
+		const now = this.clock();
+		if (this.purgeDays !== null) this.schedule('purge', now + DAY, 'earlier');
+		const config = this.historyConfig;
+		if (config === null || origin === PURGE_ORIGIN || this.dues.history !== undefined) return;
+		this.schedule('history', slotEnd(now, config.timeZone));
+	}
+
+	/** Before a write: a slot past its end is captured as it is, and written (`room.history.slots`). */
+	private closeSlotIfPast() {
+		if ((this.dues.history ?? Infinity) > this.clock()) return;
+		const captured = this.captureSlot();
+		if (captured === null) return;
+		const job = this.putSlot(captured);
+		this.writing = Promise.all([this.writing, job]);
+		this.ctx.waitUntil?.(job);
+	}
+
+	/** Close the open slot: capture it now, write it (the alarm, a start past its end). */
+	private async closeSlot(): Promise<void> {
+		const captured = this.captureSlot();
+		if (captured !== null) await this.putSlot(captured);
+	}
+
+	/**
+	 * The open slot's version, read now (synchronous: nothing writes
+	 * between the read and the slot's close), and the slot closed.
+	 */
+	private captureSlot(): {
+		key: string;
+		raw: Uint8Array;
+		blocks: number;
+		editors: string[];
+		at: number;
+	} | null {
+		const end = this.dues.history;
+		if (end === undefined) return null;
+		const config = this.historyConfig;
+		if (config === null) {
+			this.unschedule('history');
+			return null;
+		}
+		if (this.live === null) return null;
+		return noTimers(() => {
+			const doc = this.live!;
+			const key = historyKey(this.roomId, slotAt(end - 1, config.timeZone));
+			const editors = this.sql
+				.exec<{ user: string }>(`SELECT user FROM ${this.editorsTable} ORDER BY rowid`)
+				.toArray()
+				.map(({ user }) => user);
+			const raw = liveState(doc);
+			const blocks = this.facade.listBlockIds().length;
+			this.sql.exec(`DELETE FROM ${this.editorsTable}`);
+			this.slotEditors.clear();
+			this.unschedule('history');
+			if (key === null) {
+				this.skipVersion({ room: this.roomId, reason: 'key longer than 512 bytes' });
+				return null;
+			}
+			return { key, raw, blocks, editors, at: this.clock() };
+		});
+	}
+
+	/** Write a captured version (`room.history.value`); a failure is noted `history` and the slot skipped. */
+	private async putSlot(version: {
+		key: string;
+		raw: Uint8Array;
+		blocks: number;
+		editors: string[];
+		at: number;
+	}): Promise<void> {
+		const config = this.historyConfig!;
+		try {
+			const bytes = await packed(version.raw);
+			if (bytes.length > config.maxValueBytes) {
+				return this.skipVersion({
+					key: version.key,
+					bytes: bytes.length,
+					limit: config.maxValueBytes
+				});
+			}
+			const metadata = fitMetadata({
+				bytes: bytes.length,
+				blocks: version.blocks,
+				editors: version.editors,
+				at: version.at
+			});
+			await config.store.put(version.key, bytes, {
+				expirationTtl: config.retentionDays * 86_400,
+				metadata
+			});
+			this.counters.history.written++;
+			this.counters.history.lastKey = version.key;
+			this.log({
+				edytor: 'history',
+				key: version.key,
+				bytes: bytes.length,
+				editors: version.editors.length
+			});
+		} catch (error) {
+			this.skipVersion({ key: version.key, error: String(error) });
+		}
+	}
+
+	private skipVersion(detail: Record<string, unknown>) {
+		this.counters.history.skipped++;
+		this.note({ reason: 'history', detail });
+	}
+
+	/** The history settings, or a throw: the room keeps no history. */
+	private requireHistory() {
+		const config = this.historyConfig;
+		if (config === null) throw new Error('this room keeps no history (the `history` option)');
+		return config;
+	}
+
+	/**
+	 * Resolves once the versions the room is writing are stored (a slot a
+	 * write closed is written in the background).
+	 */
+	async historyWritten(): Promise<void> {
+		await this.writing;
+	}
+
+	/**
+	 * The room's versions, newest first (H11): one per half-day slot that
+	 * changed, for the retention (`room.history.slots`). Throws when the
+	 * room keeps no history.
+	 */
+	async listHistory(): Promise<HistoryEntry[]> {
+		const config = this.requireHistory();
+		const prefix = historyPrefix(this.roomId);
+		const out: HistoryEntry[] = [];
+		let cursor: string | undefined;
+		do {
+			const page = await config.store.list({ prefix, cursor });
+			for (const { name, metadata } of page.keys) {
+				const entry = historyEntry(this.roomId, name, metadata);
+				if (entry !== null) out.push(entry);
+			}
+			cursor = page.list_complete ? undefined : page.cursor;
+		} while (cursor !== undefined);
+		return out.sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
+	}
+
+	/** Version `key` as JSON (a preview), or `null` when this room holds no such version. */
+	async readHistory(key: string): Promise<JSONDoc | null> {
+		const config = this.requireHistory();
+		if (parseHistoryKey(this.roomId, key) === null) return null;
+		const value = await config.store.get(key, 'arrayBuffer');
+		if (value === null) return null;
+		const bytes = await gunzip(new Uint8Array(value));
+		return noTimers(() => {
+			const doc = admit([{ v2: bytes }], `room ${this.ctx.id} version ${key}`, () => null);
+			const facade = this.facadeOf(doc);
+			try {
+				return facade.toJSON();
+			} finally {
+				facade.dispose();
+				doc.destroy();
+			}
+		});
+	}
+
+	/**
+	 * Restore version `key` as a forward edit (`room.history.restore`): one
+	 * room transaction makes the visible document equal the version, keeping
+	 * every id the registry holds and writing only what differs; stored,
+	 * relayed to every socket, one step `undoRestore` undoes. `user` (the
+	 * restorer) is recorded as the slot's editor and in the log. `refused`:
+	 * this room holds no such version (expired, another room's key).
+	 */
+	async restoreHistory(key: string, options: { user?: string } = {}): Promise<RestoreResult> {
+		const json = await this.readHistory(key);
+		if (json === null) return { status: 'refused', key };
+		await this.retryStart();
+		return noTimers(() => {
+			if (this.busy) {
+				throw new Error('restoreHistory inside a transaction or its change events: defer it');
+			}
+			this.heal();
+			const doc = this.requireDoc();
+			this.closeSlotIfPast();
+			const history = this.restoreHistoryOf();
+			// One level: the previous restore's step goes.
+			this.dropRestore();
+			this.writer = options.user ?? null;
+			let report!: ReturnType<typeof crdt.doc.restoreTo>;
+			this.transacting = true;
+			try {
+				this.facade.transact(() => {
+					report = crdt.doc.restoreTo(doc as never, this.facade, json);
+				}, RESTORE_ORIGIN);
+			} finally {
+				this.transacting = false;
+				this.writer = null;
+			}
+			if (this.unstored !== null) {
+				const error = this.unstored;
+				this.heal();
+				throw error;
+			}
+			const step = history.undoStack.at(-1) as unknown as RestoreStep | undefined;
+			if (step === undefined) return { status: 'noop', key, ...report };
+			const kept: RestoreStep = {
+				key,
+				user: options.user ?? null,
+				at: this.clock(),
+				inserts: step.inserts,
+				deletes: step.deletes
+			};
+			this.sql.exec(
+				`INSERT OR REPLACE INTO ${this.restoreTable} (id, key, user, at, inserts, deletes) VALUES (0, ?, ?, ?, ?, ?)`,
+				kept.key,
+				kept.user,
+				kept.at,
+				deletesUpdate(kept.inserts),
+				deletesUpdate(kept.deletes)
+			);
+			this.restoreStep = kept;
+			this.log({ edytor: 'restore', key, user: kept.user, undo: false });
+			this.compactIfDue();
+			return { status: 'applied', key, ...report };
+		});
+	}
+
+	/**
+	 * Undo the last restore (`room.history.undo`): the history undo of
+	 * exactly its transaction, edits made since kept. One level: `noop` when
+	 * no restore stands (none, undone already, or past the purge horizon).
+	 */
+	async undoRestore(options: { user?: string } = {}): Promise<{ status: 'applied' | 'noop' }> {
+		await this.retryStart();
+		return noTimers(() => {
+			if (this.busy) {
+				throw new Error('undoRestore inside a transaction or its change events: defer it');
+			}
+			this.heal();
+			this.requireDoc();
+			const step = this.restoreStep;
+			if (step === null) return { status: 'noop' };
+			const history = this.restoreHistoryOf();
+			// A woken room rebuilds the step from its table.
+			if (history.undoStack.length === 0) {
+				history.undoStack.push({
+					inserts: step.inserts,
+					deletes: step.deletes,
+					meta: new Map()
+				} as never);
+			}
+			this.closeSlotIfPast();
+			this.writer = options.user ?? step.user;
+			let undone: unknown;
+			this.transacting = true;
+			try {
+				undone = history.undo();
+			} finally {
+				this.transacting = false;
+				this.writer = null;
+			}
+			if (this.unstored !== null) {
+				const error = this.unstored;
+				this.heal();
+				throw error;
+			}
+			this.dropRestore();
+			this.log({ edytor: 'restore', key: step.key, user: options.user ?? null, undo: true });
+			this.compactIfDue();
+			return { status: undone ? 'applied' : 'noop' };
+		});
+	}
+
+	/** The history recording restores, on the live facade (`RESTORE_ORIGIN` only, one step each). */
+	private restoreHistoryOf(): YUndoManager {
+		return (this.restoreManager ??= this.facade.createUndoManager({
+			captureTimeout: 0,
+			trackedOrigins: new Set([RESTORE_ORIGIN])
+		}));
+	}
+
+	/** The last restore's step, from its table (`null`: none). */
+	private readRestore(): RestoreStep | null {
+		const row = this.sql
+			.exec<{
+				key: string;
+				user: string | null;
+				at: number;
+				inserts: ArrayBuffer;
+				deletes: ArrayBuffer;
+			}>(`SELECT key, user, at, inserts, deletes FROM ${this.restoreTable} WHERE id = 0`)
+			.toArray()[0];
+		if (row === undefined) return null;
+		return {
+			key: row.key,
+			user: row.user,
+			at: row.at,
+			inserts: Y.decodeUpdate(new Uint8Array(row.inserts)).ds,
+			deletes: Y.decodeUpdate(new Uint8Array(row.deletes)).ds
+		};
+	}
+
+	/**
+	 * Forget the last restore's step: its table row goes, then what it kept
+	 * is released and collected (the next compaction stores it collected).
+	 */
+	private dropRestore() {
+		const step = this.restoreStep;
+		if (step === null) return;
+		this.restoreStep = null;
+		this.sql.exec(`DELETE FROM ${this.restoreTable}`);
+		const history = this.restoreManager;
+		if (history !== null) this.facade.releaseHistory(history);
+		const doc = this.live;
+		if (doc === null) return;
+		const d = doc as unknown as { gc: boolean; gcFilter: (it: Item) => boolean };
+		doc.transact((tr: unknown) => {
+			Y.iterateStructsByIdSet(tr as never, step.deletes as never, (struct: unknown) => {
+				const it = struct as Item & { keep?: boolean; gc(tr: unknown, parentGCd: boolean): void };
+				if (it instanceof Y.Item && it.deleted && it.keep !== true && d.gc && d.gcFilter(it))
+					it.gc(tr, false);
+			});
+		});
+	}
+
+	// ── Purge (H7) ───────────────────────────────────────────────────────
+
+	/**
+	 * The purge task, also over RPC (`room.purge.timing`): record an epoch
+	 * (the state vector, now) when the document changed since the last one,
+	 * purge what was deleted before the horizon — the newest epoch at least
+	 * `purgeAfterDays` old — when it is newer than the last purged, and
+	 * re-arm for the next epoch to pass it. Returns what the purge wrote, or
+	 * `null` when nothing was past the horizon.
+	 */
+	purge(): (PurgeReport & { horizon: number }) | null {
+		return this.tick();
+	}
+
+	private tick(): (PurgeReport & { horizon: number }) | null {
+		return noTimers(() => {
+			const days = this.purgeDays;
+			if (days === null) {
+				this.unschedule('purge');
+				return null;
+			}
+			this.heal();
+			const doc = this.live;
+			const now = this.clock();
+			if (doc === null) {
+				this.schedule('purge', now + DAY, 'replace');
+				return null;
+			}
+			const sv = Y.encodeStateVector(doc);
+			const newest = this.sql
+				.exec<{ sv: ArrayBuffer }>(`SELECT sv FROM ${this.epochsTable} ORDER BY at DESC LIMIT 1`)
+				.toArray()[0];
+			if (newest === undefined || !sameBytes(new Uint8Array(newest.sv), sv)) {
+				this.sql.exec(`INSERT OR REPLACE INTO ${this.epochsTable} (at, sv) VALUES (?, ?)`, now, sv);
+			}
+			const purged =
+				this.sql
+					.exec<{
+						value: number;
+					}>(`SELECT value FROM ${this.metaTable} WHERE key = 'purged'`)
+					.toArray()[0]?.value ?? -1;
+			const horizon = this.sql
+				.exec<{
+					at: number;
+					sv: ArrayBuffer;
+				}>(
+					`SELECT at, sv FROM ${this.epochsTable} WHERE at <= ? ORDER BY at DESC LIMIT 1`,
+					now - days * DAY
+				)
+				.toArray()[0];
+			let result: (PurgeReport & { horizon: number }) | null = null;
+			if (horizon !== undefined && horizon.at > purged) {
+				result = this.purgeTo({ at: horizon.at, sv: new Uint8Array(horizon.sv) });
+			}
+			// The next epoch to pass the horizon, or the next change, arms it again.
+			const next = this.sql
+				.exec<{
+					at: number;
+				}>(
+					`SELECT at FROM ${this.epochsTable} WHERE at > ? ORDER BY at LIMIT 1`,
+					Math.max(purged, horizon?.at ?? -1)
+				)
+				.toArray()[0];
+			if (next === undefined) this.unschedule('purge');
+			else this.schedule('purge', Math.max(next.at + days * DAY, now + 1), 'replace');
+			return result;
+		});
+	}
+
+	/** Purge what was deleted before `horizon`, as the room's own transaction, then compact. */
+	private purgeTo(horizon: { at: number; sv: Uint8Array }): PurgeReport & { horizon: number } {
+		const doc = this.requireDoc();
+		// A restore past the horizon can no longer be undone (`room.history.undo`).
+		if (this.restoreStep !== null && this.restoreStep.at <= horizon.at) this.dropRestore();
+		this.closeSlotIfPast();
+		let report!: PurgeReport;
+		this.transacting = true;
+		try {
+			this.facade.transact(() => {
+				report = crdt.doc.purge(doc as never, this.facade, horizon);
+			}, PURGE_ORIGIN);
+		} finally {
+			this.transacting = false;
+		}
+		if (this.unstored !== null) {
+			const error = this.unstored;
+			this.heal();
+			throw error;
+		}
+		this.ctx.storage.transactionSync(() => {
+			this.sql.exec(
+				`INSERT OR REPLACE INTO ${this.metaTable} (key, value) VALUES ('purged', ?)`,
+				horizon.at
+			);
+			this.sql.exec(`DELETE FROM ${this.epochsTable} WHERE at < ?`, horizon.at);
+		});
+		this.compact();
+		const counters = this.counters.purge;
+		counters.runs++;
+		counters.horizon = horizon.at;
+		for (const key of ['removed', 'emptied', 'marks', 'records', 'candidates', 'claims'] as const)
+			counters[key] += report[key];
+		this.log({
+			edytor: 'purge',
+			horizon: horizon.at,
+			bytes: this.counters.compaction.lastBytes,
+			...report
+		});
+		return { ...report, horizon: horizon.at };
+	}
+
 	/** The room's counters (H14), also over RPC — see {@link RoomMetrics}. */
 	metrics(): RoomMetrics {
 		return noTimers(() => {
@@ -1865,6 +2626,8 @@ export class AttachedDocument {
 				quotaHits: this.refusalCounts.quota ?? 0,
 				validationDenials: this.refusalCounts.denied ?? 0,
 				refusals: { ...this.refusalCounts },
+				history: { ...this.counters.history },
+				purge: { ...this.counters.purge },
 				since: this.counters.since
 			};
 		});
@@ -2020,6 +2783,7 @@ export class AttachedDocument {
 	private adopt(doc: YDoc) {
 		this.validation?.off();
 		this.validation = null;
+		this.restoreManager = null;
 		this._facade?.dispose();
 		this._facade = null;
 		this.live = doc;
@@ -2030,14 +2794,20 @@ export class AttachedDocument {
 		// `update` again (compaction runs later, in `compactIfDue`).
 		doc.on('update', (update: Uint8Array, origin: unknown) => {
 			if (this.unstored !== null) return;
+			const editor = this.editorOf(origin);
 			try {
 				this.ctx.storage.transactionSync(() => {
 					this.insert('update', update);
 					this.touch();
+					if (editor !== null) {
+						this.sql.exec(`INSERT OR IGNORE INTO ${this.editorsTable} (user) VALUES (?)`, editor);
+					}
 				});
+				if (editor !== null) this.slotEditors.add(editor);
 				this.updates++;
 				this.broadcast(updateFrame(update), origin);
 				this.scheduleSave();
+				this.noteChange(origin);
 			} catch (error) {
 				this.unstored = error;
 			}
@@ -2152,6 +2922,13 @@ export class AttachedDocument {
 	// ── Hibernation WebSocket API ────────────────────────────────────────
 
 	async fetch(request: Request): Promise<Response> {
+		// A history request (H11), forwarded by `routeDocumentHistory` once authorized.
+		const op = request.headers.get(HISTORY_HEADER);
+		if (op !== null) {
+			const identity = readIdentity(request.headers);
+			if (identity === null) return new Response('verified identity required', { status: 401 });
+			return this.historyRequest(op, identity, request.headers.get(HISTORY_KEY_HEADER));
+		}
 		// The `lastUpdated` probe (H12), forwarded by `routeDocumentSocket` once authorized.
 		if (request.headers.get(PROBE_HEADER) === 'lastUpdated') {
 			if (readIdentity(request.headers) === null) {
@@ -2198,6 +2975,39 @@ export class AttachedDocument {
 			}
 			return new Response(null, { status: 101, webSocket: client });
 		});
+	}
+
+	/**
+	 * One history request (H11): `list`, `read` (a version as JSON), and,
+	 * for a write identity, `restore` and `undo`. `404` when the room keeps
+	 * no history or holds no such version, `403` for a read-only identity's
+	 * write, `503` when the room cannot serve it.
+	 */
+	private async historyRequest(
+		op: string,
+		identity: SocketIdentity,
+		key: string | null
+	): Promise<Response> {
+		if (this.historyConfig === null) return new Response('no history', { status: 404 });
+		try {
+			if (op === 'list') return Response.json(await this.listHistory());
+			if (op === 'read') {
+				const json = key === null ? null : await this.readHistory(key);
+				return json === null
+					? new Response('no such version', { status: 404 })
+					: Response.json(json);
+			}
+			if (op !== 'restore' && op !== 'undo')
+				return new Response('unknown request', { status: 400 });
+			if (identity.readOnly) return new Response('read-only', { status: 403 });
+			if (op === 'undo') return Response.json(await this.undoRestore({ user: identity.user }));
+			if (key === null) return new Response('version key required', { status: 400 });
+			const result = await this.restoreHistory(key, { user: identity.user });
+			return Response.json(result, { status: result.status === 'refused' ? 404 : 200 });
+		} catch (error) {
+			this.note({ reason: 'internal', detail: `history: ${String(error)}` });
+			return new Response('room unavailable', { status: 503 });
+		}
 	}
 
 	/** Is `ws` one of this document's sockets? */
@@ -2483,6 +3293,8 @@ export class AttachedDocument {
 			stripped.size === 0 && dropped === null
 				? update
 				: withoutClients(decoded, stripped, doc, dropped ?? undefined);
+		// A history slot past its end is written as it was, before the frame (H11).
+		this.closeSlotIfPast();
 		// Validation (H2) reads the document as it was, and records the frame.
 		const validation = this.options.validate ? this.validating(doc, ws) : null;
 		// 4 · Schema: the inbound refusal of a foreign stamp (the update's,
@@ -2845,7 +3657,8 @@ type Handler = 'fetch' | 'webSocketMessage' | 'webSocketClose' | 'webSocketError
  * `edytor_replicas`) live beside yours and its sockets carry
  * {@link SOCKET_TAG}. Each handler your class does not define —
  * `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and
- * `alarm` when `onSave` is set — is installed on the object; a class that
+ * `alarm` unless the document needs none (no `onSave`, no `history`,
+ * `purgeAfterDays: false`) — is installed on the object; a class that
  * defines one delegates to the returned document's method (which returns
  * `false` for a socket that is not the document's).
  */
@@ -2862,7 +3675,8 @@ export const attachDocument = (
 	const document = new AttachedDocument(ctx, options);
 	const target = host as unknown as Record<Handler, unknown>;
 	const handlers: Handler[] = ['fetch', 'webSocketMessage', 'webSocketClose', 'webSocketError'];
-	if (options.onSave) handlers.push('alarm');
+	// The alarm runs `onSave`, the history slots and the purge (`room.alarm.tasks`).
+	if (options.onSave || options.history || options.purgeAfterDays !== false) handlers.push('alarm');
 	for (const name of handlers) {
 		if (typeof target[name] === 'function') continue;
 		target[name] = (...args: never[]) => (document[name] as (...a: never[]) => unknown)(...args);
@@ -2888,6 +3702,7 @@ export class DocumentRoom<
 		const saves = this.onSave !== DocumentRoom.prototype.onSave;
 		const validates = this.validate !== DocumentRoom.prototype.validate;
 		const semantics = () => this.semantics();
+		const history = () => this.history();
 		this.room = new AttachedDocument(ctx, {
 			maxRowBytes: Number(knobs.EDYTOR_MAX_ROW_BYTES),
 			maxFrameBytes: Number(knobs.EDYTOR_MAX_FRAME_BYTES),
@@ -2897,9 +3712,14 @@ export class DocumentRoom<
 			maxInboundFrameBytes: Number(knobs.EDYTOR_MAX_INBOUND_FRAME_BYTES),
 			maxUpdatesPerSecond: Number(knobs.EDYTOR_MAX_UPDATES_PER_SECOND),
 			tablePrefix: '',
-			// A getter: a subclass's fields do not exist yet in this constructor.
+			purgeAfterDays: purgeAfterDays(knobs.EDYTOR_PURGE_AFTER_DAYS),
+			now: () => this.now(),
+			// Getters: a subclass's fields do not exist yet in this constructor.
 			get semantics() {
 				return semantics();
+			},
+			get history() {
+				return history();
 			},
 			onLoad: () => this.onLoad(),
 			onSave: saves ? (document) => this.onSave(document) : undefined,
@@ -2940,6 +3760,26 @@ export class DocumentRoom<
 		return E.defaultSemantics;
 	}
 
+	/**
+	 * Version history — see {@link AttachDocumentOptions.history}. Default:
+	 * the `EDYTOR_HISTORY` KV binding, with `EDYTOR_HISTORY_RETENTION_DAYS`
+	 * and `EDYTOR_HISTORY_TIME_ZONE`; none without it. Read once, at first use.
+	 */
+	protected history(): HistoryOptions | undefined {
+		const env = this.env as DocumentRoomEnv;
+		if (!env.EDYTOR_HISTORY) return undefined;
+		return {
+			store: env.EDYTOR_HISTORY,
+			retentionDays: Number(env.EDYTOR_HISTORY_RETENTION_DAYS) || undefined,
+			timeZone: env.EDYTOR_HISTORY_TIME_ZONE || undefined
+		};
+	}
+
+	/** The room's clock — see {@link AttachDocumentOptions.now}. */
+	protected now(): number {
+		return Date.now();
+	}
+
 	fetch(request: Request): Promise<Response> {
 		return this.room.fetch(request);
 	}
@@ -2952,9 +3792,34 @@ export class DocumentRoom<
 	webSocketError(ws: WebSocket) {
 		this.room.webSocketError(ws);
 	}
-	/** Runs `onSave`. Call `super.alarm()` if you override it. */
+	/** Runs the room's tasks: `onSave`, the history slots, the purge. Call `super.alarm()` if you override it. */
 	alarm(): Promise<void> {
 		return this.room.alarm();
+	}
+
+	/** The versions, newest first, also over RPC — see {@link AttachedDocument.listHistory}. */
+	listHistory(): Promise<HistoryEntry[]> {
+		return this.room.listHistory();
+	}
+	/** A version as JSON, also over RPC — see {@link AttachedDocument.readHistory}. */
+	readHistory(key: string): Promise<JSONDoc | null> {
+		return this.room.readHistory(key);
+	}
+	/** Restore a version, also over RPC — see {@link AttachedDocument.restoreHistory}. */
+	restoreHistory(key: string, options?: { user?: string }): Promise<RestoreResult> {
+		return this.room.restoreHistory(key, options);
+	}
+	/** Undo the last restore, also over RPC — see {@link AttachedDocument.undoRestore}. */
+	undoRestore(options?: { user?: string }): Promise<{ status: 'applied' | 'noop' }> {
+		return this.room.undoRestore(options);
+	}
+	/** The version writes in flight, also over RPC — see {@link AttachedDocument.historyWritten}. */
+	historyWritten(): Promise<void> {
+		return this.room.historyWritten();
+	}
+	/** Run the purge task now, also over RPC — see {@link AttachedDocument.purge}. */
+	purge(): (PurgeReport & { horizon: number }) | null {
+		return this.room.purge();
 	}
 
 	/** Compaction, also over RPC. */

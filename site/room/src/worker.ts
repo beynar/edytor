@@ -12,16 +12,34 @@
  * A refused dial is accepted, then closed (`4404` for a closed room, `4403`
  * for another origin): a browser sees an HTTP error at the upgrade as a
  * bare `1006`, and a page left open past the reset would redial forever.
+ *
+ * Each room keeps its version history in the `HISTORY` KV namespace (two
+ * versions a day, UTC, kept 30 days); deleted content is purged after the
+ * same 30 days.
  */
-import { DocumentRoom, closedSocket, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
+import {
+	DocumentRoom as Room,
+	closedSocket,
+	requestedReplica,
+	routeDocumentSocket,
+	type DocumentNamespace,
+	type HistoryOptions,
+	type KVLike
+} from 'edytor/cloudflare';
 import { isOpenDemoRoom } from './rooms';
 
-export { DocumentRoom };
-
 type Env = {
-	ROOMS: DurableObjectNamespace<DocumentRoom>;
+	ROOMS: DocumentNamespace;
+	HISTORY: KVLike;
 	ALLOWED_ORIGINS: string;
 };
+
+/** The demo's room: the shipped one, with its history in `HISTORY` (the class keeps its name). */
+export class DocumentRoom extends Room<Env> {
+	protected override history(): HistoryOptions {
+		return { store: this.env.HISTORY, retentionDays: 30, timeZone: 'UTC' };
+	}
+}
 
 const GUEST = /^[a-z0-9-]{8,64}$/;
 

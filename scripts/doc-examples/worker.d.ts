@@ -4,4 +4,5 @@
  */
 interface Env {
 	DOCS: R2Bucket;
+	HISTORY: KVNamespace;
 }

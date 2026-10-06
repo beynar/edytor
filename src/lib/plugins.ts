@@ -239,6 +239,17 @@ export type BlockDefinition = {
 	 */
 	layout?: boolean;
 	/**
+	 * Data paths written as one value (`data.atomic`): a top-level key, or an
+	 * array of keys for a nested one. Setting `block.data.link`, or a key
+	 * inside it, writes the whole `link` as one property, so two people
+	 * setting it at once never merge into a value neither wrote (one wins
+	 * whole); elsewhere each key merges on its own. Adopted by the document as
+	 * part of the kind's role: every view of a document, a headless one and
+	 * the room must declare the same paths (`semanticsOf({ embed: { atomic:
+	 * ['link'] } })`).
+	 */
+	atomic?: readonly (string | readonly string[])[];
+	/**
 	 * Whether the snippet renders the block's own content (`content()`).
 	 * Defaults to `true`; containers that render only their children
 	 * declare `false` so no caret or endpoint lands in the unrendered slot.

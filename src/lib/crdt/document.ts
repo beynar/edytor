@@ -323,15 +323,38 @@ export type DocumentReadiness = 'pending' | 'local' | 'hydrated';
  */
 export const DEFAULT_READINESS_BOUND = 1000;
 
-/** A role with every flag answered; `layout` only when set (the bundled kinds' rows stay as they were). */
-type NormalizedRole = { void: boolean; island: boolean; lines: boolean; layout?: true };
+/**
+ * A role with every flag answered; `layout` and `atomic` only when set (the
+ * bundled kinds' rows stay as they were). Atomic paths as key arrays,
+ * deduplicated and sorted, so two declarations of one set compare equal.
+ */
+type NormalizedRole = {
+	void: boolean;
+	island: boolean;
+	lines: boolean;
+	layout?: true;
+	atomic?: readonly (readonly string[])[];
+};
 
-const normalizeRole = (role: BlockRole | undefined): NormalizedRole => ({
-	void: role?.void === true,
-	island: role?.island === true,
-	lines: role?.lines === true,
-	...(role?.layout === true && { layout: true as const })
-});
+const normalizeRole = (role: BlockRole | undefined): NormalizedRole => {
+	const atomic = [
+		...new Map(
+			(role?.atomic ?? []).map((p) => {
+				const path = typeof p === 'string' ? [p] : [...p];
+				return [JSON.stringify(path), path] as const;
+			})
+		)
+	]
+		.sort(([a], [b]) => (a < b ? -1 : 1))
+		.map(([, path]) => path);
+	return {
+		void: role?.void === true,
+		island: role?.island === true,
+		lines: role?.lines === true,
+		...(role?.layout === true && { layout: true as const }),
+		...(atomic.length > 0 && { atomic })
+	};
+};
 
 const anonymousActor = (): DocumentActor => ({
 	id: `anon-${crypto.randomUUID()}`

@@ -327,9 +327,34 @@ const effective = (base: unknown, leaves: Map<string, unknown>): Map<string, unk
 		if (Array.isArray(v) && v.length) {
 			under(`${key}/`, v);
 			out.set(key, []);
+		} else if (isObject(v) && Object.keys(v).length) {
+			// An object written as one leaf (an atomic path, `data.atomic`) reads as its keys.
+			under(`${key}/`, v);
+			out.set(key, {});
 		}
 	}
 	return out;
+};
+
+/** A path of the data as a leaf key (`d/` and its pointer). */
+export const leafKey = (path: readonly string[]): string =>
+	DATA_LEAF_PREFIX + path.map((k) => enc(k)).join('/');
+
+/**
+ * `leaves` with every atomic path (`data.atomic`, H8: a leaf key a kind
+ * declares) holding one leaf: the value of everything at and under it.
+ */
+const collapse = (leaves: Map<string, unknown>, atomic: readonly string[]) => {
+	if (atomic.length === 0) return leaves;
+	const root = treeOf(leaves);
+	for (const key of atomic) {
+		let t: Tree | undefined = root;
+		for (const s of key.slice(DATA_LEAF_PREFIX.length).split('/')) t = t?.k.get(s);
+		if (t === undefined || t.k.size === 0) continue;
+		t.v = valueOf(t);
+		t.k.clear();
+	}
+	return leavesFrom(root);
 };
 const read = (base: unknown, leaves: Map<string, unknown>) =>
 	valueOf(treeOf(effective(base, leaves))) as JsonObj | undefined;
@@ -372,7 +397,8 @@ export const patchWrites = (
 	node: EngineNode,
 	patches: readonly DataPatch[],
 	client = 0,
-	rand?: () => number
+	rand?: () => number,
+	atomic: readonly string[] = []
 ): LeafWrite[] | null => {
 	const [base, now] = [node.getAttr(DATA), leavesOf(node)];
 	const was = effective(base, now);
@@ -380,13 +406,21 @@ export const patchWrites = (
 	const before = valueOf(root);
 	const { apply } = edits(rand, client);
 	if (!patches.every((p) => apply(root, p))) return null;
-	const [want, value] = [leavesFrom(root), valueOf(root)];
+	const value = valueOf(root);
 	if (jsonEquals(before, value)) return [];
+	// An atomic path is written as one leaf, and every leaf stored under it goes (H8).
+	const want = collapse(leavesFrom(root), atomic);
+	const under = (key: string) => atomic.some((a) => key.startsWith(`${a}/`));
 	const diff = (from: Map<string, unknown>): LeafWrite[] =>
 		[...new Set([...from.keys(), ...want.keys()])]
 			.filter((key) => !jsonEquals(from.get(key), want.get(key)))
 			.map((key) => [key, want.get(key)] as const);
-	const own = diff(was);
+	const own = [
+		...diff(collapse(was, atomic)),
+		...[...now.keys()]
+			.filter((key) => under(key) && !want.has(key))
+			.map((key) => [key, undefined] as const)
+	];
 	const after = new Map(now);
 	for (const [key, value] of own) value === undefined ? after.delete(key) : after.set(key, value);
 	if (jsonEquals(read(base, after), value)) return own;

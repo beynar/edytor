@@ -173,6 +173,7 @@ import {
 	dataLeaves,
 	isObject,
 	itemIds,
+	leafKey,
 	patchWrites,
 	readData,
 	writeLeaves,
@@ -391,6 +392,14 @@ export type BlockRole = {
 	 * a `defaultChild`.
 	 */
 	layout?: boolean;
+	/**
+	 * Data paths written as one leaf (`data.atomic`, H8): a top-level key, or
+	 * an array of keys for a nested one (`['link', ['media', 'source']]`). An
+	 * assignment there, or anywhere under it, writes the whole value as one
+	 * last-writer-wins leaf, so two concurrent assignments never merge into a
+	 * value neither wrote: one wins whole.
+	 */
+	atomic?: readonly (string | readonly string[])[];
 };
 
 /** Island-sealing policy for a walk in document order (R5; see `next`). */
@@ -1931,7 +1940,18 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const [id, inlineId] =
 				typeof target === 'object' && target ? [target.block, target.atom] : [target ?? undefined];
 			const node = dataNode(id, inlineId);
-			const leaves = node ? patchWrites(node, patches, doc.clientID, randOf(doc)) : [];
+			// A block kind's atomic paths are written as one leaf each (`data.atomic`, H8).
+			const type = inlineId === undefined && id !== undefined ? blockTypeOf(id) : undefined;
+			const atomic = (type === undefined ? undefined : roleOf(type)?.atomic) ?? [];
+			const leaves = node
+				? patchWrites(
+						node,
+						patches,
+						doc.clientID,
+						randOf(doc),
+						atomic.map((p) => leafKey(typeof p === 'string' ? [p] : p))
+					)
+				: [];
 			if (leaves === null) return null; // a patch fits no value there
 			if (leaves.length === 0) return [];
 			const offset = inlineId === undefined ? undefined : atomOf(id!, inlineId)?.at;

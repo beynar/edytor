@@ -998,6 +998,25 @@ retype (`h4-retype-keeps-data.test.ts`). Replacing the whole data stays
 `setBlockData` (`block.setData`, a root patch); a flow's join (`redata`)
 writes the pasted line's data whole, as before.
 
+### `data.atomic` — a declared path is one leaf (H8)
+
+A kind's role may declare `atomic` data paths (`BlockRole.atomic`: a key,
+or an array of keys; adopted with the role, so every view, a headless
+document and the room agree, and a different declaration of one kind is a
+`SemanticConflictError`). A data write at such a path, or under it,
+writes the path's whole value as one leaf (`patchWrites`' `atomic`,
+`collapse`) and deletes every leaf stored under it, so two concurrent
+assignments are one last-writer-wins attr: `{url: a, title: A}` ‖
+`{url: b, kind: video}` ends as one of the two, whole, on every client-id
+pair (`h8-atomic-data.test.ts`), where per-leaf merging gave
+`{url: b, title: A, kind: video}`. A write inside the path writes it
+whole too, so it loses to a concurrent assignment or wins over it whole.
+An object leaf reads as its keys (`effective`), so a block created with
+the object exploded, or one an older client wrote leaves under, reads the
+same; such a client's concurrent leaf under the path still merges with the
+whole value (the residual of mixed versions). Arrays inside the path are
+read as the value's items and written back whole.
+
 ## History
 
 ### `hist.capture-group` — one undo step per gesture

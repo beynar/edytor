@@ -13,6 +13,7 @@ export default defineConfig({
 	},
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts,tsx}'],
+		setupFiles: ['src/tests/setup/index-checks.ts'],
 		exclude: ['src/tests/dom/**/*', 'src/tests/fixtures/dom/**/*'],
 		testTimeout: 1000000
 	}

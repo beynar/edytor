@@ -16,6 +16,7 @@ export default defineConfig({
 	plugins: [sveltekit()],
 	test: {
 		include: ['vendor-tests/**/*.test.{js,ts}', 'src/tests/crdt/**/*.test.{js,ts}'],
+		setupFiles: ['src/tests/setup/index-checks.ts'],
 		testTimeout: 300000
 	}
 });

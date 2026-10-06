@@ -10,7 +10,7 @@ export default defineConfig({
 	test: {
 		include: ['src/tests/fixtures/dom/**/*.{test,spec}.{js,ts,tsx}'],
 		environment: 'jsdom',
-		setupFiles: ['src/tests/dom/setup.ts'],
+		setupFiles: ['src/tests/setup/index-checks.ts', 'src/tests/dom/setup.ts'],
 		css: true,
 		testTimeout: 1000000
 	}

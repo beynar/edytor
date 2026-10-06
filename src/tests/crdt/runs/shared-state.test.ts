@@ -207,7 +207,8 @@ describe('shared model ctx — ownership shim', () => {
 		const aStream = ctx.own.streamOf('a');
 		const cStreams = ctx.own.streamsIn('c');
 		set.A.transact(() => M.insertText(doc, 'a', 0, '!'));
-		expect(ctx.own.streamsIn('c')).toBe(cStreams); // untouched text — same list
+		// Streams are read off the text's maintained row (P1): an untouched text's are equal.
+		expect(ctx.own.streamsIn('c')).toEqual(cStreams);
 		expect(ctx.own.streamOf('a')).not.toBe(aStream); // re-placed stream
 		expect(ctx.own.streamOf('a').end).toBe(aStream.end + 1);
 	});

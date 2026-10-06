@@ -1684,7 +1684,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			}
 			const i = T.resolveAnchor(doc, text, anchor.a);
 			if (i === null) return null;
-			const s = own.streamsIn(anchor.b).find((x) => x.start <= i && i <= x.end);
+			const s = own.streamAt(anchor.b, i);
 			const owner = s === undefined ? DEAD : own.ownerOf(s.block);
 			if (typeof owner !== 'string' || !isLiveIn(view(), owner)) return null;
 			let offset = 0;

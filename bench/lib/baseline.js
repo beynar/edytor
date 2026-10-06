@@ -1082,10 +1082,103 @@ const memory = async () => {
 	return out;
 };
 
+// ── steady state on editor-built documents (CRDT study 2026-10: P1, P3) ────
+
+/**
+ * Steady-state costs on documents built the way an editor builds them: each
+ * doc is warmed by reads, then K operations are timed one by one on the SAME
+ * doc (no sample pays the first-read index build). Model only — the facade,
+ * no view subscribed.
+ *
+ * - `enterBuiltKeystroke`: type a line, Enter at its end, N times (every
+ *   block shares the first block's backing text), then a one-char insert in
+ *   the middle block — P1's quadratic case (1.1 / 3.9 / 15.3 ms at
+ *   500 / 1k / 2k blocks before P1).
+ * - `splitLineage`: one paragraph split N times (each tail split again),
+ *   then one-char inserts spread over the split-born blocks: `perSplitMs`
+ *   the mean split, `keystroke` the inserts.
+ * - `structural`: Enter (a split), a move to the end and a block delete on
+ *   N flat paragraphs — P3's case (46 / 11 / 16 ms at 20k before P3).
+ */
+const steadyState = () => {
+	const timed = (n, f) => {
+		const out = [];
+		for (let i = 0; i < n; i++) {
+			const t0 = performance.now();
+			f(i);
+			out.push(performance.now() - t0);
+		}
+		return statsOf(out, { warmup: 0 });
+	};
+	const enterBuiltKeystroke = {};
+	for (const n of [500, 1000, 2000]) {
+		const doc = new Y14.Doc();
+		E.init(doc, { content: [{ id: 'b0', type: 'paragraph', content: [] }] });
+		const ed = E.create(doc);
+		let last = 'b0';
+		for (let b = 1; b < n; b++) {
+			ed.insertText(last, 0, textOf(60));
+			ed.splitBlock(last, 60, `b${b}`);
+			last = `b${b}`;
+		}
+		const mid = `b${n >> 1}`;
+		for (let k = 0; k < 20; k++) ed.insertText(mid, 30, 'w');
+		enterBuiltKeystroke[`blocks-${n}`] = timed(200, () => ed.insertText(mid, 30, 'y'));
+		doc.destroy();
+	}
+	const splitLineage = {};
+	for (const n of [1000, 5000]) {
+		const text = Array.from({ length: n }, (_, i) => `line ${i} `).join('');
+		const parts = text.split(/(?<= )(?=line)/);
+		const doc = new Y14.Doc();
+		E.init(doc, { content: [{ id: 'a', type: 'paragraph', content: [{ kind: 'text', text }] }] });
+		const ed = E.create(doc);
+		const ids = [];
+		let rest = 'a';
+		const t0 = performance.now();
+		for (let i = 0; i < n - 1; i++) {
+			ed.splitBlock(rest, parts[i].length, `s${i}`);
+			rest = `s${i}`;
+			ids.push(rest);
+		}
+		const perSplitMs = +((performance.now() - t0) / (n - 1)).toFixed(4);
+		for (let k = 0; k < 20; k++) ed.insertText(ids[(k * 37) % ids.length], 1, 'w');
+		splitLineage[`splits-${n}`] = {
+			perSplitMs,
+			keystroke: timed(200, (k) => ed.insertText(ids[(k * 37) % ids.length], 1, 'x'))
+		};
+		doc.destroy();
+	}
+	const structural = {};
+	for (const n of [1000, 5000, 20000]) {
+		const doc = new Y14.Doc();
+		E.init(doc, flatSpec(n));
+		const ed = E.create(doc);
+		ed.insertText('b5', 2, 'y');
+		ed.toJSON();
+		const reps = n >= 20000 ? 20 : 40;
+		const mid = `b${n >> 1}`;
+		structural[`blocks-${n}`] = {
+			keystroke: timed(reps, (k) => ed.insertText(mid, caret(k), 'x')),
+			enter: timed(reps, (k) => ed.splitBlock(mid, 5, `e${k}`)),
+			move: timed(reps, (k) => ed.moveBlocks([`b${k + 10}`], { parent: null, index: n - 2 })),
+			delete: timed(reps, (k) => ed.deleteBlock(`b${k + 100}`))
+		};
+		doc.destroy();
+	}
+	return {
+		enterBuiltKeystroke,
+		splitLineage,
+		structural,
+		note: 'steady state on one warmed doc per size; model only (facade, no view). See the lane comment for the pre-fix numbers.'
+	};
+};
+
 // ── suite ─────────────────────────────────────────────────────────────────
 
 /** Run the whole corrected baseline. Plain-data record for the artifact. */
 export const baseline = async () => ({
+	steadyState: steadyState(),
 	keystroke: keystroke(),
 	depth: depth(),
 	textLength: textLength(),

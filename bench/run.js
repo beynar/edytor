@@ -222,6 +222,22 @@ const sv = results.baseline.seamVsCaret;
 console.log(
 	`  seam vs caret — seam ${sv.seam.updateBytes.p50}B/${sv.seam.facadeMs.p50}ms · caret ${sv.caret.updateBytes.p50}B/${sv.caret.facadeMs.p50}ms`
 );
+const ss = results.baseline.steadyState;
+console.log(
+	`  enter-built keystroke p50 — ${Object.entries(ss.enterBuiltKeystroke)
+		.map(([k, v]) => `${k}: ${v.p50}ms`)
+		.join(', ')}`
+);
+console.log(
+	`  split lineage — ${Object.entries(ss.splitLineage)
+		.map(([k, v]) => `${k}: ${v.perSplitMs}ms/split, keystroke p50 ${v.keystroke.p50}ms`)
+		.join('; ')}`
+);
+console.log(
+	`  structural p50 (keystroke/enter/move/delete) — ${Object.entries(ss.structural)
+		.map(([k, v]) => `${k}: ${v.keystroke.p50}/${v.enter.p50}/${v.move.p50}/${v.delete.p50}ms`)
+		.join('; ')}`
+);
 const pc = results.packedConsumer;
 if (pc.built) {
 	const main = Object.entries(pc.assets).find(([f]) => f.startsWith('index-'));

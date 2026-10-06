@@ -23,7 +23,9 @@ export type StoreStruct = {
 	/** `null` for sequence items; an attr name for map-entry items. */
 	parentSub: string | null;
 	parent: unknown;
+	left?: StoreStruct | null;
 	right?: StoreStruct | null;
+	content?: { arr?: unknown[] };
 	countable?: boolean;
 	keep?: boolean;
 	redone?: { client: number; clock: number } | null;
@@ -126,6 +128,44 @@ export const walkIdSetStructs = (
 };
 
 /**
+ * {@link walkIdSetStructs}, clipped: `fn(struct, from, to)` gets the clock
+ * range `[from, to)` of the struct the id set covers (a struct can reach past
+ * a range a diff of two id sets cut).
+ */
+export const walkIdSetRanges = (
+	Y: EngineApi,
+	doc: EngineDoc,
+	idSet: IdSetLike,
+	fn: (struct: StoreStruct, from: number, to: number) => void
+): boolean => {
+	const clients = clientsOf(doc);
+	let complete = true;
+	idSet.clients.forEach((ranges, client) => {
+		const structs = clients.get(client);
+		if (structs === undefined) {
+			complete = false;
+			return;
+		}
+		for (const r of ranges.getIds()) {
+			const end = r.clock + r.len;
+			let i: number;
+			try {
+				i = Y.findIndexSS(structs as never[], r.clock);
+			} catch {
+				complete = false;
+				continue;
+			}
+			for (; i < structs.length; i++) {
+				const s = structs[i]!;
+				if (s.id.clock >= end) break;
+				fn(s, Math.max(r.clock, s.id.clock), Math.min(end, s.id.clock + s.length));
+			}
+		}
+	});
+	return complete;
+};
+
+/**
  * The id the local `redone` chain leads `id` to: the copy an undo or redo
  * on THIS replica re-created of a deleted item (redo copies chain), or `id`
  * itself. Replica-dependent by design: only the replica that ran the
@@ -172,3 +212,12 @@ export const holdsPending = (doc: EngineDoc): boolean => {
 	const store = (doc as { store?: { pendingStructs?: unknown; pendingDs?: unknown } }).store;
 	return (store?.pendingStructs ?? null) !== null || (store?.pendingDs ?? null) !== null;
 };
+
+/**
+ * The transactions the engine has opened and not finished cleaning up
+ * (vendor-internal `doc._transactionCleanups`), in order: the open one, and
+ * those started during an earlier one's cleanup, whose bodies already ran
+ * and whose observers have not.
+ */
+export const queuedTransactions = (doc: EngineDoc): readonly unknown[] =>
+	(doc as { _transactionCleanups?: unknown[] })._transactionCleanups ?? [];

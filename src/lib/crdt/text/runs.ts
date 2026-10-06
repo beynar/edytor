@@ -22,15 +22,24 @@
  *   mark, `type`/`data`, or the registry entry itself); one routine folds a
  *   set of such pairs into the indexes.
  * - A transaction is folded ONCE at commit, from `transaction.changed`.
- * - A read inside an open transaction first folds the PENDING part: the
- *   structs the transaction's insert/delete sets gained since the last fold
- *   (the watermark is those sets' lengths).
- * - An edited backing text is rescanned for its boundary items; the stream
- *   table is rebuilt only when a boundary set, a nonce or a registry entry
- *   changed. Every cached block records which texts its display walked and
- *   which blocks it walked or read a claim on (a skipped claim included); an
- *   edit invalidates the display owners of the streams it touched (or every
- *   reader of the text when it cannot say).
+ * - A read first folds the PENDING part of every transaction whose writes
+ *   are in the document and whose commit fold has not run: the open one, and
+ *   those a transaction's cleanup started (their bodies ran, their observers
+ *   have not) — the structs their insert/delete sets gained since the last
+ *   fold (the watermark is those sets' lengths). The commit fold takes only
+ *   what no read folded.
+ * - Each backing text has a maintained row (`text/rows.ts`, P1): its
+ *   boundaries and the live units between them. An edit that writes or
+ *   removes no boundary moves the row by its units in the gap it lies in
+ *   (found by walking the item list to the nearest boundary), never a
+ *   rescan; a boundary written or removed rescans that text, re-decides the
+ *   delimiters of the blocks its boundaries name, and re-places only the
+ *   rows those cut. Every cached block records which texts its display
+ *   walked and which blocks it walked or read a claim on (a skipped claim
+ *   included); an edit invalidates the display owner of the stream it lies
+ *   in, a placement the blocks whose stream's delimiting boundaries changed
+ *   (or every reader of the text when the fold cannot say: a format marker,
+ *   a change inside an atom).
  *
  * Publication is COMMIT-BOUND (R5): a mid-transaction read refreshes the
  * cache for read-your-writes, but the change report observes committed
@@ -71,12 +80,14 @@ import {
 } from '../placement/model.js';
 import {
 	bindText,
+	byId,
 	canonKey,
 	claimGraph,
 	DEAD,
 	deepFreeze,
 	delimiters,
 	displayOf,
+	isBoundary,
 	placeText,
 	protectItems,
 	readClaims,
@@ -87,6 +98,21 @@ import {
 	type Stream,
 	type TextRow
 } from './model.js';
+import {
+	gapOfItem,
+	headOf,
+	placeRow,
+	rowLength,
+	rowOf,
+	sameRow,
+	segmentAt,
+	segmentOfCut,
+	segmentOfGap,
+	shiftGap,
+	streamOfSegment,
+	type LiveRow,
+	type RowItem
+} from './rows.js';
 import {
 	AT,
 	CLAIMS,
@@ -102,7 +128,13 @@ import {
 	NONCE,
 	TYPE
 } from '../schema.js';
-import { walkIdSetStructs, type IdSetLike, type StoreStruct } from '../structs.js';
+import {
+	queuedTransactions,
+	walkIdSetRanges,
+	walkIdSetStructs,
+	type IdSetLike,
+	type StoreStruct
+} from '../structs.js';
 import { cloneJsonSafe, sameIds } from '../../utils/json.js';
 import { readData } from '../data.js';
 import { callEach } from '../protocols/observable.js';
@@ -361,6 +393,16 @@ const sameShape = (roles: DisplayRoles, a: string, b: string): boolean => {
 /** One index per engine doc, shared by every binding (the doc's lifetime). */
 const indexes = new WeakMap<EngineDoc, RunView>();
 
+/**
+ * Test lanes turn this on (`globalThis.__EDYTOR_INDEX_CHECKS__`, set before
+ * the index loads): after every fold the index checks each fact it keeps
+ * incrementally against a rebuild from the replicated state and throws on
+ * the first difference. Off in production.
+ */
+export const indexChecks = {
+	on: (globalThis as { __EDYTOR_INDEX_CHECKS__?: unknown }).__EDYTOR_INDEX_CHECKS__ === true
+};
+
 export const bindRuns = (Y: EngineApi) => {
 	const T = bindText(Y);
 
@@ -378,52 +420,59 @@ export const bindRuns = (Y: EngineApi) => {
 		const docData = (): Record<string, unknown> => cloneJsonSafe(readData(dataRoot) ?? {});
 		let dataChanged = false;
 
-		// ── edited spans of one fold (L7 narrowing) ───────────────────
+		// ── the edits of one fold (L7 narrowing, P1) ──────────────────
 		//
-		// A keystroke inserts countable items into one backing text; the fold
-		// resolves each inserted item to its post-edit live index, so only the
-		// display owners of the streams those spans touch recompute. Anything
-		// else — a deleted item (its index is a post-delete gap), a format
-		// marker (its effect runs to the next same-key marker), an
-		// unresolvable id — makes the text opaque: every consumer recomputes.
-		type TxLike = { insertSet?: IdSetLike; deleteSet?: IdSetLike };
-		const makeExtentIndex = (tr: unknown) => {
-			let built: Map<EngineNode, [number, number][] | null> | null | undefined;
-			const build = () => {
+		// A keystroke inserts or deletes countable items in one backing text.
+		// The fold records each edited item (the part the fold's id sets
+		// cover) per text; `foldTexts` places it in its row's gap by walking to
+		// the nearest boundary, so the row moves by the edit's units and only
+		// the display owner of that gap's stream recomputes. A boundary item
+		// written or removed makes the row rescan; a format marker (its effect
+		// runs to the next same-key marker) or an unresolvable id makes the
+		// text opaque: every consumer recomputes.
+		type TextEdit = { item: RowItem; len: number; del: boolean };
+		type TextEdits = { edits: TextEdit[]; scan: boolean; opaque: boolean };
+		const NO_EDITS: TextEdits = Object.freeze({
+			edits: [],
+			scan: false,
+			opaque: false
+		}) as TextEdits;
+		const holdsBoundary = (s: StoreStruct, from: number, to: number): boolean => {
+			const arr = s.content?.arr;
+			if (arr === undefined) return false;
+			for (let k = from - s.id.clock; k < to - s.id.clock; k++) if (isBoundary(arr[k])) return true;
+			return false;
+		};
+		/** The edits the id sets `ins`/`del` (what the fold has not folded yet) hold, per text. */
+		const makeEditIndex = (ins: IdSetLike | undefined, del: IdSetLike | undefined) => {
+			let built: Map<EngineNode, TextEdits> | null | undefined;
+			const build = (): Map<EngineNode, TextEdits> | null => {
 				if (built !== undefined) return built;
-				const tx = tr as TxLike | null | undefined;
-				if (tx?.insertSet === undefined || tx.deleteSet === undefined) return (built = null);
-				const out = new Map<EngineNode, [number, number][] | null>();
+				if (ins === undefined || del === undefined) return (built = null);
+				const out = new Map<EngineNode, TextEdits>();
 				const visit = (idSet: IdSetLike, deleted: boolean): boolean =>
-					walkIdSetStructs(Y, doc, idSet, (s) => {
+					walkIdSetRanges(Y, doc, idSet, (s, from, to) => {
 						const parent = s.parent as EngineNode;
 						if (s.parentSub !== null || !isNodeLike(parent)) return;
-						const typeId = parent._item?.id;
-						const abs =
-							deleted || s.countable !== true || typeId === undefined
-								? null
-								: Y.createAbsolutePositionFromRelativePosition(
-										Y.createRelativePositionFromJSON({
-											type: { client: typeId.client, clock: typeId.clock },
-											item: { client: s.id.client, clock: s.id.clock },
-											assoc: 0
-										}),
-										doc as unknown as YDoc,
-										false
-									);
-						const spans = out.get(parent);
-						if (abs === null) out.set(parent, null);
-						else if (spans !== null) {
-							out.set(parent, [...(spans ?? []), [abs.index, abs.index + s.length]]);
-						}
+						let e = out.get(parent);
+						if (e === undefined) out.set(parent, (e = { edits: [], scan: false, opaque: false }));
+						// A format marker moves no unit; its effect reaches past the edit.
+						if (s.countable !== true) return void (e.opaque = true);
+						// Written and removed within the fold: nothing moved.
+						if (deleted ? ins.has(s.id.client, from) : s.deleted) return;
+						if (holdsBoundary(s, from, to)) return void (e.scan = true);
+						e.edits.push({ item: s as RowItem, len: to - from, del: deleted });
 					});
-				built = visit(tx.insertSet, false) && visit(tx.deleteSet, true) ? out : null;
+				built = visit(ins, false) && visit(del, true) ? out : null;
 				return built;
 			};
-			return (node: EngineNode): readonly [number, number][] | undefined =>
-				build()?.get(node) ?? undefined;
+			/** `node`'s edits (`null`: unknown — rescan, every consumer recomputes). */
+			return (node: EngineNode): TextEdits | null => {
+				const map = build();
+				return map === null ? null : (map.get(node) ?? NO_EDITS);
+			};
 		};
-		type ExtentLookup = ReturnType<typeof makeExtentIndex>;
+		type EditLookup = ReturnType<typeof makeEditIndex>;
 
 		// ── the replicated-state index ──────────────────────────────────
 		const blocks = new Map<BlockId, BlockRec>();
@@ -451,54 +500,151 @@ export const bindRuns = (Y: EngineApi) => {
 			return owners.get(b) ?? DEAD;
 		};
 
-		// ── the stream table (R2) ────────────────────────────────────────
-		// One scanned row per backing text (keyed by its home block), the
-		// delimiting boundary of each block, and the streams per text. A
-		// text's rows are rescanned when the fold sees it edited; the table
-		// is rebuilt only when a boundary set, a nonce or a registry entry
-		// changed — otherwise only the edited text's stream offsets move.
-		const rows = new Map<BlockId, TextRow>();
+		// ── the stream table (R2, P1) ────────────────────────────────────
+		// One maintained row per backing text (keyed by its home block): its
+		// live boundaries and the units between them (`text/rows.ts`), the
+		// delimiting boundary of each block, and each block's segment. An edit
+		// that writes or removes no boundary moves its row by its units
+		// (`shiftGap`); a row is rescanned only when its boundary set (or its
+		// text) changed, and only the delimiters of the blocks its boundaries
+		// name are re-decided, so only the rows those delimiters cut re-place.
+		const rows = new Map<BlockId, LiveRow>();
 		let delim = new Map<BlockId, string>();
-		const streams = new Map<BlockId, Stream>();
-		const inText = new Map<BlockId, Stream[]>();
-		/** A stream's identity (text and delimiting boundary) — what a rebuild compares. */
-		const streamKey = (b: BlockId): string | undefined => {
-			const s = streams.get(b);
-			return s && `${s.home}|${delim.get(b) ?? ''}`;
+		/** Every live boundary naming a block, by block: key → its row and nonce. */
+		const boundsBy = new Map<BlockId, Map<string, { home: BlockId; n: unknown }>>();
+		/** Each block's segment: its row and the cut that opens it (`null`: the row's segment 0). */
+		const streamIx = new Map<BlockId, { home: BlockId; cut: string | null }>();
+		/** Each row's segments at its last placement: segment 0's block, then each cut's key and block. */
+		type Placed = { head: BlockId | null; keys: string[]; blocks: BlockId[] };
+		const placed = new Map<BlockId, Placed>();
+		const streamOf = (b: BlockId): Stream | undefined => {
+			const at = streamIx.get(b);
+			const row = at && rows.get(at.home);
+			if (row === undefined) return undefined;
+			const k = segmentOfCut(row, at!.cut);
+			return k < 0 ? undefined : streamOfSegment(row, k, b);
 		};
-		const place = (home: BlockId): void => {
-			for (const s of inText.get(home) ?? [])
-				if (streams.get(s.block) === s) streams.delete(s.block);
+		const streamsIn = (home: BlockId): Stream[] => {
 			const row = rows.get(home);
-			const list = row === undefined ? [] : placeText(row, delim);
-			if (list.length === 0) inText.delete(home);
-			else inText.set(home, list);
-			for (const s of list) streams.set(s.block, s);
+			const out: Stream[] = [];
+			for (let k = 0; row !== undefined && k <= row.cuts.length; k++) {
+				const b = headOf(row, k);
+				if (b !== null) out.push(streamOfSegment(row, k, b));
+			}
+			return out;
 		};
-		/** Rescan `home`'s text; `true` when its boundary set (or the text itself) changed. */
-		const rescan = (home: BlockId): boolean => {
+		const streamAt = (home: BlockId, i: number): Stream | undefined => {
+			const row = rows.get(home);
+			if (row === undefined) return undefined;
+			const k = segmentAt(row, i);
+			const b = headOf(row, k);
+			if (b === null) return undefined;
+			const st = streamOfSegment(row, k, b);
+			return st.start <= i && i <= st.end ? st : undefined;
+		};
+		/** Record `home`'s new row (or none); the blocks its boundary set change names join `named`. */
+		const setRow = (home: BlockId, row: LiveRow | undefined, named: Set<BlockId>): void => {
 			const old = rows.get(home);
-			const text = blocks.get(home)?.content;
-			if (text === undefined) {
-				rows.delete(home);
-				return old !== undefined;
+			if (row === undefined) rows.delete(home);
+			else rows.set(home, row);
+			if (old?.key === row?.key) return;
+			for (const b of old?.bounds ?? []) {
+				if (row?.keyIndex.has(b.key)) continue;
+				const by = boundsBy.get(b.s);
+				by?.delete(b.key);
+				if (by?.size === 0) boundsBy.delete(b.s);
+				named.add(b.s);
 			}
-			const row = scanText(home, text);
-			rows.set(home, row);
-			return old === undefined || old.text !== text || old.key !== row.key;
+			for (const b of row?.bounds ?? []) {
+				if (old?.keyIndex.has(b.key)) continue;
+				let by = boundsBy.get(b.s);
+				if (by === undefined) boundsBy.set(b.s, (by = new Map()));
+				by.set(b.key, { home, n: b.n });
+				named.add(b.s);
+			}
 		};
-		/** Rebuild delimiters and every stream; invalidate the blocks whose stream changed. */
-		const rebuildTable = (invalidated: Set<BlockId>): void => {
-			const before = new Map([...streams.keys()].map((b) => [b, streamKey(b)]));
-			delim = delimiters(blocks, rows.values());
-			streams.clear();
-			inText.clear();
-			for (const home of rows.keys()) place(home);
-			for (const b of new Set([...before.keys(), ...streams.keys()])) {
-				if (before.get(b) === streamKey(b)) continue;
-				invalidated.add(b);
-				for (const c of listConsumers.get(b) ?? []) invalidated.add(c);
+		/** A fresh row of `home`'s text (none without one). */
+		const scanRow = (home: BlockId): LiveRow | undefined => {
+			const text = blocks.get(home)?.content;
+			return text === undefined ? undefined : rowOf(scanText(home, text));
+		};
+		/** Re-decide the delimiting boundary of each block in `named`; the rows a change cuts join `homes`. */
+		const refreshDelims = (named: Iterable<BlockId>, homes: Set<BlockId>): void => {
+			for (const s of named) {
+				const n = blocks.get(s)?.n;
+				let best: string | undefined;
+				if (blocks.has(s))
+					for (const [key, b] of boundsBy.get(s) ?? [])
+						if (b.n === n && (best === undefined || byId(key, best) < 0)) best = key;
+				const old = delim.get(s);
+				if (old === best) continue;
+				if (best === undefined) delim.delete(s);
+				else delim.set(s, best);
+				const was = old === undefined ? undefined : boundsBy.get(s)?.get(old)?.home;
+				if (was !== undefined) homes.add(was);
+				if (best !== undefined) homes.add(boundsBy.get(s)!.get(best)!.home);
+				if (rows.has(s) || placed.has(s)) homes.add(s);
 			}
+		};
+		/**
+		 * Place `home`'s row; invalidate the blocks whose segment changed (or
+		 * appeared, or went). A segment is its two delimiting cuts, so only the
+		 * segments between the longest common prefix and suffix of the old and
+		 * new cut lists can differ: the others keep their entries untouched.
+		 */
+		const placeHome = (home: BlockId, invalidated: Set<BlockId>): void => {
+			const row = rows.get(home);
+			const before = placed.get(home) ?? { head: null, keys: [], blocks: [] };
+			const now: Placed = { head: null, keys: [], blocks: [] };
+			if (row !== undefined) {
+				placeRow(row, delim);
+				now.head = row.head;
+				for (const j of row.cuts) {
+					now.keys.push(row.bounds[j].key);
+					now.blocks.push(row.bounds[j].s);
+				}
+			}
+			if (row === undefined) placed.delete(home);
+			else placed.set(home, now);
+			const [a, b] = [before.keys, now.keys];
+			let p = 0;
+			while (p < a.length && p < b.length && a[p] === b[p]) p++;
+			let q = 0;
+			while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q])
+				q++;
+			// Segment k ends at cut k: it changed iff k lies in [p, n - q] (segment 0 also with its block).
+			const from = before.head === now.head ? p : 0;
+			const changed = (blk: BlockId | null): void => {
+				if (blk === null) return;
+				invalidated.add(blk);
+				for (const c of listConsumers.get(blk) ?? []) invalidated.add(c);
+			};
+			const blockOf = (x: Placed, k: number) => (k === 0 ? x.head : x.blocks[k - 1]);
+			for (let k = from; k <= a.length - q; k++) {
+				const blk = blockOf(before, k);
+				if (blk !== null && streamIx.get(blk)?.home === home) streamIx.delete(blk);
+				changed(blk);
+			}
+			for (let k = from; k <= b.length - q; k++) {
+				const blk = blockOf(now, k);
+				if (blk === null) continue;
+				streamIx.set(blk, { home, cut: k === 0 ? null : b[k - 1] });
+				changed(blk);
+			}
+		};
+		/** Rebuild the delimiters and every row's segments (the first build). */
+		const rebuildTable = (invalidated: Set<BlockId>): void => {
+			boundsBy.clear();
+			for (const [home, row] of rows)
+				for (const b of row.bounds) {
+					let by = boundsBy.get(b.s);
+					if (by === undefined) boundsBy.set(b.s, (by = new Map()));
+					by.set(b.key, { home, n: b.n });
+				}
+			delim = new Map();
+			const homes = new Set<BlockId>([...rows.keys(), ...placed.keys()]);
+			refreshDelims(boundsBy.keys(), homes);
+			for (const home of homes) placeHome(home, invalidated);
 		};
 
 		/** The role table the display reads; `null` → none. */
@@ -532,8 +678,9 @@ export const bindRuns = (Y: EngineApi) => {
 				ensureOwners();
 				return tops.get(m);
 			},
-			streamOf: (b) => streams.get(b),
-			streamsIn: (home) => inText.get(home) ?? [],
+			streamOf,
+			streamsIn,
+			streamAt,
 			display: (b) => displayOf(b, blocks, ownShim)
 		};
 
@@ -934,7 +1081,7 @@ export const bindRuns = (Y: EngineApi) => {
 
 		const runs = (b: BlockId): readonly ContentRun[] => {
 			// Read-your-writes: fold the open transaction's pending writes first.
-			syncPending(openTx());
+			syncAll();
 			if (dirty.has(b) || !cache.has(b)) computeRuns(b);
 			return cache.get(b)?.runs ?? EMPTY_RUNS;
 		};
@@ -944,7 +1091,13 @@ export const bindRuns = (Y: EngineApi) => {
 		/** One fold's effects: invalidated blocks, rescanned texts, rebuilt facets. */
 		type FoldCtx = {
 			invalidated: Set<BlockId>;
-			texts: Map<BlockId, readonly [number, number][] | null>;
+			/** Per home block: its text's edits, whether it rescans, whether every reader re-reads. */
+			texts: Map<
+				BlockId,
+				{ edits: TextEdit[]; scan: boolean; opaque: boolean; seen: Set<TextEdits> }
+			>;
+			/** The blocks whose entry or nonce changed: their delimiters are re-decided. */
+			named: Set<BlockId>;
 			table: boolean;
 			structure: boolean;
 			placement: boolean;
@@ -963,11 +1116,27 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 		};
 
-		/** Fold one block's changed facets (`spans`: its text's edited spans, `null` = opaque). */
+		/** Note edits of `id`'s own text (`null`: unknown — rescan, every reader re-reads). */
+		const noteText = (ctx: FoldCtx, id: BlockId, e: TextEdits | null): void => {
+			let t = ctx.texts.get(id);
+			if (t === undefined)
+				ctx.texts.set(id, (t = { edits: [], scan: false, opaque: false, seen: new Set() }));
+			if (e === null) {
+				t.scan = t.opaque = true;
+				return;
+			}
+			if (t.seen.has(e)) return;
+			t.seen.add(e);
+			t.scan ||= e.scan;
+			t.opaque ||= e.opaque;
+			for (const x of e.edits) t.edits.push(x);
+		};
+
+		/** Fold one block's changed facets (`edits`: its own text's, one per changed content node). */
 		const foldBlock = (
 			id: BlockId,
 			facets: ReadonlySet<string>,
-			spans: readonly [number, number][] | null,
+			edits: readonly (TextEdits | null)[],
 			ctx: FoldCtx
 		): void => {
 			const kinds = new Set<Facet | 'entry'>();
@@ -982,7 +1151,8 @@ export const bindRuns = (Y: EngineApi) => {
 				// A new entry, a nonce or an own text can move streams (R2).
 				if (kinds.has('entry') || facets.has(NONCE) || facets.has(CONTENT_ATTR)) {
 					ctx.table = true;
-					ctx.texts.set(id, null);
+					ctx.named.add(id);
+					noteText(ctx, id, null);
 				}
 				invalidateBlock(id, ctx, claimsBefore);
 			} else {
@@ -1004,28 +1174,69 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 			const parentAfter = parentOf(id);
 			if (typeof parentAfter === 'string') ctx.parents.add(parentAfter);
-			if (kinds.has('content') && ctx.texts.get(id) !== null) {
-				ctx.texts.set(id, spans === null ? null : [...(ctx.texts.get(id) ?? []), ...spans]);
-			}
+			if (kinds.has('content')) for (const e of edits) noteText(ctx, id, e);
 		};
 
-		/** Rescan the edited texts, move or rebuild the stream table, and invalidate their readers. */
+		/**
+		 * Move each edited text's row by its edits (or rescan it), re-decide the
+		 * delimiters a boundary change names, re-place the rows they cut, and
+		 * invalidate the readers: the display owner of each edited stream (L7),
+		 * the blocks whose stream changed, every reader of an opaque text.
+		 */
 		const foldTexts = (ctx: FoldCtx): void => {
-			const changed = new Set<BlockId>();
-			for (const home of ctx.texts.keys()) if (rescan(home)) changed.add(home);
-			if (changed.size > 0) ctx.table = true;
-			if (ctx.table) rebuildTable(ctx.invalidated);
-			else for (const home of ctx.texts.keys()) place(home);
-			for (const [home, spans] of ctx.texts) {
-				const readers = textConsumers.get(home) ?? [];
-				if (spans === null || changed.has(home) || ctx.structure) {
-					for (const c of readers) ctx.invalidated.add(c);
+			const homes = new Set<BlockId>();
+			const gapsOf = new Map<BlockId, number[] | null>();
+			const gapsIn = (row: LiveRow, edits: readonly TextEdit[]): number[] | null => {
+				const gaps: number[] = [];
+				for (const e of edits) {
+					const gap = gapOfItem(row, e.item);
+					if (gap < 0) return null;
+					gaps.push(gap);
+				}
+				return gaps;
+			};
+			for (const [home, t] of ctx.texts) {
+				const text = blocks.get(home)?.content;
+				const row = rows.get(home);
+				let gaps: number[] | null = [];
+				let fresh = t.scan || row === undefined || text === undefined || row.text !== text;
+				if (!fresh) {
+					for (const e of t.edits) {
+						const gap = gapOfItem(row!, e.item);
+						if (gap < 0 || !shiftGap(row!, gap, e.del ? -e.len : e.len)) {
+							fresh = true;
+							break;
+						}
+						gaps.push(gap);
+					}
+					// The engine's own count of live units: a row that disagrees is stale.
+					if (!fresh && rowLength(row!) !== (text as unknown as { _length: number })._length)
+						fresh = true;
+				}
+				if (fresh) {
+					const next = scanRow(home);
+					const same = next !== undefined && row !== undefined && next.key === row.key;
+					if (same) [next.cuts, next.head] = [row.cuts, row.head];
+					setRow(home, next, ctx.named);
+					if (!same) homes.add(home);
+					gaps = next === undefined ? [] : gapsIn(next, t.edits);
+				}
+				gapsOf.set(home, t.opaque ? null : gaps);
+			}
+			refreshDelims(ctx.named, homes);
+			if (homes.size > 0) ctx.table = true;
+			for (const home of homes) placeHome(home, ctx.invalidated);
+			for (const [home, gaps] of gapsOf) {
+				if (gaps === null) {
+					for (const c of textConsumers.get(home) ?? []) ctx.invalidated.add(c);
 					continue;
 				}
-				// Only the streams the edit touched change their display (L7).
-				for (const s of inText.get(home) ?? []) {
-					if (!spans.some(([lo, hi]) => s.start <= hi && lo <= s.end)) continue;
-					const owner = ownerOf(s.block);
+				// Only the stream each edit lies in changes its display (L7).
+				const row = rows.get(home);
+				if (row === undefined) continue;
+				for (const gap of gaps) {
+					const b = headOf(row, segmentOfGap(row, gap));
+					const owner = b === null ? DEAD : ownerOf(b);
 					if (typeof owner === 'string') ctx.invalidated.add(owner);
 				}
 			}
@@ -1033,11 +1244,11 @@ export const bindRuns = (Y: EngineApi) => {
 
 		/** The blocks whose stream lies in a text the fold edited. */
 		const editedStreams = (ctx: FoldCtx): BlockId[] =>
-			[...ctx.texts.keys()].flatMap((home) => (inText.get(home) ?? []).map((s) => s.block));
+			[...ctx.texts.keys()].flatMap((home) => streamsIn(home).map((st) => st.block));
 		/** A live unit in `id`'s stream (boundaries excepted). */
 		const streamHolds = (id: BlockId): boolean => {
-			const s = streams.get(id);
-			return s !== undefined && s.end - s.start > s.inert.length;
+			const st = streamOf(id);
+			return st !== undefined && st.end - st.start > st.inert.length;
 		};
 
 		/**
@@ -1118,10 +1329,10 @@ export const bindRuns = (Y: EngineApi) => {
 		/** THE fold: one pass over changed `(type, parentSub)` pairs, each block folded once. */
 		const fold = (
 			changed: Map<unknown, Set<string | null>>,
-			extentOf: ExtentLookup
+			editsOf: EditLookup
 		): Map<BlockId, Set<string>> => {
 			const touched = new Map<BlockId, Set<string>>();
-			const spans = new Map<BlockId, [number, number][] | null>();
+			const edits = new Map<BlockId, (TextEdits | null)[]>();
 			let derived = changed.has(dataRoot);
 			for (const [type, subs] of changed) {
 				for (const sub of subs) {
@@ -1131,28 +1342,36 @@ export const bindRuns = (Y: EngineApi) => {
 					let facets = touched.get(id);
 					if (facets === undefined) touched.set(id, (facets = new Set()));
 					facets.add(facet);
-					if (facet !== CONTENT || spans.get(id) === null) continue;
-					const edited = seq ? extentOf(type as EngineNode) : undefined;
-					spans.set(id, edited === undefined ? null : [...(spans.get(id) ?? []), ...edited]);
+					if (facet !== CONTENT) continue;
+					// A sequence edit of the block's own text, or a change inside one of its atoms.
+					let list = edits.get(id);
+					if (list === undefined) edits.set(id, (list = []));
+					list.push(seq ? editsOf(type as EngineNode) : null);
 				}
 			}
 			const ctx: FoldCtx = {
 				invalidated: new Set(),
 				texts: new Map(),
+				named: new Set(),
 				table: false,
 				structure: false,
 				placement: false,
 				parents: new Set()
 			};
 			for (const [id, facets] of touched) {
-				foldBlock(id, facets, spans.get(id) ?? null, ctx);
+				foldBlock(id, facets, edits.get(id) ?? [], ctx);
 				derived ||= [...facets].some((f) => f === ENTRY_FACET || facetOf(f) !== 'ignore');
 			}
 			if (ctx.structure) structureVersion++;
 			foldTexts(ctx);
-			settle(ctx.table ? shells : [...touched.keys(), ...ctx.parents, ...editedStreams(ctx)], ctx);
+			if (shells.size > 0)
+				settle(
+					ctx.table ? shells : [...touched.keys(), ...ctx.parents, ...editedStreams(ctx)],
+					ctx
+				);
 			if (ctx.placement) placementVersion++;
 			for (const b of ctx.invalidated) dirty.add(b);
+			if (indexChecks.on) check();
 			if (derived) version++;
 			if (reporting) {
 				for (const id of touched.keys()) candidates.add(id);
@@ -1168,13 +1387,48 @@ export const bindRuns = (Y: EngineApi) => {
 			return touched;
 		};
 
+		/** {@link indexChecks}: every incrementally maintained fact equals its rebuild. */
+		const check = (): void => {
+			const fail = (what: string): never => {
+				throw new Error(`[edytor index] ${what} differs from its rebuild`);
+			};
+			const scans = new Map<BlockId, TextRow>();
+			for (const rec of blocks.values())
+				if (rec.content) scans.set(rec.id, scanText(rec.id, rec.content));
+			for (const home of rows.keys()) if (!scans.has(home)) fail(`row ${home}`);
+			for (const [home, scan] of scans) {
+				const row = rows.get(home);
+				if (row === undefined || row.text !== scan.text || !sameRow(row, scan)) fail(`row ${home}`);
+			}
+			const want = delimiters(blocks, scans.values());
+			if (want.size !== delim.size || [...want].some(([b, k]) => delim.get(b) !== k))
+				fail('delimiters');
+			const streamSig = (st: Stream | undefined) =>
+				st && `${st.home}:${st.start}-${st.end}/${st.inert.join(',')}`;
+			const placed = new Set<BlockId>();
+			for (const [home, scan] of scans)
+				for (const st of placeText(scan, want)) {
+					placed.add(st.block);
+					if (streamSig(streamOf(st.block)) !== streamSig(st))
+						fail(`stream of ${st.block} in ${home}`);
+				}
+			for (const b of streamIx.keys()) if (!placed.has(b)) fail(`stream of ${b}`);
+			for (const [b, c] of cache) {
+				if (dirty.has(b)) continue;
+				const fresh = computeFresh(b).fresh;
+				if (keyOf(fresh) !== keyOf(c.runs)) fail(`runs of ${b}`);
+			}
+		};
+
 		type Tx = {
 			insertSet?: IdSetLike;
 			deleteSet?: IdSetLike;
 			changed?: EngineTransaction['changed'];
 		};
-		/** The open transaction's folded part: copies of its id sets, and their lengths (the watermark). */
-		let cursor: { tr: Tx; ins: IdSetLike; del: IdSetLike; mark: number } | null = null;
+		/** Each transaction's folded part: copies of its id sets, and their lengths (the watermark). */
+		const cursors = new WeakMap<Tx, { ins: IdSetLike; del: IdSetLike; mark: number }>();
+		/** The transactions whose commit fold ran. */
+		const committed = new WeakSet<Tx>();
 		const lengthOf = (set: IdSetLike): number => {
 			let n = 0;
 			set.clients.forEach((ranges) => {
@@ -1191,9 +1445,9 @@ export const bindRuns = (Y: EngineApi) => {
 		 */
 		const syncPending = (tr: Tx | null | undefined): boolean => {
 			if (tr?.insertSet === undefined || tr.deleteSet === undefined) return false;
-			if (cursor?.tr !== tr) {
-				cursor = { tr, ins: Y.createIdSet(), del: Y.createIdSet(), mark: 0 };
-			}
+			let cursor = cursors.get(tr);
+			if (cursor === undefined)
+				cursors.set(tr, (cursor = { ins: Y.createIdSet(), del: Y.createIdSet(), mark: 0 }));
 			const mark = lengthOf(tr.insertSet) + lengthOf(tr.deleteSet);
 			if (mark === cursor.mark) return false;
 			const ins = Y.diffIdSet(tr.insertSet as never, cursor.ins as never) as IdSetLike;
@@ -1211,16 +1465,36 @@ export const bindRuns = (Y: EngineApi) => {
 			};
 			walkIdSetStructs(Y, doc, ins, note);
 			walkIdSetStructs(Y, doc, del, note);
-			fold(changed, makeExtentIndex({ insertSet: ins, deleteSet: del }));
+			fold(changed, makeEditIndex(ins, del));
 			return true;
 		};
 		const openTx = (): Tx | null | undefined => doc._transaction as Tx | null | undefined;
+		/**
+		 * Fold every transaction whose writes are in the document and whose
+		 * commit fold has not run, in their order: the open one, and those a
+		 * transaction's cleanup started (an observer's or an `update`
+		 * listener's write runs its body at once, its observers later) — a
+		 * read in between must not mix their items with an index that never
+		 * saw them.
+		 */
+		const syncAll = (): void => {
+			for (const tr of queuedTransactions(doc) as Tx[]) if (!committed.has(tr)) syncPending(tr);
+		};
 
 		/** The commit: fold `transaction.changed` once (the report publishes from `update`). */
 		const onCommit = (e: EngineDeepEvent): void => {
 			const tr = e.transaction as Tx;
-			if (cursor?.tr === tr) cursor = null;
-			fold(tr.changed ?? new Map(), makeExtentIndex(tr));
+			let [ins, del] = [tr.insertSet, tr.deleteSet];
+			// The writes a read folded already moved the rows: only the rest
+			// are edits now (the facets fold again, idempotent).
+			const cursor = cursors.get(tr);
+			if (cursor !== undefined && ins !== undefined && del !== undefined) {
+				ins = Y.diffIdSet(ins as never, cursor.ins as never) as IdSetLike;
+				del = Y.diffIdSet(del as never, cursor.del as never) as IdSetLike;
+			}
+			cursors.delete(tr);
+			committed.add(tr);
+			fold(tr.changed ?? new Map(), makeEditIndex(ins, del));
 		};
 
 		// ── projection ───────────────────────────────────────────────────
@@ -1420,7 +1694,8 @@ export const bindRuns = (Y: EngineApi) => {
 		registry.forEachAttr((v: unknown, id: string) => {
 			if (!isNodeLike(v)) return;
 			updateBlockRec(id);
-			rescan(id);
+			const row = scanRow(id);
+			if (row !== undefined) rows.set(id, row);
 		});
 		rebuildTable(new Set());
 		settle(shells, null);
@@ -1440,12 +1715,12 @@ export const bindRuns = (Y: EngineApi) => {
 
 		const view: RunView = {
 			version: () => {
-				syncPending(openTx());
+				syncAll();
 				return version;
 			},
 			runs,
 			contentItems: (b: BlockId): ContentItem[] => {
-				syncPending(openTx());
+				syncAll();
 				return blocks.get(b)?.deleted === false ? itemsOf(b) : [];
 			},
 			// Inline atoms always carry `data` (`{}` when absent) — the public
@@ -1457,23 +1732,24 @@ export const bindRuns = (Y: EngineApi) => {
 						: { id: r.id, type: r.type, data: r.data === undefined ? {} : cloneJsonSafe(r.data) }
 				),
 			view: (tr?: unknown): ModelView => {
-				syncPending((tr as Tx | undefined) ?? openTx());
+				syncAll();
+				if (tr !== undefined && !committed.has(tr as Tx)) syncPending(tr as Tx);
 				return ctx;
 			},
 			displayType: (id) => {
 				if (roles === null) return undefined;
-				syncPending(openTx());
+				syncAll();
 				ensurePlacements();
 				const shown = blocks.has(id) ? typeOf(id) : undefined;
 				return shown === blocks.get(id)?.type ? undefined : shown;
 			},
 			dissolved: (id) => {
-				syncPending(openTx());
+				syncAll();
 				ensurePlacements();
 				return dissolved.has(id);
 			},
 			project: (root?: BlockId): ProjectedBlock[] => {
-				syncPending(openTx());
+				syncAll();
 				ensurePlacements();
 				return root === undefined
 					? (kidsMap!.get(null) ?? []).map((k) => projectBlock(k.id))
@@ -1488,12 +1764,12 @@ export const bindRuns = (Y: EngineApi) => {
 				if (reportSubs.size > 0 && !openTx()) publish(null, false);
 			},
 			track: () => {
-				syncPending(openTx());
+				syncAll();
 				const f: Folded = { touched: new Map(), wrote: false };
 				frames.add(f);
 				return {
 					end: () => {
-						syncPending(openTx());
+						syncAll();
 						frames.delete(f);
 						return f;
 					}
@@ -1501,7 +1777,7 @@ export const bindRuns = (Y: EngineApi) => {
 			},
 			onReport: (cb) => {
 				if (reportSubs.size === 0) {
-					syncPending(openTx());
+					syncAll();
 					published = reachable();
 					dataKey = keyOf(docData());
 					candidates.clear();

@@ -333,7 +333,7 @@ export const scanText = (home: BlockId, text: EngineNode): TextRow => {
 	return { home, text, bounds, len: at, key: bounds.map((b) => b.key).join(',') };
 };
 
-const byId = (a: string, b: string): number => {
+export const byId = (a: string, b: string): number => {
 	const [ac, ak] = a.split(':').map(Number);
 	const [bc, bk] = b.split(':').map(Number);
 	return ac - bc || ak - bk;
@@ -355,20 +355,29 @@ export const delimiters = (
 	return out;
 };
 
-/** The streams of one text, in text order: the home's head (unless delimited elsewhere), then one per delimiting boundary. */
+/**
+ * The streams of one text, in text order: the home's head (unless delimited
+ * elsewhere), then one per delimiting boundary — one sweep over the
+ * boundaries (each non-delimiting one is an inert boundary of the stream it
+ * sits in).
+ */
 export const placeText = (row: TextRow, delim: ReadonlyMap<BlockId, string>): Stream[] => {
-	const cuts = row.bounds.filter((b) => delim.get(b.s) === b.key);
-	const heads: { block: BlockId | null; start: number }[] = [
-		{ block: delim.has(row.home) ? null : row.home, start: 0 },
-		...cuts.map((b) => ({ block: b.s, start: b.at + 1 }))
-	];
 	const out: Stream[] = [];
-	heads.forEach((h, i) => {
-		const end = i + 1 < heads.length ? heads[i + 1].start - 1 : row.len;
-		if (h.block === null) return;
-		const inert = row.bounds.filter((b) => b.at >= h.start && b.at < end).map((b) => b.at);
-		out.push({ block: h.block, home: row.home, text: row.text, start: h.start, end, inert });
-	});
+	let block: BlockId | null = delim.has(row.home) ? null : row.home;
+	let start = 0;
+	let inert: number[] = [];
+	const close = (end: number) => {
+		if (block !== null) out.push({ block, home: row.home, text: row.text, start, end, inert });
+	};
+	for (const b of row.bounds) {
+		if (delim.get(b.s) !== b.key) {
+			inert.push(b.at);
+			continue;
+		}
+		close(b.at);
+		[block, start, inert] = [b.s, b.at + 1, []];
+	}
+	close(row.len);
 	return out;
 };
 
@@ -392,6 +401,8 @@ export type Ownership = {
 	streamOf: (b: BlockId) => Stream | undefined;
 	/** The streams of `home`'s text, in text order. */
 	streamsIn: (home: BlockId) => readonly Stream[];
+	/** The stream of `home`'s text whose `[start, end]` holds live index `i` (the first, at a seam). */
+	streamAt: (home: BlockId, i: number) => Stream | undefined;
 	/** `display(b)` as boundary-free pieces in reading order; `null` when hidden or dead. */
 	display: (b: BlockId) => Seg[] | null;
 };
@@ -564,6 +575,7 @@ export const bindText = (Y: EngineApi) => {
 			top: (m) => top.get(m),
 			streamOf: (b) => streams.get(b),
 			streamsIn: (home) => inText.get(home) ?? [],
+			streamAt: (home, i) => (inText.get(home) ?? []).find((x) => x.start <= i && i <= x.end),
 			display: (b) => displayOf(b, blocks, own)
 		};
 		return own;

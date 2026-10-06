@@ -29,6 +29,7 @@ import {
 	WITHDRAW_PREFIX
 } from './schema.js';
 import { bindDeletes, type Span } from './text/deletes.js';
+import { baseIdOf, isIncarnationId } from './incarnations.js';
 
 /** The horizon: the time and encoded state vector of the room's epoch (`room.purge.timing`). */
 export type Horizon = { at: number; sv: Uint8Array };
@@ -165,6 +166,8 @@ export const bindPurge = (Y: EngineApi) => {
 				grew = true;
 			}
 		}
+		// A losing incarnation (H13) dies with its key's block too.
+		for (const id of blocks.keys()) if (isIncarnationId(id) && dead.has(baseIdOf(id))) dead.add(id);
 
 		// ── Which of them go whole ────────────────────────────────────────
 		// A text family: the blocks with a stream in one backing text, and the
@@ -184,6 +187,8 @@ export const bindPurge = (Y: EngineApi) => {
 		for (const id of blocks.keys()) {
 			const s = own.streamOf(id);
 			if (s !== undefined && s.home !== id) join(id, s.home);
+			// A key's block and its losing incarnations go together or stay together (H13).
+			if (isIncarnationId(id)) join(id, baseIdOf(id));
 		}
 		const families = new Map<BlockId, BlockId[]>();
 		for (const id of blocks.keys()) add(families, root(id), id);
@@ -225,11 +230,28 @@ export const bindPurge = (Y: EngineApi) => {
 		for (const [id, rec] of blocks) {
 			// An emptied block's claims are gone already (above).
 			if (removable.has(id) || dead.has(id) || rec.claimsNode === undefined) continue;
-			const named = rec.claims.filter((c) => removable.has(c.m)).map((c) => c.seqIndex);
+			const named = rec.claims
+				.filter((c) => removable.has(c.m))
+				.map((c) => c.seqIndex)
+				.filter((at) => at >= 0);
 			for (const at of named.sort((a, b) => b - a)) rec.claimsNode.delete(at, 1);
 			report.claims += named.length;
 		}
 		for (const id of removable) {
+			if (isIncarnationId(id)) {
+				// A losing incarnation is no registry value: its subtree goes (H13).
+				// Its node is a deleted value, which the node API writes nothing to:
+				// its attrs' items are deleted directly, in this transaction.
+				const attrs = mapOf(blocks.get(id)!.node) as unknown as Map<
+					string,
+					{ deleted: boolean; delete(tr: unknown): void }
+				>;
+				doc.transact((tr) => {
+					for (const item of attrs.values()) if (!item.deleted) item.delete(tr);
+				});
+				report.removed++;
+				continue;
+			}
 			registry.deleteAttr(id);
 			if (attribution.getAttr(`${REC_PREFIX}${id}`) !== undefined)
 				attribution.deleteAttr(`${REC_PREFIX}${id}`);

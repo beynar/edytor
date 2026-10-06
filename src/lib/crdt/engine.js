@@ -39,6 +39,8 @@ export const Y = {
 	UpdateEncoderV2: V.UpdateEncoderV2,
 	Skip: V.Skip,
 	findIndexSS: V.findIndexSS,
+	// a concurrent creation of one block id keeps the losing node (fork P14, H13)
+	isKeptReplaced: V.isKeptReplaced,
 	createRelativePositionFromTypeIndex: V.createRelativePositionFromTypeIndex,
 	createRelativePositionFromJSON: V.createRelativePositionFromJSON,
 	createAbsolutePositionFromRelativePosition: V.createAbsolutePositionFromRelativePosition,

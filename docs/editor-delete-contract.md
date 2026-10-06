@@ -1190,6 +1190,54 @@ id-less template seeded late into a document an older build seeded (full
 32-bit writer) mints new ids and shows twice, once. Pins:
 `t3-seed.test.ts` (UW-03 rows, F-T11/F-T12/F-T17).
 
+### `id.same.concurrent` — two creations of one id keep both texts (H13)
+
+Caller ids are public API, so two live writers (client ids at or above
+2^26) can create block `N` at once (`insertBlock`, a split or a paste with
+the same caller id). The registry's last-writer-wins keeps the larger
+client's node: its type, data, placement and attribution are `N`'s. The
+other node — the LOSING INCARNATION — keeps its subtree (fork patch P14,
+`Doc.keepReplaced`, installed by `bindModel` for the registry: a value a
+concurrent write of the same key replaced is deleted without deleting
+its subtree, what lands in its subtree later integrates live, and it is
+never collected; a value written over a known one is replaced as
+before). The index shows it as a block of its own under a derived id
+(`N` + U+0000 + its item's `client.clock`, `incarnations.ts`; an id
+holding U+0000 is refused at creation), which `N` claims implicitly,
+after `N`'s own stream and before `N`'s own claims, the largest client's
+first (the registry's order):
+
+- `N` reads the winner's text, then each losing incarnation's stream (its
+  own text up to its first live boundary); a block split off a losing
+  incarnation's text keeps its piece (its stream lies there), at its own
+  rank;
+- typing, deleting and splitting in that part edit the losing text (it
+  is a stream like any other); the loser's author's writes that reach a
+  replica after the race land there too;
+- an implicit claim stamps below every written claim, so a split of `N`
+  before it moves it to the new block as an explicit claim, which wins;
+- a losing incarnation lives and dies with `N`: hidden by its own delete
+  mark or while `N` is deleted (a withdrawn `N` holds content while one
+  of its incarnations does); its node's own attrs are a deleted value's,
+  which the node API never writes (delete and withdraw marks on it are
+  dropped);
+- the purge (`room.purge.what`) treats `N` and its incarnations as one
+  text family: they go together, the incarnation's subtree deleted item
+  by item;
+- a SEED's losing incarnation (a writer below 2^26) shows nothing: seeds
+  keep one version per id (`conc.seed.late`, F-T17).
+
+Residuals: the order of a block split off a losing incarnation relative
+to `N` follows their ranks, not the text (`order.split.text` reads one
+text's pieces; `N` stands at the winner's place); a client of an earlier
+release deletes the losing subtree when it integrates the race, and that
+delete reaches every replica (convergent, the text lost as before);
+writes to the losing node's own attrs (type, data, delete marks) are
+dropped. Pins: `phase5/h13-same-id.test.ts` (six client-id pairs, both
+delivery orders, duplicate delivery, a reload; three writers; seeds; the
+purge; two fuzzes: colliding ids, no character lost; and with deletes and
+undo, converged).
+
 ### `conc.void-children` — a void kind displays no children
 
 Nothing renders a void block's children, so a void never shows any. A

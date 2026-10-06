@@ -12,7 +12,8 @@ import { sortsBefore, pairedRole } from '../utils/marks.js' // P13
 import {
   replaceStruct,
   getItemCleanEnd,
-  addChangedTypeToTransaction
+  addChangedTypeToTransaction,
+  isKeptReplaced // P14
 } from '../utils/transaction-helpers.js'
 
 const isDevMode = env.getVariable('node_env') === 'development'
@@ -273,7 +274,9 @@ export class Item extends AbstractStruct {
       this.content.integrate(transaction, this)
       // add parent to transaction.changed
       addChangedTypeToTransaction(transaction, /** @type {YNode} */ (this.parent), this.parentSub)
-      if ((/** @type {YNode} */ (this.parent)._item !== null && /** @type {YNode} */ (this.parent)._item.deleted) || (this.parentSub !== null && this.right !== null)) {
+      const parentItem = /** @type {YNode} */ (this.parent)._item
+      // P14: a node a concurrent value replaced keeps its subtree: what lands in it stays
+      if ((parentItem !== null && parentItem.deleted && !isKeptReplaced(parentItem)) || (this.parentSub !== null && this.right !== null)) {
         // delete if parent is deleted or if this is not the current attribute value of parent
         this.delete(transaction)
       }
@@ -386,7 +389,8 @@ export class Item extends AbstractStruct {
       this.markDeleted()
       transaction.deleteSet.add(this.id.client, this.id.clock, this.length)
       addChangedTypeToTransaction(transaction, parent, this.parentSub)
-      this.content.delete(transaction)
+      // P14: a node a concurrent value replaced keeps its subtree (the document asked)
+      if (!isKeptReplaced(this)) this.content.delete(transaction)
     }
   }
 

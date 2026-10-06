@@ -111,7 +111,8 @@ Block and inline block ids are optional in the input:
 - Ids you provide are kept. Use them when something outside the document refers to a block (a link to `#block-<id>`, comments, analytics).
 - Missing ids are generated. For the initial `value`, they are derived from a hash of the value, so two clients that seed the same template get the same ids and merge into one document.
 - The output always has ids.
-- Ids must be unique. An insert that reuses a live block's id is refused.
+- Ids must be unique. An insert that reuses a live block's id is refused, and so is an id holding the character U+0000 (the document derives ids with it, below).
+- Two people can still create the same id at once, each in their own copy (two clients that add a block with id `summary` before they sync). When the copies meet, one block keeps the id: the one written by the larger client id, with its type, properties and place. The other one's text is not lost: it shows at the end of the kept block's text, where both can edit it. A block someone split off the other one keeps its text. Seeds are the exception: two different templates seeding one id keep one version (see [deterministic seeds](/docs/collaboration/documents#deterministic-seeds)).
 - Pasted content always gets fresh ids, even when it was copied from the same document.
 
 ## What you get back

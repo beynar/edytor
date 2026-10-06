@@ -25,6 +25,7 @@ export type EngineSymbol =
 	| 'UpdateEncoderV2'
 	| 'Skip'
 	| 'findIndexSS'
+	| 'isKeptReplaced'
 	| 'createRelativePositionFromTypeIndex'
 	| 'createRelativePositionFromJSON'
 	| 'createAbsolutePositionFromRelativePosition'

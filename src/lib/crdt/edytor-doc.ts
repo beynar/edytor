@@ -105,6 +105,7 @@
  * placement candidate or a meta-only write) are suppressed.
  */
 import { setMarkEdges, type MarkEdge } from './text/marks.js';
+import { isIncarnationId } from './incarnations.js';
 import { DEV } from 'esm-env';
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode, YUndoManager } from './engine-api.js';
 import { hash32, randOf, setDocRand } from './rand.js';
@@ -2681,7 +2682,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const pos = positionOf(id);
 			const rec = view().blocks.get(id);
 			if (pos === null || isVoid(id) || !rendersContent(id) || !rec?.claimsNode) return REFUSED;
-			if (M.blockNodeOf(doc, born) !== null) return REFUSED;
+			if (isIncarnationId(born) || M.blockNodeOf(doc, born) !== null) return REFUSED;
 			const [at] = clamp(id, offset, 0);
 			// An empty tail type is the one a view reads mid-retype: copy the kind (YW-07).
 			const type = tail?.type ? ref(tail.type) : kindToCopy(id);

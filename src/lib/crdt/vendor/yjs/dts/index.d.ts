@@ -16,7 +16,7 @@ export { UpdateEncoderV1, UpdateEncoderV2 } from "./utils/UpdateEncoder.js";
 export { applyUpdate, applyUpdateV2, readUpdateV2, encodeStateAsUpdate, encodeStateAsUpdateV2, encodeStateVector, decodeStateVector, diffUpdateV2, mergeUpdates, mergeUpdatesV2 } from "./utils/encoding.js";
 export { ID, createID, compareIDs, findRootTypeKey } from "./utils/ID.js";
 export { createRelativePositionFromTypeIndex, createRelativePositionFromJSON, createAbsolutePositionFromRelativePosition, AbsolutePosition, RelativePosition, relativePositionToJSON } from "./utils/RelativePosition.js";
-export { findIndexSS, getItemCleanStart, getItemCleanEnd } from "./utils/transaction-helpers.js";
+export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from "./utils/transaction-helpers.js";
 export { Transaction, transact, cleanupYTextFormatting } from "./utils/Transaction.js";
 export { UndoManager, redoItem } from "./utils/UndoManager.js";
 export { decodeUpdate, decodeUpdateV2, convertUpdateFormatV2ToV1 } from "./utils/updates.js";

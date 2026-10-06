@@ -49,12 +49,26 @@ import { $doc } from './schemas.js'
  */
 export class Doc extends ObservableV2 {
   /**
+   * P14: the default of every document's `keepReplaced` (`null`: no node is
+   * kept, upstream's semantics). A binder sets it once for its documents.
+   * @type {((item: import('../structs/Item.js').Item) => boolean) | null}
+   */
+  static keepReplaced = null
+
+  /**
    * @param {DocOpts} opts configuration
    */
   constructor ({ guid = random.uuidv4(), collectionid = null, gc = true, gcFilter = () => true, meta = null, autoLoad = false, shouldLoad = true, isSuggestionDoc = false } = {}) {
     super()
     this.gc = gc
     this.gcFilter = gcFilter
+    /**
+     * P14: which node values a concurrent write of the same key replaced keep
+     * their subtree (`isKeptReplaced` in `utils/transaction-helpers.js`);
+     * `null`: the class's {@link Doc.keepReplaced}.
+     * @type {((item: import('../structs/Item.js').Item) => boolean) | null}
+     */
+    this.keepReplaced = null
     this.clientID = generateNewClientId()
     this.guid = guid
     this.collectionid = collectionid

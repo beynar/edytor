@@ -1,3 +1,4 @@
+export function isKeptReplaced(item: Item): boolean;
 export function findIndexSS(structs: Array<Item | GC | Skip>, clock: number): number;
 export function findIndexCleanStart(transaction: Transaction | null, structs: Array<Item | GC | Skip>, clock: number): number;
 export function getItemCleanStart(transaction: Transaction, id: ID): Item;

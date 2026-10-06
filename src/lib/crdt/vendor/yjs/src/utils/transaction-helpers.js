@@ -3,12 +3,31 @@ import * as error from 'lib0-v14/error'
 import * as map from 'lib0-v14/map'
 import * as set from 'lib0-v14/set'
 import { foldPaired, pairedRole } from './marks.js' // P13
+import { compareIDs } from './ID.js' // P14
 
 
 /**
  * These modules don't require any imports.
  * These helpers are used by items to integrate themselves
  */
+
+/**
+ * P14: whether `item` is a node value a CONCURRENT write of the same key
+ * replaced, and its document keeps such nodes (`Doc#keepReplaced`): it is
+ * deleted (the key reads the newer value) without deleting its subtree, its
+ * subtree integrates live, and it is never garbage collected. A value the
+ * newer one was written over (its origin) is replaced as before.
+ *
+ * @param {Item} item
+ * @return {boolean}
+ */
+export const isKeptReplaced = (item) => {
+  if (item.parentSub === null || item.right === null || !(/** @type {any} */ (item.content).type)) return false
+  const doc = /** @type {YNode} */ (item.parent).doc
+  const keep = doc?.keepReplaced ?? /** @type {any} */ (doc?.constructor)?.keepReplaced
+  if (!keep || compareIDs(item.right.origin, item.lastId)) return false
+  return keep(item)
+}
 
 /**
  * Perform a binary search on a sorted array
@@ -253,7 +272,7 @@ export const tryGcDeleteSet = (tr, ds, gcFilter) => {
         if (deleteItem.clock + deleteItem.len <= struct.id.clock) {
           break
         }
-        if (struct.isItem && struct.deleted && !(struct).keep && gcFilter(/** @type {Item} */ (struct))) {
+        if (struct.isItem && struct.deleted && !(struct).keep && !isKeptReplaced(/** @type {Item} */ (struct)) && gcFilter(/** @type {Item} */ (struct))) { // P14
           /** @type {Item} */ (struct).gc(tr, false)
         }
       }

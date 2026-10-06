@@ -144,6 +144,14 @@ import {
 } from '../structs.js';
 import { cloneJsonSafe, sameIds } from '../../utils/json.js';
 import { readData } from '../data.js';
+import {
+	baseIdOf,
+	incarnationId,
+	incarnationNode,
+	incarnationsOf,
+	isIncarnationId,
+	LIVE_WRITERS
+} from '../incarnations.js';
 import { callEach } from '../protocols/observable.js';
 
 /**
@@ -691,7 +699,9 @@ export const bindRuns = (Y: EngineApi) => {
 			for (const b of old?.bounds ?? []) {
 				if (row?.keyIndex.has(b.key)) continue;
 				const by = boundsBy.get(b.s);
-				by?.delete(b.key);
+				// A text can change homes (a key's node becomes a losing incarnation,
+				// H13): drop the entry only while it is still this row's.
+				if (by?.get(b.key)?.home === home) by.delete(b.key);
 				if (by?.size === 0) boundsBy.delete(b.s);
 				named.add(b.s);
 			}
@@ -1396,20 +1406,50 @@ export const bindRuns = (Y: EngineApi) => {
 
 		// ── records ──────────────────────────────────────────────────────
 
+		/**
+		 * The losing incarnations each key shows (H13, `id.same.concurrent`):
+		 * blocks of their own under derived ids, claimed by the key's block
+		 * before its own claims (`incarnations.ts`).
+		 */
+		const incarnations = new Map<BlockId, string[]>();
+		/** P14's predicate: the registry values the engine keeps. */
+		const kept = (item: unknown): boolean =>
+			(Y as unknown as { isKeptReplaced(item: unknown): boolean }).isKeptReplaced(item);
+		/** The node of `id`: its registry value, or the losing incarnation a derived id names. */
+		const nodeAt = (id: BlockId): unknown => {
+			const v = registry.getAttr(id);
+			if (isNodeLike(v) || !isIncarnationId(id)) return v;
+			return incarnationNode(registry, id, kept) ?? undefined;
+		};
+
 		const buildRec = (id: BlockId, node: EngineNode): BlockRec => {
 			const list = node.getAttr(CLAIMS);
 			const claimsNode = isNodeLike(list) ? list : undefined;
 			const content = node.getAttr(CONTENT);
+			const own = readClaims(claimsNode);
+			const derived = isIncarnationId(id);
+			// A losing incarnation lives and dies with its key's block: hidden by its
+			// own delete mark or while that block is deleted (a withdrawn one included).
+			const keyDeleted = derived ? (blocks.get(baseIdOf(id))?.deleted ?? true) : false;
+			// The implicit claims stamp below every written one: an explicit claim
+			// (a split moving them to its tail block) outranks them.
+			const implicit: Claim[] = derived
+				? []
+				: incarnationsOf(registry, id, kept).map((x, i) => ({
+						m: x.id,
+						stamp: { c: -1, k: -1 - i },
+						seqIndex: -1
+					}));
 			return {
 				id,
 				node,
 				type: typeAttr(node),
 				data: readData(node),
 				n: node.getAttr(NONCE),
-				deleted: hasDeleteMark(node),
+				deleted: hasDeleteMark(node) || keyDeleted,
 				content: isNodeLike(content) ? content : undefined,
 				claimsNode,
-				claims: readClaims(claimsNode),
+				claims: implicit.length === 0 ? own : [...implicit, ...own],
 				cands: candidatesOf(node)
 			};
 		};
@@ -1428,7 +1468,7 @@ export const bindRuns = (Y: EngineApi) => {
 		 */
 		const updateBlockRec = (id: BlockId): void => {
 			const old = blocks.get(id);
-			const node = registry.getAttr(id);
+			const node = nodeAt(id);
 			if (!isNodeLike(node)) blocks.delete(id);
 			else blocks.set(id, buildRec(id, node));
 			const rec = blocks.get(id);
@@ -1463,11 +1503,28 @@ export const bindRuns = (Y: EngineApi) => {
 		/** A withdrawn block without a delete mark: its `deleted` is settled after each fold. */
 		const noteShell = (id: BlockId): void => {
 			const rec = blocks.get(id);
+			// A losing incarnation is never withdrawn on its own: its key's block decides (H13).
+			if (isIncarnationId(id)) return void shells.delete(id);
 			if (rec !== undefined && !rec.deleted && hasWithdrawMark(rec.node)) shells.add(id);
 			else shells.delete(id);
 		};
 		const ensureRec = (id: BlockId): void => {
 			if (!blocks.has(id)) updateBlockRec(id);
+		};
+		/**
+		 * Re-read the losing incarnations of key `id` (H13) after its record
+		 * changed: each one shown now or before gets its record rebuilt (its
+		 * liveness is the key's); returns them, for the fold to rescan.
+		 */
+		const syncIncarnations = (id: BlockId): string[] => {
+			if (isIncarnationId(id)) return [];
+			const before = incarnations.get(id) ?? [];
+			const now = incarnationsOf(registry, id, kept).map((x) => x.id);
+			if (now.length === 0) incarnations.delete(id);
+			else incarnations.set(id, now);
+			const all = [...new Set([...before, ...now])];
+			for (const v of all) updateBlockRec(v);
+			return all;
 		};
 
 		const ctx: ModelView = {
@@ -1670,6 +1727,13 @@ export const bindRuns = (Y: EngineApi) => {
 					ctx.named.add(id);
 					noteText(ctx, id, null);
 				}
+				// The key's losing incarnations follow its entry and its liveness (H13).
+				for (const v of syncIncarnations(id)) {
+					ctx.table = true;
+					ctx.named.add(v);
+					noteText(ctx, v, null);
+					invalidateBlock(v, ctx);
+				}
 				invalidateBlock(id, ctx, claimsBefore);
 			} else {
 				ensureRec(id);
@@ -1771,6 +1835,9 @@ export const bindRuns = (Y: EngineApi) => {
 			const st = streamOf(id);
 			return st !== undefined && st.end - st.start > st.inert.length;
 		};
+		/** A live unit in `id`'s stream or in the stream of a losing incarnation it shows (H13). */
+		const holdsUnit = (id: BlockId): boolean =>
+			streamHolds(id) || (incarnations.get(id)?.some(streamHolds) ?? false);
 
 		/**
 		 * Settle the withdrawn blocks (`hist.undo.withdraw`): a shell is deleted
@@ -1784,9 +1851,10 @@ export const bindRuns = (Y: EngineApi) => {
 		const settle = (affected: Iterable<BlockId>, ctx: FoldCtx | null): void => {
 			if (shells.size === 0) return;
 			let quiet = true;
-			for (const id of affected) {
+			for (const x of affected) {
+				const id = baseIdOf(x);
 				if (!shells.has(id)) continue;
-				if (blocks.get(id)?.deleted !== false || !streamHolds(id)) quiet = false;
+				if (blocks.get(id)?.deleted !== false || !holdsUnit(id)) quiet = false;
 			}
 			if (quiet) return;
 			const alive = new Set<BlockId>();
@@ -1796,7 +1864,7 @@ export const bindRuns = (Y: EngineApi) => {
 				alive.add(id);
 				up.push(id);
 			};
-			for (const id of shells) if (streamHolds(id)) hold(id);
+			for (const id of shells) if (holdsUnit(id)) hold(id);
 			for (const [id, rec] of blocks) {
 				const p = rec.cands[0]?.p;
 				if (!shells.has(id) && !rec.deleted && typeof p === 'string' && shells.has(p)) hold(p);
@@ -1810,6 +1878,16 @@ export const bindRuns = (Y: EngineApi) => {
 				if (rec.deleted === !alive.has(id)) continue;
 				rec.deleted = !alive.has(id);
 				ownerSeeds.add(id);
+				// Its losing incarnations follow it (H13).
+				for (const v of incarnations.get(id) ?? []) {
+					const inc = blocks.get(v);
+					if (inc === undefined) continue;
+					const deleted = hasDeleteMark(inc.node) || rec.deleted;
+					if (inc.deleted === deleted) continue;
+					inc.deleted = deleted;
+					ownerSeeds.add(v);
+					if (ctx !== null) invalidateBlock(v, ctx);
+				}
 				if (ctx === null) continue;
 				invalidateBlock(id, ctx);
 			}
@@ -1830,8 +1908,14 @@ export const bindRuns = (Y: EngineApi) => {
 				const it = cur._item;
 				const parent = it?.parent as EngineNode | undefined;
 				if (parent === registryNode) {
-					const id = it!.parentSub;
+					let id = it!.parentSub;
 					if (typeof id !== 'string') return null;
+					// A losing incarnation's subtree (H13): its derived id; a seed's shows nothing.
+					if (it!.deleted && kept(it)) {
+						const item = it as unknown as { id: { client: number; clock: number } };
+						if (item.id.client < LIVE_WRITERS) return null;
+						id = incarnationId(id, item);
+					}
 					if (below === null) return [id, sub === CONTENT ? CONTENT_ATTR : (sub ?? '?'), false];
 					const facet = below._item?.parentSub ?? CONTENT;
 					return [id, facet, sub === null && below === type && facet === CONTENT];
@@ -2398,8 +2482,10 @@ export const bindRuns = (Y: EngineApi) => {
 		registry.forEachAttr((v: unknown, id: string) => {
 			if (!isNodeLike(v)) return;
 			updateBlockRec(id);
-			const row = scanRow(id);
-			if (row !== undefined) rows.set(id, row);
+			for (const b of [id, ...syncIncarnations(id)]) {
+				const row = scanRow(b);
+				if (row !== undefined) rows.set(b, row);
+			}
 		});
 		rebuildTable(new Set());
 		settle(shells, null);

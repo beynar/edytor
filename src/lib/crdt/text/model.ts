@@ -725,7 +725,10 @@ export const bindText = (Y: EngineApi) => {
 		const text = seg.text as EngineNode & { insertAtGapEnd(i: number, c: unknown[]): void };
 		plain(text, () => text.insertAtGapEnd(idx, [{ s: newId, n } satisfies Boundary]));
 		const byHolder = new Map<BlockId, number[]>();
-		for (const c of moved) byHolder.set(c.holder, [...(byHolder.get(c.holder) ?? []), c.seqIndex]);
+		// An implicit claim (a losing incarnation, H13) has no list entry: it is
+		// only written, explicitly, on the new block, whose claim outranks it.
+		for (const c of moved)
+			if (c.seqIndex >= 0) byHolder.set(c.holder, [...(byHolder.get(c.holder) ?? []), c.seqIndex]);
 		for (const [holder, idxs] of byHolder) {
 			const list = blocks.get(holder)!.claimsNode!;
 			for (const i of idxs.sort((x, y) => y - x)) list.delete(i, 1);

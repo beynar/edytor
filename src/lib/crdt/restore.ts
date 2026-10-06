@@ -173,7 +173,10 @@ export const restoreDocument = <Plan>(
 		for (const rec of blocks.values()) {
 			// A deleted holder's claims are void (and stay so): only the others.
 			if (rec.deleted || rec.claimsNode === undefined) continue;
-			const named = rec.claims.filter((claim) => all.has(claim.m)).map((c) => c.seqIndex);
+			const named = rec.claims
+				.filter((claim) => all.has(claim.m))
+				.map((c) => c.seqIndex)
+				.filter((at) => at >= 0);
 			for (const at of named.sort((a, b) => b - a)) rec.claimsNode.delete(at, 1);
 		}
 	}

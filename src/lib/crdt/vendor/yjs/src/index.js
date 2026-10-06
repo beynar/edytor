@@ -12,7 +12,7 @@ export { applyUpdate, applyUpdateV2, readUpdateV2, encodeStateAsUpdate, encodeSt
 export { ID, createID, compareIDs, findRootTypeKey } from './utils/ID.js'
 export { isParentOf } from './utils/isParentOf.js'
 export { createRelativePositionFromTypeIndex, createRelativePositionFromJSON, createAbsolutePositionFromRelativePosition, AbsolutePosition, RelativePosition, relativePositionToJSON } from './utils/RelativePosition.js'
-export { findIndexSS, getItemCleanStart, getItemCleanEnd } from './utils/transaction-helpers.js'
+export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from './utils/transaction-helpers.js' // P14: isKeptReplaced
 export { Transaction, transact, cleanupYTextFormatting } from './utils/Transaction.js'
 export { UndoManager } from './utils/UndoManager.js'
 export { redoItem } from './utils/UndoManager.js' // P11

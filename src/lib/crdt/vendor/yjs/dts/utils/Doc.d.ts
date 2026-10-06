@@ -32,11 +32,24 @@
  */
 export class Doc extends ObservableV2<DocEvents> {
     /**
+     * P14: the default of every document's `keepReplaced` (`null`: no node is
+     * kept, upstream's semantics). A binder sets it once for its documents.
+     * @type {((item: import('../structs/Item.js').Item) => boolean) | null}
+     */
+    static keepReplaced: ((item: import("../structs/Item.js").Item) => boolean) | null;
+    /**
      * @param {DocOpts} opts configuration
      */
     constructor({ guid, collectionid, gc, gcFilter, meta, autoLoad, shouldLoad, isSuggestionDoc }?: DocOpts);
     gc: boolean;
     gcFilter: (arg0: Item) => boolean;
+    /**
+     * P14: which node values a concurrent write of the same key replaced keep
+     * their subtree (`isKeptReplaced` in `utils/transaction-helpers.js`);
+     * `null`: the class's {@link Doc.keepReplaced}.
+     * @type {((item: import('../structs/Item.js').Item) => boolean) | null}
+     */
+    keepReplaced: ((item: import("../structs/Item.js").Item) => boolean) | null;
     clientID: number;
     guid: string;
     collectionid: string | null;

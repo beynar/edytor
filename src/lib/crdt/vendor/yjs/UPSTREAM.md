@@ -631,6 +631,41 @@ Oracle: `src/tests/crdt/arch-v2/h5-marks.test.ts` (the Peritext cases on
 every swept client-id pair and delivery order; 7 of its 17 rows fail on
 the tree without P13), the upstream suite unchanged.
 
+### P14 — a value a concurrent write replaced keeps its subtree (`src/utils/transaction-helpers.js`, `src/structs/Item.js`, `src/utils/Doc.js`, `src/index.js`)
+
+Reason: a map key written concurrently by two clients keeps the rightmost
+value and deletes the others; deleting a node value deletes its whole
+subtree. edytor's block registry is a map of nodes keyed by caller ids, so
+two writers creating block `N` at once lost the losing node's text (CRDT
+study 2026-10, H13, plan §2.1 "Identity"). The fork lets a document keep
+such a node:
+
+- `isKeptReplaced(item)` (new, `utils/transaction-helpers.js`, exported):
+  a node value (`ContentType`, `parentSub !== null`) with a newer value to
+  its right that was NOT written over it (the right one's origin is not
+  this item), when the document asks (`doc.keepReplaced`, else the class
+  default `Doc.keepReplaced`; both `null` upstream, so every upstream test
+  runs upstream's semantics).
+- `Item#delete`: such an item is marked deleted and enters the delete set
+  as before, but its content's subtree is not deleted.
+- `Item#integrate`: an item whose parent is such a node integrates live
+  (upstream deletes an item under a deleted parent), so a write that
+  reaches a replica after the race, or a reload that integrates the node
+  before its children, keeps the subtree on every replica.
+- `tryGcDeleteSet`: such an item is never collected.
+- `Doc#keepReplaced` (instance, default `null`) and `static
+  Doc.keepReplaced` (default `null`): edytor's `bindModel` sets the static
+  to its registry predicate (`crdt/incarnations.ts`).
+
+A value written over a known one (a sequential overwrite) and a removed
+key (`deleteAttr`) delete their subtree as before. `YNode#applyDelta`
+still writes nothing to a deleted node, so the kept node's own attrs are
+frozen; its children (a text, a list, a map) are ordinary live types.
+
+Oracle: `src/tests/crdt/phase5/h13-same-id.test.ts` (the losing text shows
+on every replica and after a reload; two fuzzes), the upstream suite
+unchanged.
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so

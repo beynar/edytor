@@ -137,3 +137,72 @@ Residuals:
   a structural change.
 - The first read of a freshly loaded document builds the index (the
   `keystroke` bench lane's facade p50, about 1 ms at 1,000 blocks).
+
+## Phase 2 results (0.1.0-next.23)
+
+Measured on the same machine as Phase 1. The trace rows replay
+`automerge-paper` (259,778 edits) through an edytor client into a room-like
+document (the room's own collection rules, `keepCopies` included),
+compacting every 500 update records as `DocumentRoom` does, with both
+compaction rules side by side (scratch script `room-trace.mjs`); "wake" is a
+fresh document loaded from the stored snapshot, its facade created and read.
+
+| Item | Measure                                                 | Before (merge of the records)      | After                                                                   |
+| ---- | ------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------- |
+| P2   | Stored snapshot                                         | 6,689,827 B                        | 1,601,845 B (v1 live state)                                             |
+| P2   | Wake (load + first read)                                | 699 ms                             | 109 ms (18 ms without the P11 text-delete index, see residuals)         |
+| P2   | Compaction, 520 runs: total / worst                     | 17.3 s / 86 ms                     | 2.0 s / 20 ms                                                           |
+| P5   | Snapshot in v2 / gzip(v2)                               | 1,601,845 B (v1)                   | 1,339,888 B / 223,629 B (gzip: 14 ms)                                   |
+| P5   | Compaction in v2: total / worst                         | —                                  | 1.5 s / 16 ms                                                           |
+| P5   | One keystroke's update, v1 / v2; a one-character delete | 24 / 28 B; 13 / 24 B               | update rows stay v1                                                     |
+| H6   | 40 MB offline backlog at reconnect                      | undeliverable (32 MiB message cap) | delivered as chunks, stored, served to a fresh client (workerd, ~1.4 s) |
+
+What changed:
+
+- **P2.** Compaction stores `encodeStateAsUpdateV2` of the live document
+  with the engine's pending store set aside, never `mergeUpdates` of the
+  records; a load applies the records in one transaction. The room's
+  document applies the P11 `gcFilter` from its creation
+  (`crdt.doc.keepCopies`): before, it collected a deleted restoration
+  copy's text, so its Step2 served the copy deleted while the merged
+  records still held it. `p2-live-compaction` proves stored == live
+  (state vector, delete set, encoding, JSON) across a reload, with
+  structs that wait at compaction and arrive later.
+- **P5.** Snapshots are v2, gzip-compressed where `CompressionStream`
+  exists (the room compresses in place after storing raw, and inflates
+  at start); update and waiting records stay v1, which is smaller per
+  edit. The generation record carries `storage: 'v2'`; a next.22
+  container loads as it is and its next compaction rewrites it. The
+  IndexedDB store writes the snapshot as an object row `{ v2 }`, which a
+  next.22 tab refuses to read instead of misreading.
+- **H3.** Quotas: 64 MiB document (records uncompressed plus waiting
+  structs, net of what the frame deletes, after compacting), 50 sync
+  messages a second per socket (ten-second burst), 64 MiB per frame
+  (reassembled). Past one: close `4413` (`quota: …`), a refusal the
+  provider reports and does not redial.
+- **H2.** `validate({ user, replica, touched, dataChanged, before, after,
+facade })` after each frame that changed blocks; a denial is undone by
+  the room's own transaction, the history undo of that frame (P11/P12
+  rules), sent to every socket. Per-writer marks `del.<n>`/`wd.<n>` are
+  written and deleted only by `n` (forged ones stripped, `mark`).
+- **H6.** The provider chunks frames over `maxFrameBytes`; the room
+  reassembles them. Inline images over 1 MiB are refused by the image
+  plugin (upload instead).
+- **H14.** `metrics()` (RPC) and a JSON log of compactions, quota hits,
+  denials and faults.
+- **H12.** `prefetch`, `lastUpdated` (one authorized HTTP probe), and
+  `requireHydration`.
+
+Residuals:
+
+- Wake time on the trace is dominated by the text-delete-mark index the
+  P11 filter attaches (77,463 marks: about 88 ms of the 109 ms); P4
+  (Phase 4) folds the marks.
+- Workers advance their clock only across I/O, so the room's compaction
+  and fold timings read `0` in production for synchronous work; sizes
+  and counts are exact.
+- A room of an earlier release refuses a client's chunk sequence
+  (`refused: malformed`): deploy the room before the clients.
+- A container compacted by next.23 is refused by next.22 (and a next.22
+  tab fails to load a store a next.23 tab compacted): downgrade only with
+  the data.

@@ -206,3 +206,73 @@ Residuals:
 - A container compacted by next.23 is refused by next.22 (and a next.22
   tab fails to load a store a next.23 tab compacted): downgrade only with
   the data.
+
+## Phase 3 results (0.1.0-next.24)
+
+Measured on the same machine as Phases 1 and 2, in Node through the bound
+engine (scratch script `phase3-measure.mjs`: a room-like document with
+P11's `keepCopies`, the purge run as one transaction at a horizon covering
+everything) and in workerd (`tests/do/h7-purge.test.ts`: the room itself,
+its stored rows after compaction and compression). "Wake" is a fresh room
+document loaded from the stored state, its facade created and read.
+
+| Item | Measure                                                                                                                        | Before the purge      | After                                                             |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------- | ----------------------------------------------------------------- |
+| H7   | `automerge-paper` (259,778 edits, 77,463 text delete marks): stored state, v2 / gzip                                           | 1,339,888 / 223,624 B | 189,424 / 85,155 B                                                |
+| H7   | The same: wake (load + first read)                                                                                             | 100 ms                | 9 ms                                                              |
+| H7   | The same: the purge transaction; its update; a client applying it                                                              | —                     | 70–107 ms; 15,342 B; 48–55 ms (the client drops to 189,424 B too) |
+| H7   | 1,001 blocks of their own text, 1,000 deleted (Node), v2 / gzip                                                                | 219,495 / 21,489 B    | 18,205 / 2,452 B (purge 19 ms)                                    |
+| H7   | The same in the room (workerd, stored rows)                                                                                    | 28,880 B              | 5,260 B (visible content alone: 366 B)                            |
+| H7   | 20,001 blocks, 20,000 deleted, v2 / gzip                                                                                       | 4,475,906 / 391,878 B | 369,217 / 48,587 B (purge 860 ms)                                 |
+| H7   | 1,001 lines split from one paragraph (Enter), 1,000 deleted, v2 / gzip                                                         | 273,801 / 29,874 B    | 248,956 / 26,871 B (bare nodes stay)                              |
+| H11  | One version (gzip v2) at 100 / 1,000 / 5,000 blocks                                                                            | —                     | 2,362 / 21,223 / 99,358 B, encoded in ≤ 12 ms                     |
+| H11  | Restore of a day's edits (a tenth of the blocks deleted, moved, rewritten or given data), 100 / 1,000 / 5,000 blocks; its undo | —                     | 3 / 14 / 52 ms; 1 / 1 / 5 ms                                      |
+
+What changed:
+
+- **H11.** `history: { store, retentionDays, timeZone }` (a KV namespace,
+  `KVLike`; `DocumentRoom.history()` reads the `EDYTOR_HISTORY` binding):
+  two half-day slots per local date, a version written at the slot's end
+  (the alarm at local noon or midnight, the first write past the boundary
+  before it applies, or a wake past it), only when the room stored a
+  change in the slot; key `history/<room>/<YYYY-MM-DD>-am|pm`, value the
+  compressed v2 live state, metadata `{ bytes, blocks, editors, at }`
+  (under 1 KiB), TTL the retention. A value over 25 MiB is skipped and
+  logged, not split (a torn multi-part version would list unreadable).
+  `listHistory`, `readHistory`, `restoreHistory` (a forward edit:
+  `crdt.doc.restoreTo` keeps every id the registry holds and writes only
+  what differs) and `undoRestore` (the restore's step stored, its deleted
+  content kept from collection until undone), over RPC and through
+  `routeDocumentHistory`. The demo room keeps its history in KV namespace
+  `fecd8d9e405641b98ef763bb6056af08`.
+- **Alarm.** One alarm, three tasks (save, history slot, purge tick), each
+  due time stored in `meta`.
+- **H7.** The purge tick records an epoch a day (the room's state vector);
+  content deleted before the newest epoch at least `purgeAfterDays` old
+  (default the retention, 30 days) is purged by one room transaction of
+  real deletes, relayed like any edit: a dead block nothing depends on is
+  removed whole, any other dead block emptied (text, data, claims), old
+  text delete marks and dead restoration records deleted, runner-up
+  placements dropped, then the horizon record every history reads to drop
+  the steps below it. A replica offline past the horizon integrates
+  normally (its structs under a collected parent become collected
+  structs): no stale-replica close code.
+
+Residuals:
+
+- A deleted line split from a live paragraph (Enter-built documents: most
+  lines) keeps its bare node (id, kind, rank, nonce, marks; about 220 B
+  before compression, 27 B stored): its boundary still delimits its now
+  empty stream, so a stale replica's typing into it stays hidden instead of
+  joining the line before it. Removing it would need that trade-off.
+- A removed block leaves its registry key (and its attribution record's
+  key) as engine tombstones: a map never forgets a key (about 18–39 B per
+  block before compression, 2–5 B stored).
+- An undo of a restore writes back the delete marks the restore removed as
+  the room's (`del.<writer>` copies under the room's client), so that
+  writer's own later undo of their delete no longer revives the block.
+- The new purge fuzz (`h7-purge-fuzz.test.ts`, rich lane) found two seeds
+  of 2,000 (651 and 1271, 120 steps) where a client's incremental index
+  publishes a children list that differs from its rebuild; they fail the
+  same way with the purge disabled (a pre-existing index/report bug, left
+  for its own fix). The default campaign (80 seeds, 60 steps) passes.

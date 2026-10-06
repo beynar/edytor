@@ -681,13 +681,40 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
     peer adds among the items before an outdented one; and
     `x > [k1, "kk2", k3]`, Enter after "k" ‖ Shift+Tab on `k1` →
     `x > ["k2"]`, `k1 > ["k", k3]`;
-  - R4, a merge into a split block: the merge claim appends to `into`'s
-    claims list, and a concurrent split moved only the claims it saw, so
-    the merged text follows the head: Backspace joins "world" into
-    "hello" ‖ Enter after "he" → "heworld", "llo". (Anchoring the claim to
-    the head stream's last item, H9's second half, is not done: the claim
-    graph would read text positions, which the incremental index does not
-    track yet.)
+  - R4, a merge into a split block, is FIXED since 0.1.0-next.26
+    (`merge.claim.anchor`, below): Backspace joins "world" into "hello" ‖
+    Enter after "he" → "he", "lloworld", every serial order's result (it
+    read "heworld", "llo").
+- `merge.claim.anchor` (H9's second half, 0.1.0-next.26): a merge claim
+  is anchored to the end of its holder's stream as its writer saw it:
+  `a`, the last unit of that stream (its opening boundary when it is
+  empty; no anchor at the start of an empty own text), and `r`, the item
+  right after it (the next stream's boundary, `null` at the text's end),
+  written in the claim's payload (`{ m, a, r }`, `claimInto`; a split
+  re-inserts the claims it moves with theirs). Its EFFECTIVE claimer is the
+  block of the segment just before `r` (the text's last segment when `r`
+  is `null`) in the row of the holder's stream, when that is the holder's
+  segment or a later one; else the holder. So a split the writer did not
+  see, anywhere in the region between `a` and `r`, moves the claim to the
+  piece that ends that region, as both serial orders do: Backspace joins
+  "world" into "hello" ‖ Enter after "he" → "he", "lloworld"; ‖ Enter at
+  the end → "hello", "world"; ‖ at the start → "", "helloworld"; typing
+  never moves it (only a row's cuts do). The index keeps each record's
+  list (`listClaims`) and its effective claims (`claims`: its own that
+  stay, then those other holders' anchors move to it, by stamp); the claim
+  graph, the display, a split's moved claims (deleted from the list that
+  stores them) and the owners read the effective ones, the purge and a
+  restore delete from the stored lists. Targets are re-decided after each
+  fold's texts, for the holders whose record changed and those anchored in
+  a re-placed row (`applyRetargets` in `text/runs.ts`, checked against a
+  rebuild by `indexChecks`). A claim without an anchor (written before
+  0.1.0-next.26, or an implicit one, `id.same.concurrent`) stays with its
+  holder. A client of 0.1.0-next.25 reads an anchored claim as a plain one
+  (its holder's), so until every client upgrades the two releases can
+  disagree on which block shows a merged text after such a race (each
+  converges with its own release). Pins: `phase5/r4-merge-anchor.test.ts`
+  (48 client-id pairs), `dr-crdt-order.test.ts` (the matrix excuses no
+  merge any more).
 - `order.split.text` (D-18, H9, 0.1.0-next.25): blocks whose streams lie
   in one backing text and that stand where they were made (their winning
   placement is their first candidate: no move, outdent or lift since)

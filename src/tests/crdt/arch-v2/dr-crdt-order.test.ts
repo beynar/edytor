@@ -142,7 +142,7 @@ const ORDER = ['P', 'c', 'a', 'b', 'd', 'Q'];
 const splits = (g: Gesture) => g === 'enter' || g === 'paste';
 
 /**
- * The two residuals splits add, pinned below (`docs/editor-delete-contract.md`):
+ * The residual splits add, pinned below (`docs/editor-delete-contract.md`):
  * - R3, a new block stays behind: the block a split creates right after
  *   `s` (Enter, a paste) stays where it was made — beside `s` in `s`'s
  *   parent — while the other peer moves `s` out of that parent (an outdent
@@ -150,9 +150,8 @@ const splits = (g: Gesture) => g === 'enter' || g === 'paste';
  *   into a new head list, or a split of `s`'s parent that takes `s` into
  *   its new piece). It then reads before or after `s`'s text, not right
  *   after it.
- * - R4, a merge into a split block: Backspace joining `t` into the block
- *   `s` above it ‖ a split of `s` → `t`'s text follows `s`'s head, before
- *   the pieces the split made.
+ * R4 (a merge into a split block) is fixed since 0.1.0-next.26
+ * (`merge.claim.anchor`): no longer a residual.
  * Plus R2 (`insertedAbove`), as in the CW-01 matrices.
  */
 const splitResidual: Residual = (wrong, moves, winner) =>
@@ -160,7 +159,7 @@ const splitResidual: Residual = (wrong, moves, winner) =>
 	moves.some(([gs, s], k) => {
 		if (!splits(gs)) return false;
 		const [gt, t] = moves[1 - k];
-		if (gt === 'backspace') return t !== 'a' && ORDER[ORDER.indexOf(t) - 1] === s; // R4
+		if (gt === 'backspace') return false; // R4 is fixed: no merge is excused
 		if (splits(gt)) return t === 'P' && s === 'c'; // R3: P's split takes c
 		return t === s || ('abd'.includes(s) && 'abd'.includes(t) && s < t); // R3
 	});
@@ -199,7 +198,7 @@ describe('DR-crdt-6: every gesture pair with splits around a list, 8 client-id p
 				).toBe(''));
 });
 
-/** R3 and R4, each shown reached with the exact outcome it names, on any ids. */
+/** R3 shown reached with the exact outcome it names, on any ids; R4 shown fixed. */
 describe('DR-crdt-6 residuals, pinned', () => {
 	const list = (...items: string[]) => ({
 		id: 'U',
@@ -246,7 +245,8 @@ describe('DR-crdt-6 residuals, pinned', () => {
 			)
 		).toEqual([['x', 'k2', 'k1', 'k', 'k3', 'y']]));
 
-	it('R4: Backspace joins “world” into “hello” ‖ Enter after “he” → “heworld”, “llo”', () =>
+	// R4 is fixed since 0.1.0-next.26 (`merge.claim.anchor`): the merged text follows the split's tail.
+	it('R4 (fixed): Backspace joins “world” into “hello” ‖ Enter after “he” → “he”, “lloworld”', () =>
 		expect(
 			texts(
 				[
@@ -256,7 +256,7 @@ describe('DR-crdt-6 residuals, pinned', () => {
 				(ed) => ed.mergeBackward('Y'),
 				(ed) => ed.splitBlock('X', 2, 'N')
 			)
-		).toEqual([['heworld', 'llo']]));
+		).toEqual([['he', 'lloworld']]));
 });
 
 /**

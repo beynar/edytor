@@ -173,7 +173,8 @@ export const restoreDocument = <Plan>(
 		for (const rec of blocks.values()) {
 			// A deleted holder's claims are void (and stay so): only the others.
 			if (rec.deleted || rec.claimsNode === undefined) continue;
-			const named = rec.claims
+			// The claims its list stores (an anchor may show one in another block).
+			const named = (rec.listClaims ?? rec.claims)
 				.filter((claim) => all.has(claim.m))
 				.map((c) => c.seqIndex)
 				.filter((at) => at >= 0);
@@ -236,7 +237,7 @@ export const restoreDocument = <Plan>(
 		if (have.length === want.length && have.every((u, i) => u.key === want[i].key)) continue;
 		const rec = M.view(doc).blocks.get(id);
 		const claims = rec?.claimsNode;
-		if (claims !== undefined && rec!.claims.length > 0) {
+		if (claims !== undefined && claims.length > 0) {
 			claims.delete(0, claims.length);
 			have = unitsOf(facade.contentItems(id));
 		}

@@ -40,8 +40,24 @@ export type BlockId = string;
 /** A serialized relative position inside a backing text (`i: null`: a text end). */
 export type Anchor = { i: { c: number; k: number } | null; a: number };
 
-/** Merge-claim payload: "this block's display continues with block `m`'s". */
-export type MergeClaim = { m: BlockId };
+/** An engine item id as a claim payload stores it. */
+export type ItemRef = { c: number; k: number };
+const isItemRef = (v: unknown): v is ItemRef =>
+	v != null &&
+	typeof v === 'object' &&
+	Number.isInteger((v as ItemRef).c) &&
+	Number.isInteger((v as ItemRef).k);
+
+/**
+ * Merge-claim payload: "this block's display continues with block `m`'s".
+ * `a` and `r` (since 0.1.0-next.26, `merge.claim.anchor`) anchor it to the
+ * end of the holder's stream as the claim's writer saw it: `a` the last
+ * unit of that stream (its opening boundary when empty; absent at the start
+ * of an own text) and `r` the item right after it (the next stream's
+ * boundary; `null` at the text's end). A split the writer did not see moves
+ * the claim to the piece that ends the region between them.
+ */
+export type MergeClaim = { m: BlockId; a?: ItemRef; r?: ItemRef | null };
 export const isMergeClaim = (v: unknown): v is MergeClaim =>
 	v != null && typeof v === 'object' && typeof (v as MergeClaim).m === 'string';
 
@@ -49,8 +65,21 @@ export const isMergeClaim = (v: unknown): v is MergeClaim =>
 export type Stamp = { c: number; k: number };
 export const cmpStamp = (a: Stamp, b: Stamp): number => a.c - b.c || a.k - b.k;
 
-/** One live merge claim of a `claims` list; `seqIndex` is its live index there. */
-export type Claim = { m: BlockId; stamp: Stamp; seqIndex: number };
+/**
+ * One live merge claim: `seqIndex` is its live index in the list that
+ * stores it — its holder's, or `holder`'s when its anchor moved it to
+ * another block (`merge.claim.anchor`); `-1` for an implicit claim, which
+ * no list stores (`id.same.concurrent`). `a`/`r`: its anchor (see
+ * {@link MergeClaim}).
+ */
+export type Claim = {
+	m: BlockId;
+	stamp: Stamp;
+	seqIndex: number;
+	a?: ItemRef;
+	r?: ItemRef | null;
+	holder?: BlockId;
+};
 
 /** Boundary-item payload in a backing text. */
 export type Boundary = { s: BlockId; n: unknown };
@@ -79,8 +108,14 @@ export const readClaims = (node: EngineNode | undefined): Claim[] => {
 		const arr = it.content.getContent();
 		for (let j = 0; j < it.length; j++) {
 			const p = arr[j];
-			if (isMergeClaim(p))
-				out.push({ m: p.m, stamp: { c: it.id.client, k: it.id.clock + j }, seqIndex });
+			if (isMergeClaim(p)) {
+				const claim: Claim = { m: p.m, stamp: { c: it.id.client, k: it.id.clock + j }, seqIndex };
+				if (isItemRef(p.a)) {
+					claim.a = p.a;
+					claim.r = isItemRef(p.r) ? p.r : null;
+				}
+				out.push(claim);
+			}
 			seqIndex++;
 		}
 	}
@@ -222,8 +257,14 @@ export type TextBlockRec = {
 	content: EngineNode | undefined;
 	/** The `claims` list node (write handle). */
 	claimsNode: EngineNode | undefined;
-	/** Its live merge claims, in list order. */
+	/**
+	 * Its effective merge claims (`merge.claim.anchor`): its list's claims
+	 * that stay with it, in list order, then those other holders' anchors
+	 * moved to it (each with its `holder`), by stamp.
+	 */
 	claims: Claim[];
+	/** Its list's live claims, in list order (absent: `claims` is the list). */
+	listClaims?: Claim[];
 };
 
 /** The internal "no display owner" verdict — a symbol, never a block id. */
@@ -406,6 +447,8 @@ export type Ownership = {
 	streamAt: (home: BlockId, i: number) => Stream | undefined;
 	/** `display(b)` as boundary-free pieces in reading order; `null` when hidden or dead. */
 	display: (b: BlockId) => Seg[] | null;
+	/** `b`'s effective claims (`merge.claim.anchor`), when the context computed them. */
+	claimsOf?: (b: BlockId) => readonly Claim[];
 };
 
 /** A stream's content pieces: the range minus its inert boundaries (at least one piece). */
@@ -556,11 +599,91 @@ export const bindText = (Y: EngineApi) => {
 	};
 
 	/** A from-scratch ownership context over `blocks` (every text scanned). */
-	const computeOwnership = (doc: EngineDoc, blocks: ReadonlyMap<BlockId, TextBlockRec>) => {
-		void doc;
+	/**
+	 * The effective claims of every block, from scratch (`merge.claim.anchor`;
+	 * the index keeps them incrementally, `text/runs.ts`): an anchored claim
+	 * goes to the block of the segment just before its `r` (the text's last
+	 * segment when `r` is null) in the row of its holder's stream, when that
+	 * segment is the holder's or a later one.
+	 */
+	const effectiveClaims = (
+		doc: EngineDoc,
+		blocks: ReadonlyMap<BlockId, TextBlockRec>,
+		rows: ReadonlyMap<EngineNode, TextRow>,
+		delim: ReadonlyMap<BlockId, string>,
+		streams: ReadonlyMap<BlockId, Stream>
+	): Map<BlockId, Claim[]> => {
+		/** Live index of unit `ref` (assoc 0) in `text`, or `null` when it is not `text`'s. */
+		const indexIn = (text: EngineNode, ref: ItemRef): number | null => {
+			const itemId = (text._item as { id?: { client: number; clock: number } } | null)?.id;
+			if (!itemId) return null;
+			const abs = Y.createAbsolutePositionFromRelativePosition(
+				Y.createRelativePositionFromJSON({
+					type: { client: itemId.client, clock: itemId.clock },
+					item: { client: ref.c, clock: ref.k },
+					assoc: 0
+				}),
+				doc as unknown as YDoc,
+				false
+			) as { type: unknown; index: number } | null;
+			return abs === null || abs.type !== text ? null : abs.index;
+		};
+		const targetOf = (holder: BlockId, c: Claim): BlockId => {
+			if (c.a === undefined) return holder;
+			const s = streams.get(holder);
+			const row = s && rows.get(s.text);
+			if (row === undefined || indexIn(row.text, c.a) === null) return holder;
+			const cuts: number[] = [];
+			row.bounds.forEach((b, j) => {
+				if (delim.get(b.s) === b.key) cuts.push(j);
+			});
+			const head = delim.has(row.home) ? null : row.home;
+			// The gap before `r`: a live boundary's own index, else the boundaries before it.
+			let gap = row.bounds.length;
+			if (c.r != null) {
+				const key = `${c.r.c}:${c.r.k}`;
+				const at = row.bounds.findIndex((b) => b.key === key);
+				if (at >= 0) gap = at;
+				else {
+					const p = indexIn(row.text, c.r);
+					if (p === null) return holder;
+					gap = row.bounds.filter((b) => b.at < p).length;
+				}
+			}
+			const segment = (g: number) => cuts.filter((j) => j < g).length;
+			const k = segment(gap);
+			// The holder's own segment: the one its stream starts in.
+			const k0 = segment(row.bounds.filter((b) => b.at < s!.start).length);
+			if (k < k0) return holder;
+			return (k === 0 ? head : row.bounds[cuts[k - 1]].s) ?? holder;
+		};
+		const own = new Map<BlockId, Claim[]>();
+		const moved = new Map<BlockId, Claim[]>();
+		for (const [h, rec] of blocks) {
+			const stays: Claim[] = [];
+			for (const c of rec.listClaims ?? rec.claims) {
+				const t = targetOf(h, c);
+				if (t === h) stays.push(c);
+				else {
+					let into = moved.get(t);
+					if (into === undefined) moved.set(t, (into = []));
+					into.push({ ...c, holder: h });
+				}
+			}
+			own.set(h, stays);
+		}
+		for (const [t, list] of moved) {
+			if (!own.has(t)) continue;
+			list.sort((x, y) => cmpStamp(x.stamp, y.stamp));
+			own.set(t, [...own.get(t)!, ...list]);
+		}
+		return own;
+	};
+
+	const computeOwnership = (doc: EngineDoc, given: ReadonlyMap<BlockId, TextBlockRec>) => {
 		const rows: TextRow[] = [];
-		for (const rec of blocks.values()) if (rec.content) rows.push(scanText(rec.id, rec.content));
-		const delim = delimiters(blocks, rows);
+		for (const rec of given.values()) if (rec.content) rows.push(scanText(rec.id, rec.content));
+		const delim = delimiters(given, rows);
 		const streams = new Map<BlockId, Stream>();
 		const inText = new Map<BlockId, Stream[]>();
 		for (const row of rows) {
@@ -568,6 +691,21 @@ export const bindText = (Y: EngineApi) => {
 			inText.set(row.home, list);
 			for (const s of list) streams.set(s.block, s);
 		}
+		// The records with their effective claims (`merge.claim.anchor`).
+		const effective = effectiveClaims(
+			doc,
+			given,
+			new Map(rows.map((row) => [row.text, row])),
+			delim,
+			streams
+		);
+		const blocks = new Map<BlockId, TextBlockRec>();
+		for (const [id, rec] of given)
+			blocks.set(id, {
+				...rec,
+				listClaims: rec.listClaims ?? rec.claims,
+				claims: effective.get(id) ?? rec.claims
+			});
 		const { owners, top } = claimGraph(blocks);
 		const ownerOf = (b: BlockId): Owner => owners.get(b) ?? DEAD;
 		const own: Ownership = {
@@ -577,7 +715,8 @@ export const bindText = (Y: EngineApi) => {
 			streamOf: (b) => streams.get(b),
 			streamsIn: (home) => inText.get(home) ?? [],
 			streamAt: (home, i) => (inText.get(home) ?? []).find((x) => x.start <= i && i <= x.end),
-			display: (b) => displayOf(b, blocks, own)
+			display: (b) => displayOf(b, blocks, own),
+			claimsOf: (b) => blocks.get(b)?.claims ?? []
 		};
 		return own;
 	};
@@ -714,12 +853,13 @@ export const bindText = (Y: EngineApi) => {
 		const hit = locate(segs, Math.max(0, Math.min(offset, ownedLength(segs))));
 		if (hit === null) throw new Error(`splitAt: "${b}" has no stream`);
 		const { seg, idx } = hit;
-		const moved: { holder: BlockId; seqIndex: number; m: BlockId }[] = [];
+		const moved: { holder: BlockId; claim: Claim }[] = [];
+		// A claim another block stores (its anchor moved it here) is deleted from that list.
 		const after = (holder: BlockId, from: number) =>
 			blocks
 				.get(holder)!
 				.claims.slice(from)
-				.forEach((c) => moved.push({ holder, seqIndex: c.seqIndex, m: c.m }));
+				.forEach((c) => moved.push({ holder: c.holder ?? holder, claim: c }));
 		after(seg.block, 0);
 		for (let i = seg.path.length - 1; i >= 0; i--) after(seg.path[i].holder, seg.path[i].entry + 1);
 		const text = seg.text as EngineNode & { insertAtGapEnd(i: number, c: unknown[]): void };
@@ -727,23 +867,42 @@ export const bindText = (Y: EngineApi) => {
 		const byHolder = new Map<BlockId, number[]>();
 		// An implicit claim (a losing incarnation, H13) has no list entry: it is
 		// only written, explicitly, on the new block, whose claim outranks it.
-		for (const c of moved)
-			if (c.seqIndex >= 0) byHolder.set(c.holder, [...(byHolder.get(c.holder) ?? []), c.seqIndex]);
+		for (const { holder, claim } of moved)
+			if (claim.seqIndex >= 0)
+				byHolder.set(holder, [...(byHolder.get(holder) ?? []), claim.seqIndex]);
 		for (const [holder, idxs] of byHolder) {
 			const list = blocks.get(holder)!.claimsNode!;
 			for (const i of idxs.sort((x, y) => y - x)) list.delete(i, 1);
 		}
-		return moved.map((c) => ({ m: c.m }));
+		// Re-inserted with their anchors: the region they end is the new block's now.
+		return moved.map(({ claim: c }) =>
+			c.a === undefined ? { m: c.m } : { m: c.m, a: c.a, r: c.r ?? null }
+		);
 	};
 
-	/** Append a merge claim `{m: from}` to `into`'s claims list. */
+	/**
+	 * Append a merge claim `{m: from}` to `into`'s claims list, anchored to
+	 * the end of `into`'s stream (`merge.claim.anchor`): its last unit (its
+	 * opening boundary when empty; none at an own text's start) and the item
+	 * after it.
+	 */
 	const claimInto = (
 		blocks: ReadonlyMap<BlockId, TextBlockRec>,
+		own: Pick<Ownership, 'streamOf'>,
 		from: BlockId,
 		into: BlockId
 	): void => {
 		const list = blocks.get(into)!.claimsNode!;
-		list.insert(list.length, [{ m: from } satisfies MergeClaim]);
+		const claim: MergeClaim = { m: from };
+		const s = own.streamOf(into);
+		if (s !== undefined) {
+			const a = anchorAt(s.text, s.end, -1).i;
+			if (a !== null) {
+				claim.a = a;
+				claim.r = anchorAt(s.text, s.end, 0).i;
+			}
+		}
+		list.insert(list.length, [claim]);
 	};
 
 	/**

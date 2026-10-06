@@ -694,7 +694,10 @@ export const bindRuns = (Y: EngineApi) => {
 		const setRow = (home: BlockId, row: LiveRow | undefined, named: Set<BlockId>): void => {
 			const old = rows.get(home);
 			if (row === undefined) rows.delete(home);
-			else rows.set(home, row);
+			else {
+				rows.set(home, row);
+				homeOfText.set(row.text, home);
+			}
 			if (old?.key === row?.key) return;
 			for (const b of old?.bounds ?? []) {
 				if (row?.keyIndex.has(b.key)) continue;
@@ -756,6 +759,9 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 			if (row === undefined) placed.delete(home);
 			else placed.set(home, now);
+			// Its cuts may move the claims anchored in its text (`merge.claim.anchor`).
+			for (const h of anchoredIn.get(home) ?? []) retargets.add(h);
+			for (const h of unresolved) retargets.add(h);
 			// D-18: a change of the text's segments re-decides its pieces' order.
 			if (
 				before.head !== now.head ||
@@ -1440,6 +1446,7 @@ export const bindRuns = (Y: EngineApi) => {
 						stamp: { c: -1, k: -1 - i },
 						seqIndex: -1
 					}));
+			const listClaims = implicit.length === 0 ? own : [...implicit, ...own];
 			return {
 				id,
 				node,
@@ -1449,15 +1456,206 @@ export const bindRuns = (Y: EngineApi) => {
 				deleted: hasDeleteMark(node) || keyDeleted,
 				content: isNodeLike(content) ? content : undefined,
 				claimsNode,
-				claims: implicit.length === 0 ? own : [...implicit, ...own],
+				listClaims,
+				// Until the next retarget pass its own claims stay with it (`merge.claim.anchor`).
+				claims: effectiveClaims(id, listClaims),
 				cands: candidatesOf(node)
 			};
 		};
 
-		const noteEffects = (id: BlockId, rec: BlockRec | undefined): void => {
+		// ── anchored merge claims (`merge.claim.anchor`, H9's second half) ──
+		// A claim written since 0.1.0-next.26 carries the end of its holder's
+		// stream as its writer saw it (`a`: the last unit, `r`: the item after
+		// it). A split the writer did not see moves it to the piece that ends
+		// that region: its EFFECTIVE claimer is the block of the segment just
+		// before `r` (the text's last segment when `r` is null), if that is
+		// the holder's segment or one after it in the holder's row. Records
+		// carry their list (`listClaims`) and their effective claims
+		// (`claims`: their own that stay, then those other holders' anchors
+		// move to them, by stamp); every reader of claims reads the effective
+		// ones. Targets change only with a row's cuts: re-decided after each
+		// fold's texts for the holders whose record changed and those anchored
+		// in a re-placed row.
+		/** Each holder's list claims' effective claimers, by list index (absent: all its own). */
+		const attachOf = new Map<BlockId, BlockId[]>();
+		/** An effective claimer → the holders whose claims moved to it. */
+		const foreignOf = new Map<BlockId, Set<BlockId>>();
+		/** A row's home → the holders with an anchored claim in its text, and back. */
+		const anchoredIn = new Map<BlockId, Set<BlockId>>();
+		const anchorHomes = new Map<BlockId, Set<BlockId>>();
+		/** Holders whose targets the next pass re-decides, and blocks whose claims it re-reads. */
+		const retargets = new Set<BlockId>();
+		/** Holders with an anchored claim and no stream yet: any re-placed row may resolve them. */
+		const unresolved = new Set<BlockId>();
+		const reclaim = new Set<BlockId>();
+		const sameClaims = (x: readonly Claim[], y: readonly Claim[]): boolean =>
+			x.length === y.length &&
+			x.every(
+				(c, i) =>
+					c.m === y[i].m &&
+					c.holder === y[i].holder &&
+					c.seqIndex === y[i].seqIndex &&
+					cmpStamp(c.stamp, y[i].stamp) === 0
+			);
+		/** `b`'s effective claims: its own that stay with it, then the others' moved to it, by stamp. */
+		function effectiveClaims(b: BlockId, list: readonly Claim[]): Claim[] {
+			const targets = attachOf.get(b);
+			const own = targets === undefined ? list : list.filter((_, i) => (targets[i] ?? b) === b);
+			const holders = foreignOf.get(b);
+			if (holders === undefined) return own as Claim[];
+			const moved: Claim[] = [];
+			for (const h of holders) {
+				const hr = blocks.get(h);
+				const ts = attachOf.get(h);
+				if (hr === undefined || ts === undefined) continue;
+				(hr.listClaims ?? hr.claims).forEach((c, i) => {
+					if (ts[i] === b) moved.push({ ...c, holder: h });
+				});
+			}
+			moved.sort((x, y) => cmpStamp(x.stamp, y.stamp));
+			return [...own, ...moved];
+		}
+		type StoreLike = {
+			getClock(client: number): number;
+			getItem(id: { client: number; clock: number }): unknown;
+		};
+		const store = (doc as unknown as { store: StoreLike }).store;
+		/** The struct holding unit `ref`, and the unit's offset in it (`null`: none held). */
+		const unitAt = (ref: { c: number; k: number }): [RowItem & StoreStruct, number] | null => {
+			if (store.getClock(ref.c) <= ref.k) return null;
+			const s = store.getItem({ client: ref.c, clock: ref.k }) as unknown as RowItem &
+				StoreStruct & { parent?: unknown };
+			if (s?.parent === undefined || s.parent === null) return null;
+			return [s, ref.k - s.id.clock];
+		};
+		/** The gap of row `row` unit `off` of `it` lies in (`-1`: stale, the walk met an unknown boundary). */
+		const gapOfUnit = (row: LiveRow, it: RowItem, off: number): number => {
+			const arr = it.content?.arr;
+			if (!it.deleted && it.countable !== false && arr !== undefined) {
+				const key = (k: number) => row.keyIndex.get(`${it.id.client}:${it.id.clock + k}`);
+				for (let k = off; k >= 0; k--)
+					if (isBoundary(arr[k])) {
+						const j = key(k);
+						if (j === undefined) return -1;
+						// The unit itself, a boundary: the units before it.
+						return k === off ? j : j + 1;
+					}
+				for (let k = off + 1; k < it.length; k++)
+					if (isBoundary(arr[k])) {
+						const j = key(k);
+						return j === undefined ? -1 : j;
+					}
+			}
+			return gapOfItem(row, it);
+		};
+		/** The effective claimer of `holder`'s claim `c`. */
+		const targetOf = (holder: BlockId, c: Claim): [BlockId] => {
+			if (c.a === undefined) return [holder];
+			const at = streamIx.get(holder);
+			const row = at && rows.get(at.home);
+			if (row === undefined) return [holder];
+			const a = unitAt(c.a);
+			if (a === null || (a[0] as { parent?: unknown }).parent !== row.text) return [holder];
+			const k0 = segmentOfCut(row, at!.cut);
+			let gap = row.bounds.length;
+			if (c.r != null) {
+				const r = unitAt(c.r);
+				if (r === null || (r[0] as { parent?: unknown }).parent !== row.text) return [holder];
+				gap = gapOfUnit(row, r[0], r[1]);
+			}
+			if (k0 < 0 || gap < 0) return [holder];
+			const k = segmentOfGap(row, gap);
+			const target = k < k0 ? null : headOf(row, k);
+			return [target ?? holder];
+		};
+		/**
+		 * The rows whose placement may move `holder`'s anchored claim `c`: its
+		 * stream's and its anchor's text's. `null` while it is unresolved — the
+		 * holder has no stream, or an anchor names a unit not integrated yet
+		 * (a payload is no dependency: the claim can arrive first) — and
+		 * re-decided at every fold.
+		 */
+		const watchOf = (holder: BlockId, c: Claim): BlockId[] | null => {
+			if (c.a !== undefined && unitAt(c.a) === null) return null;
+			if (c.r != null && unitAt(c.r) === null) return null;
+			const homes: BlockId[] = [];
+			const own = streamIx.get(holder)?.home;
+			if (own !== undefined) homes.push(own);
+			const a = c.a === undefined ? null : unitAt(c.a);
+			const text = a === null ? undefined : homeOfText.get((a[0] as { parent: object }).parent);
+			if (text !== undefined && text !== own) homes.push(text);
+			return homes.length === 0 ? null : homes;
+		};
+		/** Each row's text → its home (rows are keyed by home). */
+		const homeOfText = new WeakMap<object, BlockId>();
+		/**
+		 * The retarget pass: re-decide the targets of the holders queued, move
+		 * their claims between effective claimers, and re-read the claims of
+		 * every block that gained or lost one (its claim facts and readers).
+		 */
+		const applyRetargets = (ctx: FoldCtx | null): void => {
+			for (const h of retargets) {
+				const rec = blocks.get(h);
+				const before = attachOf.get(h);
+				for (const home of anchorHomes.get(h) ?? []) dropFrom(anchoredIn, home, h);
+				anchorHomes.delete(h);
+				let after: BlockId[] | undefined;
+				unresolved.delete(h);
+				for (const [i, c] of (rec?.listClaims ?? []).entries()) {
+					if (c.a === undefined) continue;
+					const [t] = targetOf(h, c);
+					const watch = watchOf(h, c);
+					if (watch === null) unresolved.add(h);
+					else
+						for (const home of watch) {
+							addTo(anchoredIn, home, h);
+							addTo(anchorHomes, h, home);
+						}
+					if (t !== h) (after ??= new Array((rec!.listClaims ?? []).length).fill(h))[i] = t;
+				}
+				const was = new Set(before ?? []);
+				const now = new Set(after ?? []);
+				for (const t of was) if (t !== h && !now.has(t)) dropFrom(foreignOf, t, h);
+				for (const t of now) if (t !== h) addTo(foreignOf, t, h);
+				if (after === undefined) attachOf.delete(h);
+				else attachOf.set(h, after);
+				if (before !== undefined || after !== undefined) {
+					reclaim.add(h);
+					for (const t of was) reclaim.add(t);
+					for (const t of now) reclaim.add(t);
+				}
+			}
+			retargets.clear();
+			for (const b of reclaim) {
+				const rec = blocks.get(b);
+				if (rec === undefined) continue;
+				const before = rec.claims;
+				const after = effectiveClaims(b, rec.listClaims ?? before);
+				if (sameClaims(before, after)) continue;
+				rec.claims = after;
+				noteClaims(b, before, after);
+				if (ctx !== null) invalidateBlock(b, ctx, before);
+			}
+			reclaim.clear();
+		};
+
+		const noteEffects = (id: BlockId, claims: readonly Claim[]): void => {
 			let fx = effects.get(id);
 			if (fx === undefined) effects.set(id, (fx = new Set()));
-			for (const c of rec?.claims ?? []) fx.add(c.m);
+			for (const c of claims) fx.add(c.m);
+		};
+		/** `id`'s claims went from `before` to `after`: its claim facts follow. */
+		const noteClaims = (id: BlockId, before: readonly Claim[], after: readonly Claim[]): void => {
+			noteEffects(id, after);
+			const was = new Set(before.map((c) => c.m));
+			const now = new Set(after.map((c) => c.m));
+			for (const m of was)
+				if (!now.has(m)) {
+					dropFrom(claimersOf, m, id);
+					addTo(claimTargets, id, m);
+				}
+			for (const m of now) if (!was.has(m)) addTo(claimersOf, m, id);
+			ownerSeeds.add(id);
 		};
 
 		/**
@@ -1469,20 +1667,19 @@ export const bindRuns = (Y: EngineApi) => {
 		const updateBlockRec = (id: BlockId): void => {
 			const old = blocks.get(id);
 			const node = nodeAt(id);
+			// Its list may change: its claims stay its own until the retarget pass.
+			for (const t of attachOf.get(id) ?? []) {
+				if (t === id) continue;
+				dropFrom(foreignOf, t, id);
+				reclaim.add(t);
+			}
+			attachOf.delete(id);
+			retargets.add(id);
 			if (!isNodeLike(node)) blocks.delete(id);
 			else blocks.set(id, buildRec(id, node));
 			const rec = blocks.get(id);
-			noteEffects(id, rec);
 			noteShell(id);
-			const was = new Set(old?.claims.map((c) => c.m));
-			const now = new Set(rec?.claims.map((c) => c.m));
-			for (const m of was)
-				if (!now.has(m)) {
-					dropFrom(claimersOf, m, id);
-					addTo(claimTargets, id, m);
-				}
-			for (const m of now) if (!was.has(m)) addTo(claimersOf, m, id);
-			ownerSeeds.add(id);
+			noteClaims(id, old?.claims ?? [], rec?.claims ?? []);
 			noteCands(id, argParent(old));
 			placementSeeds.add(id);
 			if ((old === undefined) !== (rec === undefined)) {
@@ -1966,6 +2163,8 @@ export const bindRuns = (Y: EngineApi) => {
 				derived ||= [...facets].some((f) => f === ENTRY_FACET || facetOf(f) !== 'ignore');
 			}
 			foldTexts(ctx);
+			for (const h of unresolved) retargets.add(h);
+			if (retargets.size > 0 || reclaim.size > 0) applyRetargets(ctx);
 			if (shells.size > 0)
 				settle(
 					ctx.table ? shells : [...touched.keys(), ...ctx.parents, ...editedStreams(ctx)],
@@ -2018,6 +2217,29 @@ export const bindRuns = (Y: EngineApi) => {
 						fail(`stream of ${st.block} in ${home}`);
 				}
 			for (const b of streamIx.keys()) if (!placed.has(b)) fail(`stream of ${b}`);
+			// The anchored claims (`merge.claim.anchor`): each record's effective claims, from scratch.
+			{
+				const moved = new Map<BlockId, Claim[]>();
+				const stays = new Map<BlockId, Claim[]>();
+				for (const [h, rec] of blocks) {
+					const list = rec.listClaims ?? rec.claims;
+					const own: Claim[] = [];
+					for (const c of list) {
+						const [t] = targetOf(h, c);
+						if (t === h) own.push(c);
+						else {
+							let into = moved.get(t);
+							if (into === undefined) moved.set(t, (into = []));
+							into.push({ ...c, holder: h });
+						}
+					}
+					stays.set(h, own);
+				}
+				for (const [b, rec] of blocks) {
+					const extra = (moved.get(b) ?? []).sort((x, y) => cmpStamp(x.stamp, y.stamp));
+					if (!sameClaims(rec.claims, [...stays.get(b)!, ...extra])) fail(`claims of ${b}`);
+				}
+			}
 			for (const [b, c] of cache) {
 				if (dirty.has(b)) continue;
 				const fresh = computeFresh(b).fresh;
@@ -2484,10 +2706,14 @@ export const bindRuns = (Y: EngineApi) => {
 			updateBlockRec(id);
 			for (const b of [id, ...syncIncarnations(id)]) {
 				const row = scanRow(b);
-				if (row !== undefined) rows.set(b, row);
+				if (row !== undefined) {
+					rows.set(b, row);
+					homeOfText.set(row.text, b);
+				}
 			}
 		});
 		rebuildTable(new Set());
+		applyRetargets(null);
 		settle(shells, null);
 
 		const observer = (e: EngineDeepEvent): void => onCommit(e);

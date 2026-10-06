@@ -104,7 +104,7 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 		return doc.transact(() => {
 			const intoKids = kids(doc, intoId);
 			const fromKids = kids(doc, fromId);
-			T.claimInto(blocks, fromId, intoId);
+			T.claimInto(blocks, own, fromId, intoId);
 			const r = ranks(doc, intoKids, intoKids.length, fromKids.length);
 			fromKids.forEach((k, i) => M.writePlacement(doc, M.blockNodeOf(doc, k.id), intoId, r[i]));
 			return true;

@@ -165,10 +165,12 @@ export const docScenarios: Scenario[] = [
 			set.syncAll();
 			assertConverged(set, ops);
 			assertAllStructurallyValid(set, ops);
-			// Concurrent split+merge compose: b2's content claims into b1's
-			// post-split prefix; the split tail stays with b1-tail.
-			expect(ops.blockText(A, 'b1')).toBe('hellosecond block');
-			expect(ops.blockText(A, 'b1-tail')).toBe(' world');
+			// Concurrent split+merge compose (`merge.claim.anchor`, since
+			// 0.1.0-next.26): b2's claim is anchored to the end of b1's text,
+			// which the split moved to b1-tail, so b2 follows the tail — as
+			// either serial order of the two gestures gives it.
+			expect(ops.blockText(A, 'b1')).toBe('hello');
+			expect(ops.blockText(A, 'b1-tail')).toBe(' worldsecond block');
 			expect(ops.listBlockIds(A)).not.toContain('b2');
 		}
 	}

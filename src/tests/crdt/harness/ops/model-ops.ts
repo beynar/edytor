@@ -351,6 +351,18 @@ export const locateTagAtoms = (
 	return onlyNew === undefined ? first : null;
 };
 
+/** The records with their effective claims (`merge.claim.anchor`), as the ownership read them. */
+const effective = <R extends { claims: unknown[] }>(
+	blocks: Map<BlockId, R>,
+	own: ReturnType<typeof T.computeOwnership>
+): Map<BlockId, R> =>
+	new Map(
+		[...blocks].map(([id, rec]) => [
+			id,
+			{ ...rec, claims: [...(own.claimsOf?.(id) ?? rec.claims)] }
+		])
+	);
+
 /**
  * Replicates `claimGraph`'s owner walk for ONE block, collecting the traversed
  * merge-claim stamps — the physical route from `id` to its display owner.
@@ -503,7 +515,7 @@ export const classifyTagAtoms = (
 		if (found.deleted) return { kind: 'tombstoned' } as AtomFate;
 		const at = streamAt(own, found.textId, found.pos);
 		if (at === undefined) return { kind: 'uncovered' } as AtomFate;
-		const chain = ownerChain(blocks, at.s.block);
+		const chain = ownerChain(effective(blocks, own), at.s.block);
 		const owner = chain.owner;
 		const fields = { marks: found.marks, marksObj: found.marksObj, payload: found.payload };
 		if (owner === DEAD) {
@@ -664,9 +676,13 @@ export const opTarget = (peer: Peer, id: BlockId): OpTarget | null => {
 			}
 		}
 	}
-	// Every block whose claims route to `id` — `owner(h) === id`.
+	// Every block whose claims route to `id` — `owner(h) === id` — and the
+	// lists storing their claims (an anchored claim may be stored on another
+	// block's list: `merge.claim.anchor`).
 	const holders = new Set<BlockId>();
 	for (const hid of blocks.keys()) if (own.ownerOf(hid) === id) holders.add(hid);
+	for (const hid of [...holders])
+		for (const c of own.claimsOf?.(hid) ?? []) if (c.holder !== undefined) holders.add(c.holder);
 	const children = new Set<BlockId>(
 		(M.childrenIndex(placements, own).get(id) ?? []).map((k: { id: BlockId }) => k.id)
 	);
@@ -684,9 +700,9 @@ export const deadCause = (peer: Peer, id: BlockId): DeadCause => {
 	const rec = blocks.get(id);
 	if (rec === undefined) return { kind: 'absent' };
 	if (rec.deleted) return { kind: 'del' };
-	const chain = ownerChain(blocks, id);
-	if (chain.owner === DEAD) return { kind: 'claim', chain: chain.route, end: chain.end ?? id };
 	const own = T.computeOwnership(doc, blocks);
+	const chain = ownerChain(effective(blocks, own), id);
+	if (chain.owner === DEAD) return { kind: 'claim', chain: chain.route, end: chain.end ?? id };
 	const placements = M.resolvePlacements(blocks, own.ownerOf);
 	let cur: BlockId = id;
 	const seen = new Set<BlockId>([id]);

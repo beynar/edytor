@@ -220,7 +220,7 @@ export const bindPurge = (Y: EngineApi) => {
 			const rec = blocks.get(id)!;
 			for (const key of [...rec.node.attrKeys()])
 				if (key === DATA || key.startsWith(DATA_LEAF_PREFIX)) rec.node.deleteAttr(key);
-			if (rec.claimsNode !== undefined && rec.claims.length > 0)
+			if (rec.claimsNode !== undefined && rec.claimsNode.length > 0)
 				rec.claimsNode.delete(0, rec.claimsNode.length);
 			report.emptied++;
 		}
@@ -230,7 +230,8 @@ export const bindPurge = (Y: EngineApi) => {
 		for (const [id, rec] of blocks) {
 			// An emptied block's claims are gone already (above).
 			if (removable.has(id) || dead.has(id) || rec.claimsNode === undefined) continue;
-			const named = rec.claims
+			// The claims its list stores (an anchor may show one in another block).
+			const named = (rec.listClaims ?? rec.claims)
 				.filter((c) => removable.has(c.m))
 				.map((c) => c.seqIndex)
 				.filter((at) => at >= 0);

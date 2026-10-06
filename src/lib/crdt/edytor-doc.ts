@@ -1069,7 +1069,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					return M.writeSplit(doc, w.id, w.offset, w.newId, w.tail, { p: w.parent, r: w.rank });
 				case 'mergeBlocks':
 					f.unions.push([w.into, w.from]);
-					return T.claimInto(blocks, w.from, w.into);
+					return T.claimInto(blocks, own, w.from, w.into);
 				case 'setBlockType':
 					return void node(w.id).setAttr(TYPE, w.type);
 				case 'patchData':

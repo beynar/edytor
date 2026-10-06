@@ -81,6 +81,8 @@ export type FlowContext = RangeDeleteContext & {
 	insideItem: (id: BlockId) => boolean;
 	tailOf: (id: BlockId) => SplitTail;
 	ranksFor: (parent: BlockId | null, index: number, count: number) => string[];
+	/** `ranksFor` for new blocks: after a block this client ranked, in its run there (H1). */
+	insertRanks: (parent: BlockId | null, index: number, count: number) => string[];
 	/** Ranks for the `count` blocks a split of `id` at `at` puts after it, by that offset. */
 	pieceRanks: (id: BlockId, at: number, count: number) => string[];
 	redata: (id: BlockId, data: Record<string, unknown>) => PlanStep[];
@@ -287,13 +289,13 @@ export const flowOps = (c: FlowContext) => ({
 		// Nothing before the position and the first line stands apart: the lines go before `B`,
 		// which keeps its text and takes a joining last line, or goes when empty and not needed.
 		if (!joinsHead && o === 0 && !inside) {
-			place(index, c.ranksFor(parent, index, placed.length));
+			place(index, c.insertRanks(parent, index, placed.length));
 			if (joinsTail) {
 				const at = join(last(), 0);
 				// A closed header's taken line's nested lines follow it, the caret ending them.
 				const after = shut ? specs(parent, last().children ?? []) : [];
 				if (after.length) {
-					const ranks = c.ranksFor(parent, index + 1, after.length);
+					const ranks = c.insertRanks(parent, index + 1, after.length);
 					const slot = index + placed.length + 1;
 					writes.push({ op: 'insertBlocks', parent, index: slot, specs: after, ranks });
 				}

@@ -1763,12 +1763,18 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		/** This client's next clock: what its source ranks are tied by (`sourceRank`, DW-05). */
 		const clock = () => doc.store?.getClock(doc.clientID) ?? 0;
-		/** `count` ranks at `index` among `parent`'s children, the moving `exclude` left out. */
+		/**
+		 * `count` ranks at `index` among `parent`'s children, the moving
+		 * `exclude` left out. `run`: new blocks, which extend this client's run
+		 * after a block it ranked (H1, `order.insert.run`); a move never does
+		 * (the rank-growth guard).
+		 */
 		const ranksFor = (
 			parent: BlockId | null,
 			index: number,
 			count: number,
-			exclude: readonly BlockId[] = []
+			exclude: readonly BlockId[] = [],
+			run = false
 		): string[] => {
 			const v = view();
 			const all = v.kids.get(parent) ?? [];
@@ -1784,7 +1790,14 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			};
 			const at = Math.max(0, Math.min(index, all.length - gone.length));
 			const pair = [at > 0 ? all[raw(at - 1)] : undefined, all[raw(at)]];
-			return M.ranksAt(pair as readonly { rank: string }[], 1, count, doc.clientID, randOf(doc));
+			return M.ranksAt(
+				pair as readonly { rank: string }[],
+				1,
+				count,
+				doc.clientID,
+				randOf(doc),
+				run
+			);
 		};
 		/**
 		 * Move `ids` to `ranks` under `parent` (`index`: the slot hooks see).
@@ -2167,7 +2180,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (parent !== null && (isVoid(parent) || isLine(parent))) return REFUSED;
 			if (clean.length === 0) return plan([], []);
 			if ((parent !== null && !live(parent)) || M.collides(doc, clean)) return REFUSED;
-			const ranks = ranksFor(parent, dest.index, clean.length);
+			const ranks = ranksFor(parent, dest.index, clean.length, [], true);
 			return plan(
 				clean.map((s) => s.id),
 				[{ op: 'insertBlocks', parent, index: dest.index, specs: clean, ranks }]
@@ -2272,7 +2285,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const last = ids.at(-1)!;
 			const { parent, index } = positionOf(levels.at(-1) ?? last)!;
 			if (levels.length === 0) {
-				const ranks = ranksFor(parent, index + 1, specs.length);
+				const ranks = ranksFor(parent, index + 1, specs.length, [], true);
 				return plan(placed, [...insert(parent, index + 1, specs, ranks), ...retype]);
 			}
 			// Bottom up: what stays before the split at each level (the level
@@ -3114,6 +3127,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			insideItem: (id) => insideItem(id),
 			tailOf: (id) => ({ type: kindToCopy(id), data: blockDataOf(id) }),
 			ranksFor,
+			insertRanks: (parent, index, count) => ranksFor(parent, index, count, [], true),
 			pieceRanks,
 			redata: (id, data) => dataSteps(id, replaceData(data)) ?? [],
 			deleteBlocks: (ids, filled) => deleteBlocks(ids, false, filled),

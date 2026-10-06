@@ -222,3 +222,81 @@ export const rankBetween = (
 		path.push(lSeg);
 	}
 };
+
+/**
+ * The digit of the run marker data arrays wrote up to 0.1.0-next.21 (a run
+ * of that form is the marker segment, then ranks of the client's own): still
+ * read as a run, so what a client inserts there stays in it.
+ */
+export const RANK_RUN = -(2 ** 39);
+/**
+ * A run member's digit lies in `(RANK_RUN, RANK_RUN + RUN_BAND)`: below every
+ * digit a plain rank extends a prefix with (`0`, an append's), far above the
+ * digit minimum. A run opens at {@link RUN_START}, the middle of the band, so
+ * its members can be inserted before and after one another.
+ */
+const RUN_BAND = 2 ** 38;
+const RUN_START = RANK_RUN + 2 ** 37;
+const inRun = (v: number): boolean => v > RANK_RUN && v < RANK_RUN + RUN_BAND;
+
+/**
+ * A rank in `(left, right)` for an insert right after `left` — one rule for
+ * array items (`crdt/data.ts`) and inserted blocks (H1, `order.insert.run`).
+ * When `client` made `left`, the rank is in the client's run after it: `left`
+ * itself as the prefix, then one segment of the run band — or, when `left`
+ * is already a member of the client's run, that run's prefix and a member
+ * between `left` and the next one. So what one client inserts after its own
+ * items stays together whatever a peer inserts in that gap meanwhile: a
+ * peer's rank there is either no extension of the run's prefix (it sorts
+ * after the whole run) or one whose next digit is above the band (YATA's
+ * origin rule, as `Y.Array` keeps an insert after its origin). Elsewhere, or
+ * when the run rank would not sort below `right`, a plain {@link rankBetween}.
+ */
+export const rankAfter = (
+	left: string | undefined,
+	right: string | undefined,
+	client: number,
+	rand: () => number = Math.random
+): string => {
+	const plain = () => rankBetween(left, right, client, rand);
+	if (left === undefined) return plain();
+	const segs = decodeRank(left);
+	const last = segs.at(-1)!;
+	const bottom = encodeRank([{ v: RANK_RUN, t: 0 }]);
+	const top = encodeRank([{ v: RANK_RUN + RUN_BAND, t: 0 }]);
+	/**
+	 * `prefix` and a rank after `after` (`undefined`: the run opens) in the
+	 * run: inside the band when `band`. Opening, it takes the band's middle,
+	 * or a digit below the run's first member; at the run's end it appends as
+	 * an open end does (a window, not half the band); else between the two.
+	 */
+	const own = (prefix: string, after: string | undefined, band: boolean): string => {
+		const tail = (r?: string) =>
+			r && r.length > prefix.length && r.startsWith(prefix) ? r.slice(prefix.length) : undefined;
+		let next = tail(right);
+		if (band && next !== undefined && next > top) next = undefined;
+		let mine: string;
+		if (after === undefined) {
+			if (next === undefined) mine = encodeRank([{ v: RUN_START, t: client }]);
+			else if (band && next > bottom) mine = rankBetween(bottom, next, client, rand);
+			else return plain();
+		} else if (next === undefined && band) {
+			const append = rankBetween(after, undefined, client, rand);
+			mine = append < top ? append : rankBetween(after, top, client, rand);
+		} else mine = rankBetween(after, next, client, rand);
+		const rank = prefix + mine;
+		return right === undefined || rank < right ? rank : plain();
+	};
+	// A member of the client's run: the next member, inside the band.
+	if (last.t === client && inRun(last.v))
+		return own(encodeRank(segs.slice(0, -1)), encodeRank([last]), true);
+	// A run of the earlier form (the marker, then the client's ranks): stays in it.
+	const k = segs.findLastIndex((g) => g.v === RANK_RUN);
+	if (k >= 0 && segs[k]!.t === client) {
+		const prefix = encodeRank(segs.slice(0, k + 1));
+		return own(prefix, left.length > prefix.length ? left.slice(prefix.length) : undefined, false);
+	}
+	// A rank the client made: its run opens right after it.
+	if (last.t === client) return own(left, undefined, true);
+	return plain();
+};

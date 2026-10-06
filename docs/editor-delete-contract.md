@@ -686,6 +686,24 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
     claims list, and a concurrent split moved only the claims it saw, so
     the merged text follows the head: Backspace joins "world" into
     "hello" ‖ Enter after "he" → "heworld", "llo".
+- `order.insert.run` (H1, CRDT study 2026-10): a block inserted right
+  after a block this client ranked — Enter at the end of a block, a
+  container header's new first child, Duplicate, the + button, a paste of
+  whole lines (`insertBlocks`, `flow.place`), never a move — extends the
+  client's run there (`rankAfter` in `placement/rank.ts`, the rule data
+  arrays use, YATA's origin rule): its rank is the block's rank and one
+  segment in the run band (`(RANK_RUN, RANK_RUN + 2^38)`), or, after a
+  member of the client's run, the next member at that depth. A peer's
+  rank in that gap is never an extension of the block's rank with a digit
+  in the band, so it sorts before or after the whole run, never inside it.
+  Two peers that each press Enter at the end of one block and type
+  several lines keep each one's lines together on every client-id pair
+  (`h1-block-runs.test.ts`: `x a1 a2 a3 b1 b2 b3 q` or `x b1 b2 b3 a1 a2
+a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
+  stay together around a peer's split. Which peer's run comes first
+  still follows the client ids (below). The ranks stay inside the EW-02
+  bounds (`rank-growth.test.ts`): a run costs one segment once, its
+  members none.
 - Not claimed (EW-05, EW-11; pinned in `order-scope.test.ts`): only the
   gestures above rank by source (`exitRanks`/`pieceRanks`); every other
   placement takes a plain rank in the gap (`ranksFor`, `M.ranksAt`), so
@@ -704,7 +722,8 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
     `whole`: after the caret's block) and a paste or typing over selected
     blocks (`replace`: the first one's slot), both `atSlot` →
     `insertBlocks` (DR-crdt-1): a whole paste with the caret in X ‖ Enter
-    after "hello" in X → " world" can read between the pasted blocks.
+    after "hello" in X → " world" can read before the pasted blocks (since
+    `order.insert.run`, never between them).
     Ranking them by source kept the order but grew ranks 5 to 7 times as
     fast as plain ones under repeated pastes in one place (EW-02);
   - several structural gestures by one peer before it syncs (text edits

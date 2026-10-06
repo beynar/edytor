@@ -33,7 +33,7 @@
  */
 import type { EngineNode } from './engine-api.js';
 import { DATA, DATA_LEAF_PREFIX } from './schema.js';
-import { decodeRank, encodeRank, rankBetween } from './placement/rank.js';
+import { rankAfter } from './placement/rank.js';
 import { hash32 } from './rand.js';
 import { jsonEquals } from '../utils/json.js';
 
@@ -77,14 +77,6 @@ export const keySegment = (k: string) => (k.startsWith('~') ? `~0${k.slice(1)}` 
 export const segmentKey = (s: string) => (s.startsWith('~0') ? `~${s.slice(2)}` : s);
 const RANK = /^(?:[-\w]{16})+$/;
 const index = (k: string) => (/^(0|[1-9]\d*)$/.test(k) ? Number(k) : -1);
-/**
- * The digit that opens a client's run after an item it made (`between`):
- * below every digit a plain insert extends a rank with (`0`, a gap's), so
- * the run sorts right after its item, and far above the digit minimum, so
- * the inserts before it (each one digit lower) never run out of room.
- */
-const RUN = -(2 ** 39);
-
 const rank = (v: unknown) => (typeof v === 'string' && RANK.test(v) ? v : undefined);
 /** Item `id`'s place: where a move put it (`id>`), else where it was made (`id#`). */
 const placeOf = (t: Tree, id: string) => rank(t.k.get(`${id}>`)?.v) ?? rank(t.k.get(`${id}#`)?.v);
@@ -164,28 +156,12 @@ const edits = (rand?: () => number, client = 0) => {
 	const remove = (t: Tree, id: string) => [id, `${id}#`, `${id}>`].forEach((s) => t.k.delete(s));
 	/**
 	 * A rank in `(left, right)`. After an item this client placed, it is in
-	 * the client's run there (`left`, the `RUN` segment, then ranks of its
-	 * own): what it inserts after its own items stays together, as `Y.Array`
-	 * keeps an insert after its origin, whatever a peer inserts in that gap
-	 * meanwhile. Elsewhere a plain rank between the two.
+	 * the client's run there (`rankAfter`): what it inserts after its own
+	 * items stays together, as `Y.Array` keeps an insert after its origin,
+	 * whatever a peer inserts in that gap meanwhile. Elsewhere a plain rank.
 	 */
-	const between = (left: string | undefined, right: string | undefined): string => {
-		const plain = () => rankBetween(left, right, client, pick);
-		if (left === undefined) return plain();
-		const segs = decodeRank(left);
-		const k = segs.findLastIndex((g) => g.v === RUN);
-		const run =
-			k >= 0 && segs[k]!.t === client
-				? encodeRank(segs.slice(0, k + 1))
-				: segs.at(-1)!.t === client
-					? left + encodeRank([{ v: RUN, t: client }])
-					: undefined;
-		if (run === undefined) return plain();
-		const tail = (r?: string) =>
-			r && r.length > run.length && r.startsWith(run) ? r.slice(run.length) : undefined;
-		const rank = run + rankBetween(tail(left), tail(right), client, pick);
-		return right === undefined || rank < right ? rank : plain();
-	};
+	const between = (left: string | undefined, right: string | undefined): string =>
+		rankAfter(left, right, client, pick);
 	/** Give `entries` (kept items, moved items, new values) their places in `t`, in order. */
 	const lay = (t: Tree, entries: Entry[]): void => {
 		let left: string | undefined;

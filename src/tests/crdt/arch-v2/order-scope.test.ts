@@ -140,7 +140,8 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 	 * DR-crdt-1: a paste of whole blocks (a block-selection copy) lands after
 	 * the caret's block, and a paste or typing over selected blocks takes the
 	 * first one's slot, both ranked at random there (`insertBlocks`): a
-	 * peer's split of the block before them sorts among them by client id.
+	 * peer's split of the block before them sorts before or after them by
+	 * client id, never among them (their lines are one run, `order.insert.run`).
 	 * Ranking them by source kept the order but grew ranks 5 to 7 times as
 	 * fast as plain ones under repeated pastes in one place (the EW-02
 	 * guard's concern), so they stay not covered.
@@ -158,10 +159,9 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 				],
 				[split('X', 5, 'N')]
 			)
-			// The serial order reads hello| world|W1|W2.
-		).toEqual(
-			['P|hello| world|W1|W2|S|Q', 'P|hello|W1| world|W2|S|Q', 'P|hello|W1|W2| world|S|Q'].sort()
-		));
+			// The serial order reads hello| world|W1|W2. W2 extends W1's run
+			// (`order.insert.run`): " world" never reads between them.
+		).toEqual(['P|hello| world|W1|W2|S|Q', 'P|hello|W1|W2| world|S|Q'].sort()));
 	it('a paste over the selected block S ‖ Enter in X', () =>
 		expect(
 			outcomes(
@@ -169,10 +169,8 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 				[(ed) => ed.insertFlow({ replace: ['S'] }, { lines: lines('W1', 'W2') })],
 				[split('X', 5, 'N')]
 			)
-			// The serial order reads hello| world|W1|W2.
-		).toEqual(
-			['P|hello| world|W1|W2|Q', 'P|hello|W1| world|W2|Q', 'P|hello|W1|W2| world|Q'].sort()
-		));
+			// The serial order reads hello| world|W1|W2 (W1|W2 one run, `order.insert.run`).
+		).toEqual(['P|hello| world|W1|W2|Q', 'P|hello|W1|W2| world|Q'].sort()));
 	it('typing over the selected block S ‖ Enter in X', () =>
 		expect(
 			outcomes(

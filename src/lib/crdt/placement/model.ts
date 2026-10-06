@@ -51,7 +51,7 @@
  * imports vendor `.js` (which `pnpm check` must not traverse).
  */
 import type { EngineApi, EngineDoc, EngineItemRef, EngineNode } from '../engine-api.js';
-import { decodeRank, encodeRank, rankBetween, RANK_VMIN } from './rank.js';
+import { decodeRank, encodeRank, rankAfter, rankBetween, RANK_VMIN } from './rank.js';
 import {
 	AT,
 	AT_NODE,
@@ -845,14 +845,16 @@ export const bindModel = (Y: EngineApi) => {
 	 * so each new member takes `left` verbatim: it JOINS the tie and the
 	 * `(rank, id)` display sort orders the whole group deterministically.
 	 * On a valid seam the emitted chain is `rankBetween(left, right)` then
-	 * `rankBetween(prev, right)`.
+	 * `rankBetween(prev, right)` — with `run`, `rankAfter` (an insert: after a
+	 * block this client ranked, in its run there, H1).
 	 */
 	const ranksAt = (
 		siblings: readonly { rank: string }[],
 		index: number,
 		count: number,
 		clientId: number,
-		rand?: () => number
+		rand?: () => number,
+		run = false
 	): string[] => {
 		let left = siblings[index - 1]?.rank;
 		const right = siblings[index]?.rank;
@@ -861,7 +863,10 @@ export const bindModel = (Y: EngineApi) => {
 		}
 		const out: string[] = [];
 		for (let i = 0; i < count; i++) {
-			const r = rankBetween(left, right, clientId, rand);
+			// An insert extends this client's run after a block it ranked (H1).
+			const r = run
+				? rankAfter(left, right, clientId, rand)
+				: rankBetween(left, right, clientId, rand);
 			out.push(r);
 			left = r;
 		}

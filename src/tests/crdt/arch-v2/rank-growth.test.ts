@@ -87,7 +87,8 @@ describe('FX-04: a rank stops descending once its prefix is below the right boun
 describe('EW-02: ranks and documents stay small under typing and reordering', () => {
 	it('300 Enters in the middle of the document (in a line, at its end, at its start)', () => {
 		const { rank, bytes } = enterWalk(300);
-		// Measured: 240 characters, 132,647 bytes (before FX-04: 432, 138,924).
+		// Measured: 256 characters, 133,152 bytes (240, 132,647 before the block
+		// runs of `order.insert.run`; before FX-04: 432, 138,924).
 		expect(rank).toBeLessThanOrEqual(256);
 		expect(bytes).toBeLessThanOrEqual(140_000);
 	});
@@ -95,7 +96,8 @@ describe('EW-02: ranks and documents stay small under typing and reordering', ()
 	it('1,000 Enters in the middle of the document: ranks grow slower than the Enters', () => {
 		const at300 = enterWalk(300).rank;
 		const { rank, bytes } = enterWalk(1000);
-		// Measured: 592 characters, 611,228 bytes (before FX-04: 896, 752 KB).
+		// Measured: 576 characters, 604,280 bytes (592, 611,228 before
+		// `order.insert.run`; before FX-04: 896, 752 KB).
 		// Enters concentrated at one spot still descend about one level (16
 		// characters) per 32 Enters, as a gap halves at each insert there
 		// (3,000 Enters: 1,616 characters), so the ratio is bounded, not 2.
@@ -121,7 +123,8 @@ describe('EW-02: ranks and documents stay small under typing and reordering', ()
 			last = nid;
 		}
 		const { rank, bytes } = measure(document);
-		// Measured: 96 characters, 108,109 bytes.
+		// Measured: 112 characters, 112,451 bytes (96, 108,109 before
+		// `order.insert.run`: a run opens one segment after an item).
 		expect(rank).toBeLessThanOrEqual(112);
 		expect(bytes).toBeLessThanOrEqual(120_000);
 	});
@@ -139,7 +142,8 @@ describe('EW-02: ranks and documents stay small under typing and reordering', ()
 			ok(ed.moveBlock(id, { parent: null, index: up ? index - 1 : index + 1 }));
 		}
 		const { rank, bytes } = measure(document);
-		// Measured: 16 characters, 151,975 bytes (before FX-04: 32; wave 13's source-ranked moves: 10 MB).
+		// Measured: 16 characters, 70,647 bytes (151,975 before the history kept
+		// 200 steps, P6; before FX-04: 32; wave 13's source-ranked moves: 10 MB).
 		expect(rank).toBeLessThanOrEqual(32);
 		expect(bytes).toBeLessThanOrEqual(165_000);
 	});

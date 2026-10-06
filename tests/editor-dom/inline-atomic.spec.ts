@@ -848,6 +848,48 @@ test.describe('browser inline atomic behavior', () => {
 		issues.assertClean();
 	});
 
+	test('keeps a clicked inline mention selected once the browser settles the press', async ({
+		page
+	}) => {
+		// Chromium parks a caret at the host's start for the press the atom took,
+		// and reports it a frame later, after the release: that caret is the
+		// browser's, never the user's (`projector.parked`).
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=inline');
+		await waitForEditorReady(page);
+
+		await page
+			.locator('[data-edytor-type="paragraph"]')
+			.nth(1)
+			.locator('[data-edytor-inline-block]')
+			.first()
+			.click();
+		// Let the press's late `selectionchange` arrive before reading.
+		await page.evaluate(
+			() =>
+				new Promise<void>((resolve) =>
+					requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 50)))
+				)
+		);
+		expect(await readSelectedInlineBlockState(page)).toEqual({
+			selectedCount: 1,
+			deletionTargetType: 'mention'
+		});
+
+		await page.keyboard.type('X');
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text?: string; type?: string }> }>;
+				}>(page, 'value');
+				return stripIds(value.children[1]?.content);
+			})
+			.toEqual([{ text: 'lead X end' }]);
+
+		issues.assertClean();
+	});
+
 	test('replaces a selected inline mention with typed text', async ({ page }) => {
 		const issues = trackPageIssues(page);
 

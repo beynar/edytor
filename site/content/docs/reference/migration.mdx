@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.26
+
+- **Clicking a mention keeps it selected in Chromium.** In every 0.1.0 pre-release so far, a click on an inline atom (a mention) selected it and then, a frame later, lost it to the caret Chromium places at the editor's start for that click, so typing or <kbd>Backspace</kbd> right after the click could act at the start of the document instead of on the mention. That caret is now the browser's own and never replaces the atom selection. Nothing to change in your code.
+
 ### From 0.1.0-next.25
 
 - **The history store is yours to choose.** `history.store` is now a `HistoryStore`: `roomHistory()` keeps the versions in the room's own Durable Object storage (no binding; set the variable `EDYTOR_HISTORY` to `"room"` with `DocumentRoom`), `kvHistory(namespace)` in KV as before, `r2History(bucket)` in R2 (bind it as `EDYTOR_HISTORY`), or any object with `maxValueBytes`, `put`, `get`, `list` and `delete` (see [a store of your own](/docs/server/history#a-store-of-your-own)). The room owns retention: nothing past a version's `expiresAt` is listed or read, and for a store without a TTL of its own its alarm deletes each version when it expires (a fourth alarm task, `retention`). **Nothing to change for KV**: a bare KV namespace (`store: env.HISTORY`, or the `EDYTOR_HISTORY` binding) still works, wrapped in `kvHistory`, and versions stored by earlier releases list, preview and restore as they are; passing the namespace itself is deprecated, write `kvHistory(env.HISTORY)`. `HistoryEntry` gains `expiresAt`.

@@ -226,7 +226,8 @@ export class Projector {
 	 * - drift: no gesture since the last observation, and a render since it
 	 *   (a flush the DOM selection was not observed after, or DOM records the
 	 *   observer has not reconciled), or one of the two named signatures,
-	 *   or the caret a browser parks for the editor's own focus or a refused key (`parked`);
+	 *   or the caret a browser parks for the editor's own focus, a refused key
+	 *   or an atom's press (`parked`);
 	 * - intent: a gesture since the last observation, or a pointer drag;
 	 * - foreign: no gesture and no render (host code, assistive tech, O1).
 	 */
@@ -246,8 +247,11 @@ export class Projector {
 		// The caret a browser parks (the editor's own focus, a refused key), no gesture since.
 		if (this.#parked === edytor.intentSerial) return 'drift';
 		// With no value, a caret no press placed stays the browser's, whatever key
-		// came since (Mod+Z, Escape: Chromium parks one at the host's start).
-		if (this.#parking && selection.value.kind === 'none') return 'drift';
+		// came since (Mod+Z, Escape: Chromium parks one at the host's start); over
+		// an atom a press selected, so does the one the browser parks for that
+		// press, whatever its release marked (`parked`).
+		if (this.#parking && (selection.value.kind === 'none' || selection.value.kind === 'atom'))
+			return 'drift';
 		if (edytor.intentSerial === this.#serial && (this.#snapBack(dom) || this.#jump()))
 			return 'drift';
 		if (edytor.intentSerial !== this.#serial || selection.dragging) return this.#observed('intent');
@@ -260,9 +264,13 @@ export class Projector {
 	 * The browser parks a caret of its own, at the host's start: the editor
 	 * focused its own host (`takeKeys`: the keys after a gesture on its
 	 * chrome), or a key the attempt refused for want of a target
-	 * (`targetless`: Chromium places a caret for it). Until the next gesture
-	 * that caret is drift, displayed over by the value — a block selection or
-	 * none shows no DOM range — never adopted.
+	 * (`targetless`: Chromium places a caret for it), or an atom took a press
+	 * (`InlineBlock.attach`: Chromium parks one for it before the release).
+	 * Until the next gesture that caret is drift, displayed over by the value —
+	 * a block selection, an atom or none shows no DOM range — never adopted;
+	 * under none or an atom, until a press inside or a focus from outside
+	 * (`pressed`), an adopted move or our own display, whatever key or release
+	 * came since.
 	 */
 	parked = () => {
 		this.#parked = this.edytor.intentSerial;
@@ -413,7 +421,9 @@ export class Projector {
 			// A block set or an atom shows as selected elements, not a range.
 			// Displayed even when the DOM already holds no range (the atom's
 			// own pointerdown cleared it): a caret the browser parks later
-			// without a gesture (focusing the host) is then drift, not intent.
+			// without a gesture (focusing the host) is then drift, not intent;
+			// the one it parks for the atom's press is drift through its release
+			// (`parked`).
 			const inside = Boolean(dom.anchorNode && node.contains(dom.anchorNode));
 			if ((inside || dom.rangeCount === 0) && this.#ours(requested)) {
 				if (inside) clearDomSelection(node);

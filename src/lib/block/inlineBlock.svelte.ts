@@ -112,6 +112,9 @@ export class InlineBlock {
 				return selection.setAtTextOffset(after, 0);
 			selection.selectInlineBlock(this);
 			clearDomSelection(this.edytor.node);
+			// The atom took the press: the caret the browser still leaves for it
+			// (Chromium parks one at the host's start before the release) is its own.
+			this.edytor.projector.parked();
 		};
 		node.addEventListener('pointerdown', selectInlineBlock);
 

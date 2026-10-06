@@ -22,7 +22,7 @@ type SelectionValue =
 | --- | --- |
 | `none` | Nothing is selected. Typing, an IME composition, <kbd>Backspace</kbd>, <kbd>Delete</kbd> and <kbd>Enter</kbd> then do nothing (Notion), even where the browser parked a caret of its own (after a drop or a column resize the editor holds the keys with no caret, and an undo, a redo, <kbd>Escape</kbd> or a closed menu can leave no selection); a click, a tap or a focus from outside (<kbd>Tab</kbd>) places the caret. |
 | `text` | A caret (anchor equals focus) or a text range, possibly across blocks. `anchor` is where it started, `focus` where it ends. |
-| `atom` | One inline block is selected, for example after clicking a mention. `from` is the side the selection was made from. |
+| `atom` | One inline block is selected, for example after clicking a mention (a click on its left or right edge places the caret beside it instead). The caret a browser places for that click (Chromium parks one at the editor's start) never replaces it. `from` is the side the selection was made from. |
 | `blocks` | Whole blocks are selected, for example after clicking a block handle or pressing <kbd>Mod</kbd>+<kbd>A</kbd> repeatedly. |
 
 Text anchors (`DocAnchor`) are bound to characters, not to numeric offsets. When a collaborator types before your caret, your caret stays next to the same character. They are plain JSON, so you can store or send them.

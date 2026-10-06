@@ -321,7 +321,12 @@ export type {
 // catch-up codec (`chunkFrame`/`createChunkReader`, `messageChunk`).
 // `pnpm check:worker` keeps this graph Worker-safe.
 
-export { SCHEMA_VERSION, META_KEY, EdytorDocDisposedError } from './edytor-doc.js';
+export {
+	SCHEMA_VERSION,
+	META_KEY,
+	EdytorDocDisposedError,
+	DEFAULT_HISTORY_LIMIT
+} from './edytor-doc.js';
 
 export {
 	GENERATION,

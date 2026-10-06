@@ -358,6 +358,11 @@ export const assertUsableDoc = (doc: EngineDoc): void => {
  * counterpart of `DocumentDestroyedError` — kept in this module because a
  * bare `bindEdytorDoc` facade has no document layer above it.
  */
+/** The undo steps a document's history keeps by default (P6): older ones are released. */
+export const DEFAULT_HISTORY_LIMIT = 200;
+/** The origin of the transaction that releases a dropped history step's content. */
+const HISTORY_TRIM = Symbol('edytor.history.trim');
+
 export class EdytorDocDisposedError extends Error {
 	constructor(service?: string) {
 		super(`EdytorDoc${service ? `.${service}` : ''}: facade is disposed.`);
@@ -1518,11 +1523,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 
 		const createUndoManager = (
-			opts: ConstructorParameters<EngineApi['UndoManager']>[1] = {}
+			options: ConstructorParameters<EngineApi['UndoManager']>[1] & { limit?: number } = {}
 		): YUndoManager => {
 			if (disposed) {
 				throw new EdytorDocDisposedError('createUndoManager');
 			}
+			const { limit = DEFAULT_HISTORY_LIMIT, ...opts } = options;
 			write(() => {
 				if (!isInitialized(doc)) init(doc);
 			});
@@ -1552,6 +1558,31 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			};
 			um.on('stack-item-added', skipOwnText as never);
 			um.on('stack-item-updated', skipOwnText as never);
+			// P6: the undo stack keeps its newest `limit` steps. A step that
+			// falls off releases what it kept for its undo (its deleted items),
+			// and the engine collects their content now, as it would have at
+			// the delete without a history (the doc's `gcFilter` still decides:
+			// a text copy another replica may have to copy again stays, P11).
+			// Only the items themselves are released: a kept container's flag
+			// may guard a newer step's items inside it.
+			const trim = ({ type }: { type: string }): void => {
+				const over = um.undoStack.length - limit;
+				if (type !== 'undo' || !(over > 0)) return;
+				const dropped = um.undoStack.splice(0, over) as unknown as UndoStep[];
+				const gc = (doc as unknown as { gc: boolean }).gc;
+				const keepIt = (doc as unknown as { gcFilter: (it: unknown) => boolean }).gcFilter;
+				doc.transact((tr) => {
+					for (const step of dropped)
+						Y.iterateStructsByIdSet(tr as never, step.deletes as never, (s: unknown) => {
+							const it = s as { keep?: boolean; deleted: boolean; content?: unknown; gc?: unknown };
+							if (it.content === undefined || it.keep !== true) return;
+							it.keep = false;
+							if (gc && it.deleted && keepIt(it))
+								(it as unknown as { gc(tr: unknown, parentGCd: boolean): void }).gc(tr, false);
+						});
+				}, HISTORY_TRIM);
+			};
+			um.on('stack-item-added', trim as never);
 			// Lineage for undo/redo (O19, F4): the replay displaces the state
 			// every block the popped stack item touches, so each one's subtree
 			// is captured (`force`: lost whoever owns `l`) from the history

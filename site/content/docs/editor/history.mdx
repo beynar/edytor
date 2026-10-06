@@ -62,7 +62,11 @@ import { createDocument } from 'edytor';
 const document = createDocument({ value, history: { captureTimeout: 300 } });
 ```
 
-History stacks are not trimmed automatically. For long sessions, call `document.clearHistory()` at points where undo no longer makes sense, such as after a save.
+The undo stack keeps the newest 200 steps (`history: { limit }`; `Infinity` keeps every step). An older step is dropped, and what it kept to undo, such as the text it deleted, is released, so a long session does not keep every deleted character in memory and in the stored document. Call `document.clearHistory()` to drop both stacks at points where undo no longer makes sense, such as after a save.
+
+```ts
+const document = createDocument({ value, history: { limit: 500 } });
+```
 
 ## Undo with collaborators
 

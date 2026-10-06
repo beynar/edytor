@@ -151,6 +151,7 @@ import {
 } from './attribution/index.js';
 import {
 	bindEdytorDoc,
+	DEFAULT_HISTORY_LIMIT,
 	isInitialized,
 	lineageDepthOf,
 	type BlockRole,
@@ -213,10 +214,12 @@ export type DocumentOptions = {
 	 * History tuning — applied when the document's undo manager attaches.
 	 * `captureTimeout` is the merge window in ms (engine default 500):
 	 * commits closer than this fuse into one undo step; `0` makes every
-	 * commit its own step. Stacks are unbounded regardless — see
-	 * {@link EdytorDocument.clearHistory} for the pruning surface.
+	 * commit its own step. `limit` is the number of undo steps kept (default
+	 * {@link DEFAULT_HISTORY_LIMIT}, 200; `Infinity` keeps every step): an
+	 * older step is dropped and the deleted content it kept is collected.
+	 * {@link EdytorDocument.clearHistory} drops both stacks.
 	 */
-	history?: { captureTimeout?: number };
+	history?: { captureTimeout?: number; limit?: number };
 	/**
 	 * Opt-in per-block lineage ring — `depth > 0` captures a subtree
 	 * snapshot just before an edit displaces a block's current
@@ -350,7 +353,7 @@ export type EdytorDocumentInit = {
 	actor?: DocumentActor;
 	awareness?: Awareness;
 	semantics?: DocumentSemanticsConfig;
-	history?: { captureTimeout?: number };
+	history?: { captureTimeout?: number; limit?: number };
 	lineage?: { depth?: number };
 };
 
@@ -453,7 +456,7 @@ export class EdytorDocument {
 		defaultChild: new Map<string, string>()
 	};
 	private _defaultType: string;
-	private readonly _historyOptions: { captureTimeout?: number } | undefined;
+	private readonly _historyOptions: { captureTimeout?: number; limit?: number } | undefined;
 	private readonly _lineageDepth: number | undefined;
 	/** Attached providers keyed by transport target (O75): one per target. */
 	private _providers = new Map<unknown, EdytorSyncCleanup | undefined>();
@@ -573,6 +576,15 @@ export class EdytorDocument {
 	 */
 	get historyCaptureTimeout(): number | undefined {
 		return this._historyOptions?.captureTimeout;
+	}
+
+	/**
+	 * The undo steps this document's history keeps (P6): the configured
+	 * `history.limit`, else {@link DEFAULT_HISTORY_LIMIT}. The `attachDocument`
+	 * dedupe check reads it (a reattach naming another limit is a conflict).
+	 */
+	get historyLimit(): number {
+		return this._historyOptions?.limit ?? DEFAULT_HISTORY_LIMIT;
 	}
 
 	/**
@@ -830,18 +842,18 @@ export class EdytorDocument {
 		this._history = this.facade.createUndoManager({
 			trackedOrigins: this._trackedOrigins,
 			captureTimeout: this._historyOptions?.captureTimeout,
+			limit: this.historyLimit,
 			captureTransaction: (transaction: { local?: boolean }) => transaction.local !== false
 		});
 		return this._history;
 	};
 
 	/**
-	 * Prune the undo/redo stacks — the document's retention surface. The
-	 * engine keeps unbounded stacks: nothing is pruned implicitly (the
-	 * `captureTimeout` merge window only fuses adjacent commits into one
-	 * step). Call this to bound memory on long-lived documents, e.g. after
-	 * a save checkpoint. No-op while history has not attached (there is
-	 * nothing to clear — it does NOT force attach or throw on pending).
+	 * Drop the undo/redo stacks. The undo stack already keeps only its
+	 * newest `history.limit` steps (P6); call this where undo no longer makes
+	 * sense, e.g. after a save checkpoint. No-op while history has not
+	 * attached (there is nothing to clear — it does NOT force attach or throw
+	 * on pending).
 	 */
 	clearHistory = (): void => {
 		if (this._destroyed) {
@@ -1210,6 +1222,13 @@ export const bindDocument = (Y: EngineApi) => {
 				'history.captureTimeout',
 				existing.historyCaptureTimeout,
 				options.history.captureTimeout
+			);
+		}
+		if (options.history?.limit !== undefined && options.history.limit !== existing.historyLimit) {
+			throw new SemanticConflictError(
+				'history.limit',
+				existing.historyLimit,
+				options.history.limit
 			);
 		}
 		if (options.lineage?.depth !== undefined && options.lineage.depth !== existing.lineageDepth) {

@@ -75,7 +75,8 @@ const itemish = (s: string) => /^~[a-z]/.test(s);
 export const keySegment = (k: string) => (k.startsWith('~') ? `~0${k.slice(1)}` : k);
 /** The object key a path segment names (`keySegment`'s inverse). */
 export const segmentKey = (s: string) => (s.startsWith('~0') ? `~${s.slice(2)}` : s);
-const RANK = /^(?:[-\w]{16})+$/;
+/** A rank's characters (`placement/rank.ts`, P7: variable-length digits, `!` before a tie). */
+const RANK = /^[-\w?!]+$/;
 const index = (k: string) => (/^(0|[1-9]\d*)$/.test(k) ? Number(k) : -1);
 const rank = (v: unknown) => (typeof v === 'string' && RANK.test(v) ? v : undefined);
 /** Item `id`'s place: where a move put it (`id>`), else where it was made (`id#`). */

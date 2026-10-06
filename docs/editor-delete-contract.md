@@ -692,7 +692,7 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   whole lines (`insertBlocks`, `flow.place`), never a move — extends the
   client's run there (`rankAfter` in `placement/rank.ts`, the rule data
   arrays use, YATA's origin rule): its rank is the block's rank and one
-  segment in the run band (`(RANK_RUN, RANK_RUN + 2^38)`), or, after a
+  segment in the run band (`(RANK_RUN, RANK_RUN + 2^29)`, `RANK_RUN = -2^30` since P7), or, after a
   member of the client's run, the next member at that depth. A peer's
   rank in that gap is never an extension of the block's rank with a digit
   in the band, so it sorts before or after the whole run, never inside it.
@@ -704,6 +704,19 @@ a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
   still follows the client ids (below). The ranks stay inside the EW-02
   bounds (`rank-growth.test.ts`): a run costs one segment once, its
   members none.
+- `order.rank.format` (P7, schema generation 5): a rank is a sequence of
+  segments, each a variable-length signed digit (a length character, then
+  base-64 places: small digits are short) and, only where the order needs
+  one, the allocating client's tie (`!` and the client id). The last
+  segment always carries a tie; a copied segment keeps its tie only when
+  two bounds differ by their ties alone, and a run's member
+  (`order.insert.run`) keeps every tie, so a peer's rank of the same digit
+  never sorts between two members. Ranks are still compared as plain
+  strings. Ranks of schema generation 4 are never read: a generation-4
+  document reaches generation 5 through its JSON, which ranks every block
+  again (`reference/migration.mdx`). `rank-growth.test.ts`: 300 Enters
+  256 → 129 characters, 1,000 Enters 576 → 342, an outline 112 → 60 (a
+  27-bit client id; with a 53-bit one 165, 446 and 72).
 - Not claimed (EW-05, EW-11; pinned in `order-scope.test.ts`): only the
   gestures above rank by source (`exitRanks`/`pieceRanks`); every other
   placement takes a plain rank in the gap (`ranksFor`, `M.ranksAt`), so

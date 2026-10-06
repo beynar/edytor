@@ -65,6 +65,43 @@ describe('rank codec', () => {
 	});
 });
 
+describe('rank codec — P7 (schema generation 5): variable-length digits, a tie only where needed', () => {
+	it('small digits are short; a tie is spelled only where a segment has one', () => {
+		expect(encodeRank([{ v: 0, t: 0 }])).toBe('H!H');
+		expect(encodeRank([{ v: 5, t: 1 }]).length).toBe(5);
+		const inner = encodeRank([
+			{ v: 5, t: Infinity },
+			{ v: 0, t: 9 }
+		]);
+		expect(inner).toBe(`I4${encodeRank([{ v: 0, t: 9 }])}`);
+		expect(decodeRank(inner)).toEqual([
+			{ v: 5, t: Infinity },
+			{ v: 0, t: 9 }
+		]);
+	});
+
+	it('an untied segment sorts after every tie of its digit, before the next digit', () => {
+		const tied = encodeRank([{ v: 5, t: 2 ** 53 - 1 }]);
+		const untied = encodeRank([
+			{ v: 5, t: Infinity },
+			{ v: RANK_VMIN, t: 0 }
+		]);
+		const next = encodeRank([{ v: 6, t: 0 }]);
+		expect(tied < untied && untied < next).toBe(true);
+	});
+
+	it('the last segment always carries a tie', () => {
+		expect(() => decodeRank('I4')).toThrow();
+	});
+
+	it('digits keep their order across lengths and signs', () => {
+		const vs = [RANK_VMIN, -(64 ** 3), -64, -63, -1, 0, 1, 63, 64, 64 ** 3, RANK_VMAX];
+		const enc = vs.map((v) => encodeRank([{ v, t: 1 }]));
+		expect([...enc].sort()).toEqual(enc);
+		for (const v of vs) expect(decodeRank(encodeRank([{ v, t: 1 }]))[0].v).toBe(v);
+	});
+});
+
 describe('rankBetween allocation', () => {
 	it('first key then append chain stays depth-1', () => {
 		const keys: string[] = [];

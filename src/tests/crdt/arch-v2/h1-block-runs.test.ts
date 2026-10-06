@@ -126,7 +126,7 @@ describe('H1: the run rule (`rankAfter`)', () => {
 		expect(left < r && r < right).toBe(true);
 	});
 	/** A run member's digit lies in the band right above the run marker's (`rankAfter`). */
-	const inBand = (v: number) => v > RANK_RUN && v < RANK_RUN + 2 ** 38;
+	const inBand = (v: number) => v > RANK_RUN && v < RANK_RUN + 2 ** 29;
 	it('after its own rank: the rank, then one segment of its run', () => {
 		const left = rankBetween(undefined, undefined, 9, () => 0.5);
 		const right = rankBetween(left, undefined, 5, () => 0.5);

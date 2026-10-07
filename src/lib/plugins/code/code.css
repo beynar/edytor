@@ -24,6 +24,24 @@
 	color: #7d7a75;
 	user-select: none;
 }
+/* The language picker reads as a label until hovered (Notion). */
+select[data-edytor-code-language] {
+	margin: 0;
+	padding: 0 4px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+	appearance: none;
+	-webkit-appearance: none;
+}
+select[data-edytor-code-language]:hover,
+select[data-edytor-code-language]:focus-visible {
+	background: rgba(33, 27, 23, 0.06);
+	outline: 0;
+}
 [data-edytor-code-header] button {
 	padding: 0 6px;
 	border-radius: 6px;

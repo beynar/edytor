@@ -18,7 +18,14 @@ export {
 	type BlockHandlesOptions,
 	type BlockHandleSnippetPayload
 } from './blockHandles/blockHandlesPlugin.js';
-export { codePlugin } from './code/CodePlugin.svelte';
+export {
+	codePlugin,
+	createCodePlugin,
+	CODE_LANGUAGES,
+	loadCodeLanguage,
+	type CodeLanguage,
+	type CodePluginOptions
+} from './code/CodePlugin.svelte';
 export { markdownShortcutsPlugin } from './markdownShortcuts.js';
 export {
 	slashMenuPlugin,

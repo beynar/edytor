@@ -201,7 +201,7 @@ const backdrop = (document: Document) => {
 	return node;
 };
 
-/** How many blocks move: the badge on the drag preview and the drop indicator. */
+/** How many blocks move: the badge beside the drop indicator. */
 const countBadge = (document: Document, count: number) => {
 	const badge = document.createElement('span');
 	badge.dataset.edytorDragCount = 'true';
@@ -438,9 +438,7 @@ export class BlockHandleController {
 				const root = this.edytor.node;
 				const nodes = group.flatMap((moved) => (moved.node ? [moved.node] : []));
 				if (nativeSetDragImage && root && nodes.length) {
-					const count = group.length;
-					const badge = count > 1 ? countBadge(element.ownerDocument, count) : undefined;
-					const preview = dragPreview(root, nodes, location.current.input, badge);
+					const preview = dragPreview(root, nodes, location.current.input);
 					setCustomNativeDragPreview({
 						nativeSetDragImage,
 						getOffset: preview.offset,

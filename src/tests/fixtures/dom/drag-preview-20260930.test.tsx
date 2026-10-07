@@ -182,7 +182,7 @@ describe('the drag ghost', () => {
 		expect(document.querySelector('[data-edytor-drag-preview]')).toBeNull();
 	});
 
-	it('several blocks: a clone of each in document order, with the count badge', async () => {
+	it('several blocks: a clone of each in document order, no count badge', async () => {
 		const { edytor } = await render([
 			p('a'),
 			{ id: 'todo', type: 'todo-item', data: { checked: true }, content: [{ text: 'done' }] },
@@ -195,7 +195,7 @@ describe('the drag ghost', () => {
 		const { image } = await ghostOf(edytor, 'todo');
 
 		expect(image!.dataset.count).toBe('3');
-		expect(image!.querySelector('[data-edytor-drag-count]')?.textContent).toBe('3');
+		expect(image!.querySelector('[data-edytor-drag-count]')).toBeNull();
 		expect(clonesOf(image!).map((clone) => clone.dataset.edytorType)).toEqual([
 			'paragraph',
 			'todo-item',

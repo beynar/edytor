@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.28
+
+- **The drag preview has no count badge.** Dragging several blocks shows their copies only; the count stays beside the drop indicator (`[data-edytor-drag-count]` there, `data-count` on the indicator and on `[data-edytor-drag-preview]`). A theme rule that styled the badge inside the preview no longer matches anything.
+
 ### From 0.1.0-next.27
 
 - **Selecting across columns selects blocks from more gestures.** A mouse selection with one end in a column and the other outside that column now becomes a block selection of the blocks between, in reading order, as in Notion: a drag from one column into another (as before), a drag that starts above or below a layout and enters a column, a drag that starts in a column and leaves the layout, and a <kbd>Shift</kbd>+click in another column or outside the layout. Earlier these last three stayed one text range in reading order. A range that runs over a whole layout from above it to below it, and <kbd>Shift</kbd>+arrows, stay text ranges. Nothing to change in your code.

@@ -177,17 +177,16 @@ export type DragPreview = {
 /**
  * The ghost of `nodes` (the dragged blocks' elements, in document order),
  * grabbed at `pointer`: a copy of each block laid out at its own width (the
- * widest of them; the editor's content width when none is laid out), scaled by `SCALE` from its top left, cut at `MAX_HEIGHT`, and a
- * count badge when more than one block moves (the one addition). No card,
- * background, shadow, opacity or fade: the blocks' own look. The pointer
+ * widest of them; the editor's content width when none is laid out), scaled by `SCALE` from its top left, cut at `MAX_HEIGHT`.
+ * Nothing is added (no card, background, shadow, opacity, fade or count
+ * badge): the blocks' own look. The pointer
  * keeps its place on the first block (a handle is left of it: a transparent
  * gutter keeps the offset positive, which every browser supports).
  */
 export const dragPreview = (
 	root: HTMLElement,
 	nodes: HTMLElement[],
-	pointer: { clientX: number; clientY: number },
-	badge?: HTMLElement
+	pointer: { clientX: number; clientY: number }
 ): DragPreview => {
 	const { ownerDocument: document } = root;
 	const first = nodes[0]?.getBoundingClientRect();
@@ -226,10 +225,6 @@ export const dragPreview = (
 		overflow: 'hidden'
 	});
 	box.append(scaled);
-	if (badge) {
-		Object.assign(badge.style, { top: '4px', right: '4px' });
-		box.append(badge);
-	}
 
 	const element = document.createElement('div');
 	element.dataset.edytorDragPreview = 'true';

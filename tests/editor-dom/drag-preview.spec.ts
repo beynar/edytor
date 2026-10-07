@@ -196,7 +196,7 @@ test.describe('the drag ghost', () => {
 		issues.assertClean();
 	});
 
-	test('several blocks: each copied in document order, with the count badge', async ({ page }) => {
+	test('several blocks: each copied in document order, no count badge', async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await open(page);
 		await page.evaluate(() => {
@@ -206,9 +206,9 @@ test.describe('the drag ghost', () => {
 		const { image } = await dragGrip(page, 'b');
 		expect(image).toMatchObject({
 			count: '2',
-			badge: '2',
+			badge: null,
 			types: ['paragraph', 'paragraph'],
-			text: 'beta gamma 2',
+			text: 'beta gamma',
 			live: 0,
 			transform: 'matrix(0.8, 0, 0, 0.8, 0, 0)'
 		});

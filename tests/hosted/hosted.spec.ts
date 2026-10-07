@@ -425,6 +425,46 @@ test.describe('hosted room Durable Object — real browsers over real WebSockets
 		for (const issue of issues) issue.assertClean();
 	});
 
+	test('a readonly view is a live viewer: it loads the room, receives a peer edit, and edits after a flip on the same socket (D3)', async ({
+		browser
+	}, testInfo) => {
+		const room = roomName('viewer', testInfo.project.name);
+		const baseURL = testInfo.project.use.baseURL;
+		const b = await openPeer(browser, room, baseURL);
+		peers = [b];
+		const issues = [trackPageIssues(b.page)];
+		const context = await browser.newContext({ baseURL });
+		const page = await context.newPage();
+		peers.push({ context, page });
+		let dials = 0;
+		await page.routeWebSocket(
+			(url) => url.href.startsWith(`${WS_SERVER}/${room}?`),
+			(route) => {
+				dials += 1;
+				route.connectToServer();
+			}
+		);
+		// `<Edytor readonly sync>`: the library sync, a readonly view the page can flip.
+		await gotoEditorRoute(
+			page,
+			`${peerPath(room)}&wssync=factory&readonly=true&dynamicReadonly=true`,
+			{ requireRuntime: true }
+		);
+		issues.push(trackPageIssues(page));
+		expect(await expectConverged([page, b.page])).toEqual(SEED);
+		await expect(page.locator('[data-edytor]').first()).toHaveAttribute('contenteditable', 'false');
+
+		await insertViaFacade(b.page, 'collab-b2', 4, '+live');
+		expect(await expectConverged([page, b.page])).toEqual(['alpha', 'beta+live', 'gamma']);
+
+		await page.getByTestId('toggle-readonly').click();
+		await expect(page.locator('[data-edytor]').first()).toHaveAttribute('contenteditable', 'true');
+		await insertViaFacade(page, 'collab-b3', 0, 'viewer:');
+		expect(await expectConverged([page, b.page])).toEqual(['alpha', 'beta+live', 'viewer:gamma']);
+		expect(dials).toBe(1);
+		for (const issue of issues) issue.assertClean();
+	});
+
 	test('providers reconnect after the server closes every socket', async ({
 		browser
 	}, testInfo) => {

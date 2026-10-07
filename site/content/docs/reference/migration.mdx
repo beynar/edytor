@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### Unreleased
+
+- **A readonly view connects to its room.** `<Edytor readonly>` given `room` and `server` (or `sync`) now attaches it, as an editable view does: it loads the room's content and shows every collaborator's edit ([a live viewer](/docs/editor/readonly#a-live-viewer)), and switching `readonly` keeps that connection, so a view created readonly that becomes editable saves its edits. It also waits for its room like an editable view: it no longer shows `value` at once, and its server render shows only `snapshot`; `value` seeds a room that has nothing yet. A room id no dial can carry is reported through `onSyncRefused` (`4400`) by a readonly view too. A readonly page that passed `room` or `server` but wanted the static `value` should drop them; one that created the document and attached the sync itself to get a live viewer can pass `room` and `server` instead.
+
 ### From 0.1.0-next.31
 
 - **Security fix: links.** A link whose `href` started with an ASCII control character or a space before `javascript:` (for example `\u0001javascript:…`) passed `sanitizeLinkHref` as a relative link, and browsers, which strip those characters, would run it when clicked. The sanitizer now reads an `href` as the browser's URL parser does: it strips control characters and spaces at both ends and tabs and newlines anywhere, resolves it, and keeps it only when its scheme is `http:`, `https:`, `mailto:` or `tel:` (a relative link resolves to none of its own). Links already stored with such an `href` render without one. Upgrade.

@@ -78,7 +78,7 @@ Add a `server`, and the view joins the room `<server>/<room>`:
 The room keeps a local IndexedDB copy too, so the third setup also covers the second. `params` travel with each connection (see the [server quick start](/docs/server/quick-start)); `actor` names the author for undo, attribution and presence.
 
 :::note
-`room` and `server` are read once, when the view mounts, and only by editable views; wrap the view in `{#key documentId}` to switch documents. A `readonly` view connects nothing; attach the sync to a shared document instead (see [Documents](/docs/collaboration/documents#attach-a-provider)). For a custom provider, pass a factory as `sync`.
+`room` and `server` are read once, when the view mounts; wrap the view in `{#key documentId}` to switch documents. A `readonly` view connects too: it is a live viewer that shows every collaborator's edit, and switching `readonly` keeps its connection (see [Readonly mode](/docs/editor/readonly#a-live-viewer)). For a custom provider, pass a factory as `sync`.
 :::
 
 ## In this section

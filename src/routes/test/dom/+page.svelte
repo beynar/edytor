@@ -979,8 +979,11 @@
 		]
 	} satisfies JSONDoc);
 	const placeholder = $derived(data.placeholder ?? 'Write something here ...');
-	let runtimeReadonly = $state(false);
-	let runtimeReadonlySource = $state<string | null>(null);
+	// Mounted with the URL's readonly, so a readonly view is readonly from its construction.
+	let runtimeReadonly = $state(untrack(() => Boolean(data.readonly)));
+	let runtimeReadonlySource = $state<string | null>(
+		untrack(() => `${data.dynamicReadonly}:${data.readonly}`)
+	);
 	const readonly = $derived(data.dynamicReadonly ? runtimeReadonly : Boolean(data.readonly));
 	$effect(() => {
 		const source = `${data.dynamicReadonly}:${data.readonly}`;

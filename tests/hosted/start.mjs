@@ -28,6 +28,13 @@ const bundle = await build({
 	conditions: ['workerd', 'worker', 'browser'],
 	target: 'es2022',
 	external: ['cloudflare:workers', 'workerd:unsafe'],
+	// The site's demo room (site/room, exported by `tests/do/worker`) imports
+	// the package: read it from source, as `pnpm test:do` does.
+	alias: {
+		'edytor/cloudflare': fileURLToPath(
+			new URL('../../src/lib/cloudflare/index.ts', import.meta.url)
+		)
+	},
 	write: false,
 	logLevel: 'warning'
 });

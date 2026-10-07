@@ -4,7 +4,7 @@
  * A component or a module declares, imports or binds what it uses, as an app
  * does, so `pnpm check:docs` never lets one read these.
  */
-import type { Block, EdytorDocument, EdytorInstance, InlineBlock } from '$lib/index.js';
+import type { Block, EdytorDocument, EdytorInstance, InlineBlock } from 'edytor';
 
 declare global {
 	/** The editor instance a page bound with `bind:edytor` (`edytor.*` snippets). */

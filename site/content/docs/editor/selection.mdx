@@ -11,7 +11,7 @@ The selection is a value stored on `edytor.selection`. It is independent from th
 `edytor.selection.value` is one of four shapes:
 
 ```ts title="selection-value.ts" check
-import type { DocAnchor } from 'edytor';
+import type { DocAnchor } from 'edytor/crdt/edytor';
 
 type SelectionValue =
 	| { kind: 'none' }

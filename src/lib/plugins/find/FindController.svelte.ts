@@ -152,7 +152,7 @@ export class FindController {
 		this.#focus();
 		const keydown = (event: KeyboardEvent) => {
 			if (event.isComposing) return;
-			const mod = this.edytor.hotKeys.isMac ? event.metaKey : event.ctrlKey;
+			const mod = this.edytor.keymap.isMac ? event.metaKey : event.ctrlKey;
 			if (event.key === 'Enter') (event.shiftKey ? this.previous : this.next)();
 			else if (event.key === 'Escape') this.close();
 			else if (mod && event.key.toLowerCase() === 'f') node.select();

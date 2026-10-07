@@ -64,7 +64,7 @@ facade.insertBlock({ parent: null, index: 1 }, toBlockSpec(facade.blockJSON('p1'
 Every operation returns an `OpResult`:
 
 ```ts title="op-result.ts" check
-import type { BlockId } from 'edytor';
+import type { BlockId } from 'edytor/crdt/edytor';
 
 type OpResult = {
   status: 'applied' | 'noop' | 'refused';

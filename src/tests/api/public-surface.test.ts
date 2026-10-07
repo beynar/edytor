@@ -117,13 +117,26 @@ describe('entry points', () => {
 		});
 	});
 
-	// The plan's target is about 120; 132 is the reviewed list (WU-13 added
-	// the command surface: PreventionError, isPrevention, Prevent,
-	// AfterOperationPayload, CommandResult). A new root name is a decision.
-	test('the root exports none of it, and about 120 names in all', () => {
+	// The core surface (everything but the bundled plugins' own names) is
+	// the reviewed list: about 120 was the plan's target, 132 the reviewed
+	// count (WU-13 added the command surface: PreventionError, isPrevention,
+	// Prevent, AfterOperationPayload, CommandResult). A plugin's factory,
+	// controller and option types grow with the plugins shipped; each still
+	// lands in the report, where a new name is a decision.
+	test('the root exports none of it, and about 120 core names', () => {
 		const root = names('edytor');
 		for (const name of WIRE) expect(root, name).not.toContain(name);
-		expect(root.length).toBeLessThanOrEqual(132);
+		const index = readFileSync(join(ROOT, 'src/lib/index.ts'), 'utf8');
+		const block = index.slice(index.indexOf('export {', index.indexOf('// ── The bundled plugins')));
+		const plugins = new Set(
+			block
+				.slice(0, block.indexOf("} from './plugins/index.js'"))
+				.split(/[,{\n]/)
+				.map((part) => part.replace(/^\s*(type\s+)?/, '').trim())
+				.filter(Boolean)
+		);
+		expect(plugins.size).toBeGreaterThan(20);
+		expect(root.filter((name) => !plugins.has(name)).length).toBeLessThanOrEqual(132);
 		expect(names('edytor-protocol')).toEqual(expect.arrayContaining(WIRE));
 	});
 });

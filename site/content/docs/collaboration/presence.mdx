@@ -120,7 +120,7 @@ In Svelte, wrap it in a rune so the list updates:
 Each client publishes one JSON state:
 
 ```ts title="src/lib/presence-state.ts" check
-import type { DocAnchor } from 'edytor';
+import type { DocAnchor } from 'edytor/crdt/edytor';
 
 type PresenceState = {
   actor?: { id: string; name?: string; color?: string };

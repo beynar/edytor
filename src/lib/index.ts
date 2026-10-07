@@ -118,7 +118,16 @@ export {
 	columnsPlugin,
 	createColumnsPlugin,
 	isColumnsPlugin,
-	type ColumnsPluginOptions
+	type ColumnsPluginOptions,
+	findPlugin,
+	createFindPlugin,
+	findController,
+	findMatches,
+	type FindPluginOptions,
+	type FindController,
+	type ReplaceMatches,
+	type FindMatch,
+	type FindOptions
 } from './plugins/index.js';
 
 // ── The document ───────────────────────────────────────────────────────

@@ -56,7 +56,24 @@ The theme also sets `--edytor-drop-indicator-color` to Notion's `rgba(35, 131, 2
 
 ### Long pages
 
-`--edytor-block-visibility: auto` on `.edytor-notion` (or any element around the editor) gives each top-level block `content-visibility: auto`: a block off screen skips its style, layout and paint until it nears the viewport, and counts as a 32px row until it was rendered once. Selection, typing, find-in-page, block handles, drag and drop and remote carets keep working over skipped blocks. It is off by default because it trades scrolling for loading: on a 5,000-block page in Chromium the first layout drops from 36 ms to 16 ms, but each block that scrolls into view is styled and laid out on that frame, so a scroll frame takes about 23 ms instead of 9 ms (20,000 blocks: 131 to 47 ms, and 46 to 112 ms). Turn it on for pages that are mostly read top to bottom, or whose blocks are expensive to lay out (large images, embeds, code).
+`--edytor-block-visibility: auto` on `.edytor-notion` (or any element around the editor) gives each top-level block `content-visibility: auto`: a block off screen skips its style, layout and paint until it nears the viewport, and counts as a 32px row until it was rendered once. Selection, typing, find-in-page, block handles, drag and drop and remote carets keep working over skipped blocks.
+
+It is off by default because it trades scrolling for loading, and loading barely gains: it shortens the first layout, but mounting the blocks takes most of the load, and each block that scrolls into view is then styled and laid out on that frame, so scrolling slows down. A character costs the same either way; a key that adds or moves blocks (Enter, a move, a paste) costs about a quarter more. Turn it on for pages that are mostly read top to bottom, or whose blocks are expensive to lay out (large images, embeds, code).
+
+Measured in Chromium at 1280×900 on `/test/large` (top-level blocks of mixed kinds, the Notion theme, the shipped plugins and block handles; `tests/editor-dom/large-page.profile.spec.ts`, median of three loads), on a laptop shared with other jobs, so the absolute times are high and the ratios are what to read. A key is the time from its `keydown` to the next frame, in a block in the middle of the page.
+
+| Measure                             | 5,000 blocks | 5,000, `auto` | 10,000 blocks | 10,000, `auto` |
+| ----------------------------------- | -----------: | ------------: | ------------: | -------------: |
+| First paint                         |       956 ms |        974 ms |      1,907 ms |       1,922 ms |
+| of which the view's mount           |       615 ms |        610 ms |      1,317 ms |       1,079 ms |
+| Layout through the load             |        39 ms |         13 ms |         69 ms |          26 ms |
+| Scroll frame (80px a frame), median |       8.4 ms |         34 ms |         41 ms |          75 ms |
+| Typing a character                  |        56 ms |         59 ms |        118 ms |         123 ms |
+| Enter                               |       139 ms |        184 ms |        299 ms |         391 ms |
+| Moving a block (Mod+Shift+↓)        |       100 ms |        126 ms |        245 ms |         288 ms |
+| Pasting 50 lines                    |       172 ms |        218 ms |        325 ms |         404 ms |
+
+What grows with the page is the mount (about 0.13 ms a block) and the keys. At 1,000 blocks a character takes 9 ms and Enter 24 ms; at 2,000, 17 and 50 ms. Much of a character's time on a long page is the browser's: in Chromium, moving the DOM caret inside an input event costs time proportional to the page (1.2 ms at 1,000 blocks, 14 ms at 5,000, 30 ms at 10,000, about 58 ms at 20,000; nothing outside the event), and a keystroke moves it twice (patching the text node resets the caret, and the editor puts it back). A key that adds, removes or moves a top-level block (Enter, a move, a paste) costs two to three times a character, most of it the editor's own work, also proportional to the number of blocks. The editor renders every block, with no windowing: it would break native selection, find-in-page and IME. Keep a document to a couple of thousand top-level blocks for typing within a frame; for longer content, make each page its own document ([A page is a document](/docs/server/moves#a-page-is-a-document)).
 
 ## The rendered DOM
 

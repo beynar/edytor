@@ -131,6 +131,11 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### Unreleased
+
+- **A whole array assignment takes time linear in the array's length.** `block.data.tasks = next` (and `setData`, a root `patchData`) compared every old item with every new one, so a 6,000-item array took 0.7 s and a 20,000-item one 10.6 s. It now keeps the items equal at the start and the end, then the longest run between them, exactly as before whenever the old values are distinct or few repeat; past 262,144 pairs of equal values (thousands of repeated flags) the items between the kept start and end pair by position. The same reassignments take 0.17 s and 0.6 s, and write only what differs ([properties](/docs/concepts/properties)). `order` (`sort`, `reverse`) uses the same rule.
+- **Long pages: `--edytor-block-visibility` stays opt-in.** Profiled again at 5,000 and 10,000 blocks: it shortens the first layout but not the first paint, slows scroll frames two to four times, leaves typing unchanged and makes Enter, moves and pastes about a quarter slower; the numbers are under [long pages](/docs/customization/styling#long-pages). Nothing changes.
+
 ### From 0.1.0-next.31
 
 - **Security fix: links.** A link whose `href` started with an ASCII control character or a space before `javascript:` (for example `\u0001javascript:…`) passed `sanitizeLinkHref` as a relative link, and browsers, which strip those characters, would run it when clicked. The sanitizer now reads an `href` as the browser's URL parser does: it strips control characters and spaces at both ends and tabs and newlines anywhere, resolves it, and keeps it only when its scheme is `http:`, `https:`, `mailto:` or `tel:` (a relative link resolves to none of its own). Links already stored with such an `href` render without one. Upgrade.

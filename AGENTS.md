@@ -197,6 +197,7 @@ pnpm exec playwright test --project=chromium|firefox|webkit|mobile-chromium|mobi
 pnpm test:dst                # editor-input corpus: solo in three engines, collab in Chromium (+ the pinned rows in tests/editor-dst/replays/); test:dst:extensive widens both
 tests/packed-consumer/run.sh # packed tarball: node smoke, edytor/cloudflare Worker in Miniflare, Svelte build/SSR/mount, strict tsc
 pnpm bench:crdt; pnpm census; node scripts/xloc.mjs src/lib --dirs
+LARGE_PROFILE=1 pnpm exec playwright test --project=chromium large-page.profile --workers=1  # client-scale profile on /test/large (5k/10k blocks, numbers in site customization/styling "Long pages"; LARGE_PROFILE_SIZES, LARGE_PROFILE_LOADS)
 ```
 
 - `playwright.arch.config.ts` takes `PW_PORT` and `playwright.dst.config.ts` takes `DST_PORT`, so parallel worktrees do not collide.

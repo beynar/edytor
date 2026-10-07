@@ -1317,7 +1317,7 @@ export class EdytorSelection {
 	#lastBlock: string | null = null;
 
 	/**
-	 * Displayable (§2.4, a Surface fact): the block's own content is mounted
+	 * Displayable (a fact of the rendering layer): the block's own content is mounted
 	 * and not hidden by view state — a collapsed toggle's body, a `hidden`
 	 * subtree. A phantom content slot (a snippet that renders no `content()`)
 	 * never mounts.

@@ -34,7 +34,7 @@ export type Cell = {
 	readonly runs: readonly ContentRun[];
 };
 
-/** What a cell tree is patched from: the change report's collections (§2.4). */
+/** What a cell tree is patched from: the change report's collections. */
 export type CellReport = Pick<DocChange, 'added' | 'removed' | 'order' | 'meta' | 'content'>;
 
 /** The document surface cells read: its projection once, then its change reports. */

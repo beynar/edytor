@@ -239,7 +239,7 @@ type Deps = { texts: Set<BlockId>; lists: Set<BlockId> };
 type Cached = { runs: readonly ContentRun[]; deps: Deps };
 
 /**
- * One commit's change report (§2.4) — the fold against the last published
+ * One commit's change report — the fold against the last published
  * index. Collections name the affected ids; `order` carries the NEW child-id
  * list per changed parent (frozen), so a mirror can apply it without
  * re-reading the doc. Visible = reachable from the root in the children index.

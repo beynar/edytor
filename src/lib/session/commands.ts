@@ -207,6 +207,11 @@ export class Dispatcher {
 	private kind: string | null = null;
 	/** The running user command's last step that applied. */
 	private applied: CommandResult | null = null;
+	/**
+	 * The result the last top-level `dispatch` produced (its own `last`), for
+	 * `answer`: a replacement that ran the same operation recorded another.
+	 */
+	#produced: CommandResult | null = null;
 	/** Open prevention scopes: a veto inside one aborts it. */
 	private depth = 0;
 	/** Extensions whose replacement is running (a command is replaced at most once per extension). */
@@ -331,7 +336,10 @@ export class Dispatcher {
 		if (this.active) return body(payload);
 		const lead = this.leading;
 		this.leading = null;
-		if (!this.permits()) return this.refuse(operation);
+		if (!this.permits()) {
+			this.#produced = this.#refused(operation);
+			return undefined;
+		}
 		const original = payload;
 		const replaced = new Set<unknown>();
 		// A lead composes with the command's plan (both prepared at this version);
@@ -368,9 +376,10 @@ export class Dispatcher {
 							continue;
 						}
 						stop.by = plugin;
-						this.refuse(operation);
+						const refused = this.#refused(operation);
 						if (this.depth > 0) throw stop;
 						this.replace(stop);
+						this.#produced = refused;
 						return undefined;
 					}
 					if (!out) continue;
@@ -389,8 +398,10 @@ export class Dispatcher {
 		}
 		// Refused at preparation, and no extension replaced it.
 		if (plan && !('writes' in plan)) {
-			this.refuse(operation);
-			return body(payload, plan);
+			const refused = this.#refused(operation);
+			const out = body(payload, plan);
+			this.#produced = refused;
+			return out;
 		}
 		const version = this.edytor.facade.version;
 		// A text patch typing into the strings the previous command set on the
@@ -425,22 +436,36 @@ export class Dispatcher {
 			operation,
 			status: this.edytor.facade.version === version ? 'noop' : 'applied'
 		};
-		if (this.running && this.last.status === 'applied') this.applied = this.last;
+		const own = this.last;
+		if (this.running && own.status === 'applied') this.applied = own;
 		const change = { operation, payload: original, ...context } as AfterOperationPayload;
 		for (const plugin of this.edytor.plugins) plugin.onAfterOperation?.(change);
+		this.#produced = own;
 		return result;
 	};
 
 	/**
 	 * Record what a handle mutator answered on its result (`last.value`), and
-	 * answer it. A nested operation (a step of the running command) has no
-	 * result of its own.
+	 * answer it. Only on the result its own `dispatch` produced: a nested
+	 * operation (a step of the running command) has none, and a vetoed call
+	 * whose replacement ran the same operation leaves the replacement's
+	 * result (and value) as `last`.
 	 * @internal
 	 */
-	answer = <R>(operation: string, value: R): R => {
-		if (!this.active && this.last?.operation === operation) this.last = { ...this.last, value };
+	answer = <R>(value: R): R => {
+		const own = this.#produced;
+		this.#produced = null;
+		if (!this.active && own && this.last === own) this.#amend({ value });
 		return value;
 	};
+
+	/** Amend `last` in place of a new result, keeping it the one its `dispatch` produced. */
+	#amend(patch: Partial<CommandResult>) {
+		if (!this.last) return;
+		const next = { ...this.last, ...patch };
+		if (this.#produced === this.last) this.#produced = next;
+		this.last = next;
+	}
 
 	/**
 	 * Run `body` with `lead` (a plan prepared now) composed into the first
@@ -485,7 +510,7 @@ export class Dispatcher {
 		selection.select(value);
 		// Declared before its operations: gone with them after all, the seam.
 		if (!selection.projection.start) selection.restoreDeadSelectionEndpoints();
-		if (this.last) this.last = { ...this.last, selection: selection.value };
+		this.#amend({ selection: selection.value });
 		return out;
 	};
 
@@ -580,8 +605,13 @@ export class Dispatcher {
 	}
 
 	private refuse(operation: string): undefined {
-		this.last = { operation, status: 'refused' };
+		this.#refused(operation);
 		return undefined;
+	}
+
+	/** Record `operation` as refused; answers that result. */
+	#refused(operation: string): CommandResult {
+		return (this.last = { operation, status: 'refused' });
 	}
 
 	private settle(error: unknown, onPrevent?: () => void): undefined {

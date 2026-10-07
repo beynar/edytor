@@ -233,7 +233,7 @@ export class Edytor {
 	readonly projector: Projector = new Projector(this);
 	/** @internal The compare-to-truth observer (R12): registry, the render epoch, the passes, the only adopter (R8, L31). */
 	readonly surface: SurfaceObserver = new SurfaceObserver(this);
-	/** What the components render (R2): one cell per visible block, patched from change reports. */
+	/** What the components render: one cell per visible block, patched from change reports. */
 	cells = $state.raw<Cells>();
 	/** Bumped by each commit that changed the document's data: what `docData()` readers track. */
 	private dataRevision = $state(0);
@@ -714,7 +714,7 @@ export class Edytor {
 	};
 
 	/**
-	 * The placeholder block `id` shows (§2.4, D-8): its cell has one empty
+	 * The placeholder block `id` shows: its cell has one empty
 	 * text and no live composition in it; a function answers per block.
 	 * @internal
 	 */

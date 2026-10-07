@@ -38,7 +38,7 @@ export type MarkSnippetPayload<D extends SerializableContent = SerializableConte
 export type { Prevent };
 
 /**
- * What a block snippet receives (§2.4 "Snippet view objects"): declared
+ * What a block snippet receives: declared
  * values read from the block's cell and the selection — reactive, never the
  * block's handle itself — plus the handle for document reads and commands.
  */
@@ -147,8 +147,9 @@ export type PluginOperations = {
 	/** Called before an operation is executed */
 	onBeforeOperation?: <C extends ChangePayload>(payload: C) => C['payload'] | void;
 	/**
-	 * Called after an operation is executed (`dispatcher.last` holds its
-	 * result); `operation` narrows `payload`.
+	 * Called after an operation is executed: `dispatcher.last.status` is set
+	 * (its `value`, what a handle mutator returns, is recorded after this
+	 * hook); `operation` narrows `payload`.
 	 */
 	onAfterOperation?: (payload: AfterOperationPayload) => void;
 	/** Called when the editor value changes: the same `JSONDoc` shape `<Edytor value>` takes. */
@@ -323,7 +324,7 @@ export type BlockDefinition = {
 	 * This transformation is applied after the text is synced in to the state.
 	 *
 	 * You can use it to render custom marks decorations on the text like code tokens that are not stored in the document.
-	 * It receives declared values (R2): the segment's `{stringContent, value}` and the block's `{id, type, data}`.
+	 * It receives declared values, not handles: the segment's `{stringContent, value}` and the block's `{id, type, data}`.
 	 */
 	transformText?: TextTransform;
 	/** Called when the block receives focus */

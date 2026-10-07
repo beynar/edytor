@@ -101,7 +101,7 @@ const { operation, status, value } = edytor.dispatcher.last!;
 | `refused` | The view is readonly, the document is read-only, the document refused it (for example merging into a void block), or a plugin prevented it. Nothing was written and no undo step was recorded. |
 | `failed` | It threw. The error is in `last.error` and is rethrown. |
 
-Commands that create blocks also return handles: `insertBlockAfter`, `splitBlock` and `mergeBlockBackward` return a `Block`, `null` when the document refuses the command, and `undefined` when it never ran (a readonly view, or a plugin prevented it). The same value is `dispatcher.last.value`, so one read gives both: test `status`, then use `value`.
+Commands that create blocks also return handles: `insertBlockAfter`, `splitBlock` and `mergeBlockBackward` return a `Block`, `null` when the document refuses the command, and `undefined` when it never ran (a readonly view, or a plugin prevented it). The same value is `dispatcher.last.value`, so one read gives both: test `status`, then use `value`. When a plugin prevents the command and its `prevent(cb)` runs the same command in its place, the call you made answers `undefined` and `dispatcher.last` is the replacement's result, its `value` included. `value` is recorded once the command returns, after `onAfterOperation`: that hook reads `status`, not `value`.
 
 ## Facade operations
 

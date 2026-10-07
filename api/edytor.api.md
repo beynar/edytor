@@ -3901,6 +3901,7 @@ export type TextAnchor = {
 
 ```ts
 export declare class Dispatcher {
+    #private;
     private edytor;
     last: CommandResult | null;
     authoring: SelectionValue | null;

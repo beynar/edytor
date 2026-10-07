@@ -23,8 +23,9 @@ const emojiPlugin: Plugin = (edytor) => ({
 		if (!emoji) return;
 		const start = yStart - match[0].length;
 		prevent(() => {
-			const { dispatcher, facade } = edytor;
-			const trigger: Prepared = facade.prepare.deleteText(
+			// The documented example (`plugins/operations`): the public facade.
+			const { dispatcher, document } = edytor;
+			const trigger: Prepared = document.facade.prepare.deleteText(
 				block.id,
 				text.segStart + start,
 				match[0].length

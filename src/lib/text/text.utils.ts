@@ -46,7 +46,7 @@ export function batch<T extends (...args: any[]) => any, O extends keyof TextOpe
 			{ block: this.parent, text: this },
 			func
 		) as ReturnType<T>;
-		return this.edytor.dispatcher.answer(operation, out);
+		return this.edytor.dispatcher.answer(out);
 	} as T;
 }
 

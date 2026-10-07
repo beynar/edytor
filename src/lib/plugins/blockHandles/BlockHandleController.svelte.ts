@@ -645,7 +645,7 @@ export class BlockHandleController {
 	 * block, a nested block's own row):
 	 * - in the handle column left of the blocks (`gutter`), that row's
 	 *   reorder (`reorder`): a drag straight down the handles reorders, row
-	 *   after row, gaps included (never a beside band: R2);
+	 *   after row, gaps included (never a beside band);
 	 * - beyond it (up to `MARGIN_X`), the band left of that row;
 	 * - right of the editor (up to `MARGIN_X`), the band right of it;
 	 * the bands are `beside`'s, as if the pointer were at that edge, only
@@ -922,7 +922,7 @@ export class BlockHandleController {
 	}
 
 	/**
-	 * Notion's beside bands over `row` (docs/columns-plan.md §5), only while the
+	 * Notion's beside bands over `row` (`docs/columns-plan.md`, "View layer"), only while the
 	 * pointer is within its own row's height, the document has a layout kind
 	 * and the layout the drop makes or grows does not stack (`stacks`):
 	 * - right: the row's last 15% (at least 32px), and the slop past it;

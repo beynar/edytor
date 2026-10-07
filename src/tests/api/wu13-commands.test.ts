@@ -183,6 +183,31 @@ describe('API-09 · one result channel and one raw path', () => {
 		});
 	});
 
+	test('a replacement running the vetoed operation keeps its own value', () => {
+		// The mention plugin's pattern: `prevent(cb)` where `cb` runs the same
+		// operation. The vetoed call answers `undefined`; the result recorded
+		// is the replacement's, its value included.
+		let replacement: unknown;
+		const { edytor } = view([
+			() => ({
+				onBeforeOperation: ({ operation, payload, block, prevent }) => {
+					if (operation !== 'insertBlockAfter' || payload.block?.type !== 'paragraph') return;
+					prevent(() => {
+						replacement = block.insertBlockAfter({ block: { type: 'heading' } });
+					});
+				}
+			})
+		]);
+		const vetoed = edytor.idToBlock.get('a')!.insertBlockAfter({ block: { type: 'paragraph' } });
+		expect(vetoed).toBeUndefined();
+		expect(replacement).toBeDefined();
+		expect(edytor.dispatcher.last).toMatchObject({
+			operation: 'insertBlockAfter',
+			status: 'applied'
+		});
+		expect(edytor.dispatcher.last?.value).toBe(replacement);
+	});
+
 	test('the raw path, edytor.document.facade, takes JSONBlock', () => {
 		const { edytor, document } = view();
 		const result = edytor.document.facade.insertBlock(

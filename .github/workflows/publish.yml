@@ -32,6 +32,10 @@ jobs:
       - run: pnpm lint
       - run: pnpm check
       - run: pnpm check:worker
+      # The public surface: the committed API report (`api/`) must match the
+      # stripped declarations, and the doc examples must compile against them.
+      - run: pnpm check:api
+      - run: pnpm check:docs
       - name: Publish
         run: |
           tag=$(node -p '/-/.test(require("./package.json").version) ? "next" : "latest"')

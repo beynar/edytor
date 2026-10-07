@@ -9,7 +9,7 @@ import { hidden } from './selection/visibility.js';
 import { tagOf } from './clipboard/htmlFlow.js';
 
 /**
- * The kind catalogue (§2.4): one row per preset of each registered kind
+ * The kind catalogue: one row per preset of each registered kind
  * record, in registration order. The slash menu, markdown shortcuts and
  * block menus read it; nothing else names a kind.
  */

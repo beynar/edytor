@@ -29,13 +29,11 @@
  * still names fails here). `src/tests/api/public-surface.test.ts` runs it,
  * so an unreviewed change to the surface fails the unit lane.
  */
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { buildPackage, ROOT } from './package-declarations.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(path.join(ROOT, 'package.json'));
 const ts = require('typescript');
 const CHECK = process.argv.includes('--check');
@@ -46,28 +44,7 @@ const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 /** `edytor/crdt` is the vendored engine: names only. */
 const NAMES_ONLY = new Set(['./crdt']);
 
-const build = () => {
-	rmSync(OUT, { recursive: true, force: true });
-	mkdirSync(OUT, { recursive: true });
-	// `tsconfig.json` extends the kit's generated one (`svelte-kit sync`).
-	if (!existsSync(path.join(ROOT, '.svelte-kit/tsconfig.json')))
-		execFileSync(
-			process.execPath,
-			[
-				path.join(path.dirname(require.resolve('@sveltejs/kit/package.json')), 'svelte-kit.js'),
-				'sync'
-			],
-			{ cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit'] }
-		);
-	const bin = path.join(
-		path.dirname(require.resolve('@sveltejs/package/package.json')),
-		'svelte-package.js'
-	);
-	execFileSync(process.execPath, [bin, '--input', 'src/lib', '--output', OUT], {
-		cwd: ROOT,
-		stdio: ['ignore', 'ignore', 'inherit']
-	});
-};
+const build = () => buildPackage(OUT);
 
 /** `edytor/crdt/edytor` → `edytor-crdt-edytor` (the report's file name). */
 const reportName = (subpath) =>
@@ -84,11 +61,14 @@ const entries = () =>
 
 /**
  * An internal ticket code in prose: letters then digits (`R4`, `O45`, `P11`,
- * `SW16`, `U6b`), letters, a dash and digits (`D-8`, `UW-22`, `FX-01`), or a
- * review row (`DR-props-2`). `UTF-16`, `ES2022` and the Cloudflare products (`R2`, `D1`) are not codes.
+ * `SW16`, `U6b`), letters, a dash and digits (`D-8`, `UW-22`, `FX-01`), a
+ * review row (`DR-props-2`), or a plan section (`§2.4`). `UTF-16` and
+ * `ES2022` are not codes, nor are the Cloudflare products where the prose
+ * names them as such (`R2 bucket`, `R2 binding`, `D1 database`, …): a bare
+ * `R2` or `D1` is a ticket code.
  */
 const CODE =
-	/\b(?!UTF-|ES20|R2\b|D1\b)(?:[A-Z]{1,3}\d{1,3}[a-z]?|[A-Z]{1,3}-\d{1,3}[a-z]?|[A-Z]{2}\d?-[a-z]+-\d+)\b/g;
+	/\b(?!UTF-|ES20|R2[\s*]+(?:bucket|binding|custom|takes|expires|lifecycle)\b|D1[\s*]+(?:database|binding)\b)(?:[A-Z]{1,3}\d{1,3}[a-z]?|[A-Z]{1,3}-\d{1,3}[a-z]?|[A-Z]{2}\d?-[a-z]+-\d+)\b|§\s?\d+(?:\.\d+)*/g;
 /** JSDoc blocks of the reported declarations that name a ticket code: `file:line → codes`. */
 const coded = new Map();
 /** Record the ticket codes of every JSDoc block in `node` (its own and its members'). */

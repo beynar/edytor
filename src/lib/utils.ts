@@ -33,16 +33,6 @@ export const isPrevention = (error: unknown): error is PreventionError =>
 export type Prevent = (cb?: () => void) => void;
 
 /**
- * Abort the enclosing prevention scope from the editor's own code (a
- * binding or hook of the core). Hooks receive a recording `prevent` instead
- * (`vetoable`).
- * @internal
- */
-export const prevent = (cb?: () => void): void => {
-	throw new PreventionError(cb);
-};
-
-/**
  * Call one hook with a recording `prevent`: the hook runs to its end, the
  * first `prevent` it calls decides (with its replacement), and that veto
  * then aborts the enclosing prevention scope, where the dispatcher catches

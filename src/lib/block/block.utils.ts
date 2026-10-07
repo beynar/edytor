@@ -167,7 +167,7 @@ export function batch<
 			prepare && ((p) => prepare.call(this, p))
 		);
 		const value = resolve ? resolve.call(this, out, payload) : (out as R);
-		return this.edytor.dispatcher.answer(operation, value);
+		return this.edytor.dispatcher.answer(value);
 	};
 }
 

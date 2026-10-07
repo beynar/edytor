@@ -72,7 +72,7 @@ Facade operations are document writes: they skip plugin hooks and normalization.
 
 `Block`, `Text` and `InlineBlock` are handles: small objects that name a piece of the document by id and read the current state from the document each time you access a getter.
 
-```ts
+```ts title="src/lib/read-block.ts" check
 const block = edytor.idToBlock.get('page-title'); // undefined if not live
 if (block) {
 	block.type; // 'heading'
@@ -113,8 +113,13 @@ Use these in templates, `$derived` and `$effect`:
 
 - **`edytor.cells`** is the render state: `cells.rootIds` (the top-level ids) and `cells.get(id)`, a frozen `{ id, type, data, childIds, runs }` that is replaced whenever the block changes. Both are reactive:
 
-  ```svelte
+  ```svelte title="src/lib/Outline.svelte" check
   <script lang="ts">
+  	import type { EdytorInstance } from 'edytor';
+
+  	// The editor a page bound with `bind:edytor`, passed down.
+  	let { edytor }: { edytor: EdytorInstance | undefined } = $props();
+
   	const outline = $derived(
   		(edytor?.cells?.rootIds ?? [])
   			.map((id) => edytor!.cells!.get(id))

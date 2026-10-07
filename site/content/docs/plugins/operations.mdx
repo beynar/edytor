@@ -108,21 +108,25 @@ A step's veto refuses the command it belongs to, so check the operation name bef
 
 `prevent(cb)` refuses the command and runs `cb` instead. This replaces a typed `@` with an inline atom, as the [mention reference plugin](/docs/plugins/mention) does:
 
-```ts
-onBeforeOperation: ({ operation, payload, block, prevent }) => {
-	if (operation === 'insertText' && payload.value === '@') {
-		const { yStart, startText } = edytor.selection.state;
-		if (!startText) return;
-		prevent(() => {
-			const after = block.addInlineBlock({
-				index: yStart,
-				text: startText,
-				block: { type: 'mention', data: {} }
+```ts title="atMention.ts" check
+import type { Plugin } from 'edytor';
+
+export const atMention: Plugin = (edytor) => ({
+	onBeforeOperation: ({ operation, payload, block, prevent }) => {
+		if (operation === 'insertText' && payload.value === '@') {
+			const { yStart, startText } = edytor.selection.state;
+			if (!startText) return;
+			prevent(() => {
+				const after = block.addInlineBlock({
+					index: yStart,
+					text: startText,
+					block: { type: 'mention', data: {} }
+				});
+				if (after) edytor.selection.setAtTextOffset(after, 0);
 			});
-			if (after) edytor.selection.setAtTextOffset(after, 0);
-		});
+		}
 	}
-}
+});
 ```
 
 The callback is a command of its own. If another plugin refuses one of the operations it issues, that operation writes nothing and the callback carries on. Each plugin replaces a given command at most once: while your callback runs, your own `prevent(cb)` on the operations it issues is ignored, so the callback can call the operation it replaced without recursing.
@@ -169,12 +173,16 @@ If another plugin refuses the `insertText`, or the `deleteContentAtRange` step t
 
 Return a new payload from `onBeforeOperation` to replace the command's arguments. The code plugin auto-pairs brackets this way:
 
-```ts
-onBeforeOperation: ({ operation, payload, block }) => {
-	if (block.type === 'codeLine' && operation === 'insertText' && payload.value === '(') {
-		return { ...payload, value: '()' };
+```ts title="pairs.ts" check
+import type { Plugin } from 'edytor';
+
+export const pairs: Plugin = () => ({
+	onBeforeOperation: ({ operation, payload, block }) => {
+		if (block.type === 'codeLine' && operation === 'insertText' && payload.value === '(') {
+			return { ...payload, value: '()' };
+		}
 	}
-}
+});
 ```
 
 The replacement is prepared again and shown to every plugin from the start. A Turn into is placed for the kind its replacement names (rewritten to a list's item, it stays in the list; rewritten to a heading, it leaves the list), that kind's `normalizeContent` runs on it, and the caret goes into it. Each plugin rewrites a command at most once. A payload returned for a step is ignored, with a warning in development.
@@ -183,17 +191,21 @@ The replacement is prepared again and shown to every plugin from the start. A Tu
 
 `onAfterOperation` runs once per command, after its transaction, with the original payload. It does not run for steps or for refused commands, and it has no `prevent`.
 
-```ts
-onAfterOperation: ({ operation, block }) => {
-	if (operation === 'setBlock') console.log(block.id, 'is now', block.type);
-}
+```ts title="logTurnInto.ts" check
+import type { Plugin } from 'edytor';
+
+export const logTurnInto: Plugin = () => ({
+	onAfterOperation: ({ operation, block }) => {
+		if (operation === 'setBlock') console.log(block.id, 'is now', block.type);
+	}
+});
 ```
 
 ## Reading the result
 
 `edytor.dispatcher.last` holds the result of the last operation:
 
-```ts
+```ts title="result.ts" check
 block.mergeBlockBackward();
 if (edytor.dispatcher.last?.status === 'refused') {
 	// A plugin, a readonly editor or the document refused it.

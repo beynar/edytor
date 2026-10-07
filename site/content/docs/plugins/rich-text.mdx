@@ -112,7 +112,7 @@ The plugin also handles the formatting input types browsers send from their own 
 
 `richTextOperations(edytor)` returns the helpers the hotkeys and the toolbar use. They act on the current selection:
 
-```ts
+```ts title="src/lib/format.ts" check
 import { richTextOperations } from 'edytor';
 
 const format = richTextOperations(edytor);

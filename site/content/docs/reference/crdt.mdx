@@ -19,13 +19,16 @@ Import the engine only through `edytor/crdt`, so your app holds exactly one engi
 
 ## `edytor/crdt`: the engine
 
-```ts
+```ts title="src/lib/engine.ts" check
 import * as Y from 'edytor/crdt';
 
-const doc = new Y.Doc();
-Y.applyUpdate(doc, stored);
-const merged = Y.mergeUpdates([a, b, c]);
-const missing = Y.encodeStateAsUpdate(doc, Y.encodeStateVector(otherDoc));
+export function catchUp(stored: Uint8Array<ArrayBuffer>, updates: Uint8Array<ArrayBuffer>[], otherDoc: Y.Doc) {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, stored);
+  const merged = Y.mergeUpdates(updates);
+  const missing = Y.encodeStateAsUpdate(doc, Y.encodeStateVector(otherDoc));
+  return { merged, missing };
+}
 ```
 
 `edytor/crdt` is edytor's own fork of Yjs v14, based on `@y/y` 14.0.0-rc.26. It is not the `yjs` package from npm: v13 documents and peers are not compatible with it (see [migration](/docs/reference/migration)), and you should not install `yjs` next to it expecting the two to share documents.
@@ -46,7 +49,7 @@ const missing = Y.encodeStateAsUpdate(doc, Y.encodeStateVector(otherDoc));
 
 The same document surface as `edytor`, safe to import in Node, SSR and Workers:
 
-```ts
+```ts title="src/lib/server/imports.ts" check
 import { createDocument, loadDocument, attachDocument, bindCrdt } from 'edytor/crdt/edytor';
 ```
 
@@ -58,7 +61,7 @@ It exports the document factories and errors, the document vocabulary types (`Bl
 
 `bindCrdt` binds edytor's CRDT services to an engine namespace. Use it when you need the provider classes, migration or the sync protocol on documents you manage yourself.
 
-```ts
+```ts title="src/lib/local.ts" check
 import * as Y from 'edytor/crdt';
 import { bindCrdt } from 'edytor/crdt/edytor';
 

@@ -6,7 +6,7 @@ icon: menu
 
 `blockMenuPlugin` opens a menu when you click a block handle's ⋮⋮ grip: a search field, Turn into, Duplicate, Move up, Move down and Delete, as in Notion. It also binds <kbd>Mod</kbd> + <kbd>D</kbd> to duplicate a block.
 
-```svelte
+```svelte title="Menu.svelte" check
 <script lang="ts">
 	import { Edytor, blockMenuPlugin } from 'edytor';
 </script>
@@ -20,7 +20,7 @@ The menu opens from [block handles](/docs/plugins/block-handles), which `<Edytor
 
 `blockMenuPlugin` has no block link and the built-in markup. `createBlockMenuPlugin(options)` builds one with options:
 
-```ts
+```ts title="blockMenu.ts" check
 import { createBlockMenuPlugin } from 'edytor';
 
 const blockMenu = createBlockMenuPlugin({
@@ -95,7 +95,7 @@ Hovering a row highlights it, in the menu and in the flyout.
 
 When a handle is clicked and no `onActivate` is set, block handles dispatch a DOM event on the editor's root:
 
-```ts
+```ts title="activate.ts" check
 import { BLOCK_ACTIVATE_EVENT, type BlockActivation } from 'edytor';
 // 'edytor-block-activate', detail: { block, anchor }
 ```
@@ -137,7 +137,7 @@ The snippet receives the `BlockMenuController`:
 
 Every action closes the menu and returns the caret, as in the built-in menu: it replaces the block selection the grip click left, and the projector draws it after the flush.
 
-```svelte title="Editor.svelte"
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor, createBlockMenuPlugin, type BlockMenuController } from 'edytor';
 

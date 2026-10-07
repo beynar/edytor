@@ -156,7 +156,7 @@ kbd[data-edytor-mark='keyboard'] {
 
 Pass it with the bundled plugins (`<Edytor>` adds rich text after them). None of its names overlap theirs, so order does not matter here; listing your own plugins first lets them override bundled definitions later.
 
-```svelte
+```svelte title="src/routes/+page.svelte" check
 <script lang="ts">
 	import { Edytor, slashMenuPlugin, toolbarPlugin, markdownShortcutsPlugin } from 'edytor';
 	import { notePlugin } from '$lib/NotePlugin.svelte';

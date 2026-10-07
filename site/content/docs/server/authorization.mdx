@@ -8,7 +8,7 @@ The room enforces identity, but it does not know your users. You tell it who is 
 
 ## `authorize`
 
-```ts
+```ts title="src/authorize.ts" check
 type AuthorizeDocumentSocket = (
   request: Request,
   documentId: string
@@ -110,7 +110,13 @@ export default {
 
 The client sends the token; the provider adds its replica id (`?replica=<clientID>`) at every dial:
 
-```svelte
+```svelte title="src/lib/Editor.svelte" check
+<script lang="ts">
+  import { Edytor } from 'edytor';
+
+  let { documentId, token, userId }: { documentId: string; token: string; userId: string } = $props();
+</script>
+
 <Edytor server="wss://rooms.example.com/rooms" room={documentId} params={{ token }} actor={{ id: userId }} />
 ```
 
@@ -167,9 +173,12 @@ When `authorize` returns `readOnly: true`:
 
 Render read-only users with a read-only view. A `readonly` view does not attach its `sync` prop, so attach the sync to the document yourself:
 
-```ts
+```ts title="src/lib/reader.ts" check
+import { createDocument, createWebsocketSync } from 'edytor';
+
 const document = createDocument({ actor: { id: userId } });
-document.attachSync(createWebsocketSync({ server: serverUrl, room: documentId, params }));
+const server = 'wss://rooms.example.com/rooms';
+document.attachSync(createWebsocketSync({ server, room: documentId, params: { token } }));
 // <Edytor {document} readonly />
 ```
 

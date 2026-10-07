@@ -119,7 +119,7 @@ A block kind's `parse(element)` works the same way and returns the new block's `
 
 `onCopy`, `onCut` and `onPaste` run before Edytor handles the event. Call `prevent()` to take over; the browser's default is prevented too:
 
-```ts
+```ts title="imagePastePlugin.ts" check
 import type { Plugin } from 'edytor';
 
 export const imagePastePlugin: Plugin = (edytor) => ({

@@ -41,7 +41,7 @@ export async function prepareDocument(name: string): Promise<void> {
 }
 ```
 
-```svelte
+```svelte title="src/lib/MigratedEditor.svelte" check
 <script lang="ts">
   import { Edytor } from 'edytor';
   import { prepareDocument } from '$lib/migrate';
@@ -130,6 +130,12 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 - `force` restores the v13 content in place instead of overwriting, and a store of another generation makes `migrate` throw `GenerationMismatchError`.
 
 ## Upgrading between pre-releases
+
+### Unreleased
+
+- **Mount editable editors in the browser.** The [quick start](/docs/getting-started/quick-start#mount-it-in-a-page) and [installation](/docs/getting-started#verify-the-install) pages now mount the editable editor after hydration, or turn SSR off for the route, as [SvelteKit](/docs/getting-started/sveltekit#editable-editors-mount-after-hydration) always advised: server-rendering an editable `<Edytor>` is not tested. If you copied the earlier quick start into a server-rendered route, wrap the editor in the `onMount` guard. Nothing in the package changed.
+- **New pages.** [Platform support](/docs/reference/platform-support) lists the browsers, versions, devices and runtimes the lanes run, the oldest browsers the code needs (Chrome and Edge 111, Firefox 119, Safari 16.4: the code uses `String.prototype.toWellFormed` and a regular expression with lookbehind) and the status of real phones and IMEs. [Room internals](/docs/server/internals) lists the room's five alarm tasks (`forward` included, which the history page left out) and every storage table.
+- **Corrections.** The version history is kept in the store you choose (KV, R2, the room's own storage or yours), not only KV, as the limitations and room pages said; `tablePrefix` prefixes every room table, not two.
 
 ### From 0.1.0-next.31
 

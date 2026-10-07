@@ -87,10 +87,10 @@ await provider.whenSynced;
 
 The raw engine: Edytor's own fork of Yjs v14, pruned to what Edytor uses (documents, nodes, transactions, `UndoManager`, update encoding and merging, state vectors, relative positions).
 
-```ts
+```ts title="src/lib/merge.ts" check
 import * as Y from 'edytor/crdt';
 
-const merged = Y.mergeUpdates([updateA, updateB]);
+export const merge = (updateA: Uint8Array<ArrayBuffer>, updateB: Uint8Array<ArrayBuffer>) => Y.mergeUpdates([updateA, updateB]);
 ```
 
 You rarely need it directly. Reach for it when you pass the engine to `bindCrdt`, or when you handle raw updates (merging, state vectors) yourself.
@@ -103,7 +103,7 @@ Keep one engine in your app. The `yjs` package on npm is v13 and its updates are
 
 The server side of real-time collaboration: `DocumentRoom`, a Durable Object that coordinates one document; `attachDocument(this, options)`, which hosts a document in any Durable Object of yours; `routeDocumentSocket`, which authorizes a client before its WebSocket upgrade, and `requestedReplica`, which reads the client id the dial sends; and `closedSocket(code, reason)`, which turns a dial away from your own Worker with a close the provider understands (see [authorization](/docs/server/authorization#authorize)).
 
-```ts title="src/worker.ts"
+```ts title="src/worker.ts" check
 import { DocumentRoom, routeDocumentSocket, requestedReplica } from 'edytor/cloudflare';
 
 export { DocumentRoom };

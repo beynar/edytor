@@ -132,7 +132,7 @@ Each mark you set is one operation over its range, with a timestamp later than e
 
 A comment-like mark (one per thread) uses a key of its own per thread: `comment:<id>`. Each is a separate mark, so two overlapping comments never cut each other short, and the key reads the `comment` mark record (its tag, snippet and edge):
 
-```ts
+```ts title="comment.ts" check
 edytor.document.facade.setMark(blockId, 4, 9, 'comment:c1', { id: 'c1' });
 ```
 
@@ -140,7 +140,7 @@ edytor.document.facade.setMark(blockId, 4, 9, 'comment:c1', { id: 'c1' });
 
 The rich text plugin exports its helpers. They act on the current selection and handle every text segment the selection spans:
 
-```ts
+```ts title="format.ts" check
 import { richTextOperations } from 'edytor';
 
 richTextOperations(edytor).setMarkAtRange('bold'); // toggle over the selection

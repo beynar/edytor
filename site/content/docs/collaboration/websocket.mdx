@@ -8,7 +8,13 @@ icon: radio-tower
 
 ## Connect
 
-```svelte
+```svelte title="src/lib/RoomEditor.svelte" check
+<script lang="ts">
+  import { Edytor } from 'edytor';
+
+  let { documentId, token, userId }: { documentId: string; token: string; userId: string } = $props();
+</script>
+
 <Edytor
   server="wss://rooms.example.com/rooms"
   room={documentId}
@@ -84,15 +90,24 @@ The props build a `createWebsocketSync` for you. Use the factory directly for th
 
 `params` is kept by reference and read each time the provider dials, so you can refresh a short-lived token by updating the object you passed:
 
-```ts
+```ts title="src/lib/sync.ts" check
+import { createWebsocketSync } from 'edytor';
+
 const params = { token: await getToken() };
-const sync = createWebsocketSync({ server, room, params });
+const sync = createWebsocketSync({ server: 'wss://rooms.example.com/rooms', room: 'doc-42', params });
 setInterval(async () => (params.token = await getToken()), 10 * 60_000);
 ```
 
 With `<Edytor>`, refresh when the room reports the expiry: the `params` prop reaches the next dial.
 
-```svelte
+```svelte title="src/lib/RefreshingEditor.svelte" check
+<script lang="ts">
+  import { Edytor } from 'edytor';
+
+  let { server, room, token: first }: { server: string; room: string; token: string } = $props();
+  let token = $state(first);
+</script>
+
 <Edytor {server} {room} params={{ token }} onSyncExpired={async () => (token = await getToken())} />
 ```
 
@@ -112,7 +127,7 @@ Browsers cannot set headers on a WebSocket, so tokens travel in `params` (or in 
 
 `createWebsocketSync` creates the provider internally. To observe it, write a sync factory around the exported `WebsocketProvider`; this one behaves like `createWebsocketSync` (socket, local copy, one channel) and reports its state:
 
-```ts
+```ts title="src/lib/observed-sync.ts" check
 import {
   WebsocketProvider,
   createIndexeddbSync,

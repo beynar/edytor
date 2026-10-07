@@ -44,7 +44,7 @@ When two replicas meet, whether a tab and the server or two tabs, each tells the
 
 ### Local only
 
-```svelte
+```svelte title="src/lib/LocalEditor.svelte" check
 <script lang="ts">
   import { Edytor } from 'edytor';
 
@@ -66,7 +66,13 @@ When two replicas meet, whether a tab and the server or two tabs, each tells the
 
 Add a `server`, and the view joins the room `<server>/<room>`:
 
-```svelte
+```svelte title="src/lib/RoomEditor.svelte" check
+<script lang="ts">
+  import { Edytor } from 'edytor';
+
+  let { token, userId }: { token: string; userId: string } = $props();
+</script>
+
 <Edytor
   server="wss://rooms.example.com/rooms"
   room="doc-42"

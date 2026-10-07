@@ -53,7 +53,7 @@ Offsets count what the block displays: one per UTF-16 text unit and one per inli
 
 `toBlockSpec(block, { freshIds? })` (from `edytor` or `edytor/crdt/edytor`) turns a canonical `JSONBlock` (from `toJSON`, `blockJSON`, a template or an import) into a `BlockSpec`: it keeps the ids the JSON carries and mints the missing ones; `freshIds: true` mints every id, so the result can be inserted beside its source.
 
-```ts
+```ts title="copy-block.ts" check
 import { toBlockSpec } from 'edytor/crdt/edytor';
 
 facade.insertBlock({ parent: null, index: 1 }, toBlockSpec(facade.blockJSON('p1'), { freshIds: true }));
@@ -63,7 +63,9 @@ facade.insertBlock({ parent: null, index: 1 }, toBlockSpec(facade.blockJSON('p1'
 
 Every operation returns an `OpResult`:
 
-```ts
+```ts title="op-result.ts" check
+import type { BlockId } from 'edytor';
+
 type OpResult = {
   status: 'applied' | 'noop' | 'refused';
   ids: readonly BlockId[]; // what the op is about; empty unless applied
@@ -133,7 +135,7 @@ The prepared plan of these operations carries `at`, the `DocPosition` where the 
 
 Every operation also exists in two phases. `facade.prepare.<op>(…)` checks it and returns a plan without writing; `facade.apply(plan)` writes it in one transaction. Calling `facade.<op>(…)` is `apply(prepare.<op>(…))`.
 
-```ts
+```ts title="plans.ts" check
 const plan = facade.prepare.splitBlock('p1', 5, 'p1b');
 if ('writes' in plan) {
   plan.effect; // { creates: ['p1b'], removes: [], merges: [], moves: [], meta: [], textRanges: [...] }
@@ -193,7 +195,7 @@ Whether a block type renders its own content is a document-level question: `docu
 
 `facade.onChange(callback)` calls back once per committed transaction that changed the visible document or its data, local or remote, and returns an unsubscribe function. A callback that throws is logged; the other callbacks and the document carry on.
 
-```ts
+```ts title="on-change.ts" check
 const off = facade.onChange((change) => {
   if (!change.local) console.log('remote edit in', [...change.content.keys()]);
 });
@@ -217,7 +219,7 @@ const off = facade.onChange((change) => {
 
 `facade.block(id)` returns a handle over one block, with the same operations bound to that id. Handles are cached per id and safe on missing ids (operations are `refused`).
 
-```ts
+```ts title="block-handle.ts" check
 const block = facade.block('p1');
 block.insertText(0, '> ');
 block.items; // ContentItem[]
@@ -231,10 +233,13 @@ Members: `id`, `attribution`, `items`, `runs`, `length`, `childIds()`, `insertTe
 
 Each block records who created it and who changed it, as actor ids (`actor.id` from `createDocument`):
 
-```ts
+```ts title="attribution.ts" check
+import { createDocument } from 'edytor';
+
+const document = createDocument({ actor: { id: 'user-42', name: 'Ada', color: '#7559ee' } });
 document.attribution.block('p3');
 // { createdBy: 'user-42', contributors: Set { 'user-42' }, lastChangedBy: 'user-42' }
-facade.blockAttribution('p3'); // the same record
+document.facade.blockAttribution('p3'); // the same record
 document.attribution.actors.get('user-42'); // { name: 'Ada', color: '#7559ee' }
 ```
 

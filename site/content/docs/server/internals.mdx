@@ -1,0 +1,41 @@
+---
+title: Room internals
+description: The room's alarm tasks, its SQLite tables and its meta keys, in one table each, for operators and for code that shares the Durable Object.
+icon: database
+---
+
+The room keeps everything it needs in its Durable Object: the document and its bookkeeping in SQLite tables, and its scheduled work on the object's one alarm. This page lists both. You need it when your own class shares the object with the room ([`attachDocument`](/docs/server/extending)), when you inspect a room's storage, or when you size one.
+
+## Alarm tasks
+
+A Durable Object has one alarm, and the room shares it among five tasks. Each task's due time is stored in the `meta` table (`due.<task>`), the alarm is set to the earliest one, and when it fires every task due at that time runs, in the order below, then the alarm is set to the next due time. A task already due keeps its time, so frequent edits or wakes never push a save back. A task that throws stays due and runs again a minute later, `onSave` included; the alarm call then throws, so the platform logs it. Only a save whose rows cannot be read backs off, up to 5 minutes.
+
+| Task | What it does | When it is due | When it fails |
+| --- | --- | --- | --- |
+| `history` | Closes the open half-day [version slot](/docs/server/history#two-versions-a-day): writes the version to the history store and clears the slot's editors. | At the end of the slot the first change opened (local noon or midnight). Only with a [history](/docs/server/history). | The version is skipped and logged as a `history` refusal; the next slot is written as usual. |
+| `save` | Calls [`onSave`](/docs/server/extending#save) with `{ value, update, replicas }`. | `saveAfter` ms (2 s) after the first edit it has not saved; a stored waiting delete counts. Only with `onSave`. | `onSave` throwing keeps the save due: it runs again a minute later. Rows that cannot be read keep it due too, retried with a backoff up to 5 minutes. |
+| `purge` | The daily [purge](/docs/server/history#the-purge) tick: records an epoch (the room's state vector), purges the content deleted before the newest epoch past `purgeAfterDays`, compacts. | A day after a change (so once a day while the document changes), and when the next recorded epoch passes the horizon. Not with `purgeAfterDays: false`. | Runs again a minute later. |
+| `retention` | Deletes the [versions past their expiry](/docs/server/history#retention) from a store without a TTL of its own (R2, `roomHistory()`, your store without `nativeTtl`). | At the expiry of the oldest version kept. | Logged as a `history` refusal (`{ retention: true, error }`), retried an hour later. |
+| `forward` | Turns the edits that reached [moved blocks](/docs/server/moves#late-edits) into late edits, sends them to the destination room when [`rooms()`](/docs/server/moves#late-edits) names it, and stops watching a move after its grace period. | Right after an edit to a moved block, and at the end of each move's grace period (the purge horizon, 30 days). | A destination that does not answer is retried a minute later. |
+
+In your own Durable Object, define `alarm()` only to add work of your own, and call `await this.document.alarm()` from it; the room sets the alarm to its earliest task, which replaces a time you set yourself, so re-arm your own schedule from `alarm()`. `attachDocument` installs an `alarm` handler for you when your class has none, unless the document has no `onSave`, no `history` and `purgeAfterDays: false`. Such a room cannot forward [moves](/docs/server/moves#late-edits)' late edits: with no alarm handler, the object cannot set its alarm. Keep the purge on, or define `alarm()` and call `this.document.alarm()` from it, in a room that moves blocks.
+
+## Storage tables
+
+The room's tables live in the object's SQLite storage beside your own. `DocumentRoom` names them without a prefix; `attachDocument` prefixes them with `tablePrefix` (`edytor_` by default). The tables of a feature you do not use are never created.
+
+| `DocumentRoom` | `attachDocument` | Holds | Created |
+| --- | --- | --- | --- |
+| `rows` | `edytor_rows` | The document, as records split into rows under the platform's 2 MB row limit: a generation record, the update records (v1, one per stored frame), at most one snapshot (v2, gzip-compressed, written by [compaction](/docs/server/room#storage)) and `pending` records of the deletes still waiting for their item. | At the first start. |
+| `replicas` | `edytor_replicas` | Which user owns each client id (`replica`, `user`), the [identity registry](/docs/server/authorization#replicas) `onSave` receives as `replicas`. Compaction drops the ids that hold no content and belong to no open socket. | At the first start. |
+| `meta` | `edytor_meta` | Integer values by key: `due.<task>` (each alarm task's due time), `updated` (when the room last stored a change, read by [`lastUpdated()`](/docs/server/room#metrics-and-log)) and `purged` (the horizon of the last purge). | At the first start. |
+| `epochs` | `edytor_epochs` | The purge's daily epochs: a time and the room's state vector then (`at`, `sv`). Epochs older than the last purge are dropped. | At the first start. |
+| `editors` | `edytor_editors` | The users who changed the document in the open history slot, written into the version's metadata when the slot closes. | At the first start. |
+| `restore` | `edytor_restore` | The last [restore](/docs/server/history#what-a-restore-does)'s step (its key, user, time, and the ids it inserted and deleted), which `undoRestore()` takes back. One row at most. | At the first start. |
+| `history` | `edytor_history` | The versions, only with [`roomHistory()`](/docs/server/history#the-rooms-own-storage): each split into rows of 1 MiB (`key`, `part`, `parts`, `at`, `expires_at`, `metadata`, `value`). | At the first version written. |
+| `moves` | `edytor_moves` | One row per [move](/docs/server/moves) and side (`out` at the source, `in` at the destination): its state, the peer room, the moved roots, the id map and the blocks watched for late edits. | At the first move. |
+| `late` | `edytor_late` | The batches of late edits waiting to be sent (`move`, `seq`, `edits`), deleted once the destination acknowledges them. | At the first move. |
+
+[`reset()`](/docs/server/room#generation-cutover) empties `rows`, `replicas` and `meta` and drops `epochs`, `editors`, `restore`, `moves` and `late`, in one transaction; it keeps `history`, so versions written before the cutover stay readable.
+
+Space: the [document quota](/docs/server/room#quotas) (`maxDocumentBytes`) measures the document's records in `rows`, uncompressed, and refuses clients' edits past it. The history in `history` has its own cap (`maxBytes` of `roomHistory()`, 256 MiB by default). The other tables stay small: a few rows each, and `late` only while late edits wait.

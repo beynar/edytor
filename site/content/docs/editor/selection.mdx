@@ -10,7 +10,9 @@ The selection is a value stored on `edytor.selection`. It is independent from th
 
 `edytor.selection.value` is one of four shapes:
 
-```ts
+```ts title="selection-value.ts" check
+import type { DocAnchor } from 'edytor';
+
 type SelectionValue =
 	| { kind: 'none' }
 	| { kind: 'text'; anchor: DocAnchor; focus: DocAnchor; pending?: Record<string, unknown> }
@@ -56,7 +58,7 @@ Anchors are not offsets. For offsets, read one of the two views computed from th
 | `texts`, `blocks` | Every text segment and block the selection covers. For a `blocks` value, `blocks` are exactly the selected blocks. |
 | `isCollapsed`, `isReversed`, `isBlockSpanning` | As in `projection`. |
 
-```ts
+```ts title="state.ts" check
 const { startText, yStart, isCollapsed } = edytor.selection.state;
 if (isCollapsed && startText) startText.insertText({ value: '→ ', start: yStart, end: yStart });
 
@@ -67,7 +69,7 @@ const bold = edytor.selection.projection.marks.bold === true;
 
 The setters take handles and offsets inside a text segment:
 
-```ts
+```ts title="setters.ts" check
 const block = edytor.idToBlock.get('intro');
 
 // A caret at the end of the block's text.
@@ -79,9 +81,11 @@ edytor.selection.setAtBlockRange(block);
 edytor.selection.setAtBlockRange(block, 0, 5);
 
 // A range between two texts, possibly in different blocks.
-edytor.selection.setAtRange(startText, 2, endText, 4, { isReversed: false });
+const { startText, endText } = edytor.selection.state;
+if (startText && endText) edytor.selection.setAtRange(startText, 2, endText, 4, { isReversed: false });
 
 // Whole blocks; with no argument, leave block selection for a text range.
+const [blockA, blockB, blockC] = edytor.root?.children ?? [];
 edytor.selection.selectBlocks(blockA, blockB);
 edytor.selection.addBlockToSelection(blockC);
 edytor.selection.removeBlockFromSelection(blockA);
@@ -93,7 +97,7 @@ No caret or range end rests in a block that shows no content of its own (a divid
 
 `selection.select(value)` sets any value directly. Build text anchors with `edytor.facade.anchorAt(blockId, offset, affinity)`. Bind a range start to the `'right'` and its end or a caret to the `'left'`, so text typed at the boundary stays outside the range:
 
-```ts
+```ts title="select.ts" check
 const anchor = edytor.facade.anchorAt(blockId, 0, 'right');
 const focus = edytor.facade.anchorAt(blockId, 5, 'left');
 if (anchor && focus) edytor.selection.select({ kind: 'text', anchor, focus });
@@ -106,8 +110,9 @@ edytor.selection.select({ kind: 'none' });
 
 Setters change the value immediately. The browser selection is drawn after the next render, and only when the editor has focus (or nothing else does). When you set the selection from outside the editor, such as a menu button, focus the editor too:
 
-```ts
-edytor.selection.setAtTextOffset(text, 0);
+```ts title="focus.ts" check
+const text = block.firstText;
+if (text) edytor.selection.setAtTextOffset(text, 0);
 edytor.node?.focus({ preventScroll: true });
 ```
 
@@ -134,7 +139,7 @@ Selected blocks have the `data-edytor-selected` attribute, and the editor's root
 
 With a caret, formatting has nothing to apply to yet. The marks you toggle are staged on the caret as **pending marks**, and the next text typed there takes them:
 
-```ts
+```ts title="pending.ts" check
 edytor.selection.pending; // e.g. { bold: true, color: 'red' }, or undefined
 
 // Stage the complete set of marks the next insertion gets.
@@ -154,7 +159,13 @@ With the rich text plugin, <kbd>Mod</kbd>+<kbd>B</kbd> at a caret stages bold th
 
 `onSelectionChange` (on the component or in a plugin) runs when the value changes. A remote edit that shifts where your selection is shown does not change the value, so it does not fire:
 
-```svelte
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor } from 'edytor';
+
+	let toolbarVisible = $state(false);
+</script>
+
 <Edytor
 	onSelectionChange={(selection) => {
 		toolbarVisible = selection.value.kind === 'text' && !selection.projection.isCollapsed;

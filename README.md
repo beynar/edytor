@@ -38,7 +38,7 @@ The pre-release is on npm under the `next` tag. Name the tag: a bare `edytor` is
 pnpm add edytor@next
 ```
 
-`svelte@^5` is a peer dependency. Do not install `yjs`: the v14 engine is vendored (`edytor/crdt`). See [installation](https://edytor.dev/docs/getting-started).
+`svelte@^5` is a peer dependency. Do not install `yjs`: the v14 engine is vendored (`edytor/crdt`). See [installation](https://edytor.dev/docs/getting-started) and [platform support](https://edytor.dev/docs/reference/platform-support) (Chrome, Edge, Firefox and Safari; real phones are not tested yet).
 
 ## Quick start
 
@@ -78,7 +78,7 @@ pnpm add edytor@next
 </div>
 ```
 
-`<Edytor>` adds the rich text, image, arrow-move and suggestions plugins after yours, and block handles. To collaborate, name a room and a server running the [`edytor/cloudflare` room](https://edytor.dev/docs/server/quick-start):
+An editable editor is client-only: in SvelteKit, mount it once the page has hydrated ([quick start](https://edytor.dev/docs/getting-started/quick-start#mount-it-in-a-page)). `<Edytor>` adds the rich text, image, arrow-move and suggestions plugins after yours, and block handles. To collaborate, name a room and a server running the [`edytor/cloudflare` room](https://edytor.dev/docs/server/quick-start):
 
 ```svelte
 <Edytor
@@ -98,7 +98,7 @@ The [documentation site](https://edytor.dev/docs) is the single source for the A
 - [Editor](https://edytor.dev/docs/editor/edytor-component): the component, commands, selection, history, clipboard, readonly
 - [Plugins](https://edytor.dev/docs/plugins) and [customization](https://edytor.dev/docs/customization/blocks): bundled plugins, custom blocks and marks, [hotkeys and editing behavior](https://edytor.dev/docs/customization/hotkeys)
 - [Collaboration](https://edytor.dev/docs/collaboration) and [server](https://edytor.dev/docs/server/quick-start): documents, providers, presence, the Durable Object room and its protocol
-- [Reference](https://edytor.dev/docs/reference/document-api): the document API, [troubleshooting](https://edytor.dev/docs/reference/troubleshooting), [migration from 0.0.11](https://edytor.dev/docs/reference/migration), limitations
+- [Reference](https://edytor.dev/docs/reference/document-api): the document API, [troubleshooting](https://edytor.dev/docs/reference/troubleshooting), [migration from 0.0.11](https://edytor.dev/docs/reference/migration), limitations, [platform support](https://edytor.dev/docs/reference/platform-support)
 
 ## Contributing
 

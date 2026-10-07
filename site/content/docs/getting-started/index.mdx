@@ -17,6 +17,7 @@ These docs describe that release. The `edytor@0.0.11` that npm installs without 
 - **Svelte 5.** `svelte` is a peer dependency (`^5.0.0`). The editor uses runes and snippets, so Svelte 4 is not supported.
 - **A Svelte-aware bundler.** The root entry ships `.svelte` files. SvelteKit, or Vite with `@sveltejs/vite-plugin-svelte`, compiles them for you.
 - **Node.js 22 or later** (the package's `engines` field).
+- **A current browser.** Chrome, Edge, Firefox and Safari are tested; the code needs at least Chrome and Edge 111, Firefox 119 or Safari 16.4. Real phones and their keyboards are not tested yet. See [Platform support](/docs/reference/platform-support).
 
 ## Install
 
@@ -59,7 +60,7 @@ pnpm add ../edytor/edytor-0.1.0-next.32.tgz
 
 ## Verify the install
 
-Render an editor. It needs no setup:
+Render an editor. It needs no setup, but it is editable, so the page renders it in the browser only:
 
 ```svelte title="src/routes/+page.svelte" check
 <script lang="ts">
@@ -68,6 +69,12 @@ Render an editor. It needs no setup:
 
 <Edytor />
 ```
+
+```ts title="src/routes/+page.ts" check
+export const ssr = false; // an editable editor is client-only
+```
+
+Turning SSR off renders the whole page in the browser. To keep the rest of the page server-rendered, mount the editor after hydration instead, as the [quick start](/docs/getting-started/quick-start#mount-it-in-a-page) does; [SvelteKit](/docs/getting-started/sveltekit) explains why.
 
 You should see one empty paragraph. Hover it to reveal its block handle (touch devices always show it). An empty document always starts with one block of the default type (`paragraph`). `<Edytor>` includes the rich text, image, arrow move and suggestions plugins by default, so this is already a working rich text editor.
 

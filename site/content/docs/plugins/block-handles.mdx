@@ -10,7 +10,7 @@ Block handles are the two buttons left of each block, as in Notion: a `+` that a
 
 The `blockHandles` prop of `<Edytor>` controls the plugin:
 
-```svelte
+```svelte title="Handles.svelte" check
 <script lang="ts">
 	import { Edytor, type BlockHandleActivation } from 'edytor';
 
@@ -88,7 +88,7 @@ A `handle` snippet replaces the `+` and the grip of every handle. The plugin kee
   }}
 />
 
-```svelte title="Editor.svelte"
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor, type BlockHandleSnippetPayload } from 'edytor';
 </script>
@@ -214,7 +214,7 @@ The handle claims every <kbd>Alt</kbd>+arrow while it has focus. A handle of a b
 
 The [block menu plugin](/docs/plugins/block-menu) is a complete Notion-style menu: list `blockMenuPlugin` and leave `onActivate` unset. When no `onActivate` is passed, a grip click dispatches a DOM event on the editor's root, which that plugin (or your own) listens for. A menu that takes the keyboard answers it with `event.preventDefault()`. Unanswered (no menu), the editor takes the focus, so the keys act on the selected block as in Notion: <kbd>Backspace</kbd> deletes it, <kbd>Shift</kbd>+arrows extend the selection, typing replaces it. (The grip keeps its <kbd>Alt</kbd>+arrow moves while it has focus, from <kbd>Tab</kbd>.)
 
-```ts
+```ts title="myMenuPlugin.ts" check
 import { BLOCK_ACTIVATE_EVENT, type BlockActivation, type Plugin } from 'edytor';
 
 export const myMenuPlugin: Plugin = () => ({
@@ -233,7 +233,7 @@ export const myMenuPlugin: Plugin = () => ({
 
 To build your own menu instead, pass `onActivate`. It gives you the block and the grip element; the click has already selected the block. A typical menu converts or moves the block with the editor's commands and then returns the caret to the text:
 
-```ts
+```ts title="onActivate.ts" check
 import type { BlockHandleActivation } from 'edytor';
 
 const onActivate = async ({ block, anchor }: BlockHandleActivation) => {
@@ -254,7 +254,7 @@ The same `edytor.moveBlocks` and `edytor.canMoveBlocks` calls move blocks from a
 
 A click leaves a block selection behind, and a DOM range alone does not replace it. To put the caret back in the block after a menu action, call `setAtTextOffset` once — it replaces the block selection and the projector draws it after the flush — then focus the editor. A kind whose own content is not displayed (a list container) takes the caret in its first child:
 
-```ts
+```ts title="caret.ts" check
 const text = block.firstText ?? block.children[0]?.firstText;
 if (text) {
 	edytor.selection.setAtTextOffset(text, 0);

@@ -1,10 +1,10 @@
 ---
 title: Code
-description: The code plugin adds code blocks made of editable lines, highlighted with TanStack Highlight, with tab, auto-pairing and copy.
+description: The code plugin adds code blocks made of editable lines, in a language picked in their header and highlighted with TanStack Highlight, with tab, auto-pairing and copy.
 icon: code
 ---
 
-`codePlugin` adds code blocks. A code block is an island that holds one `codeLine` child per line of code; each line is highlighted as JSX with TanStack Highlight (`@tanstack/highlight`, a dependency of `edytor`).
+`codePlugin` adds code blocks. A code block is an island that holds one `codeLine` child per line of code, in a language its header picks; each line is highlighted with TanStack Highlight (`@tanstack/highlight`, a dependency of `edytor`), whose grammars load the first time a line of their language renders.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -14,7 +14,34 @@ icon: code
 <Edytor plugins={[codePlugin]} />
 ```
 
-It takes no options. Importing it also imports its stylesheet, which gives code blocks Notion's look.
+`codePlugin` is `createCodePlugin()`. Importing it also imports its stylesheet, which gives code blocks Notion's look.
+
+<TypeTable
+  type={{
+    languages: {
+      type: "readonly CodeLanguage[]",
+      description: "The languages a code block may be in, in the picker's order.",
+      default: "CODE_LANGUAGES",
+    },
+    defaultLanguage: {
+      type: "string",
+      description: "The language of a code block whose data.language is unset.",
+      default: "'javascript'",
+    },
+  }}
+/>
+
+```ts check title="plugins.ts"
+import { createCodePlugin, CODE_LANGUAGES } from 'edytor';
+
+// Python by default, and only the languages this app writes.
+export const code = createCodePlugin({
+	defaultLanguage: 'python',
+	languages: CODE_LANGUAGES.filter((language) =>
+		['plaintext', 'python', 'sql', 'bash'].includes(language.id)
+	)
+});
+```
 
 ## What it adds
 
@@ -31,6 +58,7 @@ A stored code block looks like this:
 ```json
 {
 	"type": "code",
+	"data": { "language": "javascript" },
 	"children": [
 		{ "type": "codeLine", "content": [{ "text": "const idea = \"start somewhere\";" }] },
 		{ "type": "codeLine", "content": [{ "text": "console.log(idea);" }] }
@@ -38,15 +66,64 @@ A stored code block looks like this:
 }
 ```
 
+## Languages
+
+A code block's language is its `data.language`, an id from the plugin's `languages` (`code.language`). A block without one, as every code block stored before the picker was, is in the default language, JavaScript. The header names the language by its label (`code.language.label`): a language the plugin does not list shows its id as stored, and its lines are plain text.
+
+The header's picker, a native `<select data-edytor-code-language>` labeled "Code language", lists the languages by label and sets `data.language` (`code.language.picker`). A pick is one `patchData` command, so it is one undo step, refused in a readonly view, and seen by hooks; a collaborator's concurrent edits of the block's other data are kept. A readonly view and a suggestion's preview show the label only, as a `<span data-edytor-code-language>`.
+
+`CODE_LANGUAGES` holds the default list, after Notion's:
+
+| `id`         | Label      | Grammar                                    |
+| ------------ | ---------- | ------------------------------------------ |
+| `plaintext`  | Plain text | none: no tokens                            |
+| `bash`       | Bash       | `shell`                                    |
+| `cpp`        | C++        | `cpp`                                      |
+| `css`        | CSS        | `css`                                      |
+| `diff`       | Diff       | `diff`                                     |
+| `docker`     | Docker     | `dockerfile`                               |
+| `go`         | Go         | `go`                                       |
+| `html`       | HTML       | `html`, with `css`, `js` and `ts` for its style and script elements |
+| `javascript` | JavaScript | `jsx` (also covers plain JavaScript)       |
+| `json`       | JSON       | `json`                                     |
+| `markdown`   | Markdown   | `markdown`                                 |
+| `mermaid`    | Mermaid    | `mermaid`                                  |
+| `php`        | PHP        | `php`                                      |
+| `python`     | Python     | `python`                                   |
+| `sql`        | SQL        | `sql`                                      |
+| `svelte`     | Svelte     | `svelte`, with `css`, `js` and `ts`        |
+| `toml`       | TOML       | `toml`                                     |
+| `typescript` | TypeScript | `ts`                                       |
+| `vue`        | Vue        | `vue`, with `css`, `js` and `ts`           |
+| `xml`        | XML        | `html`                                     |
+| `yaml`       | YAML       | `yaml`                                     |
+
+A `CodeLanguage` is `{ id, label, grammar?, load? }`: `grammar` names the TanStack Highlight grammar its lines are tokenized with, and `load` resolves to that grammar and the ones it embeds. Add a language by passing your own row:
+
+```ts check title="languages.ts"
+import { createCodePlugin, CODE_LANGUAGES, type CodeLanguage } from 'edytor';
+
+const nginx: CodeLanguage = {
+	id: 'nginx',
+	label: 'Nginx',
+	grammar: 'nginx',
+	load: () => import('@tanstack/highlight/languages/nginx').then((m) => [m.nginx])
+};
+
+export const code = createCodePlugin({ languages: [...CODE_LANGUAGES, nginx] });
+```
+
 ## Highlighting
 
-Each `codeLine` declares a `transformText` that tokenizes its text with a highlighter built from `createHighlighter({ languages: [jsx] })`. Tokens become `codeToken` marks carrying the token's class name. For `const idea = "x";` the tokenizer answers a `keyword` token, plain text, a `string` token and plain text, rendered as:
+Grammars load lazily (`code.language.lazy`): JSX, the default language's, ships with the plugin; every other grammar is a chunk of its own, loaded the first time a line of its language renders. Until it lands, those lines show as plain text; then they render again, highlighted. A grammar is loaded once per page and shared by every editor. `loadCodeLanguage(language)` starts a load ahead of time and resolves once it is there (a failed load is tried again at the next render).
+
+Each `codeLine` declares a `transformText` that tokenizes its text with its code block's language. Tokens become `codeToken` marks carrying the token's class name. For `const idea = "x";` the tokenizer answers a `keyword` token, plain text, a `string` token and plain text, rendered as:
 
 ```html
 <span data-edytor-mark="codeToken"><span class="th-keyword">const</span></span> idea = <span data-edytor-mark="codeToken"><span class="th-string">"x"</span></span>;
 ```
 
-The tokens are decorations: they exist only in the rendered DOM, never in the document, so collaborators and the clipboard see plain text. The language is always JSX (which also covers JavaScript), and the header label reads "JavaScript".
+The tokens are decorations: they exist only in the rendered DOM, never in the document, so collaborators and the clipboard see plain text. Each line is tokenized on its own, so a construct spanning lines (a block comment) is highlighted line by line.
 
 The bundled stylesheet colors the `th-*` classes with Notion's light syntax theme:
 
@@ -90,13 +167,13 @@ A code block is an island: merges never cross its edge, and a block selection wa
 
 ## Styling
 
-The stylesheet draws the block like Notion's: a `#f7f6f3` panel rounded 10px, padded `34px 16px 32px 32px`, with the language at the top left and the Copy button at the top right. The code is set in an `SFMono-Regular`, Menlo, Consolas stack at 85%, with a tab size of 2. No utility classes are involved; everything goes through attributes and classes you can override:
+The stylesheet draws the block like Notion's: a `#f7f6f3` panel rounded 10px, padded `34px 16px 32px 32px`, with the language at the top left (the picker looks like a label until hovered) and the Copy button at the top right. The code is set in an `SFMono-Regular`, Menlo, Consolas stack at 85%, with a tab size of 2. No utility classes are involved; everything goes through attributes and classes you can override:
 
 | Selector                        | Element                                        |
 | ------------------------------- | ---------------------------------------------- |
 | `[data-edytor-type='code']`     | The block panel                                |
 | `[data-edytor-code-header]`     | The header, void chrome the caret never enters |
-| `[data-edytor-code-language]`   | The language label                             |
+| `[data-edytor-code-language]`   | The language picker (`select`), or its label (`span`) in a readonly view |
 | `[data-edytor-code-header] button` | The Copy button                             |
 | `pre.th-code`                   | The code area                                  |
 

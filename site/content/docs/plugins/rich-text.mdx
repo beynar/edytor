@@ -72,9 +72,25 @@ Values are sanitized when rendered and copied. A link `href` keeps only `http:`,
 
 Pasted HTML maps `b`, `i`, `u`, `strike` and `del` to their marks, reads Google Docs' styled spans for bold, italic, underline, strike, color and highlight, and turns `mark` into a yellow highlight.
 
-## Pasting a link
+## Links
 
-Pasting a URL over selected text links the text, as in Notion: when the selection is a text range where the [toolbar](/docs/plugins/toolbar) offers a link (not in a code block or on a void block) and the clipboard's plain text is one URL — `http:` or `https:` with a host, or `mailto:`, spaces around it ignored — the paste sets the `link` mark with that URL on the selected text (across several blocks too) instead of replacing it. The text stays selected, and one undo gives the plain text back. A copied page link pastes the same way, since its plain text is the URL. Anything else pastes as usual: words, several URLs, a bare domain such as `svelte.dev`, a scriptable URL, a paste at a caret, and <kbd>Shift</kbd>+paste.
+Links work as in Notion. Everything below applies where the [toolbar](/docs/plugins/toolbar) offers a link: a text selection or caret outside code blocks and void blocks. A URL here means one URL and nothing else: `http:` or `https:` with a host, or `mailto:`. Words, several URLs, a bare domain such as `svelte.dev` and a scriptable URL are not URLs.
+
+### Pasting a link
+
+**Over selected text**, pasting a URL (spaces around it ignored) sets the `link` mark with that URL on the selected text, across several blocks too, instead of replacing it. The text stays selected, and one undo gives the plain text back. A copied page link pastes the same way, since its plain text is the URL.
+
+**At a caret**, pasting a URL inserts it as a link, the caret after it (`link.autolink.pasted`). The paste and the link are two undo steps: the first undo gives the plain URL back, the second removes it. A caret inside a link or inline code pastes the URL as plain text.
+
+Anything else pastes as usual, and so does <kbd>Shift</kbd>+paste.
+
+### Autolink
+
+A URL typed before a space becomes a link when you type the space (`link.autolink.typed`): `see https://svelte.dev ` links `https://svelte.dev`. The URL is the word before the space; trailing `.`, `,`, `;`, `:`, `!` and `?` stay out of the link, so `https://svelte.dev.` links `https://svelte.dev`. The space and what you type after it are plain text. The link is an undo step of its own after your typing: one undo gives the plain text back, the space kept. A word that already carries a link or inline code is left as it is, and nothing is linked in a code block.
+
+### Opening a link
+
+Links are not followed by a plain click while you edit: a click places the caret. <kbd>Mod</kbd>+click opens the link in a new tab (`link.mod-click`; <kbd>Mod</kbd> is read as the keymap reads it: <kbd>Meta</kbd>, or <kbd>Ctrl</kbd> off a Mac). The tab opens with `noopener` and `noreferrer`, and an unsafe `href` opens nothing. The [toolbar](/docs/plugins/toolbar#link-card) adds a card with Open, Edit and Remove over a hovered link, and <kbd>Mod</kbd>+<kbd>K</kbd> to link a selection.
 
 ## Hotkeys
 
@@ -122,11 +138,13 @@ format.setMarkValueAtRange('highlight', '#fff3a3'); // set, never toggle
 format.removeMarkAtRange('highlight'); // remove one mark
 format.setLinkAtRange({ href: 'https://svelte.dev', target: '_blank' });
 format.removeLinkAtRange();
+format.linkText(text, 0, 4, 'https://svelte.dev'); // a range of one text, its own undo step
+format.unlinkText(text, 0, 4); // one undo step; the selection stays
 format.removeAllMarksAtRange();
 format.insertDividerAtSelection();
 ```
 
-`setLinkAtRange` ignores an unsafe `href`. `setMarkValueAtRange` ignores an unsafe color. `removeMarkAtRange` does nothing at a collapsed caret.
+`setLinkAtRange` and `linkText` ignore an unsafe `href`. `setMarkValueAtRange` ignores an unsafe color. `removeMarkAtRange` does nothing at a collapsed caret. `linkText` and `unlinkText` take a [`Text`](/docs/concepts/editor-instance#handles) and offsets within it, and leave the selection alone; autolink and the link card use them.
 
 ## Placeholders
 

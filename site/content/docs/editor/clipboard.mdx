@@ -49,7 +49,7 @@ A paste is handled by the first rule that applies:
 
 <kbd>Shift</kbd>+paste (<kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>) pastes the plain text only and skips rules 1 to 4, plugin hooks included. Plain text takes the marks at the caret.
 
-**Pasting a link over selected text links it**, as in Notion: with [rich text](/docs/plugins/rich-text#pasting-a-link) and a text range selected outside a code block, a paste whose plain text is one URL (`http:`, `https:` or `mailto:`) makes the selected text a link to it and keeps it selected, instead of replacing it. This is the rich text plugin's `onPaste` hook (rule 2). Text that is not one URL, a paste at a caret and <kbd>Shift</kbd>+paste paste as usual.
+**Pasting a link over selected text links it**, as in Notion: with [rich text](/docs/plugins/rich-text#pasting-a-link) and a text range selected outside a code block, a paste whose plain text is one URL (`http:`, `https:` or `mailto:`) makes the selected text a link to it and keeps it selected, instead of replacing it. At a caret, a URL is inserted as a link, and undo gives the plain URL back first. This is the rich text plugin's `onPaste` hook (rule 2). Text that is not one URL, a caret inside a link or inline code, and <kbd>Shift</kbd>+paste paste as usual.
 
 Paste is one undo step and is ignored in readonly mode. Dropping content from outside the editor follows the same rules.
 

@@ -21,7 +21,7 @@ icon: bold
 From left to right:
 
 1. **The kind button**, labeled with the block's kind ("Heading 2", "Text"…): the preset sharing the most data with the block, or drawn with the same tag (a stored `h5` heading, drawn as an `h3`, is "Heading 3"). It opens a "Turn into" panel listing the kinds that keep content, with ✓ on the current one. Picking one converts every block the selection touches, nested ones included, as one undo step, and keeps the selection; a list's items leave the list ([Containers](/docs/concepts/blocks#containers)). A closed toggle's hidden body is not touched, as in Notion; an open toggle's children are.
-2. **Link** opens a link panel: a URL field (`data-testid="toolbar-link-input"`) showing the selection's current link, with Apply and Remove. <kbd>Enter</kbd> in the field applies and closes the panel. Applying an empty field removes the link.
+2. **Link** opens a link panel: a URL field (`data-testid="toolbar-link-input"`) showing the selection's current link, with Apply and Remove. The field takes the focus when the panel opens. <kbd>Enter</kbd> in the field applies and closes the panel; <kbd>Escape</kbd> closes it. Both give the editor its focus back with the text still selected. Applying an empty field removes the link.
 3. **One button per mark** whose definition has `toolbar: { label, icon }`, in registration order. With the rich text plugin: bold, italic, underline, strike and code. A button toggles its mark over the selection, and shows pressed (`aria-pressed="true"`, in blue) when the mark covers the whole selection.
 4. **A ⌄** (Color) opens Notion's colors: ten text colors and ten background colors. A text color sets the `color` mark, a background the `highlight` mark, and Default removes that mark. The palette is exported as `TOOLBAR_COLORS` (`{ name, text, background }`).
 
@@ -63,6 +63,22 @@ The toolbar shows when all of these hold:
 
 It follows the selection as it changes, and repositions on scroll, resize and edits. Buttons keep the selection: clicking one does not move the caret, and the selection is restored after the format is applied. A press anywhere on the toolbar, its background included, never takes the editor's focus: typing after it goes on in the editor, replacing the selected text. Only its fields (the link panel's URL field) take focus.
 
+## Keyboard
+
+<kbd>Mod</kbd>+<kbd>K</kbd> opens the link panel, its field focused (`link.mod-k`, Notion): over the selected text, or, at a caret inside a link, over that whole link, which it selects first. At a caret outside any link, and wherever the toolbar does not show (a code block, a void, a readonly view), the key is not claimed.
+
+## Link card
+
+Hovering a link shows a card just below it (`link.card`, Notion), in the overlay with `data-edytor-link-card-host` (`z-index: 61`): the link's URL, then three buttons.
+
+| Button | `data-testid`      | Action                                                                                         |
+| ------ | ------------------ | ---------------------------------------------------------------------------------------------- |
+| Open   | `link-card-open`   | Opens the link in a new tab (`noopener`, `noreferrer`), as <kbd>Mod</kbd>+click does           |
+| Edit   | `link-card-edit`   | Selects the whole link and opens the link panel on it, its field focused                       |
+| Remove | `link-card-remove` | Removes the link from the whole link (the characters around it linked to the same URL), one undo step; the selection stays |
+
+The card stays while the pointer moves from the link onto it, and goes when the pointer leaves both. A press on it never takes the editor's focus. A readonly view shows no card. The card is `data-testid="link-card"`; pass `linkCard: false` to `createToolbarPlugin` to show none.
+
 A URL typed in the link panel goes through the same sanitization as every link: a `javascript:` or other unsafe scheme is ignored. Colors go through `setMarkValueAtRange` and `removeMarkAtRange` (see [Formatting from code](/docs/plugins/rich-text#formatting-from-code)).
 
 ## Placement and styling
@@ -80,6 +96,11 @@ Its markup and styles are built in, after Notion's. The bar has `data-edytor-too
     toolbar: {
       type: "Snippet<[ToolbarController]>",
       description: "Replaces the toolbar. Rendered while controller.isVisible, centered above the selection.",
+    },
+    linkCard: {
+      type: "boolean",
+      description: "Show the link card over a hovered link (Open, Edit, Remove).",
+      default: "true",
     },
   }}
 />
@@ -100,7 +121,11 @@ The snippet receives the `ToolbarController`. Every action keeps and restores th
     "applyLink()": { type: "() => void", description: "Link the selection to linkUrl; an empty URL removes the link." },
     "removeLink()": { type: "() => void", description: "Remove the link from the selection." },
     panel: { type: "'turn' | 'link' | 'color' | null", description: "The open panel, for your own panels." },
-    "togglePanel(panel)": { type: "(panel: 'turn' | 'link' | 'color') => void", description: "Open a panel, or close it when it is open." },
+    "togglePanel(panel)": { type: "(panel: 'turn' | 'link' | 'color') => void", description: "Open a panel, or close it when it is open. Opening the link panel focuses its field." },
+    "openLinkPanel()": { type: "() => boolean", description: "What Mod+K does: open the link panel over the selection, or over the link at the caret (selected first). Answers whether it opened." },
+    "closePanel(focus?)": { type: "(focus?: boolean) => void", description: "Close the open panel; with focus, give the editor its focus and the held selection back." },
+    "takeFieldFocus()": { type: "() => boolean", description: "Whether your link field, mounting now, should take the focus (true once per opening)." },
+    hovered: { type: "HTMLAnchorElement | null", description: "The link under the pointer, for the link card." },
   }}
 />
 

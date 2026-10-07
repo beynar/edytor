@@ -1,15 +1,19 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload, PlaceholderView } from '$lib/plugins.js';
 	import type { Block } from '$lib/block/block.svelte.js';
+	import type { Text } from '$lib/text/text.svelte.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
 	import type { HotKey } from '$lib/session/keymap.js';
 	import {
+		openLink,
 		pastedLink,
 		richTextOperations,
 		sanitizeLinkHref,
 		sanitizeCssColorValue,
+		typedLink,
 		type RichTextMark
 	} from './richTextOperations.js';
+	import { marksForInsertion } from '$lib/session/editing/text.js';
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
 	import { richTextKinds, richTextMarks } from '$lib/crdt/semantics.js';
@@ -108,6 +112,27 @@
 
 	export const richTextPlugin: Plugin = (edytor) => {
 		const operations = richTextOperations(edytor);
+		/** The space an autolink types itself: its own insertion is not looked at again. */
+		let autolinking = false;
+		/**
+		 * Where a link may be written at the caret: a text selection outside code
+		 * blocks and voids (where the toolbar offers one), with the `link` mark
+		 * defined. A caret whose next character would carry a link or inline code
+		 * (typing inside either) links nothing new.
+		 */
+		const linkable = () => {
+			const { value, projection } = edytor.selection;
+			return (
+				value.kind === 'text' &&
+				projection.islandRoot === null &&
+				projection.voidRoot === null &&
+				edytor.marks.has('link')
+			);
+		};
+		const plainAt = (text: Text, offset: number) => {
+			const marks = marksForInsertion(text, offset, { pending: edytor.selection.pending });
+			return !marks.link && !marks.code;
+		};
 		const setMarkAndSelect =
 			(mark: RichTextMark, value?: SerializableContent): HotKey =>
 			({ prevent }) =>
@@ -142,18 +167,72 @@
 					])
 				)
 			},
-			// Pasting a link over selected text links it (Notion), where the toolbar
-			// offers a link: a text range outside code blocks and voids.
+			// Pasting a link (Notion), where the toolbar offers one: a text range
+			// outside code blocks and voids. Over selected text it links the text;
+			// at a caret it inserts the URL, then links it as a step of its own, so
+			// undo gives the plain URL back (`link.autolink.pasted`).
 			onPaste: ({ e, prevent }) => {
-				const { selection } = edytor;
-				const { value, projection } = selection;
-				if (value.kind !== 'text' || selection.state.isCollapsed) return;
-				if (projection.islandRoot !== null || projection.voidRoot !== null) return;
+				if (!linkable()) return;
 				const href = pastedLink(e.clipboardData?.getData('text/plain'));
-				if (href)
-					prevent(() =>
+				if (!href) return;
+				const { isCollapsed, startText: text, yStart } = edytor.selection.state;
+				if (!isCollapsed)
+					return prevent(() =>
 						edytor.dispatcher.run('insertFromPaste', () => operations.setLinkAtRange({ href }))
 					);
+				if (!text || !plainAt(text, yStart)) return;
+				prevent(() => {
+					const end = yStart + href.length;
+					edytor.dispatcher.run('insertFromPaste', () => {
+						text.insertText({ value: href, start: yStart, end: yStart });
+						edytor.dispatcher.caret(text, end);
+					});
+					if (text.stringContent.slice(yStart, end) === href)
+						operations.linkText(text, yStart, end, href);
+				});
+			},
+			// A URL typed before a space becomes a link when the space is typed, as
+			// a step of its own after the typing: undo gives the plain text back
+			// (`link.autolink.typed`, Notion).
+			onBeforeOperation: (change) => {
+				if (autolinking || change.operation !== 'insertText') return;
+				const { payload, text, prevent } = change;
+				if (payload.value !== ' ' || !linkable()) return;
+				const { startText, yStart, isCollapsed } = edytor.selection.state;
+				if (!isCollapsed || text !== startText || (payload.start ?? yStart) !== yStart) return;
+				const found = typedLink(text.stringContent.slice(0, yStart));
+				const end = found && found.start + found.href.length;
+				if (!found || !end) return;
+				const marked = text
+					.getMarksAtRange(found.start, end)
+					.some(({ marks }) => marks && ('link' in marks || 'code' in marks));
+				if (marked) return;
+				prevent(() => {
+					autolinking = true;
+					try {
+						text.insertText(payload);
+					} finally {
+						autolinking = false;
+					}
+					edytor.dispatcher.caret(text, yStart + 1);
+					operations.linkText(text, found.start, end, found.href);
+				});
+			},
+			// Mod+click on a link opens it in a new tab (`link.mod-click`): a plain
+			// click places the caret, as in Notion. Mod is read as the keymap reads
+			// it: Meta, or Ctrl off a Mac.
+			onEdytorAttached: ({ node }) => {
+				const click = (event: MouseEvent) => {
+					if (!event.metaKey && !(event.ctrlKey && !edytor.hotKeys.isMac)) return;
+					const target = event.target instanceof Element ? event.target : null;
+					const anchor = target?.closest('a[href][data-edytor-mark]');
+					const href = anchor && node.contains(anchor) && anchor.getAttribute('href');
+					if (!href) return;
+					event.preventDefault();
+					openLink(href, node.ownerDocument.defaultView);
+				};
+				node.addEventListener('click', click);
+				return () => node.removeEventListener('click', click);
 			},
 			onBeforeInput: ({ e, prevent }) => {
 				const { inputType, data } = e;

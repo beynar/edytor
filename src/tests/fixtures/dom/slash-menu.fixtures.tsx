@@ -117,13 +117,15 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ editor }) => {
-			await typeText(editor, 'see http://x.com/zzqq and more');
+			// In parentheses: a bare URL typed before a space would become a link
+			// (`link.autolink.typed`), which this row is not about.
+			await typeText(editor, 'see (http://x.com/zzqq) and more');
 			return dispatchDomKeyDown(document, { key: 'ArrowUp', code: 'ArrowUp' });
 		},
 		output: (
 			<root>
 				<paragraph>first</paragraph>
-				<paragraph>see http://x.com/zzqq and more</paragraph>
+				<paragraph>see (http://x.com/zzqq) and more</paragraph>
 			</root>
 		),
 		assert: async ({ queryByTestId, result }) => {

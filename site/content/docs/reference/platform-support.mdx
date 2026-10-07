@@ -1,0 +1,72 @@
+---
+title: Platform support
+description: The browsers, versions, devices and runtimes Edytor is tested on, the oldest versions its code can run on, and where mobile keyboards and IME input stand.
+icon: monitor-smartphone
+---
+
+Edytor claims support for what its test lanes run, and nothing more. This page lists those lanes, the oldest browsers the shipped code can run on, and what is not tested yet: real phones and their keyboards above all.
+
+## Browsers
+
+Every behavior test of the editor runs in the three browser engines, through Playwright 1.59 and the browsers it installs:
+
+| Engine | Browsers it covers | Tested on | Status |
+| --- | --- | --- | --- |
+| Chromium | Chrome, Edge, Brave, Opera, Arc, Chrome on Android | Chrome for Testing 147 (`Desktop Chrome`); the same engine under `Pixel 5` emulation; the DevTools IME lane | Supported |
+| Gecko | Firefox | Firefox 148 (`Desktop Firefox`) | Supported |
+| WebKit | Safari on macOS; every browser on iOS and iPadOS | WebKit 26.4 (`Desktop Safari`); the same engine under `iPhone 13` emulation | Supported on desktop; see [Mobile](#mobile-and-touch) |
+
+The collaboration lane also runs real browsers of the three engines against the [room](/docs/server/room) in a local Workers runtime, and the editor-input corpus (randomized typing, deleting, pasting and undo, checked against the document model) runs solo in the three engines and collaborative in Chromium.
+
+The desktop lanes are what "supported" means: selection, typing, deletion, paste, drag and drop, block handles, menus, columns and undo behave the same in the three engines, except where a page names an engine difference (native <kbd>↑</kbd>/<kbd>↓</kbd> across [columns](/docs/plugins/columns#keys), for one).
+
+### Oldest versions
+
+The package ships modern JavaScript and CSS, with no polyfills. Its code uses `Array.prototype.toSorted` and `toReversed`, `color-mix()` and container queries, so it needs at least:
+
+| Browser | Oldest version |
+| --- | --- |
+| Chrome, Edge | 111 |
+| Firefox | 115 (the 115 ESR) |
+| Safari, iOS | 16.2 |
+
+These are floors, not tested versions: between them and the versions in the table above, the editor is expected to work but no lane runs it. The [Notion theme](/docs/customization/styling#notion-theme) also uses `:has()`, which Firefox supports from 121; an older Firefox draws headings without the theme's heading spacing. Features the browser may lack are detected rather than required: the local copy needs IndexedDB, and compressed snapshots need `CompressionStream` (without it they are stored uncompressed).
+
+## Mobile and touch
+
+The mobile lanes run the Chromium engine as a `Pixel 5` and the WebKit engine as an `iPhone 13`: a phone viewport, a touch-capable user agent, and the `beforeinput` and composition event sequences Android and iOS keyboards send, replayed by the tests. They cover typing, deleting, line breaks, paste and composing words when the keyboard's events cannot be canceled, the caret after a delete, inline atoms and images next to those edits, undo, and a columns layout stacked on a narrow screen.
+
+They are emulation, not phones. Not tested on devices:
+
+- Android keyboards (Gboard, Samsung Keyboard, SwiftKey): word suggestions, autocorrect, swipe typing, voice input and the keyboard's own cursor control.
+- The iOS and iPadOS keyboards: autocorrect, predictive text, dictation and the text selection handles.
+- Long-press gestures on block handles, and drag and drop with a finger.
+
+The editor carries two rules for behavior seen on real devices (the caret Android's keyboard moves back after a delete, and the jump some IMEs make after a commit), and each is tested by replaying its event sequence. Expect rough edges on real phones: report them with the device, the OS, the browser and the keyboard, and the document's JSON.
+
+## IME input
+
+An IME composition (Japanese, Chinese, Korean and other languages typed through an input method) is one session from its start to its commit, written as one undo step; see [History](/docs/editor/history#what-one-step-contains).
+
+| Engine | How it is tested |
+| --- | --- |
+| Chromium | The DevTools IME path, which drives Chrome's own composition handling as an operating-system IME does: compose, update, commit and cancel, across blocks and inline atoms, over a block selection, and with a collaborator editing the same block. |
+| Firefox, WebKit | Composition event sequences dispatched by the tests, the same scenarios. |
+
+A real operating-system IME (macOS Kotoeri, Microsoft IME, Pinyin, Korean 2-set, an Android or iOS keyboard) is not driven by any lane; Chromium's DevTools path is the closest stand-in.
+
+## Accessibility
+
+No screen-reader or keyboard-only audit has been made yet. The editor is a `contenteditable` region with ARIA attributes for the read-only state; menus and handles are keyboard-operable, but their roles and announcements have not been checked with assistive technology.
+
+## Runtimes
+
+| Runtime | Version | Tested by |
+| --- | --- | --- |
+| Svelte | `^5.0.0` (peer dependency) | Svelte 5.55, the version the repository builds with. Earlier Svelte 5 releases are not tested. Svelte 4 is not supported. |
+| SvelteKit, Vite | Any setup that compiles the package's `.svelte` files | SvelteKit 2.55 and Vite 8; a packed-tarball consumer builds, server-renders and mounts the editor. See [SvelteKit](/docs/getting-started/sveltekit). |
+| TypeScript | 5.9 | The packed consumer type-checks in strict mode, and every complete example in these docs is type-checked. |
+| Node.js | Node.js 22 or later (`engines`) | `edytor/crdt/edytor` (headless documents) and the packed consumer's smoke test run there. |
+| Cloudflare Workers | Durable Objects with SQLite storage, compatibility date `2026-09-26` | `edytor/cloudflare` runs in `workerd` (storage, hibernation, identity, acknowledgements, chunking) and, bundled from the packed tarball, in Miniflare. See the [server quick start](/docs/server/quick-start). |
+
+Other JavaScript runtimes (Deno, Bun, other serverless platforms) can import `edytor/crdt/edytor`, which has no Svelte and no browser globals in its import graph, but no lane runs them. The room itself needs a Durable Object; for another platform, see [Protocol](/docs/server/protocol).

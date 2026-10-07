@@ -4,7 +4,7 @@ description: Build a working Edytor editor with the bundled plugins, an initial 
 icon: zap
 ---
 
-This page builds a complete Notion-style editor: rich text blocks and marks, images, code blocks, markdown shortcuts, a slash menu, a selection toolbar, block handles with a block menu, and the Notion theme. It then reads the document as it changes and styles the result.
+This page builds a complete Notion-style editor: rich text blocks and marks, images, code blocks, markdown shortcuts, a slash menu, a selection toolbar, block handles with a block menu, and the Notion theme. It mounts it in a SvelteKit page, reads the document as it changes and styles the result.
 
 <Steps>
   <Step title="Pick the plugins">
@@ -12,6 +12,9 @@ This page builds a complete Notion-style editor: rich text blocks and marks, ima
   </Step>
   <Step title="Give it a document">
     Pass the initial content as `value`, a JSON tree of blocks.
+  </Step>
+  <Step title="Mount it in the browser">
+    Render the editable editor after the page has hydrated, so the server never renders it.
   </Step>
   <Step title="Read the changes">
     Use `onChange`, or bind the editor instance with `bind:edytor` and read `edytor.value`.
@@ -87,6 +90,33 @@ What each plugin adds:
 Plugin order matters: when two plugins define the same block kind, mark or command, the first one wins. Rich text is added after your plugins so they can override it; `defaultPlugins={false}` turns the defaults off. See [Plugins](/docs/plugins#default-plugins).
 
 The slash menu, the toolbar, the block menu and the block handles each take a snippet to render your own markup while keeping their behavior. See [Menus and handles](/docs/customization/menus).
+
+## Mount it in a page
+
+An editable editor is client-only: mount it once the page has hydrated. The page shell around it still renders on the server.
+
+```svelte title="src/routes/+page.svelte" check
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import Editor from '$lib/Editor.svelte';
+
+	let mounted = $state(false);
+	onMount(() => {
+		mounted = true;
+	});
+</script>
+
+<main>
+	<h1>Notes</h1>
+	{#if mounted}
+		<Editor />
+	{/if}
+</main>
+```
+
+:::note[Editable editors are client-only]
+An editable editor's content and selection belong to the browser: with a room, the latest state is in IndexedDB or on the server, not in your server render. Server-rendering an editable `<Edytor>` is not tested and not supported; mount it after hydration as above, or turn SSR off for the route (`export const ssr = false;` in its `+page.ts`). To server-render a document, use a `readonly` view. See [SvelteKit](/docs/getting-started/sveltekit#editable-editors-mount-after-hydration).
+:::
 
 ## Read the document
 

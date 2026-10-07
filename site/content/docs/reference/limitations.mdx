@@ -4,13 +4,13 @@ description: What edytor does not provide, what is not finished, and the known e
 icon: triangle-alert
 ---
 
-Edytor's collaboration stack is proven by its test suites across Chromium, Firefox and WebKit, but it has no production track record yet. This page lists what is out of scope, what is not built, and the edge cases you may meet.
+Edytor's collaboration stack is proven by its test suites across Chromium, Firefox and WebKit, but it has no production track record yet. This page lists what is out of scope, what is not built, and the edge cases you may meet; [Platform support](/docs/reference/platform-support) lists the browsers, devices and input methods the suites run, and what they do not (real phones, operating-system IMEs).
 
 ## Not provided
 
 - **No hosted infrastructure.** Edytor ships the [Durable Object room](/docs/server/quick-start); you deploy and operate it on your own Cloudflare account. There is no edytor cloud.
 - **No authentication or permission rules.** No accounts, sessions, sharing model or roles. The room calls your [`authorize`](/docs/server/authorization) and enforces what it returns (user, replica, read-only), nothing more.
-- **No backups or document management.** The room stores one document in its Durable Object's SQLite storage. Listing, exporting, backing up and deleting documents are up to your application (`document.encode()` and `facade.toJSON()` give you the content). The room's [version history](/docs/server/history) keeps two versions a day for 30 days, in your KV namespace: it is not a backup of the namespace itself.
+- **No backups or document management.** The room stores one document in its Durable Object's SQLite storage. Listing, exporting, backing up and deleting documents are up to your application (`document.encode()` and `facade.toJSON()` give you the content). The room's [version history](/docs/server/history) keeps two versions a day for 30 days, in the store you choose (KV, R2, the room's own storage or one of your own): it is not a backup. Versions kept in the room's own storage go with its Durable Object, and a version larger than its store's value limit is skipped.
 - **IndexedDB is not durability.** The local copy lives in the browser and can be cleared by the user or the browser. Durable storage is the room's.
 
 ## Not finished
@@ -62,7 +62,7 @@ The WebSocket's bound starts when the socket opens (or first fails to), so a roo
 - Deleted content stays in the document so undo and offline peers keep working: a withdrawn block keeps its node (about 100 bytes), and each text delete adds about 12 bytes to the stored document. Compacting the room's rows stores the live document, which drops deleted text no one can restore, but keeps what undo and offline peers may still need.
 - With `lineage` enabled, history entries trimmed from a block's ring leave small tombstones in storage.
 - Deleted content is purged after 30 days ([`purgeAfterDays`](/docs/server/history#the-purge)). A purged block leaves its id behind (about 5 bytes stored, compressed). A deleted block a visible one still depends on keeps its bare structure (its id, kind, place and delete marks, about 25 bytes stored, compressed): a line split from a paragraph that is still there (Enter makes most lines so) shares that paragraph's text, and a block moved into a deleted one shows in its place. Its text and properties are purged all the same.
-- A [version](/docs/server/history) over KV's 25 MiB value limit is skipped, not split; versions are two a day, and only one restore can be undone, until the next restore or the purge horizon.
+- A [version](/docs/server/history) over its store's value limit (KV's 25 MiB, R2's 128 MiB, the room's own 32 MiB) is skipped, not split; versions are two a day, and only one restore can be undone, until the next restore or the purge horizon.
 
 ## History and purge
 

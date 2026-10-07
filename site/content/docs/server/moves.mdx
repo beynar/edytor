@@ -90,4 +90,4 @@ The source watches moved blocks for a **grace period**: the [purge horizon](/doc
 
 ## Log
 
-Each move logs `{ "edytor": "move", "moveId", "role": "out" | "in", "peer", "blocks" }` in both rooms, and each batch of late edits `{ "edytor": "late", "moveId", "seq", "edits", "structural", "forwarded" }` at the source. The moves live in two tables beside the document's, `moves` and `late` (`edytor_moves`, `edytor_late` with `attachDocument`).
+Each move logs `{ "edytor": "move", "moveId", "role": "out" | "in", "peer", "blocks" }` in both rooms, and each batch of late edits `{ "edytor": "late", "moveId", "seq", "edits", "structural", "forwarded" }` at the source. The moves live in two tables beside the document's, `moves` and `late` (`edytor_moves`, `edytor_late` with `attachDocument`), and late edits are forwarded by the room's `forward` alarm task; see [Room internals](/docs/server/internals).

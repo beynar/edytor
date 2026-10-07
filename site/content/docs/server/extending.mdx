@@ -40,9 +40,9 @@ This `attachDocument` comes from `edytor/cloudflare` and hosts a document in a D
 
 ## What `attachDocument(this, options)` does
 
-- **Storage.** The document lives in the object's SQLite storage, in tables named `edytor_rows`, `edytor_replicas` and `edytor_meta` (with `edytor_epochs`, `edytor_editors` and `edytor_restore` for the [history and the purge](/docs/server/history#storage), `edytor_history` for a [history in the room](/docs/server/history#the-rooms-own-storage), and `edytor_moves` and `edytor_late` for [moves](/docs/server/moves)), beside your own tables. Every edit is stored there before it is acknowledged, whatever your hooks do. `tablePrefix` changes the prefix.
+- **Storage.** The document lives in the object's SQLite storage, in tables named `edytor_rows`, `edytor_replicas` and `edytor_meta` (with `edytor_epochs`, `edytor_editors` and `edytor_restore` for the [history and the purge](/docs/server/history#storage), `edytor_history` for a [history in the room](/docs/server/history#the-rooms-own-storage), and `edytor_moves` and `edytor_late` for [moves](/docs/server/moves); [Room internals](/docs/server/internals#storage-tables) says what each holds), beside your own tables. Every edit is stored there before it is acknowledged, whatever your hooks do. `tablePrefix` changes the prefix.
 - **Sockets.** The document's sockets carry the tag `edytor` (`SOCKET_TAG`). Other sockets of the object are yours.
-- **Handlers.** Each handler your class does not define is installed on the object: `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and `alarm`, which runs `onSave`, the [history](/docs/server/history) and the [purge](/docs/server/history#the-purge) (not installed only when none applies: no `onSave`, no `history`, `purgeAfterDays: false`).
+- **Handlers.** Each handler your class does not define is installed on the object: `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and `alarm`, which runs the room's [alarm tasks](/docs/server/internals#alarm-tasks): `onSave`, the [history](/docs/server/history), the [purge](/docs/server/history#the-purge) and the forwarding of [moves](/docs/server/moves)' late edits (not installed only when none applies: no `onSave`, no `history`, `purgeAfterDays: false`).
 - **Return value.** An `AttachedDocument` with the same handlers, plus the methods `transact`, `read`, `compact`, `compressed`, `metrics`, `lastUpdated`, `dropWaitingDeletes`, `reset`, `records`, `owns(ws)`, the [history](/docs/server/history#list-preview-restore)'s `listHistory`, `readHistory`, `restoreHistory`, `undoRestore` and `historyWritten`, `purge` (the [purge](/docs/server/history#the-purge) task, now), and the [moves](/docs/server/moves)' `exportBlocks`, `importBlocks`, `commitMove`, `abortMove`, `lateEdits`, `ackLateEdits` and `applyLateEdits`, and the fields `facade`, `doc`, `failure`, `refusals`, `refusalCounts`, `presence` and `origin` (see [the room](/docs/server/room#diagnostics)).
 - **RPC.** Durable Object RPC reaches only your class's own methods, not the returned document's. Forward the ones you call from a Worker or an admin route, for example `dropWaitingDeletes() { return this.document.dropWaitingDeletes(); }`.
 
@@ -73,7 +73,7 @@ export class Workspace extends DurableObject<Env> {
 }
 ```
 
-A Durable Object has one alarm, which the document shares among its tasks: `onSave` (`saveAfter` ms after an unsaved edit), the [history](/docs/server/history)'s half-day slots and the [purge](/docs/server/history#the-purge)'s daily tick. It stores each task's due time and sets the alarm to the earliest, which replaces a time you set earlier. A task already due keeps its time, so frequent edits or wakes never push `onSave` back. If your class also uses alarms, re-arm your own schedule from `alarm()`, and call `document.alarm()` from it.
+A Durable Object has one alarm, which the document shares among its five tasks: `onSave` (`saveAfter` ms after an unsaved edit), the [history](/docs/server/history)'s half-day slots and its retention, the [purge](/docs/server/history#the-purge)'s daily tick and the forwarding of [moves](/docs/server/moves)' late edits ([Room internals](/docs/server/internals#alarm-tasks) has when each is due). It stores each task's due time and sets the alarm to the earliest, which replaces a time you set earlier. A task already due keeps its time, so frequent edits or wakes never push `onSave` back. If your class also uses alarms, re-arm your own schedule from `alarm()`, and call `document.alarm()` from it.
 
 ## Options
 
@@ -88,7 +88,7 @@ A Durable Object has one alarm, which the document shares among its tasks: `onSa
 | `maxDocumentBytes` | 64 MiB | The document [quota](/docs/server/room#quotas). |
 | `maxUpdatesPerSecond` | `50` | Sync messages per second and socket ([quota](/docs/server/room#quotas)). |
 | `maxInboundFrameBytes` | 64 MiB | Largest frame a socket may send, reassembled ([quota](/docs/server/room#quotas)). |
-| `tablePrefix` | `'edytor_'` | Prefix of the document's two tables. |
+| `tablePrefix` | `'edytor_'` | Prefix of the room's [tables](/docs/server/internals#storage-tables). |
 | `semantics` | `defaultSemantics` | The block roles server edits obey. See [Block roles on the server](#block-roles-on-the-server). |
 | `validate` | | Asked after each client frame that changed blocks; `false` makes the room undo it. See [Validate edits](#validate-edits). |
 | `log` | `console.log` of JSON | Receives the room's [log entries](/docs/server/room#metrics-and-log); `false` logs nothing. |

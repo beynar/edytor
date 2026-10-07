@@ -131,6 +131,12 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### Unreleased
+
+- **Mount editable editors in the browser.** The [quick start](/docs/getting-started/quick-start#mount-it-in-a-page) and [installation](/docs/getting-started#verify-the-install) pages now mount the editable editor after hydration, or turn SSR off for the route, as [SvelteKit](/docs/getting-started/sveltekit#editable-editors-mount-after-hydration) always advised: server-rendering an editable `<Edytor>` is not tested. If you copied the earlier quick start into a server-rendered route, wrap the editor in the `onMount` guard. Nothing in the package changed.
+- **New pages.** [Platform support](/docs/reference/platform-support) lists the browsers, versions, devices and runtimes the lanes run, the oldest browsers the code needs (Chrome and Edge 111, Firefox 115, Safari 16.2) and the status of real phones and IMEs. [Room internals](/docs/server/internals) lists the room's five alarm tasks (`forward` included, which the history page left out) and every storage table.
+- **Corrections.** The version history is kept in the store you choose (KV, R2, the room's own storage or yours), not only KV, as the limitations and room pages said; `tablePrefix` prefixes every room table, not two.
+
 ### From 0.1.0-next.31
 
 - **Security fix: links.** A link whose `href` started with an ASCII control character or a space before `javascript:` (for example `\u0001javascript:…`) passed `sanitizeLinkHref` as a relative link, and browsers, which strip those characters, would run it when clicked. The sanitizer now reads an `href` as the browser's URL parser does: it strips control characters and spaces at both ends and tabs and newlines anywhere, resolves it, and keeps it only when its scheme is `http:`, `https:`, `mailto:` or `tel:` (a relative link resolves to none of its own). Links already stored with such an `href` render without one. Upgrade.

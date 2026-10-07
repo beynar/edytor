@@ -7,8 +7,10 @@
  *
  * - `ci.yml` runs on every push and pull request: the static checks and the
  *   unit, crdt, dom and room lanes always, Playwright Chromium sharded on a
- *   pull request (and when a caller asks, `browsers`); its `CI passed` job
- *   needs every other job and is the one check branch protection requires.
+ *   pull request (and when a caller or a manual run asks, `browsers`); its
+ *   gate job needs every other job, and only the pull request run's is
+ *   named `CI passed`, the one check branch protection requires (a push run
+ *   on the same commit skips Chromium, so it must never report that name).
  * - `nightly.yml` runs Firefox, WebKit, the two mobile projects, CDP and DST.
  * - `publish.yml` publishes only after `ci.yml` passed on the tagged commit,
  *   and only its publish job may mint an OIDC token.
@@ -66,11 +68,28 @@ const EVERY_PUSH = [
 ];
 
 describe('ci.yml — the gate on every push and pull request (D9)', () => {
+	const on = ci.slice(ci.indexOf('\non:\n'), ci.indexOf('\njobs:\n'));
+	/** The block of one trigger under `on:` (four-space keys below it). */
+	const trigger = (event: string) => {
+		const start = on.search(new RegExp(`^ {2}${event}:`, 'm'));
+		if (start < 0) return null;
+		const rest = on.slice(start).split('\n');
+		const end = rest.findIndex((line, i) => i > 0 && /^ {0,2}\S/.test(line));
+		return rest.slice(0, end < 0 ? undefined : end).join('\n');
+	};
+
 	it('runs on push and pull_request, and can be called (publish.yml)', () => {
-		const on = ci.slice(ci.indexOf('\non:\n'), ci.indexOf('\njobs:\n'));
-		expect(on).toMatch(/^ {2}push:/m);
-		expect(on).toMatch(/^ {2}pull_request:/m);
-		expect(on).toMatch(/^ {2}workflow_call:/m);
+		expect(trigger('push')).not.toBeNull();
+		expect(trigger('pull_request')).not.toBeNull();
+		expect(trigger('workflow_call')).not.toBeNull();
+	});
+
+	it('declares the browsers input for every trigger that can ask for Chromium', () => {
+		for (const event of ['workflow_call', 'workflow_dispatch']) {
+			const block = trigger(event);
+			if (block === null) continue;
+			expect(block, event).toMatch(/^ {6}browsers:\n(?: {8}.*\n)*? {8}type: boolean$/m);
+		}
 	});
 
 	it('runs every static check and gate lane unconditionally', () => {
@@ -94,7 +113,7 @@ describe('ci.yml — the gate on every push and pull request (D9)', () => {
 
 	it("'CI passed' needs every other job and fails unless each succeeded or was skipped", () => {
 		const all = jobs(ci);
-		const [name, job] = [...all].find(([, job]) => /^ {4}name: CI passed$/m.test(job))!;
+		const [name, job] = [...all].find(([, job]) => /^ {4}name: .*CI passed/m.test(job))!;
 		expect(job).toMatch(/^ {4}if: always\(\)$/m);
 		const needs = /^ {4}needs: \[([^\]]*)\]$/m
 			.exec(job)![1]!
@@ -102,6 +121,22 @@ describe('ci.yml — the gate on every push and pull request (D9)', () => {
 			.map((s) => s.trim());
 		expect(needs.sort()).toEqual([...all.keys()].filter((k) => k !== name).sort());
 		expect(job).toContain('success | skipped) ;;');
+	});
+
+	it("only the pull request run reports 'CI passed' (a push run skips Chromium)", () => {
+		const gate = [...jobs(ci).values()].find((job) => /^ {4}name: .*CI passed/m.test(job))!;
+		// Evaluated per event: `CI passed` for a pull request, `CI passed (<event>)` otherwise.
+		expect(gate).toMatch(
+			/^ {4}name: \$\{\{ github\.event_name == 'pull_request' && 'CI passed' \|\| format\('CI passed \(\{0\}\)', github\.event_name\) \}\}$/m
+		);
+		// No other job of any workflow takes the required name.
+		for (const [file, workflow] of [
+			['ci.yml', ci],
+			['nightly.yml', nightly],
+			['publish.yml', publish]
+		] as const)
+			for (const [id, job] of jobs(workflow))
+				if (job !== gate) expect(job, `${file} ${id}`).not.toMatch(/^ {4}name: .*CI passed/m);
 	});
 
 	it('CONTRIBUTING.md names the check to require and every lane CI runs', () => {

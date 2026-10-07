@@ -13,6 +13,12 @@
  * document or its history: five times the blocks (or five hundred times the
  * history) cost the same counts. The timings these rows asserted before are
  * `bench:crdt`'s `scale` workload (`pnpm bench:scale`).
+ *
+ * Not covered here: these counters see only the index. The timings also
+ * covered remote admission (`applyRemote`'s checks), the engine's
+ * integration, the undo manager's cost, construction and encode/load; their
+ * scaling is now checked only by `pnpm bench:scale`, which reports and fails
+ * nothing (a follow-up in docs/production-readiness-plan-2026-10.md, WU-09).
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

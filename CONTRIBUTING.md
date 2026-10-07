@@ -89,14 +89,20 @@ Counts are the same on a laptop and on a loaded shared runner.
 
 Absolute timings belong to the benches: `pnpm bench:scale` measures the operations those rows
 count (and lists any timing past the bound the rows held before), and `pnpm bench:crdt` stores it
-with the rest under `bench/results/`. A browser row may measure a time and report it as a test
+with the rest under `bench/results/`. The counts see only the index's work. Remote admission
+(`applyRemote`'s checks), the engine's integration, the undo manager, document construction and
+encode/load are not counted by any gate row: their scaling with the document or its history is
+checked only by `pnpm bench:scale`, which reports and fails nothing (a follow-up in the
+production plan, WU-09). A browser row may measure a time and report it as a test
 annotation (`tests/editor-dom/r3-ops.spec.ts`), never assert it.
 
 A row waits for the fact it needs, never for a delay or a count that only usually holds: in the
 room lane `vi.waitFor` defaults to 10 s (`tests/do/setup.ts`), a seeded `RawClient` waits for
 `stored()` (the room acknowledges a client's Step1 before it stored anything of it), and a
 "never relayed" row counts `syncFrames()`; a Playwright row waits until the model holds the caret
-its click placed before it presses a key.
+its click placed before it presses a key (a known residual, `sel.key.before-adoption` in
+`docs/editor-delete-contract.md`: a key handled at keydown before the click's `selectionchange`
+acts on the caret before it).
 
 Never add `performance.now()` with `toBeLessThan` to a gate lane, nor a retry to hide a flake
 (`src/tests/ci-gates.test.ts` fails on either, and keeps the workflows and this page in step). A
@@ -123,12 +129,18 @@ and behaviour changes update the page that documents them in `site/content/docs`
 
 ## CI and branch protection
 
-`ci.yml` runs on every push and pull request. Its last job, **`CI passed`**, needs every lane and
-fails when one failed or was cancelled (the Chromium lane is skipped on a plain push). It is the
-one check to require.
+`ci.yml` runs on every push and pull request. Its last job needs every lane and fails when one
+failed or was cancelled. In a pull request run it is named **`CI passed`**, the one check to
+require; in every other run it carries its event (`CI passed (push)`, `CI passed
+(workflow_dispatch)`), because those runs skip the Chromium lane unless asked (`browsers`, a
+boolean input of a manual run and of a `workflow_call`). A branch with an open pull request
+therefore runs the gate lanes twice per commit (its push run and its pull request run); only the
+pull request run decides the merge. When several runs report the same check name GitHub keeps the
+newest, so the push run must never report the required name.
 
-Branch protection is a repository setting, applied by a maintainer (Settings → Rules → Rulesets →
-New branch ruleset):
+Branch protection is a repository setting. **It is not applied yet**: until a maintainer creates
+the ruleset below, nothing stops a direct push to `master`, so run the lanes before pushing. The
+ruleset (Settings → Rules → Rulesets → New branch ruleset):
 
 - **Name**: `master`; **Enforcement status**: Active.
 - **Target branches**: Include default branch (`master`).

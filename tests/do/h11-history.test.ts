@@ -41,8 +41,6 @@ declare global {
 	}
 }
 
-/** `vi.waitFor` under a loaded pool: the default 1 s is short for a room's round trips. */
-const SLOW = { timeout: 10_000, interval: 25 };
 const at = (iso: string) => Date.parse(iso);
 
 const stub = (room: string) => env.TIMED.getByName(room);
@@ -90,7 +88,7 @@ const writer = async (room: string, user: string) => {
 		user,
 		replica: document.doc.clientID
 	});
-	await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+	await vi.waitFor(() => expect(client.synced).toBe(true));
 	return { document, client };
 };
 
@@ -166,9 +164,8 @@ describe('H11 · two versions a day, only when changed', () => {
 		await clockTo(room, '2026-10-06T07:00:00Z'); // 09:00 in Paris
 		const ada = await writer(room, 'ada');
 		ada.document.transact(() => ada.document.facade.insertText('p1', 3, '!'));
-		await vi.waitFor(
-			async () => expect((await roomJSON(room)).children[0].content[0].text).toBe('one!'),
-			SLOW
+		await vi.waitFor(async () =>
+			expect((await roomJSON(room)).children[0].content[0].text).toBe('one!')
 		);
 		// One alarm, the earliest task: the slot's end (local noon), before the purge tick.
 		const due = await dues(room);
@@ -205,15 +202,14 @@ describe('H11 · two versions a day, only when changed', () => {
 		const room = 'timed-utc-boundary';
 		await clockTo(room, '2026-10-06T11:00:00Z');
 		const ada = await writer(room, 'ada');
-		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3), SLOW);
+		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3));
 		// Past noon, no alarm has run yet: Bob writes.
 		await clockTo(room, '2026-10-06T12:30:00Z');
 		const bob = await writer(room, 'bob');
 		const b = E.attachDocument(bob.document.doc, { actor: { id: 'bob' } });
 		b.transact(() => b.facade.insertText('p2', 0, 'bob: '));
-		await vi.waitFor(
-			async () => expect((await roomJSON(room)).children[1].content[0].text).toBe('bob: two'),
-			SLOW
+		await vi.waitFor(async () =>
+			expect((await roomJSON(room)).children[1].content[0].text).toBe('bob: two')
 		);
 		await inRoom(room, (r) => r.historyWritten());
 		const morning = await inRoom(room, (r) => r.readHistory(`history/${room}/2026-10-06-am`));
@@ -245,12 +241,9 @@ describe('H11 · two versions a day, only when changed', () => {
 		const room = 'timed-ny-wake';
 		await clockTo(room, '2026-10-06T14:00:00Z'); // 10:00 in New York
 		const ada = await writer(room, 'ada');
-		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3), SLOW);
+		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3));
 		ada.client.close();
-		await vi.waitFor(
-			async () => expect(await inRoom(room, (r) => r.metrics().sockets)).toBe(0),
-			SLOW
-		);
+		await vi.waitFor(async () => expect(await inRoom(room, (r) => r.metrics().sockets)).toBe(0));
 		await evictDurableObject(stub(room));
 		// The noon alarm never ran: the room wakes at 15:00 local (the fake
 		// clock is stored in the room, so it is set, then the room sleeps again).
@@ -268,7 +261,7 @@ describe('H11 · two versions a day, only when changed', () => {
 		const room = 'timed-utc-ttl';
 		await clockTo(room, '2026-10-06T08:00:00Z');
 		const ada = await writer(room, 'ada');
-		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3), SLOW);
+		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3));
 		await clockTo(room, '2026-10-06T12:00:00Z');
 		await fire(room);
 		expect(await inRoom(room, (r) => r.listHistory())).toHaveLength(1);
@@ -292,9 +285,8 @@ describe('H11 · two versions a day, only when changed', () => {
 			text += String.fromCharCode(33 + ((x >>> 16) % 90));
 		}
 		ada.document.transact(() => ada.document.facade.insertText('p1', 0, text));
-		await vi.waitFor(
-			async () => expect((await roomJSON(room)).children[0].content[0].text).toContain(text),
-			SLOW
+		await vi.waitFor(async () =>
+			expect((await roomJSON(room)).children[0].content[0].text).toContain(text)
 		);
 		await clockTo(room, '2026-10-06T12:00:00Z');
 		await fire(room);
@@ -323,7 +315,7 @@ describe('H11 · two versions a day, only when changed', () => {
 		const room = 'timed-utc-kvfail';
 		await clockTo(room, '2026-10-06T08:00:00Z');
 		const ada = await writer(room, 'ada');
-		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3), SLOW);
+		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3));
 		await inRoom(room, (_r, state) =>
 			state.storage.sql.exec('INSERT INTO fake_kv_fail VALUES (1)')
 		);
@@ -332,9 +324,8 @@ describe('H11 · two versions a day, only when changed', () => {
 		expect(await stored(room)).toEqual([]);
 		expect(await inRoom(room, (r) => r.refusals.some((x) => x.reason === 'history'))).toBe(true);
 		ada.document.transact(() => ada.document.facade.insertText('p1', 0, 'x'));
-		await vi.waitFor(
-			async () => expect((await roomJSON(room)).children[0].content[0].text).toBe('xone'),
-			SLOW
+		await vi.waitFor(async () =>
+			expect((await roomJSON(room)).children[0].content[0].text).toBe('xone')
 		);
 		await clockTo(room, '2026-10-07T00:00:00Z');
 		await fire(room);
@@ -347,7 +338,7 @@ describe('H11 · two versions a day, only when changed', () => {
 		const room = 'timed-utc-unreadable';
 		await clockTo(room, '2026-10-06T08:00:00Z');
 		const ada = await writer(room, 'ada');
-		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3), SLOW);
+		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3));
 		ada.client.close();
 		await clockTo(room, '2026-10-06T12:00:00Z');
 		// The rows cannot be read: the room restarts without its document, and the
@@ -379,7 +370,7 @@ describe('H11 · two versions a day, only when changed', () => {
 		const room = 'timed-badzone-a';
 		await clockTo(room, '2026-10-06T08:00:00Z');
 		const ada = await writer(room, 'ada');
-		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3), SLOW);
+		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3));
 		expect((await dues(room))['due.history']).toBeUndefined();
 		expect(
 			await inRoom(room, (r) => r.refusals.find((x) => x.reason === 'history')?.detail)
@@ -395,7 +386,7 @@ const afternoon = async (room: string) => {
 	await clockTo(room, '2026-10-06T08:00:00Z');
 	const ada = await writer(room, 'ada');
 	await clockTo(room, '2026-10-06T12:00:00Z');
-	await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3), SLOW);
+	await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3));
 	await fire(room);
 	const key = `history/${room}/2026-10-06-am`;
 	const morning = (await inRoom(room, (r) => r.readHistory(key)))!;
@@ -405,7 +396,7 @@ const afternoon = async (room: string) => {
 		user: 'bob',
 		replica: bob.doc.clientID
 	});
-	await vi.waitFor(() => expect(bobClient.json().children).toHaveLength(3), SLOW);
+	await vi.waitFor(() => expect(bobClient.json().children).toHaveLength(3));
 	const b = E.attachDocument(bob.doc, { actor: { id: 'bob' } });
 	const f = ada.document.facade;
 	ada.document.transact(() => {
@@ -425,7 +416,7 @@ const afternoon = async (room: string) => {
 		expect(json).toEqual(shape(ada.document.facade.toJSON()));
 		expect(json).toEqual(shape(bobClient.json()));
 		expect(json.children.map((block: { id: string }) => block.id)).toEqual(['p3', 'p1', 'p4']);
-	}, SLOW);
+	});
 	return { ada, bob: b, bobClient, key, morning };
 };
 
@@ -438,7 +429,7 @@ const converged = async (
 		const json = await roomJSON(room);
 		expect(shape(ada.document.facade.toJSON())).toEqual(json);
 		expect(shape(bobClient.json())).toEqual(json);
-	}, SLOW);
+	});
 	return roomJSON(room);
 };
 
@@ -519,7 +510,7 @@ describe('H11 · list, read, restore, undo', () => {
 		const room = 'timed-utc-noop';
 		await clockTo(room, '2026-10-06T08:00:00Z');
 		const ada = await writer(room, 'ada');
-		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3), SLOW);
+		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3));
 		await clockTo(room, '2026-10-06T12:00:00Z');
 		await fire(room);
 		const key = `history/${room}/2026-10-06-am`;
@@ -588,7 +579,7 @@ describe('H11 · a restore keeps the room readable from storage', () => {
 		await evictDurableObject(stub(room));
 		expect(await roomJSON(room)).toEqual(restored);
 		const fresh = await RawClient.connect(room, crdt.createDoc(), { user: 'zoe' });
-		await vi.waitFor(() => expect(shape(fresh.json())).toEqual(restored), SLOW);
+		await vi.waitFor(() => expect(shape(fresh.json())).toEqual(restored));
 		fresh.close();
 		ada.document.destroy();
 		bob.destroy();

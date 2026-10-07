@@ -11,8 +11,6 @@ import { E, ORIGIN, RawClient, crdt, para, shape } from './client';
 
 const server = `${ORIGIN.replace('https', 'wss')}/rooms`;
 const fetchSelf = ((url: string) => SELF.fetch(url)) as typeof fetch;
-const SLOW = { timeout: 10_000, interval: 25 };
-
 describe('P8 · documentSnapshot', () => {
 	it('null before anything is stored, then the document as JSON; 403 denied, 401 expired', async () => {
 		const room = 'p8-snapshot';
@@ -24,13 +22,13 @@ describe('P8 · documentSnapshot', () => {
 			actor: { id: 'ada' }
 		});
 		const client = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
-		await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(client.synced).toBe(true));
 		a.transact(() => a.facade.insertText('p', 3, '!'));
 		await vi.waitFor(async () => {
 			const json = await ask();
 			expect(json).not.toBe(null);
 			expect(shape(json!)).toEqual(shape(a.facade.toJSON()));
-		}, SLOW);
+		});
 		await expect(ask('denied')).rejects.toThrow('403');
 		await expect(ask('expired')).rejects.toThrow('401');
 		// A read-only identity reads it too.

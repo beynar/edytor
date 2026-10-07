@@ -284,14 +284,14 @@ export type RunViewDebug = {
 	 * Fold passes since last `reset()`: one per commit, one per read that
 	 * found pending writes in an open transaction.
 	 */
-	folds: number;
-	/** `(type, key)` pairs those folds located: the folds' input (CC-05 budgets). */
-	foldedPairs: number;
+	readonly folds: number;
+	/** `(type, key)` pairs those folds located since last `reset()`: the folds' input. */
+	readonly foldedPairs: number;
 	/**
-	 * Structs the reads inside a transaction folded (its pending part): each
-	 * struct once, whatever the number of reads (the watermark, probe C10).
+	 * Structs the reads inside a transaction folded (its pending part) since
+	 * last `reset()`: each struct once, whatever the number of reads.
 	 */
-	foldedStructs: number;
+	readonly foldedStructs: number;
 	reset: () => void;
 };
 
@@ -1389,6 +1389,8 @@ export const bindRuns = (Y: EngineApi) => {
 
 		let version = 0;
 
+		/** The fold counters `debug` exposes read-only. */
+		const foldStats = { folds: 0, pairs: 0, structs: 0 };
 		const debug: RunViewDebug = {
 			recomputes: 0,
 			recomputed: new Set<BlockId>(),
@@ -1401,15 +1403,21 @@ export const bindRuns = (Y: EngineApi) => {
 			get frames() {
 				return frames.size;
 			},
-			folds: 0,
-			foldedPairs: 0,
-			foldedStructs: 0,
+			get folds() {
+				return foldStats.folds;
+			},
+			get foldedPairs() {
+				return foldStats.pairs;
+			},
+			get foldedStructs() {
+				return foldStats.structs;
+			},
 			reset() {
 				debug.recomputes = 0;
 				debug.recomputed.clear();
-				debug.folds = 0;
-				debug.foldedPairs = 0;
-				debug.foldedStructs = 0;
+				foldStats.folds = 0;
+				foldStats.pairs = 0;
+				foldStats.structs = 0;
 				rangeStats.items = 0;
 				rangeStats.markers = 0;
 			}
@@ -2154,9 +2162,9 @@ export const bindRuns = (Y: EngineApi) => {
 			const touched = new Map<BlockId, Set<string>>();
 			const edits = new Map<BlockId, (TextEdits | null)[]>();
 			let derived = changed.has(dataRoot);
-			debug.folds++;
+			foldStats.folds++;
 			for (const [type, subs] of changed) {
-				debug.foldedPairs += subs.size;
+				foldStats.pairs += subs.size;
 				for (const sub of subs) {
 					const hit = locate(type as EngineNode, sub);
 					if (hit === null) continue;
@@ -2345,7 +2353,7 @@ export const bindRuns = (Y: EngineApi) => {
 			for (const f of frames) f.wrote = true;
 			const changed = new Map<EngineNode, Set<string | null>>();
 			const note = (s: StoreStruct): void => {
-				debug.foldedStructs++;
+				foldStats.structs++;
 				if (!isNodeLike(s.parent)) return;
 				let subs = changed.get(s.parent);
 				if (subs === undefined) changed.set(s.parent, (subs = new Set()));

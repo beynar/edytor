@@ -1,8 +1,11 @@
 # The gate (decision D9, CONTRIBUTING.md): every push and pull request runs
 # the static checks and the unit, crdt, dom and room (`do`) lanes; a pull
-# request also runs the Playwright Chromium lane, sharded. `CI passed` is the
-# one check branch protection requires. `publish.yml` calls this workflow on
-# the tagged commit (`browsers: true`) and publishes only when it passed.
+# request also runs the Playwright Chromium lane, sharded. The pull request
+# run's last job is the only check named `CI passed`, the one check branch
+# protection requires: every other run's gate job carries its event in its
+# name (`CI passed (push)`), so a push run on the same commit, which skips
+# Chromium, never satisfies the requirement. `publish.yml` calls this workflow
+# on the tagged commit (`browsers: true`) and publishes only when it passed.
 # Firefox, WebKit, mobile, CDP and DST run nightly (`nightly.yml`).
 #
 # The gate lanes assert operation counts, never the wall clock (CC-05), so a
@@ -14,6 +17,11 @@ on:
     branches: ['**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      browsers:
+        description: Also run the Playwright Chromium lane
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       browsers:
@@ -111,12 +119,12 @@ jobs:
           retention-days: 7
 
   passed:
-    name: CI passed
+    name: ${{ github.event_name == 'pull_request' && 'CI passed' || format('CI passed ({0})', github.event_name) }}
     if: always()
     needs: [static, unit, crdt, dom, do, chromium]
     runs-on: ubuntu-latest
     steps:
-      - name: Every lane passed (the Chromium lane is skipped on a plain push)
+      - name: Every lane passed (the Chromium lane is skipped unless a pull request or a caller asks)
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |

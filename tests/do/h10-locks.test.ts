@@ -25,8 +25,6 @@ import type { JSONDoc } from '../../src/lib/crdt/index.js';
 import type { LockedRoom } from './worker';
 import { E, RawClient, Y, para, readFacade } from './client';
 
-const SLOW = { timeout: 10_000, interval: 25 };
-
 declare global {
 	namespace Cloudflare {
 		interface Env {
@@ -48,18 +46,16 @@ const join = async (room: string, user: string, value?: JSONDoc) => {
 		user,
 		replica: document.doc.clientID
 	});
-	await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+	await vi.waitFor(() => expect(client.synced).toBe(true));
 	return { document, client };
 };
 
 const converged = async (room: string, ...documents: Document[]) => {
 	for (const document of documents)
-		await vi.waitFor(
-			async () =>
-				expect(Y.encodeStateVector(document.doc)).toEqual(
-					await inRoom(room, (r) => Y.encodeStateVector(r.doc!))
-				),
-			SLOW
+		await vi.waitFor(async () =>
+			expect(Y.encodeStateVector(document.doc)).toEqual(
+				await inRoom(room, (r) => Y.encodeStateVector(r.doc!))
+			)
 		);
 	const json = await roomJSON(room);
 	for (const document of documents) expect(document.facade.toJSON()).toEqual(json);
@@ -82,17 +78,17 @@ describe('H10 · a subtree lock holds what shows under the locked block', () => 
 		await converged(room, ada.document, bob.document);
 		// Bob types into the locked parent's child.
 		bob.document.transact(() => bob.document.facade.insertText('c', 0, 'BOB '));
-		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(1), SLOW);
+		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(1));
 		// Bob adds a child under the locked parent.
 		bob.document.transact(() =>
 			bob.document.facade.insertBlock({ parent: 'p', index: 1 }, { id: 'n', type: 'paragraph' })
 		);
-		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(2), SLOW);
+		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(2));
 		// Bob moves his free block into the locked subtree, and the child out of it.
 		bob.document.transact(() => bob.document.facade.moveBlock('q', { parent: 'p', index: 0 }));
-		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(3), SLOW);
+		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(3));
 		bob.document.transact(() => bob.document.facade.moveBlock('c', { parent: null, index: 2 }));
-		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(4), SLOW);
+		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(4));
 		const json = await converged(room, ada.document, bob.document);
 		expect(json).toEqual({
 			children: [
@@ -113,7 +109,7 @@ describe('H10 · a subtree lock holds what shows under the locked block', () => 
 			const children = (await roomJSON(room)).children;
 			expect(children[1].content).toEqual([{ text: 'bob: free' }]);
 			expect(children[0].children![0].content).toEqual([{ text: 'ada: child' }]);
-		}, SLOW);
+		});
 		await converged(room, ada.document, bob.document);
 		expect(await denied(room)).toHaveLength(4);
 		for (const peer of [ada, bob]) peer.client.close();
@@ -125,12 +121,10 @@ describe('H10 · a subtree lock holds what shows under the locked block', () => 
 		const ada = await join(room, 'ada', tree());
 		const bob = await join(room, 'bob');
 		bob.document.transact(() => bob.document.facade.insertText('c', 0, 'BOB '));
-		await vi.waitFor(
-			async () =>
-				expect((await roomJSON(room)).children[0].children![0].content).toEqual([
-					{ text: 'BOB child' }
-				]),
-			SLOW
+		await vi.waitFor(async () =>
+			expect((await roomJSON(room)).children[0].children![0].content).toEqual([
+				{ text: 'BOB child' }
+			])
 		);
 		expect(await denied(room)).toEqual([]);
 		for (const peer of [ada, bob]) peer.client.close();
@@ -147,13 +141,11 @@ describe('H10 · bypass and the EDYTOR_LOCKS var', () => {
 		const admin = await join(room, 'admin');
 		admin.document.transact(() => admin.document.facade.insertText('p', 0, 'note: '));
 		admin.document.transact(() => admin.document.facade.setBlockData('p', {}));
-		await vi.waitFor(
-			async () =>
-				expect((await roomJSON(room)).children[0]).toMatchObject({
-					data: {},
-					content: [{ text: 'note: mine' }]
-				}),
-			SLOW
+		await vi.waitFor(async () =>
+			expect((await roomJSON(room)).children[0]).toMatchObject({
+				data: {},
+				content: [{ text: 'note: mine' }]
+			})
 		);
 		expect(await denied(room)).toEqual([]);
 		for (const peer of [ada, admin]) peer.client.close();
@@ -167,7 +159,7 @@ describe('H10 · bypass and the EDYTOR_LOCKS var', () => {
 		});
 		const bob = await join(room, 'bob');
 		bob.document.transact(() => bob.document.facade.insertText('p', 0, 'x'));
-		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(1), SLOW);
+		await vi.waitFor(async () => expect(await denied(room)).toHaveLength(1));
 		expect((await converged(room, ada.document, bob.document)).children[0].content).toEqual([
 			{ text: 'mine' }
 		]);

@@ -133,7 +133,7 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ### Unreleased
 
-- **Index work counters.** The debugging surface `facade.runsView.debug` also counts the index's fold passes (`folds`), the changed `(type, key)` pairs they folded (`foldedPairs`) and the structs the reads inside a transaction folded (`foldedStructs`); `debug.reset()` clears them with the others. Nothing else changes. The test suite uses them to state "stays fast" as operation counts instead of timings.
+- **Index work counters.** The debugging surface `facade.runsView.debug` also counts, read-only, the index's fold passes (`folds`), the changed `(type, key)` pairs they folded (`foldedPairs`) and the structs the reads inside a transaction folded (`foldedStructs`); `debug.reset()` clears them with the others. Nothing else changes. The test suite uses them to state "stays fast" as operation counts instead of timings.
 
 ### From 0.1.0-next.31
 

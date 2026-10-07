@@ -204,14 +204,24 @@ export const selectMoved = (edytor: Edytor, moved: Block[], before: Iterable<Blo
 export const revealing = (blocks: Block[], move: () => Block[]) => {
 	const had = new Map(blocks.map((block) => [block, block.children.length]));
 	const moved = move();
-	const open = (block: Block) => {
-		if (block.node?.tagName === 'DETAILS') (block.node as HTMLDetailsElement).open = true;
-	};
 	for (const block of moved) {
-		for (let parent = block.parent; parent; parent = parent.parent) open(parent);
+		reveal(block);
 		if (block.children.length > (had.get(block) ?? Infinity)) open(block);
 	}
 	return moved;
+};
+
+/** Open `block` when it is a closed toggle (`open` is view state, R11). */
+const open = (block: Block) => {
+	if (block.node?.tagName === 'DETAILS') (block.node as HTMLDetailsElement).open = true;
+};
+
+/**
+ * Open every closed toggle `block` sits in, so it shows: a moved block
+ * ({@link revealing}), find's current match (`plugins/find`).
+ */
+export const reveal = (block: Block) => {
+	for (let parent = block.parent; parent; parent = parent.parent) open(parent);
 };
 
 /**

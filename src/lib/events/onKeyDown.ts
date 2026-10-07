@@ -98,10 +98,11 @@ const keyIntent = (event: KeyboardEvent) => {
 	return isPrintableReplacementKey(event) ? 'insertText' : null;
 };
 
+/** Copy, select all and the browser's find (the keymap does not run while readonly). */
 const isReadonlyAllowedShortcut = (event: KeyboardEvent) => {
 	const key = event.key.toLowerCase();
 	const hasCopyModifier = event.metaKey || event.ctrlKey;
-	return hasCopyModifier && (key === 'c' || key === 'a');
+	return hasCopyModifier && (key === 'c' || key === 'a' || key === 'f');
 };
 
 const isReadonlyNavigationKey = (event: KeyboardEvent) =>

@@ -11,6 +11,7 @@
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 	import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
 	import {
 		IndexeddbPersistence,
@@ -378,6 +379,7 @@
 	};
 
 	const plugins = $derived([
+		...(data.find ? [findPlugin] : []),
 		arrowMovePlugin,
 		imagePlugin,
 		codePlugin,

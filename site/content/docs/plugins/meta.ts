@@ -18,6 +18,7 @@ export default defineMeta({
     "toolbar",
     "markdown-shortcuts",
     "arrow-move",
+    "find",
     "mention",
   ],
 });

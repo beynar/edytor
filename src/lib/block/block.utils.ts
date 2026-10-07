@@ -125,6 +125,15 @@ export type BlockOperations = {
 	acceptSuggestion: {
 		suggestion: { id: string; at: ResolvedAt; content: readonly JSONBlock[] };
 	};
+	/**
+	 * Find and replace (`plugins/find`): each match's text replaced by
+	 * `replacement`, one plan, one undo step (its steps: a
+	 * `deleteContentAtRange` and an `insertText` per match).
+	 */
+	replaceMatches: {
+		matches: { block: string; offset: number; length: number }[];
+		replacement: string;
+	};
 	deleteContentAtRange: {
 		start: [number, number];
 		end: [number, number];

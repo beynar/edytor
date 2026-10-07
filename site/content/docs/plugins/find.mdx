@@ -1,0 +1,108 @@
+---
+title: Find and replace
+description: The find plugin opens a find and replace bar on Mod+F, as in Notion. It searches the whole document, closed toggles included, highlights the matches, and replaces one or all of them in one undo step.
+icon: search
+---
+
+`findPlugin` adds find and replace to the editor. <kbd>Mod</kbd> + <kbd>F</kbd> opens a bar at the editor's top right with a query field, the match count, a case toggle, previous and next buttons, and a replace row. <kbd>Mod</kbd> is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, findPlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[findPlugin]} />
+```
+
+It is opt-in, not a [default plugin](/docs/plugins#default-plugins): without it, <kbd>Mod</kbd> + <kbd>F</kbd> is the browser's own find. `createFindPlugin({ bar })` builds one that renders your markup (see [Custom markup](#custom-markup)).
+
+## Searching
+
+- **What it searches.** The text of every block, in reading order: nested blocks, list items, code lines, and the body of a closed toggle. A match lies in one line of text: an inline atom such as a mention ends it, a mark never does (`he**llo**` matches `hello`). Matches do not overlap.
+- **Case.** Ignored by default. The **Aa** toggle (`aria-pressed`) matches case exactly.
+- **The current match.** Opening the bar searches from the caret: the current match is the first one at or after it. <kbd>Enter</kbd> or ↓ goes to the next match and <kbd>Shift</kbd> + <kbd>Enter</kbd> or ↑ to the previous one; both wrap around. The count reads `3/12`, or `No results`.
+- **Closed toggles.** When the current match is inside a closed toggle, the toggle opens (several, when they are nested), as in Notion. The current match is scrolled into view.
+- **Highlights.** Every match the page shows is highlighted, the current one in a stronger color. A match inside a closed toggle has no highlight until it becomes the current one. Past 1,000 matches, only the first 1,000 are highlighted; the count still counts them all.
+- **Live.** The matches follow the document while the bar is open, your edits and collaborators' alike. The current match is tracked by its position in the text, so it stays on the same occurrence when text before it changes.
+- **The selection.** Searching does not move the editor's selection. <kbd>Escape</kbd> (or ✕) closes the bar, selects the current match in the editor and gives the editor its focus back, so you can type over it or format it.
+
+<kbd>Mod</kbd> + <kbd>F</kbd> over a text selection inside one line searches for the selected text. Pressed while the bar is open, it focuses the query field again and selects its text.
+
+## Replacing
+
+The replace row has a **Replace with** field and two buttons:
+
+- **Replace** (or <kbd>Enter</kbd> in the field) replaces the current match and moves to the next one.
+- **Replace all** replaces every match, those inside closed toggles included.
+
+Each is one command, `replaceMatches`, and one undo step: <kbd>Mod</kbd> + <kbd>Z</kbd> after Replace all brings every match back at once. The replacement takes the marks the replaced text had in common, as typing over a selection does: replacing a bold word gives a bold word.
+
+`onBeforeOperation` sees the command, with the payload `{ matches, replacement }` (`matches` as `{ block, offset, length }`, block display offsets), then each step it plans: a `deleteContentAtRange` and an `insertText` per match. A hook can refuse it with `prevent()`; nothing is then written. See [Operations](/docs/plugins/operations).
+
+A readonly view, or a view of a read-only document, shows no replace row and refuses a replacement. In a readonly view the keymap does not run, so <kbd>Mod</kbd> + <kbd>F</kbd> stays the browser's find; open the bar from code with `findController(edytor).open()`.
+
+## From code
+
+`findController(edytor)` returns the plugin's controller for an editor, or `undefined` when the plugin is not listed:
+
+| Member | Description |
+| --- | --- |
+| `isOpen` | Whether the bar is open (reactive) |
+| `query`, `caseSensitive` | The search; setting either shows the current match |
+| `replacement` | The text Replace writes |
+| `matches` | Every match while open, in reading order: `{ block, offset, length }[]` (reactive) |
+| `current` | The current match's index in `matches`, `-1` without one (reactive) |
+| `canReplace` | The view may write: not readonly, the document writable |
+| `open(query?)` | Open the bar (or focus it again), searching from the caret; with `query`, search for it |
+| `close({ select })` | Close it; with `select` (the default), select the current match and focus the editor |
+| `next()`, `previous()` | Go to the next or previous match, wrapping |
+| `replace()`, `replaceAll()` | Replace the current match, or every match; answer the command's status (`'applied'`, `'noop'`, `'refused'`) |
+
+```ts title="search.ts" check
+import { findController, type EdytorInstance } from 'edytor';
+
+export const renameEverywhere = (edytor: EdytorInstance, from: string, to: string) => {
+	const find = findController(edytor);
+	if (!find) return;
+	find.open(from);
+	find.replacement = to;
+	find.replaceAll();
+	find.close({ select: false });
+};
+```
+
+`findMatches(edytor, query, { caseSensitive })` is the search alone, with no bar: it returns the same `{ block, offset, length }[]` for any editor, the plugin listed or not.
+
+## Placement and styling
+
+The bar mounts in the editor's [overlay](/docs/customization/styling#the-overlay), in a `position: fixed` host with the attribute `data-edytor-find-host` and `z-index: 55`, at the editor's top right and inside the viewport. Its elements carry these attributes:
+
+| Attribute | Element |
+| --- | --- |
+| `data-edytor-find` | The bar (`role="search"`), rendered while open |
+| `data-edytor-find-query`, `data-edytor-find-replacement` | The two fields |
+| `data-edytor-find-count` | The count |
+| `data-edytor-find-case`, `data-edytor-find-previous`, `data-edytor-find-next`, `data-edytor-find-close` | The buttons of the first row |
+| `data-edytor-find-replace`, `data-edytor-find-replace-all` | The replace buttons |
+| `data-edytor-find-match` | A highlight rectangle in the overlay (`data-current` on the current match's) |
+
+The highlights use `--edytor-find-match` and `--edytor-find-current` for their colors, and the bar `--edytor-find-background` and `--edytor-find-color`.
+
+## Custom markup
+
+`createFindPlugin` takes a `bar` snippet that replaces the bar's content. It receives the controller; the plugin keeps the keys, the search, the highlights and the placement. Put `use:find.field` on your query input: it is focused on each <kbd>Mod</kbd> + <kbd>F</kbd> and handles <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> and <kbd>Escape</kbd>. `use:find.replaceField` on a replacement input handles <kbd>Enter</kbd> (Replace) and <kbd>Escape</kbd>.
+
+```svelte title="CustomFind.svelte" check
+<script lang="ts">
+	import { Edytor, createFindPlugin, type FindController } from 'edytor';
+</script>
+
+{#snippet bar(find: FindController)}
+	<input value={find.query} oninput={(e) => (find.query = e.currentTarget.value)} use:find.field />
+	<span>{find.matches.length ? `${find.current + 1} of ${find.matches.length}` : 'None'}</span>
+	<button onclick={find.next}>Next</button>
+	<button onclick={() => find.close()}>Done</button>
+{/snippet}
+
+<Edytor plugins={[createFindPlugin({ bar })]} />
+```

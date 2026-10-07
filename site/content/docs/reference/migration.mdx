@@ -131,6 +131,11 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### Unreleased
+
+- **Find and replace.** New opt-in plugin, `findPlugin` (`createFindPlugin({ bar })`): <kbd>Mod</kbd> + <kbd>F</kbd> opens a find and replace bar that searches the whole document (a closed toggle's body included, opened when a match there becomes current), highlights the matches in the overlay, and replaces one or all as one command, `replaceMatches`, and one undo step. `findController(edytor)` drives it from code and `findMatches(edytor, query)` is the search alone. Without the plugin, <kbd>Mod</kbd> + <kbd>F</kbd> is unchanged. See [Find and replace](/docs/plugins/find).
+- **<kbd>Mod</kbd> + <kbd>F</kbd> in a readonly view** is no longer blocked: the browser's find opens, as for <kbd>Mod</kbd> + <kbd>C</kbd> and <kbd>Mod</kbd> + <kbd>A</kbd>.
+
 ### From 0.1.0-next.31
 
 - **Security fix: links.** A link whose `href` started with an ASCII control character or a space before `javascript:` (for example `\u0001javascript:…`) passed `sanitizeLinkHref` as a relative link, and browsers, which strip those characters, would run it when clicked. The sanitizer now reads an `href` as the browser's URL parser does: it strips control characters and spaces at both ends and tabs and newlines anywhere, resolves it, and keeps it only when its scheme is `http:`, `https:`, `mailto:` or `tel:` (a relative link resolves to none of its own). Links already stored with such an `href` render without one. Upgrade.

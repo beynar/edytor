@@ -237,5 +237,6 @@ Text operations carry `text`. Block operations run on `block`.
 | `insertFlow`                   | `{ flow, target }`                                          |
 | `insertDivider`                | `{}`                                                        |
 | `acceptSuggestion`             | `{ suggestion: { id, at, content } }`: a [suggestion](/docs/editor/suggestions) accepted, one undo step; its planned steps follow it (for a text range, its deletion's) |
+| `replaceMatches`               | `{ matches: { block, offset, length }[], replacement }`: [find and replace](/docs/plugins/find)'s Replace or Replace all, one undo step; a `deleteContentAtRange` and an `insertText` step follow it per match |
 
 In `deleteContentAtRange`, `part` is an index into `block.content` and `offset` an offset inside that text.

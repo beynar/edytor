@@ -104,6 +104,7 @@ export declare class AttachedDocument {
     private readonly lateTable;
     private watched;
     private _lookups;
+    private _digest;
     private readonly tablePrefix;
     private _validator;
     private _history;
@@ -113,6 +114,7 @@ export declare class AttachedDocument {
     private retryStart;
     private fail;
     private get lookups();
+    private get digest();
     private facadeOf;
     get doc(): YDoc | null;
     get facade(): EdytorDoc;
@@ -240,6 +242,7 @@ export declare class AttachedDocument {
     private settleDeletes;
     private storedDeletes;
     private onPresence;
+    private compareSemantics;
     private note;
     private refuse;
     private close;
@@ -915,6 +918,10 @@ export type RoomLogEntry = {
     edytor: 'denied';
     user: string;
     touched: number;
+} | {
+    edytor: 'semantics';
+    user: string;
+    kinds: string[];
 } | {
     edytor: 'fault';
     reason: 'storage' | 'internal';

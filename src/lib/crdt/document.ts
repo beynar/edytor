@@ -216,7 +216,7 @@ export type DocumentOptions = {
 	/**
 	 * Up-front semantic configuration (views may also seed via
 	 * `adoptSemantics`). `createDocument` and `loadDocument` default to
-	 * `defaultSemantics`, the bundled plugins' roles the room holds too (D4);
+	 * `defaultSemantics`, the bundled plugins' roles the room holds too;
 	 * `{}` checks no roles. `attachDocument` (the doc a view composes)
 	 * defaults to none: its views contribute their plugins' roles.
 	 */

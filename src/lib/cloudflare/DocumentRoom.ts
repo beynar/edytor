@@ -97,7 +97,12 @@ import { DurableObject } from 'cloudflare:workers';
 import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../crdt/engine.js';
 import * as E from '../crdt/protocol.js';
-import { defaultSemantics, facadeConfigOf } from '../crdt/semantics.js';
+import {
+	defaultSemantics,
+	facadeConfigOf,
+	semanticsDigest,
+	semanticsMismatch
+} from '../crdt/semantics.js';
 import { READ_ONLY_DENIAL } from '../crdt/protocols/auth.js';
 import {
 	isGenerationRecord,
@@ -425,7 +430,7 @@ export type RoomLogEntry =
 	| ({ edytor: 'purge'; horizon: number; bytes: number } & PurgeReport)
 	| { edytor: 'quota'; user: string; quota: string }
 	| { edytor: 'denied'; user: string; touched: number }
-	// A client's advertised roles differ from the room's on these kinds (WU-12, development builds).
+	// A client's advertised roles differ from the room's on these kinds (development builds).
 	| { edytor: 'semantics'; user: string; kinds: string[] }
 	| { edytor: 'fault'; reason: 'storage' | 'internal'; detail: string }
 	| { edytor: 'convert'; from: number; to: number; blocks: number; bytes: number }
@@ -1548,9 +1553,9 @@ export class AttachedDocument {
 		return (this._lookups ??= lookups(this.options.semantics ?? defaultSemantics));
 	}
 
-	/** The digest of the room's block roles a client's advertised one is compared with (WU-12). */
+	/** The digest of the room's block roles a client's advertised one is compared with. */
 	private get digest(): Record<string, string> {
-		return (this._digest ??= E.semanticsDigest(this.options.semantics ?? E.defaultSemantics));
+		return (this._digest ??= semanticsDigest(this.options.semantics ?? defaultSemantics));
 	}
 
 	/** A facade over `doc` obeying the room's block roles (`semantics`). */
@@ -4352,7 +4357,7 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * The dev-time roles check (WU-12): a client's presence advertises the
+	 * The dev-time roles check: a client's presence advertises the
 	 * digest of its document's roles (`semantics`, development builds); one
 	 * naming kinds, marks or a default type the room reads otherwise is
 	 * logged (`semantics`), once per digest the client advertises. Never a
@@ -4363,7 +4368,7 @@ export class AttachedDocument {
 		const advertised = entry.state?.semantics;
 		if (advertised === undefined) return;
 		if (JSON.stringify(known?.state?.semantics) === JSON.stringify(advertised)) return;
-		const kinds = E.semanticsMismatch(this.digest, advertised);
+		const kinds = semanticsMismatch(this.digest, advertised);
 		if (kinds.length > 0) this.log({ edytor: 'semantics', user, kinds });
 	}
 

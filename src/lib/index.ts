@@ -142,6 +142,7 @@ export {
 	attachDocument,
 	defaultSemantics,
 	semanticsOf,
+	mergeSemantics,
 	SemanticConflictError,
 	DocumentNotReadyError,
 	DocumentDestroyedError,

@@ -282,7 +282,7 @@ export const layoutSemantics = semanticsOf(layoutKinds);
 /**
  * The rich-text, code, image and columns plugins' block roles together —
  * what the room and a headless `createDocument`/`loadDocument` adopt by
- * default (D4; `semantics: {}` checks none). The columns plugin is not a
+ * default (`semantics: {}` checks none). The columns plugin is not a
  * default plugin of `<Edytor>`, but its roles are here so a layout reads
  * the same on every replica.
  */

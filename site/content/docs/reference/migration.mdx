@@ -131,9 +131,13 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.29
+
+- **No count badge beside the drop indicator.** Dragging several blocks now shows the drop indicator as the bar alone, like the preview since 0.1.0-next.29: no `[data-edytor-drag-count]` badge is rendered anywhere. The count stays as `data-count` on `[data-edytor-drop-indicator]` and on `[data-edytor-drag-preview]`. A theme rule that styled the badge no longer matches anything.
+
 ### From 0.1.0-next.28
 
-- **The drag preview has no count badge.** Dragging several blocks shows their copies only; the count stays beside the drop indicator (`[data-edytor-drag-count]` there, `data-count` on the indicator and on `[data-edytor-drag-preview]`). A theme rule that styled the badge inside the preview no longer matches anything.
+- **The drag preview has no count badge.** Dragging several blocks shows their copies only (`data-count` stays on `[data-edytor-drag-preview]`). A theme rule that styled the badge inside the preview no longer matches anything.
 
 ### From 0.1.0-next.27
 

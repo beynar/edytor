@@ -835,7 +835,7 @@ test.describe('browser block handles and DnD', () => {
 		await page.mouse.move(target.x + 12, target.y + target.height - 2, { steps: 5 });
 		const indicator = page.locator('[data-edytor-drop-indicator][data-position="after"]');
 		await expect(indicator).toHaveAttribute('data-count', '2');
-		await expect(indicator.locator('[data-edytor-drag-count]')).toHaveText('2');
+		await expect(page.locator('[data-edytor-drag-count]')).toHaveCount(0);
 		await page.mouse.up();
 
 		const blocks = await readBlocks(page);

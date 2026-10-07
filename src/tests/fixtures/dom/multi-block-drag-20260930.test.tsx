@@ -151,6 +151,8 @@ describe('dragging a block selection by one of its handles', () => {
 		expect(shown.indicator?.dataset.position).toBe('after');
 		expect(shown.indicator?.dataset.count).toBe('3');
 		expect(shown.image?.dataset.count).toBe('3');
+		// No count badge anywhere: the indicator is the bar alone.
+		expect(shown.indicator?.querySelector('[data-edytor-drag-count]')).toBeNull();
 		expect(shown.image?.textContent).toContain('a');
 		expect(shown.image?.textContent).toContain('c');
 		expect(edytor.undoManager!.undoStack.length).toBe(1);

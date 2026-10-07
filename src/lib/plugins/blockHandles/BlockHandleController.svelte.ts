@@ -201,28 +201,6 @@ const backdrop = (document: Document) => {
 	return node;
 };
 
-/** How many blocks move: the badge beside the drop indicator. */
-const countBadge = (document: Document, count: number) => {
-	const badge = document.createElement('span');
-	badge.dataset.edytorDragCount = 'true';
-	badge.textContent = String(count);
-	Object.assign(badge.style, {
-		position: 'absolute',
-		top: '-8px',
-		right: '-8px',
-		minWidth: '18px',
-		height: '18px',
-		padding: '0 5px',
-		boxSizing: 'border-box',
-		borderRadius: '9px',
-		background: 'rgb(35, 131, 226)',
-		color: 'white',
-		font: '600 11px/18px system-ui, sans-serif',
-		textAlign: 'center'
-	});
-	return badge;
-};
-
 export class BlockHandleController {
 	private readonly owner = {};
 	private indicatorNode: HTMLElement | null = null;
@@ -1151,13 +1129,8 @@ export class BlockHandleController {
 		if (placement.blocked) overlay.dataset.blocked = 'true';
 		overlay.setAttribute('aria-hidden', 'true');
 		const count = this.group.length;
-		if (count > 1) {
-			// The count sits in the gutter at the bar's start, where the handles are.
-			overlay.dataset.count = String(count);
-			const badge = countBadge(document, count);
-			Object.assign(badge.style, { top: `${BAR / 2 - 9}px`, right: 'auto', left: '-26px' });
-			overlay.append(badge);
-		}
+		// How many blocks move, as data only: the bar shows no badge.
+		if (count > 1) overlay.dataset.count = String(count);
 		const color = document.defaultView
 			?.getComputedStyle(placement.node)
 			.getPropertyValue('--edytor-drop-indicator-color')

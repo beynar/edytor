@@ -213,7 +213,7 @@ Rows keep registration order: plugins in list order, kinds in the order a plugin
 
 Convert a block from code with `convertToKind`, or run the row's command:
 
-```ts
+```ts title="convert.ts" check
 import { convertToKind } from 'edytor';
 
 const row = edytor.kinds.find((kind) => kind.id === 'block.heading2');

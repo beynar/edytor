@@ -41,7 +41,7 @@ export async function prepareDocument(name: string): Promise<void> {
 }
 ```
 
-```svelte
+```svelte title="src/lib/MigratedEditor.svelte" check
 <script lang="ts">
   import { Edytor } from 'edytor';
   import { prepareDocument } from '$lib/migrate';

@@ -8,7 +8,7 @@ An `EdytorDocument` is the thing views render and providers sync. Create one you
 
 ## Create a document
 
-```ts
+```ts title="src/lib/document.ts" check
 import { createDocument, defaultSemantics } from 'edytor';
 
 const document = createDocument({
@@ -42,9 +42,10 @@ Without `semantics`, a document edited with no view attached applies every edit 
 
 `document.encode()` returns the full replicated state as a `Uint8Array`. `loadDocument` restores it as a fresh replica with a new client id:
 
-```ts
-import { loadDocument } from 'edytor';
+```ts title="src/lib/copy.ts" check
+import { createDocument, loadDocument } from 'edytor';
 
+const document = createDocument({ value: { children: [{ type: 'paragraph', content: [{ text: 'hello' }] }] } });
 const bytes = document.encode(); // store or send it
 const copy = loadDocument(bytes); // readiness 'hydrated'
 copy.facade.toJSON(); // same JSON as the source
@@ -58,7 +59,7 @@ copy.facade.toJSON(); // same JSON as the source
 | --- | --- |
 | `facade` | The document API: reads, operations, order queries and `onChange`. See the [document API reference](/docs/reference/document-api). |
 | `history` | The shared undo manager (`undo()`, `redo()`, `stopCapturing()`). Throws `DocumentNotReadyError` while the document is `pending`. |
-| `clearHistory()` | Empty the undo and redo stacks. Stacks are otherwise unbounded. |
+| `clearHistory()` | Empty the undo and redo stacks. Otherwise they keep the newest `history.limit` steps (200 by default). |
 | `awareness` | The one presence instance for every view and provider. See [Presence](/docs/collaboration/presence). |
 | `actor` | The local author identity. |
 | `attribution` | Per-block authorship: `block(id)` returns `createdBy`, `contributors` and `lastChangedBy`. |
@@ -90,7 +91,10 @@ With providers attached, the rule is *settle or bound*:
 - IndexedDB always settles, so it has no bound. A WebSocket alone in a new room may never hear from anyone, so it gets `DEFAULT_READINESS_BOUND` (1000 ms), counted from the moment the socket opens or first fails to open: a room that is slow to accept the connection is waited for, up to the socket's `connectTimeout` (10 s by default). Expired credentials (`4401`) before the first sync hold the bound: an empty document waits for a dial that gets in.
 - A server refusal (`SyncRefusedError`) never seeds: an empty document stays `pending` and reports it in `syncRefusal` and `onSyncRefused`. A document that already has content keeps it and becomes `hydrated`, so a view mounted on it shows that content. The refusal belongs to the provider that reported it: once that provider is released (its cleanup ran) or syncs again (`connect()` after a refreshed token), the rule above applies to the providers still attached, and an empty room seeds `value`. Released with no provider left, the document stays `pending` until the next `attachSync` or `sync()`.
 
-```ts
+```ts title="src/lib/ready.ts" check
+import { createDocument } from 'edytor';
+
+const document = createDocument(); // no value, no provider yet: pending
 if (!document.ready) {
   const off = document.onReady(() => console.log(document.readiness));
 }
@@ -106,7 +110,7 @@ if (!document.ready) {
 
 `attachSync` takes the same factories as the `<Edytor sync>` prop. The document keeps one provider per target (one IndexedDB name, one server and room), so attaching the same target twice does nothing.
 
-```ts
+```ts title="src/lib/room-document.ts" check
 import { createDocument, createWebsocketSync } from 'edytor';
 
 const document = createDocument({ actor: { id: 'user-42' } }); // pending
@@ -122,7 +126,7 @@ document.attachSync(
 
 Pass the same document to several `<Edytor>` views. They share one document API, one undo history and one awareness; undo restores the caret in the view that issued it.
 
-```svelte
+```svelte title="src/routes/notes/+page.svelte" check
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { Edytor, createDocument, createIndexeddbSync } from 'edytor';
@@ -164,7 +168,9 @@ Do not create an `EdytorDocument` on the document a sync server holds. See [writ
 
 Seeding a `value` is deterministic: the seed is written under a writer id hashed from the value, and blocks without an `id` get ids derived from the same hash. Two replicas that seed the same template write the same data, so their seeds merge into one copy instead of two, and a late identical seed never erases an edit.
 
-```ts
+```ts title="src/lib/template.ts" check
+import { createDocument } from 'edytor';
+
 const template = { children: [{ type: 'paragraph', content: [{ text: 'Agenda' }] }] };
 const a = createDocument({ value: template });
 const b = createDocument({ value: template });

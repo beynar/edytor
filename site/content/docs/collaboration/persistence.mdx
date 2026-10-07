@@ -10,7 +10,7 @@ Edytor persists documents in the browser's IndexedDB. Use `createIndexeddbSync` 
 
 A view with a `room` and no `server` stores the document under that name and restores it on the next visit:
 
-```svelte
+```svelte title="src/routes/notes/+page.svelte" check
 <script lang="ts">
   import { Edytor } from 'edytor';
 
@@ -22,9 +22,10 @@ A view with a `room` and no `server` stores the document under that name and res
 
 `value` is the content of a brand-new document only. When the store already holds the document, the stored content wins and `value` is ignored. The same works without a view:
 
-```ts
+```ts title="src/lib/local-note.ts" check
 import { createDocument, createIndexeddbSync } from 'edytor';
 
+const value = { children: [{ type: 'paragraph', content: [{ text: 'First note' }] }] };
 const document = createDocument();
 document.attachSync(createIndexeddbSync('notes/today'), { value });
 ```
@@ -37,7 +38,7 @@ The snapshot is stored in the compact (v2) update encoding and gzip-compressed w
 
 A view with a `server` keeps an IndexedDB store beside the socket, so a synced document also survives reloads. With an `actor`, the view names it `edytor:<actor.id>@<server>/<room>`, and without one `edytor:<server>/<room>`; trailing slashes are removed from `server` in both, so `wss://x/rooms/` and `wss://x/rooms` share one store. The factory form sets the name yourself:
 
-```ts
+```ts title="src/lib/sync.ts" check
 import { createWebsocketSync } from 'edytor';
 
 const sync = createWebsocketSync({
@@ -72,9 +73,10 @@ A first visit made offline seeds `value` locally and keeps that seed. When the d
 
 A document opened offline shows what its local copy holds. To keep documents the user has not opened fresh (a list of recent pages, before a flight), `prefetch` syncs one document's local copy with its room once and closes:
 
-```ts
+```ts title="src/lib/prefetch.ts" check
 import { lastUpdated, prefetch } from 'edytor';
 
+let fetchedAt = 0; // when this device last fetched the document
 const target = { server: 'wss://rooms.example.com/rooms', room: 'doc-42', params: { token } };
 const changed = await lastUpdated(target); // ms since the epoch, or null
 if (changed !== null && changed > fetchedAt) {
@@ -90,11 +92,11 @@ if (changed !== null && changed > fetchedAt) {
 
 A first visit to a room's document (nothing in the local copy yet) shows nothing until the room answered. Pass the document as JSON in `snapshot` and the view shows it at once, read-only, then replaces it with the live, editable view as soon as its own document is ready:
 
-```svelte title="+page.svelte"
+```svelte title="+page.svelte" check
 <script lang="ts">
 	import { Edytor, documentSnapshot } from 'edytor';
 
-	let { data } = $props();
+	let { data }: { data: { token: string } } = $props();
 	const target = { server: 'wss://rooms.example.com/rooms', room: 'doc-42', params: { token: data.token } };
 </script>
 
@@ -121,10 +123,10 @@ Tabs of the same document sync with each other over a `BroadcastChannel`, with o
 
 `clearDocument(name)` deletes a stored document. Destroy the document (or unmount the view that owns it) first, so no provider holds the database open:
 
-```ts
+```ts title="src/lib/sign-out.ts" check
 import { clearDocument, createWebsocketSync } from 'edytor';
 
-const sync = createWebsocketSync({ server, room: documentId });
+const sync = createWebsocketSync({ server: 'wss://rooms.example.com/rooms', room: documentId });
 // ...later, at sign-out, after the editor is gone:
 if (sync.persistName) await clearDocument(sync.persistName);
 ```
@@ -142,7 +144,7 @@ IndexedDB and `BroadcastChannel` are shared by every tab of a browser profile. T
 
 `IndexeddbPersistence` is exported for code that manages a CRDT document itself:
 
-```ts
+```ts title="src/lib/local-store.ts" check
 import * as Y from 'edytor/crdt';
 import { bindCrdt } from 'edytor/crdt/edytor';
 

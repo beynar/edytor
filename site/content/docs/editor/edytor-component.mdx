@@ -6,9 +6,11 @@ icon: square-pen
 
 `<Edytor>` renders one editable (or readonly) view of a document. This page lists every prop it accepts and the snippets you can pass to replace how a kind renders.
 
-```svelte
+```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor } from 'edytor';
+	import { Edytor, type JSONBlock } from 'edytor';
+
+	const save = (doc: Partial<JSONBlock>) => fetch('/api/note', { method: 'PUT', body: JSON.stringify(doc) });
 </script>
 
 <Edytor
@@ -71,7 +73,7 @@ A readonly view never connects: it shows `value`, or the `document` you pass.
 
 Handles are on unless you turn them off: a `+` that adds a block and a drag grip. List [`blockMenuPlugin`](/docs/plugins/block-menu) to open Notion's block menu on a grip click, or pass `onActivate` to open your own:
 
-```svelte
+```svelte title="Handles.svelte" check
 <script lang="ts">
 	import { Edytor, type BlockHandleActivation } from 'edytor';
 
@@ -90,15 +92,19 @@ A focused handle moves its block with <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kb
 
 Pass a snippet named `<type>Block`, `<type>Mark` or `<type>InlineBlock` to replace how one kind renders. The override replaces only the snippet: the kind's element and content element, `void` and `island` flags, hooks and clipboard forms stay as the plugin defined them. A quote's `content()` still renders inside its `blockquote`, a heading's inside its `h1`–`h3`.
 
-```svelte
+```svelte title="Overrides.svelte" check
+<script lang="ts">
+	import { Edytor, type BlockSnippetPayload, type MarkSnippetPayload } from 'edytor';
+</script>
+
 <Edytor>
-	{#snippet quoteBlock({ block, content, children })}
+	{#snippet quoteBlock({ block, content, children }: BlockSnippetPayload)}
 		<span class="quote-mark" contenteditable="false">“</span>
 		{@render content()}
 		{#if children}<div class="quote-children">{@render children()}</div>{/if}
 	{/snippet}
 
-	{#snippet boldMark({ content })}
+	{#snippet boldMark({ content }: MarkSnippetPayload)}
 		<span class="font-semibold">{@render content()}</span>
 	{/snippet}
 </Edytor>

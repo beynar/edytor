@@ -6,7 +6,7 @@ icon: bold
 
 `toolbarPlugin` shows Notion's formatting toolbar above a text selection: `[Kind ⌄] | Link | B I U S </> | A ⌄`. The mark buttons come from the mark definitions: every mark with a `toolbar` entry gets one.
 
-```svelte
+```svelte title="Toolbar.svelte" check
 <script lang="ts">
 	import { Edytor, toolbarPlugin } from 'edytor';
 </script>
@@ -104,7 +104,7 @@ The snippet receives the `ToolbarController`. Every action keeps and restores th
   }}
 />
 
-```svelte title="Editor.svelte"
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor, createToolbarPlugin, type ToolbarController } from 'edytor';
 

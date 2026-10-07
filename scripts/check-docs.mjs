@@ -30,7 +30,17 @@
  * leave to the reader (`// your storage`, the `Env` that `wrangler types`
  * writes), so the rest of each block is checked as written.
  *
- * Errors are reported at their line in the `.mdx` page. The directory is
+ * `$lib/<name>` in a block names the block of the same page titled
+ * `src/lib/<name>`, so a route can import the page's component as an app does.
+ *
+ * Each block is a module of its own: a `.ts` block with no `import` or
+ * `export` gets an `export {}` appended, so it never sees a name another
+ * block declares (a script's top-level names are global in TypeScript).
+ *
+ * Errors are reported at their line in the `.mdx` page. A diagnostic outside
+ * the examples and the package's sources (a missing or broken generated
+ * config: run with no `.svelte-kit/tsconfig.json`, say) fails the check
+ * too, so a run that checked nothing never passes. The directory is
  * removed on exit, including on Ctrl-C (`--keep` leaves it for inspection);
  * it lies outside `src/`, so a leftover never reaches `pnpm check` or the
  * build, and `.svelte-kit` is ignored by git, prettier and eslint.
@@ -99,16 +109,24 @@ for (const page of pages(DOCS)) {
 			.slice(start + 1, end)
 			.map((line) => (line.startsWith(indent) ? line.slice(indent.length) : line))
 			.join('\n');
+		// svelte-check type-checks a component's script and markup only under `lang="ts"`.
+		if (extension === '.svelte' && !/<script\b[^>]*\blang=["']ts["']/.test(code)) {
+			failures.push(
+				`${where}:${start + 1}: a \`check\` svelte fence needs a \`<script lang="ts">\`, or nothing in it is checked`
+			);
+			continue;
+		}
 		const worker =
 			extension === '.ts' && /from\s+['"](?:edytor\/cloudflare|cloudflare:[\w-]+)['"]/.test(code);
 		let file = title.replace(/^src\/routes\//, '').replace(/^src\//, '');
 		if (!file.endsWith(extension)) file += extension;
-		const target = path.join(OUT, worker ? 'worker' : 'app', slug, file);
+		const base = path.join(OUT, worker ? 'worker' : 'app', slug);
+		const target = path.join(base, file);
 		if (examples.some((example) => example.target === target)) {
 			failures.push(`${where}:${start + 1}: two \`check\` fences on this page are titled ${title}`);
 			continue;
 		}
-		examples.push({ target, page: where, line: start + 1, code, worker });
+		examples.push({ target, base, page: where, line: start + 1, code, worker });
 	}
 }
 
@@ -122,7 +140,7 @@ const report = (file, line, column, message) => {
 	const absolute = path.resolve(ROOT, file);
 	const example = sourcesOf.get(absolute);
 	if (example) failures.push(`${example.page}:${example.line + line}:${column}: ${message}`);
-	else if (absolute.startsWith(DECLARATIONS))
+	else if (!absolute.startsWith(path.join(ROOT, 'src') + path.sep))
 		failures.push(`${path.relative(ROOT, absolute)}:${line}:${column}: ${message}`);
 };
 
@@ -144,10 +162,30 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'])
 for (const legacy of ['src/routes/__docexamples', '.svelte-kit/types/src/routes/__docexamples'])
 	rmSync(path.join(ROOT, legacy), { recursive: true, force: true });
 rmSync(OUT, { recursive: true, force: true });
-for (const { target, code } of examples) {
+// A script's top-level names are global: make every block a module.
+const MODULE = /^\s*(?:import|export)\b/m;
+// `$lib/x` names a block of the same page titled `src/lib/x`, as in an app.
+const local = ({ target, base, code }) =>
+	code.replace(/(['"])\$lib\/([^'"]+)\1/g, (whole, quote, rest) => {
+		const named = path.join(base, 'lib', rest);
+		if (![named, `${named}.ts`].some((file) => sourcesOf.has(file))) return whole;
+		const relative = path.relative(path.dirname(target), named).replaceAll(path.sep, '/');
+		return `${quote}${relative.startsWith('.') ? relative : `./${relative}`}${quote}`;
+	});
+for (const example of examples) {
+	const { target } = example;
 	mkdirSync(path.dirname(target), { recursive: true });
-	writeFileSync(target, code.endsWith('\n') ? code : `${code}\n`);
+	const code = local(example);
+	const text = code.endsWith('\n') ? code : `${code}\n`;
+	writeFileSync(
+		target,
+		target.endsWith('.ts') && !MODULE.test(code) ? `${text}export {};\n` : text
+	);
 }
+// The app program extends this app's `.svelte-kit/tsconfig.json`, which a
+// fresh clone does not have until `svelte-kit sync` writes it.
+const rootSync = run('svelte-kit', ['sync']);
+if (rootSync.status !== 0) throw new Error(`svelte-kit sync failed:\n${rootSync.stderr}`);
 writeFileSync(
 	path.join(OUT, 'svelte.config.js'),
 	"export default { kit: { files: { routes: 'app' } } };\n"

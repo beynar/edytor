@@ -70,7 +70,7 @@ A chunk sequence is a `start` frame (`0`, then the total length), any number of 
 
 This is the core of a relay that stores and acknowledges, for any platform with WebSockets. Authorization, identity checks and persistence are yours to add; the shipped [`DocumentRoom`](/docs/server/room) does all of them.
 
-```ts
+```ts title="src/relay.ts" check
 import * as Y from 'edytor/crdt';
 import {
   bindCrdt, frame, readProtocolVersion, createDecoder, readVarUint, readVarUint8Array,

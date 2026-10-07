@@ -20,7 +20,11 @@ Pass `placeholder` to `<Edytor>`:
 
 A string shows in every empty block. A function decides per block:
 
-```svelte
+```svelte title="PerBlock.svelte" check
+<script lang="ts">
+	import { Edytor } from 'edytor';
+</script>
+
 <Edytor
 	placeholder={({ type, data, focused }) => {
 		if (type === 'heading') return `Heading ${String(data.level ?? 'h1').slice(1)}`;

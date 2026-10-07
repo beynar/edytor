@@ -122,7 +122,7 @@ A plugin key only claims the key in the situation listed. Otherwise the key fall
 
 A plugin declares bindings in `hotkeys`. The app can pass its own with the `hotKeys` prop of `<Edytor>`. Both take the same functions:
 
-```ts
+```ts title="savePlugin.ts" check
 import type { Plugin } from 'edytor';
 
 export const savePlugin: Plugin = () => ({
@@ -174,7 +174,7 @@ A binding that is not a function, such as an optional callback left `undefined` 
 
 To override a default, bind the same chord in the `hotKeys` prop or in a plugin, and call `prevent`:
 
-```svelte
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor } from 'edytor';
 

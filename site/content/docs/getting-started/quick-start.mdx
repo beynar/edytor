@@ -92,11 +92,13 @@ The slash menu, the toolbar, the block menu and the block handles each take a sn
 
 `onChange` receives the whole document after every committed change: local edits, remote edits and undo. Its argument is the root block, `{ type: 'root', children }`.
 
-With the instance bound, `edytor.value` returns the same JSON and is reactive, so it works in `$derived`:
+With the instance bound, `edytor.value` returns the same JSON and is reactive, so it works in `$derived`. Pass the bound instance to a component of yours, `<BlockCount {edytor} />`:
 
-```svelte
+```svelte title="src/lib/BlockCount.svelte" check
 <script lang="ts">
-	// …the editor from above
+	import type { EdytorInstance } from 'edytor';
+
+	let { edytor }: { edytor?: EdytorInstance } = $props();
 	const blockCount = $derived(edytor?.value.children?.length ?? 0);
 </script>
 

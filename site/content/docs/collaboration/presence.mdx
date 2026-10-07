@@ -18,8 +18,8 @@ A shared document takes it at creation instead: `createDocument({ actor: { … }
 
 To set or change it later, write the `user` field yourself. `edytor.awareness` (on a view) and `document.awareness` are the same instance:
 
-```ts
-document.awareness.setLocalStateField('user', { name: 'Ada', color: '#dc2626' });
+```ts title="src/lib/presence.ts" check
+edytor.awareness.setLocalStateField('user', { name: 'Ada', color: '#dc2626' });
 ```
 
 | Field | Type | Description |
@@ -77,8 +77,8 @@ The prop follows changes, so an app can narrow presence as a room fills up. Outs
 
 `awareness.getStates()` returns every client's state, keyed by client id. The `change` event fires when a client joins, leaves or changes its state:
 
-```ts
-const awareness = document.awareness;
+```ts title="src/lib/online.ts" check
+const awareness = edytor.awareness; // or document.awareness
 
 const online = () =>
   [...awareness.getStates()]
@@ -90,7 +90,7 @@ awareness.on('change', () => console.log(online()));
 
 In Svelte, wrap it in a rune so the list updates:
 
-```svelte
+```svelte title="src/lib/Online.svelte" check
 <script lang="ts">
   import type { EdytorDocument } from 'edytor';
 
@@ -119,7 +119,9 @@ In Svelte, wrap it in a rune so the list updates:
 
 Each client publishes one JSON state:
 
-```ts
+```ts title="src/lib/presence-state.ts" check
+import type { DocAnchor } from 'edytor';
+
 type PresenceState = {
   actor?: { id: string; name?: string; color?: string };
   user?: { name?: string; color?: string };

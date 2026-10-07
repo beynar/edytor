@@ -6,7 +6,7 @@ icon: square-slash
 
 `slashMenuPlugin` opens a command menu at the caret when you type `/`. Typing after the slash filters it; <kbd>Enter</kbd> runs the highlighted command and removes the `/query` text.
 
-```svelte
+```svelte title="Slash.svelte" check
 <script lang="ts">
 	import { Edytor, slashMenuPlugin } from 'edytor';
 </script>
@@ -95,7 +95,7 @@ A `menu` snippet receives the `SlashMenuController`. Read `controller.commands` 
 
 When the block handle's `+` opens the menu (`controller.addition` is set), the plugin renders your `menu` inside a focused wrapper that takes the keyboard from the editor: typed characters and <kbd>Backspace</kbd> edit `controller.query`, and <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd> work as above, so nothing typed reaches the document. A snippet with a search field of its own calls `controller.search(query)` from it; the wrapper's keys still move, pick and close. Call `controller.dismiss()` rather than `close()` to close it: it gives the editor back its focus and selection.
 
-```svelte title="Editor.svelte"
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor, createSlashMenuPlugin, type SlashMenuItem } from 'edytor';
 

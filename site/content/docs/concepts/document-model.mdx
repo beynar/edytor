@@ -10,7 +10,9 @@ An Edytor document is a tree of blocks, stored as JSON. You pass it in as `value
 
 All four types are exported from `edytor` and `edytor/crdt/edytor`:
 
-```ts
+```ts title="src/lib/json.ts" check
+import type { SerializableContent } from 'edytor';
+
 type JSONDoc = {
 	data?: Record<string, SerializableContent>;
 	children: JSONBlock[];

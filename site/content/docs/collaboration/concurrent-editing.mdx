@@ -49,8 +49,8 @@ Alice's undo puts all of it back under "Tasks".
 
 To delete a whole subtree from code, pass `keepChildren: false`. Every block in the subtree is deleted; a block Bob adds inside it at the same time takes the subtree's place:
 
-```ts
-document.facade.deleteBlock('tasks', { keepChildren: false });
+```ts title="src/lib/delete-subtree.ts" check
+edytor.document.facade.deleteBlock('tasks', { keepChildren: false });
 ```
 
 ## Undoing a new block keeps a peer's text

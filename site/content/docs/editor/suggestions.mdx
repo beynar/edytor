@@ -283,7 +283,9 @@ The full demo (`site/islands/ai-demo.ts` in the repository) streams word by word
 - Inline, `**bold**`, `*italic*` or `_italic_`, `` `code` `` and `[text](url)` links become marks. Marks do not nest.
 - `type` sets the paragraph kind (default `paragraph`). The other kinds and marks are the [rich text](/docs/plugins/rich-text) and [code](/docs/plugins/code) plugins'.
 
-```ts
+```ts title="src/lib/markdown.ts" check
+import { textToBlocks } from 'edytor';
+
 textToBlocks('## Plan\n- [ ] Ship it\nSee **notes**');
 // [{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Plan' }] },
 //  { type: 'todo-item', data: { checked: false }, content: [{ text: 'Ship it' }] },

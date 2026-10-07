@@ -6,7 +6,7 @@ icon: puzzle
 
 `DocumentRoom` is a ready-made Durable Object. When you already have one, or want your own storage and server logic, attach the document to it instead:
 
-```ts src/worker.ts
+```ts src/worker.ts check
 import { DurableObject } from 'cloudflare:workers';
 import { attachDocument, closedSocket, routeDocumentSocket } from 'edytor/cloudflare';
 
@@ -142,23 +142,28 @@ The room's name is `this.ctx.id.name`: rooms are opened with `getByName(document
 <Tabs>
 <Tab title="R2">
 
-```ts
-document = attachDocument(this, {
-  onLoad: async () => {
-    const [object, owners] = await Promise.all([
-      this.env.DOCS.get(`${this.ctx.id.name}.bin`),
-      this.env.DOCS.get(`${this.ctx.id.name}.replicas.json`)
-    ]);
-    if (!object) return undefined;
-    const update = new Uint8Array(await object.arrayBuffer());
-    return owners ? { update, replicas: await owners.json<ReplicaOwner[]>() } : update;
-  },
-  onSave: async ({ value, update, replicas }) => {
-    await this.env.DOCS.put(`${this.ctx.id.name}.bin`, update);
-    await this.env.DOCS.put(`${this.ctx.id.name}.replicas.json`, JSON.stringify(replicas));
-    await this.env.DOCS.put(`${this.ctx.id.name}.json`, JSON.stringify(value)); // optional
-  }
-});
+```ts title="src/r2.ts" check
+import { DurableObject } from 'cloudflare:workers';
+import { attachDocument, type ReplicaOwner } from 'edytor/cloudflare';
+
+export class Notes extends DurableObject<Env> {
+  document = attachDocument(this, {
+    onLoad: async () => {
+      const [object, owners] = await Promise.all([
+        this.env.DOCS.get(`${this.ctx.id.name}.bin`),
+        this.env.DOCS.get(`${this.ctx.id.name}.replicas.json`)
+      ]);
+      if (!object) return undefined;
+      const update = new Uint8Array(await object.arrayBuffer());
+      return owners ? { update, replicas: await owners.json<ReplicaOwner[]>() } : update;
+    },
+    onSave: async ({ value, update, replicas }) => {
+      await this.env.DOCS.put(`${this.ctx.id.name}.bin`, update);
+      await this.env.DOCS.put(`${this.ctx.id.name}.replicas.json`, JSON.stringify(replicas));
+      await this.env.DOCS.put(`${this.ctx.id.name}.json`, JSON.stringify(value)); // optional
+    }
+  });
+}
 ```
 
 R2 has no practical size limit: the best fit for documents. `ReplicaOwner` is exported by `edytor/cloudflare`; a copy saved before `replicas` existed still loads as a bare update.
@@ -166,20 +171,25 @@ R2 has no practical size limit: the best fit for documents. `ReplicaOwner` is ex
 </Tab>
 <Tab title="KV">
 
-```ts
-document = attachDocument(this, {
-  onLoad: async () => {
-    const name = this.ctx.id.name!;
-    const bytes = await this.env.DOCS_KV.get(name, 'arrayBuffer');
-    const replicas = await this.env.DOCS_KV.get<ReplicaOwner[]>(`${name}:replicas`, 'json');
-    if (!bytes) return undefined;
-    return replicas ? { update: new Uint8Array(bytes), replicas } : new Uint8Array(bytes);
-  },
-  onSave: async ({ update, replicas }) => {
-    await this.env.DOCS_KV.put(this.ctx.id.name!, update);
-    await this.env.DOCS_KV.put(`${this.ctx.id.name}:replicas`, JSON.stringify(replicas));
-  }
-});
+```ts title="src/kv.ts" check
+import { DurableObject } from 'cloudflare:workers';
+import { attachDocument, type ReplicaOwner } from 'edytor/cloudflare';
+
+export class Notes extends DurableObject<Env> {
+  document = attachDocument(this, {
+    onLoad: async () => {
+      const name = this.ctx.id.name!;
+      const bytes = await this.env.DOCS_KV.get(name, 'arrayBuffer');
+      const replicas = await this.env.DOCS_KV.get<ReplicaOwner[]>(`${name}:replicas`, 'json');
+      if (!bytes) return undefined;
+      return replicas ? { update: new Uint8Array(bytes), replicas } : new Uint8Array(bytes);
+    },
+    onSave: async ({ update, replicas }) => {
+      await this.env.DOCS_KV.put(this.ctx.id.name!, update);
+      await this.env.DOCS_KV.put(`${this.ctx.id.name}:replicas`, JSON.stringify(replicas));
+    }
+  });
+}
 ```
 
 A KV value holds at most 25 MiB, and other locations may read an old value for a short while. `onLoad` only runs for a room that stores nothing, and a missing value is asked again at the next start, so that rarely matters here.
@@ -187,22 +197,27 @@ A KV value holds at most 25 MiB, and other locations may read an old value for a
 </Tab>
 <Tab title="D1">
 
-```ts
-document = attachDocument(this, {
-  onLoad: async () => {
-    const row = await this.env.DB.prepare('SELECT state, replicas FROM documents WHERE id = ?')
-      .bind(this.ctx.id.name)
-      .first<{ state: ArrayBuffer; replicas: string }>();
-    return row ? { update: new Uint8Array(row.state), replicas: JSON.parse(row.replicas) } : undefined;
-  },
-  onSave: async ({ value, update, replicas }) => {
-    await this.env.DB.prepare(
-      'INSERT OR REPLACE INTO documents (id, state, replicas, json) VALUES (?, ?, ?, ?)'
-    )
-      .bind(this.ctx.id.name, update, JSON.stringify(replicas), JSON.stringify(value))
-      .run();
-  }
-});
+```ts title="src/d1.ts" check
+import { DurableObject } from 'cloudflare:workers';
+import { attachDocument } from 'edytor/cloudflare';
+
+export class Notes extends DurableObject<Env> {
+  document = attachDocument(this, {
+    onLoad: async () => {
+      const row = await this.env.DB.prepare('SELECT state, replicas FROM documents WHERE id = ?')
+        .bind(this.ctx.id.name)
+        .first<{ state: ArrayBuffer; replicas: string }>();
+      return row ? { update: new Uint8Array(row.state), replicas: JSON.parse(row.replicas) } : undefined;
+    },
+    onSave: async ({ value, update, replicas }) => {
+      await this.env.DB.prepare(
+        'INSERT OR REPLACE INTO documents (id, state, replicas, json) VALUES (?, ?, ?, ?)'
+      )
+        .bind(this.ctx.id.name, update, JSON.stringify(replicas), JSON.stringify(value))
+        .run();
+    }
+  });
+}
 ```
 
 A D1 row holds at most 2 MB; use R2 for larger documents.
@@ -214,7 +229,9 @@ A D1 row holds at most 2 MB; use R2 for larger documents.
 
 `transact(fn)` runs `fn` with the document's [facade](/docs/reference/document-api) in one transaction, stores the edit and broadcasts it to every connected socket, like a client's edit. It returns what `fn` returns. It is one transaction, not a rollback, like every client-side `transact`: if `fn` throws, the writes it made before the throw are kept, stored and broadcast, and the error is rethrown. Validate before writing, or build one plan with `facade.prepare.*` and apply it: a refused plan writes nothing. If storing the edit fails, the storage error is thrown instead and nothing is kept: the room rebuilds the document from its rows, which replaces `doc` and `facade`, and subscriptions made on the old ones (`facade.onChange`, `doc.on`) end. Read `facade` from the room each time rather than keeping it. A `transact` called inside `fn` joins the outer one. `fn` runs synchronously: writes after an `await` in it are not part of the transaction. Write through `transact`: a write straight through `facade` is stored and broadcast too, but when its append fails nothing is thrown and that write is dropped when the room next serves or reads the document, or when you next read `facade` or `doc` while the room is idle (not inside a transaction, a client's frame or their change events), so a later write through a freshly read `facade` or `doc` is stored. A later write through a `facade` or `doc` you kept from before the failure is dropped with it. A `facade.onChange` subscriber or a `doc.on('afterAllTransactions')` listener may read the room. A `transact` there, whether the change is a client's or comes from the room's own `transact`, or inside a `facade.transact` or `doc.transact` you opened, throws without writing: the engine would apply its write only after the change being handled, too late for the room to store it before `transact` returns. Only a `transact` called inside `fn` itself joins. After a write straight through `facade` (outside `transact` and a client's frame), a `doc.on('afterAllTransactions')` listener runs once that write is done: a `transact` there is a change of its own and is stored. Defer it with `queueMicrotask(() => this.transact(...))`: it then runs once the change is handled, and throws the storage error if storing fails. When the append of the change a subscriber sees failed, a read there does not hide it: a client's change is dropped and its sender's socket closed (`1011`, so the client resends it) once the subscriber returns, and the room's own `transact` throws the storage error. Expose it through your own RPC methods:
 
-```ts
+```ts title="src/notes.ts" check
+import { DurableObject } from 'cloudflare:workers';
+import { attachDocument } from 'edytor/cloudflare';
 import { toBlockSpec } from 'edytor/crdt/edytor';
 
 export class Notes extends DurableObject<Env> {
@@ -231,7 +248,7 @@ export class Notes extends DurableObject<Env> {
 }
 
 // From a Worker, a queue consumer, a cron trigger…
-await env.NOTES.getByName(documentId).appendNote('Deployed v2');
+// await env.NOTES.getByName(documentId).appendNote('Deployed v2');
 ```
 
 `read()` returns the document as JSON. A room with no document yet is seeded with one empty block before `transact` runs.
@@ -242,12 +259,16 @@ The server has no plugins, so it takes the block roles it checks from `semantics
 
 If your clients' plugins add void or island kinds, or redefine bundled ones, pass the same rules:
 
-```ts
+```ts title="src/semantics.ts" check
+import { DurableObject } from 'cloudflare:workers';
+import { attachDocument } from 'edytor/cloudflare';
 import { defaultSemantics } from 'edytor/crdt/edytor';
 
-document = attachDocument(this, {
-  semantics: { ...defaultSemantics, roles: { ...defaultSemantics.roles, embed: { void: true } } }
-});
+export class Notes extends DurableObject<Env> {
+  document = attachDocument(this, {
+    semantics: { ...defaultSemantics, roles: { ...defaultSemantics.roles, embed: { void: true } } }
+  });
+}
 ```
 
 In a `DocumentRoom` subclass, override `protected semantics()` and return the config. `semantics: {}` checks no roles.

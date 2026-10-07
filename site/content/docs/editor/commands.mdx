@@ -24,7 +24,7 @@ Use handle commands for anything a user could have done, so your plugins see it.
 
 Block commands take a payload object:
 
-```ts
+```ts title="block-commands.ts" check
 const block = edytor.idToBlock.get('intro')!;
 
 // Insert blocks around it. Both return the new block's handle.
@@ -54,7 +54,7 @@ const tail = block.splitBlock({ index: 3, text });
 
 Text commands run on a `Text` segment. Offsets are inside the segment:
 
-```ts
+```ts title="text-commands.ts" check
 const text = block.firstText!;
 text.insertText({ value: 'Hello', start: 0, end: 0 });
 text.insertText({ value: 'link', start: 5, end: 5, marks: { link: { href: 'https://example.com' } } });
@@ -67,7 +67,7 @@ Without `start`/`end`, text commands use the current selection. Without `marks`,
 
 Commands on the selection live on the editor and on `richTextOperations`:
 
-```ts
+```ts title="selection-commands.ts" check
 import { richTextOperations } from 'edytor';
 
 edytor.deleteContentWithinSelection({}); // delete the selected range
@@ -87,7 +87,7 @@ To change the block kind, see [`convertToKind`](/docs/concepts/blocks#kinds-and-
 
 Every command sets `edytor.dispatcher.last`:
 
-```ts
+```ts title="result.ts" check
 block.mergeBlockBackward();
 const { operation, status } = edytor.dispatcher.last!;
 // status: 'applied' | 'noop' | 'refused' | 'failed'
@@ -106,7 +106,7 @@ Commands that create blocks also return handles: `insertBlockAfter`, `splitBlock
 
 `edytor.facade` addresses blocks by id and uses block offsets, where an inline block counts as one character. Every operation returns an `OpResult`:
 
-```ts
+```ts title="op-result.ts" check
 type OpResult = {
 	status: 'applied' | 'noop' | 'refused';
 	ids: readonly string[]; // what it created, moved or targeted (empty unless applied)
@@ -114,7 +114,7 @@ type OpResult = {
 };
 ```
 
-```ts
+```ts title="facade-operations.ts" check
 const { facade } = edytor;
 const id = 'intro';
 
@@ -132,7 +132,7 @@ facade.deleteBlock(id); // { keepChildren: false } removes the subtree
 
 Facade inserts take a `BlockSpec`, not a `JSONBlock`: an `id` is required and content items carry a `kind` (`{ kind: 'text', text, marks? }` or `{ kind: 'inline', id, type, data? }`). `toBlockSpec(json)` converts canonical JSON, minting the ids it leaves out (`{ freshIds: true }` mints all of them, for a copy):
 
-```ts
+```ts title="copy-block.ts" check
 import { toBlockSpec } from 'edytor';
 
 facade.insertBlock({ parent: null, index: 1 }, toBlockSpec(facade.blockJSON('title'), { freshIds: true }));
@@ -146,7 +146,7 @@ The full list (`splitBlock`, `mergeBlocks`, `deleteBlocks`, `deleteRange`, `inse
 
 `edytor.transact(fn)` runs several writes as one transaction: collaborators receive them as one update, normalization runs once at the end, and they are never split across undo steps. It is not a rollback: a throw from `fn` keeps the writes made before it, and normalization still runs on them before the error reaches you; a normalizer that fails then is logged, so the error you get is `fn`'s.
 
-```ts
+```ts title="transact.ts" check
 edytor.transact(() => {
 	const heading = edytor.idToBlock.get('title')!;
 	heading.setBlock({ value: { data: { level: 'h2' } } });
@@ -160,7 +160,9 @@ Nested `transact` calls join the outer one. Without a view, use `document.transa
 
 `edytor.moveBlocks` moves blocks with their identity, children and content, as one undo step. Describe the destination relative to a target block:
 
-```ts
+```ts title="move-after.ts" check
+const source = edytor.idToBlock.get('intro')!;
+const target = edytor.idToBlock.get('outro')!;
 const request = { blocks: [source], target, position: 'after' as const };
 if (edytor.canMoveBlocks(request)) edytor.moveBlocks(request);
 ```
@@ -176,7 +178,7 @@ Or describe one relative step with `direction`:
 | `in` | Last child of the previous sibling; of its last item when it is a list the blocks are no items of (a `position: 'inside'` drop too). Refused when that list ends with a block that holds no children, such as an image, as under that block. |
 | `out` | After the parent. The siblings after the last moved block become its children (an outdent). An item of a list container leaves the list instead: before it, after it, or between its two halves, without the items after it ([Containers](/docs/concepts/blocks#containers)). |
 
-```ts
+```ts title="move-down.ts" check
 const moved = edytor.moveBlocks({ blocks: [...edytor.selection.selectedBlocks], direction: 'down' });
 ```
 

@@ -10,7 +10,7 @@ Every block, every inline block and the document itself carry `data`: a JSON obj
 
 `block.data`, `atom.data` and `edytor.data` are live proxies over the current value:
 
-```ts
+```ts title="src/lib/properties.ts" check
 block.data.title = 'Launch plan'; // set one property
 block.data.meta.owner = 'ada'; // nested objects read as proxies too
 delete block.data.draft; // delete one

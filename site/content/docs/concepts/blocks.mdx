@@ -115,7 +115,7 @@ Read the answer at runtime with `edytor.defaultChild(parentBlock)`, which return
 
 A kind lists the ways to create it as `presets`. Each preset is a row in the kind catalogue, `edytor.kinds`, which the slash menu, the markdown shortcuts and your own block menus read:
 
-```ts
+```ts title="src/lib/kinds.ts" check
 edytor.kinds;
 // [
 //   { id: 'block.paragraph', label: 'Text', icon: 'T', keywords: ['paragraph', 'plain'], value: { type: 'paragraph', data: {} }, replaces: false },
@@ -136,7 +136,7 @@ Each row has the preset's `label`, `icon`, `keywords`, `data`, `markdown` prefix
 
 Convert a block with `convertToKind`, or run the row's command by id:
 
-```ts
+```ts title="src/lib/convert.ts" check
 import { convertToKind } from 'edytor';
 
 const row = edytor.kinds.find((kind) => kind.id === 'block.quote');

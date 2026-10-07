@@ -4111,7 +4111,9 @@ export declare class Dispatcher {
     private draining;
     private leading;
     private patched;
+    private untracked;
     constructor(edytor: Edytor);
+    outside: <T>(body: () => T) => T;
     get pendingLead(): Plan | null;
     permits: () => boolean;
     cut: (kind: string, phase?: "before" | "after") => void;

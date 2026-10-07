@@ -16,7 +16,7 @@
 	import { marksForInsertion } from '$lib/session/editing/text.js';
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
-	import { richTextKinds, richTextMarks } from '$lib/crdt/semantics.js';
+	import { mediaKinds, richTextKinds, richTextMarks } from '$lib/crdt/semantics.js';
 
 	export { richTextOperations };
 
@@ -88,7 +88,8 @@
 		if (type === 'toggle') return 'Toggle';
 		if (type === 'quote') return 'Empty quote';
 		if (type === 'callout') return focused ? 'Type something…' : null;
-		if (type === 'image') return focused ? 'Write a caption…' : null;
+		if (type === 'image' || Object.hasOwn(mediaKinds, type))
+			return focused ? 'Write a caption…' : null;
 		// Code shows nothing in an empty line (Notion).
 		if (type === 'codeLine') return null;
 		return focused ? "Type '/' for commands" : null;

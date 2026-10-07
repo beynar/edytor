@@ -66,6 +66,26 @@ export {
 	type ImageData,
 	type ImageAlign
 } from './image/ImagePlugin.svelte';
+export {
+	embedPlugin,
+	createEmbedPlugin,
+	EMBED_PROVIDERS,
+	EMBED_SANDBOX,
+	EMBED_ALLOW,
+	embedSourceOf,
+	type EmbedProvider,
+	type EmbedPluginOptions
+} from './media/EmbedPlugin.svelte';
+export {
+	bookmarkPlugin,
+	createBookmarkPlugin,
+	type BookmarkPluginOptions,
+	type BookmarkPreview
+} from './media/BookmarkPlugin.svelte';
+export { filePlugin, createFilePlugin } from './media/FilePlugin.svelte';
+export { videoPlugin, createVideoPlugin } from './media/VideoPlugin.svelte';
+export { audioPlugin, createAudioPlugin } from './media/AudioPlugin.svelte';
+export { safeWebUrl, safeMediaSrc, type MediaPluginOptions } from './media/media.js';
 export type { BlockHandleController } from './blockHandles/BlockHandleController.svelte.js';
 export {
 	columnsPlugin,

@@ -10,6 +10,7 @@ import {
 	createDocument,
 	defaultSemantics,
 	imageSemantics,
+	mediaSemantics,
 	richTextSemantics,
 	semanticsOf
 } from '../../../lib/crdt/index.js';
@@ -22,10 +23,10 @@ const frozenDeep = (value: unknown): boolean =>
 
 describe('semantics tables (API low)', () => {
 	it('the bundled tables are deeply frozen', () => {
-		for (const table of [defaultSemantics, richTextSemantics, codeSemantics, imageSemantics])
-			expect(frozenDeep(table)).toBe(true);
+		const tables = [defaultSemantics, richTextSemantics, codeSemantics, imageSemantics];
+		for (const table of [...tables, mediaSemantics]) expect(frozenDeep(table)).toBe(true);
 		expect(() => {
-			(defaultSemantics.roles as Record<string, unknown>).embed = { void: true };
+			(defaultSemantics.roles as Record<string, unknown>).widget = { void: true };
 		}).toThrow(TypeError);
 		expect(() => {
 			(defaultSemantics.roles.divider as { void?: boolean }).void = false;

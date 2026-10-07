@@ -83,6 +83,8 @@ export {
 	richTextSemantics,
 	codeSemantics,
 	imageSemantics,
+	mediaKinds,
+	mediaSemantics,
 	layoutSemantics,
 	richTextKinds,
 	codeKinds,

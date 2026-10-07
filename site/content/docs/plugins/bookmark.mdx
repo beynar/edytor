@@ -1,0 +1,74 @@
+---
+title: Bookmark
+description: The bookmark plugin adds Notion's web bookmark, a card linking to a page with its title, description and images from an unfurl function you provide.
+icon: bookmark
+---
+
+`bookmarkPlugin` adds Notion's web bookmark: an "Add a web bookmark" panel until the block has a link, then a card that opens the page in a new tab, with an editable caption. The card shows the page's title, description, icon and cover image when your `unfurl` function answers them, the URL alone otherwise. It is not a default plugin: list it.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, createBookmarkPlugin, slashMenuPlugin } from 'edytor';
+
+	// A browser cannot read most pages: ask your server for their metadata.
+	const bookmark = createBookmarkPlugin({
+		unfurl: async (url) => {
+			const response = await fetch(`/api/unfurl?url=${encodeURIComponent(url)}`);
+			return response.ok ? await response.json() : null;
+		}
+	});
+</script>
+
+<Edytor plugins={[bookmark, slashMenuPlugin]} />
+```
+
+The slash menu then lists "Web bookmark" under `Media`, and pasting an `http(s)` link on an empty line offers to make it a bookmark ([Pasting a link on an empty line](/docs/editor/clipboard#pasting-a-link-on-an-empty-line)). `bookmarkPlugin` is the plugin without `unfurl`.
+
+## Options
+
+`createBookmarkPlugin(options)` takes a `BookmarkPluginOptions`:
+
+<TypeTable
+  type={{
+    unfurl: {
+      type: "(url: string) => Promise<BookmarkPreview | null | undefined>",
+      description: "Read a page's title, description, cover image and icon. Called when a link is set from the panel or the paste menu. Without it, the card shows the URL.",
+    },
+  }}
+/>
+
+`BookmarkPreview` is `{ title?, description?, image?, icon? }`, every field optional. The answer is stored on the block, as one data write, when it arrives and the block still is that bookmark in a view that may write: so every collaborator, the room and a readonly viewer see it without unfurling again. A failed or empty answer stores nothing. It arrives whenever the server replies, maybe after more edits, so it is no undo step: undo takes back what the user did (the typing after it, then the conversion), never the unfurled fields alone.
+
+Your server endpoint fetches untrusted pages: restrict it to `http(s)` URLs on public hosts (no private or loopback addresses), cap the response size and time, and read only the metadata (`<title>`, `og:title`, `og:description`, `og:image`, the icon link).
+
+## Security
+
+- The block stores and renders only an absolute `http:`/`https:` link with a host, read by the link sanitizer's rules (`safeWebUrl`): a `javascript:` or `data:` link a collaborator stores renders no card.
+- The card is an `a` with `target="_blank"` and `rel="noopener noreferrer nofollow"`.
+- An unfurled `image` or `icon` is kept only when it is an `http(s)` URL; the title (300 characters) and description (1,000) are capped, and rendered as text.
+
+## The kind
+
+| Kind       | Element  | Data                                                    | Preset                                                            |
+| ---------- | -------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
+| `bookmark` | `figure` | `{ url: string, title?, description?, image?, icon? }` | Web bookmark (🔖, group `Media`, keywords `link`, `url`, `preview`) |
+
+The block is void like the [image](/docs/plugins/image): it takes no children and is never merged, and its only text is the caption. The command id is `block.bookmark`. Its role is in `defaultSemantics`. In a readonly view the empty block is a passive placeholder, so a viewer never runs `unfurl`.
+
+## Clipboard
+
+- Copying exports `<figure data-edytor-bookmark><a href="…">title</a><figcaption>caption</figcaption></figure>`; the plain text is the link, then the caption.
+- Pasting that HTML back imports a bookmark with its link and title. Other links paste as links.
+
+## Styling
+
+| Selector                              | Matches                                 |
+| ------------------------------------- | --------------------------------------- |
+| `[data-edytor-type='bookmark']`       | The `figure`                            |
+| `[data-edytor-bookmark]`              | The card's wrapper (the `a` inside it)  |
+| `[data-edytor-bookmark-title]`        | The title (the URL without one)         |
+| `[data-edytor-bookmark-description]`  | The description                         |
+| `[data-edytor-bookmark-url]`          | The icon and URL line                   |
+| `[data-edytor-bookmark-cover]`        | The cover image                         |
+
+The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).

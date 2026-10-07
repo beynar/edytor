@@ -24,6 +24,8 @@ export const load: PageLoad = ({ url }) => {
 		scenario: url.searchParams.get('scenario') ?? 'basic',
 		dstDocument: readDstDocument(url.searchParams.get('dst')),
 		empty: url.searchParams.get('empty'),
+		// `media=1` lists the embed and bookmark plugins (their paste menu).
+		media: url.searchParams.get('media') === '1',
 		collab: url.searchParams.get('collab'),
 		collabws: url.searchParams.get('collabws'),
 		wsserver: url.searchParams.get('wsserver'),

@@ -114,6 +114,19 @@ export const codeKinds = frozen({
 export const imageKinds = frozen({ image: { void: true } } satisfies Record<string, KindSemantics>);
 
 /**
+ * The media plugins' structural rows (`embedPlugin`, `bookmarkPlugin`,
+ * `filePlugin`, `videoPlugin`, `audioPlugin`): void like the image, their
+ * only text is the caption.
+ */
+export const mediaKinds = frozen({
+	embed: { void: true },
+	bookmark: { void: true },
+	file: { void: true },
+	video: { void: true },
+	audio: { void: true }
+} satisfies Record<string, KindSemantics>);
+
+/**
  * The columns plugin's structural rows: `columns` is a layout of `column`s
  * (`layout.*` in the delete contract), a column a container that holds any
  * block. In {@link defaultSemantics}: a document holding no `columns` block
@@ -277,17 +290,19 @@ export const richTextSemantics = withMarks(semanticsOf(richTextKinds), richTextM
 export const codeSemantics = semanticsOf(codeKinds);
 /** `imagePlugin`'s block roles. */
 export const imageSemantics = semanticsOf(imageKinds);
+/** The media plugins' block roles (embed, bookmark, file, video, audio). */
+export const mediaSemantics = semanticsOf(mediaKinds);
 /** The columns plugin's block roles (a layout of columns). */
 export const layoutSemantics = semanticsOf(layoutKinds);
 /**
- * The rich-text, code, image and columns plugins' block roles together —
- * what the room and a headless `createDocument`/`loadDocument` adopt by
- * default (`semantics: {}` checks none). The columns plugin is not a
- * default plugin of `<Edytor>`, but its roles are here so a layout reads
- * the same on every replica.
+ * The rich-text, code, image, media and columns plugins' block roles
+ * together — what the room and a headless `createDocument`/`loadDocument`
+ * adopt by default (`semantics: {}` checks none). The media and columns
+ * plugins are not default plugins of `<Edytor>`, but their roles are here
+ * so their blocks read the same on every replica.
  */
 export const defaultSemantics = withMarks(
-	semanticsOf(richTextKinds, codeKinds, imageKinds, layoutKinds),
+	semanticsOf(richTextKinds, codeKinds, imageKinds, mediaKinds, layoutKinds),
 	richTextMarks
 );
 

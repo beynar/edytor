@@ -1,0 +1,66 @@
+---
+title: File
+description: The file plugin adds Notion's file block, an attachment uploaded through your upload function or linked, shown with its name and size.
+icon: paperclip
+---
+
+`filePlugin` adds Notion's file block: an empty panel until the block has a file, then the file's name and size, linking to it, with an editable caption. Files are uploaded through the `upload` function you provide, or linked. It is not a default plugin: list it.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, createFilePlugin, slashMenuPlugin } from 'edytor';
+
+	const file = createFilePlugin({
+		upload: async (picked) => {
+			const body = new FormData();
+			body.append('file', picked);
+			const response = await fetch('/api/uploads', { method: 'POST', body });
+			return (await response.json()).url;
+		}
+	});
+</script>
+
+<Edytor plugins={[file, slashMenuPlugin]} />
+```
+
+The slash menu then lists "File" under `Media`. `filePlugin` is the plugin without `upload`: links only.
+
+## Options
+
+`createFilePlugin(options)` takes a `MediaPluginOptions` (shared with [video](/docs/plugins/video) and [audio](/docs/plugins/audio)):
+
+<TypeTable
+  type={{
+    upload: {
+      type: "(file: File) => Promise<string>",
+      description: "Upload a picked file and answer its URL. Adds an Upload button to the empty block. Without it, files are linked only.",
+    },
+  }}
+/>
+
+## The kind
+
+| Kind   | Element  | Data                                          | Preset                                                                |
+| ------ | -------- | --------------------------------------------- | --------------------------------------------------------------------- |
+| `file` | `figure` | `{ src: string, name: string, size?: number }` | File (📎, group `Media`, keywords `attachment`, `upload`, `pdf`) |
+
+An upload stores the URL `upload` answers with the picked file's `name` and `size` (bytes), as one data write, only when the block is still there, a file block and without a source (a source a collaborator set while the upload ran stays); a link stores its URL with the name read from its last path segment. A source is accepted only when it is an `http:`/`https:` URL with a host or a `blob:` URL of one (`safeMediaSrc`), never `data:`: a file stored inline would be sent in every update. The rendered link has `target="_blank"`, `rel="noopener noreferrer nofollow"` and `download` set to the name.
+
+The block is void like the [image](/docs/plugins/image), and its only text is the caption. The command id is `block.file`. Its role is in `defaultSemantics`. In a readonly view the empty block is a passive placeholder, so a viewer never runs `upload`. The plugin does not take pasted or dropped files; claim them in an `onPaste` hook (see [Clipboard](/docs/editor/clipboard#plugin-hooks)).
+
+## Clipboard
+
+- Copying exports `<figure data-edytor-file><a href="…">name</a><figcaption>caption</figcaption></figure>`; the plain text is the URL, then the caption.
+- Pasting that HTML back imports a file block.
+
+## Styling
+
+| Selector                    | Matches                         |
+| --------------------------- | ------------------------------- |
+| `[data-edytor-type='file']` | The `figure`                    |
+| `[data-edytor-file]`        | The link's wrapper              |
+| `[data-edytor-file-name]`   | The name                        |
+| `[data-edytor-file-size]`   | The size (`5 B`, `1.2 MB`)      |
+| `[data-edytor-media-upload]` | The empty panel's Upload button |
+
+The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).

@@ -146,14 +146,14 @@ The roles (`void`, `island`, `lines`, `layout`, `atomic`, `rendersContent`, `def
 
 Every replica must read the same roles, the room and headless documents included, and those have no plugins. Write a kind's roles once, spread them into its record, and give the same table to the room through `semanticsOf` and `mergeSemantics` (see [Block roles](/docs/reference/document-api#block-roles)):
 
-```ts title="src/lib/embed/kinds.ts" check
+```ts title="src/lib/widget/kinds.ts" check
 import { defaultSemantics, mergeSemantics, semanticsOf } from 'edytor';
 
-export const embedKinds = { embed: { void: true, rendersContent: false } };
+export const widgetKinds = { widget: { void: true, rendersContent: false } };
 
-// In the plugin: blocks: { embed: { ...embedKinds.embed, snippet: embed, presets } }
+// In the plugin: blocks: { widget: { ...widgetKinds.widget, snippet: widget, presets } }
 // In the room and headless documents:
-export const semantics = mergeSemantics(defaultSemantics, semanticsOf(embedKinds));
+export const semantics = mergeSemantics(defaultSemantics, semanticsOf(widgetKinds));
 ```
 
 ## The snippet payload

@@ -12,6 +12,8 @@
 	import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
+	import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
+	import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
 	import { clearDocument, createWebsocketSync, type EdytorSync } from '$lib/collaboration/index.js';
 	import {
@@ -411,6 +413,7 @@
 
 	const plugins = $derived([
 		...(data.find ? [findPlugin] : []),
+		...(data.media ? [embedPlugin, bookmarkPlugin] : []),
 		arrowMovePlugin,
 		data.scenario === 'image' ? uploadingImagePlugin : imagePlugin,
 		codePlugin,

@@ -252,7 +252,7 @@ export type BlockDefinition = {
 	 * setting it at once never merge into a value neither wrote (one wins
 	 * whole); elsewhere each key merges on its own. Adopted by the document as
 	 * part of the kind's role: every view of a document, a headless one and
-	 * the room must declare the same paths (`semanticsOf({ embed: { atomic:
+	 * the room must declare the same paths (`semanticsOf({ card: { atomic:
 	 * ['link'] } })`).
 	 */
 	atomic?: readonly (string | readonly string[])[];

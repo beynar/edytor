@@ -44,6 +44,19 @@ const ICONS: Record<string, string> = {
 	),
 	'block.divider': svg('<path d="M3 10h14"/><path d="M5 6h10M5 14h10" opacity=".35"/>'),
 	'block.code': svg('<path d="M7.5 6L3.5 10l4 4M12.5 6l4 4-4 4"/>'),
+	'block.embed': svg(
+		'<rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M8 8l-2 2 2 2M12 8l2 2-2 2"/>'
+	),
+	'block.bookmark': svg('<path d="M6 3.5h8a1 1 0 0 1 1 1v12l-5-3.5-5 3.5v-12a1 1 0 0 1 1-1z"/>'),
+	'block.file': svg(
+		'<path d="M11.5 2.5H6A1.5 1.5 0 0 0 4.5 4v12A1.5 1.5 0 0 0 6 17.5h8a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2.5v4h4"/>'
+	),
+	'block.video': svg(
+		'<rect x="2.5" y="5" width="11" height="10" rx="2"/><path d="M13.5 8.5l4-2.5v8l-4-2.5"/>'
+	),
+	'block.audio': svg(
+		'<path d="M7.5 14.5V5l9-1.5v9.5"/><circle cx="5.5" cy="14.5" r="2"/><circle cx="14.5" cy="13" r="2"/>'
+	),
 	'columns.2': columns(2),
 	'columns.3': columns(3),
 	'columns.4': columns(4),

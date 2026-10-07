@@ -268,7 +268,7 @@ export default {
 
 ### Block roles on the server
 
-The server has no plugins, so it takes the block roles it checks from `semantics`: which kinds are void, islands or islands of lines (`lines`, the code block), which are layouts (`layout`, the columns plugin's `columns`), which render no content, and each container's default child. The default, `defaultSemantics` from `edytor/crdt/edytor`, holds the kinds of the bundled rich-text, code, image and columns plugins (the columns plugin is opt-in in a view, but its layout rows are here). Server edits obey them as a view does: merging into a divider, splitting an image or moving a code line out of its code block is `refused`.
+The server has no plugins, so it takes the block roles it checks from `semantics`: which kinds are void, islands or islands of lines (`lines`, the code block), which are layouts (`layout`, the columns plugin's `columns`), which render no content, and each container's default child. The default, `defaultSemantics` from `edytor/crdt/edytor`, holds the kinds of the bundled rich-text, code, image, media (embed, bookmark, file, video, audio) and columns plugins (the media and columns plugins are opt-in in a view, but their rows are here). Server edits obey them as a view does: merging into a divider, splitting an image or moving a code line out of its code block is `refused`.
 
 If your clients' plugins add void or island kinds, pass the same rules, from the same kind table your plugin spreads (see [Block roles](/docs/reference/document-api#block-roles)):
 
@@ -278,11 +278,11 @@ import { attachRoom } from 'edytor/cloudflare';
 import { defaultSemantics, mergeSemantics, semanticsOf } from 'edytor/crdt/edytor';
 
 // The kinds your plugins add, shared with the client (a `kinds.ts` both import).
-const embedKinds = { embed: { void: true, rendersContent: false } };
+const widgetKinds = { widget: { void: true, rendersContent: false } };
 
 export class Notes extends DurableObject<Env> {
   document = attachRoom(this, {
-    semantics: mergeSemantics(defaultSemantics, semanticsOf(embedKinds))
+    semantics: mergeSemantics(defaultSemantics, semanticsOf(widgetKinds))
   });
 }
 ```

@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.30
+
+- **Pasting a link over selected text links it.** With the rich text plugin, a paste whose plain text is one URL (`http:`, `https:` or `mailto:`) over a text range outside a code block now sets the `link` mark on the selected text instead of replacing it, as in Notion ([pasting a link](/docs/plugins/rich-text#pasting-a-link)). Other pastes are unchanged. A plugin of yours that claims such pastes in its own `onPaste` still wins when it is listed before the rich text plugin (the default plugins come after yours).
+
 ### From 0.1.0-next.29
 
 - **No count badge beside the drop indicator.** Dragging several blocks now shows the drop indicator as the bar alone, like the preview since 0.1.0-next.29: no `[data-edytor-drag-count]` badge is rendered anywhere. The count stays as `data-count` on `[data-edytor-drop-indicator]` and on `[data-edytor-drag-preview]`. A theme rule that styled the badge no longer matches anything.

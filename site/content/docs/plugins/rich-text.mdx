@@ -72,6 +72,10 @@ Values are sanitized when rendered and copied. A link `href` keeps only `http:`,
 
 Pasted HTML maps `b`, `i`, `u`, `strike` and `del` to their marks, reads Google Docs' styled spans for bold, italic, underline, strike, color and highlight, and turns `mark` into a yellow highlight.
 
+## Pasting a link
+
+Pasting a URL over selected text links the text, as in Notion: when the selection is a text range where the [toolbar](/docs/plugins/toolbar) offers a link (not in a code block or on a void block) and the clipboard's plain text is one URL — `http:` or `https:` with a host, or `mailto:`, spaces around it ignored — the paste sets the `link` mark with that URL on the selected text (across several blocks too) instead of replacing it. The text stays selected, and one undo gives the plain text back. A copied page link pastes the same way, since its plain text is the URL. Anything else pastes as usual: words, several URLs, a bare domain such as `svelte.dev`, a scriptable URL, a paste at a caret, and <kbd>Shift</kbd>+paste.
+
 ## Hotkeys
 
 | Keys                                           | Action                        |

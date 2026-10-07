@@ -71,6 +71,24 @@ export const sanitizeLinkHref = (href: unknown): string | null => {
 	}
 };
 
+/**
+ * The URL a paste carries when its plain text is one link and nothing else
+ * (surrounding whitespace aside): `http:`/`https:` with a host, or
+ * `mailto:`. `null` for anything else — words, several URLs, a bare
+ * domain, a scriptable scheme.
+ */
+export const pastedLink = (plain: string | undefined | null): string | null => {
+	const text = plain?.trim();
+	if (!text || /\s/.test(text)) return null;
+	try {
+		const url = new URL(text);
+		const web = (url.protocol === 'http:' || url.protocol === 'https:') && url.host;
+		return web || (url.protocol === 'mailto:' && url.pathname) ? sanitizeLinkHref(text) : null;
+	} catch {
+		return null;
+	}
+};
+
 const formatSelectedTextRange = (
 	edytor: Edytor,
 	mark: RichTextMark,

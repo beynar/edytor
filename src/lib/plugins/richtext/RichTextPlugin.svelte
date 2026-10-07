@@ -4,6 +4,7 @@
 	import type { SerializableContent } from '$lib/utils/json.js';
 	import type { HotKey } from '$lib/session/keymap.js';
 	import {
+		pastedLink,
 		richTextOperations,
 		sanitizeLinkHref,
 		sanitizeCssColorValue,
@@ -140,6 +141,19 @@
 						}
 					])
 				)
+			},
+			// Pasting a link over selected text links it (Notion), where the toolbar
+			// offers a link: a text range outside code blocks and voids.
+			onPaste: ({ e, prevent }) => {
+				const { selection } = edytor;
+				const { value, projection } = selection;
+				if (value.kind !== 'text' || selection.state.isCollapsed) return;
+				if (projection.islandRoot !== null || projection.voidRoot !== null) return;
+				const href = pastedLink(e.clipboardData?.getData('text/plain'));
+				if (href)
+					prevent(() =>
+						edytor.dispatcher.run('insertFromPaste', () => operations.setLinkAtRange({ href }))
+					);
 			},
 			onBeforeInput: ({ e, prevent }) => {
 				const { inputType, data } = e;

@@ -43,6 +43,13 @@ export type RenderDomEdytorOptions = {
 	autoSelectFixture?: boolean;
 	onChange?: (value: JSONBlock) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
+	/** The root textbox's name and id, forwarded by `<Edytor>`. */
+	label?: {
+		'aria-label'?: string;
+		'aria-labelledby'?: string;
+		'aria-describedby'?: string;
+		id?: string;
+	};
 };
 
 type BeforeInputPayload = {
@@ -367,6 +374,7 @@ export const renderDomEdytor = async (
 			presence: options.presence,
 			onChange: options.onChange,
 			onSelectionChange: options.onSelectionChange,
+			label: options.label,
 			onReady: (nextEdytor: Edytor) => {
 				edytor = nextEdytor;
 			}

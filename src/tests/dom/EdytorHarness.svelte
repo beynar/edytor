@@ -27,6 +27,13 @@
 		onChange?: (value: JSONBlock) => void;
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		onReady?: (edytor: EdytorContext) => void;
+		/** The root textbox's name and id (`aria-label`, `aria-labelledby`, `aria-describedby`, `id`). */
+		label?: {
+			'aria-label'?: string;
+			'aria-labelledby'?: string;
+			'aria-describedby'?: string;
+			id?: string;
+		};
 	};
 
 	let {
@@ -48,7 +55,8 @@
 		presence,
 		onChange,
 		onSelectionChange,
-		onReady = () => {}
+		onReady = () => {},
+		label
 	}: Props = $props();
 
 	let edytor = $state<EdytorContext>();
@@ -81,4 +89,5 @@
 	{presence}
 	{onChange}
 	{onSelectionChange}
+	{...label}
 />

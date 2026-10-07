@@ -29,6 +29,8 @@ import {
 	shownText
 } from '$lib/selection/replaceSelection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
+import { kindLabel } from '$lib/kinds.js';
+import type { Popup, PopupOpener } from '$lib/surface/popups.svelte.js';
 import { dragPreview } from './dragPreview.js';
 import { stacks } from '../columns/stacking.js';
 
@@ -242,6 +244,19 @@ export class BlockHandleController {
 	get draggable() {
 		return this.options.draggable;
 	}
+
+	/**
+	 * The block's kind as people read it (`kindLabel`: "Heading 1"), its
+	 * handle's name; reactive through the block's cell (a Turn into renames it).
+	 */
+	labelOf = (block: Block) => {
+		void this.edytor.cells?.get(block.id)?.type;
+		return kindLabel(this.edytor, block);
+	};
+
+	/** The popup the `+` or the grip of `block` opened, while it is open (`edytor.popups`). */
+	opened = (block: Block, control: PopupOpener['control']): Popup | undefined =>
+		this.edytor.popups.openedBy(block.id, control);
 
 	/**
 	 * Make `node` the block's grip: dragging (when draggable), a click that

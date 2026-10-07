@@ -366,3 +366,106 @@ describe('dragging a strip', () => {
 		expect(weights(edytor, 'K1', 'K2')).toEqual([undefined, undefined]);
 	});
 });
+
+/**
+ * Resizing from the keyboard (WU-27, F15; WAI-ARIA 1.2 "window splitter"):
+ * each band is a focusable vertical separator whose value is the left
+ * column's share of the pair, in percent; ArrowRight/ArrowLeft move the gap
+ * by 1% of the layout's width (Shift: 10%), Home/End to the narrowest
+ * either may get, each press one write of both weights (one undo step).
+ * The bands of the layout holding the caret are in the page, so the
+ * keyboard reaches them, and a focused band stays when the pointer leaves.
+ */
+describe('resizing from the keyboard', () => {
+	const press = async (strip: HTMLElement, key: string, shiftKey = false) => {
+		strip.dispatchEvent(
+			new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true })
+		);
+		await flushDomUpdates();
+	};
+
+	it('a band is a focusable vertical separator named and valued', async () => {
+		const { edytor } = await render([
+			p('P'),
+			columns('C', column('K1', [p('A')], 3), column('K2', [p('B')], 1))
+		]);
+		await hover(edytor, 'A');
+		const [strip] = strips();
+		expect(strip!.getAttribute('role')).toBe('separator');
+		expect(strip!.tabIndex).toBe(0);
+		expect(strip!.getAttribute('aria-orientation')).toBe('vertical');
+		expect(strip!.getAttribute('aria-label')).toBe('Resize columns');
+		expect(strip!.hasAttribute('aria-hidden')).toBe(false);
+		// K1 holds 3 of the pair's 4 weights.
+		expect(strip!.getAttribute('aria-valuenow')).toBe('75');
+		expect(strip!.getAttribute('aria-valuemin')).toBe('0');
+		expect(strip!.getAttribute('aria-valuemax')).toBe('100');
+	});
+
+	it('ArrowRight widens the left column by 1% of the layout, one undo step', async () => {
+		const { edytor } = await render(contractDoc());
+		await hover(edytor, 'A');
+		const [strip] = strips();
+		strip!.focus();
+		await press(strip!, 'ArrowRight');
+		// 277 + 6 (1% of 600) of the pair's 554px, the pair's weights 1 + 1.
+		const [k1, k2] = weights(edytor, 'K1', 'K2') as number[];
+		expect(k1).toBeCloseTo((2 * 283) / 554, 10);
+		expect(k2).toBeCloseTo((2 * 271) / 554, 10);
+		expect(document.activeElement).toBe(strips()[0]);
+		// The bands are measured once per frame.
+		await frame();
+		await flushDomUpdates();
+		expect(strips()[0]!.getAttribute('aria-valuenow')).toBe(String(Math.round((100 * 283) / 554)));
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(weights(edytor, 'K1', 'K2')).toEqual([undefined, undefined]);
+	});
+
+	it('Shift+ArrowLeft narrows it by 10%; Home and End stop at the minimum', async () => {
+		const { edytor } = await render(contractDoc());
+		await hover(edytor, 'A');
+		await press(strips()[0]!, 'ArrowLeft', true);
+		expect((weights(edytor, 'K1')[0] as number) * 554).toBeCloseTo(2 * 217, 8);
+
+		await hover(edytor, 'A');
+		await press(strips()[0]!, 'Home');
+		// 10% of 600: the left column 60px wide.
+		expect((weights(edytor, 'K1')[0] as number) * 554).toBeCloseTo(2 * 60, 8);
+
+		await hover(edytor, 'A');
+		await press(strips()[0]!, 'End');
+		expect((weights(edytor, 'K2')[0] as number) * 554).toBeCloseTo(2 * 60, 8);
+	});
+
+	it('other keys are neither the band’s nor the editor’s', async () => {
+		const { edytor } = await render(contractDoc());
+		await hover(edytor, 'A');
+		const before = edytor.facade.version;
+		await press(strips()[0]!, 'ArrowDown');
+		await press(strips()[0]!, 'a');
+		expect(edytor.facade.version).toBe(before);
+	});
+
+	it('the layout holding the caret shows its bands; a focused band stays when the pointer leaves', async () => {
+		const { edytor, editor } = await render(contractDoc());
+		edytor.selection.setAtTextOffset(block(edytor, 'B').firstText!, 0);
+		await flushDomUpdates();
+		layout(edytor);
+		edytor.overlay.invalidate();
+		await frame();
+		await flushDomUpdates();
+		expect(strips()).toHaveLength(1);
+
+		edytor.selection.setAtTextOffset(block(edytor, 'P').firstText!, 0);
+		await hover(edytor, 'A');
+		strips()[0]!.focus();
+		await flushDomUpdates();
+		pointer(editor, 'pointerleave');
+		edytor.overlay.invalidate();
+		await frame();
+		await flushDomUpdates();
+		expect(strips()).toHaveLength(1);
+		expect(document.activeElement).toBe(strips()[0]);
+	});
+});

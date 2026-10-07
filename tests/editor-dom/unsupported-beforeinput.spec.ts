@@ -71,7 +71,11 @@ const readEditorDomShape = async (page: Parameters<typeof readJsonByTestId>[0]) 
 		).length,
 		nativeLinkNodes: document.querySelectorAll('[data-edytor] a[href]').length,
 		nativeHorizontalRuleNodes: document.querySelectorAll('[data-edytor] hr').length,
-		nativeDirectionNodes: document.querySelectorAll('[data-edytor] [dir]').length
+		// A block's own `dir` is the core's (`blockDir`: these lines are Latin, so
+		// `ltr` or none); any other `dir` is the browser's.
+		nativeDirectionNodes: Array.from(document.querySelectorAll('[data-edytor] [dir]')).filter(
+			(node) => !(node.matches('[data-edytor-block="true"]') && node.getAttribute('dir') === 'ltr')
+		).length
 	}));
 
 test.describe('unsupported native beforeinput commands', () => {

@@ -44,7 +44,26 @@ export const createToolbarPlugin =
 			return () => Object.assign(host.style, { left, top });
 		};
 
+		/**
+		 * Alt+F10 (the editors' convention: TinyMCE, CKEditor, Google Docs):
+		 * the focus moves to the shown bar's tab stop (a custom one's first
+		 * focusable element); Escape there gives it back.
+		 */
+		const focusBar = () => {
+			const host = edytor.overlay.layer?.querySelector('[data-edytor-toolbar-host]');
+			const bar = host?.querySelector('[data-edytor-toolbar-bar]') ?? host;
+			const target =
+				bar?.querySelector<HTMLElement>('[tabindex="0"]') ??
+				bar?.querySelector<HTMLElement>('button, input, select, [tabindex]:not([tabindex="-1"])');
+			target?.focus({ preventScroll: true });
+		};
+
 		return {
+			hotkeys: {
+				'alt+f10': ({ prevent }) => {
+					if (controller.isVisible) prevent(focusBar);
+				}
+			},
 			onAfterOperation: () => {
 				controller.updateFromSelection();
 				edytor.overlay.invalidate();

@@ -14,6 +14,8 @@ import { SlashMenuController, type TextInsertionPayload } from './SlashMenuContr
 /** One row, for an `item` snippet. */
 export type SlashMenuItem = {
 	command: EditorCommand;
+	/** The row's element id: set it (`id={item.id}`) so the keyboard's owner names the highlighted row. */
+	id: string;
 	/** The keyboard's row. */
 	selected: boolean;
 	/** The built-in line icon as a CSS `mask-image` value, when the command has one. */

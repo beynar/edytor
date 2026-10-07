@@ -131,6 +131,21 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### Unreleased
+
+- **Accessibility (WU-27).** See [Accessibility](/docs/editor/accessibility).
+  - `<Edytor>` forwards `aria-label`, `aria-labelledby`, `aria-describedby` and `id` to its root textbox. They used to be taken for snippets and dropped.
+  - While a menu or the toolbar is open, the root carries `aria-controls`, `aria-haspopup`, `aria-activedescendant` (the `/` menu's highlighted row) and `aria-keyshortcuts` (`Alt+F10` for the toolbar); a `+` or grip that opened a menu has `aria-expanded="true"`. New: `edytor.popups` (what the root names) and `edytor.announcer` (`say(message)`).
+  - The slash menu's rows are now a `listbox` (`.slash-items`, with an id) of `group`s, one per section; `.slash-menu` itself is presentational. The block menu's `role="menu"` and its "Block actions" name moved from `[data-edytor-block-menu]` to its rows' container (`.block-menu-rows`), and its rows are no longer <kbd>Tab</kbd> stops. A `+` menu's field is a `combobox`. Tests that read these roles from the old elements need the new ones.
+  - `SlashMenuItem` has an `id` to set on a custom row; `BlockHandleSnippetPayload` has `label`, the block's kind as people read it.
+  - Handles are named after the kind's preset label: the grip "Heading 1 block: drag to move, click for actions" (was "Move heading block"), the `+` "Add a block below Heading 1 (Alt: above)".
+  - <kbd>Alt</kbd>+<kbd>F10</kbd> moves the focus into the selection toolbar, which is one tab stop walked by the arrows; <kbd>Escape</kbd> returns.
+  - A column resize band is a focusable `separator` the arrows resize (one undo step per press); it is no longer `aria-hidden`, and the bands of the layout holding the caret are rendered without a hover.
+  - Block moves and deletes made in a view are announced in a polite live region, `[data-edytor-live]`, in the overlay.
+  - The list kinds' `li`, `ul` and `ol` elements have `role="none"` (a list's items are sibling blocks, never one list's children). A selector on `role` or a test reading list roles changes.
+  - Grays the chrome uses for text are `#73726e` (was `#7d7a75` and `#a19e99`), `--notion-text-secondary` included, and the code block's syntax colors are darkened to a 4.5:1 contrast (WCAG AA).
+- **Right-to-left text (WU-29).** A block element carries `dir="rtl"` or `dir="ltr"` from its own text's first strong character, and none when it holds none (it keeps its parent's): a Hebrew or Arabic line in a left-to-right page is right to left, its arrows included. The attribute is owned by the core (a foreign change is healed). A theme rule keyed on `[dir]` now matches blocks.
+
 ### From 0.1.0-next.31
 
 - **Security fix: links.** A link whose `href` started with an ASCII control character or a space before `javascript:` (for example `\u0001javascript:…`) passed `sanitizeLinkHref` as a relative link, and browsers, which strip those characters, would run it when clicked. The sanitizer now reads an `href` as the browser's URL parser does: it strips control characters and spaces at both ends and tabs and newlines anywhere, resolves it, and keeps it only when its scheme is `http:`, `https:`, `mailto:` or `tel:` (a relative link resolves to none of its own). Links already stored with such an `href` render without one. Upgrade.

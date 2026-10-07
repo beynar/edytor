@@ -363,13 +363,15 @@ export const keepsSelectedBlocks = (edytor: Edytor, blocks: Block[]) => {
  * (`keepsSelectedBlocks` first). The command authors its result selection
  * (FP-7, R9) by `caretAfterBlockDelete`, declared before the delete, so the
  * seam never runs for it; with no line left, the virtual paragraph's start
- * or the block beside them. Answers the caret's text.
+ * or the block beside them. The view announces the delete
+ * (`announcer.deleted`). Answers the caret's text.
  */
 export const deleteSelectedBlocks = (
 	edytor: Edytor,
 	blocks: Block[] = selectedMembers(edytor)
 ): Text | null => {
 	if (!blocks[0]?.parent || keepsSelectedBlocks(edytor, blocks)) return null;
+	const what = edytor.announcer.what(outermost(blocks));
 	const at = caretAfterBlockDelete(blocks);
 	const besides = at
 		? []
@@ -381,6 +383,7 @@ export const deleteSelectedBlocks = (
 		edytor.deleteBlocks({ blocks })
 	);
 	if (!deleted) return null;
+	edytor.announcer.deleted(what);
 	if (at) return at.text;
 	// No line is left: the caret rests in an emptied document's virtual
 	// paragraph (`doc.empty.virtual`), else the nearest block beside them that

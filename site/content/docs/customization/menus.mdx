@@ -32,18 +32,32 @@ A snippet declared at the top level of a component's markup can be used in its `
 	const keep = (event: MouseEvent) => event.preventDefault();
 </script>
 
-{#snippet item({ command, selected, icon, run, select }: SlashMenuItem)}
-	<button class="row" class:selected onmousedown={keep} onmousemove={select} onclick={run}>
+{#snippet item({ command, id, selected, icon, run, select }: SlashMenuItem)}
+	<button
+		{id}
+		role="option"
+		aria-selected={selected}
+		class="row"
+		class:selected
+		onmousedown={keep}
+		onmousemove={select}
+		onclick={run}
+	>
 		{#if icon}<span class="icon" style:mask-image={icon}></span>{:else}<span>{command.icon}</span>{/if}
 		{command.label}
 		{#if command.hint}<kbd>{command.hint}</kbd>{/if}
 	</button>
 {/snippet}
 
-{#snippet handle({ block, grip, add, readonly }: BlockHandleSnippetPayload)}
+{#snippet handle({ label, grip, add, readonly }: BlockHandleSnippetPayload)}
 	{#if !readonly}
-		<button class="add" onmousedown={keep} onclick={(event) => add(event.altKey)}>+</button>
-		<button class="grip" use:grip aria-label={`Move ${block.type} block`}>⠿</button>
+		<button
+			class="add"
+			aria-label={`Add a block below ${label}`}
+			onmousedown={keep}
+			onclick={(event) => add(event.altKey)}>+</button
+		>
+		<button class="grip" use:grip aria-label={`Move ${label} block`}>⠿</button>
 	{/if}
 {/snippet}
 

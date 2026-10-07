@@ -165,6 +165,17 @@ export const rowOf = (edytor: Edytor, block: Block | null | undefined): KindRow 
 };
 
 /**
+ * A block's kind as people read it (a handle's name, an announcement): its
+ * preset's label (`rowOf`: "Heading 1", "To-do list"), else its type in words.
+ */
+export const kindLabel = (edytor: Edytor, block: Block | null | undefined): string => {
+	const label = rowOf(edytor, block)?.label;
+	if (label) return label;
+	const words = (block?.type ?? 'block').replace(/[-_]+/g, ' ').trim();
+	return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+/**
  * Whether converting `block` loses nothing: it has no children, and no
  * content (text or inline atoms) but what the pending lead (a slash query)
  * removes with it. Turn into and the horizontal rule share it.

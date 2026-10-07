@@ -127,17 +127,21 @@ export const canMoveBlocks = (edytor: Edytor, request: BlockMoveRequest): boolea
  * Runs (`parts`) move one by one, a run that cannot move staying, as Tab
  * does (`dispatcher.each`). A closed toggle the blocks land in, or that
  * adopts blocks, opens (`revealing`): every caller — keys, drops, menus,
- * the public command — shows the moved blocks.
+ * the public command — shows the moved blocks. The view announces what
+ * moved (`announcer.moved`).
  */
 export const moveBlocks = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 	const runs = parts(edytor, request);
-	return revealing(request.blocks, () =>
+	const moved = revealing(request.blocks, () =>
 		runs.length > 1
 			? edytor.dispatcher
 					.each('moveBlocks', runs, (run) => place(edytor, run))
 					.flatMap((moved) => moved ?? [])
 			: place(edytor, runs[0] ?? request)
 	);
+	// Said to assistive technology: what moved, and where (`session/announcer`).
+	edytor.announcer.moved(request, moved);
+	return moved;
 };
 
 const place = (edytor: Edytor, request: BlockMoveRequest): Block[] => {

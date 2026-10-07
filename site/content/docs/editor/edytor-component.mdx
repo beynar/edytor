@@ -46,6 +46,10 @@ Most props are read once, when the component is created. Changing them later has
 | `onSelectionChange` | `(selection: EdytorSelection) => void` | | | Called when the selection value changes. See [Selection](/docs/editor/selection). |
 | `edytor` | `Edytor` | | Bindable | The editor instance. Use `bind:edytor`. See [The editor instance](/docs/concepts/editor-instance). |
 | `class` | `string` | | Yes | Class on the editable root element. |
+| `aria-label` | `string` | | Yes | The editor's accessible name (the root is a `textbox`). See [Accessibility](/docs/editor/accessibility#name-the-editor). |
+| `aria-labelledby` | `string` | | Yes | The id(s) of the element(s) naming the editor, such as the page title. |
+| `aria-describedby` | `string` | | Yes | The id(s) of the element(s) describing it, such as a hint. |
+| `id` | `string` | | Yes | The root element's id. |
 | `spellcheck` | `boolean` | `true` | Yes | The root's `spellcheck` attribute. |
 | `autocorrect` | `'on' \| 'off'` | `'off'` | Yes | The root's `autocorrect` attribute. |
 | `autocomplete` | `'on' \| 'off'` | `'off'` | Yes | The root's `autocomplete` attribute. |

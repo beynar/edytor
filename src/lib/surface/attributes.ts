@@ -13,6 +13,7 @@
  */
 import type { Edytor } from '../edytor.svelte.js';
 import { replacedMark } from '../session/suggestions.svelte.js';
+import type { ContentRun } from '../crdt/index.js';
 
 export type Owned = {
 	/** Attribute → required value ('' for a bare attribute, null when absent). */
@@ -30,6 +31,30 @@ const LONGHANDS: Record<string, readonly string[]> = {
 	outline: ['outline-width', 'outline-style', 'outline-color'],
 	'white-space': ['white-space-collapse', 'text-wrap-mode', 'text-wrap']
 };
+
+/** A strong directional character: a letter of any script, or a direction mark (LRM, RLM). */
+const STRONG = /[\p{L}\u200E\u200F]/u;
+/** The right-to-left scripts' letters, and RLM (UAX #9 classes R and AL). */
+const RTL =
+	/[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}\p{Script=Samaritan}\p{Script=Mandaic}\p{Script=Adlam}\p{Script=Hanifi_Rohingya}\p{Script=Mende_Kikakui}\p{Script=Old_Hungarian}\u200F]/u;
+
+/**
+ * A block element's `dir` (bidi, F14), from its own text's first strong
+ * character (UAX #9, P2, as `dir="auto"` reads it): a line opening with
+ * Hebrew or Arabic is right to left in any page, its caret, alignment and
+ * arrows with it (`selection.rtl`); one holding no strong character (empty,
+ * digits, punctuation) has none and keeps its parent's (`auto` would read
+ * it left to right). Set on the block, not its text element: an engine
+ * moves the caret by its paragraph's direction, never an inline run's.
+ */
+export const blockDir = (text: string): 'rtl' | 'ltr' | null => {
+	const strong = STRONG.exec(text)?.[0];
+	return strong === undefined ? null : RTL.test(strong) ? 'rtl' : 'ltr';
+};
+
+/** The text a cell's runs show (its atoms left out): what `blockDir` reads. */
+export const ownText = (runs: readonly ContentRun[]) =>
+	runs.map((run) => (run.kind === 'text' ? run.text : '')).join('');
 
 /** A text inside a void block is its own editing host (the core sets it at attach). */
 export const insideVoid = (edytor: Edytor, block: string) => {
@@ -98,6 +123,7 @@ export const ownedOf = (
 				'data-edytor-selected': selectedBlocks.has(handle) ? 'true' : null,
 				'data-edytor-focused': focusedBlocks.has(handle) ? 'true' : null,
 				'data-edytor-suggestion-replaced': replacedMark(edytor.suggestions.at(block)),
+				dir: blockDir(ownText(cell?.runs ?? [])),
 				contenteditable: isVoid ? 'false' : null
 			},
 			style: isVoid ? { 'user-select': 'none' } : {}

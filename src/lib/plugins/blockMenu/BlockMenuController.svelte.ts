@@ -19,6 +19,7 @@ import {
 	shownText
 } from '$lib/selection/replaceSelection.js';
 import { selectedMembers } from '$lib/selection/visibility.js';
+import type { Popup } from '$lib/surface/popups.svelte.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -73,6 +74,23 @@ export class BlockMenuController {
 	get readonly() {
 		return this.edytor.readonly;
 	}
+
+	/** The menu's and the Turn into flyout's element ids (page-unique), for `aria-controls`. */
+	get menuId() {
+		return this.edytor.popups.idOf('block-menu');
+	}
+	get flyoutId() {
+		return this.edytor.popups.idOf('block-menu-flyout');
+	}
+
+	/** A row's element id (page-unique; a kind's in the flyout with `flyout`), for `aria-activedescendant`. */
+	rowId = (row: BlockMenuAction | KindRow, flyout = false) =>
+		this.edytor.popups.idOf(
+			`block-menu-${flyout ? 'flyout-' : ''}${'value' in row ? 'kind-' : ''}${row.id}`
+		);
+
+	/** Publish the open menu to the view's root (`edytor.popups`), or withdraw it with `null`. */
+	publish = (popup: Popup | null) => this.edytor.popups.set('block-menu', popup);
 
 	/** What Delete and Turn into act on: `blocks`, a list or a code block with its subtree (`selectedMembers`). */
 	get members(): Block[] {

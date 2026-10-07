@@ -80,6 +80,8 @@ While the menu is open, its search field takes the keys:
 
 Hovering a row highlights it, in the menu and in the flyout.
 
+The rows are a `menu` of `menuitem`s (the flyout another `menu`, "Turn into"). The search field names the open one (`aria-controls`) and its highlighted row (`aria-activedescendant`), so a screen reader reads each row as the arrows move; the grip that opened the menu has `aria-expanded="true"`. See [Accessibility](/docs/editor/accessibility#menus-and-popups).
+
 ## Behavior
 
 - The handle click selects the block, and it stays selected while the menu is open.

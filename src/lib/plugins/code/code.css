@@ -1,7 +1,8 @@
 /*
  * Code blocks, Notion style: a warm gray panel, the language at the top
- * left, Copy on hover, and Notion's light syntax theme (Prism's palette)
- * over TanStack Highlight's `th-*` token classes.
+ * left, Copy on hover, and Notion's light syntax theme (Prism's palette,
+ * each color darkened to a 4.5:1 contrast on the panel, WCAG AA) over
+ * TanStack Highlight's `th-*` token classes.
  */
 [data-edytor-type='code'] {
 	position: relative;
@@ -21,7 +22,7 @@
 	justify-content: space-between;
 	font-size: 12px;
 	line-height: 20px;
-	color: #7d7a75;
+	color: #726f6a;
 	user-select: none;
 }
 [data-edytor-code-header] button {
@@ -61,7 +62,7 @@ pre.th-code code {
 }
 .th-comment,
 .th-meta {
-	color: #708090;
+	color: #63717f;
 }
 .th-keyword,
 .th-link {
@@ -71,11 +72,11 @@ pre.th-code code {
 .th-attr,
 .th-selector,
 .th-inserted {
-	color: #669900;
+	color: #527a00;
 }
 .th-function,
 .th-type {
-	color: #dd4a68;
+	color: #c2415c;
 }
 .th-number,
 .th-literal,
@@ -85,8 +86,8 @@ pre.th-code code {
 	color: #990055;
 }
 .th-variable {
-	color: #ee9900;
+	color: #9b6300;
 }
 .th-operator {
-	color: #9a6e3a;
+	color: #916737;
 }

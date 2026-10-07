@@ -7,18 +7,19 @@ const CDP_SPEC = /\.cdp\.(test|spec)\.[jt]s$/;
 // Lanes with their own runners: `tests/do` (vitest-pool-workers, `pnpm test:do`)
 // and `tests/hosted` (Miniflare-hosted Playwright, `pnpm test:hosted`).
 const OWN_LANES = /tests\/(do|hosted)\//;
+/** `PW_PORT` lets worktrees run the browser lanes side by side (default 4173). */
+const port = Number(process.env.PW_PORT ?? 4173);
 
 const config: PlaywrightTestConfig = {
 	workers: 2,
 	webServer: {
-		command:
-			'env -u FORCE_COLOR -u NO_COLOR pnpm build:app && env -u FORCE_COLOR -u NO_COLOR pnpm preview --host 127.0.0.1 --port 4173',
-		port: 4173,
+		command: `env -u FORCE_COLOR -u NO_COLOR pnpm build:app && env -u FORCE_COLOR -u NO_COLOR pnpm preview --host 127.0.0.1 --port ${port}`,
+		port,
 		reuseExistingServer: !process.env.CI
 	},
 	testIgnore: [/editor-dst/, OWN_LANES],
 	use: {
-		baseURL: 'http://127.0.0.1:4173'
+		baseURL: `http://127.0.0.1:${port}`
 	},
 	projects: [
 		{

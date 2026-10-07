@@ -1879,20 +1879,106 @@ a block delete 43 / 65, an Enter 355 / 293, five keystrokes merged
 ### `room.quota` — a write past a quota is refused, the socket closed `4413` (H3)
 
 Three quotas, each a `vars` setting and an `attachDocument` option:
-`maxDocumentBytes` (64 MiB: what the records hold, uncompressed, plus the
+`maxDocumentBytes` (2 MiB: what the records hold, uncompressed, plus the
 engine's waiting structs; checked after compacting the update records,
 net of the content the frame deletes, so a frame that deletes at least
 what it adds always applies), `maxUpdatesPerSecond` (50 sync messages a
 second per socket, a token bucket with a ten-second burst; every sync
-message counts, a Step1 too) and `maxInboundFrameBytes` (64 MiB, one
-frame reassembled; a chunk sequence announcing more is refused at its
-start). A frame past one is not applied, logged `quota`
+message counts, a Step1 too, and a chunk sequence's start) and
+`maxInboundFrameBytes` (4 MiB, one frame reassembled; a chunk sequence
+announcing more is refused at its start). The defaults are the room's
+memory (WU-04): an isolate has 128 MB and the live document, its index
+included, takes 18 to 46 bytes of heap per stored byte
+(`bench/room-memory.mjs`, Node; prose to one short line per block), so
+the default document stays near 100 MB at worst, and the frame quota
+holds a whole document at it (a client seeding an empty room). A frame past one is not applied, logged `quota`
 (`{ user, quota, … }`), and its socket closed `4413` (`quota: <name>`,
 `CLOSE.quota`, a refusal by `isRefusal`): the provider emits `refused`,
 the document records `syncRefusal`, and nothing redials. Not a drop on a
 live socket (the sender's later frames would wait on the dropped one in
 the room's memory, unacknowledged, for good), not a redial (it resends
 the same frame into the same quota). Pins: `h3-quotas.test.ts`.
+
+### `room.presence.quota` — presence within a size and a rate (WU-05)
+
+A socket's presence entry (only its own replica's is taken) whose state,
+as JSON, is larger than `maxPresenceBytes` (16 KiB) is ignored — not
+kept, not relayed, the previous entry stays — and logged `presence`
+(`{ user, quota: 'size', bytes, limit }`). Presence entries and queries
+draw from a token bucket of their own per socket, `maxPresencePerSecond`
+(50, a ten-second burst), apart from the sync messages' rate: past it a
+query is dropped, and an entry is held (the socket's newest replaces the
+one held), relayed at the end of any socket's later message once the
+socket's bucket has a token, the entries released together in one frame
+(a removal on its own, never to its sender); both logged `presence`
+(`{ user, quota: 'rate', limit }`), once per burst: the socket's first
+message past the rate is one entry, its next message within the rate
+ends the burst (`presenceBursts`), and `refusalCounts.presence` counts
+every message past it. An entry within the rate is relayed at once: the
+broadcast is coalesced only past the rate, never once per tick (that
+would need a timer, which keeps a Durable Object from hibernating). No timer: the last held entry of a
+socket that stops waits for the room's next message (every client renews
+every 15 s). Nothing closes the socket; read-only sockets keep presence
+within the same quotas; a socket's held entry goes when it departs
+(`wu05-presence-quota.test.ts`).
+
+### `room.access` — revocation and credential expiry (WU-06)
+
+`authorize` decides at the dial; the room holds what it decided in each
+socket's attachment (`readOnly`, `expiresAt`), and changes it on request:
+`closeUser(user, code = 4403, reason)` closes every open socket of the
+user (`access revoked`); `setAccess(user, 'read')` flips each write
+socket's attachment to read-only and sends it the read-only notice (the
+socket stays; its next write is denied `read-only`); `'write'` closes each
+read-only socket `1012` (`access changed`, `CLOSE.accessChanged`, not a
+refusal: the provider redials at once and `authorize` decides again);
+`'none'` closes as `closeUser` does, logged `none`. `closeUser` throws a
+`RangeError` before touching any socket for a code `ws.close` rejects
+(only `1000`, `1011`, `1012` and `3000`–`4999` pass) or a reason over 123
+UTF-8 bytes, so a revocation never fails silently with its departure
+announced. Each walks the open sockets' attachments (a
+hibernated room included), returns `{ sockets }`, and is logged `access`
+(`{ user, access, sockets }`, not a refusal). `expiresAt` (ms since the
+epoch) travels in `X-Edytor-Expires`: the router closes a dial already
+past it `4401` (a non-number: `4403`); the room closes the socket `4401`
+(`expired`) at its first message at or past it (the room's clock), and
+the alarm's `expiry` task (`room.alarm.tasks`, armed at the earliest
+expiry of the open sockets, `earlier` at each dial) closes silent ones,
+then re-arms at the next. The provider redials after `4401` with its
+`params` read again (`wu06-revocation.test.ts`).
+
+### `room.attribution.trust` — bindings and profiles are the verified user's (WU-07)
+
+On the attribution root, `c/<n>` (replica `n`'s actor) and `u/<id>`
+(actor `id`'s profile) are checked against the sender's verified user
+(`attributionWrites`, `forgedAttributionDeletes`): a new `c/<n>` struct
+under a client other than `n`, or naming another actor for a replica the
+user does not own, and a `u/<id>` struct with `id` not the user, are
+forged, under the sender's own ids and relayed ones (`attribute`'s
+unowned ids: the room cannot vouch for a relayed binding) alike. A
+forged struct is collected: written as a GC of its length, the deletes
+of the entries it replaces left out (and not checked), the rest of the
+frame applied. A `c/<own n>` naming another actor is applied, then
+rewritten to the user by one `ROOM_ORIGIN` transaction after the frame
+(`rebind`); so is the binding of an id a writer claims (an `orphan`, by
+its dial, its first presence entry or its frame: `bindOrphan`), when the
+room holds content of it, so a relayed id's collected binding is written
+again for its author. A `c/<n>` struct whose value is `n`'s registered
+owner is kept whoever wrote it: it says what the room's registry holds,
+and the room's own `rebind` writes go under the room doc's client id, so
+one relayed to a room that lacks it (a reset container, a restore from a
+lagging snapshot) is not collected. Residual: a rebind relayed to a room
+where `n` has no owner yet is collected, until the author's claim binds
+it again. A delete of a live
+`u/<other>` or of `c/<n>` for a replica the sender does not own is
+dropped (not acknowledged). Each is logged `forged` (`{ user, keys }`);
+the socket stays. Every relayed presence state that has an `actor`
+names the socket's user as its `actor.id` (`verifiedPresence`). Block records' actor ids
+(`b/<id>`: `createdBy`, `contributors`, `lastChangedBy`) are not checked.
+`routeDocumentSocket`/`routeDocumentHistory`'s `allowedOrigins` refuses a
+request with another `Origin` before `authorize` (`4403` `origin not
+allowed`, `403` over HTTP); no `Origin` passes
+(`wu07-attribution-trust.test.ts`).
 
 ### `room.marks.writer` — only `n` writes or deletes `del.<n>` / `wd.<n>` (H2)
 
@@ -1942,6 +2028,23 @@ its document): its denial deletes the blocks it added
 (`prepare.deleteBlocks`, one room transaction); its bootstrap (the schema
 stamp) stays.
 
+### `net.chunk.inbound` — what a room buffers for chunks is bounded (WU-04)
+
+The room reassembles a socket's chunk sequence into ONE buffer of its
+announced size, allocated at its start (`createChunkReader`'s `admit`
+hook decides first; `buffered` is that size). At the start: a read-only
+socket's sequence is skipped, never buffered (the `read-only` denial,
+once, the socket stays: it could only carry a write); the start takes a
+token of the update rate (`quota: rate` past it); and the sequences in
+flight on every socket share `maxBufferedBytes` (twice the frame quota,
+never below one frame, so a frame within the quota always fits alone):
+a start that would pass it closes its socket `1011` (`room busy`, logged
+`quota` with `{ user, quota: 'buffer', bytes, buffered, limit }`) — the
+room is busy, not the sender at fault, so its provider redials with
+backoff — and the others complete. A socket's buffer is released at its
+sequence's end, at any refusal and when it closes. `metrics().buffered`
+is `{ sequences, bytes }` (`wu04-memory-limits.test.ts`).
+
 ### `net.chunk.outbound` — a backlog of any size reaches the room (H6)
 
 The provider sends a frame larger than its `maxFrameBytes` (32 MiB,
@@ -1952,7 +2055,8 @@ the frame quota checked at the sequence's start) and admits the whole
 frame as any other; a part or end with no sequence started (a wake lost
 the buffer) closes the socket `1011` (`chunk sequence lost`) and the
 provider resends at its redial. A 40 MB offline backlog is delivered at
-reconnect and served to a fresh client (`h6-chunking.test.ts`). The image
+reconnect and served to a fresh client, in a room whose document and
+frame quotas are raised to 64 MiB (`h6-chunking.test.ts`). The image
 plugin stores no inline image over `MAX_INLINE_IMAGE_BYTES` (1 MiB of its
 `data:` URL): the link field refuses it and names `upload` (or a hosted
 link), an HTML paste does not import it (`storableImageSrc`); rendering
@@ -1974,12 +2078,14 @@ keep documents fresh before a device goes offline
 
 ### `room.alarm.tasks` — one alarm, the earliest due task (Phase 3)
 
-The room has one Durable Object alarm and four tasks on it: `save`
+The room has one Durable Object alarm and six tasks on it: `save`
 (`onSave`, `saveAfter` after the first unsaved change; while the rows
 cannot be read, again later, up to 5 minutes), `history` (the open
 half-day slot's end, `room.history.slots`), `purge` (the daily tick,
 `room.purge.timing`) and `retention` (the next version's expiry, for a
-store without a TTL of its own, `room.history.retention`). Each task's
+store without a TTL of its own, `room.history.retention`), plus `forward`
+(a move's late edits, `room.move.late`) and `expiry` (the earliest
+credential expiry of the open sockets, `room.access`). Each task's
 due time is stored in the meta table (`due.save`, `due.history`,
 `due.purge`, `due.retention`), so a wake knows what is due;
 arming a task keeps an earlier due time (a wake or an edit never pushes a

@@ -131,7 +131,10 @@ describe('NW-01 · a restore from a lagging snapshot', () => {
 				stored: '> ada: [bob] from onLoad',
 				refusals: byJSON([
 					{ reason: 'replica', detail: A },
-					{ reason: 'relayed', detail: { replica: A2, user: 'bob' } }
+					{ reason: 'relayed', detail: { replica: A2, user: 'bob' } },
+					// A2's binding to Ada is not Bob's to vouch for (D5, WU-07):
+					// collected, and written again when Ada claims A2.
+					{ reason: 'forged', detail: { user: 'bob', keys: [`c/${A2}`] } }
 				])
 			});
 
@@ -143,6 +146,10 @@ describe('NW-01 · a restore from a lagging snapshot', () => {
 			expect(tabA.closed).toBeNull();
 			// A2 was left unowned by the relay: Ada's second tab claims it.
 			expect(await dialOutcome(room, { user: 'ada', replica: A2 })).toBe('open');
+			const bindingOfA2 = await inHooked(room, (r) =>
+				(r.doc!.get('attribution') as unknown as { getAttr(k: string): unknown }).getAttr(`c/${A2}`)
+			);
+			expect(bindingOfA2).toBe('ada');
 			// Nobody else can take either id.
 			expect(await dialOutcome(room, { user: 'eve', replica: A })).toEqual(REPLICA_TAKEN);
 			expect(await dialOutcome(room, { user: 'eve', replica: A2 })).toEqual(REPLICA_TAKEN);

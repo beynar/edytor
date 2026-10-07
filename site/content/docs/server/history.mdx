@@ -247,7 +247,7 @@ Only the room writes the horizon: a client update that writes it is stripped (lo
 
 ## The room's alarm
 
-The history's slots, its [retention](#retention) and the purge's daily tick run on the room's one alarm, beside [`onSave`](/docs/server/extending#save) and the forwarding of [moves](/docs/server/moves#late-edits)' late edits. [Room internals](/docs/server/internals#alarm-tasks) lists the five tasks, when each is due and what happens when one fails. In your own Durable Object, define `alarm()` only to add work of your own, and call `await this.document.alarm()` from it.
+A Durable Object has one alarm. The room runs its tasks on it: [`onSave`](/docs/server/extending#save), the history's slots, the purge's daily tick, the history's [retention](#retention) (for a store without a TTL of its own), the forwarding of a [move](/docs/server/moves)'s late edits, and the sockets' [credential expiry](/docs/server/authorization#revoking-access). Each task's due time is stored with the room, the alarm is set to the earliest one, and when it fires every task due at its time runs, then the alarm is set to the next. A task already due keeps its time, so frequent edits or wakes never push a save back. [Room internals](/docs/server/internals#alarm-tasks) lists the tasks, when each is due and what happens when one fails. In your own Durable Object, define `alarm()` only to add work of your own, and call `await this.document.alarm()` from it.
 
 ## Metrics and log
 

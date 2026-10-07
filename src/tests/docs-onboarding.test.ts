@@ -36,7 +36,7 @@ describe('onboarding truth (WU-18)', () => {
 			.match(/'(\w+)'/g)!
 			.map((task) => task.slice(1, -1));
 		expect(tasks).toEqual(
-			expect.arrayContaining(['save', 'history', 'purge', 'retention', 'forward'])
+			expect.arrayContaining(['save', 'history', 'purge', 'retention', 'forward', 'expiry'])
 		);
 		const tables = [
 			...[...room.matchAll(/Table = `\$\{prefix\}(\w+)`/g)].map(([, table]) => table!),
@@ -63,12 +63,12 @@ describe('onboarding truth (WU-18)', () => {
 		// The `meta` keys the room writes.
 		for (const key of ['due.<task>', 'updated', 'purged'])
 			expect(page, key).toContain(`\`${key}\``);
-		// `attachDocument` installs `alarm` only when a task of the options needs it: the
-		// page states that condition, not an unconditional install.
-		expect(room).toContain(
-			"if (options.onSave || options.history || options.purgeAfterDays !== false) handlers.push('alarm');"
-		);
-		expect(page).toContain('no `onSave`, no `history` and `purgeAfterDays: false`');
+		// `attachRoom` installs `alarm` whatever the options (a move or a socket's
+		// expiry can always schedule a task): the page says so, with no condition.
+		expect(room).not.toContain("handlers.push('alarm')");
+		expect(room).toMatch(/'webSocketError',\s*'alarm'\s*\]/);
+		expect(page).toContain('installs an `alarm` handler for you when your class has none, always');
+		expect(page).not.toContain('no `onSave`, no `history` and `purgeAfterDays: false`');
 		expect(page).not.toMatch(/`onSave` keeps its own backoff/);
 	});
 

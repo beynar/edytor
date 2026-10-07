@@ -71,6 +71,7 @@ export {
 	chunkFrame,
 	createChunkReader,
 	ChunkLimitError,
+	type ChunkReader,
 	CLOSE
 } from './providers/room.js';
 

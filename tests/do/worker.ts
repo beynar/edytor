@@ -130,8 +130,12 @@ export class FieldRoom extends DocumentRoom<Env> {
 }
 
 /**
- * A room with low quotas (rooms `quota-*`), set the way a host sets them:
- * the `EDYTOR_MAX_*` vars.
+ * A room with its own quotas (rooms `quota-*`), set the way a host sets
+ * them: the `EDYTOR_MAX_*` vars. Low by default (2 presence messages a
+ * second too); by name, `quota-buffer-*`
+ * takes 30,000-byte frames into a 40,000-byte room-wide chunk buffer (a
+ * 200,000-byte document, the default rate), and `quota-big-*` raises the
+ * document and frame quotas to 64 MiB (an operator's large documents).
  */
 export class QuotaRoom extends DocumentRoom<Env> {
 	/** Its log entries (H14), kept instead of printed. */
@@ -140,12 +144,30 @@ export class QuotaRoom extends DocumentRoom<Env> {
 		this.logged.push(entry);
 	}
 	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, {
-			...env,
-			EDYTOR_MAX_DOCUMENT_BYTES: '20000',
-			EDYTOR_MAX_INBOUND_FRAME_BYTES: '30000',
-			EDYTOR_MAX_UPDATES_PER_SECOND: '2'
-		});
+		const name = ctx.id.name ?? '';
+		super(
+			ctx,
+			name.startsWith('quota-big-')
+				? {
+						...env,
+						EDYTOR_MAX_DOCUMENT_BYTES: String(64 * 1024 * 1024),
+						EDYTOR_MAX_INBOUND_FRAME_BYTES: String(64 * 1024 * 1024)
+					}
+				: name.startsWith('quota-buffer-')
+					? {
+							...env,
+							EDYTOR_MAX_DOCUMENT_BYTES: '200000',
+							EDYTOR_MAX_INBOUND_FRAME_BYTES: '30000',
+							EDYTOR_MAX_BUFFERED_BYTES: '40000'
+						}
+					: {
+							...env,
+							EDYTOR_MAX_DOCUMENT_BYTES: '20000',
+							EDYTOR_MAX_INBOUND_FRAME_BYTES: '30000',
+							EDYTOR_MAX_UPDATES_PER_SECOND: '2',
+							EDYTOR_MAX_PRESENCE_PER_SECOND: '2'
+						}
+		);
 	}
 }
 
@@ -557,7 +579,9 @@ export const authorizeFromQuery: AuthorizeDocumentSocket = (request) => {
 	return {
 		userId,
 		replica: requestedReplica(request),
-		readOnly: query.get('access') === 'read'
+		readOnly: query.get('access') === 'read',
+		// `?expires=<ms since the epoch>`: when the credential expires (WU-06).
+		...(query.has('expires') ? { expiresAt: Number(query.get('expires')) } : {})
 	};
 };
 
@@ -569,6 +593,10 @@ const roomOf = (encoded: string): string | null => {
 		return null;
 	}
 };
+
+/** `origin-*` rooms accept browser requests from the test origin only (WU-07). */
+const originsOf = (name: string) =>
+	name.startsWith('origin-') ? { allowedOrigins: ['https://edytor-do.test'] } : undefined;
 
 export const routeRoom = async (request: Request, env: Env): Promise<Response> => {
 	const url = new URL(request.url);
@@ -584,7 +612,8 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 			request,
 			name.startsWith('timed-') ? env.TIMED : env.ROOM,
 			name,
-			authorizeFromQuery
+			authorizeFromQuery,
+			originsOf(name)
 		);
 	}
 	const match = ROOM_ROUTE.exec(url.pathname);
@@ -616,7 +645,7 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 	if (name.startsWith('host-')) {
 		return routeDocumentSocket(request, env.HOST, name, authorizeFromQuery);
 	}
-	return routeDocumentSocket(request, env.ROOM, name, authorizeFromQuery);
+	return routeDocumentSocket(request, env.ROOM, name, authorizeFromQuery, originsOf(name));
 };
 
 export default {

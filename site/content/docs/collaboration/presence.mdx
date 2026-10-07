@@ -27,7 +27,7 @@ edytor.awareness.setLocalStateField('user', { name: 'Ada', color: '#dc2626' });
 | `name` | `string` | The label drawn above the caret. No label when absent. |
 | `color` | `string` | A hex color, `#rgb` to `#rrggbbaa`. Anything else falls back to `#2563eb`. |
 
-`actor.id` is published too, as the `actor` field, and is the id stored in [attribution](/docs/reference/document-api#attribution). `user` is display-only: changing the name never rewrites authorship.
+`actor.id` is published too, as the `actor` field, and is the id stored in [attribution](/docs/reference/document-api#attribution). `user` is display-only: changing the name never rewrites authorship. The shipped room relays `actor.id` as the socket's verified user, whatever the client sent, so use the user id your server's `authorize` returns as `actor.id` ([attribution trust](/docs/server/authorization#attribution-trust)).
 
 ## Remote carets and selections
 

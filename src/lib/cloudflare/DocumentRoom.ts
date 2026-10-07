@@ -111,7 +111,13 @@ import {
 	type StorageFormat
 } from '../crdt/protocols/envelope.js';
 import { gunzip, isGzip, packed } from '../crdt/storage.js';
-import { DEL_PREFIX, HORIZON_ROOT, REGISTRY_KEY, WITHDRAW_PREFIX } from '../crdt/schema.js';
+import {
+	ATTRIBUTION_ROOT,
+	DEL_PREFIX,
+	HORIZON_ROOT,
+	REGISTRY_KEY,
+	WITHDRAW_PREFIX
+} from '../crdt/schema.js';
 import type { PurgeReport } from '../crdt/purge.js';
 import {
 	DEFAULT_RETENTION_DAYS,
@@ -179,19 +185,42 @@ export const DEFAULT_SAVE_AFTER = 2000;
 /**
  * Room quotas, each refused with `4413` (`quota: <name>`). The
  * document's size: what its records hold (uncompressed) and the updates the
- * engine holds waiting — the live document holds about that, several
- * times over in memory for text (an isolate has 128 MB). Raise or lower
- * it for your documents.
+ * engine holds waiting. An isolate has 128 MB, and the live document takes
+ * 18 to 46 bytes of heap per stored byte (prose to one short line per
+ * block, its index included; `bench/room-memory.mjs`): 2 MiB is
+ * about 100 MB at worst. Raise it for documents of long text.
  */
-export const DEFAULT_MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
-/** The largest frame a socket may send, reassembled from chunks (the platform caps one message at 32 MiB). */
-export const DEFAULT_MAX_INBOUND_FRAME_BYTES = 64 * 1024 * 1024;
+export const DEFAULT_MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
+/**
+ * The largest frame a socket may send, reassembled from chunks: room for a
+ * whole document at the default quota (a client seeding an empty room).
+ * Raise it with the document quota.
+ */
+export const DEFAULT_MAX_INBOUND_FRAME_BYTES = 4 * 1024 * 1024;
+/**
+ * The chunk sequences in flight on all of a room's sockets together, by
+ * default twice the frame quota (never less than one frame): each is one
+ * buffer of its announced size, allocated at its start.
+ */
+export const DEFAULT_MAX_BUFFERED_BYTES = 2 * DEFAULT_MAX_INBOUND_FRAME_BYTES;
 /**
  * Sync messages a socket may send per second, sustained; a burst of ten
  * seconds' worth is allowed (a reconnect, a paste). Far above typing
  * speed: a script should batch its edits into transactions.
  */
 export const DEFAULT_MAX_UPDATES_PER_SECOND = 50;
+/**
+ * The largest presence state a socket may publish, as JSON (a caret, a
+ * name, a color: a few hundred bytes). A larger entry is ignored.
+ */
+export const DEFAULT_MAX_PRESENCE_BYTES = 16 * 1024;
+/**
+ * Presence messages (entries and queries) a socket may send per second,
+ * sustained, on a bucket of its own (a ten-second burst): a view
+ * publishes at most every 50 ms (`presence.throttle`), and renews every
+ * 15 s. Past it, entries are coalesced and queries dropped.
+ */
+export const DEFAULT_MAX_PRESENCE_PER_SECOND = 50;
 /** Seconds of the update rate a socket may spend at once. */
 const BURST_SECONDS = 10;
 /** The ceiling of a quota knob (a host may raise the defaults up to it). */
@@ -209,6 +238,16 @@ export const MAX_WAITING_DELETES = 1024;
 
 /** Refusals kept in `refusals` (the newest); `refusalCounts` counts every one. */
 export const MAX_REFUSALS = 100;
+
+/** The longest close reason the WebSocket API accepts, in UTF-8 bytes. */
+const MAX_CLOSE_REASON_BYTES = 123;
+
+/** Can a socket be closed with `code` (`ws.close` throws on the others)? */
+const closableWith = (code: number): boolean =>
+	Number.isInteger(code) &&
+	(code === 1000 || code === 1011 || code === 1012 || (code >= 3000 && code <= 4999));
+
+const utf8Length = (text: string): number => new TextEncoder().encode(text).length;
 
 /**
  * A client id and the user who owns it (the room's replica registry). An
@@ -262,8 +301,8 @@ export const HISTORY_KEY_HEADER = 'X-Edytor-History-Key';
 /** A day, in ms: the purge task's period (H7). */
 const DAY = 86_400_000;
 /** The room's alarm tasks (`room.alarm.tasks`), in the order an alarm runs them. */
-type Task = 'history' | 'save' | 'purge' | 'retention' | 'forward';
-const TASKS: readonly Task[] = ['history', 'save', 'purge', 'retention', 'forward'];
+type Task = 'history' | 'save' | 'purge' | 'retention' | 'forward' | 'expiry';
+const TASKS: readonly Task[] = ['history', 'save', 'purge', 'retention', 'forward', 'expiry'];
 /** A forward of late edits that failed runs again this much later (`room.move.late`). */
 const FORWARD_RETRY = 60_000;
 /** The registry node surface the moves read and write. */
@@ -292,7 +331,9 @@ type RestoreStep = {
 export const IDENTITY_HEADERS = {
 	user: 'X-Edytor-User',
 	replica: 'X-Edytor-Replica',
-	access: 'X-Edytor-Access'
+	access: 'X-Edytor-Access',
+	/** When the credential expires, ms since the epoch (absent: never). */
+	expires: 'X-Edytor-Expires'
 } as const;
 
 /**
@@ -306,7 +347,10 @@ export type DocumentRoomEnv = {
 	EDYTOR_SAVE_AFTER?: string | number;
 	EDYTOR_MAX_DOCUMENT_BYTES?: string | number;
 	EDYTOR_MAX_INBOUND_FRAME_BYTES?: string | number;
+	EDYTOR_MAX_BUFFERED_BYTES?: string | number;
 	EDYTOR_MAX_UPDATES_PER_SECOND?: string | number;
+	EDYTOR_MAX_PRESENCE_BYTES?: string | number;
+	EDYTOR_MAX_PRESENCE_PER_SECOND?: string | number;
 	/** `off`: the room logs nothing (default: one JSON line per compaction, quota hit, denial, fault). */
 	EDYTOR_LOG?: string;
 	/**
@@ -340,6 +384,11 @@ export type SocketIdentity = {
 	/** `null` until bound — by `authorize`, or by the socket's first presence entry. */
 	replica: number | null;
 	readOnly: boolean;
+	/**
+	 * When its credential expires (ms since the epoch, the room's clock):
+	 * the room closes it `4401` then (`room.access`). `null` or absent: never.
+	 */
+	expiresAt?: number | null;
 };
 
 /** A socket's attachment (survives hibernation): its identity and its presence clock. */
@@ -362,9 +411,22 @@ export type Refusal = {
 		| 'internal'
 		// A room quota refused the frame ({ user, quota, … }): the socket is closed 4413.
 		| 'quota'
+		// Not a refusal: the room ended or changed a user's access ({ user, access, sockets }):
+		// `expired` (closed 4401), `closed` (`closeUser`), or `setAccess`'s `read`, `write`, `none`
+		// (closed 4403).
+		| 'access'
+		// A presence entry past `maxPresenceBytes` ignored ({ user, quota: 'size', bytes, limit }),
+		// or the start of a socket's burst of presence messages past `maxPresencePerSecond`
+		// ({ user, quota: 'rate', limit }; one entry per burst, `refusalCounts` counts each
+		// message): an entry coalesced (the newest is relayed later), a query dropped. The socket stays.
+		| 'presence'
 		// Per-writer block marks (`del.<n>`, `wd.<n>`) the sender may not write
 		// or delete, stripped ({ user, writers, ranges }); the rest of the frame applies.
 		| 'mark'
+		// Attribution entries the sender may not write or delete ({ user, keys }): another
+		// replica's binding (`c/<n>`) or another user's profile (`u/<id>`), collected
+		// from the frame (a write) or dropped (a delete); the rest of the frame applies.
+		| 'forged'
 		// Not a refusal: a frame `validate` denied, compensated by the room ({ user, touched }).
 		| 'denied'
 		// Not a refusal: an id a registry-less restore left unowned, claimed ({ replica, user }).
@@ -403,6 +465,8 @@ export type RoomMetrics = {
 	waitingBytes: number;
 	/** The document's open sockets. */
 	sockets: number;
+	/** Chunk sequences in flight on every socket, and the bytes buffered for them (`maxBufferedBytes`). */
+	buffered: { sequences: number; bytes: number };
 	/** Compactions run, with their time. */
 	compaction: Timing & { lastBytes: number };
 	/** Client sync frames folded (applied, indexed, stored and relayed), with their time. */
@@ -478,6 +542,15 @@ export const closedSocket = (code: number, reason: string): Response => {
 
 /** The client's bytes do not decode: the only `malformed` refusal. */
 class MalformedFrame extends Error {}
+/** A chunk sequence the room does not take at its start: past the rate, or past the room's buffer. */
+class ChunksRefused extends Error {
+	constructor(
+		readonly quota: 'rate' | 'buffer',
+		readonly detail: Record<string, number>
+	) {
+		super(`chunks: ${quota}`);
+	}
+}
 /** A SQLite fault outside the append path (the replica registry). */
 class StorageFault extends Error {}
 /** A stored record missing some of its rows, or one that does not inflate: the container is corrupt, not the read. */
@@ -547,9 +620,14 @@ const readIdentity = (headers: Headers): SocketIdentity | null => {
 	const rawReplica = headers.get(IDENTITY_HEADERS.replica);
 	const replica = rawReplica ? parseReplica(rawReplica) : null;
 	const access = headers.get(IDENTITY_HEADERS.access);
+	const rawExpires = headers.get(IDENTITY_HEADERS.expires);
+	const expiresAt = rawExpires === null ? null : Number(rawExpires);
 	if (!user || user.length > 256 || (rawReplica && replica === null)) return null;
 	if (access !== 'read' && access !== 'write') return null;
-	return { user, replica, readOnly: access === 'read' };
+	if (expiresAt !== null && !Number.isFinite(expiresAt)) return null;
+	const identity: SocketIdentity = { user, replica, readOnly: access === 'read' };
+	if (expiresAt !== null) identity.expiresAt = expiresAt;
+	return identity;
 };
 
 const knob = (value: unknown, fallback: number, max = fallback) => {
@@ -724,7 +802,9 @@ const replacedEntries = (doc: YDoc, structs: Struct[], pick: (item: Item) => boo
 /**
  * A decoded update without what it carries under `clients`: their structs,
  * and the deletes of the map entries their structs replace, held by the
- * room or not ({@link replacedEntries}). Their other deletes are kept —
+ * room or not ({@link replacedEntries}); `collected` structs are kept as GC
+ * (their clocks stay: the client's later structs apply), less the deletes
+ * of the entries they replace. Their other deletes are kept —
  * whoever may write may delete —, of items the room lacks too: those wait
  * for the items (see {@link pendingDeletes}). Less `dropped` deletes.
  */
@@ -732,10 +812,15 @@ const withoutClients = (
 	{ structs, ds }: Decoded,
 	clients: Set<number>,
 	doc: YDoc,
-	dropped: Decoded['ds'] = Y.createIdSet()
+	dropped: Decoded['ds'] = Y.createIdSet(),
+	collected: ReadonlySet<Struct> = new Set()
 ): Uint8Array => {
 	const kept = new Map<number, typeof structs>();
-	const replaced = replacedEntries(doc, structs, (item) => clients.has(item.id.client));
+	const replaced = replacedEntries(
+		doc,
+		structs,
+		(item) => clients.has(item.id.client) || collected.has(item)
+	);
 	for (const struct of structs) {
 		const { client } = struct.id;
 		if (clients.has(client)) continue;
@@ -750,7 +835,15 @@ const withoutClients = (
 		encoding.writeVarUint(encoder.restEncoder, run.length);
 		encoder.writeClient(client);
 		encoding.writeVarUint(encoder.restEncoder, run[0].id.clock);
-		for (const struct of run) struct.write(encoder, 0, 0);
+		for (const struct of run) {
+			if (collected.has(struct)) {
+				// A collected struct keeps its clock as a GC (its info byte, 0, and length).
+				encoder.writeInfo(0);
+				encoder.writeLen(struct.length);
+			} else {
+				struct.write(encoder, 0, 0);
+			}
+		}
 	}
 	Y.writeIdSet(encoder, Y.diffIdSet(Y.diffIdSet(ds, replaced), dropped));
 	return encoder.toUint8Array();
@@ -1139,6 +1232,149 @@ const forgedDeletes = (
 	return forged;
 };
 
+// ── Attribution trust (`room.attribution.trust`) ────────────────────────
+
+/** A replica's binding to its actor (`c/<client>`) and an actor's profile (`u/<id>`). */
+const BINDING_PREFIX = 'c/';
+const PROFILE_PREFIX = 'u/';
+
+/** Is `parent` (a {@link Place}'s, or a held item's) the attribution root? */
+const isAttribution = (doc: YDoc, parent: unknown): boolean =>
+	parent === ATTRIBUTION_ROOT ||
+	(parent != null && parent === (doc.share.get(ATTRIBUTION_ROOT) as unknown));
+
+/** The replica `n` a binding key (`c/<n>`) names, or `null`. */
+const boundReplica = (key: string): number | null => {
+	const digits = key.slice(BINDING_PREFIX.length);
+	return key.startsWith(BINDING_PREFIX) && /^\d{1,16}$/.test(digits) ? Number(digits) : null;
+};
+
+/** What a frame writes to the attribution root that the sender may not. */
+type AttributionWrites = {
+	/** Entries collected from the frame: another replica's binding, another user's profile. */
+	collected: Set<Struct>;
+	/** Their keys, for the log. */
+	keys: string[];
+	/** Bindings of the sender's own replicas to another actor: the room rebinds them. */
+	rebind: Set<string>;
+};
+
+/**
+ * The attribution entries of a frame's new structs (but `skip` clients')
+ * that `user` may not write (`room.attribution.trust`): a binding
+ * `c/<n>` written under another client id than `n`, or naming another
+ * actor for a replica the user does not own (`owns`), and a profile
+ * `u/<id>` of another user. A binding that names `n`'s registered owner
+ * (`ownerOf`) is kept whoever wrote it: it says what the room holds (a
+ * room's own rebinding, relayed to a room that lacks it). A binding of the
+ * user's own replica to another actor is applied, and rebound to the user
+ * by the room. A relayed id's binding to another actor is collected too
+ * (the room cannot tell its author): the author's claim of the id binds
+ * it again (`bindOrphan`).
+ */
+const attributionWrites = (
+	doc: YDoc,
+	structs: Struct[],
+	skip: Set<number>,
+	user: string,
+	owns: (client: number) => boolean,
+	ownerOf: (client: number) => string | undefined
+): AttributionWrites => {
+	const writes: AttributionWrites = { collected: new Set(), keys: [], rebind: new Set() };
+	const frame = runsOf(structs);
+	for (const struct of structs) {
+		const { client, clock } = struct.id;
+		if (!(struct instanceof Y.Item) || skip.has(client)) continue;
+		if (storedStruct(doc, client, clock) !== null) continue;
+		const place = placeOf(doc, frame, struct.id);
+		if (place === null || place.key === null || !isAttribution(doc, place.parent)) continue;
+		const { key } = place;
+		let forged = false;
+		if (key.startsWith(BINDING_PREFIX)) {
+			const content = struct.content.getContent();
+			const value = content[content.length - 1];
+			const replica = boundReplica(key);
+			if (
+				replica !== null &&
+				typeof value === 'string' &&
+				value !== '' &&
+				value === ownerOf(replica)
+			)
+				continue;
+			if (replica !== client) forged = true;
+			else if (value === user) continue;
+			else if (owns(client)) writes.rebind.add(key);
+			else forged = true;
+		} else if (key.startsWith(PROFILE_PREFIX)) {
+			forged = key.slice(PROFILE_PREFIX.length) !== user;
+		}
+		if (forged) {
+			writes.collected.add(struct);
+			writes.keys.push(key);
+		}
+	}
+	return writes;
+};
+
+/**
+ * Of a frame's deletes, those of live attribution entries `user` may not
+ * delete, with their keys: a binding of a replica the user does not own
+ * (`owns`), a profile of another user (`room.attribution.trust`).
+ */
+const forgedAttributionDeletes = (
+	doc: YDoc,
+	ds: Decoded['ds'],
+	user: string,
+	owns: (client: number) => boolean
+): { ids: Decoded['ds']; keys: string[] } => {
+	const ids = Y.createIdSet();
+	const keys: string[] = [];
+	const root = doc.share.get(ATTRIBUTION_ROOT);
+	if (root === undefined) return { ids, keys };
+	for (const [client, ranges] of ds.clients) {
+		const structs = doc.store.clients.get(client) ?? [];
+		const held = heldClock(doc, client);
+		for (const { clock, len } of ranges.getIds()) {
+			if (clock >= held) continue;
+			for (let i = Y.findIndexSS(structs, clock); i < structs.length; i++) {
+				const struct = structs[i];
+				if (struct.id.clock >= clock + len) break;
+				if (!(struct instanceof Y.Item) || struct.deleted) continue;
+				if ((struct.parent as unknown) !== root || struct.parentSub === null) continue;
+				const key = struct.parentSub;
+				const replica = boundReplica(key);
+				const allowed = key.startsWith(PROFILE_PREFIX)
+					? key.slice(PROFILE_PREFIX.length) === user
+					: replica === null || owns(replica);
+				if (allowed) continue;
+				const from = Math.max(clock, struct.id.clock);
+				ids.add(client, from, Math.min(clock + len, struct.id.clock + struct.length) - from);
+				keys.push(key);
+			}
+		}
+	}
+	return { ids, keys };
+};
+
+/**
+ * A presence entry as the room relays it: a state that names an actor
+ * (`actor`, as every view publishes) names the socket's verified user
+ * (`room.attribution.trust`), whatever the client wrote there. A state with no `actor` claims
+ * no identity and is relayed as it is.
+ */
+const verifiedPresence = (entry: AwarenessEntry, user: string): AwarenessEntry => {
+	const { state } = entry;
+	if (state === null || typeof state !== 'object' || Array.isArray(state)) return entry;
+	if (!('actor' in state)) return entry;
+	const actor = state.actor;
+	const claimed =
+		actor !== null && typeof actor === 'object' && !Array.isArray(actor)
+			? (actor as Record<string, unknown>)
+			: {};
+	if (claimed.id === user) return entry;
+	return { ...entry, state: { ...state, actor: { ...claimed, id: user } } };
+};
+
 // ── Validation (H2) ────────────────────────────────────────────────
 
 /** A block as `validate` reads it, before or after a frame. */
@@ -1249,8 +1485,19 @@ export type AttachRoomOptions = {
 	maxDocumentBytes?: number;
 	/** Largest frame a socket may send, reassembled (default {@link DEFAULT_MAX_INBOUND_FRAME_BYTES}). */
 	maxInboundFrameBytes?: number;
+	/**
+	 * The chunk sequences in flight on every socket together (default twice
+	 * `maxInboundFrameBytes`, never less than it): a sequence that would
+	 * pass it closes its socket `1011` (`room busy`), and its provider
+	 * redials.
+	 */
+	maxBufferedBytes?: number;
 	/** Sync messages per second a socket may send (default {@link DEFAULT_MAX_UPDATES_PER_SECOND}). */
 	maxUpdatesPerSecond?: number;
+	/** Largest presence state a socket may publish, as JSON (default {@link DEFAULT_MAX_PRESENCE_BYTES}). */
+	maxPresenceBytes?: number;
+	/** Presence messages per second a socket may send (default {@link DEFAULT_MAX_PRESENCE_PER_SECOND}). */
+	maxPresencePerSecond?: number;
 	/**
 	 * Accept, then compensate: after the room applied and stored a
 	 * client frame that changed blocks, it is asked whether to keep it.
@@ -1338,7 +1585,10 @@ export class AttachedDocument {
 	readonly saveAfter: number;
 	readonly maxDocumentBytes: number;
 	readonly maxInboundFrameBytes: number;
+	readonly maxBufferedBytes: number;
 	readonly maxUpdatesPerSecond: number;
+	readonly maxPresenceBytes: number;
+	readonly maxPresencePerSecond: number;
 	private live: YDoc | null = null;
 	/** Why the stored container was refused (another generation, a torn record, `onLoad`…). */
 	failure: Error | null = null;
@@ -1379,8 +1629,20 @@ export class AttachedDocument {
 	private validation: Validation | null = null;
 	/** Each socket's update allowance (a token bucket; memory: a wake refills it). */
 	private readonly allowances = new WeakMap<WebSocket, { tokens: number; at: number }>();
-	/** Each socket's chunked frame in flight (memory: a wake loses it, and the socket is faulted). */
-	private readonly chunkReaders = new WeakMap<WebSocket, ReturnType<typeof E.createChunkReader>>();
+	/** Each socket's presence allowance, a bucket of its own. */
+	private readonly presenceAllowances = new WeakMap<WebSocket, { tokens: number; at: number }>();
+	/** Sockets in a burst past their presence rate, logged once (`presenceOverRate`). */
+	private readonly presenceBursts = new WeakSet<WebSocket>();
+	/**
+	 * Each socket's newest presence entry past its rate, relayed once the
+	 * rate allows (the end of any message), or replaced by a newer one.
+	 */
+	private readonly heldPresence = new Map<WebSocket, AwarenessEntry>();
+	/**
+	 * Each socket's chunked frame in flight, released when it ends or its
+	 * socket closes (memory: a wake loses it, and the socket is faulted).
+	 */
+	private readonly chunkReaders = new Map<WebSocket, E.ChunkReader>();
 	/** A failed append: the live doc holds what storage does not, until it is rebuilt. */
 	private unstored: unknown = null;
 	/** Inside `transact`, its commit included (a nested call is refused but while `fn` runs). */
@@ -1457,9 +1719,23 @@ export class AttachedDocument {
 			DEFAULT_MAX_INBOUND_FRAME_BYTES,
 			QUOTA_CEILING
 		);
+		this.maxBufferedBytes = Math.max(
+			this.maxInboundFrameBytes,
+			knob(options.maxBufferedBytes, 2 * this.maxInboundFrameBytes, QUOTA_CEILING)
+		);
 		this.maxUpdatesPerSecond = knob(
 			options.maxUpdatesPerSecond,
 			DEFAULT_MAX_UPDATES_PER_SECOND,
+			QUOTA_CEILING
+		);
+		this.maxPresenceBytes = knob(
+			options.maxPresenceBytes,
+			DEFAULT_MAX_PRESENCE_BYTES,
+			QUOTA_CEILING
+		);
+		this.maxPresencePerSecond = knob(
+			options.maxPresencePerSecond,
+			DEFAULT_MAX_PRESENCE_PER_SECOND,
 			QUOTA_CEILING
 		);
 		const prefix = options.tablePrefix ?? 'edytor_';
@@ -1680,6 +1956,7 @@ export class AttachedDocument {
 				else if (task === 'save') await this.save();
 				else if (task === 'retention') await this.expireVersions();
 				else if (task === 'forward') await this.forwardMoves();
+				else if (task === 'expiry') noTimers(() => this.expireSockets());
 				else this.tick();
 			} catch (error) {
 				failure ??= { error };
@@ -3369,6 +3646,7 @@ export class AttachedDocument {
 				updateRecords: this.updates,
 				waitingBytes: this.live?.store.pendingStructs?.update.length ?? 0,
 				sockets: this.ctx.getWebSockets(SOCKET_TAG).length,
+				buffered: this.buffered(),
 				compaction: { ...this.counters.compaction },
 				fold: { ...this.counters.fold },
 				fanOut: { ...this.counters.fanOut },
@@ -3621,6 +3899,7 @@ export class AttachedDocument {
 			if (!writer) return true;
 			this.register([{ replica, user }]);
 			this.note({ reason: 'orphan', detail: { replica, user } });
+			this.bindOrphan(replica, user);
 			return true;
 		}
 		if (owner !== undefined || (sv.get(replica) ?? 0) > 0) return false;
@@ -3643,10 +3922,10 @@ export class AttachedDocument {
 	private attribute(
 		{ user, replica }: Attachment,
 		writers: Set<number>,
-		sv: Map<number, number>
+		sv: Map<number, number>,
+		orphans: Set<number>
 	): Set<number> {
 		const claimed: ReplicaOwner[] = [];
-		const orphans: number[] = [];
 		const relayed: number[] = [];
 		const stripped = new Set<number>();
 		for (const client of writers) {
@@ -3656,7 +3935,7 @@ export class AttachedDocument {
 			const fresh = owner === undefined && !held;
 			if (client === replica ? fresh || owner === '' : replica === null && fresh) {
 				claimed.push({ replica: client, user });
-				if (owner === '') orphans.push(client);
+				if (owner === '') orphans.add(client);
 			} else if ((fresh || owner === '') && !held) {
 				relayed.push(client);
 			} else {
@@ -3721,6 +4000,8 @@ export class AttachedDocument {
 			const [client, server] = [pair[0], pair[1]];
 			this.ctx.acceptWebSocket(server, [SOCKET_TAG]);
 			server.serializeAttachment({ ...identity, clock: null } satisfies Attachment);
+			// The alarm closes the socket at its credential's expiry, should it send nothing.
+			if (identity.expiresAt != null) this.schedule('expiry', identity.expiresAt, 'earlier');
 			if (doc === null) {
 				this.refuseContainer(server);
 			} else {
@@ -3767,6 +4048,132 @@ export class AttachedDocument {
 		}
 	}
 
+	// ── Access (`room.access`) ───────────────────────────────────────────
+
+	/** The open sockets of `user`. */
+	private socketsOf(user: string): Array<{ ws: WebSocket; attachment: Attachment }> {
+		const sockets: Array<{ ws: WebSocket; attachment: Attachment }> = [];
+		for (const ws of this.ctx.getWebSockets(SOCKET_TAG)) {
+			if (ws.readyState !== WebSocket.OPEN) continue;
+			const attachment = ws.deserializeAttachment() as Attachment | null;
+			if (attachment?.user === user) sockets.push({ ws, attachment });
+		}
+		return sockets;
+	}
+
+	/** Close `sockets` with `code`, their departure announced, the change logged (`access`). */
+	private endAccess(
+		sockets: WebSocket[],
+		access: 'expired' | 'closed' | 'write' | 'none',
+		code: number,
+		reason: string
+	) {
+		if (sockets.length === 0) return;
+		const user = (sockets[0].deserializeAttachment() as Attachment | null)?.user ?? null;
+		this.note({ reason: 'access', detail: { user, access, sockets: sockets.length } });
+		for (const ws of sockets) {
+			this.depart(ws);
+			this.close(ws, code, reason);
+		}
+	}
+
+	/**
+	 * Revoke: close every socket of `userId` (also over RPC), `4403`
+	 * (`access revoked`, final for the provider) unless you pass another
+	 * `code` (`4401` redials with fresh `params`; `1011` redials too).
+	 * Call it when the user loses access to the document, or signs out:
+	 * `authorize` decides at every dial, the room only at the dial.
+	 * Returns how many sockets it closed. A `code` a socket cannot be
+	 * closed with (only `1000`, `1011`, `1012` and `3000`–`4999` can) or a
+	 * `reason` over 123 UTF-8 bytes throws a `RangeError` before anything
+	 * is closed or announced.
+	 */
+	closeUser(userId: string, code: number = CLOSE.denied, reason?: string): { sockets: number } {
+		const text = reason ?? (code === CLOSE.denied ? 'access revoked' : 'closed');
+		if (!closableWith(code)) {
+			throw new RangeError(
+				`closeUser: close code ${code} is not one a socket can be closed with (1000, 1011, 1012, 3000-4999)`
+			);
+		}
+		if (utf8Length(text) > MAX_CLOSE_REASON_BYTES) {
+			throw new RangeError(`closeUser: close reason is over ${MAX_CLOSE_REASON_BYTES} UTF-8 bytes`);
+		}
+		return this.revoke(userId, 'closed', code, text);
+	}
+
+	/** Close every socket of `userId`, logged as `access`. */
+	private revoke(
+		userId: string,
+		access: 'closed' | 'none',
+		code: number,
+		reason: string
+	): { sockets: number } {
+		return noTimers(() => {
+			const sockets = this.socketsOf(userId).map(({ ws }) => ws);
+			this.endAccess(sockets, access, code, reason);
+			return { sockets: sockets.length };
+		});
+	}
+
+	/**
+	 * Change `userId`'s access on its open sockets (also over RPC):
+	 * `'read'` downgrades each write socket in place (the read-only notice,
+	 * then every write denied, the socket stays); `'write'` closes each
+	 * read-only socket `1012` (`access changed`), which its provider
+	 * redials, so `authorize` grants the new access; `'none'` closes every
+	 * socket `4403` (`access revoked`), as {@link closeUser}. Your `authorize` must decide the
+	 * same from then on. Returns how many sockets it changed.
+	 */
+	setAccess(userId: string, access: 'write' | 'read' | 'none'): { sockets: number } {
+		if (access !== 'write' && access !== 'read' && access !== 'none') {
+			throw new RangeError(`setAccess: unknown access ${String(access)}`);
+		}
+		if (access === 'none') return this.revoke(userId, 'none', CLOSE.denied, 'access revoked');
+		return noTimers(() => {
+			const sockets = this.socketsOf(userId).filter(
+				({ attachment }) => attachment.readOnly !== (access === 'read')
+			);
+			if (access === 'write') {
+				this.endAccess(
+					sockets.map(({ ws }) => ws),
+					'write',
+					CLOSE.accessChanged,
+					'access changed'
+				);
+				return { sockets: sockets.length };
+			}
+			for (const { ws, attachment } of sockets) {
+				ws.serializeAttachment({ ...attachment, readOnly: true } satisfies Attachment);
+				this.send(ws, readOnlyFrame());
+			}
+			if (sockets.length > 0) {
+				this.note({ reason: 'access', detail: { user: userId, access, sockets: sockets.length } });
+			}
+			return { sockets: sockets.length };
+		});
+	}
+
+	/**
+	 * The `expiry` task: close every socket whose credential expired
+	 * (`4401`: its provider redials with fresh `params`), then arm the
+	 * alarm at the next expiry of the sockets left.
+	 */
+	private expireSockets() {
+		const now = this.clock();
+		const expired: WebSocket[] = [];
+		let next = Infinity;
+		for (const ws of this.ctx.getWebSockets(SOCKET_TAG)) {
+			if (ws.readyState !== WebSocket.OPEN) continue;
+			const at = (ws.deserializeAttachment() as Attachment | null)?.expiresAt;
+			if (at == null) continue;
+			if (at <= now) expired.push(ws);
+			else next = Math.min(next, at);
+		}
+		for (const ws of expired) this.endAccess([ws], 'expired', CLOSE.expired, 'expired');
+		this.unschedule('expiry');
+		if (next !== Infinity) this.schedule('expiry', next, 'replace');
+	}
+
 	/** Is `ws` one of this document's sockets? */
 	owns(ws: WebSocket): boolean {
 		return this.ctx.getTags(ws).includes(SOCKET_TAG);
@@ -3786,7 +4193,14 @@ export class AttachedDocument {
 			if (doc === null) return this.refuseContainer(ws);
 			const attachment = ws.deserializeAttachment() as Attachment | null;
 			if (!attachment?.user) return this.refuse(ws, { reason: 'identity', detail: null });
-			this.onFrame(ws, attachment, doc, new Uint8Array(message));
+			if (attachment.expiresAt != null && this.clock() >= attachment.expiresAt) {
+				return this.endAccess([ws], 'expired', CLOSE.expired, 'expired');
+			}
+			try {
+				this.onFrame(ws, attachment, doc, new Uint8Array(message));
+			} finally {
+				this.releasePresence();
+			}
 		});
 		return true;
 	}
@@ -3814,6 +4228,8 @@ export class AttachedDocument {
 				return this.onPresence(ws, attachment, doc, entries);
 			}
 			if (type === E.messageQueryAwareness) {
+				// A query costs a snapshot of every entry: past the rate, dropped.
+				if (!this.allow(ws, 'presence')) return this.presenceOverRate(ws, attachment);
 				return this.send(ws, presenceFrame([...this.presence.values()]));
 			}
 			this.refuse(ws, { reason: 'malformed', detail: `message type ${type}` });
@@ -3829,16 +4245,18 @@ export class AttachedDocument {
 
 	/**
 	 * One chunk of a frame too large to send whole (a provider's
-	 * reconnect diff): buffered per socket, the whole frame handled once its
-	 * sequence ends. A sequence announcing more than `maxInboundFrameBytes`
-	 * is a frame quota refusal, before anything is buffered. A part with no
+	 * reconnect diff): buffered per socket into one buffer of the
+	 * sequence's announced size, the whole frame handled once its sequence
+	 * ends (`net.chunk.inbound`). A sequence announcing more than
+	 * `maxInboundFrameBytes` is a frame quota refusal, before anything is
+	 * buffered; its start is admitted by {@link admitChunks}. A part with no
 	 * sequence started — the room woke between two chunks and lost the
 	 * buffer — faults the socket (1011): its provider redials and resends.
 	 */
 	private onChunk(ws: WebSocket, attachment: Attachment, doc: YDoc, decoder: E.Decoder) {
 		let read = this.chunkReaders.get(ws);
 		if (read === undefined) {
-			read = E.createChunkReader(this.maxInboundFrameBytes);
+			read = E.createChunkReader(this.maxInboundFrameBytes, (total) => this.admitChunks(ws, total));
 			this.chunkReaders.set(ws, read);
 		}
 		let whole: Uint8Array | null;
@@ -3852,6 +4270,19 @@ export class AttachedDocument {
 					limit: error.limit
 				});
 			}
+			if (error instanceof ChunksRefused) {
+				if (error.quota === 'rate') {
+					return this.overQuota(ws, attachment.user, 'rate', error.detail);
+				}
+				// The room's buffer is full, not the sender at fault: it redials.
+				this.note({
+					reason: 'quota',
+					detail: { user: attachment.user, quota: 'buffer', ...error.detail }
+				});
+				this.log({ edytor: 'quota', user: attachment.user, quota: 'buffer' });
+				this.depart(ws);
+				return this.close(ws, CLOSE.fault, 'room busy');
+			}
 			if (error instanceof ChunkSequenceError) {
 				this.note({ reason: 'internal', detail: `chunks: ${error.message}` });
 				this.depart(ws);
@@ -3860,6 +4291,41 @@ export class AttachedDocument {
 			throw new MalformedFrame(String(error));
 		}
 		if (whole !== null) this.onFrame(ws, attachment, doc, whole);
+	}
+
+	/**
+	 * Admit a chunk sequence's start (`net.chunk.inbound`), before its
+	 * buffer is allocated: a read-only socket's is skipped, never buffered
+	 * (it could only carry a write: denied, the socket stays); the start
+	 * counts against the update rate; and the sequences in flight on every
+	 * socket share `maxBufferedBytes` ({@link ChunksRefused}).
+	 */
+	private admitChunks(ws: WebSocket, total: number): boolean {
+		const attachment = ws.deserializeAttachment() as Attachment;
+		if (attachment.readOnly) {
+			this.note({ reason: 'read-only', detail: attachment.user });
+			this.send(ws, readOnlyDenialFrame());
+			return false;
+		}
+		if (!this.allow(ws)) throw new ChunksRefused('rate', { perSecond: this.maxUpdatesPerSecond });
+		let buffered = 0;
+		for (const [other, read] of this.chunkReaders) if (other !== ws) buffered += read.buffered;
+		if (buffered + total > this.maxBufferedBytes) {
+			throw new ChunksRefused('buffer', { bytes: total, buffered, limit: this.maxBufferedBytes });
+		}
+		return true;
+	}
+
+	/** What the room buffers for chunk sequences in flight (`metrics().buffered`). */
+	private buffered(): { sequences: number; bytes: number } {
+		let sequences = 0;
+		let bytes = 0;
+		for (const read of this.chunkReaders.values()) {
+			if (read.buffered === 0) continue;
+			sequences++;
+			bytes += read.buffered;
+		}
+		return { sequences, bytes };
 	}
 
 	/**
@@ -3886,20 +4352,24 @@ export class AttachedDocument {
 	/**
 	 * The update rate quota: a token bucket per socket, refilled at
 	 * `maxUpdatesPerSecond` up to ten seconds' worth. `false`: over it.
+	 * Presence messages draw from a bucket of their own, refilled at
+	 * `maxPresencePerSecond` (`room.presence.quota`).
 	 */
-	private allow(ws: WebSocket): boolean {
+	private allow(ws: WebSocket, kind: 'sync' | 'presence' = 'sync'): boolean {
+		const [allowances, perSecond] =
+			kind === 'sync'
+				? [this.allowances, this.maxUpdatesPerSecond]
+				: [this.presenceAllowances, this.maxPresencePerSecond];
 		const now = Date.now();
-		const burst = this.maxUpdatesPerSecond * BURST_SECONDS;
-		const held = this.allowances.get(ws) ?? { tokens: burst, at: now };
-		const tokens = Math.min(
-			burst,
-			held.tokens + ((now - held.at) / 1000) * this.maxUpdatesPerSecond
-		);
+		const burst = perSecond * BURST_SECONDS;
+		const held = allowances.get(ws) ?? { tokens: burst, at: now };
+		const tokens = Math.min(burst, held.tokens + ((now - held.at) / 1000) * perSecond);
 		if (tokens < 1) {
-			this.allowances.set(ws, { tokens, at: now });
+			allowances.set(ws, { tokens, at: now });
 			return false;
 		}
-		this.allowances.set(ws, { tokens: tokens - 1, at: now });
+		allowances.set(ws, { tokens: tokens - 1, at: now });
+		if (kind === 'presence') this.presenceBursts.delete(ws);
 		return true;
 	}
 
@@ -3928,6 +4398,7 @@ export class AttachedDocument {
 
 	webSocketClose(ws: WebSocket, code: number, reason: string): boolean {
 		if (!this.owns(ws)) return false;
+		this.chunkReaders.delete(ws);
 		noTimers(() => this.depart(ws));
 		// Complete the closing handshake (a no-op where the runtime already
 		// auto-replies). 1005/1006 are not sendable codes.
@@ -3941,12 +4412,14 @@ export class AttachedDocument {
 
 	webSocketError(ws: WebSocket): boolean {
 		if (!this.owns(ws)) return false;
+		this.chunkReaders.delete(ws);
 		noTimers(() => this.depart(ws));
 		return true;
 	}
 
 	/** The departure the client may not have announced — from the attachment, so it works after a wake. */
 	private depart(ws: WebSocket) {
+		this.heldPresence.delete(ws);
 		const attachment = ws.deserializeAttachment() as Attachment | null;
 		if (attachment?.replica == null || attachment.clock === null) return;
 		// Announce once: a later close/error event on this socket is a no-op.
@@ -4014,7 +4487,8 @@ export class AttachedDocument {
 			});
 		}
 		const sv = stateVector(doc);
-		const stripped = this.attribute(attachment, newWriters(decoded, sv), sv);
+		const orphans = new Set<number>();
+		const stripped = this.attribute(attachment, newWriters(decoded, sv), sv, orphans);
 		// Per-writer block marks (H2): only `n` writes or deletes `del.<n>` /
 		// `wd.<n>`. A client writing another's is stripped whole, as a client
 		// under another user's id is; a delete of another's mark is dropped.
@@ -4035,6 +4509,46 @@ export class AttachedDocument {
 				detail: { user: attachment.user, writers: [...forgers], ranges: rangeCount(forgedMarks) }
 			});
 		}
+		// Attribution (`room.attribution.trust`): a replica binds only
+		// itself, to its verified user, and a user writes only its own
+		// profile. Another's entry is collected (its clock kept as a GC), a
+		// delete of one dropped; a binding of the sender's own replica to
+		// another actor, or of an id it claimed, is rebound below.
+		const owns = (client: number) => client === attachment.replica || mayDelete(client);
+		const attribution = attributionWrites(
+			doc,
+			decoded.structs,
+			stripped,
+			attachment.user,
+			owns,
+			(client) => this.ownerOf(client)
+		);
+		// The deletes of entries stripped or collected structs replace go with
+		// them (`withoutClients`): only the frame's other deletes are checked.
+		const forgedEntries = decoded.ds.isEmpty()
+			? { ids: Y.createIdSet(), keys: [] }
+			: forgedAttributionDeletes(
+					doc,
+					Y.diffIdSet(
+						decoded.ds,
+						replacedEntries(
+							doc,
+							decoded.structs,
+							(item) => stripped.has(item.id.client) || attribution.collected.has(item)
+						)
+					),
+					attachment.user,
+					owns
+				);
+		if (attribution.keys.length > 0 || forgedEntries.keys.length > 0) {
+			this.note({
+				reason: 'forged',
+				detail: {
+					user: attachment.user,
+					keys: [...new Set([...attribution.keys, ...forgedEntries.keys])]
+				}
+			});
+		}
 		// Waiting deletes are capped: a frame that would pass the cap has them dropped.
 		const waiting = pendingDeletes(doc);
 		const unheld = decoded.ds.isEmpty() ? null : unheldDeletes(decoded, stripped, doc);
@@ -4047,13 +4561,16 @@ export class AttachedDocument {
 			});
 		}
 		const dropped =
-			overflow === null && forgedMarks.isEmpty()
+			overflow === null && forgedMarks.isEmpty() && forgedEntries.ids.isEmpty()
 				? null
-				: addIds(addIds(Y.createIdSet(), overflow ?? Y.createIdSet()), forgedMarks);
+				: addIds(
+						addIds(addIds(Y.createIdSet(), overflow ?? Y.createIdSet()), forgedMarks),
+						forgedEntries.ids
+					);
 		const admitted =
-			stripped.size === 0 && dropped === null
+			stripped.size === 0 && dropped === null && attribution.collected.size === 0
 				? update
-				: withoutClients(decoded, stripped, doc, dropped ?? undefined);
+				: withoutClients(decoded, stripped, doc, dropped ?? undefined, attribution.collected);
 		// A history slot past its end is written as it was, before the frame (H11).
 		this.closeSlotIfPast();
 		// Validation (H2) reads the document as it was, and records the frame.
@@ -4096,6 +4613,12 @@ export class AttachedDocument {
 			this.validateFrame(validation, attachment);
 			if (this.unstored !== null) return this.fault(ws, this.unstored);
 		}
+		// A claimed orphan's binding, which its relayer's frame may have lost.
+		for (const client of orphans) attribution.rebind.add(BINDING_PREFIX + client);
+		if (attribution.rebind.size > 0) {
+			this.handle(() => this.rebind(doc, attribution.rebind, attachment.user));
+			if (this.unstored !== null) return this.fault(ws, this.unstored);
+		}
 		// A dropped delete is not acknowledged: its sender stays unsaved.
 		this.send(ws, savedFrame(doc, addIds(this.storedDeletes(doc, decoded.ds), released)));
 		// Waiting writes the frame released are other sockets' (a relayer's
@@ -4105,6 +4628,36 @@ export class AttachedDocument {
 			this.broadcast(savedFrame(doc, released), ws);
 		}
 		this.compactIfDue();
+	}
+
+	/**
+	 * A claimed orphan (an id relayed by another user, whose binding the
+	 * relay could not carry): the room binds it to its claimer, when the
+	 * room holds content of it. A failed write is healed here, the claim
+	 * kept (the binding then stays as it was).
+	 */
+	private bindOrphan(replica: number, user: string) {
+		const doc = this.live;
+		if (doc === null || (stateVector(doc).get(replica) ?? 0) === 0) return;
+		this.handle(() => this.rebind(doc, new Set([BINDING_PREFIX + replica]), user));
+		this.heal();
+	}
+
+	/**
+	 * Bind the sender's replicas whose `c/<n>` a frame set to another actor
+	 * to its verified user (`room.attribution.trust`): one room write after the frame's, which
+	 * replaces it on every replica, the sender's included.
+	 */
+	private rebind(doc: YDoc, keys: ReadonlySet<string>, user: string) {
+		const root = doc.get(ATTRIBUTION_ROOT) as unknown as {
+			getAttr(key: string): unknown;
+			setAttr(key: string, value: unknown): void;
+		};
+		const stale = [...keys].filter((key) => root.getAttr(key) !== user);
+		if (stale.length === 0) return;
+		doc.transact(() => {
+			for (const key of stale) root.setAttr(key, user);
+		}, ROOM_ORIGIN);
 	}
 
 	// ── Validation (H2) ──────────────────────────────────────────────
@@ -4341,10 +4894,22 @@ export class AttachedDocument {
 				return this.refuse(ws, { reason: 'replica', detail: replica });
 			}
 		}
-		const entry = entries.find((candidate) => candidate.clientID === replica);
-		if (entry === undefined || replica === null) return;
+		const found = entries.find((candidate) => candidate.clientID === replica);
+		if (found === undefined || replica === null) return;
+		// The relayed state names the verified user as its actor (`room.attribution.trust`).
+		const entry = verifiedPresence(found, attachment.user);
 		const known = this.presence.get(replica);
 		if (known && known.clock > entry.clock) return;
+		// The size quota: an entry past it is ignored (its previous one stays).
+		if (entry.state !== null) {
+			const bytes = encodeJSON(entry.state).length;
+			if (bytes > this.maxPresenceBytes) {
+				return this.note({
+					reason: 'presence',
+					detail: { user: attachment.user, quota: 'size', bytes, limit: this.maxPresenceBytes }
+				});
+			}
+		}
 		this.compareSemantics(attachment.user, known, entry);
 		if (entry.state === null) this.presence.delete(replica);
 		else this.presence.set(replica, entry);
@@ -4353,6 +4918,17 @@ export class AttachedDocument {
 			replica,
 			clock: entry.state === null ? null : entry.clock
 		} satisfies Attachment);
+		// The rate quota: past it, the newest entry waits for the next token.
+		if (!this.allow(ws, 'presence')) {
+			this.heldPresence.set(ws, entry);
+			return this.presenceOverRate(ws, attachment);
+		}
+		this.heldPresence.delete(ws);
+		this.relayPresence(ws, entry);
+	}
+
+	/** Relay a socket's accepted entry: to its sender too (liveness), but a removal. */
+	private relayPresence(ws: WebSocket, entry: AwarenessEntry) {
 		this.broadcast(presenceFrame([entry]), entry.state === null ? ws : null);
 	}
 
@@ -4372,6 +4948,47 @@ export class AttachedDocument {
 		if (kinds.length > 0) this.log({ edytor: 'semantics', user, kinds });
 	}
 
+	/**
+	 * A presence message past the socket's rate (`room.presence.quota`):
+	 * never closed. A burst is one log entry, its first message's (the
+	 * socket's next allowed one ends it); `refusalCounts.presence` counts
+	 * every message past the rate.
+	 */
+	private presenceOverRate(ws: WebSocket, attachment: Attachment) {
+		if (this.presenceBursts.has(ws)) {
+			this.refusalCounts.presence = (this.refusalCounts.presence ?? 0) + 1;
+			return;
+		}
+		this.presenceBursts.add(ws);
+		this.note({
+			reason: 'presence',
+			detail: { user: attachment.user, quota: 'rate', limit: this.maxPresencePerSecond }
+		});
+	}
+
+	/**
+	 * Relay the entries held past their socket's rate whose rate allows them
+	 * now — the newest of each socket, at the end of any socket's message
+	 * (no timer: a Durable Object with one could not hibernate). A socket
+	 * that floods is relayed at its rate, its last entry at the latest with
+	 * the room's next message (every client renews its presence). The
+	 * entries released together go out as one frame.
+	 */
+	private releasePresence() {
+		if (this.heldPresence.size === 0) return;
+		const due: AwarenessEntry[] = [];
+		for (const [ws, entry] of this.heldPresence) {
+			if (ws.readyState !== WebSocket.OPEN) {
+				this.heldPresence.delete(ws);
+			} else if (this.allow(ws, 'presence')) {
+				this.heldPresence.delete(ws);
+				if (entry.state === null) this.relayPresence(ws, entry);
+				else due.push(entry);
+			}
+		}
+		if (due.length > 0) this.broadcast(presenceFrame(due), null);
+	}
+
 	/** Log a refusal: the newest {@link MAX_REFUSALS} are kept, every reason is counted. */
 	private note(refusal: Refusal) {
 		this.refusals.push(refusal);
@@ -4387,6 +5004,7 @@ export class AttachedDocument {
 	}
 
 	private close(ws: WebSocket, code: number, reason: string) {
+		this.chunkReaders.delete(ws);
 		try {
 			ws.close(code, reason);
 		} catch {
@@ -4434,9 +5052,9 @@ type Handler = 'fetch' | 'webSocketMessage' | 'webSocketClose' | 'webSocketError
  * in the constructor or a field). Its tables (`edytor_rows`,
  * `edytor_replicas`) live beside yours and its sockets carry
  * {@link SOCKET_TAG}. Each handler your class does not define —
- * `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and
- * `alarm` unless the document needs none (no `onSave`, no `history`,
- * `purgeAfterDays: false`) — is installed on the object; a class that
+ * `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError` and
+ * `alarm` (a socket's credential may expire) — is installed on the
+ * object; a class that
  * defines one delegates to the returned document's method (which returns
  * `false` for a socket that is not the document's).
  */
@@ -4452,9 +5070,15 @@ export const attachRoom = (
 	}
 	const document = new AttachedDocument(ctx, options);
 	const target = host as unknown as Record<Handler, unknown>;
-	const handlers: Handler[] = ['fetch', 'webSocketMessage', 'webSocketClose', 'webSocketError'];
-	// The alarm runs `onSave`, the history slots and the purge (`room.alarm.tasks`).
-	if (options.onSave || options.history || options.purgeAfterDays !== false) handlers.push('alarm');
+	// The alarm runs `onSave`, the history slots, the purge and the sockets'
+	// expiry (`room.alarm.tasks`).
+	const handlers: Handler[] = [
+		'fetch',
+		'webSocketMessage',
+		'webSocketClose',
+		'webSocketError',
+		'alarm'
+	];
 	for (const name of handlers) {
 		if (typeof target[name] === 'function') continue;
 		target[name] = (...args: never[]) => (document[name] as (...a: never[]) => unknown)(...args);
@@ -4499,7 +5123,10 @@ export class DocumentRoom<
 			saveAfter: Number(knobs.EDYTOR_SAVE_AFTER),
 			maxDocumentBytes: Number(knobs.EDYTOR_MAX_DOCUMENT_BYTES),
 			maxInboundFrameBytes: Number(knobs.EDYTOR_MAX_INBOUND_FRAME_BYTES),
+			maxBufferedBytes: Number(knobs.EDYTOR_MAX_BUFFERED_BYTES),
 			maxUpdatesPerSecond: Number(knobs.EDYTOR_MAX_UPDATES_PER_SECOND),
+			maxPresenceBytes: Number(knobs.EDYTOR_MAX_PRESENCE_BYTES),
+			maxPresencePerSecond: Number(knobs.EDYTOR_MAX_PRESENCE_PER_SECOND),
 			tablePrefix: '',
 			purgeAfterDays: purgeAfterDays(knobs.EDYTOR_PURGE_AFTER_DAYS),
 			now: () => this.now(),
@@ -4671,6 +5298,15 @@ export class DocumentRoom<
 	/** Run the purge task now, also over RPC — see {@link AttachedDocument.purge}. */
 	purge(): (PurgeReport & { horizon: number }) | null {
 		return this.room.purge();
+	}
+
+	/** Close every socket of a user, also over RPC — see {@link AttachedDocument.closeUser}. */
+	closeUser(userId: string, code?: number, reason?: string): { sockets: number } {
+		return this.room.closeUser(userId, code, reason);
+	}
+	/** Change a user's access on its sockets, also over RPC — see {@link AttachedDocument.setAccess}. */
+	setAccess(userId: string, access: 'write' | 'read' | 'none'): { sockets: number } {
+		return this.room.setAccess(userId, access);
 	}
 
 	/** Compaction, also over RPC. */

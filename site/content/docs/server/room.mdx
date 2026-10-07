@@ -27,12 +27,16 @@ A fault of the room itself is never a refusal. A storage error (writing a client
 
 ## Identity and presence
 
-- The socket's identity (`user`, `replica`, `readOnly`) is saved in the socket's attachment, so it survives hibernation.
+- The socket's identity (`user`, `replica`, `readOnly`, `expiresAt`) is saved in the socket's attachment, so it survives hibernation.
+- Each relayed presence state that names an actor names the socket's verified user as its `actor.id`, whatever the client wrote ([attribution trust](/docs/server/authorization#attribution-trust)).
 - Presence is relayed without an `Awareness` instance (its timer would keep the object awake). A socket may publish presence only for its own client id; entries for other ids are dropped.
 - A new socket receives the presence of everyone connected. A socket that closes without saying goodbye is announced as gone, also after the room woke from hibernation.
 - An accepted presence entry is also sent back to its sender. A client alone in a room therefore hears from it at every presence renewal and is never closed as silent.
 - Keepalive: the provider sends a text `ping` after 15 seconds of silence, and the room answers `pong` through the runtime's WebSocket auto-response (`ctx.setWebSocketAutoResponse`), without waking the object. The room installs the pair when it starts, unless your object already set one; it then answers `ping` from its message handler. The auto-response applies to every socket of the object, yours included.
 - The presence snapshot lives in memory. After a wake it refills as clients renew their presence, every 15 seconds.
+- Presence has quotas of its own, which never close a socket (read-only sockets keep presence, within them):
+  - An entry whose state, as JSON, is larger than `EDYTOR_MAX_PRESENCE_BYTES` (16 KiB) is ignored: not kept, not relayed, logged as a `presence` refusal (`{ user, quota: 'size', bytes, limit }`). The socket's previous entry stays.
+  - Presence messages (entries and queries) draw from a token bucket of their own, `EDYTOR_MAX_PRESENCE_PER_SECOND` per socket (50, with a ten-second burst), apart from the sync messages' [update rate](#quotas). A view publishes at most every 50 ms, so only a misbehaving client reaches it. Past it, a query is dropped, and an entry is held: the socket's newest entry waits for the next token and is relayed at the end of any socket's next message (the room schedules no timer), with the other entries released then, in one frame. Both are logged `presence` (`{ user, quota: 'rate', limit }`), once per burst: the socket's first message past the rate is one entry, its next message within the rate ends the burst, and `refusalCounts.presence` counts every message past it.
 
 ## Storage
 
@@ -57,7 +61,16 @@ A client that catches up receives what the room has stored, never updates still 
 
 Cloudflare limits a WebSocket message to 32 MiB. A frame the room sends that is larger than `EDYTOR_MAX_FRAME_BYTES` (32 MiB by default) goes out as a sequence of chunks, and the provider applies it only once the sequence is complete. Smaller frames are sent whole, so clients without chunk support still sync small documents.
 
-The provider does the same the other way (its `maxFrameBytes` option, 32 MiB by default): an offline backlog larger than one message (40 MB of edits made offline, say) reaches the room at reconnect as a chunk sequence, which the room reassembles per socket, then admits like any frame (the [frame quota](#quotas) applies to the whole, and a sequence announcing more is refused at its first chunk). A chunk with no sequence started (the room woke between two chunks and lost the ones it had) closes the socket with `1011` (`chunk sequence lost`): the provider redials and resends.
+The provider does the same the other way (its `maxFrameBytes` option, 32 MiB by default): an offline backlog larger than one message reaches the room at reconnect as a chunk sequence, which the room reassembles per socket, then admits like any frame (the [frame quota](#quotas) applies to the whole, and a sequence announcing more is refused at its first chunk). With the default quotas no frame the room accepts needs it (the frame quota is below one message); it matters once you raise them. A chunk with no sequence started (the room woke between two chunks and lost the ones it had) closes the socket with `1011` (`chunk sequence lost`): the provider redials and resends.
+
+The room's memory for chunks is bounded:
+
+- A sequence is assembled into one buffer of the size its first chunk announces, allocated then, never into parts copied at the end.
+- The sequences in flight on all sockets together take at most `EDYTOR_MAX_BUFFERED_BYTES` (twice the frame quota by default, never less than one frame). A sequence that would pass it closes its socket with `1011` (`room busy`), logged as a `quota` refusal (`quota: 'buffer'`): the room is busy, the sender is not at fault, so its provider redials with backoff and resends. A closed socket releases its buffer.
+- A read-only socket's sequence is never buffered: its start is answered with the `read-only` denial, its chunks are dropped, and the socket stays, as for any write it sends.
+- A sequence's start counts against the [update rate](#quotas), like a sync message.
+
+`metrics().buffered` reports the sequences in flight and the bytes buffered for them.
 
 ## Quotas
 
@@ -65,13 +78,24 @@ Three limits keep one client from filling the object's storage or keeping it bus
 
 | Variable | Option | Default | Limit |
 | --- | --- | --- | --- |
-| `EDYTOR_MAX_DOCUMENT_BYTES` | `maxDocumentBytes` | 67,108,864 (64 MiB) | The document's size: what its records hold, uncompressed, plus the updates it holds waiting for a dependency. A frame that would take it past the limit is refused once the room has compacted its update records (they collapse into the live state). A frame that deletes at least as much content as it adds always applies, so a full document can still be trimmed. |
+| `EDYTOR_MAX_DOCUMENT_BYTES` | `maxDocumentBytes` | 2,097,152 (2 MiB) | The document's size: what its records hold, uncompressed, plus the updates it holds waiting for a dependency. A frame that would take it past the limit is refused once the room has compacted its update records (they collapse into the live state). A frame that deletes at least as much content as it adds always applies, so a full document can still be trimmed. |
 | `EDYTOR_MAX_UPDATES_PER_SECOND` | `maxUpdatesPerSecond` | 50 | Sync messages per second and socket, sustained, with a burst of ten seconds' worth (a reconnect, a paste). The editor sends one per transaction; a script driving the provider should batch its edits into transactions. |
-| `EDYTOR_MAX_INBOUND_FRAME_BYTES` | `maxInboundFrameBytes` | 67,108,864 (64 MiB) | One frame a socket sends, reassembled from its chunks; a chunked frame announcing more is refused at its first chunk, before anything is buffered. The platform caps one message at 32 MiB. |
+| `EDYTOR_MAX_INBOUND_FRAME_BYTES` | `maxInboundFrameBytes` | 4,194,304 (4 MiB) | One frame a socket sends, reassembled from its chunks; a chunked frame announcing more is refused at its first chunk, before anything is buffered. It must hold a whole document (a client seeding an empty room sends it in one frame): raise it with the document quota. The platform caps one message at 32 MiB. |
 
 The quota closes the socket rather than dropping the frame: the sender's later edits build on the one dropped, so the room would hold them waiting, in memory, for good, and never acknowledge them. It is final rather than redialed, because a redial resends the same edits through the handshake and meets the same quota. The edits stay in the client's document and its local copy, and `saved` stays `false`.
 
-Size the document quota for the room's memory: an isolate has 128 MB, and a text-heavy document takes several times its stored size in memory (images, stored as text, about their size). Your own server edits ([`transact`](/docs/server/extending#edit-on-the-server)) are not limited.
+Size the document quota for the room's memory. An isolate has 128 MB, and the live document takes far more memory than it stores. Measured with `bench/room-memory.mjs` (the room's document and its block index, loaded from a compacted snapshot, in Node):
+
+| Document | Stored | Heap | Heap per stored byte |
+| --- | --- | --- | --- |
+| 10,000 blocks of one short line (24 characters) | 2.2 MB | 101 MB | 46 |
+| 2,000 typed paragraphs (60 characters, a transaction a word) | 0.8 MB | 21 MB | 27 |
+| 2,000 paragraphs with a bold and an italic run | 1.4 MB | 26 MB | 19 |
+| 5,000 paragraphs of prose (400 characters) | 3.0 MB | 51 MB | 18 |
+
+The default of 2 MiB keeps the worst case, a long list of short blocks, near 100 MB. Workers run V8 with pointer compression and Node does not, so a room needs less than these figures (workerd reports no heap size to measure it there). A document of long text can take a higher quota: at 18 bytes a byte, 4 MiB is about 75 MB. Leave room for the rest: a compaction and a catch-up each encode the whole document once more, and chunked frames take up to `EDYTOR_MAX_BUFFERED_BYTES`. A room past its memory is reset by the platform and restarts from its rows, so a quota set too high shows as sockets closing and redialing, not as a refusal. Your own server edits ([`transact`](/docs/server/extending#edit-on-the-server)) are not limited.
+
+Inline images count at their size. Without an `upload`, the [image plugin](/docs/plugins/image) (a default plugin) stores each image in the document as a `data:` URL of up to 1 MiB (`MAX_INLINE_IMAGE_BYTES`), so two or three of them reach the default document quota, and the `4413` that follows is final: the provider stops and every later edit stays unsaved. An inline image takes about its own size in memory, not the 18 to 46 times of the table, so for documents that hold images give the image plugin an [`upload`](/docs/plugins/image) that stores the file and answers its URL, or raise `EDYTOR_MAX_DOCUMENT_BYTES` (and the frame quota) by the images' size.
 
 ## Hibernation
 
@@ -91,9 +115,12 @@ Set these as `vars` in `wrangler.jsonc`. All are optional.
 | `EDYTOR_MAX_FRAME_BYTES` | 33,554,432 (32 MiB) | Largest frame sent whole; larger ones are chunked. Can only be lowered. |
 | `EDYTOR_COMPACT_AFTER` | 500 | Update records before the room compacts its rows into one snapshot. |
 | `EDYTOR_SAVE_AFTER` | 2000 | ms between the first unsaved change and [`onSave`](/docs/server/extending#save). |
-| `EDYTOR_MAX_DOCUMENT_BYTES` | 67,108,864 (64 MiB) | The document [quota](#quotas). Can be raised. |
+| `EDYTOR_MAX_DOCUMENT_BYTES` | 2,097,152 (2 MiB) | The document [quota](#quotas). Can be raised. |
 | `EDYTOR_MAX_UPDATES_PER_SECOND` | 50 | The update rate [quota](#quotas), per socket. Can be raised. |
-| `EDYTOR_MAX_INBOUND_FRAME_BYTES` | 67,108,864 (64 MiB) | The frame [quota](#quotas). Can be raised. |
+| `EDYTOR_MAX_INBOUND_FRAME_BYTES` | 4,194,304 (4 MiB) | The frame [quota](#quotas). Can be raised. |
+| `EDYTOR_MAX_PRESENCE_BYTES` | 16,384 (16 KiB) | The largest [presence](#identity-and-presence) state a socket may publish, as JSON. |
+| `EDYTOR_MAX_PRESENCE_PER_SECOND` | 50 | Presence messages per second and socket, a bucket apart from the update rate ([presence](#identity-and-presence)). |
+| `EDYTOR_MAX_BUFFERED_BYTES` | twice the frame quota | The chunk sequences in flight on all sockets together ([catch-up](#catch-up-of-large-documents)). Never below the frame quota. |
 | `EDYTOR_LOG` | | `off` silences the room's [log](#metrics-and-log). |
 | `EDYTOR_PURGE_AFTER_DAYS` | the retention, else 30 | Days after which deleted content is [purged](/docs/server/history#the-purge); `off` never purges. |
 | `EDYTOR_HISTORY_RETENTION_DAYS` | 30 | Days a [version](/docs/server/history) is kept. |
@@ -128,7 +155,7 @@ const { ranges } = await env.ROOMS.getByName(documentId).dropWaitingDeletes();
 
 ## Diagnostics
 
-`refusals` holds the newest 100 refusals (`MAX_REFUSALS`) of the running instance, each with its `reason` and `detail`; `refusalCounts` counts every refusal by reason. Both live in memory and restart empty; read them inside the object, or return them from an RPC method of your own. A `storage` entry is a failed append, compaction or registration, an `internal` entry an error of the engine or a send, a `waiting` entry the deletes of unheld items a frame carried past `MAX_WAITING_DELETES` (`{ user, ranges }`; the rest of the frame applied), a `quota` entry a write past a [quota](#quotas) (`{ user, quota, … }`; the socket closed `4413`), and a `mark` entry another writer's per-writer block marks a frame wrote or deleted (`{ user, writers, ranges }`, stripped). `denied` is not a refusal either: a frame [`validate`](/docs/server/extending#validate-edits) denied (`{ user, touched }`), undone by the room. A `history` entry is a [version](/docs/server/history) the room skipped (`{ key, bytes, limit }` past its store's value limit, `{ key, error }` when the store failed) or a time zone it does not know. Two entries are not refusals: `orphan` is an unowned id claimed by its dial (after a [restore without a registry](/docs/server/extending#load), or a relay), and `relayed` is content under an id the room held nothing of, delivered by another replica and kept unowned (see [replicas](/docs/server/authorization#replicas)).
+`refusals` holds the newest 100 refusals (`MAX_REFUSALS`) of the running instance, each with its `reason` and `detail`; `refusalCounts` counts every refusal by reason. Both live in memory and restart empty; read them inside the object, or return them from an RPC method of your own. A `storage` entry is a failed append, compaction or registration, an `internal` entry an error of the engine or a send, a `waiting` entry the deletes of unheld items a frame carried past `MAX_WAITING_DELETES` (`{ user, ranges }`; the rest of the frame applied), a `quota` entry a write past a [quota](#quotas) (`{ user, quota, … }`; the socket closed `4413`, or `1011` for `quota: 'buffer'`), a `presence` entry a presence entry past the size quota, or the start of a socket's burst of presence messages past the rate (`{ user, quota: 'size' | 'rate', … }`; one entry per burst, `refusalCounts.presence` counting each message; the socket stays; see [presence](#identity-and-presence)), a `mark` entry another writer's per-writer block marks a frame wrote or deleted (`{ user, writers, ranges }`, stripped), and a `forged` entry attribution entries a frame may not write or delete (`{ user, keys }`: another replica's `c/<n>` binding, another user's `u/<id>` profile; removed, see [attribution trust](/docs/server/authorization#attribution-trust)). `denied` is not a refusal either: a frame [`validate`](/docs/server/extending#validate-edits) denied (`{ user, touched }`), undone by the room. A `history` entry is a [version](/docs/server/history) the room skipped (`{ key, bytes, limit }` past its store's value limit, `{ key, error }` when the store failed) or a time zone it does not know. An `access` entry is not a refusal either: the room ended or changed a user's access (`{ user, access, sockets }`: `expired`, `closed` (`closeUser`), `read`, `write` or `none` (`setAccess`); see [revoking access](/docs/server/authorization#revoking-access)). Two more entries are not refusals: `orphan` is an unowned id claimed by its dial (after a [restore without a registry](/docs/server/extending#load), or a relay), and `relayed` is content under an id the room held nothing of, delivered by another replica and kept unowned (see [replicas](/docs/server/authorization#replicas)).
 
 ## Metrics and log
 
@@ -179,7 +206,7 @@ await env.ROOMS.getByName(documentId).reset();
 
 ## Limits
 
-- **One message is capped at 32 MiB** by the platform. Both sides chunk larger frames; the room takes up to `EDYTOR_MAX_INBOUND_FRAME_BYTES` (64 MiB) reassembled, and a document up to `EDYTOR_MAX_DOCUMENT_BYTES` (64 MiB). The image plugin keeps inline images under 1 MiB.
+- **A document is capped at 2 MiB stored** by default (`EDYTOR_MAX_DOCUMENT_BYTES`), about 5,000 paragraphs of prose or 9,000 one-line blocks: the room's memory, not its storage, is the limit (see [quotas](#quotas)). One frame is capped at 4 MiB (`EDYTOR_MAX_INBOUND_FRAME_BYTES`), and one message at 32 MiB by the platform; both sides chunk larger frames. The image plugin keeps inline images under 1 MiB: upload larger ones.
 - **Document ids** are 1 to 256 characters, not `.` or `..`, with no lone surrogate; user ids are 1 to 256 characters with no lone surrogate.
 - **Presence** refills over up to 15 seconds after the room wakes.
 - **One document per room.** Rooms do not share state; listing, searching or aggregating documents is up to your application.

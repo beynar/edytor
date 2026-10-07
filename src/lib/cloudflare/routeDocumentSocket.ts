@@ -20,6 +20,9 @@
  * `403` as an HTTP status. `GET <room>?snapshot` (P8) answers
  * `{ lastUpdated, document }`, the document as JSON, the same way: a view
  * shows it while its own copy hydrates (`<Edytor snapshot>`).
+ *
+ * `options.allowedOrigins` refuses a browser request from another page
+ * origin before `authorize` (`4403` `origin not allowed`, or `403`).
  */
 import { CLOSE, validRoomId } from '../crdt/providers/room.js';
 import {
@@ -46,6 +49,12 @@ export type DocumentIdentity = {
 	userId: string;
 	replica?: number | null;
 	readOnly?: boolean;
+	/**
+	 * When the credential expires, ms since the epoch (a token's `exp` ×
+	 * 1000): the room closes the socket `4401` then, and the provider
+	 * redials with its `params` read again. A dial past it is closed `4401`.
+	 */
+	expiresAt?: number | null;
 };
 
 /**
@@ -68,6 +77,32 @@ export type AuthorizeDocumentSocket = (
 	| null
 	| Promise<DocumentIdentity | ExpiredCredential | null>;
 
+/**
+ * Options of {@link routeDocumentSocket} and {@link routeDocumentHistory}.
+ */
+export type RouteDocumentOptions = {
+	/**
+	 * The page origins (`https://app.example.com`, scheme, host and port)
+	 * whose browser requests may reach the document, or a predicate over
+	 * the `Origin` header. A request carrying another `Origin` is refused
+	 * before `authorize` runs: a dial is closed `4403` (`origin not
+	 * allowed`), an HTTP request answered `403`. A request with no `Origin`
+	 * (not sent by a browser page, which cannot carry its user's cookies)
+	 * passes. Set it whenever `authorize` reads a cookie: a browser sends
+	 * cookies with a cross-site WebSocket dial, and only the origin tells
+	 * your page from another site's. Omitted: every origin passes.
+	 */
+	allowedOrigins?: readonly string[] | ((origin: string) => boolean);
+};
+
+/** Is `request`'s `Origin` one `options` allows (no `Origin`, or no list: yes)? */
+const originAllowed = (request: Request, options: RouteDocumentOptions | undefined): boolean => {
+	const allowed = options?.allowedOrigins;
+	const origin = request.headers.get('Origin');
+	if (allowed === undefined || origin === null) return true;
+	return typeof allowed === 'function' ? allowed(origin) === true : allowed.includes(origin);
+};
+
 /** The HTTP status a probe (`lastUpdated`, `snapshot`) gets for each refusal a dial is closed with. */
 const PROBE_STATUS: Record<number, number> = {
 	[CLOSE.invalidDocument]: 400,
@@ -87,8 +122,10 @@ const authorized = async (
 	request: Request,
 	documentId: string,
 	authorize: AuthorizeDocumentSocket,
-	refuse: (code: number, reason: string) => Response
+	refuse: (code: number, reason: string) => Response,
+	options: RouteDocumentOptions | undefined
 ): Promise<DocumentIdentity | Response> => {
+	if (!originAllowed(request, options)) return refuse(CLOSE.denied, 'origin not allowed');
 	if (!validRoomId(documentId)) {
 		return refuse(CLOSE.invalidDocument, 'invalid document id');
 	}
@@ -98,6 +135,7 @@ const authorized = async (
 	}
 	const identity = decision && 'userId' in decision ? decision : null;
 	const replica = identity?.replica ?? null;
+	const expiresAt = identity?.expiresAt ?? null;
 	if (
 		!identity ||
 		typeof identity.userId !== 'string' ||
@@ -105,10 +143,12 @@ const authorized = async (
 		identity.userId.length > 256 ||
 		// No header, even percent-encoded, carries a lone surrogate.
 		/\p{Cs}/u.test(identity.userId) ||
-		(replica !== null && parseReplica(replica) === null)
+		(replica !== null && parseReplica(replica) === null) ||
+		(expiresAt !== null && !Number.isFinite(expiresAt))
 	) {
 		return refuse(CLOSE.denied, 'document access denied');
 	}
+	if (expiresAt !== null && expiresAt <= Date.now()) return refuse(CLOSE.expired, 'expired');
 	return identity;
 };
 
@@ -124,6 +164,8 @@ const identityHeaders = (identity: DocumentIdentity): Headers => {
 	});
 	const replica = identity.replica ?? null;
 	if (replica !== null) headers.set(IDENTITY_HEADERS.replica, String(replica));
+	const expiresAt = identity.expiresAt ?? null;
+	if (expiresAt !== null) headers.set(IDENTITY_HEADERS.expires, String(expiresAt));
 	return headers;
 };
 
@@ -141,13 +183,15 @@ const identityHeaders = (identity: DocumentIdentity): Headers => {
  *
  * A refusal is an HTTP status: `400` (an invalid document id), `401`
  * (`{ expired: true }`), `403` (denied, or a read-only identity's
- * restore), `404` (the room keeps no history), `405` (another method).
+ * restore, or an `Origin` that `options.allowedOrigins` does not list),
+ * `404` (the room keeps no history), `405` (another method).
  */
 export async function routeDocumentHistory(
 	request: Request,
 	rooms: DocumentNamespace,
 	documentId: string,
-	authorize: AuthorizeDocumentSocket
+	authorize: AuthorizeDocumentSocket,
+	options?: RouteDocumentOptions
 ): Promise<Response> {
 	const query = new URL(request.url).searchParams;
 	const op =
@@ -163,7 +207,7 @@ export async function routeDocumentHistory(
 						: null
 				: null;
 	if (op === null) return new Response('method not allowed', { status: 405 });
-	const identity = await authorized(request, documentId, authorize, statusOf);
+	const identity = await authorized(request, documentId, authorize, statusOf, options);
 	if (identity instanceof Response) return identity;
 	if ((op === 'restore' || op === 'undo') && identity.readOnly) {
 		return new Response('read-only', { status: 403 });
@@ -183,7 +227,8 @@ export async function routeDocumentSocket(
 	request: Request,
 	rooms: DocumentNamespace,
 	documentId: string,
-	authorize: AuthorizeDocumentSocket
+	authorize: AuthorizeDocumentSocket,
+	options?: RouteDocumentOptions
 ): Promise<Response> {
 	// The probes: a plain GET, authorized like a dial, answered with JSON or
 	// an HTTP status — `lastUpdated` (H12) and `snapshot` (P8, the document).
@@ -205,7 +250,7 @@ export async function routeDocumentSocket(
 	// One refusal path: a dial gets the close the provider reads, a probe its HTTP status.
 	const refuse = (code: number, reason: string): Response =>
 		probe !== null ? statusOf(code, reason) : closedSocket(code, reason);
-	const identity = await authorized(request, documentId, authorize, refuse);
+	const identity = await authorized(request, documentId, authorize, refuse, options);
 	if (identity instanceof Response) return identity;
 	const headers = identityHeaders(identity);
 	if (probe !== null) headers.set(PROBE_HEADER, probe);

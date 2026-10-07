@@ -18,7 +18,10 @@ export {
 	DEFAULT_SAVE_AFTER,
 	DEFAULT_MAX_DOCUMENT_BYTES,
 	DEFAULT_MAX_INBOUND_FRAME_BYTES,
+	DEFAULT_MAX_BUFFERED_BYTES,
 	DEFAULT_MAX_UPDATES_PER_SECOND,
+	DEFAULT_MAX_PRESENCE_BYTES,
+	DEFAULT_MAX_PRESENCE_PER_SECOND,
 	MAX_REFUSALS,
 	MAX_WAITING_DELETES,
 	ROOM_ORIGIN,
@@ -86,5 +89,6 @@ export {
 	type AuthorizeDocumentSocket,
 	type ExpiredCredential,
 	type DocumentNamespace,
-	type DocumentIdentity
+	type DocumentIdentity,
+	type RouteDocumentOptions
 } from './routeDocumentSocket.js';

@@ -378,8 +378,10 @@ describe('DR-collab-1 · waiting deletes are bounded', () => {
 describe('XW-07 · a stored waiting delete cannot forge the schema stamp', () => {
 	it("a delete of the seed's future stamp, sent before the seed, is discarded with it: the room restarts", async () => {
 		const room = 'xw07-stamp-predelete';
+		// Ada's own document (an anonymous one's binding would be rebound, D5).
 		const writer = E.createDocument({
-			value: { children: [{ type: 'paragraph', id: 'p', content: [{ text: 'hello' }] }] }
+			value: { children: [{ type: 'paragraph', id: 'p', content: [{ text: 'hello' }] }] },
+			actor: { id: 'ada' }
 		});
 		const stamp = (
 			writer.doc.get('meta') as unknown as {

@@ -27,7 +27,13 @@ export const ORIGIN = 'https://edytor-do.test';
 const REMOTE = Symbol('remote');
 
 /** Who dials: the test Worker's `authorize` reads these from the query string. */
-export type Dial = { user?: string; replica?: number; access?: 'read' | 'write' };
+export type Dial = {
+	user?: string;
+	replica?: number;
+	access?: 'read' | 'write';
+	/** When the credential expires (ms since the epoch; `?expires=`, WU-06). */
+	expires?: number | string;
+};
 
 /** The `/rooms/<name>` URL for `dial` (query parameters only when given). */
 export const roomUrl = (room: string, dial: Dial = {}) => {
@@ -35,6 +41,7 @@ export const roomUrl = (room: string, dial: Dial = {}) => {
 	if (dial.user) query.set('user', dial.user);
 	if (dial.replica !== undefined) query.set('replica', String(dial.replica));
 	if (dial.access) query.set('access', dial.access);
+	if (dial.expires !== undefined) query.set('expires', String(dial.expires));
 	const search = query.size > 0 ? `?${query}` : '';
 	return `${ORIGIN}/rooms/${encodeURIComponent(room)}${search}`;
 };

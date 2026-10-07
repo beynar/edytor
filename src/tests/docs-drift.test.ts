@@ -601,6 +601,18 @@ describe('docs drift', () => {
 		expect(lines.filter((line) => !source.has(line))).toEqual([]);
 	});
 
+	it("the demo's actor id is the user id its room authorizes (room.attribution.trust)", () => {
+		// Another id would have the room rebind its replica and refuse its
+		// profile as another user's at every page load.
+		const worker = readFileSync(join(root, 'site/room/src/worker.ts'), 'utf8');
+		const page = readFileSync(join(root, 'site/islands/LiveEditor.svelte'), 'utf8');
+		const userId = /userId: (`[^`]*`|\w+)/.exec(worker)?.[1];
+		expect(userId).toBe('`guest:${guest}`');
+		expect(page).toMatch(/const actor = \{ id: `guest:\$\{guest\}`/);
+		const quickStart = readFileSync(join(root, 'site/content/docs/server/quick-start.mdx'), 'utf8');
+		expect(quickStart).toMatch(/actor id `guest:<id>`/);
+	});
+
 	it('the operations page has a payload row for every dispatched operation', () => {
 		const page = readFileSync(join(root, 'site/content/docs/plugins/operations.mdx'), 'utf8');
 		const names = new Set(
@@ -655,7 +667,8 @@ describe('docs drift', () => {
 	it('every 4403 row and user-id rule names each identity routeDocumentSocket refuses (BW-07)', () => {
 		// The refusal, pinned against the source: a missing identity, a userId
 		// that is not a string, empty, over 256 characters or with a lone
-		// surrogate, and an invalid replica. A new clause must reach the docs.
+		// surrogate, an invalid replica, and an `expiresAt` that is not a
+		// finite number (WU-06). A new clause must reach the docs.
 		const source = readFileSync(join(root, 'src/lib/cloudflare/routeDocumentSocket.ts'), 'utf8');
 		const refusal =
 			/if \(\n\t\t!identity \|\|([\s\S]*?)\) \{\n\t\treturn refuse\(CLOSE\.denied/.exec(
@@ -667,7 +680,8 @@ describe('docs drift', () => {
 				'!identity.userId',
 				'identity.userId.length > 256',
 				'/\\p{Cs}/u.test(identity.userId)',
-				'(replica !== null && parseReplica(replica) === null)'
+				'(replica !== null && parseReplica(replica) === null)',
+				'(expiresAt !== null && !Number.isFinite(expiresAt))'
 			]
 		);
 		const rows = docs.flatMap((path) =>
@@ -678,7 +692,7 @@ describe('docs drift', () => {
 				.filter(([, line]) => line.includes('document access denied'))
 		);
 		expect(rows.length).toBeGreaterThanOrEqual(3);
-		const causes = [/`null`/, /empty/, /256/, /lone surrogate/, /`replica`/];
+		const causes = [/`null`/, /empty/, /256/, /lone surrogate/, /`replica`/, /`expiresAt`/];
 		expect(
 			rows.filter(([, line]) => causes.some((cause) => !cause.test(line))).map(([at]) => at)
 		).toEqual([]);

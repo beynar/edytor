@@ -296,6 +296,11 @@ export const CLOSE = {
 	refused: 1008,
 	/** A fault of the room (storage, engine): redialed, backed off until the room saves again. */
 	fault: 1011,
+	/**
+	 * The room changed the user's access (`setAccess(user, 'write')` on a
+	 * read-only socket): redialed at once, so `authorize` grants it anew.
+	 */
+	accessChanged: 1012,
 	/** A document id the room cannot have (empty, `.`/`..`, over 256 characters, a lone surrogate). */
 	invalidDocument: 4400,
 	/** Expired credentials: redialed once `params` carries a fresh token. */

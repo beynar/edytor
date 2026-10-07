@@ -1,6 +1,6 @@
 ---
 title: Authorization
-description: Decide who may open a document with authorize, bind client ids to users, and grant read-only access.
+description: Decide who may open a document with authorize, bind client ids to users, grant read-only access, revoke it, and check origins.
 icon: shield-check
 ---
 
@@ -22,6 +22,7 @@ type DocumentIdentity = {
   userId: string;
   replica?: number | null;
   readOnly?: boolean;
+  expiresAt?: number | null;
 };
 
 type ExpiredCredential = { expired: true };
@@ -36,18 +37,22 @@ Return `{ expired: true }` when the credential was valid but has expired. The di
 | `userId` | `string` | The verified user: any string of 1 to 256 characters with no lone surrogate, reaching the room as is (spaces included). The room binds every client id this socket writes under to this user. |
 | `replica` | `number \| null` | The client's CRDT client id (`document.clientID`), usually read with `requestedReplica(request)`. When omitted, the socket's first presence message binds it. |
 | `readOnly` | `boolean` | Refuse every write on this socket. Reads and presence still work. |
+| `expiresAt` | `number \| null` | When the credential expires, in ms since the epoch (a JWT's `exp` × 1000). The room closes the socket with `4401` then, and the provider redials with the `params` it reads again; a dial already past it is closed `4401`. Omitted: the socket keeps its access until it closes or you [revoke it](#revoking-access). |
 
 The document id is the room id the client dials: any string of 1 to 256 characters except `.`, `..` and one with a lone surrogate (a URL collapses those segments, and cannot encode a lone surrogate, so the provider refuses them), which the provider percent-encodes into one path segment. Decode it with `decodeURIComponent` before you pass it, and close a segment that does not decode with `4400`, as the [quick start](/docs/server/quick-start) does: no provider sends one.
 
 A plain `GET <room>?lastUpdated` (no upgrade) is the room's [`lastUpdated`](/docs/collaboration/persistence#prefetch-and-last-updated) probe: `routeDocumentSocket` runs `authorize` on it as on a dial and answers `{ "lastUpdated": … }` as JSON (the room's last stored change, ms since the epoch, or `null`), opening no document; a denial is a plain `403`, an expired credential `401` and an invalid id `400`. A plain `GET <room>?snapshot` is the [`documentSnapshot`](/docs/collaboration/persistence#first-paint-from-a-snapshot) probe, authorized and refused the same way: it answers `{ "lastUpdated": …, "document": … }`, the room's document as JSON (it wakes the room; `503` while the room cannot load its document). Any identity `authorize` admits, a read-only one included, may read it.
 
-`routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426, the probe aside), when the document id is empty, `.`, `..`, longer than 256 characters or holds a lone surrogate (closed `4400`), when `authorize` returns `{ expired: true }` (closed `4401`), or when it returns `null` or an invalid identity (closed `4403`).
+`routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426, the probe aside), when the document id is empty, `.`, `..`, longer than 256 characters or holds a lone surrogate (closed `4400`), when `authorize` returns `{ expired: true }` or an `expiresAt` already past (closed `4401`), or when it returns `null` or an invalid identity (closed `4403`).
 
 | Close | Sent when | The provider |
 | --- | --- | --- |
 | `4400` `invalid document id` | The document id is empty, `.`, `..`, longer than 256 characters or holds a lone surrogate; `authorize` is not called. | Final: emits `refused` and stops dialing. |
-| `4401` `expired` | `authorize` returned `{ expired: true }`. | Emits `expired` and redials after its backoff, with `params` read again. |
-| `4403` `document access denied` | `authorize` returned `null` or an invalid identity: a `userId` that is empty or not a string, over 256 characters or with a lone surrogate, or a `replica` that is not a client id. | Final: emits `refused` and stops dialing. |
+| `4401` `expired` | `authorize` returned `{ expired: true }`, or an `expiresAt` already past; or the room: the socket's `expiresAt` passed. | Emits `expired` and redials after its backoff, with `params` read again. |
+| `4403` `document access denied` | `authorize` returned `null` or an invalid identity: a `userId` that is empty or not a string, over 256 characters or with a lone surrogate, a `replica` that is not a client id, or an `expiresAt` that is not a finite number. | Final: emits `refused` and stops dialing. |
+| `4403` `origin not allowed` | The request's `Origin` is not one [`allowedOrigins`](#origins-and-cookies) lists; `authorize` is not called. | Final: emits `refused` and stops dialing. |
+| `4403` `access revoked` | The room: [`closeUser`](#revoking-access) or `setAccess(user, 'none')`. | Final: emits `refused` and stops dialing. |
+| `1012` `access changed` | The room: `setAccess(user, 'write')` on a read-only socket. | Redials at once, so `authorize` grants the new access. |
 | `4409` `replica bound to another user` | The room: the dial's replica belongs to another user (see [replicas](#replicas)). | Final: emits `refused` and stops dialing. |
 | `4413` `quota: <name>` | The room: a write past a [quota](/docs/server/room#quotas) (`document`, `rate`, `frame`). | Final: emits `refused` and stops dialing. |
 
@@ -56,6 +61,24 @@ Your Worker may turn a dial away itself, before `routeDocumentSocket`: a documen
 ```ts
 if (!(await documentExists(documentId))) return closedSocket(4404, 'unknown document');
 ```
+
+## Revoking access
+
+`authorize` runs at each dial; an open socket keeps the access it was granted. When a user's access to a document changes, tell the room, over Durable Object RPC from wherever your application changes it:
+
+```ts
+const room = env.ROOMS.getByName(documentId);
+await room.setAccess(userId, 'read'); // 'write', 'read' or 'none'
+await room.closeUser(userId); // every socket of the user, 4403 'access revoked'
+```
+
+- `setAccess(userId, 'read')` downgrades each of the user's write sockets in place: the room sends it the read-only notice (the provider's `readOnly` turns `true`) and denies every write it sends from then on. The socket stays open.
+- `setAccess(userId, 'write')` closes each of the user's read-only sockets with `1012` (`access changed`). The provider redials at once, and `authorize` grants the new access, so make it return the new access before you call this.
+- `setAccess(userId, 'none')` and `closeUser(userId)` close every socket of the user with `4403` (`access revoked`), which stops the provider. `closeUser(userId, code, reason?)` takes another close code: `4401` makes the provider redial with fresh `params` (sign-out, a rotated token), `1011` makes it redial with backoff.
+
+Each returns `{ sockets }`, how many it changed, and is logged as an `access` entry in the room's [`refusals`](/docs/server/room#diagnostics). Both read the sockets' attachments, so they work on a hibernated room. With [`attachDocument`](/docs/server/extending), call them on the returned document.
+
+For credentials that expire, return `expiresAt` from `authorize`: the room closes the socket with `4401` (`expired`) at its first message past that time, or on its alarm when the socket stays silent, and the provider emits `expired` and redials with its `params` read again. Put the refreshed token in `params` when `expired` fires (or before), as for an expired dial.
 
 ## Example: a signed token
 
@@ -97,7 +120,9 @@ export default {
         return {
           userId: payload.sub,
           replica: requestedReplica(request),
-          readOnly: access === 'view'
+          readOnly: access === 'view',
+          // The socket closes (4401) when the token expires; the provider redials with a fresh one.
+          expiresAt: typeof payload.exp === 'number' ? payload.exp * 1000 : null
         };
       } catch (error) {
         // An expired token is retried (4401) once `params` holds a fresh one; a forged one is refused (4403).
@@ -114,7 +139,26 @@ The client sends the token; the provider adds its replica id (`?replica=<clientI
 <Edytor server="wss://rooms.example.com/rooms" room={documentId} params={{ token }} actor={{ id: userId }} />
 ```
 
-`params` is read at every reconnect; pass a new `token` to refresh an expiring one (see [WebSocket options](/docs/collaboration/websocket#options)). An expired token closes the dial with `4401`: the provider emits `expired` (the view's `onSyncExpired`) and dials again with the `params` it then reads, so refresh `token` there or before it expires. A denied dial (`4403`) stops the provider: once the permission is fixed, reload the page, or call `connect()` on a [`WebsocketProvider`](/docs/collaboration/websocket#provider-events-and-state) you created, to dial again. With a session cookie instead, read `request.headers.get('Cookie')` in `authorize` and look the session up; the cookie is sent with the upgrade when the Worker is on the same site.
+`params` is read at every reconnect; pass a new `token` to refresh an expiring one (see [WebSocket options](/docs/collaboration/websocket#options)). An expired token closes the dial with `4401`: the provider emits `expired` (the view's `onSyncExpired`) and dials again with the `params` it then reads, so refresh `token` there or before it expires. A denied dial (`4403`) stops the provider: once the permission is fixed, reload the page, or call `connect()` on a [`WebsocketProvider`](/docs/collaboration/websocket#provider-events-and-state) you created, to dial again. With a session cookie instead, read `request.headers.get('Cookie')` in `authorize` and look the session up; the cookie is sent with the upgrade when the Worker is on the same site, and then set [`allowedOrigins`](#origins-and-cookies).
+
+## Origins and cookies
+
+Both routers take a last `options` argument, `RouteDocumentOptions`:
+
+```ts
+routeDocumentSocket(request, env.ROOMS, documentId, authorize, {
+  allowedOrigins: ['https://app.example.com']
+});
+routeDocumentHistory(request, env.ROOMS, documentId, authorize, {
+  allowedOrigins: (origin) => origin.endsWith('.example.com')
+});
+```
+
+`allowedOrigins` is a list of page origins (scheme, host and port, as the `Origin` header carries them) or a predicate over the `Origin` header. A request whose `Origin` it does not allow is refused before `authorize` runs: a dial is closed with `4403` (`origin not allowed`), which stops the provider, and an HTTP request (the `lastUpdated` and `snapshot` probes, every history request) is answered `403`. A request without an `Origin` header passes: browsers send one with every WebSocket dial and every cross-origin request, so only a non-browser client omits it, and such a client cannot carry your user's cookies. Without the option, every origin passes.
+
+:::warning
+Set `allowedOrigins` whenever `authorize` reads a cookie. Browsers send cookies with a WebSocket dial from any page, and the same-origin policy does not apply to WebSockets: without an origin check, another site your user visits can open their document, read it and write as them. `SameSite=Lax` or `Strict` on the session cookie keeps it off a dial from another *site*, but not from another origin of the same site (a subdomain), and `SameSite=None` sends it everywhere. A token in `params`, as in the example above, is not sent by another page, so it needs no origin check, though one does no harm.
+:::
 
 ## How identity reaches the room
 
@@ -125,8 +169,9 @@ After `authorize` succeeds, `routeDocumentSocket` builds a new request for the r
 | `X-Edytor-User` | `userId`, percent-encoded (`encodeURIComponent`) |
 | `X-Edytor-Replica` | `replica`, when known |
 | `X-Edytor-Access` | `read` or `write` |
+| `X-Edytor-Expires` | `expiresAt`, when given |
 
-Every header the client sent is dropped, cookies and tokens included, and so are forged `X-Edytor-*` headers. The room trusts these three headers without checking anything else, and refuses a request without them (401).
+Every header the client sent is dropped, cookies and tokens included, and so are forged `X-Edytor-*` headers. The room trusts these headers without checking anything else, and refuses a request without them (401).
 
 :::danger
 Reach the room only through `routeDocumentSocket`. If your Worker forwards requests to the Durable Object any other way, a client could send its own `X-Edytor-*` headers and write as anyone. The names are exported as `IDENTITY_HEADERS` if you need to reference them. With [`attachDocument`](/docs/server/extending) in your own Durable Object, the same holds for `document.fetch`: hand it only requests that came through `routeDocumentSocket`.
@@ -156,6 +201,22 @@ If the room's storage is lost and `onLoad` returns a snapshot older than the las
 Every author keeps their client ids, and nobody is disconnected for relaying. The relaying client's [`saved`](/docs/collaboration/websocket#saved-state) turns `true` once the room has stored its user's edits (its waiting deletions included, even when other edits wait on its own; never one the room dropped), after a reload too: it tracks what that user's client ids wrote (the document binds each id to its actor), not the stripped edits of others it received earlier.
 
 Because client ids belong to users, a browser profile's local copy and cross-tab channel should belong to one user. See [one user per browser profile](/docs/collaboration/persistence#one-user-per-browser-profile).
+
+## Attribution trust
+
+Every edit is tied to a client id, and the document's attribution root binds each client id to an actor (`c/<clientID>`, read by [`attribution.actorOf`](/docs/reference/document-api#attribution) and the provider's [`saved`](/docs/collaboration/websocket#saved-state)) and holds each actor's profile (`u/<actorId>`, its name and color). The room checks both against the socket's verified user:
+
+- **A replica binds only itself, to its user.** An update that writes `c/<n>` under another client id than `n`, or binds a client id of another user, has that entry removed (its clock kept, the rest of the update applied). When a socket binds one of its own user's client ids to another actor (an anonymous document, or an actor id that is not the user id), the room applies it, then writes the binding again with the verified user, for every replica including the sender.
+- **A user writes only their own profile.** An update that writes `u/<id>` for another user has that entry removed; the rest applies.
+- **Nobody deletes another's entry.** A delete of another user's profile, or of the binding of a client id the sender does not own, is dropped.
+- **Relayed content is stored, its binding waits for its author.** When a client relays another replica's edits (an id the room holds nothing of, see [replicas](#replicas)), the room stores them but cannot vouch for their binding to another user, so it removes that binding too. When the author's own client dials with that id and claims it, the room binds the id to the author.
+- **Presence names the verified user.** The room relays every presence state that names an actor (views always do) with `actor.id` set to the socket's user, whatever the client sent; the other fields (`user`, the selection) are relayed as sent, and a state without `actor` claims no identity.
+
+Each removal is logged as a `forged` entry in the room's [`refusals`](/docs/server/room#diagnostics) (`{ user, keys }`). The socket stays connected.
+
+So make the document's `actor.id` the `userId` your `authorize` returns: `createDocument({ actor: { id: userId } })`, or `<Edytor actor={{ id: userId }}>`. With another actor id, the room rebinds the client's ids to the user id, while the block records still name the actor id, and the client's own profile (`u/<actorId>`) is refused as another user's.
+
+The room does not verify the actor ids inside the block records (`createdBy`, `contributors`, `lastChangedBy`, read by `attribution.block(id)`): a modified client can write any actor id there. Display them as the client's claim, or derive authorship from the client ids, whose bindings the room does verify.
 
 ## Read-only sockets
 

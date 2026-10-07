@@ -1917,6 +1917,54 @@ every 15 s). Nothing closes the socket; read-only sockets keep presence
 within the same quotas; a socket's held entry goes when it departs
 (`wu05-presence-quota.test.ts`).
 
+### `room.access` — revocation and credential expiry (WU-06)
+
+`authorize` decides at the dial; the room holds what it decided in each
+socket's attachment (`readOnly`, `expiresAt`), and changes it on request:
+`closeUser(user, code = 4403, reason)` closes every open socket of the
+user (`access revoked`); `setAccess(user, 'read')` flips each write
+socket's attachment to read-only and sends it the read-only notice (the
+socket stays; its next write is denied `read-only`); `'write'` closes each
+read-only socket `1012` (`access changed`, `CLOSE.accessChanged`, not a
+refusal: the provider redials at once and `authorize` decides again);
+`'none'` is `closeUser`. Each walks the open sockets' attachments (a
+hibernated room included), returns `{ sockets }`, and is logged `access`
+(`{ user, access, sockets }`, not a refusal). `expiresAt` (ms since the
+epoch) travels in `X-Edytor-Expires`: the router closes a dial already
+past it `4401` (a non-number: `4403`); the room closes the socket `4401`
+(`expired`) at its first message at or past it (the room's clock), and
+the alarm's `expiry` task (`room.alarm.tasks`, armed at the earliest
+expiry of the open sockets, `earlier` at each dial) closes silent ones,
+then re-arms at the next. The provider redials after `4401` with its
+`params` read again (`wu06-revocation.test.ts`).
+
+### `room.attribution.trust` — bindings and profiles are the verified user's (WU-07, D5)
+
+On the attribution root, `c/<n>` (replica `n`'s actor) and `u/<id>`
+(actor `id`'s profile) are checked against the sender's verified user
+(`attributionWrites`, `forgedAttributionDeletes`): a new `c/<n>` struct
+under a client other than `n`, or naming another actor for a replica the
+user does not own, and a `u/<id>` struct with `id` not the user, are
+forged, under the sender's own ids and relayed ones (`attribute`'s
+unowned ids: the room cannot vouch for a relayed binding) alike. A
+forged struct is collected: written as a GC of its length, the deletes
+of the entries it replaces left out (and not checked), the rest of the
+frame applied. A `c/<own n>` naming another actor is applied, then
+rewritten to the user by one `ROOM_ORIGIN` transaction after the frame
+(`rebind`); so is the binding of an id a writer claims (an `orphan`, by
+its dial, its first presence entry or its frame: `bindOrphan`), when the
+room holds content of it, so a relayed id's collected binding is written
+again for its author. A delete of a live
+`u/<other>` or of `c/<n>` for a replica the sender does not own is
+dropped (not acknowledged). Each is logged `forged` (`{ user, keys }`);
+the socket stays. Every relayed presence state that has an `actor`
+names the socket's user as its `actor.id` (`verifiedPresence`). Block records' actor ids
+(`b/<id>`: `createdBy`, `contributors`, `lastChangedBy`) are not checked.
+`routeDocumentSocket`/`routeDocumentHistory`'s `allowedOrigins` refuses a
+request with another `Origin` before `authorize` (`4403` `origin not
+allowed`, `403` over HTTP); no `Origin` passes
+(`wu07-attribution-trust.test.ts`).
+
 ### `room.marks.writer` — only `n` writes or deletes `del.<n>` / `wd.<n>` (H2)
 
 A per-writer block mark (`del.<n>`, `wd.<n>` on a block node, R3 and
@@ -2015,12 +2063,14 @@ keep documents fresh before a device goes offline
 
 ### `room.alarm.tasks` — one alarm, the earliest due task (Phase 3)
 
-The room has one Durable Object alarm and four tasks on it: `save`
+The room has one Durable Object alarm and six tasks on it: `save`
 (`onSave`, `saveAfter` after the first unsaved change; while the rows
 cannot be read, again later, up to 5 minutes), `history` (the open
 half-day slot's end, `room.history.slots`), `purge` (the daily tick,
 `room.purge.timing`) and `retention` (the next version's expiry, for a
-store without a TTL of its own, `room.history.retention`). Each task's
+store without a TTL of its own, `room.history.retention`), plus `forward`
+(a move's late edits, `room.move.late`) and `expiry` (the earliest
+credential expiry of the open sockets, `room.access`). Each task's
 due time is stored in the meta table (`due.save`, `due.history`,
 `due.purge`, `due.retention`), so a wake knows what is due;
 arming a task keeps an earlier due time (a wake or an edit never pushes a

@@ -579,7 +579,9 @@ export const authorizeFromQuery: AuthorizeDocumentSocket = (request) => {
 	return {
 		userId,
 		replica: requestedReplica(request),
-		readOnly: query.get('access') === 'read'
+		readOnly: query.get('access') === 'read',
+		// `?expires=<ms since the epoch>`: when the credential expires (WU-06).
+		...(query.has('expires') ? { expiresAt: Number(query.get('expires')) } : {})
 	};
 };
 
@@ -591,6 +593,10 @@ const roomOf = (encoded: string): string | null => {
 		return null;
 	}
 };
+
+/** `origin-*` rooms accept browser requests from the test origin only (WU-07). */
+const originsOf = (name: string) =>
+	name.startsWith('origin-') ? { allowedOrigins: ['https://edytor-do.test'] } : undefined;
 
 export const routeRoom = async (request: Request, env: Env): Promise<Response> => {
 	const url = new URL(request.url);
@@ -606,7 +612,8 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 			request,
 			name.startsWith('timed-') ? env.TIMED : env.ROOM,
 			name,
-			authorizeFromQuery
+			authorizeFromQuery,
+			originsOf(name)
 		);
 	}
 	const match = ROOM_ROUTE.exec(url.pathname);
@@ -638,7 +645,7 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 	if (name.startsWith('host-')) {
 		return routeDocumentSocket(request, env.HOST, name, authorizeFromQuery);
 	}
-	return routeDocumentSocket(request, env.ROOM, name, authorizeFromQuery);
+	return routeDocumentSocket(request, env.ROOM, name, authorizeFromQuery, originsOf(name));
 };
 
 export default {

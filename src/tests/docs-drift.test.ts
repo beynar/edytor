@@ -655,7 +655,8 @@ describe('docs drift', () => {
 	it('every 4403 row and user-id rule names each identity routeDocumentSocket refuses (BW-07)', () => {
 		// The refusal, pinned against the source: a missing identity, a userId
 		// that is not a string, empty, over 256 characters or with a lone
-		// surrogate, and an invalid replica. A new clause must reach the docs.
+		// surrogate, an invalid replica, and an `expiresAt` that is not a
+		// finite number (WU-06). A new clause must reach the docs.
 		const source = readFileSync(join(root, 'src/lib/cloudflare/routeDocumentSocket.ts'), 'utf8');
 		const refusal =
 			/if \(\n\t\t!identity \|\|([\s\S]*?)\) \{\n\t\treturn refuse\(CLOSE\.denied/.exec(
@@ -667,7 +668,8 @@ describe('docs drift', () => {
 				'!identity.userId',
 				'identity.userId.length > 256',
 				'/\\p{Cs}/u.test(identity.userId)',
-				'(replica !== null && parseReplica(replica) === null)'
+				'(replica !== null && parseReplica(replica) === null)',
+				'(expiresAt !== null && !Number.isFinite(expiresAt))'
 			]
 		);
 		const rows = docs.flatMap((path) =>
@@ -678,7 +680,7 @@ describe('docs drift', () => {
 				.filter(([, line]) => line.includes('document access denied'))
 		);
 		expect(rows.length).toBeGreaterThanOrEqual(3);
-		const causes = [/`null`/, /empty/, /256/, /lone surrogate/, /`replica`/];
+		const causes = [/`null`/, /empty/, /256/, /lone surrogate/, /`replica`/, /`expiresAt`/];
 		expect(
 			rows.filter(([, line]) => causes.some((cause) => !cause.test(line))).map(([at]) => at)
 		).toEqual([]);

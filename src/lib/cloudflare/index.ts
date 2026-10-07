@@ -86,5 +86,6 @@ export {
 	type AuthorizeDocumentSocket,
 	type ExpiredCredential,
 	type DocumentNamespace,
-	type DocumentIdentity
+	type DocumentIdentity,
+	type RouteDocumentOptions
 } from './routeDocumentSocket.js';

@@ -63,6 +63,13 @@ describe('onboarding truth (WU-18)', () => {
 		// The `meta` keys the room writes.
 		for (const key of ['due.<task>', 'updated', 'purged'])
 			expect(page, key).toContain(`\`${key}\``);
+		// `attachDocument` installs `alarm` only when a task of the options needs it: the
+		// page states that condition, not an unconditional install.
+		expect(room).toContain(
+			"if (options.onSave || options.history || options.purgeAfterDays !== false) handlers.push('alarm');"
+		);
+		expect(page).toContain('no `onSave`, no `history` and `purgeAfterDays: false`');
+		expect(page).not.toMatch(/`onSave` keeps its own backoff/);
 	});
 
 	it('the server pages link the internals table instead of keeping their own count (DOC-07)', () => {
@@ -130,6 +137,61 @@ describe('onboarding truth (WU-18)', () => {
 		expect(page).toContain(`Node.js ${node.replace(/^\D+/, '').split('.')[0]}`);
 	});
 
+	it('the oldest browser versions are those of the newest features the package uses (DOC-11)', () => {
+		// Each feature's first version (MDN), and how the shipped code spells it. A use of
+		// one raises the floor: the page names it and its table holds the highest floor.
+		const FEATURES = [
+			{ name: '`String.prototype.toWellFormed`', use: /\.toWellFormed\(/, floor: [111, 119, 16.4] },
+			{ name: 'lookbehind', use: /\(\?<[!=]/, floor: [62, 78, 16.4] },
+			{ name: '`Array.prototype.toSorted`', use: /\.toSorted\(/, floor: [110, 115, 16] },
+			{ name: '`toReversed`', use: /\.toReversed\(/, floor: [110, 115, 16] },
+			{ name: '`color-mix()`', use: /color-mix\(/, floor: [111, 113, 16.2] },
+			{ name: 'container queries', use: /@container\b/, floor: [105, 110, 16] },
+			{ name: '`Object.groupBy`', use: /\b(?:Object|Map)\.groupBy\(/, floor: [117, 119, 17.4] },
+			{
+				name: '`Promise.withResolvers`',
+				use: /\bPromise\.withResolvers\(/,
+				floor: [119, 121, 17.4]
+			},
+			{ name: '`Array.fromAsync`', use: /\bArray\.fromAsync\(/, floor: [121, 115, 16.4] },
+			{
+				name: 'set methods',
+				use: /\.(?:union|intersection|symmetricDifference|isSubsetOf|isSupersetOf|isDisjointFrom)\(/,
+				floor: [122, 127, 17]
+			},
+			{
+				name: 'iterator helpers',
+				use: /\bIterator\.from\(|\.(?:values|keys|entries)\(\)\.(?:map|filter|take|drop|flatMap|reduce|toArray|some|every|find)\(/,
+				floor: [122, 131, 18.4]
+			}
+		] as const;
+		const sources = (dir: string): string[] =>
+			readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+				const path = join(dir, entry.name);
+				if (entry.isDirectory()) return sources(path);
+				return /\.(?:ts|js|svelte|css)$/.test(entry.name) && !entry.name.endsWith('.d.ts')
+					? [readFileSync(path, 'utf8')]
+					: [];
+			});
+		const shipped = sources(join(root, 'src/lib')).join('\n');
+		const used = FEATURES.filter((feature) => feature.use.test(shipped));
+		const floor = [0, 1, 2].map((engine) =>
+			Math.max(...used.map((feature) => feature.floor[engine]!))
+		);
+		const [chrome, firefox, safari] = floor.map(String);
+		const page = read('site/content/docs/reference/platform-support.mdx');
+		for (const feature of used) expect(page, feature.name).toContain(feature.name);
+		expect(page).toContain(`| Chrome, Edge | ${chrome} |`);
+		expect(page).toContain(`| Firefox | ${firefox} |`);
+		expect(page).toContain(`| Safari, iOS | ${safari} |`);
+		for (const path of [
+			'site/content/docs/getting-started/index.mdx',
+			'site/content/docs/reference/migration.mdx'
+		])
+			expect(read(path), path).toContain(`Chrome and Edge ${chrome}, Firefox ${firefox}`);
+		expect(read('site/content/docs/getting-started/index.mdx')).toContain(`Safari ${safari}`);
+	});
+
 	it('a getting-started route never server-renders an editable editor (DOC-03)', () => {
 		for (const path of pages(join(root, 'site/content/docs/getting-started'))) {
 			const blocks = fences(readFileSync(path, 'utf8'));
@@ -164,5 +226,13 @@ describe('onboarding truth (WU-18)', () => {
 			// svelte-check reads a component's markup only under TypeScript.
 			if (lang === 'svelte') expect(code, where).toMatch(/<script\b[^>]*\blang="ts"/);
 		}
+		// The handles a snippet reads (`edytor`, `block`…) are declared for fragments only:
+		// a component or module that reads one undeclared fails as it would in an app.
+		const declarations = read('scripts/doc-examples/app.d.ts');
+		expect(declarations).not.toMatch(/\bconst \w+:/);
+		expect(read('scripts/doc-examples/fragments.d.ts')).toMatch(/\bconst edytor:/);
+		const script = read('scripts/check-docs.mjs');
+		expect(script.match(/'fragments\.d\.ts'/g)).toHaveLength(1);
+		expect(script).toContain('tsconfig.fragments.json');
 	});
 });

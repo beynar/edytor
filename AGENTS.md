@@ -185,7 +185,7 @@ Lanes (green at every gate; the rows expected to fail are declared `it.fails` an
 pnpm check                   # svelte-check, 0/0
 pnpm lint                    # prettier + eslint (worker-safe boundary, BI2-5 host writers)
 pnpm check:worker            # Worker bundles of src/lib/crdt and src/lib/cloudflare
-pnpm check:docs              # type-checks site doc fences marked `check` after their title, in .svelte-kit/docexamples (scripts/check-docs.mjs): each one a module, a svelte one `lang="ts"`, `$lib/x` the page's `src/lib/x` fence, reader-held names (`edytor`, `block`, ids, your storage) in scripts/doc-examples; mark every complete fence (docs-onboarding keeps 150+)
+pnpm check:docs              # type-checks site doc fences marked `check` after their title, in .svelte-kit/docexamples (scripts/check-docs.mjs): each one a module, a svelte one `lang="ts"`, `$lib/x` the page's `src/lib/x` fence, reader-held functions (your storage, your backend) in scripts/doc-examples, the page's handles (`edytor`, `block`, ids) only for fragments (a `.ts` fence that exports nothing; `fragments.d.ts`); mark every complete fence (docs-onboarding keeps 150+)
 pnpm test:do                 # the edytor/cloudflare room in workerd (vitest pool: storage, hibernation, identity, ack, chunks)
 pnpm test:do:typecheck
 pnpm test:hosted --project=chromium|firefox|webkit  # real browsers through the room in Miniflare (ports 4195/4196)

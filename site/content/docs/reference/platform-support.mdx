@@ -22,15 +22,17 @@ The desktop lanes are what "supported" means: selection, typing, deletion, paste
 
 ### Oldest versions
 
-The package ships modern JavaScript and CSS, with no polyfills. Its code uses `Array.prototype.toSorted` and `toReversed`, `color-mix()` and container queries, so it needs at least:
+The package ships modern JavaScript and CSS, with no polyfills. Its code uses `String.prototype.toWellFormed` (on every string written to the document), a regular expression with lookbehind (parsed when the package loads), `Array.prototype.toSorted` and `toReversed`, `color-mix()` and container queries, so it needs at least:
 
 | Browser | Oldest version |
 | --- | --- |
 | Chrome, Edge | 111 |
-| Firefox | 115 (the 115 ESR) |
-| Safari, iOS | 16.2 |
+| Firefox | 119 |
+| Safari, iOS | 16.4 |
 
-These are floors, not tested versions: between them and the versions in the table above, the editor is expected to work but no lane runs it. The [Notion theme](/docs/customization/styling#notion-theme) also uses `:has()`, which Firefox supports from 121; an older Firefox draws headings without the theme's heading spacing. Features the browser may lack are detected rather than required: the local copy needs IndexedDB, and compressed snapshots need `CompressionStream` (without it they are stored uncompressed).
+An older browser fails outright, not by degrees: Safari before 16.4 refuses to load the package (the lookbehind is a syntax error there), and Chrome before 111 and Firefox before 119 throw as soon as a document is seeded or edited (no `toWellFormed`). Firefox 115 ESR is too old; the 128 ESR and later work.
+
+These are floors, not tested versions: between them and the versions in the table above, the editor is expected to work but no lane runs it. The [Notion theme](/docs/customization/styling#notion-theme) also uses `:has()`, which Firefox supports from 121; Firefox 119 and 120 draw headings without the theme's heading spacing. Features the browser may lack are detected rather than required: the local copy needs IndexedDB, and compressed snapshots need `CompressionStream` (without it they are stored uncompressed).
 
 ## Mobile and touch
 

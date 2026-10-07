@@ -115,6 +115,11 @@ Use these in templates, `$derived` and `$effect`:
 
   ```svelte title="src/lib/Outline.svelte" check
   <script lang="ts">
+  	import type { EdytorInstance } from 'edytor';
+
+  	// The editor a page bound with `bind:edytor`, passed down.
+  	let { edytor }: { edytor: EdytorInstance | undefined } = $props();
+
   	const outline = $derived(
   		(edytor?.cells?.rootIds ?? [])
   			.map((id) => edytor!.cells!.get(id))

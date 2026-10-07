@@ -21,14 +21,21 @@
  * `paths`: `edytor` → `src/lib/index.ts`, `edytor/cloudflare`,
  * `edytor/crdt/edytor`, `edytor/crdt` and the theme likewise.
  *
- * - `.svelte` and `.ts` blocks are checked by `svelte-check` in the app
- *   program (DOM types, the SvelteKit ambient types).
+ * - `.svelte` blocks and `.ts` blocks that export (modules) are checked by
+ *   `svelte-check` in the app program (DOM types, the SvelteKit ambient
+ *   types).
+ * - `.ts` blocks that export nothing (fragments: a snippet reading the
+ *   page's `edytor`, `block`…) are checked by `tsc` in the same program plus
+ *   `fragments.d.ts`, which declares those handles.
  * - `.ts` blocks that import `edytor/cloudflare` or `cloudflare:*` are
  *   checked by `tsc` in a Worker program (`@cloudflare/workers-types`).
  *
  * `scripts/doc-examples/{app,worker}.d.ts` declare the few names the docs
- * leave to the reader (`// your storage`, the `Env` that `wrangler types`
- * writes), so the rest of each block is checked as written.
+ * leave to the reader (`// your storage`, your backend, the `Env` that
+ * `wrangler types` writes), so the rest of each block is checked as written.
+ * They declare functions and bindings, never a value a component reads: a
+ * component or module that uses `edytor` without binding, importing or
+ * declaring it fails, as it would in an app.
  *
  * `$lib/<name>` in a block names the block of the same page titled
  * `src/lib/<name>`, so a route can import the page's component as an app does.
@@ -79,6 +86,8 @@ const titleOf = (tokens) => {
 
 const failures = [];
 const examples = [];
+// A script's top-level names are global: every block is made a module.
+const MODULE = /^\s*(?:import|export)\b/m;
 
 for (const page of pages(DOCS)) {
 	const lines = readFileSync(page, 'utf8').split('\n');
@@ -126,7 +135,10 @@ for (const page of pages(DOCS)) {
 			failures.push(`${where}:${start + 1}: two \`check\` fences on this page are titled ${title}`);
 			continue;
 		}
-		examples.push({ target, base, page: where, line: start + 1, code, worker });
+		// A `.ts` block that exports nothing is a fragment, a snippet that may read
+		// the handles of the page around it (`edytor`, `block`…); a module exports.
+		const fragment = extension === '.ts' && !worker && !/^\s*export\b/m.test(code);
+		examples.push({ target, base, page: where, line: start + 1, code, worker, fragment });
 	}
 }
 
@@ -162,8 +174,6 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'])
 for (const legacy of ['src/routes/__docexamples', '.svelte-kit/types/src/routes/__docexamples'])
 	rmSync(path.join(ROOT, legacy), { recursive: true, force: true });
 rmSync(OUT, { recursive: true, force: true });
-// A script's top-level names are global: make every block a module.
-const MODULE = /^\s*(?:import|export)\b/m;
 // `$lib/x` names a block of the same page titled `src/lib/x`, as in an app.
 const local = ({ target, base, code }) =>
 	code.replace(/(['"])\$lib\/([^'"]+)\1/g, (whole, quote, rest) => {
@@ -213,7 +223,26 @@ Object.assign(paths, {
 	'edytor/themes/notion.css': [path.join(ROOT, 'src/lib/themes/notion.css')]
 });
 
-const app = examples.filter((example) => !example.worker);
+/** Report a `tsc --pretty false` run's errors. */
+const tscErrors = (result) => {
+	const errors = [...result.stdout.matchAll(/^(.+)\((\d+),(\d+)\): error (TS\d+: .*)$/gm)];
+	for (const [, file, line, column, message] of errors)
+		report(file, Number(line), Number(column), message);
+	if (result.status !== 0 && !errors.length)
+		failures.push(`tsc exited ${result.status}:\n${result.stdout}${result.stderr}`);
+};
+
+// Components and modules: checked as an app checks them, with the services a
+// page leaves to the reader (`app.d.ts`) and nothing else, so a component that
+// uses `edytor` without binding it fails.
+const app = examples.filter((example) => !example.worker && !example.fragment);
+const ambient = [
+	path.join(KIT, 'ambient.d.ts'),
+	path.join(KIT, 'non-ambient.d.ts'),
+	path.join(KIT, 'types/**/$types.d.ts'),
+	path.join(ROOT, 'src/app.d.ts'),
+	path.join(DECLARATIONS, 'app.d.ts')
+];
 if (app.length) {
 	writeFileSync(
 		path.join(OUT, 'tsconfig.json'),
@@ -221,15 +250,7 @@ if (app.length) {
 			extends: path.join(ROOT, 'tsconfig.json'),
 			// `./$types` of a route under `app/` resolves into the project's types.
 			compilerOptions: { paths, rootDirs: [OUT, path.join(KIT, 'types')] },
-			include: [
-				path.join(KIT, 'ambient.d.ts'),
-				path.join(KIT, 'non-ambient.d.ts'),
-				path.join(KIT, 'types/**/$types.d.ts'),
-				path.join(ROOT, 'src/app.d.ts'),
-				path.join(DECLARATIONS, 'app.d.ts'),
-				'app/**/*.ts',
-				'app/**/*.svelte'
-			],
+			include: [...ambient, ...app.map((example) => example.target)],
 			exclude: []
 		})
 	);
@@ -248,6 +269,26 @@ if (app.length) {
 		failures.push(`svelte-check exited ${result.status}:\n${result.stdout}${result.stderr}`);
 }
 
+// Fragments (`.ts` blocks with no import or export): the same program, plus the
+// handles a snippet reads from the page around it (`fragments.d.ts`).
+const fragments = examples.filter((example) => example.fragment);
+if (fragments.length) {
+	writeFileSync(
+		path.join(OUT, 'tsconfig.fragments.json'),
+		JSON.stringify({
+			extends: path.join(ROOT, 'tsconfig.json'),
+			compilerOptions: { paths, noEmit: true, sourceMap: false },
+			include: [
+				...ambient,
+				path.join(DECLARATIONS, 'fragments.d.ts'),
+				...fragments.map((example) => example.target)
+			],
+			exclude: []
+		})
+	);
+	tscErrors(run('tsc', ['-p', path.join(OUT, 'tsconfig.fragments.json'), '--pretty', 'false']));
+}
+
 if (examples.some((example) => example.worker)) {
 	writeFileSync(
 		path.join(OUT, 'tsconfig.worker.json'),
@@ -258,12 +299,7 @@ if (examples.some((example) => example.worker)) {
 			exclude: []
 		})
 	);
-	const result = run('tsc', ['-p', path.join(OUT, 'tsconfig.worker.json'), '--pretty', 'false']);
-	const errors = [...result.stdout.matchAll(/^(.+)\((\d+),(\d+)\): error (TS\d+: .*)$/gm)];
-	for (const [, file, line, column, message] of errors)
-		report(file, Number(line), Number(column), message);
-	if (result.status !== 0 && !errors.length)
-		failures.push(`tsc exited ${result.status}:\n${result.stdout}${result.stderr}`);
+	tscErrors(run('tsc', ['-p', path.join(OUT, 'tsconfig.worker.json'), '--pretty', 'false']));
 }
 
 if (failures.length) {

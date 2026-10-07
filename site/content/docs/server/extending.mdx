@@ -42,7 +42,7 @@ This `attachDocument` comes from `edytor/cloudflare` and hosts a document in a D
 
 - **Storage.** The document lives in the object's SQLite storage, in tables named `edytor_rows`, `edytor_replicas` and `edytor_meta` (with `edytor_epochs`, `edytor_editors` and `edytor_restore` for the [history and the purge](/docs/server/history#storage), `edytor_history` for a [history in the room](/docs/server/history#the-rooms-own-storage), and `edytor_moves` and `edytor_late` for [moves](/docs/server/moves); [Room internals](/docs/server/internals#storage-tables) says what each holds), beside your own tables. Every edit is stored there before it is acknowledged, whatever your hooks do. `tablePrefix` changes the prefix.
 - **Sockets.** The document's sockets carry the tag `edytor` (`SOCKET_TAG`). Other sockets of the object are yours.
-- **Handlers.** Each handler your class does not define is installed on the object: `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and `alarm`, which runs the room's [alarm tasks](/docs/server/internals#alarm-tasks): `onSave`, the [history](/docs/server/history), the [purge](/docs/server/history#the-purge) and the forwarding of [moves](/docs/server/moves)' late edits (not installed only when none applies: no `onSave`, no `history`, `purgeAfterDays: false`).
+- **Handlers.** Each handler your class does not define is installed on the object: `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and `alarm`, which runs the room's [alarm tasks](/docs/server/internals#alarm-tasks): `onSave`, the [history](/docs/server/history), the [purge](/docs/server/history#the-purge) and the forwarding of [moves](/docs/server/moves)' late edits (not installed when the document has no `onSave`, no `history` and `purgeAfterDays: false`; such a room cannot forward late edits, see [Room internals](/docs/server/internals#alarm-tasks)).
 - **Return value.** An `AttachedDocument` with the same handlers, plus the methods `transact`, `read`, `compact`, `compressed`, `metrics`, `lastUpdated`, `dropWaitingDeletes`, `reset`, `records`, `owns(ws)`, the [history](/docs/server/history#list-preview-restore)'s `listHistory`, `readHistory`, `restoreHistory`, `undoRestore` and `historyWritten`, `purge` (the [purge](/docs/server/history#the-purge) task, now), and the [moves](/docs/server/moves)' `exportBlocks`, `importBlocks`, `commitMove`, `abortMove`, `lateEdits`, `ackLateEdits` and `applyLateEdits`, and the fields `facade`, `doc`, `failure`, `refusals`, `refusalCounts`, `presence` and `origin` (see [the room](/docs/server/room#diagnostics)).
 - **RPC.** Durable Object RPC reaches only your class's own methods, not the returned document's. Forward the ones you call from a Worker or an admin route, for example `dropWaitingDeletes() { return this.document.dropWaitingDeletes(); }`.
 
@@ -123,7 +123,7 @@ A saved copy can be older than the room's last edits (it is written `saveAfter` 
 
 ## Save
 
-`onSave({ value, update, replicas })` runs `saveAfter` ms after the first edit it has not saved (a stored [waiting delete](/docs/server/room#storage) counts), on the object's alarm, so it does not keep the object from hibernating. If it throws, the save stays due and the platform retries the alarm with backoff. If the alarm fires while the room cannot read its rows (a storage fault), it reads them again first; if that fails too, the save stays due and the alarm is set again, backing off up to 5 minutes, so `onSave` runs once the room recovers. The same alarm runs the [history and the purge](/docs/server/history#the-rooms-alarm).
+`onSave({ value, update, replicas })` runs `saveAfter` ms after the first edit it has not saved (a stored [waiting delete](/docs/server/room#storage) counts), on the object's alarm, so it does not keep the object from hibernating. If it throws, the save stays due and runs again a minute later (the alarm call throws too, so the platform logs it). If the alarm fires while the room cannot read its rows (a storage fault), it reads them again first; if that fails too, the save stays due and the alarm is set again, backing off up to 5 minutes, so `onSave` runs once the room recovers. The same alarm runs the [history and the purge](/docs/server/history#the-rooms-alarm).
 
 | Field | Content |
 | --- | --- |
@@ -234,6 +234,10 @@ import { DurableObject } from 'cloudflare:workers';
 import { attachDocument } from 'edytor/cloudflare';
 import { toBlockSpec } from 'edytor/crdt/edytor';
 
+interface Env {
+  NOTES: DurableObjectNamespace<Notes>; // as `wrangler types` writes it
+}
+
 export class Notes extends DurableObject<Env> {
   document = attachDocument(this);
 
@@ -247,8 +251,14 @@ export class Notes extends DurableObject<Env> {
   }
 }
 
-// From a Worker, a queue consumer, a cron trigger…
-// await env.NOTES.getByName(documentId).appendNote('Deployed v2');
+// A route your deploy pipeline calls; a queue consumer or a cron trigger calls it the same way.
+export default {
+  async fetch(request, env) {
+    const documentId = new URL(request.url).pathname.slice(1);
+    await env.NOTES.getByName(documentId).appendNote('Deployed v2');
+    return new Response('noted');
+  }
+} satisfies ExportedHandler<Env>;
 ```
 
 `read()` returns the document as JSON. A room with no document yet is seeded with one empty block before `transact` runs.

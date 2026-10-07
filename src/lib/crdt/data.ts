@@ -120,17 +120,61 @@ const leavesFrom = (t: Tree, prefix = DATA_LEAF_PREFIX, out = new Map<string, un
 	return out;
 };
 
-/** A longest common subsequence of `a` and `b`, as index pairs. */
-const common = (a: readonly string[], b: readonly string[]): [number, number][] => {
-	const T = [...a, 0].map(() => new Uint32Array(b.length + 1));
-	for (let i = a.length - 1; i >= 0; i--)
-		for (let j = b.length - 1; j >= 0; j--)
-			T[i]![j] = a[i] === b[j] ? T[i + 1]![j + 1]! + 1 : Math.max(T[i + 1]![j]!, T[i]![j + 1]!);
+/**
+ * Past this many candidate pairs (equal elements of the two middles),
+ * `common` pairs nothing between the prefix and the suffix (R8).
+ */
+const PAIRS_BOUND = 1 << 18;
+/**
+ * A common subsequence of `a` and `b`, as index pairs, in time and memory
+ * linear in their lengths (R8, WU-17): the common prefix and suffix, then
+ * between them a longest common subsequence (Hunt–Szymanski: the candidate
+ * pairs, each element of `b` against the equal ones of `a`, read as a
+ * longest increasing run, `O(r log n)` for `r` pairs), exact while there
+ * are at most `PAIRS_BOUND` candidates (always when `a`'s middle values are
+ * distinct, as `order`'s ids are); past it nothing between them pairs, so
+ * `arrange` pairs those items by position.
+ */
+export const common = (a: readonly string[], b: readonly string[]): [number, number][] => {
+	let [n, m, start] = [a.length, b.length, 0];
+	while (start < n && start < m && a[start] === b[start]) start++;
+	while (n > start && m > start && a[n - 1] === b[m - 1]) [n, m] = [n - 1, m - 1];
 	const out: [number, number][] = [];
-	for (let i = 0, j = 0; i < a.length && j < b.length; )
-		if (a[i] === b[j]) out.push([i++, j++]);
-		else if (T[i + 1]![j]! >= T[i]![j + 1]!) i++;
-		else j++;
+	for (let k = 0; k < start; k++) out.push([k, k]);
+	// Where each value of `a`'s middle stands, descending.
+	const at = new Map<string, number[]>();
+	for (let i = n - 1; i >= start; i--) {
+		const list = at.get(a[i]!);
+		if (list) list.push(i);
+		else at.set(a[i]!, [i]);
+	}
+	const mid = b.slice(start, m);
+	let pairs = 0;
+	for (const s of mid) pairs += at.get(s)?.length ?? 0;
+	if (pairs <= PAIRS_BOUND) {
+		// `ends[k]`: the smallest index of `a` a run of `k + 1` pairs ends at; `last[k]`, that pair.
+		const [ends, last]: number[][] = [[], []];
+		const [is, js, prev] = [new Int32Array(pairs), new Int32Array(pairs), new Int32Array(pairs)];
+		let p = 0;
+		mid.forEach((s, d) => {
+			// Descending, so one element of `b` never extends a run it ends.
+			for (const i of at.get(s) ?? []) {
+				let [lo, hi] = [0, ends.length];
+				while (lo < hi) {
+					const h = (lo + hi) >> 1;
+					if (ends[h]! < i) lo = h + 1;
+					else hi = h;
+				}
+				[is[p], js[p], prev[p]] = [i, start + d, lo ? last[lo - 1]! : -1];
+				[ends[lo], last[lo]] = [i, p++];
+			}
+		});
+		const run: [number, number][] = [];
+		for (let q = ends.length ? last[ends.length - 1]! : -1; q >= 0; q = prev[q]!)
+			run.push([is[q]!, js[q]!]);
+		out.push(...run.reverse());
+	}
+	for (let k = 0; n + k < a.length; k++) out.push([n + k, m + k]);
 	return out;
 };
 /** `v` as JSON with sorted keys: equal values, equal strings. */

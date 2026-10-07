@@ -9,8 +9,8 @@ import { runOccurrence } from './onBeforeInput.js';
  * produce a native DOM mutation.
  *
  * `Files` is intentionally accepted: file drops route through the plugin
- * `onPaste` hook (the Files → image seam — no bundled consumer claims them
- * yet, and unclaimed files insert nothing).
+ * `onPaste` hook (the Files → image seam: the image plugin with `upload`
+ * claims image files; unclaimed files insert nothing).
  */
 const ACCEPTED_FOREIGN_DROP_TYPES = ['Files', 'text/html', 'text/plain', 'text/uri-list'];
 

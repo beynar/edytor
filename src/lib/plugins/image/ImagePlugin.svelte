@@ -1,68 +1,168 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	import type { Block } from '$lib/block/block.svelte.js';
+	import type { Edytor } from '$lib/edytor.svelte.js';
 	import ImageEmpty from './ImageEmpty.svelte';
+	import ImageChrome from './ImageChrome.svelte';
 	import { imageKinds } from '$lib/crdt/semantics.js';
 	import {
+		imageAlignOf,
+		imageAltOf,
+		imageWidthOf,
+		imgData,
+		isImageFile,
 		MAX_INLINE_IMAGE_BYTES,
+		MIN_IMAGE_WIDTH,
 		oversizedInlineImage,
 		safeImageSrc,
-		storableImageSrc
+		storableImageSrc,
+		type ImageAlign
 	} from './image.js';
+	import { ImageControls } from './controls.svelte.js';
+	import { ImageUploads } from './uploads.svelte.js';
+	import { onPress } from '$lib/events/onFocus.js';
 
-	export { MAX_INLINE_IMAGE_BYTES, oversizedInlineImage, safeImageSrc, storableImageSrc };
+	export {
+		MAX_INLINE_IMAGE_BYTES,
+		MIN_IMAGE_WIDTH,
+		oversizedInlineImage,
+		safeImageSrc,
+		storableImageSrc,
+		type ImageAlign
+	};
 
 	export type ImagePluginOptions = {
-		/** Upload a picked file and answer its URL; without it only links are embedded. */
+		/**
+		 * Upload a file and answer its URL. Adds an Upload button to the empty
+		 * block, and claims pasted and dropped image files: each is placed as an
+		 * image block at once (one undo step) and filled with the URL this
+		 * answers. Without it only links are embedded.
+		 */
 		upload?: (file: File) => Promise<string>;
 	};
 
-	const escape = (value: string) => value.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+	/** The data an image block reads (all optional). */
+	export type ImageData = { src?: string; alt?: string; width?: number; align?: ImageAlign };
 
-	const options = new WeakMap<Block, ImagePluginOptions>();
+	const escape = (value: string) => value.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+	const px = (width: number | undefined) => (width === undefined ? undefined : `${width}px`);
+
+	/** One view's image state: its plugin's `upload`, the chrome, the uploads in flight. */
+	type View = {
+		upload?: (file: File) => Promise<string>;
+		controls: ImageControls;
+		uploads?: ImageUploads;
+	};
+	/** By view; the first image plugin of a view owns it, as its kind's definition (first wins). */
+	const views = new WeakMap<Edytor, View>();
 	const imagePlugins = new WeakSet<Plugin>();
 
 	/** Recognize any image plugin instance (the component's default yields to yours). */
 	export const isImagePlugin = (plugin: Plugin) => imagePlugins.has(plugin);
 
 	/**
+	 * Whether a pasted `html` shows nothing but images (a copied image's
+	 * `<img>`), so the clipboard's files are the content. HTML with text (an
+	 * office app also puts a picture of the copied text on the clipboard) is
+	 * imported instead.
+	 */
+	const onlyImages = (html: string | undefined) =>
+		!html ||
+		typeof DOMParser === 'undefined' ||
+		!new DOMParser().parseFromString(html, 'text/html').body.textContent?.trim();
+
+	/**
 	 * Notion's image block: an "Add an image" panel until it has a source (a
 	 * pasted link, or an upload when `upload` is given), then the image with
-	 * an editable caption. Void: its only text is the caption.
+	 * an editable caption, its alt text, width and alignment set from the
+	 * chrome the plugin shows over it. Void: its only text is the caption.
 	 */
 	export const createImagePlugin = (pluginOptions: ImagePluginOptions = {}): Plugin => {
-		const plugin: Plugin = () => ({
-			onBlockAttached: ({ block }) => {
-				options.set(block, pluginOptions);
-				return () => options.delete(block);
-			},
-			blocks: {
-				image: {
-					...imageKinds.image,
-					snippet: image,
-					element: 'figure',
-					presets: [
-						{
-							label: 'Image',
-							icon: '🖼',
-							keywords: ['picture', 'photo', 'img'],
-							group: 'Media'
+		const { upload } = pluginOptions;
+		const plugin: Plugin = (edytor) => {
+			const own: View = {
+				upload,
+				controls: new ImageControls(edytor),
+				uploads: upload ? new ImageUploads(edytor, upload) : undefined
+			};
+			// The records read with no view (`plugin(undefined)`) keep no state.
+			if (edytor && !views.has(edytor)) views.set(edytor, own);
+			const owns = () => views.get(edytor) === own;
+			return {
+				// A pasted or dropped image file (a drop replays the paste hooks):
+				// placed and uploaded, unless the HTML beside it shows text.
+				onPaste: ({ e, prevent }) => {
+					const uploads = own.uploads;
+					if (!uploads || !owns() || edytor.readonly) return;
+					const files = Array.from(e.clipboardData?.files ?? []).filter(isImageFile);
+					if (files.length && onlyImages(e.clipboardData?.getData('text/html')))
+						prevent(() => uploads.insert(files));
+				},
+				// The chrome: in the overlay, for the image under the pointer.
+				onEdytorAttached: ({ node }) => {
+					if (!owns()) return;
+					const { controls } = own;
+					const over = (event: PointerEvent) => controls.hover(event.target);
+					const leave = (event: PointerEvent) =>
+						!controls.drag && controls.leave(event.relatedTarget);
+					const layer = edytor.overlay.layer;
+					// A press outside the alt panel closes it (WebKit's lone `mousedown` too).
+					const offPress = onPress(edytor, node.ownerDocument, controls.pressed, true);
+					node.addEventListener('pointerover', over);
+					node.addEventListener('pointerleave', leave);
+					layer?.addEventListener('pointerleave', leave);
+					const unmount = edytor.overlay.mount(
+						ImageChrome,
+						{ controls },
+						'edytor-image-chrome',
+						// Above the block handles (5) and the column bands (6): it sits on the image.
+						7,
+						controls.measure
+					);
+					return () => {
+						node.removeEventListener('pointerover', over);
+						node.removeEventListener('pointerleave', leave);
+						layer?.removeEventListener('pointerleave', leave);
+						offPress();
+						unmount();
+						own.uploads?.destroy();
+					};
+				},
+				blocks: {
+					image: {
+						...imageKinds.image,
+						snippet: image,
+						element: 'figure',
+						presets: [
+							{
+								label: 'Image',
+								icon: '🖼',
+								keywords: ['picture', 'photo', 'img'],
+								group: 'Media'
+							}
+						],
+						html: (block, caption) => {
+							const src = safeImageSrc(block.data?.src);
+							const width = imageWidthOf(block.data);
+							const align = imageAlignOf(block.data);
+							const img = src
+								? `<img src="${escape(src)}" alt="${escape(imageAltOf(block.data))}"${width ? ` width="${Math.round(width)}"` : ''}>`
+								: '';
+							const at = align === 'center' ? '' : ` data-align="${align}"`;
+							return `<figure${at}>${img}<figcaption>${caption}</figcaption></figure>`;
+						},
+						// A `figure` holding an `img`, or a bare `img`, with an accepted
+						// source; a pasted inline image over the cap is not imported (H6).
+						parse: (el) => {
+							if (el.localName === 'img') return imgData(el) ?? undefined;
+							const data = el.localName === 'figure' && imgData(el.querySelector('img'));
+							if (!data) return undefined;
+							const align = el.getAttribute('data-align');
+							return align === 'left' || align === 'right' ? { ...data, align } : data;
 						}
-					],
-					html: (block, caption) => {
-						const src = safeImageSrc(block.data?.src);
-						return `<figure>${src ? `<img src="${escape(src)}" alt="">` : ''}<figcaption>${caption}</figcaption></figure>`;
-					},
-					// A pasted inline image over the cap is not imported (H6).
-					parse: (el) => {
-						const src =
-							el.localName === 'figure' &&
-							storableImageSrc(el.querySelector('img')?.getAttribute('src'));
-						return src ? { src } : undefined;
 					}
 				}
-			}
-		});
+			};
+		};
 
 		imagePlugins.add(plugin);
 		return plugin;
@@ -72,19 +172,75 @@
 	export const imagePlugin = createImagePlugin();
 </script>
 
-{#snippet image({ block, content }: BlockSnippetPayload<{ src?: string }>)}
+{#snippet image({ block, content }: BlockSnippetPayload<ImageData>)}
+	<!-- A suggestion's preview (no handle) reads only its data. -->
+	{@const view = block.handle ? views.get(block.handle.edytor) : undefined}
 	{@const src = safeImageSrc(block.data.src)}
+	{@const upload = src ? undefined : view?.uploads?.of(block.id)}
 	{#if src}
-		<div use:block.void data-edytor-image>
-			<img {src} alt="" draggable="false" />
+		<div use:block.void data-edytor-image data-align={imageAlignOf(block.data)}>
+			<img
+				{src}
+				alt={imageAltOf(block.data)}
+				draggable="false"
+				style:width={px(
+					view ? view.controls.width(block.id, block.data) : imageWidthOf(block.data)
+				)}
+			/>
+		</div>
+	{:else if upload?.status === 'uploading'}
+		<div use:block.void data-edytor-image data-edytor-image-uploading data-align="center">
+			{#if upload.preview}<img src={upload.preview} alt="" draggable="false" />{/if}
+			<span data-edytor-image-progress role="status">Uploading…</span>
 		</div>
 	{:else}
 		<div use:block.void data-edytor-image-empty>
-			<!-- A suggestion's preview (no handle) shows the passive placeholder. -->
-			<ImageEmpty block={block.handle} upload={block.handle && options.get(block.handle)?.upload} />
+			<ImageEmpty
+				block={block.handle}
+				upload={view?.upload}
+				uploads={view?.uploads}
+				error={upload?.status === 'failed' ? 'upload' : null}
+				landed={upload?.status === 'landed'}
+			/>
 		</div>
 	{/if}
 	<!-- The core renders the kind's <figure> around this markup. -->
 	<!-- svelte-ignore a11y_figcaption_parent -->
 	<figcaption>{@render content()}</figcaption>
 {/snippet}
+
+<style>
+	/* Where an image narrower than its block sits (Notion's alignment). */
+	[data-edytor-image] {
+		display: flex;
+		position: relative;
+		justify-content: center;
+	}
+	[data-edytor-image][data-align='left'] {
+		justify-content: flex-start;
+	}
+	[data-edytor-image][data-align='right'] {
+		justify-content: flex-end;
+	}
+	[data-edytor-image] img {
+		max-width: 100%;
+	}
+	[data-edytor-image-uploading] {
+		min-height: 48px;
+		border-radius: 4px;
+		background: rgba(55, 53, 47, 0.04);
+	}
+	[data-edytor-image-uploading] img {
+		opacity: 0.5;
+	}
+	[data-edytor-image-progress] {
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		padding: 2px 8px;
+		border-radius: 4px;
+		background: rgba(15, 15, 15, 0.6);
+		color: #fff;
+		font-size: 12px;
+	}
+</style>

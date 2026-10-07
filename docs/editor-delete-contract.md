@@ -246,6 +246,32 @@ HTML that carries no text, atom, child or void kind — only a comment, a
 such HTML falls through to the clipboard's `text/plain` when it has one. A
 taken id refuses the op before any write.
 
+### `flow.html.void` — a void element inside a line ends it
+
+In external HTML, an element a void kind claims (an `<img>` the image
+plugin's `parse` takes), met inside a line — directly or wrapped in inline
+markup (`<p><span><img></span></p>`, Google Docs) — ends that line: the
+void is a line of its own, and what follows is a new line of the
+element's kind and data. A text line left with no content and no children
+around it is dropped. `<p>before <img> after</p>` → `["before", image,
+"after"]`; `<p><span><img></span></p>` → `[image]`. Inside the void's own
+element (a `figure`'s `img`) nothing splits: it is the void's media. An
+`<img>` no kind claims (no accepted `src`) is skipped, as before. WU-21.
+Pins: `image-wu21.test.tsx`.
+
+### `flow.html.glyph` — an inline glyph image is its alt text
+
+An `<img>` that draws a glyph is text, never a void: no kind claims it,
+and it stays in its line as its `alt` (none: nothing). A glyph is an image
+whose `alt` is emoji only (pictographs, flags, their joiners, variation
+selectors and skin tones: X writes `<img alt="😂" src="…/emoji/…svg">`),
+one whose class names an emoji or that carries `data-emoji` (WordPress,
+Slack, Gmail), or one whose `width`/`height` (attribute or inline style,
+in px) are all 32 or under (an icon, an email's 1×1 tracking pixel). So a
+pasted paragraph with emoji stays one line: `<p>So funny <img alt="😂"> right</p>`
+→ `["So funny 😂 right"]`; `<p>x<img alt="A cat" width="33">y</p>` still
+splits (`flow.html.void`). Pins: `image-wu21.test.tsx`.
+
 ### `flow.inline` — one line joins the text
 
 At a position `(B, o)`, a single line's content is inserted at `o`. `B`

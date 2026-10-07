@@ -616,6 +616,9 @@ These live mostly in `src/lib/plugins/**` and add new plugins, so they paralleli
     host for the slash, + and block menus, and on the toolbar.
   - Human labels on handles (from the kind's preset label).
   - Keyboard resize on a focusable column band (arrows, Shift for bigger steps).
+  - The image chrome from the keyboard: since WU-21 a selected image block shows its toolbar
+    without the pointer, but no key moves focus into it (alignment, alt text) and the resize
+    handles take no keys (arrows to resize, as the column band).
   - Live-region announcements for block moves and deletes.
   - An axe run in Playwright plus a manual VoiceOver and NVDA pass recorded in the docs.
 - Effort: 5 d.

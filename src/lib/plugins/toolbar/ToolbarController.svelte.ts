@@ -2,8 +2,20 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { isRecord, type SerializableContent } from '$lib/utils/json.js';
-import { richTextOperations, type RichTextMark } from '$lib/plugins/richtext/richTextOperations.js';
+import {
+	linkAt,
+	openLink,
+	richTextOperations,
+	type LinkRun,
+	type RichTextMark
+} from '$lib/plugins/richtext/richTextOperations.js';
 import { selectedTextSpans } from '$lib/selection/visibility.js';
+import {
+	getYIndex,
+	SUGGESTION,
+	SYNTHETIC_TEXT_OVERLAY_SELECTOR
+} from '$lib/selection/selection.utils.js';
+import type { Text } from '$lib/text/text.svelte.js';
 import { convertBlocks, convertibleKinds, rowOf, type KindRow } from '$lib/kinds.js';
 import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
 
@@ -33,6 +45,10 @@ export class ToolbarController {
 	/** The selection the toolbar acts on: a value (anchors), so peers' edits move it (L52). */
 	private selectionSnapshot: SelectionValue | null = null;
 	private isRestoringSelection = false;
+	/** The link panel's field takes the focus when it next mounts (it was opened, not re-rendered). */
+	private focusField = false;
+	/** The link under the pointer, for the link card (`link.card`). */
+	hovered = $state.raw<HTMLAnchorElement | null>(null);
 
 	constructor(private edytor: Edytor) {}
 
@@ -85,6 +101,104 @@ export class ToolbarController {
 
 	togglePanel(panel: 'turn' | 'link' | 'color') {
 		this.panel = this.panel === panel ? null : panel;
+		this.focusField = this.panel === 'link';
+	}
+
+	/** Whether the link field mounting now takes the focus (once per opening). */
+	takeFieldFocus() {
+		const focus = this.focusField;
+		this.focusField = false;
+		return focus;
+	}
+
+	/**
+	 * Mod+K (`link.mod-k`): the link panel over the selected text, or, at a
+	 * caret inside a link, over that link, selected first. Answers whether
+	 * the panel opened (the key is claimed only then).
+	 */
+	openLinkPanel() {
+		const { selection } = this.edytor;
+		const { isCollapsed, startText, yStart } = selection.state;
+		if (selection.value.kind !== 'text' || !startText) return false;
+		const { voidRoot, islandRoot } = selection.projection;
+		if (voidRoot !== null || islandRoot !== null) return false;
+		if (isCollapsed) {
+			const run = linkAt(startText, yStart - 1) ?? linkAt(startText, yStart);
+			if (!run) return false;
+			selection.setAtRange(startText, run.start, startText, run.end);
+		}
+		this.updateFromSelection();
+		if (!this.isVisible) return false;
+		this.panel = 'link';
+		this.focusField = true;
+		return true;
+	}
+
+	/**
+	 * Close the open panel. With `focus` (Enter or Escape in the link field)
+	 * the editor takes its focus back and the held selection shows again.
+	 */
+	closePanel(focus = false) {
+		this.panel = null;
+		const snapshot = this.selectionSnapshot;
+		if (!focus || this.edytor.readonly) return;
+		this.edytor.expectInternalFocus();
+		this.edytor.node?.focus({ preventScroll: true });
+		if (snapshot) this.restoreSelection(snapshot);
+	}
+
+	/** The link card shows: a link is hovered in an editable view. */
+	get card() {
+		return this.hovered !== null && !this.edytor.readonly;
+	}
+
+	/** The hovered link's URL, as stored (the card shows it). */
+	get hoveredHref() {
+		return this.hovered?.getAttribute('href') ?? '';
+	}
+
+	/** Show the card for `anchor`, or hide it (`null`). */
+	hover(anchor: HTMLAnchorElement | null) {
+		if (this.hovered === anchor) return;
+		this.hovered = anchor;
+		this.edytor.overlay.invalidate();
+	}
+
+	/** The card's Open: the hovered link in a new tab. */
+	openHovered() {
+		const href = this.hoveredHref;
+		if (href) openLink(href, this.edytor.node?.ownerDocument.defaultView ?? null);
+	}
+
+	/** The card's Edit: select the hovered link and open the link panel on it. */
+	editHovered() {
+		const link = this.hoveredLink();
+		this.hover(null);
+		if (!link) return;
+		this.edytor.selection.setAtRange(link.text, link.start, link.text, link.end);
+		this.updateFromSelection();
+		if (!this.isVisible) return;
+		this.panel = 'link';
+		this.focusField = true;
+	}
+
+	/** The card's Remove: unlink the whole hovered link (one undo step); the selection stays. */
+	removeHovered() {
+		const link = this.hoveredLink();
+		this.hover(null);
+		if (link) richTextOperations(this.edytor).unlinkText(link.text, link.start, link.end);
+	}
+
+	/** The hovered link element's text and link run, read from the model (never from the DOM). */
+	private hoveredLink(): (LinkRun & { text: Text }) | null {
+		const anchor = this.hovered;
+		if (!anchor?.isConnected || anchor.closest(`${SUGGESTION}, ${SYNTHETIC_TEXT_OVERLAY_SELECTOR}`))
+			return null;
+		const text = this.edytor.selection.getTextOfNode(anchor);
+		const leaf = anchor.ownerDocument.createTreeWalker(anchor, NodeFilter.SHOW_TEXT).nextNode();
+		if (!text?.node || !leaf || !text.node.contains(anchor)) return null;
+		const run = linkAt(text, getYIndex(text, leaf, 0));
+		return run && { ...run, text };
 	}
 
 	/** Convert every block the selection touches (Notion), as one undo step. */

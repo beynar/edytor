@@ -1,6 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { Plugin } from '$lib/plugins.js';
 import Toolbar from './Toolbar.svelte';
+import LinkCard from './LinkCard.svelte';
 import { ToolbarController } from './ToolbarController.svelte.js';
 
 /** A press in a field of the chrome (an input, a select): it takes focus. */
@@ -17,6 +18,11 @@ export type ToolbarOptions = {
 	 * fields, an input or a select, take their own).
 	 */
 	toolbar?: Snippet<[ToolbarController]>;
+	/**
+	 * The card shown under a hovered link, with its URL, Open, Edit (the link
+	 * panel) and Remove (`link.card`). `false` shows none. Default `true`.
+	 */
+	linkCard?: boolean;
 };
 
 /** The selection toolbar, with your own markup through a `toolbar` snippet. */
@@ -44,7 +50,55 @@ export const createToolbarPlugin =
 			return () => Object.assign(host.style, { left, top });
 		};
 
+		/** Just below the hovered link, flush with it (the host's top padding bridges the two). */
+		const positionCard = (host: HTMLElement) => {
+			const anchor = controller.hovered;
+			if (!anchor || !controller.card) return;
+			if (!anchor.isConnected) return () => controller.hover(null);
+			const rect = anchor.getBoundingClientRect();
+			const [left, top] = [`${Math.max(8, rect.left)}px`, `${rect.bottom}px`];
+			return () => Object.assign(host.style, { left, top, paddingTop: '4px' });
+		};
+
+		/**
+		 * The link card follows the pointer: over a link in the host it shows,
+		 * and it stays while the pointer moves from that link onto the card;
+		 * leaving both, or reaching another part of the host, hides it.
+		 */
+		const trackLinks = (node: HTMLElement, card: Element) => {
+			const linkOf = (target: EventTarget | null) => {
+				const element = target instanceof Element ? target : null;
+				// A link the editor renders (a mark element), not a kind's own chrome.
+				const anchor = element?.closest('a[href][data-edytor-mark]');
+				return anchor instanceof HTMLAnchorElement && node.contains(anchor) ? anchor : null;
+			};
+			const inside = (target: EventTarget | null) =>
+				target instanceof Node && (card.contains(target) || controller.hovered?.contains(target));
+			const over = (event: MouseEvent) => {
+				const anchor = linkOf(event.target);
+				if (anchor) controller.hover(anchor);
+				else if (!inside(event.target)) controller.hover(null);
+			};
+			const out = (event: MouseEvent) => {
+				if (!inside(event.relatedTarget) && !linkOf(event.relatedTarget)) controller.hover(null);
+			};
+			node.addEventListener('mouseover', over);
+			node.addEventListener('mouseout', out);
+			card.addEventListener('mouseout', out as EventListener);
+			return () => {
+				node.removeEventListener('mouseover', over);
+				node.removeEventListener('mouseout', out);
+				card.removeEventListener('mouseout', out as EventListener);
+			};
+		};
+
 		return {
+			hotkeys: {
+				// Mod+K: the link panel, its field focused (`link.mod-k`, Notion).
+				'mod+k': ({ prevent }) => {
+					if (!edytor.readonly && controller.openLinkPanel()) prevent();
+				}
+			},
 			onAfterOperation: () => {
 				controller.updateFromSelection();
 				edytor.overlay.invalidate();
@@ -71,8 +125,27 @@ export const createToolbarPlugin =
 					if (!isNativeFieldEvent(event)) event.preventDefault();
 				};
 				host?.addEventListener('mousedown', keep);
+				if (options.linkCard === false)
+					return () => {
+						host?.removeEventListener('mousedown', keep);
+						unmount();
+					};
+				const unmountCard = edytor.overlay.mount(
+					LinkCard,
+					{ controller },
+					'edytor-link-card-host',
+					61,
+					positionCard
+				);
+				const cardHost = edytor.overlay.layer?.querySelector('[data-edytor-link-card-host]');
+				cardHost?.addEventListener('mousedown', keep);
+				const untrack = edytor.node && cardHost ? trackLinks(edytor.node, cardHost) : () => {};
 				return () => {
 					host?.removeEventListener('mousedown', keep);
+					cardHost?.removeEventListener('mousedown', keep);
+					untrack();
+					controller.hover(null);
+					unmountCard();
 					unmount();
 				};
 			}

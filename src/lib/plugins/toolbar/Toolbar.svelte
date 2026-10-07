@@ -95,8 +95,14 @@
 						if (event.key === 'Enter') {
 							event.preventDefault();
 							controller.applyLink();
-							controller.panel = null;
+							controller.closePanel(true);
+						} else if (event.key === 'Escape') {
+							event.preventDefault();
+							controller.closePanel(true);
 						}
+					}}
+					{@attach (field) => {
+						if (controller.takeFieldFocus()) field.focus({ preventScroll: true });
 					}}
 				/>
 				<button

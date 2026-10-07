@@ -1,7 +1,8 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { SerializableContent } from '$lib/utils/json.js';
+import { isRecord, type JSONText, type SerializableContent } from '$lib/utils/json.js';
 import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { BlockSpec } from '$lib/crdt/index.js';
+import type { Text } from '$lib/text/text.svelte.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
 import { holdsNothing, lineage, placing } from '$lib/kinds.js';
 import { id } from '$lib/utils.js';
@@ -87,6 +88,59 @@ export const pastedLink = (plain: string | undefined | null): string | null => {
 	} catch {
 		return null;
 	}
+};
+
+/** What a typed URL may end with that belongs to the sentence, not the URL (`see https://a.dev.`). */
+const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
+
+/**
+ * The URL `before` (the text before a typed space) ends with: its last word,
+ * trailing `.,;:!?` left out, when that is one link as `pastedLink` reads
+ * it. Answers where it starts and its href, or `null` (autolink, Notion).
+ */
+export const typedLink = (before: string): { start: number; href: string } | null => {
+	const word = /\S+$/.exec(before)?.[0];
+	if (!word) return null;
+	const url = word.replace(TRAILING_PUNCTUATION, '');
+	return url && pastedLink(url) === url ? { start: before.length - word.length, href: url } : null;
+};
+
+/** A run of `text` carrying one link: its segment-local range and its href. */
+export type LinkRun = { start: number; end: number; href: string };
+
+const hrefOf = (marks: JSONText['marks']) => {
+	const value = marks?.link;
+	return isRecord(value) && typeof value.href === 'string' ? value.href : null;
+};
+
+/**
+ * The link the character at `index` of `text` belongs to: the run of
+ * characters around it linked to the same href (Mod+K at a caret, the
+ * link card). `null` when that character carries no link.
+ */
+export const linkAt = (text: Text, index: number): LinkRun | null => {
+	if (index < 0) return null;
+	const runs: LinkRun[] = [];
+	let offset = 0;
+	for (const { text: value, marks } of text.value) {
+		const href = hrefOf(marks);
+		const end = offset + value.length;
+		const last = runs.at(-1);
+		if (href && last?.end === offset && last.href === href) last.end = end;
+		else if (href) runs.push({ start: offset, end, href });
+		offset = end;
+	}
+	return runs.find(({ start, end }) => index >= start && index < end) ?? null;
+};
+
+/**
+ * Open `href` in a new tab, without giving the page a handle on the
+ * editor's window (Mod+click, the link card's Open). An unsafe scheme opens
+ * nothing.
+ */
+export const openLink = (href: string, view: Window | null = globalThis.window ?? null) => {
+	const safe = sanitizeLinkHref(href);
+	if (safe) view?.open(safe, '_blank', 'noopener,noreferrer');
 };
 
 const formatSelectedTextRange = (
@@ -196,6 +250,21 @@ export const richTextOperations = (edytor: Edytor) => ({
 	},
 	removeLinkAtRange: () => {
 		formatSelectedTextRange(edytor, 'link', null, false);
+	},
+	/**
+	 * Link `start`–`end` of `text` to `href`, as an undo step of its own
+	 * (autolink): undo gives the plain text back. An unsafe href links nothing.
+	 */
+	linkText: (text: Text, start: number, end: number, href: string) => {
+		const safe = sanitizeLinkHref(href);
+		if (safe === null || end <= start) return;
+		edytor.dispatcher.run('autolink', () =>
+			text.markText({ mark: 'link', value: { href: safe }, start, end })
+		);
+	},
+	/** Unlink `start`–`end` of `text` (the link card's Remove), one undo step; the selection stays. */
+	unlinkText: (text: Text, start: number, end: number) => {
+		edytor.dispatcher.run('format', () => text.markText({ mark: 'link', value: null, start, end }));
 	},
 	/** Remove one mark (a color, a highlight…) from the selected range. */
 	removeMarkAtRange: (mark: RichTextMark) => {

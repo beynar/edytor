@@ -63,3 +63,11 @@ export {
 	isColumnsPlugin,
 	type ColumnsPluginOptions
 } from './columns/ColumnsPlugin.svelte';
+export {
+	findPlugin,
+	createFindPlugin,
+	findController,
+	type FindPluginOptions
+} from './find/findPlugin.js';
+export type { FindController, ReplaceMatches } from './find/FindController.svelte.js';
+export { findMatches, type FindMatch, type FindOptions } from './find/search.js';

@@ -74,7 +74,7 @@ Plugins are read once, when the component mounts. Changing the array afterwards 
 
 The example above therefore runs block handles, your five plugins, then arrow move, suggestions, image and rich text. A default you list yourself stays where you put it, so older code that passes `plugins={[richTextPlugin]}` still works.
 
-Some bundled plugins are not defaults: list [`columnsPlugin`](/docs/plugins/columns), [`codePlugin`](/docs/plugins/code), the menus, the toolbar and markdown shortcuts yourself when you want them.
+Some bundled plugins are not defaults: list [`columnsPlugin`](/docs/plugins/columns), [`codePlugin`](/docs/plugins/code), [`findPlugin`](/docs/plugins/find), the menus, the toolbar and markdown shortcuts yourself when you want them.
 
 Pass `defaultPlugins={false}` to get exactly your list (block handles still follow `blockHandles`). The defaults are added by the `<Edytor>` component, per view; the editor instance underneath has none of its own.
 
@@ -124,6 +124,7 @@ Import it like any other module: `import { highlightPlugin } from './HighlightPl
 | [Toolbar](/docs/plugins/toolbar)                       | `toolbarPlugin`, `createToolbarPlugin` | A floating toolbar over text selections: Turn into, link, marks and colors    |
 | [Markdown shortcuts](/docs/plugins/markdown-shortcuts) | `markdownShortcutsPlugin` | Block prefixes such as `# ` or `- `, and inline `**bold**`, `*italic*`, `` `code` ``, `~strike~` |
 | [Arrow move](/docs/plugins/arrow-move)                 | `arrowMovePlugin`         | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the caret's block; <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves selected blocks. On by default |
+| [Find and replace](/docs/plugins/find)                 | `findPlugin`, `createFindPlugin` | <kbd>Mod</kbd> + <kbd>F</kbd> opens a find and replace bar: matches highlighted, closed toggles opened, Replace all in one undo step. Opt-in: list it in `plugins` |
 | [Mention](/docs/plugins/mention)                       | (not exported)            | A reference implementation of an inline atom                                               |
 
 All exports come from the package root, `edytor`. The `create…` factories take options, including snippets that replace the menus' and handles' markup (see [Menus and handles](/docs/customization/menus)). For the matching document look, add the [Notion theme](/docs/customization/styling#notion-theme).

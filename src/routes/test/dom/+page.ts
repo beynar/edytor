@@ -61,6 +61,8 @@ export const load: PageLoad = ({ url }) => {
 		altGraphHotkey: url.searchParams.get('altGraphHotkey') === 'true',
 		deadKeyHotkey: url.searchParams.get('deadKeyHotkey') === 'true',
 		handles: url.searchParams.get('handles') === 'true',
+		// The opt-in find plugin (`find=true`): Mod+F is the browser's without it.
+		find: url.searchParams.get('find') === 'true',
 		secondary: url.searchParams.get('secondary') === 'true',
 		dir: url.searchParams.get('dir') === 'rtl' ? 'rtl' : 'ltr',
 		translate:

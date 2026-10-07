@@ -12,6 +12,7 @@
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 	import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
 	import type { Plugin } from '$lib/plugins.js';
 	import { page } from '$app/state';
 	import { createIndexeddbSync } from '$lib/collaboration/providers.js';
@@ -51,6 +52,7 @@
 		}),
 		demoPagePlugin,
 		columnsPlugin,
+		findPlugin,
 		richTextPlugin
 	];
 	const demoValue: JSONDoc = {

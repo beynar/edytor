@@ -39,6 +39,9 @@ declare global {
 const textIn = (stub: DurableObjectStub<Room>, block: string) =>
 	runInDurableObject(stub, (r: Room) => readFacade(r.doc!, (f) => f.blockText(block)));
 
+/** An RPC call as a plain promise (an RPC result is a thenable `expect` cannot unwrap). */
+const rpc = <T>(call: () => PromiseLike<T>): Promise<T> => Promise.resolve().then(call);
+
 /** A writer joining `room` with a document holding paragraph `p`. */
 const writer = async (room: string, user: string, extra: Record<string, unknown> = {}) => {
 	const document = E.createDocument({ value: { children: [para('p', '')] }, actor: { id: user } });
@@ -70,8 +73,33 @@ describe('WU-06 · revocation', () => {
 		const a3 = await writer(room, 'ada');
 		expect(await stub.closeUser('ada', 4401)).toEqual({ sockets: 1 });
 		await vi.waitFor(() => expect(a3.client.closed?.code).toBe(4401), SLOW);
+		// A close the WebSocket API would reject throws before anything is
+		// announced: the sockets stay open, with their access.
+		const a4 = await writer(room, 'ada');
+		const accessLog = () =>
+			runInDurableObject(stub, (r: Room) => r.refusals.filter((x) => x.reason === 'access').length);
+		const logged = await accessLog();
+		for (const code of [999, 1004, 1005, 1006, 1015, 2999, 5000]) {
+			await expect(rpc(() => stub.closeUser('ada', code))).rejects.toThrow(/close code/);
+		}
+		await expect(rpc(() => stub.closeUser('ada', 4403, 'x'.repeat(124)))).rejects.toThrow(
+			/close reason/
+		);
+		await expect(rpc(() => stub.closeUser('ada', 4403, 'é'.repeat(62)))).rejects.toThrow(
+			/close reason/
+		);
+		expect(await accessLog()).toBe(logged);
+		expect(a4.client.closed).toBe(null);
+		a4.document.transact(() => a4.document.facade.insertText('p', 0, 'still'));
+		await vi.waitFor(async () => expect(await textIn(stub, 'p')).toContain('still'), SLOW);
+		// The codes it accepts: 1000, 1011, 1012 and 3000 to 4999, a reason up to 123 bytes.
+		expect(await stub.closeUser('ada', 1000, 'é'.repeat(61))).toEqual({ sockets: 1 });
+		await vi.waitFor(
+			() => expect(a4.client.closed).toEqual({ code: 1000, reason: 'é'.repeat(61) }),
+			SLOW
+		);
 		b.client.close();
-		for (const { document } of [a1, b, a3]) document.destroy();
+		for (const { document } of [a1, b, a3, a4]) document.destroy();
 	});
 
 	it("setAccess read: the user's write sockets get the read-only notice, stay, and their writes are denied", async () => {
@@ -115,16 +143,19 @@ describe('WU-06 · revocation', () => {
 		const document = E.createDocument({ actor: { id: 'viv' } });
 		const refusals: number[] = [];
 		document.onSyncRefused((refusal) => refusals.push(refusal.code));
-		const release = document.attachSync(
-			crdt.providers.createWebsocketSync({
-				server: `${ORIGIN.replace('https', 'wss')}/rooms`,
-				room,
-				params: { user: 'viv', access: 'read' },
-				WebSocketPolyfill: CountingSocket as unknown as typeof WebSocket
-			})
-		);
+		// The grant `authorize` reads: the provider reads `params` at every dial.
+		const params = { user: 'viv', access: 'read' };
+		const sync = crdt.providers.createWebsocketSync({
+			server: `${ORIGIN.replace('https', 'wss')}/rooms`,
+			room,
+			params,
+			WebSocketPolyfill: CountingSocket as unknown as typeof WebSocket
+		});
+		const release = document.attachSync(sync);
 		await vi.waitFor(() => expect(dials).toBe(1), SLOW);
 		await vi.waitFor(async () => expect((await stub.metrics()).sockets).toBe(3), SLOW);
+		await vi.waitFor(() => expect(document.facade.isVisibleBlock('p')).toBe(true), SLOW);
+		params.access = 'write';
 		expect(await stub.setAccess('viv', 'write')).toEqual({ sockets: 2 });
 		await vi.waitFor(
 			() => expect(raw.closed).toEqual({ code: 1012, reason: 'access changed' }),
@@ -134,8 +165,23 @@ describe('WU-06 · revocation', () => {
 		// The redial is in: the root writer's socket and the provider's.
 		await vi.waitFor(async () => expect((await stub.metrics()).sockets).toBe(2), SLOW);
 		expect(refusals).toEqual([]);
+		// The redial writes: an edit made after it is stored.
+		document.transact(() => document.facade.insertText('p', 0, 'viv '));
+		await vi.waitFor(async () => expect(await textIn(stub, 'p')).toContain('viv '), SLOW);
+		const access = await runInDurableObject(stub, (r: Room) =>
+			r.refusals.filter((x) => x.reason === 'access').map((x) => x.detail)
+		);
+		expect(access).toEqual([{ user: 'viv', access: 'write', sockets: 2 }]);
 		expect(await stub.setAccess('viv', 'none')).toEqual({ sockets: 1 });
 		await vi.waitFor(() => expect(refusals).toEqual([4403]), SLOW);
+		expect(
+			await runInDurableObject(stub, (r: Room) =>
+				r.refusals.filter((x) => x.reason === 'access').map((x) => x.detail)
+			)
+		).toEqual([
+			{ user: 'viv', access: 'write', sockets: 2 },
+			{ user: 'viv', access: 'none', sockets: 1 }
+		]);
 		await release?.();
 		document.destroy();
 	});

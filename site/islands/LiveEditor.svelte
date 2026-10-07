@@ -93,7 +93,8 @@
 	};
 
 	const guest = guestId();
-	const actor = { id: guest, name: `${pick(NAMES)} (guest)`, color: pick(COLORS) };
+	/** The actor id is the user id the demo room's `authorize` gives this guest (`guest:<id>`). */
+	const actor = { id: `guest:${guest}`, name: `${pick(NAMES)} (guest)`, color: pick(COLORS) };
 	let edytor = $state<EdytorInstance>();
 	/** Everyone here, from presence: Notion's avatar stack. */
 	let people = $state<Array<{ id: number; name: string; color: string }>>([]);

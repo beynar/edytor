@@ -181,7 +181,7 @@ export const DEFAULT_SAVE_AFTER = 2000;
  * document's size: what its records hold (uncompressed) and the updates the
  * engine holds waiting. An isolate has 128 MB, and the live document takes
  * 18 to 46 bytes of heap per stored byte (prose to one short line per
- * block, its index included; `bench/room-memory.mjs`, WU-04): 2 MiB is
+ * block, its index included; `bench/room-memory.mjs`): 2 MiB is
  * about 100 MB at worst. Raise it for documents of long text.
  */
 export const DEFAULT_MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
@@ -232,6 +232,16 @@ export const MAX_WAITING_DELETES = 1024;
 
 /** Refusals kept in `refusals` (the newest); `refusalCounts` counts every one. */
 export const MAX_REFUSALS = 100;
+
+/** The longest close reason the WebSocket API accepts, in UTF-8 bytes. */
+const MAX_CLOSE_REASON_BYTES = 123;
+
+/** Can a socket be closed with `code` (`ws.close` throws on the others)? */
+const closableWith = (code: number): boolean =>
+	Number.isInteger(code) &&
+	(code === 1000 || code === 1011 || code === 1012 || (code >= 3000 && code <= 4999));
+
+const utf8Length = (text: string): number => new TextEncoder().encode(text).length;
 
 /**
  * A client id and the user who owns it (the room's replica registry). An
@@ -396,11 +406,13 @@ export type Refusal = {
 		// A room quota refused the frame ({ user, quota, … }): the socket is closed 4413.
 		| 'quota'
 		// Not a refusal: the room ended or changed a user's access ({ user, access, sockets }):
-		// `expired` (closed 4401), `closed` (`closeUser`), or `setAccess`'s `read`, `write`, `none`.
+		// `expired` (closed 4401), `closed` (`closeUser`), or `setAccess`'s `read`, `write`, `none`
+		// (closed 4403).
 		| 'access'
 		// A presence entry past `maxPresenceBytes` ignored ({ user, quota: 'size', bytes, limit }),
-		// or a presence message past `maxPresencePerSecond` ({ user, quota: 'rate', limit }):
-		// an entry coalesced (the newest is relayed later), a query dropped. The socket stays.
+		// or the start of a socket's burst of presence messages past `maxPresencePerSecond`
+		// ({ user, quota: 'rate', limit }; one entry per burst, `refusalCounts` counts each
+		// message): an entry coalesced (the newest is relayed later), a query dropped. The socket stays.
 		| 'presence'
 		// Per-writer block marks (`del.<n>`, `wd.<n>`) the sender may not write
 		// or delete, stripped ({ user, writers, ranges }); the rest of the frame applies.
@@ -1212,7 +1224,7 @@ const forgedDeletes = (
 	return forged;
 };
 
-// ── Attribution trust (D5) ─────────────────────────────────────────
+// ── Attribution trust (`room.attribution.trust`) ────────────────────────
 
 /** A replica's binding to its actor (`c/<client>`) and an actor's profile (`u/<id>`). */
 const BINDING_PREFIX = 'c/';
@@ -1229,7 +1241,7 @@ const boundReplica = (key: string): number | null => {
 	return key.startsWith(BINDING_PREFIX) && /^\d{1,16}$/.test(digits) ? Number(digits) : null;
 };
 
-/** What a frame writes to the attribution root that the sender may not (D5). */
+/** What a frame writes to the attribution root that the sender may not. */
 type AttributionWrites = {
 	/** Entries collected from the frame: another replica's binding, another user's profile. */
 	collected: Set<Struct>;
@@ -1244,18 +1256,21 @@ type AttributionWrites = {
  * that `user` may not write (`room.attribution.trust`): a binding
  * `c/<n>` written under another client id than `n`, or naming another
  * actor for a replica the user does not own (`owns`), and a profile
- * `u/<id>` of another user. A binding of the user's own replica to
- * another actor is applied, and rebound to the user by the room. A
- * relayed id's binding to another actor is collected too (the room cannot
- * tell its author): the author's claim of the id binds it again
- * (`bindOrphan`).
+ * `u/<id>` of another user. A binding that names `n`'s registered owner
+ * (`ownerOf`) is kept whoever wrote it: it says what the room holds (a
+ * room's own rebinding, relayed to a room that lacks it). A binding of the
+ * user's own replica to another actor is applied, and rebound to the user
+ * by the room. A relayed id's binding to another actor is collected too
+ * (the room cannot tell its author): the author's claim of the id binds
+ * it again (`bindOrphan`).
  */
 const attributionWrites = (
 	doc: YDoc,
 	structs: Struct[],
 	skip: Set<number>,
 	user: string,
-	owns: (client: number) => boolean
+	owns: (client: number) => boolean,
+	ownerOf: (client: number) => string | undefined
 ): AttributionWrites => {
 	const writes: AttributionWrites = { collected: new Set(), keys: [], rebind: new Set() };
 	const frame = runsOf(structs);
@@ -1270,7 +1285,15 @@ const attributionWrites = (
 		if (key.startsWith(BINDING_PREFIX)) {
 			const content = struct.content.getContent();
 			const value = content[content.length - 1];
-			if (boundReplica(key) !== client) forged = true;
+			const replica = boundReplica(key);
+			if (
+				replica !== null &&
+				typeof value === 'string' &&
+				value !== '' &&
+				value === ownerOf(replica)
+			)
+				continue;
+			if (replica !== client) forged = true;
 			else if (value === user) continue;
 			else if (owns(client)) writes.rebind.add(key);
 			else forged = true;
@@ -1288,7 +1311,7 @@ const attributionWrites = (
 /**
  * Of a frame's deletes, those of live attribution entries `user` may not
  * delete, with their keys: a binding of a replica the user does not own
- * (`owns`), a profile of another user (D5).
+ * (`owns`), a profile of another user (`room.attribution.trust`).
  */
 const forgedAttributionDeletes = (
 	doc: YDoc,
@@ -1328,7 +1351,7 @@ const forgedAttributionDeletes = (
 /**
  * A presence entry as the room relays it: a state that names an actor
  * (`actor`, as every view publishes) names the socket's verified user
- * (D5), whatever the client wrote there. A state with no `actor` claims
+ * (`room.attribution.trust`), whatever the client wrote there. A state with no `actor` claims
  * no identity and is relayed as it is.
  */
 const verifiedPresence = (entry: AwarenessEntry, user: string): AwarenessEntry => {
@@ -1600,6 +1623,8 @@ export class AttachedDocument {
 	private readonly allowances = new WeakMap<WebSocket, { tokens: number; at: number }>();
 	/** Each socket's presence allowance, a bucket of its own. */
 	private readonly presenceAllowances = new WeakMap<WebSocket, { tokens: number; at: number }>();
+	/** Sockets in a burst past their presence rate, logged once (`presenceOverRate`). */
+	private readonly presenceBursts = new WeakSet<WebSocket>();
 	/**
 	 * Each socket's newest presence entry past its rate, relayed once the
 	 * rate allows (the end of any message), or replaced by a newer one.
@@ -4046,17 +4071,34 @@ export class AttachedDocument {
 	 * `code` (`4401` redials with fresh `params`; `1011` redials too).
 	 * Call it when the user loses access to the document, or signs out:
 	 * `authorize` decides at every dial, the room only at the dial.
-	 * Returns how many sockets it closed.
+	 * Returns how many sockets it closed. A `code` a socket cannot be
+	 * closed with (only `1000`, `1011`, `1012` and `3000`–`4999` can) or a
+	 * `reason` over 123 UTF-8 bytes throws a `RangeError` before anything
+	 * is closed or announced.
 	 */
 	closeUser(userId: string, code: number = CLOSE.denied, reason?: string): { sockets: number } {
+		const text = reason ?? (code === CLOSE.denied ? 'access revoked' : 'closed');
+		if (!closableWith(code)) {
+			throw new RangeError(
+				`closeUser: close code ${code} is not one a socket can be closed with (1000, 1011, 1012, 3000-4999)`
+			);
+		}
+		if (utf8Length(text) > MAX_CLOSE_REASON_BYTES) {
+			throw new RangeError(`closeUser: close reason is over ${MAX_CLOSE_REASON_BYTES} UTF-8 bytes`);
+		}
+		return this.revoke(userId, 'closed', code, text);
+	}
+
+	/** Close every socket of `userId`, logged as `access`. */
+	private revoke(
+		userId: string,
+		access: 'closed' | 'none',
+		code: number,
+		reason: string
+	): { sockets: number } {
 		return noTimers(() => {
 			const sockets = this.socketsOf(userId).map(({ ws }) => ws);
-			this.endAccess(
-				sockets,
-				'closed',
-				code,
-				reason ?? (code === CLOSE.denied ? 'access revoked' : 'closed')
-			);
+			this.endAccess(sockets, access, code, reason);
 			return { sockets: sockets.length };
 		});
 	}
@@ -4067,11 +4109,14 @@ export class AttachedDocument {
 	 * then every write denied, the socket stays); `'write'` closes each
 	 * read-only socket `1012` (`access changed`), which its provider
 	 * redials, so `authorize` grants the new access; `'none'` closes every
-	 * socket `4403`, as {@link closeUser}. Your `authorize` must decide the
+	 * socket `4403` (`access revoked`), as {@link closeUser}. Your `authorize` must decide the
 	 * same from then on. Returns how many sockets it changed.
 	 */
 	setAccess(userId: string, access: 'write' | 'read' | 'none'): { sockets: number } {
-		if (access === 'none') return this.closeUser(userId);
+		if (access !== 'write' && access !== 'read' && access !== 'none') {
+			throw new RangeError(`setAccess: unknown access ${String(access)}`);
+		}
+		if (access === 'none') return this.revoke(userId, 'none', CLOSE.denied, 'access revoked');
 		return noTimers(() => {
 			const sockets = this.socketsOf(userId).filter(
 				({ attachment }) => attachment.readOnly !== (access === 'read')
@@ -4172,7 +4217,7 @@ export class AttachedDocument {
 			}
 			if (type === E.messageQueryAwareness) {
 				// A query costs a snapshot of every entry: past the rate, dropped.
-				if (!this.allow(ws, 'presence')) return this.presenceOverRate(attachment);
+				if (!this.allow(ws, 'presence')) return this.presenceOverRate(ws, attachment);
 				return this.send(ws, presenceFrame([...this.presence.values()]));
 			}
 			this.refuse(ws, { reason: 'malformed', detail: `message type ${type}` });
@@ -4312,6 +4357,7 @@ export class AttachedDocument {
 			return false;
 		}
 		allowances.set(ws, { tokens: tokens - 1, at: now });
+		if (kind === 'presence') this.presenceBursts.delete(ws);
 		return true;
 	}
 
@@ -4451,13 +4497,20 @@ export class AttachedDocument {
 				detail: { user: attachment.user, writers: [...forgers], ranges: rangeCount(forgedMarks) }
 			});
 		}
-		// Attribution (D5, `room.attribution.trust`): a replica binds only
+		// Attribution (`room.attribution.trust`): a replica binds only
 		// itself, to its verified user, and a user writes only its own
 		// profile. Another's entry is collected (its clock kept as a GC), a
 		// delete of one dropped; a binding of the sender's own replica to
 		// another actor, or of an id it claimed, is rebound below.
 		const owns = (client: number) => client === attachment.replica || mayDelete(client);
-		const attribution = attributionWrites(doc, decoded.structs, stripped, attachment.user, owns);
+		const attribution = attributionWrites(
+			doc,
+			decoded.structs,
+			stripped,
+			attachment.user,
+			owns,
+			(client) => this.ownerOf(client)
+		);
 		// The deletes of entries stripped or collected structs replace go with
 		// them (`withoutClients`): only the frame's other deletes are checked.
 		const forgedEntries = decoded.ds.isEmpty()
@@ -4548,7 +4601,7 @@ export class AttachedDocument {
 			this.validateFrame(validation, attachment);
 			if (this.unstored !== null) return this.fault(ws, this.unstored);
 		}
-		// A claimed orphan's binding, which its relayer's frame may have lost (D5).
+		// A claimed orphan's binding, which its relayer's frame may have lost.
 		for (const client of orphans) attribution.rebind.add(BINDING_PREFIX + client);
 		if (attribution.rebind.size > 0) {
 			this.handle(() => this.rebind(doc, attribution.rebind, attachment.user));
@@ -4567,7 +4620,7 @@ export class AttachedDocument {
 
 	/**
 	 * A claimed orphan (an id relayed by another user, whose binding the
-	 * relay could not carry, D5): the room binds it to its claimer, when the
+	 * relay could not carry): the room binds it to its claimer, when the
 	 * room holds content of it. A failed write is healed here, the claim
 	 * kept (the binding then stays as it was).
 	 */
@@ -4580,7 +4633,7 @@ export class AttachedDocument {
 
 	/**
 	 * Bind the sender's replicas whose `c/<n>` a frame set to another actor
-	 * to its verified user (D5): one room write after the frame's, which
+	 * to its verified user (`room.attribution.trust`): one room write after the frame's, which
 	 * replaces it on every replica, the sender's included.
 	 */
 	private rebind(doc: YDoc, keys: ReadonlySet<string>, user: string) {
@@ -4831,7 +4884,7 @@ export class AttachedDocument {
 		}
 		const found = entries.find((candidate) => candidate.clientID === replica);
 		if (found === undefined || replica === null) return;
-		// The relayed state names the verified user as its actor (D5).
+		// The relayed state names the verified user as its actor (`room.attribution.trust`).
 		const entry = verifiedPresence(found, attachment.user);
 		const known = this.presence.get(replica);
 		if (known && known.clock > entry.clock) return;
@@ -4855,7 +4908,7 @@ export class AttachedDocument {
 		// The rate quota: past it, the newest entry waits for the next token.
 		if (!this.allow(ws, 'presence')) {
 			this.heldPresence.set(ws, entry);
-			return this.presenceOverRate(attachment);
+			return this.presenceOverRate(ws, attachment);
 		}
 		this.heldPresence.delete(ws);
 		this.relayPresence(ws, entry);
@@ -4866,8 +4919,18 @@ export class AttachedDocument {
 		this.broadcast(presenceFrame([entry]), entry.state === null ? ws : null);
 	}
 
-	/** A presence message past the socket's rate (`room.presence.quota`): logged, never closed. */
-	private presenceOverRate(attachment: Attachment) {
+	/**
+	 * A presence message past the socket's rate (`room.presence.quota`):
+	 * never closed. A burst is one log entry, its first message's (the
+	 * socket's next allowed one ends it); `refusalCounts.presence` counts
+	 * every message past the rate.
+	 */
+	private presenceOverRate(ws: WebSocket, attachment: Attachment) {
+		if (this.presenceBursts.has(ws)) {
+			this.refusalCounts.presence = (this.refusalCounts.presence ?? 0) + 1;
+			return;
+		}
+		this.presenceBursts.add(ws);
 		this.note({
 			reason: 'presence',
 			detail: { user: attachment.user, quota: 'rate', limit: this.maxPresencePerSecond }

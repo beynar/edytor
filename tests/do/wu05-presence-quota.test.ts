@@ -9,7 +9,8 @@
  *   (`maxPresencePerSecond`, a token bucket with a ten-second burst):
  *   entries past it are coalesced, the newest held and relayed in one
  *   frame once the socket's rate allows it again; queries past it are
- *   dropped; both logged `presence` (`quota: 'rate'`);
+ *   dropped; both logged `presence` (`quota: 'rate'`), once per burst
+ *   (`refusalCounts.presence` counts each message);
  * - read-only sockets keep presence, within the same quotas.
  *
  * The `quota-*` rooms (`QuotaRoom`) allow 2 presence messages a second
@@ -111,14 +112,29 @@ describe('WU-05 · presence quota', () => {
 		expect(relayed).toBeGreaterThanOrEqual(20);
 		expect(relayed).toBeLessThan(30);
 		expect(peer.presence.get(601)?.state).not.toEqual({ n: 60 });
-		const refused = await presenceRefusals(stub);
-		expect(refused.length).toBeGreaterThanOrEqual(30);
-		expect(refused[0]).toEqual({ user: 'sam', quota: 'rate', limit: 2 });
+		// A burst is one log entry, until a message within the rate ends it (a
+		// slow run refills a token mid-flood: a new burst); refusalCounts
+		// counts every message past the rate.
+		const bursts = await presenceRefusals(stub);
+		expect(bursts.length).toBeGreaterThanOrEqual(1);
+		expect(bursts.length).toBeLessThanOrEqual(5);
+		expect(new Set(bursts.map((x) => JSON.stringify(x)))).toEqual(
+			new Set([JSON.stringify({ user: 'sam', quota: 'rate', limit: 2 })])
+		);
+		expect(
+			await runInDurableObject(stub, (r: Room) => r.refusalCounts.presence)
+		).toBeGreaterThanOrEqual(30);
 		// Once the socket's rate allows it, any message lets the newest out.
 		await new Promise((resolve) => setTimeout(resolve, 1200));
 		peer.send(E.frame(E.messageSync, (e) => crdt.sync.writeSyncStep1(e, peer.doc)));
 		await vi.waitFor(() => expect(peer.presence.get(601)?.state).toEqual({ n: 60 }), SLOW);
 		expect(heardFrom(peer, 601).length).toBe(relayed + 1);
+		// A new burst past the rate is logged again, once.
+		for (let clock = 61; clock <= 90; clock++) sender.setPresence(601, clock, { n: clock });
+		await vi.waitFor(
+			async () => expect((await presenceRefusals(stub)).length).toBeGreaterThan(bursts.length),
+			SLOW
+		);
 		expect(sender.closed).toBe(null);
 		peer.close();
 		sender.close();
@@ -130,9 +146,15 @@ describe('WU-05 · presence quota', () => {
 		const asker = await RawClient.bare(room, { user: 'quin' });
 		for (let i = 0; i < 40; i++) asker.send(queryFrame());
 		await vi.waitFor(
-			async () => expect((await presenceRefusals(stub)).length).toBeGreaterThanOrEqual(15),
+			async () =>
+				expect(
+					await runInDurableObject(stub, (r: Room) => r.refusalCounts.presence ?? 0)
+				).toBeGreaterThanOrEqual(15),
 			SLOW
 		);
+		const bursts = await presenceRefusals(stub);
+		expect(bursts.length).toBeGreaterThanOrEqual(1);
+		expect(bursts.length).toBeLessThanOrEqual(5);
 		const answers = asker.received.filter((bytes) => {
 			const decoder = E.createDecoder(bytes);
 			return E.readProtocolVersion(decoder) && E.readVarUint(decoder) === E.messageAwareness;

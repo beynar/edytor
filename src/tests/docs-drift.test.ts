@@ -601,6 +601,18 @@ describe('docs drift', () => {
 		expect(lines.filter((line) => !source.has(line))).toEqual([]);
 	});
 
+	it("the demo's actor id is the user id its room authorizes (room.attribution.trust)", () => {
+		// Another id would have the room rebind its replica and refuse its
+		// profile as another user's at every page load.
+		const worker = readFileSync(join(root, 'site/room/src/worker.ts'), 'utf8');
+		const page = readFileSync(join(root, 'site/islands/LiveEditor.svelte'), 'utf8');
+		const userId = /userId: (`[^`]*`|\w+)/.exec(worker)?.[1];
+		expect(userId).toBe('`guest:${guest}`');
+		expect(page).toMatch(/const actor = \{ id: `guest:\$\{guest\}`/);
+		const quickStart = readFileSync(join(root, 'site/content/docs/server/quick-start.mdx'), 'utf8');
+		expect(quickStart).toMatch(/actor id `guest:<id>`/);
+	});
+
 	it('the operations page has a payload row for every dispatched operation', () => {
 		const page = readFileSync(join(root, 'site/content/docs/plugins/operations.mdx'), 'utf8');
 		const names = new Set(

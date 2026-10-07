@@ -1911,7 +1911,12 @@ query is dropped, and an entry is held (the socket's newest replaces the
 one held), relayed at the end of any socket's later message once the
 socket's bucket has a token, the entries released together in one frame
 (a removal on its own, never to its sender); both logged `presence`
-(`{ user, quota: 'rate', limit }`). No timer: the last held entry of a
+(`{ user, quota: 'rate', limit }`), once per burst: the socket's first
+message past the rate is one entry, its next message within the rate
+ends the burst (`presenceBursts`), and `refusalCounts.presence` counts
+every message past it. An entry within the rate is relayed at once: the
+broadcast is coalesced only past the rate, never once per tick (that
+would need a timer, which keeps a Durable Object from hibernating). No timer: the last held entry of a
 socket that stops waits for the room's next message (every client renews
 every 15 s). Nothing closes the socket; read-only sockets keep presence
 within the same quotas; a socket's held entry goes when it departs
@@ -1927,7 +1932,11 @@ socket's attachment to read-only and sends it the read-only notice (the
 socket stays; its next write is denied `read-only`); `'write'` closes each
 read-only socket `1012` (`access changed`, `CLOSE.accessChanged`, not a
 refusal: the provider redials at once and `authorize` decides again);
-`'none'` is `closeUser`. Each walks the open sockets' attachments (a
+`'none'` closes as `closeUser` does, logged `none`. `closeUser` throws a
+`RangeError` before touching any socket for a code `ws.close` rejects
+(only `1000`, `1011`, `1012` and `3000`–`4999` pass) or a reason over 123
+UTF-8 bytes, so a revocation never fails silently with its departure
+announced. Each walks the open sockets' attachments (a
 hibernated room included), returns `{ sockets }`, and is logged `access`
 (`{ user, access, sockets }`, not a refusal). `expiresAt` (ms since the
 epoch) travels in `X-Edytor-Expires`: the router closes a dial already
@@ -1938,7 +1947,7 @@ expiry of the open sockets, `earlier` at each dial) closes silent ones,
 then re-arms at the next. The provider redials after `4401` with its
 `params` read again (`wu06-revocation.test.ts`).
 
-### `room.attribution.trust` — bindings and profiles are the verified user's (WU-07, D5)
+### `room.attribution.trust` — bindings and profiles are the verified user's (WU-07)
 
 On the attribution root, `c/<n>` (replica `n`'s actor) and `u/<id>`
 (actor `id`'s profile) are checked against the sender's verified user
@@ -1954,7 +1963,13 @@ rewritten to the user by one `ROOM_ORIGIN` transaction after the frame
 (`rebind`); so is the binding of an id a writer claims (an `orphan`, by
 its dial, its first presence entry or its frame: `bindOrphan`), when the
 room holds content of it, so a relayed id's collected binding is written
-again for its author. A delete of a live
+again for its author. A `c/<n>` struct whose value is `n`'s registered
+owner is kept whoever wrote it: it says what the room's registry holds,
+and the room's own `rebind` writes go under the room doc's client id, so
+one relayed to a room that lacks it (a reset container, a restore from a
+lagging snapshot) is not collected. Residual: a rebind relayed to a room
+where `n` has no owner yet is collected, until the author's claim binds
+it again. A delete of a live
 `u/<other>` or of `c/<n>` for a replica the sender does not own is
 dropped (not acknowledged). Each is logged `forged` (`{ user, keys }`);
 the socket stays. Every relayed presence state that has an `actor`

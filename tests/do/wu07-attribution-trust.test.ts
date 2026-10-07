@@ -187,6 +187,38 @@ describe('WU-07 · attribution trust (D5)', () => {
 		bob.destroy();
 	});
 
+	it("the room's own binding, relayed to a room that lacks it, is kept: it names the replica's owner", async () => {
+		// Room A rebinds Ada's replica (named after Bob) to Ada: a write
+		// under room A's own client id, which Ada's document now holds.
+		const roomA = 'wu07-room-binding-a';
+		const ada = await join(roomA, 'ada', { id: 'bob' });
+		const adaId = ada.document.doc.clientID;
+		await vi.waitFor(() => expect(ada.root.getAttr(`c/${adaId}`)).toBe('ada'), SLOW);
+		const roomAClient = await runInDurableObject(
+			env.ROOM.getByName(roomA),
+			(r: Room) => r.doc!.clientID
+		);
+		expect(ada.document.doc.store.clients.has(roomAClient)).toBe(true);
+		ada.client.close();
+		// Room B (a reset container, say) lacks it: Ada's reconnect relays it.
+		// It names Ada, her replica's owner: kept, not collected as forged.
+		const roomB = 'wu07-room-binding-b';
+		const stubB = env.ROOM.getByName(roomB);
+		const adaB = await RawClient.connect(roomB, ada.document.doc, { user: 'ada', replica: adaId });
+		await vi.waitFor(() => expect(adaB.synced && adaB.acks.length > 1).toBe(true), SLOW);
+		await vi.waitFor(async () => expect(await roomAttr(stubB, `c/${adaId}`)).toBe('ada'), SLOW);
+		expect(await forged(stubB)).toEqual([]);
+		const kept = await runInDurableObject(stubB, (r: Room) =>
+			(r.doc!.store.clients.get(roomAClient) ?? []).map(
+				(struct) => (struct as { content?: unknown }).content !== undefined
+			)
+		);
+		expect(kept.length).toBeGreaterThan(0);
+		expect(kept.every(Boolean)).toBe(true);
+		adaB.close();
+		ada.document.destroy();
+	});
+
 	it("an anonymous document's replica is bound to the dial's user; its edits apply", async () => {
 		const room = 'wu07-anonymous';
 		const stub = env.ROOM.getByName(room);

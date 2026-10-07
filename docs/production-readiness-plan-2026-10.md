@@ -318,6 +318,12 @@ record yet. Only a soak test (WU-16) and real users remove that.
 - Docs: `server/room.mdx` (the real ratio and ceiling), troubleshooting, migration (a lower
   default is a behaviour change).
 - Effort: 2 d.
+- Outcome (deviations, decided): the heap was measured in Node (`bench/room-memory.mjs`), not
+  in workerd, which reports no heap size; workerd's pointer compression makes the Node figures
+  an upper bound. A sequence past the per-socket frame quota closes `4413`; one past the
+  room-wide buffer cap (`maxBufferedBytes`) closes `1011` `room busy` instead, which the
+  provider redials: the cap is shared by every socket, so the sender did nothing wrong and a
+  final close would stop an honest client for good.
 
 **WU-05: presence quota (R3)**
 
@@ -328,6 +334,10 @@ record yet. Only a soak test (WU-16) and real users remove that.
   flood rate-limited, query flood rate-limited, coalescing (N updates in one tick give one
   broadcast).
 - Effort: 1 d.
+- Outcome (deviation, decided): the broadcast is coalesced only past the rate (the newest held
+  entry released in one frame with the others due), not once per tick: a per-tick flush needs a
+  timer, which keeps a Durable Object from hibernating. Within the rate each entry is relayed at
+  once (a view publishes at most every 50 ms). A burst past the rate is logged once.
 
 **WU-06: revocation and token expiry (R5)**
 

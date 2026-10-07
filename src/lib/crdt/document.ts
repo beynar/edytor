@@ -166,6 +166,15 @@ import type { EdytorSync, EdytorSyncCleanup, EdytorSyncPayload } from './provide
 import { SyncRefusedError } from './providers/room.js';
 import { TRANSACTION } from '../constants.js';
 import type { JSONDoc } from '../utils/json.js';
+import {
+	defaultSemantics,
+	normalizeRole,
+	SemanticConflictError,
+	semanticsDigest,
+	type NormalizedRole
+} from './semantics.js';
+
+export { SemanticConflictError };
 
 /** Local actor identity — durable across replicas, independent of presence profiles. */
 export type DocumentActor = {
@@ -204,7 +213,13 @@ export type DocumentSemanticsConfig = {
 export type DocumentOptions = {
 	/** Local actor — anonymous opaque id when absent. */
 	actor?: DocumentActor;
-	/** Up-front semantic configuration (views may also seed via `adoptSemantics`). */
+	/**
+	 * Up-front semantic configuration (views may also seed via
+	 * `adoptSemantics`). `createDocument` and `loadDocument` default to
+	 * `defaultSemantics`, the bundled plugins' roles the room holds too (D4);
+	 * `{}` checks no roles. `attachDocument` (the doc a view composes)
+	 * defaults to none: its views contribute their plugins' roles.
+	 */
 	semantics?: DocumentSemanticsConfig;
 	/**
 	 * Borrow an existing awareness instance instead of creating one —
@@ -263,26 +278,6 @@ export type CreateDocumentOptions = DocumentOptions & {
 
 export type LoadDocumentOptions = DocumentOptions;
 
-/**
- * Raised when a view (or caller) tries to contribute document-level
- * semantics that contradict an already-adopted rule — views must never
- * silently impose incompatible structural rules on a shared document.
- */
-export class SemanticConflictError extends Error {
-	constructor(
-		/** What conflicted (e.g. `block role "divider"`, `defaultType`). */
-		public readonly subject: string,
-		public readonly existing: unknown,
-		public readonly incoming: unknown
-	) {
-		super(
-			`EdytorDocument semantic conflict on ${subject}: ` +
-				`${JSON.stringify(existing)} already adopted, refusing ${JSON.stringify(incoming)}.`
-		);
-		this.name = 'SemanticConflictError';
-	}
-}
-
 /** Raised when a readiness-gated service is used on a pending document. */
 export class DocumentNotReadyError extends Error {
 	constructor(service: string) {
@@ -339,39 +334,6 @@ export type DocumentReadiness = 'pending' | 'local' | 'hydrated';
  * does: from the socket's open, so a slow dial never counts).
  */
 export const DEFAULT_READINESS_BOUND = 1000;
-
-/**
- * A role with every flag answered; `layout` and `atomic` only when set (the
- * bundled kinds' rows stay as they were). Atomic paths as key arrays,
- * deduplicated and sorted, so two declarations of one set compare equal.
- */
-type NormalizedRole = {
-	void: boolean;
-	island: boolean;
-	lines: boolean;
-	layout?: true;
-	atomic?: readonly (readonly string[])[];
-};
-
-const normalizeRole = (role: BlockRole | undefined): NormalizedRole => {
-	const atomic = [
-		...new Map(
-			(role?.atomic ?? []).map((p) => {
-				const path = typeof p === 'string' ? [p] : [...p];
-				return [JSON.stringify(path), path] as const;
-			})
-		)
-	]
-		.sort(([a], [b]) => (a < b ? -1 : 1))
-		.map(([, path]) => path);
-	return {
-		void: role?.void === true,
-		island: role?.island === true,
-		lines: role?.lines === true,
-		...(role?.layout === true && { layout: true as const }),
-		...(atomic.length > 0 && { atomic })
-	};
-};
 
 const anonymousActor = (): DocumentActor => ({
 	id: `anon-${crypto.randomUUID()}`
@@ -555,7 +517,28 @@ export class EdytorDocument {
 		});
 		if (init.semantics) {
 			this.adoptSemantics({ ...init.semantics, defaultType: undefined });
-		}
+		} else this._advertise();
+	}
+
+	/**
+	 * DEV: publish the digest of this document's roles in its presence
+	 * (`semantics`, {@link semanticsDigest}), so a room reading other roles
+	 * logs the kinds they differ on (`semanticsMismatch`). Re-published at
+	 * each adoption; a production build advertises nothing.
+	 */
+	private _advertise(): void {
+		if (!DEV) return;
+		const { roles, rendersContent, defaultChild, marks } = this._capability;
+		this.awareness.setLocalStateField(
+			'semantics',
+			semanticsDigest({
+				roles: Object.fromEntries(roles),
+				rendersContent: Object.fromEntries(rendersContent),
+				defaultChild: Object.fromEntries(defaultChild),
+				marks: Object.fromEntries([...marks].map(([mark, edge]) => [mark, { edge }])),
+				defaultType: this._defaultType
+			})
+		);
 	}
 
 	/** The replica id (`doc.clientID`) — identifies the replica, not the actor. */
@@ -720,6 +703,7 @@ export class EdytorDocument {
 			const adopted = this._capability[table] as Map<string, unknown>;
 			for (const [type, value] of entries) adopted.set(type, value);
 		}
+		this._advertise();
 		if (DEV) this._warnLines();
 		// A newly void kind sheds its children at read time (UW-21b); a block
 		// promoted out of a newly island kind displays as a default child; a
@@ -1327,7 +1311,7 @@ export const bindDocument = (Y: EngineApi) => {
 				ownsDoc: true,
 				actor: options.actor,
 				awareness: options.awareness,
-				semantics: options.semantics,
+				semantics: options.semantics ?? defaultSemantics,
 				history: options.history,
 				lineage: options.lineage,
 				requireHydration: options.requireHydration
@@ -1365,7 +1349,7 @@ export const bindDocument = (Y: EngineApi) => {
 				ownsDoc: true,
 				actor: options.actor,
 				awareness: options.awareness,
-				semantics: options.semantics,
+				semantics: options.semantics ?? defaultSemantics,
 				history: options.history,
 				lineage: options.lineage,
 				requireHydration: options.requireHydration

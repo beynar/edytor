@@ -550,7 +550,7 @@ export class Edytor {
 			// decision; every other view binds on the one readiness event
 			// (`<Edytor>` decides an injected document at mount, once the
 			// providers of its sibling views attached).
-			if (this.ownsDocument && !(sync && !readonly)) {
+			if (this.ownsDocument && !sync) {
 				this.sync(value || { children: [] });
 			} else {
 				this._readinessRelease = whenDocumentReady(this.document, () => {

@@ -76,7 +76,7 @@ An island keeps whatever structure its interior builds: a table island of rows o
 
 The difference in one line: a void keeps the editor out, an island keeps the structure in.
 
-These roles come from the plugins of the views attached to a document. A document edited with no view (a headless `createDocument`, a script) takes them from its `semantics` option instead: pass `defaultSemantics` for the bundled kinds (see [Documents](/docs/collaboration/documents#create-a-document)). The server room applies `defaultSemantics` itself (see [the room](/docs/server/room#block-roles)).
+These roles come from the plugins of the views attached to a document. A document edited with no view (a headless `createDocument`, a script) takes them from its `semantics` option instead, `defaultSemantics` (the bundled kinds) by default; add your own kinds with `mergeSemantics` (see [Block roles](/docs/reference/document-api#block-roles)). The server room applies `defaultSemantics` itself (see [the room](/docs/server/room#block-roles)).
 
 ## Containers
 

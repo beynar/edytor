@@ -9,12 +9,11 @@ An `EdytorDocument` is the thing views render and providers sync. Create one you
 ## Create a document
 
 ```ts title="src/lib/document.ts" check
-import { createDocument, defaultSemantics } from 'edytor';
+import { createDocument } from 'edytor';
 
 const document = createDocument({
   value: { children: [{ type: 'paragraph', id: 'p1', content: [{ text: 'hello' }] }] },
-  actor: { id: 'user-42', name: 'Ada', color: '#7559ee' },
-  semantics: defaultSemantics
+  actor: { id: 'user-42', name: 'Ada', color: '#7559ee' }
 });
 
 document.readiness; // 'local'
@@ -29,10 +28,10 @@ document.history.undo(); // 'hello' again; the seed itself is never an undo step
 | `actor` | `{ id, name?, color? }` | The local author. `id` is stored in attribution; `name` and `color` are published as presence. Defaults to an anonymous `anon-<uuid>`. |
 | `awareness` | `Awareness` | Use an existing awareness instance instead of creating one. The document does not destroy a borrowed instance. |
 | `history` | `{ captureTimeout?: number, limit?: number }` | `captureTimeout`: edits closer together than this many milliseconds merge into one undo step. Engine default: 500. `0` makes every commit its own step. `limit`: the undo steps kept, 200 by default (`DEFAULT_HISTORY_LIMIT`); an older step is dropped and the deleted content it kept is released. `Infinity` keeps every step. |
-| `semantics` | `DocumentSemanticsConfig` | Block roles (void, island, lines, layout), kinds without content, default child types, the default block type and mark edges (`marks: { link: { edge: 'side-dependent' } }`: where text a collaborator types at a mark's edge lands while it is being set). Views contribute these from their plugins; a document you edit without a view knows none of them until you pass them. `defaultSemantics` holds the bundled rich-text, code, image and columns kinds (`richTextSemantics`, `codeSemantics`, `imageSemantics`, `layoutSemantics` each hold one plugin's). |
+| `semantics` | `DocumentSemanticsConfig` | Block roles (void, island, lines, layout), kinds without content, default child types, the default block type and mark edges (`marks: { link: { edge: 'side-dependent' } }`: where text a collaborator types at a mark's edge lands while it is being set). Views contribute these from their plugins. Defaults to `defaultSemantics`, the bundled rich-text, code, image and columns kinds (`richTextSemantics`, `codeSemantics`, `imageSemantics`, `layoutSemantics` each hold one plugin's), which the room holds too; `{}` checks no roles. |
 | `lineage` | `{ depth?: number }` | Keep up to `depth` earlier versions of each block, captured when another author, a delete or an undo replaces it. Off by default; read them with `attribution.history(id)`. |
 
-Without `semantics`, a document edited with no view attached applies every edit the tree allows: it merges text into a divider or moves a code line out of its code block, which no view can render. Pass `defaultSemantics`, or your plugins' rules, whenever you edit headlessly. It is not the default because a view whose plugins redefine one of those kinds would then throw `SemanticConflictError`.
+A document edited with no view attached obeys these roles: it refuses to merge text into a divider or to move a code line out of its code block, edits no view could render. If your plugins add kinds of their own, pass them too, merged with the bundled ones: `semantics: mergeSemantics(defaultSemantics, semanticsOf(myKinds))` (see [Block roles](/docs/reference/document-api#block-roles)). A view whose plugins redefine a bundled kind (an `image` that is not void) throws `SemanticConflictError` on such a document: give it the view's rules, or `semantics: {}`. With `semantics: {}` the document applies every edit the tree allows.
 
 :::warning
 `createDocument({ value })` seeds before any provider is attached. Do not follow it with `attachSync` to a room that may already hold blocks with the same ids: the two copies meet as described in [Deterministic seeds](#deterministic-seeds), and an earlier seed's block edited since can be replaced. Create the document without `value` and pass `value` to `attachSync`, which seeds only when the room turns out empty.
@@ -147,10 +146,10 @@ A view never destroys a document you passed in: you created it, you destroy it. 
 Import from `edytor/crdt/edytor` in code that cannot load Svelte components. It exports the document API `edytor` does, with the facade's full vocabulary (`toBlockSpec`, `BlockSpec`, …), without the component:
 
 ```ts title="src/lib/server/append-line.ts" check
-import { defaultSemantics, loadDocument, toBlockSpec } from 'edytor/crdt/edytor';
+import { loadDocument, toBlockSpec } from 'edytor/crdt/edytor';
 
 export function appendLine(saved: Uint8Array, text: string): Uint8Array {
-  const document = loadDocument(saved, { actor: { id: 'server-bot' }, semantics: defaultSemantics });
+  const document = loadDocument(saved, { actor: { id: 'server-bot' } }); // the bundled kinds' roles
   const facade = document.facade;
   const index = facade.childrenIds(null).length; // append at the root
   facade.insertBlock({ parent: null, index }, toBlockSpec({ type: 'paragraph', content: [{ text }] }));

@@ -304,7 +304,9 @@ describe('UW-21: a void kind never holds children (the target role decides)', ()
 					},
 					{ id: 'Z', type: 'paragraph', content: [{ text: 'z' }] }
 				]
-			}
+			},
+			// No roles yet (D4: a headless document holds the bundled ones by default).
+			semantics: {}
 		});
 		const ed = document.facade;
 		const changes: unknown[] = [];

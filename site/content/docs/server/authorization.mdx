@@ -171,15 +171,10 @@ When `authorize` returns `readOnly: true`:
 - it shares presence, so others see its caret;
 - the room never asks it for its state. It sends the socket a read-only notice when it joins (the provider's `readOnly` turns `true`, with no event), and drops every edit it sends with a `permission-denied` reply (`read-only`). The socket stays open, and the provider emits `'permission-denied'` for each dropped edit, which for `read-only` is not a failure. The provider counts nothing as unsaved, so its [`saved`](/docs/collaboration/websocket#saved-state) is `true` once it caught up.
 
-Render read-only users with a read-only view. A `readonly` view does not attach its `sync` prop, so attach the sync to the document yourself:
+Render read-only users with a read-only view. A `readonly` view connects to its room like an editable one, and the read-only socket keeps it a viewer whatever the page does:
 
-```ts title="src/lib/reader.ts" check
-import { createDocument, createWebsocketSync } from 'edytor';
-
-const document = createDocument({ actor: { id: userId } });
-const server = 'wss://rooms.example.com/rooms';
-document.attachSync(createWebsocketSync({ server, room: documentId, params: { token } }));
-// <Edytor {document} readonly />
+```svelte
+<Edytor readonly server={serverUrl} room={documentId} {params} actor={{ id: userId }} />
 ```
 
 ## What edytor does not do

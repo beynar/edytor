@@ -33,11 +33,26 @@ There is no separate renderer: readonly is the editable editor with `contentedit
 - Cut, paste and drop are ignored.
 - Every handle command is refused: after a call, `edytor.dispatcher.last.status` is `'refused'`. That includes property writes (`block.data.x = …`, `edytor.data.x = …`, `block.setData`, `atom.setData`), assigning `block.type`, `edytor.clear()`, `historyUndo()` and `historyRedo()`, so a control's document write needs no readonly check. The refusal covers only the write: a control that does something else first, such as uploading a file or calling your server, must check `edytor.readonly` itself. The image plugin shows a passive placeholder in a readonly view for this reason. `canMoveBlocks` answers `false`.
 - Block handles (the `+` and the grip) are hidden and dragging is disabled, so the block menu cannot open. The slash menu and the selection toolbar stay closed, and to-do checkboxes do not toggle.
-- No sync is attached: neither a `sync` prop nor the one `room` and `server` would create. To show collaborative content read-only, pass a `document` that has its sync attached (see [Collaboration](/docs/collaboration)).
 
 Facade operations are document writes and are not affected by the view's `readonly`: code can still change the document, and every view shows the change.
 
 When a document that collaborators emptied is shown, a readonly view displays an empty paragraph without writing one.
+
+## A live viewer
+
+A readonly view connects to its room like an editable one: give it `room` and `server` (or `sync`) and it loads the room's content, then shows every collaborator's edit as it arrives. `readonly` refuses this view's edits, never the room's updates.
+
+```svelte title="LiveViewer.svelte" check
+<script lang="ts">
+	import { Edytor } from 'edytor';
+
+	let { documentId, token } = $props();
+</script>
+
+<Edytor readonly server="wss://rooms.example.com/rooms" room={documentId} params={{ token }} />
+```
+
+It waits for its room as an editable view does: until the room answers (or its readiness bound passes) it renders nothing, or the `snapshot` you pass, and the server render shows only that `snapshot`. `value` is the seed of a room that has nothing yet, written by whichever view decides first. To keep a user from writing whatever view they open, let the server decide: an [`authorize`](/docs/server/authorization#read-only-sockets) that returns `readOnly: true` gives the socket updates only.
 
 ## Switching at runtime
 
@@ -56,7 +71,7 @@ When a document that collaborators emptied is shown, a readonly view displays an
 
 `edytor.readonly` reflects the prop; change the prop rather than the instance field. Block handles appear and disappear with it.
 
-A view created readonly never attaches its `sync` (or the sync its `room` and `server` would create), even after you switch it to editable. If a view can become editable, create the document yourself and pass it as `document`.
+The connection does not change with it: a view created readonly attaches its `sync` (or the one its `room` and `server` create) when it mounts, and switching it to editable and back keeps that same connection, so its edits reach the room as soon as it is editable.
 
 ## Read-only documents
 

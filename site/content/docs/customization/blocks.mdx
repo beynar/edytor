@@ -144,6 +144,18 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
 
 The roles (`void`, `island`, `lines`, `layout`, `atomic`, `rendersContent`, `defaultChild`) belong to the document once an editor adopts them. Two plugins that declare different `defaultChild` values for one kind make the editor throw at creation.
 
+Every replica must read the same roles, the room and headless documents included, and those have no plugins. Write a kind's roles once, spread them into its record, and give the same table to the room through `semanticsOf` and `mergeSemantics` (see [Block roles](/docs/reference/document-api#block-roles)):
+
+```ts title="src/lib/embed/kinds.ts" check
+import { defaultSemantics, mergeSemantics, semanticsOf } from 'edytor';
+
+export const embedKinds = { embed: { void: true, rendersContent: false } };
+
+// In the plugin: blocks: { embed: { ...embedKinds.embed, snippet: embed, presets } }
+// In the room and headless documents:
+export const semantics = mergeSemantics(defaultSemantics, semanticsOf(embedKinds));
+```
+
 ## The snippet payload
 
 A block snippet receives `{ block, content, children }`:

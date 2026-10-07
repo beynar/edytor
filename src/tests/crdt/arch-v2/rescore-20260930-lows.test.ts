@@ -26,7 +26,9 @@ describe('adopting a void role late reports the change (rescore low, UW-21)', ()
 					},
 					{ id: 'Z', type: 'paragraph', content: [{ text: 'z' }] }
 				]
-			}
+			},
+			// No roles yet (D4: a headless document holds the bundled ones by default).
+			semantics: {}
 		});
 		const ed = document.facade;
 		const changes = [];

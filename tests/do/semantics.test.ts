@@ -7,16 +7,18 @@
  */
 import { env } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AttachedDocument, DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
 import type { BlockSpec, EdytorDoc } from '../../src/lib/crdt/index.js';
-import type { PlainObject } from './worker';
+import type { LockedRoom, PlainObject } from './worker';
+import { E, RawClient } from './client';
 
 declare global {
 	namespace Cloudflare {
 		interface Env {
 			ROOM: DurableObjectNamespace<Room>;
 			PLAIN: DurableObjectNamespace<PlainObject>;
+			LOCKED: DurableObjectNamespace<LockedRoom>;
 		}
 	}
 }
@@ -86,5 +88,40 @@ describe('the room adopts defaultSemantics', () => {
 			(o: PlainObject) => attempt(o.document)
 		);
 		expect(statuses).toEqual(REFUSED);
+	});
+});
+
+/**
+ * WU-12 — the dev-time check: a document advertises its roles' digest in
+ * its presence (`semantics`, development builds), and the room logs the
+ * kinds it reads otherwise (`{ edytor: 'semantics', user, kinds }`), once
+ * per digest a client advertises. Nothing is refused: it is a diagnosis.
+ */
+describe('the room logs a client whose roles differ (semantics digest)', () => {
+	const SLOW = { timeout: 10_000, interval: 25 };
+	const semanticsLog = (room: string) =>
+		runInDurableObject(env.LOCKED.getByName(room), (r: LockedRoom) =>
+			r.logged.filter((entry) => entry.edytor === 'semantics')
+		);
+
+	it('names the kinds, once per advertised digest; an agreeing client logs nothing', async () => {
+		const room = 'locked-semantics-digest';
+		const ada = await RawClient.connect(room, undefined, { user: 'ada', replica: 101 });
+		const bob = await RawClient.connect(room, undefined, { user: 'bob', replica: 202 });
+		await vi.waitFor(() => expect(ada.synced && bob.synced).toBe(true), SLOW);
+		const agreeing = E.semanticsDigest(E.defaultSemantics);
+		const embed = E.semanticsDigest(
+			E.mergeSemantics(E.defaultSemantics, E.semanticsOf({ embed: { void: true } }))
+		);
+		bob.setPresence(202, 1, { semantics: agreeing });
+		ada.setPresence(101, 1, { semantics: embed });
+		ada.setPresence(101, 2, { semantics: embed, selections: {} });
+		await vi.waitFor(() => expect(ada.presence.get(101)?.clock).toBe(2), SLOW);
+		await vi.waitFor(() => expect(bob.presence.get(101)?.clock).toBe(2), SLOW);
+		expect(await semanticsLog(room)).toEqual([
+			{ edytor: 'semantics', user: 'ada', kinds: ['embed'] }
+		]);
+		expect(ada.closed).toBeNull();
+		for (const client of [ada, bob]) client.close();
 	});
 });

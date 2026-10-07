@@ -267,21 +267,26 @@ export default {
 
 The server has no plugins, so it takes the block roles it checks from `semantics`: which kinds are void, islands or islands of lines (`lines`, the code block), which are layouts (`layout`, the columns plugin's `columns`), which render no content, and each container's default child. The default, `defaultSemantics` from `edytor/crdt/edytor`, holds the kinds of the bundled rich-text, code, image and columns plugins (the columns plugin is opt-in in a view, but its layout rows are here). Server edits obey them as a view does: merging into a divider, splitting an image or moving a code line out of its code block is `refused`.
 
-If your clients' plugins add void or island kinds, or redefine bundled ones, pass the same rules:
+If your clients' plugins add void or island kinds, pass the same rules, from the same kind table your plugin spreads (see [Block roles](/docs/reference/document-api#block-roles)):
 
 ```ts title="src/semantics.ts" check
 import { DurableObject } from 'cloudflare:workers';
 import { attachRoom } from 'edytor/cloudflare';
-import { defaultSemantics } from 'edytor/crdt/edytor';
+import { defaultSemantics, mergeSemantics, semanticsOf } from 'edytor/crdt/edytor';
+
+// The kinds your plugins add, shared with the client (a `kinds.ts` both import).
+const embedKinds = { embed: { void: true, rendersContent: false } };
 
 export class Notes extends DurableObject<Env> {
   document = attachRoom(this, {
-    semantics: { ...defaultSemantics, roles: { ...defaultSemantics.roles, embed: { void: true } } }
+    semantics: mergeSemantics(defaultSemantics, semanticsOf(embedKinds))
   });
 }
 ```
 
 In a `DocumentRoom` subclass, override `protected semantics()` and return the config. `semantics: {}` checks no roles.
+
+To catch a missing rule while you develop, the room compares its roles with each client's: in development builds a client's document advertises a digest of its roles in its presence, and the room logs `{ "edytor": "semantics", "user", "kinds" }` naming the kinds (`mark:<name>` for a mark, `@defaultType` for the default type) it reads otherwise, once per digest. A kind the client does not know is not reported (a view without that plugin). Nothing is refused; production builds advertise nothing.
 
 ## Validate edits
 

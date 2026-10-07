@@ -7,11 +7,11 @@ icon: file-code
 `document.facade` is the one read and write surface of a document: every structural and text edit, and every read of the tree, goes through it. It is the same whether you use it headlessly or from a view. For the document object itself (history, providers, readiness), see [Documents](/docs/collaboration/documents); for the tree model, see [the document model](/docs/concepts/document-model).
 
 ```ts title="results.ts" check
-import { createDocument, defaultSemantics } from 'edytor';
+import { createDocument } from 'edytor';
 
+// The bundled kinds' roles (`defaultSemantics`) by default; views add their plugins' own.
 const { facade } = createDocument({
-  value: { children: [{ type: 'paragraph', id: 'p1', content: [{ text: 'hello' }] }] },
-  semantics: defaultSemantics // the bundled kinds' roles; views add their plugins' own
+  value: { children: [{ type: 'paragraph', id: 'p1', content: [{ text: 'hello' }] }] }
 });
 
 facade.insertText('p1', 5, ' world'); // { status: 'applied', ids: ['p1'] }
@@ -20,21 +20,24 @@ facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' });
 facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' }); // refused: id taken
 ```
 
-`defaultSemantics`, `richTextSemantics`, `codeSemantics`, `imageSemantics` and `layoutSemantics` are frozen and shared by every document. `defaultSemantics` holds the other four: the rich text, code, image and columns plugins' rows. The columns plugin is not a default plugin of `<Edytor>`, but its layout rows are there so a headless document and the room show a layout as a view with the plugin does; a document holding no `columns` block is unchanged by them. A kind row can also declare `atomic` paths (`semanticsOf({ embed: { atomic: ['link'] } })`): data paths written as one value, so concurrent assignments never merge into a mix of both ([Properties](/docs/concepts/properties#how-concurrent-edits-merge)). `defaultSemantics` and `richTextSemantics` also carry `marks`, the rich text plugin's mark edges (`richTextMarks`: the link grows at its start only), which decide where text a collaborator types at a mark's edge lands while the mark is being set ([marks](/docs/customization/marks#edges)). To add your own kinds, build their config with `semanticsOf` (kind rows in, `{ roles, rendersContent, defaultChild }` out) and merge it into the bundled one field by field (`marks` too). Spreading the two configs at the top level would keep only your `roles`, and drop the divider, image and code rules:
+## Block roles
+
+`createDocument` and `loadDocument` hold `defaultSemantics` unless you pass `semantics` (`{}` checks no roles), as the room does. `defaultSemantics`, `richTextSemantics`, `codeSemantics`, `imageSemantics` and `layoutSemantics` are frozen and shared by every document. `defaultSemantics` holds the other four: the rich text, code, image and columns plugins' rows. The columns plugin is not a default plugin of `<Edytor>`, but its layout rows are there so a headless document and the room show a layout as a view with the plugin does; a document holding no `columns` block is unchanged by them. The rows themselves are exported as kind tables, `richTextKinds`, `codeKinds`, `imageKinds` and `layoutKinds` (`type → row`), the very objects the bundled plugins spread into their kind records. A kind row can also declare `atomic` paths (`semanticsOf({ embed: { atomic: ['link'] } })`): data paths written as one value, so concurrent assignments never merge into a mix of both ([Properties](/docs/concepts/properties#how-concurrent-edits-merge)). `defaultSemantics` and `richTextSemantics` also carry `marks`, the rich text plugin's mark edges (`richTextMarks`: the link grows at its start only), which decide where text a collaborator types at a mark's edge lands while the mark is being set ([marks](/docs/customization/marks#edges)).
+
+Your own kinds have one source too: write their rows once, spread each into its kind record in your plugin, and give the same table to `semanticsOf` for the room and headless documents. `semanticsOf` reads kind records as a plugin declares them (a snippet, an element or presets are ignored; a bare snippet is a plain kind), so a plugin's whole `blocks` table works as well. `mergeSemantics` merges configs field by field (`roles`, `rendersContent`, `defaultChild`, `marks`, `defaultType`); spreading two configs at the top level would keep only your `roles` and drop the divider, image and code rules. A kind two configs declare differently throws `SemanticConflictError`, as a view's conflicting plugin does on a document:
 
 ```ts title="src/lib/semantics.ts" check
-import { createDocument, defaultSemantics, semanticsOf } from 'edytor';
+import { createDocument, defaultSemantics, mergeSemantics, semanticsOf } from 'edytor';
 
-const mine = semanticsOf({ embed: { void: true, rendersContent: false } });
+/** Spread into the plugin's kind record: `embed: { ...embedKinds.embed, snippet, presets }`. */
+export const embedKinds = { embed: { void: true, rendersContent: false } };
 
-export const semantics = {
-  roles: { ...defaultSemantics.roles, ...mine.roles },
-  rendersContent: { ...defaultSemantics.rendersContent, ...mine.rendersContent },
-  defaultChild: { ...defaultSemantics.defaultChild, ...mine.defaultChild }
-};
+export const semantics = mergeSemantics(defaultSemantics, semanticsOf(embedKinds));
 
 export const document = createDocument({ semantics }); // divider stays void, code an island
 ```
+
+Pass the same `semantics` to the room ([Block roles on the server](/docs/server/extending#block-roles-on-the-server)). In development builds a document advertises a digest of its roles in its presence, and the room logs a `semantics` entry naming the kinds it reads otherwise (`semanticsDigest`, `semanticsMismatch`).
 
 ## Shapes
 

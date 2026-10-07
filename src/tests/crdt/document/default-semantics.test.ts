@@ -3,7 +3,8 @@
  * (`defaultSemantics`) refuses the edits no view could produce: a merge
  * into a divider, a split of a void image, a code line moved out of its
  * island, a paragraph moved directly into a columns layout (`layout.fits`).
- * Without roles the facade applies all four (pure engine rules). The
+ * It is a headless document's default (D4); with `semantics: {}` the
+ * facade applies all four (pure engine rules). The
  * columns plugin is not a default plugin of `<Edytor>`, but its layout
  * rows are in `defaultSemantics` (C5), so every replica reads a layout alike.
  */
@@ -102,8 +103,9 @@ describe('defaultSemantics on a headless document', () => {
 		expect(edits(defaultSemantics)).toEqual(['refused', 'refused', 'refused', 'refused']);
 	});
 
-	it('without roles the same edits apply (headless stays explicit)', () => {
-		expect(edits()).toEqual(['applied', 'applied', 'applied', 'applied']);
+	it('is the default of a headless document (D4); `semantics: {}` checks no roles', () => {
+		expect(edits()).toEqual(['refused', 'refused', 'refused', 'refused']);
+		expect(edits({})).toEqual(['applied', 'applied', 'applied', 'applied']);
 	});
 
 	it('merges the four plugin tables', () => {

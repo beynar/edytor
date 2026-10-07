@@ -99,6 +99,11 @@
 		 * `'block'` or `'none'`) and how often (`throttle`, ms). Follows changes.
 		 */
 		presence?: PresenceOptions;
+		/**
+		 * Refuse this view's edits. Follows changes. The view still attaches
+		 * its sync (`room`/`server`/`sync`): a live viewer, and a flip keeps
+		 * the connection.
+		 */
 		readonly?: boolean;
 		/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. Read once. */
 		hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
@@ -245,8 +250,10 @@
 		Object.assign(dialParams, params);
 	});
 	const initialSync = untrack((): EdytorSync | undefined => {
-		// Only a view that attaches builds a provider: never a readonly view or the server render.
-		if (typeof window === 'undefined' || initialEdytorOptions.readonly) return undefined;
+		// The server render builds no provider. A readonly view attaches its
+		// sync like an editable one (D3, a live viewer): `readonly` refuses
+		// this view's writes, never the room's updates, so a flip keeps it.
+		if (typeof window === 'undefined') return undefined;
 		if (sync || room === undefined) return sync;
 		if (server === undefined) return createIndexeddbSync(room);
 		// Per author: the room refuses one user's socket delivering another's edits.

@@ -7,7 +7,7 @@ export const safeImageSrc = (value: unknown): string | null => {
 
 /**
  * The largest inline image (`data:` URL) an image block takes: 1 MiB of its
- * URL (H6). An inline image is stored in the document and sent in every
+ * URL. An inline image is stored in the document and sent in every
  * update and catch-up that carries the block, so a larger one would bloat
  * the room's frames and storage: host the file instead (the plugin's
  * `upload` option) and embed its URL.

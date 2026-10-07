@@ -17,9 +17,12 @@
  * SvelteKit project of its own whose routes are `app/`, so `svelte-kit sync`
  * generates `./$types` for route files without adding a route to this app,
  * and a page's blocks can import each other. The package's own specifiers
- * resolve to the sources through
- * `paths`: `edytor` → `src/lib/index.ts`, `edytor/cloudflare`,
- * `edytor/crdt/edytor`, `edytor/crdt` and the theme likewise.
+ * (`edytor`, `edytor/cloudflare`, `edytor/protocol`, … : every entry of
+ * `package.json` `exports`) resolve through `paths` to the package as a
+ * consumer installs it: `svelte-package`'s output with `stripInternal`
+ * (`scripts/package-declarations.mjs`, built into
+ * `node_modules/.cache/edytor-docs/dist`), so an example that reaches a
+ * member marked `@internal` fails here as it would in a consumer's app.
  *
  * - `.svelte` blocks and `.ts` blocks that export (modules) are checked by
  *   `svelte-check` in the app program (DOM types, the SvelteKit ambient
@@ -56,13 +59,13 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { constants } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { buildPackage, ROOT } from './package-declarations.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DOCS = path.join(ROOT, 'site/content/docs');
 const OUT = path.join(ROOT, '.svelte-kit/docexamples');
 const DECLARATIONS = path.join(ROOT, 'scripts/doc-examples');
 const BIN = path.join(ROOT, 'node_modules/.bin');
+const DIST = path.join(ROOT, 'node_modules/.cache/edytor-docs/dist');
 const keep = process.argv.includes('--keep');
 
 // The fence-meta grammar Blume uses (a quoted attr, a `{1,3}` range, or a word).
@@ -203,8 +206,8 @@ writeFileSync(
 const synced = run('svelte-kit', ['sync'], OUT);
 if (synced.status !== 0) throw new Error(`svelte-kit sync failed:\n${synced.stderr}`);
 
-// The package's specifiers → its sources, beside SvelteKit's own paths
-// (with this app's `$lib`, which the sources import).
+// The package's specifiers → its stripped build, beside SvelteKit's own paths.
+buildPackage(DIST);
 const KIT = path.join(OUT, '.svelte-kit');
 const kit = JSON.parse(readFileSync(path.join(KIT, 'tsconfig.json'), 'utf8'));
 const paths = Object.fromEntries(
@@ -213,15 +216,11 @@ const paths = Object.fromEntries(
 		targets.map((target) => path.resolve(KIT, target))
 	])
 );
-Object.assign(paths, {
-	$lib: [path.join(ROOT, 'src/lib')],
-	'$lib/*': [path.join(ROOT, 'src/lib/*')],
-	edytor: [path.join(ROOT, 'src/lib/index.ts')],
-	'edytor/cloudflare': [path.join(ROOT, 'src/lib/cloudflare/index.ts')],
-	'edytor/crdt/edytor': [path.join(ROOT, 'src/lib/crdt/index.ts')],
-	'edytor/crdt': [path.join(ROOT, 'src/lib/crdt/vendor/yjs/dts/index.d.ts')],
-	'edytor/themes/notion.css': [path.join(ROOT, 'src/lib/themes/notion.css')]
-});
+const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+for (const [subpath, target] of Object.entries(pkg.exports)) {
+	const file = typeof target === 'string' ? target : target.types;
+	paths[`edytor${subpath.slice(1)}`] = [path.join(DIST, file.replace(/^\.\/dist\//, ''))];
+}
 
 /** Report a `tsc --pretty false` run's errors. */
 const tscErrors = (result) => {

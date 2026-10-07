@@ -11,7 +11,7 @@ const isTextPart = (part: Block['content'][number] | undefined): part is Text =>
 	part !== undefined && !(part instanceof InlineBlock);
 
 /**
- * An id-only inline-atom handle (§2.4 "Handles", R4): atom `id`, shown in
+ * An id-only inline-atom handle: atom `id`, shown in
  * block `blockId`. Getters read the document index; `node` is the element
  * that renders it (a Surface fact).
  */
@@ -85,6 +85,7 @@ export class InlineBlock {
 		return { id: this.id, type: this.type, data: { ...this.#item?.data } };
 	}
 
+	/** @internal */
 	attach = (node: HTMLElement) => {
 		node.setAttribute('contenteditable', 'false');
 		node.dataset.edytorId = this.id;

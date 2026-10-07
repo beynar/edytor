@@ -38,7 +38,7 @@ import { id as freshId } from '../utils.js';
 
 /** One line of a flow: a kinded block, or an inline run when it has no `type`. */
 export type FlowLine = Omit<BlockSpec, 'type'> & { type?: string };
-/** An admitted flow (§2.4): lines in order, ids fresh; `whole`: a block-selection copy. */
+/** An admitted flow: lines in order, ids fresh; `whole`: a block-selection copy. */
 export type Flow = { lines: FlowLine[]; whole?: boolean };
 /**
  * What the view tells flow placement beyond range deletion's view: a

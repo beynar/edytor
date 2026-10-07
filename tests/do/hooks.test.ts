@@ -80,7 +80,7 @@ describe('room extension points', () => {
 	});
 });
 
-describe('attachDocument in any Durable Object', () => {
+describe('attachRoom in any Durable Object', () => {
 	it('a bare object: every handler installed, tables prefixed beside yours', async () => {
 		const client = await RawClient.connect('plain-a');
 		await vi.waitFor(() => expect(shape(client.json())).toEqual(loaded));

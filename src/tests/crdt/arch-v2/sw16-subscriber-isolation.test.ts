@@ -11,7 +11,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from '$lib/crdt/vendor/yjs/src/index.js';
-import { createDocument, defaultSemantics, loadDocument, SCHEMA_VERSION } from '$lib/crdt/index.js';
+import { createDocument, defaultSemantics, loadDocument } from '$lib/crdt/index.js';
+import { SCHEMA_VERSION } from '$lib/crdt/protocol.js';
 
 const make = () =>
 	createDocument({

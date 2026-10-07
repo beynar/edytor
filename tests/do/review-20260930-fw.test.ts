@@ -17,7 +17,13 @@
 import { env } from 'cloudflare:workers';
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
-import { attachDocument, type DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
+import {
+	attachDocument,
+	attachRoom,
+	moveBlocks,
+	moveBlocksBetweenRooms,
+	type DocumentRoom as Room
+} from '../../src/lib/cloudflare/index.js';
 import type { HookedRoom } from './worker';
 import {
 	E,
@@ -241,10 +247,17 @@ describe('sweep · a dial the router turns away is closed, never an HTTP error',
 	});
 });
 
-describe('sweep · attachDocument on something that is not a Durable Object', () => {
+describe('sweep · attachRoom on something that is not a Durable Object', () => {
 	it('throws a clear error instead of a TypeError on `storage`', () => {
-		expect(() => attachDocument({} as never)).toThrow(
-			'attachDocument(this): `this` must be a Durable Object (a class extending DurableObject, after super())'
+		expect(() => attachRoom({} as never)).toThrow(
+			'attachRoom(this): `this` must be a Durable Object (a class extending DurableObject, after super())'
 		);
+	});
+});
+
+describe('WU-14 · the room names (API-11)', () => {
+	it('attachDocument and moveBlocks stay deprecated aliases for one release', () => {
+		expect(attachDocument).toBe(attachRoom);
+		expect(moveBlocks).toBe(moveBlocksBetweenRooms);
 	});
 });

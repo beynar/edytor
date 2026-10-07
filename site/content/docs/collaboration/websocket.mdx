@@ -125,15 +125,11 @@ Browsers cannot set headers on a WebSocket, so tokens travel in `params` (or in 
 
 ## Provider events and state
 
-`createWebsocketSync` creates the provider internally. To observe it, write a sync factory around the exported `WebsocketProvider`; this one behaves like `createWebsocketSync` (socket, local copy, one channel) and reports its state:
+`createWebsocketSync` creates the provider internally. To observe it, write a sync factory around `WebsocketProvider` (from `edytor/protocol`); this one behaves like `createWebsocketSync` (socket, local copy, one channel) and reports its state:
 
 ```ts title="src/lib/observed-sync.ts" check
-import {
-  WebsocketProvider,
-  createIndexeddbSync,
-  type EdytorSync,
-  type EdytorSyncPayload
-} from 'edytor';
+import { createIndexeddbSync, type EdytorSync, type EdytorSyncPayload } from 'edytor';
+import { WebsocketProvider } from 'edytor/protocol';
 
 export const observedSync = (
   server: string,

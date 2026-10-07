@@ -30,7 +30,7 @@ From code, call the view's methods:
 
 `historyUndo()` restores the selection this view had before the step; `historyRedo()` restores the one it had after. If a collaborator deleted the place a recorded caret pointed to, the view keeps its current selection instead.
 
-Both return nothing. Each call sets [`edytor.dispatcher.last`](/docs/editor/commands#results) to `{ operation: 'undo' }` or `'redo'` with a status: `applied` when a step was replayed, `noop` when the stack was empty, and `refused` on a readonly view or a read-only document. Read it to tell a refused undo from an empty stack.
+Both return nothing. Each call sets [`edytor.dispatcher.last`](/docs/editor/commands#results) to `{ operation: 'undo' }` or `'redo'` with a status: `applied` when a step was replayed, `noop` when the stack was empty, and `refused` on a readonly view or a read-only document. Read it to tell a refused undo from an empty stack. These two calls are the view's only history API: the keys (<kbd>Mod</kbd>+<kbd>Z</kbd>, <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>) and the browser's undo intents reach them, so a readonly view never rewinds the shared document. `document.history` (below) is the document's own history, the raw path, which no view's `readonly` guards.
 
 Without a view, use the document's history directly. It restores no selection:
 

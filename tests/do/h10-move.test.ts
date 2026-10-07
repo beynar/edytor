@@ -2,7 +2,7 @@
  * Phase 5, H10 — moving blocks between documents (`room.move`,
  * `room.move.late` in `docs/editor-delete-contract.md`):
  *
- * - `moveBlocks` (the host's): export at the source (no write), import at
+ * - `moveBlocksBetweenRooms` (the host's): export at the source (no write), import at
  *   the destination, delete at the source only with that acknowledgement;
  *   both rooms' clients converge; ids kept, or renamed where the
  *   destination holds one already;
@@ -20,7 +20,7 @@ import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	forwardLateEdits,
-	moveBlocks,
+	moveBlocksBetweenRooms,
 	type DocumentRoom as Room,
 	type MoveNamespace
 } from '../../src/lib/cloudflare/index.js';
@@ -75,12 +75,12 @@ const source = (): JSONDoc => ({
 	]
 });
 
-describe('H10 · moveBlocks: export, import, then delete at the source', () => {
+describe('H10 · moveBlocksBetweenRooms: export, import, then delete at the source', () => {
 	it('the blocks leave A for B, with their subtree, data and ids; clients of both converge', async () => {
 		const [A, B] = ['move-a1', 'move-b1'];
 		const ada = await join(A, 'ada', source());
 		const bob = await join(B, 'bob', { children: [para('b1', 'bravo'), para('b2', 'charlie')] });
-		const receipt = await moveBlocks(moves(A), {
+		const receipt = await moveBlocksBetweenRooms(moves(A), {
 			from: A,
 			to: B,
 			ids: ['m'],
@@ -136,7 +136,7 @@ describe('H10 · moveBlocks: export, import, then delete at the source', () => {
 		const [A, B] = ['move-a3', 'move-b3'];
 		await join(A, 'ada', source()).then((p) => p.client.close());
 		await join(B, 'bob', { children: [para('b1', 'bravo')] }).then((p) => p.client.close());
-		const receipt = await moveBlocks(moves(A), {
+		const receipt = await moveBlocksBetweenRooms(moves(A), {
 			from: A,
 			to: B,
 			ids: ['m'],
@@ -159,7 +159,7 @@ const lateMove = async (A: string, B: string) => {
 	// Offline: Carol appends to the moved block.
 	carol.document.transact(() => carol.document.facade.insertText('m', 11, ' (late)'));
 	const bob = await join(B, 'bob', { children: [para('b1', 'bravo')] });
-	const receipt = await moveBlocks(moves(A), {
+	const receipt = await moveBlocksBetweenRooms(moves(A), {
 		from: A,
 		to: B,
 		ids: ['m'],
@@ -267,7 +267,12 @@ describe('H10 · late edits reach the destination', () => {
 		carol.client.close();
 		carol.document.transact(() => carol.document.facade.splitBlock('m', 5, 'tail'));
 		await join(B, 'bob', { children: [para('b1', 'bravo')] }).then((p) => p.client.close());
-		await moveBlocks(moves(A), { from: A, to: B, ids: ['m'], dest: { parent: null, index: 1 } });
+		await moveBlocksBetweenRooms(moves(A), {
+			from: A,
+			to: B,
+			ids: ['m'],
+			dest: { parent: null, index: 1 }
+		});
 		const back = await RawClient.connect(A, carol.document.doc, {
 			user: 'carol',
 			replica: carol.document.doc.clientID
@@ -301,7 +306,12 @@ describe('H10 · late edits reach the destination', () => {
 		await setNow2(A, '2026-10-06T08:00:00Z');
 		await join(A, 'ada', source()).then((p) => p.client.close());
 		await join(B, 'bob', { children: [para('b1', 'bravo')] }).then((p) => p.client.close());
-		await moveBlocks(moves(A), { from: A, to: B, ids: ['m'], dest: { parent: null, index: 0 } });
+		await moveBlocksBetweenRooms(moves(A), {
+			from: A,
+			to: B,
+			ids: ['m'],
+			dest: { parent: null, index: 0 }
+		});
 		await runDurableObjectAlarm(env.MOVES.getByName(A));
 		const state = () =>
 			inRoom(

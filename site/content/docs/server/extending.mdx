@@ -1,6 +1,6 @@
 ---
 title: Your own Durable Object
-description: Host a document in any Durable Object with attachDocument, load it from and save it to your own storage (R2, KV, D1), and edit it on the server.
+description: Host a document in any Durable Object with attachRoom, load it from and save it to your own storage (R2, KV, D1), and edit it on the server.
 icon: puzzle
 ---
 
@@ -8,10 +8,10 @@ icon: puzzle
 
 ```ts src/worker.ts check
 import { DurableObject } from 'cloudflare:workers';
-import { attachDocument, closedSocket, routeDocumentSocket } from 'edytor/cloudflare';
+import { attachRoom, closedSocket, routeDocumentSocket } from 'edytor/cloudflare';
 
 export class Notes extends DurableObject<Env> {
-  document = attachDocument(this, {
+  document = attachRoom(this, {
     onLoad: () => loadFromMyStore(this.ctx.id.name!), // { update, replicas }
     onSave: ({ update, replicas }) => saveToMyStore(this.ctx.id.name!, { update, replicas })
   });
@@ -35,10 +35,10 @@ export default {
 That is the whole server. `routeDocumentSocket` works with any namespace whose objects host a document, and [authorization](/docs/server/authorization) is unchanged.
 
 :::note
-This `attachDocument` comes from `edytor/cloudflare` and hosts a document in a Durable Object. The `attachDocument` exported by `edytor` wraps an engine document in the browser or Node. They are different functions.
+`attachRoom` comes from `edytor/cloudflare` and hosts a document in a Durable Object. It was called `attachDocument` before, a name it keeps as a deprecated alias for one release; the `attachDocument` exported by `edytor` and `edytor/crdt/edytor` is a different function, which wraps an engine document in the browser or Node.
 :::
 
-## What `attachDocument(this, options)` does
+## What `attachRoom(this, options)` does
 
 - **Storage.** The document lives in the object's SQLite storage, in tables named `edytor_rows`, `edytor_replicas` and `edytor_meta` (with `edytor_epochs`, `edytor_editors` and `edytor_restore` for the [history and the purge](/docs/server/history#storage), `edytor_history` for a [history in the room](/docs/server/history#the-rooms-own-storage), and `edytor_moves` and `edytor_late` for [moves](/docs/server/moves); [Room internals](/docs/server/internals#storage-tables) says what each holds), beside your own tables. Every edit is stored there before it is acknowledged, whatever your hooks do. `tablePrefix` changes the prefix.
 - **Sockets.** The document's sockets carry the tag `edytor` (`SOCKET_TAG`). Other sockets of the object are yours.
@@ -54,7 +54,7 @@ A class that defines a handler keeps it and delegates to the document. The docum
 
 ```ts
 export class Workspace extends DurableObject<Env> {
-  document = attachDocument(this, { onSave: (saved) => this.persist(saved) });
+  document = attachRoom(this, { onSave: (saved) => this.persist(saved) });
 
   async fetch(request: Request) {
     if (new URL(request.url).pathname.startsWith('/events')) return this.openEventStream(request);
@@ -144,10 +144,10 @@ The room's name is `this.ctx.id.name`: rooms are opened with `getByName(document
 
 ```ts title="src/r2.ts" check
 import { DurableObject } from 'cloudflare:workers';
-import { attachDocument, type ReplicaOwner } from 'edytor/cloudflare';
+import { attachRoom, type ReplicaOwner } from 'edytor/cloudflare';
 
 export class Notes extends DurableObject<Env> {
-  document = attachDocument(this, {
+  document = attachRoom(this, {
     onLoad: async () => {
       const [object, owners] = await Promise.all([
         this.env.DOCS.get(`${this.ctx.id.name}.bin`),
@@ -173,10 +173,10 @@ R2 has no practical size limit: the best fit for documents. `ReplicaOwner` is ex
 
 ```ts title="src/kv.ts" check
 import { DurableObject } from 'cloudflare:workers';
-import { attachDocument, type ReplicaOwner } from 'edytor/cloudflare';
+import { attachRoom, type ReplicaOwner } from 'edytor/cloudflare';
 
 export class Notes extends DurableObject<Env> {
-  document = attachDocument(this, {
+  document = attachRoom(this, {
     onLoad: async () => {
       const name = this.ctx.id.name!;
       const bytes = await this.env.DOCS_KV.get(name, 'arrayBuffer');
@@ -199,10 +199,10 @@ A KV value holds at most 25 MiB, and other locations may read an old value for a
 
 ```ts title="src/d1.ts" check
 import { DurableObject } from 'cloudflare:workers';
-import { attachDocument } from 'edytor/cloudflare';
+import { attachRoom } from 'edytor/cloudflare';
 
 export class Notes extends DurableObject<Env> {
-  document = attachDocument(this, {
+  document = attachRoom(this, {
     onLoad: async () => {
       const row = await this.env.DB.prepare('SELECT state, replicas FROM documents WHERE id = ?')
         .bind(this.ctx.id.name)
@@ -231,7 +231,7 @@ A D1 row holds at most 2 MB; use R2 for larger documents.
 
 ```ts title="src/notes.ts" check
 import { DurableObject } from 'cloudflare:workers';
-import { attachDocument } from 'edytor/cloudflare';
+import { attachRoom } from 'edytor/cloudflare';
 import { toBlockSpec } from 'edytor/crdt/edytor';
 
 interface Env {
@@ -239,7 +239,7 @@ interface Env {
 }
 
 export class Notes extends DurableObject<Env> {
-  document = attachDocument(this);
+  document = attachRoom(this);
 
   appendNote(text: string) {
     return this.document.transact((doc) =>
@@ -271,11 +271,11 @@ If your clients' plugins add void or island kinds, or redefine bundled ones, pas
 
 ```ts title="src/semantics.ts" check
 import { DurableObject } from 'cloudflare:workers';
-import { attachDocument } from 'edytor/cloudflare';
+import { attachRoom } from 'edytor/cloudflare';
 import { defaultSemantics } from 'edytor/crdt/edytor';
 
 export class Notes extends DurableObject<Env> {
-  document = attachDocument(this, {
+  document = attachRoom(this, {
     semantics: { ...defaultSemantics, roles: { ...defaultSemantics.roles, embed: { void: true } } }
   });
 }
@@ -339,7 +339,7 @@ export class LockedRoom extends DocumentRoom<Env> {
 }
 ```
 
-With `attachDocument`, pass `locks: { key: 'lockedBy' }`. Locks are checked before your own `validate`, and both must accept a frame. To lock a block, a client writes its own user into the block's data (`block.data.lockedBy = userId`, or `facade.setBlockData`); to unlock it, the owner removes the key. A view does not know about locks: an edit to a locked block shows locally, then the room's inverse removes it. Read the key in your kind's rendering to show the lock and make the block read-only for others (`contenteditable` on its content, or a readonly view).
+With `attachRoom`, pass `locks: { key: 'lockedBy' }`. Locks are checked before your own `validate`, and both must accept a frame. To lock a block, a client writes its own user into the block's data (`block.data.lockedBy = userId`, or `facade.setBlockData`); to unlock it, the owner removes the key. A view does not know about locks: an edit to a locked block shows locally, then the room's inverse removes it. Read the key in your kind's rendering to show the lock and make the block read-only for others (`contenteditable` on its content, or a readonly view).
 
 The room also enforces one rule itself: a block's per-writer marks (`del.<n>` for a delete, `wd.<n>` for an undone creation) are written and deleted only by client `n`. A frame writing another client's mark has that client's new content stripped, as content under [another user's client id](/docs/server/authorization#replicas) is, and a delete of another user's mark is dropped (unless its block goes with it), both logged as a `mark` entry; the rest of the frame applies.
 

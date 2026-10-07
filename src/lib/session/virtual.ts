@@ -19,6 +19,7 @@ import { placedEnd, type Flow, type FlowTarget } from '../crdt/flow.js';
 import { bindNodes } from '../crdt/nodes.js';
 import { applyPatch } from '../crdt/data.js';
 import { id } from '../utils.js';
+import { asBlockSpec } from '../utils/json.js';
 
 /** A virtual paragraph's id (materialized blocks keep theirs): what a peer's caret names. */
 export const isVirtualId = (value: string): boolean => value.startsWith('v_');
@@ -116,8 +117,8 @@ export const virtualLens = (
 	// Enter at its end builds after it: the line is kept. What goes before it replaces it.
 	over('insertBlocks', (dest, specs) => {
 		if (specs.length > 0 && dest.parent === null && dest.index > 0 && active())
-			return create([spec(), ...specs]);
-		return on(dest.parent) ? create([spec({ children: [...specs] })]) : undefined;
+			return create([spec(), ...specs.map(asBlockSpec)]);
+		return on(dest.parent) ? create([spec({ children: specs.map(asBlockSpec) })]) : undefined;
 	});
 	over('insertBlock', (dest, s) => prepare.insertBlocks(dest, [s]));
 	over('insertFlow', (target: FlowTarget, flow: Flow) => {

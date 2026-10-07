@@ -14,18 +14,26 @@ import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import type { BlockId, BlockSpec } from '$lib/crdt/index.js';
 import type { Plan, PlanStep, Prepared } from '$lib/crdt/edytor-doc.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { ChangePayload } from '$lib/plugins.js';
+import type { AfterOperationPayload, ChangePayload, InitializedPlugin } from '$lib/plugins.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { DEV } from 'esm-env';
-import { prevent, PreventionError } from '$lib/utils.js';
+import { PreventionError, vetoable } from '$lib/utils.js';
 import { kindOf } from './attempt.js';
 
-export type CommandResult = {
+/**
+ * The result of the last command a view ran (`edytor.dispatcher.last`): its
+ * operation, its status and, for a handle mutator (`block.insertBlockAfter`,
+ * `text.insertText`, …), the `value` the mutator returned — `undefined`
+ * when the command was refused or did not run.
+ */
+export type CommandResult<T = unknown> = {
 	operation: string;
 	status: 'refused' | 'noop' | 'applied' | 'failed';
+	/** What the command answered: a handle mutator's return value. */
+	value?: T;
 	error?: unknown;
-	/** The result selection the command authored (R9), selected once. */
+	/** The result selection the command authored, selected once. */
 	selection?: SelectionValue;
 };
 
@@ -185,11 +193,10 @@ const specJSON = (spec: BlockSpec): unknown => ({
 });
 
 export class Dispatcher {
-	/** The last operation's result (L5). */
+	/** The last operation's result. */
 	last: CommandResult | null = null;
 	/**
-	 * The result selection a command in flight declared before its operations
-	 * (R9): the seam repair leaves this view's endpoints to it.
+	 * The result selection a command in flight declared before its operations: the seam repair leaves this view's endpoints to it.
 	 */
 	authoring: SelectionValue | null = null;
 	/** An operation's body is running: nested operations are its steps. */
@@ -200,6 +207,11 @@ export class Dispatcher {
 	private kind: string | null = null;
 	/** The running user command's last step that applied. */
 	private applied: CommandResult | null = null;
+	/**
+	 * The result the last top-level `dispatch` produced (its own `last`), for
+	 * `answer`: a replacement that ran the same operation recorded another.
+	 */
+	#produced: CommandResult | null = null;
 	/** Open prevention scopes: a veto inside one aborts it. */
 	private depth = 0;
 	/** Extensions whose replacement is running (a command is replaced at most once per extension). */
@@ -223,7 +235,7 @@ export class Dispatcher {
 	}
 
 	/** Admission: a readonly view or a read-only document refuses every mutating command. */
-	/** Admission: not readonly, a writable document, and one decided when it requires hydration (H12). */
+	/** Admission: not readonly, a writable document, and one decided when it requires hydration. */
 	permits = () =>
 		!this.edytor.readonly &&
 		this.edytor.document.writable &&
@@ -257,7 +269,7 @@ export class Dispatcher {
 	};
 
 	/** Run every extension's `call`; answer whether one of them prevented. */
-	intercept = (call: (plugin: Edytor['plugins'][number]) => void, onPrevent?: () => void) => {
+	intercept = (call: (plugin: InitializedPlugin) => void, onPrevent?: () => void) => {
 		let hit = false;
 		this.scope(
 			() => this.edytor.plugins.forEach(call),
@@ -273,7 +285,7 @@ export class Dispatcher {
 	 * A user command: admission, the undo policy around it, and one
 	 * prevention scope. Its result is its steps': one that applied is not
 	 * overwritten by a later step refused or changing nothing (a Tab over
-	 * several sibling groups where one cannot move, ZW-07).
+	 * several sibling groups where one cannot move).
 	 */
 	run = <T>(kind: string, body: () => T): T | undefined => {
 		if (this.running) return body();
@@ -303,7 +315,7 @@ export class Dispatcher {
 	 * A user command over several parts (Turn into over several blocks, Tab
 	 * over several runs of siblings): each part is its own prevention scope,
 	 * so a part the document refuses or an extension vetoes is skipped and
-	 * the others still run (BW-02), as one undo step. Answers each part's
+	 * the others still run, as one undo step. Answers each part's
 	 * result (`undefined` when vetoed).
 	 */
 	each = <T, R>(kind: string, parts: readonly T[], part: (item: T) => R): (R | undefined)[] =>
@@ -324,7 +336,10 @@ export class Dispatcher {
 		if (this.active) return body(payload);
 		const lead = this.leading;
 		this.leading = null;
-		if (!this.permits()) return this.refuse(operation);
+		if (!this.permits()) {
+			this.#produced = this.#refused(operation);
+			return undefined;
+		}
 		const original = payload;
 		const replaced = new Set<unknown>();
 		// A lead composes with the command's plan (both prepared at this version);
@@ -351,7 +366,9 @@ export class Dispatcher {
 				for (const plugin of this.edytor.plugins) {
 					let out: unknown;
 					try {
-						out = plugin.onBeforeOperation?.({ ...change, prevent } as ChangePayload);
+						out = vetoable((prevent) =>
+							plugin.onBeforeOperation?.({ ...change, prevent } as ChangePayload)
+						);
 					} catch (error) {
 						const stop = prevented(error);
 						if (stop.cb && this.replacing.has(plugin)) {
@@ -359,9 +376,10 @@ export class Dispatcher {
 							continue;
 						}
 						stop.by = plugin;
-						this.refuse(operation);
+						const refused = this.#refused(operation);
 						if (this.depth > 0) throw stop;
 						this.replace(stop);
+						this.#produced = refused;
 						return undefined;
 					}
 					if (!out) continue;
@@ -380,8 +398,10 @@ export class Dispatcher {
 		}
 		// Refused at preparation, and no extension replaced it.
 		if (plan && !('writes' in plan)) {
-			this.refuse(operation);
-			return body(payload, plan);
+			const refused = this.#refused(operation);
+			const out = body(payload, plan);
+			this.#produced = refused;
+			return out;
 		}
 		const version = this.edytor.facade.version;
 		// A text patch typing into the strings the previous command set on the
@@ -416,11 +436,36 @@ export class Dispatcher {
 			operation,
 			status: this.edytor.facade.version === version ? 'noop' : 'applied'
 		};
-		if (this.running && this.last.status === 'applied') this.applied = this.last;
-		const change = { operation, payload: original, ...context } as Omit<ChangePayload, 'prevent'>;
+		const own = this.last;
+		if (this.running && own.status === 'applied') this.applied = own;
+		const change = { operation, payload: original, ...context } as AfterOperationPayload;
 		for (const plugin of this.edytor.plugins) plugin.onAfterOperation?.(change);
+		this.#produced = own;
 		return result;
 	};
+
+	/**
+	 * Record what a handle mutator answered on its result (`last.value`), and
+	 * answer it. Only on the result its own `dispatch` produced: a nested
+	 * operation (a step of the running command) has none, and a vetoed call
+	 * whose replacement ran the same operation leaves the replacement's
+	 * result (and value) as `last`.
+	 * @internal
+	 */
+	answer = <R>(value: R): R => {
+		const own = this.#produced;
+		this.#produced = null;
+		if (!this.active && own && this.last === own) this.#amend({ value });
+		return value;
+	};
+
+	/** Amend `last` in place of a new result, keeping it the one its `dispatch` produced. */
+	#amend(patch: Partial<CommandResult>) {
+		if (!this.last) return;
+		const next = { ...this.last, ...patch };
+		if (this.#produced === this.last) this.#produced = next;
+		this.last = next;
+	}
 
 	/**
 	 * Run `body` with `lead` (a plan prepared now) composed into the first
@@ -439,8 +484,8 @@ export class Dispatcher {
 	};
 
 	/**
-	 * A command's result caret (R9): selected once and recorded on the result;
-	 * the projector displays it after the flush (R10). With `ops`, the
+	 * A command's result caret: selected once and recorded on the result;
+	 * the projector displays it after the flush. With `ops`, the
 	 * caret is declared before the command's operations run — minted while its
 	 * text is live, so it survives them — and written only when they applied;
 	 * meanwhile the seam repair leaves this view's endpoints to it.
@@ -465,7 +510,7 @@ export class Dispatcher {
 		selection.select(value);
 		// Declared before its operations: gone with them after all, the seam.
 		if (!selection.projection.start) selection.restoreDeadSelectionEndpoints();
-		if (this.last) this.last = { ...this.last, selection: selection.value };
+		this.#amend({ selection: selection.value });
 		return out;
 	};
 
@@ -494,8 +539,7 @@ export class Dispatcher {
 
 	/**
 	 * Run the requested normalization at the end of the outermost transaction,
-	 * inside it, also when the transaction's callback threw: its writes stay
-	 * (GX-07). A pass reads handles over the index, so a normalizer sees what
+	 * inside it, also when the transaction's callback threw: its writes stay. A pass reads handles over the index, so a normalizer sees what
 	 * the command (and the previous pass) wrote; a pass that asks for its
 	 * block again runs again, at most {@link MAX_PASSES} times.
 	 */
@@ -561,8 +605,13 @@ export class Dispatcher {
 	}
 
 	private refuse(operation: string): undefined {
-		this.last = { operation, status: 'refused' };
+		this.#refused(operation);
 		return undefined;
+	}
+
+	/** Record `operation` as refused; answers that result. */
+	#refused(operation: string): CommandResult {
+		return (this.last = { operation, status: 'refused' });
 	}
 
 	private settle(error: unknown, onPrevent?: () => void): undefined {
@@ -596,7 +645,7 @@ export class Dispatcher {
 	}
 
 	/**
-	 * The planned steps as hooks see them (D-10), under the documented
+	 * The planned steps as hooks see them, under the documented
 	 * operation names. A step that is the command itself (same name, same
 	 * block) is not repeated; a write into a block the plan creates is part
 	 * of that creation. (A `removeInline` step is only ever its own command,

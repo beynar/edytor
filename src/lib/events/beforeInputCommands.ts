@@ -12,7 +12,7 @@ import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
 import { cloneJson, type JSONText } from '$lib/utils/json.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
 import { selectedTextSpans } from '$lib/selection/visibility.js';
-import { id, prevent } from '$lib/utils.js';
+import { id, vetoable } from '$lib/utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan, prepareSplitKeepingChildren } from '$lib/block/block.utils.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
@@ -35,7 +35,7 @@ export const runBeforeInputHotkeyBridge = (
 		snapshot.inputType === 'insertText' && snapshot.data === '\t'
 			? 'tab'
 			: INTENTS[snapshot.inputType]?.key;
-	return Boolean(key && key !== offered && edytor.hotKeys.run(key));
+	return Boolean(key && key !== offered && edytor.keymap.run(key));
 };
 
 /** The marks of text inserted at the snapshot's selection (O29), read before it is replaced. */
@@ -174,7 +174,7 @@ const insertFromPaste = async (edytor: Edytor, snapshot: Attempt) => {
 const runDataTransferPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer) => {
 	const event = { clipboardData: dataTransfer } as unknown as ClipboardEvent;
 	for (const plugin of edytor.plugins) {
-		plugin.onPaste?.({ prevent, e: event });
+		vetoable((prevent) => plugin.onPaste?.({ prevent, e: event }));
 	}
 };
 
@@ -202,8 +202,8 @@ const resolveDropPoint = (edytor: Edytor, snapshot: Attempt) => {
 /**
  * Drop/as-quotation payloads replay the paste pipeline: an embedded Edytor
  * fragment round-trips (cross-editor drags), files and html route through the
- * plugin `onPaste` hook (claimed via `prevent`, which throws out of this
- * function and is caught by the beforeinput caller), `text/uri-list` becomes
+ * plugin `onPaste` hook (claimed via `prevent`: the recorded veto aborts
+ * this function and is caught by the beforeinput caller), `text/uri-list` becomes
  * a link when a `link` mark is registered, unclaimed `text/html` is imported
  * (P4.1), and `text/plain` inserts as text.
  * Unclaimed files insert nothing rather than degrading to file-name text.

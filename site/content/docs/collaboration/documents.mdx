@@ -144,7 +144,7 @@ A view never destroys a document you passed in: you created it, you destroy it. 
 
 ## Headless use (Node and SSR)
 
-Import from `edytor/crdt/edytor` in code that cannot load Svelte components. It exports the same document API as `edytor`, without the component:
+Import from `edytor/crdt/edytor` in code that cannot load Svelte components. It exports the document API `edytor` does, with the facade's full vocabulary (`toBlockSpec`, `BlockSpec`, …), without the component:
 
 ```ts title="src/lib/server/append-line.ts" check
 import { defaultSemantics, loadDocument, toBlockSpec } from 'edytor/crdt/edytor';

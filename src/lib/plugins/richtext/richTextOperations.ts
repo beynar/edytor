@@ -128,7 +128,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 	 * preserves the block's content; converting it would silently delete text,
 	 * inline atoms and children. A block that holds nothing (`holdsNothing`),
 	 * or a list's item (a list holds only its items), is placed as Turn into
-	 * places a divider (`placing`, SW10-lists-2, BW-01): in the block's place
+	 * places a divider (`placing`): in the block's place
 	 * when it holds nothing, else right after it, out of the list, the item
 	 * whole.
 	 */

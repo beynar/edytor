@@ -62,11 +62,13 @@ the consumer's own `vite-plugin-svelte`, the documented bundler boundary:
 
 ## Package surface under test
 
-| subpath              | content                                                     |
-| -------------------- | ----------------------------------------------------------- |
-| `edytor`             | editor components, plugins, CRDT bindings, sync factories   |
-| `edytor/crdt`        | the raw vendored `@y/y@14.0.0-rc.26` engine module          |
-| `edytor/crdt/edytor` | the engine-injected bindings (facade, providers, migration) |
+| subpath              | content                                                              |
+| -------------------- | -------------------------------------------------------------------- |
+| `edytor`             | editor components, plugins, the document API, sync factories         |
+| `edytor/crdt`        | the raw vendored `@y/y@14.0.0-rc.26` engine module                   |
+| `edytor/crdt/edytor` | the document API and the engine-injected bindings (`bindCrdt`)       |
+| `edytor/protocol`    | the wire vocabulary: frames, codecs, admission, raw provider classes |
+| `edytor/cloudflare`  | the Durable Object room (`smoke-worker.mjs`)                         |
 
 `import 'edytor'` is the **component** surface: `dist/index.js` statically
 reaches `./components/Edytor.svelte`, so it requires a bundler that

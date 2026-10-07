@@ -15,7 +15,7 @@ import { assertRoomId, SyncRefusedError } from './room.js';
 import { bindWebsocketProvider, type WebsocketProviderEvents } from './websocket.js';
 
 /**
- * Payload a sync factory receives — the v13 contract plus `failed` (D4):
+ * Payload a sync factory receives — the v13 contract plus `failed`:
  * the terminal half of the sync lifecycle. A provider that can never reach
  * `synced` (destroyed before syncing, persistence load failure, refused
  * hydration, denied auth) reports it here exactly once; a transient
@@ -55,14 +55,14 @@ export type EdytorSyncCleanup = () => void | Promise<void>;
 export type EdytorSync = ((payload: EdytorSyncPayload) => void | EdytorSyncCleanup) & {
 	/**
 	 * ms an empty document waits for this provider to settle before it
-	 * decides without it (R13); `Infinity` for a provider that always
+	 * decides without it; `Infinity` for a provider that always
 	 * reports `synced` or `failed`, or arms its bound itself (`armBound`).
 	 * Default: `DEFAULT_READINESS_BOUND`, counted from the attach.
 	 */
 	bound?: number;
 	/**
 	 * The transport target (database, server + room): a document keeps one
-	 * provider per target, whatever factory instance attaches it (O75).
+	 * provider per target, whatever factory instance attaches it.
 	 * Without it the factory itself is the target.
 	 */
 	target?: string;
@@ -73,7 +73,7 @@ export type IndexeddbSyncOptions = {
 };
 
 /**
- * The factory-owned provider always dials (D-24 G-e retired `connect`,
+ * The factory-owned provider always dials (`connect` is retired,
  * `protocols` and `resyncInterval` here). Cross-tab sync is on by default.
  */
 /** Where the socket dials: `<server>/<room>`, the names `<Edytor server room>` uses. */
@@ -108,7 +108,7 @@ export type WebsocketSyncOptions = WebsocketTarget & {
 	onExpired?: (state: Parameters<WebsocketProviderEvents['expired']>[0]) => void;
 	/** Opt out of cross-tab sync over the BroadcastChannel (on by default). */
 	disableBc?: boolean;
-	/** Largest frame sent whole (default 32 MiB); larger ones are chunked (H6). */
+	/** Largest frame sent whole (default 32 MiB); larger ones are chunked. */
 	maxFrameBytes?: number;
 	/**
 	 * Keep a local copy in IndexedDB (default `true`; skipped where there is

@@ -341,7 +341,7 @@ describe('O36 — one precedence rule for bindings', () => {
 			({ prevent }) =>
 				prevent(() => calls.push(name));
 		const edytor = new Edytor({
-			hotKeys: { 'mod+j': observe('consumer') },
+			hotkeys: { 'mod+j': observe('consumer') },
 			plugins: [
 				() => ({ hotkeys: { 'mod+j': observe('first') } }),
 				() => ({ hotkeys: { 'mod+j': claim('second') } }),
@@ -350,7 +350,7 @@ describe('O36 — one precedence rule for bindings', () => {
 			]
 		});
 		const event = key({ key: 'j', ctrlKey: true });
-		expect(edytor.hotKeys.handle(event)).toBe(true);
+		expect(edytor.keymap.handle(event)).toBe(true);
 		expect(event.defaultPrevented).toBe(true);
 		expect(calls).toEqual(['consumer', 'first', 'second']);
 	});
@@ -359,13 +359,13 @@ describe('O36 — one precedence rule for bindings', () => {
 		const calls: string[] = [];
 		const run: HotKey = ({ prevent }) => prevent(() => calls.push('x'));
 		// The type spells chords in lower case (UW-26); the runtime still takes any case.
-		const hotKeys = { 'Shift+Alt+Mod+X': run } as unknown as EdytorOptions['hotKeys'];
+		const hotkeys = { 'Shift+Alt+Mod+X': run } as unknown as EdytorOptions['hotkeys'];
 		const edytor = new Edytor({
-			hotKeys,
+			hotkeys,
 			plugins: [richTextPlugin]
 		});
 		expect(
-			edytor.hotKeys.handle(key({ key: 'X', ctrlKey: true, altKey: true, shiftKey: true }))
+			edytor.keymap.handle(key({ key: 'X', ctrlKey: true, altKey: true, shiftKey: true }))
 		).toBe(true);
 		expect(calls).toEqual(['x']);
 	});

@@ -3,7 +3,7 @@ import {
 	writeEdytorClipboardData
 } from '$lib/clipboard/clipboard.js';
 import type { Edytor } from '../edytor.svelte.js';
-import { prevent } from '$lib/utils.js';
+import { vetoable } from '$lib/utils.js';
 import { observeInternalDragSources } from './onDrop.js';
 import { observeShiftPasteModifier } from './onPaste.js';
 import { ownsEvent } from './nativeInteractiveControl.js';
@@ -21,7 +21,8 @@ export const copySelection = (edytor: Edytor, e: ClipboardEvent, hook: 'onCopy' 
 	observeInternalDragSources(edytor.node?.getRootNode());
 	observeShiftPasteModifier(edytor.node?.getRootNode());
 
-	const claimed = (plugin: Edytor['plugins'][number]) => plugin[hook]?.({ prevent, e });
+	const claimed = (plugin: Edytor['plugins'][number]) =>
+		vetoable((prevent) => plugin[hook]?.({ prevent, e }));
 	if (edytor.dispatcher.intercept(claimed, () => e.preventDefault())) return false;
 
 	const fragment = createEdytorClipboardFragment(edytor);

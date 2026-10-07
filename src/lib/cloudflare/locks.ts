@@ -29,7 +29,7 @@ export type LockOptions = {
 const MAX_DEPTH = 256;
 
 /**
- * The `validate` hook of per-block locks: pass it as `attachDocument`'s
+ * The `validate` hook of per-block locks: pass it as `attachRoom`'s
  * `validate`, return it from `DocumentRoom.locks()`, or call it from your
  * own `validate` (`lockedBlocks(options)(frame) && …`).
  */

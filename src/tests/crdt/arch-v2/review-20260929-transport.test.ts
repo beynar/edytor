@@ -18,12 +18,8 @@ import * as decoding from 'lib0-v14/decoding';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 import { bindWebsocketProvider } from '../../../lib/crdt/providers/websocket.js';
-import {
-	createDocument,
-	schemaVersion,
-	SCHEMA_VERSION,
-	type EngineDoc
-} from '../../../lib/crdt/index.js';
+import { createDocument, type EngineDoc } from '../../../lib/crdt/index.js';
+import { schemaVersion, SCHEMA_VERSION } from '../../../lib/crdt/protocol.js';
 
 const paragraph = { children: [{ id: 'p', type: 'paragraph', content: [{ text: 'hello' }] }] };
 

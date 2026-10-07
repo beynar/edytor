@@ -100,9 +100,12 @@
 		 */
 		presence?: PresenceOptions;
 		readonly?: boolean;
-		/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. */
+		/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. Read once. */
+		hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
+		/** @deprecated Use `hotkeys` (the name a plugin's bindings use). Removed in the next release. */
 		hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
-		onChange?: (value: JSONBlock) => void;
+		/** After every commit that changed the visible document: a `JSONDoc`, the type `value` takes. */
+		onChange?: (value: JSONDoc) => void;
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		/** The initial content, read once (not bindable): follow edits with `onChange` or `edytor.value`. */
 		value?: JSONDoc;
@@ -150,7 +153,7 @@
 		requireHydration?: boolean;
 		/**
 		 * The document as JSON, shown read-only until this view's document is
-		 * ready (P8): a first visit to a room-backed document paints at once
+		 * ready: a first visit to a room-backed document paints at once
 		 * — server-side too — instead of waiting for the room. Its own view of
 		 * the same plugins, replaced by the live one in the same update. Fetch
 		 * it with `documentSnapshot({ server, room, params })` (or the room's
@@ -180,6 +183,7 @@
 		doc,
 		readonly = false,
 		value = defaultValue,
+		hotkeys,
 		hotKeys,
 		sync,
 		room,
@@ -217,7 +221,7 @@
 		awareness,
 		actor,
 		requireHydration,
-		hotKeys,
+		hotkeys: hotkeys ?? hotKeys,
 		onSelectionChange,
 		onChange,
 		sync: !!sync || room !== undefined,

@@ -23,17 +23,15 @@ import * as decoding from 'lib0-v14/decoding';
 import * as idb from 'lib0-v14/indexeddb';
 import { Y } from '../../../lib/crdt/engine.js';
 import {
-	assertAdmission,
 	attachDocument,
 	createDocument,
-	inspectAdmission,
 	loadDocument,
 	SchemaMismatchError,
-	SCHEMA_VERSION,
 	UndecodableUpdateError,
 	UnsupportedDocError,
 	type EngineDoc
 } from '../../../lib/crdt/index.js';
+import { assertAdmission, inspectAdmission, SCHEMA_VERSION } from '../../../lib/crdt/protocol.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { bindProviders } from '../../../lib/crdt/providers/index.js';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';

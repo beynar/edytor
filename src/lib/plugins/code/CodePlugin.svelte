@@ -4,7 +4,6 @@
 	import './code.css';
 	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { JSONText } from '$lib/utils/json.js';
-	import { prevent } from '$lib/utils.js';
 	import { Text } from '$lib/text/text.svelte.js';
 	import { Block } from '$lib/block/block.svelte.js';
 	import { runIntent } from '$lib/events/beforeInputCommands.js';
@@ -140,7 +139,7 @@
 					prevent(() => runIntent(edytor, 'insertParagraph'));
 				}
 			},
-			onBeforeOperation: ({ operation, payload, block }) => {
+			onBeforeOperation: ({ operation, payload, block, prevent }) => {
 				// Delete before a code block: an empty block is removed, the caret at
 				// the end of the text before it (else the start of the code); any other
 				// is refused.

@@ -202,7 +202,7 @@ export type ResolvedPlacement = {
  */
 export type DisplayOwnership = Ownership & {
 	/**
-	 * The live block `b` displays no children (a void role, UW-21b): they
+	 * The live block `b` displays no children (a void role): they
 	 * take its slot like a deleted parent's ({@link displaySlotOf}).
 	 */
 	childless?: (b: BlockId) => boolean;
@@ -214,12 +214,12 @@ export type DisplayOwnership = Ownership & {
 	/**
 	 * `b` (live or deleted) is a container — it renders no content and is
 	 * neither void nor an island (a list): a block promoted out of it keeps
-	 * no container-only kind either (`reset`, DR-crdt-2).
+	 * no container-only kind either (`reset`).
 	 */
 	container?: (b: BlockId) => boolean;
 	/**
 	 * The island `b` is declared `lines`: each direct child is a line, and a
-	 * line holds no children (FW-01, XW-03, {@link displaySlotOf}).
+	 * line holds no children ({@link displaySlotOf}).
 	 */
 	lined?: (b: BlockId) => boolean;
 	/**
@@ -238,7 +238,7 @@ export type DisplayOwnership = Ownership & {
 	/**
 	 * The rank `id` displays at directly under `parent` (its placement's own
 	 * parent) — `rank` unless it is a piece of a text (`order.split.text`,
-	 * D-18, {@link textRanker}).
+	 * {@link textRanker}).
 	 */
 	textRank?: (id: BlockId, parent: BlockId | null, rank: string) => string;
 };
@@ -387,7 +387,7 @@ export type ModelView = {
 	 * Canonicalize a JSON payload into its shared immutable instance —
 	 * deep-frozen and interned by canonical key (so equal payloads are `===`
 	 * across `project()`/`contentItems()`/`runs()`). The publication boundary for
-	 * item `marks`/`data` (R4): range-read items carry borrowed references
+	 * item `marks`/`data`: range-read items carry borrowed references
 	 * into cursor/checkpoint/replicated state, and substituting the
 	 * interned clone is what keeps a caller's mutation out of the engine.
 	 */
@@ -810,7 +810,7 @@ export const bySlot = (
 ): number => (a.rank === b.rank ? a.id.localeCompare(b.id) : a.rank < b.rank ? -1 : 1);
 
 /**
- * Document order (O7): ONE pre-order over the visible blocks of a children
+ * Document order: ONE pre-order over the visible blocks of a children
  * index — `ids` in reading order, `at` the position of each id. Every
  * consumer (ops, view walkers, block selection, clipboard, drag groups)
  * reads this; island sealing is a policy the caller applies on top.

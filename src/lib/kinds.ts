@@ -9,7 +9,7 @@ import { hidden } from './selection/visibility.js';
 import { tagOf } from './clipboard/htmlFlow.js';
 
 /**
- * The kind catalogue (§2.4): one row per preset of each registered kind
+ * The kind catalogue: one row per preset of each registered kind
  * record, in registration order. The slash menu, markdown shortcuts and
  * block menus read it; nothing else names a kind.
  */
@@ -222,10 +222,10 @@ export const lineage = (block: Block | undefined): Block[] =>
  * inserted after the block instead, which stays intact. The kind lands where
  * it fits (`placing`): a list's item turned into another kind leaves the
  * list — out of every list it sits in directly (a list nested right in a
- * list, DR-behavior-2) — where Shift+Tab lifts it, as a bullet turned into
+ * list) — where Shift+Tab lifts it, as a bullet turned into
  * a heading stops being a bullet in Notion; a block's own kind (only its
  * data changes) never moves it. Each is one plan: one refusal or veto keeps
- * everything, one undo step (AW-03). Answers whether it applied.
+ * everything, one undo step. Answers whether it applied.
  */
 export const convertToKind = (
 	edytor: Edytor,

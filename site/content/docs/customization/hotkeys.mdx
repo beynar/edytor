@@ -121,7 +121,7 @@ A plugin key only claims the key in the situation listed. Otherwise the key fall
 
 ## Adding hotkeys
 
-A plugin declares bindings in `hotkeys`. The app can pass its own with the `hotKeys` prop of `<Edytor>`. Both take the same functions:
+A plugin declares bindings in `hotkeys`. The app can pass its own with the `hotkeys` prop of `<Edytor>` (`hotKeys`, its name before, is a deprecated alias for one release). Both take the same functions:
 
 ```ts title="savePlugin.ts" check
 import type { Plugin } from 'edytor';
@@ -139,11 +139,11 @@ export const savePlugin: Plugin = () => ({
 
 A binding receives `{ edytor, prevent, event? }`:
 
-- `prevent()` claims the key: later bindings do not run, and the browser's default action and propagation are stopped. `prevent(cb)` claims it and runs `cb`. Like every `prevent`, it throws, so code after it does not run.
+- `prevent()` claims the key: later bindings do not run, and the browser's default action and propagation are stopped. `prevent(cb)` claims it and runs `cb`. Like every `prevent`, it records the claim and returns: the rest of the binding still runs, and the first call decides.
 - A binding that does not call `prevent` leaves the key to the next binding, and finally to the browser.
 - `event` is the `KeyboardEvent`. It is absent when the key arrived only as an input event, as with some virtual keyboards on Android.
 
-The `hotKeys` prop is read once, when the editor mounts.
+The `hotkeys` prop is read once, when the editor mounts.
 
 ### Chord syntax
 
@@ -157,7 +157,7 @@ A chord is lowercase modifiers and one key, joined with `+`:
 - <kbd>AltGr</kbd> combinations and dead keys produce text and never run a binding.
 - A punctuation key is the character the key press types. A character typed with <kbd>Shift</kbd> needs `shift` in the chord: <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>/</kbd> is `mod+shift+?`, so `mod+?` and `shift+/` never match. On macOS, <kbd>Option</kbd> with a character key types a character (<kbd>Option</kbd> + <kbd>B</kbd> is `∫`), so `alt+b` never matches there; bind `mod+alt+b` instead. In development the editor logs a warning for these chords too.
 
-A plugin's `hotkeys` and the `hotKeys` prop are type-checked against this syntax (`HotKeyCombination`).
+A plugin's `hotkeys` and the `hotkeys` prop are type-checked against this syntax (`HotKeyCombination`).
 
 <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd>, <kbd>Backspace</kbd> and <kbd>Delete</kbd> reach bindings too, so a plugin can claim them, as the slash menu does with <kbd>Enter</kbd>. Each key press runs its bindings once.
 
@@ -165,7 +165,7 @@ A plugin's `hotkeys` and the `hotKeys` prop are type-checked against this syntax
 
 For each chord, the bindings run in this order until one calls `prevent`:
 
-1. the `hotKeys` prop of `<Edytor>`;
+1. the `hotkeys` prop of `<Edytor>`;
 2. each plugin's `hotkeys`, in the order of the `plugins` array;
 3. the built-in bindings.
 
@@ -173,7 +173,7 @@ A binding that is not a function, such as an optional callback left `undefined` 
 
 ## Overriding and disabling defaults
 
-To override a default, bind the same chord in the `hotKeys` prop or in a plugin, and call `prevent`:
+To override a default, bind the same chord in the `hotkeys` prop or in a plugin, and call `prevent`:
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -183,7 +183,7 @@ To override a default, bind the same chord in the `hotKeys` prop or in a plugin,
 </script>
 
 <Edytor
-	hotKeys={{
+	hotkeys={{
 		// Mod+Enter saves (the default only opens toggles and checks to-dos).
 		'mod+enter': ({ prevent }) => prevent(() => saved++),
 		// Tab never nests: claim it and do nothing.

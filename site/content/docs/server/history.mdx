@@ -45,11 +45,11 @@ export class Room extends DocumentRoom<Env> {
 }
 ```
 
-With `attachDocument`, pass the same object as the `history` option: `attachDocument(this, { history: { store: roomHistory() } })`.
+With `attachRoom`, pass the same object as the `history` option: `attachRoom(this, { history: { store: roomHistory() } })`.
 
 ### The room's own storage
 
-`roomHistory({ maxBytes, maxValueBytes })` keeps the versions in the Durable Object beside the document, in a `history` table (`edytor_history` with `attachDocument`). It needs no binding and no other service, and a version is written atomically: one transaction, split into rows of 1 MiB under the platform's 2 MB row limit. Its space is counted apart from the [document quota](/docs/server/room#quotas): the quota measures what clients send and refuses their edits past it, while the history is the room's own, so it has its own cap, `maxBytes` (256 MiB by default; a Durable Object holds up to 10 GB). A version that would pass `maxBytes` deletes the oldest versions first, so the newest ones are always kept; a version larger than `maxValueBytes` (32 MiB) is skipped. A [generation cutover](/docs/server/room#generation-cutover) (`reset()`) keeps the table.
+`roomHistory({ maxBytes, maxValueBytes })` keeps the versions in the Durable Object beside the document, in a `history` table (`edytor_history` with `attachRoom`). It needs no binding and no other service, and a version is written atomically: one transaction, split into rows of 1 MiB under the platform's 2 MB row limit. Its space is counted apart from the [document quota](/docs/server/room#quotas): the quota measures what clients send and refuses their edits past it, while the history is the room's own, so it has its own cap, `maxBytes` (256 MiB by default; a Durable Object holds up to 10 GB). A version that would pass `maxBytes` deletes the oldest versions first, so the newest ones are always kept; a version larger than `maxValueBytes` (32 MiB) is skipped. A [generation cutover](/docs/server/room#generation-cutover) (`reset()`) keeps the table.
 
 ### A store of your own
 
@@ -255,4 +255,4 @@ The history's slots, its [retention](#retention) and the purge's daily tick run 
 
 ## Storage
 
-The history and the purge keep their state in the room's own tables: `epochs` (the purge's daily state vectors), `editors` (the open slot's editors), `restore` (the last restore's step) and, with `roomHistory()`, `history` (the versions), each with the `edytor_` prefix under `attachDocument`. [Room internals](/docs/server/internals#storage-tables) lists every table the room keeps and what it holds.
+The history and the purge keep their state in the room's own tables: `epochs` (the purge's daily state vectors), `editors` (the open slot's editors), `restore` (the last restore's step) and, with `roomHistory()`, `history` (the versions), each with the `edytor_` prefix under `attachRoom`. [Room internals](/docs/server/internals#storage-tables) lists every table the room keeps and what it holds.

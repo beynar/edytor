@@ -96,7 +96,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../crdt/engine.js';
-import * as E from '../crdt/index.js';
+import * as E from '../crdt/protocol.js';
+import { defaultSemantics, facadeConfigOf } from '../crdt/semantics.js';
 import { READ_ONLY_DENIAL } from '../crdt/protocols/auth.js';
 import {
 	isGenerationRecord,
@@ -150,8 +151,8 @@ import {
 	type MovedState
 } from './move.js';
 import { toBlockSpec } from '../utils/json.js';
+import type { AwarenessEntry } from '../crdt/protocol.js';
 import type {
-	AwarenessEntry,
 	DocChange,
 	DocumentSemanticsConfig,
 	EdytorDoc,
@@ -171,7 +172,7 @@ export const DEFAULT_COMPACT_AFTER = 500;
 /** ms between the first unsaved change and `onSave`. */
 export const DEFAULT_SAVE_AFTER = 2000;
 /**
- * Room quotas (H3), each refused with `4413` (`quota: <name>`). The
+ * Room quotas, each refused with `4413` (`quota: <name>`). The
  * document's size: what its records hold (uncompressed) and the updates the
  * engine holds waiting — the live document holds about that, several
  * times over in memory for text (an isolate has 128 MB). Raise or lower
@@ -239,14 +240,14 @@ export type SavedDocument = {
 /** What `onLoad` may return: JSON, a bare v14 update, or `{ update, replicas }` (a `SavedDocument`). */
 export type LoadedDocument = JSONDoc | Uint8Array | Pick<SavedDocument, 'update' | 'replicas'>;
 
-/** The header `routeDocumentSocket` sets on an authorized probe: `lastUpdated` (H12) or `snapshot` (P8). */
+/** The header `routeDocumentSocket` sets on an authorized probe: `lastUpdated` or `snapshot`. */
 export const PROBE_HEADER = 'X-Edytor-Probe';
 
 /** The transaction origin of the room's own edits (`transact`, `onLoad` seeds). */
 export const ROOM_ORIGIN = Symbol('edytor-room');
-/** The transaction origin of a history restore (H11): the room's restore history tracks it. */
+/** The transaction origin of a history restore: the room's restore history tracks it. */
 export const RESTORE_ORIGIN = Symbol('edytor-restore');
-/** The transaction origin of the room's purge (H7): tracked by no history. */
+/** The transaction origin of the room's purge: tracked by no history. */
 export const PURGE_ORIGIN = Symbol('edytor-purge');
 /** The header `routeDocumentHistory` sets on an authorized history request (H11). */
 export const HISTORY_HEADER = 'X-Edytor-History';
@@ -304,12 +305,12 @@ export type DocumentRoomEnv = {
 	/** `off`: the room logs nothing (default: one JSON line per compaction, quota hit, denial, fault). */
 	EDYTOR_LOG?: string;
 	/**
-	 * Days after which deleted content is purged (H7; default: the history
+	 * Days after which deleted content is purged (default: the history
 	 * retention, else 30); `off` never purges.
 	 */
 	EDYTOR_PURGE_AFTER_DAYS?: string | number;
 	/**
-	 * Where the room keeps its version history (H11, `history()`): a KV
+	 * Where the room keeps its version history (`history()`): a KV
 	 * namespace or an R2 bucket binding, or the string `room` (the room's own
 	 * storage, {@link roomHistory}). Unset: no history.
 	 */
@@ -321,7 +322,7 @@ export type DocumentRoomEnv = {
 	/** Per-block locks (`locks()`): the data key naming a block's owner, e.g. `lockedBy`. Unset: none. */
 	EDYTOR_LOCKS?: string;
 	/**
-	 * The namespace of the rooms blocks move to (`rooms()`, H10): the room
+	 * The namespace of the rooms blocks move to (`rooms()`): the room
 	 * forwards late edits of moved blocks there itself. Unset: they wait
 	 * for the host's `forwardLateEdits`.
 	 */
@@ -377,7 +378,7 @@ export type Refusal = {
 export type Timing = { count: number; totalMs: number; maxMs: number; lastMs: number };
 
 /**
- * The room's counters (H14), since this instance started (memory: a wake
+ * The room's counters, since this instance started (memory: a wake
  * starts them again), read with `metrics()` (also over RPC). Times are
  * what the runtime's clock reports: Workers advance it only across I/O, so
  * in production synchronous work (a compaction, a fold) often reads `0`;
@@ -408,15 +409,15 @@ export type RoomMetrics = {
 	validationDenials: number;
 	/** Every refusal, by reason (as `refusalCounts`). */
 	refusals: Partial<Record<Refusal['reason'], number>>;
-	/** Versions written to the history (H11), skipped (`history` refusals), and the last key written. */
+	/** Versions written to the history, skipped (`history` refusals), and the last key written. */
 	history: { written: number; skipped: number; lastKey: string | null };
-	/** Purges run (H7) and what they wrote, summed; the last horizon purged (ms since the epoch). */
+	/** Purges run and what they wrote, summed; the last horizon purged (ms since the epoch). */
 	purge: PurgeReport & { runs: number; horizon: number | null };
 	/** When this instance started (ms since the epoch). */
 	since: number;
 };
 
-/** One line of the room's log (H14): a compaction, a quota hit, a denial, a fault. */
+/** One line of the room's log: a compaction, a quota hit, a denial, a fault. */
 export type RoomLogEntry =
 	| { edytor: 'compaction'; ms: number; bytes: number; records: number; rows: number }
 	| { edytor: 'history'; key: string; bytes: number; editors: number }
@@ -550,7 +551,7 @@ const knob = (value: unknown, fallback: number, max = fallback) => {
 };
 
 /** A semantics config as the facade's lookups — own keys only: block types come off the wire. */
-const lookups = (semantics: DocumentSemanticsConfig) => E.facadeConfigOf(semantics);
+const lookups = (semantics: DocumentSemanticsConfig) => facadeConfigOf(semantics);
 
 const encodeJSON = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
@@ -1209,8 +1210,8 @@ const reordered = (previous: readonly string[], next: readonly string[]): string
 	return common.filter((_, i) => !kept.has(i));
 };
 
-/** What {@link attachDocument} (and `DocumentRoom`) takes. */
-export type AttachDocumentOptions = {
+/** What {@link attachRoom} (and `DocumentRoom`) takes. */
+export type AttachRoomOptions = {
 	/**
 	 * Retrieve: the document for a room that stores nothing yet. Return
 	 * JSON, `{ update, replicas }` from `onSave` (a bare `update` restores
@@ -1244,7 +1245,7 @@ export type AttachDocumentOptions = {
 	/** Sync messages per second a socket may send (default {@link DEFAULT_MAX_UPDATES_PER_SECOND}). */
 	maxUpdatesPerSecond?: number;
 	/**
-	 * Accept, then compensate (H2): after the room applied and stored a
+	 * Accept, then compensate: after the room applied and stored a
 	 * client frame that changed blocks, it is asked whether to keep it.
 	 * `false` (or a throw) denies it: the room writes the frame's inverse as
 	 * its own transaction — the history undo of exactly that frame
@@ -1255,20 +1256,20 @@ export type AttachDocumentOptions = {
 	 */
 	validate?: (frame: FrameValidation) => boolean | void;
 	/**
-	 * Per-block locks (H10, `room.locks`): a block whose data names a user
+	 * Per-block locks (`room.locks`): a block whose data names a user
 	 * under `key` (default `lockedBy`) is that user's alone — a frame from
 	 * anyone else touching it is denied and compensated, as `validate`'s
 	 * denials are ({@link lockedBlocks}). Asked before `validate`.
 	 */
 	locks?: LockOptions;
 	/**
-	 * The rooms blocks move to (H10, `room.move`): with it, the room forwards
+	 * The rooms blocks move to (`room.move`): with it, the room forwards
 	 * the late edits of blocks it moved out to their destination itself, on
 	 * its alarm; without it, they wait for the host's `forwardLateEdits`.
 	 */
 	rooms?: () => MoveNamespace | undefined;
 	/**
-	 * The room's log (H14): one entry per compaction, quota hit, denial or
+	 * The room's log: one entry per compaction, quota hit, denial or
 	 * fault. Default: `console.log` of the entry as JSON (Workers Logs and
 	 * `wrangler tail` collect it); `false` logs nothing.
 	 */
@@ -1277,11 +1278,11 @@ export type AttachDocumentOptions = {
 	 * The block roles `transact` edits obey — the document semantics your
 	 * clients' plugins declare (`defaultType` also names the block an empty
 	 * room is seeded with). Default
-	 * {@link E.defaultSemantics} (the bundled rich-text, code and image kinds).
+	 * {@link defaultSemantics} (the bundled rich-text, code and image kinds).
 	 */
 	semantics?: DocumentSemanticsConfig;
 	/**
-	 * Version history in KV (H11, `room.history.*`): the room writes its
+	 * Version history in KV (`room.history.*`): the room writes its
 	 * state twice a day — the morning's at local noon, the evening's at
 	 * midnight, in `timeZone` — when it changed, for `retentionDays`; read
 	 * and restore them with `listHistory`, `readHistory`, `restoreHistory`
@@ -1290,7 +1291,7 @@ export type AttachDocumentOptions = {
 	history?: HistoryOptions;
 	/**
 	 * Days after which deleted content is purged from the room and every
-	 * replica (H7, `room.purge.*`): default the history's `retentionDays`,
+	 * replica (`room.purge.*`): default the history's `retentionDays`,
 	 * else 30; `false` never purges.
 	 */
 	purgeAfterDays?: number | false;
@@ -1318,7 +1319,7 @@ const PONG = 'pong';
 /**
  * One edytor document living in a Durable Object's storage: the room
  * logic, independent of the class that hosts it. Create it with
- * {@link attachDocument} (any Durable Object) or extend `DocumentRoom`.
+ * {@link attachRoom} (any Durable Object) or extend `DocumentRoom`.
  * The socket handlers ignore sockets without {@link SOCKET_TAG} and
  * return `false` for them.
  */
@@ -1349,7 +1350,7 @@ export class AttachedDocument {
 	private updates = 0;
 	/** What the records hold, uncompressed (the generation record aside): the document quota's measure. */
 	private documentBytes = 0;
-	/** The counters `metrics()` reads (H14). */
+	/** The counters `metrics()` reads. */
 	private readonly counters = {
 		compaction: { ...timing(), lastBytes: 0 },
 		fold: timing(),
@@ -1411,7 +1412,7 @@ export class AttachedDocument {
 	private restoreManager: YUndoManager | null = null;
 	/** The version writes in flight (`historyWritten()`). */
 	private writing: Promise<unknown> = Promise.resolve();
-	private readonly options: AttachDocumentOptions;
+	private readonly options: AttachRoomOptions;
 	private readonly rowsTable: string;
 	private readonly replicasTable: string;
 	private readonly metaTable: string;
@@ -1430,7 +1431,7 @@ export class AttachedDocument {
 		| null
 		| undefined;
 
-	constructor(ctx: DurableObjectState, options: AttachDocumentOptions = {}) {
+	constructor(ctx: DurableObjectState, options: AttachRoomOptions = {}) {
 		this.ctx = ctx;
 		this.options = options;
 		this.sql = ctx.storage.sql;
@@ -1493,7 +1494,7 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * Inflate a compressed snapshot record (P5) for `records`, which reads
+	 * Inflate a compressed snapshot record for `records`, which reads
 	 * synchronously (a rebuild does): decompression is asynchronous, so
 	 * only `start` can. One that does not inflate is a corrupt container.
 	 */
@@ -1541,7 +1542,7 @@ export class AttachedDocument {
 
 	/** The room's block roles, read at first use (a subclass's fields exist by then). */
 	private get lookups(): ReturnType<typeof lookups> {
-		return (this._lookups ??= lookups(this.options.semantics ?? E.defaultSemantics));
+		return (this._lookups ??= lookups(this.options.semantics ?? defaultSemantics));
 	}
 
 	/** A facade over `doc` obeying the room's block roles (`semantics`). */
@@ -1553,7 +1554,7 @@ export class AttachedDocument {
 	 * The live document; `null` when the stored container was refused.
 	 * Like {@link facade}, reading it first drops a direct write whose
 	 * append failed (`heal`, only while the room is idle), so the next
-	 * write through it is stored (HX-12).
+	 * write through it is stored.
 	 */
 	get doc(): YDoc | null {
 		noTimers(() => this.heal());
@@ -1563,7 +1564,7 @@ export class AttachedDocument {
 	/**
 	 * The facade over the live document. Read while the room is idle, it
 	 * first drops a direct write whose append failed (`heal`), so the next
-	 * write through it is stored (GX-09).
+	 * write through it is stored.
 	 */
 	get facade(): EdytorDoc {
 		noTimers(() => this.heal());
@@ -1593,7 +1594,7 @@ export class AttachedDocument {
 	 * (of a client's frame or of the room's own `transact`), a
 	 * `doc.on('afterAllTransactions')` listener during a frame — it throws
 	 * without writing: the engine would queue the write until that one
-	 * ends, so it could not be stored before returning (DR-rest-1, HX-04).
+	 * ends, so it could not be stored before returning.
 	 */
 	transact<T>(fn: (facade: EdytorDoc) => T): T {
 		if (this.running) return fn(this.facade);
@@ -2035,7 +2036,7 @@ export class AttachedDocument {
 	/**
 	 * Reassembled logical records in write order (of one kind, with
 	 * `only`); a torn record throws. A v2 container's snapshot is v2
-	 * (`v2`), inflated when it is stored compressed (P5).
+	 * (`v2`), inflated when it is stored compressed.
 	 */
 	records(only?: RowKind): StoredRecord[] {
 		const rows = this.sql
@@ -2109,7 +2110,7 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * Compress snapshot `record` in place once it is stored (P5): gzip is
+	 * Compress snapshot `record` in place once it is stored: gzip is
 	 * asynchronous, and the store-before-ack path is not. Its rows are
 	 * rewritten (at their positions) only while it is still the stored
 	 * snapshot and only when that shrinks it; the raw bytes stay in memory
@@ -2149,8 +2150,7 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * Resolves once the snapshot compression in flight, if any, is stored
-	 * (P5): a compaction stores its snapshot raw, then compresses it in
+	 * Resolves once the snapshot compression in flight, if any, is stored: a compaction stores its snapshot raw, then compresses it in
 	 * place. Wait for it before reading the rows' sizes.
 	 */
 	async compressed(): Promise<void> {
@@ -2159,8 +2159,8 @@ export class AttachedDocument {
 
 	/**
 	 * Compaction: the rows become the generation record + one chunked
-	 * snapshot of the live document's state (P2: the healed state, deleted
-	 * content collected but the text a replica may copy again, P11 —
+	 * snapshot of the live document's state (the healed state, deleted
+	 * content collected but the text a replica may copy again —
 	 * never a merge of the records, which keeps every keystroke's struct
 	 * and every deleted character), atomically, + one
 	 * `pending` record of the stored deletes still waiting. A waiting delete
@@ -2256,7 +2256,7 @@ export class AttachedDocument {
 
 	/**
 	 * When the room last stored a change (ms since the epoch), or `null`
-	 * for a room that stored none since 0.1.0-next.23 (H12). Cheap: one
+	 * for a room that stored none since 0.1.0-next.23. Cheap: one
 	 * row, no document. `routeDocumentSocket` answers it over HTTP
 	 * (`GET <room>?lastUpdated`), also over RPC.
 	 */
@@ -2487,7 +2487,7 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * The room's versions, newest first (H11): one per half-day slot that
+	 * The room's versions, newest first: one per half-day slot that
 	 * changed, for the retention (`room.history.slots`). Throws when the
 	 * room keeps no history.
 	 */
@@ -3344,7 +3344,7 @@ export class AttachedDocument {
 		return { ...report, horizon: horizon.at };
 	}
 
-	/** The room's counters (H14), also over RPC — see {@link RoomMetrics}. */
+	/** The room's counters, also over RPC — see {@link RoomMetrics}. */
 	metrics(): RoomMetrics {
 		return noTimers(() => {
 			const stored = this.live === null ? null : this.storage();
@@ -3382,7 +3382,7 @@ export class AttachedDocument {
 			.one() as { bytes: number; records: number; rows: number };
 	}
 
-	/** Write one log entry (H14) — the `log` option's, `console.log` by default. */
+	/** Write one log entry — the `log` option's, `console.log` by default. */
 	private log(entry: RoomLogEntry) {
 		const log = this.options.log;
 		if (log === false) return;
@@ -3492,8 +3492,7 @@ export class AttachedDocument {
 	 * is idle (not `busy`): from inside a transaction, a frame's apply or
 	 * their events (a `facade.onChange` subscriber, a
 	 * `doc.on('afterAllTransactions')` listener), the failure stays for
-	 * the handler — a frame's faults its sender, `transact` throws it
-	 * (SW16-room-1, HX-03).
+	 * the handler — a frame's faults its sender, `transact` throws it.
 	 */
 	private heal() {
 		if (this.unstored === null || this.live === null || this.busy) return;
@@ -3501,7 +3500,7 @@ export class AttachedDocument {
 		this.rebuild(true);
 	}
 
-	/** Run a frame's apply: nothing its listeners do heals it (HX-03). */
+	/** Run a frame's apply: nothing its listeners do heals it. */
 	private handle<T>(fn: () => T): T {
 		this.handling = true;
 		try {
@@ -3723,7 +3722,7 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * One history request (H11): `list`, `read` (a version as JSON), and,
+	 * One history request: `list`, `read` (a version as JSON), and,
 	 * for a write identity, `restore` and `undo`. `404` when the room keeps
 	 * no history or holds no such version, `403` for a read-only identity's
 	 * write, `503` when the room cannot serve it.
@@ -3816,7 +3815,7 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * One chunk of a frame too large to send whole (H6: a provider's
+	 * One chunk of a frame too large to send whole (a provider's
 	 * reconnect diff): buffered per socket, the whole frame handled once its
 	 * sequence ends. A sequence announcing more than `maxInboundFrameBytes`
 	 * is a frame quota refusal, before anything is buffered. A part with no
@@ -3851,7 +3850,7 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * A quota refused the socket's frame (H3): it is not applied, and the
+	 * A quota refused the socket's frame: it is not applied, and the
 	 * socket is closed `4413` (`quota: <name>`), a refusal its provider
 	 * reports (`onSyncRefused`) and does not redial. Never a dropped frame
 	 * on a live socket: the sender's later frames would build on it and
@@ -3872,7 +3871,7 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * The update rate quota (H3): a token bucket per socket, refilled at
+	 * The update rate quota: a token bucket per socket, refilled at
 	 * `maxUpdatesPerSecond` up to ten seconds' worth. `false`: over it.
 	 */
 	private allow(ws: WebSocket): boolean {
@@ -3892,7 +3891,7 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * The document quota (H3): would `incoming` bytes take the document
+	 * The document quota: would `incoming` bytes take the document
 	 * past `maxDocumentBytes`? Its measure is what its records hold and what
 	 * the engine holds waiting; update records count until compaction
 	 * collapses them, so it compacts first when they would.
@@ -4196,7 +4195,7 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * Ask `validate` about the frame just applied (H2); a denial is
+	 * Ask `validate` about the frame just applied; a denial is
 	 * compensated by the room's own transaction: the history undo of that
 	 * frame (`room.validate.inverse`), or, for the frame that initialized
 	 * the document (no history recorded it), a delete of the blocks it
@@ -4401,8 +4400,8 @@ export class AttachedDocument {
 type Handler = 'fetch' | 'webSocketMessage' | 'webSocketClose' | 'webSocketError' | 'alarm';
 
 /**
- * Attach an edytor document to any Durable Object (`attachDocument(this,
- * opts)`, in the constructor or a field). Its tables (`edytor_rows`,
+ * Attach an edytor room to any Durable Object (`attachRoom(this, opts)`,
+ * in the constructor or a field). Its tables (`edytor_rows`,
  * `edytor_replicas`) live beside yours and its sockets carry
  * {@link SOCKET_TAG}. Each handler your class does not define —
  * `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and
@@ -4411,14 +4410,14 @@ type Handler = 'fetch' | 'webSocketMessage' | 'webSocketClose' | 'webSocketError
  * defines one delegates to the returned document's method (which returns
  * `false` for a socket that is not the document's).
  */
-export const attachDocument = (
+export const attachRoom = (
 	host: DurableObject<any>,
-	options: AttachDocumentOptions = {}
+	options: AttachRoomOptions = {}
 ): AttachedDocument => {
 	const ctx = (host as unknown as { ctx?: DurableObjectState } | null)?.ctx;
 	if (!ctx?.storage) {
 		throw new TypeError(
-			'attachDocument(this): `this` must be a Durable Object (a class extending DurableObject, after super())'
+			'attachRoom(this): `this` must be a Durable Object (a class extending DurableObject, after super())'
 		);
 	}
 	const document = new AttachedDocument(ctx, options);
@@ -4432,6 +4431,16 @@ export const attachDocument = (
 	}
 	return document;
 };
+
+/**
+ * @deprecated Use {@link attachRoom} (the client's `attachDocument` attaches
+ * a document to an engine doc, a different thing). Removed in the next
+ * release.
+ */
+export const attachDocument = attachRoom;
+
+/** @deprecated Use {@link AttachRoomOptions}. Removed in the next release. */
+export type AttachDocumentOptions = AttachRoomOptions;
 
 /**
  * The ready-made room: a Durable Object hosting one document, configured
@@ -4482,23 +4491,23 @@ export class DocumentRoom<
 		});
 	}
 
-	/** Retrieve — see {@link AttachDocumentOptions.onLoad}. */
+	/** Retrieve — see {@link AttachRoomOptions.onLoad}. */
 	protected async onLoad(): Promise<LoadedDocument | null | undefined> {
 		return undefined;
 	}
 
-	/** Save — see {@link AttachDocumentOptions.onSave}. Not overridden: no alarm is ever set. */
+	/** Save — see {@link AttachRoomOptions.onSave}. Not overridden: no alarm is ever set. */
 	protected async onSave(_document: SavedDocument): Promise<void> {}
 
 	/**
-	 * Validate a client frame — see {@link AttachDocumentOptions.validate}:
+	 * Validate a client frame — see {@link AttachRoomOptions.validate}:
 	 * `false` denies it, and the room writes its inverse. Not overridden: no
 	 * frame is validated, and no block index is kept.
 	 */
 	protected validate(_frame: FrameValidation): boolean | void {}
 
 	/**
-	 * One log entry (H14): `console.log` of it as JSON, unless the
+	 * One log entry: `console.log` of it as JSON, unless the
 	 * `EDYTOR_LOG` var is `off`. Override it to send entries elsewhere.
 	 */
 	protected log(entry: RoomLogEntry): void {
@@ -4507,15 +4516,15 @@ export class DocumentRoom<
 	}
 
 	/**
-	 * Block roles — see {@link AttachDocumentOptions.semantics}. Read once,
+	 * Block roles — see {@link AttachRoomOptions.semantics}. Read once,
 	 * at first use (after construction: it may return a subclass field).
 	 */
 	protected semantics(): DocumentSemanticsConfig {
-		return E.defaultSemantics;
+		return defaultSemantics;
 	}
 
 	/**
-	 * Version history — see {@link AttachDocumentOptions.history}. Default:
+	 * Version history — see {@link AttachRoomOptions.history}. Default:
 	 * `EDYTOR_HISTORY` — a KV namespace binding ({@link kvHistory}), an R2
 	 * bucket binding ({@link r2History}) or the string `room` (the room's
 	 * own storage, {@link roomHistory}) — with `EDYTOR_HISTORY_RETENTION_DAYS`
@@ -4542,7 +4551,7 @@ export class DocumentRoom<
 	}
 
 	/**
-	 * Per-block locks — see {@link AttachDocumentOptions.locks}. Default: the
+	 * Per-block locks — see {@link AttachRoomOptions.locks}. Default: the
 	 * `EDYTOR_LOCKS` var names the data key (`{ key }`); none without it.
 	 * Read once, at the first frame.
 	 */
@@ -4552,14 +4561,14 @@ export class DocumentRoom<
 	}
 
 	/**
-	 * The rooms blocks move to — see {@link AttachDocumentOptions.rooms}.
+	 * The rooms blocks move to — see {@link AttachRoomOptions.rooms}.
 	 * Default: the `EDYTOR_ROOMS` binding; none without it.
 	 */
 	protected rooms(): MoveNamespace | undefined {
 		return (this.env as DocumentRoomEnv).EDYTOR_ROOMS;
 	}
 
-	/** The room's clock — see {@link AttachDocumentOptions.now}. */
+	/** The room's clock — see {@link AttachRoomOptions.now}. */
 	protected now(): number {
 		return Date.now();
 	}

@@ -80,7 +80,7 @@ describe('the room adopts defaultSemantics', () => {
 		expect(statuses).toEqual(REFUSED);
 	});
 
-	it('attachDocument in any Durable Object does too', async () => {
+	it('attachRoom in any Durable Object does too', async () => {
 		const statuses = await runInDurableObject(
 			env.PLAIN.getByName('plain-semantics'),
 			(o: PlainObject) => attempt(o.document)

@@ -1,6 +1,6 @@
 /**
  * The host Worker's door to a document's Durable Object (a `DocumentRoom`,
- * or any object with `attachDocument`): authorize BEFORE the
+ * or any object with `attachRoom`): authorize BEFORE the
  * upgrade, then forward a fresh request that carries only the verified
  * identity — every header the client sent (cookies, tokens, forged
  * `X-Edytor-*` values) is dropped. The room trusts these headers, so it
@@ -31,7 +31,7 @@ import {
 	parseReplica
 } from './DocumentRoom.js';
 
-/** A namespace whose objects host a document (`DocumentRoom`, or any object with `attachDocument`). */
+/** A namespace whose objects host a document (`DocumentRoom`, or any object with `attachRoom`). */
 export type DocumentNamespace = {
 	getByName(name: string): { fetch(request: Request): Promise<Response> };
 };
@@ -128,7 +128,7 @@ const identityHeaders = (identity: DocumentIdentity): Headers => {
 };
 
 /**
- * The host Worker's door to a document's version history (H11),
+ * The host Worker's door to a document's version history,
  * authorized as {@link routeDocumentSocket} authorizes a dial, forwarding
  * only the verified identity:
  *

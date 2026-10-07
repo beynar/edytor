@@ -43,8 +43,8 @@ Most props are read once, when the component is created. Changing them later has
 | `placeholder` | `string \| (view) => string \| null` | | | Text shown in an empty block. A function receives `{ type, data, focused, empty }` and returns the text or `null`. Falls back to the first plugin that declares a `placeholder`. |
 | `blockHandles` | `boolean \| BlockHandlesOptions` | `true` | | Show a handle beside each block. `draggable: false` keeps the handle and its keyboard moves without pointer dragging. `onActivate({ block, anchor })` runs when the handle is clicked. `handle` is a snippet that replaces the handle's markup. See [Block handles](/docs/plugins/block-handles). |
 | `blockDnd` | `boolean` | `true` | | **Deprecated.** `false` hides the handles. `blockHandles` wins when both are set. |
-| `hotKeys` | `Partial<Record<HotKeyCombination, HotKey>>` | | | Key bindings (`'mod+s'`, `'alt+shift+arrowup'`, …) checked before the plugins' and the built-in ones. See [Hotkeys](/docs/customization/hotkeys#chord-syntax). |
-| `onChange` | `(value: JSONBlock) => void` | | | Called after every committed change, local or remote, with the document as a root block `{ type: 'root', data?, children }`. Store `{ data, children }` (a `JSONDoc`): `data` holds the document's [properties](/docs/concepts/properties). |
+| `hotkeys` | `Partial<Record<HotKeyCombination, HotKey>>` | | | Key bindings (`'mod+s'`, `'alt+shift+arrowup'`, …) checked before the plugins' and the built-in ones. See [Hotkeys](/docs/customization/hotkeys#chord-syntax). `hotKeys` is its deprecated alias. |
+| `onChange` | `(value: JSONDoc) => void` | | | Called after every committed change, local or remote, with the document as a `JSONDoc`, the type `value` takes: `{ data?, children }` (the object also carries `type: 'root'`). `data` holds the document's [properties](/docs/concepts/properties). A stored value opens as `value` as it is. |
 | `onSelectionChange` | `(selection: EdytorSelection) => void` | | | Called when the selection value changes. See [Selection](/docs/editor/selection). |
 | `edytor` | `Edytor` | | Bindable | The editor instance. Use `bind:edytor`. See [The editor instance](/docs/concepts/editor-instance). |
 | `class` | `string` | | Yes | Class on the editable root element. |
@@ -120,4 +120,4 @@ The core renders the block element itself (the kind's `element`, a `div` by defa
 
 For a type that is not a valid identifier, such as `todo-item`, spread the snippet under its name: `<Edytor {...{ 'todo-itemBlock': todo }} />`.
 
-Content placed inside `<Edytor>` other than these snippets is ignored. To define a new kind rather than restyle one, write a plugin: see [Custom blocks](/docs/customization/blocks). To replace the slash menu, toolbar, block menu or block handle markup, pass snippets to their plugins: see [Menus and handles](/docs/customization/menus).
+Content placed inside `<Edytor>` other than these snippets is ignored. A snippet that names no registered kind, mark or inline kind (`paragrphBlock`) overrides nothing and registers nothing; in development it logs a warning naming it. To define a new kind rather than restyle one, write a plugin: see [Custom blocks](/docs/customization/blocks). To replace the slash menu, toolbar, block menu or block handle markup, pass snippets to their plugins: see [Menus and handles](/docs/customization/menus).

@@ -117,9 +117,15 @@ export type Snippets = {
 			: Snippet<[MarkSnippetPayload]>;
 };
 
+/** What a snippet override's suffix names (the DEV warning for one that names nothing). */
+const OVERRIDDEN = { Mark: 'mark', InlineBlock: 'inline kind', Block: 'kind' } as const;
+
 export type EdytorOptions = {
 	readonly?: boolean;
 	snippets?: Snippets;
+	/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. */
+	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
+	/** @deprecated Use `hotkeys` (the name a plugin's bindings use). Removed in the next release. */
 	hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
 	plugins?: Plugin[];
 	/**
@@ -140,7 +146,8 @@ export type EdytorOptions = {
 	presence?: PresenceOptions;
 	sync?: boolean;
 	value?: JSONDoc;
-	onChange?: (value: JSONBlock) => void;
+	/** After every commit that changed the visible document: the value, in the shape `value` takes. */
+	onChange?: (value: JSONDoc) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: Placeholder;
 };
@@ -201,13 +208,18 @@ export class Edytor {
 	commands = new Map<string, EditorCommand>();
 	/** The kind catalogue: one row per preset of each kind record (slash, markdown, block menus). */
 	kinds: KindRow[] = [];
+	/** @internal */
 	plugins: InitializedPlugin[];
-	/** The view's handles (R4): one id-only `Block` per live id, texts and atoms by position and id. */
+	/** The view's handles: one id-only `Block` per live id, texts and atoms by position and id. */
 	idToBlock: Handles = new Handles(this);
+	/** @internal */
 	nodeToInlineBlock = new Map<Node, InlineBlock>();
+	/** @internal */
 	nodeToText = new Map<Node, Text>();
+	/** @internal */
 	transaction = new TRANSACTION();
-	hotKeys: Keymap;
+	/** @internal The view's keymap: consumer bindings, then the extensions', then the built-in rows. */
+	keymap: Keymap;
 	readonly = $state(false);
 	root = $state<Block>();
 	/** The view is bound to its decided document (its root is built). */
@@ -217,15 +229,15 @@ export class Edytor {
 	/** `batch` binds operations onto blocks and the view alike: both answer `.edytor`. */
 	readonly edytor = this;
 	selection: EdytorSelection;
-	/** The only writer of the DOM selection (R10, `surface/projector`). */
+	/** @internal The only writer of the DOM selection (R10, `surface/projector`). */
 	readonly projector: Projector = new Projector(this);
-	/** The compare-to-truth observer (R12): registry, the render epoch, the passes, the only adopter (R8, L31). */
+	/** @internal The compare-to-truth observer (R12): registry, the render epoch, the passes, the only adopter (R8, L31). */
 	readonly surface: SurfaceObserver = new SurfaceObserver(this);
-	/** What the components render (R1, R2): one cell per visible block, patched from change reports. */
+	/** What the components render: one cell per visible block, patched from change reports. */
 	cells = $state.raw<Cells>();
 	/** Bumped by each commit that changed the document's data: what `docData()` readers track. */
 	private dataRevision = $state(0);
-	/** The document's data, read-your-writes and reactive (`{}` when none). */
+	/** @internal The document's data, read-your-writes and reactive (`{}` when none). */
 	docData = (): Record<string, unknown> => {
 		void this.dataRevision;
 		return this.facade.docData();
@@ -239,14 +251,14 @@ export class Edytor {
 	get data(): EdytorDocData {
 		return this.idToBlock.root.data as EdytorDocData;
 	}
-	/** The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
+	/** @internal The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
 	readonly pin = new Pin();
-	/** The chrome layer outside the host (R11): handles, menus, remote carets. */
+	/** The chrome layer outside the host: handles, menus, remote carets. */
 	readonly overlay = new Overlay();
 	private off: (() => void)[] = [];
-	private onChange?: (value: JSONBlock) => void;
+	private onChange?: (value: JSONDoc) => void;
 	placeholder?: Placeholder;
-	/** The view's composition session (R8, L7, O34): at most one, live then tail. */
+	/** @internal The view's composition session (R8, L7, O34): at most one, live then tail. */
 	readonly composition: Composition = new Composition(this);
 	/** A composition session is live. */
 	get isComposing() {
@@ -258,6 +270,7 @@ export class Edytor {
 	 * gate typing affordances — scrolling the caret into view must follow
 	 * the user's input, not programmatic writes (`clear()`, remote sync,
 	 * API-driven selection changes must never move the page).
+	 * @internal
 	 */
 	isHandlingUserInput = false;
 	/**
@@ -265,11 +278,12 @@ export class Edytor {
 	 * writes — remote mirror flushes and mutation-observer repairs can
 	 * land inside an `isHandlingUserInput` window; their selection writes
 	 * are maintenance, not typing, and must not move the page.
+	 * @internal
 	 */
 	suppressCaretScrollDepth = 0;
 	/** The view's suggestions (`session/suggestions`): proposed content, shown here until accepted. */
 	readonly suggestions: Suggestions = new Suggestions(this);
-	/** The view's input attempts (R8, L6): one per user occurrence. */
+	/** @internal The view's input attempts (R8, L6): one per user occurrence. */
 	readonly attempts = new Attempts(() => this.surface.signal());
 
 	// CRDT (v14) — the document is the composition owner: it holds the ONE
@@ -278,13 +292,19 @@ export class Edytor {
 	// documents are borrowed; a view with no `document` option internally
 	// owns one (built around `doc`/`awareness` when those are injected).
 	document: EdytorDocument;
-	/** `true` when this view created its document — `destroy()` then releases it. */
+	/** @internal `true` when this view created its document — `destroy()` then releases it. */
 	ownsDocument = false;
 	get doc(): YDoc {
 		return this.document.doc;
 	}
 	/** The document as this view reads it: its virtual paragraph while it shows no block (`doc.empty.virtual`). */
 	private lens?: ViewDoc;
+	/**
+	 * The document as this view reads and writes it (the virtual paragraph's
+	 * lens). The public raw path is `edytor.document.facade`: its writes skip
+	 * the dispatcher (no hooks, no readonly admission, no undo policy).
+	 * @internal
+	 */
 	get facade(): ViewDoc {
 		return (this.lens ??= virtualLens(
 			this.document.facade,
@@ -313,6 +333,7 @@ export class Edytor {
 	 * one binding per runtime, not one per view. Do NOT `crdt.doc.create`
 	 * on this view's `doc` — the document's facade is the only maintained
 	 * surface for it (see `sharedCrdt`'s contract note).
+	 * @internal
 	 */
 	get crdt(): Crdt {
 		return sharedCrdt;
@@ -324,22 +345,22 @@ export class Edytor {
 	 * invariant: `document.sync()` seeds/asserts first, then attaches the
 	 * manager). Only absent before first sync, which is also before the
 	 * editor mounts, so all runtime readers see it set.
+	 * @internal
 	 */
 	undoManager!: YUndoManager;
-	/** The view's command dispatcher (R7): every mutation this view makes goes through it. */
+	/** The view's command dispatcher: every mutation this view makes goes through it. */
 	readonly dispatcher: Dispatcher = new Dispatcher(this);
 
 	/** An outermost `transact` of this view is running. */
 	private transacting = false;
 	/**
 	 * One transaction of this view. The outermost call runs the normalization
-	 * its operations requested at its end, inside the same transaction (S1:
-	 * one transaction, normalization once per touched parent): normalizers read
+	 * its operations requested at its end, inside the same transaction (one transaction, normalization once per touched parent): normalizers read
 	 * handles over the index, so a command is one update and a peer never
 	 * sees its un-normalized state. A throw from `cb` keeps the writes before
-	 * it (a transaction is no rollback), so they are normalized too (GX-07).
+	 * it (a transaction is no rollback), so they are normalized too.
 	 * `cb`'s error stays the one thrown: a normalizer that then throws is
-	 * logged (DR-rest-2).
+	 * logged.
 	 */
 	transact = <T>(cb: () => T): T => {
 		if (this.transacting) return this.doc.transact(cb, this.transaction);
@@ -368,10 +389,10 @@ export class Edytor {
 	/** Whether a block move (relative step or beside/inside a target) is structurally allowed. */
 	canMoveBlocks = (request: BlockMoveRequest): boolean => canMoveBlocksRelative(this, request);
 
-	/** Move blocks one relative step (D-5), or before, after or inside a live target block. */
+	/** Move blocks one relative step, or before, after or inside a live target block. */
 	moveBlocks = (request: BlockMoveRequest): Block[] => moveBlocksRelative(this, request);
 
-	/** This view's history (R7's named exception): bare engine undo/redo, one restorer. */
+	/** @internal This view's history (R7's named exception): bare engine undo/redo, one restorer. */
 	readonly history = new History(this);
 
 	/**
@@ -385,17 +406,13 @@ export class Edytor {
 	historyUndo = (): void => this.#replay('undo');
 	historyRedo = (): void => this.#replay('redo');
 	#replay = (command: 'undo' | 'redo') => {
-		const status = !this.dispatcher.permits()
-			? 'refused'
-			: this.history[command]()
-				? 'applied'
-				: 'noop';
-		this.dispatcher.last = { operation: command, status };
+		this.dispatcher.last = { operation: command, status: this.history.replay(command) };
 	};
 
 	constructor({
 		snippets,
 		readonly,
+		hotkeys,
 		hotKeys,
 		plugins,
 		document,
@@ -464,7 +481,9 @@ export class Edytor {
 			// The app's snippets override the plugins' after they register: keys are
 			// `{type}{suffix}` over maps keyed by the bare type, suffixes tried in
 			// this order (`mentionInlineBlock` also ends in `Block`). Only the
-			// snippet is replaced: the definition's roles, `transformText` and hooks survive.
+			// snippet is replaced: the definition's roles, `transformText` and hooks
+			// survive. An override names a registered kind, mark or atom kind: one
+			// that names none (a typo) registers nothing and warns in development.
 			const overrides = [
 				['Mark', this.marks],
 				['InlineBlock', this.inlineBlocks],
@@ -472,10 +491,18 @@ export class Edytor {
 			] as const;
 			for (const [key, snippet] of Object.entries(snippets || {})) {
 				const override = overrides.find(([suffix]) => key.endsWith(suffix));
-				if (!override) continue;
-				const [suffix, into] = override;
-				const name = key.slice(0, -suffix.length);
-				(into as Map<string, object>).set(name, { ...into.get(name), snippet });
+				const name = override && key.slice(0, -override[0].length);
+				if (override && name && override[1].has(name)) {
+					const into = override[1] as Map<string, object>;
+					into.set(name, { ...into.get(name), snippet });
+				} else if (DEV && key !== 'children' && typeof snippet === 'function') {
+					const reason = override
+						? `no ${OVERRIDDEN[override[0]]} "${name}" is registered`
+						: 'its name ends in neither Block, Mark nor InlineBlock';
+					console.warn(
+						`[edytor] the snippet "${key}" overrides nothing: ${reason}. A new kind is a plugin's.`
+					);
+				}
 			}
 
 			// Kind records generate their commands; an extension's own command id wins.
@@ -532,7 +559,7 @@ export class Edytor {
 			}
 
 			this.selection = new EdytorSelection(this, onSelectionChange);
-			this.hotKeys = new Keymap(this, hotKeys, this.plugins);
+			this.keymap = new Keymap(this, hotkeys ?? hotKeys, this.plugins);
 		} catch (error) {
 			// Constructor failure — release what the partial view claimed:
 			// the history origin (untracked live — already-captured commits
@@ -574,7 +601,7 @@ export class Edytor {
 		version: number;
 		revision: number;
 		root: Block | undefined;
-		json: JSONBlock;
+		json: JSONDoc;
 	} | null = null;
 
 	/**
@@ -582,6 +609,7 @@ export class Edytor {
 	 * for {@link value}. Bumped inside the facade `onChange` dispatch
 	 * (before consumers are invoked) so every commit re-triggers tracked
 	 * reads of the export.
+	 * @internal
 	 */
 	valueRevision = $state(0);
 
@@ -599,7 +627,7 @@ export class Edytor {
 	 * Callers receive the SAME object until the next version bump — code
 	 * that needs an owned copy must clone it.
 	 */
-	get value(): JSONBlock {
+	get value(): JSONDoc {
 		const revision = this.valueRevision;
 		const version = this.facade.version;
 		const root = this.root;
@@ -610,7 +638,7 @@ export class Edytor {
 		// `facade.toJSON()` is the canonical document export — the one
 		// serializer (S6, L14); the root carries the document's data.
 		const { data, children } = root ? this.facade.toJSON() : { children: [] };
-		const json: JSONBlock = { type: 'root', ...(data && { data }), children };
+		const json: JSONDoc = { type: 'root', ...(data && { data }), children };
 		this._valueCache = { version, revision, root, json };
 		return json;
 	}
@@ -622,13 +650,14 @@ export class Edytor {
 		return true;
 	};
 
-	/** The adopted default type for a new child of `parent` — its actual parent (R5, O9). */
+	/** The adopted default type for a new child of `parent` — its actual parent. */
 	defaultChild = (parent: Block): string =>
 		this.document.defaultChild(parent.isRoot ? null : parent.type);
 
 	/** Releases the readiness wait of a view bound before its document decided. */
 	private _readinessRelease: (() => void) | undefined;
 
+	/** @internal */
 	sync = ({ children = [], data }: JSONDoc = { children: [] }) => {
 		if (this.synced) return;
 		// The document owns the content decision: `assertSchema` on an
@@ -685,8 +714,9 @@ export class Edytor {
 	};
 
 	/**
-	 * The placeholder block `id` shows (§2.4, D-8): its cell has one empty
+	 * The placeholder block `id` shows: its cell has one empty
 	 * text and no live composition in it; a function answers per block.
+	 * @internal
 	 */
 	placeholderAt = (id: string): string | null => {
 		const cell = this.cells?.get(id);
@@ -699,10 +729,15 @@ export class Edytor {
 		return placeholder({ type, data, focused, empty: true }) || null;
 	};
 
+	/** @internal */
 	onBeforeInput = onBeforeInput.bind(this);
+	/** @internal */
 	onCopy = onCopy.bind(this);
+	/** @internal */
 	onCut = onCut.bind(this);
+	/** @internal */
 	onInput = onInput.bind(this);
+	/** @internal */
 	onPaste = onPaste.bind(this);
 	/**
 	 * Mark the synchronous extent of a real user-input event — see
@@ -762,6 +797,7 @@ export class Edytor {
 	 * pending deferred selection restores. Public so event modules
 	 * (onKeyDown) can mark real keys AFTER swallow checks — a swallowed
 	 * phantom composition key is not a gesture.
+	 * @internal
 	 */
 	markUserGesture = () => {
 		this.intentSerial++;
@@ -775,13 +811,14 @@ export class Edytor {
 	 * fires (element already focused).
 	 */
 	private expectInternalFocusArmed = false;
+	/** @internal */
 	expectInternalFocus = () => {
 		this.expectInternalFocusArmed = true;
 		queueMicrotask(() => {
 			this.expectInternalFocusArmed = false;
 		});
 	};
-	/** A `focusin` consumes the armed flag: `true` when the editor focused itself. */
+	/** @internal A `focusin` consumes the armed flag: `true` when the editor focused itself. */
 	consumeInternalFocus = (): boolean => {
 		const armed = this.expectInternalFocusArmed;
 		this.expectInternalFocusArmed = false;
@@ -792,6 +829,7 @@ export class Edytor {
 	 * `beforeinput`, cut, paste and drop bump it; an `input` does not (it
 	 * records what the browser did, not where the user wants the selection).
 	 * Attempts are per occurrence (`attempts`), not counted here.
+	 * @internal
 	 */
 	intentSerial = 0;
 	/**
@@ -802,15 +840,17 @@ export class Edytor {
 	 * not a gesture count: a foreign mutation that blurs the editor (e.g.
 	 * removing `contenteditable` from the root) produces the same
 	 * focusout signal as a user blur but must still be repaired.
+	 * @internal
 	 */
 	lastUserGestureOutsideEditor = false;
-	/** Run `body` as part of the user's input (deferred work of an occurrence). */
+	/** @internal Run `body` as part of the user's input (deferred work of an occurrence). */
 	userInput = <T>(body: () => T) =>
 		this.withUserInput(body, { bumpSerial: false })(new Event('input'));
 	/**
 	 * A commit's caret: select it (the projector displays it once the pin's
 	 * render lands) and arm the IME post-commit jump rule — a move right after
 	 * the commit with no gesture since is displayed back (`surface/projector`).
+	 * @internal
 	 */
 	stabilizeCompositionSelection = (text: Text, offset: number) => {
 		if (this.readonly || this.isComposing || !text.isInDocument) return;
@@ -835,12 +875,13 @@ export class Edytor {
 		!event ||
 		(!isNativeInteractiveEvent(event) && !isNestedForeignEditableTarget(this.node, event.target));
 
+	/** @internal */
 	onCompositionStart = (event?: CompositionEvent) => {
 		if (!this.ownComposition(event)) return;
 		this.composition.start(() => getDomSelectionSnapshot(this.node));
 	};
 
-	/** `compositionend`: the live session's commit, or its explicit cancel; the tail swallows a late one. */
+	/** @internal `compositionend`: the live session's commit, or its explicit cancel; the tail swallows a late one. */
 	onCompositionEnd = (event?: CompositionEvent) => {
 		if (!this.ownComposition(event) || this.readonly) return;
 		const value = event?.data ?? this.composition.preview;
@@ -855,21 +896,22 @@ export class Edytor {
 		rangeCaret
 	);
 
+	/** @internal */
 	insertFlow = batch('insertFlow', insertFlow, prepareFlow, caretOf);
 
 	deleteBlocks = batch('deleteBlocks', deleteBlocks, prepareDeleteBlocks);
 
-	/** The handle of the `ordinal`-th text segment of block `id` (the element a cell segment renders). */
+	/** @internal The handle of the `ordinal`-th text segment of block `id` (the element a cell segment renders). */
 	textAt = (id: string, ordinal: number): Text => this.idToBlock.text(id, ordinal);
 
-	/** The cell segment the element of `text` renders (the frozen list while pinned). */
+	/** @internal The cell segment the element of `text` renders (the frozen list while pinned). */
 	segmentOf = (text: Text): { cell: Cell; segment: Segment } | null => {
 		const cell = this.cells?.get(text.parent.id);
 		const part = cell && this.pin.parts(cell).filter((p) => p.kind === 'text')[text.ordinal];
 		return cell && part?.kind === 'text' ? { cell, segment: part } : null;
 	};
 
-	/** The render deltas the element of `text` shows. */
+	/** @internal The render deltas the element of `text` shows. */
 	deltasOf = (text: Text): readonly RenderDelta[] => {
 		const at = this.segmentOf(text);
 		if (!at) return [];
@@ -879,7 +921,7 @@ export class Edytor {
 		return pinned?.deltas ?? segmentDeltas(cell, segment, transform);
 	};
 
-	/** The handle of inline atom `atom`, shown in block `id`. */
+	/** @internal The handle of inline atom `atom`, shown in block `id`. */
 	atomAt = (id: string, atom: string): InlineBlock => this.idToBlock.atom(id, atom);
 
 	/**
@@ -905,6 +947,7 @@ export class Edytor {
 		return true;
 	};
 
+	/** @internal */
 	attach = (node: HTMLDivElement) => {
 		// A remount must not inherit a stale "user is outside" verdict —
 		// ownership is re-derived from live gestures from here on.
@@ -998,6 +1041,12 @@ export class Edytor {
 		};
 	};
 
+	/** @internal */
+	destroyed = false;
+	/** @internal The key of this view's presence entry — minted here, written only by this view (R1). */
+	readonly presenceKey = mintPresenceKey();
+	/** This view's presence writer: what it shares (`share`) and how often (`throttle`, ms); both settable. */
+	presence!: PresenceWriter;
 	/**
 	 * Edytor-lifetime teardown. `Edytor.svelte` owns the instance and calls
 	 * this from its `onDestroy` (after a server render too); consumers
@@ -1013,11 +1062,6 @@ export class Edytor {
 	 * Idempotent, and safe on an editor that was never attached or synced
 	 * (the undo manager exists only after first `sync()`).
 	 */
-	destroyed = false;
-	/** The key of this view's presence entry — minted here, written only by this view (R1). */
-	readonly presenceKey = mintPresenceKey();
-	/** This view's presence writer: what it shares (`share`) and how often (`throttle`, ms); both settable. */
-	presence!: PresenceWriter;
 	destroy = () => {
 		if (this.destroyed) return;
 		this.destroyed = true;

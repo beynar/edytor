@@ -14,7 +14,7 @@
 import { DEV } from 'esm-env';
 import type { Edytor, EdytorOptions } from '$lib/edytor.svelte.js';
 import type { InitializedPlugin } from '$lib/plugins.js';
-import { prevent } from '$lib/utils.js';
+import { vetoable } from '$lib/utils.js';
 import { builtInBindings } from './bindings.js';
 
 export type HotKey = (payload: {
@@ -109,7 +109,7 @@ export class Keymap {
 
 	constructor(
 		private edytor: Edytor,
-		consumer: EdytorOptions['hotKeys'] = {},
+		consumer: EdytorOptions['hotkeys'] = {},
 		plugins: InitializedPlugin[] = []
 	) {
 		for (const rows of [
@@ -171,7 +171,10 @@ export class Keymap {
 		let claimed = false;
 		if (bindings)
 			this.edytor.dispatcher.scope(
-				() => bindings.forEach((binding) => binding({ event, edytor: this.edytor, prevent })),
+				() =>
+					bindings.forEach((binding) =>
+						vetoable((prevent) => binding({ event, edytor: this.edytor, prevent }))
+					),
 				() => {
 					claimed = true;
 					event?.preventDefault();

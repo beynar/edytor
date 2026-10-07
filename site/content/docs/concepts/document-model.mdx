@@ -68,7 +68,7 @@ A block has two separate slots:
 
 `type` names a block kind registered by a plugin (`paragraph`, `heading`, …). `data` holds the kind's settings: a heading's `{ level: 'h2' }`, a to-do's `{ checked: true }`. See [Blocks](/docs/concepts/blocks) for the kinds, nesting rules and default children, and [Properties](/docs/concepts/properties) for reading, writing and syncing `data`.
 
-The document itself (`JSONDoc`) is the root's `children`, plus its own properties in `data` (absent when it has none). `edytor.value` and `onChange` wrap them in a root block: `{ type: 'root', data?, children }`.
+The document itself (`JSONDoc`) is the root's `children`, plus its own properties in `data` (absent when it has none). `edytor.value` and `onChange` give a `JSONDoc` too, the type the `value` prop takes, so a stored value opens as it is (the object also carries `type: 'root'`).
 
 ## Text and marks
 

@@ -11,7 +11,7 @@ import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { runHotkey } from '../../../test.utils.js';
 
 const mockApplePlatform = (edytor: Edytor) => {
-	Object.defineProperty(edytor.hotKeys, 'isMac', {
+	Object.defineProperty(edytor.keymap, 'isMac', {
 		configurable: true,
 		get: () => true
 	});

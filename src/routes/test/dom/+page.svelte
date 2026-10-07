@@ -13,16 +13,15 @@
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
+	import { clearDocument, createWebsocketSync, type EdytorSync } from '$lib/collaboration/index.js';
 	import {
 		IndexeddbPersistence,
 		WebsocketProvider,
-		clearDocument,
-		createWebsocketSync,
-		storeState,
-		type EdytorSync
-	} from '$lib/collaboration/index.js';
+		checkSchema,
+		storeState
+	} from '$lib/crdt/protocol.js';
 	import { Y } from '$lib/crdt/engine.js';
-	import { checkSchema, createDocument } from '$lib/crdt/index.js';
+	import { createDocument } from '$lib/crdt/index.js';
 	import { bindMigration } from '$lib/crdt/migration/migrate.js';
 	import {
 		GENERATION_KEY,
@@ -994,7 +993,7 @@
 		runtimeReadonly = Boolean(data.readonly);
 	});
 	const direction: 'ltr' | 'rtl' = $derived(data.dir === 'rtl' ? 'rtl' : 'ltr');
-	const hotKeys = $derived.by(() => {
+	const hotkeys = $derived.by(() => {
 		const routeHotKeys: Record<string, HotKey> = {};
 
 		const insertProbeText = (edytor: EdytorContext, value: string) => {
@@ -1126,7 +1125,7 @@
 			{autocorrect}
 			{autocomplete}
 			{autocapitalize}
-			{hotKeys}
+			{hotkeys}
 			sync={collabSync}
 			class="outline-none"
 			{placeholder}

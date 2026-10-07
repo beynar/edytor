@@ -1,7 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { Edytor } from './edytor.svelte.js';
 import type { Block } from './block/block.svelte.js';
-import type { JSONBlock, JSONInlineBlock, JSONText } from './utils/json.js';
+import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from './utils/json.js';
 import type { Text } from './text/text.svelte.js';
 import type { TextTransform } from './surface/cells.js';
 import type { SerializableContent } from './utils/json.js';
@@ -12,8 +12,9 @@ import type { EdytorSelection } from './selection/selection.svelte.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import type { PlanEffect } from './crdt/edytor-doc.js';
 import type { MarkEdge } from './session/editing/text.js';
+import type { Prevent } from './utils.js';
 
-/** What a placeholder function receives (D-8): the empty block's declared values. */
+/** What a placeholder function receives: the empty block's declared values. */
 export type PlaceholderView = {
 	type: string;
 	data: Readonly<Record<string, unknown>>;
@@ -34,13 +35,10 @@ export type MarkSnippetPayload<D extends SerializableContent = SerializableConte
 	text: Text;
 };
 
-/**
- * Function type for preventing default behavior with an optional callback.
- */
-type Prevent = (cb?: () => void) => void;
+export type { Prevent };
 
 /**
- * What a block snippet receives (R4, §2.4 "Snippet view objects"): declared
+ * What a block snippet receives: declared
  * values read from the block's cell and the selection — reactive, never the
  * block's handle itself — plus the handle for document reads and commands.
  */
@@ -59,7 +57,7 @@ export type BlockView<D = Record<string, any>> = {
 	void: Block['void'];
 };
 
-/** The block element a kind declares (O45): a tag, or a tag and attributes. */
+/** The block element a kind declares: a tag, or a tag and attributes. */
 export type BlockElement =
 	| string
 	| { tag: string; attributes?: Record<string, string | undefined> };
@@ -80,11 +78,14 @@ export type BlockSnippetPayload<D = Record<string, any>> = {
  */
 export type ChangePayload = {
 	block: Block;
+	/**
+	 * Veto the operation (and, with `cb`, run that in its place): records the
+	 * veto and returns, so the hook runs to its end; the first call decides.
+	 */
 	prevent: Prevent;
 	/**
 	 * The prepared command's effect (blocks created, removed, merged, moved,
-	 * retyped, text ranges written), on a command that is one document plan
-	 * (R6, FP-6) — a hook can refuse a command by what it would do.
+	 * retyped, text ranges written), on a command that is one document plan — a hook can refuse a command by what it would do.
 	 */
 	effect?: PlanEffect;
 } & (
@@ -102,6 +103,17 @@ export type ChangePayload = {
 			};
 	  }[keyof BlockOperations]
 );
+
+/**
+ * What `onAfterOperation` receives: a {@link ChangePayload} without
+ * `prevent` (the operation already ran). The `Omit` distributes over the
+ * union, so `operation` still narrows `payload` (and `text`).
+ */
+export type AfterOperationPayload = ChangePayload extends infer C
+	? C extends unknown
+		? Omit<C, 'prevent'>
+		: never
+	: never;
 
 /**
  * Function type for transforming content within a text block.
@@ -134,13 +146,17 @@ export type Plugin = (editor: Edytor) => PluginDefinitions & PluginOperations;
 export type PluginOperations = {
 	/** Called before an operation is executed */
 	onBeforeOperation?: <C extends ChangePayload>(payload: C) => C['payload'] | void;
-	/** Called after an operation is executed */
-	onAfterOperation?: <C extends Omit<ChangePayload, 'prevent'>>(payload: C) => void;
-	/** Called when the editor value changes */
-	onChange?: (value: JSONBlock) => void;
+	/**
+	 * Called after an operation is executed: `dispatcher.last.status` is set
+	 * (its `value`, what a handle mutator returns, is recorded after this
+	 * hook); `operation` narrows `payload`.
+	 */
+	onAfterOperation?: (payload: AfterOperationPayload) => void;
+	/** Called when the editor value changes: the same `JSONDoc` shape `<Edytor value>` takes. */
+	onChange?: (value: JSONDoc) => void;
 	/** Called when the selection changes */
 	onSelectionChange?: (selection: EdytorSelection) => void;
-	/** The placeholder of an empty block (D-8): rendered by a `::before` rule the library ships. */
+	/** The placeholder of an empty block: rendered by a `::before` rule the library ships. */
 	placeholder?: Placeholder;
 	/** Called when the editor is attached to the DOM; may return a cleanup, run on detach. */
 	onEdytorAttached?: (payload: { node: HTMLElement }) => (() => void) | void;
@@ -179,7 +195,7 @@ export type BlockDefinition = {
 	/** The markup inside the block element; a kind whose element takes no content (`hr`) has none. */
 	snippet?: Snippet<[BlockSnippetPayload<any>]>;
 	/**
-	 * The element the core renders for the block (R11, O45): a tag, or tag and
+	 * The element the core renders for the block: a tag, or tag and
 	 * attributes, possibly from the block's data and id (the second argument:
 	 * view state the kind keeps per block, such as a column's width while a
 	 * resize drags; reactive state it reads re-renders the element; absent
@@ -194,32 +210,23 @@ export type BlockDefinition = {
 	contentElement?: BlockElement | ((data: Record<string, any>, id?: string) => BlockElement);
 	/**
 	 * Attributes of the block element the browser or the user own (`open` on a
-	 * `details`): declared view state, never inverted (R11, O60).
+	 * `details`): declared view state, never inverted.
 	 */
 	viewState?: string[];
-	/** Whether the block is void (not editable)
-	 *
-	 * Void blocks are blocks that are not editable by the edytor.
-	 * They can be nested inside other blocks
-	 * They can not be merged with other blocks
-	 * If the content of the void block is rendered, it will still be editable. This to allow for rendering caption of the void block. I
-	 * In void blocks the content is treated as an island
-	 *
+	/**
+	 * A void kind (an image, a divider): one unit the editor never edits as
+	 * text and never merges. The caret steps over it and a selection takes it
+	 * whole. It displays no children: a retype to a void kind moves them right
+	 * after it, and a child a collaborator puts under one shows in its place.
+	 * Text it renders (a caption) stays editable. Adopted by the document as a
+	 * role.
 	 */
 	void?: boolean;
-	/** Whether the block is an island.
-	 *
-	 * Island blocks are blocks that are independent of the document.
-	 *
-	 * They are editable
-	 *
-	 * They can be nested inside other blocks
-	 *
-	 * But their children can not be nested or merged with other blocks
-	 *
-	 * Their structure will remain as if.
-	 *
-	 * In case of a merge operation, the island block will be merged with the parent block and all its children will ne unnest and set to the default child type of their new parent without being added as children of the merge destination block. The same wil happen to the island's content.
+	/**
+	 * An island kind (a code block, a table): editable inside, structurally
+	 * sealed. Nothing merges across its edge, and blocks cannot be moved in
+	 * or out of it. Its children keep their kinds and nesting, unless `lines`
+	 * says it holds only lines. Adopted by the document as a role.
 	 */
 	island?: boolean;
 	/**
@@ -284,7 +291,7 @@ export type BlockDefinition = {
 	 */
 	itemKind?: string;
 	/**
-	 * Catalogue rows (O68): one per way to create this kind — the slash menu,
+	 * Catalogue rows: one per way to create this kind — the slash menu,
 	 * markdown shortcuts and block menus are generated from them
 	 * (`edytor.kinds`). Command ids are `block.<type>`, numbered from 1 when
 	 * the kind has several presets (`block.heading2`).
@@ -317,7 +324,7 @@ export type BlockDefinition = {
 	 * This transformation is applied after the text is synced in to the state.
 	 *
 	 * You can use it to render custom marks decorations on the text like code tokens that are not stored in the document.
-	 * It receives declared values (R2): the segment's `{stringContent, value}` and the block's `{id, type, data}`.
+	 * It receives declared values, not handles: the segment's `{stringContent, value}` and the block's `{id, type, data}`.
 	 */
 	transformText?: TextTransform;
 	/** Called when the block receives focus */
@@ -342,7 +349,7 @@ export type BlockDefinition = {
 	normalizeChildren?: (payload: { block: Block }) => (() => void) | void;
 };
 
-/** What an inline-atom snippet receives (R4): declared values; a suggestion's atom is never selected. */
+/** What an inline-atom snippet receives: declared values; a suggestion's atom is never selected. */
 export type InlineBlockView<D = Record<string, any>> = {
 	readonly id: string;
 	readonly type: string;
@@ -382,7 +389,7 @@ export type MarkDefinition = {
 	 */
 	parse?: (element: HTMLElement) => SerializableContent | undefined;
 	void?: boolean;
-	/** Whether typing at the mark's edges extends it (O69, `marksForInsertion`); default `inclusive`. */
+	/** Whether typing at the mark's edges extends it (`marksForInsertion`); default `inclusive`. */
 	edge?: MarkEdge;
 	/** A selection-toolbar button toggling the mark. */
 	toolbar?: { label: string; icon: string };

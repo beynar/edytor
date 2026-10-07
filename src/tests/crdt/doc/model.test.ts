@@ -10,7 +10,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { SCHEMA_VERSION, META_KEY } from '../../../lib/crdt/index.js';
+import { SCHEMA_VERSION, META_KEY } from '../../../lib/crdt/protocol.js';
 import { bindEdytorDoc, SCHEMA_NAME } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
 

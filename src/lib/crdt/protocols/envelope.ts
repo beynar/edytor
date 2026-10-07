@@ -52,7 +52,7 @@ export const PREVIOUS_GENERATION_PREFIX = 'edytor-v14:';
 export const generationDbName = (name: string): string => GENERATION_PREFIX + name;
 
 /**
- * How a container stores its snapshots (P5, 0.1.0-next.23): `'v1'` (the
+ * How a container stores its snapshots (0.1.0-next.23): `'v1'` (the
  * update encoding, every container before it) or `'v2'` (the columnar
  * encoding, gzip-compressed where the platform has `CompressionStream`;
  * a compressed snapshot starts with gzip's `1f 8b`, a v2 update with

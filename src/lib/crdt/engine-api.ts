@@ -37,7 +37,7 @@ export type EngineItemRef = {
 	/**
 	 * Parentage of the item — the containing shared type and the attr key it
 	 * sits under (`null` for sequence children). Read by the shared model
-	 * state (WU7) to map `Transaction.changed` entries back to
+	 * state to map `Transaction.changed` entries back to
 	 * block/facet coordinates mid-transaction.
 	 */
 	parent?: unknown;
@@ -116,8 +116,7 @@ export interface EngineDoc {
 	 * Doc-level `update` channel — fires once per transaction that produced
 	 * replicated state (local commits AND remote `applyUpdate`s), carrying
 	 * the transaction's origin and the transaction itself (`transaction.local`
-	 * distinguishes local commits from remote applies). The assembled model
-	 * (U06) uses this single channel to derive semantic change events.
+	 * distinguishes local commits from remote applies). The assembled model uses this single channel to derive semantic change events.
 	 */
 	on(
 		name: 'update',
@@ -140,13 +139,13 @@ export interface EngineDoc {
 	readonly store?: {
 		pendingStructs: null | { missing: Map<number, number>; update: Uint8Array };
 		pendingDs: null | Uint8Array;
-		/** The next clock `client` writes at (a source rank's tie, DW-05). */
+		/** The next clock `client` writes at (a source rank's tie). */
 		getClock(client: number): number;
 	};
 	/**
 	 * The engine's CURRENT transaction (`null` outside one) — vendored
 	 * `Doc._transaction`. Used by the shared model state to discover
-	 * uncommitted changes for read-your-writes invalidation (WU7).
+	 * uncommitted changes for read-your-writes invalidation.
 	 */
 	readonly _transaction?: EngineTransaction | null;
 }

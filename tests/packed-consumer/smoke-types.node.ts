@@ -7,6 +7,7 @@
  */
 import * as Y from 'edytor/crdt';
 import * as bindings from 'edytor/crdt/edytor';
+import * as protocol from 'edytor/protocol';
 
 const doc: Y.Doc = new Y.Doc();
 const node: Y.Node = doc.get('content');
@@ -41,7 +42,7 @@ const storyJson: ReturnType<typeof ed.toJSON> = ed.toJSON();
 const awareness: bindings.Awareness = new crdt.Awareness(crdtDoc);
 const providers: bindings.ProviderStack = crdt.providers;
 const migration: bindings.Migration = crdt.migration;
-const sync: bindings.SyncProtocol = crdt.sync;
+const sync: protocol.SyncProtocol = crdt.sync;
 const sv: Uint8Array = Y.encodeStateVector(crdtDoc);
 const delta: Uint8Array = Y.encodeStateAsUpdate(crdtDoc, sv);
 const crdtDoc2: bindings.YDoc = crdt.createDoc();
@@ -125,9 +126,9 @@ const contentRun: bindings.ContentRun = { kind: 'text', text: 'x' };
 const legacyMap: ReturnType<bindings.DocumentAttribution['legacy']> = attribution.legacy();
 const blockAttr: bindings.BlockAttribution | undefined = attribution.block(firstProjected!.id);
 const actorsMap: ReadonlyMap<string, bindings.ActorProfile> = attribution.actors;
-// The server-coordinator frame contract (D-15 keeps it; README "Server coordinator").
-const coordinatorFrame: Uint8Array = bindings.frame(bindings.messageSync, (e: bindings.Encoder) =>
-	bindings.writeVarUint8Array(e, new Uint8Array())
+// The server-coordinator frame contract (`edytor/protocol`; site server/protocol).
+const coordinatorFrame: Uint8Array = protocol.frame(protocol.messageSync, (e: protocol.Encoder) =>
+	protocol.writeVarUint8Array(e, new Uint8Array())
 );
 type _engineTx = bindings.EngineTransaction;
 void contentRun;

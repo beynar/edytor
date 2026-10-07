@@ -441,3 +441,22 @@ export const jsonBlockToSpec = (
  */
 export const toBlockSpec = (block: JSONBlock, { freshIds = false } = {}): BlockSpec =>
 	jsonBlockToSpec(block, freshIds);
+
+/**
+ * Whether `block` is a `BlockSpec` node: an id, and content items that name
+ * their `kind`. Anything else is read as a `JSONBlock`.
+ */
+const isSpecNode = (block: BlockSpec | JSONBlock): block is BlockSpec =>
+	typeof block.id === 'string' &&
+	(block.content ?? []).every(
+		(item) => typeof item === 'object' && item !== null && 'kind' in item
+	);
+
+/** A `BlockSpec`, or the `JSONBlock` shape as one (ids kept, minted where missing). */
+export const asBlockSpec = (block: BlockSpec | JSONBlock): BlockSpec => {
+	if (!isSpecNode(block)) return jsonBlockToSpec(block as JSONBlock);
+	const children = block.children?.map(asBlockSpec);
+	return children && children.some((child, i) => child !== block.children![i])
+		? { ...block, children }
+		: block;
+};

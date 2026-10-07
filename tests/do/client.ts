@@ -10,8 +10,9 @@
  *   `createWebsocketSync`) can dial the room.
  */
 import { SELF } from 'cloudflare:test';
-import * as E from '../../src/lib/crdt/index.js';
-import type { AwarenessEntry, EngineApi, YDoc } from '../../src/lib/crdt/index.js';
+import * as E from './crdt.js';
+import type { EngineApi, YDoc } from '../../src/lib/crdt/index.js';
+import type { AwarenessEntry } from '../../src/lib/crdt/protocol.js';
 import { CLOSE } from '../../src/lib/crdt/providers/room.js';
 // @ts-ignore -- untyped JS module; typed through `EngineApi` below
 import * as RawY from '../../src/lib/crdt/vendor/yjs/src/index.js';

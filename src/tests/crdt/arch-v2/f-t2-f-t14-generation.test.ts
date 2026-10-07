@@ -32,12 +32,8 @@ import { readRow } from '../../../lib/crdt/providers/container.js';
 import { bindWebsocketProvider } from '../../../lib/crdt/providers/websocket.js';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 import * as envelope from '../../../lib/crdt/protocols/envelope.js';
-import {
-	createDocument,
-	schemaVersion,
-	SchemaMismatchError,
-	SCHEMA_VERSION
-} from '../../../lib/crdt/index.js';
+import { createDocument, SchemaMismatchError } from '../../../lib/crdt/index.js';
+import { schemaVersion, SCHEMA_VERSION } from '../../../lib/crdt/protocol.js';
 
 const idbProviders = bindIndexeddbProvider(Y);
 const wsProviders = bindWebsocketProvider(Y);

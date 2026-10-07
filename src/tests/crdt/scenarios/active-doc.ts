@@ -14,7 +14,7 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { createPeerTriple, createPeerPair } from '../harness/peer-set.js';
 import { createDocOps } from '../harness/ops/doc-ops.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
-import { SCHEMA_VERSION } from '../../../lib/crdt/index.js';
+import { SCHEMA_VERSION } from '../../../lib/crdt/protocol.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { MODEL_BASE_SEED } from './seeds.js';
 import type { Scenario } from './registry.js';

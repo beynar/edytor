@@ -4,17 +4,20 @@ description: The package entry points of edytor, what each exports, and where ea
 icon: package
 ---
 
-The `edytor` package has four code entry points and one stylesheet. Only the root contains Svelte components; the CRDT entries have no Svelte in their import graph and run in Node and in Cloudflare Workers.
+The `edytor` package has five code entry points and one stylesheet. Only the root contains Svelte components; the other entries have no Svelte in their import graph and run in Node and in Cloudflare Workers.
 
 | Import | Contains | Runs in |
 | --- | --- | --- |
 | `edytor` | The `<Edytor>` component, bundled plugins, handles, the document API, sync factories | A Svelte bundler (SvelteKit, Vite) |
-| `edytor/crdt/edytor` | The document API and its types, `bindCrdt`, awareness, the wire protocol helpers | Browser, Node 22+, Workers |
+| `edytor/crdt/edytor` | The document API and the facade's full vocabulary, `bindCrdt`, awareness, attribution, migration | Browser, Node 22+, Workers |
+| `edytor/protocol` | The wire vocabulary: frames, message types, codecs, generation records, the admission gates, the raw provider classes | Browser, Node 22+, Workers |
 | `edytor/crdt` | The vendored CRDT engine itself (Yjs v14 fork) | Browser, Node 22+, Workers |
-| `edytor/cloudflare` | `DocumentRoom` (a Durable Object), `attachDocument` (for your own Durable Object), `routeDocumentSocket` with `requestedReplica`, `routeDocumentHistory` (the [version history](/docs/server/history)), and `closedSocket` | Cloudflare Workers only |
+| `edytor/cloudflare` | `DocumentRoom` (a Durable Object), `attachRoom` (for your own Durable Object), `routeDocumentSocket` with `requestedReplica`, `routeDocumentHistory` (the [version history](/docs/server/history)), and `closedSocket` | Cloudflare Workers only |
 | `edytor/themes/notion.css` | The [Notion theme](/docs/customization/styling#notion-theme) stylesheet | Any bundler that imports CSS |
 
 No other path is exported. Imports such as `edytor/dist/...` or `edytor/crdt/vendor/...` fail with `ERR_PACKAGE_PATH_NOT_EXPORTED`.
+
+Every name each entry exports, with its declaration, is listed in the API report the repository keeps under [`api/`](https://github.com/beynar/edytor/tree/master/api) (one file per entry point). A change to it is reviewed like code: the unit tests fail until the report is regenerated.
 
 ## `edytor`
 
@@ -32,12 +35,11 @@ import {
 	blockMenuPlugin, createBlockMenuPlugin, blockHandlesPlugin, createBlockHandlesPlugin,
 	richTextOperations, richTextPlaceholder, convertToKind,
 	createDocument, loadDocument, attachDocument, // the document API
-	createIndexeddbSync, createWebsocketSync, clearDocument, // sync factories
-	IndexeddbPersistence, WebsocketProvider // provider classes
+	createIndexeddbSync, createWebsocketSync, clearDocument // sync factories
 } from 'edytor';
 ```
 
-It also re-exports everything from `edytor/crdt/edytor`, so a Svelte app never needs a second import for the document API or its types (`JSONDoc`, `JSONBlock`, `OpResult`, `DocChange`, …).
+It also exports what a Svelte app needs of `edytor/crdt/edytor`: the document factories and class, their errors (`SchemaMismatchError`, `SyncRefusedError`, …), `defaultSemantics` and `semanticsOf`, the JSON types (`JSONDoc`, `JSONBlock`, `JSONText`, `JSONInlineBlock`) and the command results (`OpResult`, `Plan`, `Prepared`, `DocChange`). The rest of the facade's vocabulary (`BlockSpec`, `Destination`, `ProjectedDoc`, `DocAnchor`, `toBlockSpec`, …) is imported from `edytor/crdt/edytor`, which a Svelte app can import too.
 
 Because it contains `.svelte` files, the root entry needs a bundler that compiles Svelte. Plain Node cannot import it.
 
@@ -65,12 +67,12 @@ console.log(restored.facade.toJSON());
 It exports:
 
 - `createDocument`, `loadDocument`, `attachDocument` and the `EdytorDocument` class. See [the document reference](/docs/reference/document-api).
-- The JSON and facade types: `JSONDoc`, `JSONBlock`, `JSONText`, `JSONInlineBlock`, `BlockSpec`, `Destination`, `OpResult`, `DocChange`, `DocAnchor`, `DocPosition`, `RangeView`, `FlowView`, `EdytorDoc`.
-- `Awareness`, the sync and provider types (`EdytorSync`, `WebsocketProviderOptions`, …), admission checks, attribution types and the v13 migration types.
+- The JSON and facade types: `JSONDoc`, `JSONBlock`, `JSONText`, `JSONInlineBlock`, `BlockSpec`, `Destination`, `OpResult`, `DocChange`, `DocAnchor`, `DocPosition`, `RangeView`, `FlowView`, `EdytorDoc`, and `toBlockSpec`.
+- The block roles: `defaultSemantics`, `semanticsOf` and the bundled kinds' tables.
+- `Awareness`, the sync types (`EdytorSync`, `WebsocketSyncOptions`, …), the errors a load or a sync refuses with, attribution types and the v13 migration types.
 - `bindCrdt(Y)`, which binds the providers, migration and sync protocol to an engine you pass in.
-- The frame and message helpers a server coordinator needs.
 
-The ready-made sync factories (`createIndexeddbSync`, `createWebsocketSync`) and the provider classes are exported from the root only. Outside Svelte, reach the providers through `bindCrdt`:
+The ready-made sync factories (`createIndexeddbSync`, `createWebsocketSync`) are exported from the root, the provider classes from `edytor/protocol`. Outside Svelte, reach the providers through `bindCrdt`:
 
 ```ts title="engine.ts" check
 import * as Y from 'edytor/crdt';
@@ -82,6 +84,26 @@ const awareness = new crdt.Awareness(doc);
 const provider = new crdt.providers.IndexeddbPersistence('document-id', doc, { awareness });
 await provider.whenSynced;
 ```
+
+## `edytor/protocol`
+
+The wire and coordinator vocabulary, for code that speaks the protocol itself: a server of your own, a relay, a test client, tooling that drives a provider.
+
+```ts title="frame.ts" check
+import { frame, messageSync, writeVarUint8Array } from 'edytor/protocol';
+
+const message = frame(messageSync, (encoder) => writeVarUint8Array(encoder, new Uint8Array()));
+```
+
+It exports:
+
+- `bindCrdt(Y)` and the engine typings it speaks;
+- the frame contract (`frame`, `GENERATION`, `generationWord`, `readProtocolVersion`, the generation records), the message types (`messageSync`, `messageAwareness`, `messageSaved`, `messageChunk`, …), the chunk codec and the close codes (`CLOSE`);
+- the lib0 helpers that read and write frame bodies, and the awareness codec that needs no `Awareness` instance;
+- the admission gates (`assertAdmission`, `inspectAdmission`, `checkSchema`, …);
+- the raw provider classes behind the sync factories, `IndexeddbPersistence` and `WebsocketProvider`, with their option and event types, and `storeState`.
+
+See [the protocol](/docs/server/protocol) for the contract.
 
 ## `edytor/crdt`
 
@@ -101,7 +123,7 @@ Keep one engine in your app. The `yjs` package on npm is v13 and its updates are
 
 ## `edytor/cloudflare`
 
-The server side of real-time collaboration: `DocumentRoom`, a Durable Object that coordinates one document; `attachDocument(this, options)`, which hosts a document in any Durable Object of yours; `routeDocumentSocket`, which authorizes a client before its WebSocket upgrade, and `requestedReplica`, which reads the client id the dial sends; and `closedSocket(code, reason)`, which turns a dial away from your own Worker with a close the provider understands (see [authorization](/docs/server/authorization#authorize)).
+The server side of real-time collaboration: `DocumentRoom`, a Durable Object that coordinates one document; `attachRoom(this, options)`, which hosts a document in any Durable Object of yours; `routeDocumentSocket`, which authorizes a client before its WebSocket upgrade, and `requestedReplica`, which reads the client id the dial sends; and `closedSocket(code, reason)`, which turns a dial away from your own Worker with a close the provider understands (see [authorization](/docs/server/authorization#authorize)).
 
 ```ts title="src/worker.ts" check
 import { DocumentRoom, routeDocumentSocket, requestedReplica } from 'edytor/cloudflare';
@@ -122,6 +144,7 @@ It imports `cloudflare:workers`, so it loads only inside a Worker. It is built o
 
 - Rendering an editor: `edytor`.
 - Reading, converting or editing a document in Node, a SvelteKit server route or a Worker: `edytor/crdt/edytor`.
+- Speaking the wire protocol yourself, or driving a raw provider: `edytor/protocol`.
 - Handling raw updates, or passing the engine to `bindCrdt`: `edytor/crdt`.
 - Hosting collaboration on Cloudflare: `edytor/cloudflare`.
 - Notion's look for the document: `import 'edytor/themes/notion.css'`.

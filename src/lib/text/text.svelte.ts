@@ -20,8 +20,8 @@ import type { ContentPart } from '$lib/session/handles.js';
 const accepted = (r: OpResult | undefined): boolean => r !== undefined && r.status !== 'refused';
 
 /**
- * An id-only text handle (§2.4 "Handles", R4): the `ordinal`-th text segment
- * of block `blockId` — no identity across commits beyond that position (K5).
+ * An id-only text handle: the `ordinal`-th text segment
+ * of block `blockId` — no identity across commits beyond that position.
  * Getters read the document index; mutators write through the block's model.
  * `node` is the element that renders the segment (a Surface fact).
  */
@@ -131,6 +131,7 @@ export class Text {
 	markText = this.batch('markText', markText.bind(this));
 	removeMarksFromText = this.batch('removeMarksFromText', removeMarksFromText.bind(this));
 
+	/** @internal */
 	attach = (node: HTMLElement) => {
 		this.node = node;
 		this.edytor.nodeToText.set(node, this);

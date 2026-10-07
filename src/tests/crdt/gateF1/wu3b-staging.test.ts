@@ -22,12 +22,8 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import {
-	checkSchema,
-	createDocument,
-	SchemaMismatchError,
-	SCHEMA_VERSION
-} from '../../../lib/crdt/index.js';
+import { createDocument, SchemaMismatchError } from '../../../lib/crdt/index.js';
+import { checkSchema, SCHEMA_VERSION } from '../../../lib/crdt/protocol.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 

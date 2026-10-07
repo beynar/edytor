@@ -43,7 +43,7 @@ export const isBlockHandlesPlugin = (plugin: Plugin) => handlePlugins.has(plugin
 const NEAR_MARGIN = '100% 0px';
 
 /**
- * Block handles in the overlay (R11, L50), created lazily: a handle mounts
+ * Block handles in the overlay, created lazily: a handle mounts
  * for a block near the viewport (every block without IntersectionObserver),
  * under the pointer, selected, focused or dragged; drop targets exist only
  * during our own drag. Hover is one delegated listener on the editor and

@@ -68,7 +68,7 @@ A command the document itself refuses is still shown, without steps, so a plugin
 
 ## Refusing an edit
 
-Call `prevent()` on the command or on any of its steps to refuse the whole command. Nothing is written and no undo step is recorded.
+Call `prevent()` on the command or on any of its steps to refuse the whole command. Nothing is written and no undo step is recorded. `prevent` records the veto and returns, so the rest of your hook still runs (`return` after it when nothing else should happen); the first call decides.
 
 A gesture over several blocks that issues one command per part refuses only the part you veto, as the document refuses a part it cannot apply: Turn into over several blocks (one command per block), <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd> over several runs of siblings (one per run) or over several lines of a code block (one `insertText` or `deleteContentAtRange` per line), formatting across blocks (one `markText` per block) and the block menu's Duplicate. The other parts apply, together one undo step, and `dispatcher.last` reports `applied` when one did. A block-selection delete, from the keyboard (any <kbd>Backspace</kbd> or <kbd>Delete</kbd> chord) or the block menu, is one command: a veto keeps every block. So is typing or a paste over a block selection: one `insertFlow` replaces the blocks, and a veto keeps them all (`onDeleteSelectedBlocks` runs first, see [Writing plugins](/docs/plugins/writing-plugins)). Your own gesture gets the same rule from `edytor.dispatcher.each(kind, parts, part)`.
 
@@ -136,10 +136,10 @@ The callback is a command of its own. If another plugin refuses one of the opera
 A trigger plugin (`:smile:` → 😄, `@query` → a mention) removes the text that triggered it and writes its replacement. Issued as two operations, a veto of the second leaves the trigger text already gone. Three dispatcher members make the pair one refusable command, as the slash menu and markdown shortcuts do:
 
 - `edytor.dispatcher.lead(plan, body)` runs `body` with `plan`, prepared now, composed into the first operation `body` dispatches: one plan in one transaction. Hooks see the lead's steps with that operation's; a veto of any of them, or a refusal, writes neither. When that operation is itself one plan, the lead's steps on a block whose whole content the operation replaces are dropped. Otherwise the lead applies first and the operation reads the state it leaves. It answers `{ out, taken }`: `body`'s result, and whether an operation took the lead. When `taken` is `false`, nothing of the lead was written: either `body` dispatched nothing (remove the trigger yourself, as the slash menu does for a command that writes later), or the lead was a refusal and `body` did not run.
-- `edytor.dispatcher.dispatch(operation, payload, { block, text? }, body, prepare?)` dispatches an operation of your own, under your own name: admission, `onBeforeOperation` for the command and, when `prepare` returns a plan, for each of its steps, then `body(payload, plan)` in one transaction, `dispatcher.last` and `onAfterOperation`. With `prepare`, apply the plan you are given (`facade.apply(plan)`), which a rewritten payload re-prepares. It answers `body`'s result, or `undefined` when the view refuses it (readonly, a read-only document) or a plugin prevents it. When the document refuses the plan, `body` still runs, with that refusal as `plan` (`'writes' in plan` is `false`, and `facade.apply(plan)` writes nothing and answers `refused`), and `dispatcher.last.status` is `refused`.
+- `edytor.dispatcher.dispatch(operation, payload, { block, text? }, body, prepare?)` dispatches an operation of your own, under your own name: admission, `onBeforeOperation` for the command and, when `prepare` returns a plan, for each of its steps, then `body(payload, plan)` in one transaction, `dispatcher.last` and `onAfterOperation`. With `prepare`, apply the plan you are given (`edytor.document.facade.apply(plan)`), which a rewritten payload re-prepares. It answers `body`'s result, or `undefined` when the view refuses it (readonly, a read-only document) or a plugin prevents it. When the document refuses the plan, `body` still runs, with that refusal as `plan` (`'writes' in plan` is `false`, and `apply(plan)` writes nothing and answers `refused`), and `dispatcher.last.status` is `refused`.
 - `edytor.dispatcher.caret(text, offset, ops?)` is the command's result caret: selected once, recorded on `dispatcher.last.selection`, and shown after the DOM update. With `ops`, the caret is declared before `ops` runs, so it follows the edit, and is written only when `ops` returns a truthy value. A caret inside text the edit deletes does not survive: set it after the edit instead.
 
-`facade.prepare.<op>(…)` returns a `Prepared`: a `Plan`, or the operation's refusal. Both types are exported from `edytor`, and `'writes' in prepared` tells them apart. See [the document API](/docs/reference/document-api).
+Prepare plans on the document's facade, `edytor.document.facade`, the public one: `edytor.document.facade.prepare.<op>(…)` returns a `Prepared`: a `Plan`, or the operation's refusal. It writes nothing, so preparing outside the dispatcher is safe; what the plan writes goes through the command that applies it. Both types are exported from `edytor`, and `'writes' in prepared` tells them apart. See [the document API](/docs/reference/document-api).
 
 ```ts title="emoji.ts" check
 import type { Plugin } from 'edytor';
@@ -157,9 +157,9 @@ export const emojiPlugin: Plugin = (edytor) => ({
 		if (!emoji) return;
 		const start = yStart - match[0].length;
 		prevent(() => {
-			const { dispatcher, facade } = edytor;
+			const { dispatcher, document } = edytor;
 			// `text.segStart` maps a segment offset to the block's display offset.
-			const trigger = facade.prepare.deleteText(block.id, text.segStart + start, match[0].length);
+			const trigger = document.facade.prepare.deleteText(block.id, text.segStart + start, match[0].length);
 			dispatcher.lead(trigger, () => text.insertText({ value: emoji, start, end: start }));
 			if (dispatcher.last?.status === 'applied') dispatcher.caret(text, start + emoji.length);
 		});
@@ -189,14 +189,15 @@ The replacement is prepared again and shown to every plugin from the start. A Tu
 
 ## After an edit
 
-`onAfterOperation` runs once per command, after its transaction, with the original payload. It does not run for steps or for refused commands, and it has no `prevent`.
+`onAfterOperation` runs once per command, after its transaction, with the original payload. It does not run for steps or for refused commands, and it has no `prevent`. Its payload (`AfterOperationPayload`) narrows by `operation`, as `onBeforeOperation`'s does:
 
 ```ts title="logTurnInto.ts" check
 import type { Plugin } from 'edytor';
 
 export const logTurnInto: Plugin = () => ({
-	onAfterOperation: ({ operation, block }) => {
-		if (operation === 'setBlock') console.log(block.id, 'is now', block.type);
+	onAfterOperation: (change) => {
+		if (change.operation === 'setBlock') console.log(change.block.id, 'is now', change.block.type);
+		if (change.operation === 'insertText') console.log('typed', change.payload.value, 'in', change.block.id);
 	}
 });
 ```

@@ -25,13 +25,12 @@ import {
 	SchemaMismatchError,
 	UnsupportedDocError,
 	attachDocument,
-	checkSchema,
 	createDocument,
-	inspectAdmission,
 	loadDocument,
 	type DocumentActor,
 	type EdytorDocument
 } from '../../../lib/crdt/index.js';
+import { checkSchema, inspectAdmission } from '../../../lib/crdt/protocol.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {

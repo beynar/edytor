@@ -2,35 +2,40 @@
  * Type-level smoke for the FULL package surface — the real Svelte-consumer
  * posture (`moduleResolution: bundler`, `strict`, `skipLibCheck: false`).
  * Covers `import 'edytor'` (component + plugins + bound sync factories),
- * `edytor/crdt`, and `edytor/crdt/edytor`. The node-only posture lives in
+ * `edytor/crdt`, `edytor/crdt/edytor` and `edytor/protocol`. The node-only posture lives in
  * smoke-types.node.ts.
  */
 import * as Y from 'edytor/crdt';
 import {
 	Edytor,
-	bindCrdt,
 	createDocument,
 	loadDocument,
 	attachDocument,
 	createIndexeddbSync,
 	createWebsocketSync,
 	clearDocument,
-	storeState,
-	IndexeddbPersistence,
-	WebsocketProvider,
 	richTextPlugin,
-	type ContentRun,
 	type DocumentActor,
-	type DocumentAttribution,
 	type DocumentReadiness,
 	type EdytorDocument,
 	type EdytorSync,
 	type WebsocketSync,
 	type JSONDoc,
-	type Plugin,
-	type ProjectedDoc
+	type Plugin
 } from 'edytor';
 import * as bindings from 'edytor/crdt/edytor';
+import {
+	bindCrdt,
+	type ContentRun,
+	type DocumentAttribution,
+	type ProjectedDoc
+} from 'edytor/crdt/edytor';
+import {
+	IndexeddbPersistence,
+	WebsocketProvider,
+	storeState,
+	type SyncProtocol
+} from 'edytor/protocol';
 
 const doc: Y.Doc = new Y.Doc();
 const node: Y.Node = doc.get('content');
@@ -61,7 +66,7 @@ const undo = ed.createUndoManager({ captureTimeout: 0 });
 const awareness: bindings.Awareness = new crdt.Awareness(crdtDoc);
 const providers: bindings.ProviderStack = crdt.providers;
 const migration: bindings.Migration = crdt.migration;
-const sync: bindings.SyncProtocol = crdt.sync;
+const sync: SyncProtocol = crdt.sync;
 void ids;
 void v;
 void undo;

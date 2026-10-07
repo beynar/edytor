@@ -157,10 +157,9 @@ import { callEach } from '../protocols/observable.js';
 /**
  * One visible run of a block — the maintained form of `ContentItem`.
  * `marks`/`data` are interned: equal payloads share one frozen instance,
- * so `===` compares formatting without deep walks. U2 removed the U7
- * per-run `attribution` field — ordinary text carries no authorship
- * decoration and runs never split at author boundaries; durable
- * attribution is the compact per-block record (`blockattr`, U1).
+ * so `===` compares formatting without deep walks. A run carries no
+ * authorship: runs never split at author boundaries, and durable
+ * attribution is the compact per-block record (`blockattr`).
  */
 export type ContentRun =
 	| {
@@ -240,7 +239,7 @@ type Deps = { texts: Set<BlockId>; lists: Set<BlockId> };
 type Cached = { runs: readonly ContentRun[]; deps: Deps };
 
 /**
- * One commit's change report (§2.4) — the fold against the last published
+ * One commit's change report — the fold against the last published
  * index. Collections name the affected ids; `order` carries the NEW child-id
  * list per changed parent (frozen), so a mirror can apply it without
  * re-reading the doc. Visible = reachable from the root in the children index.
@@ -272,7 +271,7 @@ export type RunViewDebug = {
 	recomputed: Set<BlockId>;
 	/**
 	 * Sequence items stepped over inside maintained range reads since last
-	 * `reset()` (WU8) — the counter that shows reads scale with the range
+	 * `reset()` — the counter that shows reads scale with the range
 	 * plus a bounded checkpoint gap, not the whole backing text.
 	 */
 	readonly itemsWalked: number;
@@ -356,15 +355,14 @@ export type RunView = {
 /**
  * The role table — one answer per kind, which the display and the
  * document's guards both ask. `childless`: kinds that display no children
- * (void roles, UW-21b) — a child of such a block displays in its slot.
+ * (void roles) — a child of such a block displays in its slot.
  * `island`: a block promoted out of an island kind displays as
  * `defaultChild` of its display parent's kind (`null`: the root). `line`:
  * an island declared `lines` holds only lines — each direct child displays
- * as its line kind and holds no children (FW-01, XW-03). `container`: a
+ * as its line kind and holds no children. `container`: a
  * kind that renders no content and is neither void nor an island (a list)
- * — a block promoted out of one follows like one promoted out of an island
- * (DR-crdt-2). `rendersContent`: no block that renders content ever shows
- * as a kind that does not (its text would vanish, DR-crdt-1). `layout`: a
+ * — a block promoted out of one follows like one promoted out of an island. `rendersContent`: no block that renders content ever shows
+ * as a kind that does not (its text would vanish). `layout`: a
  * layout kind displays only its items, and only two or more (`layout.*`).
  */
 export type DisplayRoles = {
@@ -375,7 +373,7 @@ export type DisplayRoles = {
 	defaultChild: (parentType: string | null) => string;
 	/** The line kind of an island kind declared `lines` (its `defaultChild`), if any. */
 	line: (islandType: string) => string | undefined;
-	/** Every line kind the roles declare, present in the document or not (XW-11). */
+	/** Every line kind the roles declare, present in the document or not. */
 	lineKinds: () => Iterable<string>;
 	/** The item kind of a layout kind (its `defaultChild`), if `type` is one. */
 	layout: (type: string) => string | undefined;

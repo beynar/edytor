@@ -51,7 +51,7 @@ export const document = createDocument({ semantics }); // divider stays void, co
 
 Offsets count what the block displays: one per UTF-16 text unit and one per inline block. Offsets out of range are clamped.
 
-`toBlockSpec(block, { freshIds? })` (from `edytor` or `edytor/crdt/edytor`) turns a canonical `JSONBlock` (from `toJSON`, `blockJSON`, a template or an import) into a `BlockSpec`: it keeps the ids the JSON carries and mints the missing ones; `freshIds: true` mints every id, so the result can be inserted beside its source.
+`toBlockSpec(block, { freshIds? })` (from `edytor/crdt/edytor`) turns a canonical `JSONBlock` (from `toJSON`, `blockJSON`, a template or an import) into a `BlockSpec`: it keeps the ids the JSON carries and mints the missing ones; `freshIds: true` mints every id, so the result can be inserted beside its source.
 
 ```ts title="copy-block.ts" check
 import { toBlockSpec } from 'edytor/crdt/edytor';

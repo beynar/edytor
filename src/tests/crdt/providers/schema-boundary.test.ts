@@ -32,7 +32,8 @@ import { bindWebsocketProvider } from '../../../lib/crdt/providers/websocket.js'
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { checkSchema } from '../../../lib/crdt/admission.js';
-import { attachDocument, SCHEMA_VERSION } from '../../../lib/crdt/index.js';
+import { attachDocument } from '../../../lib/crdt/index.js';
+import { SCHEMA_VERSION } from '../../../lib/crdt/protocol.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import * as bc from 'lib0-v14/broadcastchannel';

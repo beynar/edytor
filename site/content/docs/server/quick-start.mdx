@@ -125,7 +125,7 @@ Then switch `server` to `wss://<your-worker-host>/rooms`.
 The room does not decide who may open a document; your `authorize` does. See [Authorization](/docs/server/authorization) and [the room](/docs/server/room).
 
 :::tip
-Already have a Durable Object, or want the document in R2, KV or D1 too? Call `attachDocument(this, { onLoad, onSave })` in your own class instead of deploying `DocumentRoom`. See [Your own Durable Object](/docs/server/extending).
+Already have a Durable Object, or want the document in R2, KV or D1 too? Call `attachRoom(this, { onLoad, onSave })` in your own class instead of deploying `DocumentRoom`. See [Your own Durable Object](/docs/server/extending).
 :::
 
 ## See it live

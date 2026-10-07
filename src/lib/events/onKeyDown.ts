@@ -188,7 +188,7 @@ const getStructuralFallbackInputType = (
 
 export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 	// A keydown the bindings are not offered offers no key to its `beforeinput`.
-	this.hotKeys.offered = null;
+	this.keymap.offered = null;
 	if (e.defaultPrevented) {
 		return;
 	}
@@ -259,7 +259,7 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 
 	// One prevention scope per keydown: a veto anywhere in it aborts the key.
 	this.dispatcher.scope(() => {
-		if (this.hotKeys.handle(e) || e.defaultPrevented) {
+		if (this.keymap.handle(e) || e.defaultPrevented) {
 			return;
 		}
 

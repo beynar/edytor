@@ -1,12 +1,11 @@
 /**
- * Compatibility shim — the provider sync factories now live in ONE place:
- * `bindProviders(Y)` in `src/lib/crdt/providers/index.ts` (U1 consolidation;
- * this module used to duplicate them). Re-exported here bound to the
- * vendored engine so the documented consumer path
- * (`import { createIndexeddbSync } from 'edytor'`) keeps working.
+ * The sync factories of the package root (`import { createIndexeddbSync }
+ * from 'edytor'`): the provider stack bound once to the vendored engine
+ * (`crdt/providers/bound.ts`, shared with `edytor/protocol`'s raw provider
+ * classes). The factories themselves live in ONE place, `bindProviders(Y)`
+ * in `src/lib/crdt/providers/index.ts`.
  */
-import { Y } from '$lib/crdt/engine.js';
-import { bindProviders } from '$lib/crdt/providers/index.js';
+import { providers } from '$lib/crdt/providers/bound.js';
 import {
 	type Awareness,
 	type EdytorSync,
@@ -18,8 +17,6 @@ import {
 	type WebsocketSyncOptions as CrdtWebsocketSyncOptions,
 	type YDoc
 } from '$lib/crdt/index.js';
-
-const providers = bindProviders(Y);
 
 export type { EdytorSync, EdytorSyncCleanup, EdytorSyncPayload, WebsocketSync, Awareness, YDoc };
 
@@ -42,10 +39,6 @@ export const createWebsocketSync = providers.createWebsocketSync as (
 // emit materializes provider internals via extensionless deep paths
 // (`../crdt/providers/indexeddb`), which `nodenext` consumers reject.
 export const clearDocument: ProviderStack['clearDocument'] = providers.clearDocument;
-export const storeState: ProviderStack['storeState'] = providers.storeState;
-export const IndexeddbPersistence: ProviderStack['IndexeddbPersistence'] =
-	providers.IndexeddbPersistence;
-export const WebsocketProvider: ProviderStack['WebsocketProvider'] = providers.WebsocketProvider;
 /** Keep a document's local copy fresh without opening it (sync once, then close). */
 export const prefetch: ProviderStack['prefetch'] = providers.prefetch;
 /** When a room last stored a change: one authorized HTTP request, no document opened. */

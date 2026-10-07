@@ -261,7 +261,7 @@ export const builtInBindings: Record<string, HotKey> = {
 	'mod+z': history('undo'),
 	'mod+shift+z': history('redo'),
 	// Ctrl+Y redo is the Windows/Linux convention; on Apple Cmd+Y is not redo.
-	'mod+y': (payload) => (payload.edytor.hotKeys.isMac ? undefined : history('redo')(payload)),
+	'mod+y': (payload) => (payload.edytor.keymap.isMac ? undefined : history('redo')(payload)),
 	// Mod+Enter modifies each shown block it is in (Notion): a toggle opens or
 	// closes, a to-do checks (the rich-text plugin's binding, which flips the
 	// toggles among them too). It never edits text or structure, and it claims

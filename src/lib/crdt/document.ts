@@ -195,7 +195,7 @@ export type DocumentSemanticsConfig = {
 	/** Default block type — the root's default child and the bootstrap block. */
 	defaultType?: string;
 	/**
-	 * H5: per mark, its edge (its record's `edge`) — where a concurrent insert
+	 * Per mark, its edge (its record's `edge`) — where a concurrent insert
 	 * at each end of a mark lands. Undeclared marks are `inclusive`.
 	 */
 	marks?: Record<string, { edge?: MarkEdge }>;
@@ -238,7 +238,7 @@ export type DocumentOptions = {
 	 */
 	lineage?: { depth?: number };
 	/**
-	 * Decide an EMPTY document only from a provider that synced (H12): the
+	 * Decide an EMPTY document only from a provider that synced: the
 	 * room answered, or a local store hydrated. A provider's bound or
 	 * failure never seeds it, so a first visit offline writes nothing — no
 	 * seed of `value` that a different seed in the room would later meet as
@@ -332,7 +332,7 @@ export type DocumentReadiness = 'pending' | 'local' | 'hydrated';
 
 /**
  * How long (ms) an empty document waits for a provider that has not
- * settled before it decides without it (R13 settle-or-bound) — the bound a
+ * settled before it decides without it (settle-or-bound) — the bound a
  * provider that cannot report "settled" gets, counted from its attach. A
  * factory sets its own with `sync.bound`, or arms it from transport state
  * (`bound: Infinity` + the payload's `armBound`, as the websocket sync
@@ -416,10 +416,10 @@ export class EdytorDocument {
 	/** The local actor identity (anonymous opaque id when none was supplied). */
 	readonly actor: DocumentActor;
 	/**
-	 * The attribution surface — compact per-block records (U1), the
+	 * The attribution surface — compact per-block records, the
 	 * replicated actor dictionary (`u/` profiles, `c/` replica bindings),
 	 * and a `legacy()` read over any pre-existing `a/` per-edit records
-	 * written by pre-U2 builds. Ordinary edits perform no attribution
+	 * written by earlier builds. Ordinary edits perform no attribution
 	 * writes — authorship lands inside the owning op's transaction as the
 	 * block-level `b/<id>` record/`l` stamp. See
 	 * `src/lib/crdt/attribution/attribution.ts` for the full contract.
@@ -490,7 +490,7 @@ export class EdytorDocument {
 	 * callers/views).
 	 */
 	private _refs = 1;
-	/** The adopted capability tables (R5): per kind, the first declaration. */
+	/** The adopted capability tables: per kind, the first declaration. */
 	private readonly _capability = {
 		roles: new Map<string, NormalizedRole>(),
 		rendersContent: new Map<string, boolean>(),
@@ -502,7 +502,7 @@ export class EdytorDocument {
 	private readonly _lineageDepth: number | undefined;
 	/** {@link DocumentOptions.requireHydration}: an empty document waits for a provider's `synced`. */
 	readonly requireHydration: boolean;
-	/** Attached providers keyed by transport target (O75): one per target. */
+	/** Attached providers keyed by transport target: one per target. */
 	private _providers = new Map<unknown, EdytorSyncCleanup | undefined>();
 	private _pendingSyncs = 0;
 	private _healOff: (() => void) | undefined;
@@ -590,7 +590,7 @@ export class EdytorDocument {
 	 * `false` while the document carries a schema stamp this build cannot
 	 * own (a foreign stamp got in despite the transport's inbound refusal):
 	 * every write refuses with a `SchemaMismatchError`, and the providers
-	 * neither persist nor broadcast it (O18, D-2).
+	 * neither persist nor broadcast it.
 	 */
 	get writable(): boolean {
 		return checkSchema(this.doc as unknown as EngineDoc) === null;
@@ -601,7 +601,7 @@ export class EdytorDocument {
 	 * the document turned read-only (once per transition, not per refused
 	 * edit). Returns the unsubscribe. A listener that throws is logged: it
 	 * runs inside the engine's `update` emit, which an error must not
-	 * escape (SW16-rest-1).
+	 * escape.
 	 */
 	onWritableChange = (listener: (writable: boolean) => void): (() => void) => {
 		let last = this.writable;
@@ -625,7 +625,7 @@ export class EdytorDocument {
 	}
 
 	/**
-	 * The undo steps this document's history keeps (P6): the configured
+	 * The undo steps this document's history keeps: the configured
 	 * `history.limit`, else {@link DEFAULT_HISTORY_LIMIT}. The `attachDocument`
 	 * dedupe check reads it (a reattach naming another limit is a conflict).
 	 */
@@ -768,8 +768,7 @@ export class EdytorDocument {
 	 * usable → schema → verdict, the same reads the transport layer's
 	 * staging gate runs):
 	 *
-	 * - `'fresh'` verdict → the deterministic seed of `value` (R13, D-3:
-	 *   one update from a writer hashed from the seed; an empty value seeds
+	 * - `'fresh'` verdict → the deterministic seed of `value` (one update from a writer hashed from the seed; an empty value seeds
 	 *   one `defaultType` block; non-local, so never an undo step);
 	 * - `'initialized'` verdict (provider-hydrated, or a loaded restore) →
 	 *   the schema was just asserted; content is left alone;
@@ -903,7 +902,7 @@ export class EdytorDocument {
 
 	/**
 	 * Drop the undo/redo stacks. The undo stack already keeps only its
-	 * newest `history.limit` steps (P6); call this where undo no longer makes
+	 * newest `history.limit` steps; call this where undo no longer makes
 	 * sense, e.g. after a save checkpoint. No-op while history has not
 	 * attached (there is nothing to clear — it does NOT force attach or throw
 	 * on pending).
@@ -977,7 +976,7 @@ export class EdytorDocument {
 	};
 
 	/**
-	 * The readiness decision (R13, O17): a document with content is decided
+	 * The readiness decision: a document with content is decided
 	 * (`hydrated`) as soon as any provider settles; an EMPTY one only once
 	 * every attached provider settled or reached its bound, and then it
 	 * seeds `value` — never while a provider's {@link syncRefusal} stands. A
@@ -1008,7 +1007,7 @@ export class EdytorDocument {
 	/**
 	 * Attach a provider sync factory to this document (headless `EdytorSync`
 	 * path — the same contract views use). The provider stays pending until
-	 * it reports `synced` or the terminal `failed` (D4), is torn down, or its
+	 * it reports `synced` or the terminal `failed`, is torn down, or its
 	 * bound elapses: `sync.bound` ms from the attach,
 	 * {@link DEFAULT_READINESS_BOUND} for a provider that cannot report
 	 * settled, or {@link DEFAULT_READINESS_BOUND} from each `armBound()`
@@ -1106,7 +1105,7 @@ export class EdytorDocument {
 
 	/**
 	 * Acquire one more attach reference and return its ONE-SHOT release
-	 * capability (U6b/R3). A deduplicated `attachDocument` hands every
+	 * capability. A deduplicated `attachDocument` hands every
 	 * holder the SAME object, so `destroy()` calls cannot be
 	 * authenticated per caller — a holder that destroys more times than
 	 * references it acquired consumes ANOTHER holder's reference. The

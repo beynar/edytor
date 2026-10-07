@@ -13,7 +13,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 import { jsonEquals as same, type JSONText, type SerializableContent } from '$lib/utils/json.js';
 
 /**
- * R4: at a collapsed caret, whether the DOM point lay inside the mark
+ * At a collapsed caret, whether the DOM point lay inside the mark
  * elements rendering the character before it. Admitted by the DOM-point
  * interpreter; `undefined` (no DOM point, no mark before) reads as inside.
  */

@@ -575,7 +575,7 @@ describe('docs drift', () => {
 			.find((line) => line.startsWith('| `edytor/cloudflare`'));
 		for (const name of [
 			'DocumentRoom',
-			'attachDocument',
+			'attachRoom',
 			'routeDocumentSocket',
 			'requestedReplica',
 			'closedSocket'

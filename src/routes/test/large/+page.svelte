@@ -8,12 +8,8 @@
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-	import {
-		applyAwarenessUpdate,
-		createDocument,
-		encodeAwarenessUpdate,
-		type EdytorDocument
-	} from '$lib/crdt/index.js';
+	import { createDocument, type EdytorDocument } from '$lib/crdt/index.js';
+	import { applyAwarenessUpdate, encodeAwarenessUpdate } from '$lib/crdt/protocol.js';
 	import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
 	import { Y } from '$lib/crdt/engine.js';
 	import '$lib/themes/notion.css';

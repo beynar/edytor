@@ -57,7 +57,7 @@ const getText = (block: Block, label: string): Text => {
 	return text;
 };
 
-const expectValue = (value: JSONBlock, expected: JSONDoc) => {
+const expectValue = (value: JSONDoc, expected: JSONDoc) => {
 	const actualChildren = removeIds(JSON.parse(JSON.stringify(value.children ?? [])) as JSONBlock[]);
 	const expectedChildren = removeIds(structuredClone(expected.children));
 

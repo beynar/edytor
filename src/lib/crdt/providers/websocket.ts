@@ -144,7 +144,7 @@ export type WebsocketProviderEvents = {
 	 */
 	unreachable: (state: { attempts: number; nextRetryMs: number }, provider: unknown) => void;
 	/**
-	 * Terminal sync failure (the D4 contract): the provider never synced —
+	 * Terminal sync failure: the provider never synced —
 	 * destroyed before any handshake completed, refused, or the server
 	 * denied permission. Emitted at most once; never once `hasSynced`, never
 	 * on a transient (reconnectable) disconnect.
@@ -181,7 +181,7 @@ export type WebsocketProviderOptions = {
 	/**
 	 * Largest frame sent whole (default 32 MiB, Cloudflare's WebSocket
 	 * message limit): a larger one — a reconnect's backlog, a big paste —
-	 * goes out as a chunk sequence the room reassembles (H6).
+	 * goes out as a chunk sequence the room reassembles.
 	 */
 	maxFrameBytes?: number;
 };

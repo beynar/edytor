@@ -81,7 +81,7 @@ export type MigrateResult = {
 	/**
 	 * The migrated state (present when this call ran the import) — restore it
 	 * through the document admission path: `loadDocument(result.update)`
-	 * lands a `hydrated` document through the gate every load crosses (U8).
+	 * lands a `hydrated` document through the gate every load crosses.
 	 * The appended row is its diff against what the generation held (the
 	 * whole state for a first import).
 	 */
@@ -101,13 +101,13 @@ export type MigrateOptions = {
 	wait?: boolean;
 	/** Phase observer — invoked BEFORE each phase; throwing simulates a crash. */
 	onPhase?: (phase: MigrationPhase) => void | Promise<void>;
-	/** @deprecated No-op (D-15): the attempt is a crash-released lock, not a lease. */
+	/** @deprecated No-op: the attempt is a crash-released lock, not a lease. */
 	leaseMs?: number;
-	/** @deprecated No-op (D-15): waiting is queueing on the lock. */
+	/** @deprecated No-op: waiting is queueing on the lock. */
 	waitMs?: number;
-	/** @deprecated No-op (D-15): nothing polls. */
+	/** @deprecated No-op: nothing polls. */
 	pollMs?: number;
-	/** @deprecated No-op (D-15): no durable owner exists. */
+	/** @deprecated No-op: no durable owner exists. */
 	owner?: string;
 };
 

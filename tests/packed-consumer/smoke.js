@@ -74,7 +74,9 @@ for (const retired of [
 	'decorateRuns'
 ])
 	assert.equal(bindings[retired], undefined, `${retired} is retired`);
-// The server-coordinator surface (a Durable Object imports only these).
+// The server-coordinator surface is `edytor/protocol` (a Durable Object
+// imports only these), never the document entry.
+const protocol = await import('edytor/protocol');
 for (const name of [
 	'frame',
 	'generationWord',
@@ -82,9 +84,13 @@ for (const name of [
 	'readAwarenessEntries',
 	'writeAwarenessEntries',
 	'createDecoder'
-])
-	assert.equal(typeof bindings[name], 'function', name);
-assert.equal(bindings.GENERATION, bindings.generationWord(bindings.SCHEMA_VERSION));
+]) {
+	assert.equal(typeof protocol[name], 'function', name);
+	assert.equal(bindings[name], undefined, `${name} is not on edytor/crdt/edytor`);
+}
+assert.equal(protocol.GENERATION, protocol.generationWord(protocol.SCHEMA_VERSION));
+assert.equal(protocol.bindCrdt, bindings.bindCrdt);
+assert.equal(typeof protocol.WebsocketProvider, 'function');
 
 // bindCrdt actually assembles: doc + facade + awareness + providers + sync.
 const crdt = bindings.bindCrdt(Y);
@@ -152,7 +158,7 @@ assert.equal(edA.blockText('b-world'), 'world');
 Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA, Y.encodeStateVector(docB)));
 const edB = crdt.doc.create(docB);
 edB.assertSchema(); // the synced replica passes the application-schema gate
-assert.equal(edB.schemaVersion(), bindings.SCHEMA_VERSION);
+assert.equal(edB.schemaVersion(), protocol.SCHEMA_VERSION);
 assert.deepEqual(edB.toJSON(), edA.toJSON());
 assert.equal(edB.blockText('b-world'), 'world');
 
@@ -251,7 +257,8 @@ assert.equal(syncCleaned, true, 'document.destroy() must run tracked sync cleanu
 assert.equal(document.destroyed, true);
 
 // ── package encapsulation: consumers never need (and cannot take) deep ───
-// paths. The exports map lists exactly '.', './crdt', './crdt/edytor'.
+// paths. The exports map lists exactly '.', './crdt', './crdt/edytor',
+// './protocol', './cloudflare' and the theme stylesheet.
 for (const deep of [
 	'edytor/dist/crdt/vendor/yjs/src/index.js',
 	'edytor/crdt/vendor/yjs/src/index.js',

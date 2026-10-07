@@ -26,7 +26,7 @@
  *    source, visible there. Past the grace period the source stops
  *    watching.
  *
- * `moveBlocks(namespace, …)` runs steps 1–3 from the host Worker.
+ * `moveBlocksBetweenRooms(namespace, …)` runs steps 1–3 from the host Worker.
  */
 import type { JSONBlock } from '../utils/json.js';
 import { canonKey } from '../crdt/text/model.js';
@@ -231,11 +231,12 @@ export const subtreesOf = (
  * in both and throws: call it again with the same `moveId` (`commitMove` is
  * idempotent), or `abortMove`. Returns the destination ids.
  */
-export const moveBlocks = async (
+export const moveBlocksBetweenRooms = async (
 	namespace: MoveNamespace,
 	move: { from: string; to: string; ids: string[]; dest: MoveDestination }
 ): Promise<ImportReceipt> => {
-	if (move.from === move.to) throw new Error('moveBlocks: a move between two documents');
+	if (move.from === move.to)
+		throw new Error('moveBlocksBetweenRooms: a move between two documents');
 	const source = namespace.getByName(move.from);
 	const target = namespace.getByName(move.to);
 	const exported = await source.exportBlocks(move.ids);
@@ -257,9 +258,15 @@ export const moveBlocks = async (
 	}
 	const committed = await source.commitMove(exported.moveId, { to: move.to, ids: receipt.ids });
 	if (committed.status !== 'applied')
-		throw new Error(`moveBlocks: commit refused (${committed.reason ?? 'unknown'})`);
+		throw new Error(`moveBlocksBetweenRooms: commit refused (${committed.reason ?? 'unknown'})`);
 	return receipt;
 };
+
+/**
+ * @deprecated Use {@link moveBlocksBetweenRooms} (`edytor.moveBlocks` moves
+ * blocks inside one document). Removed in the next release.
+ */
+export const moveBlocks = moveBlocksBetweenRooms;
 
 /**
  * Forward the late edits document `from` holds (`room.move.late`) to their

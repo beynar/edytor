@@ -15,7 +15,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
 	DocumentRoom,
-	attachDocument,
+	attachRoom,
 	closedSocket,
 	requestedReplica,
 	routeDocumentHistory,
@@ -498,9 +498,9 @@ export class TimedRoom extends DocumentRoom<Env> {
 	}
 }
 
-/** Any Durable Object: `attachDocument` installs every handler (rooms `plain-*`). */
+/** Any Durable Object: `attachRoom` installs every handler (rooms `plain-*`). */
 export class PlainObject extends DurableObject<Env> {
-	document = attachDocument(this, { onLoad: () => LOADED });
+	document = attachRoom(this, { onLoad: () => LOADED });
 }
 
 /**
@@ -508,7 +508,7 @@ export class PlainObject extends DurableObject<Env> {
  * the document (rooms `host-*`; `/echo/<name>` opens one of its own sockets).
  */
 export class HostObject extends DurableObject<Env> {
-	document = attachDocument(this, {
+	document = attachRoom(this, {
 		onLoad: () => LOADED,
 		onSave: ({ value }) => {
 			this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS mirror (json TEXT)');

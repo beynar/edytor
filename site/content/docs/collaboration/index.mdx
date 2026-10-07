@@ -24,7 +24,7 @@ flowchart LR
 - **The document** is created with `createDocument` or restored with `loadDocument`. It works with no view at all (Node, SSR, tests) or behind any number of `<Edytor>` views. See [Documents](/docs/collaboration/documents).
 - **A sync** attaches a provider to the document. On a view, the `room` and `server` props build it for you; for a shared document, attach a factory such as `createWebsocketSync(options)` with `document.attachSync(…)`. The provider lives as long as the document, not the view.
 - **Awareness** carries presence: who is here, their name and color, and their selection. Every view and provider shares the document's single awareness instance. See [Presence](/docs/collaboration/presence).
-- **The room** is `DocumentRoom`, a Cloudflare Durable Object that edytor ships, or any Durable Object of yours with `attachDocument(this)`. You deploy it on your own account; it authorizes sockets through your code, stores the document in SQLite and relays edits. See [Server](/docs/server/quick-start).
+- **The room** is `DocumentRoom`, a Cloudflare Durable Object that edytor ships, or any Durable Object of yours with `attachRoom(this)`. You deploy it on your own account; it authorizes sockets through your code, stores the document in SQLite and relays edits. See [Server](/docs/server/quick-start).
 
 When two replicas meet, whether a tab and the server or two tabs, each tells the other what it already holds, and each sends back what the other lacks. There is no "last save wins": offline edits merge the next time a connection opens.
 

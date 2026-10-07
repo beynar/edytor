@@ -86,7 +86,7 @@ export type DomFixture = FixtureBase & {
 	awareness?: Awareness;
 	sync?: EdytorSync;
 	autoSelectFixture?: boolean;
-	onChange?: (value: JSONBlock) => void;
+	onChange?: (value: JSONDoc) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	run: (context: DomFixtureContext) => unknown | Promise<unknown>;
 	expectSelection?: SelectionExpectation;

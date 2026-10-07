@@ -1,5 +1,5 @@
 /**
- * Version history (H11, `room.history.*` in
+ * Version history (`room.history.*` in
  * `docs/editor-delete-contract.md`): the half-day slots, their keys and
  * their metadata, and the stores a room keeps its versions in
  * (`room.history.store`): {@link HistoryStore}, and the adapters
@@ -96,7 +96,7 @@ export type HistoryStore = {
 export type HistoryRoomStorage = {
 	readonly sql: SqlStorage;
 	transactionSync<T>(closure: () => T): T;
-	/** The room's table prefix (`''` for `DocumentRoom`, `'edytor_'` by default for `attachDocument`). */
+	/** The room's table prefix (`''` for `DocumentRoom`, `'edytor_'` by default for `attachRoom`). */
 	readonly tablePrefix: string;
 };
 
@@ -309,7 +309,7 @@ const finite = (value: unknown): number | null => {
 };
 
 /**
- * Versions in a Workers KV namespace (H11's store, 0.1.0-next.24): KV's
+ * Versions in a Workers KV namespace (the room history's first store): KV's
  * TTL expires them (`nativeTtl`, `expirationTtl` = the retention, at least
  * KV's 60 s), its listing's `expiration` is each one's `expiresAt`, its
  * metadata the room's. Values up to KV's 25 MiB. Versions written by
@@ -395,7 +395,7 @@ const ROOM_HISTORY_PAGE = 100;
 
 /**
  * Versions in the room's own SQLite storage, in its `history` table
- * (`edytor_history` with `attachDocument`'s default prefix): no binding.
+ * (`edytor_history` with `attachRoom`'s default prefix): no binding.
  * A version is stored atomically (one `transactionSync`, split into rows
  * of 1 MiB under the platform's 2 MB). It is counted apart from the
  * document quota (`maxDocumentBytes` measures what clients send; history

@@ -25,13 +25,15 @@ import {
 	bindCrdt,
 	createDocument,
 	defaultSemantics,
+	loadDocument
+} from '../../../lib/crdt/index.js';
+import {
 	GENERATION,
 	GENERATION_RECORD,
 	isPreviousGenerationRecord,
-	loadDocument,
 	PREVIOUS_SCHEMA,
 	SCHEMA_VERSION
-} from '../../../lib/crdt/index.js';
+} from '../../../lib/crdt/protocol.js';
 import {
 	GENERATION_KEY,
 	generationDbName,

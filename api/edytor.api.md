@@ -3456,7 +3456,7 @@ declare const bindProviders: (Y: EngineApi) => {
             wsLastMessageReceived: number;
             wsLastPingSent: number;
             _synced: boolean;
-            _chunks: (decoder: import("lib0-v14/decoding").Decoder) => Uint8Array | null;
+            _chunks: import("./room.js").ChunkReader;
             _writes: {
                 pending: {
                     sv: Map<number, number>;

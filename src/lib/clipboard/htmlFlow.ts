@@ -197,7 +197,9 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		if (claim && blocks.get(claim.type)?.void) {
 			const line: Line = { type: claim.type, data: claim.data, content: [] };
 			const caption = [...element.children].find((child) => child.localName === 'figcaption');
-			for (const node of caption?.childNodes ?? []) inline(node, line, {}, false);
+			// A caption is one line: an element that would end it (an image) adds nothing.
+			const at: Cursor = { line: () => line, apart: () => {} };
+			for (const node of caption?.childNodes ?? []) inline(node, at, {}, false);
 			return [end(line)];
 		}
 		// A kind that shows no text of its own (a list, a layout, a column) takes none: its

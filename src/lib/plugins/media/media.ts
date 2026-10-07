@@ -2,7 +2,7 @@ import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 
 /**
  * A web page's URL a media block may store or render: the link sanitizer's
- * reading of it (`sanitizeLinkHref`: C0 controls and spaces stripped,
+ * reading of it (`sanitizeLinkHref`: ASCII control characters and spaces stripped,
  * tab/newline anywhere), then only an absolute `http:`/`https:` URL with a
  * host. `null` for anything else: a script or `data:` URL, a `mailto:`, a
  * relative path, a bare domain.

@@ -181,7 +181,7 @@ Every replica applies the read-time rules above, so two people editing a layout 
 - Two resizes at once keep each column's latest weight: weights are per column, so the row stays filled.
 - Undoing a new layout withdraws it: a block a collaborator put in one of its columns meanwhile stays, in the layout's place.
 
-These rules come from the document's roles, so every replica must know the layout role: list the plugin in every view, and give a headless document `defaultSemantics` (the room does). A client of an earlier pre-release, which has no layout role, shows a layout as unknown kinds, one block under the other. See [concurrent editing](/docs/collaboration/concurrent-editing#layouts).
+These rules come from the document's roles, so every replica must know the layout role: list the plugin in every view; a headless document holds them by default (`defaultSemantics`), as the room does. A client of an earlier pre-release, which has no layout role, shows a layout as unknown kinds, one block under the other. See [concurrent editing](/docs/collaboration/concurrent-editing#layouts).
 
 ## Styling
 
@@ -207,10 +207,10 @@ Neither container indents its children: both set their children container's `pad
 
 ## Document API
 
-On a document whose roles hold a layout kind (a view with the plugin, or `defaultSemantics`):
+On a document whose roles hold a layout kind (a view with the plugin, or `defaultSemantics`, a headless document's default):
 
 ```ts title="layout.ts" check
-import { createDocument, defaultSemantics } from 'edytor';
+import { createDocument } from 'edytor';
 
 const { facade } = createDocument({
 	value: {
@@ -219,8 +219,7 @@ const { facade } = createDocument({
 			{ id: 'b', type: 'paragraph', content: [{ text: 'right' }] },
 			{ id: 'c', type: 'paragraph', content: [{ text: 'alone' }] }
 		]
-	},
-	semantics: defaultSemantics
+	}
 });
 
 facade.placeBeside(['b'], 'a', 'right'); // a layout: column [a], column [b]

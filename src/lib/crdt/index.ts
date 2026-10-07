@@ -72,21 +72,31 @@ export {
 } from './document.js';
 
 // The bundled plugins' block roles (void/island, `rendersContent`,
-// `defaultChild`) for documents no view configures: the room adopts
-// `defaultSemantics`; a headless `createDocument` takes it explicitly
-// (`semantics: defaultSemantics`) — a silent default would conflict with
-// views that redefine those kinds. Frozen; `semanticsOf` builds another.
+// `defaultChild`) for documents no view configures: the room and a headless
+// `createDocument`/`loadDocument` adopt `defaultSemantics` unless given
+// their own (`semantics: {}` checks none). The kind tables are the rows the
+// bundled plugins spread; `semanticsOf` reads any kind records (a plugin's
+// `blocks`), `mergeSemantics` merges configs field by field, and the digest
+// is the dev-time check a room logs mismatches with. Frozen.
 export {
 	defaultSemantics,
 	richTextSemantics,
 	codeSemantics,
 	imageSemantics,
-	layoutKinds,
 	layoutSemantics,
+	richTextKinds,
+	codeKinds,
+	imageKinds,
+	layoutKinds,
 	richTextMarks,
 	facadeConfigOf,
 	semanticsOf,
-	type KindSemantics
+	mergeSemantics,
+	semanticsDigest,
+	semanticsMismatch,
+	type KindSemantics,
+	type KindRecord,
+	type MergedSemantics
 } from './semantics.js';
 // H5: paired marks — a mark's edge as document semantics, the record a key names.
 export { markName, type MarkEdge } from './text/marks.js';

@@ -207,7 +207,7 @@ A [columns layout](/docs/plugins/columns) is shown by its role, on every replica
 - Undoing a new layout withdraws it, its columns too: a block a collaborator put in one of its columns meanwhile stays, in the layout's place.
 - No layout is shown inside a column by any gesture, but a race (Alice drags a layout into a toggle while Bob drags the toggle into a column) can put one there: it shows as it is.
 
-The rules read the layout role from the document's semantics, so every replica needs it: the columns plugin in every view, `defaultSemantics` (or `layoutSemantics`) on a headless document. The room holds it by default.
+The rules read the layout role from the document's semantics, so every replica needs it: the columns plugin in every view, and `defaultSemantics` on a headless document, which holds it by default. The room holds it too.
 
 ## Mixed versions
 

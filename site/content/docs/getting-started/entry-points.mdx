@@ -46,12 +46,12 @@ Because it contains `.svelte` files, the root entry needs a bundler that compile
 The same document surface without Svelte. Use it on a server, in a script, in a worker or anywhere the component cannot load:
 
 ```ts title="headless.ts" check
-import { createDocument, defaultSemantics, loadDocument } from 'edytor/crdt/edytor';
+import { createDocument, loadDocument } from 'edytor/crdt/edytor';
 
+// The bundled kinds' block roles (`defaultSemantics`) by default: no view supplies them here.
 const document = createDocument({
 	value: { children: [{ type: 'paragraph', content: [{ text: 'hello' }] }] },
-	actor: { id: 'user-42', name: 'Ada' },
-	semantics: defaultSemantics // the bundled kinds' block roles: no view supplies them here
+	actor: { id: 'user-42', name: 'Ada' }
 });
 
 const [block] = document.facade.project().children;

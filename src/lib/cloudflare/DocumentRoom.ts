@@ -424,6 +424,8 @@ export type RoomLogEntry =
 	| ({ edytor: 'purge'; horizon: number; bytes: number } & PurgeReport)
 	| { edytor: 'quota'; user: string; quota: string }
 	| { edytor: 'denied'; user: string; touched: number }
+	// A client's advertised roles differ from the room's on these kinds (WU-12, development builds).
+	| { edytor: 'semantics'; user: string; kinds: string[] }
 	| { edytor: 'fault'; reason: 'storage' | 'internal'; detail: string }
 	| { edytor: 'convert'; from: number; to: number; blocks: number; bytes: number }
 	| { edytor: 'move'; moveId: string; role: 'out' | 'in'; peer: string; blocks: number }
@@ -1423,6 +1425,7 @@ export class AttachedDocument {
 	/** The blocks moved out and watched for late edits, by id → their move (`null`: not read yet). */
 	private watched: Map<string, string> | null = null;
 	private _lookups: ReturnType<typeof lookups> | null = null;
+	private _digest: Record<string, string> | null = null;
 	private readonly tablePrefix: string;
 	private _validator: ((frame: FrameValidation) => boolean | void) | null | undefined;
 	private _history:
@@ -1542,6 +1545,11 @@ export class AttachedDocument {
 	/** The room's block roles, read at first use (a subclass's fields exist by then). */
 	private get lookups(): ReturnType<typeof lookups> {
 		return (this._lookups ??= lookups(this.options.semantics ?? E.defaultSemantics));
+	}
+
+	/** The digest of the room's block roles a client's advertised one is compared with (WU-12). */
+	private get digest(): Record<string, string> {
+		return (this._digest ??= E.semanticsDigest(this.options.semantics ?? E.defaultSemantics));
 	}
 
 	/** A facade over `doc` obeying the room's block roles (`semantics`). */
@@ -4333,6 +4341,7 @@ export class AttachedDocument {
 		if (entry === undefined || replica === null) return;
 		const known = this.presence.get(replica);
 		if (known && known.clock > entry.clock) return;
+		this.compareSemantics(attachment.user, known, entry);
 		if (entry.state === null) this.presence.delete(replica);
 		else this.presence.set(replica, entry);
 		ws.serializeAttachment({
@@ -4341,6 +4350,22 @@ export class AttachedDocument {
 			clock: entry.state === null ? null : entry.clock
 		} satisfies Attachment);
 		this.broadcast(presenceFrame([entry]), entry.state === null ? ws : null);
+	}
+
+	/**
+	 * The dev-time roles check (WU-12): a client's presence advertises the
+	 * digest of its document's roles (`semantics`, development builds); one
+	 * naming kinds, marks or a default type the room reads otherwise is
+	 * logged (`semantics`), once per digest the client advertises. Never a
+	 * refusal: a client without a plugin, or with roles the room lacks, is
+	 * the host's to fix, in `semantics`.
+	 */
+	private compareSemantics(user: string, known: AwarenessEntry | undefined, entry: AwarenessEntry) {
+		const advertised = entry.state?.semantics;
+		if (advertised === undefined) return;
+		if (JSON.stringify(known?.state?.semantics) === JSON.stringify(advertised)) return;
+		const kinds = E.semanticsMismatch(this.digest, advertised);
+		if (kinds.length > 0) this.log({ edytor: 'semantics', user, kinds });
 	}
 
 	/** Log a refusal: the newest {@link MAX_REFUSALS} are kept, every reason is counted. */

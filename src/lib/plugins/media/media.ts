@@ -41,7 +41,10 @@ export type EmbedProvider = {
 	name: string;
 	/**
 	 * The player's URL for a link of this provider, else `null`. It must be
-	 * `https:`: any other answer is refused. Match the host exactly (never a
+	 * `https:` on another origin than the page's: any other answer is
+	 * refused (the frame has `allow-scripts` and `allow-same-origin`, so a
+	 * player on the page's origin, or on one that can script it, could lift
+	 * its own sandbox). Match the host exactly (never a
 	 * suffix or a substring) and check every id you copy into the player URL.
 	 */
 	embed: (url: URL) => string | null;
@@ -182,10 +185,19 @@ export const EMBED_PROVIDERS: readonly EmbedProvider[] = Object.freeze([
 ]);
 
 /**
+ * `url` is on the page's own origin (in a browser): a frame there with
+ * `allow-scripts` and `allow-same-origin` could remove its own sandbox.
+ */
+const sameOrigin = (url: URL) => {
+	const origin = (globalThis as { location?: { origin?: unknown } }).location?.origin;
+	return typeof origin === 'string' && url.origin === origin;
+};
+
+/**
  * The player for `value` (a stored or pasted link): the first provider of
  * `providers` that plays it, and its `https:` player URL. `null` when the
  * link is not a {@link safeWebUrl}, no provider plays it, or the player URL
- * a provider answers is not `https:`. The frame's `src` is always this
+ * a provider answers is not `https:` or is on the page's own origin. The frame's `src` is always this
  * answer, never the stored value.
  */
 export const embedSourceOf = (
@@ -204,7 +216,9 @@ export const embedSourceOf = (
 		}
 		if (src === null || src === undefined) continue;
 		try {
-			if (new URL(src).protocol === 'https:' && safeWebUrl(src) === src) return { src, provider };
+			const player = new URL(src);
+			if (player.protocol === 'https:' && safeWebUrl(src) === src && !sameOrigin(player))
+				return { src, provider };
 		} catch {
 			// An unparsable player URL is refused like any other non-https one.
 		}

@@ -1,6 +1,6 @@
 /** @jsxImportSource ../../jsx */
 /**
- * WU-22 — pasting a bare URL on an empty line offers "Link / Embed /
+ * Pasting a bare URL on an empty line offers "Link / Embed /
  * Bookmark" (Notion). The paste writes the URL as a link at once (one
  * undo step) and opens a small menu under the line: "Link" keeps it (the
  * highlighted row: Enter right after a paste never converts), "Embed"
@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
+import { createEmbedPlugin, embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
 import { bookmarkPlugin, createBookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
 import {
 	canonicalTree,
@@ -135,6 +135,41 @@ describe('pasting a URL on an empty line offers Link / Embed / Bookmark (Notion)
 				{ type: 'bookmark', data: { url: PAGE, title: 'Docs' } }
 			])
 		);
+	});
+
+	it('an unfurl landing after more edits is no undo step: undo takes back the typing, then the conversion', async () => {
+		let answer!: (preview: { title: string }) => void;
+		const unfurl = vi.fn(() => new Promise<{ title: string }>((resolve) => (answer = resolve)));
+		const view = await render([createBookmarkPlugin({ unfurl })], [empty()]);
+		await pasteAt(view, 'p', 0, { 'text/plain': PAGE });
+		await choose('bookmark');
+		view.edytor.idToBlock.get('p')!.firstText!.insertText({ value: 'Read', start: 0 });
+		await flushDomUpdates();
+		answer({ title: 'Docs' });
+		await vi.waitFor(() => expect(view.edytor.facade.blockDataOf('p')?.title).toBe('Docs'));
+		view.edytor.historyUndo();
+		await flushDomUpdates();
+		// The typing goes; the unfurled title stays.
+		expect(canonicalTree(view.edytor)).toEqual([
+			{ type: 'bookmark', data: { url: PAGE, title: 'Docs' } }
+		]);
+		view.edytor.historyUndo();
+		await flushDomUpdates();
+		const [line] = canonicalTree(view.edytor);
+		expect([line!.type, line!.content]).toEqual(['paragraph', linked(PAGE)]);
+	});
+
+	it('a media plugin listed twice offers its kind once (first wins)', async () => {
+		const view = await render(
+			[embedPlugin, createEmbedPlugin(), bookmarkPlugin, bookmarkPlugin],
+			[empty()]
+		);
+		await pasteAt(view, 'p', 0, { 'text/plain': YOUTUBE });
+		expect(options()).toEqual([
+			['link', 'true'],
+			['embed', 'false'],
+			['bookmark', 'false']
+		]);
 	});
 
 	it('Escape closes the menu and keeps the link; so does typing', async () => {

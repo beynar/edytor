@@ -29,7 +29,8 @@
 	export const createAudioPlugin =
 		(options: MediaPluginOptions = {}): Plugin =>
 		(edytor) => {
-			uploadOf.set(edytor, options.upload);
+			// First wins, as for the kind: a second listing never replaces it.
+			if (!uploadOf.has(edytor)) uploadOf.set(edytor, options.upload);
 			return {
 				blocks: {
 					audio: {

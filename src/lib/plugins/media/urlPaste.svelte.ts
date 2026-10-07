@@ -207,7 +207,9 @@ const controllers = new WeakMap<Edytor, UrlPasteController>();
 /**
  * Register `offer` on `edytor`'s URL paste menu. The first plugin to offer
  * gets the menu's hooks to return (its paste, keys and overlay); the others
- * get none, so one view has one menu whatever the plugins listed.
+ * get none, so one view has one menu whatever the plugins listed. One offer
+ * per kind: the first listed wins, as its definition does (a plugin listed
+ * twice offers once).
  */
 export const urlPaste = (
 	edytor: Edytor,
@@ -215,7 +217,7 @@ export const urlPaste = (
 ): PluginOperations & PluginDefinitions => {
 	const known = controllers.get(edytor);
 	if (known) {
-		known.offers.push(offer);
+		if (!known.offers.some(({ type }) => type === offer.type)) known.offers.push(offer);
 		return {};
 	}
 	const controller = new UrlPasteController(edytor);

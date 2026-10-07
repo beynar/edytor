@@ -37,7 +37,7 @@ The slash menu then lists "Web bookmark" under `Media`, and pasting an `http(s)`
   }}
 />
 
-`BookmarkPreview` is `{ title?, description?, image?, icon? }`, every field optional. The answer is stored on the block, as one data write, when it arrives and the block still is that bookmark in an editable view: so every collaborator, the room and a readonly viewer see it without unfurling again. A failed or empty answer stores nothing. Since it arrives after the link, it is its own undo step.
+`BookmarkPreview` is `{ title?, description?, image?, icon? }`, every field optional. The answer is stored on the block, as one data write, when it arrives and the block still is that bookmark in a view that may write: so every collaborator, the room and a readonly viewer see it without unfurling again. A failed or empty answer stores nothing. It arrives whenever the server replies, maybe after more edits, so it is no undo step: undo takes back what the user did (the typing after it, then the conversion), never the unfurled fields alone.
 
 Your server endpoint fetches untrusted pages: restrict it to `http(s)` URLs on public hosts (no private or loopback addresses), cap the response size and time, and read only the metadata (`<title>`, `og:title`, `og:description`, `og:image`, the icon link).
 

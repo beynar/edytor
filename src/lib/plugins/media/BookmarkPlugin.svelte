@@ -44,8 +44,17 @@
 	};
 
 	/**
+	 * The unfurl's writes: background bookkeeping, not a gesture, so no
+	 * view's history tracks this origin (`crdt/document.ts`, History). The
+	 * answer lands whenever the server replies, maybe after more edits: as an
+	 * undo step it would make Mod+Z drop the title before the typing.
+	 */
+	const UNFURL_ORIGIN = Symbol('edytor.bookmark.unfurl');
+
+	/**
 	 * Ask the view's `unfurl` about `url` and store its answer on `block`, as
-	 * one data write, when the block still is that bookmark in an editable view.
+	 * one data write outside the undo history (`UNFURL_ORIGIN`), when the
+	 * block still is that bookmark in a view that may write.
 	 */
 	const fill = async (block: Block, url: string) => {
 		const unfurl = unfurlOf.get(block.edytor);
@@ -57,12 +66,15 @@
 			return;
 		}
 		const data = previewData(preview);
-		const { edytor } = block;
-		const live = edytor.idToBlock.get(block.id);
-		const current = edytor.facade.blockDataOf(block.id) ?? {};
-		if (!Object.keys(data).length || !live?.isInTree || edytor.readonly) return;
-		if (live.type !== 'bookmark' || current.url !== url) return;
-		live.setData({ ...current, ...data });
+		const { edytor, id } = block;
+		const live = edytor.idToBlock.get(id);
+		if (!Object.keys(data).length || !live?.isInTree || !edytor.dispatcher.permits()) return;
+		if (live.type !== 'bookmark' || edytor.facade.blockDataOf(id)?.url !== url) return;
+		const patches = Object.entries(data).map(([key, value]) => ({ path: [key], value }));
+		edytor.doc.transact(
+			() => edytor.facade.apply(edytor.facade.prepare.patchData(id, patches)),
+			UNFURL_ORIGIN
+		);
 	};
 
 	const bookmarkLink = (block: Block | undefined, value: string) => {
@@ -82,7 +94,8 @@
 	export const createBookmarkPlugin =
 		(options: BookmarkPluginOptions = {}): Plugin =>
 		(edytor) => {
-			unfurlOf.set(edytor, options.unfurl);
+			// First wins, as for the kind: a second listing never replaces it.
+			if (!unfurlOf.has(edytor)) unfurlOf.set(edytor, options.unfurl);
 			return {
 				...urlPaste(edytor, {
 					type: 'bookmark',

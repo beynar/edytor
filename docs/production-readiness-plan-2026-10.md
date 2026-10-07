@@ -25,14 +25,14 @@ read-only. Scores are out of 100, where 85+ means production ready for that dime
 
 ### Scores
 
-| Dimension | Reviewer | Verified | Verdict |
-|---|---:|---:|---|
-| Features | 52 | **54** | Collaboration and server are ahead of most open-source editors. Content features are thin for a Notion-like product |
-| Bugs, robustness, security, performance | 60 | **58** | Strong engine and tests, with one confirmed stored XSS and room memory limits that do not hold |
-| Code cleanliness and maintainability | 52 | **55** | Clean line by line but not team-scalable: giant closures, a view-side import cycle, ticket ids, no CI tests |
-| Documentation | 72 | **68** | Large and mostly accurate, but stale install facts, no license and no API reference |
-| API simplicity | 54 | **56** | Hello-world is simpler than Tiptap, but the public surface is very large and internals leak |
-| **Overall** | | **≈ 58** | **Not production ready yet** |
+| Dimension                               | Reviewer | Verified | Verdict                                                                                                             |
+| --------------------------------------- | -------: | -------: | ------------------------------------------------------------------------------------------------------------------- |
+| Features                                |       52 |   **54** | Collaboration and server are ahead of most open-source editors. Content features are thin for a Notion-like product |
+| Bugs, robustness, security, performance |       60 |   **58** | Strong engine and tests, with one confirmed stored XSS and room memory limits that do not hold                      |
+| Code cleanliness and maintainability    |       52 |   **55** | Clean line by line but not team-scalable: giant closures, a view-side import cycle, ticket ids, no CI tests         |
+| Documentation                           |       72 |   **68** | Large and mostly accurate, but stale install facts, no license and no API reference                                 |
+| API simplicity                          |       54 |   **56** | Hello-world is simpler than Tiptap, but the public surface is very large and internals leak                         |
+| **Overall**                             |          | **≈ 58** | **Not production ready yet**                                                                                        |
 
 Verification outcome: of 65 findings, **none was refuted outright**. Two were partly wrong:
 the claim that "GitHub master holds 0.0.11" was false (only a docs sentence says it), and the
@@ -52,6 +52,7 @@ fork already supports `keepReplaced` per document. Severities moved both ways:
 
   Offline-first IndexedDB, prefetch, cross-tab sync and throttled presence are also included.
   Few open-source editors ship this.
+
 - **Editing engine.** CRDT operations are flat with document size: a keystroke takes 0.02 to
   0.04 ms, and a split about 0.14 ms, from 1k to 20k blocks. Moves, splits and merges keep
   identity under concurrency. Read-time layout and promotion rules mean every replica and the
@@ -75,10 +76,10 @@ fork already supports `keepReplaced` per document. Severities moved both ways:
 
 #### Blockers
 
-| ID | Finding | Evidence | Fix effort |
-|---|---|---|---|
-| R1 | **Stored XSS in links**: `sanitizeLinkHref` lets `'\u0001javascript:…'` through. It strips only `\t\n\r` and `.trim()`, so the input looks scheme-less, and browsers drop C0 controls and run `javascript:` | `plugins/richtext/richTextOperations.ts:57-71`; reproduced in node and in a readonly jsdom view; the same function guards render, HTML paste and the toolbar | 2 h |
-| DOC-05 | **No license**: no LICENSE file and no `license` field, while the README shows an MIT badge; `npm view edytor@next license` is empty | repo root, `package.json` | 10 min |
+| ID     | Finding                                                                                                                                                                                                     | Evidence                                                                                                                                                     | Fix effort |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| R1     | **Stored XSS in links**: `sanitizeLinkHref` lets `'\u0001javascript:…'` through. It strips only `\t\n\r` and `.trim()`, so the input looks scheme-less, and browsers drop C0 controls and run `javascript:` | `plugins/richtext/richTextOperations.ts:57-71`; reproduced in node and in a readonly jsdom view; the same function guards render, HTML paste and the toolbar | 2 h        |
+| DOC-05 | **No license**: no LICENSE file and no `license` field, while the README shows an MIT badge; `npm view edytor@next license` is empty                                                                        | repo root, `package.json`                                                                                                                                    | 10 min     |
 
 #### Major
 
@@ -216,12 +217,12 @@ fork already supports `keepReplaced` per document. Severities moved both ways:
 
 "Production ready" has three different targets. Each one includes the previous.
 
-| Target | What it means | What stands in the way | Effort |
-|---|---|---|---|
-| **P0: safe to ship at all** | No known vulnerability, legally usable, install docs true | R1, DOC-05, DOC-01/02/06, API-10 | **1 day** |
-| **P1: production collaborative-editing library** | Teams build their own product on the engine, chrome and room | Room hardening (R2 to R5, R6, R7), CI (CC-01, CC-05), public API curation (API-01 to API-09), readonly sync, accessibility basics, API reference, a soak test | **3 to 4 weeks** of focused work, about 2 weeks of calendar time with 3 to 4 parallel lanes |
-| **P2: Notion-like product parity** | A team can ship a Notion-like editor without building core content features | Tables, media and embeds, image completion, trigger framework with mentions, comments, i18n, code languages, link UX, history UI | **2 to 3 more months** of effort, about 5 to 6 weeks of calendar time with 4 lanes |
-| **P3: maintainable by a team** | People who did not write it can change it safely | Split the giant closures, break the import cycle, replace ticket ids, restructure AGENTS.md, fork hygiene, prune compatibility layers | **3 to 4 weeks**, partly in parallel with P2 |
+| Target                                           | What it means                                                               | What stands in the way                                                                                                                                        | Effort                                                                                      |
+| ------------------------------------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| **P0: safe to ship at all**                      | No known vulnerability, legally usable, install docs true                   | R1, DOC-05, DOC-01/02/06, API-10                                                                                                                              | **1 day**                                                                                   |
+| **P1: production collaborative-editing library** | Teams build their own product on the engine, chrome and room                | Room hardening (R2 to R5, R6, R7), CI (CC-01, CC-05), public API curation (API-01 to API-09), readonly sync, accessibility basics, API reference, a soak test | **3 to 4 weeks** of focused work, about 2 weeks of calendar time with 3 to 4 parallel lanes |
+| **P2: Notion-like product parity**               | A team can ship a Notion-like editor without building core content features | Tables, media and embeds, image completion, trigger framework with mentions, comments, i18n, code languages, link UX, history UI                              | **2 to 3 more months** of effort, about 5 to 6 weeks of calendar time with 4 lanes          |
+| **P3: maintainable by a team**                   | People who did not write it can change it safely                            | Split the giant closures, break the import cycle, replace ticket ids, restructure AGENTS.md, fork hygiene, prune compatibility layers                         | **3 to 4 weeks**, partly in parallel with P2                                                |
 
 Bottom line: **about 1 day to P0, 2 weeks of calendar time to P1, and 2 to 3 months to a
 1.0 that covers P2 and P3.** The limitations page itself notes there is no production track
@@ -246,23 +247,24 @@ record yet. Only a soak test (WU-16) and real users remove that.
 
 ### Decisions needed up front
 
-| # | Decision | Default proposal | Blocks |
-|---|---|---|---|
-| D1 | License | MIT, as the README badge already claims | WU-02 |
-| D2 | When `latest` moves to 0.1.x | Deprecate 0.0.11 now; move `latest` at 1.0-rc | WU-03 |
-| D3 | Readonly views connect to their room | Yes: a readonly view attaches its sync, and the room sends it updates only | WU-11 |
-| D4 | Headless `createDocument` default semantics | `defaultSemantics` by default, `semantics: {}` to opt out | WU-12 |
-| D5 | Attribution trust model | The room binds `c/<client>` to the verified user and refuses writes to another user's `u/` | WU-07 |
-| D6 | Where comment threads live | Thread bodies in the room's SQLite behind an RPC/HTTP route; the document holds only anchor marks | WU-34 |
-| D7 | Table model | A layout-like container (`table` → `row` → `cell`, cell a text island), with row/column ranks as data | WU-30 |
-| D8 | Supported pre-release formats at 1.0 | Keep the v13 import and generation 5; drop next.6 atomic leaves, next.22 containers and next.23 alarm rows behind a one-shot migration | WU-44 |
-| D9 | CI budget | Unit, crdt, dom and do on every push; Playwright Chromium on PR; Firefox, WebKit, mobile and DST nightly | WU-08 |
+| #   | Decision                                    | Default proposal                                                                                                                       | Blocks |
+| --- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| D1  | License                                     | MIT, as the README badge already claims                                                                                                | WU-02  |
+| D2  | When `latest` moves to 0.1.x                | Deprecate 0.0.11 now; move `latest` at 1.0-rc                                                                                          | WU-03  |
+| D3  | Readonly views connect to their room        | Yes: a readonly view attaches its sync, and the room sends it updates only                                                             | WU-11  |
+| D4  | Headless `createDocument` default semantics | `defaultSemantics` by default, `semantics: {}` to opt out                                                                              | WU-12  |
+| D5  | Attribution trust model                     | The room binds `c/<client>` to the verified user and refuses writes to another user's `u/`                                             | WU-07  |
+| D6  | Where comment threads live                  | Thread bodies in the room's SQLite behind an RPC/HTTP route; the document holds only anchor marks                                      | WU-34  |
+| D7  | Table model                                 | A layout-like container (`table` → `row` → `cell`, cell a text island), with row/column ranks as data                                  | WU-30  |
+| D8  | Supported pre-release formats at 1.0        | Keep the v13 import and generation 5; drop next.6 atomic leaves, next.22 containers and next.23 alarm rows behind a one-shot migration | WU-44  |
+| D9  | CI budget                                   | Unit, crdt, dom and do on every push; Playwright Chromium on PR; Firefox, WebKit, mobile and DST nightly                               | WU-08  |
 
 ### Units of work
 
 #### Wave 0: P0 blockers (day 1, one person, in order)
 
 **WU-01: link sanitizer XSS (R1)**
+
 - Scope:
   - Rewrite `sanitizeLinkHref`: strip every C0 control and space at both ends and tab, CR and
     LF anywhere.
@@ -280,11 +282,13 @@ record yet. Only a soak test (WU-16) and real users remove that.
 - Effort: 0.5 d. Release `next.32` at once.
 
 **WU-02: license (DOC-05, decision D1)**
+
 - Scope: add `LICENSE`, set `"license"` in `package.json`, include it in the packed tarball,
   check it in `tests/packed-consumer/run.sh`.
 - Effort: 0.1 d.
 
 **WU-03: install truth (DOC-01, DOC-02, DOC-06, API-10, decision D2)**
+
 - Scope:
   - Delete the stale "not on npm" sentences (`docs/index.mdx:22`,
     `getting-started/index.mdx:12`).
@@ -300,6 +304,7 @@ record yet. Only a soak test (WU-16) and real users remove that.
 **Lane R: room security and limits** (`src/lib/cloudflare/**`, `crdt/providers/room.ts`)
 
 **WU-04: memory limits that hold (R2, R4)**
+
 - Scope:
   - Measure heap per encoded byte in workerd (`tests/do`), not only in node.
   - Set the default `maxDocumentBytes` from it, about 2 to 3 MB encoded for 128 MB.
@@ -315,6 +320,7 @@ record yet. Only a soak test (WU-16) and real users remove that.
 - Effort: 2 d.
 
 **WU-05: presence quota (R3)**
+
 - Scope: cap the size of a presence entry (for example 16 KB, an option); count presence and
   query messages in the token bucket (or a second bucket); coalesce the broadcast once per tick.
   Read-only sockets keep presence, within the caps.
@@ -324,6 +330,7 @@ record yet. Only a soak test (WU-16) and real users remove that.
 - Effort: 1 d.
 
 **WU-06: revocation and token expiry (R5)**
+
 - Scope:
   - RPC `closeUser(userId, code?)` and `setAccess(userId, 'write' | 'read' | 'none')`, walking
     `ctx.getWebSockets()` attachments.
@@ -336,6 +343,7 @@ record yet. Only a soak test (WU-16) and real users remove that.
 - Effort: 1.5 d.
 
 **WU-07: attribution trust and Origin (R6, R7, decision D5)**
+
 - Scope:
   - The room checks `c/<clientID>` bindings against the socket's verified user, refuses writes
     to another user's `u/` profile (strip, a `forged` refusal), and overwrites presence `user`
@@ -349,6 +357,7 @@ record yet. Only a soak test (WU-16) and real users remove that.
 **Lane C: CI and test hygiene** (`.github/**`, timing asserts in `src/tests/**`)
 
 **WU-08: CI that tests (CC-01, decision D9)**
+
 - Scope:
   - `.github/workflows/ci.yml` on push and PR: install with the pnpm cache, then `check`,
     `lint`, `check:worker`, `check:docs`, `vitest --run`, `test:crdt`, `test:dom`, `test:do`,
@@ -360,6 +369,7 @@ record yet. Only a soak test (WU-16) and real users remove that.
 - Effort: 1.5 d (plus fixing whatever is red on shared runners).
 
 **WU-09: deterministic gates (CC-05, R9)**
+
 - Scope:
   - Replace wall-clock asserts in gate lanes with operation-count budgets (items walked,
     folds, reports), as `range-cursor.test.ts` does. Known files:
@@ -376,6 +386,7 @@ record yet. Only a soak test (WU-16) and real users remove that.
 Run these in order; they touch the same files.
 
 **WU-10: entry points and internals (API-01, API-02, DOC-04)**
+
 - Scope:
   - Replace `export *` in `src/lib/index.ts` with an explicit, curated list.
   - Move coordinator and wire internals (section 8 of `crdt/index.ts`, generation records,
@@ -394,6 +405,7 @@ Run these in order; they touch the same files.
 - Effort: 3 d.
 
 **WU-11: readonly views sync their room (API-04, decision D3)**
+
 - Scope: `<Edytor readonly server room>` attaches its sync; the provider is read-only aware (it
   sends nothing it does not own, as it already does for read-only sockets); flipping `readonly`
   keeps the connection.
@@ -405,6 +417,7 @@ Run these in order; they touch the same files.
 - Effort: 1 d.
 
 **WU-12: one source of truth for roles (API-05, API-06, decision D4)**
+
 - Scope:
   - Export `mergeSemantics(...)` and make `semanticsOf` accept plugin kind records.
   - Export the bundled kind tables.
@@ -414,6 +427,7 @@ Run these in order; they touch the same files.
 - Effort: 1.5 d.
 
 **WU-13: command and history surface (API-07, API-08, API-09)**
+
 - Scope:
   - A non-throwing `prevent` (record and return) with `PreventionError`/`isPrevention` exported
     for the transition.
@@ -428,6 +442,7 @@ Run these in order; they touch the same files.
 - Effort: 2.5 d.
 
 **WU-14: naming and papercuts (API-11, API-13, API-14, API-15)**
+
 - Scope:
   - Rename `hotKeys` to `hotkeys` (keeping an alias for one release).
   - Rename the cloudflare `attachDocument` to `attachRoom` and the cross-room move to
@@ -438,6 +453,7 @@ Run these in order; they touch the same files.
 - Effort: 1.5 d.
 
 **WU-15: a first-class trigger/input-rule API (API-03)**
+
 - Scope:
   - Add `inputRules: [{ find: RegExp, replace(match, ctx) }]` and
     `triggers: [{ char, items(query), onPick }]` fields on plugins, built on `dispatcher.lead`
@@ -451,6 +467,7 @@ Run these in order; they touch the same files.
 **Lane S: scale evidence**
 
 **WU-16: room soak and fault test (production evidence)**
+
 - Scope:
   - A load harness (Node or k6) with 50 to 100 websocket clients typing, splitting, moving,
     presence at 20/s, reconnect churn and offline replay, against a deployed staging room for
@@ -465,6 +482,7 @@ Run these in order; they touch the same files.
 - Effort: 4 d.
 
 **WU-17: client scale profile (R10, R8)**
+
 - Scope:
   - Profile Chromium at 5k and 10k blocks: mount, Enter, paste, move, scroll.
   - Decide whether `--edytor-block-visibility: auto` becomes the default, or windowed
@@ -477,6 +495,7 @@ Run these in order; they touch the same files.
 **Lane D: docs and onboarding** (`site/content/**`, README; no `src/lib` changes)
 
 **WU-18: onboarding truth (DOC-03, DOC-07, DOC-08, DOC-11, DOC-14)**
+
 - Scope:
   - Make the quick start mount client-only, or test editable SSR and say so.
   - A "Platform support" page (engines, minimum versions, mobile and IME status).
@@ -486,6 +505,7 @@ Run these in order; they touch the same files.
 - Effort: 2 d.
 
 **WU-19: readability pass (DOC-09, DOC-10)**
+
 - Scope:
   - Lead each page with the common case; move edge cases into tables and callouts.
   - Rewrite concurrent-editing as Alice/Bob tables.
@@ -495,6 +515,7 @@ Run these in order; they touch the same files.
 - Effort: 3 d. It can start at once; re-touch pages that WU-10 to WU-15 change at the end.
 
 **WU-20: localization and limits story (DOC-12, F12 docs)**
+
 - Scope: document the label path (WU-28 adds the options); list what is not provided (tables
   and comments until they ship). Short.
 - Effort: 0.5 d, after WU-28.
@@ -506,6 +527,7 @@ These live mostly in `src/lib/plugins/**` and add new plugins, so they paralleli
 **Lane F1: media**
 
 **WU-21: image completion (F3)**
+
 - Scope:
   - The image plugin claims file paste and drop when `upload` is set (one undo step, a
     placeholder while uploading).
@@ -516,6 +538,7 @@ These live mostly in `src/lib/plugins/**` and add new plugins, so they paralleli
 - Effort: 4 d.
 
 **WU-22: embeds and files (F2)**
+
 - Scope:
   - New plugins:
     - `bookmark`: URL unfurl through an app-supplied `unfurl(url)`.
@@ -529,12 +552,14 @@ These live mostly in `src/lib/plugins/**` and add new plugins, so they paralleli
 - Effort: 6 d.
 
 **WU-23: equation (F2)**
+
 - Scope: a block and inline equation with KaTeX, lazy-loaded.
 - Effort: 3 d (optional for P2).
 
 **Lane F2: inline atoms, links, code**
 
 **WU-24: trigger UI and mentions (F4)**
+
 - Depends on WU-15.
 - Scope:
   - Generalize the slash menu controller into a trigger suggestion controller (anchor
@@ -545,12 +570,14 @@ These live mostly in `src/lib/plugins/**` and add new plugins, so they paralleli
 - Effort: 5 d.
 
 **WU-25: link UX (F11)**
+
 - Scope: Mod+K opens the toolbar link panel; autolink a typed URL on space and a pasted URL at
   a caret (one undo step, undo gives the plain text); a link hover card with open, edit and
   remove; Mod+click opens.
 - Effort: 2.5 d.
 
 **WU-26: code languages (F9)**
+
 - Scope: `data.language`, a picker in the header, lazily loaded grammars, the label from the
   language, keeping `transformText` tokens.
 - Effort: 2.5 d.
@@ -558,6 +585,7 @@ These live mostly in `src/lib/plugins/**` and add new plugins, so they paralleli
 **Lane F3: accessibility and i18n** (touches every chrome plugin's markup: keep it one lane)
 
 **WU-27: accessibility (F7, F15)**
+
 - Scope:
   - Forward `aria-label`, `aria-labelledby`, `aria-describedby` and `id` props to the root
     textbox.
@@ -570,6 +598,7 @@ These live mostly in `src/lib/plugins/**` and add new plugins, so they paralleli
 - Effort: 5 d.
 
 **WU-28: i18n (F8)**
+
 - Scope:
   - A `labels` (dictionary) option on the toolbar, slash menu, block menu, image, code and
     handles.
@@ -579,6 +608,7 @@ These live mostly in `src/lib/plugins/**` and add new plugins, so they paralleli
 - Effort: 3.5 d.
 
 **WU-29: bidi (F14)**
+
 - Scope: `dir="auto"` on text elements, a bidi caret and selection check in Playwright (Hebrew
   and Arabic mixed with English).
 - Effort: 1.5 d.
@@ -589,6 +619,7 @@ Schedule these after the closure splits (WU-40, WU-41) or coordinate with them. 
 conflict matrix.
 
 **WU-30: tables (F1, decision D7)**
+
 - Scope:
   - New roles in `crdt/semantics.ts`: `table` (a container of `row`), `row` (a container of
     `cell`), `cell` (a text island, one or more lines).
@@ -610,22 +641,26 @@ conflict matrix.
   (5 d), menus and clipboard (3 d), fuzz (2 d).
 
 **WU-31: block colours and toggle headings (F10)**
+
 - Scope: `data.color`/`data.background` on any text block with a block-menu "Color" submenu
   (Notion palette, theme tokens); toggle heading kinds (a heading role with the toggle
   container); Turn into rows.
 - Effort: 3 d.
 
 **WU-32: page block and table of contents (F10)**
+
 - Scope: a `page` void kind linking to another room (data: page id, title cache), building on
   cross-document moves; a `toc` kind listing the document's headings live.
 - Effort: 3 d.
 
 **WU-33: find and replace (F13)**
+
 - Scope: a search plugin over the facade's text streams, overlay highlights, Mod+F (opt-in),
   replace one or all as one command and one undo step, hidden bodies skipped or revealed.
 - Effort: 3 d.
 
 **WU-34: comments (F5, decision D6)**
+
 - Scope:
   - Room: a `comments` table, RPC and HTTP routes (`list`, `add`, `reply`, `resolve`,
     `reopen`, `delete`) authorized like history, broadcast of thread changes over the socket
@@ -638,6 +673,7 @@ conflict matrix.
 - Effort: 12 to 15 d (room 4, client 6, concurrency and clipboard rules 2 to 3).
 
 **WU-35: version history UI (F12)**
+
 - Scope: a history panel component (a list of slots with editors and times), a read-only
   preview of a version (a second `<Edytor readonly>` over `?key=` JSON), a block-level diff
   highlight against the live document, Restore and Undo restore buttons.
@@ -645,11 +681,13 @@ conflict matrix.
 - Effort: 5 d.
 
 **WU-36: persistent multi-user suggestions (F12)**
+
 - Scope: suggestions stored as document data (a `suggest:<id>` subtree or marks) visible to
   every view, accept or reject by anyone with write access, attribution.
 - Effort: 8 to 10 d (optional for P2; decide after WU-34, which shares the anchoring problem).
 
 **WU-37: native text drag-move (F15)**
+
 - Scope: dragging a selected text range moves it as one `replaceRange` plus `insertFlow`
   command (copy with Alt), with three-engine Playwright rows.
 - Effort: 3 d (optional).
@@ -657,6 +695,7 @@ conflict matrix.
 #### Wave 4: P3 maintainability (weeks 2 to 6, one or two people; serialized against engine work)
 
 **WU-40: split `bindEdytorDoc` (CC-02)**
+
 - Scope: move the `prepare.*` families (delete, flow, layout, data, history, moves) of
   `crdt/edytor-doc.ts` into modules taking an explicit context object; the facade becomes
   wiring. No behaviour change.
@@ -665,11 +704,13 @@ conflict matrix.
 - Effort: 4 d.
 
 **WU-41: split `bindRuns` (CC-02)**
+
 - Scope: split `crdt/text/runs.ts` into fold, claims, placement maintenance, layout rules and
   self-checks.
 - Effort: 3 d.
 
 **WU-42: split `AttachedDocument` (CC-02)**
+
 - Scope: split `cloudflare/DocumentRoom.ts` into storage and compaction, admission
   (frames, quotas, forged writes), scheduler (alarm tasks), history and purge, moves, and
   presence.
@@ -677,6 +718,7 @@ conflict matrix.
 - Effort: 4 d.
 
 **WU-43: break the view import cycle (CC-03)**
+
 - Scope:
   - Assign `selection/`, `block/`, `text/` and `clipboard/` to contexts in AGENTS.md.
   - Add an eslint import-direction rule: session must not import surface, events or
@@ -688,6 +730,7 @@ conflict matrix.
 - Effort: 4 d.
 
 **WU-44: ticket ids, AGENTS.md, compatibility layers (CC-04, CC-07, CC-08, decision D8)**
+
 - Scope:
   - Replace ticket ids in `src/lib` comments with contract-row names or prose.
   - Prefix fork patches (`YP11`) to end the P-number collision.
@@ -701,6 +744,7 @@ conflict matrix.
   run it last in each area.
 
 **WU-45: lint, dependencies, fork hygiene (CC-06, CC-09, CC-10)**
+
 - Scope:
   - Typed eslint for `crdt/providers` and `cloudflare` (`no-floating-promises`), and
     `no-unused-vars`/`noUnusedLocals`.
@@ -713,6 +757,7 @@ conflict matrix.
 - Effort: 3.5 d.
 
 **WU-46: reactivity model (API-12)**
+
 - Scope: handle getters read through the cell (as `data` already does), so `{block.type}`
   stays live; an `onChange` variant receiving the `DocChange` report, or debounced, so it no
   longer exports the whole document on every commit.
@@ -722,6 +767,7 @@ conflict matrix.
 #### Wave 5: 1.0 release candidate
 
 **WU-50: freeze and release**
+
 - Scope:
   - An API freeze (the WU-10 report becomes the 1.0 contract).
   - The full lane set, including WU-16's soak re-run, green on the RC.
@@ -732,14 +778,14 @@ conflict matrix.
 
 ### Conflict matrix (who cannot run at the same time)
 
-| Files or area | Units touching it | Rule |
-|---|---|---|
-| `cloudflare/DocumentRoom.ts` | WU-04, 05, 06, 07, 34 (room part), 42 | Lane R first (one person, in order), then WU-42; WU-34's room part after WU-42 |
-| `crdt/edytor-doc.ts`, `crdt/text/runs.ts`, `crdt/semantics.ts` | WU-30, 31 (toggle heading role), 40, 41, 12 | WU-12 first (small), then WU-40/41, then WU-30. If tables must start earlier, start WU-30 on a branch and rebase after the splits |
-| `src/lib/index.ts`, `edytor.svelte.ts`, `selection.svelte.ts`, `plugins.ts` | WU-10, 13, 14, 15, 46, 43 | Lane A in order (WU-10 → 13 → 14 → 15), then WU-46 and WU-43 |
-| Chrome plugin markup (`slashMenu`, `blockMenu`, `toolbar`, `blockHandles`, `image`) | WU-21, 24, 25, 27, 28 | WU-27 and WU-28 together in one lane; WU-24 (slash controller generalization) before WU-27's slash part, or rebase; WU-21 owns `image/` |
-| `site/content/**` | every unit (docs in the same change), WU-18, 19, 20 | WU-19 rewrites prose: run it early, and let later units edit the new pages |
-| `.github/**`, gate tests | WU-08, 09 | Lane C alone |
+| Files or area                                                                       | Units touching it                                   | Rule                                                                                                                                    |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `cloudflare/DocumentRoom.ts`                                                        | WU-04, 05, 06, 07, 34 (room part), 42               | Lane R first (one person, in order), then WU-42; WU-34's room part after WU-42                                                          |
+| `crdt/edytor-doc.ts`, `crdt/text/runs.ts`, `crdt/semantics.ts`                      | WU-30, 31 (toggle heading role), 40, 41, 12         | WU-12 first (small), then WU-40/41, then WU-30. If tables must start earlier, start WU-30 on a branch and rebase after the splits       |
+| `src/lib/index.ts`, `edytor.svelte.ts`, `selection.svelte.ts`, `plugins.ts`         | WU-10, 13, 14, 15, 46, 43                           | Lane A in order (WU-10 → 13 → 14 → 15), then WU-46 and WU-43                                                                            |
+| Chrome plugin markup (`slashMenu`, `blockMenu`, `toolbar`, `blockHandles`, `image`) | WU-21, 24, 25, 27, 28                               | WU-27 and WU-28 together in one lane; WU-24 (slash controller generalization) before WU-27's slash part, or rebase; WU-21 owns `image/` |
+| `site/content/**`                                                                   | every unit (docs in the same change), WU-18, 19, 20 | WU-19 rewrites prose: run it early, and let later units edit the new pages                                                              |
+| `.github/**`, gate tests                                                            | WU-08, 09                                           | Lane C alone                                                                                                                            |
 
 ### Parallel schedule (four to five people or agent lanes)
 
@@ -767,15 +813,15 @@ Lane M                                                [WU-44][WU-45]   [WU-50 RC
 
 ### Effort totals (engineer-days, excluding optional units)
 
-| Wave | Units | Effort |
-|---|---|---:|
-| 0: P0 | WU-01 to 03 | 1 |
-| 1: P1 | WU-04 to 19 | 34 |
-| 2: P2 independent | WU-21, 22, 24 to 29, 20 | 30 |
-| 3: P2 engine and room | WU-30 to 35 | 41 to 49 |
-| 4: P3 | WU-40 to 46 | 26 |
-| 5: RC | WU-50 | 2 |
-| **Total** | | **≈ 134 to 142 d** (optional WU-23, 36, 37 add about 14 to 16 d) |
+| Wave                  | Units                   |                                                           Effort |
+| --------------------- | ----------------------- | ---------------------------------------------------------------: |
+| 0: P0                 | WU-01 to 03             |                                                                1 |
+| 1: P1                 | WU-04 to 19             |                                                               34 |
+| 2: P2 independent     | WU-21, 22, 24 to 29, 20 |                                                               30 |
+| 3: P2 engine and room | WU-30 to 35             |                                                         41 to 49 |
+| 4: P3                 | WU-40 to 46             |                                                               26 |
+| 5: RC                 | WU-50                   |                                                                2 |
+| **Total**             |                         | **≈ 134 to 142 d** (optional WU-23, 36, 37 add about 14 to 16 d) |
 
 With five parallel lanes, that is about eight weeks of calendar time. Agent lanes compress the
 mechanical units (WU-44, WU-45, WU-19, the splits). They do not compress the decisions, the

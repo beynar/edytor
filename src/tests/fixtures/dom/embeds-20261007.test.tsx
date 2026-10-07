@@ -1,6 +1,6 @@
 /** @jsxImportSource ../../jsx */
 /**
- * WU-22 — the media kinds (`embed`, `bookmark`, `file`, `video`, `audio`):
+ * The media kinds (`embed`, `bookmark`, `file`, `video`, `audio`):
  * void blocks following the image pattern (an empty panel until the block
  * has a source, then the media and an editable caption).
  *
@@ -33,6 +33,7 @@ import { videoPlugin, createVideoPlugin } from '$lib/plugins/media/VideoPlugin.s
 import { audioPlugin } from '$lib/plugins/media/AudioPlugin.svelte';
 import { safeMediaSrc, safeWebUrl } from '$lib/plugins/media/media.js';
 import { defaultSemantics } from '$lib/crdt/semantics.js';
+import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 import {
 	canonicalTree,
 	dispatchClipboardPaste,
@@ -157,6 +158,28 @@ describe('embed providers (the allowlist)', () => {
 			'https://good.example/embed/x'
 		);
 	});
+
+	it("a player on the page's own origin is refused (it could lift its own sandbox)", () => {
+		vi.stubGlobal('location', { origin: 'https://app.example' });
+		try {
+			const self: EmbedProvider = {
+				name: 'Self',
+				embed: (url) =>
+					url.host === 'app.example' ? `https://app.example/player${url.pathname}` : null
+			};
+			const other: EmbedProvider = {
+				name: 'Other',
+				embed: (url) =>
+					url.host === 'other.example' ? `https://player.other.example${url.pathname}` : null
+			};
+			expect(embedSourceOf('https://app.example/x', [self])).toBeNull();
+			expect(embedSourceOf('https://other.example/x', [other])?.src).toBe(
+				'https://player.other.example/x'
+			);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
 });
 
 describe('the media kinds are void in defaultSemantics (the room and headless documents)', () => {
@@ -258,6 +281,31 @@ describe('embed', () => {
 		expect(frames.map((f) => f.getAttribute('src'))).toEqual(['https://docs.example/embed/a']);
 	});
 
+	it("a suggestion's preview mounts no frame: it cannot read the view's providers", async () => {
+		const only: EmbedProvider = {
+			name: 'Docs',
+			embed: (url) =>
+				url.host === 'docs.example' ? `https://docs.example/embed${url.pathname}` : null
+		};
+		const { edytor } = await mount(
+			[createEmbedPlugin({ providers: [only] }), suggestionsPlugin],
+			[{ id: 'p', type: 'paragraph', content: [] }]
+		);
+		edytor.suggestions.add({ after: 'p' }, [
+			// YouTube is outside this view's list: never a frame.
+			{ type: 'embed', data: { url: `https://youtu.be/${YT}` }, content: [] },
+			{ type: 'embed', data: { url: 'https://docs.example/a' }, content: [] }
+		]);
+		await flushDomUpdates();
+		const preview = document.querySelector('[data-edytor-suggestion]')!;
+		expect(preview).not.toBeNull();
+		expect(document.querySelector('iframe')).toBeNull();
+		expect([...preview.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
+			`https://youtu.be/${YT}`,
+			'https://docs.example/a'
+		]);
+	});
+
 	it('a readonly empty embed is a passive placeholder', async () => {
 		await mount([embedPlugin], [{ type: 'embed', content: [] }], true);
 		expect(document.querySelector('[data-edytor-media-placeholder]')).not.toBeNull();
@@ -345,6 +393,45 @@ describe('file', () => {
 		expect(link.getAttribute('rel')).toBe('noopener noreferrer nofollow');
 		expect(link.textContent).toContain('report.pdf');
 		expect(link.textContent).toContain('5 B');
+	});
+
+	it('an upload that lands after a peer filled the block, or after it died, writes nothing', async () => {
+		let finish!: (src: string) => void;
+		const upload = vi.fn(() => new Promise<string>((resolve) => (finish = resolve)));
+		const { edytor } = await mount(
+			[createFilePlugin({ upload })],
+			[
+				{ id: 'f', type: 'file' },
+				{ id: 'g', type: 'file' }
+			]
+		);
+		const pick = async (index: number) => {
+			document.querySelectorAll<HTMLButtonElement>('[data-edytor-media-add]')[index]!.click();
+			await flushDomUpdates();
+			const input = document.querySelectorAll<HTMLInputElement>('input[type=file]')[0]!;
+			Object.defineProperty(input, 'files', { value: [new File(['x'], 'mine.pdf')] });
+			input.dispatchEvent(new Event('change', { bubbles: true }));
+			await vi.waitFor(() => expect(upload).toHaveBeenCalled());
+		};
+		// A peer sets the source while the upload runs: theirs stays.
+		await pick(0);
+		edytor.facade.apply(
+			edytor.facade.prepare.setBlockData('f', { src: 'https://peer.example/theirs.pdf' })
+		);
+		finish('https://files.example/mine.pdf');
+		await flushDomUpdates();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(edytor.facade.blockDataOf('f')).toEqual({ src: 'https://peer.example/theirs.pdf' });
+		// The block is deleted while the upload runs: no command runs.
+		upload.mockClear();
+		await pick(0);
+		edytor.facade.apply(edytor.facade.prepare.deleteBlock('g'));
+		const last = edytor.dispatcher.last;
+		finish('https://files.example/mine.pdf');
+		await flushDomUpdates();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(edytor.dispatcher.last).toBe(last);
+		expect(document.querySelector('[data-edytor-media-error]')).toBeNull();
 	});
 
 	it('without upload, no file picker; a link names the file from its path', async () => {

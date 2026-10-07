@@ -4,7 +4,8 @@
 	/**
 	 * A media block's empty state (the image's pattern, Notion): an "Add …"
 	 * button, then a link field (and Upload with an `upload`). `link` answers
-	 * whether it took the link; `file` stores an uploaded file's URL. A
+	 * whether it took the link; `file` stores an uploaded file's URL (an
+	 * upload fills `src`, and only a block still empty when it lands). A
 	 * readonly view, or a suggestion's preview (no `block`), shows a passive
 	 * placeholder: no control may run `upload` (or a bookmark's `unfurl`) for
 	 * a write the view would refuse.
@@ -78,13 +79,22 @@
 						hidden
 						onchange={async (event) => {
 							const picked = event.currentTarget.files?.[0];
-							if (!picked || block?.edytor.readonly !== false) return;
+							if (!picked || !block || block.edytor.readonly) return;
+							const { edytor, id, type } = block;
+							let src: string;
 							try {
-								const src = await upload(picked);
-								failed = !(file ? file(picked, src) : link(src));
+								src = await upload(picked);
 							} catch {
 								failed = true;
+								return;
 							}
+							// Write only to the block as it was picked from: still in the
+							// tree, of its kind and empty (a peer may have set a source, or
+							// deleted it, while the upload ran).
+							const live = edytor.idToBlock.get(id);
+							if (!live?.isInTree || live.type !== type || edytor.readonly) return;
+							if (edytor.facade.blockDataOf(id)?.src !== undefined) return;
+							failed = !(file ? file(picked, src) : link(src));
 						}}
 					/>
 				</label>

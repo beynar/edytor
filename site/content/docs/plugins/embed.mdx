@@ -65,7 +65,8 @@ Match the host exactly (never a suffix or a substring) and check every id you co
 ## Security
 
 - The frame's `src` is always the player URL the provider derives from the stored link, never the stored value: a collaborator or a pasted document can store any `url`, and a link no provider plays renders a plain link instead of a frame.
-- A player URL must be `https:`; a provider answering anything else is refused.
+- A player URL must be `https:` on another origin than your page's; a provider answering anything else is refused. The frame has `allow-scripts` and `allow-same-origin`, so a player on your page's origin, or on one that can script it, could remove its own sandbox: a custom provider must never answer one.
+- A suggestion's preview has no view to read the allowlist from, so it never plays: an embed there shows its link.
 - The stored link must be an absolute `http:`/`https:` URL with a host, read by the link sanitizer's rules (control characters stripped, as the browser's URL parser does): `safeWebUrl(value)`.
 - The frame has `sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"` (`EMBED_SANDBOX`): the player runs in its own origin and may open its pages in a new tab, but never navigates your page, opens dialogs, downloads or submits forms. It never has `srcdoc`.
 - `allow="fullscreen; picture-in-picture; encrypted-media; clipboard-write"` (`EMBED_ALLOW`), `referrerpolicy="strict-origin-when-cross-origin"` (YouTube refuses a player without its embedder's origin) and `loading="lazy"`.

@@ -24,9 +24,11 @@
 	};
 
 	const providersOf = new WeakMap<Edytor, readonly EmbedProvider[]>();
-	/** The view's allowlist (a suggestion's preview, which has no handle, reads the default one). */
-	const providers = (block: Block | undefined) =>
-		(block && providersOf.get(block.edytor)) ?? EMBED_PROVIDERS;
+	/**
+	 * The view's allowlist: the first embed plugin listed in it (first wins,
+	 * as for the kind). Never a broader list: no entry plays nothing.
+	 */
+	const providers = (block: Block | undefined) => (block && providersOf.get(block.edytor)) ?? [];
 
 	/** Store `value` as the block's link when a provider plays it; answers whether it did. */
 	const embedLink = (block: Block | undefined, value: string) => {
@@ -49,7 +51,7 @@
 		(options: EmbedPluginOptions = {}): Plugin =>
 		(edytor) => {
 			const allowed = options.providers ?? EMBED_PROVIDERS;
-			providersOf.set(edytor, allowed);
+			if (!providersOf.has(edytor)) providersOf.set(edytor, allowed);
 			return {
 				...urlPaste(edytor, {
 					type: 'embed',
@@ -98,7 +100,7 @@
 </script>
 
 {#snippet embed({ block, content }: BlockSnippetPayload<{ url?: string }>)}
-	{@const player = embedSourceOf(block.data.url, providers(block.handle))}
+	{@const player = block.handle ? embedSourceOf(block.data.url, providers(block.handle)) : null}
 	{@const url = safeWebUrl(block.data.url)}
 	{#if player}
 		{@const { height, aspectRatio = '16 / 9' } = player.provider}
@@ -120,7 +122,8 @@
 			></iframe>
 		</div>
 	{:else if url}
-		<!-- A link no provider plays (a peer may store any): a plain link, never a frame. -->
+		<!-- A link no provider plays (a peer may store any), or a suggestion's preview (no handle, so no
+		view's allowlist): a plain link, never a frame. -->
 		<div use:block.void data-edytor-embed-unsupported>
 			<a href={url} target="_blank" rel="noopener noreferrer nofollow">{url}</a>
 		</div>

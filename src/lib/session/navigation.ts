@@ -374,7 +374,7 @@ const rows: Record<string, Row> = {
 const bind =
 	([unit, key, platform]: Row, extend: boolean, page: boolean): HotKey =>
 	({ edytor, prevent }) => {
-		if (platform && edytor.hotKeys.isMac !== (platform === 'mac')) return;
+		if (platform && edytor.keymap.isMac !== (platform === 'mac')) return;
 		if (!page) stayWithoutTarget(edytor, prevent);
 		if (move(edytor, unit, key, extend)) prevent();
 	};

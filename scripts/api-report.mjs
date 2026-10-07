@@ -17,6 +17,11 @@
  * The raw engine (`edytor/crdt`, the vendored fork) is reported by name
  * only: its declarations are upstream's.
  *
+ * The JSDoc of every reported declaration (exported or reachable) is what
+ * a consumer's editor shows: it names no internal ticket code (`R4`,
+ * `UW-22`, `DR-props-2`, …), which this script also checks (`CODE`, both
+ * modes).
+ *
  * `--check` regenerates in memory and fails when a report differs from the
  * committed one, or when the emitted declarations of an entry do not
  * compile under `strict` with `skipLibCheck: false` (what a consumer's
@@ -76,6 +81,31 @@ const entries = () =>
 			name: reportName(subpath),
 			file: path.join(OUT, target.types.replace(/^\.\/dist\//, ''))
 		}));
+
+/**
+ * An internal ticket code in prose: letters then digits (`R4`, `O45`, `P11`,
+ * `SW16`, `U6b`), letters, a dash and digits (`D-8`, `UW-22`, `FX-01`), or a
+ * review row (`DR-props-2`). `UTF-16`, `ES2022` and the Cloudflare products (`R2`, `D1`) are not codes.
+ */
+const CODE =
+	/\b(?!UTF-|ES20|R2\b|D1\b)(?:[A-Z]{1,3}\d{1,3}[a-z]?|[A-Z]{1,3}-\d{1,3}[a-z]?|[A-Z]{2}\d?-[a-z]+-\d+)\b/g;
+/** JSDoc blocks of the reported declarations that name a ticket code: `file:line → codes`. */
+const coded = new Map();
+/** Record the ticket codes of every JSDoc block in `node` (its own and its members'). */
+const scanCodes = (node) => {
+	const sf = node.getSourceFile();
+	const visit = (child) => {
+		for (const range of ts.getLeadingCommentRanges(sf.text, child.pos) ?? []) {
+			const text = sf.text.slice(range.pos, range.end);
+			const codes = text.startsWith('/**') ? text.match(CODE) : null;
+			if (!codes) continue;
+			const { line } = sf.getLineAndCharacterOfPosition(range.pos);
+			coded.set(`${path.relative(OUT, sf.fileName)}:${line + 1}`, [...new Set(codes)]);
+		}
+		ts.forEachChild(child, visit);
+	};
+	visit(ts.isVariableDeclaration(node) ? node.parent.parent : node);
+};
 
 const printer = ts.createPrinter({ removeComments: true, newLine: ts.NewLineKind.LineFeed });
 
@@ -169,6 +199,7 @@ const report = (program, entry) => {
 		for (const declaration of declarations) {
 			lines.push(`// ${relative(declaration)}`, print(declaration));
 			collect(declaration);
+			scanCodes(declaration);
 		}
 		lines.push('```', '');
 	}
@@ -179,7 +210,10 @@ const report = (program, entry) => {
 		const symbol = queue.shift();
 		reached.push(symbol);
 		const before = reachable.size;
-		for (const declaration of (symbol.declarations ?? []).filter(inPackage)) collect(declaration);
+		for (const declaration of (symbol.declarations ?? []).filter(inPackage)) {
+			collect(declaration);
+			scanCodes(declaration);
+		}
 		queue.push(...[...reachable.values()].slice(before));
 	}
 	if (reached.length) {
@@ -269,6 +303,13 @@ for (const entry of list) {
 			for (const line of added.slice(0, 20)) console.error(`  + ${line}`);
 		}
 	} else writeFileSync(file, text);
+}
+if (coded.size) {
+	console.error(
+		`api-report: ${coded.size} public JSDoc blocks name an internal ticket code (say what it means, or drop it):`
+	);
+	for (const [at, codes] of [...coded].sort()) console.error(`  ${at} ${codes.join(', ')}`);
+	failed = true;
 }
 if (failed) process.exit(1);
 if (!CHECK) console.log(`api-report: wrote ${list.length} reports to api/`);

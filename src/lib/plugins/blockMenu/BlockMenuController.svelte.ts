@@ -94,7 +94,7 @@ export class BlockMenuController {
 		if (!block) return [];
 		const canMove = (direction: 'up' | 'down') => () =>
 			this.edytor.canMoveBlocks({ blocks: outermost(blocks), direction });
-		const [mod, shift] = this.edytor.hotKeys.isMac ? ['⌘', '⇧'] : ['Ctrl+', 'Shift+'];
+		const [mod, shift] = this.edytor.keymap.isMac ? ['⌘', '⇧'] : ['Ctrl+', 'Shift+'];
 		const all: BlockMenuAction[] = [
 			{
 				id: 'turn',
@@ -250,7 +250,7 @@ export class BlockMenuController {
 
 	/**
 	 * The one block "Copy link" names: the open block, or the layout its
-	 * block selection covers whole (D3, `liftLayouts`); none for several.
+	 * block selection covers whole (`liftLayouts`); none for several.
 	 */
 	get linked(): Block | undefined {
 		const [only, ...rest] = this.blocks.length > 1 ? liftLayouts(this.blocks) : this.blocks;

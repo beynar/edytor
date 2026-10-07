@@ -10,7 +10,7 @@ import { defineDomFixture, defineFixtures } from '../types.js';
 import { dispatchDomKeyDown } from '../../dom/test.utils.js';
 
 const mockApplePlatform = (edytor: Edytor) => {
-	Object.defineProperty(edytor.hotKeys, 'isMac', {
+	Object.defineProperty(edytor.keymap, 'isMac', {
 		configurable: true,
 		get: () => true
 	});

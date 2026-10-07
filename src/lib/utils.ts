@@ -11,7 +11,7 @@ export const id = (prefix: 't' | 'b' | 'i' | 'v' | 's') => {
 /**
  * A hook's veto as the dispatcher carries it: what `prevent(cb?)` recorded,
  * and the extension that recorded it. Hooks never see one thrown at them:
- * `prevent` records and returns (API-07). Throwing one from a hook (the
+ * `prevent` records and returns. Throwing one from a hook (the
  * earlier form) still vetoes, for the transition.
  */
 export class PreventionError extends Error {

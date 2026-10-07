@@ -30,7 +30,7 @@ export class ToolbarController {
 	linkUrl = $state('');
 	/** The open panel: the kind menu, the link field or the colors. */
 	panel = $state<null | 'turn' | 'link' | 'color'>(null);
-	/** The selection the toolbar acts on: a value (anchors), so peers' edits move it (L52). */
+	/** The selection the toolbar acts on: a value (anchors), so peers' edits move it. */
 	private selectionSnapshot: SelectionValue | null = null;
 	private isRestoringSelection = false;
 

@@ -254,7 +254,7 @@ export const isInitialized = (doc: EngineDoc): boolean => schemaVersion(doc) !==
  *   missing or names a DIFFERENT manifest (`'not-edytor'`, a next-gen name,
  *   an app-local doc kind). A valid version number alone does not make the
  *   payload an edytor document — the manifest name is part of the contract
- *   (gate-F1 F5: the version-only check let foreign `meta.schema` values
+ *   (the version-only check let foreign `meta.schema` values
  *   cross the staging boundary).
  */
 export type SchemaProblem = {
@@ -313,7 +313,7 @@ export class SchemaMismatchError extends Error {
 
 /**
  * Hard gate — throws {@link SchemaMismatchError} when `checkSchema` reports a
- * problem. Used by migration and by the future U08 `Edytor.sync()` path before
+ * problem. Used by migration and by `Edytor.sync()` before
  * mutating a synced document.
  */
 export const assertSchema = (doc: EngineDoc, docName = 'doc'): void => {
@@ -371,7 +371,7 @@ export const assertUsableDoc = (doc: EngineDoc): void => {
  * counterpart of `DocumentDestroyedError` — kept in this module because a
  * bare `bindEdytorDoc` facade has no document layer above it.
  */
-/** The undo steps a document's history keeps by default (P6): older ones are released. */
+/** The undo steps a document's history keeps by default: older ones are released. */
 export const DEFAULT_HISTORY_LIMIT = 200;
 /** The origin of the transaction that releases a dropped history step's content. */
 const HISTORY_TRIM = Symbol('edytor.history.trim');
@@ -393,7 +393,7 @@ export type BlockRole = {
 	island?: boolean;
 	/**
 	 * An island of lines (code): each direct child displays as its
-	 * `defaultChild` kind and holds no children (FW-01, XW-03). Needs
+	 * `defaultChild` kind and holds no children. Needs
 	 * `island` and a `defaultChild`; other islands keep their structure.
 	 */
 	lines?: boolean;
@@ -405,7 +405,7 @@ export type BlockRole = {
 	 */
 	layout?: boolean;
 	/**
-	 * Data paths written as one leaf (`data.atomic`, H8): a top-level key, or
+	 * Data paths written as one leaf (`data.atomic`): a top-level key, or
 	 * an array of keys for a nested one (`['link', ['media', 'source']]`). An
 	 * assignment there, or anywhere under it, writes the whole value as one
 	 * last-writer-wins leaf, so two concurrent assignments never merge into a
@@ -414,7 +414,7 @@ export type BlockRole = {
 	atomic?: readonly (string | readonly string[])[];
 };
 
-/** Island-sealing policy for a walk in document order (R5; see `next`). */
+/** Island-sealing policy for a walk in document order (see `next`). */
 export type OrderPolicy = { sealed?: boolean };
 
 /** Configuration for an attached {@link EdytorDoc}. */
@@ -432,26 +432,25 @@ export type EdytorDocConfig = {
 	 */
 	defaultType?: string;
 	/**
-	 * The adopted default child type per parent type (R5, O9) — the island
+	 * The adopted default child type per parent type — the island
 	 * merge-out reset applies it against the children's actual new parent.
 	 */
 	defaultChildOf?: (parentType: string) => string | undefined;
-	/** The adopted `rendersContent` per kind (R5, O22); undeclared kinds render theirs. */
+	/** The adopted `rendersContent` per kind; undeclared kinds render theirs. */
 	rendersContent?: (type: string) => boolean;
 	/**
-	 * H5: the adopted edge of a mark (its record's `edge`): where a concurrent
+	 * The adopted edge of a mark (its record's `edge`): where a concurrent
 	 * insert at each end of a mark operation lands. Undeclared marks are
 	 * `inclusive`; a key `name:<id>` falls back to `name`'s.
 	 */
 	markEdge?: (mark: string) => MarkEdge | undefined;
 	/**
 	 * The kinds `roleOf` answers for — the display reads the line kinds of
-	 * the `lines` islands from them, present in the document or not
-	 * (XW-11). Absent: only the kinds of the blocks the document holds.
+	 * the `lines` islands from them, present in the document or not. Absent: only the kinds of the blocks the document holds.
 	 */
 	kinds?: () => Iterable<string>;
 	/**
-	 * U1 — the local actor getter for compact per-block attribution
+	 * The local actor getter for compact per-block attribution
 	 * (`attribution/block.ts`). Read lazily per op so the document can
 	 * pass `() => this.actor` before the actor field is assigned. When
 	 * absent the facade performs NO block-attribution writes at all —
@@ -470,7 +469,7 @@ export type EdytorDocConfig = {
 	 */
 	lineageDepth?: number;
 	/**
-	 * The document's `writable` guard (O18) — called at the write funnel;
+	 * The document's `writable` guard — called at the write funnel;
 	 * throws while the document is read-only, so an edit is refused rather
 	 * than accepted and then dropped by the quarantined transport.
 	 */
@@ -501,7 +500,7 @@ export type DocChange = {
 	/** Ids whose visible content changed → the new maintained runs. */
 	content: Map<BlockId, readonly ContentRun[]>;
 	/** Parents (`null` = root) whose visible child list changed → new order
-	 *  (frozen — shared with the retained snapshot baseline, R4). */
+	 *  (frozen — shared with the retained snapshot baseline). */
 	order: Map<BlockId | null, readonly BlockId[]>;
 	/** The document's own data (`docData()`), when this commit changed it. */
 	data?: Record<string, unknown>;
@@ -526,7 +525,7 @@ export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
 export type AnchorAffinity = 'left' | 'right';
 
 /**
- * A selection endpoint (R4): `b` is the home block of the backing text the
+ * A selection endpoint: `b` is the home block of the backing text the
  * position lives in (NOT necessarily the block that displays it — merges and
  * splits reroute display while the anchor stays on the same items), `a` an
  * engine relative position whose `a` carries the side (`< 0` left, `>= 0`
@@ -543,7 +542,7 @@ type JsonObj = Record<string, unknown>;
 const EMPTY_IDS = Object.freeze([]) as readonly BlockId[];
 
 /**
- * The observed outcome of one document operation (R6, §2.4) — the one result
+ * The observed outcome of one document operation — the one result
  * shape every op returns, empty inputs included. `refused`: the op did not
  * apply and wrote nothing; `noop`: it applied and changed nothing; `applied`:
  * the transaction wrote. Read from the transaction's effects, never predicted.
@@ -565,12 +564,12 @@ const refused = (reason: Refusal): OpResult =>
 export type TextRange = { block: BlockId; offset: number; length: number };
 
 /**
- * One planned write (R6, §2.4), named by the document operation that
- * performs it — the name a hook matches (D-10). Steps carry everything
+ * One planned write, named by the document operation that
+ * performs it — the name a hook matches. Steps carry everything
  * their write needs (ranks, marks, offsets), decided at prepare time.
  */
 export type PlanStep =
-	/** `index`: the destination slot at prepare time, as hooks see it (D-10). */
+	/** `index`: the destination slot at prepare time, as hooks see it. */
 	| {
 			op: 'insertBlocks';
 			parent: BlockId | null;
@@ -630,10 +629,10 @@ export type PlanStep =
 export type DataTarget = BlockId | null | { block: BlockId; atom: string };
 
 /**
- * What applying a plan does (R6): blocks created, removed (they leave the
+ * What applying a plan does: blocks created, removed (they leave the
  * document), merged (`[from, into]`), moved (a placement written), retyped
  * or given new data (`meta`), and the text ranges written. Derived from the
- * plan's steps; the applied transaction changes exactly this (F-O11).
+ * plan's steps; the applied transaction changes exactly this.
  */
 export type PlanEffect = {
 	creates: BlockId[];
@@ -645,7 +644,7 @@ export type PlanEffect = {
 };
 
 /**
- * A prepared operation (R6, §2.4): its steps, their effect, the ids the op
+ * A prepared operation: its steps, their effect, the ids the op
  * is about, and the document version it was prepared against — valid only
  * there, applied in the same synchronous turn.
  */
@@ -746,7 +745,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	const P = bindPurge(Y);
 	/** Each history's release of all its steps (`releaseHistory`). */
 	const releasers = new WeakMap<YUndoManager, () => void>();
-	// U1 — compact per-block attribution writes (`attribution/block.ts`).
+	// Compact per-block attribution writes (`attribution/block.ts`).
 	// One bound instance per engine binding; its suppression memory is
 	// per-doc (WeakMap-keyed), so facades on the same doc share it.
 	const BA = bindBlockAttribution(Y);
@@ -3365,7 +3364,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const facade = {
 			// lifecycle
 			init: (opts?: Parameters<typeof init>[1]) => write(() => init(doc, opts)),
-			/** Apply the deterministic seed of `value` and the document's `data` (R13) — the document's seed decision. */
+			/** Apply the deterministic seed of `value` and the document's `data` — the document's seed decision. */
 			seed: (value: JSONBlock[], data?: JsonObj) =>
 				write(() => seed(doc, value, defaultType, data)),
 			isInitialized: () => isInitialized(doc),
@@ -3374,7 +3373,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			/**
 			 * The schema gate for this doc — throws {@link SchemaMismatchError}
 			 * on unversioned-content or unsupported-version state. Consumers
-			 * (U08 `Edytor.sync()`, packed consumers) call it before trusting
+			 * (`Edytor.sync()`, packed consumers) call it before trusting
 			 * a synced doc.
 			 */
 			checkSchema: () => checkSchema(doc),
@@ -3384,8 +3383,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			/**
 			 * Drop every step of a history `createUndoManager` made (undo and
 			 * redo) and release what they kept for their undo, as the history
-			 * limit does (P6): the engine collects that content now, the doc's
-			 * `gcFilter` still deciding. The room's validation history (H2) runs
+			 * limit does: the engine collects that content now, the doc's
+			 * `gcFilter` still deciding. The room's validation history runs
 			 * it after each frame.
 			 */
 			releaseHistory: (um: YUndoManager): void => releasers.get(um)?.(),
@@ -3408,7 +3407,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			docData,
 			dataItemIds,
 			/**
-			 * U1 — compact per-block attribution (`{createdBy, contributors,
+			 * Compact per-block attribution (`{createdBy, contributors,
 			 * lastChangedBy}`), or `undefined` for unauthored/system blocks.
 			 * O(1) per call; live-replicated (remote values read the same).
 			 */
@@ -3464,7 +3463,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			onChange,
 			// every op — each returns an {@link OpResult}; `apply(prepare.op(…))`
 			...applied(prepare, apply),
-			/** Every op prepared (R6): pure, a plan of named steps + its effect, or `refused`. */
+			/** Every op prepared: pure, a plan of named steps + its effect, or `refused`. */
 			prepare,
 			/** Write a prepared plan exactly (refusals pass through). */
 			apply,
@@ -3517,7 +3516,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** Attach the per-doc facade. */
 		create,
 		/**
-		 * Keep, on `doc`, the text a replica may have to copy again (P11): its
+		 * Keep, on `doc`, the text a replica may have to copy again: its
 		 * `gcFilter` then spares a deleted copy's content, as every facade's
 		 * history does. A doc that only relays updates (the room) calls it
 		 * before applying anything, so what it collects and encodes matches
@@ -3525,8 +3524,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 */
 		keepCopies: (doc: EngineDoc): void => void D.scope(doc),
 		/**
-		 * Purge from `doc` what was deleted before `horizon` (H7,
-		 * `room.purge.what`): real deletes, inside the caller's transaction,
+		 * Purge from `doc` what was deleted before `horizon` (`room.purge.what`): real deletes, inside the caller's transaction,
 		 * and the horizon record every history reads (`hist.purge.horizon`).
 		 * The room's purge task runs it; `facade` is a facade over `doc`.
 		 */
@@ -3535,8 +3533,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		horizonOf: (doc: EngineDoc) => readHorizon(doc),
 		/**
 		 * Make the visible document `doc` equal `json`, keeping the ids the
-		 * registry holds and writing only what differs (H11,
-		 * `room.history.restore`), inside the caller's transaction.
+		 * registry holds and writing only what differs (`room.history.restore`), inside the caller's transaction.
 		 */
 		restoreTo: restoreDocument,
 		/** The bound engine layers (same instances the facades use). */

@@ -93,17 +93,17 @@ export type DocumentAttribution = {
 	 */
 	setProfile(profile: ActorProfile): void;
 	/**
-	 * U2 — merged read over the pre-existing `a/` records written by the
+	 * Merged read over the pre-existing `a/` records written by the
 	 * retired per-edit capture pipeline: `{inserts, deletes}` IdMaps in
 	 * the native ContentMap shape, decoded fresh per call. Returns `null`
 	 * when the document carries no legacy records. For a rendered history
 	 * view, implement the engine's `AbstractRenderer` over it (the engine
-	 * ships no concrete renderer — UPSTREAM.md P8); the ordinary
+	 * ships no concrete renderer); the ordinary
 	 * runs/projection surface does not consult it.
 	 */
 	legacy(): Engine.ContentMap | null;
 	/**
-	 * U1 — compact per-block attribution for `blockId`
+	 * Compact per-block attribution for `blockId`
 	 * (`{createdBy, contributors, lastChangedBy}` — durable actor ids,
 	 * never replica clientIDs), or `undefined` for system/foreign blocks
 	 * that carry no record. O(1) per call; reads replicated state directly

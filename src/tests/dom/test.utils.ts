@@ -41,7 +41,7 @@ export type RenderDomEdytorOptions = {
 	presence?: PresenceOptions;
 	value?: JSONDoc;
 	autoSelectFixture?: boolean;
-	onChange?: (value: JSONBlock) => void;
+	onChange?: (value: JSONDoc) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 };
 

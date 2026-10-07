@@ -184,7 +184,7 @@ const awarenessFrame = (awareness: Awareness, clients: number[], states?: Awaren
 export const quarantined = (doc: YDoc): boolean =>
 	checkSchema(doc as unknown as EngineDoc) !== null;
 
-/** The lifecycle a provider carries (O74) — installed by {@link initLifecycle}. */
+/** The lifecycle a provider carries — installed by {@link initLifecycle}. */
 export type LifecycleHost = {
 	/** Lifetime: the provider has held the room's (or its store's) state once. */
 	hasSynced: boolean;

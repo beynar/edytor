@@ -72,8 +72,7 @@
 					type="button"
 					data-edytor-suggestion-accept
 					onmousedown={keep}
-					onclick={actions.accept}
-					>Accept <kbd>{edytor.hotKeys.isMac ? '⌘↵' : 'Ctrl+↵'}</kbd></button
+					onclick={actions.accept}>Accept <kbd>{edytor.keymap.isMac ? '⌘↵' : 'Ctrl+↵'}</kbd></button
 				>
 			{/if}
 			<button

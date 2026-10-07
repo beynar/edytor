@@ -34,8 +34,8 @@ export const richTextKinds = frozen({
 } satisfies Record<string, KindSemantics>);
 
 /**
- * `richTextPlugin`'s mark edges (H5): where a concurrent insert at each end
- * of a mark lands. A link grows at its start only (FP-8: typing after it
+ * `richTextPlugin`'s mark edges: where a concurrent insert at each end
+ * of a mark lands. A link grows at its start only (typing after it
  * stays out of it unless from inside the anchor); the others are inclusive.
  */
 export const richTextMarks = frozen({

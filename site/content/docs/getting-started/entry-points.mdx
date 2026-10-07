@@ -12,7 +12,7 @@ The `edytor` package has five code entry points and one stylesheet. Only the roo
 | `edytor/crdt/edytor` | The document API and the facade's full vocabulary, `bindCrdt`, awareness, attribution, migration | Browser, Node 22+, Workers |
 | `edytor/protocol` | The wire vocabulary: frames, message types, codecs, generation records, the admission gates, the raw provider classes | Browser, Node 22+, Workers |
 | `edytor/crdt` | The vendored CRDT engine itself (Yjs v14 fork) | Browser, Node 22+, Workers |
-| `edytor/cloudflare` | `DocumentRoom` (a Durable Object), `attachDocument` (for your own Durable Object), `routeDocumentSocket` with `requestedReplica`, `routeDocumentHistory` (the [version history](/docs/server/history)), and `closedSocket` | Cloudflare Workers only |
+| `edytor/cloudflare` | `DocumentRoom` (a Durable Object), `attachRoom` (for your own Durable Object), `routeDocumentSocket` with `requestedReplica`, `routeDocumentHistory` (the [version history](/docs/server/history)), and `closedSocket` | Cloudflare Workers only |
 | `edytor/themes/notion.css` | The [Notion theme](/docs/customization/styling#notion-theme) stylesheet | Any bundler that imports CSS |
 
 No other path is exported. Imports such as `edytor/dist/...` or `edytor/crdt/vendor/...` fail with `ERR_PACKAGE_PATH_NOT_EXPORTED`.
@@ -123,7 +123,7 @@ Keep one engine in your app. The `yjs` package on npm is v13 and its updates are
 
 ## `edytor/cloudflare`
 
-The server side of real-time collaboration: `DocumentRoom`, a Durable Object that coordinates one document; `attachDocument(this, options)`, which hosts a document in any Durable Object of yours; `routeDocumentSocket`, which authorizes a client before its WebSocket upgrade, and `requestedReplica`, which reads the client id the dial sends; and `closedSocket(code, reason)`, which turns a dial away from your own Worker with a close the provider understands (see [authorization](/docs/server/authorization#authorize)).
+The server side of real-time collaboration: `DocumentRoom`, a Durable Object that coordinates one document; `attachRoom(this, options)`, which hosts a document in any Durable Object of yours; `routeDocumentSocket`, which authorizes a client before its WebSocket upgrade, and `requestedReplica`, which reads the client id the dial sends; and `closedSocket(code, reason)`, which turns a dial away from your own Worker with a close the provider understands (see [authorization](/docs/server/authorization#authorize)).
 
 ```ts title="src/worker.ts"
 import { DocumentRoom, routeDocumentSocket, requestedReplica } from 'edytor/cloudflare';

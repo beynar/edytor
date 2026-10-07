@@ -1201,7 +1201,7 @@ export class BlockHandleController {
 	}
 
 	/**
-	 * Layer-relative geometry (R11) of Notion's plain bar: centered between the
+	 * Layer-relative geometry of Notion's plain bar: centered between the
 	 * two siblings of the slot, or — inside the target — where the child lands,
 	 * indented to the child's column.
 	 */

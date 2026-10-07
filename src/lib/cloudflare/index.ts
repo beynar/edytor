@@ -7,9 +7,11 @@
 export {
 	DocumentRoom,
 	AttachedDocument,
+	attachRoom,
 	attachDocument,
 	SOCKET_TAG,
 	closedSocket,
+	type AttachRoomOptions,
 	type AttachDocumentOptions,
 	DEFAULT_COMPACT_AFTER,
 	DEFAULT_MAX_ROW_BYTES,
@@ -62,6 +64,7 @@ export {
 export { type PurgeReport } from '../crdt/purge.js';
 export { lockedBlocks, type LockOptions } from './locks.js';
 export {
+	moveBlocksBetweenRooms,
 	moveBlocks,
 	forwardLateEdits,
 	DEFAULT_MOVE_GRACE_DAYS,

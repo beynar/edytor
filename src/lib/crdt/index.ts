@@ -269,7 +269,7 @@ export const bindCrdt = (Y: EngineApi) => {
 		/** The generation cutover (4 → 5): a generation-4 state read as JSON. */
 		generations: bindGenerations(Y),
 		sync: bindSync(Y),
-		/** U8 — the document-admission boundary (`admitUpdate` staged restore + the shared gate vocabulary). */
+		/** The document-admission boundary (`admitUpdate` staged restore + the shared gate vocabulary). */
 		admission: bindAdmission(Y),
 		/** Bind the attribution service to this engine — actor dictionary + legacy `a/` reads + block attribution (documents attach it automatically). */
 		attribution: bindAttribution(Y)

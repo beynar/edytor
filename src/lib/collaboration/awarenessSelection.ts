@@ -102,7 +102,7 @@ export const publishPresence = (
 export type PresenceShare = 'caret' | 'block' | 'none';
 
 /**
- * The least ms between two presence writes of a view by default (P9): a
+ * The least ms between two presence writes of a view by default: a
  * caret held down or a drag publishes about 20 writes a second instead of
  * one per selection change, which every peer and the room relay.
  */
@@ -116,7 +116,7 @@ export type PresenceOptions = {
 };
 
 /**
- * One view's presence writer (R1): the only writer of its key, under the
+ * One view's presence writer: the only writer of its key, under the
  * view's `share` and `throttle`. `select()` hands it the full payload; the
  * view's teardown calls `clear()`.
  */

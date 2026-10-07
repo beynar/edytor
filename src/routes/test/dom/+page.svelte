@@ -991,7 +991,7 @@
 		runtimeReadonly = Boolean(data.readonly);
 	});
 	const direction: 'ltr' | 'rtl' = $derived(data.dir === 'rtl' ? 'rtl' : 'ltr');
-	const hotKeys = $derived.by(() => {
+	const hotkeys = $derived.by(() => {
 		const routeHotKeys: Record<string, HotKey> = {};
 
 		const insertProbeText = (edytor: EdytorContext, value: string) => {
@@ -1123,7 +1123,7 @@
 			{autocorrect}
 			{autocomplete}
 			{autocapitalize}
-			{hotKeys}
+			{hotkeys}
 			sync={collabSync}
 			class="outline-none"
 			{placeholder}

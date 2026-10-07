@@ -72,7 +72,7 @@ import {
 export type TextAnchor = { b: string; a: Anchor };
 
 /**
- * The public read-only view (D3): the projection's endpoints as wrappers
+ * The public read-only view: the projection's endpoints as wrappers
  * (`startText`/`yStart`… offsets inside text segments). Projection facts —
  * `content`, `marks`, the `isAt…`/`is…Spanning` flags, `islandRoot`,
  * `voidRoot` — are read from `selection.projection`.
@@ -91,7 +91,7 @@ type SelectionState = {
 	isBlockSpanning: boolean;
 	/** Focus is in a void block's own `input`/`textarea`. */
 	isVoidEditableElement: boolean;
-	/** R4 admission: the mark-edge side of a DOM-derived caret (`marksForInsertion`). */
+	/** The mark-edge side of a DOM-derived caret (`marksForInsertion`). */
 	edge?: EdgeSide;
 };
 
@@ -264,7 +264,7 @@ export class EdytorSelection {
 	private modelSelectionPreservationBlock: Block | null = null;
 
 	/**
-	 * The selection (R9, L4): a value — none, a text range of two anchors,
+	 * The selection: a value — none, a text range of two anchors,
 	 * one inline atom, or a set of block ids. Only `select()` replaces it.
 	 */
 	value = $state.raw<SelectionValue>(noSelection);
@@ -301,7 +301,7 @@ export class EdytorSelection {
 	}
 
 	/**
-	 * The read-only wrapper view of the projection (D3): every field is a
+	 * The read-only wrapper view of the projection: every field is a
 	 * projection of (value, document version); `edge` comes from the Surface
 	 * for the value it was observed with.
 	 */
@@ -379,7 +379,7 @@ export class EdytorSelection {
 	};
 
 	/**
-	 * The one commit point (R9): replaces the value, advances the epoch and
+	 * The one commit point: replaces the value, advances the epoch and
 	 * applies every side effect once — the selected, atom and focused sets
 	 * (hooks and attributes), and, when the value changed, presence and `onSelectionChange`.
 	 * `surface` carries the mark-edge side the value was observed with.
@@ -441,7 +441,7 @@ export class EdytorSelection {
 		});
 	};
 
-	/** The marks the next insertion at the caret takes (L4, values kept). */
+	/** The marks the next insertion at the caret takes (values kept). */
 	get pending(): PendingMarks | undefined {
 		return this.value.kind === 'text' ? (this.value.pending as PendingMarks) : undefined;
 	}
@@ -569,7 +569,7 @@ export class EdytorSelection {
 
 	/**
 	 * A pointer drag is in progress (a press in the host, until its release):
-	 * the projector does not display under it (O57), and the overlay chrome
+	 * the projector does not display under it, and the overlay chrome
 	 * (block handles, column resize bands) takes no pointer, so the native
 	 * selection is computed against the host. Reactive.
 	 */
@@ -1480,7 +1480,7 @@ export class EdytorSelection {
 
 	/**
 	 * Select a caret at `offset` of `text`; the projector displays it after
-	 * the flush (R10). The value is minted now (R4): a text that dies before the
+	 * the flush. The value is minted now: a text that dies before the
 	 * display is followed through its atoms, else the seam of its block.
 	 */
 	setAtTextOffset = (
@@ -1512,7 +1512,7 @@ export class EdytorSelection {
 		this.setAtRange(startText, 0, endText, endText.length);
 	};
 
-	/** Select a text range; the projector displays it after the flush (R10). */
+	/** Select a text range; the projector displays it after the flush. */
 	setAtRange = (
 		startText: Text | undefined | null,
 		startOffset: number | undefined | null,
@@ -1556,7 +1556,7 @@ export class EdytorSelection {
 
 	/**
 	 * Select `block`'s content (the whole of it by default): from its first
-	 * shown line to its last (a list's items, a code block's lines, GX-03), the
+	 * shown line to its last (a list's items, a code block's lines), the
 	 * offsets in those lines. A block that shows no line (a divider) keeps the
 	 * current value. Displayed after the flush.
 	 */

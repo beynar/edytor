@@ -34,7 +34,6 @@ This page builds a complete Notion-style editor: rich text blocks and marks, ima
 		slashMenuPlugin,
 		toolbarPlugin,
 		type EdytorInstance,
-		type JSONBlock,
 		type JSONDoc
 	} from 'edytor';
 	import 'edytor/themes/notion.css';
@@ -59,8 +58,8 @@ This page builds a complete Notion-style editor: rich text blocks and marks, ima
 
 	let edytor = $state<EdytorInstance>();
 
-	const onChange = (root: JSONBlock) => {
-		console.log('changed', root.children);
+	const onChange = (next: JSONDoc) => {
+		console.log('changed', next.children);
 	};
 </script>
 
@@ -90,14 +89,14 @@ The slash menu, the toolbar, the block menu and the block handles each take a sn
 
 ## Read the document
 
-`onChange` receives the whole document after every committed change: local edits, remote edits and undo. Its argument is the root block, `{ type: 'root', children }`.
+`onChange` receives the whole document after every committed change: local edits, remote edits and undo. Its argument is a `JSONDoc`, `{ data?, children }`, the type `value` takes, so you can store it and open it again as `value`.
 
 With the instance bound, `edytor.value` returns the same JSON and is reactive, so it works in `$derived`:
 
 ```svelte
 <script lang="ts">
 	// …the editor from above
-	const blockCount = $derived(edytor?.value.children?.length ?? 0);
+	const blockCount = $derived(edytor?.value.children.length ?? 0);
 </script>
 
 <p>{blockCount} blocks</p>

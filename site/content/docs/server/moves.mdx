@@ -19,10 +19,10 @@ Move blocks between documents only to move content: a few paragraphs from a draf
 
 ## Move blocks
 
-`moveBlocks` runs the move from your Worker, between two rooms of one Durable Object namespace:
+`moveBlocksBetweenRooms` runs the move from your Worker, between two rooms of one Durable Object namespace:
 
 ```ts src/worker.ts check
-import { DocumentRoom, moveBlocks, type MoveNamespace } from 'edytor/cloudflare';
+import { DocumentRoom, moveBlocksBetweenRooms, type MoveNamespace } from 'edytor/cloudflare';
 
 export { DocumentRoom };
 
@@ -38,7 +38,7 @@ export default {
       parent: string | null;
       index: number;
     }>();
-    const receipt = await moveBlocks(env.ROOMS as unknown as MoveNamespace, {
+    const receipt = await moveBlocksBetweenRooms(env.ROOMS as unknown as MoveNamespace, {
       from,
       to,
       ids,
@@ -55,7 +55,7 @@ Three steps, each one call to a room:
 2. **Import** (`importBlocks({ moveId, from, blocks, dest })` at the destination) writes them under `dest.parent` at `dest.index`, as one edit every client of the destination receives. Each block keeps its id unless the destination already holds that id (then `<id>~2`, `<id>~3`, …); the receipt maps each source id to its destination id. Importing the same `moveId` again writes nothing and returns the same receipt.
 3. **Commit** (`commitMove(moveId, { to, ids })` at the source), with that receipt only, deletes the blocks and their subtrees, as one edit every client of the source receives, and starts watching them for late edits. Committing again does nothing.
 
-If the import is refused (its parent does not show) or fails, `moveBlocks` aborts the export (`abortMove`) and the source keeps its blocks. If the commit fails after the import, the blocks are in both documents and `moveBlocks` throws: call `commitMove` again with the same `moveId` (it is idempotent), or delete the imported blocks.
+If the import is refused (its parent does not show) or fails, `moveBlocksBetweenRooms` aborts the export (`abortMove`) and the source keeps its blocks. If the commit fails after the import, the blocks are in both documents and `moveBlocksBetweenRooms` throws: call `commitMove` again with the same `moveId` (it is idempotent), or delete the imported blocks.
 
 Clients of the source see the blocks disappear, clients of the destination see them appear, each as an ordinary edit (undo does not undo a move: it is the room's edit, not theirs).
 
@@ -90,4 +90,4 @@ The source watches moved blocks for a **grace period**: the [purge horizon](/doc
 
 ## Log
 
-Each move logs `{ "edytor": "move", "moveId", "role": "out" | "in", "peer", "blocks" }` in both rooms, and each batch of late edits `{ "edytor": "late", "moveId", "seq", "edits", "structural", "forwarded" }` at the source. The moves live in two tables beside the document's, `moves` and `late` (`edytor_moves`, `edytor_late` with `attachDocument`).
+Each move logs `{ "edytor": "move", "moveId", "role": "out" | "in", "peer", "blocks" }` in both rooms, and each batch of late edits `{ "edytor": "late", "moveId", "seq", "edits", "structural", "forwarded" }` at the source. The moves live in two tables beside the document's, `moves` and `late` (`edytor_moves`, `edytor_late` with `attachRoom`).

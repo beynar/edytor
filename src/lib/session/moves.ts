@@ -18,7 +18,7 @@ const isBeside = (position: BlockMovePosition): position is 'left' | 'right' =>
 	BESIDE.includes(position);
 
 /**
- * One relative step (D-5): `up`/`down` pass the previous/next sibling, never
+ * One relative step: `up`/`down` pass the previous/next sibling, never
  * entering its children, and past the first/last sibling leave the parent
  * (before/after it; a layout's column: the layout, `layout.fits`); `in` =
  * last child of the previous sibling; `out` =

@@ -38,7 +38,7 @@
 import type { BlockId, Destination } from './placement/model.js';
 import type { Plan, PlanStep, Prepared } from './edytor-doc.js';
 
-/** A position in one document version: a block and a display offset (R4). */
+/** A position in one document version: a block and a display offset. */
 export type DocPosition = { block: BlockId; offset: number };
 
 /** What range deletion reads from the document and the step writers it composes. */

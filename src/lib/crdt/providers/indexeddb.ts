@@ -297,7 +297,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		/** A received update wrote a foreign schema stamp and was refused (SchemaMismatchDetail). */
 		'schema-mismatch': (detail: SchemaMismatchDetail, provider: IndexeddbPersistence) => void;
 		/**
-		 * Terminal sync failure (the D4 contract): the provider never
+		 * Terminal sync failure: the provider never
 		 * synced — destroyed before hydrating or a persistence load
 		 * failure. Emitted at most once; never once `synced`.
 		 */
@@ -454,7 +454,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		}
 
 		/**
-		 * The room dispatch table — owned by `room.ts` (S1):
+		 * The room dispatch table — owned by `room.ts`:
 		 * `messageSync`, awareness publish/query. This provider adds no
 		 * extra handlers (auth exists only on a server socket).
 		 */

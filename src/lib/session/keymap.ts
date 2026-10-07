@@ -109,7 +109,7 @@ export class Keymap {
 
 	constructor(
 		private edytor: Edytor,
-		consumer: EdytorOptions['hotKeys'] = {},
+		consumer: EdytorOptions['hotkeys'] = {},
 		plugins: InitializedPlugin[] = []
 	) {
 		for (const rows of [

@@ -501,8 +501,8 @@ const refuseTargetless = (
 
 /** An occurrence with no `beforeinput` of its own (paste, drop, a line break found in the DOM). */
 export const runOccurrence = (edytor: Edytor, occurrence: Occurrence) => {
-	const offered = edytor.hotKeys.offered;
-	edytor.hotKeys.offered = null;
+	const offered = edytor.keymap.offered;
+	edytor.keymap.offered = null;
 	return occur(edytor, occurrence, edytor.attempts.confirm(), offered);
 };
 
@@ -554,8 +554,8 @@ const runKeyAttempt = async (edytor: Edytor, attempt: Attempt) => {
 export async function onBeforeInput(this: Edytor, event: InputEvent) {
 	// The keydown of this occurrence may have admitted its attempt and offered its key.
 	const key = this.attempts.confirm();
-	const offered = this.hotKeys.offered;
-	this.hotKeys.offered = null;
+	const offered = this.keymap.offered;
+	this.keymap.offered = null;
 	if (event.inputType === 'deleteByDrag' && event.isTrusted) {
 		event.preventDefault();
 		this.selection.clearPointerDragStart();

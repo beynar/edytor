@@ -117,9 +117,15 @@ export type Snippets = {
 			: Snippet<[MarkSnippetPayload]>;
 };
 
+/** What a snippet override's suffix names (the DEV warning for one that names nothing). */
+const OVERRIDDEN = { Mark: 'mark', InlineBlock: 'inline kind', Block: 'kind' } as const;
+
 export type EdytorOptions = {
 	readonly?: boolean;
 	snippets?: Snippets;
+	/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. */
+	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
+	/** @deprecated Use `hotkeys` (the name a plugin's bindings use). Removed in the next release. */
 	hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
 	plugins?: Plugin[];
 	/**
@@ -140,7 +146,8 @@ export type EdytorOptions = {
 	presence?: PresenceOptions;
 	sync?: boolean;
 	value?: JSONDoc;
-	onChange?: (value: JSONBlock) => void;
+	/** After every commit that changed the visible document: the value, in the shape `value` takes. */
+	onChange?: (value: JSONDoc) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: Placeholder;
 };
@@ -203,7 +210,7 @@ export class Edytor {
 	kinds: KindRow[] = [];
 	/** @internal */
 	plugins: InitializedPlugin[];
-	/** The view's handles (R4): one id-only `Block` per live id, texts and atoms by position and id. */
+	/** The view's handles: one id-only `Block` per live id, texts and atoms by position and id. */
 	idToBlock: Handles = new Handles(this);
 	/** @internal */
 	nodeToInlineBlock = new Map<Node, InlineBlock>();
@@ -211,8 +218,8 @@ export class Edytor {
 	nodeToText = new Map<Node, Text>();
 	/** @internal */
 	transaction = new TRANSACTION();
-	/** @internal */
-	hotKeys: Keymap;
+	/** @internal The view's keymap: consumer bindings, then the extensions', then the built-in rows. */
+	keymap: Keymap;
 	readonly = $state(false);
 	root = $state<Block>();
 	/** The view is bound to its decided document (its root is built). */
@@ -226,7 +233,7 @@ export class Edytor {
 	readonly projector: Projector = new Projector(this);
 	/** @internal The compare-to-truth observer (R12): registry, the render epoch, the passes, the only adopter (R8, L31). */
 	readonly surface: SurfaceObserver = new SurfaceObserver(this);
-	/** What the components render (R1, R2): one cell per visible block, patched from change reports. */
+	/** What the components render (R2): one cell per visible block, patched from change reports. */
 	cells = $state.raw<Cells>();
 	/** Bumped by each commit that changed the document's data: what `docData()` readers track. */
 	private dataRevision = $state(0);
@@ -246,10 +253,10 @@ export class Edytor {
 	}
 	/** @internal The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
 	readonly pin = new Pin();
-	/** The chrome layer outside the host (R11): handles, menus, remote carets. */
+	/** The chrome layer outside the host: handles, menus, remote carets. */
 	readonly overlay = new Overlay();
 	private off: (() => void)[] = [];
-	private onChange?: (value: JSONBlock) => void;
+	private onChange?: (value: JSONDoc) => void;
 	placeholder?: Placeholder;
 	/** @internal The view's composition session (R8, L7, O34): at most one, live then tail. */
 	readonly composition: Composition = new Composition(this);
@@ -341,20 +348,19 @@ export class Edytor {
 	 * @internal
 	 */
 	undoManager!: YUndoManager;
-	/** The view's command dispatcher (R7): every mutation this view makes goes through it. */
+	/** The view's command dispatcher: every mutation this view makes goes through it. */
 	readonly dispatcher: Dispatcher = new Dispatcher(this);
 
 	/** An outermost `transact` of this view is running. */
 	private transacting = false;
 	/**
 	 * One transaction of this view. The outermost call runs the normalization
-	 * its operations requested at its end, inside the same transaction (S1:
-	 * one transaction, normalization once per touched parent): normalizers read
+	 * its operations requested at its end, inside the same transaction (one transaction, normalization once per touched parent): normalizers read
 	 * handles over the index, so a command is one update and a peer never
 	 * sees its un-normalized state. A throw from `cb` keeps the writes before
-	 * it (a transaction is no rollback), so they are normalized too (GX-07).
+	 * it (a transaction is no rollback), so they are normalized too.
 	 * `cb`'s error stays the one thrown: a normalizer that then throws is
-	 * logged (DR-rest-2).
+	 * logged.
 	 */
 	transact = <T>(cb: () => T): T => {
 		if (this.transacting) return this.doc.transact(cb, this.transaction);
@@ -383,7 +389,7 @@ export class Edytor {
 	/** Whether a block move (relative step or beside/inside a target) is structurally allowed. */
 	canMoveBlocks = (request: BlockMoveRequest): boolean => canMoveBlocksRelative(this, request);
 
-	/** Move blocks one relative step (D-5), or before, after or inside a live target block. */
+	/** Move blocks one relative step, or before, after or inside a live target block. */
 	moveBlocks = (request: BlockMoveRequest): Block[] => moveBlocksRelative(this, request);
 
 	/** @internal This view's history (R7's named exception): bare engine undo/redo, one restorer. */
@@ -406,6 +412,7 @@ export class Edytor {
 	constructor({
 		snippets,
 		readonly,
+		hotkeys,
 		hotKeys,
 		plugins,
 		document,
@@ -474,7 +481,9 @@ export class Edytor {
 			// The app's snippets override the plugins' after they register: keys are
 			// `{type}{suffix}` over maps keyed by the bare type, suffixes tried in
 			// this order (`mentionInlineBlock` also ends in `Block`). Only the
-			// snippet is replaced: the definition's roles, `transformText` and hooks survive.
+			// snippet is replaced: the definition's roles, `transformText` and hooks
+			// survive. An override names a registered kind, mark or atom kind: one
+			// that names none (a typo) registers nothing and warns in development.
 			const overrides = [
 				['Mark', this.marks],
 				['InlineBlock', this.inlineBlocks],
@@ -482,10 +491,18 @@ export class Edytor {
 			] as const;
 			for (const [key, snippet] of Object.entries(snippets || {})) {
 				const override = overrides.find(([suffix]) => key.endsWith(suffix));
-				if (!override) continue;
-				const [suffix, into] = override;
-				const name = key.slice(0, -suffix.length);
-				(into as Map<string, object>).set(name, { ...into.get(name), snippet });
+				const name = override && key.slice(0, -override[0].length);
+				if (override && name && override[1].has(name)) {
+					const into = override[1] as Map<string, object>;
+					into.set(name, { ...into.get(name), snippet });
+				} else if (DEV && key !== 'children' && typeof snippet === 'function') {
+					const reason = override
+						? `no ${OVERRIDDEN[override[0]]} "${name}" is registered`
+						: 'its name ends in neither Block, Mark nor InlineBlock';
+					console.warn(
+						`[edytor] the snippet "${key}" overrides nothing: ${reason}. A new kind is a plugin's.`
+					);
+				}
 			}
 
 			// Kind records generate their commands; an extension's own command id wins.
@@ -542,7 +559,7 @@ export class Edytor {
 			}
 
 			this.selection = new EdytorSelection(this, onSelectionChange);
-			this.hotKeys = new Keymap(this, hotKeys, this.plugins);
+			this.keymap = new Keymap(this, hotkeys ?? hotKeys, this.plugins);
 		} catch (error) {
 			// Constructor failure — release what the partial view claimed:
 			// the history origin (untracked live — already-captured commits
@@ -584,7 +601,7 @@ export class Edytor {
 		version: number;
 		revision: number;
 		root: Block | undefined;
-		json: JSONBlock;
+		json: JSONDoc;
 	} | null = null;
 
 	/**
@@ -610,7 +627,7 @@ export class Edytor {
 	 * Callers receive the SAME object until the next version bump — code
 	 * that needs an owned copy must clone it.
 	 */
-	get value(): JSONBlock {
+	get value(): JSONDoc {
 		const revision = this.valueRevision;
 		const version = this.facade.version;
 		const root = this.root;
@@ -621,7 +638,7 @@ export class Edytor {
 		// `facade.toJSON()` is the canonical document export — the one
 		// serializer (S6, L14); the root carries the document's data.
 		const { data, children } = root ? this.facade.toJSON() : { children: [] };
-		const json: JSONBlock = { type: 'root', ...(data && { data }), children };
+		const json: JSONDoc = { type: 'root', ...(data && { data }), children };
 		this._valueCache = { version, revision, root, json };
 		return json;
 	}
@@ -633,7 +650,7 @@ export class Edytor {
 		return true;
 	};
 
-	/** The adopted default type for a new child of `parent` — its actual parent (R5, O9). */
+	/** The adopted default type for a new child of `parent` — its actual parent. */
 	defaultChild = (parent: Block): string =>
 		this.document.defaultChild(parent.isRoot ? null : parent.type);
 

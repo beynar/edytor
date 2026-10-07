@@ -37,7 +37,7 @@ The instance exists as soon as the component is created, but `edytor.root` stays
 
 | Member | Type | What it is |
 | --- | --- | --- |
-| `value` | `JSONBlock` | The whole document as JSON, `{ type: 'root', data?, children }` (`data`: the document's properties, when it has some). Reactive. |
+| `value` | `JSONDoc` | The whole document as JSON, `{ data?, children }` (`data`: the document's properties, when it has some; the object also carries `type: 'root'`), the type the `value` prop takes. Reactive. |
 | `data` | `EdytorDocData` | The document's [properties](/docs/concepts/properties), a live proxy: `edytor.data.title = 'Notes'` is a `patchData` command, reads are reactive. `edytor.root.data` is the same proxy. |
 | `root` | `Block \| undefined` | The handle of the root block. `root.children` are the top-level blocks. |
 | `synced` | `boolean` | The view is bound to a ready document. |

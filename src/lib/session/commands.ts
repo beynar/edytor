@@ -33,7 +33,7 @@ export type CommandResult<T = unknown> = {
 	/** What the command answered: a handle mutator's return value. */
 	value?: T;
 	error?: unknown;
-	/** The result selection the command authored (R9), selected once. */
+	/** The result selection the command authored, selected once. */
 	selection?: SelectionValue;
 };
 
@@ -193,11 +193,10 @@ const specJSON = (spec: BlockSpec): unknown => ({
 });
 
 export class Dispatcher {
-	/** The last operation's result (L5). */
+	/** The last operation's result. */
 	last: CommandResult | null = null;
 	/**
-	 * The result selection a command in flight declared before its operations
-	 * (R9): the seam repair leaves this view's endpoints to it.
+	 * The result selection a command in flight declared before its operations: the seam repair leaves this view's endpoints to it.
 	 */
 	authoring: SelectionValue | null = null;
 	/** An operation's body is running: nested operations are its steps. */
@@ -231,7 +230,7 @@ export class Dispatcher {
 	}
 
 	/** Admission: a readonly view or a read-only document refuses every mutating command. */
-	/** Admission: not readonly, a writable document, and one decided when it requires hydration (H12). */
+	/** Admission: not readonly, a writable document, and one decided when it requires hydration. */
 	permits = () =>
 		!this.edytor.readonly &&
 		this.edytor.document.writable &&
@@ -281,7 +280,7 @@ export class Dispatcher {
 	 * A user command: admission, the undo policy around it, and one
 	 * prevention scope. Its result is its steps': one that applied is not
 	 * overwritten by a later step refused or changing nothing (a Tab over
-	 * several sibling groups where one cannot move, ZW-07).
+	 * several sibling groups where one cannot move).
 	 */
 	run = <T>(kind: string, body: () => T): T | undefined => {
 		if (this.running) return body();
@@ -311,7 +310,7 @@ export class Dispatcher {
 	 * A user command over several parts (Turn into over several blocks, Tab
 	 * over several runs of siblings): each part is its own prevention scope,
 	 * so a part the document refuses or an extension vetoes is skipped and
-	 * the others still run (BW-02), as one undo step. Answers each part's
+	 * the others still run, as one undo step. Answers each part's
 	 * result (`undefined` when vetoed).
 	 */
 	each = <T, R>(kind: string, parts: readonly T[], part: (item: T) => R): (R | undefined)[] =>
@@ -460,8 +459,8 @@ export class Dispatcher {
 	};
 
 	/**
-	 * A command's result caret (R9): selected once and recorded on the result;
-	 * the projector displays it after the flush (R10). With `ops`, the
+	 * A command's result caret: selected once and recorded on the result;
+	 * the projector displays it after the flush. With `ops`, the
 	 * caret is declared before the command's operations run — minted while its
 	 * text is live, so it survives them — and written only when they applied;
 	 * meanwhile the seam repair leaves this view's endpoints to it.
@@ -515,8 +514,7 @@ export class Dispatcher {
 
 	/**
 	 * Run the requested normalization at the end of the outermost transaction,
-	 * inside it, also when the transaction's callback threw: its writes stay
-	 * (GX-07). A pass reads handles over the index, so a normalizer sees what
+	 * inside it, also when the transaction's callback threw: its writes stay. A pass reads handles over the index, so a normalizer sees what
 	 * the command (and the previous pass) wrote; a pass that asks for its
 	 * block again runs again, at most {@link MAX_PASSES} times.
 	 */
@@ -617,7 +615,7 @@ export class Dispatcher {
 	}
 
 	/**
-	 * The planned steps as hooks see them (D-10), under the documented
+	 * The planned steps as hooks see them, under the documented
 	 * operation names. A step that is the command itself (same name, same
 	 * block) is not repeated; a write into a block the plan creates is part
 	 * of that creation. (A `removeInline` step is only ever its own command,

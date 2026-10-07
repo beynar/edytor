@@ -35,7 +35,7 @@ export const runBeforeInputHotkeyBridge = (
 		snapshot.inputType === 'insertText' && snapshot.data === '\t'
 			? 'tab'
 			: INTENTS[snapshot.inputType]?.key;
-	return Boolean(key && key !== offered && edytor.hotKeys.run(key));
+	return Boolean(key && key !== offered && edytor.keymap.run(key));
 };
 
 /** The marks of text inserted at the snapshot's selection (O29), read before it is replaced. */

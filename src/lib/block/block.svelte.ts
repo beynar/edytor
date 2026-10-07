@@ -160,7 +160,7 @@ export class Block {
 		return this.edytor.selection.focusedBlocks.has(this) && !this.selected;
 	}
 
-	/** May this block move at all — R5 `canPlace` without a destination (drag handles). */
+	/** May this block move at all: `canPlace` without a destination (drag handles). */
 	get movable(): boolean {
 		return this.edytor.facade.canPlace([this.id]);
 	}
@@ -169,8 +169,8 @@ export class Block {
 	 * May text-level structural commands (convert, markdown shortcut, slash
 	 * menu) apply: the block is movable — or the virtual paragraph of an
 	 * emptied document, which a conversion creates with its kind
-	 * (SW10-lists-3) — has no role of its own and renders its own content —
-	 * a container (a list) is never converted, its items are (ZW-02).
+	 * — has no role of its own and renders its own content —
+	 * a container (a list) is never converted, its items are.
 	 */
 	get convertible(): boolean {
 		const { facade } = this.edytor;
@@ -288,7 +288,7 @@ export class Block {
 		return (this.parent && this.parent.type !== 'root') || false;
 	}
 
-	/** This block's JSON — the document's one serializer (`facade.blockJSON`, L14). */
+	/** This block's JSON — the document's one serializer (`facade.blockJSON`). */
 	get value(): JSONBlock {
 		if (!this.isRoot) return this.edytor.facade.blockJSON(this.id);
 		const { data = {}, children } = this.edytor.facade.toJSON();
@@ -301,14 +301,14 @@ export class Block {
 		return false;
 	}
 
-	/** Whether this kind renders its own content slot — the adopted capability (R5, O22). */
+	/** Whether this kind renders its own content slot — the adopted capability. */
 	get rendersContent(): boolean {
 		return this.edytor.document.rendersContent(this.type);
 	}
 
 	/**
 	 * A container: it shows only its children (a list), neither void nor an
-	 * island — the document's container rule (YW-02). Its items hold what it
+	 * island — the document's container rule. Its items hold what it
 	 * shows; it is never converted (`convertible`).
 	 */
 	get isContainer(): boolean {
@@ -332,7 +332,7 @@ export class Block {
 	/**
 	 * The list this block shows in: its container when it is an item
 	 * (`isListItem`), or — an item outdented out of a nested list into the
-	 * item holding it (SW8-roles-4) — the list of the items of its kind it
+	 * item holding it — the list of the items of its kind it
 	 * sits under. <kbd>Enter</kbd> in an empty one outdents it; the menus
 	 * name it by the list's `itemKind`.
 	 */

@@ -117,7 +117,7 @@ describe('API-07 · prevent records and returns', () => {
 			preventDefault: () => void (defaultPrevented = true),
 			stopPropagation: () => {}
 		} as unknown as KeyboardEvent;
-		expect(edytor.hotKeys.run('mod+j', event)).toBe(true);
+		expect(edytor.keymap.run('mod+j', event)).toBe(true);
 		expect(order).toEqual(['first', 'first, after prevent']);
 		expect(defaultPrevented).toBe(true);
 	});

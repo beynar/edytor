@@ -59,7 +59,7 @@ export const atomSelection = (
 export const blockSelection = (ids: readonly BlockId[]): SelectionValue =>
 	Object.freeze({ kind: 'blocks', ids: Object.freeze([...ids]) });
 
-/** A position within one document version (R4): block id + display offset (an atom counts 1). */
+/** A position within one document version: block id + display offset (an atom counts 1). */
 export type SelectionPoint = { block: BlockId; offset: number };
 
 type TextRun = Extract<ContentItem, { kind: 'text' }>;
@@ -334,7 +334,7 @@ export const project = (value: SelectionValue, doc: ProjectionDoc): SelectionPro
 	return projection;
 };
 
-/** Why a selection was written (the view keeps the last cause; R9 names it with the value). */
+/** Why a selection was written (the view keeps the last cause with the value). */
 export type SelectCause = 'dom' | 'model' | 'repair' | 'history';
 
 const sameAnchor = (a: DocAnchor, b: DocAnchor) =>
@@ -362,7 +362,7 @@ export const sameValue = (a: SelectionValue, b: SelectionValue): boolean => {
 };
 
 /**
- * The presence payload (L10, D-16): anchors only. A text range publishes its
+ * The presence payload: anchors only. A text range publishes its
  * endpoints in document order with collapsed/reversed; a block set its ids;
  * an atom its block and id; `none` publishes nothing.
  */

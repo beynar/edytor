@@ -247,12 +247,14 @@ export class EdytorSelection {
 		return visibility.selectedMembers(this.edytor);
 	}
 	selectedInlineBlock = new SvelteSet<InlineBlock>();
+	/** @internal */
 	inlineBlockDeletionTarget: InlineBlock | null = null;
 	/**
 	 * Set for the synchronous window of THIS view's history command
 	 * (`session/history`): the replay commits under the history's origin, so
 	 * the remote-apply and repair restores stand aside — the view's recorded
 	 * value is selected right after.
+	 * @internal
 	 */
 	expectHistoryRestore = false;
 	/** A primary press in the host on a text, until its release (reactive: the chrome reads `dragging`). */
@@ -266,18 +268,19 @@ export class EdytorSelection {
 	 * one inline atom, or a set of block ids. Only `select()` replaces it.
 	 */
 	value = $state.raw<SelectionValue>(noSelection);
-	/** Advanced by every `select()`. */
+	/** @internal Advanced by every `select()`. */
 	epoch = 0;
 	/**
 	 * Advanced by every `select()` that did not come from the DOM: the
 	 * projector displays the current value after the flush (R10).
+	 * @internal
 	 */
 	request = $state(0);
-	/** The last display request came from a user-input frame: the display may scroll (O54). */
+	/** @internal The last display request came from a user-input frame: the display may scroll (O54). */
 	scrollOnDisplay = false;
-	/** The intent serial (gestures but `input`) when the last display was requested. */
+	/** @internal The intent serial (gestures but `input`) when the last display was requested. */
 	requestSerial = 0;
-	/** Why the last `select()` ran. */
+	/** @internal Why the last `select()` ran. */
 	cause: SelectCause = 'model';
 	/** DOM fields (Surface) observed with the value they describe. */
 	/** The mark-edge side a display or a DOM derive observed the value with. */
@@ -551,7 +554,7 @@ export class EdytorSelection {
 				: this.edytor.facade.anchorAt(text.blockId, text.segStart + at, side);
 		});
 
-	/** Ask the projector to display the current value after the flush (R10). */
+	/** @internal Ask the projector to display the current value after the flush (R10). */
 	display = () => {
 		this.scrollOnDisplay =
 			this.edytor.isHandlingUserInput && this.edytor.suppressCaretScrollDepth === 0;
@@ -559,7 +562,7 @@ export class EdytorSelection {
 		this.request++;
 	};
 
-	/** The mark-edge side a display showed the current value with. */
+	/** @internal The mark-edge side a display showed the current value with. */
 	observed = (surface: { edge?: EdgeSide }) => {
 		this.#surface = { value: this.value, ...surface };
 	};
@@ -585,6 +588,7 @@ export class EdytorSelection {
 		}
 		return block ?? null;
 	};
+	/** @internal */
 	destroy = () => {
 		if (this.selectionDocument) {
 			this.selectionDocument.removeEventListener('selectionchange', this.onSelectionChange);
@@ -611,6 +615,7 @@ export class EdytorSelection {
 	selectInlineBlock = (inlineBlock: InlineBlock, from: AtomSide = 'before') => {
 		this.select(atomSelection(inlineBlock.parent.id, inlineBlock.id, from));
 	};
+	/** @internal */
 	clearModelSelectionPreservation = () => {
 		this.shouldKeepModelSelectionForNextTextInsertion = false;
 		this.modelSelectionPreservationBlock = null;
@@ -625,6 +630,7 @@ export class EdytorSelection {
 			this.state.yStart === 0 &&
 			this.state.yEnd === block.lastText.length
 		);
+	/** @internal */
 	consumeModelSelectionPreservationForTextInsertion = () => {
 		const preservedBlock = this.modelSelectionPreservationBlock;
 		const shouldKeepPreservedBlock =
@@ -645,9 +651,13 @@ export class EdytorSelection {
 		this.modelSelectionPreservationBlock = null;
 		return shouldKeepSelection;
 	};
+	/** @internal */
 	getTextOfNode = getTextOfNode.bind(this);
+	/** @internal */
 	getTextsInSelection = getTextsInSelection.bind(this);
+	/** @internal */
 	getInlineBlockOfNode = getInlineBlockOfNode.bind(this);
+	/** @internal */
 	getInlineBlockInSelectedRange = getInlineBlockInSelectedRange.bind(this);
 
 	private getBlockOfNode = (node: Node | null) => {
@@ -700,6 +710,7 @@ export class EdytorSelection {
 		return block;
 	};
 
+	/** @internal */
 	handleNonNativeEditableBlockChromePointerDown = (event: MouseEvent) => {
 		const targetNode = event.target instanceof Node ? event.target : null;
 		const targetBlock = this.getNonNativeEditableBlockChromeBlock(targetNode);
@@ -756,6 +767,7 @@ export class EdytorSelection {
 		};
 	};
 
+	/** @internal */
 	init = () => {
 		if (typeof document !== 'undefined') {
 			this.selectionDocument = this.edytor.node?.ownerDocument ?? document;
@@ -767,6 +779,7 @@ export class EdytorSelection {
 	 * A triple click selects the block's content in the model; the browser's
 	 * own multi-click selection is cancelled at its `mousedown`
 	 * (`preventNativeTripleClick`), so no native selection competes with the display.
+	 * @internal
 	 */
 	handleTripleClick = (e: MouseEvent) => {
 		if (e.detail < 3) return;
@@ -789,6 +802,7 @@ export class EdytorSelection {
 		}
 	};
 
+	/** @internal */
 	preventNativeTripleClick = (e: MouseEvent) => {
 		if (e.detail >= 3) e.preventDefault();
 	};
@@ -843,10 +857,12 @@ export class EdytorSelection {
 
 		return closestOffset;
 	};
+	/** @internal */
 	setTextSelectionFromPointer = (text: Text, clientX: number, clientY: number) => {
 		this.setAtTextOffset(text, this.getTextOffsetFromClientPoint(text, clientX, clientY));
 	};
 
+	/** @internal */
 	capturePointerDragStart = (event: MouseEvent) => {
 		if (event.button !== 0) {
 			this.pointerDragStart = null;
@@ -857,6 +873,7 @@ export class EdytorSelection {
 		this.#across = false;
 		this.#extending = event.shiftKey;
 	};
+	/** @internal */
 	clearPointerDragStart = () => {
 		this.pointerDragStart = null;
 		this.#dropped();
@@ -920,9 +937,11 @@ export class EdytorSelection {
 	 * collapsed DOM caret a paste finds over it is the user's only then
 	 * (`onPaste`), never the one a browser makes up at the editable's start
 	 * when the block selection shows no DOM range (for the paste's own keys).
+	 * @internal
 	 */
 	placedOver: SelectionValue | null = null;
 
+	/** @internal */
 	collapseSelectedBlocksAtPointer = (event: MouseEvent) => {
 		if (event.button !== 0 || this.selectedBlocks.size === 0) {
 			return;
@@ -937,6 +956,7 @@ export class EdytorSelection {
 		this.setAtTextOffset(point.text, point.offset);
 	};
 
+	/** @internal */
 	restoreInlineAtomDragRange = (event: PointerEvent) => {
 		const dragStart = this.pointerDragStart;
 		this.pointerDragStart = null;
@@ -999,6 +1019,7 @@ export class EdytorSelection {
 	 * non-editable chrome, while a nested `true` (void-block captions
 	 * re-enable editing on their text spans) keeps native selection.
 	 * The root itself is excluded so readonly mode stays selectable.
+	 * @internal
 	 */
 	onSelectStart = (event: Event) => {
 		// Native controls (todo checkboxes, plugin inputs…) keep their own
@@ -1034,6 +1055,7 @@ export class EdytorSelection {
 	 * display still to land is ignored, and so is a move while a composition
 	 * session is live (the IME's; the session's end displays); drift is
 	 * displayed again; a foreign write or intent is adopted.
+	 * @internal
 	 */
 	onSelectionChange = () => {
 		const selection = getDomSelectionSnapshot(this.edytor.node);
@@ -1052,6 +1074,7 @@ export class EdytorSelection {
 		this.applySelectionSnapshot(selection);
 	};
 
+	/** @internal */
 	applySelectionSnapshot = (
 		selection: DomSelectionSnapshot | null,
 		options: { restoreNormalizedDomRange?: boolean } = {}
@@ -1228,6 +1251,7 @@ export class EdytorSelection {
 	 * Whether the live model selection was derived from a node-bound
 	 * native range — the shape whose Shift+Arrow extension is
 	 * engine-defined and therefore intercepted by the hotkey layer.
+	 * @internal
 	 */
 	hasNativeNodeSelection = () => {
 		const { startText, endText, yStart, yEnd, isReversed } = this.state;
@@ -1331,6 +1355,7 @@ export class EdytorSelection {
 	 * (`doc/anchors`: the replicated slot, displayable stops only). The model is
 	 * written at once; the projector displays it (also when the text the caret
 	 * was displayed in died while its anchor moved on).
+	 * @internal
 	 */
 	restoreDeadSelectionEndpoints = () => {
 		if (this.expectHistoryRestore) {
@@ -1547,6 +1572,7 @@ export class EdytorSelection {
 	/**
 	 * Anchors from a DOM selection, without selecting them: the projector mints
 	 * an unobserved native move before a transaction it did not issue (BI-3).
+	 * @internal
 	 */
 	mint = (snapshot: DomSelectionSnapshot): SelectionValue | null => {
 		const container = this.edytor.node;

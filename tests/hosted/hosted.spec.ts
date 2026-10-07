@@ -24,8 +24,8 @@ import {
 	type Page,
 	type WebSocketRoute
 } from '@playwright/test';
-import * as E from '../../src/lib/crdt/index.js';
-import type { EngineApi } from '../../src/lib/crdt/index.js';
+import * as E from '../../src/lib/crdt/protocol.js';
+import { attachDocument, type EngineApi } from '../../src/lib/crdt/index.js';
 import * as RawY from '../../src/lib/crdt/vendor/yjs/src/index.js';
 import {
 	gotoEditorRoute,
@@ -565,7 +565,7 @@ test.describe('hosted room Durable Object — real browsers over real WebSockets
 		mallory.doc.clientID = idA;
 		const forged: Uint8Array[] = [];
 		mallory.doc.on('update', (update: Uint8Array) => forged.push(update));
-		const document = E.attachDocument(mallory.doc, { actor: { id: 'mallory' } });
+		const document = attachDocument(mallory.doc, { actor: { id: 'mallory' } });
 		document.facade.insertText('collab-b1', 0, 'FORGED ');
 		document.destroy();
 		mallory.ws.send(

@@ -1,10 +1,10 @@
 ---
 title: Protocol
-description: The edytor wire format and the helpers edytor/crdt/edytor exports for writing your own sync client or server.
+description: The edytor wire format and the helpers edytor/protocol exports for writing your own sync client or server.
 icon: binary
 ---
 
-The shipped provider and room speak a small binary protocol over WebSocket (and over `BroadcastChannel` between tabs). Read this page if you are writing your own server, a relay on another platform, or a client in another environment. Everything you need is exported from `edytor/crdt/edytor`, which runs in Node and Workers.
+The shipped provider and room speak a small binary protocol over WebSocket (and over `BroadcastChannel` between tabs). Read this page if you are writing your own server, a relay on another platform, or a client in another environment. Everything you need is exported from `edytor/protocol`, which runs in Node and Workers.
 
 ## Frames
 
@@ -49,6 +49,8 @@ A chunk sequence is a `start` frame (`0`, then the total length), any number of 
 
 ## Exported helpers
 
+All from `edytor/protocol`:
+
 | Export | Use |
 | --- | --- |
 | `bindCrdt(Y).sync` | `writeSyncStep1`, `writeSyncStep2`, `step2Update(payload)`, `readSyncStep1`, `readSyncStep2`, `writeUpdate`, `readUpdate`, `readSyncMessage`, `lacks(doc, stateVector)`, `applyRemote(doc, update, origin)`, `writeSaved`, `readSaved`. |
@@ -59,7 +61,8 @@ A chunk sequence is a `start` frame (`0`, then the total length), any number of 
 | `messagePermissionDenied`, `writePermissionDenied(encoder, reason)` | The auth reply to a refused write. |
 | `messageReadOnly`, `writeReadOnly(encoder)` | The read-only notice at the join. |
 | `readAwarenessEntries`, `writeAwarenessEntries`, `applyAwarenessUpdate`, `encodeAwarenessUpdate`, `modifyAwarenessUpdate` | The awareness codec. |
-| `chunkFrame`, `createChunkReader`, `MAX_FRAME_BYTES` | Chunked frames. |
+| `chunkFrame`, `createChunkReader`, `MAX_FRAME_BYTES`, `ChunkLimitError` | Chunked frames. |
+| `CLOSE` | The close codes the room and its router send, by name (`refused` `1008`, `fault` `1011`, `invalidDocument` `4400`, `expired` `4401`, `denied` `4403`, `replicaTaken` `4409`, `quota` `4413`; see [admission](/docs/server/room#admission)). |
 | `createDecoder`, `readVarUint`, `readVarUint8Array`, `writeVarUint8Array` | The lib0 helpers for frame bodies. |
 | `GENERATION_RECORD`, `GenerationMismatchError` | Tag and check stored containers of this generation. |
 | `bindCrdt(Y).doc.purge`, `.horizonOf`, `.restoreTo` | The shipped room's [purge](/docs/server/history#the-purge) (`purge(doc, facade, { at, sv })`, one transaction of yours, `sv` a state vector the room stored before `at`) and [restore](/docs/server/history#what-a-restore-does) (`restoreTo(doc, facade, json)`), for a room of your own; `facade` is `bindCrdt(Y).doc.create(doc)`, which publishes no author. |
@@ -76,7 +79,7 @@ import {
   bindCrdt, frame, readProtocolVersion, createDecoder, readVarUint, readVarUint8Array,
   writeVarUint8Array, readAwarenessEntries, writeAwarenessEntries,
   messageSync, messageAwareness, messageSaved, messageYjsSyncStep1, messageYjsSyncStep2
-} from 'edytor/crdt/edytor';
+} from 'edytor/protocol';
 
 const { sync, createDoc } = bindCrdt(Y);
 const doc = createDoc(); // restore it from your storage: Y.applyUpdate(doc, stored)

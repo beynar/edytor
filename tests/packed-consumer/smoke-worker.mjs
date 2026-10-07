@@ -23,7 +23,12 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as Y from 'edytor/crdt';
-import * as E from 'edytor/crdt/edytor';
+import * as documentEntry from 'edytor/crdt/edytor';
+import * as protocol from 'edytor/protocol';
+
+// The document entry and the wire entry together (`edytor/protocol` holds
+// the frames, message types and codecs a client of the room speaks).
+const E = { ...documentEntry, ...protocol };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(process.env.EDYTOR_REPO_ROOT ?? join(HERE, '../..'));
@@ -56,6 +61,10 @@ assert.ok(
 assert.ok(
 	edytorInputs.some((path) => path.endsWith('/dist/crdt/index.js')),
 	'the Worker bundle must include edytor/crdt/edytor (dist/crdt/index.js)'
+);
+assert.ok(
+	edytorInputs.some((path) => path.endsWith('/dist/crdt/protocol.js')),
+	'the Worker bundle must include edytor/protocol (dist/crdt/protocol.js)'
 );
 assert.ok(
 	edytorInputs.some((path) => path.endsWith('/dist/crdt/vendor/yjs/src/index.js')),

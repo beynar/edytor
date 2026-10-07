@@ -19,7 +19,7 @@
  * and a page's blocks can import each other. The package's own specifiers
  * resolve to the sources through
  * `paths`: `edytor` → `src/lib/index.ts`, `edytor/cloudflare`,
- * `edytor/crdt/edytor`, `edytor/crdt` and the theme likewise.
+ * `edytor/crdt/edytor`, `edytor/protocol`, `edytor/crdt` and the theme likewise.
  *
  * - `.svelte` and `.ts` blocks are checked by `svelte-check` in the app
  *   program (DOM types, the SvelteKit ambient types).
@@ -171,6 +171,7 @@ Object.assign(paths, {
 	edytor: [path.join(ROOT, 'src/lib/index.ts')],
 	'edytor/cloudflare': [path.join(ROOT, 'src/lib/cloudflare/index.ts')],
 	'edytor/crdt/edytor': [path.join(ROOT, 'src/lib/crdt/index.ts')],
+	'edytor/protocol': [path.join(ROOT, 'src/lib/crdt/protocol.ts')],
 	'edytor/crdt': [path.join(ROOT, 'src/lib/crdt/vendor/yjs/dts/index.d.ts')],
 	'edytor/themes/notion.css': [path.join(ROOT, 'src/lib/themes/notion.css')]
 });

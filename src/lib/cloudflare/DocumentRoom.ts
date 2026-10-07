@@ -96,7 +96,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../crdt/engine.js';
-import * as E from '../crdt/index.js';
+import * as E from '../crdt/protocol.js';
+import { defaultSemantics, facadeConfigOf } from '../crdt/semantics.js';
 import { READ_ONLY_DENIAL } from '../crdt/protocols/auth.js';
 import {
 	isGenerationRecord,
@@ -150,8 +151,8 @@ import {
 	type MovedState
 } from './move.js';
 import { toBlockSpec } from '../utils/json.js';
+import type { AwarenessEntry } from '../crdt/protocol.js';
 import type {
-	AwarenessEntry,
 	DocChange,
 	DocumentSemanticsConfig,
 	EdytorDoc,
@@ -550,7 +551,7 @@ const knob = (value: unknown, fallback: number, max = fallback) => {
 };
 
 /** A semantics config as the facade's lookups — own keys only: block types come off the wire. */
-const lookups = (semantics: DocumentSemanticsConfig) => E.facadeConfigOf(semantics);
+const lookups = (semantics: DocumentSemanticsConfig) => facadeConfigOf(semantics);
 
 const encodeJSON = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
@@ -1277,7 +1278,7 @@ export type AttachDocumentOptions = {
 	 * The block roles `transact` edits obey — the document semantics your
 	 * clients' plugins declare (`defaultType` also names the block an empty
 	 * room is seeded with). Default
-	 * {@link E.defaultSemantics} (the bundled rich-text, code and image kinds).
+	 * {@link defaultSemantics} (the bundled rich-text, code and image kinds).
 	 */
 	semantics?: DocumentSemanticsConfig;
 	/**
@@ -1541,7 +1542,7 @@ export class AttachedDocument {
 
 	/** The room's block roles, read at first use (a subclass's fields exist by then). */
 	private get lookups(): ReturnType<typeof lookups> {
-		return (this._lookups ??= lookups(this.options.semantics ?? E.defaultSemantics));
+		return (this._lookups ??= lookups(this.options.semantics ?? defaultSemantics));
 	}
 
 	/** A facade over `doc` obeying the room's block roles (`semantics`). */
@@ -4511,7 +4512,7 @@ export class DocumentRoom<
 	 * at first use (after construction: it may return a subclass field).
 	 */
 	protected semantics(): DocumentSemanticsConfig {
-		return E.defaultSemantics;
+		return defaultSemantics;
 	}
 
 	/**

@@ -19,12 +19,8 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
-import {
-	attachDocument,
-	createDocument,
-	loadDocument,
-	SCHEMA_VERSION
-} from '../../../lib/crdt/index.js';
+import { attachDocument, createDocument, loadDocument } from '../../../lib/crdt/index.js';
+import { SCHEMA_VERSION } from '../../../lib/crdt/protocol.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { bindProviders } from '../../../lib/crdt/providers/index.js';
 

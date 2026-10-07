@@ -12,16 +12,15 @@
 	import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
+	import { clearDocument, createWebsocketSync, type EdytorSync } from '$lib/collaboration/index.js';
 	import {
 		IndexeddbPersistence,
 		WebsocketProvider,
-		clearDocument,
-		createWebsocketSync,
-		storeState,
-		type EdytorSync
-	} from '$lib/collaboration/index.js';
+		checkSchema,
+		storeState
+	} from '$lib/crdt/protocol.js';
 	import { Y } from '$lib/crdt/engine.js';
-	import { checkSchema, createDocument } from '$lib/crdt/index.js';
+	import { createDocument } from '$lib/crdt/index.js';
 	import { bindMigration } from '$lib/crdt/migration/migrate.js';
 	import {
 		GENERATION_KEY,

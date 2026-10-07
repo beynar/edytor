@@ -178,6 +178,7 @@ export class Block {
 		return placeable && this.rendersContent && !facade.isVoid(this.id) && !facade.isIsland(this.id);
 	}
 
+	/** @internal */
 	get firstEditableText(): Text | undefined {
 		// Only a RENDERED text part is editable — a container's phantom
 		// content slot holds a Text with no `node`. Scan ALL children: the
@@ -194,6 +195,7 @@ export class Block {
 		return undefined;
 	}
 
+	/** @internal */
 	get lastEditableText(): Text | undefined {
 		const own = this.content.findLast(
 			(part): part is Text => part instanceof Text && part.node != null
@@ -460,6 +462,7 @@ export class Block {
 	 * Register the element the core rendered for this block (O45) and run the
 	 * attach hooks. A re-rendered block (moved, re-parented) keeps its declared
 	 * view state (R11): an open toggle stays open.
+	 * @internal
 	 */
 	attach = (node: HTMLElement) => {
 		const names = this.definition.viewState ?? [];

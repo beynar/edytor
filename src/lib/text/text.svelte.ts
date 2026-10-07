@@ -131,6 +131,7 @@ export class Text {
 	markText = this.batch('markText', markText.bind(this));
 	removeMarksFromText = this.batch('removeMarksFromText', removeMarksFromText.bind(this));
 
+	/** @internal */
 	attach = (node: HTMLElement) => {
 		this.node = node;
 		this.edytor.nodeToText.set(node, this);

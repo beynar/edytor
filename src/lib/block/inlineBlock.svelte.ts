@@ -85,6 +85,7 @@ export class InlineBlock {
 		return { id: this.id, type: this.type, data: { ...this.#item?.data } };
 	}
 
+	/** @internal */
 	attach = (node: HTMLElement) => {
 		node.setAttribute('contenteditable', 'false');
 		node.dataset.edytorId = this.id;

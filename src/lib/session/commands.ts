@@ -14,7 +14,7 @@ import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import type { BlockId, BlockSpec } from '$lib/crdt/index.js';
 import type { Plan, PlanStep, Prepared } from '$lib/crdt/edytor-doc.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { ChangePayload } from '$lib/plugins.js';
+import type { ChangePayload, InitializedPlugin } from '$lib/plugins.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { DEV } from 'esm-env';
@@ -257,7 +257,7 @@ export class Dispatcher {
 	};
 
 	/** Run every extension's `call`; answer whether one of them prevented. */
-	intercept = (call: (plugin: Edytor['plugins'][number]) => void, onPrevent?: () => void) => {
+	intercept = (call: (plugin: InitializedPlugin) => void, onPrevent?: () => void) => {
 		let hit = false;
 		this.scope(
 			() => this.edytor.plugins.forEach(call),

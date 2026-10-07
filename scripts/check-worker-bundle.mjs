@@ -4,7 +4,8 @@
  *
  * The CRDT engine + sync layer also runs server-side in a Cloudflare
  * Durable Object, so `src/lib/crdt/index.ts` (the `edytor/crdt/edytor`
- * entry) and `src/lib/cloudflare/index.ts` (the `edytor/cloudflare` room;
+ * entry), `src/lib/crdt/protocol.ts` (`edytor/protocol`) and
+ * `src/lib/cloudflare/index.ts` (the `edytor/cloudflare` room;
  * `cloudflare:workers` is left to the runtime) must bundle for a Worker
  * target without Svelte, SvelteKit or any editor view layer. This script
  * bundles each entry the way wrangler would
@@ -31,6 +32,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // import is the runtime's own module — the one external a Worker allows).
 const ENTRIES = [
 	path.join(ROOT, 'src/lib/crdt/index.ts'),
+	path.join(ROOT, 'src/lib/crdt/protocol.ts'),
 	path.join(ROOT, 'src/lib/cloudflare/index.ts')
 ];
 const RUNTIME = ['cloudflare:workers'];

@@ -2,8 +2,9 @@
  * Edytor CRDT layer (v14) — the bound public surface.
  *
  * In the packed package this file backs the `edytor/crdt/edytor` subpath
- * (the node/SSR-safe bindings entry); the package root `edytor` re-exports
- * it whole, so everything here also reaches Svelte consumers.
+ * (the node/SSR-safe document entry); the package root `edytor` re-exports
+ * its application names (the document, its errors, the JSON shapes and the
+ * sync contract), never the whole module.
  *
  * THE HEADLINE is the integrated document — `createDocument`,
  * `loadDocument` and `attachDocument` produce an {@link EdytorDocument}
@@ -21,20 +22,19 @@
  *
  * - **Document vocabulary** — the types `document.facade` ops speak
  *   (`BlockSpec`, `Destination`, `ProjectedDoc`, `DocChange`, `JSONDoc`,
- *   …), the provider/sync contract (`EdytorSync`, `ProviderStack`),
- *   `Awareness`, the admission-gate vocabulary (`assertAdmission` —
- *   the ONE boundary every content-entry path crosses), the attribution
- *   read surface (`DocumentAttribution`), and migration.
+ *   …), the provider/sync contract (`EdytorSync`), `Awareness`, the
+ *   admission errors a load throws, the attribution read surface
+ *   (`DocumentAttribution`), and migration.
  * - **Composition** — `bindCrdt(Y)` for consumers that inject the engine
  *   themselves (node/SSR-side provider stacks, migration tooling,
  *   alternate engine instances) plus the engine typings that contract
  *   needs.
- * - **Server coordinator** — the wire surface a Worker-side coordinator
- *   (a Cloudflare Durable Object) needs beside `bindCrdt(Y)`: the frame
- *   contract, message types, the lib0 read/write helpers for frame bodies
- *   and the instance-free awareness codec. Nothing else is exported: the
- *   `bind*` building blocks, rank/run/placement plumbing and storage
- *   constants are internal (pre-1.0 API retirement, D-15).
+ *
+ * The wire and coordinator vocabulary (frames, message types, codecs,
+ * generation records, the admission gates, the raw provider classes) is
+ * `edytor/protocol` (`./protocol.ts`), not this entry. The `bind*`
+ * building blocks, rank/run/placement plumbing and storage constants are
+ * internal (pre-1.0 API retirement, D-15).
  *
  * The raw engine itself is only reachable through
  * `import * as Y from 'edytor/crdt'` — this module never re-exports it,
@@ -151,8 +151,9 @@ export type { YDoc, YUndoManager, YTransaction } from './engine-api.js';
 // ── 3 · Sync, providers, awareness ─────────────────────────────────────
 //
 // The provider contract: `EdytorSync` factories (what `<Edytor {sync}>`
-// and `document.attachSync` consume), the bound provider stack, and the
-// option/event types of the two shipped providers. `Awareness` is
+// and `document.attachSync` consume) and the bound provider stack
+// (`bindCrdt(Y).providers`; the raw provider classes' own option and event
+// types are `edytor/protocol`'s). `Awareness` is
 // engine-free — one shared instance per document, every view and
 // provider publishes presence through it.
 
@@ -169,19 +170,6 @@ export {
 	type LastUpdatedOptions
 } from './providers/index.js';
 
-export {
-	type IndexeddbPersistenceApi,
-	type IndexeddbPersistenceOptions,
-	type ProtocolMismatch,
-	type SchemaMismatchDetail
-} from './providers/indexeddb.js';
-
-export {
-	type WebsocketProviderOptions,
-	type WebsocketProviderEvents,
-	type WebsocketPolyfill
-} from './providers/websocket.js';
-
 export { SyncRefusedError } from './providers/room.js';
 
 export {
@@ -192,32 +180,14 @@ export {
 	type MetaClientState
 } from './protocols/awareness.js';
 
-// ── 4 · The admission boundary ─────────────────────────────────────────
+// ── 4 · Admission errors ───────────────────────────────────────────────
 //
-// One gate vocabulary for every content-entry path — the document layer
-// (create/load/attach/sync) and the transport layer (provider staging)
-// run the same ordered reads. `admission.ts` is the shared doorway; see
-// its header for the admission matrix and the refusal-preserves-data
-// contract. Public because diagnostics/migration tooling legitimately
-// inspect verdicts; `assertAdmission`/`inspectAdmission` are the entry
-// points, the rest are the vocabulary their results speak.
+// What a load or a sync refuses with (`admission.ts` is the one doorway
+// every content-entry path crosses). The gates themselves
+// (`assertAdmission`, `inspectAdmission`, …) are diagnostics vocabulary:
+// `edytor/protocol`.
 
-export {
-	assertAdmission,
-	assertSchema,
-	assertUsableDoc,
-	checkSchema,
-	inspectAdmission,
-	isInitialized,
-	registryEmpty,
-	schemaVersion,
-	SchemaMismatchError,
-	UndecodableUpdateError,
-	UnsupportedDocError,
-	type AdmissionResult,
-	type AdmissionVerdict,
-	type SchemaProblem
-} from './admission.js';
+export { SchemaMismatchError, UndecodableUpdateError, UnsupportedDocError } from './admission.js';
 
 // ── 5 · Attribution (read surface) ─────────────────────────────────────
 //
@@ -319,79 +289,7 @@ export type {
 	YItem
 } from './engine-api.js';
 
-// ── 8 · Server coordinator surface (Worker-safe) ────────────────────────
-//
-// What a server coordinator (`edytor/cloudflare`'s `DocumentRoom` — site docs
-// server/room) imports beside `bindCrdt(Y)` (`.sync` readers/writers and
-// `applyRemote`, `.admission`, `.doc`, `.createDoc`): the frame contract
-// `varuint GENERATION | varuint messageType | payload`, the message types,
-// the lib0 helpers that read and write frame bodies, and the awareness
-// codec that needs no `Awareness` instance (whose sweep timer blocks
-// hibernation), the store-before-ack frame (`messageSaved`) and the bounded
-// catch-up codec (`chunkFrame`/`createChunkReader`, `messageChunk`).
-// `pnpm check:worker` keeps this graph Worker-safe.
-
-export {
-	SCHEMA_VERSION,
-	META_KEY,
-	EdytorDocDisposedError,
-	DEFAULT_HISTORY_LIMIT
-} from './edytor-doc.js';
-
-export {
-	GENERATION,
-	generationWord,
-	frame,
-	PROTOCOL_VERSION,
-	GENERATION_RECORD,
-	STORED_GENERATION_RECORD,
-	STORAGE_FORMAT,
-	GenerationMismatchError,
-	readProtocolVersion,
-	type GenerationRecord,
-	type StorageFormat
-} from './protocols/envelope.js';
-export { PREVIOUS_SCHEMA, isPreviousGenerationRecord } from './migration/generation.js';
-
-export {
-	messageSync,
-	messageAwareness,
-	messageAuth,
-	messageQueryAwareness,
-	messageSaved,
-	messageChunk,
-	MAX_FRAME_BYTES,
-	chunkFrame,
-	createChunkReader,
-	ChunkLimitError,
-	CLOSE
-} from './providers/room.js';
-
-export {
-	messageYjsSyncStep1,
-	messageYjsSyncStep2,
-	messageYjsUpdate,
-	type SyncProtocol
-} from './protocols/sync.js';
-
-export {
-	messagePermissionDenied,
-	messageReadOnly,
-	writePermissionDenied,
-	writeReadOnly
-} from './protocols/auth.js';
-
-export {
-	applyAwarenessUpdate,
-	encodeAwarenessUpdate,
-	modifyAwarenessUpdate,
-	readAwarenessEntries,
-	writeAwarenessEntries,
-	type AwarenessEntry
-} from './protocols/awareness.js';
-
-// Minimal wire codec for frame bodies (lib0 — the codec the frames are
-// written with): read the header/subtype/payload, write a payload into a
-// `frame` callback's encoder.
-export { createDecoder, readVarUint, readVarUint8Array, type Decoder } from 'lib0-v14/decoding';
-export { writeVarUint8Array, type Encoder } from 'lib0-v14/encoding';
+// The facade's disposal error and the history's default depth (P6) belong
+// to the document; the frame contract, message types and codecs are
+// `edytor/protocol`.
+export { EdytorDocDisposedError, DEFAULT_HISTORY_LIMIT } from './edytor-doc.js';

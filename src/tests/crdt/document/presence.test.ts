@@ -16,13 +16,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import {
-	applyAwarenessUpdate,
 	attachDocument,
 	Awareness,
 	createDocument,
-	encodeAwarenessUpdate,
 	type EdytorDocument
 } from '../../../lib/crdt/index.js';
+import { applyAwarenessUpdate, encodeAwarenessUpdate } from '../../../lib/crdt/protocol.js';
 import {
 	freshestPublishedSelection,
 	publishPresence,

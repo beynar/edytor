@@ -133,7 +133,7 @@ facade.deleteBlock(id); // { keepChildren: false } removes the subtree
 Facade inserts take a `BlockSpec`, not a `JSONBlock`: an `id` is required and content items carry a `kind` (`{ kind: 'text', text, marks? }` or `{ kind: 'inline', id, type, data? }`). `toBlockSpec(json)` converts canonical JSON, minting the ids it leaves out (`{ freshIds: true }` mints all of them, for a copy):
 
 ```ts
-import { toBlockSpec } from 'edytor';
+import { toBlockSpec } from 'edytor/crdt/edytor';
 
 facade.insertBlock({ parent: null, index: 1 }, toBlockSpec(facade.blockJSON('title'), { freshIds: true }));
 ```

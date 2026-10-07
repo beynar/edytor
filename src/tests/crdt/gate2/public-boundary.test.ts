@@ -92,12 +92,14 @@ describe('attack 5: no accidental second engine in the shipped tree', () => {
 		// v13 engine stack (yjs@13 / y-websocket / y-protocols /
 		// y-indexeddb / the deleted localProvider). The collaboration
 		// surface bound to the vendored v14 engine is fine and expected —
-		// `collaboration/providers.ts` must import the engine through the
-		// `$lib/crdt/engine.js` boundary, never a v13 package specifier.
+		// `collaboration/providers.ts` reads the stack `crdt/providers/bound.ts`
+		// binds through the `crdt/engine.js` boundary, never a v13 package specifier.
 		const provSrc = readFileSync(join(ROOT, 'src/lib/collaboration/providers.ts'), 'utf8');
+		const boundSrc = readFileSync(join(ROOT, 'src/lib/crdt/providers/bound.ts'), 'utf8');
 		for (const [label, src] of [
 			['src/lib/index.ts', indexSrc],
-			['src/lib/collaboration/providers.ts', provSrc]
+			['src/lib/collaboration/providers.ts', provSrc],
+			['src/lib/crdt/providers/bound.ts', boundSrc]
 		] as const) {
 			for (const bad of ['yjs', 'y-protocols', 'y-websocket', 'y-indexeddb', 'localProvider']) {
 				expect(src, `${label} references v13 specifier '${bad}'`).not.toMatch(
@@ -106,6 +108,7 @@ describe('attack 5: no accidental second engine in the shipped tree', () => {
 			}
 		}
 		// The one permitted engine path for the bound collaboration surface.
-		expect(provSrc).toMatch(/\$lib\/crdt\/engine\.js/);
+		expect(provSrc).toMatch(/\$lib\/crdt\/providers\/bound\.js/);
+		expect(boundSrc).toMatch(/from '\.\.\/engine\.js'/);
 	});
 });

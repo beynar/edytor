@@ -5,8 +5,9 @@
  *
  * Maintainer constraint (architecture v2): the CRDT engine runs
  * server-side in a Durable Object that coordinates clients over WebSockets
- * (a central DO, not P2P). This file imports ONLY the public CRDT entry
- * (`src/lib/crdt/index.ts` = `edytor/crdt/edytor`: the frame contract, the
+ * (a central DO, not P2P). This file imports ONLY the public CRDT entries
+ * (`src/lib/crdt/index.ts` = `edytor/crdt/edytor`, the documents, and
+ * `src/lib/crdt/protocol.ts` = `edytor/protocol`: the frame contract, the
  * wire read helpers, the instance-free awareness codec) and the vendored
  * engine (`src/lib/crdt/vendor/yjs/src/index.js` = `edytor/crdt`) — no
  * direct lib0 — and it loads them only AFTER `window`, `document`, `indexedDB`,
@@ -87,7 +88,7 @@ const restoreBrowserGlobals = () => {
 };
 
 let Y; // vendored engine — `edytor/crdt`
-let E; // public CRDT entry — `edytor/crdt/edytor`
+let E; // the public CRDT entries — `edytor/crdt/edytor` and `edytor/protocol`
 let crdt;
 let sync;
 
@@ -96,7 +97,10 @@ beforeAll(async () => {
 	for (const key of REMOVED) expect(key in globalThis, key).toBe(false);
 	expect(globalThis.navigator.locks).toBeUndefined();
 	Y = await import('../../../lib/crdt/vendor/yjs/src/index.js');
-	E = await import('../../../lib/crdt/index.js');
+	E = {
+		...(await import('../../../lib/crdt/index.js')),
+		...(await import('../../../lib/crdt/protocol.js'))
+	};
 	crdt = E.bindCrdt(Y);
 	sync = crdt.sync;
 });

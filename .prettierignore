@@ -16,6 +16,9 @@ vendor-tests
 bench/results
 src/tests/crdt/random/failures
 
+# the generated API surface report (scripts/api-report.mjs)
+api
+
 # generated architecture planning artifacts
 docs/architecture-v2/
 

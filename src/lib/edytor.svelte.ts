@@ -201,12 +201,17 @@ export class Edytor {
 	commands = new Map<string, EditorCommand>();
 	/** The kind catalogue: one row per preset of each kind record (slash, markdown, block menus). */
 	kinds: KindRow[] = [];
+	/** @internal */
 	plugins: InitializedPlugin[];
 	/** The view's handles (R4): one id-only `Block` per live id, texts and atoms by position and id. */
 	idToBlock: Handles = new Handles(this);
+	/** @internal */
 	nodeToInlineBlock = new Map<Node, InlineBlock>();
+	/** @internal */
 	nodeToText = new Map<Node, Text>();
+	/** @internal */
 	transaction = new TRANSACTION();
+	/** @internal */
 	hotKeys: Keymap;
 	readonly = $state(false);
 	root = $state<Block>();
@@ -217,15 +222,15 @@ export class Edytor {
 	/** `batch` binds operations onto blocks and the view alike: both answer `.edytor`. */
 	readonly edytor = this;
 	selection: EdytorSelection;
-	/** The only writer of the DOM selection (R10, `surface/projector`). */
+	/** @internal The only writer of the DOM selection (R10, `surface/projector`). */
 	readonly projector: Projector = new Projector(this);
-	/** The compare-to-truth observer (R12): registry, the render epoch, the passes, the only adopter (R8, L31). */
+	/** @internal The compare-to-truth observer (R12): registry, the render epoch, the passes, the only adopter (R8, L31). */
 	readonly surface: SurfaceObserver = new SurfaceObserver(this);
 	/** What the components render (R1, R2): one cell per visible block, patched from change reports. */
 	cells = $state.raw<Cells>();
 	/** Bumped by each commit that changed the document's data: what `docData()` readers track. */
 	private dataRevision = $state(0);
-	/** The document's data, read-your-writes and reactive (`{}` when none). */
+	/** @internal The document's data, read-your-writes and reactive (`{}` when none). */
 	docData = (): Record<string, unknown> => {
 		void this.dataRevision;
 		return this.facade.docData();
@@ -239,14 +244,14 @@ export class Edytor {
 	get data(): EdytorDocData {
 		return this.idToBlock.root.data as EdytorDocData;
 	}
-	/** The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
+	/** @internal The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
 	readonly pin = new Pin();
 	/** The chrome layer outside the host (R11): handles, menus, remote carets. */
 	readonly overlay = new Overlay();
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 	placeholder?: Placeholder;
-	/** The view's composition session (R8, L7, O34): at most one, live then tail. */
+	/** @internal The view's composition session (R8, L7, O34): at most one, live then tail. */
 	readonly composition: Composition = new Composition(this);
 	/** A composition session is live. */
 	get isComposing() {
@@ -258,6 +263,7 @@ export class Edytor {
 	 * gate typing affordances — scrolling the caret into view must follow
 	 * the user's input, not programmatic writes (`clear()`, remote sync,
 	 * API-driven selection changes must never move the page).
+	 * @internal
 	 */
 	isHandlingUserInput = false;
 	/**
@@ -265,11 +271,12 @@ export class Edytor {
 	 * writes — remote mirror flushes and mutation-observer repairs can
 	 * land inside an `isHandlingUserInput` window; their selection writes
 	 * are maintenance, not typing, and must not move the page.
+	 * @internal
 	 */
 	suppressCaretScrollDepth = 0;
 	/** The view's suggestions (`session/suggestions`): proposed content, shown here until accepted. */
 	readonly suggestions: Suggestions = new Suggestions(this);
-	/** The view's input attempts (R8, L6): one per user occurrence. */
+	/** @internal The view's input attempts (R8, L6): one per user occurrence. */
 	readonly attempts = new Attempts(() => this.surface.signal());
 
 	// CRDT (v14) — the document is the composition owner: it holds the ONE
@@ -278,7 +285,7 @@ export class Edytor {
 	// documents are borrowed; a view with no `document` option internally
 	// owns one (built around `doc`/`awareness` when those are injected).
 	document: EdytorDocument;
-	/** `true` when this view created its document — `destroy()` then releases it. */
+	/** @internal `true` when this view created its document — `destroy()` then releases it. */
 	ownsDocument = false;
 	get doc(): YDoc {
 		return this.document.doc;
@@ -313,6 +320,7 @@ export class Edytor {
 	 * one binding per runtime, not one per view. Do NOT `crdt.doc.create`
 	 * on this view's `doc` — the document's facade is the only maintained
 	 * surface for it (see `sharedCrdt`'s contract note).
+	 * @internal
 	 */
 	get crdt(): Crdt {
 		return sharedCrdt;
@@ -324,6 +332,7 @@ export class Edytor {
 	 * invariant: `document.sync()` seeds/asserts first, then attaches the
 	 * manager). Only absent before first sync, which is also before the
 	 * editor mounts, so all runtime readers see it set.
+	 * @internal
 	 */
 	undoManager!: YUndoManager;
 	/** The view's command dispatcher (R7): every mutation this view makes goes through it. */
@@ -371,7 +380,7 @@ export class Edytor {
 	/** Move blocks one relative step (D-5), or before, after or inside a live target block. */
 	moveBlocks = (request: BlockMoveRequest): Block[] => moveBlocksRelative(this, request);
 
-	/** This view's history (R7's named exception): bare engine undo/redo, one restorer. */
+	/** @internal This view's history (R7's named exception): bare engine undo/redo, one restorer. */
 	readonly history = new History(this);
 
 	/**
@@ -582,6 +591,7 @@ export class Edytor {
 	 * for {@link value}. Bumped inside the facade `onChange` dispatch
 	 * (before consumers are invoked) so every commit re-triggers tracked
 	 * reads of the export.
+	 * @internal
 	 */
 	valueRevision = $state(0);
 
@@ -629,6 +639,7 @@ export class Edytor {
 	/** Releases the readiness wait of a view bound before its document decided. */
 	private _readinessRelease: (() => void) | undefined;
 
+	/** @internal */
 	sync = ({ children = [], data }: JSONDoc = { children: [] }) => {
 		if (this.synced) return;
 		// The document owns the content decision: `assertSchema` on an
@@ -687,6 +698,7 @@ export class Edytor {
 	/**
 	 * The placeholder block `id` shows (§2.4, D-8): its cell has one empty
 	 * text and no live composition in it; a function answers per block.
+	 * @internal
 	 */
 	placeholderAt = (id: string): string | null => {
 		const cell = this.cells?.get(id);
@@ -699,10 +711,15 @@ export class Edytor {
 		return placeholder({ type, data, focused, empty: true }) || null;
 	};
 
+	/** @internal */
 	onBeforeInput = onBeforeInput.bind(this);
+	/** @internal */
 	onCopy = onCopy.bind(this);
+	/** @internal */
 	onCut = onCut.bind(this);
+	/** @internal */
 	onInput = onInput.bind(this);
+	/** @internal */
 	onPaste = onPaste.bind(this);
 	/**
 	 * Mark the synchronous extent of a real user-input event — see
@@ -762,6 +779,7 @@ export class Edytor {
 	 * pending deferred selection restores. Public so event modules
 	 * (onKeyDown) can mark real keys AFTER swallow checks — a swallowed
 	 * phantom composition key is not a gesture.
+	 * @internal
 	 */
 	markUserGesture = () => {
 		this.intentSerial++;
@@ -775,13 +793,14 @@ export class Edytor {
 	 * fires (element already focused).
 	 */
 	private expectInternalFocusArmed = false;
+	/** @internal */
 	expectInternalFocus = () => {
 		this.expectInternalFocusArmed = true;
 		queueMicrotask(() => {
 			this.expectInternalFocusArmed = false;
 		});
 	};
-	/** A `focusin` consumes the armed flag: `true` when the editor focused itself. */
+	/** @internal A `focusin` consumes the armed flag: `true` when the editor focused itself. */
 	consumeInternalFocus = (): boolean => {
 		const armed = this.expectInternalFocusArmed;
 		this.expectInternalFocusArmed = false;
@@ -792,6 +811,7 @@ export class Edytor {
 	 * `beforeinput`, cut, paste and drop bump it; an `input` does not (it
 	 * records what the browser did, not where the user wants the selection).
 	 * Attempts are per occurrence (`attempts`), not counted here.
+	 * @internal
 	 */
 	intentSerial = 0;
 	/**
@@ -802,15 +822,17 @@ export class Edytor {
 	 * not a gesture count: a foreign mutation that blurs the editor (e.g.
 	 * removing `contenteditable` from the root) produces the same
 	 * focusout signal as a user blur but must still be repaired.
+	 * @internal
 	 */
 	lastUserGestureOutsideEditor = false;
-	/** Run `body` as part of the user's input (deferred work of an occurrence). */
+	/** @internal Run `body` as part of the user's input (deferred work of an occurrence). */
 	userInput = <T>(body: () => T) =>
 		this.withUserInput(body, { bumpSerial: false })(new Event('input'));
 	/**
 	 * A commit's caret: select it (the projector displays it once the pin's
 	 * render lands) and arm the IME post-commit jump rule — a move right after
 	 * the commit with no gesture since is displayed back (`surface/projector`).
+	 * @internal
 	 */
 	stabilizeCompositionSelection = (text: Text, offset: number) => {
 		if (this.readonly || this.isComposing || !text.isInDocument) return;
@@ -835,12 +857,13 @@ export class Edytor {
 		!event ||
 		(!isNativeInteractiveEvent(event) && !isNestedForeignEditableTarget(this.node, event.target));
 
+	/** @internal */
 	onCompositionStart = (event?: CompositionEvent) => {
 		if (!this.ownComposition(event)) return;
 		this.composition.start(() => getDomSelectionSnapshot(this.node));
 	};
 
-	/** `compositionend`: the live session's commit, or its explicit cancel; the tail swallows a late one. */
+	/** @internal `compositionend`: the live session's commit, or its explicit cancel; the tail swallows a late one. */
 	onCompositionEnd = (event?: CompositionEvent) => {
 		if (!this.ownComposition(event) || this.readonly) return;
 		const value = event?.data ?? this.composition.preview;
@@ -855,21 +878,22 @@ export class Edytor {
 		rangeCaret
 	);
 
+	/** @internal */
 	insertFlow = batch('insertFlow', insertFlow, prepareFlow, caretOf);
 
 	deleteBlocks = batch('deleteBlocks', deleteBlocks, prepareDeleteBlocks);
 
-	/** The handle of the `ordinal`-th text segment of block `id` (the element a cell segment renders). */
+	/** @internal The handle of the `ordinal`-th text segment of block `id` (the element a cell segment renders). */
 	textAt = (id: string, ordinal: number): Text => this.idToBlock.text(id, ordinal);
 
-	/** The cell segment the element of `text` renders (the frozen list while pinned). */
+	/** @internal The cell segment the element of `text` renders (the frozen list while pinned). */
 	segmentOf = (text: Text): { cell: Cell; segment: Segment } | null => {
 		const cell = this.cells?.get(text.parent.id);
 		const part = cell && this.pin.parts(cell).filter((p) => p.kind === 'text')[text.ordinal];
 		return cell && part?.kind === 'text' ? { cell, segment: part } : null;
 	};
 
-	/** The render deltas the element of `text` shows. */
+	/** @internal The render deltas the element of `text` shows. */
 	deltasOf = (text: Text): readonly RenderDelta[] => {
 		const at = this.segmentOf(text);
 		if (!at) return [];
@@ -879,7 +903,7 @@ export class Edytor {
 		return pinned?.deltas ?? segmentDeltas(cell, segment, transform);
 	};
 
-	/** The handle of inline atom `atom`, shown in block `id`. */
+	/** @internal The handle of inline atom `atom`, shown in block `id`. */
 	atomAt = (id: string, atom: string): InlineBlock => this.idToBlock.atom(id, atom);
 
 	/**
@@ -905,6 +929,7 @@ export class Edytor {
 		return true;
 	};
 
+	/** @internal */
 	attach = (node: HTMLDivElement) => {
 		// A remount must not inherit a stale "user is outside" verdict —
 		// ownership is re-derived from live gestures from here on.
@@ -998,6 +1023,12 @@ export class Edytor {
 		};
 	};
 
+	/** @internal */
+	destroyed = false;
+	/** @internal The key of this view's presence entry — minted here, written only by this view (R1). */
+	readonly presenceKey = mintPresenceKey();
+	/** This view's presence writer: what it shares (`share`) and how often (`throttle`, ms); both settable. */
+	presence!: PresenceWriter;
 	/**
 	 * Edytor-lifetime teardown. `Edytor.svelte` owns the instance and calls
 	 * this from its `onDestroy` (after a server render too); consumers
@@ -1013,11 +1044,6 @@ export class Edytor {
 	 * Idempotent, and safe on an editor that was never attached or synced
 	 * (the undo manager exists only after first `sync()`).
 	 */
-	destroyed = false;
-	/** The key of this view's presence entry — minted here, written only by this view (R1). */
-	readonly presenceKey = mintPresenceKey();
-	/** This view's presence writer: what it shares (`share`) and how often (`throttle`, ms); both settable. */
-	presence!: PresenceWriter;
 	destroy = () => {
 		if (this.destroyed) return;
 		this.destroyed = true;

@@ -227,13 +227,18 @@ export class Dispatcher {
 	 * and recorded in `last` as any command, but they cut no step and enter
 	 * none. For a write that completes a step already taken, whose undo
 	 * already covers it: an upload's URL filling the image block its paste
-	 * placed (WU-21). That step's undo withdraws the block, URL included
+	 * placed. That step's undo withdraws the block, URL included
 	 * (`hist.undo.withdraw`), and its redo shows it again, so the paste stays
 	 * one step whatever the upload's delay, and the typing around it groups
-	 * as if it never came. Never inside another transaction (its origin
-	 * would be that one's).
+	 * as if it never came. Throws, writing nothing, when a transaction is
+	 * already open: its writes would take that transaction's origin and join
+	 * its step (call it from a later task, as an upload's answer is).
 	 */
 	outside = <T>(body: () => T): T => {
+		if (this.edytor.doc._transaction)
+			throw new Error(
+				'dispatcher.outside: called inside a transaction, where its writes would join that step'
+			);
 		const outer = this.untracked;
 		this.untracked = true;
 		try {

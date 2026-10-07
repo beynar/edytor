@@ -15,6 +15,11 @@
 	$effect(() => {
 		if (controls.readonly) controls.lock();
 	});
+	// The selected image changed: the chrome measures again.
+	$effect(() => {
+		void controls.selected;
+		controls.invalidate();
+	});
 
 	const aligns: { align: ImageAlign; label: string }[] = [
 		{ align: 'left', label: 'Align left' },
@@ -90,6 +95,7 @@
 						value={controls.alt}
 						autofocus
 						oninput={(event) => controls.setAlt(event.currentTarget.value)}
+						onfocusout={controls.blurred}
 						onkeydown={(event) => {
 							if (event.key !== 'Enter' && event.key !== 'Escape') return;
 							event.preventDefault();

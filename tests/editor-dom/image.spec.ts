@@ -85,6 +85,18 @@ test.describe('image resize (WU-21)', () => {
 			'A blue box'
 		);
 	});
+
+	test('a click in the text closes the alt field', async ({ page }) => {
+		await open(page);
+		await page.locator('[data-edytor-image] img').first().hover();
+		await page.locator('[data-edytor-image-alt-toggle]').click();
+		await expect(page.locator('[data-edytor-image-alt]')).toBeFocused();
+		await page.locator('[data-edytor-image] + figcaption').first().click();
+		await expect(page.locator('[data-edytor-image-alt-panel]')).toHaveCount(0);
+		// The pointer left the image: the chrome is no longer held on it.
+		await page.mouse.move(1, 1);
+		await expect(page.locator('[data-edytor-image-toolbar]')).toHaveCount(0);
+	});
 });
 
 test.describe('image file paste and drop (WU-21)', () => {

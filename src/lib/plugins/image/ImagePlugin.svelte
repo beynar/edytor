@@ -19,6 +19,7 @@
 	} from './image.js';
 	import { ImageControls } from './controls.svelte.js';
 	import { ImageUploads } from './uploads.svelte.js';
+	import { onPress } from '$lib/events/onFocus.js';
 
 	export {
 		MAX_INLINE_IMAGE_BYTES,
@@ -104,6 +105,8 @@
 					const leave = (event: PointerEvent) =>
 						!controls.drag && controls.leave(event.relatedTarget);
 					const layer = edytor.overlay.layer;
+					// A press outside the alt panel closes it (WebKit's lone `mousedown` too).
+					const offPress = onPress(edytor, node.ownerDocument, controls.pressed, true);
 					node.addEventListener('pointerover', over);
 					node.addEventListener('pointerleave', leave);
 					layer?.addEventListener('pointerleave', leave);
@@ -119,6 +122,7 @@
 						node.removeEventListener('pointerover', over);
 						node.removeEventListener('pointerleave', leave);
 						layer?.removeEventListener('pointerleave', leave);
+						offPress();
 						unmount();
 						own.uploads?.destroy();
 					};
@@ -194,7 +198,9 @@
 			<ImageEmpty
 				block={block.handle}
 				upload={view?.upload}
+				uploads={view?.uploads}
 				error={upload?.status === 'failed' ? 'upload' : null}
+				landed={upload?.status === 'landed'}
 			/>
 		</div>
 	{/if}

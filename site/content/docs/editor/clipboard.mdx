@@ -82,6 +82,8 @@ With the rich text plugin, that maps `h1`–`h3` to headings, `h4`–`h6` to `h3
 
 **Images inside text.** An element of a void kind (an `img`) met inside a line, even wrapped in inline markup such as Google Docs' `<p><span><img></span></p>`, ends the line there: the image becomes a block of its own, and the text after it a new line of the same kind. `<p>before <img src="…"> after</p>` gives `before`, the image, then `after`. A line left with no text around the image is not kept.
 
+**Emoji and icons drawn as images** stay in the text as their `alt`: an `img` whose `alt` is emoji only (`<img alt="😂" src="…">`, as X and Gmail write emoji), whose class names an emoji or that has `data-emoji` (Slack, WordPress), or whose `width` and `height` are 32 px or less (an icon, an email's tracking pixel, which has no `alt` and so adds nothing). `<p>So funny <img alt="😂" src="…"> right</p>` pastes as one line, `So funny 😂 right`.
+
 **Marks.** Text takes a mark when:
 
 - the mark's `parse(element)` returns a value (checked first), or

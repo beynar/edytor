@@ -77,9 +77,20 @@ export class ImageControls {
 		return this.drag === null && this.edytor.selection.dragging;
 	}
 
-	/** The image the chrome is on: the dragged one, the one whose alt is edited, else the hovered one. */
+	/** The image block that is the whole block selection, if any (reactive): the keyboard's image. */
+	get selected() {
+		const value = this.edytor.selection.value;
+		if (value.kind !== 'blocks' || value.ids.length !== 1) return null;
+		const id = value.ids[0]!;
+		return this.edytor.facade.blockTypeOf(id) === 'image' ? id : null;
+	}
+
+	/**
+	 * The image the chrome is on: the dragged one, the one whose alt is
+	 * edited, the hovered one, else the selected one (no pointer needed).
+	 */
 	get target() {
-		return this.drag?.id ?? this.editing ?? this.hovered;
+		return this.drag?.id ?? this.editing ?? this.hovered ?? this.selected;
 	}
 
 	/** Whether the chrome shows: over an image of an editable view, or while a handle drags. */
@@ -136,6 +147,9 @@ export class ImageControls {
 		};
 	};
 
+	/** Measure again in the overlay's next frame. */
+	invalidate = () => this.edytor.overlay.invalidate();
+
 	/** Set the target image's alignment: one `patchData` command. */
 	align = (align: ImageAlign) => {
 		const block = this.#block();
@@ -157,6 +171,27 @@ export class ImageControls {
 	toggleAlt = () => {
 		this.editing = this.editing ? null : (this.box?.id ?? null);
 		this.edytor.overlay.invalidate();
+	};
+
+	/**
+	 * A press anywhere (`onPress`, capture): one outside the alt panel and the
+	 * toolbar (whose Alt button toggles it) closes the field, so the chrome
+	 * follows the pointer again.
+	 */
+	pressed = (event: MouseEvent) => {
+		const target = event.target as Element | null;
+		if (this.editing === null) return;
+		if (target?.closest?.('[data-edytor-image-alt-panel], [data-edytor-image-toolbar]')) return;
+		this.closeAlt();
+	};
+
+	/** Focus left the alt field: for somewhere outside its panel, the field closes. */
+	blurred = (event: FocusEvent) => {
+		const to = event.relatedTarget;
+		const panel = (event.currentTarget as Element | null)?.closest('[data-edytor-image-alt-panel]');
+		// No new focus (the window went to the background): the field stays.
+		if (!(to instanceof Node) || panel?.contains(to)) return;
+		this.closeAlt();
 	};
 
 	/** Close the alt field; with `keys`, the editor takes the keys back. */

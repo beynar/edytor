@@ -31,6 +31,31 @@ const SKIP =
 /** HTML's block-level elements: they start a line (a kind's tag does too). */
 const BLOCK =
 	/^(address|article|aside|blockquote|dd|details|dialog|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hgroup|hr|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul)$/;
+/** The largest side, in CSS px, of an inline glyph image (an emoji, an icon, a tracking pixel). */
+const GLYPH_PX = 32;
+/** An alt made of emoji only (with their joiners, variation selectors and skin tones). */
+const EMOJI_ALT =
+	/^(?:[\p{Extended_Pictographic}\p{Regional_Indicator}\s]|\u200d|\ufe0f|\u20e3|\p{Emoji_Modifier})+$/u;
+const sizeOf = (img: HTMLElement, side: 'width' | 'height') => {
+	const value = img.getAttribute(side) ?? img.style.getPropertyValue(side);
+	const px = /^\s*(\d+(?:\.\d+)?)\s*(px)?\s*$/.exec(value);
+	return px ? Number(px[1]) : undefined;
+};
+/**
+ * An inline glyph image (`flow.html.glyph`): an emoji drawn as an image (an
+ * emoji-only alt, an `emoji` class or `data-emoji`, as X, Gmail, Slack and
+ * WordPress write them), or an image no larger than a glyph (an icon, an
+ * email's tracking pixel). It is text, its `alt`, never a block.
+ */
+const isGlyph = (node: Node): boolean => {
+	if (!(node instanceof HTMLElement) || node.localName !== 'img') return false;
+	const alt = node.getAttribute('alt')?.trim() ?? '';
+	if (alt && EMOJI_ALT.test(alt) && /[\p{Extended_Pictographic}\p{Regional_Indicator}]/u.test(alt))
+		return true;
+	if (/emoji/i.test(node.className) || node.hasAttribute('data-emoji')) return true;
+	const sides = [sizeOf(node, 'width'), sizeOf(node, 'height')].filter((n) => n !== undefined);
+	return sides.length > 0 && sides.every((n) => n <= GLYPH_PX);
+};
 /** Tags that carry no meaning of their own: a kind rendering one is not found by it. */
 const GENERIC = /^(div|span)$/;
 
@@ -76,6 +101,8 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 			byTag.set(tag, { type, data: kind.presets[0]!.data ?? {}, lines: child });
 	}
 	const kindOf = (element: HTMLElement): Claim | undefined => {
+		// A glyph is text: no kind claims it.
+		if (isGlyph(element)) return undefined;
 		for (const [type, kind] of blocks) {
 			const data = kind.parse?.(element);
 			if (data) return { type, data };
@@ -112,6 +139,8 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 	const inline = (node: Node, at: Cursor, marks: Values, pre: boolean) => {
 		if (node.nodeType === Node.TEXT_NODE)
 			return text(at.line(), node.textContent ?? '', marks, pre);
+		if (isGlyph(node))
+			return text(at.line(), (node as HTMLElement).getAttribute('alt') ?? '', marks, pre);
 		if (isVoid(node)) return at.apart(node);
 		if (!(node instanceof HTMLElement) || SKIP.test(node.localName)) return;
 		if (node.localName === 'br') return text(at.line(), '\n', marks, true);

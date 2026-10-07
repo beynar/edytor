@@ -7,13 +7,17 @@
  *   at once, showing an uploading placeholder; the URL `upload` answers
  *   fills its `src`. The paste is ONE undo step whatever the upload's delay
  *   (the URL's write is kept out of the history: `dispatcher.outside`). A
- *   failed upload leaves the empty block with its error; a file that is no
- *   image, or a view without `upload`, claims nothing.
+ *   failed upload leaves the empty block with its error (until a source is
+ *   embedded); a URL answered while the paste is undone fills the block when
+ *   redo shows it; a file that is no image, or a view without `upload`,
+ *   claims nothing.
  * - HTML import reads a bare `<img>` (with its `alt` and `width`): a void
- *   kind's element inside a line ends the line (`flow.html.void`).
+ *   kind's element inside a line ends the line (`flow.html.void`), except an
+ *   inline glyph image, which is its alt text (`flow.html.glyph`).
  * - `data.alt` is the image's `alt`; `data.width` (px) and `data.align`
  *   (`left`, `center`, `right`) size and place it, read back from HTML.
- * - The chrome in the overlay (hover): alignment buttons and an alt field.
+ * - The chrome in the overlay (hover, else the selected image): alignment
+ *   buttons and an alt field, closed by a press outside or focus leaving.
  *
  * Expected values come from the plan (WU-21), Notion and the `flow.*`
  * contract rows, never from running the code.
@@ -30,6 +34,7 @@ import {
 	canonicalTree,
 	dispatchClipboardPaste,
 	dispatchCopy,
+	dispatchDomBeforeInput,
 	flushDomUpdates,
 	renderDomEdytor,
 	setNativeSelection
@@ -136,14 +141,81 @@ describe('a pasted image file goes through `upload` (WU-21)', () => {
 		const { edytor, editor } = await mount(upload);
 		const before = edytor.value;
 		await pasteFiles(editor, [png()]);
+		// The caret is on the fresh line after the image: typing before and after the URL lands.
+		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'a' });
+		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'b' });
 		calls[0]!.resolve('https://cdn.example.com/photo.png');
 		await settle();
-		// The step under the paste is still the paste.
-		expect(edytor.undoManager.undoStack.length).toBe(1);
+		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'c' });
+		await flushDomUpdates();
+		expect(shape(edytor).slice(1, 3)).toEqual([
+			{ type: 'image', data: { src: 'https://cdn.example.com/photo.png' }, text: '' },
+			{ type: 'paragraph', text: 'abc' }
+		]);
+		// Two steps: the paste, then the typing as one, the URL in neither.
+		expect(edytor.undoManager.undoStack.length).toBe(2);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(shape(edytor).slice(1, 3)).toEqual([
+			{ type: 'image', data: { src: 'https://cdn.example.com/photo.png' }, text: '' },
+			{ type: 'paragraph', text: '' }
+		]);
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(edytor.value).toEqual(before);
 		expect(edytor.undoManager.undoStack.length).toBe(0);
+	});
+
+	it('an image undone before its upload lands gets the URL when redo brings it back', async () => {
+		const { upload, calls } = deferred();
+		const { edytor, editor } = await mount(upload);
+		await pasteFiles(editor, [png()]);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		calls[0]!.resolve('https://cdn.example.com/photo.png');
+		await settle();
+		edytor.historyRedo();
+		await settle();
+		expect(shape(edytor)[1]).toEqual({
+			type: 'image',
+			data: { src: 'https://cdn.example.com/photo.png' },
+			text: ''
+		});
+		// Still the one step, and the redo stack is not emptied by the late URL.
+		expect(edytor.undoManager.undoStack.length).toBe(1);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		edytor.historyRedo();
+		await settle();
+		expect(shape(edytor)[1]!.data).toEqual({ src: 'https://cdn.example.com/photo.png' });
+	});
+
+	it('embedding a link after a failed upload forgets its error', async () => {
+		const { upload, calls } = deferred();
+		const { edytor, editor } = await mount(upload);
+		await pasteFiles(editor, [png()]);
+		calls[0]!.reject(new Error('quota'));
+		await settle();
+		const field = editor.querySelector<HTMLInputElement>('[data-edytor-image-form] input')!;
+		field.value = 'https://example.com/a.png';
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		await flushDomUpdates();
+		editor.querySelector<HTMLButtonElement>('[data-edytor-image-form] button')!.click();
+		await flushDomUpdates();
+		const id = edytor.value.children![1]!.id!;
+		expect(edytor.facade.blockDataOf(id)).toEqual({ src: 'https://example.com/a.png' });
+		// Its source removed, the block is a plain empty image again: no stale error.
+		edytor.idToBlock.get(id)!.setData({});
+		await flushDomUpdates();
+		expect(editor.querySelector('[data-edytor-image-error]')).toBeNull();
+		expect(editor.querySelector('[data-edytor-image-form]')).toBeNull();
+	});
+
+	it('`dispatcher.outside` refuses to run inside another transaction', async () => {
+		const { edytor } = await mount();
+		expect(() => edytor.transact(() => edytor.dispatcher.outside(() => undefined))).toThrow(
+			/inside a transaction/
+		);
 	});
 
 	it('several files are one step, each filled by its own upload', async () => {
@@ -358,6 +430,31 @@ describe('HTML import reads a bare <img> (WU-21, flow.html.void)', () => {
 		).toEqual([{ type: 'image', data: { src, alt: 'Alt' }, text: 'Caption' }]);
 	});
 
+	it('an inline glyph (an emoji image, a tracking pixel) stays in the line as its alt', async () => {
+		// X/Twitter: an emoji `img` with its character as the alt, no size attributes.
+		expect(
+			await lines(
+				'<p>So funny <img alt="😂" draggable="false" src="https://abs-0.twimg.com/emoji/v2/svg/1f602.svg" class="r-4qtqp9"> right</p>'
+			)
+		).toEqual([{ type: 'run', text: 'So funny 😂 right' }]);
+		// WordPress, Slack: an emoji class; Slack's alt is the short code.
+		expect(
+			await lines(`<p>Done <img class="c-emoji c-emoji__medium" alt=":tada:" src="${src}"></p>`)
+		).toEqual([{ type: 'run', text: 'Done :tada:' }]);
+		// A small icon (32px or under), and an email's tracking pixel (no alt: nothing).
+		expect(
+			await lines(
+				`<p>a<img src="${src}" alt="!" width="16" height="16">b<img src="${src}" width="1" height="1"></p>`
+			)
+		).toEqual([{ type: 'run', text: 'a!b' }]);
+		// A picture whose alt is words, or sized above a glyph, still ends the line.
+		expect(await lines(`<p>x<img src="${src}" alt="A cat" width="33">y</p>`)).toEqual([
+			{ type: 'run', text: 'x' },
+			{ type: 'image', data: { src, alt: 'A cat', width: 33 }, text: '' },
+			{ type: 'run', text: 'y' }
+		]);
+	});
+
 	it('an <img> with no accepted source is still dropped', async () => {
 		expect(await lines('<p>x<img src="javascript:alert(1)">y</p>')).toEqual([
 			{ type: 'run', text: 'xy' }
@@ -499,13 +596,99 @@ describe('the image chrome in the overlay (WU-21)', () => {
 		await flushDomUpdates();
 		const field = document.querySelector<HTMLInputElement>('[data-edytor-image-alt]')!;
 		expect(field.value).toBe('old');
-		for (const value of ['ol', 'o', 'a', 'a b']) {
+		edytor.undoManager.stopCapturing();
+		const steps = edytor.undoManager.undoStack.length;
+		// Deletions, then insertions: each one run in the previous value (a bound field).
+		for (const value of ['ol', 'o', 'o ', 'o b']) {
 			field.value = value;
 			field.dispatchEvent(new Event('input', { bubbles: true }));
 			await flushDomUpdates();
 		}
-		expect(edytor.facade.blockDataOf('img')).toEqual({ src, alt: 'a b' });
-		expect(editor.querySelector('[data-edytor-image] img')?.getAttribute('alt')).toBe('a b');
+		expect(edytor.facade.blockDataOf('img')).toEqual({ src, alt: 'o b' });
+		expect(editor.querySelector('[data-edytor-image] img')?.getAttribute('alt')).toBe('o b');
+		expect(edytor.undoManager.undoStack.length).toBe(steps + 1);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(edytor.facade.blockDataOf('img')).toEqual({ src, alt: 'old' });
+	});
+
+	const twoImages = () =>
+		renderDomEdytor(
+			<root>
+				<paragraph>|</paragraph>
+			</root>,
+			{
+				plugins: [richTextPlugin, imagePlugin],
+				value: {
+					children: [
+						{ id: 'a', type: 'image', data: { src }, content: [{ text: '' }] },
+						{ id: 'p', type: 'paragraph', content: [{ text: 'between' }] },
+						{ id: 'b', type: 'image', data: { src, align: 'left' }, content: [{ text: '' }] }
+					]
+				}
+			}
+		);
+	const hoverImage = async (editor: HTMLElement, index: number) => {
+		editor
+			.querySelectorAll('[data-edytor-image] img')
+			[index]!.dispatchEvent(new Event('pointerover', { bubbles: true }));
+		await settle();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		await flushDomUpdates();
+	};
+	const pressedAlign = () =>
+		[...(chrome()?.querySelectorAll('[data-edytor-image-align]') ?? [])]
+			.filter((button) => button.getAttribute('aria-pressed') === 'true')
+			.map((button) => button.getAttribute('data-edytor-image-align'));
+	const panel = () => document.querySelector('[data-edytor-image-alt-panel]');
+
+	it('a press outside closes the alt field, and the chrome follows the pointer again', async () => {
+		const { editor } = await twoImages();
+		await hoverImage(editor, 0);
+		chrome()!.querySelector<HTMLButtonElement>('[data-edytor-image-alt-toggle]')!.click();
+		await flushDomUpdates();
+		expect(panel()).not.toBeNull();
+		// A press on the toolbar (an alignment) keeps it open.
+		chrome()!
+			.querySelector('[data-edytor-image-align="left"]')!
+			.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		await flushDomUpdates();
+		expect(panel()).not.toBeNull();
+		// A press in the text closes it.
+		editor
+			.querySelector('[data-edytor-id="p"]')!
+			.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		await flushDomUpdates();
+		expect(panel()).toBeNull();
+		// The chrome is no longer held on the first image: hovering the second shows its own.
+		await hoverImage(editor, 1);
+		expect(pressedAlign()).toEqual(['left']);
+	});
+
+	it('focus leaving the alt field for the editor closes it', async () => {
+		const { editor } = await twoImages();
+		await hoverImage(editor, 0);
+		chrome()!.querySelector<HTMLButtonElement>('[data-edytor-image-alt-toggle]')!.click();
+		await flushDomUpdates();
+		const field = document.querySelector<HTMLInputElement>('[data-edytor-image-alt]')!;
+		field.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: editor }));
+		await flushDomUpdates();
+		expect(panel()).toBeNull();
+	});
+
+	it('a selected image shows its toolbar without the pointer (keyboard)', async () => {
+		const { edytor } = await twoImages();
+		expect(chrome()).toBeNull();
+		edytor.selection.selectBlocks(edytor.idToBlock.get('b')!);
+		await settle();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		await flushDomUpdates();
+		expect(pressedAlign()).toEqual(['left']);
+		edytor.selection.selectBlocks(edytor.idToBlock.get('p')!);
+		await settle();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		await flushDomUpdates();
+		expect(chrome()).toBeNull();
 	});
 
 	it('a readonly view shows no chrome', async () => {

@@ -138,6 +138,7 @@ format.setMarkValueAtRange('highlight', '#fff3a3'); // set, never toggle
 format.removeMarkAtRange('highlight'); // remove one mark
 format.setLinkAtRange({ href: 'https://svelte.dev', target: '_blank' });
 format.removeLinkAtRange();
+const text = block.firstText!; // a Text handle
 format.linkText(text, 0, 4, 'https://svelte.dev'); // a range of one text, its own undo step
 format.unlinkText(text, 0, 4); // one undo step; the selection stays
 format.removeAllMarksAtRange();

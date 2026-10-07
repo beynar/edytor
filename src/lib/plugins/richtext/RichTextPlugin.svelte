@@ -223,7 +223,7 @@
 			// it: Meta, or Ctrl off a Mac.
 			onEdytorAttached: ({ node }) => {
 				const click = (event: MouseEvent) => {
-					if (!event.metaKey && !(event.ctrlKey && !edytor.hotKeys.isMac)) return;
+					if (!event.metaKey && !(event.ctrlKey && !edytor.keymap.isMac)) return;
 					const target = event.target instanceof Element ? event.target : null;
 					const anchor = target?.closest('a[href][data-edytor-mark]');
 					const href = anchor && node.contains(anchor) && anchor.getAttribute('href');

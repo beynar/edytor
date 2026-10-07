@@ -2476,6 +2476,9 @@ export type RunViewDebug = {
     readonly itemsWalked: number;
     readonly markersWalked: number;
     readonly frames: number;
+    readonly folds: number;
+    readonly foldedPairs: number;
+    readonly foldedStructs: number;
     reset: () => void;
 };
 ```

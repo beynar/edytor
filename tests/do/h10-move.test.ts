@@ -64,6 +64,14 @@ const join = async (room: string, user: string, value?: JSONDoc) => {
 		replica: document.doc.clientID
 	});
 	await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+	// The room stores the seed when the client answers its Step1, after the
+	// client heard the room: a row that closes the client and reads the room
+	// at once must wait for it (a race a loaded runner lost, CC-05).
+	if (value !== undefined)
+		await vi.waitFor(
+			async () => expect(texts(await roomJSON(room))).toMatchObject(texts(value)),
+			SLOW
+		);
 	return { document, client };
 };
 

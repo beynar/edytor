@@ -3,6 +3,7 @@
 
 <p>A collaborative block editor for Svelte 5, on a Yjs v14 engine</p>
 
+[![CI](https://github.com/beynar/edytor/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/beynar/edytor/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Svelte v5](https://img.shields.io/badge/Svelte-v5-FF3E00.svg)](https://svelte.dev)
 
@@ -102,7 +103,7 @@ The [documentation site](https://edytor.dev/docs) is the single source for the A
 
 ## Contributing
 
-`AGENTS.md` describes the architecture (one owner per fact), where to fix what, and the test lanes. The docs live in `site/content/docs`; a change to public behavior updates them in the same commit.
+`CONTRIBUTING.md` lists the test lanes, what CI runs, and the pull request checklist; `AGENTS.md` describes the architecture (one owner per fact) and where to fix what. The docs live in `site/content/docs`; a change to public behavior updates them in the same commit.
 
 ```bash
 pnpm install

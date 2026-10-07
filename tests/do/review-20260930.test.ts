@@ -176,7 +176,7 @@ describe('NW-02 · server and storage faults close 1011, never 1008 malformed', 
 		const room = 'nw02-registry-fault';
 		const seed = E.createDocument({ value: { children: [para('p', 'hello')] } });
 		const seeder = await RawClient.connect(room, seed.doc, { user: 'ada' });
-		await vi.waitFor(() => expect(seeder.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(seeder.stored()).toBe(true));
 		const writer = await RawClient.connect(room, undefined, { user: 'bob' });
 		const viewer = await RawClient.connect(room, undefined, { user: 'cat' });
 		await vi.waitFor(() => expect(writer.synced && viewer.synced).toBe(true));
@@ -206,7 +206,7 @@ describe('NW-02 · server and storage faults close 1011, never 1008 malformed', 
 		const room = 'nw02-registry-provider';
 		const seed = E.createDocument({ value: { children: [para('p', 'hello')] } });
 		const seeder = await RawClient.connect(room, seed.doc, { user: 'ada' });
-		await vi.waitFor(() => expect(seeder.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(seeder.stored()).toBe(true));
 		seeder.close();
 		await inRoom(room, (_r, state) => state.storage.sql.exec(failRegistry));
 
@@ -248,7 +248,7 @@ describe('NW-02 · server and storage faults close 1011, never 1008 malformed', 
 		const room = 'nw02-rebuild-load';
 		const document = E.createDocument({ value: { children: [para('p', 'hello')] } });
 		const author = await RawClient.connect(room, document.doc, { user: 'ada' });
-		await vi.waitFor(() => expect(author.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(author.stored()).toBe(true));
 		const peer = await RawClient.connect(room, undefined, { user: 'bob' });
 		await vi.waitFor(() => expect(peer.synced).toBe(true));
 		await inRoom(room, (r, state) => {

@@ -13,6 +13,10 @@
  * op costs on independent-equivalent fixtures, bytes-as-bytes, full
  * distributions, retained memory, staging fast-path before/after.
  *
+ * It also runs the `scale` workload (`bench/lib/scale.js`, alone:
+ * `pnpm bench:scale`): the timings of the gate rows that count operations
+ * instead (CC-05: P1 scale, F-O5).
+ *
  * Writes `bench/results/<iso-timestamp>.json` and refreshes
  * `bench/results/latest.json`.
  *
@@ -30,6 +34,7 @@ import { gzipSync, brotliCompressSync, constants } from 'node:zlib';
 import * as os from 'node:os';
 import { typing, move, load, delta, textOwnership } from './lib/workloads.js';
 import { baseline } from './lib/baseline.js';
+import { scale } from './lib/scale.js';
 import { hashTree, hashFile } from './lib/source-id.js';
 
 const RESULTS_DIR = fileURLToPath(new URL('./results', import.meta.url));
@@ -170,6 +175,8 @@ const results = {
 		textOwnership: textOwnership()
 	},
 	baseline: await baseline(),
+	// CC-05: the timings the gate rows no longer assert (they count operations).
+	scale: scale(),
 	packedConsumer: packedConsumerSizes()
 };
 results.meta.durationMs = +(performance.now() - t0).toFixed(1);
@@ -238,6 +245,13 @@ console.log(
 		.map(([k, v]) => `${k}: ${v.keystroke.p50}/${v.enter.p50}/${v.move.p50}/${v.delete.p50}ms`)
 		.join('; ')}`
 );
+const sc = results.scale;
+console.log(
+	`  scale — keystroke 1k/5k ${sc.sizes[1000].keystrokeMs}/${sc.sizes[5000].keystrokeMs}ms, ` +
+		`F-O5 range/block delete ${sc.deletes1000.rangeDeleteMs}/${sc.deletes1000.blockDeleteMs}ms, ` +
+		`batched/separate ${sc.batched1000.ratio}`
+);
+if (sc.over.length > 0) console.log(`  scale — over the former budgets: ${sc.over.join('; ')}`);
 const pc = results.packedConsumer;
 if (pc.built) {
 	const main = Object.entries(pc.assets).find(([f]) => f.startsWith('index-'));

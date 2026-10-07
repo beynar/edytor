@@ -190,6 +190,35 @@ export class RawClient {
 		this.send(presenceFrame([{ clientID, clock, state }]));
 	}
 
+	/**
+	 * The room acknowledged storing everything this client's document holds:
+	 * an ack's state vector covers ours. The room acknowledges every sync
+	 * message, our Step1 first (before it stored anything of ours), so "an
+	 * ack came" is not "our seed is stored" (CC-05: a race a loaded runner
+	 * lost).
+	 */
+	stored() {
+		const ours = Y.decodeStateVector(Y.encodeStateVector(this.doc));
+		return this.acks.some((ack) =>
+			[...ours].every(([client, clock]) => (ack.get(client) ?? 0) >= clock)
+		);
+	}
+
+	/**
+	 * Frames received that could carry document content (sync messages, and
+	 * chunks of one): what a "never relayed" row counts. The room's
+	 * acknowledgements, presence and notices are not relays, and one of them
+	 * still in flight when a row takes its mark must not fail it (CC-05).
+	 */
+	syncFrames() {
+		return this.received.filter((bytes) => {
+			const decoder = E.createDecoder(bytes);
+			if (!E.readProtocolVersion(decoder)) return true;
+			const type = E.readVarUint(decoder);
+			return type === E.messageSync || type === E.messageChunk;
+		}).length;
+	}
+
 	/** The document as JSON, read through a bare facade (writes nothing). */
 	json() {
 		return readFacade(this.doc, (facade) => facade.toJSON());

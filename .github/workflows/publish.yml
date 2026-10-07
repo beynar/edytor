@@ -1,8 +1,9 @@
 # Publishes the package to npm when a version tag (`v0.1.0-next.14`) is pushed.
 # Trusted publishing (OIDC): npm trusts this workflow of beynar/edytor, no token.
 # A pre-release (`-next.N`) goes under the `next` dist-tag, any other version
-# under `latest`. The test lanes stay local (run before every release): their
-# timing budgets do not hold on shared runners.
+# under `latest`. Nothing is published unless CI (`ci.yml`, called here on
+# the tagged commit with the Chromium lane) passed: the gate lanes count
+# operations instead of timing them (CC-05), so they hold on shared runners.
 name: Publish
 
 on:
@@ -11,11 +12,20 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
+  ci:
+    name: CI on the tagged commit
+    uses: ./.github/workflows/ci.yml
+    with:
+      browsers: true
+
   publish:
+    needs: ci
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -29,9 +39,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: The tag names the package's version
         run: test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
-      - run: pnpm lint
-      - run: pnpm check
-      - run: pnpm check:worker
       - name: Publish
         run: |
           tag=$(node -p '/-/.test(require("./package.json").version) ? "next" : "latest"')

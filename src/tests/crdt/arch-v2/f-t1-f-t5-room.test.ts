@@ -204,7 +204,12 @@ describe('F-T5 — offline edits reach peers without resyncInterval (G2, O76)', 
 		docB.get('content').setAttr('fromB', 'b');
 		const pB = open(url, docB);
 		await until(() => pA.synced && attr(docA, 'fromB') === 'b');
-		expect(pB.synced).toBe(true);
+		// B hears the room too, but not necessarily first (CC-05, a flake of
+		// the gate lane): the tabs' BroadcastChannel can hand A B's state
+		// before B's socket hello arrives, and then that hello alone (asking
+		// nothing A lacks) is A's proof of the room, while A's answer to B is
+		// still in flight.
+		await until(() => pB.synced);
 		pA.destroy();
 		pB.destroy();
 	});

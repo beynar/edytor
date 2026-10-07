@@ -68,7 +68,7 @@ describe('UW-02 · compaction runs after the ack, never inside the update observ
 		const room = 'compact-failure';
 		const document = E.createDocument({ value: { children: [para('p', '')] } });
 		const author = await RawClient.connect(room, document.doc, { user: 'ada' });
-		await vi.waitFor(() => expect(author.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(author.stored()).toBe(true));
 		const peer = await RawClient.connect(room, undefined, { user: 'bob' });
 		await vi.waitFor(() => expect(peer.synced).toBe(true));
 		await inRoom(room, (_r, state) =>
@@ -179,7 +179,7 @@ describe('UW-06 · a refused onLoad payload or stored record refuses sockets ins
 		const room = 'storage-torn';
 		const document = E.createDocument({ value: { children: [para('p', 'hi')] } });
 		const client = await RawClient.connect(room, document.doc);
-		await vi.waitFor(() => expect(client.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(client.stored()).toBe(true));
 		client.close();
 		await inRoom(room, (_r, state) =>
 			state.storage.sql.exec(
@@ -476,7 +476,7 @@ describe('UW-12 · refusals are bounded; a refused provider dials once', () => {
 		// Ada's offline edits, copied into Eve's document: Eve's handshake writes under Ada's id.
 		const ada = E.createDocument({ value: { children: [para('p', 'hi')] }, actor: { id: 'ada' } });
 		const tab = await RawClient.connect(room, ada.doc, { user: 'ada' });
-		await vi.waitFor(() => expect(tab.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(tab.stored()).toBe(true));
 		tab.close();
 		ada.transact(() => ada.facade.insertText('p', 2, '!'));
 		const eve = E.createDocument();

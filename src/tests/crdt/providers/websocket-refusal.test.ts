@@ -117,6 +117,9 @@ const answerStep1 = (socket, type, _bytes, decoder) => {
 };
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+/** The delays the provider scheduled its redials with (`setTimeout(setupWS, delay, provider)`). */
+const redialDelays = (timers, p) =>
+	timers.mock.calls.filter((call) => call[2] === p).map((call) => call[1]);
 const until = async (cond, timeout = 3000) => {
 	const start = Date.now();
 	while (!cond()) {
@@ -364,10 +367,15 @@ describe('other closes redial with a backoff that grows while the room is unreac
 		p.wsUnsuccessfulReconnects = 5;
 		await until(() => p.synced);
 		expect(p.wsUnsuccessfulReconnects).toBe(0);
-		const dropped = Date.now();
-		server.sockets[0].close(1006, '');
-		await until(() => server.sockets.length === 2);
-		expect(Date.now() - dropped).toBeLessThan(400);
+		// The redial's delay as scheduled (CC-05: never the wall clock).
+		const timers = vi.spyOn(globalThis, 'setTimeout');
+		try {
+			server.sockets[0].close(1006, '');
+			await until(() => server.sockets.length === 2);
+			expect(redialDelays(timers, p)).toEqual([100]);
+		} finally {
+			timers.mockRestore();
+		}
 		expect(events.unreachable).toEqual([]);
 		p.destroy();
 	});

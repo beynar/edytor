@@ -48,6 +48,8 @@ describe('H12 · lastUpdated and prefetch', () => {
 			replica: author.doc.clientID
 		});
 		await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+		// The room stores the seed Ada sends after she heard it: close once it acknowledged it.
+		await vi.waitFor(() => expect(client.stored()).toBe(true), SLOW);
 		client.close();
 
 		const options = {

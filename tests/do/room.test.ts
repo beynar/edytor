@@ -106,7 +106,9 @@ describe('room Durable Object — sync', () => {
 				children: [{ id: 'p1', type: 'paragraph', text: 'hello' }]
 			})
 		);
-		expect(ca.synced && cb.synced).toBe(true);
+		// Bob may read Ada's seed relayed before the room's answer to his own
+		// hello: both hear the room, in either order.
+		await vi.waitFor(() => expect(ca.synced && cb.synced).toBe(true));
 
 		const b = E.attachDocument(cb.doc, { actor: { id: 'bob' } });
 		applied(a.transact(() => a.facade.insertText('p1', 5, ' world')));
@@ -162,9 +164,10 @@ describe('room Durable Object — admission', () => {
 		const ca = await RawClient.connect(room, a.doc);
 		const cb = await RawClient.connect(room);
 		await vi.waitFor(() => expect(shape(cb.json()).children[0]?.text).toBe('hello'));
+		await vi.waitFor(() => expect(cb.synced).toBe(true));
 		await settle();
 		const rowsBefore = await rowsOf(room);
-		const receivedBefore = cb.received.length;
+		const receivedBefore = cb.syncFrames();
 		const jsonBefore = JSON.stringify(ca.json());
 
 		const typed = peerUpdate(a.doc, (peer) =>
@@ -182,7 +185,7 @@ describe('room Durable Object — admission', () => {
 
 		await settle();
 		expect(await rowsOf(room)).toEqual(rowsBefore);
-		expect(cb.received.length).toBe(receivedBefore);
+		expect(cb.syncFrames()).toBe(receivedBefore);
 		expect(JSON.stringify(await serverJSON(room))).toBe(jsonBefore);
 		expect(JSON.stringify(cb.json())).toBe(jsonBefore);
 		expect((await refusalsOf(room)).map((r) => r.reason)).toEqual(['generation', 'generation']);
@@ -201,9 +204,10 @@ describe('room Durable Object — admission', () => {
 		const ca = await RawClient.connect(room, a.doc);
 		const cb = await RawClient.connect(room);
 		await vi.waitFor(() => expect(shape(cb.json()).children[0]?.text).toBe('hello'));
+		await vi.waitFor(() => expect(cb.synced).toBe(true));
 		await settle();
 		const rowsBefore = await rowsOf(room);
-		const receivedBefore = cb.received.length;
+		const receivedBefore = cb.syncFrames();
 
 		const unsupported = await rogue(
 			room,
@@ -230,7 +234,7 @@ describe('room Durable Object — admission', () => {
 			['schema', 'foreign']
 		]);
 		expect(await rowsOf(room)).toEqual(rowsBefore);
-		expect(cb.received.length).toBe(receivedBefore);
+		expect(cb.syncFrames()).toBe(receivedBefore);
 		expect(E.schemaVersion(cb.doc as unknown as Parameters<typeof E.schemaVersion>[0])).toBe(
 			E.SCHEMA_VERSION
 		);
@@ -491,16 +495,22 @@ describe('room Durable Object — storage', () => {
 		const a = seeded([para('p1', 'hello')], 'ada');
 		const ca = await RawClient.connect(room, a.doc);
 		await vi.waitFor(() => expect(ca.synced).toBe(true));
+		// The room stores the container (its generation record) with the seed
+		// Ada sends after she heard it: tamper only once it acknowledged that.
+		await vi.waitFor(() => expect(ca.stored()).toBe(true));
 		ca.close();
 		await settle();
-		await runInDurableObject(stubOf(room), (_r: Room, state) => {
-			state.storage.sql.exec(
-				"UPDATE rows SET bytes = ? WHERE kind = 'generation'",
-				new TextEncoder().encode(
-					JSON.stringify({ ...E.GENERATION_RECORD, schema: E.SCHEMA_VERSION + 1 })
-				)
-			);
-		});
+		const tampered = await runInDurableObject(
+			stubOf(room),
+			(_r: Room, state) =>
+				state.storage.sql.exec(
+					"UPDATE rows SET bytes = ? WHERE kind = 'generation'",
+					new TextEncoder().encode(
+						JSON.stringify({ ...E.GENERATION_RECORD, schema: E.SCHEMA_VERSION + 1 })
+					)
+				).rowsWritten
+		);
+		expect(tampered).toBe(1);
 		await evictDurableObject(stubOf(room));
 		const cc = await RawClient.connect(room);
 		await vi.waitFor(() => expect(cc.closed).toEqual({ code: 1008, reason: 'refused: container' }));
@@ -639,9 +649,10 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 		const ca = await RawClient.connect(room, a.doc, { user: 'ada', replica: ada });
 		const cb = await RawClient.connect(room, undefined, { user: 'bob' });
 		await vi.waitFor(() => expect(shape(cb.json()).children[0]?.text).toBe('hello'));
+		await vi.waitFor(() => expect(cb.synced).toBe(true));
 		await settle();
 		const rowsBefore = await rowsOf(room);
-		const receivedBefore = cb.received.length;
+		const receivedBefore = cb.syncFrames();
 		const jsonBefore = JSON.stringify(ca.json());
 
 		// Eve continues Ada's clock: new structs attributed to Ada's client id.
@@ -663,7 +674,7 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 
 		await settle();
 		expect(await rowsOf(room)).toEqual(rowsBefore);
-		expect(cb.received.length).toBe(receivedBefore);
+		expect(cb.syncFrames()).toBe(receivedBefore);
 		expect(JSON.stringify(await serverJSON(room))).toBe(jsonBefore);
 		expect(JSON.stringify(cb.json())).toBe(jsonBefore);
 		// Ada's handshake relayed the seed's id (unowned); Eve's forgery and dial were refused.
@@ -804,7 +815,7 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 		expect([viewer.readOnly, viewer.denied]).toEqual([true, []]);
 		await settle();
 		const rowsBefore = await rowsOf(room);
-		const receivedBefore = ca.received.length;
+		const receivedBefore = ca.syncFrames();
 
 		const v = E.attachDocument(viewer.doc, { actor: { id: 'viv' } });
 		applied(v.transact(() => v.facade.insertText('p1', 0, 'VIEWER ')));
@@ -816,7 +827,7 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 		expect(viewer.denied).toEqual(refusals.map(() => 'read-only'));
 		expect(viewer.closed).toBeNull();
 		expect(await rowsOf(room)).toEqual(rowsBefore);
-		expect(ca.received.length).toBe(receivedBefore);
+		expect(ca.syncFrames()).toBe(receivedBefore);
 		expect(shape(await serverJSON(room)).children[0].text).toBe('hello');
 
 		// Presence is not a write: the viewer's caret reaches Ada.

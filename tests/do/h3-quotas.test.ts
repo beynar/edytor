@@ -114,6 +114,8 @@ describe('H3 · room quotas', () => {
 		const a = E.createDocument({ value: { children: [para('p', '')] }, actor: { id: 'ada' } });
 		const ca = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
 		await vi.waitFor(() => expect(ca.synced).toBe(true), SLOW);
+		// The room stores the seed Ada sends after she heard it: close once it acknowledged it.
+		await vi.waitFor(() => expect(ca.stored()).toBe(true), SLOW);
 		const updates: Uint8Array[] = [];
 		a.doc.on('update', (update: Uint8Array) => updates.push(update));
 		ca.close();

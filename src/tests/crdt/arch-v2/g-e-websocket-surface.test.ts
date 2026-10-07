@@ -28,7 +28,7 @@
  */
 // @ts-nocheck -- tests reach raw provider internals (excluded lane).
 import 'fake-indexeddb/auto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import { Y } from '../../../lib/crdt/engine.js';
@@ -157,10 +157,18 @@ describe('G-e retained surface — status, backoff, liveness, auth, the socket s
 		// the cap keeps it at 50 ms (below the 8 in a row past which it grows).
 		p.wsUnsuccessfulReconnects = 5;
 		const before = socketsOf(url).length;
-		const dropped = Date.now();
-		p.ws.drop();
-		await until(() => socketsOf(url).length > before, 1000);
-		expect(Date.now() - dropped).toBeLessThan(500);
+		// The redial's delay as scheduled (`setTimeout(setupWS, delay,
+		// provider)`), never the wall clock (CC-05): 100 ms × 2⁵, capped.
+		const timers = vi.spyOn(globalThis, 'setTimeout');
+		try {
+			p.ws.drop();
+			await until(() => socketsOf(url).length > before, 1000);
+			expect(timers.mock.calls.filter((call) => call[2] === p).map((call) => call[1])).toEqual([
+				50
+			]);
+		} finally {
+			timers.mockRestore();
+		}
 		await until(() => p.wsconnected);
 		p.destroy();
 	});

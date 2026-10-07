@@ -34,10 +34,24 @@ const shape = (page: Page) =>
 		);
 	});
 
-/** Click at the end of code line `id`. */
+/**
+ * Click at the end of code line `id`, and wait until the model holds that
+ * caret: a key pressed before the click's `selectionchange` is adopted acts
+ * on the caret before it (a race a loaded runner loses, CC-05).
+ */
 const endOf = async (page: Page, id: string) => {
-	const box = (await page.locator(`[data-edytor-id="${id}"] [data-edytor-text]`).boundingBox())!;
+	const text = page.locator(`[data-edytor-id="${id}"] [data-edytor-text]`);
+	const box = (await text.boundingBox())!;
 	await page.mouse.click(box.x + box.width + 2, box.y + box.height / 2);
+	const length = (await text.textContent())!.length;
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const state = (window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection.state;
+				return [state.startBlock?.id, state.yStart, state.isCollapsed];
+			})
+		)
+		.toEqual([id, length, true]);
 };
 
 test.describe('leaving a code block', () => {

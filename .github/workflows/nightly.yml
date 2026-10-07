@@ -1,0 +1,83 @@
+# The lanes too slow for every pull request (decision D9): Firefox, WebKit,
+# the two mobile projects, the CDP IME lane and the DST editor-input corpus,
+# every night on `master` (and on demand). A red night is an issue to fix,
+# not a gate: CI (`ci.yml`) is the gate. CONTRIBUTING.md lists the lanes.
+name: Nightly
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  browsers:
+    name: ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: firefox
+            browser: firefox
+          - project: webkit
+            browser: webkit
+          - project: mobile-chromium
+            browser: chromium
+          - project: mobile-webkit
+            browser: webkit
+          - project: cdp
+            browser: chromium
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ matrix.browser }}
+      - run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+      - run: pnpm test:integration --project=${{ matrix.project }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ${{ matrix.project }}-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+  dst:
+    name: DST (solo in three engines, collab in Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-all
+      - run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - run: pnpm test:dst
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: dst-report
+          path: |
+            playwright-report/
+            test-results/
+            .artifacts/
+          retention-days: 14

@@ -150,7 +150,10 @@ export const at = (peer: CommandPeer, i: number) => peer.edytor.root!.children[i
  * Timers beyond the horizon (multi-second persistence/policy windows)
  * are out-of-scope for a step's settlement but are NOT hidden: their
  * count is returned so the caller can record exactly what remained
- * scheduled rather than silently dropping it.
+ * scheduled rather than silently dropping it. A count that goes into a
+ * trace compared across runs must not depend on the wall clock (whether a
+ * 500 ms window fired already does): such a caller drains every timer,
+ * `quiesce(Infinity)`, so the count it records is always the same.
  */
 export const SETTLEMENT_HORIZON_MS = 250;
 export const installTimerAccounting = (horizonMs = SETTLEMENT_HORIZON_MS, maxRounds = 4_000) => {
@@ -206,13 +209,14 @@ export const installTimerAccounting = (horizonMs = SETTLEMENT_HORIZON_MS, maxRou
 					if (id !== undefined) pendingRaf.delete(id);
 					return realCaf(id as number);
 				});
-	const inHorizonDelays = () => [...pendingDelay.values()].filter((d) => d <= horizonMs);
+	const inHorizonDelays = (horizon: number) =>
+		[...pendingDelay.values()].filter((d) => d <= horizon);
 	// Count of callbacks that must fire before settlement is truthfully
 	// claimed — timers classed in-horizon plus every pending frame.
-	const outstanding = () => inHorizonDelays().length + pendingRaf.size;
+	const outstanding = (horizon: number) => inHorizonDelays(horizon).length + pendingRaf.size;
 	return {
 		pending: () => pendingDelay.size + pendingRaf.size,
-		inHorizon: outstanding,
+		inHorizon: () => outstanding(horizonMs),
 		/**
 		 * Drain until NO settlement-class callback remains — including
 		 * callbacks scheduled by callbacks AND callbacks scheduled
@@ -223,9 +227,10 @@ export const installTimerAccounting = (horizonMs = SETTLEMENT_HORIZON_MS, maxRou
 		 * continuation is queued before the chain's tail. Throws past the
 		 * bound (honest non-quiescence). Returns the still-pending
 		 * out-of-horizon count — evidence the caller must record, not
-		 * discard.
+		 * discard. `horizon` widens the settlement class for this drain
+		 * (`Infinity`: every timer).
 		 */
-		quiesce: async (): Promise<number> => {
+		quiesce: async (horizon = horizonMs): Promise<number> => {
 			for (let i = 0; ; i++) {
 				// Cross a REAL task boundary before every inspection: a
 				// macrotask runs only after the microtask queue is fully
@@ -237,14 +242,14 @@ export const installTimerAccounting = (horizonMs = SETTLEMENT_HORIZON_MS, maxRou
 				// The boundary timer bypasses the accounting spy (`realSet`)
 				// so quiesce's own wait is never counted as pending work.
 				await new Promise((resolve) => realSet.call(globalThis, resolve, 0));
-				const remaining = outstanding();
+				const remaining = outstanding(horizon);
 				if (remaining === 0) {
 					return pendingDelay.size;
 				}
 				if (i >= maxRounds) {
 					throw new Error(
 						`quiescence not reached — ${remaining} settlement-class callbacks ` +
-							`(${inHorizonDelays().length} timers, ${pendingRaf.size} frames) ` +
+							`(${inHorizonDelays(horizon).length} timers, ${pendingRaf.size} frames) ` +
 							`still pending after the drain bound`
 					);
 				}
@@ -253,7 +258,7 @@ export const installTimerAccounting = (horizonMs = SETTLEMENT_HORIZON_MS, maxRou
 				// arrivals — including timers registered by microtasks the
 				// just-fired callbacks queued — are picked up by the next
 				// round's task boundary.
-				const soonest = Math.min(...inHorizonDelays(), pendingRaf.size > 0 ? 17 : Infinity);
+				const soonest = Math.min(...inHorizonDelays(horizon), pendingRaf.size > 0 ? 17 : Infinity);
 				await new Promise((resolve) =>
 					realSet.call(globalThis, resolve, Number.isFinite(soonest) ? soonest + 1 : 18)
 				);

@@ -8,10 +8,11 @@
  *   paragraphs, and 2,000 inserts in one transaction, through the mounted
  *   editor: one change report per transaction, no whole-document projection
  *   while the command runs (operations read and write only the document), the
- *   report naming only the touched blocks, and the command (document work, the
- *   view's patch) inside a jsdom budget. The key-to-frame time is measured in
- *   the browser (`tests/editor-dom/r3-ops.spec.ts`; jsdom's DOM removal is not
- *   the product's); the compare pass the row also counts is R6's.
+ *   report naming only the touched blocks, and the command's index work
+ *   (folds, their input, recomputes, the view's reads) linear in what it
+ *   touches: counted, never timed (CC-05). The key-to-frame time is measured
+ *   in the browser (`tests/editor-dom/r3-ops.spec.ts`; jsdom's DOM removal is
+ *   not the product's); the compare pass the row also counts is R6's.
  * - Operations never read the mirror mid-transaction: typing, Enter, a merge,
  *   a paste, Tab and a format each make one change report and no whole-tree
  *   projection (reader-runtime-model headline 1: 16 op sites ran a full
@@ -46,9 +47,19 @@ const pin = it;
 
 /**
  * What one stretch of work cost the view: change reports, whole-document
- * projections inside a transaction, and the seam repairs it ran.
+ * projections inside a transaction, the seam repairs it ran, and the index's
+ * work (`work`: its fold passes, their input, the blocks it recomputed).
  */
 const meter = (edytor: Edytor) => {
+	const { debug } = edytor.facade.runsView;
+	const counted = () => ({
+		folds: debug.folds,
+		pairs: debug.foldedPairs,
+		structs: debug.foldedStructs,
+		recomputes: debug.recomputes
+	});
+	debug.reset();
+	let work: ReturnType<typeof counted> | null = null;
 	const reports: DocChange[] = [];
 	const off = edytor.facade.onChange((change) => reports.push(change));
 	let projections = 0;
@@ -81,7 +92,11 @@ const meter = (edytor: Edytor) => {
 		get seamsInTransaction() {
 			return inTransaction;
 		},
+		get work() {
+			return work ?? counted();
+		},
 		stop() {
+			work = counted();
 			off();
 			edytor.facade.project = project;
 			selection.restoreDeadSelectionEndpoints = seam;
@@ -131,64 +146,86 @@ const named = (change: DocChange) =>
 		...change.moved
 	]).size;
 
-const now = () => performance.now();
 /**
- * The command's budget in jsdom under the parallel lane (2–3× the browser's
- * cost); the row's < 100 ms key-to-frame bound is held in the browser
- * (`tests/editor-dom/r3-ops.spec.ts`).
+ * Ten times the blocks: the same number of folds and recomputes (only the
+ * blocks the command keeps render again), at most eleven times the folds'
+ * input (quadratic work would be a hundred times).
  */
-const JSDOM_BUDGET = 200;
+const linear = (
+	small: ReturnType<typeof meter>['work'],
+	large: ReturnType<typeof meter>['work']
+) => {
+	expect(small.pairs).toBeGreaterThan(0);
+	expect(large.folds, 'folds').toBeLessThanOrEqual(small.folds);
+	expect(large.recomputes, 'recomputes').toBeLessThanOrEqual(small.recomputes);
+	expect(large.pairs, 'folded pairs').toBeLessThanOrEqual(11 * small.pairs);
+	expect(large.structs, 'folded structs').toBeLessThanOrEqual(11 * small.structs);
+};
 
 describe('F-O5 (end to end) — 1,000 paragraphs through the mounted editor', () => {
-	row(
-		'range delete p0@1 → p999@1: one report, no whole-tree projection, command inside the budget',
-		async () => {
-			const { edytor } = await many(1000);
-			const first = edytor.root!.children[0]!.firstText!;
-			const last = edytor.root!.children[999]!.firstText!;
-			await setNativeSelection(edytor, first, 1, last, 1);
-			const m = meter(edytor);
-			const t0 = now();
-			const done = backspace(edytor);
-			const ms = now() - t0;
-			await done;
-			m.stop();
-			await flushDomUpdates();
+	/** `n` paragraphs; `keep` keeps the editor mounted (one editor answers the document's keys). */
+	const rangeDelete = async (n: number, keep = false) => {
+		const { edytor, unmount } = await many(n);
+		const first = edytor.root!.children[0]!.firstText!;
+		const last = edytor.root!.children[n - 1]!.firstText!;
+		await setNativeSelection(edytor, first, 1, last, 1);
+		const m = meter(edytor);
+		await backspace(edytor);
+		m.stop();
+		await flushDomUpdates();
 
-			expect(texts(edytor)).toEqual(['paragraph 999']);
-			expect(edytor.selection.state.startText?.stringContent).toBe('paragraph 999');
-			expect(edytor.selection.state.yStart).toBe(1);
+		expect(texts(edytor)).toEqual([`paragraph ${n - 1}`]);
+		expect(edytor.selection.state.startText?.stringContent).toBe(`paragraph ${n - 1}`);
+		expect(edytor.selection.state.yStart).toBe(1);
+		if (!keep) unmount();
+		return m;
+	};
+
+	row(
+		'range delete p0@1 → p999@1: one report, no whole-tree projection, work linear in the blocks removed',
+		async () => {
+			const small = await rangeDelete(100);
+			const m = await rangeDelete(1000, true);
 			expect(m.reports).toHaveLength(1);
+			// p1…p999 removed, the head's content (del.range.flat: the tail joins the head).
+			expect(named(m.reports[0]!)).toBe(1000);
 			expect(m.projections).toBe(0);
-			expect(ms).toBeLessThan(JSDOM_BUDGET);
+			linear(small.work, m.work);
 		},
 		60_000
 	);
 
-	row(
-		'selected-block delete of 999 blocks: one report, no whole-tree projection, command inside the budget',
-		async () => {
-			const { edytor } = await many(1000);
-			edytor.selection.selectBlocks(...edytor.root!.children.slice(1));
-			await flushDomUpdates();
-			const m = meter(edytor);
-			const key = new KeyboardEvent('keydown', {
-				key: 'Backspace',
-				code: 'Backspace',
-				bubbles: true,
-				cancelable: true
-			});
-			const t0 = now();
-			document.dispatchEvent(key);
-			const ms = now() - t0;
-			m.stop();
-			await flushDomUpdates();
+	const blockDelete = async (n: number, keep = false) => {
+		const { edytor, unmount } = await many(n);
+		edytor.selection.selectBlocks(...edytor.root!.children.slice(1));
+		await flushDomUpdates();
+		const m = meter(edytor);
+		const key = new KeyboardEvent('keydown', {
+			key: 'Backspace',
+			code: 'Backspace',
+			bubbles: true,
+			cancelable: true
+		});
+		document.dispatchEvent(key);
+		m.stop();
+		await flushDomUpdates();
 
-			expect(key.defaultPrevented).toBe(true);
-			expect(texts(edytor)).toEqual(['paragraph 0']);
+		expect(key.defaultPrevented).toBe(true);
+		expect(texts(edytor)).toEqual(['paragraph 0']);
+		if (!keep) unmount();
+		return m;
+	};
+
+	row(
+		'selected-block delete of 999 blocks: one report, no whole-tree projection, work linear in the blocks removed',
+		async () => {
+			const small = await blockDelete(100);
+			const m = await blockDelete(1000, true);
 			expect(m.reports).toHaveLength(1);
+			// p1…p999 removed, nothing else.
+			expect(named(m.reports[0]!)).toBe(999);
 			expect(m.projections).toBe(0);
-			expect(ms).toBeLessThan(JSDOM_BUDGET);
+			linear(small.work, m.work);
 		},
 		60_000
 	);
@@ -198,44 +235,40 @@ describe('F-O5 (end to end) — 1,000 paragraphs through the mounted editor', ()
 		async () => {
 			const { edytor } = await many(1000);
 			const text = edytor.root!.children[500]!.firstText!;
-			// R4: text handles read the index's runs, which walk the block's
-			// uncommitted items mid-transaction (the index's cost, D9/D12): the
-			// view's own work is the time outside those reads.
+			// The view reads the index's runs once per insert at most: count them.
 			const { facade } = edytor;
 			const runs = facade.runs;
-			let indexReads = 0;
-			facade.runs = (id) => {
-				const t0 = now();
-				try {
-					return runs(id);
-				} finally {
-					indexReads += now() - t0;
-				}
-			};
+			let reads = 0;
+			facade.runs = (id) => (reads++, runs(id));
 			const run = (n: number, from: number) => {
-				indexReads = 0;
-				const t0 = now();
+				const m = meter(edytor);
+				reads = 0;
 				edytor.transact(() => {
 					for (let i = 0; i < n; i++)
 						text.insertText({ value: 'x', start: from + i, end: from + i });
 				});
-				return now() - t0 - indexReads;
+				m.stop();
+				return { m, reads };
 			};
 			run(50, 0); // warm
-			const m = meter(edytor);
 			const small = run(500, 50);
 			const large = run(2000, 550);
-			m.stop();
 			facade.runs = runs;
 			await flushDomUpdates();
 
 			expect(texts(edytor)[500]).toBe('x'.repeat(2550) + 'paragraph 500');
-			expect(m.reports).toHaveLength(2);
-			expect(m.reports.map(named)).toEqual([1, 1]);
-			expect(m.projections).toBe(0);
-			// Linear in transaction size: four times the inserts, about four
-			// times the time (quadratic would be sixteen).
-			expect(large).toBeLessThan(small * 8 + 20);
+			for (const { m } of [small, large]) {
+				expect(m.reports).toHaveLength(1);
+				expect(m.reports.map(named)).toEqual([1]);
+				expect(m.projections).toBe(0);
+			}
+			// Linear in transaction size: four times the inserts, at most about
+			// four times the reads and the folded writes (quadratic would be sixteen).
+			expect(small.reads).toBeGreaterThan(0);
+			expect(large.reads).toBeLessThanOrEqual(4 * small.reads + 8);
+			expect(large.m.work.folds).toBeLessThanOrEqual(4 * small.m.work.folds + 8);
+			expect(large.m.work.structs).toBeLessThanOrEqual(4 * small.m.work.structs + 8);
+			expect(large.m.work.pairs).toBeLessThanOrEqual(4 * small.m.work.pairs + 8);
 		},
 		60_000
 	);

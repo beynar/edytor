@@ -19,9 +19,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { QuotaRoom } from './worker';
 import { E, ORIGIN, RawClient, SelfWebSocket, Y, crdt, para, readFacade } from './client';
 
-/** `vi.waitFor` under a loaded pool: the default 1 s is short for a room's round trips. */
-const SLOW = { timeout: 10_000, interval: 25 };
-
 declare global {
 	namespace Cloudflare {
 		interface Env {
@@ -55,21 +52,17 @@ describe('H3 · room quotas', () => {
 		const room = 'quota-document';
 		const a = E.createDocument({ value: { children: [para('p', '')] }, actor: { id: 'ada' } });
 		const ca = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
-		await vi.waitFor(() => expect(ca.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(ca.synced).toBe(true));
 		let typed = '';
 		for (let i = 0; i < 9 && ca.closed === null; i++) {
 			const chunk = noise(3000, i + 1);
 			a.transact(() => a.facade.insertText('p', typed.length, chunk));
 			typed += chunk;
-			await vi.waitFor(
-				async () => expect(ca.closed !== null || (await textOf(room)) === typed).toBe(true),
-				SLOW
+			await vi.waitFor(async () =>
+				expect(ca.closed !== null || (await textOf(room)) === typed).toBe(true)
 			);
 		}
-		await vi.waitFor(
-			() => expect(ca.closed).toEqual({ code: 4413, reason: 'quota: document' }),
-			SLOW
-		);
+		await vi.waitFor(() => expect(ca.closed).toEqual({ code: 4413, reason: 'quota: document' }));
 		const stored = (await textOf(room))!;
 		expect(stored.length).toBeLessThan(typed.length);
 		expect(typed.startsWith(stored)).toBe(true);
@@ -79,15 +72,14 @@ describe('H3 · room quotas', () => {
 		// Bob trims the full document: a delete frees more than its mark adds.
 		const b = E.createDocument({ actor: { id: 'bob' } });
 		const cb = await RawClient.connect(room, b.doc, { user: 'bob', replica: b.doc.clientID });
-		await vi.waitFor(() => expect(cb.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(cb.synced).toBe(true));
 		b.transact(() => b.facade.deleteText('p', 0, 5000));
-		await vi.waitFor(async () => expect(await textOf(room)).toBe(stored.slice(5000)), SLOW);
+		await vi.waitFor(async () => expect(await textOf(room)).toBe(stored.slice(5000)));
 		expect(cb.closed).toBe(null);
 		// …and may type again within the room it freed.
 		b.transact(() => b.facade.insertText('p', 0, 'room again'));
-		await vi.waitFor(
-			async () => expect(await textOf(room)).toBe(`room again${stored.slice(5000)}`),
-			SLOW
+		await vi.waitFor(async () =>
+			expect(await textOf(room)).toBe(`room again${stored.slice(5000)}`)
 		);
 		cb.close();
 		a.destroy();
@@ -98,9 +90,9 @@ describe('H3 · room quotas', () => {
 		const room = 'quota-rate';
 		const a = E.createDocument({ value: { children: [para('p', '')] }, actor: { id: 'ada' } });
 		const ca = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
-		await vi.waitFor(() => expect(ca.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(ca.synced).toBe(true));
 		for (let i = 0; i < 40; i++) a.transact(() => a.facade.insertText('p', i, 'x'));
-		await vi.waitFor(() => expect(ca.closed).toEqual({ code: 4413, reason: 'quota: rate' }), SLOW);
+		await vi.waitFor(() => expect(ca.closed).toEqual({ code: 4413, reason: 'quota: rate' }));
 		const stored = (await textOf(room))!;
 		// The burst (20 messages, the handshake's among them) applied; the rest did not.
 		expect(stored.length).toBeGreaterThan(10);
@@ -113,7 +105,9 @@ describe('H3 · room quotas', () => {
 		const room = 'quota-frame';
 		const a = E.createDocument({ value: { children: [para('p', '')] }, actor: { id: 'ada' } });
 		const ca = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
-		await vi.waitFor(() => expect(ca.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(ca.synced).toBe(true));
+		// The room stores the seed Ada sends after she heard it: close once it acknowledged it.
+		await vi.waitFor(() => expect(ca.stored()).toBe(true));
 		const updates: Uint8Array[] = [];
 		a.doc.on('update', (update: Uint8Array) => updates.push(update));
 		ca.close();
@@ -123,19 +117,13 @@ describe('H3 · room quotas', () => {
 
 		const direct = await RawClient.bare(room, { user: 'ada', replica: a.doc.clientID });
 		direct.send(whole);
-		await vi.waitFor(
-			() => expect(direct.closed).toEqual({ code: 4413, reason: 'quota: frame' }),
-			SLOW
-		);
+		await vi.waitFor(() => expect(direct.closed).toEqual({ code: 4413, reason: 'quota: frame' }));
 
 		const chunked = await RawClient.bare(room, { user: 'ada', replica: a.doc.clientID });
 		const pieces = E.chunkFrame(whole, 8192);
 		expect(pieces.length).toBeGreaterThan(2);
 		for (const piece of pieces) chunked.send(piece);
-		await vi.waitFor(
-			() => expect(chunked.closed).toEqual({ code: 4413, reason: 'quota: frame' }),
-			SLOW
-		);
+		await vi.waitFor(() => expect(chunked.closed).toEqual({ code: 4413, reason: 'quota: frame' }));
 		expect(await textOf(room)).toBe('');
 		expect(await quotaRefusals(room)).toEqual(['frame', 'frame']);
 		a.destroy();
@@ -166,10 +154,7 @@ describe('H3 · room quotas', () => {
 				WebSocketPolyfill: CountingSocket as unknown as typeof WebSocket
 			})
 		);
-		await vi.waitFor(
-			() => expect(refusals).toEqual([{ code: 4413, reason: 'quota: document' }]),
-			SLOW
-		);
+		await vi.waitFor(() => expect(refusals).toEqual([{ code: 4413, reason: 'quota: document' }]));
 		expect(document.syncRefusal?.code).toBe(4413);
 		await new Promise((resolve) => setTimeout(resolve, 300));
 		expect(dials).toBe(1);

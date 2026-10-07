@@ -18,7 +18,6 @@ import type { DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
 import { E, RawClient, dialOutcome, readFacade, updateFrameWithWord } from './client';
 import { GENERATION_4_V1, GENERATION_4_V2, GENERATION_4_VALUE } from './fixtures/generation-4';
 
-const SLOW = { timeout: 10_000, interval: 25 };
 const stubOf = (room: string) => env.ROOM.getByName(room);
 const inRoom = <T>(room: string, fn: (r: Room, state: DurableObjectState) => T) =>
 	runInDurableObject(stubOf(room), (r: Room, state) => fn(r, state));
@@ -80,7 +79,7 @@ describe('generation cutover · a container of generation 4 converts at load', (
 			await evictDurableObject(stubOf(room));
 			expect(await inRoom(room, (r) => r.origin.kind)).toBe('restored');
 			const client = await RawClient.connect(room);
-			await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+			await vi.waitFor(() => expect(client.synced).toBe(true));
 			expect(readFacade(client.doc, (f) => f.toJSON())).toEqual(GENERATION_4_VALUE);
 			client.close();
 		});
@@ -101,11 +100,10 @@ describe('generation cutover · a client of generation 4 is refused', () => {
 	it('a frame with the wire word 14004 closes the socket 1008 before anything is decoded', async () => {
 		const room = 'gen5-old-client';
 		const client = await RawClient.connect(room);
-		await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(client.synced).toBe(true));
 		client.send(updateFrameWithWord(14004, GENERATION_4_V1));
-		await vi.waitFor(
-			() => expect(client.closed).toEqual({ code: 1008, reason: 'refused: generation' }),
-			SLOW
+		await vi.waitFor(() =>
+			expect(client.closed).toEqual({ code: 1008, reason: 'refused: generation' })
 		);
 		expect(await inRoom(room, (r) => r.doc!.store.clients.size)).toBe(0);
 	});

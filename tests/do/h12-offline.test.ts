@@ -15,8 +15,6 @@ import { E, ORIGIN, RawClient, SelfWebSocket, crdt, para, shape } from './client
 
 const server = `${ORIGIN.replace('https', 'wss')}/rooms`;
 const fetchSelf = ((url: string) => SELF.fetch(url)) as typeof fetch;
-const SLOW = { timeout: 10_000, interval: 25 };
-
 describe('H12 · lastUpdated and prefetch', () => {
 	it('lastUpdated: null before any change, then the time of the last stored change; 403 when denied', async () => {
 		const room = 'h12-probe';
@@ -25,10 +23,10 @@ describe('H12 · lastUpdated and prefetch', () => {
 		expect(await ask()).toBe(null);
 		const a = E.createDocument({ value: { children: [para('p', 'one')] }, actor: { id: 'ada' } });
 		const client = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
-		await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(client.synced).toBe(true));
 		const before = Date.now();
 		a.transact(() => a.facade.insertText('p', 0, 'x'));
-		await vi.waitFor(async () => expect(await ask()).not.toBe(null), SLOW);
+		await vi.waitFor(async () => expect(await ask()).not.toBe(null));
 		const at = (await ask())!;
 		expect(at).toBeGreaterThanOrEqual(before - 1000);
 		expect(at).toBeLessThanOrEqual(Date.now() + 1000);
@@ -47,7 +45,9 @@ describe('H12 · lastUpdated and prefetch', () => {
 			user: 'ada',
 			replica: author.doc.clientID
 		});
-		await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(client.synced).toBe(true));
+		// The room stores the seed Ada sends after she heard it: close once it acknowledged it.
+		await vi.waitFor(() => expect(client.stored()).toBe(true));
 		client.close();
 
 		const options = {
@@ -63,7 +63,7 @@ describe('H12 · lastUpdated and prefetch', () => {
 		// Offline (no server): a document over the same store opens with the room's content.
 		const offline = E.createDocument({ actor: { id: 'bob' } });
 		offline.attachSync(crdt.providers.createIndexeddbSync(`edytor:${server}/${room}`));
-		await vi.waitFor(() => expect(offline.ready).toBe(true), SLOW);
+		await vi.waitFor(() => expect(offline.ready).toBe(true));
 		expect(shape(offline.facade.toJSON())).toEqual(shape(author.facade.toJSON()));
 		offline.destroy();
 		author.destroy();

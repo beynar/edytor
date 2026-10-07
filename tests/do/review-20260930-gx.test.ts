@@ -31,7 +31,7 @@ describe('GX-09 · one failed direct facade write drops only that write', () => 
 		const room = 'gx09-direct-after-failure';
 		const document = E.createDocument({ value: { children: [para('p', 'hello')] } });
 		const author = await RawClient.connect(room, document.doc, { user: 'ada' });
-		await vi.waitFor(() => expect(author.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(author.stored()).toBe(true));
 		await vi.waitFor(async () =>
 			expect(await inRoom(room, (r) => storedText(r, 'p'))).toBe('hello')
 		);

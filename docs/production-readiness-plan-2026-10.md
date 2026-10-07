@@ -377,6 +377,12 @@ record yet. Only a soak test (WU-16) and real users remove that.
   - Branch protection on `master` requiring the PR job.
   - `publish.yml` requires the CI run of the tagged commit.
 - Effort: 1.5 d (plus fixing whatever is red on shared runners).
+- Status (2026-10-07): done in the tree, except branch protection. `ci.yml`, `nightly.yml` and
+  the gated `publish.yml` are in; only the pull request run's gate job is named `CI passed` (a
+  push run's is `CI passed (push)`), so a push run, which skips Chromium, cannot satisfy the
+  required check. **Pending:** a maintainer must create the `master` ruleset that
+  CONTRIBUTING.md ("CI and branch protection") specifies; until then nothing blocks a direct
+  push. `src/tests/ci-gates.test.ts` keeps the workflows and CONTRIBUTING.md in step.
 
 **WU-09: deterministic gates (CC-05, R9)**
 
@@ -390,6 +396,13 @@ record yet. Only a soak test (WU-16) and real users remove that.
   - Fix or quarantine the named flakes (seed-73 command-schedules, the R2 format flake) and
     delete WebKit `retries: 1` once they are stable.
 - Effort: 1.5 d.
+- Status (2026-10-07): done. The gate rows count the index's work (`runsView.debug`: `folds`,
+  `foldedPairs`, `foldedStructs`, `recomputes`, `itemsWalked`); timings are `pnpm bench:scale`;
+  seed-73 is fixed and no Playwright project retries. Residual races are named, not masked:
+  `sel.key.before-adoption` in `docs/editor-delete-contract.md` (a key before the click's
+  `selectionchange`). **Follow-up:** remote admission, engine integration, the undo manager and
+  encode/load scaling are checked only by `bench:scale`, which fails nothing; a deterministic
+  count for one of them (the structs or ranges admission visits) would put them back in a gate.
 
 **Lane A: public API curation** (`src/lib/index.ts`, `edytor.svelte.ts`, `selection/selection.svelte.ts`, `plugins.ts`, `package.json` exports)
 

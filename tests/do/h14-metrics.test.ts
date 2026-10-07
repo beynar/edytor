@@ -10,9 +10,6 @@ import type { JSONDoc } from '../../src/lib/crdt/index.js';
 import type { LockedRoom, QuotaRoom } from './worker';
 import { E, RawClient, para } from './client';
 
-/** `vi.waitFor` under a loaded pool: the default 1 s is short for a room's round trips. */
-const SLOW = { timeout: 10_000, interval: 25 };
-
 declare global {
 	namespace Cloudflare {
 		interface Env {
@@ -28,7 +25,7 @@ const join = async (room: string, user: string, value?: JSONDoc) => {
 		user,
 		replica: document.doc.clientID
 	});
-	await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+	await vi.waitFor(() => expect(client.synced).toBe(true));
 	return { document, client };
 };
 
@@ -39,7 +36,7 @@ describe('H14 · room metrics and log', () => {
 		const bob = await join(room, 'bob');
 		for (let i = 0; i < 5; i++)
 			ada.document.transact(() => ada.document.facade.insertText('p', 0, 'x'));
-		await vi.waitFor(() => expect(bob.document.facade.blockText('p')).toBe('xxxxxhello'), SLOW);
+		await vi.waitFor(() => expect(bob.document.facade.blockText('p')).toBe('xxxxxhello'));
 		const stub = env.ROOM.getByName(room);
 		const before = await stub.metrics();
 		expect(before.sockets).toBe(2);
@@ -73,7 +70,7 @@ describe('H14 · room metrics and log', () => {
 		const ada = await join(room, 'ada', { children: [para('p', '')] });
 		for (let i = 0; i < 40; i++)
 			ada.document.transact(() => ada.document.facade.insertText('p', i, 'x'));
-		await vi.waitFor(() => expect(ada.client.closed?.code).toBe(4413), SLOW);
+		await vi.waitFor(() => expect(ada.client.closed?.code).toBe(4413));
 		const stub = env.QUOTA.getByName(room);
 		expect((await stub.metrics()).quotaHits).toBe(1);
 		const logged = await runInDurableObject(stub, (r: QuotaRoom) => r.logged);
@@ -92,13 +89,12 @@ describe('H14 · room metrics and log', () => {
 		const ada = await join(room, 'ada', { children: [para('p', 'mine')] });
 		ada.document.transact(() => ada.document.facade.setBlockData('p', { lockedBy: 'ada' }));
 		const bob = await join(room, 'bob');
-		await vi.waitFor(
-			() => expect(bob.document.facade.blockDataOf('p')).toEqual({ lockedBy: 'ada' }),
-			SLOW
+		await vi.waitFor(() =>
+			expect(bob.document.facade.blockDataOf('p')).toEqual({ lockedBy: 'ada' })
 		);
 		bob.document.transact(() => bob.document.facade.insertText('p', 0, 'bob'));
 		const stub = env.LOCKED.getByName(room);
-		await vi.waitFor(async () => expect((await stub.metrics()).validationDenials).toBe(1), SLOW);
+		await vi.waitFor(async () => expect((await stub.metrics()).validationDenials).toBe(1));
 		expect(await runInDurableObject(stub, (r: LockedRoom) => r.logged)).toContainEqual({
 			edytor: 'denied',
 			user: 'bob',

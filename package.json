@@ -43,6 +43,7 @@
 		"test:do:typecheck": "tsc -p tests/do/tsconfig.json",
 		"test:hosted": "env -u FORCE_COLOR -u NO_COLOR playwright test --config=tests/hosted/playwright.config.ts",
 		"bench:crdt": "node --expose-gc bench/run.js",
+		"bench:scale": "node bench/scale.js",
 		"bench:browser": "node bench/browser.js",
 		"bench:runs": "BENCH_RUNS=1 vitest --config ./vitest.crdt.config.ts --run src/tests/crdt/runs/runs.bench.test.ts",
 		"census": "node scripts/census.mjs"

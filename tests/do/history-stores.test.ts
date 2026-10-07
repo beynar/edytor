@@ -38,7 +38,6 @@ declare global {
 	}
 }
 
-const SLOW = { timeout: 10_000, interval: 25 };
 const at = (iso: string) => Date.parse(iso);
 const stub = (room: string) => env.TIMED.getByName(room);
 const inRoom = <T>(room: string, fn: (r: TimedRoom, state: DurableObjectState) => T) =>
@@ -73,8 +72,8 @@ const writer = async (room: string, user: string, text?: string) => {
 		user,
 		replica: document.doc.clientID
 	});
-	await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
-	await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3), SLOW);
+	await vi.waitFor(() => expect(client.synced).toBe(true));
+	await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3));
 	return {
 		document,
 		client,
@@ -174,7 +173,7 @@ describe('room.history.store · every store writes, lists, reads and restores', 
 				ada.document.facade.insertText('p1', 0, 'ONE ');
 				ada.document.facade.deleteBlocks(['p2']);
 			});
-			await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(2), SLOW);
+			await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(2));
 			expect(await inRoom(room, (r) => r.restoreHistory(key, { user: 'carol' }))).toMatchObject({
 				status: 'applied',
 				revived: 1
@@ -183,7 +182,7 @@ describe('room.history.store · every store writes, lists, reads and restores', 
 				const json = await roomJSON(room);
 				expect(json).toEqual(shape(morning!));
 				expect(shape(ada.document.facade.toJSON())).toEqual(json);
-			}, SLOW);
+			});
 			ada.done();
 		});
 	}
@@ -198,9 +197,8 @@ describe('room.history.retention · expiry belongs to the room', () => {
 			await clockTo(room, '2026-10-06T12:00:00Z');
 			await fire(room);
 			ada.document.transact(() => ada.document.facade.insertText('p1', 0, 'x'));
-			await vi.waitFor(
-				async () => expect((await roomJSON(room)).children[0].content[0].text).toBe('xone'),
-				SLOW
+			await vi.waitFor(async () =>
+				expect((await roomJSON(room)).children[0].content[0].text).toBe('xone')
 			);
 			await clockTo(room, '2026-10-07T00:00:00Z');
 			await fire(room);
@@ -332,14 +330,11 @@ describe('room.history.store · size caps', () => {
 		const pm = `history/${room}/2026-10-06-pm`;
 		expect(await heldKeys(room, STORES[3])).toEqual([am]);
 		ada.document.transact(() => ada.document.facade.insertText('p2', 0, noise(200, 9)));
-		await vi.waitFor(
-			async () => expect((await roomJSON(room)).children[1].content[0].text).toContain('two'),
-			SLOW
+		await vi.waitFor(async () =>
+			expect((await roomJSON(room)).children[1].content[0].text).toContain('two')
 		);
-		await vi.waitFor(
-			async () =>
-				expect((await roomJSON(room)).children[1].content[0].text.length).toBeGreaterThan(200),
-			SLOW
+		await vi.waitFor(async () =>
+			expect((await roomJSON(room)).children[1].content[0].text.length).toBeGreaterThan(200)
 		);
 		await clockTo(room, '2026-10-07T00:00:00Z');
 		await fire(room);
@@ -491,7 +486,7 @@ describe('room.history.store · versions written by 0.1.0-next.25 (KV) keep work
 		]);
 		expect(shape((await inRoom(room, (r) => r.readHistory(key)))!)).toEqual(sourceJSON);
 		expect(await inRoom(room, (r) => r.restoreHistory(key))).toMatchObject({ status: 'applied' });
-		await vi.waitFor(async () => expect(await roomJSON(room)).toEqual(sourceJSON), SLOW);
+		await vi.waitFor(async () => expect(await roomJSON(room)).toEqual(sourceJSON));
 		// The bytes are the gzip of a v2 state, as before.
 		expect((await gunzip(raw)).length).toBeGreaterThan(raw.length / 4);
 		bob.done();

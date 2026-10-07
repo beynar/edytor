@@ -34,10 +34,28 @@ const shape = (page: Page) =>
 		);
 	});
 
-/** Click at the end of code line `id`. */
+/**
+ * Click at the end of code line `id`, and wait until the model holds that
+ * caret. An unmodified key handled at keydown (the code block's ArrowDown,
+ * the targetless admission) reads the model value, which the click's caret
+ * reaches only at its `selectionchange`; Chromium may run the keydown first
+ * on a busy main thread. That is the documented residual
+ * `sel.key.before-adoption` (docs/editor-delete-contract.md), not this row's
+ * subject, so the row waits for the adoption before pressing.
+ */
 const endOf = async (page: Page, id: string) => {
-	const box = (await page.locator(`[data-edytor-id="${id}"] [data-edytor-text]`).boundingBox())!;
+	const text = page.locator(`[data-edytor-id="${id}"] [data-edytor-text]`);
+	const box = (await text.boundingBox())!;
 	await page.mouse.click(box.x + box.width + 2, box.y + box.height / 2);
+	const length = (await text.textContent())!.length;
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const state = (window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection.state;
+				return [state.startBlock?.id, state.yStart, state.isCollapsed];
+			})
+		)
+		.toEqual([id, length, true]);
 };
 
 test.describe('leaving a code block', () => {

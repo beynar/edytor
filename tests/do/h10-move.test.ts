@@ -28,8 +28,6 @@ import type { JSONDoc } from '../../src/lib/crdt/index.js';
 import { setNow, type MoveRoom } from './worker';
 import { E, RawClient, Y, para, readFacade } from './client';
 
-const SLOW = { timeout: 10_000, interval: 25 };
-
 declare global {
 	namespace Cloudflare {
 		interface Env {
@@ -63,7 +61,12 @@ const join = async (room: string, user: string, value?: JSONDoc) => {
 		user,
 		replica: document.doc.clientID
 	});
-	await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+	await vi.waitFor(() => expect(client.synced).toBe(true));
+	// The room stores the seed when the client answers its Step1, after the
+	// client heard the room: a row that closes the client and reads the room
+	// at once must wait for it (a race a loaded runner lost, CC-05).
+	if (value !== undefined)
+		await vi.waitFor(async () => expect(texts(await roomJSON(room))).toMatchObject(texts(value)));
 	return { document, client };
 };
 
@@ -90,7 +93,7 @@ describe('H10 · moveBlocksBetweenRooms: export, import, then delete at the sour
 		await vi.waitFor(async () => {
 			expect(texts(ada.document.facade.toJSON())).toEqual({ a: 'alpha', z: 'zulu' });
 			expect(bob.document.facade.toJSON()).toEqual(await roomJSON(B));
-		}, SLOW);
+		});
 		const b = await roomJSON(B);
 		expect(b.children.map((x: { id: string }) => x.id)).toEqual(['b1', 'm', 'b2']);
 		expect(b.children[1]).toMatchObject({
@@ -154,7 +157,7 @@ const lateMove = async (A: string, B: string) => {
 	await setNow2(B, '2026-10-06T08:00:00Z');
 	const ada = await join(A, 'ada', source());
 	const carol = await join(A, 'carol');
-	await vi.waitFor(() => expect(texts(carol.document.facade.toJSON()).m).toBe('moved block'), SLOW);
+	await vi.waitFor(() => expect(texts(carol.document.facade.toJSON()).m).toBe('moved block'));
 	carol.client.close();
 	// Offline: Carol appends to the moved block.
 	carol.document.transact(() => carol.document.facade.insertText('m', 11, ' (late)'));
@@ -166,15 +169,15 @@ const lateMove = async (A: string, B: string) => {
 		dest: { parent: null, index: 1 }
 	});
 	// Bob edits the moved block's start in B meanwhile.
-	await vi.waitFor(() => expect(texts(bob.document.facade.toJSON()).m).toBe('moved block'), SLOW);
+	await vi.waitFor(() => expect(texts(bob.document.facade.toJSON()).m).toBe('moved block'));
 	bob.document.transact(() => bob.document.facade.insertText('m', 0, 'BOB: '));
-	await vi.waitFor(async () => expect(texts(await roomJSON(B)).m).toBe('BOB: moved block'), SLOW);
+	await vi.waitFor(async () => expect(texts(await roomJSON(B)).m).toBe('BOB: moved block'));
 	// Carol comes back to A: her edit reaches the source late.
 	const back = await RawClient.connect(A, carol.document.doc, {
 		user: 'carol',
 		replica: carol.document.doc.clientID
 	});
-	await vi.waitFor(() => expect(back.synced).toBe(true), SLOW);
+	await vi.waitFor(() => expect(back.synced).toBe(true));
 	await arrived(A, carol.document);
 	return { ada, bob, carol, back, receipt };
 };
@@ -184,7 +187,7 @@ const arrived = (room: string, document: { doc: { clientID: number } }) =>
 		const sv = Y.decodeStateVector(Y.encodeStateVector(document.doc as never));
 		const held = await inRoom(room, (r) => Y.decodeStateVector(Y.encodeStateVector(r.doc!)));
 		expect(held.get(document.doc.clientID)).toBe(sv.get(document.doc.clientID));
-	}, SLOW);
+	});
 const setNow2 = (room: string, iso: string) =>
 	inRoom(room, (_r, state) => setNow(state.storage.sql, Date.parse(iso)));
 
@@ -194,13 +197,11 @@ describe('H10 · late edits reach the destination', () => {
 		const { ada, bob, carol, back } = await lateMove(A, B);
 		// The source's alarm reads the late edit and forwards it.
 		await runDurableObjectAlarm(env.MOVES.getByName(A));
-		await vi.waitFor(
-			async () => expect(texts(await roomJSON(B)).m).toBe('BOB: moved block (late)'),
-			SLOW
+		await vi.waitFor(async () =>
+			expect(texts(await roomJSON(B)).m).toBe('BOB: moved block (late)')
 		);
-		await vi.waitFor(
-			() => expect(texts(bob.document.facade.toJSON()).m).toBe('BOB: moved block (late)'),
-			SLOW
+		await vi.waitFor(() =>
+			expect(texts(bob.document.facade.toJSON()).m).toBe('BOB: moved block (late)')
 		);
 		// Nothing waits any more; the source still shows nothing of it.
 		expect(await inRoom(A, (r) => r.lateEdits())).toEqual([]);
@@ -260,10 +261,7 @@ describe('H10 · late edits reach the destination', () => {
 		await setNow2(A, '2026-10-06T08:00:00Z');
 		const ada = await join(A, 'ada', source());
 		const carol = await join(A, 'carol');
-		await vi.waitFor(
-			() => expect(texts(carol.document.facade.toJSON()).m).toBe('moved block'),
-			SLOW
-		);
+		await vi.waitFor(() => expect(texts(carol.document.facade.toJSON()).m).toBe('moved block'));
 		carol.client.close();
 		carol.document.transact(() => carol.document.facade.splitBlock('m', 5, 'tail'));
 		await join(B, 'bob', { children: [para('b1', 'bravo')] }).then((p) => p.client.close());
@@ -277,7 +275,7 @@ describe('H10 · late edits reach the destination', () => {
 			user: 'carol',
 			replica: carol.document.doc.clientID
 		});
-		await vi.waitFor(() => expect(back.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(back.synced).toBe(true));
 		await arrived(A, carol.document);
 		await runDurableObjectAlarm(env.MOVES.getByName(A));
 		const late = await inRoom(A, (r) =>

@@ -18,9 +18,11 @@
  *   second edit (attack F11: `transaction.changed` does not grow on a second
  *   edit to an already-changed type). Also through a raw engine write, which
  *   no facade funnel sees.
- * - F-O5 (linearity half) — 1,000 inserts inside one transaction cost about
- *   what 1,000 separate transactions cost (probe C10: every read re-folded
- *   the whole accumulated transaction, so batching was quadratic).
+ * - F-O5 (linearity half) — 1,000 inserts inside one transaction fold about
+ *   what 1,000 separate transactions fold, and ten times the inserts fold
+ *   about ten times the work (probe C10: every read re-folded the whole
+ *   accumulated transaction, so batching was quadratic). Counted by the
+ *   index's fold counters, never a wall clock (CC-05).
  * - Publication rules of §2.4: nested transactions publish once;
  *   change-then-revert publishes nothing; every facade on the doc receives
  *   the one report of a commit.
@@ -490,35 +492,44 @@ describe('F-O9 — a read inside a transaction sees the edits before it', () => 
 
 // ── F-O5 (linearity half) — batching into one transaction stays linear ─────
 
-describe('F-O5 — one transaction of N inserts costs about N separate transactions', () => {
+describe('F-O5 — one transaction of N inserts folds about what N separate transactions fold', () => {
+	/**
+	 * The index's fold work for `n` block inserts (CC-05: an operation count,
+	 * not a wall clock; the timings are `bench:crdt`'s `scale` workload): the
+	 * changed pairs every fold located, and the structs the reads inside a
+	 * transaction folded.
+	 */
 	const run = (n: number, oneTx: boolean) => {
 		const doc = new Y.Doc();
 		doc.clientID = 31;
 		const ed = E.create(doc);
 		ed.init({ content: [p('r0', 'x')] });
+		const { debug } = ed.runsView;
+		debug.reset();
 		const body = () => {
 			for (let i = 0; i < n; i++)
 				ed.insertBlock({ parent: null, index: i + 1 }, p(`b${i}`, 'hello'));
 		};
-		const t0 = performance.now();
 		if (oneTx) ed.transact(body);
 		else body();
-		return performance.now() - t0;
+		expect(ed.listBlockIds()).toHaveLength(n + 1);
+		return { pairs: debug.foldedPairs, structs: debug.foldedStructs };
 	};
 
-	red(
-		'1,000 inserts: one transaction ≤ 2.5 × separate transactions',
-		() => {
-			run(200, true);
-			run(200, false);
-			const best = (oneTx: boolean) => Math.min(run(1000, oneTx), run(1000, oneTx));
-			const separate = best(false);
-			const batched = best(true);
-			expect(
-				batched,
-				`batched ${batched.toFixed(0)} ms vs separate ${separate.toFixed(0)} ms`
-			).toBeLessThan(2.5 * separate);
-		},
-		60_000
-	);
+	red('1,000 inserts: one transaction folds ≤ 2.5 × what separate transactions fold', () => {
+		const separate = run(1000, false);
+		const batched = run(1000, true);
+		expect(separate.pairs).toBeGreaterThan(0);
+		expect(batched.pairs).toBeLessThanOrEqual(2.5 * separate.pairs);
+	});
+
+	red('one transaction: ten times the inserts, at most eleven times the fold work', () => {
+		// Probe C10: every read re-folded the whole accumulated transaction, so
+		// ten times the inserts cost a hundred times the work.
+		const small = run(100, true);
+		const large = run(1000, true);
+		expect(small.structs).toBeGreaterThan(0);
+		expect(large.pairs).toBeLessThanOrEqual(11 * small.pairs);
+		expect(large.structs).toBeLessThanOrEqual(11 * small.structs);
+	});
 });

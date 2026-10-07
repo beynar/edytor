@@ -90,7 +90,7 @@ describe('RW-08 · a read fault while the room starts stays retryable (1011)', (
 		const room = 'rw08-second-fault';
 		const document = E.createDocument({ value: { children: [para('p', 'hello')] } });
 		const author = await RawClient.connect(room, document.doc, { user: 'ada' });
-		await vi.waitFor(() => expect(author.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(author.stored()).toBe(true));
 		await inRoom(room, (r, state) => {
 			state.storage.sql.exec(FAIL_APPEND);
 			// The rebuild's read fails, and so does the retry at the next dial.
@@ -121,7 +121,7 @@ describe('RW-08 · a read fault while the room starts stays retryable (1011)', (
 		const room = 'rw08-cold-start';
 		const document = E.createDocument({ value: { children: [para('p', 'hello')] } });
 		const author = await RawClient.connect(room, document.doc, { user: 'ada' });
-		await vi.waitFor(() => expect(author.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(author.stored()).toBe(true));
 		author.close();
 		// The start the constructor runs, with its read of the rows failing
 		// (and the retry of the first dial after it).
@@ -144,7 +144,7 @@ describe('RW-09 · a persistent append fault does not make the provider redial e
 		const room = 'rw09-append-fault';
 		const seed = E.createDocument({ value: { children: [para('p', 'hello')] } });
 		const seeder = await RawClient.connect(room, seed.doc, { user: 'ada' });
-		await vi.waitFor(() => expect(seeder.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(seeder.stored()).toBe(true));
 		seeder.close();
 		await inRoom(room, (_r, state) => state.storage.sql.exec(FAIL_APPEND));
 

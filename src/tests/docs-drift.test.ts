@@ -733,7 +733,11 @@ describe('docs drift', () => {
 
 	it("AGENTS.md names each Playwright config's port variable (SW11-docs-1)", () => {
 		const agents = readFileSync(join(root, 'AGENTS.md'), 'utf8');
-		for (const config of ['playwright.arch.config.ts', 'playwright.dst.config.ts']) {
+		for (const config of [
+			'playwright.config.ts',
+			'playwright.arch.config.ts',
+			'playwright.dst.config.ts'
+		]) {
 			// The arch config is a per-worktree local file (not in a fresh clone, CI).
 			if (!existsSync(join(root, config))) continue;
 			const port = /process\.env\.(\w+_PORT)/.exec(readFileSync(join(root, config), 'utf8'))?.[1];

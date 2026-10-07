@@ -1,0 +1,140 @@
+# The gate (decision D9, CONTRIBUTING.md): every push and pull request runs
+# the static checks and the unit, crdt, dom and room (`do`) lanes; a pull
+# request also runs the Playwright Chromium lane, sharded. The pull request
+# run's last job is the only check named `CI passed`, the one check branch
+# protection requires: every other run's gate job carries its event in its
+# name (`CI passed (push)`), so a push run on the same commit, which skips
+# Chromium, never satisfies the requirement. `publish.yml` calls this workflow
+# on the tagged commit (`browsers: true`) and publishes only when it passed.
+# Firefox, WebKit, mobile, CDP and DST run nightly (`nightly.yml`).
+#
+# The gate lanes assert operation counts, never the wall clock (CC-05), so a
+# shared runner's speed cannot fail them; timings live in `pnpm bench:crdt`.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      browsers:
+        description: Also run the Playwright Chromium lane
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      browsers:
+        description: Also run the Playwright Chromium lane (a pull request always does)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  static:
+    name: check, lint, worker, docs, typechecks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm check
+      - run: pnpm lint
+      - run: pnpm check:worker
+      # The public surface: the committed API report (`api/`) matches the
+      # stripped declarations, and the doc examples compile against them.
+      - run: pnpm check:api
+      - run: pnpm check:docs
+      - run: pnpm test:typecheck
+      - run: pnpm test:dom:typecheck
+      - run: pnpm test:do:typecheck
+
+  unit:
+    name: unit (vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm exec vitest --run
+
+  crdt:
+    name: crdt
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm test:crdt
+
+  dom:
+    name: dom (jsdom)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm test:dom
+
+  do:
+    name: room (workerd)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm test:do
+
+  chromium:
+    name: chromium (shard ${{ matrix.shard }}/4)
+    if: github.event_name == 'pull_request' || inputs.browsers
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:integration --project=chromium --shard=${{ matrix.shard }}/4
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: chromium-report-${{ matrix.shard }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  passed:
+    name: ${{ github.event_name == 'pull_request' && 'CI passed' || format('CI passed ({0})', github.event_name) }}
+    if: always()
+    needs: [static, unit, crdt, dom, do, chromium]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every lane passed (the Chromium lane is skipped unless a pull request or a caller asks)
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "lanes: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success | skipped) ;;
+              *) exit 1 ;;
+            esac
+          done

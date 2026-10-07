@@ -83,6 +83,19 @@ describe('generated command schedules', () => {
 		expect(String(err)).toMatch(/CORRUPTION|Expected|toEqual/i);
 	});
 
+	it('a window still open at the end is drained, so the trace never records the wall clock', async () => {
+		// The seed-73 flake: the final quiesce recorded how many timers past
+		// the settlement horizon were still pending, which depends on how
+		// long the run took. Every step here opens a 400 ms window: a fast
+		// run ended with the last one pending, a slow one without.
+		const windowed: typeof runCommand = (edytor, inputType, data) => {
+			runCommand(edytor, inputType, data);
+			setTimeout(() => {}, 400);
+		};
+		const { trace } = await runSchedule(11, 4, { runOp: windowed });
+		expect(trace).toContain('final quiesce settled (0 out-of-horizon pending)');
+	});
+
 	it('quiesce crosses a microtask checkpoint — microtask-scheduled timers still drain', async () => {
 		// `queueMicrotask(() => setTimeout(cb, 10))` registers its timer
 		// AFTER quiesce's first inspection — an empty map at entry used to

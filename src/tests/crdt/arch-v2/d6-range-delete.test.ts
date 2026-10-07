@@ -17,7 +17,8 @@
  *   i1@0 → P@2 → `[P "ree"]`, caret P@0, no empty container (P5: red on the
  *   reference view path);
  * - F-O5 (document half) — range delete and selected-block delete over
- *   1,000 paragraphs: document work < 50 ms.
+ *   1,000 paragraphs: document work linear in the blocks removed (operation
+ *   counts, CC-05; the timings are `bench:crdt`'s).
  *
  * Expected values come from the contract rows and the plan rows, never from
  * running the code. `del.range.outside-survives`, `del.range.island-seal`,
@@ -28,6 +29,7 @@
 import { describe, expect, test } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { createDocument } from '../../../lib/crdt/index.js';
+import { indexChecks } from '../../../lib/crdt/text/runs.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { prepareApply, rng } from './prepared-oracle.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
@@ -548,29 +550,58 @@ describe('F-O11 — the range delete plan changes exactly its effect', () => {
 // ── F-O5 (document half) ──────────────────────────────────────────────────
 
 describe('F-O5 — range delete and selected-block delete over 1,000 paragraphs', () => {
-	const many = () => make(Array.from({ length: 1000 }, (_, i) => b(`p${i}`, `paragraph ${i}`)));
-	const time = (fn: () => void) => {
-		const t0 = performance.now();
-		fn();
-		return performance.now() - t0;
+	const many = (n: number) =>
+		make(Array.from({ length: n }, (_, i) => b(`p${i}`, `paragraph ${i}`)));
+	/**
+	 * The index's work for `op` over `n` paragraphs, the read after it
+	 * included (CC-05: operation counts, deterministic on any machine; the
+	 * timings are `bench:crdt`'s `scale` workload). The self-checks are off
+	 * while it counts: their rebuild reads would be counted too.
+	 */
+	const work = (n: number, op: (f, n: number) => unknown) => {
+		const f = many(n);
+		f.toJSON(); // warm the derived view
+		const { debug } = f.runsView;
+		const checks = indexChecks.on;
+		indexChecks.on = false;
+		try {
+			debug.reset();
+			op(f, n);
+			expect(f.toJSON().children).toHaveLength(1);
+			return {
+				folds: debug.folds,
+				pairs: debug.foldedPairs,
+				structs: debug.foldedStructs,
+				recomputes: debug.recomputes,
+				items: debug.itemsWalked
+			};
+		} finally {
+			indexChecks.on = checks;
+		}
+	};
+	/**
+	 * Ten times the blocks removed: the same number of folds and recomputes
+	 * (only the surviving block renders again), at most eleven times the fold
+	 * input and the items read (quadratic work would be a hundred times).
+	 */
+	const linear = (op: (f, n: number) => unknown) => {
+		const small = work(100, op);
+		const large = work(1000, op);
+		expect(small.pairs).toBeGreaterThan(0);
+		expect(large.folds, 'folds').toBeLessThanOrEqual(small.folds);
+		expect(large.recomputes, 'recomputes').toBeLessThanOrEqual(small.recomputes);
+		expect(large.pairs, 'folded pairs').toBeLessThanOrEqual(11 * small.pairs);
+		expect(large.structs, 'folded structs').toBeLessThanOrEqual(11 * small.structs);
+		expect(large.items, 'items walked').toBeLessThanOrEqual(11 * small.items + 64);
 	};
 
-	row('range delete: document work < 50 ms', () => {
-		const f = many();
-		f.toJSON(); // warm the derived view
-		const ms = time(() =>
-			f.apply(f.prepare.deleteRange({ block: 'p0', offset: 1 }, { block: 'p999', offset: 1 }))
-		);
-		expect(f.toJSON().children).toHaveLength(1);
-		expect(ms).toBeLessThan(50);
-	});
+	row('range delete: document work linear in the blocks removed', () =>
+		linear((f, n) =>
+			f.apply(f.prepare.deleteRange({ block: 'p0', offset: 1 }, { block: `p${n - 1}`, offset: 1 }))
+		)
+	);
 
-	row('selected-block delete: document work < 50 ms', () => {
-		const f = many();
-		f.toJSON();
-		const ids = f.childrenIds(null).slice(1);
-		const ms = time(() => f.apply(f.prepare.deleteBlocks(ids)));
-		expect(f.toJSON().children).toHaveLength(1);
-		expect(ms).toBeLessThan(50);
-	});
+	row('selected-block delete: document work linear in the blocks removed', () =>
+		linear((f) => f.apply(f.prepare.deleteBlocks(f.childrenIds(null).slice(1))))
+	);
 });

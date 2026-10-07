@@ -112,7 +112,7 @@ describe('independent review: real room boundaries', () => {
 		const stub = env.ROOM.getByName(room);
 		const document = E.createDocument({ value: { children: [para('p', 'hello')] } });
 		const author = await RawClient.connect(room, document.doc);
-		await vi.waitFor(() => expect(author.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(author.stored()).toBe(true));
 		await vi.waitFor(async () =>
 			expect(
 				await runInDurableObject(stub, (r: Room) => readFacade(r.doc!, (f) => f.blockText('p')))
@@ -136,7 +136,7 @@ describe('independent review: real room boundaries', () => {
 			return observed;
 		});
 		const reconnect = await RawClient.connect(room, document.doc);
-		await vi.waitFor(() => expect(reconnect.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(reconnect.stored()).toBe(true));
 		const afterReconnect = await runInDurableObject(stub, (r: Room) => {
 			const stored = crdt.createDoc();
 			Y.applyUpdate(stored, storedUpdate(r.records()));
@@ -168,7 +168,7 @@ describe('independent review: real room boundaries', () => {
 		const stub = env.ROOM.getByName(room);
 		const document = E.createDocument({ value: { children: [para('p', 'hello')] } });
 		const author = await RawClient.connect(room, document.doc);
-		await vi.waitFor(() => expect(author.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(author.stored()).toBe(true));
 		const peer = await RawClient.connect(room);
 		await vi.waitFor(() => expect(readFacade(peer.doc, (f) => f.blockText('p'))).toBe('hello'));
 		await runInDurableObject(stub, (_r: Room, state) =>
@@ -228,7 +228,7 @@ describe('independent review: real room boundaries', () => {
 		const author = E.createDocument({ value: { children: [para('p', 'hello')] } });
 		const initial = author.encode();
 		const seeder = await RawClient.connect(room, author.doc);
-		await vi.waitFor(() => expect(seeder.acks.length).toBeGreaterThan(0));
+		await vi.waitFor(() => expect(seeder.stored()).toBe(true));
 		// The forger rewrites the stamp (same value), then forges it over that rewrite.
 		const writer = crdt.createDoc();
 		Y.applyUpdate(writer, initial);

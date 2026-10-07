@@ -148,8 +148,11 @@ export const runSchedule = async (
 	const exec = opts.runOp ?? runCommand;
 	const quiesce = async (label: string) => {
 		// The pending count is recorded, never discarded — an out-of-horizon
-		// remainder is evidence in the trace, not silence.
-		const beyond = await timers.quiesce();
+		// remainder is evidence in the trace, not silence. The final drain
+		// waits for every timer: a count of the windows still open would
+		// depend on the wall clock, and two runs' traces must be identical
+		// (the seed-73 flake, CC-05).
+		const beyond = await timers.quiesce(Infinity);
 		set.record({
 			kind: 'command',
 			a: 'sched',

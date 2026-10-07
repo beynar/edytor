@@ -30,8 +30,6 @@ declare global {
 	}
 }
 
-/** `vi.waitFor` under a loaded pool: the default 1 s is short for a room's round trips. */
-const SLOW = { timeout: 10_000, interval: 25 };
 const DAY = 86_400_000;
 const T0 = Date.parse('2026-10-06T08:00:00Z');
 
@@ -77,7 +75,7 @@ const writer = async (
 		user,
 		replica: document.doc.clientID
 	});
-	await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
+	await vi.waitFor(() => expect(client.synced).toBe(true));
 	return { document, client };
 };
 
@@ -92,7 +90,7 @@ const converged = async (room: string, ...docs: E.YDoc[]) => {
 				facade.dispose();
 			}
 		}
-	}, SLOW);
+	});
 	return roomJSON(room);
 };
 
@@ -133,7 +131,7 @@ describe('H7 · the purge, on the room’s clock', () => {
 		expect(ada.document.history.undo()).toBe(null);
 		// A fresh client never receives it.
 		const fresh = await RawClient.connect(room, crdt.createDoc(), { user: 'zoe' });
-		await vi.waitFor(() => expect(fresh.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(fresh.synced).toBe(true));
 		await converged(room, fresh.doc);
 		expect(holds(fresh.doc, 'secret')).toBe(false);
 		expect(holds(fresh.doc, ' this')).toBe(false);
@@ -193,14 +191,14 @@ describe('H7 · the purge, on the room’s clock', () => {
 			para(`b${i}`, `paragraph number ${i} with some text in it`)
 		);
 		const ada = await writer(room, 'ada', children);
-		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(1001), SLOW);
+		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(1001));
 		await inRoom(room, (r) => r.compact());
 		await inRoom(room, (r) => r.compressed());
 		const full = await inRoom(room, (r) => r.metrics().storedBytes);
 		ada.document.transact(() =>
 			ada.document.facade.deleteBlocks(children.slice(1).map((b) => b.id))
 		);
-		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(1), SLOW);
+		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(1));
 		await inRoom(room, (r) => r.compact());
 		await inRoom(room, (r) => r.compressed());
 		const deleted = await inRoom(room, (r) => r.metrics().storedBytes);
@@ -231,7 +229,7 @@ describe('H7 · the purge, on the room’s clock', () => {
 			user: 'carl',
 			replica: carl.doc.clientID
 		});
-		await vi.waitFor(() => expect(first.json().children).toHaveLength(3), SLOW);
+		await vi.waitFor(() => expect(first.json().children).toHaveLength(3));
 		first.close();
 		await clockTo(room, T0 + 3600_000);
 		ada.document.transact(() => ada.document.facade.deleteBlocks(['p2']));
@@ -249,7 +247,7 @@ describe('H7 · the purge, on the room’s clock', () => {
 			user: 'carl',
 			replica: carl.doc.clientID
 		});
-		await vi.waitFor(() => expect(back.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(back.synced).toBe(true));
 		const json = await converged(room, carl.doc, ada.document.doc);
 		expect(json.children.map((b) => b.id).sort()).toEqual(['p1', 'p3']);
 		expect(json.children.find((b) => b.id === 'p1')!.content).toEqual([
@@ -324,12 +322,10 @@ describe('H7 · only the room writes the horizon', () => {
 			user: 'mallory',
 			replica: mallory.clientID
 		});
-		await vi.waitFor(() => expect(tab.synced).toBe(true), SLOW);
+		await vi.waitFor(() => expect(tab.synced).toBe(true));
 		mallory.get('horizon').setAttr('h', { at: 0, sv: Y.encodeStateVector(mallory) });
-		await vi.waitFor(
-			async () =>
-				expect(await inRoom(room, (r) => r.refusals.some((x) => x.reason === 'mark'))).toBe(true),
-			SLOW
+		await vi.waitFor(async () =>
+			expect(await inRoom(room, (r) => r.refusals.some((x) => x.reason === 'mark'))).toBe(true)
 		);
 		expect(await inRoom(room, (r) => r.doc!.get('horizon').getAttr('h'))).toBe(undefined);
 		tab.close();

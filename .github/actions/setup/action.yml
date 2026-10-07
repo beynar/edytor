@@ -1,0 +1,18 @@
+# One setup for every job: pnpm, Node with the pnpm store cached, and the
+# locked install. Run it after `actions/checkout`.
+name: Setup
+description: pnpm, Node 24 and the frozen install
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 10
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: pnpm
+    - name: Install
+      shell: bash
+      run: pnpm install --frozen-lockfile

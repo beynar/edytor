@@ -117,10 +117,13 @@ describe('entry points', () => {
 		});
 	});
 
+	// The plan's target is about 120; 132 is the reviewed list (WU-13 added
+	// the command surface: PreventionError, isPrevention, Prevent,
+	// AfterOperationPayload, CommandResult). A new root name is a decision.
 	test('the root exports none of it, and about 120 names in all', () => {
 		const root = names('edytor');
 		for (const name of WIRE) expect(root, name).not.toContain(name);
-		expect(root.length).toBeLessThanOrEqual(130);
+		expect(root.length).toBeLessThanOrEqual(132);
 		expect(names('edytor-protocol')).toEqual(expect.arrayContaining(WIRE));
 	});
 });

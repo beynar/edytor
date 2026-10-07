@@ -60,13 +60,13 @@ The instance exists as soon as the component is created, but `edytor.root` stays
 | `cells` | `Cells` | The reactive render state, one cell per visible block (below). |
 | `clear()` | `() => boolean` | Replace the whole document with one empty block and put the caret in it, as one undo step (the document's [properties](/docs/concepts/properties), `edytor.data`, stay). It is a command: a readonly view or a read-only document refuses it (it answers `false`, and `dispatcher.last` reads `refused`), so a viewer never wipes the shared document. Plugin hooks do not see it. |
 
-### `edytor.facade` and `edytor.document`
+### `edytor.document` and its facade
 
 `edytor.document` is the `EdytorDocument`: it owns the CRDT document, the shared history, awareness and the facade. Several views can render one document; see [Collaboration](/docs/collaboration).
 
-`edytor.facade` is the document's facade seen through this view. It has every document operation (`insertText`, `formatRange`, `insertBlock`, `moveBlocks`, …) and read (`toJSON`, `childrenIds`, `blockTypeOf`, …). It differs from `edytor.document.facade` in one way: while the document has no block, the view shows a local empty paragraph, and `edytor.facade.virtual()` returns its id. An operation you issue on that id through `edytor.facade` creates the block first. The JSON (`edytor.value`) never contains it.
+`edytor.document.facade` is the raw path. It has every document operation (`insertText`, `formatRange`, `insertBlock`, `moveBlocks`, …) and read (`toJSON`, `childrenIds`, `blockTypeOf`, `anchorAt`, …). Its operations are document writes: they skip plugin hooks, normalization, the undo policy and the view's `readonly`. Handle methods go through the dispatcher and do all of these. [Commands](/docs/editor/commands) compares them.
 
-Facade operations are document writes: they skip plugin hooks and normalization. Handle methods go through the dispatcher and do both. [Commands](/docs/editor/commands) compares them.
+While the document has no block, the view shows a local empty paragraph (its handle is `edytor.root.children[0]`); the first command in it creates the block. The raw facade does not see it, and the JSON (`edytor.value`) never contains it.
 
 ## Handles
 

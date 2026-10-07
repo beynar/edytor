@@ -157,8 +157,8 @@ export function batch<
 	func: T,
 	prepare?: (payload: BlockOperations[O]) => Prepared,
 	resolve?: (this: any, out: ReturnType<T> | undefined, payload: Parameters<T>[0]) => R
-): (...args: Parameters<T>) => R {
-	return function (this: Block, ...[payload]: Parameters<T>): R {
+): (...args: PayloadOf<Parameters<T>>) => R {
+	return function (this: Block, ...[payload]: PayloadOf<Parameters<T>>): R {
 		const out = this.edytor.dispatcher.dispatch(
 			operation,
 			payload,
@@ -166,9 +166,22 @@ export function batch<
 			(p, plan) => func.call(this, p, plan),
 			prepare && ((p) => prepare.call(this, p))
 		);
-		return resolve ? resolve.call(this, out, payload) : (out as R);
+		const value = resolve ? resolve.call(this, out, payload) : (out as R);
+		return this.edytor.dispatcher.answer(operation, value);
 	};
 }
+
+/**
+ * A mutator's public parameters: its payload alone (optional when the op's
+ * is). The plan the dispatcher passes the op is not the caller's.
+ */
+export type PayloadOf<A extends unknown[]> = A extends []
+	? []
+	: A extends [infer P, ...unknown[]]
+		? [payload: P]
+		: A extends [(infer P)?, ...unknown[]]
+			? [payload?: P]
+			: [];
 
 /**
  * The handle of block `id` (null: refused at preparation, or gone; undefined:

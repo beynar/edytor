@@ -193,6 +193,7 @@ import {
 } from './data.js';
 import { id as newId } from '../utils.js';
 import {
+	asBlockSpec,
 	cloneJsonSafe,
 	jsonBlockToSpec,
 	jsonEquals,
@@ -2279,16 +2280,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			);
 
 		/**
-		 * Insert blocks (specs may carry children/content/data — ids are
-		 * caller-assigned and must be fresh; the batch is all-or-nothing).
+		 * Insert blocks (specs may carry children/content/data; the batch is
+		 * all-or-nothing). A spec is a `BlockSpec` or the `JSONBlock` that
+		 * `toJSON` and the view's `value` speak (`{ type, content: [{ text }] }`):
+		 * its ids are kept, minted where missing (`asBlockSpec`). Ids must be fresh.
 		 * Refused when the parent is not live, is `void` or is an island's
 		 * line (it holds no children), or any id collides.
 		 * Inserting INSIDE an island is allowed — island interiors are built
 		 * this way. `ids`: the inserted roots.
 		 */
-		const insertBlocks = (dest: Destination, specs: readonly BlockSpec[]): Prepared => {
+		const insertBlocks = (
+			dest: Destination,
+			specs: readonly (BlockSpec | JSONBlock)[]
+		): Prepared => {
 			const parent = ref(dest.parent);
-			const clean = specs.map(sanitizeSpec);
+			const clean = specs.map((spec) => sanitizeSpec(asBlockSpec(spec)));
 			if (parent !== null && (isVoid(parent) || isLine(parent))) return REFUSED;
 			if (clean.length === 0) return plan([], []);
 			if ((parent !== null && !live(parent)) || M.collides(doc, clean)) return REFUSED;
@@ -3255,7 +3261,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** Every document op, prepared (R6) — `apply(prepare.op(…))` is the op. */
 		const prepare = {
 			insertBlocks,
-			insertBlock: (dest: Destination, spec: BlockSpec) => insertBlocks(dest, [spec]),
+			insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => insertBlocks(dest, [spec]),
 			moveBlocks,
 			/** Relocate `id` — identity preserved. */
 			moveBlock: (id: BlockId, dest: Destination) => moveBlocks([id], dest),

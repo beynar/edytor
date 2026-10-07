@@ -92,7 +92,7 @@ A document can end up with no blocks, for example when two people delete its las
 | 2 | Sees an empty paragraph; types "Hi". | Sees an empty paragraph; types "Hello". |
 | 3 | Two lines: "Hi" and "Hello". | The same two lines. |
 
-The first edit in the virtual paragraph (typing, pasting, Enter, turning it into a heading) creates a real block in the same update. Nobody writes a placeholder block for having seen an empty document, so no empty paragraphs are duplicated. A read-only view shows the virtual paragraph but cannot create it. In a view, `edytor.facade.virtual()` names it while the document is empty.
+The first edit in the virtual paragraph (typing, pasting, Enter, turning it into a heading) creates a real block in the same update. Nobody writes a placeholder block for having seen an empty document, so no empty paragraphs are duplicated. A read-only view shows the virtual paragraph but cannot create it. In a view, its handle is `edytor.root.children[0]` while the document is empty.
 
 ## Deleting everything keeps the first block
 

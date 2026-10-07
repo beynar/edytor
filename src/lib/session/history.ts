@@ -134,9 +134,17 @@ export class History {
 		return at(a.start, b.start) && at(a.end, b.end);
 	};
 
-	/** Replay the top undo (redo) item; answers whether one was there to replay. */
-	undo = () => this.#run('undo');
-	redo = () => this.#run('redo');
+	/**
+	 * Replay the top undo (redo) item, under the dispatcher's admission (a
+	 * readonly view, or a document it may not write, never rewinds it):
+	 * `refused`, `noop` on an empty stack, else `applied`.
+	 */
+	replay = (command: 'undo' | 'redo'): 'refused' | 'noop' | 'applied' =>
+		!this.edytor.dispatcher.permits() ? 'refused' : this.#run(command) ? 'applied' : 'noop';
+	/** Replay the top undo item; answers whether one was replayed. */
+	undo = () => this.replay('undo') === 'applied';
+	/** Replay the top redo item; answers whether one was replayed. */
+	redo = () => this.replay('redo') === 'applied';
 
 	#run(command: 'undo' | 'redo'): boolean {
 		const { undoManager: um, transaction: key, selection, facade } = this.edytor;

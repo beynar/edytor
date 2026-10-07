@@ -2,7 +2,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { RangeEndpoints } from '$lib/edytor.utils.js';
-import { id, prevent } from '$lib/utils.js';
+import { id, vetoable } from '$lib/utils.js';
 import { hidden, selectedMembers, shown } from './visibility.js';
 
 export type SelectionInsertionTarget = {
@@ -350,7 +350,7 @@ export const caretAfterBlockDelete = (
  */
 export const keepsSelectedBlocks = (edytor: Edytor, blocks: Block[]) => {
 	const kept = edytor.dispatcher.intercept((plugin) =>
-		plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks: blocks })
+		vetoable((prevent) => plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks: blocks }))
 	);
 	if (kept) edytor.dispatcher.last = { operation: 'deleteSelectedBlocks', status: 'refused' };
 	return kept;

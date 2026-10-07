@@ -138,7 +138,7 @@ export const savePlugin: Plugin = () => ({
 
 A binding receives `{ edytor, prevent, event? }`:
 
-- `prevent()` claims the key: later bindings do not run, and the browser's default action and propagation are stopped. `prevent(cb)` claims it and runs `cb`. Like every `prevent`, it throws, so code after it does not run.
+- `prevent()` claims the key: later bindings do not run, and the browser's default action and propagation are stopped. `prevent(cb)` claims it and runs `cb`. Like every `prevent`, it records the claim and returns: the rest of the binding still runs, and the first call decides.
 - A binding that does not call `prevent` leaves the key to the next binding, and finally to the browser.
 - `event` is the `KeyboardEvent`. It is absent when the key arrived only as an input event, as with some virtual keyboards on Android.
 

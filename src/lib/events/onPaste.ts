@@ -1,5 +1,5 @@
 import type { Edytor } from '../edytor.svelte.js';
-import { prevent } from '$lib/utils.js';
+import { vetoable } from '$lib/utils.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { flowOfFragment, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
@@ -93,7 +93,8 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 			);
 		}
 
-		const claimed = (plugin: (typeof this.plugins)[number]) => plugin.onPaste?.({ prevent, e });
+		const claimed = (plugin: (typeof this.plugins)[number]) =>
+			vetoable((prevent) => plugin.onPaste?.({ prevent, e }));
 		if (this.dispatcher.intercept(claimed, () => e.preventDefault())) return;
 
 		// File payloads route only through the plugin `onPaste` hook (the

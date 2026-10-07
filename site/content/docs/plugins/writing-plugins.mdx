@@ -125,7 +125,9 @@ Every hook whose payload has `prevent` can stop what the editor was about to do.
 - `prevent()` stops the default behavior. Nothing is written.
 - `prevent(() => { ... })` stops it and runs your callback in its place.
 
-`prevent` works by throwing, so code after it in the same hook does not run. The first plugin in list order that calls it wins; later plugins are not asked. The callback runs as a command of its own: if one of its edits is refused by another plugin, that edit is skipped and the callback continues.
+`prevent` records the veto and returns: the rest of your hook still runs, so `return` after it when nothing else should happen. Within one hook the first call decides (a later `prevent(cb)` neither replaces its callback nor runs). The first plugin in list order that calls it wins; later plugins are not asked. The callback runs as a command of its own: if one of its edits is refused by another plugin, that edit is skipped and the callback continues.
+
+A `try`/`catch` around `prevent` changes nothing, since it throws nothing. A hook that throws `PreventionError` itself (the earlier way to veto) still vetoes; `PreventionError` and `isPrevention(error)` are exported from `edytor` for that transition.
 
 ## Lifecycle hooks
 

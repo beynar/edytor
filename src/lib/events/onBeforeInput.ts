@@ -1,5 +1,5 @@
 import type { Edytor } from '../edytor.svelte.js';
-import { prevent } from '$lib/utils.js';
+import { vetoable } from '$lib/utils.js';
 import { Text } from '$lib/text/text.svelte.js';
 import {
 	createDomRange,
@@ -388,7 +388,7 @@ const isTrailingSoftBreakBackward = ({
 /** The pre-admission extension hook: an extension may claim a browser `beforeinput`. */
 const runBeforeInputPlugins = (edytor: Edytor, event: InputEvent) => {
 	edytor.plugins.forEach((plugin) => {
-		plugin.onBeforeInput?.({ prevent, e: event });
+		vetoable((prevent) => plugin.onBeforeInput?.({ prevent, e: event }));
 	});
 };
 

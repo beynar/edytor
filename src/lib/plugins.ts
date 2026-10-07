@@ -12,6 +12,7 @@ import type { EdytorSelection } from './selection/selection.svelte.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import type { PlanEffect } from './crdt/edytor-doc.js';
 import type { MarkEdge } from './session/editing/text.js';
+import type { Prevent } from './utils.js';
 
 /** What a placeholder function receives (D-8): the empty block's declared values. */
 export type PlaceholderView = {
@@ -34,10 +35,7 @@ export type MarkSnippetPayload<D extends SerializableContent = SerializableConte
 	text: Text;
 };
 
-/**
- * Function type for preventing default behavior with an optional callback.
- */
-type Prevent = (cb?: () => void) => void;
+export type { Prevent };
 
 /**
  * What a block snippet receives (R4, §2.4 "Snippet view objects"): declared
@@ -80,6 +78,10 @@ export type BlockSnippetPayload<D = Record<string, any>> = {
  */
 export type ChangePayload = {
 	block: Block;
+	/**
+	 * Veto the operation (and, with `cb`, run that in its place): records the
+	 * veto and returns, so the hook runs to its end; the first call decides.
+	 */
 	prevent: Prevent;
 	/**
 	 * The prepared command's effect (blocks created, removed, merged, moved,
@@ -102,6 +104,17 @@ export type ChangePayload = {
 			};
 	  }[keyof BlockOperations]
 );
+
+/**
+ * What `onAfterOperation` receives: a {@link ChangePayload} without
+ * `prevent` (the operation already ran). The `Omit` distributes over the
+ * union, so `operation` still narrows `payload` (and `text`).
+ */
+export type AfterOperationPayload = ChangePayload extends infer C
+	? C extends unknown
+		? Omit<C, 'prevent'>
+		: never
+	: never;
 
 /**
  * Function type for transforming content within a text block.
@@ -134,8 +147,11 @@ export type Plugin = (editor: Edytor) => PluginDefinitions & PluginOperations;
 export type PluginOperations = {
 	/** Called before an operation is executed */
 	onBeforeOperation?: <C extends ChangePayload>(payload: C) => C['payload'] | void;
-	/** Called after an operation is executed */
-	onAfterOperation?: <C extends Omit<ChangePayload, 'prevent'>>(payload: C) => void;
+	/**
+	 * Called after an operation is executed (`dispatcher.last` holds its
+	 * result); `operation` narrows `payload`.
+	 */
+	onAfterOperation?: (payload: AfterOperationPayload) => void;
 	/** Called when the editor value changes */
 	onChange?: (value: JSONBlock) => void;
 	/** Called when the selection changes */

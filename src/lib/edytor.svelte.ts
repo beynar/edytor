@@ -292,6 +292,12 @@ export class Edytor {
 	}
 	/** The document as this view reads it: its virtual paragraph while it shows no block (`doc.empty.virtual`). */
 	private lens?: ViewDoc;
+	/**
+	 * The document as this view reads and writes it (the virtual paragraph's
+	 * lens). The public raw path is `edytor.document.facade`: its writes skip
+	 * the dispatcher (no hooks, no readonly admission, no undo policy).
+	 * @internal
+	 */
 	get facade(): ViewDoc {
 		return (this.lens ??= virtualLens(
 			this.document.facade,
@@ -394,12 +400,7 @@ export class Edytor {
 	historyUndo = (): void => this.#replay('undo');
 	historyRedo = (): void => this.#replay('redo');
 	#replay = (command: 'undo' | 'redo') => {
-		const status = !this.dispatcher.permits()
-			? 'refused'
-			: this.history[command]()
-				? 'applied'
-				: 'noop';
-		this.dispatcher.last = { operation: command, status };
+		this.dispatcher.last = { operation: command, status: this.history.replay(command) };
 	};
 
 	constructor({

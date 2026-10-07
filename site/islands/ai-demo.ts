@@ -136,7 +136,7 @@ export const continueWriting = (edytor: EdytorInstance) => {
 	if (!block?.rendersContent || block.definition.void) return;
 	const suggestion = edytor.suggestions.add({ end: block.id }, undefined, { label: 'AI' });
 	let sentence = CONTINUATIONS[next++ % CONTINUATIONS.length]!;
-	if (/\s$/.test(edytor.facade.blockText(block.id) ?? '')) sentence = sentence.trimStart();
+	if (/\s$/.test(edytor.document.facade.blockText(block.id) ?? '')) sentence = sentence.trimStart();
 	stream(suggestion, [{ type: block.type, content: text(sentence) }]);
 };
 

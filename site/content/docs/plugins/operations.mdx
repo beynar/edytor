@@ -68,7 +68,7 @@ A command the document itself refuses is still shown, without steps, so a plugin
 
 ## Refusing an edit
 
-Call `prevent()` on the command or on any of its steps to refuse the whole command. Nothing is written and no undo step is recorded.
+Call `prevent()` on the command or on any of its steps to refuse the whole command. Nothing is written and no undo step is recorded. `prevent` records the veto and returns, so the rest of your hook still runs (`return` after it when nothing else should happen); the first call decides.
 
 A gesture over several blocks that issues one command per part refuses only the part you veto, as the document refuses a part it cannot apply: Turn into over several blocks (one command per block), <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd> over several runs of siblings (one per run) or over several lines of a code block (one `insertText` or `deleteContentAtRange` per line), formatting across blocks (one `markText` per block) and the block menu's Duplicate. The other parts apply, together one undo step, and `dispatcher.last` reports `applied` when one did. A block-selection delete, from the keyboard (any <kbd>Backspace</kbd> or <kbd>Delete</kbd> chord) or the block menu, is one command: a veto keeps every block. So is typing or a paste over a block selection: one `insertFlow` replaces the blocks, and a veto keeps them all (`onDeleteSelectedBlocks` runs first, see [Writing plugins](/docs/plugins/writing-plugins)). Your own gesture gets the same rule from `edytor.dispatcher.each(kind, parts, part)`.
 
@@ -181,11 +181,12 @@ The replacement is prepared again and shown to every plugin from the start. A Tu
 
 ## After an edit
 
-`onAfterOperation` runs once per command, after its transaction, with the original payload. It does not run for steps or for refused commands, and it has no `prevent`.
+`onAfterOperation` runs once per command, after its transaction, with the original payload. It does not run for steps or for refused commands, and it has no `prevent`. Its payload (`AfterOperationPayload`) narrows by `operation`, as `onBeforeOperation`'s does:
 
 ```ts
-onAfterOperation: ({ operation, block }) => {
-	if (operation === 'setBlock') console.log(block.id, 'is now', block.type);
+onAfterOperation: (change) => {
+	if (change.operation === 'setBlock') console.log(change.block.id, 'is now', change.block.type);
+	if (change.operation === 'insertText') console.log('typed', change.payload.value, 'in', change.block.id);
 }
 ```
 

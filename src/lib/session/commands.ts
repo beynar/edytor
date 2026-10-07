@@ -14,16 +14,24 @@ import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import type { BlockId, BlockSpec } from '$lib/crdt/index.js';
 import type { Plan, PlanStep, Prepared } from '$lib/crdt/edytor-doc.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { ChangePayload, InitializedPlugin } from '$lib/plugins.js';
+import type { AfterOperationPayload, ChangePayload, InitializedPlugin } from '$lib/plugins.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { DEV } from 'esm-env';
-import { prevent, PreventionError } from '$lib/utils.js';
+import { PreventionError, vetoable } from '$lib/utils.js';
 import { kindOf } from './attempt.js';
 
-export type CommandResult = {
+/**
+ * The result of the last command a view ran (`edytor.dispatcher.last`): its
+ * operation, its status and, for a handle mutator (`block.insertBlockAfter`,
+ * `text.insertText`, …), the `value` the mutator returned — `undefined`
+ * when the command was refused or did not run.
+ */
+export type CommandResult<T = unknown> = {
 	operation: string;
 	status: 'refused' | 'noop' | 'applied' | 'failed';
+	/** What the command answered: a handle mutator's return value. */
+	value?: T;
 	error?: unknown;
 	/** The result selection the command authored (R9), selected once. */
 	selection?: SelectionValue;
@@ -351,7 +359,9 @@ export class Dispatcher {
 				for (const plugin of this.edytor.plugins) {
 					let out: unknown;
 					try {
-						out = plugin.onBeforeOperation?.({ ...change, prevent } as ChangePayload);
+						out = vetoable((prevent) =>
+							plugin.onBeforeOperation?.({ ...change, prevent } as ChangePayload)
+						);
 					} catch (error) {
 						const stop = prevented(error);
 						if (stop.cb && this.replacing.has(plugin)) {
@@ -417,9 +427,20 @@ export class Dispatcher {
 			status: this.edytor.facade.version === version ? 'noop' : 'applied'
 		};
 		if (this.running && this.last.status === 'applied') this.applied = this.last;
-		const change = { operation, payload: original, ...context } as Omit<ChangePayload, 'prevent'>;
+		const change = { operation, payload: original, ...context } as AfterOperationPayload;
 		for (const plugin of this.edytor.plugins) plugin.onAfterOperation?.(change);
 		return result;
+	};
+
+	/**
+	 * Record what a handle mutator answered on its result (`last.value`), and
+	 * answer it. A nested operation (a step of the running command) has no
+	 * result of its own.
+	 * @internal
+	 */
+	answer = <R>(operation: string, value: R): R => {
+		if (!this.active && this.last?.operation === operation) this.last = { ...this.last, value };
+		return value;
 	};
 
 	/**

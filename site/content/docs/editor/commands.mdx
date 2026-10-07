@@ -10,12 +10,12 @@ You can change a document from code in two ways: **handle commands**, which beha
 
 | | Handle commands | Facade operations |
 | --- | --- | --- |
-| Called on | `Block`, `Text`, the editor | `edytor.facade` (or `document.facade`) |
+| Called on | `Block`, `Text`, the editor | `edytor.document.facade` (or `document.facade` without a view) |
 | Addresses | Handles and offsets inside a text segment | Block ids and block offsets |
 | Plugin hooks (`onBeforeOperation`, `onAfterOperation`) | Yes: plugins can refuse or replace them | No |
 | Normalization (`normalizeContent`, `normalizeChildren`) | Yes | No |
 | Refused in a readonly view | Yes | No |
-| Result | `edytor.dispatcher.last`, plus a return value | An `OpResult` |
+| Result | `edytor.dispatcher.last` (a `CommandResult`), whose `value` is the return value | An `OpResult` |
 | Needs a view | Yes | No, works headlessly |
 
 Use handle commands for anything a user could have done, so your plugins see it. Use facade operations for imports, migrations, server-side edits and code that must bypass plugins.
@@ -85,12 +85,13 @@ To change the block kind, see [`convertToKind`](/docs/concepts/blocks#kinds-and-
 
 ### Results
 
-Every command sets `edytor.dispatcher.last`:
+Every command sets `edytor.dispatcher.last`, a `CommandResult`:
 
 ```ts
 block.mergeBlockBackward();
-const { operation, status } = edytor.dispatcher.last!;
+const { operation, status, value } = edytor.dispatcher.last!;
 // status: 'applied' | 'noop' | 'refused' | 'failed'
+// value: what the command returned (here the merged-into block), undefined when refused
 ```
 
 | Status | Meaning |
@@ -100,11 +101,11 @@ const { operation, status } = edytor.dispatcher.last!;
 | `refused` | The view is readonly, the document is read-only, the document refused it (for example merging into a void block), or a plugin prevented it. Nothing was written and no undo step was recorded. |
 | `failed` | It threw. The error is in `last.error` and is rethrown. |
 
-Commands that create blocks also return handles: `insertBlockAfter`, `splitBlock` and `mergeBlockBackward` return a `Block`, `null` when the document refuses the command, and `undefined` when it never ran (a readonly view, or a plugin prevented it). Test the result for a falsy value, or read `dispatcher.last.status`.
+Commands that create blocks also return handles: `insertBlockAfter`, `splitBlock` and `mergeBlockBackward` return a `Block`, `null` when the document refuses the command, and `undefined` when it never ran (a readonly view, or a plugin prevented it). The same value is `dispatcher.last.value`, so one read gives both: test `status`, then use `value`.
 
 ## Facade operations
 
-`edytor.facade` addresses blocks by id and uses block offsets, where an inline block counts as one character. Every operation returns an `OpResult`:
+`edytor.document.facade` is the raw path: it writes the document directly, with no plugin hooks, no normalization, no undo policy and no readonly check (a readonly view's app can still write through it). It addresses blocks by id and uses block offsets, where an inline block counts as one character. Every operation returns an `OpResult`:
 
 ```ts
 type OpResult = {
@@ -115,7 +116,7 @@ type OpResult = {
 ```
 
 ```ts
-const { facade } = edytor;
+const { facade } = edytor.document;
 const id = 'intro';
 
 facade.insertText(id, 0, 'Hello ', { bold: true });
@@ -123,14 +124,14 @@ facade.deleteText(id, 0, 6);
 facade.formatRange(id, 0, 5, { italic: true, bold: null }); // null removes a mark
 facade.insertBlock(
 	{ parent: null, index: 0 }, // null parent = the root
-	{ id: 'title', type: 'heading', data: { level: 'h1' }, content: [{ kind: 'text', text: 'Title' }] }
+	{ id: 'title', type: 'heading', data: { level: 'h1' }, content: [{ text: 'Title' }] }
 );
 facade.moveBlock('title', { parent: null, index: 2 });
 facade.setBlockType(id, 'quote');
 facade.deleteBlock(id); // { keepChildren: false } removes the subtree
 ```
 
-Facade inserts take a `BlockSpec`, not a `JSONBlock`: an `id` is required and content items carry a `kind` (`{ kind: 'text', text, marks? }` or `{ kind: 'inline', id, type, data? }`). `toBlockSpec(json)` converts canonical JSON, minting the ids it leaves out (`{ freshIds: true }` mints all of them, for a copy):
+Facade inserts (`insertBlock`, `insertBlocks`) take the `JSONBlock` shape that `edytor.value` and `facade.toJSON()` use, ids kept and minted where you leave them out, or a `BlockSpec` (an `id` on every block, content items with a `kind`: `{ kind: 'text', text, marks? }` or `{ kind: 'inline', id, type, data? }`). To copy a block, mint every id with `toBlockSpec(json, { freshIds: true })`:
 
 ```ts
 import { toBlockSpec } from 'edytor/crdt/edytor';
@@ -150,7 +151,7 @@ The full list (`splitBlock`, `mergeBlocks`, `deleteBlocks`, `deleteRange`, `inse
 edytor.transact(() => {
 	const heading = edytor.idToBlock.get('title')!;
 	heading.setBlock({ value: { data: { level: 'h2' } } });
-	edytor.facade.insertText('intro', 0, 'Updated: ');
+	edytor.document.facade.insertText('intro', 0, 'Updated: ');
 });
 ```
 

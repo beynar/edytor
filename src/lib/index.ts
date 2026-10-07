@@ -51,8 +51,12 @@ export type {
 	InlineBlockSnippetPayload,
 	Placeholder,
 	PlaceholderView,
-	ChangePayload
+	ChangePayload,
+	AfterOperationPayload,
+	Prevent
 } from './plugins.js';
+export { PreventionError, isPrevention } from './utils.js';
+export type { CommandResult } from './session/commands.js';
 export { convertToKind, turnCommands, wrapBlocks, wrappable, type KindRow } from './kinds.js';
 export { textToBlocks, type TextToBlocksOptions } from './clipboard/textBlocks.js';
 export type {

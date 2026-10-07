@@ -40,12 +40,13 @@ export function batch<T extends (...args: any[]) => any, O extends keyof TextOpe
 	return function (this: Text, payload: TextOperations[O]): ReturnType<T> {
 		// Dispatched like block operations (`session/commands.ts`): plugins see
 		// `block: this.parent` + `text: this`, the text arm of `ChangePayload`.
-		return this.edytor.dispatcher.dispatch(
+		const out = this.edytor.dispatcher.dispatch(
 			operation,
 			payload,
 			{ block: this.parent, text: this },
 			func
 		) as ReturnType<T>;
+		return this.edytor.dispatcher.answer(operation, out);
 	} as T;
 }
 

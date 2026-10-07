@@ -56,6 +56,13 @@ const pageText = (path: string) => {
 
 const stale: [phrase: string | RegExp, why: string][] = [
 	['another list item', 'Enter ends a run under a continuing kind, not only a list item'],
+	['not on npm yet', 'the pre-release is on npm under `next`'],
+	['Until the pre-release is published', 'the pre-release is on npm under `next`'],
+	['still holds 0.0.11', 'GitHub master holds the current source'],
+	[
+		/alone is a rich text editor[^.]*markdown shortcuts/,
+		'markdown shortcuts need markdownShortcutsPlugin'
+	],
 	['serverUrl/roomName are required', 'createWebsocketSync takes { server, room }'],
 	['Prism', 'the code plugin highlights with TanStack Highlight'],
 	['mention-and-image', 'the mention plugin is not exported; link targets moved'],
@@ -140,6 +147,15 @@ const sources = (dir: string): string[] =>
 	});
 
 describe('docs drift', () => {
+	it('the package carries the license the README badge names (MIT)', () => {
+		const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+			license?: string;
+		};
+		expect(pkg.license).toBe('MIT');
+		expect(readFileSync(join(root, 'LICENSE'), 'utf8')).toMatch(/^MIT License/);
+		expect(readFileSync(join(root, 'README.md'), 'utf8')).toContain('License-MIT');
+	});
+
 	it.each(stale)('no doc says "%s" (%s)', (phrase) => {
 		const hits = docs
 			.filter((path) => has(pageText(path), phrase))

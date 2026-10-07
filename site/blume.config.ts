@@ -13,9 +13,7 @@ export default defineConfig({
   content: {
     root: "content/docs",
   },
-  // No `github` block: its "Edit this page" links would target `master`,
-  // which holds 0.0.11 and no `site/`. Restore it with the branch these docs
-  // live on once that branch is pushed; until then the header links the repo.
+  // The header links the repo; `master` holds these docs' source (`site/`).
   navigation: {
     repo: "https://github.com/beynar/edytor",
     sidebar: {

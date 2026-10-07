@@ -131,6 +131,11 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.31
+
+- **Security fix: links.** A link whose `href` started with an ASCII control character or a space before `javascript:` (for example `\u0001javascript:…`) passed `sanitizeLinkHref` as a relative link, and browsers, which strip those characters, would run it when clicked. The sanitizer now reads an `href` as the browser's URL parser does: it strips control characters and spaces at both ends and tabs and newlines anywhere, resolves it, and keeps it only when its scheme is `http:`, `https:`, `mailto:` or `tel:` (a relative link resolves to none of its own). Links already stored with such an `href` render without one. Upgrade.
+- **License.** The package now carries its MIT license (`LICENSE`, and `"license": "MIT"` in `package.json`).
+
 ### From 0.1.0-next.30
 
 - **Pasting a link over selected text links it.** With the rich text plugin, a paste whose plain text is one URL (`http:`, `https:` or `mailto:`) over a text range outside a code block now sets the `link` mark on the selected text instead of replacing it, as in Notion ([pasting a link](/docs/plugins/rich-text#pasting-a-link)). Other pastes are unchanged. A plugin of yours that claims such pastes in its own `onPaste` still wins when it is listed before the rich text plugin (the default plugins come after yours).

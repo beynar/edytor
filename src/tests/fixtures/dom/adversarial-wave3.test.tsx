@@ -118,6 +118,25 @@ describe('link href sanitization', () => {
 		expect(sanitizeLinkHref('   ')).toBeNull();
 	});
 
+	test('sanitizeLinkHref rejects a scheme hidden behind C0 controls or spaces (the browser strips them)', () => {
+		for (let code = 0; code <= 0x20; code++) {
+			const c = String.fromCharCode(code);
+			expect(sanitizeLinkHref(`${c}javascript:alert(1)`), `U+${code.toString(16)}`).toBeNull();
+			expect(
+				sanitizeLinkHref(`javascript:alert(1)${c}`),
+				`U+${code.toString(16)} after`
+			).toBeNull();
+		}
+		expect(sanitizeLinkHref('\u0001\u001fjava\nscript:alert(1)')).toBeNull();
+		expect(sanitizeLinkHref('\u0000data:text/html,x')).toBeNull();
+		// What the browser would resolve the kept href to is never a script.
+		for (const href of ['\u0001https://a.b/', '/p', '#a', '?q', '//host/p', 'x\u0001y']) {
+			const kept = sanitizeLinkHref(href);
+			if (kept !== null)
+				expect(new URL(kept, 'https://base.test/').protocol).toMatch(/^(https?|mailto|tel):$/);
+		}
+	});
+
 	test('native insertLink with a javascript: href stores no link mark', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>

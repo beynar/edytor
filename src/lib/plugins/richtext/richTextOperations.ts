@@ -48,24 +48,24 @@ export const sanitizeCssColorValue = (value: unknown): string | null => {
 /**
  * Scheme allowlist for link hrefs. `javascript:`/`data:`/`vbscript:`
  * payloads can arrive through native `insertLink`, pasted HTML, or a
- * malicious collaborator — and Svelte renders `href` verbatim. The URL
- * parser is used rather than a regex so whitespace/case obfuscation
- * (`java\tscript:`) can't slip through. Scheme-less hrefs (relative
- * paths, anchors, queries, protocol-relative) are not scriptable and
- * pass through.
+ * malicious collaborator — and Svelte renders `href` verbatim. The href is
+ * read as the browser's URL parser reads it: it strips C0 controls and
+ * spaces at both ends and tab/newline/CR anywhere (`\u0001javascript:` is
+ * `javascript:` to a browser), then resolves it against a base; only an
+ * allowed scheme, or a relative href that stays relative, passes.
  */
 export const sanitizeLinkHref = (href: unknown): string | null => {
 	// Marks arrive from untrusted sources too (synced peers, paste) —
 	// reject non-strings outright instead of throwing on `.replace`.
 	if (typeof href !== 'string') return null;
-	// WHATWG URL preprocessing removes tab/newline/CR before parsing —
-	// doing it here too means `java\tscript:` collapses back to a
-	// detectable scheme instead of slipping through as "scheme-less".
-	const trimmed = href.replace(/[\t\n\r]/g, '').trim();
+	// eslint-disable-next-line no-control-regex
+	const trimmed = href.replace(/[\t\n\r]/g, '').replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '');
 	if (!trimmed) return null;
-	if (!/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)) return trimmed;
 	try {
-		return SAFE_LINK_PROTOCOLS.has(new URL(trimmed).protocol) ? trimmed : null;
+		// A relative href resolves to the base's `https:`: it names no scheme of its own.
+		return SAFE_LINK_PROTOCOLS.has(new URL(trimmed, 'https://relative.invalid/').protocol)
+			? trimmed
+			: null;
 	} catch {
 		return null;
 	}

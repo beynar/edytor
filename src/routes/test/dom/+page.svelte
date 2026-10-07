@@ -3,7 +3,7 @@
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+	import { createImagePlugin, imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
@@ -239,6 +239,24 @@
 				}
 			]
 		},
+		// WU-21: an image 400px wide (an inline SVG: no network), then a line.
+		image: {
+			children: [
+				{
+					id: 'img',
+					type: 'image',
+					data: {
+						src:
+							'data:image/svg+xml,' +
+							encodeURIComponent(
+								'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="#9bc"/></svg>'
+							)
+					},
+					content: [{ text: 'caption' }]
+				},
+				{ id: 'after', type: 'paragraph', content: [{ text: 'after image' }] }
+			]
+		},
 		divider: {
 			children: [
 				{
@@ -377,9 +395,23 @@
 		}
 	};
 
+	/**
+	 * The `image` scenario's upload (WU-21): the file back as an inline image,
+	 * after a short wait, so a spec sees the placeholder, then the image.
+	 */
+	const uploadingImagePlugin = createImagePlugin({
+		upload: (file) =>
+			new Promise((resolve, reject) => {
+				const reader = new FileReader();
+				reader.onload = () => setTimeout(() => resolve(String(reader.result)), 150);
+				reader.onerror = () => reject(reader.error);
+				reader.readAsDataURL(file);
+			})
+	});
+
 	const plugins = $derived([
 		arrowMovePlugin,
-		imagePlugin,
+		data.scenario === 'image' ? uploadingImagePlugin : imagePlugin,
 		codePlugin,
 		markdownShortcutsPlugin,
 		mentionPlugin,

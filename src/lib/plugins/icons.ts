@@ -64,7 +64,13 @@ const ICONS: Record<string, string> = {
 	'action.color': svg('<path d="M6 15.5L10 4.5l4 11M7.4 11.7h5.2"/>'),
 	'action.up': svg('<path d="M10 16V4.5M5.5 9L10 4.5 14.5 9"/>'),
 	'action.down': svg('<path d="M10 4v11.5M5.5 11l4.5 4.5 4.5-4.5"/>'),
-	'action.chevron': svg('<path d="M8 5.5l4.5 4.5L8 14.5"/>')
+	'action.chevron': svg('<path d="M8 5.5l4.5 4.5L8 14.5"/>'),
+	'image.align-left': svg('<path d="M3.5 5h13M3.5 8.3h8M3.5 11.7h13M3.5 15h8"/>'),
+	'image.align-center': svg('<path d="M3.5 5h13M6 8.3h8M3.5 11.7h13M6 15h8"/>'),
+	'image.align-right': svg('<path d="M3.5 5h13M8.5 8.3h8M3.5 11.7h13M8.5 15h8"/>'),
+	'image.alt': svg(
+		'<rect x="2.5" y="4.5" width="15" height="11" rx="2"/><path d="M5.5 12.5l1.8-5 1.8 5M6 11h2.6M11 7.5v5h2.5M14.5 7.5v5"/>'
+	)
 };
 
 /** The icon's CSS `mask-image` value for `id`, if the id has one. */

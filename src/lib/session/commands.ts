@@ -71,6 +71,8 @@ const CUT: Record<string, 'before' | 'both'> = {
 	// A DOM change no input occurrence owns (a foreign script): its own step.
 	foreignChange: 'both'
 };
+/** The origin of `Dispatcher.outside`'s transactions: no history tracks it. */
+const OUTSIDE_HISTORY = Symbol('edytor.outsideHistory');
 /**
  * The kinds that may continue a step: the insertion operations (`insertText`,
  * `addInlineBlock`) and the input types that insert text. Any other kind — a
@@ -214,8 +216,32 @@ export class Dispatcher {
 	private leading: Plan | null = null;
 	/** What the last `patchData` set to text: typing on the same paths continues its step (a bound field). */
 	private patched: TextPatch | null = null;
+	/** `outside` is running: its commands cut no step and enter none. */
+	private untracked = false;
 
 	constructor(private edytor: Edytor) {}
+
+	/**
+	 * Run `body`'s commands outside the undo history (one transaction of
+	 * their own, under an origin no history tracks): admitted, shown to hooks
+	 * and recorded in `last` as any command, but they cut no step and enter
+	 * none. For a write that completes a step already taken, whose undo
+	 * already covers it: an upload's URL filling the image block its paste
+	 * placed (WU-21). That step's undo withdraws the block, URL included
+	 * (`hist.undo.withdraw`), and its redo shows it again, so the paste stays
+	 * one step whatever the upload's delay, and the typing around it groups
+	 * as if it never came. Never inside another transaction (its origin
+	 * would be that one's).
+	 */
+	outside = <T>(body: () => T): T => {
+		const outer = this.untracked;
+		this.untracked = true;
+		try {
+			return this.edytor.doc.transact(body, OUTSIDE_HISTORY);
+		} finally {
+			this.untracked = outer;
+		}
+	};
 
 	/** The plan `lead` holds for the next dispatched operation (a slash trigger's removal), if any. */
 	get pendingLead(): Plan | null {
@@ -231,6 +257,7 @@ export class Dispatcher {
 
 	/** Apply the undo policy's cut before a `kind` command writes. */
 	cut = (kind: string, phase: 'before' | 'after' = 'before') => {
+		if (this.untracked) return;
 		const policy = this.decide(policyOf(kind));
 		if (policy === 'both' || (phase === 'before' && policy === 'before'))
 			this.edytor.undoManager?.stopCapturing();
@@ -389,7 +416,8 @@ export class Dispatcher {
 		// window, as typing does; another value of them is its own step.
 		const patch = operation === 'patchData' ? textPatch(context.block as Block, payload) : null;
 		const again = continuesTyping(this.patched, patch) && this.last?.operation === operation;
-		this.patched = patch;
+		// A write outside the history continues nothing and leaves the typing's record.
+		if (!this.untracked) this.patched = patch;
 		const cut = again ? undefined : this.policy(operation, lead);
 		if (cut) this.edytor.undoManager?.stopCapturing();
 		let result: R;
@@ -548,7 +576,7 @@ export class Dispatcher {
 	 * live (its writes are one group).
 	 */
 	private policy(operation: string, lead: Plan | null) {
-		if (this.edytor.composition.live) return undefined;
+		if (this.edytor.composition.live || this.untracked) return undefined;
 		if (lead) return 'before';
 		return this.running ? undefined : this.decide(policyOf(operation));
 	}

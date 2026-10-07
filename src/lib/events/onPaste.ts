@@ -97,8 +97,9 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 		if (this.dispatcher.intercept(claimed, () => e.preventDefault())) return;
 
 		// File payloads route only through the plugin `onPaste` hook (the
-		// Files → image seam — no bundled consumer yet). An unclaimed file
-		// paste inserts nothing rather than silent file-name text.
+		// Files → image seam: the image plugin with `upload` claims image
+		// files). An unclaimed file paste inserts nothing rather than silent
+		// file-name text.
 		if ((e.clipboardData?.files?.length ?? 0) > 0) {
 			e.preventDefault();
 			return;

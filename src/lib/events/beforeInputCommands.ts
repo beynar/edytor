@@ -213,7 +213,9 @@ const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
 	const fragment = readEdytorClipboardFragment(dataTransfer);
 	if (!fragment && dataTransfer) {
 		if ((dataTransfer.files?.length ?? 0) > 0) {
-			runDataTransferPastePlugins(edytor, dataTransfer);
+			// A plugin places the files at the selection: the drop point, never over selected blocks.
+			if (resolveDropPoint(edytor, snapshot) !== null)
+				runDataTransferPastePlugins(edytor, dataTransfer);
 			return;
 		}
 		if (dataTransfer.getData('text/html')) {

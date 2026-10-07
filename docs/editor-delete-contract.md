@@ -246,6 +246,19 @@ HTML that carries no text, atom, child or void kind — only a comment, a
 such HTML falls through to the clipboard's `text/plain` when it has one. A
 taken id refuses the op before any write.
 
+### `flow.html.void` — a void element inside a line ends it
+
+In external HTML, an element a void kind claims (an `<img>` the image
+plugin's `parse` takes), met inside a line — directly or wrapped in inline
+markup (`<p><span><img></span></p>`, Google Docs) — ends that line: the
+void is a line of its own, and what follows is a new line of the
+element's kind and data. A text line left with no content and no children
+around it is dropped. `<p>before <img> after</p>` → `["before", image,
+"after"]`; `<p><span><img></span></p>` → `[image]`. Inside the void's own
+element (a `figure`'s `img`) nothing splits: it is the void's media. An
+`<img>` no kind claims (no accepted `src`) is skipped, as before. WU-21.
+Pins: `image-wu21.test.tsx`.
+
 ### `flow.inline` — one line joins the text
 
 At a position `(B, o)`, a single line's content is inserted at `o`. `B`

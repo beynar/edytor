@@ -18,6 +18,12 @@ type Values = Record<string, SerializableContent>;
 type Line = { type?: string; data?: Values; content: JSONContentPart[]; children?: Line[] };
 /** A kind claiming an element; `lines`: a container whose default child takes each text line. */
 type Claim = { type: string; data: Values; lines?: string };
+/**
+ * Where inline content goes: the line being read, and how a void kind's
+ * element met inside it (an `<img>`, at any depth of inline markup) ends it
+ * (`flow.html.void`).
+ */
+type Cursor = { line: () => Line; apart: (element: HTMLElement) => void };
 
 /** Never content: their text is code, metadata or form state. */
 const SKIP =
@@ -88,6 +94,11 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 	};
 	const isBlock = (node: Node): node is HTMLElement =>
 		node instanceof HTMLElement && (BLOCK.test(node.localName) || kindOf(node) !== undefined);
+	/** A void kind's element (an image): it shows no text, so a line it is met in ends there. */
+	const isVoid = (node: Node): node is HTMLElement => {
+		const claim = node instanceof HTMLElement ? kindOf(node) : undefined;
+		return claim !== undefined && blocks.get(claim.type)?.void === true;
+	};
 
 	const text = (line: Line, value: string, marks: Values, pre: boolean) => {
 		const last = line.content.at(-1) as JSONText | undefined;
@@ -98,13 +109,14 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		if (last && JSON.stringify(last.marks ?? {}) === JSON.stringify(marks)) last.text += value;
 		else line.content.push(Object.keys(marks).length ? { text: value, marks } : { text: value });
 	};
-	const inline = (node: Node, line: Line, marks: Values, pre: boolean) => {
-		if (node.nodeType === Node.TEXT_NODE) return text(line, node.textContent ?? '', marks, pre);
+	const inline = (node: Node, at: Cursor, marks: Values, pre: boolean) => {
+		if (node.nodeType === Node.TEXT_NODE)
+			return text(at.line(), node.textContent ?? '', marks, pre);
+		if (isVoid(node)) return at.apart(node);
 		if (!(node instanceof HTMLElement) || SKIP.test(node.localName)) return;
-		if (node.localName === 'br') return text(line, '\n', marks, true);
+		if (node.localName === 'br') return text(at.line(), '\n', marks, true);
 		const inner = { ...marks, ...marksOf(node) };
-		for (const child of node.childNodes)
-			inline(child, line, inner, pre || node.localName === 'pre');
+		for (const child of node.childNodes) inline(child, at, inner, pre || node.localName === 'pre');
 	};
 	/** A line ends without its trailing space or `<br>`. */
 	const end = (line: Line) => {
@@ -121,8 +133,15 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 			if (run && end(run).content.length) lines.push(run);
 			run = null;
 		};
+		const at: Cursor = {
+			line: () => (run ??= { type, content: [] }),
+			apart: (element) => {
+				flush();
+				lines.push(...blockOf(element, type));
+			}
+		};
 		for (const node of parent.childNodes) {
-			if (!isBlock(node)) inline(node, (run ??= { type, content: [] }), {}, false);
+			if (!isBlock(node)) inline(node, at, {}, false);
 			else {
 				flush();
 				lines.push(...blockOf(node, type));
@@ -154,16 +173,41 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		if (!claim && wraps(element)) return linesOf(element, type);
 		const line: Line = { type: claim?.type ?? type, data: claim?.data, content: [] };
 		const childType = claim ? kinds.document.defaultChild(claim.type) : type;
-		const children: Line[] = [];
 		const pre = element.localName === 'pre';
+		// The element's line, then, for each void element met in it, that block
+		// and a line of the element's kind for what follows (`flow.html.void`).
+		const parts: Line[] = [line];
+		const texts = new Set([line]);
+		let current = line;
+		const at: Cursor = {
+			line: () => current,
+			apart: (inner) => {
+				// A void's own media (a figure's `img`) is part of it.
+				if (claim && blocks.get(claim.type)?.void) return;
+				parts.push(...blockOf(inner, type));
+				current = { type: line.type, data: line.data, content: [] };
+				parts.push(current);
+				texts.add(current);
+			}
+		};
 		for (const node of element.childNodes)
-			if (!isBlock(node)) inline(node, line, {}, pre);
+			if (isVoid(node)) at.apart(node);
+			else if (!isBlock(node)) inline(node, at, {}, pre);
 			// A leading plain paragraph is the element's own text (`<li><p>Item</p></li>`).
-			else if (!line.content.length && !children.length && !kindOf(node) && !wraps(node))
-				for (const child of node.childNodes) inline(child, line, {}, pre);
-			else children.push(...blockOf(node, childType));
-		if (children.length) line.children = children;
-		return [end(line)];
+			else if (
+				!current.content.length &&
+				!current.children?.length &&
+				!kindOf(node) &&
+				!wraps(node)
+			)
+				for (const child of node.childNodes) inline(child, at, {}, pre);
+			else (current.children ??= []).push(...blockOf(node, childType));
+		for (const part of texts) if (!part.children?.length) delete part.children;
+		if (parts.length === 1) return [end(line)];
+		// Split: a text line left empty around a void element is not kept.
+		return parts.filter(
+			(part) => !texts.has(part) || end(part).content.length > 0 || part.children !== undefined
+		);
 	};
 
 	const body = new DOMParser().parseFromString(html, 'text/html').body;

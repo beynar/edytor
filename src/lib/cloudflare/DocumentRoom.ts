@@ -197,6 +197,18 @@ export const DEFAULT_MAX_BUFFERED_BYTES = 2 * DEFAULT_MAX_INBOUND_FRAME_BYTES;
  * speed: a script should batch its edits into transactions.
  */
 export const DEFAULT_MAX_UPDATES_PER_SECOND = 50;
+/**
+ * The largest presence state a socket may publish, as JSON (a caret, a
+ * name, a color: a few hundred bytes). A larger entry is ignored.
+ */
+export const DEFAULT_MAX_PRESENCE_BYTES = 16 * 1024;
+/**
+ * Presence messages (entries and queries) a socket may send per second,
+ * sustained, on a bucket of its own (a ten-second burst): a view
+ * publishes at most every 50 ms (`presence.throttle`), and renews every
+ * 15 s. Past it, entries are coalesced and queries dropped.
+ */
+export const DEFAULT_MAX_PRESENCE_PER_SECOND = 50;
 /** Seconds of the update rate a socket may spend at once. */
 const BURST_SECONDS = 10;
 /** The ceiling of a quota knob (a host may raise the defaults up to it). */
@@ -313,6 +325,8 @@ export type DocumentRoomEnv = {
 	EDYTOR_MAX_INBOUND_FRAME_BYTES?: string | number;
 	EDYTOR_MAX_BUFFERED_BYTES?: string | number;
 	EDYTOR_MAX_UPDATES_PER_SECOND?: string | number;
+	EDYTOR_MAX_PRESENCE_BYTES?: string | number;
+	EDYTOR_MAX_PRESENCE_PER_SECOND?: string | number;
 	/** `off`: the room logs nothing (default: one JSON line per compaction, quota hit, denial, fault). */
 	EDYTOR_LOG?: string;
 	/**
@@ -368,6 +382,10 @@ export type Refusal = {
 		| 'internal'
 		// A room quota refused the frame ({ user, quota, … }): the socket is closed 4413.
 		| 'quota'
+		// A presence entry past `maxPresenceBytes` ignored ({ user, quota: 'size', bytes, limit }),
+		// or a presence message past `maxPresencePerSecond` ({ user, quota: 'rate', limit }):
+		// an entry coalesced (the newest is relayed later), a query dropped. The socket stays.
+		| 'presence'
 		// Per-writer block marks (`del.<n>`, `wd.<n>`) the sender may not write
 		// or delete, stripped ({ user, writers, ranges }); the rest of the frame applies.
 		| 'mark'
@@ -1273,6 +1291,10 @@ export type AttachDocumentOptions = {
 	maxBufferedBytes?: number;
 	/** Sync messages per second a socket may send (default {@link DEFAULT_MAX_UPDATES_PER_SECOND}). */
 	maxUpdatesPerSecond?: number;
+	/** Largest presence state a socket may publish, as JSON (default {@link DEFAULT_MAX_PRESENCE_BYTES}). */
+	maxPresenceBytes?: number;
+	/** Presence messages per second a socket may send (default {@link DEFAULT_MAX_PRESENCE_PER_SECOND}). */
+	maxPresencePerSecond?: number;
 	/**
 	 * Accept, then compensate (H2): after the room applied and stored a
 	 * client frame that changed blocks, it is asked whether to keep it.
@@ -1362,6 +1384,8 @@ export class AttachedDocument {
 	readonly maxInboundFrameBytes: number;
 	readonly maxBufferedBytes: number;
 	readonly maxUpdatesPerSecond: number;
+	readonly maxPresenceBytes: number;
+	readonly maxPresencePerSecond: number;
 	private live: YDoc | null = null;
 	/** Why the stored container was refused (another generation, a torn record, `onLoad`…). */
 	failure: Error | null = null;
@@ -1402,6 +1426,13 @@ export class AttachedDocument {
 	private validation: Validation | null = null;
 	/** Each socket's update allowance (a token bucket; memory: a wake refills it). */
 	private readonly allowances = new WeakMap<WebSocket, { tokens: number; at: number }>();
+	/** Each socket's presence allowance, a bucket of its own. */
+	private readonly presenceAllowances = new WeakMap<WebSocket, { tokens: number; at: number }>();
+	/**
+	 * Each socket's newest presence entry past its rate, relayed once the
+	 * rate allows (the end of any message), or replaced by a newer one.
+	 */
+	private readonly heldPresence = new Map<WebSocket, AwarenessEntry>();
 	/**
 	 * Each socket's chunked frame in flight, released when it ends or its
 	 * socket closes (memory: a wake loses it, and the socket is faulted).
@@ -1489,6 +1520,16 @@ export class AttachedDocument {
 		this.maxUpdatesPerSecond = knob(
 			options.maxUpdatesPerSecond,
 			DEFAULT_MAX_UPDATES_PER_SECOND,
+			QUOTA_CEILING
+		);
+		this.maxPresenceBytes = knob(
+			options.maxPresenceBytes,
+			DEFAULT_MAX_PRESENCE_BYTES,
+			QUOTA_CEILING
+		);
+		this.maxPresencePerSecond = knob(
+			options.maxPresencePerSecond,
+			DEFAULT_MAX_PRESENCE_PER_SECOND,
 			QUOTA_CEILING
 		);
 		const prefix = options.tablePrefix ?? 'edytor_';
@@ -3813,7 +3854,11 @@ export class AttachedDocument {
 			if (doc === null) return this.refuseContainer(ws);
 			const attachment = ws.deserializeAttachment() as Attachment | null;
 			if (!attachment?.user) return this.refuse(ws, { reason: 'identity', detail: null });
-			this.onFrame(ws, attachment, doc, new Uint8Array(message));
+			try {
+				this.onFrame(ws, attachment, doc, new Uint8Array(message));
+			} finally {
+				this.releasePresence();
+			}
 		});
 		return true;
 	}
@@ -3841,6 +3886,8 @@ export class AttachedDocument {
 				return this.onPresence(ws, attachment, doc, entries);
 			}
 			if (type === E.messageQueryAwareness) {
+				// A query costs a snapshot of every entry: past the rate, dropped.
+				if (!this.allow(ws, 'presence')) return this.presenceOverRate(attachment);
 				return this.send(ws, presenceFrame([...this.presence.values()]));
 			}
 			this.refuse(ws, { reason: 'malformed', detail: `message type ${type}` });
@@ -3963,20 +4010,23 @@ export class AttachedDocument {
 	/**
 	 * The update rate quota (H3): a token bucket per socket, refilled at
 	 * `maxUpdatesPerSecond` up to ten seconds' worth. `false`: over it.
+	 * Presence messages draw from a bucket of their own, refilled at
+	 * `maxPresencePerSecond` (`room.presence.quota`).
 	 */
-	private allow(ws: WebSocket): boolean {
+	private allow(ws: WebSocket, kind: 'sync' | 'presence' = 'sync'): boolean {
+		const [allowances, perSecond] =
+			kind === 'sync'
+				? [this.allowances, this.maxUpdatesPerSecond]
+				: [this.presenceAllowances, this.maxPresencePerSecond];
 		const now = Date.now();
-		const burst = this.maxUpdatesPerSecond * BURST_SECONDS;
-		const held = this.allowances.get(ws) ?? { tokens: burst, at: now };
-		const tokens = Math.min(
-			burst,
-			held.tokens + ((now - held.at) / 1000) * this.maxUpdatesPerSecond
-		);
+		const burst = perSecond * BURST_SECONDS;
+		const held = allowances.get(ws) ?? { tokens: burst, at: now };
+		const tokens = Math.min(burst, held.tokens + ((now - held.at) / 1000) * perSecond);
 		if (tokens < 1) {
-			this.allowances.set(ws, { tokens, at: now });
+			allowances.set(ws, { tokens, at: now });
 			return false;
 		}
-		this.allowances.set(ws, { tokens: tokens - 1, at: now });
+		allowances.set(ws, { tokens: tokens - 1, at: now });
 		return true;
 	}
 
@@ -4026,6 +4076,7 @@ export class AttachedDocument {
 
 	/** The departure the client may not have announced — from the attachment, so it works after a wake. */
 	private depart(ws: WebSocket) {
+		this.heldPresence.delete(ws);
 		const attachment = ws.deserializeAttachment() as Attachment | null;
 		if (attachment?.replica == null || attachment.clock === null) return;
 		// Announce once: a later close/error event on this socket is a no-op.
@@ -4424,6 +4475,16 @@ export class AttachedDocument {
 		if (entry === undefined || replica === null) return;
 		const known = this.presence.get(replica);
 		if (known && known.clock > entry.clock) return;
+		// The size quota: an entry past it is ignored (its previous one stays).
+		if (entry.state !== null) {
+			const bytes = encodeJSON(entry.state).length;
+			if (bytes > this.maxPresenceBytes) {
+				return this.note({
+					reason: 'presence',
+					detail: { user: attachment.user, quota: 'size', bytes, limit: this.maxPresenceBytes }
+				});
+			}
+		}
 		if (entry.state === null) this.presence.delete(replica);
 		else this.presence.set(replica, entry);
 		ws.serializeAttachment({
@@ -4431,7 +4492,49 @@ export class AttachedDocument {
 			replica,
 			clock: entry.state === null ? null : entry.clock
 		} satisfies Attachment);
+		// The rate quota: past it, the newest entry waits for the next token.
+		if (!this.allow(ws, 'presence')) {
+			this.heldPresence.set(ws, entry);
+			return this.presenceOverRate(attachment);
+		}
+		this.heldPresence.delete(ws);
+		this.relayPresence(ws, entry);
+	}
+
+	/** Relay a socket's accepted entry: to its sender too (liveness), but a removal. */
+	private relayPresence(ws: WebSocket, entry: AwarenessEntry) {
 		this.broadcast(presenceFrame([entry]), entry.state === null ? ws : null);
+	}
+
+	/** A presence message past the socket's rate (`room.presence.quota`): logged, never closed. */
+	private presenceOverRate(attachment: Attachment) {
+		this.note({
+			reason: 'presence',
+			detail: { user: attachment.user, quota: 'rate', limit: this.maxPresencePerSecond }
+		});
+	}
+
+	/**
+	 * Relay the entries held past their socket's rate whose rate allows them
+	 * now — the newest of each socket, at the end of any socket's message
+	 * (no timer: a Durable Object with one could not hibernate). A socket
+	 * that floods is relayed at its rate, its last entry at the latest with
+	 * the room's next message (every client renews its presence). The
+	 * entries released together go out as one frame.
+	 */
+	private releasePresence() {
+		if (this.heldPresence.size === 0) return;
+		const due: AwarenessEntry[] = [];
+		for (const [ws, entry] of this.heldPresence) {
+			if (ws.readyState !== WebSocket.OPEN) {
+				this.heldPresence.delete(ws);
+			} else if (this.allow(ws, 'presence')) {
+				this.heldPresence.delete(ws);
+				if (entry.state === null) this.relayPresence(ws, entry);
+				else due.push(entry);
+			}
+		}
+		if (due.length > 0) this.broadcast(presenceFrame(due), null);
 	}
 
 	/** Log a refusal: the newest {@link MAX_REFUSALS} are kept, every reason is counted. */
@@ -4554,6 +4657,8 @@ export class DocumentRoom<
 			maxInboundFrameBytes: Number(knobs.EDYTOR_MAX_INBOUND_FRAME_BYTES),
 			maxBufferedBytes: Number(knobs.EDYTOR_MAX_BUFFERED_BYTES),
 			maxUpdatesPerSecond: Number(knobs.EDYTOR_MAX_UPDATES_PER_SECOND),
+			maxPresenceBytes: Number(knobs.EDYTOR_MAX_PRESENCE_BYTES),
+			maxPresencePerSecond: Number(knobs.EDYTOR_MAX_PRESENCE_PER_SECOND),
 			tablePrefix: '',
 			purgeAfterDays: purgeAfterDays(knobs.EDYTOR_PURGE_AFTER_DAYS),
 			now: () => this.now(),

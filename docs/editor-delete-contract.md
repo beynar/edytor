@@ -1899,6 +1899,24 @@ live socket (the sender's later frames would wait on the dropped one in
 the room's memory, unacknowledged, for good), not a redial (it resends
 the same frame into the same quota). Pins: `h3-quotas.test.ts`.
 
+### `room.presence.quota` — presence within a size and a rate (WU-05)
+
+A socket's presence entry (only its own replica's is taken) whose state,
+as JSON, is larger than `maxPresenceBytes` (16 KiB) is ignored — not
+kept, not relayed, the previous entry stays — and logged `presence`
+(`{ user, quota: 'size', bytes, limit }`). Presence entries and queries
+draw from a token bucket of their own per socket, `maxPresencePerSecond`
+(50, a ten-second burst), apart from the sync messages' rate: past it a
+query is dropped, and an entry is held (the socket's newest replaces the
+one held), relayed at the end of any socket's later message once the
+socket's bucket has a token, the entries released together in one frame
+(a removal on its own, never to its sender); both logged `presence`
+(`{ user, quota: 'rate', limit }`). No timer: the last held entry of a
+socket that stops waits for the room's next message (every client renews
+every 15 s). Nothing closes the socket; read-only sockets keep presence
+within the same quotas; a socket's held entry goes when it departs
+(`wu05-presence-quota.test.ts`).
+
 ### `room.marks.writer` — only `n` writes or deletes `del.<n>` / `wd.<n>` (H2)
 
 A per-writer block mark (`del.<n>`, `wd.<n>` on a block node, R3 and

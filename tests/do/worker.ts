@@ -131,7 +131,8 @@ export class FieldRoom extends DocumentRoom<Env> {
 
 /**
  * A room with its own quotas (rooms `quota-*`), set the way a host sets
- * them: the `EDYTOR_MAX_*` vars. Low by default; by name, `quota-buffer-*`
+ * them: the `EDYTOR_MAX_*` vars. Low by default (2 presence messages a
+ * second too); by name, `quota-buffer-*`
  * takes 30,000-byte frames into a 40,000-byte room-wide chunk buffer (a
  * 200,000-byte document, the default rate), and `quota-big-*` raises the
  * document and frame quotas to 64 MiB (an operator's large documents).
@@ -163,7 +164,8 @@ export class QuotaRoom extends DocumentRoom<Env> {
 							...env,
 							EDYTOR_MAX_DOCUMENT_BYTES: '20000',
 							EDYTOR_MAX_INBOUND_FRAME_BYTES: '30000',
-							EDYTOR_MAX_UPDATES_PER_SECOND: '2'
+							EDYTOR_MAX_UPDATES_PER_SECOND: '2',
+							EDYTOR_MAX_PRESENCE_PER_SECOND: '2'
 						}
 		);
 	}

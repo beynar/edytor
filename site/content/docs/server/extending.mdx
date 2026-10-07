@@ -88,6 +88,8 @@ A Durable Object has one alarm, which the document shares among its tasks: `onSa
 | `maxDocumentBytes` | 2 MiB | The document [quota](/docs/server/room#quotas). |
 | `maxUpdatesPerSecond` | `50` | Sync messages per second and socket ([quota](/docs/server/room#quotas)). |
 | `maxInboundFrameBytes` | 4 MiB | Largest frame a socket may send, reassembled ([quota](/docs/server/room#quotas)). |
+| `maxPresenceBytes` | 16 KiB | Largest presence state a socket may publish ([presence](/docs/server/room#identity-and-presence)). |
+| `maxPresencePerSecond` | `50` | Presence messages per second and socket ([presence](/docs/server/room#identity-and-presence)). |
 | `maxBufferedBytes` | twice `maxInboundFrameBytes` | The chunk sequences in flight on every socket together ([catch-up](/docs/server/room#catch-up-of-large-documents)). |
 | `tablePrefix` | `'edytor_'` | Prefix of the document's two tables. |
 | `semantics` | `defaultSemantics` | The block roles server edits obey. See [Block roles on the server](#block-roles-on-the-server). |

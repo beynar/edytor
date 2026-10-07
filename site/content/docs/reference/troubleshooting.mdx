@@ -43,6 +43,7 @@ The WebSocket provider reports how a connection ended through its [events](/docs
 | Any other `4xxx` | An application refusal from your own server. | Terminal, like `4403`. |
 | `1011` `storage failure` | The room could not store an update or a client-id registration. | Redials; the handshake resends the edit. While the fault repeats, each `1011` doubles the backoff and emits `unreachable`, until the room acknowledges the edits. |
 | `1011` `internal error` | The room's CRDT engine or a send failed; the room rebuilt its document from storage. | Redials, backing off the same way; the handshake resends the edit. |
+| `1011` `room busy` | The room's buffer for chunked frames (`EDYTOR_MAX_BUFFERED_BYTES`) was full of other sockets' sequences when this one started a large frame. | Redials with backoff and resends. Only frames over the provider's `maxFrameBytes` (32 MiB) are chunked, so it takes raised quotas. |
 | `1011` `room unavailable` | The room's `onLoad` threw, or the room could not read its rows (when it started, or after a storage failure). | Redials; the room loads again at the next dial. |
 | `permission-denied` message (`read-only`) | The read-only socket sent an edit (joining alone sends a notice that sets `provider.readOnly`, not this event). | The socket stays open and syncs; the edit is not stored. Render read-only users with a read-only view. |
 

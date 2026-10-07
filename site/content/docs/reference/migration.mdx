@@ -131,6 +131,11 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### Unreleased
+
+- **Room quotas fit the room's memory.** A room holds its live document in an isolate of 128 MB, where it takes 18 to 46 times its stored size, so the old default document quota (64 MiB) could only be reached by crashing the room. The defaults are now `EDYTOR_MAX_DOCUMENT_BYTES` 2 MiB (was 64 MiB) and `EDYTOR_MAX_INBOUND_FRAME_BYTES` 4 MiB (was 64 MiB). A room whose document is already past 2 MiB keeps it and serves it, but refuses a write that adds content (`4413`, `quota: document`; a delete still applies): set `EDYTOR_MAX_DOCUMENT_BYTES` (and the frame quota with it) to what your documents need and your memory allows, measured in [quotas](/docs/server/room#quotas). `DEFAULT_MAX_DOCUMENT_BYTES` and `DEFAULT_MAX_INBOUND_FRAME_BYTES` change with them.
+- **Chunked frames are bounded room-wide.** New `EDYTOR_MAX_BUFFERED_BYTES` (`maxBufferedBytes`, `DEFAULT_MAX_BUFFERED_BYTES`; twice the frame quota by default): the chunk sequences in flight on all sockets share it, and one that would pass it closes its socket `1011` (`room busy`), redialed. A sequence is assembled into one buffer of its announced size, a read-only socket's sequences are denied (`read-only`) and never buffered, and a sequence's start counts against the update rate. `createChunkReader(maxBytes?, admit?)` takes the `admit` hook and exposes `buffered`; `metrics()` reports `buffered: { sequences, bytes }`. See [catch-up](/docs/server/room#catch-up-of-large-documents).
+
 ### From 0.1.0-next.31
 
 - **Security fix: links.** A link whose `href` started with an ASCII control character or a space before `javascript:` (for example `\u0001javascript:…`) passed `sanitizeLinkHref` as a relative link, and browsers, which strip those characters, would run it when clicked. The sanitizer now reads an `href` as the browser's URL parser does: it strips control characters and spaces at both ends and tabs and newlines anywhere, resolves it, and keeps it only when its scheme is `http:`, `https:`, `mailto:` or `tel:` (a relative link resolves to none of its own). Links already stored with such an `href` render without one. Upgrade.

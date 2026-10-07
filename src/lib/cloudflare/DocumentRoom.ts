@@ -173,13 +173,24 @@ export const DEFAULT_SAVE_AFTER = 2000;
 /**
  * Room quotas (H3), each refused with `4413` (`quota: <name>`). The
  * document's size: what its records hold (uncompressed) and the updates the
- * engine holds waiting — the live document holds about that, several
- * times over in memory for text (an isolate has 128 MB). Raise or lower
- * it for your documents.
+ * engine holds waiting. An isolate has 128 MB, and the live document takes
+ * 18 to 46 bytes of heap per stored byte (prose to one short line per
+ * block, its index included; `bench/room-memory.mjs`, WU-04): 2 MiB is
+ * about 100 MB at worst. Raise it for documents of long text.
  */
-export const DEFAULT_MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
-/** The largest frame a socket may send, reassembled from chunks (the platform caps one message at 32 MiB). */
-export const DEFAULT_MAX_INBOUND_FRAME_BYTES = 64 * 1024 * 1024;
+export const DEFAULT_MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
+/**
+ * The largest frame a socket may send, reassembled from chunks: room for a
+ * whole document at the default quota (a client seeding an empty room).
+ * Raise it with the document quota.
+ */
+export const DEFAULT_MAX_INBOUND_FRAME_BYTES = 4 * 1024 * 1024;
+/**
+ * The chunk sequences in flight on all of a room's sockets together, by
+ * default twice the frame quota (never less than one frame): each is one
+ * buffer of its announced size, allocated at its start.
+ */
+export const DEFAULT_MAX_BUFFERED_BYTES = 2 * DEFAULT_MAX_INBOUND_FRAME_BYTES;
 /**
  * Sync messages a socket may send per second, sustained; a burst of ten
  * seconds' worth is allowed (a reconnect, a paste). Far above typing
@@ -300,6 +311,7 @@ export type DocumentRoomEnv = {
 	EDYTOR_SAVE_AFTER?: string | number;
 	EDYTOR_MAX_DOCUMENT_BYTES?: string | number;
 	EDYTOR_MAX_INBOUND_FRAME_BYTES?: string | number;
+	EDYTOR_MAX_BUFFERED_BYTES?: string | number;
 	EDYTOR_MAX_UPDATES_PER_SECOND?: string | number;
 	/** `off`: the room logs nothing (default: one JSON line per compaction, quota hit, denial, fault). */
 	EDYTOR_LOG?: string;
@@ -397,6 +409,8 @@ export type RoomMetrics = {
 	waitingBytes: number;
 	/** The document's open sockets. */
 	sockets: number;
+	/** Chunk sequences in flight on every socket, and the bytes buffered for them (`maxBufferedBytes`). */
+	buffered: { sequences: number; bytes: number };
 	/** Compactions run, with their time. */
 	compaction: Timing & { lastBytes: number };
 	/** Client sync frames folded (applied, indexed, stored and relayed), with their time. */
@@ -470,6 +484,15 @@ export const closedSocket = (code: number, reason: string): Response => {
 
 /** The client's bytes do not decode: the only `malformed` refusal. */
 class MalformedFrame extends Error {}
+/** A chunk sequence the room does not take at its start: past the rate, or past the room's buffer. */
+class ChunksRefused extends Error {
+	constructor(
+		readonly quota: 'rate' | 'buffer',
+		readonly detail: Record<string, number>
+	) {
+		super(`chunks: ${quota}`);
+	}
+}
 /** A SQLite fault outside the append path (the replica registry). */
 class StorageFault extends Error {}
 /** A stored record missing some of its rows, or one that does not inflate: the container is corrupt, not the read. */
@@ -1241,6 +1264,13 @@ export type AttachDocumentOptions = {
 	maxDocumentBytes?: number;
 	/** Largest frame a socket may send, reassembled (default {@link DEFAULT_MAX_INBOUND_FRAME_BYTES}). */
 	maxInboundFrameBytes?: number;
+	/**
+	 * The chunk sequences in flight on every socket together (default twice
+	 * `maxInboundFrameBytes`, never less than it): a sequence that would
+	 * pass it closes its socket `1011` (`room busy`), and its provider
+	 * redials.
+	 */
+	maxBufferedBytes?: number;
 	/** Sync messages per second a socket may send (default {@link DEFAULT_MAX_UPDATES_PER_SECOND}). */
 	maxUpdatesPerSecond?: number;
 	/**
@@ -1330,6 +1360,7 @@ export class AttachedDocument {
 	readonly saveAfter: number;
 	readonly maxDocumentBytes: number;
 	readonly maxInboundFrameBytes: number;
+	readonly maxBufferedBytes: number;
 	readonly maxUpdatesPerSecond: number;
 	private live: YDoc | null = null;
 	/** Why the stored container was refused (another generation, a torn record, `onLoad`…). */
@@ -1371,8 +1402,11 @@ export class AttachedDocument {
 	private validation: Validation | null = null;
 	/** Each socket's update allowance (a token bucket; memory: a wake refills it). */
 	private readonly allowances = new WeakMap<WebSocket, { tokens: number; at: number }>();
-	/** Each socket's chunked frame in flight (memory: a wake loses it, and the socket is faulted). */
-	private readonly chunkReaders = new WeakMap<WebSocket, ReturnType<typeof E.createChunkReader>>();
+	/**
+	 * Each socket's chunked frame in flight, released when it ends or its
+	 * socket closes (memory: a wake loses it, and the socket is faulted).
+	 */
+	private readonly chunkReaders = new Map<WebSocket, E.ChunkReader>();
 	/** A failed append: the live doc holds what storage does not, until it is rebuilt. */
 	private unstored: unknown = null;
 	/** Inside `transact`, its commit included (a nested call is refused but while `fn` runs). */
@@ -1447,6 +1481,10 @@ export class AttachedDocument {
 			options.maxInboundFrameBytes,
 			DEFAULT_MAX_INBOUND_FRAME_BYTES,
 			QUOTA_CEILING
+		);
+		this.maxBufferedBytes = Math.max(
+			this.maxInboundFrameBytes,
+			knob(options.maxBufferedBytes, 2 * this.maxInboundFrameBytes, QUOTA_CEILING)
 		);
 		this.maxUpdatesPerSecond = knob(
 			options.maxUpdatesPerSecond,
@@ -3356,6 +3394,7 @@ export class AttachedDocument {
 				updateRecords: this.updates,
 				waitingBytes: this.live?.store.pendingStructs?.update.length ?? 0,
 				sockets: this.ctx.getWebSockets(SOCKET_TAG).length,
+				buffered: this.buffered(),
 				compaction: { ...this.counters.compaction },
 				fold: { ...this.counters.fold },
 				fanOut: { ...this.counters.fanOut },
@@ -3817,16 +3856,18 @@ export class AttachedDocument {
 
 	/**
 	 * One chunk of a frame too large to send whole (H6: a provider's
-	 * reconnect diff): buffered per socket, the whole frame handled once its
-	 * sequence ends. A sequence announcing more than `maxInboundFrameBytes`
-	 * is a frame quota refusal, before anything is buffered. A part with no
+	 * reconnect diff): buffered per socket into one buffer of the
+	 * sequence's announced size, the whole frame handled once its sequence
+	 * ends (`net.chunk.inbound`). A sequence announcing more than
+	 * `maxInboundFrameBytes` is a frame quota refusal, before anything is
+	 * buffered; its start is admitted by {@link admitChunks}. A part with no
 	 * sequence started — the room woke between two chunks and lost the
 	 * buffer — faults the socket (1011): its provider redials and resends.
 	 */
 	private onChunk(ws: WebSocket, attachment: Attachment, doc: YDoc, decoder: E.Decoder) {
 		let read = this.chunkReaders.get(ws);
 		if (read === undefined) {
-			read = E.createChunkReader(this.maxInboundFrameBytes);
+			read = E.createChunkReader(this.maxInboundFrameBytes, (total) => this.admitChunks(ws, total));
 			this.chunkReaders.set(ws, read);
 		}
 		let whole: Uint8Array | null;
@@ -3840,6 +3881,19 @@ export class AttachedDocument {
 					limit: error.limit
 				});
 			}
+			if (error instanceof ChunksRefused) {
+				if (error.quota === 'rate') {
+					return this.overQuota(ws, attachment.user, 'rate', error.detail);
+				}
+				// The room's buffer is full, not the sender at fault: it redials.
+				this.note({
+					reason: 'quota',
+					detail: { user: attachment.user, quota: 'buffer', ...error.detail }
+				});
+				this.log({ edytor: 'quota', user: attachment.user, quota: 'buffer' });
+				this.depart(ws);
+				return this.close(ws, CLOSE.fault, 'room busy');
+			}
 			if (error instanceof ChunkSequenceError) {
 				this.note({ reason: 'internal', detail: `chunks: ${error.message}` });
 				this.depart(ws);
@@ -3848,6 +3902,41 @@ export class AttachedDocument {
 			throw new MalformedFrame(String(error));
 		}
 		if (whole !== null) this.onFrame(ws, attachment, doc, whole);
+	}
+
+	/**
+	 * Admit a chunk sequence's start (`net.chunk.inbound`), before its
+	 * buffer is allocated: a read-only socket's is skipped, never buffered
+	 * (it could only carry a write: denied, the socket stays); the start
+	 * counts against the update rate; and the sequences in flight on every
+	 * socket share `maxBufferedBytes` ({@link ChunksRefused}).
+	 */
+	private admitChunks(ws: WebSocket, total: number): boolean {
+		const attachment = ws.deserializeAttachment() as Attachment;
+		if (attachment.readOnly) {
+			this.note({ reason: 'read-only', detail: attachment.user });
+			this.send(ws, readOnlyDenialFrame());
+			return false;
+		}
+		if (!this.allow(ws)) throw new ChunksRefused('rate', { perSecond: this.maxUpdatesPerSecond });
+		let buffered = 0;
+		for (const [other, read] of this.chunkReaders) if (other !== ws) buffered += read.buffered;
+		if (buffered + total > this.maxBufferedBytes) {
+			throw new ChunksRefused('buffer', { bytes: total, buffered, limit: this.maxBufferedBytes });
+		}
+		return true;
+	}
+
+	/** What the room buffers for chunk sequences in flight (`metrics().buffered`). */
+	private buffered(): { sequences: number; bytes: number } {
+		let sequences = 0;
+		let bytes = 0;
+		for (const read of this.chunkReaders.values()) {
+			if (read.buffered === 0) continue;
+			sequences++;
+			bytes += read.buffered;
+		}
+		return { sequences, bytes };
 	}
 
 	/**
@@ -3916,6 +4005,7 @@ export class AttachedDocument {
 
 	webSocketClose(ws: WebSocket, code: number, reason: string): boolean {
 		if (!this.owns(ws)) return false;
+		this.chunkReaders.delete(ws);
 		noTimers(() => this.depart(ws));
 		// Complete the closing handshake (a no-op where the runtime already
 		// auto-replies). 1005/1006 are not sendable codes.
@@ -3929,6 +4019,7 @@ export class AttachedDocument {
 
 	webSocketError(ws: WebSocket): boolean {
 		if (!this.owns(ws)) return false;
+		this.chunkReaders.delete(ws);
 		noTimers(() => this.depart(ws));
 		return true;
 	}
@@ -4358,6 +4449,7 @@ export class AttachedDocument {
 	}
 
 	private close(ws: WebSocket, code: number, reason: string) {
+		this.chunkReaders.delete(ws);
 		try {
 			ws.close(code, reason);
 		} catch {
@@ -4460,6 +4552,7 @@ export class DocumentRoom<
 			saveAfter: Number(knobs.EDYTOR_SAVE_AFTER),
 			maxDocumentBytes: Number(knobs.EDYTOR_MAX_DOCUMENT_BYTES),
 			maxInboundFrameBytes: Number(knobs.EDYTOR_MAX_INBOUND_FRAME_BYTES),
+			maxBufferedBytes: Number(knobs.EDYTOR_MAX_BUFFERED_BYTES),
 			maxUpdatesPerSecond: Number(knobs.EDYTOR_MAX_UPDATES_PER_SECOND),
 			tablePrefix: '',
 			purgeAfterDays: purgeAfterDays(knobs.EDYTOR_PURGE_AFTER_DAYS),

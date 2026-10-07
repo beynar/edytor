@@ -1879,14 +1879,19 @@ a block delete 43 / 65, an Enter 355 / 293, five keystrokes merged
 ### `room.quota` — a write past a quota is refused, the socket closed `4413` (H3)
 
 Three quotas, each a `vars` setting and an `attachDocument` option:
-`maxDocumentBytes` (64 MiB: what the records hold, uncompressed, plus the
+`maxDocumentBytes` (2 MiB: what the records hold, uncompressed, plus the
 engine's waiting structs; checked after compacting the update records,
 net of the content the frame deletes, so a frame that deletes at least
 what it adds always applies), `maxUpdatesPerSecond` (50 sync messages a
 second per socket, a token bucket with a ten-second burst; every sync
-message counts, a Step1 too) and `maxInboundFrameBytes` (64 MiB, one
-frame reassembled; a chunk sequence announcing more is refused at its
-start). A frame past one is not applied, logged `quota`
+message counts, a Step1 too, and a chunk sequence's start) and
+`maxInboundFrameBytes` (4 MiB, one frame reassembled; a chunk sequence
+announcing more is refused at its start). The defaults are the room's
+memory (WU-04): an isolate has 128 MB and the live document, its index
+included, takes 18 to 46 bytes of heap per stored byte
+(`bench/room-memory.mjs`, Node; prose to one short line per block), so
+the default document stays near 100 MB at worst, and the frame quota
+holds a whole document at it (a client seeding an empty room). A frame past one is not applied, logged `quota`
 (`{ user, quota, … }`), and its socket closed `4413` (`quota: <name>`,
 `CLOSE.quota`, a refusal by `isRefusal`): the provider emits `refused`,
 the document records `syncRefusal`, and nothing redials. Not a drop on a
@@ -1942,6 +1947,23 @@ its document): its denial deletes the blocks it added
 (`prepare.deleteBlocks`, one room transaction); its bootstrap (the schema
 stamp) stays.
 
+### `net.chunk.inbound` — what a room buffers for chunks is bounded (WU-04)
+
+The room reassembles a socket's chunk sequence into ONE buffer of its
+announced size, allocated at its start (`createChunkReader`'s `admit`
+hook decides first; `buffered` is that size). At the start: a read-only
+socket's sequence is skipped, never buffered (the `read-only` denial,
+once, the socket stays: it could only carry a write); the start takes a
+token of the update rate (`quota: rate` past it); and the sequences in
+flight on every socket share `maxBufferedBytes` (twice the frame quota,
+never below one frame, so a frame within the quota always fits alone):
+a start that would pass it closes its socket `1011` (`room busy`, logged
+`quota` with `{ user, quota: 'buffer', bytes, buffered, limit }`) — the
+room is busy, not the sender at fault, so its provider redials with
+backoff — and the others complete. A socket's buffer is released at its
+sequence's end, at any refusal and when it closes. `metrics().buffered`
+is `{ sequences, bytes }` (`wu04-memory-limits.test.ts`).
+
 ### `net.chunk.outbound` — a backlog of any size reaches the room (H6)
 
 The provider sends a frame larger than its `maxFrameBytes` (32 MiB,
@@ -1952,7 +1974,8 @@ the frame quota checked at the sequence's start) and admits the whole
 frame as any other; a part or end with no sequence started (a wake lost
 the buffer) closes the socket `1011` (`chunk sequence lost`) and the
 provider resends at its redial. A 40 MB offline backlog is delivered at
-reconnect and served to a fresh client (`h6-chunking.test.ts`). The image
+reconnect and served to a fresh client, in a room whose document and
+frame quotas are raised to 64 MiB (`h6-chunking.test.ts`). The image
 plugin stores no inline image over `MAX_INLINE_IMAGE_BYTES` (1 MiB of its
 `data:` URL): the link field refuses it and names `upload` (or a hosted
 link), an HTML paste does not import it (`storableImageSrc`); rendering

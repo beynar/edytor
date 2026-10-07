@@ -85,9 +85,10 @@ A Durable Object has one alarm, which the document shares among its tasks: `onSa
 | `compactAfter` | `500` | Stored updates before the rows are replaced by one snapshot of the live document. |
 | `maxRowBytes` | 1,995,904 | Largest stored row. Can only be lowered. |
 | `maxFrameBytes` | 32 MiB | Largest frame sent whole; larger ones are chunked. Can only be lowered. |
-| `maxDocumentBytes` | 64 MiB | The document [quota](/docs/server/room#quotas). |
+| `maxDocumentBytes` | 2 MiB | The document [quota](/docs/server/room#quotas). |
 | `maxUpdatesPerSecond` | `50` | Sync messages per second and socket ([quota](/docs/server/room#quotas)). |
-| `maxInboundFrameBytes` | 64 MiB | Largest frame a socket may send, reassembled ([quota](/docs/server/room#quotas)). |
+| `maxInboundFrameBytes` | 4 MiB | Largest frame a socket may send, reassembled ([quota](/docs/server/room#quotas)). |
+| `maxBufferedBytes` | twice `maxInboundFrameBytes` | The chunk sequences in flight on every socket together ([catch-up](/docs/server/room#catch-up-of-large-documents)). |
 | `tablePrefix` | `'edytor_'` | Prefix of the document's two tables. |
 | `semantics` | `defaultSemantics` | The block roles server edits obey. See [Block roles on the server](#block-roles-on-the-server). |
 | `validate` | | Asked after each client frame that changed blocks; `false` makes the room undo it. See [Validate edits](#validate-edits). |

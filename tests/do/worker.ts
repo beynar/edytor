@@ -130,8 +130,11 @@ export class FieldRoom extends DocumentRoom<Env> {
 }
 
 /**
- * A room with low quotas (rooms `quota-*`), set the way a host sets them:
- * the `EDYTOR_MAX_*` vars.
+ * A room with its own quotas (rooms `quota-*`), set the way a host sets
+ * them: the `EDYTOR_MAX_*` vars. Low by default; by name, `quota-buffer-*`
+ * takes 30,000-byte frames into a 40,000-byte room-wide chunk buffer (a
+ * 200,000-byte document, the default rate), and `quota-big-*` raises the
+ * document and frame quotas to 64 MiB (an operator's large documents).
  */
 export class QuotaRoom extends DocumentRoom<Env> {
 	/** Its log entries (H14), kept instead of printed. */
@@ -140,12 +143,29 @@ export class QuotaRoom extends DocumentRoom<Env> {
 		this.logged.push(entry);
 	}
 	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, {
-			...env,
-			EDYTOR_MAX_DOCUMENT_BYTES: '20000',
-			EDYTOR_MAX_INBOUND_FRAME_BYTES: '30000',
-			EDYTOR_MAX_UPDATES_PER_SECOND: '2'
-		});
+		const name = ctx.id.name ?? '';
+		super(
+			ctx,
+			name.startsWith('quota-big-')
+				? {
+						...env,
+						EDYTOR_MAX_DOCUMENT_BYTES: String(64 * 1024 * 1024),
+						EDYTOR_MAX_INBOUND_FRAME_BYTES: String(64 * 1024 * 1024)
+					}
+				: name.startsWith('quota-buffer-')
+					? {
+							...env,
+							EDYTOR_MAX_DOCUMENT_BYTES: '200000',
+							EDYTOR_MAX_INBOUND_FRAME_BYTES: '30000',
+							EDYTOR_MAX_BUFFERED_BYTES: '40000'
+						}
+					: {
+							...env,
+							EDYTOR_MAX_DOCUMENT_BYTES: '20000',
+							EDYTOR_MAX_INBOUND_FRAME_BYTES: '30000',
+							EDYTOR_MAX_UPDATES_PER_SECOND: '2'
+						}
+		);
 	}
 }
 

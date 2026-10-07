@@ -6,7 +6,8 @@
  *   default, Cloudflare's message limit) as a chunk sequence, which the
  *   room reassembles, applies, stores and acknowledges;
  * - a 40 MB backlog written offline is delivered on reconnect, and a
- *   fresh client receives it;
+ *   fresh client receives it (a `quota-big-*` room: its document and frame
+ *   quotas raised to 64 MiB, as an operator raises them);
  * - a chunk with no sequence started (the room woke between two) faults
  *   the socket (`1011`), so its provider redials and resends.
  */
@@ -30,7 +31,7 @@ const noise = (length: number, seed: number) => {
 
 describe('H6 · outbound chunking', () => {
 	it('a 40 MB offline backlog is sent as chunks on reconnect; the room stores it and serves it', async () => {
-		const room = 'h6-backlog';
+		const room = 'quota-big-h6-backlog';
 		const sent: number[] = [];
 		let chunks = 0;
 		class Recording extends SelfWebSocket {

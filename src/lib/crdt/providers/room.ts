@@ -120,47 +120,71 @@ export class ChunkLimitError extends Error {
 /** A chunk part or end with no sequence started (one lost, or never sent). */
 export class ChunkSequenceError extends Error {}
 
+/** A chunk reader ({@link createChunkReader}): feed it chunk bodies; `buffered` is what it holds. */
+export type ChunkReader = {
+	(decoder: decoding.Decoder): Uint8Array | null;
+	/** Bytes held for the sequence in flight: its announced size, allocated at its start (0: none). */
+	readonly buffered: number;
+};
+
 /**
  * The receiving half of {@link chunkFrame}, one per connection: feed it
  * each chunk frame's body (after the message type); it returns the whole
  * frame on `end`, `null` before. An out-of-order or oversized sequence
  * throws and resets; a sequence announcing more than `maxBytes` throws
- * {@link ChunkLimitError} at its start, before anything is buffered.
+ * {@link ChunkLimitError} at its start, before anything is buffered. A
+ * sequence is assembled into ONE buffer of its announced size, allocated
+ * at its start (`buffered`), never into parts copied at its end.
+ * `admit(total)` is asked at each start, before that allocation: it may
+ * throw to refuse the sequence, or return `false` to skip it (its parts
+ * are read and dropped, and its end returns `null`).
  */
-export const createChunkReader = (maxBytes = Infinity) => {
-	let parts: Uint8Array[] | null = null;
+export const createChunkReader = (
+	maxBytes = Infinity,
+	admit: (total: number) => boolean = () => true
+): ChunkReader => {
+	let open = false;
+	let whole: Uint8Array | null = null;
 	let total = 0;
 	let received = 0;
-	return (decoder: decoding.Decoder): Uint8Array | null => {
-		const kind = decoding.readVarUint(decoder);
-		if (kind === chunkStart) {
-			parts = null;
-			total = decoding.readVarUint(decoder);
-			if (total > maxBytes) throw new ChunkLimitError(total, maxBytes);
-			parts = [];
-			received = 0;
-			return null;
-		}
-		const current = parts;
-		parts = null;
-		if (current === null) throw new ChunkSequenceError(`chunk ${kind} without a start`);
-		if (kind === chunkPart) {
-			const bytes = decoding.readVarUint8Array(decoder);
-			received += bytes.length;
-			if (received > total) throw new Error('chunked frame longer than announced');
-			current.push(bytes);
-			parts = current;
-			return null;
-		}
-		if (kind !== chunkEnd || received !== total) throw new Error('incomplete chunked frame');
-		const whole = new Uint8Array(total);
-		let at = 0;
-		for (const bytes of current) {
-			whole.set(bytes, at);
-			at += bytes.length;
-		}
-		return whole;
+	const reset = () => {
+		open = false;
+		whole = null;
+		total = 0;
+		received = 0;
 	};
+	const read = (decoder: decoding.Decoder): Uint8Array | null => {
+		try {
+			const kind = decoding.readVarUint(decoder);
+			if (kind === chunkStart) {
+				reset();
+				const announced = decoding.readVarUint(decoder);
+				if (announced > maxBytes) throw new ChunkLimitError(announced, maxBytes);
+				whole = admit(announced) ? new Uint8Array(announced) : null;
+				total = announced;
+				open = true;
+				return null;
+			}
+			if (!open) throw new ChunkSequenceError(`chunk ${kind} without a start`);
+			if (kind === chunkPart) {
+				const bytes = decoding.readVarUint8Array(decoder);
+				if (received + bytes.length > total) throw new Error('chunked frame longer than announced');
+				whole?.set(bytes, received);
+				received += bytes.length;
+				return null;
+			}
+			if (kind !== chunkEnd || received !== total) throw new Error('incomplete chunked frame');
+			const done = whole;
+			reset();
+			return done;
+		} catch (error) {
+			reset();
+			throw error;
+		}
+	};
+	return Object.defineProperty(read, 'buffered', {
+		get: () => (whole as Uint8Array | null)?.length ?? 0
+	}) as ChunkReader;
 };
 
 export type ProtocolMismatch = { expected: number; found: number | null };

@@ -1,0 +1,101 @@
+---
+title: Embed
+description: The embed plugin adds Notion's embed block, a provider's player (YouTube, Vimeo, Loom, Figma, CodePen, Spotify) in a sandboxed frame, from an allowlist you can extend.
+icon: app-window
+---
+
+`embedPlugin` adds Notion's embed block: an "Embed a link" panel until the block has a link, then the provider's player in a sandboxed `iframe`, with an editable caption. It is not a default plugin: list it.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, embedPlugin, slashMenuPlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[embedPlugin, slashMenuPlugin]} />
+```
+
+The slash menu then lists "Embed" under `Media`, and pasting a link a provider plays on an empty line offers to embed it ([Pasting a link on an empty line](/docs/editor/clipboard#pasting-a-link-on-an-empty-line)).
+
+## Options
+
+`createEmbedPlugin(options)` takes an `EmbedPluginOptions`:
+
+<TypeTable
+  type={{
+    providers: {
+      type: "readonly EmbedProvider[]",
+      description: "The allowlist. Default EMBED_PROVIDERS. A link none of them plays shows no frame.",
+    },
+  }}
+/>
+
+## Providers
+
+Only an allowlisted provider plays. `EMBED_PROVIDERS` holds:
+
+| Provider | Links                                                                   | Player                                       |
+| -------- | ----------------------------------------------------------------------- | -------------------------------------------- |
+| YouTube  | `youtube.com/watch?v=…`, `youtu.be/…`, `/shorts/…`, `/embed/…`, `/live/…` | `www.youtube-nocookie.com/embed/<id>`, with a `t` start time |
+| Vimeo    | `vimeo.com/<id>`, `player.vimeo.com/video/<id>`                          | `player.vimeo.com/video/<id>`                |
+| Loom     | `loom.com/share/<id>`, `loom.com/embed/<id>`                             | `www.loom.com/embed/<id>`                    |
+| Figma    | `figma.com/design/…` (also `file`, `proto`, `board`, `slides`, `deck`)   | `www.figma.com/embed?url=…`                  |
+| CodePen  | `codepen.io/<user>/pen/<id>`                                             | `codepen.io/<user>/embed/<id>`               |
+| Spotify  | `open.spotify.com/track/<id>` (also albums, playlists, episodes, shows, artists) | `open.spotify.com/embed/<kind>/<id>`         |
+
+A provider is an `EmbedProvider`: a `name` (the frame's `title`), `embed(url)` that answers the player URL for a link of the provider or `null`, and an optional `aspectRatio` (CSS, default `16 / 9`) or fixed `height` in pixels. Add your own after the bundled ones:
+
+```ts title="embeds.ts" check
+import { createEmbedPlugin, EMBED_PROVIDERS, type EmbedProvider } from 'edytor';
+
+const miro: EmbedProvider = {
+	name: 'Miro',
+	embed: (url) => {
+		const [kind, board] = url.pathname.split('/').filter(Boolean);
+		return url.hostname === 'miro.com' && kind === 'app' && /^[\w=-]+$/.test(board ?? '')
+			? `https://miro.com/app/live-embed/${board}/`
+			: null;
+	}
+};
+
+export const embed = createEmbedPlugin({ providers: [...EMBED_PROVIDERS, miro] });
+```
+
+Match the host exactly (never a suffix or a substring) and check every id you copy into the player URL. `embedSourceOf(link, providers?)` answers `{ src, provider }` for a link, or `null`.
+
+## Security
+
+- The frame's `src` is always the player URL the provider derives from the stored link, never the stored value: a collaborator or a pasted document can store any `url`, and a link no provider plays renders a plain link instead of a frame.
+- A player URL must be `https:`; a provider answering anything else is refused.
+- The stored link must be an absolute `http:`/`https:` URL with a host, read by the link sanitizer's rules (control characters stripped, as the browser's URL parser does): `safeWebUrl(value)`.
+- The frame has `sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"` (`EMBED_SANDBOX`): the player runs in its own origin and may open its pages in a new tab, but never navigates your page, opens dialogs, downloads or submits forms. It never has `srcdoc`.
+- `allow="fullscreen; picture-in-picture; encrypted-media; clipboard-write"` (`EMBED_ALLOW`), `referrerpolicy="strict-origin-when-cross-origin"` (YouTube refuses a player without its embedder's origin) and `loading="lazy"`.
+
+## The kind
+
+| Kind    | Element  | Data              | Preset                                                           |
+| ------- | -------- | ----------------- | ---------------------------------------------------------------- |
+| `embed` | `figure` | `{ url: string }` | Embed (⧉, group `Media`, keywords `iframe`, `youtube`, `vimeo`…) |
+
+The block is void like the [image](/docs/plugins/image): it takes no children and is never merged, and its only text is the caption. The command id is `block.embed`. Its role is in `defaultSemantics`, so the room and headless documents treat it as void too.
+
+In the empty block, the link field ("Paste the link…") embeds a link a provider plays as one data write, and shows "No embed provider plays that link." for another. A readonly view shows a passive placeholder.
+
+## Clipboard
+
+- Copying exports `<figure><iframe src="<player>" title="…" sandbox="…" allowfullscreen></iframe><figcaption>caption</figcaption></figure>`, or a link for a URL no provider plays; the plain text is the link, then the caption.
+- Pasting HTML imports an `iframe` whose `src` a provider plays (bare, or in a `figure` whose `figcaption` becomes the caption) as an embed of that `src`. Any other `iframe` is dropped, and nothing is imported from an `iframe` when the plugin is not listed.
+
+## Styling
+
+| Selector                              | Matches                                         |
+| ------------------------------------- | ----------------------------------------------- |
+| `[data-edytor-type='embed']`          | The `figure`                                    |
+| `[data-edytor-embed]`                 | The frame's wrapper (its aspect ratio or height) |
+| `[data-edytor-embed-unsupported]`     | The link shown for a URL no provider plays      |
+| `[data-edytor-media-empty]`           | The empty state                                 |
+| `[data-edytor-media-add]`             | The "Embed a link" button                       |
+| `[data-edytor-media-placeholder]`     | The readonly empty state                        |
+| `[data-edytor-media-form]`            | The link panel (field, button, error)           |
+| `[data-edytor-media-error]`           | The panel's error                               |
+
+The [Notion theme](/docs/customization/styling#notion-theme) styles them. The `media` selectors are shared by every media block's empty state ([bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)).

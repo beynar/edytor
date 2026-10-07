@@ -51,15 +51,18 @@ export const tagOf = (type: string, kind: BlockDefinition, data: Values) => {
  * catalogue kind's tag per preset (a content-less container takes its
  * default child's tag, one child per text line), a value-less mark's
  * `tag`, and each record's `parse` hook first (aliases, sanitized values).
- * Unknown elements degrade to text runs; whitespace collapses as HTML
- * renders it. `null` when the HTML carries nothing (`flow.shape`, F-P10).
+ * A void kind with a `parse` hook (an image, an embed, a video) is found
+ * by its hook only, and a void takes only its `figcaption`'s text; an
+ * `iframe`, `video` or `audio` no hook claims carries nothing. Unknown
+ * elements degrade to text runs; whitespace collapses as HTML renders it. `null` when the HTML carries nothing (`flow.shape`, F-P10).
  */
 export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow | null => {
 	if (!html || html.length > 8 * 1024 * 1024 || typeof DOMParser === 'undefined') return null;
 	const { blocks, marks } = kinds;
 	const byTag = new Map<string, Claim>();
 	for (const [type, kind] of blocks) {
-		if (!kind.presets?.length) continue;
+		// A void found by its hook carries its substance in data (a source): its tag alone is none.
+		if (!kind.presets?.length || (kind.void && kind.parse)) continue;
 		for (const { data = {} } of kind.presets) {
 			const tag = tagOf(type, kind, data);
 			if (tag && !byTag.has(tag)) byTag.set(tag, { type, data });
@@ -140,6 +143,14 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 				content: row ? [{ text: row }] : []
 			}));
 			return [{ type: claim.type, data: claim.data, content: [], children }];
+		}
+		// A void's only text is its caption: an `iframe`'s fallback, a `video`'s source list or
+		// a bookmark's link text is never content.
+		if (claim && blocks.get(claim.type)?.void) {
+			const line: Line = { type: claim.type, data: claim.data, content: [] };
+			const caption = [...element.children].find((child) => child.localName === 'figcaption');
+			for (const node of caption?.childNodes ?? []) inline(node, line, {}, false);
+			return [end(line)];
 		}
 		// A kind that shows no text of its own (a list, a layout, a column) takes none: its
 		// inline runs and a leading paragraph are lines of its default child, never hidden text.

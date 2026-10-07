@@ -1,0 +1,54 @@
+---
+title: Video
+description: The video plugin adds Notion's video block, a video file in the browser's player, linked or uploaded through your upload function.
+icon: video
+---
+
+`videoPlugin` adds Notion's video block: an "Embed a video" panel until the block has a source, then the browser's player (`<video controls>`), with an editable caption. It is not a default plugin: list it.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, createVideoPlugin, slashMenuPlugin } from 'edytor';
+
+	const video = createVideoPlugin({
+		upload: async (file) => {
+			const body = new FormData();
+			body.append('file', file);
+			const response = await fetch('/api/uploads', { method: 'POST', body });
+			return (await response.json()).url;
+		}
+	});
+</script>
+
+<Edytor plugins={[video, slashMenuPlugin]} />
+```
+
+The slash menu then lists "Video" under `Media`. `videoPlugin` is the plugin without `upload`: links only. A YouTube or Vimeo link is not a video file: it plays in an [embed](/docs/plugins/embed).
+
+## Options
+
+`createVideoPlugin(options)` takes a `MediaPluginOptions`: `upload(file)` uploads a picked file (`accept="video/*"`) and answers its URL, adding an Upload button to the empty block.
+
+## The kind
+
+| Kind    | Element  | Data              | Preset                                                     |
+| ------- | -------- | ----------------- | ---------------------------------------------------------- |
+| `video` | `figure` | `{ src: string }` | Video (🎬, group `Media`, keywords `movie`, `mp4`, `clip`) |
+
+A source is accepted only when it is an `http:`/`https:` URL with a host or a `blob:` URL of one (`safeMediaSrc`), never `data:` or a script URL; any other stored value shows no player. The player has `controls`, `preload="metadata"` and `playsinline`.
+
+The block is void like the [image](/docs/plugins/image), and its only text is the caption. The command id is `block.video`. Its role is in `defaultSemantics`. In a readonly view the empty block is a passive placeholder.
+
+## Clipboard
+
+- Copying exports `<figure><video src="…" controls></video><figcaption>caption</figcaption></figure>`.
+- Pasting HTML imports a `video` with a safe `src`, or a `source` child with one (bare, or in a `figure` whose `figcaption` becomes the caption). Without the plugin, a pasted `video` is dropped.
+
+## Styling
+
+| Selector                     | Matches                     |
+| ---------------------------- | --------------------------- |
+| `[data-edytor-type='video']` | The `figure`                |
+| `[data-edytor-video]`        | The wrapper of the `video`  |
+
+The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).

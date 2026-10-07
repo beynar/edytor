@@ -390,6 +390,172 @@
 	font-size: 14px;
 }
 
+/* ── Media: embed, bookmark, file, video, audio ─────────────────────── */
+.edytor-notion
+	:is(
+		[data-edytor-type='embed'],
+		[data-edytor-type='bookmark'],
+		[data-edytor-type='file'],
+		[data-edytor-type='video'],
+		[data-edytor-type='audio']
+	) {
+	margin: 4px 0;
+}
+.edytor-notion [data-edytor-embed] {
+	overflow: hidden;
+	border-radius: 4px;
+	background: rgba(33, 27, 23, 0.04);
+}
+.edytor-notion [data-edytor-video] video {
+	border-radius: 4px;
+}
+.edytor-notion [data-edytor-media-empty] {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.edytor-notion [data-edytor-media-add],
+.edytor-notion [data-edytor-media-placeholder],
+.edytor-notion [data-edytor-embed-unsupported] a,
+.edytor-notion [data-edytor-file] a {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 12px 36px 12px 12px;
+	border-radius: 6px;
+	background: rgba(33, 27, 23, 0.04);
+	color: var(--notion-text-secondary);
+	font: inherit;
+	font-size: 14px;
+	text-align: left;
+	text-decoration: none;
+	cursor: pointer;
+	transition: background-color 80ms ease;
+}
+.edytor-notion [data-edytor-file] a {
+	padding: 4px 8px;
+	color: inherit;
+}
+.edytor-notion [data-edytor-file-size] {
+	color: var(--notion-text-secondary);
+	font-size: 12px;
+}
+.edytor-notion [data-edytor-media-placeholder] {
+	cursor: default;
+}
+.edytor-notion [data-edytor-media-add]:hover,
+.edytor-notion [data-edytor-embed-unsupported] a:hover,
+.edytor-notion [data-edytor-file] a:hover {
+	background: rgba(33, 27, 23, 0.07);
+}
+.edytor-notion [data-edytor-media-form] {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+.edytor-notion [data-edytor-media-form] input:not([type='file']) {
+	flex: 1;
+	min-width: 200px;
+	height: 32px;
+	padding: 0 10px;
+	border-radius: 6px;
+	background: rgba(242, 241, 238, 0.6);
+	box-shadow: inset 0 0 0 1px rgba(15, 15, 15, 0.1);
+	font: inherit;
+	font-size: 14px;
+	outline: 0;
+}
+.edytor-notion [data-edytor-media-form] button,
+.edytor-notion [data-edytor-media-upload] {
+	height: 32px;
+	padding: 0 12px;
+	border-radius: 6px;
+	background: var(--notion-blue);
+	color: #fff;
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 32px;
+	cursor: pointer;
+}
+.edytor-notion [data-edytor-media-form] small {
+	flex-basis: 100%;
+	color: #cf5148;
+}
+.edytor-notion [data-edytor-bookmark] a {
+	display: flex;
+	overflow: hidden;
+	min-height: 108px;
+	border-radius: 4px;
+	box-shadow: inset 0 0 0 1px rgba(55, 53, 47, 0.16);
+	color: inherit;
+	text-decoration: none;
+	transition: background-color 80ms ease;
+}
+.edytor-notion [data-edytor-bookmark] a:hover {
+	background: rgba(33, 27, 23, 0.03);
+}
+.edytor-notion [data-edytor-bookmark-text] {
+	display: flex;
+	flex: 4 1 180px;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+	padding: 12px 14px 14px;
+	font-size: 14px;
+}
+.edytor-notion [data-edytor-bookmark-title] {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.edytor-notion [data-edytor-bookmark-description] {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	color: var(--notion-text-secondary);
+	font-size: 12px;
+}
+.edytor-notion [data-edytor-bookmark-url] {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	overflow: hidden;
+	font-size: 12px;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.edytor-notion [data-edytor-bookmark-url] img {
+	width: 16px;
+	height: 16px;
+}
+.edytor-notion [data-edytor-bookmark-cover] {
+	flex: 1 1 180px;
+	max-width: 250px;
+}
+.edytor-notion [data-edytor-bookmark-cover] img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+.edytor-notion
+	:is(
+		[data-edytor-type='embed'],
+		[data-edytor-type='bookmark'],
+		[data-edytor-type='file'],
+		[data-edytor-type='video'],
+		[data-edytor-type='audio']
+	)
+	figcaption {
+	padding: 6px 2px 2px;
+	color: var(--notion-text-secondary);
+	font-size: 14px;
+}
+
 /* ── Code ───────────────────────────────────────────────────────────── */
 .edytor-notion [data-edytor-type='code'] {
 	margin: 4px 0;

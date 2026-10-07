@@ -76,9 +76,11 @@ External HTML, from a web page, Google Docs or a word processor, is parsed by th
 **Blocks.** An element becomes a block kind when:
 
 - a kind's `parse(element)` hook returns data for it (checked first), or
-- its tag is the one a kind exports or renders for one of its presets.
+- its tag is the one a kind exports or renders for one of its presets. A void kind that has a `parse` hook (the image and the media kinds) is found by its hook only: its tag alone carries no source.
 
-With the rich text plugin, that maps `h1`–`h3` to headings, `h4`–`h6` to `h3` headings, `blockquote` to quotes, `li` to bulleted items, `li` inside `ol` to numbered items, `hr` to dividers, `details` to toggles and `pre` to code blocks (one line per text line, with the code plugin). The image plugin maps a `figure` holding an `img` with a safe `src` to an image block.
+A void block takes only the text of its element's `figcaption` as its caption: an `iframe`'s fallback text, a `video`'s source list or a bookmark's link text never become content.
+
+With the rich text plugin, that maps `h1`–`h3` to headings, `h4`–`h6` to `h3` headings, `blockquote` to quotes, `li` to bulleted items, `li` inside `ol` to numbered items, `hr` to dividers, `details` to toggles and `pre` to code blocks (one line per text line, with the code plugin). The image plugin maps a `figure` holding an `img` with a safe `src` to an image block. When you list them, the [embed](/docs/plugins/embed) plugin maps an `iframe` an allowlisted provider plays to an embed block, and the [video](/docs/plugins/video) and [audio](/docs/plugins/audio) plugins map a `video` or `audio` with a safe source (its `src`, or a `source` child's) to their blocks; each also takes its element inside a `figure`, with the `figcaption` as the caption. Without them those elements are dropped.
 
 **Marks.** Text takes a mark when:
 
@@ -91,7 +93,7 @@ The rich text plugin maps `strong`/`b`, `em`/`i`, `u`, `s`/`strike`/`del`, `code
 
 - Unknown elements become paragraphs (block-level) or plain text (inline).
 - Whitespace collapses the way the browser renders it; `<br>` is a line break inside the block.
-- `script`, `style`, `template`, media, form controls and other non-text elements are skipped.
+- `script`, `style`, `template`, media no plugin claims, form controls and other non-text elements are skipped.
 - HTML that yields nothing (only a comment or empty elements) falls through to `text/plain`.
 
 Your own kinds and marks take part in the import the same way. A value-less mark with a `tag` is matched by that tag; a mark with a value needs a `parse` hook:
@@ -138,3 +140,13 @@ export const imagePastePlugin: Plugin = (edytor) => ({
 ```
 
 `onPaste` runs after the Edytor-fragment check, so it sees pastes from other apps, not copies between Edytor editors. It does not run for <kbd>Shift</kbd>+paste. The first plugin (in plugin order) that prevents wins. See [Plugins](/docs/plugins).
+
+## Pasting a link on an empty line
+
+With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plugin listed, pasting one `http(s)` URL (surrounding whitespace aside) on a line that holds nothing writes it as a link, one undo step, and opens a menu under the line, as Notion does:
+
+- **Link** (highlighted) keeps the link. <kbd>Enter</kbd> right after the paste picks it, so it never converts by accident and splits nothing.
+- **Embed**, when an allowlisted provider plays the URL, turns the line into an embed of it.
+- **Bookmark** turns the line into a web bookmark of it, then asks your `unfurl` for its title.
+
+<kbd>↑</kbd>/<kbd>↓</kbd> move the highlight and <kbd>Enter</kbd> picks it. A conversion is one more undo step: undo gives the linked URL back. <kbd>Escape</kbd>, a press outside the menu, typing, any other edit or a caret that leaves the URL's end close the menu and keep the link. The rows follow the plugin order. A line with text, a <kbd>Shift</kbd>+paste, a `mailto:` link, text that is not one URL, a code block or a void's caption paste as before.

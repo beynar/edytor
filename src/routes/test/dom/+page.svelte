@@ -11,6 +11,8 @@
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 	import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+	import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
+	import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
 	import {
 		IndexeddbPersistence,
@@ -378,6 +380,7 @@
 	};
 
 	const plugins = $derived([
+		...(data.media ? [embedPlugin, bookmarkPlugin] : []),
 		arrowMovePlugin,
 		imagePlugin,
 		codePlugin,

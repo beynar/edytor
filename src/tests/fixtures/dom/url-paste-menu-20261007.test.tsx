@@ -1,0 +1,210 @@
+/** @jsxImportSource ../../jsx */
+/**
+ * WU-22 — pasting a bare URL on an empty line offers "Link / Embed /
+ * Bookmark" (Notion). The paste writes the URL as a link at once (one
+ * undo step) and opens a small menu under the line: "Link" keeps it (the
+ * highlighted row: Enter right after a paste never converts), "Embed"
+ * turns the line into an embed of the URL when a provider plays it,
+ * "Bookmark" into a bookmark (then unfurled). A conversion is one more
+ * undo step, which gives the linked URL back. Anything else closes the
+ * menu and keeps the link: Escape, a press outside, typing, a move.
+ *
+ * Elsewhere the paste is unchanged: a line holding text, a Shift+paste,
+ * text that is not one http(s) URL, or a view with neither plugin.
+ * Expected states are hand-authored from Notion.
+ */
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Plugin } from '$lib/plugins.js';
+import type { JSONBlock } from '$lib/utils/json.js';
+import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
+import { bookmarkPlugin, createBookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
+import {
+	canonicalTree,
+	dispatchClipboardPaste,
+	dispatchDomKeyDown,
+	flushDomUpdates,
+	renderDomEdytor,
+	setNativeSelection
+} from '../../dom/test.utils.js';
+
+afterEach(() => {
+	document.body.innerHTML = '';
+});
+
+const YOUTUBE = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+const PAGE = 'https://edytor.dev/docs';
+
+const render = async (plugins: Plugin[], children: JSONBlock[]) =>
+	renderDomEdytor(
+		<root>
+			<paragraph>|</paragraph>
+		</root>,
+		{ plugins: [...plugins, richTextPlugin], value: { children } }
+	);
+
+const empty = (id = 'p'): JSONBlock => ({ id, type: 'paragraph', content: [] });
+
+/** Put the caret at `offset` in `id`'s text and paste `data`. */
+const pasteAt = async (
+	view: Awaited<ReturnType<typeof render>>,
+	id: string,
+	offset: number,
+	data: Record<string, string>
+) => {
+	await setNativeSelection(view.edytor, view.edytor.idToBlock.get(id)!.firstText, offset);
+	await dispatchClipboardPaste(view.editor, data);
+	await flushDomUpdates();
+};
+
+const menu = () => document.querySelector('[data-edytor-url-paste-menu]');
+const options = () =>
+	[...document.querySelectorAll<HTMLElement>('[data-edytor-url-paste-option]')].map((o) => [
+		o.dataset.edytorUrlPasteOption,
+		o.getAttribute('aria-selected')
+	]);
+const choose = async (option: string) => {
+	document.querySelector<HTMLElement>(`[data-edytor-url-paste-option="${option}"]`)!.click();
+	await flushDomUpdates();
+};
+const linked = (url: string) => [{ text: url, marks: { link: { href: url } } }];
+
+describe('pasting a URL on an empty line offers Link / Embed / Bookmark (Notion)', () => {
+	it('the URL lands as a link and the menu offers Link (highlighted), Embed and Bookmark', async () => {
+		const view = await render([embedPlugin, bookmarkPlugin], [empty()]);
+		await pasteAt(view, 'p', 0, { 'text/plain': ` ${YOUTUBE}\n` });
+		expect(canonicalTree(view.edytor)).toEqual([{ type: 'paragraph', content: linked(YOUTUBE) }]);
+		expect(menu()).not.toBeNull();
+		expect(options()).toEqual([
+			['link', 'true'],
+			['embed', 'false'],
+			['bookmark', 'false']
+		]);
+		const { state } = view.edytor.selection;
+		expect([state.isCollapsed, state.yStart]).toEqual([true, YOUTUBE.length]);
+	});
+
+	it('Embed turns the line into an embed of the URL; undo gives the link back, undo again the empty line', async () => {
+		const view = await render([embedPlugin, bookmarkPlugin], [empty()]);
+		await pasteAt(view, 'p', 0, { 'text/plain': YOUTUBE });
+		await choose('embed');
+		expect(canonicalTree(view.edytor, true)).toEqual([
+			{ type: 'embed', id: 'p', data: { url: YOUTUBE } }
+		]);
+		expect(menu()).toBeNull();
+		expect(document.querySelector('[data-edytor-embed] iframe')).not.toBeNull();
+		view.edytor.historyUndo();
+		await flushDomUpdates();
+		expect(canonicalTree(view.edytor)).toEqual([{ type: 'paragraph', content: linked(YOUTUBE) }]);
+		view.edytor.historyUndo();
+		await flushDomUpdates();
+		expect(canonicalTree(view.edytor)).toEqual([{ type: 'paragraph' }]);
+	});
+
+	it('the keys: ArrowDown moves the highlight, Enter picks it', async () => {
+		const view = await render([embedPlugin, bookmarkPlugin], [empty()]);
+		await pasteAt(view, 'p', 0, { 'text/plain': YOUTUBE });
+		await dispatchDomKeyDown(view.editor, { key: 'ArrowDown' });
+		expect(options()[1]).toEqual(['embed', 'true']);
+		const { defaultPrevented } = await dispatchDomKeyDown(view.editor, { key: 'Enter' });
+		expect(defaultPrevented).toBe(true);
+		expect(canonicalTree(view.edytor)).toEqual([{ type: 'embed', data: { url: YOUTUBE } }]);
+	});
+
+	it('Enter on the highlighted Link keeps the link and closes the menu, splitting nothing', async () => {
+		const view = await render([embedPlugin, bookmarkPlugin], [empty()]);
+		await pasteAt(view, 'p', 0, { 'text/plain': YOUTUBE });
+		await dispatchDomKeyDown(view.editor, { key: 'Enter' });
+		expect(menu()).toBeNull();
+		expect(canonicalTree(view.edytor)).toEqual([{ type: 'paragraph', content: linked(YOUTUBE) }]);
+	});
+
+	it('Bookmark turns the line into a bookmark and unfurls it', async () => {
+		const unfurl = vi.fn(async () => ({ title: 'Docs' }));
+		const view = await render([embedPlugin, createBookmarkPlugin({ unfurl })], [empty()]);
+		await pasteAt(view, 'p', 0, { 'text/plain': PAGE });
+		// No provider plays the page: no Embed row.
+		expect(options()).toEqual([
+			['link', 'true'],
+			['bookmark', 'false']
+		]);
+		await choose('bookmark');
+		expect(unfurl).toHaveBeenCalledWith(PAGE);
+		await vi.waitFor(() =>
+			expect(canonicalTree(view.edytor)).toEqual([
+				{ type: 'bookmark', data: { url: PAGE, title: 'Docs' } }
+			])
+		);
+	});
+
+	it('Escape closes the menu and keeps the link; so does typing', async () => {
+		const view = await render([embedPlugin, bookmarkPlugin], [empty()]);
+		await pasteAt(view, 'p', 0, { 'text/plain': YOUTUBE });
+		const { defaultPrevented } = await dispatchDomKeyDown(view.editor, { key: 'Escape' });
+		expect(defaultPrevented).toBe(true);
+		expect(menu()).toBeNull();
+		expect(canonicalTree(view.edytor)).toEqual([{ type: 'paragraph', content: linked(YOUTUBE) }]);
+
+		const again = await render([embedPlugin, bookmarkPlugin], [empty('q')]);
+		await pasteAt(again, 'q', 0, { 'text/plain': PAGE });
+		expect(menu()).not.toBeNull();
+		again.edytor.idToBlock.get('q')!.firstText!.insertText({ value: ' ', start: PAGE.length });
+		await flushDomUpdates();
+		expect(menu()).toBeNull();
+	});
+
+	it('only bookmarkPlugin listed: the menu offers Link and Bookmark', async () => {
+		const view = await render([bookmarkPlugin], [empty()]);
+		await pasteAt(view, 'p', 0, { 'text/plain': YOUTUBE });
+		expect(options()).toEqual([
+			['link', 'true'],
+			['bookmark', 'false']
+		]);
+	});
+});
+
+describe('elsewhere the paste is unchanged', () => {
+	it('a line holding text: the URL is pasted as before, no menu', async () => {
+		const view = await render(
+			[embedPlugin, bookmarkPlugin],
+			[{ id: 'p', type: 'paragraph', content: [{ text: 'see ' }] }]
+		);
+		await pasteAt(view, 'p', 4, { 'text/plain': YOUTUBE });
+		expect(menu()).toBeNull();
+		expect(canonicalTree(view.edytor)).toEqual([
+			{ type: 'paragraph', content: [{ text: `see ${YOUTUBE}` }] }
+		]);
+	});
+
+	it('text that is not one http(s) URL, or a mailto, pastes as text', async () => {
+		for (const text of ['two words', `${PAGE} ${PAGE}`, 'mailto:a@b.c', 'javascript:alert(1)']) {
+			const view = await render([embedPlugin, bookmarkPlugin], [empty()]);
+			await pasteAt(view, 'p', 0, { 'text/plain': text });
+			expect(menu()).toBeNull();
+			expect(canonicalTree(view.edytor)[0]!.content).toEqual([{ text }]);
+			document.body.innerHTML = '';
+		}
+	});
+
+	it('Shift+paste pastes plain text, no menu', async () => {
+		const view = await render([embedPlugin, bookmarkPlugin], [empty()]);
+		await setNativeSelection(view.edytor, view.edytor.idToBlock.get('p')!.firstText, 0);
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true }));
+		await dispatchClipboardPaste(view.editor, { 'text/plain': YOUTUBE });
+		document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift' }));
+		await flushDomUpdates();
+		expect(menu()).toBeNull();
+		expect(canonicalTree(view.edytor)).toEqual([
+			{ type: 'paragraph', content: [{ text: YOUTUBE }] }
+		]);
+	});
+
+	it('a view with neither plugin keeps the plain paste', async () => {
+		const view = await render([], [empty()]);
+		await pasteAt(view, 'p', 0, { 'text/plain': YOUTUBE });
+		expect(menu()).toBeNull();
+		expect(canonicalTree(view.edytor)).toEqual([
+			{ type: 'paragraph', content: [{ text: YOUTUBE }] }
+		]);
+	});
+});

@@ -14,6 +14,7 @@ import {
 	defaultSemantics,
 	imageSemantics,
 	layoutSemantics,
+	mediaSemantics,
 	richTextSemantics,
 	type DocumentSemanticsConfig,
 	type EdytorDocument,
@@ -24,6 +25,11 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
+import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
+import { filePlugin } from '$lib/plugins/media/FilePlugin.svelte';
+import { videoPlugin } from '$lib/plugins/media/VideoPlugin.svelte';
+import { audioPlugin } from '$lib/plugins/media/AudioPlugin.svelte';
 
 const value: JSONDoc = {
 	children: [
@@ -77,6 +83,11 @@ const BUNDLED = {
 		divider: { void: true, island: false, lines: false },
 		horizontalRule: { void: true, island: false, lines: false },
 		image: { void: true, island: false, lines: false },
+		embed: { void: true, island: false, lines: false },
+		bookmark: { void: true, island: false, lines: false },
+		file: { void: true, island: false, lines: false },
+		video: { void: true, island: false, lines: false },
+		audio: { void: true, island: false, lines: false },
 		code: { void: false, island: true, lines: true },
 		columns: { void: false, island: false, lines: false, layout: true }
 	},
@@ -106,18 +117,20 @@ describe('defaultSemantics on a headless document', () => {
 		expect(edits()).toEqual(['applied', 'applied', 'applied', 'applied']);
 	});
 
-	it('merges the four plugin tables', () => {
+	it('merges the five plugin tables', () => {
 		expect(defaultSemantics).toEqual({
 			roles: {
 				...richTextSemantics.roles,
 				...codeSemantics.roles,
 				...imageSemantics.roles,
+				...mediaSemantics.roles,
 				...layoutSemantics.roles
 			},
 			rendersContent: {
 				...richTextSemantics.rendersContent,
 				...codeSemantics.rendersContent,
 				...imageSemantics.rendersContent,
+				...mediaSemantics.rendersContent,
 				...layoutSemantics.rendersContent
 			},
 			defaultChild: {
@@ -131,7 +144,8 @@ describe('defaultSemantics on a headless document', () => {
 	});
 
 	it("is what the bundled plugins' views adopt, and those views attach to it", () => {
-		const plugins = [richTextPlugin, codePlugin, imagePlugin, columnsPlugin];
+		const media = [embedPlugin, bookmarkPlugin, filePlugin, videoPlugin, audioPlugin];
+		const plugins = [richTextPlugin, codePlugin, imagePlugin, ...media, columnsPlugin];
 		const viewed = createDocument({ value });
 		const view = new Edytor({ document: viewed, plugins });
 		expect(structural(viewed)).toEqual(BUNDLED);

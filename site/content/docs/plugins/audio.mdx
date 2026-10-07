@@ -1,0 +1,45 @@
+---
+title: Audio
+description: The audio plugin adds Notion's audio block, an audio file in the browser's player, linked or uploaded through your upload function.
+icon: music
+---
+
+`audioPlugin` adds Notion's audio block: an "Embed audio" panel until the block has a source, then the browser's player (`<audio controls>`), with an editable caption. It is not a default plugin: list it.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, audioPlugin, slashMenuPlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[audioPlugin, slashMenuPlugin]} />
+```
+
+The slash menu then lists "Audio" under `Media`. `audioPlugin` is the plugin without `upload`: links only.
+
+## Options
+
+`createAudioPlugin(options)` takes a `MediaPluginOptions`: `upload(file)` uploads a picked file (`accept="audio/*"`) and answers its URL, adding an Upload button to the empty block.
+
+## The kind
+
+| Kind    | Element  | Data              | Preset                                                     |
+| ------- | -------- | ----------------- | ---------------------------------------------------------- |
+| `audio` | `figure` | `{ src: string }` | Audio (🎵, group `Media`, keywords `sound`, `music`, `mp3`) |
+
+A source is accepted only when it is an `http:`/`https:` URL with a host or a `blob:` URL of one (`safeMediaSrc`), never `data:` or a script URL; any other stored value shows no player. The player has `controls` and `preload="metadata"`.
+
+The block is void like the [image](/docs/plugins/image), and its only text is the caption. The command id is `block.audio`. Its role is in `defaultSemantics`. In a readonly view the empty block is a passive placeholder.
+
+## Clipboard
+
+- Copying exports `<figure><audio src="…" controls></audio><figcaption>caption</figcaption></figure>`.
+- Pasting HTML imports an `audio` with a safe `src`, or a `source` child with one (bare, or in a `figure` whose `figcaption` becomes the caption). Without the plugin, a pasted `audio` is dropped.
+
+## Styling
+
+| Selector                     | Matches                     |
+| ---------------------------- | --------------------------- |
+| `[data-edytor-type='audio']` | The `figure`                |
+| `[data-edytor-audio]`        | The wrapper of the `audio`  |
+
+The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).

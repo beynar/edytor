@@ -49,9 +49,14 @@
  * The module is engine-agnostic: `bindModel(Y)` takes the vendored module
  * surface so this file type-checks against structural interfaces and never
  * imports vendor `.js` (which `pnpm check` must not traverse).
+ *
+ * Placement resolution is `placement/resolve.ts`, the source ranks
+ * `placement/source.ts`, where a block displays `placement/display.ts`
+ * (re-exported here); this module declares the model's types and binds the
+ * write and read primitives to an engine.
  */
 import type { EngineApi, EngineDoc, EngineItemRef, EngineNode } from '../engine-api.js';
-import { decodeRank, encodeRank, rankAfter, rankBetween, RANK_VMIN } from './rank.js';
+import { rankAfter, rankBetween } from './rank.js';
 import {
 	AT,
 	AT_NODE,
@@ -75,10 +80,8 @@ import { bindRuns } from '../text/runs.js';
 import { writeRunMarks } from '../text/marks.js';
 import {
 	bindText,
-	computeOwners,
 	DEAD,
 	type MergeClaim,
-	type Owner,
 	type Ownership,
 	type TextBlockRec
 } from '../text/model.js';
@@ -126,38 +129,20 @@ export type ProjectedDoc = { children: ProjectedBlock[] };
 
 export { REGISTRY_KEY };
 
-/**
- * Tiebreak for rehome ranks — the placement fallback is PURE replicated
- * state (identical on every replica), so the minted rank must not depend
- * on the local `doc.clientID` or `Math.random`: a fixed value keeps the
- * resolution deterministic everywhere. Ordering between rehomed blocks is
- * carried by the `v` digit (each successive rehome mints below the last).
- */
-const REHOME_TIE = 0;
-
-/**
- * Deterministic rank strictly below `min` — the candidate-less rehome
- * fallback (U5 fix). The old floor sentinel `encodeRank([{v: RANK_VMIN,
- * t: 0}])` sorted first but was un-insertable-above: `rankBetween(
- * undefined, that)` hits the `rSeg.v <= RANK_VMIN` guard and throws
- * `RankSpaceExhausted` — reachable with ZERO boundary inserts (corpus
- * seed 96). Minting `min[0].v - 1` keeps the documented "orphans rehome
- * to the FRONT of the root" behavior while leaving digit headroom for
- * legal inserts above the rehomed block.
- *
- * `min` = the current minimum rank among placements displaying at the
- * root, `undefined` when the root list is empty (mint `{v:0}` — the same
- * canonical first key `rankBetween(undefined, undefined)` emits). At the
- * absolute floor (`min[0].v` already `RANK_VMIN` — unreachable through
- * any legal write; nothing sorts below it) join `min`'s tie instead of
- * minting an unencodable digit.
- */
-const rehomeRankBelow = (min: string | undefined): string => {
-	if (min === undefined) return encodeRank([{ v: 0, t: REHOME_TIE }]);
-	const v = decodeRank(min)[0].v;
-	if (v <= RANK_VMIN) return min;
-	return encodeRank([{ v: v - 1, t: REHOME_TIE }]);
-};
+export { candidatesOf, resolvePlacements } from './resolve.js';
+export { promotedRank, sourceRank, SOURCE_SIDE } from './source.js';
+export {
+	bySlot,
+	childrenIndex,
+	displayIndex,
+	displayParentOf,
+	displaySlotOf,
+	documentOrder,
+	isLiveIn,
+	textRanker
+} from './display.js';
+import { candidatesOf, resolvePlacements } from './resolve.js';
+import { bySlot, childrenIndex, displayParentOf, displaySlotOf, isLiveIn } from './display.js';
 
 /** Placement value written atomically as one attr: `{p, r}`. */
 export type PlacementValue = { p: BlockId | null; r: string };
@@ -170,13 +155,6 @@ export type PlacementCand = {
 	p: BlockId | null;
 	r: string;
 };
-
-/** Total order on candidate stamps — matches the ADR's conflict order. */
-const cmpStamp = (aSeq: number, aClient: number, bSeq: number, bClient: number): number =>
-	aSeq - bSeq || aClient - bClient;
-
-/** Global acceptance order: (seq, clientId, blockId) descending. */
-type OrderedCand = PlacementCand & { blockId: BlockId };
 
 /**
  * Internal per-block record: the registry node plus decoded placement
@@ -243,129 +221,6 @@ export type DisplayOwnership = Ownership & {
 	textRank?: (id: BlockId, parent: BlockId | null, rank: string) => string;
 };
 
-/**
- * D-18 (H9, `order.split.text`): the blocks whose streams lie in one
- * backing text and that still stand where they were made (their winning
- * placement is their first candidate, `1.<client>`: no move, outdent or
- * lift since) under one parent show in their streams' order in that text —
- * the order of the boundaries that delimit them, the same on every
- * replica — at the ranks they hold between them: the i-th of them in the
- * text takes the i-th smallest of their ranks. Ranks written at a split
- * (`sourceRank`) are a guess made on one replica's text; the boundaries are
- * the replicated fact, so two peers splitting one block at once keep the
- * text's order whatever each saw (an unseen edit after one's own split
- * point included). A block moved since stands where it was moved.
- *
- * `inText(home)`: the blocks of `home`'s text, in text order (segment 0's
- * first). Memoized per (text, parent) until `forget(home)`.
- */
-export const textRanker = (
-	blocks: ReadonlyMap<BlockId, BlockRec>,
-	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
-	homeOf: (b: BlockId) => BlockId | undefined,
-	inText: (home: BlockId) => readonly BlockId[]
-) => {
-	const memo = new Map<string, Map<BlockId, string>>();
-	const keysOf = new Map<BlockId, Set<string>>();
-	/** `b` stands where it was made: its placement is its first candidate's. */
-	const unmoved = (b: BlockId): boolean => {
-		const c = blocks.get(b)?.cands[0];
-		const pl = placements.get(b);
-		if (c === undefined || pl === undefined || c.seq !== 1 || c.r !== pl.rank) return false;
-		return pl.parent === (c.p !== null && !blocks.has(c.p) ? null : c.p);
-	};
-	const group = (home: BlockId, parent: BlockId | null): Map<BlockId, string> => {
-		const members: BlockId[] = [];
-		for (const b of inText(home))
-			if (placements.get(b)?.parent === parent && unmoved(b)) members.push(b);
-		const out = new Map<BlockId, string>();
-		if (members.length < 2) return out;
-		const rankOf = (b: BlockId) => placements.get(b)!.rank;
-		// One client's blocks keep its own order (it ranked them knowing each
-		// other); the text decides between different clients' (concurrent
-		// splits). Each client's members, sorted by rank, fill that client's
-		// places in the text order.
-		const byClient = new Map<number, BlockId[]>();
-		for (const b of members) {
-			const c = blocks.get(b)!.cands[0]!.client;
-			const list = byClient.get(c);
-			if (list === undefined) byClient.set(c, [b]);
-			else list.push(b);
-		}
-		if (byClient.size < 2) return out;
-		for (const list of byClient.values())
-			list.sort((x, y) => bySlot({ id: x, rank: rankOf(x) }, { id: y, rank: rankOf(y) }));
-		const next = new Map<number, number>();
-		const order = members.map((b) => {
-			const c = blocks.get(b)!.cands[0]!.client;
-			const i = next.get(c) ?? 0;
-			next.set(c, i + 1);
-			return byClient.get(c)![i]!;
-		});
-		const ranks = members.map(rankOf).sort();
-		order.forEach((b, i) => out.set(b, ranks[i]));
-		return out;
-	};
-	return {
-		rank: (id: BlockId, parent: BlockId | null, rank: string): string => {
-			const home = homeOf(id);
-			// A text no other block shares (most blocks' own): nothing to order.
-			if (home === undefined || inText(home).length < 2) return rank;
-			const key = `${home}\u0000${parent}`;
-			let ranks = memo.get(key);
-			if (ranks === undefined) {
-				memo.set(key, (ranks = group(home, parent)));
-				let keys = keysOf.get(home);
-				if (keys === undefined) keysOf.set(home, (keys = new Set()));
-				keys.add(key);
-			}
-			return ranks.get(id) ?? rank;
-		},
-		/**
-		 * Decide `home`'s text again (its segments or a member's placement
-		 * changed); the blocks whose text-order rank changed.
-		 */
-		regroup: (home: BlockId): Set<BlockId> => {
-			const before = new Map<BlockId, string>();
-			for (const key of keysOf.get(home) ?? [])
-				for (const [b, r] of memo.get(key) ?? []) before.set(b, r);
-			for (const key of keysOf.get(home) ?? []) memo.delete(key);
-			const keys = new Set<string>();
-			keysOf.set(home, keys);
-			const changed = new Set<BlockId>();
-			const parents = new Set<BlockId | null>();
-			const row = inText(home);
-			if (row.length >= 2)
-				for (const b of row) {
-					const pl = placements.get(b);
-					if (pl !== undefined) parents.add(pl.parent);
-				}
-			for (const parent of parents) {
-				const key = `${home}\u0000${parent}`;
-				const ranks = group(home, parent);
-				memo.set(key, ranks);
-				keys.add(key);
-				for (const [b, r] of ranks) if (before.get(b) !== r) changed.add(b);
-			}
-			for (const [b, r] of before) {
-				const now = memo.get(`${home}\u0000${placements.get(b)?.parent}`)?.get(b);
-				if (now !== r) changed.add(b);
-			}
-			return changed;
-		},
-		/** Drop what was decided for `home`'s text (every one, without it). */
-		forget: (home?: BlockId): void => {
-			if (home === undefined) {
-				memo.clear();
-				keysOf.clear();
-				return;
-			}
-			for (const key of keysOf.get(home) ?? []) memo.delete(key);
-			keysOf.delete(home);
-		}
-	};
-};
-
 /** One entry of a children list: `reset` — the island it displays out of ({@link displaySlotOf}). */
 export type ChildSlot = { id: BlockId; rank: string; reset?: BlockId };
 
@@ -400,415 +255,6 @@ export type ModelView = {
 	displays: (owner: BlockId) => readonly BlockId[];
 };
 
-/** The inverse of `ownerOf` over `blocks`: each live owner → the blocks it displays. */
-export const displayIndex = (
-	blocks: ReadonlyMap<BlockId, unknown>,
-	ownerOf: (b: BlockId) => Owner
-): Map<BlockId, BlockId[]> => {
-	const by = new Map<BlockId, BlockId[]>();
-	for (const b of blocks.keys()) {
-		const owner = ownerOf(b);
-		if (typeof owner !== 'string') continue;
-		const list = by.get(owner);
-		if (list === undefined) by.set(owner, [b]);
-		else list.push(b);
-	}
-	return by;
-};
-
-/** Parse the `at` map of a block node into sorted candidates. */
-export const candidatesOf = (node: EngineNode): PlacementCand[] => {
-	const at = node.getAttr(AT);
-	const cands: PlacementCand[] = [];
-	if (isNodeLike(at)) {
-		at.forEachAttr((v: unknown, key: string) => {
-			const dot = key.indexOf('.');
-			const val = v as PlacementValue;
-			if (dot <= 0 || val == null || typeof val !== 'object' || typeof val.r !== 'string') return;
-			cands.push({
-				key,
-				seq: Number(key.slice(0, dot)),
-				client: Number(key.slice(dot + 1)),
-				p: (val.p as BlockId | null) ?? null,
-				r: val.r
-			});
-		});
-	}
-	cands.sort((a, b) => cmpStamp(b.seq, b.client, a.seq, a.client));
-	return cands;
-};
-
-/**
- * Resolve every block's winning placement, in global candidate order
- * `(seq, clientId, blockId)` descending. A candidate is accepted iff its
- * DISPLAY edge cannot reach back to the block through already-accepted
- * display edges; rejected candidates fall through to the block's next
- * candidate, then to a deterministic root fallback. Pure — reads only
- * replicated state, writes nothing.
- *
- * The relation kept acyclic is the COMPOSED display-parent relation
- * `b ↦ owner(parent(b))` (see `displayParentOf`): a placement parent that
- * was merged away resolves to its claim owner, so the raw `pl.parent`
- * graph being acyclic is NOT sufficient — a merge claim can redirect a
- * display edge back into the block's own subtree (e.g. `A` merged into
- * `B` while `B` sits under `A`, or `del` resurrection re-arming a claim).
- * Because the claim-owner map is computed independently of placements
- * (claims live on `claims` lists), the acceptance test composes the
- * two: the candidate's tentative display edge is `ownerOf(p)` — a live
- * self-owned block or `null` (root). A deleted parent is no sink: its
- * unmarked children display in its slot (read-time promotion,
- * {@link displaySlotOf}), so the walk passes through it along its own
- * accepted placement.
- *
- * `ownerOf` is injectable so callers can share an ownership context they
- * already computed; standalone callers get the map derived from the
- * block records (pure over replicated state — claims are `claims` items).
- */
-export const resolvePlacements = (
-	blocks: Map<BlockId, BlockRec>,
-	ownerOf?: (b: BlockId) => Owner
-): Map<BlockId, ResolvedPlacement> => {
-	let owner = ownerOf;
-	if (!owner) {
-		const owners = computeOwners(blocks);
-		owner = (b: BlockId): Owner => owners.get(b) ?? DEAD;
-	}
-	const ordered: OrderedCand[] = [];
-	for (const [id, rec] of blocks) {
-		for (const c of rec.cands) ordered.push({ ...c, blockId: id });
-	}
-	ordered.sort(
-		(a, b) => cmpStamp(b.seq, b.client, a.seq, a.client) || b.blockId.localeCompare(a.blockId)
-	);
-	const accepted = new Map<BlockId, ResolvedPlacement>();
-	for (const cand of ordered) {
-		if (accepted.has(cand.blockId)) continue;
-		let p = cand.p;
-		if (p !== null && !blocks.has(p)) p = null; // parent never integrated → root
-		if (p !== null) {
-			// Reject the candidate iff the block already is a display
-			// ancestor of `p` through accepted edges: a live parent's edge
-			// is its owner's, a deleted one is walked itself (its children
-			// take its slot). Accepted edges are acyclic by induction, so
-			// the walk always terminates.
-			let cyclic = false;
-			for (let cur: BlockId | null = p; cur !== null; ) {
-				const o = owner(cur);
-				const at = o === DEAD ? cur : o;
-				if (at === cand.blockId) {
-					cyclic = true;
-					break;
-				}
-				const cp = accepted.get(at);
-				if (cp === undefined) break; // edge not yet accepted → cannot cycle
-				cur = cp.parent;
-			}
-			if (cyclic) continue; // try this block's next candidate
-		}
-		accepted.set(cand.blockId, { parent: p, rank: cand.r });
-	}
-	// Fallback: blocks whose candidates were all cycle-rejected are rehomed
-	// at the root under their argmax rank; a block with NO surviving
-	// candidate mints a deterministic rank strictly below the current root
-	// minimum (rehomeRankBelow — the U5 fix; see its comment). The mint
-	// must stay deterministic across replicas: it depends only on the
-	// accepted map + block ids, never on clientID/Math.random.
-	const rehomed: BlockRec[] = [];
-	for (const [id, rec] of blocks) {
-		if (accepted.has(id)) continue;
-		if (rec.cands.length > 0) {
-			accepted.set(id, { parent: null, rank: rec.cands[0].r });
-		} else {
-			rehomed.push(rec);
-		}
-	}
-	if (rehomed.length > 0) {
-		// Minimum rank among placements that DISPLAY at the root (a `null`
-		// parent edge is the only way a display edge is `null` — `owner()`
-		// never returns null). Superset-of-visible is fine: minting below
-		// even an invisible sibling still sorts the rehome first among the
-		// visible list.
-		let min: string | undefined;
-		for (const pl of accepted.values()) {
-			if (pl.parent === null && (min === undefined || pl.rank < min)) min = pl.rank;
-		}
-		// Descending-id mint order → ascending-id display order, the same
-		// (rank, id)-tie order the old shared MIN_RANK produced. Each mint
-		// goes below the running minimum, so stacked rehomes always get
-		// distinct deterministic ranks.
-		rehomed.sort((a, b) => b.id.localeCompare(a.id));
-		for (const rec of rehomed) {
-			min = rehomeRankBelow(min);
-			accepted.set(rec.id, { parent: null, rank: min });
-		}
-	}
-	return accepted;
-};
-
-/**
- * THE liveness answer (R3, O5): `id` carries no live delete mark, owns
- * itself (`own.hidden` covers both: a delete-marked or unknown block owns
- * `DEAD`), and every display ancestor is live — i.e. it renders in
- * `project()`. Every op precondition, read and view consumer asks this.
- * O(depth).
- */
-export const isLiveIn = (v: Pick<ModelView, 'placements' | 'own'>, id: BlockId): boolean => {
-	const { placements, own } = v;
-	const seen = new Set<BlockId>();
-	for (let cur: BlockId | null = id; cur !== null; ) {
-		if (seen.has(cur) || own.hidden(cur)) return false;
-		seen.add(cur);
-		const pl = placements.get(cur);
-		const dp: Owner | null = pl === undefined ? DEAD : displayParentOf(own, pl, placements, cur);
-		if (dp === DEAD) return false;
-		cur = dp;
-	}
-	return true;
-};
-
-/**
- * The rank separator of a promoted slot: the lowest segment a rank can hold
- * (`rankBetween` only copies it from a promoted bound), so `slot + PROMOTED + rank` sorts after
- * `slot` and before every rank the slot's list minted after it — also one
- * that extends `slot`, as an insert between two adjacent digits does.
- */
-const PROMOTED = encodeRank([{ v: RANK_VMIN, t: 0 }]);
-
-/**
- * The rank of a block promoted into the slot ranked `slot` (read-time
- * promotion, and a promote-delete's planned moves): a valid rank, so an
- * insert beside a promoted block ranks against it like any other.
- */
-export const promotedRank = (slot: string, rank: string): string => slot + PROMOTED + rank;
-
-/**
- * Which side of a gap `(X, Y)` a block ranked by its source comes from
- * ({@link sourceRank}), in the order every serial run puts them: the
- * pieces a split of `X` creates, then the blocks leaving `X` for the gap
- * right after it (its children, a list's last items), then the blocks
- * leaving `Y` for the gap right before it (a list's first items).
- */
-export const SOURCE_SIDE = { pieces: 0, after: 1, before: 2 } as const;
-
-/**
- * The rank of a block ranked by where it came from for the gap
- * `(left, right)` right beside its source, not by who moved it (CW-01).
- * Two peers splitting or lifting out of the same block at once rank their
- * blocks in the same gap; ranks drawn at random there (and tied by client
- * id) sorted one peer's blocks before the other's whatever the text order.
- * Here the rank is a base every replica that saw the same gap computes
- * alike (the gap's midpoint, a fixed tie), then the `side` it comes from
- * ({@link SOURCE_SIDE}: blocks from different sources share the gap, and
- * their paths are not comparable, DR-crdt-6), then the ranks down the
- * block's `path` in its source (the block it stands at), each closed by
- * the lowest segment (a shorter rank then sorts first, as a prefix does),
- * then its `part` there (the caller's order among what stands at one
- * block), its first segment tied by `clientId`: two peers' blocks at one
- * part never share a rank (a later insert between two equal ranks could
- * not land between them), and each peer's blocks there stay together. A
- * segment tied by `clock`, the client's own next clock, follows that first
- * one: one client never mints one rank twice in a gap, even when the block
- * it first minted it for was deleted there and a peer's undo brings it
- * back (DW-05), and what one gesture minted (the lines of one paste)
- * sorts before what its later gestures mint there, never among it (FX-06).
- * `null` on a degenerate gap (`left >= right`): the caller ranks it as any
- * insert.
- */
-export const sourceRank = (
-	left: string | undefined,
-	right: string | undefined,
-	side: number,
-	path: readonly string[],
-	part: readonly number[],
-	clientId: number,
-	clock: number
-): string | null => {
-	if (left !== undefined && right !== undefined && left >= right) return null;
-	const closed = path.flatMap((r) => [...decodeRank(r), { v: RANK_VMIN, t: SOURCE_TIE }]);
-	const [first, ...rest] = part;
-	const parts = [
-		{ v: first, t: clientId },
-		{ v: 0, t: clock },
-		...rest.map((v) => ({ v, t: SOURCE_TIE }))
-	];
-	const own = [{ v: side, t: SOURCE_TIE }, ...closed, ...parts];
-	return rankBetween(left, right, SOURCE_TIE, () => 0.5) + encodeRank(own);
-};
-/** The tie of a source rank's own segments: the same on every replica. */
-const SOURCE_TIE = 0;
-
-/**
- * Where a placement DISPLAYS: its display parent and its rank in that
- * parent's children list. A live parent shows its children; a merged-away
- * one resolves to its claim owner, the merge destination (B+C merged while
- * A+B merged: C's children land on B, B is claimed by A → they display
- * under A). A delete-marked parent hides no unmarked child — promotion is
- * derived at read time (`del.blocks.promote`, UW-08): the child takes the
- * deleted parent's slot, ranked just after it ({@link promotedRank}),
- * recursively. So whatever a peer split off, inserted or moved under a
- * block another writer deleted stays in the document. A childless owner (a
- * void kind, `own.childless`) sheds its children the same way (UW-21b): a
- * block a peer nests or splits under a block another peer retypes to a void
- * kind takes the void's slot on every replica, and returns under it if the
- * retype is undone. A block that displays out of an island — promoted out
- * of a deleted one, or under the owner of a merged-away one — names it
- * (`reset`, the innermost): while it still has the island's default child
- * kind it displays as its display parent's default child, as a delete or
- * merge of the island retypes the children it saw. A container (a list) is
- * a `reset` too: an item a peer adds to a list another peer's edit removes
- * shows as a paragraph, not as a bare item (DR-crdt-2); a block promoted
- * INTO a container names the block it is promoted out of, so it shows as
- * the container's item as a delete's write makes it (SW9-containers-3). A code line a peer adds
- * under a code block another peer deletes or merges shows as a paragraph,
- * not as a code line outside its code block. A line of an island declared
- * `lines` holds no children (FW-01): they take the island's
- * slot, ranked in the line's order, with the island as `reset` — a block a
- * peer nested under a code line while an undone delete had made it a
- * paragraph shows right after the code block, and stays there when the
- * line is deleted (XW-10). The layout rules pass the same way (`layout.*`):
- * a layout sheds a child that is no item of it into its own slot, right
- * after it (`own.sheds`, by the stored kind of `id`, the block placed), and
- * a block the layout rules do not display (`own.passes`: an empty or bare
- * item, a layout showing one item or none) hands its children its slot,
- * as a deleted one does — so the rank a dissolve's write gives the blocks
- * it moves (`promotedRank` of the layout's, then the item's) is the one
- * read here. `DEAD` only when the placement chain never reaches a live
- * parent (an unknown block).
- */
-export const displaySlotOf = (
-	own: DisplayOwnership,
-	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
-	pl: ResolvedPlacement,
-	id: BlockId
-): { parent: Owner | null; rank: string; reset: BlockId | null } => {
-	let { parent, rank } = pl;
-	// D-18: a piece of a text shown under its own placement's parent takes its text-order rank.
-	const direct = (owner: BlockId | null): string =>
-		own.textRank === undefined || owner !== pl.parent ? rank : own.textRank(id, owner, rank);
-	let reset: BlockId | null = null;
-	/** The first parent it is promoted out of (a deleted or childless one). */
-	let promoted: BlockId | null = null;
-	const resets = (b: BlockId) => own.island?.(b) === true || own.container?.(b) === true;
-	for (let hops = 0; parent !== null; hops++) {
-		const owner = own.ownerOf(parent);
-		if (reset === null && owner !== parent && resets(parent)) reset = parent;
-		const out = owner === DEAD ? parent : owner;
-		const shows =
-			owner !== DEAD &&
-			own.childless?.(owner) !== true &&
-			own.passes?.(owner) !== true &&
-			own.sheds?.(owner, id) !== true;
-		// A line holds no children (FW-01) — a deleted or childless one
-		// neither (XW-10): they take its island's slot, never the island.
-		const line =
-			own.lined &&
-			(shows ? lineSlotOf(own, placements, owner) : storedLineSlotOf(own, placements, out));
-		if (line) {
-			const slot = displaySlotOf(own, placements, placements.get(line.parent)!, line.parent);
-			const inner = promotedRank(line.rank, rank);
-			return {
-				parent: slot.parent,
-				rank: promotedRank(slot.rank, inner),
-				reset: reset ?? line.parent
-			};
-		}
-		// Promoted into a container: it shows as one of its items (SW9-containers-3).
-		if (shows && reset === null && promoted !== null && own.container?.(owner) === true)
-			reset = promoted;
-		if (shows) return { parent: owner, rank: hops === 0 ? direct(owner) : rank, reset };
-		promoted ??= out;
-		const up = placements.get(out);
-		if (up === undefined || hops > placements.size) return { parent: DEAD, rank, reset };
-		if (reset === null && resets(out)) reset = out;
-		rank = promotedRank(up.rank, rank);
-		parent = up.parent;
-	}
-	return { parent: null, rank: pl.parent === null ? direct(null) : rank, reset };
-};
-
-/**
- * The slot of `b` when it is a line — it displays (or, deleted, would
- * display) directly under a `lines` island ({@link DisplayOwnership.lined}) — else
- * `null`. A block a peer nests under a line, while an undone delete or merge
- * of the island had made the line a plain block, displays right after the
- * island instead: visible, and outside the island's seal.
- */
-const lineSlotOf = (
-	own: DisplayOwnership,
-	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
-	b: BlockId
-): { parent: BlockId; rank: string } | null => {
-	const pl = placements.get(b);
-	if (pl === undefined || pl.parent === null) return null;
-	// Fast path: a live parent that shows its children (`b` among them) and is no lined island.
-	const p = own.ownerOf(pl.parent);
-	if (
-		p === pl.parent &&
-		own.childless?.(p) !== true &&
-		own.lined?.(p) !== true &&
-		own.passes?.(p) !== true &&
-		own.sheds?.(p, b) !== true
-	)
-		return null;
-	const slot = displaySlotOf(own, placements, pl, b);
-	if (slot.parent === null || slot.parent === DEAD || own.lined?.(slot.parent) !== true)
-		return null;
-	return { parent: slot.parent, rank: slot.rank };
-};
-
-/**
- * The slot of a deleted or childless `b` when it is stored directly under a
- * live `lines` island, else `null` — one read, no walk: the promotion walk
- * asks it at every hop.
- */
-const storedLineSlotOf = (
-	own: DisplayOwnership,
-	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
-	b: BlockId
-): { parent: BlockId; rank: string } | null => {
-	const pl = placements.get(b);
-	if (pl === undefined || pl.parent === null || own.ownerOf(pl.parent) !== pl.parent) return null;
-	return own.lined?.(pl.parent) === true ? { parent: pl.parent, rank: pl.rank } : null;
-};
-
-/** The parent under which block `id`'s placement DISPLAYS ({@link displaySlotOf}). */
-export const displayParentOf = (
-	own: DisplayOwnership,
-	pl: ResolvedPlacement,
-	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
-	id: BlockId
-): Owner | null => displaySlotOf(own, placements, pl, id).parent;
-
-/**
- * All visible children's lists at once: `parent|null → {id, rank}[]` sorted
- * by `(rank, id)` — ONE pass over `placements` plus one sort per list. This
- * is the order the projection emits; a promoted block's `rank` is its
- * promoted one ({@link displaySlotOf}).
- */
-export const childrenIndex = (
-	placements: Map<BlockId, ResolvedPlacement>,
-	own: DisplayOwnership
-): Map<BlockId | null, ChildSlot[]> => {
-	const index = new Map<BlockId | null, ChildSlot[]>();
-	for (const [id, pl] of placements) {
-		if (own.hidden(id)) continue;
-		const { parent, rank, reset } = displaySlotOf(own, placements, pl, id);
-		if (parent === DEAD) continue;
-		const slot: ChildSlot = reset === null ? { id, rank } : { id, rank, reset };
-		const bucket = index.get(parent);
-		if (bucket) bucket.push(slot);
-		else index.set(parent, [slot]);
-	}
-	for (const bucket of index.values()) bucket.sort(bySlot);
-	return index;
-};
-
-/** The order of a children list: by rank, ties by id. */
-export const bySlot = (
-	a: { id: BlockId; rank: string },
-	b: { id: BlockId; rank: string }
-): number => (a.rank === b.rank ? a.id.localeCompare(b.id) : a.rank < b.rank ? -1 : 1);
-
 /**
  * Document order: ONE pre-order over the visible blocks of a children
  * index — `ids` in reading order, `at` the position of each id. Every
@@ -816,19 +262,6 @@ export const bySlot = (
  * reads this; island sealing is a policy the caller applies on top.
  */
 export type DocOrder = { ids: readonly BlockId[]; at: ReadonlyMap<BlockId, number> };
-
-export const documentOrder = (kids: ModelView['kids']): DocOrder => {
-	const ids: BlockId[] = [];
-	const at = new Map<BlockId, number>();
-	const stack = [...(kids.get(null) ?? [])].reverse();
-	for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
-		at.set(next.id, ids.length);
-		ids.push(next.id);
-		const own = kids.get(next.id) ?? [];
-		for (let i = own.length - 1; i >= 0; i--) stack.push(own[i]);
-	}
-	return { ids, at };
-};
 
 /**
  * Bind the placement model to a concrete engine surface.

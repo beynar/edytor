@@ -423,7 +423,14 @@ export class Projector {
 			// own pointerdown cleared it): a caret the browser parks later
 			// without a gesture (focusing the host) is then drift, not intent;
 			// the one it parks for the atom's press is drift through its release
-			// (`parked`).
+			// (`parked`). An atom asked for under the host's focus (a Shift+arrow
+			// onto it) is the press's case without the press: Chromium parks a
+			// caret at the host's start at the next key, whose `selectionchange`
+			// can land after that key counted as a gesture, so it stays the
+			// browser's (`#parking`), whatever key comes before it, as under none.
+			const active = getActiveElement(node);
+			if (value.kind === 'atom' && requested && active && node.contains(active))
+				this.#parking = true;
 			const inside = Boolean(dom.anchorNode && node.contains(dom.anchorNode));
 			if ((inside || dom.rangeCount === 0) && this.#ours(requested)) {
 				if (inside) clearDomSelection(node);

@@ -9,6 +9,7 @@
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { Text } from '../text/text.svelte.js';
 import { blockSelection } from '$lib/session/selection.js';
+import { toTrailingParagraph } from '$lib/session/navigation.js';
 import { isNativeInteractiveEvent } from '$lib/events/nativeInteractiveControl.js';
 import { acrossColumns } from './replaceSelection.js';
 import { getDomSelectionSnapshot, type DomSelectionSnapshot } from './domSelection.js';
@@ -74,6 +75,33 @@ export class SelectionPointer {
 		}
 
 		return block;
+	};
+
+	/**
+	 * A press in the host's own area below its last block (its bottom
+	 * padding, its height past the content; `nav.trailing.press`, Notion):
+	 * the caret goes to the trailing paragraph (`toTrailingParagraph`, a new
+	 * one when the last block is not an empty one). A primary press without
+	 * a modifier, from a mouse or a pen (a touch there may start a scroll:
+	 * the browser's); a view that writes nothing keeps the browser's caret.
+	 * Answers whether it took the press.
+	 * @internal
+	 */
+	belowPress = (event: MouseEvent): boolean => {
+		const { edytor } = this.selection;
+		const host = edytor.node;
+		if (!host || event.target !== host || event.button !== 0) return false;
+		if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return false;
+		if ((event as PointerEvent).pointerType === 'touch' || !edytor.dispatcher.permits())
+			return false;
+		const bottom = edytor.root?.children.at(-1)?.node?.getBoundingClientRect().bottom;
+		if (bottom === undefined || event.clientY <= bottom) return false;
+		// The model answers this press, as a chrome press: no native caret placement.
+		event.preventDefault();
+		edytor.expectInternalFocus();
+		host.focus({ preventScroll: true });
+		toTrailingParagraph(edytor);
+		return true;
 	};
 
 	/** @internal */

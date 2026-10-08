@@ -8,7 +8,8 @@
  *   block, as one undo step; an empty line in the middle (or the only line)
  *   is a newline as before.
  * - ArrowDown in the last line goes below the block, creating a paragraph
- *   when nothing follows it.
+ *   when nothing follows it (navigation's rule for every kind,
+ *   `nav.trailing.exit`; `trailing-paragraph.test.tsx` has its other rows).
  * - An empty code line shows no placeholder.
  *
  * Expected values come from that rule, never from a run.

@@ -28,6 +28,12 @@ export interface SurfacePort {
 	clear(): void;
 	/** The mounted text and display offset a DOM point stands in, or `null`. */
 	pointAt(node: Node, offset: number): { text: Text; offset: number } | null;
+	/**
+	 * Whether two carets show on one line box (each read on the line it
+	 * ends where a line wraps), or `null` where nothing is laid out
+	 * (`surface/lines.ts`).
+	 */
+	sameLine(a: { text: Text; offset: number }, b: { text: Text; offset: number }): boolean | null;
 }
 
 /** The input commands a key binding runs (`events/beforeInputCommands.ts`). */

@@ -113,6 +113,12 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 		);
 	};
 
+	/** A press the model places the caret for: below the last block, or on a block's chrome. */
+	const placingPress = (event: MouseEvent) => {
+		const { pointer } = edytor.selection;
+		if (!pointer.belowPress(event)) pointer.chromePress(event);
+	};
+
 	/** A press inside the host (its bubbling phase: an element inside that took it keeps it). */
 	const pressInside = (event: MouseEvent) => {
 		// A pointer gesture abandons a live composition.
@@ -241,15 +247,16 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 			},
 			{ capture: true }
 		),
-		// A press on a block's non-editable chrome places the caret in its text.
-		on(node, 'pointerdown', edytor.selection.pointer.chromePress, {
+		// A press below the last block goes to the trailing paragraph; one on a
+		// block's non-editable chrome places the caret in its text.
+		on(node, 'pointerdown', placingPress, {
 			capture: true
 		}),
 		on(
 			node,
 			'mousedown',
 			(event: MouseEvent) => {
-				if (lone(event)) edytor.selection.pointer.chromePress(event);
+				if (lone(event)) placingPress(event);
 			},
 			{ capture: true }
 		),

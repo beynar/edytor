@@ -449,6 +449,14 @@
 
 <style>
 	/*
+	 * Room below the last block, where a press puts the caret in a trailing
+	 * paragraph (`nav.trailing.press`): `--edytor-trailing-space`. No
+	 * specificity, so any rule of the app's sets the padding instead.
+	 */
+	:global(:where([data-edytor])) {
+		padding-block-end: var(--edytor-trailing-space, 2em);
+	}
+	/*
 	 * A block selection shows as its selected blocks, never as a native range:
 	 * the range a pointer drag across columns still extends under it
 	 * (`sel.drag.across-columns`) is not highlighted, over any theme.

@@ -13,7 +13,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Prepared } from '$lib/crdt/index.js';
 import type { PartialLabels } from '$lib/labels.js';
 import type { Text } from '$lib/text/text.svelte.js';
-import { domPointOf } from '$lib/surface/projector.svelte.js';
+import { caretBox, sameLine } from '$lib/surface/lines.js';
 
 export type TablePluginOptions = {
 	/** The rows a new table has (default 3). */
@@ -202,39 +202,6 @@ export const tabFrom = (cell: Block, step: 1 | -1): boolean => {
 	if (step > 0) insertRow(table, grid.rows.length, true);
 	return true;
 };
-
-/**
- * The box of the caret at `offset` in `text`, read from the character after
- * it (`after`: its left edge) or the one before it (its right edge), the
- * other one where there is none; `null` where nothing is laid out (no layout
- * engine). An offset where a line wraps is on both lines: `after` reads it
- * on the later one, `before` on the earlier one.
- */
-const caretBox = (text: Text, offset: number, after: boolean): DOMRect | null => {
-	const element = text.node;
-	if (!element) return null;
-	const range = element.ownerDocument.createRange();
-	const box = (from: number): DOMRect | null => {
-		if (from < 0 || from >= text.stringContent.length) return null;
-		const [startNode, start] = domPointOf(element, from);
-		const [endNode, end] = domPointOf(element, from + 1);
-		range.setStart(startNode, start);
-		range.setEnd(endNode, end);
-		// No layout engine (a server, jsdom) lays nothing out: no box.
-		const list = typeof range.getClientRects === 'function' ? range.getClientRects() : null;
-		return [...(list ?? [])].find((r) => r.width > 0 || r.height > 0) ?? null;
-	};
-	const next = box(offset);
-	const previous = box(offset - 1);
-	const edge = (r: DOMRect, right: boolean) =>
-		new DOMRect(right ? r.right : r.left, r.top, 0, r.height);
-	if (after) return next ? edge(next, false) : previous && edge(previous, true);
-	return previous ? edge(previous, true) : next && edge(next, false);
-};
-
-/** `a` and `b` are on one line box: their vertical middles are within half a line of each other. */
-const sameLine = (a: DOMRect, b: DOMRect) =>
-	Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) < Math.max(a.height, b.height) / 2;
 
 /**
  * ArrowUp (`step` -1) on a cell's first line, ArrowDown (`1`) on its last

@@ -818,6 +818,90 @@ describe('the beside bands', () => {
 	});
 });
 
+/**
+ * The drop reach (`dnd.reach`): within the editor's height, past the
+ * content column, the page target answers up to 240px past the handle
+ * column (left) and the content's right edge (right). In jsdom the handle
+ * is not measured (a 50px handle column) and `overPage` gives the root the
+ * blocks' box (0…600): the handle column is −50…0, the beside place −170…−50
+ * and 600…720, the reorder −290…−170 and 720…840.
+ */
+describe('the drop reach', () => {
+	it('past the beside place, the reorder of the row at that height; past the reach, nothing', async () => {
+		const { edytor } = await render(withX());
+		await startDrag(edytor, 'X');
+		await overPage(edytor, 750, 6);
+		expect([position(), indicated()]).toEqual(['before', 'P']);
+		await overPage(edytor, -200, 18);
+		expect([position(), indicated()]).toEqual(['after', 'P']);
+		// The beside place keeps its band.
+		await overPage(edytor, 660, 12);
+		expect([position(), indicated()]).toEqual(['right', 'P']);
+		await overPage(edytor, 850, 6);
+		expect(indicator()).toBeNull();
+		const drop = await overPage(edytor, -300, 6);
+		expect(indicator()).toBeNull();
+		await drop();
+		expect(shape(edytor)).toEqual(['P', C, 'Z', 'X']);
+	});
+
+	it('over a layout: right, the last column’s row at that height (as at its right edge); left, the first column’s', async () => {
+		const { edytor } = await render(withX());
+		await startDrag(edytor, 'X');
+		const [b, a2] = [rectOf(edytor, 'B'), rectOf(edytor, 'A2')];
+		await overPage(edytor, 750, b.top + 6);
+		expect([position(), indicated()]).toEqual(['before', 'B']);
+		// Below B, in column 2: B's lower half, past one nesting step right of its text.
+		await overPage(edytor, 750, a2.top + 12);
+		expect([position(), indicated()]).toEqual(['inside', 'B']);
+		const drop = await overPage(edytor, -200, a2.top + 6);
+		expect([position(), indicated()]).toEqual(['before', 'A2']);
+		await drop();
+		expect(shape(edytor)).toEqual([
+			'P',
+			[
+				'columns',
+				[
+					['column', ['A', 'X', 'A2']],
+					['column', ['B']]
+				]
+			],
+			'Z'
+		]);
+	});
+
+	it('a nested row in the left beside place offers no band: the reorder there (the handle column’s)', async () => {
+		const { edytor } = await render([p('P', 'p', [p('P1')]), p('X')]);
+		await startDrag(edytor, 'X');
+		const p1 = rectOf(edytor, 'P1');
+		const drop = await overPage(edytor, -100, p1.top + 6);
+		expect([position(), indicated()]).toEqual(['before', 'P1']);
+		await drop();
+		expect(shape(edytor)).toEqual([['P', ['X', 'P1']]]);
+	});
+
+	it('no layout kind: the whole reach reorders, both sides', async () => {
+		const { edytor } = await renderDomEdytor(
+			<root>
+				<paragraph>|</paragraph>
+			</root>,
+			{
+				plugins: [blockHandlesPlugin, richTextPlugin],
+				value: { children: [p('P'), p('Q'), p('X')] }
+			}
+		);
+		await startDrag(edytor, 'X');
+		await overPage(edytor, 660, 6);
+		expect([position(), indicated()]).toEqual(['before', 'P']);
+		await overPage(edytor, -100, 30);
+		expect([position(), indicated()]).toEqual(['before', 'Q']);
+		const drop = await overPage(edytor, 820, 30);
+		expect([position(), indicated()]).toEqual(['before', 'Q']);
+		await drop();
+		expect(shape(edytor)).toEqual(['P', 'X', 'Q']);
+	});
+});
+
 describe('the drag preview', () => {
 	it("clones a column's block at its own width, a root block at the root's", async () => {
 		const { edytor } = await render(withX());

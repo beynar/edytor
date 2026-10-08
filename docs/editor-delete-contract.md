@@ -1646,6 +1646,48 @@ source, `order-scope.test.ts`).
   peer put in a new column meanwhile keeps it, and that column, alone,
   dissolves into the layout's slot.
 
+## Block drag (the view)
+
+Where a block handle's drag drops. The moves themselves are
+`moveBlocks`' (`left`/`right`: `layout.place-beside`); these rows say
+which placement a pointer position offers.
+
+### `dnd.reach` — a drag outside the content column still drops
+
+While a block drag runs (never readonly: there is none), a pointer within
+the editor's height but outside its content column (the root's content
+box, `start`…`end`) answers for the row the content's near edge shows at
+the pointer's height: a nested block's own row; over a layout, the row of
+its **first** column on the left and of its **last** column on the right,
+never another column. By zone (`marginAt`), measured from the content's
+edges:
+
+1. **Inside the content**, and wherever a block's drop target holds the
+   pointer (its own box, or its sticky slop, 20px beside it): that block
+   answers (its beside bands, then its halves). Nothing below changes this.
+2. **The handle column** (left of `start`, the drag's handle width): the
+   row's reorder, before or after only, never inside, at the outermost
+   level it ends (as `start` gives it); no beside band.
+3. **The beside place**: the first 120px past the handle column (left) and
+   past `end` (right), at most the reach. When the document has a layout
+   kind, the band of that side (`beside`, as at that edge): a new column.
+   A band the document refuses shows nothing; a row offering none (a
+   nested row on the left, a layout that would stack) reorders as in 4.
+4. **The reorder**: the rest of the reach (all of it without a layout
+   kind). Left: as the handle column (2). Right: the placement the row
+   offers at its own right edge (its halves; before, after, or inside as
+   past one nesting step), the same as just inside the content: nothing
+   jumps as the pointer leaves it.
+5. **Past the reach** (`--edytor-drop-reach` on the root or an ancestor,
+   in px, default 240, past the handle column and past `end`), above or
+   below the editor: nothing; released there, nothing moves.
+
+Between two rows where the margin reorders, the reorder shown stays (as a
+block's sticky slop keeps it). Auto-scroll is unchanged.
+Pins: `drop-reach.test.ts` (the zones), `columns-dnd.test.tsx` ("the drop
+reach"), `drop-reach.spec.ts`, and the band rows of `columns-parity.spec.ts`
+and `columns-dnd.spec.ts`.
+
 ## Tables
 
 A **table** is a kind whose role says `table: true` (the bundled `table`,

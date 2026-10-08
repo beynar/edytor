@@ -32,6 +32,8 @@ export const load: PageLoad = ({ url }) => {
 		triggers: url.searchParams.get('triggers') === '1',
 		// `polish=1` lists the block menu, the page and the table of contents plugins.
 		polish: url.searchParams.get('polish') === '1',
+		// `columns=0` leaves the columns plugin out: a document with no layout kind (no beside bands).
+		columns: url.searchParams.get('columns') !== '0',
 		collab: url.searchParams.get('collab'),
 		collabws: url.searchParams.get('collabws'),
 		wsserver: url.searchParams.get('wsserver'),

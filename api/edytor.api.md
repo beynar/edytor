@@ -415,6 +415,7 @@ export declare class BlockHandleController {
     private gutter;
     private inHandleColumn;
     private margin;
+    private atRightEdge;
     private reorder;
     handleKeyDown(event: KeyboardEvent, block: Block): void;
     private moveAndSelect;

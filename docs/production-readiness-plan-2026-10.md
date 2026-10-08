@@ -63,7 +63,7 @@ Majors, by dimension:
   (`next.42`); ~~typing in a table O(cells²)~~ (`next.42`); client typing linear in page size
   (no windowing).
 - **Features**: ~~markdown paste into blocks~~ (`next.44`); ~~file/video/audio claiming dropped and pasted files
-  (with upload progress)~~ (`next.44`); real-device mobile and touch chrome.
+  (with upload progress)~~ (`next.44`); the touch chrome (tested under phone emulation since `1.0.0-rc.1`: handles without hover, grip tap → block menu → Move, `+`, toolbar, all on screen); real devices are the maintainer's.
 - **Code**: the view-side classes (`EdytorSelection`, `BlockHandleController`, `Edytor`,
   `EdytorDocument`) not split; ~~the room split is a 16-module cycle~~ (after `1.0.0-rc.1`: the room's shared constants and helpers in a leaf, `room/shared.ts`; four small cycles remain, each inside one context); master unprotected; ~~the nightly never run~~ (first runs on Linux failed WebKit's Mac
   keys; on macOS since, green at `1.0.0-rc.1`); ~~about 90 checkpoint-named test files~~ (`next.41`).

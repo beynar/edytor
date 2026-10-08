@@ -38,11 +38,13 @@ These are floors, not tested versions: between them and the versions in the tabl
 
 The mobile lanes run the Chromium engine as a `Pixel 5` and the WebKit engine as an `iPhone 13`: a phone viewport, a touch-capable user agent, and the `beforeinput` and composition event sequences Android and iOS keyboards send, replayed by the tests. They cover typing, deleting, line breaks, paste and composing words when the keyboard's events cannot be canceled, the caret after a delete, inline atoms and images next to those edits, undo, and a columns layout stacked on a narrow screen.
 
+The block chrome is tested under a finger too: a phone has no hover, so every block's handles show; a tap on a grip selects the block and opens the block menu (Move up and Move down move it, one undo step each), a tap on a `+` opens the insert menu, and a text selection shows the toolbar, whose buttons a tap applies; each fits the phone's screen.
+
 They are emulation, not phones. Not tested on devices:
 
 - Android keyboards (Gboard, Samsung Keyboard, SwiftKey): word suggestions, autocorrect, swipe typing, voice input and the keyboard's own cursor control.
 - The iOS and iPadOS keyboards: autocorrect, predictive text, dictation and the text selection handles.
-- Long-press gestures on block handles, and drag and drop with a finger.
+- Long-press gestures on block handles, and drag and drop with a finger (the platform's own drag and drop, which a long press on a grip starts): on a phone, the block menu's Move up and Move down are the tested way to move a block.
 
 The editor carries two rules for behavior seen on real devices (the caret Android's keyboard moves back after a delete, and the jump some IMEs make after a commit), and each is tested by replaying its event sequence. Expect rough edges on real phones: report them with the device, the OS, the browser and the keyboard, and the document's JSON.
 

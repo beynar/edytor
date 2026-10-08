@@ -14,6 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 0.1.0-next.37
+
 #### Fixed
 
 - **Chrome follows the blocks when they move with no edit.** Block handles and the other chrome were measured again only on an edit, a scroll or a resize of the editor or the window. A block laid out again without one (a font or a stylesheet that loads late, an equation KaTeX draws after the first render, an editor whose height the page fixes) left every handle beside its block's old place. The overlay now also measures again when a block's element changes size. Nothing to change in your code.

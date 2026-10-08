@@ -6256,6 +6256,7 @@ export type Measure = (origin: DOMRect) => (() => void) | void;
 export declare class Overlay {
     #private;
     layer: HTMLElement | null;
+    observe: (node: Element) => () => void;
     add: (measure: Measure) => () => undefined;
     invalidate: () => void;
     mount: <Props extends Record<string, unknown>>(component: Component<Props>, props: Props, name: string, zIndex: number, measure: (host: HTMLElement, origin: DOMRect) => (() => void) | void) => () => void;

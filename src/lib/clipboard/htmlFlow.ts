@@ -1,4 +1,5 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { colorsOfClasses } from '$lib/block/colors.js';
 import type { Flow } from '$lib/crdt/flow.js';
 import type { BlockDefinition } from '$lib/plugins.js';
 import type { JSONContentPart } from '$lib/block/contentRange.js';
@@ -213,7 +214,10 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		const wraps = (element: HTMLElement) => [...element.children].some(isBlock);
 		// An element that only wraps blocks (a `div`, a `ul`) is not a line of its own.
 		if (!claim && wraps(element)) return linesOf(element, type);
-		const line: Line = { type: claim?.type ?? type, data: claim?.data, content: [] };
+		// A text line keeps the colours Notion's export classes name (`block-color-red`).
+		const colors = colorsOfClasses(element);
+		const data = Object.keys(colors).length ? { ...claim?.data, ...colors } : claim?.data;
+		const line: Line = { type: claim?.type ?? type, data, content: [] };
 		const childType = claim ? kinds.document.defaultChild(claim.type) : type;
 		const pre = element.localName === 'pre';
 		// The element's line, then, for each void element met in it, that block

@@ -6,6 +6,7 @@
 		TriggerContext,
 		TriggerItemPayload
 	} from '$lib/plugins.js';
+	import { labelsWith, type PartialLabels } from '$lib/labels.js';
 
 	/** A person the mention menu offers: what your app's directory answers. */
 	export type MentionItem = {
@@ -32,6 +33,8 @@
 		char?: string;
 		/** Replace each row of the menu. */
 		item?: Snippet<[TriggerItemPayload<MentionItem>]>;
+		/** The words the menu shows and says, over the English ones. */
+		labels?: PartialLabels<'mention'>;
 	};
 
 	/** An avatar's URL when it is one an `img` may load (http, https, a data image), else nothing. */
@@ -43,9 +46,9 @@
 	 * `items(query)` answers; picking one replaces `@query` with a `mention`
 	 * atom (`{ id, label }`) and puts the caret after it, in one undo step.
 	 */
-	export const createMentionPlugin =
-		(options: MentionPluginOptions): Plugin =>
-		() => ({
+	export const createMentionPlugin = (options: MentionPluginOptions): Plugin => {
+		const labels = labelsWith('mention', options.labels);
+		return () => ({
 			inlineBlocks: {
 				mention: {
 					snippet: mention,
@@ -58,7 +61,9 @@
 			triggers: [
 				{
 					char: options.char ?? '@',
-					name: 'People',
+					name: labels.menu,
+					empty: labels.noResults,
+					searching: labels.searching,
 					items: (query, ctx) => options.items(query, ctx),
 					label: (person: MentionItem) => person.label,
 					key: (person: MentionItem) => person.id,
@@ -72,6 +77,7 @@
 				}
 			]
 		});
+	};
 </script>
 
 {#snippet mention({ block }: InlineBlockSnippetPayload<Partial<MentionData>>)}

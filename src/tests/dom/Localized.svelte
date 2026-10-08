@@ -19,6 +19,9 @@
 	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
+	import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+	import { createPageLinkPlugin } from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
+	import type { Plugin } from '$lib/plugins.js';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import { fr, frKeywords } from '../fixtures/labels.fr.js';
 
@@ -43,6 +46,10 @@
 		createColumnsPlugin({ labels: fr.columns }),
 		createPagePlugin({ labels: fr.page, keywords: frKeywords, create: () => 'page-1' }),
 		createTocPlugin({ labels: fr.toc, keywords: frKeywords }),
+		createMentionPlugin({ labels: fr.mention, items: () => [] }),
+		createPageLinkPlugin({ labels: fr.pageLink, search: () => [] }),
+		// An app's own trigger naming nothing: the view's words.
+		(() => ({ triggers: [{ char: '%', items: () => [], onPick: () => true }] })) as Plugin,
 		createRichTextPlugin({ labels: fr.richText, keywords: frKeywords })
 	];
 </script>

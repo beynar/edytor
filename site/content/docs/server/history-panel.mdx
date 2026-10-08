@@ -122,7 +122,7 @@ A `401` or `403` (a reader's restore, an expired session) shows `You do not have
 | `readonly` | `boolean` | `false` | Hide Restore and Undo restore. |
 | `highlight` | `boolean` (bindable) | `true` | Highlight the changes since the version. |
 | `locale` | `string \| string[]` | the browser's | The locale of dates and times. |
-| `labels` | `Partial<HistoryPanelLabels>` | | Replace any of the panel's words (below). |
+| `labels` | `PartialLabels<'history'>` | | Replace any of the panel's words (below). |
 | `class` | `string` | | The panel's class. |
 | `previewClass` | `string` | | The preview editor's class. |
 | `version` | `Snippet<[HistoryVersion, { selected }]>` | | A row's content, in place of its date, editors and time. |
@@ -134,7 +134,7 @@ With `bind:this`, the panel exposes `refresh()` (list the versions again, keepin
 
 ### Words
 
-Every word the panel shows is in `labels`, defaults in `defaultHistoryLabels`; `{n}` stands for a count (`added: '{n} added since'`, `moreEditors: '+{n}'`).
+Every word the panel shows is in `labels`: the `history` section of the [label dictionary](/docs/customization/localization) (`englishLabels.history`, also exported as `defaultHistoryLabels`). A word about a count is a function of it, so a language can inflect it (`added: (count) => …`, `moreEditors: (count) => …`); dates and times follow `locale`.
 
 ```svelte title="Historique.svelte" check
 <script lang="ts">
@@ -153,9 +153,9 @@ Every word the panel shows is in `labels`, defaults in `defaultHistoryLabels`; `
 		evening: 'Soir',
 		restore: 'Restaurer cette version',
 		undo: 'Annuler la restauration',
-		added: '{n} ajoutés depuis',
-		removed: '{n} supprimés depuis',
-		changed: '{n} modifiés depuis'
+		added: (count) => `${count} ajouté${count > 1 ? 's' : ''} depuis`,
+		removed: (count) => `${count} supprimé${count > 1 ? 's' : ''} depuis`,
+		changed: (count) => `${count} modifié${count > 1 ? 's' : ''} depuis`
 	}}
 />
 ```

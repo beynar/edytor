@@ -27,7 +27,10 @@ export const fr: Labels = {
 		indented: (what) => `${what} indenté`,
 		outdented: (what) => `${what} désindenté`,
 		moved: (what) => `${what} déplacé`,
-		deleted: (what) => `${what} supprimé`
+		deleted: (what) => `${what} supprimé`,
+		triggerMenu: 'Suggestions',
+		searching: 'Recherche…',
+		noResults: 'Aucun résultat'
 	},
 	richText: {
 		kinds: {
@@ -111,7 +114,8 @@ export const fr: Labels = {
 			'Basic blocks': 'Blocs de base',
 			'Advanced blocks': 'Blocs avancés',
 			Media: 'Médias',
-			Layout: 'Mise en page'
+			Layout: 'Mise en page',
+			Color: 'Couleur'
 		}
 	},
 	blockMenu: {
@@ -268,6 +272,39 @@ export const fr: Labels = {
 		searching: 'Recherche…',
 		noResults: 'Aucun résultat',
 		untitled: 'Sans titre'
+	},
+	mention: {
+		menu: 'Personnes',
+		searching: 'Recherche…',
+		noResults: 'Personne ne correspond'
+	},
+	history: {
+		title: 'Historique des versions',
+		versions: 'Versions',
+		morning: 'Matin',
+		evening: 'Soir',
+		loading: 'Chargement…',
+		empty: 'Aucune version. Une version est enregistrée deux fois par jour quand la page change.',
+		noEditors: 'Aucun auteur',
+		moreEditors: (count) => `+${count}`,
+		saved: 'Enregistrée',
+		preview: 'Aperçu de la version',
+		choose: 'Choisissez une version pour l’afficher.',
+		highlight: 'Surligner les changements',
+		added: (count) => `${count} ajouté${count > 1 ? 's' : ''} depuis`,
+		removed: (count) => `${count} supprimé${count > 1 ? 's' : ''} depuis`,
+		changed: (count) => `${count} modifié${count > 1 ? 's' : ''} depuis`,
+		same: 'Identique à la page actuelle',
+		restore: 'Restaurer la version',
+		restoring: 'Restauration…',
+		undo: 'Annuler la restauration',
+		restored: 'Version restaurée.',
+		unchanged: 'La page correspond déjà à cette version.',
+		unavailable: 'Cette version n’est plus disponible.',
+		undone: 'Restauration annulée.',
+		nothingToUndo: 'Aucune restauration à annuler.',
+		denied: 'Vous n’avez pas accès à cet historique.',
+		failed: 'L’historique est injoignable.'
 	}
 };
 

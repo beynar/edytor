@@ -231,11 +231,11 @@ export type Trigger<T = any> = {
 	key?: (item: T) => string;
 	/** Replace each row's markup. */
 	item?: Snippet<[TriggerItemPayload<T>]>;
-	/** The menu's accessible name (default `Suggestions`). */
+	/** The menu's accessible name (default: the view's `labels.triggerMenu`, `Suggestions`). */
 	name?: string;
-	/** The text shown when no row matches (default `No results`). */
+	/** The text shown when no row matches (default: the view's `labels.noResults`, `No results`). */
 	empty?: string;
-	/** The text shown while a search is pending and no row is shown (default `Searching…`). */
+	/** The text shown while a search is pending and no row is shown (default: the view's `labels.searching`, `Searching…`). */
 	searching?: string;
 	/** Whether the menu may open in `block` (default: a block that is not void and not in a code block). */
 	enabled?: (block: Block) => boolean;
@@ -554,6 +554,11 @@ export type EditorCommand = {
 	 * columns plugin's `columns.<n>` over `n` sibling blocks wraps them).
 	 */
 	turnsInto?: (blocks: Block[]) => boolean;
+	/**
+	 * Listed by the slash and `+` menus only once a query names it (the block
+	 * colours: `/red`), never in the bare list.
+	 */
+	searchOnly?: boolean;
 };
 
 export type InitializedPlugin = ReturnType<Plugin>;

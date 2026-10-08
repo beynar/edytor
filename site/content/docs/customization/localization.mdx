@@ -4,7 +4,7 @@ description: Translate every word the editor's chrome shows or says, from the me
 icon: languages
 ---
 
-Every word the editor shows or says comes from a dictionary of labels: the menus, the toolbar, the handles' names, the empty image and media panels, the code header, the find bar, the suggestion bar, the page, table of contents and page link blocks, the placeholders and what screen readers hear. English is the default. To show another language, pass each plugin its `labels`, and the view its own:
+Every word the editor shows or says comes from a dictionary of labels: the menus, the toolbar, the handles' names, the empty image and media panels, the code header, the find bar, the suggestion bar, the page, table of contents and page link blocks, the mention and page link menus, the version history panel, the placeholders and what screen readers hear. English is the default. To show another language, pass each plugin its `labels`, and the view its own:
 
 | Words | Where to pass them | Section of `Labels` |
 | --- | --- | --- |
@@ -23,9 +23,11 @@ Every word the editor shows or says comes from a dictionary of labels: the menus
 | The page block and its "Page" command | `createPagePlugin({ labels, keywords })` | `page` |
 | The table of contents block and its preset | `createTocPlugin({ labels, keywords })` | `toc` |
 | The `[[` page link menu and atom | `createPageLinkPlugin({ labels })` | `pageLink` |
-| Block move and delete announcements, a suggestion's default name | `<Edytor labels>` | `editor` |
+| The `@` mention menu | `createMentionPlugin({ labels })` | `mention` |
+| The version history panel | `<HistoryPanel labels>` | `history` |
+| Block move and delete announcements, a suggestion's default name, a trigger menu that names none | `<Edytor labels>` | `editor` |
 
-`labels` takes any entries of its section: the ones you leave out stay English, and so does an entry of a nested group (`kinds`, `placeholders`, `groups`, `colors`, a media kind) you leave out. A label that says something about a value is a function of it, so each language orders and inflects its own words: `movedUp: (what) => ...`, `columns: (count) => ...`, `fileSize: (bytes) => ...`.
+`labels` takes any entries of its section: the ones you leave out stay English, and so does an entry of a nested group (`kinds`, `placeholders`, `groups`, `colors`, a media kind) you leave out. A label that says something about a value is a function of it, so each language orders and inflects its own words: `movedUp: (what) => ...`, `columns: (count) => ...`, `fileSize: (bytes) => ...`, the history panel's `added: (count) => ...`.
 
 ```ts title="hints.ts" check
 import { createRichTextPlaceholder, createToolbarPlugin } from 'edytor';
@@ -66,7 +68,10 @@ export const fr: Labels = {
 		indented: (what) => `${what} indenté`,
 		outdented: (what) => `${what} désindenté`,
 		moved: (what) => `${what} déplacé`,
-		deleted: (what) => `${what} supprimé`
+		deleted: (what) => `${what} supprimé`,
+		triggerMenu: 'Suggestions',
+		searching: 'Recherche…',
+		noResults: 'Aucun résultat'
 	},
 	richText: {
 		kinds: {
@@ -150,7 +155,8 @@ export const fr: Labels = {
 			'Basic blocks': 'Blocs de base',
 			'Advanced blocks': 'Blocs avancés',
 			Media: 'Médias',
-			Layout: 'Mise en page'
+			Layout: 'Mise en page',
+			Color: 'Couleur'
 		}
 	},
 	blockMenu: {
@@ -307,6 +313,39 @@ export const fr: Labels = {
 		searching: 'Recherche…',
 		noResults: 'Aucun résultat',
 		untitled: 'Sans titre'
+	},
+	mention: {
+		menu: 'Personnes',
+		searching: 'Recherche…',
+		noResults: 'Personne ne correspond'
+	},
+	history: {
+		title: 'Historique des versions',
+		versions: 'Versions',
+		morning: 'Matin',
+		evening: 'Soir',
+		loading: 'Chargement…',
+		empty: 'Aucune version. Une version est enregistrée deux fois par jour quand la page change.',
+		noEditors: 'Aucun auteur',
+		moreEditors: (count) => `+${count}`,
+		saved: 'Enregistrée',
+		preview: 'Aperçu de la version',
+		choose: 'Choisissez une version pour l’afficher.',
+		highlight: 'Surligner les changements',
+		added: (count) => `${count} ajouté${count > 1 ? 's' : ''} depuis`,
+		removed: (count) => `${count} supprimé${count > 1 ? 's' : ''} depuis`,
+		changed: (count) => `${count} modifié${count > 1 ? 's' : ''} depuis`,
+		same: 'Identique à la page actuelle',
+		restore: 'Restaurer la version',
+		restoring: 'Restauration…',
+		undo: 'Annuler la restauration',
+		restored: 'Version restaurée.',
+		unchanged: 'La page correspond déjà à cette version.',
+		unavailable: 'Cette version n’est plus disponible.',
+		undone: 'Restauration annulée.',
+		nothingToUndo: 'Aucune restauration à annuler.',
+		denied: 'Vous n’avez pas accès à cet historique.',
+		failed: 'L’historique est injoignable.'
 	}
 };
 
@@ -378,6 +417,8 @@ Then give each plugin its section. Listing `createRichTextPlugin` and `createIma
 />
 ```
 
+The version history panel takes its section the same way, with the locale its dates are written in: `<HistoryPanel {client} labels={fr.history} locale="fr" />`.
+
 The view's own accessible name is yours to give (`aria-label`, `aria-labelledby`): the editor has none of its own.
 
 ## Slash keywords
@@ -386,7 +427,7 @@ The slash menu finds a kind by its label and by its keywords. A translated label
 
 ## Section headings and colors
 
-A preset's `group` (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`, or one of your own) is a key: the slash menu shows it through its `groups` labels, and a group with no entry as it is written. Write your own groups in your language, or map them in `groups`. The same holds for the palettes: `TOOLBAR_COLORS` names each toolbar color (`Red`), and the toolbar shows it through its `colors`; the block menu's Color flyout names each block color by its `BLOCK_COLORS` name (`red`, and `default` for none) through its own `colors`, each row said by `colorText` or `colorBackground` ("Red text", "Red background").
+A preset's `group` (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`, `Color`, or one of your own) is a key: the slash menu shows it through its `groups` labels, and a group with no entry as it is written. Write your own groups in your language, or map them in `groups`. The same holds for the palettes: `TOOLBAR_COLORS` names each toolbar color (`Red`), and the toolbar shows it through its `colors`; the block menu's Color flyout names each block color by its `BLOCK_COLORS` name (`red`, and `default` for none) through its own `colors`, each row said by `colorText` or `colorBackground` ("Red text", "Red background").
 
 Code languages are named by the language list (`CODE_LANGUAGES`, or your `languages`); the code labels' `languages` replaces a label by language id (`{ plaintext: 'Texte brut' }`).
 
@@ -397,7 +438,7 @@ A custom `menu`, `item`, `toolbar` or `bar` snippet renders your words, but its 
 ## What is not localized
 
 - **Your document.** Labels translate the chrome, never the content: a document keeps the text people typed.
-- **Your own kinds, marks and commands.** Their `label`, `keywords` and `group` are what you write in their records: write them in your language, or build them from your own dictionary. So are your own [triggers](/docs/plugins/input-rules#triggers): their `name`, `empty` and `searching` texts.
+- **Your own kinds, marks and commands.** Their `label`, `keywords` and `group` are what you write in their records: write them in your language, or build them from your own dictionary. So are your own [triggers](/docs/plugins/input-rules#triggers): their `name`, `empty` and `searching` texts (a trigger that leaves one out says the view's `triggerMenu`, `noResults` or `searching` label).
 - **Key names on a Mac.** The shortcuts the menus show use the Mac's symbols (⌘, ⇧, ↵) there; elsewhere the `ctrl`, `shift` and key-name labels.
 - **Number and date formats** beyond what a label function formats: `fileSize` and the find bar's `count` are functions, so use `Intl.NumberFormat` there if you need it.
 - **Right-to-left chrome.** Blocks take their text's direction, but the menus and toolbars are laid out left to right.

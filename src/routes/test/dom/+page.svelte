@@ -487,9 +487,11 @@
 					blockMenuPlugin,
 					tocPlugin,
 					createPagePlugin({
-						open: (pageId) =>
-							((window as unknown as { __EDYTOR_OPENED_PAGE__?: string }).__EDYTOR_OPENED_PAGE__ =
-								pageId),
+						open: (pageId, { newTab }) =>
+							Object.assign(window, {
+								__EDYTOR_OPENED_PAGE__: pageId,
+								__EDYTOR_OPENED_IN_TAB__: newTab
+							}),
 						create: () => 'page-new'
 					})
 				]

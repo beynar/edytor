@@ -70,12 +70,21 @@
 	});
 
 	const href = $derived(pageHref(options, pageId));
+	/**
+	 * A click opens the page; a modified one (Mod, Shift) or a middle click
+	 * opens it in a new tab (Notion), the browser's own on a link.
+	 */
 	const open = (event: MouseEvent) => {
 		if (!pageId || !options.open) return;
-		// A modified click on a link is the browser's (a new tab, a new window).
-		if (href && (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)) return;
+		if (event.button !== 0 && event.button !== 1) return;
+		const newTab = event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1;
+		if (href && newTab) return;
 		event.preventDefault();
-		options.open(pageId);
+		options.open(pageId, { newTab });
+	};
+	/** The middle button sends no `click`: its `auxclick` opens a new tab. */
+	const aux = (event: MouseEvent) => {
+		if (event.button === 1) open(event);
 	};
 </script>
 
@@ -87,14 +96,17 @@
 {/snippet}
 
 {#if href}
-	<a data-edytor-page-link {href} draggable="false" onclick={open}>{@render label()}</a>
+	<a data-edytor-page-link {href} draggable="false" onclick={open} onauxclick={aux}
+		>{@render label()}</a
+	>
 {:else}
 	<button
 		type="button"
 		data-edytor-page-link
 		disabled={!pageId || !options.open}
 		onmousedown={(event) => event.preventDefault()}
-		onclick={open}>{@render label()}</button
+		onclick={open}
+		onauxclick={aux}>{@render label()}</button
 	>
 {/if}
 

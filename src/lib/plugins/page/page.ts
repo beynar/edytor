@@ -5,10 +5,12 @@ import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 /** The page plugin's options: how your app opens, names, links and creates pages. */
 export type PagePluginOptions = {
 	/**
-	 * Open the page (navigate to it): a click on a page block. Without it the
-	 * block is a plain link when `href` gives one, else inert.
+	 * Open the page (navigate to it): a click on a page block, or Enter over
+	 * it selected alone; `newTab` for a modified click (Mod, Shift) or a
+	 * middle click, which a link (`href`) leaves to the browser. Without it
+	 * the block is a plain link when `href` gives one, else inert.
 	 */
-	open?: (pageId: string) => void;
+	open?: (pageId: string, how: { newTab: boolean }) => void;
 	/**
 	 * The page's title now, or a promise of it; `null` or `undefined` while
 	 * unknown (the block shows the title it stores). Read from reactive

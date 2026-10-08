@@ -125,9 +125,9 @@ export const tagsPlugin: Plugin = () => ({
     label: { type: "(item) => string", description: "A row's label. Default: the item when it is a string, else its label, title or name." },
     key: { type: "(item) => string", description: "A row's key, which keeps its markup across queries. Default: its id, else its label. Two rows may share one: element ids come from the row's position." },
     item: { type: "Snippet<[TriggerItemPayload]>", description: "Replace each row's markup." },
-    name: { type: "string", description: "The menu's accessible name. Default Suggestions." },
-    empty: { type: "string", description: "The text shown when no row matches. Default No results." },
-    searching: { type: "string", description: "The text shown while a search is pending and no row is shown. Default Searching…." },
+    name: { type: "string", description: "The menu's accessible name. Default: the view's `triggerMenu` label (Suggestions)." },
+    empty: { type: "string", description: "The text shown when no row matches. Default: the view's `noResults` label (No results)." },
+    searching: { type: "string", description: "The text shown while a search is pending and no row is shown. Default: the view's `searching` label (Searching…)." },
     enabled: { type: "(block) => boolean", description: "Whether the menu may open in block. Default: anywhere but in a code block." },
   }}
 />

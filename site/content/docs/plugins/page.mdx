@@ -4,7 +4,7 @@ description: The page plugin adds Notion's subpage block, a link to another docu
 icon: file-text
 ---
 
-`createPagePlugin` adds Notion's subpage block: a `page` block links to another document by its id and shows that page's title. A click opens it; with `create`, the slash menu's "Page" makes a new page and a block linking to it. It is not a default plugin: list it.
+`createPagePlugin` adds Notion's subpage block: a `page` block links to another document by its id and shows that page's title. A click opens it (a modified or middle click in a new tab, and <kbd>Enter</kbd> over it selected alone); with `create`, the slash menu's "Page" makes a new page and a block linking to it. It is not a default plugin: list it.
 
 Each page is a document of its own, one [room](/docs/server/room) per page (see [A page is a document](/docs/server/moves#a-page-is-a-document)). The block only names the page: moving a subpage under another parent is moving this block, and the page itself, its content and its history, never moves.
 
@@ -16,7 +16,8 @@ Each page is a document of its own, one [room](/docs/server/room) per page (see 
 	let titles = $state<Record<string, string>>({ 'doc-42': 'Roadmap' });
 
 	const page = createPagePlugin({
-		open: (pageId) => (location.href = `/p/${pageId}`),
+		open: (pageId, { newTab }) =>
+			newTab ? window.open(`/p/${pageId}`, '_blank') : (location.href = `/p/${pageId}`),
 		href: (pageId) => `/p/${pageId}`,
 		title: (pageId) => titles[pageId],
 		create: () => {
@@ -39,8 +40,8 @@ Each page is a document of its own, one [room](/docs/server/room) per page (see 
 <TypeTable
   type={{
     open: {
-      type: "(pageId: string) => void",
-      description: "Open the page (navigate to it): a click on the block. Without it the block is a plain link when `href` gives one, else inert.",
+      type: "(pageId: string, how: { newTab: boolean }) => void",
+      description: "Open the page (navigate to it): a click on the block, or Enter over it selected alone, with `newTab: false`; a modified click (Mod, Shift) or a middle click with `newTab: true`, as Notion opens a new tab (with `href`, those clicks are the browser's). Without it the block is a plain link when `href` gives one, else inert.",
     },
     title: {
       type: "(pageId: string) => string | null | undefined | Promise<string | null | undefined>",

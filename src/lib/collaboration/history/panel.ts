@@ -10,85 +10,12 @@ import type {
 	HistoryUndoResult,
 	HistoryVersion
 } from './client.js';
+import { englishLabels, type HistoryPanelLabels, type PartialLabels } from '$lib/labels.js';
 
-/** The panel's words, each replaceable (`labels`). */
-export type HistoryPanelLabels = {
-	/** The panel's name (its `aria-label`). */
-	title: string;
-	/** The list's name. */
-	versions: string;
-	/** The first half of a day (before local noon). */
-	morning: string;
-	/** The second half of a day (until midnight). */
-	evening: string;
-	loading: string;
-	/** No version stored yet. */
-	empty: string;
-	/** A version's editors are unknown (a server edit). */
-	noEditors: string;
-	/** `{n}` more editors. */
-	moreEditors: string;
-	/** Shown before a version's write time. */
-	saved: string;
-	/** The preview's name (its `aria-label`). */
-	preview: string;
-	/** Pick a version to preview it. */
-	choose: string;
-	/** The highlight toggle. */
-	highlight: string;
-	/** `{n}` blocks added since the version. */
-	added: string;
-	/** `{n}` blocks removed since the version. */
-	removed: string;
-	/** `{n}` blocks changed since the version. */
-	changed: string;
-	/** The version equals the current document. */
-	same: string;
-	restore: string;
-	restoring: string;
-	undo: string;
-	restored: string;
-	/** A restore that changed nothing (`noop`). */
-	unchanged: string;
-	/** The version is gone (`refused`). */
-	unavailable: string;
-	undone: string;
-	/** An undo with no restore to undo (`noop`). */
-	nothingToUndo: string;
-	/** A `401` or `403`. */
-	denied: string;
-	/** Any other failure. */
-	failed: string;
-};
+export type { HistoryPanelLabels };
 
-export const defaultHistoryLabels: HistoryPanelLabels = {
-	title: 'Version history',
-	versions: 'Versions',
-	morning: 'Morning',
-	evening: 'Evening',
-	loading: 'Loading…',
-	empty: 'No versions yet. A version is saved twice a day while the page changes.',
-	noEditors: 'No editors',
-	moreEditors: '+{n}',
-	saved: 'Saved',
-	preview: 'Version preview',
-	choose: 'Choose a version to preview it.',
-	highlight: 'Highlight changes',
-	added: '{n} added since',
-	removed: '{n} removed since',
-	changed: '{n} changed since',
-	same: 'Same as the current page',
-	restore: 'Restore version',
-	restoring: 'Restoring…',
-	undo: 'Undo restore',
-	restored: 'Version restored.',
-	unchanged: 'The page already matches this version.',
-	unavailable: 'This version is no longer available.',
-	undone: 'Restore undone.',
-	nothingToUndo: 'There is no restore to undo.',
-	denied: 'You do not have access to this history.',
-	failed: 'The history could not be reached.'
-};
+/** The panel's English words: the label dictionary's `history` section (`englishLabels.history`). */
+export const defaultHistoryLabels: HistoryPanelLabels = englishLabels.history;
 
 export type HistoryPanelProps = {
 	/** Where the versions come from: `createHistoryClient(…)`, or any object with `list`, `read`, `restore` and `undo`. */
@@ -106,7 +33,7 @@ export type HistoryPanelProps = {
 	/** The locale dates and times are written in (default the browser's). */
 	locale?: string | string[];
 	/** Replace any of the panel's words. */
-	labels?: Partial<HistoryPanelLabels>;
+	labels?: PartialLabels<'history'>;
 	/** The panel's class. */
 	class?: string;
 	/** The preview editor's class (your theme's, such as `edytor-notion`). */

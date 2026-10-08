@@ -1,4 +1,5 @@
 import type { Snippet } from 'svelte';
+import type { EditorCommand } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import {
@@ -71,6 +72,40 @@ const colorRows = (labels: BlockMenuLabels): BlockMenuColor[] =>
 			};
 		})
 	);
+
+/**
+ * A colour row as a query matches it: its words, and its palette name and
+ * field in English (`/red`, `background`), whatever language its label is in.
+ */
+export const colorQueryRow = (row: BlockMenuColor) => ({
+	label: row.label,
+	keywords: [row.value ?? 'default', row.field === 'color' ? 'text' : 'background']
+});
+
+/**
+ * The slash menu's colour commands (`color.<name>`, `background.<name>`),
+ * listed once a query names them (`searchOnly`): each paints the caret's
+ * block, as the block menu's Color does (`setBlockColor`).
+ */
+export const colorCommands = (edytor: Edytor, labels: BlockMenuLabels): EditorCommand[] =>
+	colorRows(labels).map((row) => ({
+		id: row.id,
+		...colorQueryRow(row),
+		icon: 'A',
+		group: 'Color',
+		searchOnly: true,
+		isEnabled: (view = edytor) => {
+			const block = view.selection.state.startBlock;
+			return Boolean(block && colorable(block));
+		},
+		run: () => {
+			const block = edytor.selection.state.startBlock;
+			if (!block || !colorable(block)) return false;
+			if (setBlockColor(edytor, [block], row.field, row.value)) return true;
+			// Already that colour: nothing to write, the typed query still goes.
+			return edytor.dispatcher.permits();
+		}
+	}));
 
 export class BlockMenuController {
 	/** The block whose grip opened the menu. */
@@ -254,9 +289,19 @@ export class BlockMenuController {
 		return this.kinds.filter((kind) => matchesQuery(kind, this.query));
 	}
 
-	/** Every keyboard row: actions, then the matching kinds. */
-	get rows(): Array<BlockMenuAction | KindRow> {
-		return [...this.actions, ...this.matchingKinds];
+	/**
+	 * With a query, the colours it names join the list after the kinds
+	 * (Notion's "Color" results: `red` lists "Red text" and "Red background"),
+	 * when the blocks take one (`colorable`).
+	 */
+	get matchingColors(): BlockMenuColor[] {
+		if (!this.query.trim() || !this.colorable.length) return [];
+		return this.colors.filter((row) => matchesQuery(colorQueryRow(row), this.query));
+	}
+
+	/** Every keyboard row: actions, then the matching kinds, then the matching colours. */
+	get rows(): Array<BlockMenuAction | KindRow | BlockMenuColor> {
+		return [...this.actions, ...this.matchingKinds, ...this.matchingColors];
 	}
 
 	open(block: Block, anchor: HTMLElement) {
@@ -373,6 +418,7 @@ export class BlockMenuController {
 	runSelected() {
 		const row = this.rows[this.selectedIndex];
 		if (!row) return;
+		if ('field' in row) return this.paint(row);
 		if ('value' in row) return this.turnInto(row);
 		if (row.submenu) this.openFlyout(row.submenu);
 		else row.run?.();

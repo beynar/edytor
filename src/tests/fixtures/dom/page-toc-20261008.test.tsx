@@ -84,7 +84,7 @@ describe('The page block', () => {
 		expect(titleOf('b')).toBe('Untitled');
 		expect(element('a').getAttribute('data-edytor-void')).toBe('true');
 		await click(link('a'));
-		expect(open).toHaveBeenCalledWith('p-1');
+		expect(open).toHaveBeenCalledWith('p-1', { newTab: false });
 	});
 
 	it('the lookup’s title shows and is stored outside the history', async () => {
@@ -145,7 +145,7 @@ describe('The page block', () => {
 		expect(titleOf('a')).toBe('New');
 		expect(view.edytor.facade.blockDataOf('a')?.title).toBe('Old');
 		await click(link('a'));
-		expect(open).toHaveBeenCalledWith('p-1');
+		expect(open).toHaveBeenCalledWith('p-1', { newTab: false });
 	});
 
 	it('with href it is a link; a plain click opens, a modified one is the browser’s', async () => {
@@ -163,7 +163,7 @@ describe('The page block', () => {
 		await click(anchor, { metaKey: true });
 		expect(open).not.toHaveBeenCalled();
 		await click(anchor);
-		expect(open).toHaveBeenCalledWith('p-1');
+		expect(open).toHaveBeenCalledWith('p-1', { newTab: false });
 		document.removeEventListener('click', stay);
 	});
 
@@ -199,7 +199,7 @@ describe('The page block', () => {
 		const [first] = view.edytor.value.children!;
 		expect(first!.type).toBe('page');
 		expect(first!.data).toEqual({ pageId: 'new-1', title: 'Draft' });
-		expect(open).toHaveBeenCalledWith('new-1');
+		expect(open).toHaveBeenCalledWith('new-1', { newTab: false });
 		// One undo step takes it back.
 		view.edytor.historyUndo();
 		await flushDomUpdates();

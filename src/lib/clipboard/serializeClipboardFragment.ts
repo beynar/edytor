@@ -3,6 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EdytorClipboardFragment, JSONContentPart } from './types.js';
 import { EDYTOR_FRAGMENT_ATTRIBUTE } from './types.js';
 import { isTextPart } from '$lib/block/contentRange.js';
+import { colorClasses } from '$lib/block/colors.js';
 
 /** The records the export reads: each kind, mark and atom declares its own forms. */
 export type ExportKinds = Pick<Edytor, 'blocks' | 'marks' | 'inlineBlocks'>;
@@ -38,12 +39,29 @@ const contentHtml = (content: JSONContentPart[] = [], kinds: ExportKinds) =>
 		)
 		.join('');
 
+/** `classes` added to the first element of `html` (the block's own), beside a class it has. */
+const withClasses = (html: string, classes: string) =>
+	classes
+		? html.replace(/^<([a-z][\w-]*)([^>]*?)(\/?)>/i, (_, name: string, attributes: string, end) => {
+				const own = /\sclass="([^"]*)"/.exec(attributes);
+				const merged = own
+					? attributes.replace(own[0], ` class="${own[1]} ${classes}"`)
+					: `${attributes} class="${classes}"`;
+				return `<${name}${merged}${end}>`;
+			})
+		: html;
+
 const blockHtml = (block: JSONBlock, kinds: ExportKinds): string => {
 	const content = contentHtml(block.content, kinds);
 	const children = block.children?.map((child) => blockHtml(child, kinds)).join('') ?? '';
 	const form = kinds.blocks.get(block.type)?.html;
-	if (!form) return `<p>${content}</p>${children}`;
-	return typeof form === 'string' ? tag(form, content + children) : form(block, content, children);
+	const html = !form
+		? `<p>${content}</p>${children}`
+		: typeof form === 'string'
+			? tag(form, content + children)
+			: form(block, content, children);
+	// A block's colours as Notion's export names them (`block-color-red`).
+	return withClasses(html, colorClasses(block.data));
 };
 
 const contentPlain = (content: JSONContentPart[] = [], kinds: ExportKinds) =>

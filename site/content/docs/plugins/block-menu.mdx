@@ -4,7 +4,7 @@ description: The block menu plugin opens Notion's block menu when you click a bl
 icon: menu
 ---
 
-`blockMenuPlugin` opens a menu when you click a block handle's ⋮⋮ grip: a search field, Turn into, Color, Duplicate, Move up, Move down and Delete, as in Notion. It also binds <kbd>Mod</kbd> + <kbd>D</kbd> to duplicate a block.
+`blockMenuPlugin` opens a menu when you click a block handle's ⋮⋮ grip: a search field, Turn into, Color, Duplicate, Move up, Move down and Delete, as in Notion. It also binds <kbd>Mod</kbd> + <kbd>D</kbd> to duplicate a block, and adds the colours to the [slash menu](/docs/plugins/slash-menu) by name: `/red` offers "Red text" and "Red background" ([Block colors](#block-colors)).
 
 ```svelte title="Menu.svelte" check
 <script lang="ts">
@@ -65,6 +65,8 @@ The menu opens beside the grip, top-aligned 8px to its right (to its left when t
 | Move down          | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↓</kbd>  | Moves the block one step down                                          |
 | Delete             | <kbd>Del</kbd>                                    | Removes the block; its children take its place (a list or a code block goes with everything in it) |
 
+A search lists, after the actions it matches, the kinds it names under "Turn into" (`/` rules: `head` finds the headings) and the colours it names under "Color": `red` lists "Red text" and "Red background", `red back` the background alone (a colour row matches its label, and its palette name and `text` or `background` in English whatever the labels' language). A colour row paints the blocks as the flyout's does; none is listed when nothing takes a colour.
+
 A row that cannot apply is hidden: Turn into when nothing it applies to is convertible (a void block, an island or a block inside one; a list is never converted, its items are), Color when nothing it applies to takes a colour (a void block such as a divider, a code block or its lines), Move up or Move down when `edytor.canMoveBlocks` refuses the step. The hints show the matching shortcuts; <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> need the [arrow move](/docs/plugins/arrow-move) plugin.
 
 Typing in the field filters the actions by label, and lists the kinds whose label or keywords match under a "Turn into" heading: type `head` and pick "Heading 2" without opening the flyout. The query matches as in the [slash menu](/docs/plugins/slash-menu#what-it-lists): each word starts a word of the label or of a keyword, hyphens ignored, so `todo` and `to do` find "To-do list", `move` finds Move up and Move down, and a letter inside a word (`o` in "Move") matches nothing. With nothing left, the menu shows "No results".
@@ -107,6 +109,10 @@ Color paints the blocks the menu acts on, its `members` (a selected list's items
 - Each field is one property of the block: two people colouring a block at once keep the last write per field, and Turn into, a markdown shortcut and <kbd>Backspace</kbd> at a block's start keep both (a retype keeps the data it does not name).
 - The core renders a valid name as `data-edytor-color` and `data-edytor-background` on the block element, and its stylesheet paints the nine names from theme tokens with Notion's values as fallbacks (`--edytor-color-<name>`, `--edytor-background-<name>`; see [Styling](/docs/customization/styling#block-colors)). The colour reaches the block's children, as in Notion; a text colour mark inside wins.
 
+With the block menu listed, the slash menu offers the same rows by name once a query names one (never in the bare `/` list, `EditorCommand.searchOnly`), under the `Color` group: `/red` lists "Red text" and "Red background", `/default back` "Default background". A pick paints the caret's block and removes the typed `/red`, as one undo step that gives `/red` back. The commands are `color.<name>` and `background.<name>` (`color.default` removes the text colour), enabled where the caret's block takes a colour.
+
+A copy writes the colours into its `text/html` as Notion's HTML export names them, a class on the block's element: `block-color-red` for a text colour, `block-color-red_background` for a background. A paste of HTML reads them back on its text blocks (Notion's `teal` is the palette's `green`); a class naming no palette colour adds nothing.
+
 `setBlockColor(edytor, blocks, field, value)` is the same write from your own UI (a slash command, a shortcut): `field` is `'color'` or `'background'`, `value` a name or `null`, and it answers whether a block changed.
 
 ```ts title="paint.ts" check
@@ -147,6 +153,7 @@ The snippet receives the `BlockMenuController`:
     members: { type: "Block[]", description: "What Delete and Turn into act on: blocks, a list or a code block with its whole subtree (selection.selectedMembers)." },
     actions: { type: "BlockMenuAction[]", description: "The rows that apply, filtered by query: { id, label, icon, hint?, danger?, submenu?, run? }. Turn into has submenu: 'turn', Color submenu: 'color', and no run." },
     kinds: { type: "KindRow[]", description: "The kinds the block may turn into while keeping its content." },
+    matchingColors: { type: "BlockMenuColor[]", description: "With a query, the colour rows it names (empty when nothing takes a colour); rows lists them after the actions and the matching kinds." },
     currentKind: { type: "KindRow | undefined", description: "The row naming the block: of its kind's rows, the one whose preset data shares the most values with the block's (the first on a tie), so a checked to-do is still To-do list." },
     "turnInto(kind)": { type: "(kind: KindRow) => void", description: "Convert the members (a list's items)." },
     colors: { type: "BlockMenuColor[]", description: "The Color flyout's rows: { id, label, field: 'color' | 'background', value: name | null }, the text colours then the backgrounds, each from the default." },

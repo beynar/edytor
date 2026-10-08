@@ -2,13 +2,10 @@
 	import type { VersionChange } from './diff.js';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import type { HistoryVersion } from './client.js';
-	import { defaultHistoryLabels, type HistoryPanelProps } from './panel.js';
+	import type { HistoryPanelProps } from './panel.js';
 
 	/** No change highlighted. */
 	const NONE: ReadonlyMap<string, VersionChange> = new Map();
-
-	/** `template` with `{n}` replaced. */
-	const count = (template: string, n: number) => template.replace('{n}', String(n));
 </script>
 
 <script lang="ts">
@@ -17,6 +14,7 @@
 	import { HistoryRequestError } from './client.js';
 	import { versionDiff } from './diff.js';
 	import { versionHighlightsPlugin } from './versionHighlights.js';
+	import { labelsWith } from '$lib/labels.js';
 
 	let {
 		client,
@@ -35,7 +33,7 @@
 		onError
 	}: HistoryPanelProps = $props();
 
-	const labels = $derived({ ...defaultHistoryLabels, ...labelOverrides });
+	const labels = $derived(labelsWith('history', labelOverrides));
 
 	/** The versions, newest first (`null` while the first list loads). */
 	let versions = $state.raw<HistoryVersion[] | null>(null);
@@ -182,7 +180,7 @@
 	};
 	const editorsOf = (entry: HistoryVersion) => {
 		if (entry.editors.length === 0 && !entry.more) return labels.noEditors;
-		const more = entry.more ? ` ${count(labels.moreEditors, entry.more)}` : '';
+		const more = entry.more ? ` ${labels.moreEditors(entry.more)}` : '';
 		return `${entry.editors.join(', ')}${more}`;
 	};
 
@@ -229,17 +227,13 @@
 								<span data-edytor-history-count="same">{labels.same}</span>
 							{/if}
 							{#if diff.added}
-								<span data-edytor-history-count="added">{count(labels.added, diff.added)}</span>
+								<span data-edytor-history-count="added">{labels.added(diff.added)}</span>
 							{/if}
 							{#if diff.removed}
-								<span data-edytor-history-count="removed"
-									>{count(labels.removed, diff.removed)}</span
-								>
+								<span data-edytor-history-count="removed">{labels.removed(diff.removed)}</span>
 							{/if}
 							{#if diff.changed}
-								<span data-edytor-history-count="changed"
-									>{count(labels.changed, diff.changed)}</span
-								>
+								<span data-edytor-history-count="changed">{labels.changed(diff.changed)}</span>
 							{/if}
 						{/if}
 					</div>

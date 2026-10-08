@@ -81,7 +81,11 @@ To make several commands one step, run them in one `edytor.transact` call: that 
 
 ### Writes outside the history
 
-A write that completes a step already taken belongs to no step of its own: `edytor.dispatcher.outside(body)` runs `body`'s commands outside the history. They are admitted (refused in readonly), shown to hooks and recorded in `dispatcher.last` like any command, but they start no step and join none, so the typing around them groups as if they never came. The image plugin uses it for an upload's URL: pasting an image file places the image block at once (one step), and the URL that arrives later fills it outside the history. Undoing the paste removes the image, URL included, and redo brings it back whole. Call it only where the step it completes covers its write (here, by creating the block). It throws, writing nothing, when called inside another transaction (inside `edytor.transact`, a command or a change callback), since its writes would take that transaction's step: call it from a later task, as an upload's answer is.
+A write that completes a step already taken belongs to no step of its own: `edytor.dispatcher.outside(body)` runs `body`'s commands outside the history. They are admitted (refused in readonly), shown to hooks and recorded in `dispatcher.last` like any command, but they start no step and join none, so the typing around them groups as if they never came.
+
+- **Example.** The image plugin uses it for an upload's URL: pasting an image file places the image block at once (one step), and the URL that arrives later fills it outside the history. Undoing the paste removes the image, URL included, and redo brings it back whole.
+- **Only where the step covers it.** Call it only where the step it completes covers its write (here, by creating the block).
+- **Not inside a transaction.** It throws, writing nothing, when called inside another transaction (inside `edytor.transact`, a command or a change callback), since its writes would take that transaction's step: call it from a later task, as an upload's answer is.
 
 ### Capture window and limit
 

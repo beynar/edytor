@@ -238,7 +238,18 @@ const metrics = await env.ROOMS.getByName(documentId).metrics();
 
 Times are what the runtime's clock reports. Workers advance the clock only across I/O, so synchronous work such as a compaction often reads `0` ms in production; sizes and counts are exact.
 
-The room also logs one JSON line per compaction (`{ "edytor": "compaction", "ms", "bytes", "records", "rows" }`), quota hit (`{ "edytor": "quota", "user", "quota" }`), denial (`{ "edytor": "denied", "user", "touched" }`), fault (`{ "edytor": "fault", "reason", "detail" }`), version written (`{ "edytor": "history", … }`), restore (`{ "edytor": "restore", … }`), a client whose roles differ from the room's (`{ "edytor": "semantics", "user", "kinds" }`, development builds; see [Block roles on the server](/docs/server/extending#block-roles-on-the-server)) and purge (`{ "edytor": "purge", … }`; see [History and purge](/docs/server/history#metrics-and-log)), with `console.log`, which [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/) and `wrangler tail` collect. Set `EDYTOR_LOG` to `off` to silence it, override `protected log(entry)` in a `DocumentRoom` subclass to send entries elsewhere, or pass `log` to `attachRoom` (`false` for none).
+The room also logs one JSON line per event below with `console.log`, which [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/) and `wrangler tail` collect. Set `EDYTOR_LOG` to `off` to silence it, override `protected log(entry)` in a `DocumentRoom` subclass to send entries elsewhere, or pass `log` to `attachRoom` (`false` for none).
+
+| Event | Entry |
+| --- | --- |
+| A compaction | `{ "edytor": "compaction", "ms", "bytes", "records", "rows" }` |
+| A quota hit | `{ "edytor": "quota", "user", "quota" }` |
+| A denial | `{ "edytor": "denied", "user", "touched" }` |
+| A fault | `{ "edytor": "fault", "reason", "detail" }` |
+| A version written | `{ "edytor": "history", … }` |
+| A restore | `{ "edytor": "restore", … }` |
+| A client whose roles differ from the room's (development builds; see [Block roles on the server](/docs/server/extending#block-roles-on-the-server)) | `{ "edytor": "semantics", "user", "kinds" }` |
+| A purge (see [History and purge](/docs/server/history#metrics-and-log)) | `{ "edytor": "purge", … }` |
 
 ## Load
 

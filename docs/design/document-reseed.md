@@ -1,6 +1,9 @@
 # Design: re-seeding a document near its quota (document lifetime ceiling)
 
-Status: proposal, for the maintainer's decision (2026-10-08). Nothing here is built.
+Status: deferred, not for 1.0 (decided 2026-10-08). Nothing here is built. The maximum document
+size is the application's choice (`maxDocumentBytes`), and the room logs `size` when a document
+reaches `documentWarning` of it. The measurements below stay as the starting point if a re-seed is
+wanted later; the open problem is merging edits made offline across a re-seed.
 
 ## The problem
 

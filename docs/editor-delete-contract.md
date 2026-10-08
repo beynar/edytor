@@ -2247,6 +2247,18 @@ live socket (the sender's later frames would wait on the dropped one in
 the room's memory, unacknowledged, for good), not a redial (it resends
 the same frame into the same quota). Pins: `quotas.test.ts`.
 
+### `room.quota.warning` — a document nearing its quota is logged once
+
+The room logs `{ edytor: 'size', bytes, limit, share }` when the
+document's size (the quota's measure) reaches `documentWarning` of
+`maxDocumentBytes` (0.8 by default, a `vars` setting and an `attachRoom`
+option above 0 and at most 1), at a load, a compaction or a stored
+record: once per crossing, again only after it went back under (a
+compaction, a purge). The flag is memory: a woken room over the line logs
+it once more. `metrics()` carries the quota as `documentLimit`. The
+maximum document size is the application's choice; the room re-seeds
+nothing. Pins: `quotas.test.ts`.
+
 ### `room.presence.quota` — presence within a size and a rate (WU-05)
 
 A socket's presence entry (only its own replica's is taken) whose state,

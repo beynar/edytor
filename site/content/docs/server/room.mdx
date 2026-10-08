@@ -133,6 +133,8 @@ Size the document quota for the room's memory. An isolate has 128 MB, and the li
 
 The default of 2 MiB keeps the worst case, a long list of short blocks, near 100 MB. Workers run V8 with pointer compression and Node does not, so a room needs less than these figures: the [soak](#load) read about 20 bytes of heap per stored byte in workerd, through its inspector, for a document 50 writers typed, split and merged (18 in its run near the quota; 27 in Node for typed paragraphs). That is the live heap after a full collection: before one, the soak saw peaks several times higher. A document of long text can take a higher quota: at 20 bytes a byte, 4 MiB is about 84 MB. Leave room for the rest: a compaction and a catch-up each encode the whole document once more, and chunked frames take up to `EDYTOR_MAX_BUFFERED_BYTES`. A room past its memory is reset by the platform and restarts from its rows, so a quota set too high shows as sockets closing and redialing, not as a refusal. Your own server edits ([`transact`](/docs/server/extending#edit-on-the-server)) are not limited.
 
+The quota is the largest document you accept, and it is final for that document: the room does not re-seed a document to shrink it, since every client's local copy would have to start over and offline edits would not merge. Pick it per deployment from the documents you expect (the table above, and about 72 bytes an edit over a document's life; see [limitations](/docs/reference/limitations#size-and-platform-limits)), and watch for documents nearing it. When the document reaches `EDYTOR_DOCUMENT_WARNING` of the quota (`documentWarning`, 0.8 by default, above 0 and at most 1), the room logs `size` (`{ bytes, limit, share }`) once, and again only after the document went back under it (a compaction, a purge) or the room woke. `metrics()` reports `documentBytes` against `documentLimit`. What to do then is yours: raise the quota, ask users to split the page, or archive it.
+
 Inline images count at their size. Without an `upload`, the [image plugin](/docs/plugins/image) (a default plugin) stores each image in the document as a `data:` URL of up to 1 MiB (`MAX_INLINE_IMAGE_BYTES`), so two or three of them reach the default document quota, and the `4413` that follows is final: the provider stops and every later edit stays unsaved. An inline image takes about its own size in memory, not the 18 to 46 times of the table, so for documents that hold images give the image plugin an [`upload`](/docs/plugins/image) that stores the file and answers its URL, or raise `EDYTOR_MAX_DOCUMENT_BYTES` (and the frame quota) by the images' size.
 
 ## Hibernation
@@ -158,6 +160,7 @@ Set these as `vars` in `wrangler.jsonc`. All are optional.
 | `EDYTOR_COMPACT_AFTER` | 500 | Update records before the room compacts its rows into one snapshot. |
 | `EDYTOR_SAVE_AFTER` | 2000 | ms between the first unsaved change and [`onSave`](/docs/server/extending#save). |
 | `EDYTOR_MAX_DOCUMENT_BYTES` | 2,097,152 (2 MiB) | The document [quota](#quotas). Can be raised. |
+| `EDYTOR_DOCUMENT_WARNING` | 0.8 | The share of the document quota at which the room logs `size` ([quotas](#quotas)). |
 | `EDYTOR_MAX_UPDATES_PER_SECOND` | 50 | The update rate [quota](#quotas), per socket. Can be raised. |
 | `EDYTOR_MAX_INBOUND_FRAME_BYTES` | 4,194,304 (4 MiB) | The frame [quota](#quotas). Can be raised. |
 | `EDYTOR_MAX_PRESENCE_BYTES` | 16,384 (16 KiB) | The largest [presence](#identity-and-presence) state a socket may publish, as JSON. |
@@ -229,6 +232,7 @@ Four more entries are not refusals:
 | Field | Content |
 | --- | --- |
 | `documentBytes` | The document's size as the [document quota](#quotas) measures it: its records, uncompressed. |
+| `documentLimit` | The [document quota](#quotas) (`maxDocumentBytes`). |
 | `storedBytes`, `records`, `rows` | What the rows take in storage (a compressed snapshot at its compressed size), the logical records (the generation record included) and their rows. |
 | `updateRecords` | Update records since the last compaction (it runs at `EDYTOR_COMPACT_AFTER`). |
 | `waitingBytes` | Updates held in memory waiting for a missing dependency. |
@@ -256,6 +260,7 @@ The room also logs one JSON line per event below with `console.log`, which [Work
 | --- | --- |
 | A compaction | `{ "edytor": "compaction", "ms", "bytes", "records", "rows" }` |
 | A quota hit | `{ "edytor": "quota", "user", "quota" }` |
+| The document reaching `EDYTOR_DOCUMENT_WARNING` of its [quota](#quotas) | `{ "edytor": "size", "bytes", "limit", "share" }` |
 | A denial | `{ "edytor": "denied", "user", "touched" }` |
 | A fault | `{ "edytor": "fault", "reason", "detail" }` |
 | A version written | `{ "edytor": "history", … }` |

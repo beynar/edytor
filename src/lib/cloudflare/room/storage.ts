@@ -128,6 +128,25 @@ export class RoomStorage {
 	updates = 0;
 	/** What the records hold, uncompressed (the generation record aside): the document quota's measure. */
 	documentBytes = 0;
+	/** The size passed `documentWarning` of the quota and was logged (memory: a wake logs it again). */
+	private warned = false;
+
+	/**
+	 * Log the document's size when it passes `documentWarning` of its quota
+	 * (`room.quota.warning`): once per crossing; under it again, the next
+	 * crossing logs again.
+	 */
+	private watch() {
+		const room = this.room;
+		const { maxDocumentBytes: limit, documentWarning: share } = room.limits;
+		if (this.documentBytes < limit * share) {
+			this.warned = false;
+			return;
+		}
+		if (this.warned) return;
+		this.warned = true;
+		room.log({ edytor: 'size', bytes: this.documentBytes, limit, share });
+	}
 	/** The waiting deletes stored as `pending` records (the engine may hold more, in memory). */
 	storedWaiting: Decoded['ds'] = Y.createIdSet();
 	/**
@@ -387,6 +406,7 @@ export class RoomStorage {
 				() => room.history.restoreKeep
 			);
 			this.documentBytes = rest.reduce((n, record) => n + record.bytes.length, 0);
+			this.watch();
 			this.adopt(doc);
 			// Every delete the engine holds waiting came from the rows.
 			this.storedWaiting = pendingDeletes(doc);
@@ -443,6 +463,7 @@ export class RoomStorage {
 		});
 		room.history.clearRestore();
 		this.documentBytes = snapshot.length;
+		this.watch();
 		this.updates = 0;
 		this.storedWaiting = Y.createIdSet();
 		this.adopt(doc);
@@ -511,7 +532,10 @@ export class RoomStorage {
 		}
 		const record = this.nextRecord++;
 		this.writeRecord(kind, record, bytes);
-		if (kind !== 'generation') this.documentBytes += bytes.length;
+		if (kind !== 'generation') {
+			this.documentBytes += bytes.length;
+			this.watch();
+		}
 		return record;
 	}
 

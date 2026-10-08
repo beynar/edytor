@@ -188,6 +188,8 @@ export const DEFAULT_SAVE_AFTER = 2000;
  * about 100 MB at worst. Raise it for documents of long text.
  */
 export const DEFAULT_MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
+/** The share of the document quota past which the room logs its size, by default. */
+export const DEFAULT_DOCUMENT_WARNING = 0.8;
 /**
  * The largest frame a socket may send, reassembled from chunks: room for a
  * whole document at the default quota (a client seeding an empty room).
@@ -276,6 +278,8 @@ export type DocumentRoomEnv = {
 	EDYTOR_COMPACT_AFTER?: string | number;
 	EDYTOR_SAVE_AFTER?: string | number;
 	EDYTOR_MAX_DOCUMENT_BYTES?: string | number;
+	/** The share of the document quota past which the room logs its size (`documentWarning`). */
+	EDYTOR_DOCUMENT_WARNING?: string | number;
 	EDYTOR_MAX_INBOUND_FRAME_BYTES?: string | number;
 	EDYTOR_MAX_BUFFERED_BYTES?: string | number;
 	EDYTOR_MAX_UPDATES_PER_SECOND?: string | number;
@@ -398,6 +402,8 @@ export type Timing = { count: number; totalMs: number; maxMs: number; lastMs: nu
 export type RoomMetrics = {
 	/** The document's size as the document quota measures it: its records, uncompressed. */
 	documentBytes: number;
+	/** The document quota (`maxDocumentBytes`): writes past it are refused (`4413`). */
+	documentLimit: number;
 	/** What its rows take in storage (a snapshot compressed). */
 	storedBytes: number;
 	/** Logical records stored (the generation record included), and their rows. */
@@ -438,6 +444,8 @@ export type RoomLogEntry =
 	| { edytor: 'comment'; type: CommentChange['type']; thread: string; user: string }
 	| ({ edytor: 'purge'; horizon: number; bytes: number } & PurgeReport)
 	| { edytor: 'quota'; user: string; quota: string }
+	// The stored document passed `documentWarning` of its quota (once per crossing).
+	| { edytor: 'size'; bytes: number; limit: number; share: number }
 	| { edytor: 'denied'; user: string; touched: number }
 	// A client's advertised roles differ from the room's on these kinds (development builds).
 	| { edytor: 'semantics'; user: string; kinds: string[] }
@@ -557,6 +565,12 @@ export type AttachRoomOptions = {
 	tablePrefix?: string;
 	/** Largest document, in stored bytes (default {@link DEFAULT_MAX_DOCUMENT_BYTES}). */
 	maxDocumentBytes?: number;
+	/**
+	 * The share of `maxDocumentBytes` past which the room logs the
+	 * document's size (`size`, once per crossing), above 0 and at most 1
+	 * (default {@link DEFAULT_DOCUMENT_WARNING}, 0.8).
+	 */
+	documentWarning?: number;
 	/** Largest frame a socket may send, reassembled (default {@link DEFAULT_MAX_INBOUND_FRAME_BYTES}). */
 	maxInboundFrameBytes?: number;
 	/**
@@ -658,6 +672,7 @@ export class AttachedDocument {
 	readonly compactAfter: number;
 	readonly saveAfter: number;
 	readonly maxDocumentBytes: number;
+	readonly documentWarning: number;
 	readonly maxInboundFrameBytes: number;
 	readonly maxBufferedBytes: number;
 	readonly maxUpdatesPerSecond: number;
@@ -691,6 +706,8 @@ export class AttachedDocument {
 			DEFAULT_MAX_DOCUMENT_BYTES,
 			QUOTA_CEILING
 		);
+		const warning = Number(options.documentWarning);
+		this.documentWarning = warning > 0 && warning <= 1 ? warning : DEFAULT_DOCUMENT_WARNING;
 		this.maxInboundFrameBytes = knob(
 			options.maxInboundFrameBytes,
 			DEFAULT_MAX_INBOUND_FRAME_BYTES,
@@ -1013,6 +1030,7 @@ export class AttachedDocument {
 			const { counters } = room;
 			return {
 				documentBytes: room.storage.documentBytes,
+				documentLimit: room.limits.maxDocumentBytes,
 				storedBytes: stored?.bytes ?? 0,
 				records: stored?.records ?? 0,
 				rows: stored?.rows ?? 0,
@@ -1189,6 +1207,7 @@ export class DocumentRoom<
 			compactAfter: Number(knobs.EDYTOR_COMPACT_AFTER),
 			saveAfter: Number(knobs.EDYTOR_SAVE_AFTER),
 			maxDocumentBytes: Number(knobs.EDYTOR_MAX_DOCUMENT_BYTES),
+			documentWarning: Number(knobs.EDYTOR_DOCUMENT_WARNING),
 			maxInboundFrameBytes: Number(knobs.EDYTOR_MAX_INBOUND_FRAME_BYTES),
 			maxBufferedBytes: Number(knobs.EDYTOR_MAX_BUFFERED_BYTES),
 			maxUpdatesPerSecond: Number(knobs.EDYTOR_MAX_UPDATES_PER_SECOND),

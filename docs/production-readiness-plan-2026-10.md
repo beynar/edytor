@@ -59,8 +59,10 @@ Majors, by dimension:
   with one owner~~ (`next.43`); ~~`document.facade` publishing the index~~ (`1.0.0-rc.1`:
   `DocumentOperations`, decided with the maintainer: the operations live on the document).
 - **Robustness**: the document lifetime ceiling (≈ 72 stored bytes per edit against a 2 MiB
-  quota, `4413` final, no rebase path; a re-seed drops offline clients' unsynced edits: a
-  maintainer decision, documented on the Limitations page); ~~comments unbounded, snapshot amplification~~
+  quota, `4413` final): decided (2026-10-08), no re-seed for 1.0 (offline edits would not
+  merge); the application chooses its maximum document size, the room logs `size` near it
+  (`documentWarning`, 0.8); stale-block compaction measured at most −27 %, a re-seed −78 %
+  (`docs/design/document-reseed.md`, deferred); ~~comments unbounded, snapshot amplification~~
   (`next.42`); ~~typing in a table O(cells²)~~ (`next.42`); client typing linear in page size
   (no windowing): most of a keystroke at 10,000 blocks is Chromium's own selection sync over
   the one editable root (1.8 ms at 1,000 blocks, 23 ms at 10,000); the handles' observer of every

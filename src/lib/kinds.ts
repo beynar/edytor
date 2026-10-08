@@ -27,6 +27,9 @@ export type KindRow = KindPreset & {
 	command?: EditorCommand;
 };
 
+/** The definition of a kind the view does not register: no roles, no snippet (`edytor.definitionOf`). */
+export const UNKNOWN_KIND: BlockDefinition = Object.freeze({});
+
 /**
  * The group key of the kinds a preset puts in no group: the slash menu
  * lists it first and shows it in its labels' `groups`.

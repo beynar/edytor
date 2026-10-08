@@ -2,7 +2,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { InlineBlockDefinition } from '$lib/plugins.js';
 import type { JSONInlineBlock } from '$lib/utils/json.js';
 import type { Block } from './block.svelte.js';
-import { clearDomSelection } from '$lib/selection/domSelection.js';
 import { propsProxy } from '$lib/session/props.js';
 import type { Text } from '$lib/text/text.svelte.js';
 
@@ -112,10 +111,10 @@ export class InlineBlock {
 			if (event.clientX >= rect.right - INLINE_EDGE_CARET_THRESHOLD_PX && isTextPart(after))
 				return selection.setAtTextOffset(after, 0);
 			selection.selectInlineBlock(this);
-			clearDomSelection(this.edytor.node);
+			this.edytor.ports.surface.clear();
 			// The atom took the press: the caret the browser still leaves for it
 			// (Chromium parks one at the host's start before the release) is its own.
-			this.edytor.projector.parked();
+			this.edytor.ports.surface.parked();
 		};
 		node.addEventListener('pointerdown', selectInlineBlock);
 

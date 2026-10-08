@@ -1,5 +1,5 @@
 import { Text } from '../text/text.svelte.js';
-import { Edytor } from '../edytor.svelte.js';
+import type { Edytor } from '../edytor.svelte.js';
 import type { JSONBlock, JSONText, JSONInlineBlock } from '$lib/utils/json.js';
 import {
 	batch,

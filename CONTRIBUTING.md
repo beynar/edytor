@@ -25,7 +25,8 @@ change touches before you open a pull request; CI runs them all.
 
 ```bash
 pnpm check                 # svelte-check, 0 errors and 0 warnings
-pnpm lint                  # prettier and eslint (the Worker-safe boundary, the host writers)
+pnpm lint                  # prettier and eslint (the Worker-safe boundary, the host writers, the import direction)
+pnpm check:deps            # no import cycle across contexts (the unit lane runs it too: src/tests/deps.test.ts)
 pnpm check:worker          # Worker bundles of src/lib/crdt and src/lib/cloudflare
 pnpm check:docs            # type-checks the site's doc examples marked `check`
 pnpm test:typecheck

@@ -131,7 +131,7 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
-### Unreleased
+### From 0.1.0-next.32
 
 - **Mount editable editors in the browser.** The [quick start](/docs/getting-started/quick-start#mount-it-in-a-page) and [installation](/docs/getting-started#verify-the-install) pages now mount the editable editor after hydration, or turn SSR off for the route, as [SvelteKit](/docs/getting-started/sveltekit#editable-editors-mount-after-hydration) always advised: server-rendering an editable `<Edytor>` is not tested. If you copied the earlier quick start into a server-rendered route, wrap the editor in the `onMount` guard. Nothing in the package changed.
 - **New pages.** [Platform support](/docs/reference/platform-support) lists the browsers, versions, devices and runtimes the lanes run, the oldest browsers the code needs (Chrome and Edge 111, Firefox 119, Safari 16.4: the code uses `String.prototype.toWellFormed` and a regular expression with lookbehind) and the status of real phones and IMEs. [Room internals](/docs/server/internals) lists the room's five alarm tasks (`forward` included, which the history page left out) and every storage table.

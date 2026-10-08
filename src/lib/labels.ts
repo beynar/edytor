@@ -61,6 +61,10 @@ export type RichTextLabels = {
 	marks: { bold: string; italic: string; underline: string; strike: string; code: string };
 	/** A to-do's checkbox. */
 	checkbox: string;
+	/** The hint an empty body shows (an open toggle's, a callout's): a press there starts it. */
+	emptyBody: { toggle: string; callout: string };
+	/** A callout's icon button (`change`, `add` when it has none) and its picker. */
+	calloutIcon: { change: string; add: string; picker: string; remove: string };
 	/** `createRichTextPlaceholder`'s texts. */
 	placeholders: {
 		heading: (level: 1 | 2 | 3) => string;
@@ -69,7 +73,7 @@ export type RichTextLabels = {
 		todo: string;
 		toggle: string;
 		quote: string;
-		/** A focused empty callout. */
+		/** An empty callout's title. */
 		callout: string;
 		/** A focused empty caption (image, embed, bookmark, file, video, audio). */
 		caption: string;
@@ -552,6 +556,16 @@ export const englishLabels: Labels = frozen({
 			code: 'Code'
 		},
 		checkbox: 'Done',
+		emptyBody: {
+			toggle: 'Empty toggle. Click or drop blocks inside.',
+			callout: 'Empty callout. Click or drop blocks inside.'
+		},
+		calloutIcon: {
+			change: 'Change icon',
+			add: 'Add icon',
+			picker: 'Callout icons',
+			remove: 'Remove icon'
+		},
 		placeholders: {
 			heading: (level) => `Heading ${level}`,
 			toggleHeading: (level) => `Toggle heading ${level}`,
@@ -559,7 +573,7 @@ export const englishLabels: Labels = frozen({
 			todo: 'To-do',
 			toggle: 'Toggle',
 			quote: 'Empty quote',
-			callout: 'Type something…',
+			callout: 'Callout title',
 			caption: 'Write a caption…',
 			empty: "Type '/' for commands"
 		}

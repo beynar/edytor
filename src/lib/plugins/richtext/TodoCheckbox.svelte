@@ -3,7 +3,7 @@
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { BlockView } from '$lib/plugins.js';
-	import { checkboxLabels } from './labels.js';
+	import { richTextLabels } from './labels.js';
 
 	/**
 	 * A to-do's checkbox, named in the labels of the view rendering it (a
@@ -13,7 +13,7 @@
 		block,
 		toggle
 	}: { block: BlockView<{ checked?: boolean }>; toggle: (block: Block) => void } = $props();
-	const labels = checkboxLabels.of(getContext<Edytor>('edytor'));
+	const labels = richTextLabels.of(getContext<Edytor>('edytor'));
 </script>
 
 <input

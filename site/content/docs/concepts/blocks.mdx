@@ -17,9 +17,9 @@ Every block has a kind, its `type`, and properties, its `data` (a heading's `lev
 | `bulleted-list-item` | `li` | | Continues on <kbd>Enter</kbd>. |
 | `numbered-list-item` | `li` | | Continues on <kbd>Enter</kbd>. |
 | `todo-item` | `div` with a checkbox | `checked: boolean` | Clicking the checkbox writes `checked`. Continues on <kbd>Enter</kbd>. |
-| `toggle` | `details` | | Children form the collapsible body. Continues on <kbd>Enter</kbd>; a header over its children (`container`). |
+| `toggle` | `details` | | Children form the collapsible body. Continues on <kbd>Enter</kbd>; a header over its children (`container`). Opens when created; an empty open one shows "Empty toggle. Click or drop blocks inside." |
 | `toggle-heading` | `details` > `summary` > `h1`–`h3` | `level: 'h1' \| 'h2' \| 'h3'` | Notion's toggle heading: a heading as a toggle's header (`container`). |
-| `callout` | `div` | `icon: string` | The icon defaults to `💡`. A header over its children (`container`). |
+| `callout` | `div` | `icon: string` | An icon (`💡` by default, `''` for none, picked by clicking it), a title (its text) and a content (its children, any blocks): <kbd>Enter</kbd> at the end of the title goes into the content (`container`, `body`). |
 | `quote` | `div` > `blockquote` | | A header over its children (`container`), which render after the `blockquote`. |
 | `divider` | `hr` | | Void, no content. Converting a block to it adds a paragraph after it for the caret. |
 | `ordered-list`, `unordered-list` | `ol`, `ul` | | Containers: children only, default child `list-item`. |

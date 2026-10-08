@@ -56,12 +56,20 @@ const isGlyph = (node: Node): boolean => {
 /** Tags that carry no meaning of their own: a kind rendering one is not found by it. */
 const GENERIC = /^(div|span)$/;
 
-/** The tag a kind writes for `data`: its export form's first tag, else its element's, else its content element's. */
+/**
+ * The tag a kind writes for `data`: its export form's first tag, else its
+ * element's, else its content element's. A generic one (`div`, `span`) is
+ * none: an export form written as one (a callout's `<div data-edytor-callout>`)
+ * is found by its `parse` hook only.
+ */
 export const tagOf = (type: string, kind: BlockDefinition, data: Values) => {
 	const { html, element, contentElement } = kind;
 	if (typeof html === 'string') return html;
 	try {
-		if (html) return /^<([a-z][\w-]*)/i.exec(html({ type, data }, '', ''))?.[1]?.toLowerCase();
+		if (html) {
+			const tag = /^<([a-z][\w-]*)/i.exec(html({ type, data }, '', ''))?.[1]?.toLowerCase();
+			return tag && !GENERIC.test(tag) ? tag : undefined;
+		}
 	} catch {
 		return undefined;
 	}
@@ -250,18 +258,23 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 				texts.add(current);
 			}
 		};
+		/** Whether a leading paragraph gave the element its text: one only, empty or not. */
+		let led = false;
 		for (const node of element.childNodes)
 			if (isVoid(node)) at.apart(node);
 			else if (!isBlock(node)) inline(node, at, {}, pre);
-			// A leading plain paragraph is the element's own text (`<li><p>Item</p></li>`).
+			// A leading plain paragraph is the element's own text (`<li><p>Item</p></li>`,
+			// a callout's title): an empty one too, so the paragraph after it is a child.
 			else if (
+				!led &&
 				!current.content.length &&
 				!current.children?.length &&
 				!kindOf(node) &&
 				!wraps(node)
-			)
+			) {
+				led = true;
 				for (const child of node.childNodes) inline(child, at, {}, pre);
-			else (current.children ??= []).push(...blockOf(node, childType));
+			} else (current.children ??= []).push(...blockOf(node, childType));
 		for (const part of texts) if (!part.children?.length) delete part.children;
 		if (parts.length === 1) return [end(line)];
 		// Split: a text line left empty around a void element is not kept.

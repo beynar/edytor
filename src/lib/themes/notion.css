@@ -356,6 +356,56 @@
 	grid-column: 2;
 	min-width: 0;
 }
+/* Its title reads as its heading; its content below it. */
+.edytor-notion [data-edytor-callout-title] {
+	font-weight: 600;
+}
+/* The icon button: a soft hover, as Notion's. */
+.edytor-notion button[data-edytor-callout-icon] {
+	border-radius: 4px;
+	transition: background-color 120ms ease-in;
+}
+.edytor-notion button[data-edytor-callout-icon]:hover,
+.edytor-notion button[data-edytor-callout-icon][aria-expanded='true'] {
+	background-color: var(--notion-hover);
+}
+/* No icon: an editable view keeps the slot, a dim + while the callout is hovered. */
+.edytor-notion button[data-edytor-callout-icon][data-empty]::before {
+	content: '+';
+	color: var(--notion-text-secondary);
+	font-size: 16px;
+	opacity: 0;
+}
+.edytor-notion
+	[data-edytor-type='callout']:hover
+	> button[data-edytor-callout-icon][data-empty]::before,
+.edytor-notion button[data-edytor-callout-icon][data-empty]:focus-visible::before {
+	opacity: 1;
+}
+/* No icon in a readonly view: the text starts at the panel's edge. */
+.edytor-notion [data-edytor-type='callout']:not(:has(> [data-edytor-callout-icon])) {
+	grid-template-columns: minmax(0, 1fr);
+	column-gap: 0;
+}
+.edytor-notion [data-edytor-type='callout']:not(:has(> [data-edytor-callout-icon])) > div {
+	grid-column: 1;
+}
+/* An empty body's hint (an open toggle's, a callout's): chrome, not text. */
+.edytor-notion [data-edytor-empty-body] {
+	padding: 3px 2px;
+	color: var(--notion-text-secondary);
+	font-weight: 400;
+}
+.edytor-notion [data-edytor-empty-body]:hover {
+	border-radius: 4px;
+	background-color: var(--notion-hover);
+}
+/* A toggle's hint is indented as its children are. */
+.edytor-notion
+	:is([data-edytor-type='toggle'], [data-edytor-type='toggle-heading'])
+	> [data-edytor-empty-body] {
+	margin-inline-start: calc(var(--edytor-nest-indent) + 2px);
+}
 .edytor-notion [data-edytor-type='divider'],
 .edytor-notion hr[data-edytor-block] {
 	height: 1px;

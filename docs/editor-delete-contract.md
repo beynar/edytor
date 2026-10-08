@@ -329,8 +329,8 @@ paths, and the no-hidden-content assertion of `fixtures/dom/invariants.ts`).
 ### `flow.header` — at the end of a container's header, the body stays
 
 At the end of a container's header whose body shows (an open toggle, a
-callout or quote with nested lines: the view's `header`, where Enter opens
-a first child), `B` keeps its kind, its data and its children, unless it
+callout, a quote with nested lines: the view's `header`, where Enter opens
+a first child, `body.enter`), `B` keeps its kind, its data and its children, unless it
 is empty (no text, no children: an open toggle with no body yet) and the
 first line stands apart: then it is replaced or kept as `flow.apart` says.
 A header with no text takes a joining first line's text only, never its
@@ -1926,6 +1926,74 @@ listed, its cells deleted and padded in every row.
 Each creates a cell for the same row and column: the first by block id
 displays, the other does not, with any text typed in it before the peers
 synced (the residual: one placeholder, two writers, no merge of cells).
+
+## Container bodies
+
+A **container** kind (`container: true`: a toggle, a toggle heading, a
+callout, a quote) is a header (its own text) over a body (its children,
+any blocks, nested any way). These rows are the view's: what shows, where
+Enter and a click go. The document holds nothing more than the blocks and
+`data.icon`.
+
+### `body.enter` — Enter at the end of a header whose body shows opens it
+
+A header's body shows when the block has children, is an open `<details>`
+(an open toggle), or its kind's body shows even empty (`body: true`: a
+callout); a closed `<details>` never, whatever it holds (`bodyShows`,
+`selection/visibility.ts`, the one rule Enter and `flow.header` read).
+Enter at the end of such a header creates a first child of the kind's
+default child kind and puts the caret there (`addChildBlock`, one step):
+`callout "note"` + Enter → `callout "note" > [""]`, caret in `""`; mid
+header, the text after the caret becomes that first child (`splitHeader`).
+A quote without children, or a closed toggle, keeps its sibling rule (a
+paragraph or a toggle after it). Pins: `container-bodies.test.tsx`,
+`notion-parity.test.tsx`, `behavior-matrix.test.tsx`,
+`container-bodies.spec.ts`.
+
+### `body.hint` — an empty body shows where its content goes
+
+An open toggle (or toggle heading) and a callout with no children show a
+hint in their body ("Empty toggle. Click or drop blocks inside.", the
+labels' `emptyBody`): a `contenteditable=false` element after the header
+(`data-edytor-empty-body`), no text element, never content (the truth
+oracle compares text elements only), hidden from assistive technology
+(Enter is the keyboard's way in) and with the body by a closed `details`.
+A readonly view and a suggestion's preview show none. Its press puts the
+caret in the header (the core's chrome press); its click runs ONE
+command, `openBody` (`plugins/richtext/body.ts`): a first child of the
+default child kind, the caret in it, one undo step (refused in a view that
+may not write; a body a peer filled meanwhile takes the caret in its first
+child, nothing written). A handle drag released over the hint nests the
+dragged blocks inside the block (`inside` first in either half,
+`overEmptyBody` in the handles' geometry). Pins:
+`container-bodies.test.tsx`, `container-bodies.spec.ts`.
+
+### `body.open` — a toggle this view creates opens
+
+A block without children that this view retypes into a disclosure kind
+(`toggle`, `toggle-heading`, `details`) from another kind — the slash
+menu, a markdown shortcut (`> `), Turn into, `setBlock` — opens as it is
+drawn (`onBlockAttached`), so its empty body and hint show (Notion). The
+browser owns `open` from then on. A block with children keeps them out of
+sight (it stays closed), a toggle retyped into a toggle heading keeps its
+state, a sibling toggle Enter opens after a closed one is closed, and no
+peer's view opens anything. Pins: `container-bodies.test.tsx`.
+
+### `callout.icon` — a callout's icon is its `data.icon`
+
+A callout shows `data.icon`: the view's default (`createRichTextPlugin({
+callout: { icon } })`, `💡`) when it is unset, nothing when it is `''`. A
+new callout takes the view's default. In an editable view the icon is a
+button (a kind's own control) opening the view's one picker in the
+overlay (`CalloutIconPicker`): a choice, or Remove icon (`''`), is one
+`patchData` (one undo step) and gives the keys and the selection back to
+the editor; Escape, Tab, a press outside or focus leaving close it with
+nothing written. The block menu's Change icon row opens it from the
+keyboard. Its HTML is `<div data-edytor-callout="💡"><p>title</p>…</div>`,
+read back by the kind's `parse` hook; HTML import takes one leading
+paragraph of an element, empty or not, as its own text (the title), and
+the paragraphs after it as its children. Pins:
+`container-bodies.test.tsx`, `container-bodies.spec.ts`.
 
 ## Anchor contract
 

@@ -109,10 +109,16 @@
 				id: 'page-callout',
 				type: 'callout',
 				data: { icon: '💡' },
-				content: [
-					{ text: 'Everything here is editable. ' },
-					{ text: 'Grab the six-dot handle', marks: { bold: true } },
-					{ text: ' to move a block, nest it, or open its menu.' }
+				content: [{ text: 'Everything here is editable' }],
+				children: [
+					{
+						id: 'page-callout-body',
+						type: 'paragraph',
+						content: [
+							{ text: 'Grab the six-dot handle', marks: { bold: true } },
+							{ text: ' to move a block, nest it, or open its menu. Click the icon to change it.' }
+						]
+					}
 				]
 			},
 			{

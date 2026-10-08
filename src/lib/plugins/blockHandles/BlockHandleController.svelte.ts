@@ -39,6 +39,7 @@ import {
 	getOwnRowBottom,
 	isBeside,
 	nestIndent,
+	overEmptyBody,
 	ownRow,
 	ownTextRow,
 	type DropPlacement
@@ -984,9 +985,15 @@ export class BlockHandleController {
 	 *   moves only its children (they would stay where they are).
 	 * None over a dragged block's own row or its subtree: released there, the
 	 * drag changes nothing (its levels would outdent it) — unless it empties
-	 * its parent's shown children (`emptied`): that parent's row.
+	 * its parent's shown children (`emptied`): that parent's row. Over the
+	 * hint of the row's empty body (`body.hint`: an open toggle's, a
+	 * callout's), inside it first, either half.
 	 */
-	private zones(source: Block, row: Block, { clientX }: { clientX: number }) {
+	private zones(
+		source: Block,
+		row: Block,
+		{ clientX, clientY }: { clientX: number; clientY?: number }
+	) {
 		const group = this.moving(source);
 		if (group.some((moved) => moved === row || row.isChildOf(moved)))
 			return { before: [], after: [] };
@@ -1011,6 +1018,8 @@ export class BlockHandleController {
 			.flatMap((level) => at(level, 'after'));
 		const stays = shown.length > 0 && group.every((moved) => moved.parent === row);
 		const inside = stays ? [] : at(row, 'inside');
+		if (clientY !== undefined && overEmptyBody(row.node!, clientY))
+			return { before: [...inside, ...before], after: [...inside, ...after] };
 		const nests = clientX > column(row) + nestIndent(row.node!);
 		return { before, after: nests ? [...inside, ...after] : [...after, ...inside] };
 	}

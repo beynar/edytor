@@ -212,6 +212,7 @@ pnpm exec playwright test --project=chromium|firefox|webkit|mobile-chromium|mobi
 pnpm test:dst                # editor-input corpus: solo in three engines, collab in Chromium (+ the pinned rows in tests/editor-dst/replays/); test:dst:extensive widens both
 tests/packed-consumer/run.sh # packed tarball: node smoke, edytor/cloudflare Worker in Miniflare, Svelte build/SSR/mount, strict tsc
 pnpm bench:crdt; pnpm bench:scale; pnpm census; node scripts/xloc.mjs src/lib --dirs
+pnpm soak:smoke              # the room soak (bench/soak): 6 clients, 90 s, every fault, one forced offline session and page load; `pnpm soak` is the 50-client, 20-minute run, `node bench/soak/size.mjs` what the stored size is made of (site: server/room#load)
 LARGE_PROFILE=1 pnpm exec playwright test --project=chromium large-page.profile --workers=1  # client-scale profile on /test/large (5k/10k blocks, numbers in site customization/styling "Long pages"; LARGE_PROFILE_SIZES, LARGE_PROFILE_LOADS)
 ```
 

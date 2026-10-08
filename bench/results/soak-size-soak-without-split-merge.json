@@ -1,0 +1,760 @@
+{
+	"config": {
+		"replicas": 8,
+		"edits": 4000,
+		"mix": "soak",
+		"without": [
+			"split",
+			"merge"
+		],
+		"sync": 25,
+		"seed": 1
+	},
+	"converged": true,
+	"applied": 3814,
+	"ops": {
+		"type:applied": 2822,
+		"backspace:applied": 421,
+		"mark:applied": 121,
+		"jump:applied-local": 137,
+		"move:applied": 196,
+		"cut:applied": 128,
+		"data:applied": 126,
+		"mark:noop": 49
+	},
+	"blocks": 41,
+	"chars": 4936,
+	"stored": 95368,
+	"fresh": 18309,
+	"purged": 89851,
+	"purge": {
+		"removed": 0,
+		"emptied": 0,
+		"marks": 113,
+		"records": 0,
+		"candidates": 82,
+		"claims": 0
+	},
+	"census": {
+		"clients": 10,
+		"structs": 4264,
+		"gc": 0,
+		"items": {
+			"live": 3097,
+			"deleted": 1167,
+			"deletedKeepingContent": 0,
+			"mapEntries": 1081,
+			"sequence": 3183
+		},
+		"content": {
+			"ContentAny": {
+				"live": 628,
+				"deleted": 0,
+				"liveLength": 630,
+				"deletedLength": 0
+			},
+			"ContentString": {
+				"live": 1128,
+				"deleted": 0,
+				"liveLength": 4936,
+				"deletedLength": 0
+			},
+			"ContentDeleted": {
+				"live": 0,
+				"deleted": 1167,
+				"liveLength": 0,
+				"deletedLength": 3278
+			},
+			"ContentFormat": {
+				"live": 1136,
+				"deleted": 0,
+				"liveLength": 1136,
+				"deletedLength": 0
+			},
+			"ContentType": {
+				"live": 205,
+				"deleted": 0,
+				"liveLength": 205,
+				"deletedLength": 0
+			}
+		},
+		"text": {
+			"items": 1128,
+			"chars": 4936
+		},
+		"keys": {
+			"c/": {
+				"live": 9,
+				"deleted": 0
+			},
+			"k/": {
+				"live": 117,
+				"deleted": 0
+			},
+			"l": {
+				"live": 41,
+				"deleted": 180
+			},
+			"2.8002384323848655": {
+				"live": 2,
+				"deleted": 7
+			},
+			"d/": {
+				"live": 61,
+				"deleted": 65
+			},
+			"4.8002384323848655": {
+				"live": 1,
+				"deleted": 3
+			},
+			"5.8002384323848655": {
+				"live": 5,
+				"deleted": 1
+			},
+			"3.8002384323848655": {
+				"live": 1,
+				"deleted": 1
+			},
+			"7.8002384323848655": {
+				"live": 1,
+				"deleted": 0
+			},
+			"v": {
+				"live": 1,
+				"deleted": 0
+			},
+			"schema": {
+				"live": 1,
+				"deleted": 0
+			},
+			"title": {
+				"live": 1,
+				"deleted": 0
+			},
+			"id": {
+				"live": 41,
+				"deleted": 0
+			},
+			"n": {
+				"live": 41,
+				"deleted": 0
+			},
+			"type": {
+				"live": 41,
+				"deleted": 0
+			},
+			"content": {
+				"live": 41,
+				"deleted": 0
+			},
+			"claims": {
+				"live": 41,
+				"deleted": 0
+			},
+			"at": {
+				"live": 41,
+				"deleted": 0
+			},
+			"1.48595596": {
+				"live": 2,
+				"deleted": 39
+			},
+			"seed-": {
+				"live": 40,
+				"deleted": 0
+			},
+			"b/": {
+				"live": 41,
+				"deleted": 0
+			},
+			"i": {
+				"live": 41,
+				"deleted": 0
+			},
+			"2.6921927843116006": {
+				"live": 2,
+				"deleted": 4
+			},
+			"3.6921927843116006": {
+				"live": 3,
+				"deleted": 3
+			},
+			"4.6921927843116006": {
+				"live": 3,
+				"deleted": 3
+			},
+			"5.6921927843116006": {
+				"live": 3,
+				"deleted": 1
+			},
+			"6.6921927843116006": {
+				"live": 3,
+				"deleted": 0
+			},
+			"7.6921927843116006": {
+				"live": 2,
+				"deleted": 0
+			},
+			"8.6921927843116006": {
+				"live": 1,
+				"deleted": 0
+			},
+			"9.6921927843116006": {
+				"live": 1,
+				"deleted": 0
+			},
+			"10.6921927843116006": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.7081618294767910": {
+				"live": 2,
+				"deleted": 4
+			},
+			"3.7081618294767910": {
+				"live": 2,
+				"deleted": 3
+			},
+			"4.7081618294767910": {
+				"live": 2,
+				"deleted": 2
+			},
+			"7.7081618294767910": {
+				"live": 1,
+				"deleted": 0
+			},
+			"5.7081618294767910": {
+				"live": 4,
+				"deleted": 0
+			},
+			"8.7081618294767910": {
+				"live": 1,
+				"deleted": 0
+			},
+			"6.7081618294767910": {
+				"live": 2,
+				"deleted": 0
+			},
+			"9.7081618294767910": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.1644962078738645": {
+				"live": 2,
+				"deleted": 4
+			},
+			"3.1644962078738645": {
+				"live": 3,
+				"deleted": 2
+			},
+			"6.1644962078738645": {
+				"live": 1,
+				"deleted": 1
+			},
+			"9.1644962078738645": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.1644962078738645": {
+				"live": 5,
+				"deleted": 0
+			},
+			"5.1644962078738645": {
+				"live": 3,
+				"deleted": 0
+			},
+			"10.1644962078738645": {
+				"live": 1,
+				"deleted": 0
+			},
+			"11.1644962078738645": {
+				"live": 1,
+				"deleted": 0
+			},
+			"7.1644962078738645": {
+				"live": 1,
+				"deleted": 0
+			},
+			"8.1644962078738645": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.2175030909371523": {
+				"live": 0,
+				"deleted": 2
+			},
+			"3.2175030909371523": {
+				"live": 4,
+				"deleted": 3
+			},
+			"4.2175030909371523": {
+				"live": 5,
+				"deleted": 0
+			},
+			"5.2175030909371523": {
+				"live": 2,
+				"deleted": 1
+			},
+			"6.2175030909371523": {
+				"live": 2,
+				"deleted": 1
+			},
+			"9.2175030909371523": {
+				"live": 1,
+				"deleted": 0
+			},
+			"8.2175030909371523": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.4812991519950408": {
+				"live": 1,
+				"deleted": 7
+			},
+			"3.4812991519950408": {
+				"live": 1,
+				"deleted": 1
+			},
+			"6.4812991519950408": {
+				"live": 3,
+				"deleted": 2
+			},
+			"7.4812991519950408": {
+				"live": 1,
+				"deleted": 2
+			},
+			"8.4812991519950408": {
+				"live": 0,
+				"deleted": 1
+			},
+			"4.4812991519950408": {
+				"live": 3,
+				"deleted": 1
+			},
+			"5.4812991519950408": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.1915951748995022": {
+				"live": 4,
+				"deleted": 3
+			},
+			"5.1915951748995022": {
+				"live": 3,
+				"deleted": 3
+			},
+			"2.1915951748995022": {
+				"live": 1,
+				"deleted": 1
+			},
+			"6.1915951748995022": {
+				"live": 2,
+				"deleted": 0
+			},
+			"7.1915951748995022": {
+				"live": 1,
+				"deleted": 0
+			},
+			"8.1915951748995022": {
+				"live": 1,
+				"deleted": 0
+			},
+			"10.1915951748995022": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.1915951748995022": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.870796686444936": {
+				"live": 7,
+				"deleted": 6
+			},
+			"2.870796686444936": {
+				"live": 1,
+				"deleted": 1
+			},
+			"4.870796686444936": {
+				"live": 4,
+				"deleted": 0
+			},
+			"7.870796686444936": {
+				"live": 2,
+				"deleted": 1
+			},
+			"6.870796686444936": {
+				"live": 2,
+				"deleted": 0
+			},
+			"5.870796686444936": {
+				"live": 3,
+				"deleted": 0
+			}
+		}
+	},
+	"censusAfterPurge": {
+		"clients": 10,
+		"structs": 4260,
+		"gc": 0,
+		"items": {
+			"live": 2905,
+			"deleted": 1355,
+			"deletedKeepingContent": 0,
+			"mapEntries": 1082,
+			"sequence": 3178
+		},
+		"content": {
+			"ContentAny": {
+				"live": 436,
+				"deleted": 0,
+				"liveLength": 436,
+				"deletedLength": 0
+			},
+			"ContentString": {
+				"live": 1128,
+				"deleted": 0,
+				"liveLength": 4936,
+				"deletedLength": 0
+			},
+			"ContentDeleted": {
+				"live": 0,
+				"deleted": 1355,
+				"liveLength": 0,
+				"deletedLength": 3473
+			},
+			"ContentFormat": {
+				"live": 1136,
+				"deleted": 0,
+				"liveLength": 1136,
+				"deletedLength": 0
+			},
+			"ContentType": {
+				"live": 205,
+				"deleted": 0,
+				"liveLength": 205,
+				"deletedLength": 0
+			}
+		},
+		"text": {
+			"items": 1128,
+			"chars": 4936
+		},
+		"keys": {
+			"c/": {
+				"live": 9,
+				"deleted": 0
+			},
+			"k/": {
+				"live": 117,
+				"deleted": 0
+			},
+			"l": {
+				"live": 41,
+				"deleted": 180
+			},
+			"2.8002384323848655": {
+				"live": 0,
+				"deleted": 9
+			},
+			"d/": {
+				"live": 61,
+				"deleted": 65
+			},
+			"4.8002384323848655": {
+				"live": 0,
+				"deleted": 4
+			},
+			"5.8002384323848655": {
+				"live": 3,
+				"deleted": 3
+			},
+			"3.8002384323848655": {
+				"live": 0,
+				"deleted": 2
+			},
+			"7.8002384323848655": {
+				"live": 0,
+				"deleted": 1
+			},
+			"v": {
+				"live": 1,
+				"deleted": 0
+			},
+			"schema": {
+				"live": 1,
+				"deleted": 0
+			},
+			"title": {
+				"live": 1,
+				"deleted": 0
+			},
+			"id": {
+				"live": 41,
+				"deleted": 0
+			},
+			"n": {
+				"live": 41,
+				"deleted": 0
+			},
+			"type": {
+				"live": 41,
+				"deleted": 0
+			},
+			"content": {
+				"live": 41,
+				"deleted": 0
+			},
+			"claims": {
+				"live": 41,
+				"deleted": 0
+			},
+			"at": {
+				"live": 41,
+				"deleted": 0
+			},
+			"1.48595596": {
+				"live": 0,
+				"deleted": 41
+			},
+			"seed-": {
+				"live": 40,
+				"deleted": 0
+			},
+			"b/": {
+				"live": 41,
+				"deleted": 0
+			},
+			"i": {
+				"live": 41,
+				"deleted": 0
+			},
+			"2.6921927843116006": {
+				"live": 0,
+				"deleted": 6
+			},
+			"3.6921927843116006": {
+				"live": 0,
+				"deleted": 6
+			},
+			"4.6921927843116006": {
+				"live": 1,
+				"deleted": 5
+			},
+			"5.6921927843116006": {
+				"live": 2,
+				"deleted": 2
+			},
+			"6.6921927843116006": {
+				"live": 2,
+				"deleted": 1
+			},
+			"7.6921927843116006": {
+				"live": 2,
+				"deleted": 0
+			},
+			"8.6921927843116006": {
+				"live": 0,
+				"deleted": 1
+			},
+			"9.6921927843116006": {
+				"live": 0,
+				"deleted": 1
+			},
+			"10.6921927843116006": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.7081618294767910": {
+				"live": 0,
+				"deleted": 6
+			},
+			"3.7081618294767910": {
+				"live": 0,
+				"deleted": 5
+			},
+			"4.7081618294767910": {
+				"live": 1,
+				"deleted": 3
+			},
+			"7.7081618294767910": {
+				"live": 0,
+				"deleted": 1
+			},
+			"5.7081618294767910": {
+				"live": 1,
+				"deleted": 3
+			},
+			"8.7081618294767910": {
+				"live": 0,
+				"deleted": 1
+			},
+			"6.7081618294767910": {
+				"live": 1,
+				"deleted": 1
+			},
+			"9.7081618294767910": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.1644962078738645": {
+				"live": 0,
+				"deleted": 6
+			},
+			"3.1644962078738645": {
+				"live": 0,
+				"deleted": 5
+			},
+			"6.1644962078738645": {
+				"live": 0,
+				"deleted": 2
+			},
+			"9.1644962078738645": {
+				"live": 0,
+				"deleted": 1
+			},
+			"4.1644962078738645": {
+				"live": 2,
+				"deleted": 3
+			},
+			"5.1644962078738645": {
+				"live": 2,
+				"deleted": 1
+			},
+			"10.1644962078738645": {
+				"live": 1,
+				"deleted": 0
+			},
+			"11.1644962078738645": {
+				"live": 1,
+				"deleted": 0
+			},
+			"7.1644962078738645": {
+				"live": 1,
+				"deleted": 0
+			},
+			"8.1644962078738645": {
+				"live": 0,
+				"deleted": 1
+			},
+			"2.2175030909371523": {
+				"live": 0,
+				"deleted": 2
+			},
+			"3.2175030909371523": {
+				"live": 1,
+				"deleted": 6
+			},
+			"4.2175030909371523": {
+				"live": 0,
+				"deleted": 5
+			},
+			"5.2175030909371523": {
+				"live": 1,
+				"deleted": 2
+			},
+			"6.2175030909371523": {
+				"live": 0,
+				"deleted": 3
+			},
+			"9.2175030909371523": {
+				"live": 0,
+				"deleted": 1
+			},
+			"8.2175030909371523": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.4812991519950408": {
+				"live": 0,
+				"deleted": 8
+			},
+			"3.4812991519950408": {
+				"live": 0,
+				"deleted": 2
+			},
+			"6.4812991519950408": {
+				"live": 2,
+				"deleted": 3
+			},
+			"7.4812991519950408": {
+				"live": 1,
+				"deleted": 2
+			},
+			"8.4812991519950408": {
+				"live": 0,
+				"deleted": 1
+			},
+			"4.4812991519950408": {
+				"live": 2,
+				"deleted": 2
+			},
+			"5.4812991519950408": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.1915951748995022": {
+				"live": 2,
+				"deleted": 5
+			},
+			"5.1915951748995022": {
+				"live": 0,
+				"deleted": 6
+			},
+			"2.1915951748995022": {
+				"live": 0,
+				"deleted": 2
+			},
+			"6.1915951748995022": {
+				"live": 1,
+				"deleted": 1
+			},
+			"7.1915951748995022": {
+				"live": 1,
+				"deleted": 0
+			},
+			"8.1915951748995022": {
+				"live": 1,
+				"deleted": 0
+			},
+			"10.1915951748995022": {
+				"live": 0,
+				"deleted": 1
+			},
+			"3.1915951748995022": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.870796686444936": {
+				"live": 0,
+				"deleted": 13
+			},
+			"2.870796686444936": {
+				"live": 0,
+				"deleted": 2
+			},
+			"4.870796686444936": {
+				"live": 1,
+				"deleted": 3
+			},
+			"7.870796686444936": {
+				"live": 1,
+				"deleted": 2
+			},
+			"6.870796686444936": {
+				"live": 1,
+				"deleted": 1
+			},
+			"5.870796686444936": {
+				"live": 1,
+				"deleted": 2
+			},
+			"h": {
+				"live": 1,
+				"deleted": 0
+			}
+		}
+	},
+	"bytesPerEdit": 20.2,
+	"purgedBytesPerEdit": 18.8
+}

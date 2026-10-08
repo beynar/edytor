@@ -1,0 +1,562 @@
+{
+	"config": {
+		"replicas": 8,
+		"edits": 4000,
+		"mix": "soak",
+		"without": [],
+		"sync": 25,
+		"seed": 1
+	},
+	"converged": true,
+	"applied": 3756,
+	"ops": {
+		"type:applied": 2488,
+		"merge:applied": 169,
+		"mark:applied": 111,
+		"jump:applied-local": 136,
+		"mark:noop": 55,
+		"move:applied": 142,
+		"backspace:applied": 367,
+		"cut:applied": 100,
+		"merge:refused": 2,
+		"data:applied": 119,
+		"split:applied": 260,
+		"backspace:noop": 40,
+		"cut:noop": 11
+	},
+	"blocks": 132,
+	"chars": 5506,
+	"stored": 194394,
+	"fresh": 43268,
+	"purged": 188357,
+	"purge": {
+		"removed": 0,
+		"emptied": 0,
+		"marks": 90,
+		"records": 0,
+		"candidates": 127,
+		"claims": 0
+	},
+	"census": {
+		"clients": 10,
+		"structs": 9126,
+		"gc": 0,
+		"items": {
+			"live": 7813,
+			"deleted": 1313,
+			"deletedKeepingContent": 0,
+			"mapEntries": 5882,
+			"sequence": 3244
+		},
+		"content": {
+			"ContentAny": {
+				"live": 4507,
+				"deleted": 0,
+				"liveLength": 4511,
+				"deletedLength": 0
+			},
+			"ContentDeleted": {
+				"live": 0,
+				"deleted": 1313,
+				"liveLength": 0,
+				"deletedLength": 2376
+			},
+			"ContentString": {
+				"live": 1291,
+				"deleted": 0,
+				"liveLength": 5506,
+				"deletedLength": 0
+			},
+			"ContentFormat": {
+				"live": 770,
+				"deleted": 0,
+				"liveLength": 770,
+				"deletedLength": 0
+			},
+			"ContentType": {
+				"live": 1245,
+				"deleted": 0,
+				"liveLength": 1245,
+				"deletedLength": 0
+			}
+		},
+		"text": {
+			"items": 1291,
+			"chars": 5506
+		},
+		"keys": {
+			"c/": {
+				"live": 9,
+				"deleted": 0
+			},
+			"k/": {
+				"live": 1451,
+				"deleted": 0
+			},
+			"l": {
+				"live": 300,
+				"deleted": 596
+			},
+			"d/": {
+				"live": 338,
+				"deleted": 34
+			},
+			"2.8155697025873121": {
+				"live": 13,
+				"deleted": 1
+			},
+			"u": {
+				"live": 260,
+				"deleted": 0
+			},
+			"id": {
+				"live": 301,
+				"deleted": 0
+			},
+			"n": {
+				"live": 301,
+				"deleted": 0
+			},
+			"type": {
+				"live": 301,
+				"deleted": 0
+			},
+			"claims": {
+				"live": 301,
+				"deleted": 0
+			},
+			"at": {
+				"live": 301,
+				"deleted": 0
+			},
+			"1.8155697025873121": {
+				"live": 33,
+				"deleted": 0
+			},
+			"b/": {
+				"live": 301,
+				"deleted": 0
+			},
+			"i": {
+				"live": 301,
+				"deleted": 0
+			},
+			"c": {
+				"live": 260,
+				"deleted": 0
+			},
+			"3.8155697025873121": {
+				"live": 7,
+				"deleted": 0
+			},
+			"v": {
+				"live": 1,
+				"deleted": 0
+			},
+			"schema": {
+				"live": 1,
+				"deleted": 0
+			},
+			"title": {
+				"live": 1,
+				"deleted": 0
+			},
+			"content": {
+				"live": 41,
+				"deleted": 0
+			},
+			"1.48595596": {
+				"live": 37,
+				"deleted": 4
+			},
+			"seed-": {
+				"live": 40,
+				"deleted": 0
+			},
+			"2.3413791415668385": {
+				"live": 10,
+				"deleted": 0
+			},
+			"1.3413791415668385": {
+				"live": 30,
+				"deleted": 0
+			},
+			"3.3413791415668385": {
+				"live": 3,
+				"deleted": 0
+			},
+			"2.7229489381799293": {
+				"live": 11,
+				"deleted": 0
+			},
+			"1.7229489381799293": {
+				"live": 31,
+				"deleted": 0
+			},
+			"3.7229489381799293": {
+				"live": 5,
+				"deleted": 0
+			},
+			"5.7229489381799293": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.7229489381799293": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.7429986120049873": {
+				"live": 10,
+				"deleted": 1
+			},
+			"1.7429986120049873": {
+				"live": 34,
+				"deleted": 1
+			},
+			"3.7429986120049873": {
+				"live": 2,
+				"deleted": 0
+			},
+			"4.7429986120049873": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.3041206730830807": {
+				"live": 45,
+				"deleted": 2
+			},
+			"2.3041206730830807": {
+				"live": 10,
+				"deleted": 0
+			},
+			"3.3041206730830807": {
+				"live": 3,
+				"deleted": 0
+			},
+			"4.3041206730830807": {
+				"live": 4,
+				"deleted": 0
+			},
+			"5.3041206730830807": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.7962753726791331": {
+				"live": 21,
+				"deleted": 2
+			},
+			"2.7962753726791331": {
+				"live": 9,
+				"deleted": 2
+			},
+			"3.7962753726791331": {
+				"live": 5,
+				"deleted": 0
+			},
+			"4.7962753726791331": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.5393282843082545": {
+				"live": 10,
+				"deleted": 0
+			},
+			"3.5393282843082545": {
+				"live": 4,
+				"deleted": 0
+			},
+			"1.5393282843082545": {
+				"live": 27,
+				"deleted": 1
+			},
+			"4.5393282843082545": {
+				"live": 3,
+				"deleted": 0
+			},
+			"5.5393282843082545": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.5162783507705307": {
+				"live": 14,
+				"deleted": 1
+			},
+			"1.5162783507705307": {
+				"live": 33,
+				"deleted": 0
+			},
+			"3.5162783507705307": {
+				"live": 6,
+				"deleted": 0
+			},
+			"5.5162783507705307": {
+				"live": 1,
+				"deleted": 0
+			}
+		}
+	},
+	"censusAfterPurge": {
+		"clients": 10,
+		"structs": 9124,
+		"gc": 0,
+		"items": {
+			"live": 7597,
+			"deleted": 1527,
+			"deletedKeepingContent": 0,
+			"mapEntries": 5883,
+			"sequence": 3241
+		},
+		"content": {
+			"ContentAny": {
+				"live": 4291,
+				"deleted": 0,
+				"liveLength": 4295,
+				"deletedLength": 0
+			},
+			"ContentDeleted": {
+				"live": 0,
+				"deleted": 1527,
+				"liveLength": 0,
+				"deletedLength": 2593
+			},
+			"ContentString": {
+				"live": 1291,
+				"deleted": 0,
+				"liveLength": 5506,
+				"deletedLength": 0
+			},
+			"ContentFormat": {
+				"live": 770,
+				"deleted": 0,
+				"liveLength": 770,
+				"deletedLength": 0
+			},
+			"ContentType": {
+				"live": 1245,
+				"deleted": 0,
+				"liveLength": 1245,
+				"deletedLength": 0
+			}
+		},
+		"text": {
+			"items": 1291,
+			"chars": 5506
+		},
+		"keys": {
+			"c/": {
+				"live": 9,
+				"deleted": 0
+			},
+			"k/": {
+				"live": 1451,
+				"deleted": 0
+			},
+			"l": {
+				"live": 300,
+				"deleted": 596
+			},
+			"d/": {
+				"live": 338,
+				"deleted": 34
+			},
+			"2.8155697025873121": {
+				"live": 8,
+				"deleted": 6
+			},
+			"u": {
+				"live": 260,
+				"deleted": 0
+			},
+			"id": {
+				"live": 301,
+				"deleted": 0
+			},
+			"n": {
+				"live": 301,
+				"deleted": 0
+			},
+			"type": {
+				"live": 301,
+				"deleted": 0
+			},
+			"claims": {
+				"live": 301,
+				"deleted": 0
+			},
+			"at": {
+				"live": 301,
+				"deleted": 0
+			},
+			"1.8155697025873121": {
+				"live": 25,
+				"deleted": 8
+			},
+			"b/": {
+				"live": 301,
+				"deleted": 0
+			},
+			"i": {
+				"live": 301,
+				"deleted": 0
+			},
+			"c": {
+				"live": 260,
+				"deleted": 0
+			},
+			"3.8155697025873121": {
+				"live": 4,
+				"deleted": 3
+			},
+			"v": {
+				"live": 1,
+				"deleted": 0
+			},
+			"schema": {
+				"live": 1,
+				"deleted": 0
+			},
+			"title": {
+				"live": 1,
+				"deleted": 0
+			},
+			"content": {
+				"live": 41,
+				"deleted": 0
+			},
+			"1.48595596": {
+				"live": 20,
+				"deleted": 21
+			},
+			"seed-": {
+				"live": 40,
+				"deleted": 0
+			},
+			"2.3413791415668385": {
+				"live": 6,
+				"deleted": 4
+			},
+			"1.3413791415668385": {
+				"live": 21,
+				"deleted": 9
+			},
+			"3.3413791415668385": {
+				"live": 2,
+				"deleted": 1
+			},
+			"2.7229489381799293": {
+				"live": 8,
+				"deleted": 3
+			},
+			"1.7229489381799293": {
+				"live": 24,
+				"deleted": 7
+			},
+			"3.7229489381799293": {
+				"live": 3,
+				"deleted": 2
+			},
+			"5.7229489381799293": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.7229489381799293": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.7429986120049873": {
+				"live": 8,
+				"deleted": 3
+			},
+			"1.7429986120049873": {
+				"live": 24,
+				"deleted": 11
+			},
+			"3.7429986120049873": {
+				"live": 2,
+				"deleted": 0
+			},
+			"4.7429986120049873": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.3041206730830807": {
+				"live": 34,
+				"deleted": 13
+			},
+			"2.3041206730830807": {
+				"live": 5,
+				"deleted": 5
+			},
+			"3.3041206730830807": {
+				"live": 2,
+				"deleted": 1
+			},
+			"4.3041206730830807": {
+				"live": 1,
+				"deleted": 3
+			},
+			"5.3041206730830807": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.7962753726791331": {
+				"live": 17,
+				"deleted": 6
+			},
+			"2.7962753726791331": {
+				"live": 7,
+				"deleted": 4
+			},
+			"3.7962753726791331": {
+				"live": 4,
+				"deleted": 1
+			},
+			"4.7962753726791331": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.5393282843082545": {
+				"live": 8,
+				"deleted": 2
+			},
+			"3.5393282843082545": {
+				"live": 4,
+				"deleted": 0
+			},
+			"1.5393282843082545": {
+				"live": 23,
+				"deleted": 5
+			},
+			"4.5393282843082545": {
+				"live": 1,
+				"deleted": 2
+			},
+			"5.5393282843082545": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.5162783507705307": {
+				"live": 7,
+				"deleted": 8
+			},
+			"1.5162783507705307": {
+				"live": 21,
+				"deleted": 12
+			},
+			"3.5162783507705307": {
+				"live": 4,
+				"deleted": 2
+			},
+			"5.5162783507705307": {
+				"live": 1,
+				"deleted": 0
+			},
+			"h": {
+				"live": 1,
+				"deleted": 0
+			}
+		}
+	},
+	"bytesPerEdit": 40.2,
+	"purgedBytesPerEdit": 38.6
+}

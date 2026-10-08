@@ -1,0 +1,8928 @@
+{
+	"at": "2026-10-08T04:00:41.621Z",
+	"roomName": "soak-2026-10-08T03-40-15-366Z",
+	"server": "local (Miniflare, bench/soak/server.mjs)",
+	"config": {
+		"clients": 50,
+		"minutes": 20,
+		"threads": 5,
+		"opsPerSecond": 0.4,
+		"presenceHz": 20,
+		"dragShare": 0.1,
+		"churnPerMinute": 1,
+		"offlinePerHour": 2,
+		"reloadShare": 0.1,
+		"faults": true,
+		"seed": 1,
+		"port": 4527,
+		"maxBlocks": 400,
+		"maxChars": 60000,
+		"sampleSeconds": 10,
+		"faultScale": 1
+	},
+	"durationMinutes": 20.4,
+	"acks": {
+		"count": 21462,
+		"p50": 5.6,
+		"p90": 28,
+		"p99": 690.8,
+		"p999": 4061.5,
+		"max": 57281.4
+	},
+	"acksDisconnected": {
+		"count": 604,
+		"p50": 880.3,
+		"p90": 2260.4,
+		"p99": 4080.8,
+		"p999": 59917.3,
+		"max": 59917.3
+	},
+	"acksOutsideOffline": {
+		"count": 22066,
+		"p50": 5.9,
+		"p90": 37.1,
+		"p99": 1975.7,
+		"p999": 4170,
+		"max": 59917.3
+	},
+	"faultFreeWindows": {
+		"windows": 30,
+		"medianP99": 64.3,
+		"worstP99": 1309.4
+	},
+	"replays": {
+		"count": 24,
+		"p50": 56,
+		"p90": 126.6,
+		"p99": 240.9,
+		"p999": 240.9,
+		"max": 240.9,
+		"sessions": 24,
+		"edits": 255
+	},
+	"room": {
+		"heapMaxMB": 114.95064926147461,
+		"heapAfterGcMaxMB": 37.40949630737305,
+		"rssMaxMB": 447.71875,
+		"quietHeap": {
+			"heapMB": 34.70020294189453,
+			"documentBytes": 1803037
+		},
+		"coldHeap": {
+			"heapMB": 32.263275146484375,
+			"documentBytes": 1803150
+		},
+		"documentBytes": 1766094,
+		"storedBytes": 432473,
+		"finalCompactionMs": 75,
+		"forcedCompactionsMs": {
+			"count": 13,
+			"p50": 45,
+			"p90": 86,
+			"p99": 90,
+			"p999": 90,
+			"max": 90
+		},
+		"instances": 13,
+		"starts": [
+			{
+				"t": 0,
+				"sockets": 0
+			},
+			{
+				"t": 121,
+				"sockets": 48
+			},
+			{
+				"t": 201,
+				"sockets": 0
+			},
+			{
+				"t": 301,
+				"sockets": 0
+			},
+			{
+				"t": 361,
+				"sockets": 49
+			},
+			{
+				"t": 561,
+				"sockets": 0
+			},
+			{
+				"t": 601,
+				"sockets": 48
+			},
+			{
+				"t": 721,
+				"sockets": 0
+			},
+			{
+				"t": 841,
+				"sockets": 50
+			},
+			{
+				"t": 921,
+				"sockets": 0
+			},
+			{
+				"t": 1081,
+				"sockets": 48
+			},
+			{
+				"t": 1141,
+				"sockets": 0
+			},
+			{
+				"t": 1217,
+				"sockets": 0
+			}
+		],
+		"summed": {
+			"compactions": 48,
+			"folds": 21550,
+			"foldMaxMs": 194,
+			"fanOutMessages": 6534887,
+			"fanOutBytes": 1171447421,
+			"quotaHits": 0,
+			"refusals": {
+				"relayed": 1,
+				"storage": 199
+			}
+		},
+		"log": {
+			"compactions": {
+				"count": 48,
+				"p50": 18,
+				"p90": 29,
+				"p99": 44,
+				"p999": 44,
+				"max": 44
+			},
+			"compactionBytesMax": 1766094,
+			"faults": 195,
+			"quota": []
+		},
+		"metrics": {
+			"documentBytes": 1766094,
+			"storedBytes": 432473,
+			"records": 2,
+			"rows": 2,
+			"updateRecords": 0,
+			"waitingBytes": 0,
+			"sockets": 50,
+			"buffered": {
+				"sequences": 0,
+				"bytes": 0
+			},
+			"compaction": {
+				"count": 1,
+				"totalMs": 43,
+				"maxMs": 43,
+				"lastMs": 43,
+				"lastBytes": 1766094
+			},
+			"fold": {
+				"count": 52,
+				"totalMs": 535,
+				"maxMs": 16,
+				"lastMs": 12
+			},
+			"fanOut": {
+				"messages": 3058,
+				"bytes": 549952
+			},
+			"quotaHits": 0,
+			"validationDenials": 0,
+			"refusals": {},
+			"history": {
+				"written": 0,
+				"skipped": 0,
+				"lastKey": null
+			},
+			"purge": {
+				"runs": 0,
+				"horizon": null,
+				"removed": 0,
+				"emptied": 0,
+				"marks": 0,
+				"records": 0,
+				"candidates": 0,
+				"claims": 0
+			},
+			"since": 1791432033067
+		}
+	},
+	"clients": {
+		"maxEventLoopP99Ms": 82,
+		"maxHeapMB": 3396.825210571289
+	},
+	"totals": {
+		"ops": {
+			"type:applied": 14697,
+			"backspace:applied": 2128,
+			"jump:applied-local": 738,
+			"move:applied": 924,
+			"merge:applied": 1138,
+			"data:applied": 725,
+			"mark:noop": 357,
+			"split:applied": 1496,
+			"mark:applied": 618,
+			"cut:applied": 595,
+			"merge:refused": 1,
+			"backspace:noop": 229,
+			"cut:noop": 97,
+			"move:refused": 3,
+			"split:noop": 1,
+			"type:noop": 3
+		},
+		"closes": {
+			"1000": 763,
+			"1006": 508,
+			"1011": 195
+		},
+		"events": {
+			"unreachable": 192
+		},
+		"reloads": 94,
+		"churns": 884,
+		"offline": 24
+	},
+	"faults": [
+		{
+			"t": 46,
+			"fault": "compaction",
+			"ms": 6,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 121,
+			"fault": "hibernate",
+			"ms": 5,
+			"result": {
+				"evicted": true,
+				"webSockets": "hibernate"
+			}
+		},
+		{
+			"t": 136,
+			"fault": "compaction",
+			"ms": 24,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 153,
+			"fault": "storage-append",
+			"ms": 0,
+			"result": {
+				"ok": true,
+				"on": {
+					"kind": "append",
+					"on": true
+				},
+				"off": {
+					"kind": "append",
+					"on": false
+				}
+			}
+		},
+		{
+			"t": 201,
+			"fault": "evict",
+			"ms": 12,
+			"result": {
+				"evicted": true,
+				"webSockets": "close"
+			}
+		},
+		{
+			"t": 226,
+			"fault": "compaction",
+			"ms": 12,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 301,
+			"fault": "abort",
+			"ms": 27,
+			"result": {
+				"aborted": true,
+				"error": "Error: soak: injected abort"
+			}
+		},
+		{
+			"t": 316,
+			"fault": "compaction",
+			"ms": 29,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 361,
+			"fault": "hibernate",
+			"ms": 54,
+			"result": {
+				"evicted": true,
+				"webSockets": "hibernate"
+			}
+		},
+		{
+			"t": 406,
+			"fault": "compaction",
+			"ms": 17,
+			"result": "Error: soak: injected compaction failure: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)\n    at async Object.fetch (file:///Users/arnaud/code/edytor/.claude/worktrees/wf_9274721e-b54-3/node_modules/.pnpm/miniflare@5.20260926.0-alpha/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5318:22)"
+		},
+		{
+			"t": 431,
+			"fault": "storage-compaction",
+			"ms": 0,
+			"result": {
+				"ok": true,
+				"forced": {
+					"status": 500,
+					"body": "Error: soak: injected compaction failure: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)\n    at async Object.fetch (file:///Users/arnaud/code/edytor/.claude/worktrees/wf_9274721e-b54-3/node_modules/.pnpm/miniflare@5.20260926.0-alpha/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5318:22)"
+				}
+			}
+		},
+		{
+			"t": 454,
+			"fault": "storage-append",
+			"ms": 0,
+			"result": {
+				"ok": true,
+				"on": {
+					"kind": "append",
+					"on": true
+				},
+				"off": {
+					"kind": "append",
+					"on": false
+				}
+			}
+		},
+		{
+			"t": 496,
+			"fault": "compaction",
+			"ms": 43,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 561,
+			"fault": "evict",
+			"ms": 15,
+			"result": {
+				"evicted": true,
+				"webSockets": "close"
+			}
+		},
+		{
+			"t": 586,
+			"fault": "compaction",
+			"ms": 45,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 601,
+			"fault": "hibernate",
+			"ms": 6,
+			"result": {
+				"evicted": true,
+				"webSockets": "hibernate"
+			}
+		},
+		{
+			"t": 676,
+			"fault": "compaction",
+			"ms": 90,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 721,
+			"fault": "abort",
+			"ms": 18,
+			"result": {
+				"aborted": true,
+				"error": "Error: soak: injected abort"
+			}
+		},
+		{
+			"t": 756,
+			"fault": "storage-append",
+			"ms": 0,
+			"result": {
+				"ok": true,
+				"on": {
+					"kind": "append",
+					"on": true
+				},
+				"off": {
+					"kind": "append",
+					"on": false
+				}
+			}
+		},
+		{
+			"t": 766,
+			"fault": "compaction",
+			"ms": 47,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 841,
+			"fault": "hibernate",
+			"ms": 40,
+			"result": {
+				"evicted": true,
+				"webSockets": "hibernate"
+			}
+		},
+		{
+			"t": 856,
+			"fault": "compaction",
+			"ms": 64,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 911,
+			"fault": "storage-compaction",
+			"ms": 0,
+			"result": {
+				"ok": true,
+				"forced": {
+					"status": 500,
+					"body": "Error: soak: injected compaction failure: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)\n    at async Object.fetch (file:///Users/arnaud/code/edytor/.claude/worktrees/wf_9274721e-b54-3/node_modules/.pnpm/miniflare@5.20260926.0-alpha/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5318:22)"
+				}
+			}
+		},
+		{
+			"t": 921,
+			"fault": "evict",
+			"ms": 16,
+			"result": {
+				"evicted": true,
+				"webSockets": "close"
+			}
+		},
+		{
+			"t": 946,
+			"fault": "compaction",
+			"ms": 61,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 1036,
+			"fault": "compaction",
+			"ms": 86,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 1056,
+			"fault": "storage-append",
+			"ms": 0,
+			"result": {
+				"ok": true,
+				"on": {
+					"kind": "append",
+					"on": true
+				},
+				"off": {
+					"kind": "append",
+					"on": false
+				}
+			}
+		},
+		{
+			"t": 1081,
+			"fault": "hibernate",
+			"ms": 6,
+			"result": {
+				"evicted": true,
+				"webSockets": "hibernate"
+			}
+		},
+		{
+			"t": 1126,
+			"fault": "compaction",
+			"ms": 47,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 1141,
+			"fault": "abort",
+			"ms": 17,
+			"result": {
+				"aborted": true,
+				"error": "Error: soak: injected abort"
+			}
+		}
+	],
+	"forced": [
+		{
+			"what": "offline",
+			"client": 0,
+			"ms": 20000,
+			"done": true
+		},
+		{
+			"what": "reload",
+			"client": 49,
+			"done": true
+		}
+	],
+	"size": {
+		"blocks": 400,
+		"chars": 20778,
+		"stored": 1766124,
+		"fresh": 155811,
+		"purged": 1673546,
+		"purge": {
+			"removed": 0,
+			"emptied": 0,
+			"marks": 2644,
+			"records": 0,
+			"candidates": 725,
+			"claims": 0
+		},
+		"census": {
+			"clients": 148,
+			"structs": 103435,
+			"gc": 0,
+			"items": {
+				"live": 82289,
+				"deleted": 21146,
+				"deletedKeepingContent": 0,
+				"mapEntries": 76646,
+				"sequence": 26789
+			},
+			"content": {
+				"ContentAny": {
+					"live": 60478,
+					"deleted": 0,
+					"liveLength": 60591,
+					"deletedLength": 0
+				},
+				"ContentDeleted": {
+					"live": 0,
+					"deleted": 21146,
+					"liveLength": 0,
+					"deletedLength": 25615
+				},
+				"ContentType": {
+					"live": 6189,
+					"deleted": 0,
+					"liveLength": 6189,
+					"deletedLength": 0
+				},
+				"ContentString": {
+					"live": 9294,
+					"deleted": 0,
+					"liveLength": 20778,
+					"deletedLength": 0
+				},
+				"ContentFormat": {
+					"live": 6328,
+					"deleted": 0,
+					"liveLength": 6328,
+					"deletedLength": 0
+				}
+			},
+			"text": {
+				"items": 9294,
+				"chars": 20778
+			},
+			"keys": {
+				"c/": {
+					"live": 147,
+					"deleted": 0
+				},
+				"k/": {
+					"live": 40488,
+					"deleted": 0
+				},
+				"l": {
+					"live": 1537,
+					"deleted": 14736
+				},
+				"d/": {
+					"live": 3233,
+					"deleted": 209
+				},
+				"u": {
+					"live": 1496,
+					"deleted": 0
+				},
+				"id": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"n": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"type": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"claims": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"at": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"1.8873565481954606": {
+					"live": 15,
+					"deleted": 0
+				},
+				"b/": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"i": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"c": {
+					"live": 1496,
+					"deleted": 0
+				},
+				"2.8873565481954606": {
+					"live": 5,
+					"deleted": 0
+				},
+				"4.8873565481954606": {
+					"live": 0,
+					"deleted": 1
+				},
+				"v": {
+					"live": 1,
+					"deleted": 0
+				},
+				"schema": {
+					"live": 1,
+					"deleted": 0
+				},
+				"title": {
+					"live": 1,
+					"deleted": 0
+				},
+				"content": {
+					"live": 41,
+					"deleted": 0
+				},
+				"1.48595596": {
+					"live": 36,
+					"deleted": 5
+				},
+				"seed-": {
+					"live": 40,
+					"deleted": 0
+				},
+				"1.5738923100036201": {
+					"live": 21,
+					"deleted": 0
+				},
+				"2.5738923100036201": {
+					"live": 10,
+					"deleted": 2
+				},
+				"4.5738923100036201": {
+					"live": 4,
+					"deleted": 0
+				},
+				"3.5738923100036201": {
+					"live": 5,
+					"deleted": 0
+				},
+				"6.5738923100036201": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.8229963639251176": {
+					"live": 4,
+					"deleted": 0
+				},
+				"1.8229963639251176": {
+					"live": 18,
+					"deleted": 8
+				},
+				"3.8229963639251176": {
+					"live": 1,
+					"deleted": 1
+				},
+				"5.8229963639251176": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.8229963639251176": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.8419680000907170": {
+					"live": 9,
+					"deleted": 1
+				},
+				"2.8419680000907170": {
+					"live": 5,
+					"deleted": 0
+				},
+				"4.8419680000907170": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.8419680000907170": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.3596016605898113": {
+					"live": 5,
+					"deleted": 0
+				},
+				"2.3596016605898113": {
+					"live": 3,
+					"deleted": 0
+				},
+				"5.3596016605898113": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3499991828677712": {
+					"live": 4,
+					"deleted": 1
+				},
+				"2.3499991828677712": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.3499991828677712": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.7681320213170930": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.7681320213170930": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6383296524983287": {
+					"live": 8,
+					"deleted": 3
+				},
+				"2.6383296524983287": {
+					"live": 5,
+					"deleted": 0
+				},
+				"2.3630287295264127": {
+					"live": 4,
+					"deleted": 0
+				},
+				"1.3630287295264127": {
+					"live": 6,
+					"deleted": 2
+				},
+				"4.3526349631453238": {
+					"live": 7,
+					"deleted": 0
+				},
+				"1.3526349631453238": {
+					"live": 24,
+					"deleted": 0
+				},
+				"2.3526349631453238": {
+					"live": 9,
+					"deleted": 1
+				},
+				"3.3526349631453238": {
+					"live": 2,
+					"deleted": 1
+				},
+				"5.3526349631453238": {
+					"live": 1,
+					"deleted": 1
+				},
+				"7.3526349631453238": {
+					"live": 1,
+					"deleted": 0
+				},
+				"6.3526349631453238": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6459327500394867": {
+					"live": 3,
+					"deleted": 1
+				},
+				"2.6459327500394867": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.6459327500394867": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.5585242561108336": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.5585242561108336": {
+					"live": 1,
+					"deleted": 2
+				},
+				"1.5585242561108336": {
+					"live": 9,
+					"deleted": 1
+				},
+				"2.6915272486606130": {
+					"live": 2,
+					"deleted": 1
+				},
+				"1.6915272486606130": {
+					"live": 9,
+					"deleted": 4
+				},
+				"3.6915272486606130": {
+					"live": 1,
+					"deleted": 1
+				},
+				"8.6915272486606130": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.975887337098327": {
+					"live": 13,
+					"deleted": 0
+				},
+				"2.975887337098327": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.975887337098327": {
+					"live": 1,
+					"deleted": 1
+				},
+				"5.975887337098327": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.975887337098327": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.7827126743020102": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.7827126743020102": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.7827126743020102": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.7827126743020102": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.2480793889495928": {
+					"live": 9,
+					"deleted": 1
+				},
+				"1.2480793889495928": {
+					"live": 22,
+					"deleted": 0
+				},
+				"4.2480793889495928": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.2480793889495928": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.2113152843792868": {
+					"live": 7,
+					"deleted": 1
+				},
+				"2.2113152843792868": {
+					"live": 1,
+					"deleted": 1
+				},
+				"1.5359739807812341": {
+					"live": 10,
+					"deleted": 1
+				},
+				"3.5359739807812341": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.4365728751691544": {
+					"live": 20,
+					"deleted": 5
+				},
+				"2.4365728751691544": {
+					"live": 4,
+					"deleted": 2
+				},
+				"6.4365728751691544": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.4365728751691544": {
+					"live": 2,
+					"deleted": 0
+				},
+				"5.4365728751691544": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.4365728751691544": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.5381672611000909": {
+					"live": 26,
+					"deleted": 3
+				},
+				"2.5381672611000909": {
+					"live": 6,
+					"deleted": 2
+				},
+				"3.5381672611000909": {
+					"live": 1,
+					"deleted": 0
+				},
+				"5.5381672611000909": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.5381672611000909": {
+					"live": 1,
+					"deleted": 0
+				},
+				"7.5381672611000909": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.7251047089923895": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3034284401414099": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.3034284401414099": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.8594093149856029": {
+					"live": 17,
+					"deleted": 2
+				},
+				"2.8594093149856029": {
+					"live": 2,
+					"deleted": 1
+				},
+				"3.8594093149856029": {
+					"live": 4,
+					"deleted": 0
+				},
+				"1.3495571112771626": {
+					"live": 15,
+					"deleted": 4
+				},
+				"2.3495571112771626": {
+					"live": 7,
+					"deleted": 0
+				},
+				"4.3495571112771626": {
+					"live": 1,
+					"deleted": 1
+				},
+				"3.3495571112771626": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.821860207792087": {
+					"live": 2,
+					"deleted": 1
+				},
+				"2.821860207792087": {
+					"live": 6,
+					"deleted": 1
+				},
+				"1.821860207792087": {
+					"live": 21,
+					"deleted": 1
+				},
+				"4.821860207792087": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3713358416986160": {
+					"live": 40,
+					"deleted": 1
+				},
+				"3.3713358416986160": {
+					"live": 4,
+					"deleted": 0
+				},
+				"2.3713358416986160": {
+					"live": 4,
+					"deleted": 2
+				},
+				"5.3713358416986160": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.3713358416986160": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.4282149686060647": {
+					"live": 4,
+					"deleted": 1
+				},
+				"2.4282149686060647": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.4282149686060647": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.4282149686060647": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5496309199398358": {
+					"live": 9,
+					"deleted": 2
+				},
+				"3.5496309199398358": {
+					"live": 3,
+					"deleted": 1
+				},
+				"2.5496309199398358": {
+					"live": 1,
+					"deleted": 1
+				},
+				"2.4349629088819670": {
+					"live": 7,
+					"deleted": 1
+				},
+				"1.4349629088819670": {
+					"live": 33,
+					"deleted": 2
+				},
+				"3.4349629088819670": {
+					"live": 5,
+					"deleted": 0
+				},
+				"1.2069839116212821": {
+					"live": 5,
+					"deleted": 1
+				},
+				"2.2069839116212821": {
+					"live": 2,
+					"deleted": 2
+				},
+				"3.2069839116212821": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.6991240704081797": {
+					"live": 32,
+					"deleted": 4
+				},
+				"3.6991240704081797": {
+					"live": 5,
+					"deleted": 0
+				},
+				"2.6991240704081797": {
+					"live": 10,
+					"deleted": 0
+				},
+				"5.6991240704081797": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.6991240704081797": {
+					"live": 1,
+					"deleted": 0
+				},
+				"6.6991240704081797": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3512973018003321": {
+					"live": 23,
+					"deleted": 3
+				},
+				"2.3512973018003321": {
+					"live": 6,
+					"deleted": 2
+				},
+				"3.3512973018003321": {
+					"live": 5,
+					"deleted": 2
+				},
+				"4.3512973018003321": {
+					"live": 2,
+					"deleted": 0
+				},
+				"5.3512973018003321": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.1823343847025285": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.1823343847025285": {
+					"live": 5,
+					"deleted": 1
+				},
+				"1.3140465284298026": {
+					"live": 6,
+					"deleted": 1
+				},
+				"2.3140465284298026": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.3140465284298026": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.7662175227134265": {
+					"live": 4,
+					"deleted": 0
+				},
+				"1.2926744560860385": {
+					"live": 1,
+					"deleted": 1
+				},
+				"2.2926744560860385": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.2926744560860385": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.4710180679696060": {
+					"live": 30,
+					"deleted": 1
+				},
+				"2.4710180679696060": {
+					"live": 9,
+					"deleted": 1
+				},
+				"5.4710180679696060": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.4710180679696060": {
+					"live": 2,
+					"deleted": 0
+				},
+				"6.4710180679696060": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.4710180679696060": {
+					"live": 4,
+					"deleted": 1
+				},
+				"7.4710180679696060": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5377681245174080": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.5377681245174080": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.5377681245174080": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.8504977627214454": {
+					"live": 8,
+					"deleted": 0
+				},
+				"3.8504977627214454": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.8504977627214454": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.4761641235478382": {
+					"live": 2,
+					"deleted": 1
+				},
+				"1.3492063639789747": {
+					"live": 27,
+					"deleted": 4
+				},
+				"3.3492063639789747": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.3492063639789747": {
+					"live": 12,
+					"deleted": 1
+				},
+				"7.3492063639789747": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.3492063639789747": {
+					"live": 3,
+					"deleted": 0
+				},
+				"6.3492063639789747": {
+					"live": 1,
+					"deleted": 0
+				},
+				"5.3492063639789747": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.7139684839382903": {
+					"live": 35,
+					"deleted": 1
+				},
+				"3.7139684839382903": {
+					"live": 3,
+					"deleted": 0
+				},
+				"2.7139684839382903": {
+					"live": 15,
+					"deleted": 2
+				},
+				"5.7139684839382903": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.7139684839382903": {
+					"live": 4,
+					"deleted": 0
+				},
+				"6.7139684839382903": {
+					"live": 1,
+					"deleted": 0
+				},
+				"7.7139684839382903": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.4629230003412116": {
+					"live": 8,
+					"deleted": 1
+				},
+				"3.4629230003412116": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.4629230003412116": {
+					"live": 12,
+					"deleted": 2
+				},
+				"4.4629230003412116": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.6790776268726853": {
+					"live": 5,
+					"deleted": 0
+				},
+				"1.6790776268726853": {
+					"live": 10,
+					"deleted": 0
+				},
+				"3.6790776268726853": {
+					"live": 1,
+					"deleted": 2
+				},
+				"1.4315736828139206": {
+					"live": 7,
+					"deleted": 0
+				},
+				"2.4315736828139206": {
+					"live": 1,
+					"deleted": 1
+				},
+				"1.4120776886302131": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.4120776886302131": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.4120776886302131": {
+					"live": 2,
+					"deleted": 1
+				},
+				"1.4422917078390847": {
+					"live": 7,
+					"deleted": 1
+				},
+				"2.4422917078390847": {
+					"live": 3,
+					"deleted": 0
+				},
+				"4.4422917078390847": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.4422917078390847": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5484725955609321": {
+					"live": 22,
+					"deleted": 4
+				},
+				"2.5484725955609321": {
+					"live": 4,
+					"deleted": 1
+				},
+				"4.5484725955609321": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.5484725955609321": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.201382488809358": {
+					"live": 7,
+					"deleted": 1
+				},
+				"1.201382488809358": {
+					"live": 25,
+					"deleted": 3
+				},
+				"2.201382488809358": {
+					"live": 8,
+					"deleted": 0
+				},
+				"4.201382488809358": {
+					"live": 3,
+					"deleted": 0
+				},
+				"6.201382488809358": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.1900966697260068": {
+					"live": 2,
+					"deleted": 1
+				},
+				"1.1900966697260068": {
+					"live": 4,
+					"deleted": 1
+				},
+				"4.1900966697260068": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.531685381070576": {
+					"live": 12,
+					"deleted": 3
+				},
+				"3.531685381070576": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.531685381070576": {
+					"live": 2,
+					"deleted": 0
+				},
+				"5.531685381070576": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.95432389739531": {
+					"live": 4,
+					"deleted": 0
+				},
+				"1.95432389739531": {
+					"live": 18,
+					"deleted": 2
+				},
+				"4.95432389739531": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.95432389739531": {
+					"live": 2,
+					"deleted": 0
+				},
+				"5.95432389739531": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.7608633611969745": {
+					"live": 13,
+					"deleted": 1
+				},
+				"2.7608633611969745": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.7608633611969745": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.6090180045471015": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.6090180045471015": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.6090180045471015": {
+					"live": 8,
+					"deleted": 1
+				},
+				"1.8080891690066977": {
+					"live": 26,
+					"deleted": 6
+				},
+				"2.8080891690066977": {
+					"live": 11,
+					"deleted": 1
+				},
+				"4.8080891690066977": {
+					"live": 2,
+					"deleted": 1
+				},
+				"3.8080891690066977": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.7925182972686619": {
+					"live": 8,
+					"deleted": 0
+				},
+				"2.7925182972686619": {
+					"live": 8,
+					"deleted": 0
+				},
+				"3.7925182972686619": {
+					"live": 2,
+					"deleted": 0
+				},
+				"6.7925182972686619": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6590451221454141": {
+					"live": 13,
+					"deleted": 3
+				},
+				"2.6590451221454141": {
+					"live": 6,
+					"deleted": 1
+				},
+				"3.6590451221454141": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.7115327183396645": {
+					"live": 5,
+					"deleted": 1
+				},
+				"2.6893311308103043": {
+					"live": 7,
+					"deleted": 2
+				},
+				"1.6893311308103043": {
+					"live": 23,
+					"deleted": 2
+				},
+				"3.6893311308103043": {
+					"live": 5,
+					"deleted": 0
+				},
+				"5.6893311308103043": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.6893311308103043": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.6558344690174963": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6558344690174963": {
+					"live": 12,
+					"deleted": 0
+				},
+				"5.6558344690174963": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.6558344690174963": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.7472904258969676": {
+					"live": 10,
+					"deleted": 0
+				},
+				"1.7472904258969676": {
+					"live": 26,
+					"deleted": 2
+				},
+				"5.7472904258969676": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.7472904258969676": {
+					"live": 5,
+					"deleted": 1
+				},
+				"4.7472904258969676": {
+					"live": 2,
+					"deleted": 0
+				},
+				"6.7472904258969676": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.6751902655718203": {
+					"live": 4,
+					"deleted": 0
+				},
+				"1.6751902655718203": {
+					"live": 11,
+					"deleted": 0
+				},
+				"4.6751902655718203": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.6751902655718203": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6747900082711409": {
+					"live": 13,
+					"deleted": 0
+				},
+				"2.6747900082711409": {
+					"live": 5,
+					"deleted": 0
+				},
+				"3.6747900082711409": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.6747900082711409": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.8659971382283028": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.4858164457401567": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.1042204867170396": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.1042204867170396": {
+					"live": 5,
+					"deleted": 1
+				},
+				"2.1042204867170396": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.1042204867170396": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.4125678242887817": {
+					"live": 16,
+					"deleted": 3
+				},
+				"2.4125678242887817": {
+					"live": 5,
+					"deleted": 2
+				},
+				"3.4125678242887817": {
+					"live": 4,
+					"deleted": 0
+				},
+				"5.4125678242887817": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.4666512184846914": {
+					"live": 0,
+					"deleted": 3
+				},
+				"1.4666512184846914": {
+					"live": 4,
+					"deleted": 2
+				},
+				"4.4666512184846914": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.4666512184846914": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.5059123160689823": {
+					"live": 4,
+					"deleted": 1
+				},
+				"1.5059123160689823": {
+					"live": 10,
+					"deleted": 1
+				},
+				"5.5059123160689823": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.568745457603561": {
+					"live": 13,
+					"deleted": 2
+				},
+				"2.568745457603561": {
+					"live": 7,
+					"deleted": 0
+				},
+				"3.568745457603561": {
+					"live": 4,
+					"deleted": 0
+				},
+				"5.568745457603561": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.568745457603561": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.2955050723536819": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.3723121203287899": {
+					"live": 16,
+					"deleted": 0
+				},
+				"3.3723121203287899": {
+					"live": 4,
+					"deleted": 0
+				},
+				"2.3723121203287899": {
+					"live": 7,
+					"deleted": 1
+				},
+				"4.3723121203287899": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.656320622846758": {
+					"live": 5,
+					"deleted": 0
+				},
+				"2.656320622846758": {
+					"live": 3,
+					"deleted": 0
+				},
+				"4.1667186915399245": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.1667186915399245": {
+					"live": 4,
+					"deleted": 0
+				},
+				"2.1667186915399245": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5600035926847177": {
+					"live": 5,
+					"deleted": 0
+				},
+				"1.564804204959885": {
+					"live": 19,
+					"deleted": 0
+				},
+				"2.564804204959885": {
+					"live": 12,
+					"deleted": 0
+				},
+				"4.564804204959885": {
+					"live": 1,
+					"deleted": 0
+				},
+				"6.564804204959885": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.564804204959885": {
+					"live": 3,
+					"deleted": 0
+				},
+				"5.564804204959885": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.272995492716225": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.414328694957767": {
+					"live": 6,
+					"deleted": 0
+				},
+				"1.414328694957767": {
+					"live": 7,
+					"deleted": 2
+				},
+				"1.4754705431995985": {
+					"live": 6,
+					"deleted": 0
+				},
+				"3.4754705431995985": {
+					"live": 3,
+					"deleted": 0
+				},
+				"2.4754705431995985": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.4754705431995985": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.8795710254505628": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.8795710254505628": {
+					"live": 4,
+					"deleted": 0
+				},
+				"1.6393110405391981": {
+					"live": 18,
+					"deleted": 0
+				},
+				"2.6393110405391981": {
+					"live": 8,
+					"deleted": 0
+				},
+				"4.6393110405391981": {
+					"live": 3,
+					"deleted": 1
+				},
+				"3.6393110405391981": {
+					"live": 2,
+					"deleted": 0
+				},
+				"5.6393110405391981": {
+					"live": 1,
+					"deleted": 0
+				},
+				"7.6393110405391981": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3335013041823357": {
+					"live": 4,
+					"deleted": 1
+				},
+				"2.3335013041823357": {
+					"live": 2,
+					"deleted": 1
+				},
+				"3.3335013041823357": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.1292736233265153": {
+					"live": 6,
+					"deleted": 1
+				},
+				"6.1292736233265153": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.1292736233265153": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.8342260707021036": {
+					"live": 11,
+					"deleted": 0
+				},
+				"3.8342260707021036": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.8342260707021036": {
+					"live": 3,
+					"deleted": 0
+				},
+				"2.3869181723485111": {
+					"live": 4,
+					"deleted": 1
+				},
+				"3.3869181723485111": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.3869181723485111": {
+					"live": 13,
+					"deleted": 0
+				},
+				"4.3869181723485111": {
+					"live": 1,
+					"deleted": 0
+				},
+				"6.3869181723485111": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.4367940274049622": {
+					"live": 19,
+					"deleted": 1
+				},
+				"3.4367940274049622": {
+					"live": 3,
+					"deleted": 0
+				},
+				"6.4367940274049622": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.4367940274049622": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.4367940274049622": {
+					"live": 4,
+					"deleted": 1
+				},
+				"5.4367940274049622": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.8012350032815618": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.1703262042208681": {
+					"live": 23,
+					"deleted": 0
+				},
+				"2.1703262042208681": {
+					"live": 4,
+					"deleted": 0
+				},
+				"6.1703262042208681": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.1703262042208681": {
+					"live": 5,
+					"deleted": 0
+				},
+				"3.1730066496955784": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.1730066496955784": {
+					"live": 7,
+					"deleted": 0
+				},
+				"1.7521183799882162": {
+					"live": 14,
+					"deleted": 0
+				},
+				"2.7521183799882162": {
+					"live": 5,
+					"deleted": 0
+				},
+				"5.7521183799882162": {
+					"live": 4,
+					"deleted": 0
+				},
+				"3.7521183799882162": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.6324601704719157": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.6324601704719157": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3898677842421991": {
+					"live": 19,
+					"deleted": 0
+				},
+				"3.3898677842421991": {
+					"live": 5,
+					"deleted": 1
+				},
+				"2.3898677842421991": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.3898677842421991": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.3523836971437877": {
+					"live": 6,
+					"deleted": 0
+				},
+				"1.3523836971437877": {
+					"live": 8,
+					"deleted": 0
+				},
+				"4.3523836971437877": {
+					"live": 1,
+					"deleted": 0
+				},
+				"5.3523836971437877": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.2558152546621425": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.2558152546621425": {
+					"live": 6,
+					"deleted": 0
+				},
+				"3.2558152546621425": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.2558152546621425": {
+					"live": 7,
+					"deleted": 0
+				},
+				"1.7190294274797459": {
+					"live": 11,
+					"deleted": 0
+				},
+				"3.7190294274797459": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.7190294274797459": {
+					"live": 4,
+					"deleted": 0
+				},
+				"4.7190294274797459": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5828354471407389": {
+					"live": 15,
+					"deleted": 0
+				},
+				"3.5828354471407389": {
+					"live": 2,
+					"deleted": 1
+				},
+				"8.5828354471407389": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.5828354471407389": {
+					"live": 2,
+					"deleted": 1
+				},
+				"5.5828354471407389": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.4916247258050978": {
+					"live": 5,
+					"deleted": 0
+				},
+				"1.4916247258050978": {
+					"live": 14,
+					"deleted": 1
+				},
+				"4.4916247258050978": {
+					"live": 4,
+					"deleted": 0
+				},
+				"5.3476844949016047": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.3476844949016047": {
+					"live": 17,
+					"deleted": 0
+				},
+				"2.3476844949016047": {
+					"live": 9,
+					"deleted": 0
+				},
+				"4.3476844949016047": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.3136604892922579": {
+					"live": 16,
+					"deleted": 0
+				},
+				"3.3136604892922579": {
+					"live": 3,
+					"deleted": 0
+				},
+				"2.3136604892922579": {
+					"live": 6,
+					"deleted": 0
+				},
+				"4.3136604892922579": {
+					"live": 1,
+					"deleted": 1
+				},
+				"3.8380291109237611": {
+					"live": 4,
+					"deleted": 0
+				},
+				"1.8380291109237611": {
+					"live": 12,
+					"deleted": 0
+				},
+				"4.8380291109237611": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.8380291109237611": {
+					"live": 3,
+					"deleted": 0
+				},
+				"5.8380291109237611": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6215318766449841": {
+					"live": 13,
+					"deleted": 0
+				},
+				"2.6215318766449841": {
+					"live": 5,
+					"deleted": 0
+				},
+				"3.6215318766449841": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.6215318766449841": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.4275869957641455": {
+					"live": 16,
+					"deleted": 0
+				},
+				"2.4275869957641455": {
+					"live": 3,
+					"deleted": 1
+				},
+				"3.4275869957641455": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5223960619623155": {
+					"live": 8,
+					"deleted": 0
+				},
+				"2.5223960619623155": {
+					"live": 6,
+					"deleted": 1
+				},
+				"7.5223960619623155": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5880767500245553": {
+					"live": 13,
+					"deleted": 0
+				},
+				"2.5880767500245553": {
+					"live": 5,
+					"deleted": 0
+				},
+				"5.5880767500245553": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.5880767500245553": {
+					"live": 1,
+					"deleted": 0
+				},
+				"6.5880767500245553": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.5880767500245553": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.2789981433891741": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.1328982690872533": {
+					"live": 9,
+					"deleted": 1
+				},
+				"3.1328982690872533": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.1328982690872533": {
+					"live": 2,
+					"deleted": 0
+				},
+				"8.1328982690872533": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.2939030996140581": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.2939030996140581": {
+					"live": 5,
+					"deleted": 0
+				},
+				"3.2939030996140581": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.2939030996140581": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.5970757909735251": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.7606859659270946": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.7606859659270946": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.7606859659270946": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.1021127838749432": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.1021127838749432": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.1021127838749432": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.2809116308103662": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.2809116308103662": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.2809116308103662": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.3783285706544000": {
+					"live": 6,
+					"deleted": 0
+				},
+				"1.3783285706544000": {
+					"live": 12,
+					"deleted": 0
+				},
+				"3.3783285706544000": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.3783285706544000": {
+					"live": 1,
+					"deleted": 0
+				},
+				"5.3783285706544000": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.2383745970211173": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.2383745970211173": {
+					"live": 5,
+					"deleted": 0
+				},
+				"4.2383745970211173": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.2383745970211173": {
+					"live": 2,
+					"deleted": 0
+				},
+				"5.2383745970211173": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.6478079616699957": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.6478079616699957": {
+					"live": 8,
+					"deleted": 0
+				},
+				"2.6478079616699957": {
+					"live": 5,
+					"deleted": 0
+				},
+				"5.6478079616699957": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.6478079616699957": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.3169356537629544": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3169356537629544": {
+					"live": 9,
+					"deleted": 0
+				},
+				"4.3169356537629544": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.3169356537629544": {
+					"live": 2,
+					"deleted": 0
+				},
+				"9.3169356537629544": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.1134514668987105": {
+					"live": 4,
+					"deleted": 0
+				},
+				"1.1134514668987105": {
+					"live": 7,
+					"deleted": 0
+				},
+				"3.1134514668987105": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.1134514668987105": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.6226682316328761": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.6226682316328761": {
+					"live": 6,
+					"deleted": 0
+				},
+				"5.6226682316328761": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.6226682316328761": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.6226682316328761": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.7334338530217328": {
+					"live": 8,
+					"deleted": 0
+				},
+				"6.7334338530217328": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.7334338530217328": {
+					"live": 1,
+					"deleted": 0
+				},
+				"8.7334338530217328": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6827904136517058": {
+					"live": 8,
+					"deleted": 0
+				},
+				"3.6827904136517058": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.6827904136517058": {
+					"live": 2,
+					"deleted": 0
+				},
+				"5.5457570170231965": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5457570170231965": {
+					"live": 10,
+					"deleted": 0
+				},
+				"4.5457570170231965": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.1831346782576977": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.1831346782576977": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.8718911764123808": {
+					"live": 5,
+					"deleted": 0
+				},
+				"2.8718911764123808": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.8718911764123808": {
+					"live": 1,
+					"deleted": 0
+				},
+				"5.8718911764123808": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.1977806741739113": {
+					"live": 6,
+					"deleted": 0
+				},
+				"3.1977806741739113": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.1977806741739113": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5200447830652691": {
+					"live": 3,
+					"deleted": 0
+				},
+				"2.5200447830652691": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.5200447830652691": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.2057851093689084": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.2057851093689084": {
+					"live": 8,
+					"deleted": 0
+				},
+				"4.2057851093689084": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.2057851093689084": {
+					"live": 1,
+					"deleted": 0
+				},
+				"5.2057851093689084": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.4677406557103405": {
+					"live": 5,
+					"deleted": 0
+				},
+				"2.4677406557103405": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.8431517213918323": {
+					"live": 5,
+					"deleted": 0
+				},
+				"7.8431517213918323": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.8431517213918323": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.7698071365055243": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.7698071365055243": {
+					"live": 3,
+					"deleted": 0
+				},
+				"2.7698071365055243": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.2717635449493264": {
+					"live": 5,
+					"deleted": 0
+				},
+				"2.1525049680135556": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.1525049680135556": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.4403278960874325": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.4403278960874325": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.4403278960874325": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.7657456296973636": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.41132211112727": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.41132211112727": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.41132211112727": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.4887545415199052": {
+					"live": 4,
+					"deleted": 0
+				},
+				"3.4887545415199052": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5455946042629189": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3513249718813430": {
+					"live": 3,
+					"deleted": 0
+				},
+				"6.3513249718813430": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.3513249718813430": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.2262063128030854": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.2262063128030854": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.2262063128030854": {
+					"live": 1,
+					"deleted": 0
+				}
+			}
+		},
+		"censusAfterPurge": {
+			"clients": 148,
+			"structs": 103419,
+			"gc": 0,
+			"items": {
+				"live": 78921,
+				"deleted": 24498,
+				"deletedKeepingContent": 0,
+				"mapEntries": 76647,
+				"sequence": 26772
+			},
+			"content": {
+				"ContentAny": {
+					"live": 57110,
+					"deleted": 0,
+					"liveLength": 57223,
+					"deletedLength": 0
+				},
+				"ContentDeleted": {
+					"live": 0,
+					"deleted": 24498,
+					"liveLength": 0,
+					"deletedLength": 28984
+				},
+				"ContentType": {
+					"live": 6189,
+					"deleted": 0,
+					"liveLength": 6189,
+					"deletedLength": 0
+				},
+				"ContentString": {
+					"live": 9294,
+					"deleted": 0,
+					"liveLength": 20778,
+					"deletedLength": 0
+				},
+				"ContentFormat": {
+					"live": 6328,
+					"deleted": 0,
+					"liveLength": 6328,
+					"deletedLength": 0
+				}
+			},
+			"text": {
+				"items": 9294,
+				"chars": 20778
+			},
+			"keys": {
+				"c/": {
+					"live": 147,
+					"deleted": 0
+				},
+				"k/": {
+					"live": 40488,
+					"deleted": 0
+				},
+				"l": {
+					"live": 1537,
+					"deleted": 14736
+				},
+				"d/": {
+					"live": 3233,
+					"deleted": 209
+				},
+				"u": {
+					"live": 1496,
+					"deleted": 0
+				},
+				"id": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"n": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"type": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"claims": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"at": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"1.8873565481954606": {
+					"live": 8,
+					"deleted": 7
+				},
+				"b/": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"i": {
+					"live": 1537,
+					"deleted": 0
+				},
+				"c": {
+					"live": 1496,
+					"deleted": 0
+				},
+				"2.8873565481954606": {
+					"live": 1,
+					"deleted": 4
+				},
+				"4.8873565481954606": {
+					"live": 0,
+					"deleted": 1
+				},
+				"v": {
+					"live": 1,
+					"deleted": 0
+				},
+				"schema": {
+					"live": 1,
+					"deleted": 0
+				},
+				"title": {
+					"live": 1,
+					"deleted": 0
+				},
+				"content": {
+					"live": 41,
+					"deleted": 0
+				},
+				"1.48595596": {
+					"live": 20,
+					"deleted": 21
+				},
+				"seed-": {
+					"live": 40,
+					"deleted": 0
+				},
+				"1.5738923100036201": {
+					"live": 16,
+					"deleted": 5
+				},
+				"2.5738923100036201": {
+					"live": 7,
+					"deleted": 5
+				},
+				"4.5738923100036201": {
+					"live": 1,
+					"deleted": 3
+				},
+				"3.5738923100036201": {
+					"live": 2,
+					"deleted": 3
+				},
+				"6.5738923100036201": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.8229963639251176": {
+					"live": 2,
+					"deleted": 2
+				},
+				"1.8229963639251176": {
+					"live": 17,
+					"deleted": 9
+				},
+				"3.8229963639251176": {
+					"live": 0,
+					"deleted": 2
+				},
+				"5.8229963639251176": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.8229963639251176": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.8419680000907170": {
+					"live": 7,
+					"deleted": 3
+				},
+				"2.8419680000907170": {
+					"live": 4,
+					"deleted": 1
+				},
+				"4.8419680000907170": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.8419680000907170": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.3596016605898113": {
+					"live": 2,
+					"deleted": 3
+				},
+				"2.3596016605898113": {
+					"live": 2,
+					"deleted": 1
+				},
+				"5.3596016605898113": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3499991828677712": {
+					"live": 3,
+					"deleted": 2
+				},
+				"2.3499991828677712": {
+					"live": 2,
+					"deleted": 1
+				},
+				"3.3499991828677712": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.7681320213170930": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.7681320213170930": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6383296524983287": {
+					"live": 6,
+					"deleted": 5
+				},
+				"2.6383296524983287": {
+					"live": 1,
+					"deleted": 4
+				},
+				"2.3630287295264127": {
+					"live": 2,
+					"deleted": 2
+				},
+				"1.3630287295264127": {
+					"live": 5,
+					"deleted": 3
+				},
+				"4.3526349631453238": {
+					"live": 4,
+					"deleted": 3
+				},
+				"1.3526349631453238": {
+					"live": 21,
+					"deleted": 3
+				},
+				"2.3526349631453238": {
+					"live": 6,
+					"deleted": 4
+				},
+				"3.3526349631453238": {
+					"live": 1,
+					"deleted": 2
+				},
+				"5.3526349631453238": {
+					"live": 1,
+					"deleted": 1
+				},
+				"7.3526349631453238": {
+					"live": 1,
+					"deleted": 0
+				},
+				"6.3526349631453238": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6459327500394867": {
+					"live": 3,
+					"deleted": 1
+				},
+				"2.6459327500394867": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.6459327500394867": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.5585242561108336": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.5585242561108336": {
+					"live": 1,
+					"deleted": 2
+				},
+				"1.5585242561108336": {
+					"live": 5,
+					"deleted": 5
+				},
+				"2.6915272486606130": {
+					"live": 1,
+					"deleted": 2
+				},
+				"1.6915272486606130": {
+					"live": 8,
+					"deleted": 5
+				},
+				"3.6915272486606130": {
+					"live": 0,
+					"deleted": 2
+				},
+				"8.6915272486606130": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.975887337098327": {
+					"live": 8,
+					"deleted": 5
+				},
+				"2.975887337098327": {
+					"live": 1,
+					"deleted": 2
+				},
+				"3.975887337098327": {
+					"live": 0,
+					"deleted": 2
+				},
+				"5.975887337098327": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.975887337098327": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.7827126743020102": {
+					"live": 1,
+					"deleted": 1
+				},
+				"1.7827126743020102": {
+					"live": 1,
+					"deleted": 1
+				},
+				"3.7827126743020102": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.7827126743020102": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.2480793889495928": {
+					"live": 3,
+					"deleted": 7
+				},
+				"1.2480793889495928": {
+					"live": 13,
+					"deleted": 9
+				},
+				"4.2480793889495928": {
+					"live": 0,
+					"deleted": 2
+				},
+				"3.2480793889495928": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.2113152843792868": {
+					"live": 2,
+					"deleted": 6
+				},
+				"2.2113152843792868": {
+					"live": 0,
+					"deleted": 2
+				},
+				"1.5359739807812341": {
+					"live": 5,
+					"deleted": 6
+				},
+				"3.5359739807812341": {
+					"live": 2,
+					"deleted": 1
+				},
+				"1.4365728751691544": {
+					"live": 14,
+					"deleted": 11
+				},
+				"2.4365728751691544": {
+					"live": 3,
+					"deleted": 3
+				},
+				"6.4365728751691544": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.4365728751691544": {
+					"live": 1,
+					"deleted": 1
+				},
+				"5.4365728751691544": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.4365728751691544": {
+					"live": 1,
+					"deleted": 1
+				},
+				"1.5381672611000909": {
+					"live": 18,
+					"deleted": 11
+				},
+				"2.5381672611000909": {
+					"live": 2,
+					"deleted": 6
+				},
+				"3.5381672611000909": {
+					"live": 1,
+					"deleted": 0
+				},
+				"5.5381672611000909": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.5381672611000909": {
+					"live": 1,
+					"deleted": 0
+				},
+				"7.5381672611000909": {
+					"live": 0,
+					"deleted": 2
+				},
+				"1.7251047089923895": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.3034284401414099": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.3034284401414099": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.8594093149856029": {
+					"live": 11,
+					"deleted": 8
+				},
+				"2.8594093149856029": {
+					"live": 2,
+					"deleted": 1
+				},
+				"3.8594093149856029": {
+					"live": 2,
+					"deleted": 2
+				},
+				"1.3495571112771626": {
+					"live": 10,
+					"deleted": 9
+				},
+				"2.3495571112771626": {
+					"live": 2,
+					"deleted": 5
+				},
+				"4.3495571112771626": {
+					"live": 1,
+					"deleted": 1
+				},
+				"3.3495571112771626": {
+					"live": 2,
+					"deleted": 1
+				},
+				"3.821860207792087": {
+					"live": 2,
+					"deleted": 1
+				},
+				"2.821860207792087": {
+					"live": 3,
+					"deleted": 4
+				},
+				"1.821860207792087": {
+					"live": 13,
+					"deleted": 9
+				},
+				"4.821860207792087": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3713358416986160": {
+					"live": 28,
+					"deleted": 13
+				},
+				"3.3713358416986160": {
+					"live": 4,
+					"deleted": 0
+				},
+				"2.3713358416986160": {
+					"live": 4,
+					"deleted": 2
+				},
+				"5.3713358416986160": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.3713358416986160": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.4282149686060647": {
+					"live": 3,
+					"deleted": 2
+				},
+				"2.4282149686060647": {
+					"live": 2,
+					"deleted": 1
+				},
+				"3.4282149686060647": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.4282149686060647": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5496309199398358": {
+					"live": 5,
+					"deleted": 6
+				},
+				"3.5496309199398358": {
+					"live": 1,
+					"deleted": 3
+				},
+				"2.5496309199398358": {
+					"live": 0,
+					"deleted": 2
+				},
+				"2.4349629088819670": {
+					"live": 2,
+					"deleted": 6
+				},
+				"1.4349629088819670": {
+					"live": 23,
+					"deleted": 12
+				},
+				"3.4349629088819670": {
+					"live": 2,
+					"deleted": 3
+				},
+				"1.2069839116212821": {
+					"live": 3,
+					"deleted": 3
+				},
+				"2.2069839116212821": {
+					"live": 2,
+					"deleted": 2
+				},
+				"3.2069839116212821": {
+					"live": 0,
+					"deleted": 2
+				},
+				"1.6991240704081797": {
+					"live": 22,
+					"deleted": 14
+				},
+				"3.6991240704081797": {
+					"live": 2,
+					"deleted": 3
+				},
+				"2.6991240704081797": {
+					"live": 5,
+					"deleted": 5
+				},
+				"5.6991240704081797": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.6991240704081797": {
+					"live": 0,
+					"deleted": 1
+				},
+				"6.6991240704081797": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.3512973018003321": {
+					"live": 16,
+					"deleted": 10
+				},
+				"2.3512973018003321": {
+					"live": 3,
+					"deleted": 5
+				},
+				"3.3512973018003321": {
+					"live": 3,
+					"deleted": 4
+				},
+				"4.3512973018003321": {
+					"live": 0,
+					"deleted": 2
+				},
+				"5.3512973018003321": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.1823343847025285": {
+					"live": 2,
+					"deleted": 1
+				},
+				"1.1823343847025285": {
+					"live": 4,
+					"deleted": 2
+				},
+				"1.3140465284298026": {
+					"live": 5,
+					"deleted": 2
+				},
+				"2.3140465284298026": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.3140465284298026": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.7662175227134265": {
+					"live": 3,
+					"deleted": 1
+				},
+				"1.2926744560860385": {
+					"live": 1,
+					"deleted": 1
+				},
+				"2.2926744560860385": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.2926744560860385": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.4710180679696060": {
+					"live": 18,
+					"deleted": 13
+				},
+				"2.4710180679696060": {
+					"live": 7,
+					"deleted": 3
+				},
+				"5.4710180679696060": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.4710180679696060": {
+					"live": 2,
+					"deleted": 0
+				},
+				"6.4710180679696060": {
+					"live": 1,
+					"deleted": 1
+				},
+				"3.4710180679696060": {
+					"live": 3,
+					"deleted": 2
+				},
+				"7.4710180679696060": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.5377681245174080": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.5377681245174080": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.5377681245174080": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.8504977627214454": {
+					"live": 7,
+					"deleted": 1
+				},
+				"3.8504977627214454": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.8504977627214454": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.4761641235478382": {
+					"live": 1,
+					"deleted": 2
+				},
+				"1.3492063639789747": {
+					"live": 20,
+					"deleted": 11
+				},
+				"3.3492063639789747": {
+					"live": 1,
+					"deleted": 1
+				},
+				"2.3492063639789747": {
+					"live": 8,
+					"deleted": 5
+				},
+				"7.3492063639789747": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.3492063639789747": {
+					"live": 1,
+					"deleted": 2
+				},
+				"6.3492063639789747": {
+					"live": 0,
+					"deleted": 1
+				},
+				"5.3492063639789747": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.7139684839382903": {
+					"live": 29,
+					"deleted": 7
+				},
+				"3.7139684839382903": {
+					"live": 1,
+					"deleted": 2
+				},
+				"2.7139684839382903": {
+					"live": 6,
+					"deleted": 11
+				},
+				"5.7139684839382903": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.7139684839382903": {
+					"live": 2,
+					"deleted": 2
+				},
+				"6.7139684839382903": {
+					"live": 1,
+					"deleted": 0
+				},
+				"7.7139684839382903": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.4629230003412116": {
+					"live": 5,
+					"deleted": 4
+				},
+				"3.4629230003412116": {
+					"live": 0,
+					"deleted": 2
+				},
+				"1.4629230003412116": {
+					"live": 7,
+					"deleted": 7
+				},
+				"4.4629230003412116": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.6790776268726853": {
+					"live": 4,
+					"deleted": 1
+				},
+				"1.6790776268726853": {
+					"live": 5,
+					"deleted": 5
+				},
+				"3.6790776268726853": {
+					"live": 0,
+					"deleted": 3
+				},
+				"1.4315736828139206": {
+					"live": 4,
+					"deleted": 3
+				},
+				"2.4315736828139206": {
+					"live": 1,
+					"deleted": 1
+				},
+				"1.4120776886302131": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.4120776886302131": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.4120776886302131": {
+					"live": 2,
+					"deleted": 1
+				},
+				"1.4422917078390847": {
+					"live": 3,
+					"deleted": 5
+				},
+				"2.4422917078390847": {
+					"live": 2,
+					"deleted": 1
+				},
+				"4.4422917078390847": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.4422917078390847": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.5484725955609321": {
+					"live": 18,
+					"deleted": 8
+				},
+				"2.5484725955609321": {
+					"live": 3,
+					"deleted": 2
+				},
+				"4.5484725955609321": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.5484725955609321": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.201382488809358": {
+					"live": 2,
+					"deleted": 6
+				},
+				"1.201382488809358": {
+					"live": 16,
+					"deleted": 12
+				},
+				"2.201382488809358": {
+					"live": 7,
+					"deleted": 1
+				},
+				"4.201382488809358": {
+					"live": 2,
+					"deleted": 1
+				},
+				"6.201382488809358": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.1900966697260068": {
+					"live": 0,
+					"deleted": 3
+				},
+				"1.1900966697260068": {
+					"live": 3,
+					"deleted": 2
+				},
+				"4.1900966697260068": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.531685381070576": {
+					"live": 10,
+					"deleted": 5
+				},
+				"3.531685381070576": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.531685381070576": {
+					"live": 2,
+					"deleted": 0
+				},
+				"5.531685381070576": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.95432389739531": {
+					"live": 3,
+					"deleted": 1
+				},
+				"1.95432389739531": {
+					"live": 13,
+					"deleted": 7
+				},
+				"4.95432389739531": {
+					"live": 2,
+					"deleted": 1
+				},
+				"3.95432389739531": {
+					"live": 1,
+					"deleted": 1
+				},
+				"5.95432389739531": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.7608633611969745": {
+					"live": 9,
+					"deleted": 5
+				},
+				"2.7608633611969745": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.7608633611969745": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.6090180045471015": {
+					"live": 1,
+					"deleted": 1
+				},
+				"2.6090180045471015": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.6090180045471015": {
+					"live": 4,
+					"deleted": 5
+				},
+				"1.8080891690066977": {
+					"live": 18,
+					"deleted": 14
+				},
+				"2.8080891690066977": {
+					"live": 8,
+					"deleted": 4
+				},
+				"4.8080891690066977": {
+					"live": 2,
+					"deleted": 1
+				},
+				"3.8080891690066977": {
+					"live": 0,
+					"deleted": 2
+				},
+				"1.7925182972686619": {
+					"live": 6,
+					"deleted": 2
+				},
+				"2.7925182972686619": {
+					"live": 6,
+					"deleted": 2
+				},
+				"3.7925182972686619": {
+					"live": 2,
+					"deleted": 0
+				},
+				"6.7925182972686619": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6590451221454141": {
+					"live": 5,
+					"deleted": 11
+				},
+				"2.6590451221454141": {
+					"live": 5,
+					"deleted": 2
+				},
+				"3.6590451221454141": {
+					"live": 0,
+					"deleted": 3
+				},
+				"1.7115327183396645": {
+					"live": 1,
+					"deleted": 5
+				},
+				"2.6893311308103043": {
+					"live": 3,
+					"deleted": 6
+				},
+				"1.6893311308103043": {
+					"live": 15,
+					"deleted": 10
+				},
+				"3.6893311308103043": {
+					"live": 3,
+					"deleted": 2
+				},
+				"5.6893311308103043": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.6893311308103043": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.6558344690174963": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6558344690174963": {
+					"live": 8,
+					"deleted": 4
+				},
+				"5.6558344690174963": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.6558344690174963": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.7472904258969676": {
+					"live": 5,
+					"deleted": 5
+				},
+				"1.7472904258969676": {
+					"live": 16,
+					"deleted": 12
+				},
+				"5.7472904258969676": {
+					"live": 0,
+					"deleted": 3
+				},
+				"3.7472904258969676": {
+					"live": 3,
+					"deleted": 3
+				},
+				"4.7472904258969676": {
+					"live": 2,
+					"deleted": 0
+				},
+				"6.7472904258969676": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.6751902655718203": {
+					"live": 1,
+					"deleted": 3
+				},
+				"1.6751902655718203": {
+					"live": 8,
+					"deleted": 3
+				},
+				"4.6751902655718203": {
+					"live": 0,
+					"deleted": 2
+				},
+				"3.6751902655718203": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6747900082711409": {
+					"live": 9,
+					"deleted": 4
+				},
+				"2.6747900082711409": {
+					"live": 1,
+					"deleted": 4
+				},
+				"3.6747900082711409": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.6747900082711409": {
+					"live": 1,
+					"deleted": 1
+				},
+				"2.8659971382283028": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.4858164457401567": {
+					"live": 0,
+					"deleted": 2
+				},
+				"4.1042204867170396": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.1042204867170396": {
+					"live": 4,
+					"deleted": 2
+				},
+				"2.1042204867170396": {
+					"live": 1,
+					"deleted": 1
+				},
+				"3.1042204867170396": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.4125678242887817": {
+					"live": 12,
+					"deleted": 7
+				},
+				"2.4125678242887817": {
+					"live": 3,
+					"deleted": 4
+				},
+				"3.4125678242887817": {
+					"live": 3,
+					"deleted": 1
+				},
+				"5.4125678242887817": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.4666512184846914": {
+					"live": 0,
+					"deleted": 3
+				},
+				"1.4666512184846914": {
+					"live": 2,
+					"deleted": 4
+				},
+				"4.4666512184846914": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.4666512184846914": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.5059123160689823": {
+					"live": 3,
+					"deleted": 2
+				},
+				"1.5059123160689823": {
+					"live": 8,
+					"deleted": 3
+				},
+				"5.5059123160689823": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.568745457603561": {
+					"live": 10,
+					"deleted": 5
+				},
+				"2.568745457603561": {
+					"live": 5,
+					"deleted": 2
+				},
+				"3.568745457603561": {
+					"live": 3,
+					"deleted": 1
+				},
+				"5.568745457603561": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.568745457603561": {
+					"live": 2,
+					"deleted": 1
+				},
+				"1.2955050723536819": {
+					"live": 1,
+					"deleted": 2
+				},
+				"1.3723121203287899": {
+					"live": 13,
+					"deleted": 3
+				},
+				"3.3723121203287899": {
+					"live": 1,
+					"deleted": 3
+				},
+				"2.3723121203287899": {
+					"live": 4,
+					"deleted": 4
+				},
+				"4.3723121203287899": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.656320622846758": {
+					"live": 4,
+					"deleted": 1
+				},
+				"2.656320622846758": {
+					"live": 1,
+					"deleted": 2
+				},
+				"4.1667186915399245": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.1667186915399245": {
+					"live": 2,
+					"deleted": 2
+				},
+				"2.1667186915399245": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.5600035926847177": {
+					"live": 3,
+					"deleted": 2
+				},
+				"1.564804204959885": {
+					"live": 15,
+					"deleted": 4
+				},
+				"2.564804204959885": {
+					"live": 9,
+					"deleted": 3
+				},
+				"4.564804204959885": {
+					"live": 0,
+					"deleted": 1
+				},
+				"6.564804204959885": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.564804204959885": {
+					"live": 3,
+					"deleted": 0
+				},
+				"5.564804204959885": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.272995492716225": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.414328694957767": {
+					"live": 3,
+					"deleted": 3
+				},
+				"1.414328694957767": {
+					"live": 6,
+					"deleted": 3
+				},
+				"1.4754705431995985": {
+					"live": 5,
+					"deleted": 1
+				},
+				"3.4754705431995985": {
+					"live": 1,
+					"deleted": 2
+				},
+				"2.4754705431995985": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.4754705431995985": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.8795710254505628": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.8795710254505628": {
+					"live": 3,
+					"deleted": 1
+				},
+				"1.6393110405391981": {
+					"live": 12,
+					"deleted": 6
+				},
+				"2.6393110405391981": {
+					"live": 5,
+					"deleted": 3
+				},
+				"4.6393110405391981": {
+					"live": 1,
+					"deleted": 3
+				},
+				"3.6393110405391981": {
+					"live": 1,
+					"deleted": 1
+				},
+				"5.6393110405391981": {
+					"live": 1,
+					"deleted": 0
+				},
+				"7.6393110405391981": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3335013041823357": {
+					"live": 2,
+					"deleted": 3
+				},
+				"2.3335013041823357": {
+					"live": 0,
+					"deleted": 3
+				},
+				"3.3335013041823357": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.1292736233265153": {
+					"live": 3,
+					"deleted": 4
+				},
+				"6.1292736233265153": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.1292736233265153": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.8342260707021036": {
+					"live": 7,
+					"deleted": 4
+				},
+				"3.8342260707021036": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.8342260707021036": {
+					"live": 2,
+					"deleted": 1
+				},
+				"2.3869181723485111": {
+					"live": 3,
+					"deleted": 2
+				},
+				"3.3869181723485111": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.3869181723485111": {
+					"live": 9,
+					"deleted": 4
+				},
+				"4.3869181723485111": {
+					"live": 1,
+					"deleted": 0
+				},
+				"6.3869181723485111": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.4367940274049622": {
+					"live": 12,
+					"deleted": 8
+				},
+				"3.4367940274049622": {
+					"live": 0,
+					"deleted": 3
+				},
+				"6.4367940274049622": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.4367940274049622": {
+					"live": 1,
+					"deleted": 1
+				},
+				"2.4367940274049622": {
+					"live": 4,
+					"deleted": 1
+				},
+				"5.4367940274049622": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.8012350032815618": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.1703262042208681": {
+					"live": 18,
+					"deleted": 5
+				},
+				"2.1703262042208681": {
+					"live": 3,
+					"deleted": 1
+				},
+				"6.1703262042208681": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.1703262042208681": {
+					"live": 2,
+					"deleted": 3
+				},
+				"3.1730066496955784": {
+					"live": 2,
+					"deleted": 1
+				},
+				"1.1730066496955784": {
+					"live": 5,
+					"deleted": 2
+				},
+				"1.7521183799882162": {
+					"live": 9,
+					"deleted": 5
+				},
+				"2.7521183799882162": {
+					"live": 2,
+					"deleted": 3
+				},
+				"5.7521183799882162": {
+					"live": 2,
+					"deleted": 2
+				},
+				"3.7521183799882162": {
+					"live": 1,
+					"deleted": 1
+				},
+				"1.6324601704719157": {
+					"live": 0,
+					"deleted": 2
+				},
+				"3.6324601704719157": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.3898677842421991": {
+					"live": 16,
+					"deleted": 3
+				},
+				"3.3898677842421991": {
+					"live": 4,
+					"deleted": 2
+				},
+				"2.3898677842421991": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.3898677842421991": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.3523836971437877": {
+					"live": 3,
+					"deleted": 3
+				},
+				"1.3523836971437877": {
+					"live": 8,
+					"deleted": 0
+				},
+				"4.3523836971437877": {
+					"live": 1,
+					"deleted": 0
+				},
+				"5.3523836971437877": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.2558152546621425": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.2558152546621425": {
+					"live": 4,
+					"deleted": 2
+				},
+				"3.2558152546621425": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.2558152546621425": {
+					"live": 5,
+					"deleted": 2
+				},
+				"1.7190294274797459": {
+					"live": 7,
+					"deleted": 4
+				},
+				"3.7190294274797459": {
+					"live": 1,
+					"deleted": 1
+				},
+				"2.7190294274797459": {
+					"live": 3,
+					"deleted": 1
+				},
+				"4.7190294274797459": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.5828354471407389": {
+					"live": 11,
+					"deleted": 4
+				},
+				"3.5828354471407389": {
+					"live": 1,
+					"deleted": 2
+				},
+				"8.5828354471407389": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.5828354471407389": {
+					"live": 2,
+					"deleted": 1
+				},
+				"5.5828354471407389": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.4916247258050978": {
+					"live": 5,
+					"deleted": 0
+				},
+				"1.4916247258050978": {
+					"live": 12,
+					"deleted": 3
+				},
+				"4.4916247258050978": {
+					"live": 1,
+					"deleted": 3
+				},
+				"5.3476844949016047": {
+					"live": 1,
+					"deleted": 1
+				},
+				"1.3476844949016047": {
+					"live": 13,
+					"deleted": 4
+				},
+				"2.3476844949016047": {
+					"live": 9,
+					"deleted": 0
+				},
+				"4.3476844949016047": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.3136604892922579": {
+					"live": 14,
+					"deleted": 2
+				},
+				"3.3136604892922579": {
+					"live": 0,
+					"deleted": 3
+				},
+				"2.3136604892922579": {
+					"live": 3,
+					"deleted": 3
+				},
+				"4.3136604892922579": {
+					"live": 1,
+					"deleted": 1
+				},
+				"3.8380291109237611": {
+					"live": 2,
+					"deleted": 2
+				},
+				"1.8380291109237611": {
+					"live": 11,
+					"deleted": 1
+				},
+				"4.8380291109237611": {
+					"live": 1,
+					"deleted": 1
+				},
+				"2.8380291109237611": {
+					"live": 2,
+					"deleted": 1
+				},
+				"5.8380291109237611": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6215318766449841": {
+					"live": 9,
+					"deleted": 4
+				},
+				"2.6215318766449841": {
+					"live": 5,
+					"deleted": 0
+				},
+				"3.6215318766449841": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.6215318766449841": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.4275869957641455": {
+					"live": 15,
+					"deleted": 1
+				},
+				"2.4275869957641455": {
+					"live": 2,
+					"deleted": 2
+				},
+				"3.4275869957641455": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5223960619623155": {
+					"live": 6,
+					"deleted": 2
+				},
+				"2.5223960619623155": {
+					"live": 6,
+					"deleted": 1
+				},
+				"7.5223960619623155": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5880767500245553": {
+					"live": 10,
+					"deleted": 3
+				},
+				"2.5880767500245553": {
+					"live": 4,
+					"deleted": 1
+				},
+				"5.5880767500245553": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.5880767500245553": {
+					"live": 1,
+					"deleted": 0
+				},
+				"6.5880767500245553": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.5880767500245553": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.2789981433891741": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.1328982690872533": {
+					"live": 7,
+					"deleted": 3
+				},
+				"3.1328982690872533": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.1328982690872533": {
+					"live": 2,
+					"deleted": 0
+				},
+				"8.1328982690872533": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.2939030996140581": {
+					"live": 2,
+					"deleted": 1
+				},
+				"1.2939030996140581": {
+					"live": 4,
+					"deleted": 1
+				},
+				"3.2939030996140581": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.2939030996140581": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.5970757909735251": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.7606859659270946": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.7606859659270946": {
+					"live": 0,
+					"deleted": 2
+				},
+				"1.7606859659270946": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.1021127838749432": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.1021127838749432": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.1021127838749432": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.2809116308103662": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.2809116308103662": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.2809116308103662": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.3783285706544000": {
+					"live": 4,
+					"deleted": 2
+				},
+				"1.3783285706544000": {
+					"live": 10,
+					"deleted": 2
+				},
+				"3.3783285706544000": {
+					"live": 2,
+					"deleted": 0
+				},
+				"4.3783285706544000": {
+					"live": 1,
+					"deleted": 0
+				},
+				"5.3783285706544000": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.2383745970211173": {
+					"live": 1,
+					"deleted": 1
+				},
+				"1.2383745970211173": {
+					"live": 5,
+					"deleted": 0
+				},
+				"4.2383745970211173": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.2383745970211173": {
+					"live": 1,
+					"deleted": 1
+				},
+				"5.2383745970211173": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.6478079616699957": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.6478079616699957": {
+					"live": 8,
+					"deleted": 0
+				},
+				"2.6478079616699957": {
+					"live": 4,
+					"deleted": 1
+				},
+				"5.6478079616699957": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.6478079616699957": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.3169356537629544": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3169356537629544": {
+					"live": 7,
+					"deleted": 2
+				},
+				"4.3169356537629544": {
+					"live": 0,
+					"deleted": 1
+				},
+				"3.3169356537629544": {
+					"live": 1,
+					"deleted": 1
+				},
+				"9.3169356537629544": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.1134514668987105": {
+					"live": 1,
+					"deleted": 3
+				},
+				"1.1134514668987105": {
+					"live": 5,
+					"deleted": 2
+				},
+				"3.1134514668987105": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.1134514668987105": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.6226682316328761": {
+					"live": 2,
+					"deleted": 1
+				},
+				"1.6226682316328761": {
+					"live": 6,
+					"deleted": 0
+				},
+				"5.6226682316328761": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.6226682316328761": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.6226682316328761": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.7334338530217328": {
+					"live": 8,
+					"deleted": 0
+				},
+				"6.7334338530217328": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.7334338530217328": {
+					"live": 1,
+					"deleted": 0
+				},
+				"8.7334338530217328": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.6827904136517058": {
+					"live": 8,
+					"deleted": 0
+				},
+				"3.6827904136517058": {
+					"live": 1,
+					"deleted": 1
+				},
+				"2.6827904136517058": {
+					"live": 2,
+					"deleted": 0
+				},
+				"5.5457570170231965": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5457570170231965": {
+					"live": 10,
+					"deleted": 0
+				},
+				"4.5457570170231965": {
+					"live": 0,
+					"deleted": 1
+				},
+				"2.1831346782576977": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.1831346782576977": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.8718911764123808": {
+					"live": 4,
+					"deleted": 1
+				},
+				"2.8718911764123808": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.8718911764123808": {
+					"live": 1,
+					"deleted": 0
+				},
+				"5.8718911764123808": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.1977806741739113": {
+					"live": 5,
+					"deleted": 1
+				},
+				"3.1977806741739113": {
+					"live": 0,
+					"deleted": 1
+				},
+				"4.1977806741739113": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5200447830652691": {
+					"live": 3,
+					"deleted": 0
+				},
+				"2.5200447830652691": {
+					"live": 1,
+					"deleted": 1
+				},
+				"4.5200447830652691": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.2057851093689084": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.2057851093689084": {
+					"live": 7,
+					"deleted": 1
+				},
+				"4.2057851093689084": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.2057851093689084": {
+					"live": 1,
+					"deleted": 0
+				},
+				"5.2057851093689084": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.4677406557103405": {
+					"live": 5,
+					"deleted": 0
+				},
+				"2.4677406557103405": {
+					"live": 0,
+					"deleted": 1
+				},
+				"1.8431517213918323": {
+					"live": 5,
+					"deleted": 0
+				},
+				"7.8431517213918323": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.8431517213918323": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.7698071365055243": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.7698071365055243": {
+					"live": 3,
+					"deleted": 0
+				},
+				"2.7698071365055243": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.2717635449493264": {
+					"live": 3,
+					"deleted": 2
+				},
+				"2.1525049680135556": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.1525049680135556": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.4403278960874325": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.4403278960874325": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.4403278960874325": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.7657456296973636": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.41132211112727": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.41132211112727": {
+					"live": 3,
+					"deleted": 0
+				},
+				"3.41132211112727": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.4887545415199052": {
+					"live": 4,
+					"deleted": 0
+				},
+				"3.4887545415199052": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.5455946042629189": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.3513249718813430": {
+					"live": 3,
+					"deleted": 0
+				},
+				"6.3513249718813430": {
+					"live": 2,
+					"deleted": 0
+				},
+				"2.3513249718813430": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.2262063128030854": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.2262063128030854": {
+					"live": 1,
+					"deleted": 0
+				},
+				"3.2262063128030854": {
+					"live": 1,
+					"deleted": 0
+				},
+				"h": {
+					"live": 1,
+					"deleted": 0
+				}
+			}
+		},
+		"edits": 22321,
+		"bytesPerEdit": 72.1
+	},
+	"errors": [],
+	"convergence": {
+		"clients": 50,
+		"stateVectors": 1,
+		"distinctJson": 1,
+		"room": true,
+		"joiner": true,
+		"afterEviction": true,
+		"blocks": 400,
+		"chars": 20778,
+		"ok": true
+	},
+	"samples": [
+		{
+			"t": 12,
+			"online": 48,
+			"acks": {
+				"count": 184,
+				"p50": 3.1,
+				"p90": 8,
+				"p99": 27.1,
+				"p999": 39.2,
+				"max": 39.2
+			},
+			"heapUsed": 32731520,
+			"heapTotal": 45662208,
+			"gc": false,
+			"rss": 192872448,
+			"cpu": 13.1,
+			"clientHeap": 209759144,
+			"clientRss": 601047040,
+			"clientLoopP99": 17,
+			"documentBytes": 31460,
+			"storedBytes": 31520,
+			"records": 240,
+			"updateRecords": 239,
+			"sockets": 48,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 297,
+			"foldMaxMs": 14,
+			"fanOut": 37361,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430815992,
+			"load": 4.62158203125
+		},
+		{
+			"t": 21,
+			"online": 49,
+			"acks": {
+				"count": 181,
+				"p50": 7,
+				"p90": 15.7,
+				"p99": 66.5,
+				"p999": 84.3,
+				"max": 84.3
+			},
+			"heapUsed": 19060280,
+			"heapTotal": 45662208,
+			"gc": false,
+			"rss": 196673536,
+			"cpu": 24.8,
+			"clientHeap": 219666488,
+			"clientRss": 603193344,
+			"clientLoopP99": 18,
+			"documentBytes": 49457,
+			"storedBytes": 49517,
+			"records": 425,
+			"updateRecords": 424,
+			"sockets": 49,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 492,
+			"foldMaxMs": 14,
+			"fanOut": 93889,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430815992,
+			"load": 9.48095703125
+		},
+		{
+			"t": 31,
+			"online": 49,
+			"acks": {
+				"count": 184,
+				"p50": 5.3,
+				"p90": 11.6,
+				"p99": 38.8,
+				"p999": 75.4,
+				"max": 75.4
+			},
+			"heapUsed": 27979212,
+			"heapTotal": 55099392,
+			"gc": false,
+			"rss": 211533824,
+			"cpu": 17.1,
+			"clientHeap": 269747528,
+			"clientRss": 672301056,
+			"clientLoopP99": 15,
+			"documentBytes": 50579,
+			"storedBytes": 24430,
+			"records": 115,
+			"updateRecords": 113,
+			"sockets": 49,
+			"compactions": 1,
+			"compactionMaxMs": 2,
+			"folds": 693,
+			"foldMaxMs": 14,
+			"fanOut": 150616,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430815992,
+			"load": 15.13671875
+		},
+		{
+			"t": 41,
+			"online": 49,
+			"acks": {
+				"count": 173,
+				"p50": 2.6,
+				"p90": 4.4,
+				"p99": 6.3,
+				"p999": 10.2,
+				"max": 10.2
+			},
+			"heapUsed": 17303212,
+			"heapTotal": 60080128,
+			"gc": false,
+			"rss": 219447296,
+			"cpu": 16.6,
+			"clientHeap": 278477456,
+			"clientRss": 830357504,
+			"clientLoopP99": 13,
+			"documentBytes": 68795,
+			"storedBytes": 42646,
+			"records": 291,
+			"updateRecords": 289,
+			"sockets": 49,
+			"compactions": 1,
+			"compactionMaxMs": 2,
+			"folds": 875,
+			"foldMaxMs": 14,
+			"fanOut": 218799,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430815992,
+			"load": 14.83984375
+		},
+		{
+			"t": 51,
+			"online": 49,
+			"acks": {
+				"count": 180,
+				"p50": 2.5,
+				"p90": 4.9,
+				"p99": 7.4,
+				"p999": 7.5,
+				"max": 7.5
+			},
+			"heapUsed": 36360268,
+			"heapTotal": 60080128,
+			"gc": false,
+			"rss": 222150656,
+			"cpu": 13.9,
+			"clientHeap": 299287976,
+			"clientRss": 903626752,
+			"clientLoopP99": 13,
+			"documentBytes": 71843,
+			"storedBytes": 28101,
+			"records": 91,
+			"updateRecords": 89,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 2,
+			"folds": 1066,
+			"foldMaxMs": 14,
+			"fanOut": 287457,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430815992,
+			"load": 13.47412109375
+		},
+		{
+			"t": 61,
+			"online": 48,
+			"acks": {
+				"count": 167,
+				"p50": 2.5,
+				"p90": 4,
+				"p99": 6.3,
+				"p999": 6.5,
+				"max": 6.5
+			},
+			"heapUsed": 5871732,
+			"heapTotal": 7127040,
+			"gc": true,
+			"rss": 169279488,
+			"cpu": 16.1,
+			"clientHeap": 239638512,
+			"clientRss": 934756352,
+			"clientLoopP99": 13,
+			"documentBytes": 94470,
+			"storedBytes": 50728,
+			"records": 262,
+			"updateRecords": 260,
+			"sockets": 48,
+			"compactions": 2,
+			"compactionMaxMs": 2,
+			"folds": 1244,
+			"foldMaxMs": 14,
+			"fanOut": 327052,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430815992,
+			"load": 12.3984375
+		},
+		{
+			"t": 71,
+			"online": 47,
+			"acks": {
+				"count": 208,
+				"p50": 2.6,
+				"p90": 4.8,
+				"p99": 7.9,
+				"p999": 21.2,
+				"max": 21.2
+			},
+			"heapUsed": 21557864,
+			"heapTotal": 34914304,
+			"gc": false,
+			"rss": 200032256,
+			"cpu": 17.2,
+			"clientHeap": 392826816,
+			"clientRss": 1072185344,
+			"clientLoopP99": 13,
+			"documentBytes": 121064,
+			"storedBytes": 77322,
+			"records": 474,
+			"updateRecords": 472,
+			"sockets": 47,
+			"compactions": 2,
+			"compactionMaxMs": 2,
+			"folds": 1464,
+			"foldMaxMs": 14,
+			"fanOut": 398864,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430815992,
+			"load": 11.26025390625
+		},
+		{
+			"t": 81,
+			"online": 49,
+			"acks": {
+				"count": 189,
+				"p50": 2.3,
+				"p90": 4.4,
+				"p99": 10.8,
+				"p999": 21.1,
+				"max": 21.1
+			},
+			"heapUsed": 13300004,
+			"heapTotal": 42516480,
+			"gc": false,
+			"rss": 206143488,
+			"cpu": 22.6,
+			"clientHeap": 452725008,
+			"clientRss": 1146290176,
+			"clientLoopP99": 13,
+			"documentBytes": 116369,
+			"storedBytes": 45693,
+			"records": 166,
+			"updateRecords": 164,
+			"sockets": 49,
+			"compactions": 3,
+			"compactionMaxMs": 2,
+			"folds": 1667,
+			"foldMaxMs": 14,
+			"fanOut": 461189,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430815992,
+			"load": 10.29736328125
+		},
+		{
+			"t": 91,
+			"online": 48,
+			"acks": {
+				"count": 204,
+				"p50": 2.2,
+				"p90": 3.5,
+				"p99": 6,
+				"p999": 6.2,
+				"max": 6.2
+			},
+			"heapUsed": 29717976,
+			"heapTotal": 55885824,
+			"gc": false,
+			"rss": 222937088,
+			"cpu": 15.6,
+			"clientHeap": 447436464,
+			"clientRss": 1176371200,
+			"clientLoopP99": 13,
+			"documentBytes": 137464,
+			"storedBytes": 66788,
+			"records": 372,
+			"updateRecords": 370,
+			"sockets": 48,
+			"compactions": 3,
+			"compactionMaxMs": 2,
+			"folds": 1879,
+			"foldMaxMs": 14,
+			"fanOut": 523237,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430815992,
+			"load": 9.32861328125
+		},
+		{
+			"t": 101,
+			"online": 49,
+			"acks": {
+				"count": 173,
+				"p50": 2.3,
+				"p90": 4,
+				"p99": 8.9,
+				"p999": 8.9,
+				"max": 8.9
+			},
+			"heapUsed": 38886208,
+			"heapTotal": 59031552,
+			"gc": false,
+			"rss": 230948864,
+			"cpu": 14.9,
+			"clientHeap": 473994368,
+			"clientRss": 1193574400,
+			"clientLoopP99": 13,
+			"documentBytes": 136131,
+			"storedBytes": 44352,
+			"records": 50,
+			"updateRecords": 48,
+			"sockets": 49,
+			"compactions": 4,
+			"compactionMaxMs": 2,
+			"folds": 2064,
+			"foldMaxMs": 14,
+			"fanOut": 572256,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430815992,
+			"load": 8.81640625
+		},
+		{
+			"t": 111,
+			"online": 49,
+			"acks": {
+				"count": 188,
+				"p50": 2.3,
+				"p90": 3.7,
+				"p99": 7,
+				"p999": 11,
+				"max": 11
+			},
+			"heapUsed": 61128152,
+			"heapTotal": 89440256,
+			"gc": false,
+			"rss": 269713408,
+			"cpu": 11.8,
+			"clientHeap": 452606768,
+			"clientRss": 1235058688,
+			"clientLoopP99": 13,
+			"documentBytes": 160482,
+			"storedBytes": 68703,
+			"records": 243,
+			"updateRecords": 241,
+			"sockets": 49,
+			"compactions": 4,
+			"compactionMaxMs": 2,
+			"folds": 2266,
+			"foldMaxMs": 14,
+			"fanOut": 629459,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430815992,
+			"load": 8.60400390625
+		},
+		{
+			"t": 121,
+			"online": 48,
+			"acks": {
+				"count": 174,
+				"p50": 2.2,
+				"p90": 3.3,
+				"p99": 10.6,
+				"p999": 12.9,
+				"max": 12.9
+			},
+			"heapUsed": 6870024,
+			"heapTotal": 8175616,
+			"gc": true,
+			"rss": 184713216,
+			"cpu": 27.8,
+			"clientHeap": 354266408,
+			"clientRss": 1256718336,
+			"clientLoopP99": 13,
+			"documentBytes": 182332,
+			"storedBytes": 90553,
+			"records": 418,
+			"updateRecords": 416,
+			"sockets": 48,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 1,
+			"foldMaxMs": 1,
+			"fanOut": 287,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430936916,
+			"load": 8.03662109375
+		},
+		{
+			"t": 131,
+			"online": 47,
+			"acks": {
+				"count": 183,
+				"p50": 2.3,
+				"p90": 4.2,
+				"p99": 8.4,
+				"p999": 18.3,
+				"max": 18.3
+			},
+			"heapUsed": 16891960,
+			"heapTotal": 31768576,
+			"gc": false,
+			"rss": 211320832,
+			"cpu": 14.9,
+			"clientHeap": 472305296,
+			"clientRss": 1277542400,
+			"clientLoopP99": 13,
+			"documentBytes": 175274,
+			"storedBytes": 56937,
+			"records": 102,
+			"updateRecords": 100,
+			"sockets": 47,
+			"compactions": 1,
+			"compactionMaxMs": 3,
+			"folds": 194,
+			"foldMaxMs": 5,
+			"fanOut": 62233,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430936916,
+			"load": 7.8701171875
+		},
+		{
+			"t": 141,
+			"online": 47,
+			"acks": {
+				"count": 193,
+				"p50": 2.6,
+				"p90": 5.3,
+				"p99": 15.8,
+				"p999": 17.1,
+				"max": 17.1
+			},
+			"heapUsed": 32295764,
+			"heapTotal": 58507264,
+			"gc": false,
+			"rss": 240517120,
+			"cpu": 18.3,
+			"clientHeap": 533121024,
+			"clientRss": 1320960000,
+			"clientLoopP99": 13,
+			"documentBytes": 193114,
+			"storedBytes": 66311,
+			"records": 111,
+			"updateRecords": 109,
+			"sockets": 47,
+			"compactions": 2,
+			"compactionMaxMs": 3,
+			"folds": 405,
+			"foldMaxMs": 5,
+			"fanOut": 132792,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430936916,
+			"load": 7.25537109375
+		},
+		{
+			"t": 151,
+			"online": 50,
+			"acks": {
+				"count": 179,
+				"p50": 2.5,
+				"p90": 4.4,
+				"p99": 8.5,
+				"p999": 39.9,
+				"max": 39.9
+			},
+			"heapUsed": 30758796,
+			"heapTotal": 58769408,
+			"gc": false,
+			"rss": 244498432,
+			"cpu": 27.9,
+			"clientHeap": 517571200,
+			"clientRss": 1349468160,
+			"clientLoopP99": 13,
+			"documentBytes": 215848,
+			"storedBytes": 89045,
+			"records": 296,
+			"updateRecords": 294,
+			"sockets": 50,
+			"compactions": 2,
+			"compactionMaxMs": 3,
+			"folds": 599,
+			"foldMaxMs": 5,
+			"fanOut": 194920,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430936916,
+			"load": 7.18359375
+		},
+		{
+			"t": 161,
+			"online": 50,
+			"acks": {
+				"count": 143,
+				"p50": 6.3,
+				"p90": 1495.3,
+				"p99": 3173.6,
+				"p999": 3180.2,
+				"max": 3180.2
+			},
+			"heapUsed": 38352064,
+			"heapTotal": 110411776,
+			"gc": false,
+			"rss": 301989888,
+			"cpu": 22.6,
+			"clientHeap": 579096896,
+			"clientRss": 1380679680,
+			"clientLoopP99": 16,
+			"documentBytes": 235334,
+			"storedBytes": 108531,
+			"records": 442,
+			"updateRecords": 440,
+			"sockets": 50,
+			"compactions": 2,
+			"compactionMaxMs": 3,
+			"folds": 867,
+			"foldMaxMs": 19,
+			"fanOut": 256234,
+			"refusals": {
+				"storage": 86
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430936916,
+			"load": 9.115234375
+		},
+		{
+			"t": 171,
+			"online": 49,
+			"acks": {
+				"count": 182,
+				"p50": 7.9,
+				"p90": 16.2,
+				"p99": 56.6,
+				"p999": 57.7,
+				"max": 57.7
+			},
+			"heapUsed": 41360384,
+			"heapTotal": 112508928,
+			"gc": false,
+			"rss": 309968896,
+			"cpu": 32,
+			"clientHeap": 541356384,
+			"clientRss": 1406173184,
+			"clientLoopP99": 17,
+			"documentBytes": 226833,
+			"storedBytes": 73235,
+			"records": 126,
+			"updateRecords": 124,
+			"sockets": 49,
+			"compactions": 3,
+			"compactionMaxMs": 4,
+			"folds": 1054,
+			"foldMaxMs": 19,
+			"fanOut": 329655,
+			"refusals": {
+				"storage": 86
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430936916,
+			"load": 11.85498046875
+		},
+		{
+			"t": 181,
+			"online": 50,
+			"acks": {
+				"count": 188,
+				"p50": 6,
+				"p90": 12.8,
+				"p99": 42.5,
+				"p999": 43.2,
+				"max": 43.2
+			},
+			"heapUsed": 9845876,
+			"heapTotal": 11059200,
+			"gc": true,
+			"rss": 203145216,
+			"cpu": 16.9,
+			"clientHeap": 468921536,
+			"clientRss": 1435074560,
+			"clientLoopP99": 16,
+			"documentBytes": 251909,
+			"storedBytes": 98311,
+			"records": 319,
+			"updateRecords": 317,
+			"sockets": 50,
+			"compactions": 3,
+			"compactionMaxMs": 4,
+			"folds": 1255,
+			"foldMaxMs": 19,
+			"fanOut": 370608,
+			"refusals": {
+				"storage": 86
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430936916,
+			"load": 13.60009765625
+		},
+		{
+			"t": 191,
+			"online": 48,
+			"acks": {
+				"count": 159,
+				"p50": 6.2,
+				"p90": 12.7,
+				"p99": 48.7,
+				"p999": 1292.8,
+				"max": 1292.8
+			},
+			"heapUsed": 24092568,
+			"heapTotal": 37011456,
+			"gc": false,
+			"rss": 231555072,
+			"cpu": 18.3,
+			"clientHeap": 606653880,
+			"clientRss": 1490534400,
+			"clientLoopP99": 16,
+			"documentBytes": 276051,
+			"storedBytes": 122453,
+			"records": 484,
+			"updateRecords": 482,
+			"sockets": 48,
+			"compactions": 3,
+			"compactionMaxMs": 4,
+			"folds": 1432,
+			"foldMaxMs": 19,
+			"fanOut": 437546,
+			"refusals": {
+				"storage": 86
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791430936916,
+			"load": 16.787109375
+		},
+		{
+			"t": 201,
+			"online": 49,
+			"acks": {
+				"count": 187,
+				"p50": 3.1,
+				"p90": 7.9,
+				"p99": 16.9,
+				"p999": 19.5,
+				"max": 19.5
+			},
+			"heapUsed": 37417276,
+			"heapTotal": 61652992,
+			"gc": false,
+			"rss": 256868352,
+			"cpu": 28.7,
+			"clientHeap": 633380592,
+			"clientRss": 1506066432,
+			"clientLoopP99": 14,
+			"documentBytes": 269746,
+			"storedBytes": 87985,
+			"records": 176,
+			"updateRecords": 174,
+			"sockets": 0,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 0,
+			"foldMaxMs": 0,
+			"fanOut": 0,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431016889,
+			"load": 16.66552734375
+		},
+		{
+			"t": 211,
+			"online": 48,
+			"acks": {
+				"count": 174,
+				"p50": 2.6,
+				"p90": 4.7,
+				"p99": 64.5,
+				"p999": 166.7,
+				"max": 166.7
+			},
+			"heapUsed": 50474164,
+			"heapTotal": 73187328,
+			"gc": false,
+			"rss": 273743872,
+			"cpu": 20.1,
+			"clientHeap": 712456216,
+			"clientRss": 1541734400,
+			"clientLoopP99": 13,
+			"documentBytes": 292007,
+			"storedBytes": 110246,
+			"records": 360,
+			"updateRecords": 358,
+			"sockets": 48,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 239,
+			"foldMaxMs": 7,
+			"fanOut": 68501,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431016889,
+			"load": 14.95166015625
+		},
+		{
+			"t": 221,
+			"online": 49,
+			"acks": {
+				"count": 203,
+				"p50": 2.7,
+				"p90": 5.2,
+				"p99": 8.3,
+				"p999": 22.4,
+				"max": 22.4
+			},
+			"heapUsed": 26934272,
+			"heapTotal": 97566720,
+			"gc": false,
+			"rss": 306315264,
+			"cpu": 12.4,
+			"clientHeap": 706540408,
+			"clientRss": 1579171840,
+			"clientLoopP99": 13,
+			"documentBytes": 295498,
+			"storedBytes": 85913,
+			"records": 66,
+			"updateRecords": 64,
+			"sockets": 49,
+			"compactions": 1,
+			"compactionMaxMs": 4,
+			"folds": 451,
+			"foldMaxMs": 7,
+			"fanOut": 112387,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431016889,
+			"load": 13.7158203125
+		},
+		{
+			"t": 231,
+			"online": 48,
+			"acks": {
+				"count": 180,
+				"p50": 2.3,
+				"p90": 4.3,
+				"p99": 8.6,
+				"p999": 8.8,
+				"max": 8.8
+			},
+			"heapUsed": 51975040,
+			"heapTotal": 100712448,
+			"gc": false,
+			"rss": 312147968,
+			"cpu": 23.6,
+			"clientHeap": 765091720,
+			"clientRss": 1619345408,
+			"clientLoopP99": 13,
+			"documentBytes": 309471,
+			"storedBytes": 91198,
+			"records": 95,
+			"updateRecords": 93,
+			"sockets": 48,
+			"compactions": 2,
+			"compactionMaxMs": 5,
+			"folds": 646,
+			"foldMaxMs": 7,
+			"fanOut": 189996,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431016889,
+			"load": 13.3330078125
+		},
+		{
+			"t": 242,
+			"online": 46,
+			"acks": {
+				"count": 163,
+				"p50": 2.2,
+				"p90": 4.3,
+				"p99": 7.4,
+				"p999": 17,
+				"max": 17
+			},
+			"heapUsed": 10517416,
+			"heapTotal": 11583488,
+			"gc": true,
+			"rss": 212549632,
+			"cpu": 23.6,
+			"clientHeap": 594277032,
+			"clientRss": 1629831168,
+			"clientLoopP99": 13,
+			"documentBytes": 330266,
+			"storedBytes": 111993,
+			"records": 261,
+			"updateRecords": 259,
+			"sockets": 46,
+			"compactions": 2,
+			"compactionMaxMs": 5,
+			"folds": 821,
+			"foldMaxMs": 7,
+			"fanOut": 259507,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431016889,
+			"load": 11.89111328125
+		},
+		{
+			"t": 251,
+			"online": 49,
+			"acks": {
+				"count": 186,
+				"p50": 2.5,
+				"p90": 4.7,
+				"p99": 27.1,
+				"p999": 28.9,
+				"max": 28.9
+			},
+			"heapUsed": 12026932,
+			"heapTotal": 35962880,
+			"gc": false,
+			"rss": 235962368,
+			"cpu": 27.8,
+			"clientHeap": 805319736,
+			"clientRss": 1629945856,
+			"clientLoopP99": 13,
+			"documentBytes": 359034,
+			"storedBytes": 140761,
+			"records": 448,
+			"updateRecords": 446,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 5,
+			"folds": 1014,
+			"foldMaxMs": 7,
+			"fanOut": 313966,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431016889,
+			"load": 10.75732421875
+		},
+		{
+			"t": 261,
+			"online": 49,
+			"acks": {
+				"count": 180,
+				"p50": 2.3,
+				"p90": 5.2,
+				"p99": 12.5,
+				"p999": 14.2,
+				"max": 14.2
+			},
+			"heapUsed": 27257624,
+			"heapTotal": 48807936,
+			"gc": false,
+			"rss": 249397248,
+			"cpu": 10.8,
+			"clientHeap": 793750208,
+			"clientRss": 1662681088,
+			"clientLoopP99": 13,
+			"documentBytes": 357189,
+			"storedBytes": 108687,
+			"records": 129,
+			"updateRecords": 127,
+			"sockets": 49,
+			"compactions": 3,
+			"compactionMaxMs": 6,
+			"folds": 1200,
+			"foldMaxMs": 7,
+			"fanOut": 378230,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431016889,
+			"load": 10.0859375
+		},
+		{
+			"t": 271,
+			"online": 49,
+			"acks": {
+				"count": 183,
+				"p50": 2.1,
+				"p90": 4,
+				"p99": 5.7,
+				"p999": 12.1,
+				"max": 12.1
+			},
+			"heapUsed": 12326992,
+			"heapTotal": 61128704,
+			"gc": false,
+			"rss": 267255808,
+			"cpu": 15.6,
+			"clientHeap": 843969880,
+			"clientRss": 1704984576,
+			"clientLoopP99": 13,
+			"documentBytes": 378845,
+			"storedBytes": 130343,
+			"records": 316,
+			"updateRecords": 314,
+			"sockets": 49,
+			"compactions": 3,
+			"compactionMaxMs": 6,
+			"folds": 1395,
+			"foldMaxMs": 7,
+			"fanOut": 441069,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431016889,
+			"load": 9.236328125
+		},
+		{
+			"t": 281,
+			"online": 50,
+			"acks": {
+				"count": 188,
+				"p50": 3.5,
+				"p90": 13,
+				"p99": 40.3,
+				"p999": 40.8,
+				"max": 40.8
+			},
+			"heapUsed": 48068472,
+			"heapTotal": 72663040,
+			"gc": false,
+			"rss": 208961536,
+			"cpu": 18.3,
+			"clientHeap": 867542752,
+			"clientRss": 1511079936,
+			"clientLoopP99": 15,
+			"documentBytes": 376095,
+			"storedBytes": 100084,
+			"records": 8,
+			"updateRecords": 6,
+			"sockets": 50,
+			"compactions": 4,
+			"compactionMaxMs": 34,
+			"folds": 1593,
+			"foldMaxMs": 35,
+			"fanOut": 500922,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431016889,
+			"load": 10.27294921875
+		},
+		{
+			"t": 292,
+			"online": 50,
+			"acks": {
+				"count": 167,
+				"p50": 9.8,
+				"p90": 51.8,
+				"p99": 185.8,
+				"p999": 213.1,
+				"max": 213.1
+			},
+			"heapUsed": 30606500,
+			"heapTotal": 95207424,
+			"gc": false,
+			"rss": 211582976,
+			"cpu": 20.2,
+			"clientHeap": 836558904,
+			"clientRss": 1457176576,
+			"clientLoopP99": 34,
+			"documentBytes": 402945,
+			"storedBytes": 126934,
+			"records": 177,
+			"updateRecords": 175,
+			"sockets": 50,
+			"compactions": 4,
+			"compactionMaxMs": 34,
+			"folds": 1763,
+			"foldMaxMs": 35,
+			"fanOut": 561885,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431016889,
+			"load": 11.24609375
+		},
+		{
+			"t": 302,
+			"online": 47,
+			"acks": {
+				"count": 180,
+				"p50": 10.3,
+				"p90": 52.9,
+				"p99": 300.3,
+				"p999": 652.7,
+				"max": 652.7
+			},
+			"heapUsed": 12571192,
+			"heapTotal": 13942784,
+			"gc": true,
+			"rss": 155959296,
+			"cpu": 58.9,
+			"clientHeap": 730600584,
+			"clientRss": 1536491520,
+			"clientLoopP99": 29,
+			"documentBytes": 430251,
+			"storedBytes": 154240,
+			"records": 359,
+			"updateRecords": 357,
+			"sockets": 0,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 0,
+			"foldMaxMs": 0,
+			"fanOut": 0,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431116909,
+			"load": 19.96142578125
+		},
+		{
+			"t": 312,
+			"online": 48,
+			"acks": {
+				"count": 209,
+				"p50": 59.8,
+				"p90": 269.4,
+				"p99": 431.2,
+				"p999": 965.6,
+				"max": 965.6
+			},
+			"heapUsed": 29261028,
+			"heapTotal": 45137920,
+			"gc": false,
+			"rss": 115163136,
+			"cpu": 13.3,
+			"clientHeap": 938999496,
+			"clientRss": 1284505600,
+			"clientLoopP99": 56,
+			"documentBytes": 423658,
+			"storedBytes": 114115,
+			"records": 73,
+			"updateRecords": 71,
+			"sockets": 48,
+			"compactions": 1,
+			"compactionMaxMs": 21,
+			"folds": 265,
+			"foldMaxMs": 38,
+			"fanOut": 66094,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431116909,
+			"load": 24.52783203125
+		},
+		{
+			"t": 322,
+			"online": 46,
+			"acks": {
+				"count": 164,
+				"p50": 26.9,
+				"p90": 161.2,
+				"p99": 507.8,
+				"p999": 529.4,
+				"max": 529.4
+			},
+			"heapUsed": 25992256,
+			"heapTotal": 60866560,
+			"gc": false,
+			"rss": 167641088,
+			"cpu": 19.7,
+			"clientHeap": 1012115640,
+			"clientRss": 1539702784,
+			"clientLoopP99": 82,
+			"documentBytes": 437052,
+			"storedBytes": 118947,
+			"records": 82,
+			"updateRecords": 80,
+			"sockets": 46,
+			"compactions": 2,
+			"compactionMaxMs": 21,
+			"folds": 442,
+			"foldMaxMs": 38,
+			"fanOut": 112200,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431116909,
+			"load": 29.1513671875
+		},
+		{
+			"t": 331,
+			"online": 49,
+			"acks": {
+				"count": 192,
+				"p50": 14.4,
+				"p90": 65,
+				"p99": 298.2,
+				"p999": 1366.7,
+				"max": 1366.7
+			},
+			"heapUsed": 22210572,
+			"heapTotal": 63750144,
+			"gc": false,
+			"rss": 172834816,
+			"cpu": 13.6,
+			"clientHeap": 1022141328,
+			"clientRss": 1643380736,
+			"clientLoopP99": 42,
+			"documentBytes": 466314,
+			"storedBytes": 148209,
+			"records": 279,
+			"updateRecords": 277,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 21,
+			"folds": 649,
+			"foldMaxMs": 38,
+			"fanOut": 147472,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431116909,
+			"load": 32.57421875
+		},
+		{
+			"t": 341,
+			"online": 48,
+			"acks": {
+				"count": 191,
+				"p50": 12.2,
+				"p90": 46.3,
+				"p99": 109.7,
+				"p999": 127.6,
+				"max": 127.6
+			},
+			"heapUsed": 49132968,
+			"heapTotal": 76070912,
+			"gc": false,
+			"rss": 190644224,
+			"cpu": 23.2,
+			"clientHeap": 1111481048,
+			"clientRss": 1720107008,
+			"clientLoopP99": 31,
+			"documentBytes": 494488,
+			"storedBytes": 176383,
+			"records": 474,
+			"updateRecords": 472,
+			"sockets": 48,
+			"compactions": 2,
+			"compactionMaxMs": 21,
+			"folds": 851,
+			"foldMaxMs": 38,
+			"fanOut": 198534,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431116909,
+			"load": 34.24365234375
+		},
+		{
+			"t": 351,
+			"online": 46,
+			"acks": {
+				"count": 176,
+				"p50": 16.7,
+				"p90": 53.6,
+				"p99": 125.3,
+				"p999": 164.5,
+				"max": 164.5
+			},
+			"heapUsed": 31378280,
+			"heapTotal": 100974592,
+			"gc": false,
+			"rss": 219594752,
+			"cpu": 31.1,
+			"clientHeap": 1085907504,
+			"clientRss": 1632583680,
+			"clientLoopP99": 34,
+			"documentBytes": 483329,
+			"storedBytes": 136629,
+			"records": 155,
+			"updateRecords": 153,
+			"sockets": 47,
+			"compactions": 3,
+			"compactionMaxMs": 21,
+			"folds": 1044,
+			"foldMaxMs": 38,
+			"fanOut": 271519,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431116909,
+			"load": 37.24560546875
+		},
+		{
+			"t": 362,
+			"online": 49,
+			"acks": {
+				"count": 205,
+				"p50": 13.7,
+				"p90": 44.5,
+				"p99": 69,
+				"p999": 2192.1,
+				"max": 2192.1
+			},
+			"heapUsed": 13241916,
+			"heapTotal": 14204928,
+			"gc": true,
+			"rss": 144883712,
+			"cpu": 58.3,
+			"clientHeap": 871886128,
+			"clientRss": 1793720320,
+			"clientLoopP99": 26,
+			"documentBytes": 515212,
+			"storedBytes": 168512,
+			"records": 369,
+			"updateRecords": 367,
+			"sockets": 49,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 5,
+			"foldMaxMs": 1,
+			"fanOut": 730,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 55.01318359375
+		},
+		{
+			"t": 371,
+			"online": 47,
+			"acks": {
+				"count": 195,
+				"p50": 16.2,
+				"p90": 66.4,
+				"p99": 219,
+				"p999": 243.6,
+				"max": 243.6
+			},
+			"heapUsed": 23545900,
+			"heapTotal": 44351488,
+			"gc": false,
+			"rss": 169132032,
+			"cpu": 17.8,
+			"clientHeap": 1091502792,
+			"clientRss": 1877786624,
+			"clientLoopP99": 58,
+			"documentBytes": 515019,
+			"storedBytes": 138773,
+			"records": 64,
+			"updateRecords": 62,
+			"sockets": 47,
+			"compactions": 1,
+			"compactionMaxMs": 12,
+			"folds": 208,
+			"foldMaxMs": 14,
+			"fanOut": 65833,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 52.78125
+		},
+		{
+			"t": 381,
+			"online": 47,
+			"acks": {
+				"count": 165,
+				"p50": 10.2,
+				"p90": 22.2,
+				"p99": 61.8,
+				"p999": 77.1,
+				"max": 77.1
+			},
+			"heapUsed": 38381948,
+			"heapTotal": 63225856,
+			"gc": false,
+			"rss": 175636480,
+			"cpu": 28.3,
+			"clientHeap": 1132715632,
+			"clientRss": 1812070400,
+			"clientLoopP99": 26,
+			"documentBytes": 538053,
+			"storedBytes": 161807,
+			"records": 233,
+			"updateRecords": 231,
+			"sockets": 47,
+			"compactions": 1,
+			"compactionMaxMs": 12,
+			"folds": 386,
+			"foldMaxMs": 14,
+			"fanOut": 118055,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 48.73681640625
+		},
+		{
+			"t": 391,
+			"online": 50,
+			"acks": {
+				"count": 171,
+				"p50": 11.1,
+				"p90": 25,
+				"p99": 52.1,
+				"p999": 59.4,
+				"max": 59.4
+			},
+			"heapUsed": 45243012,
+			"heapTotal": 71876608,
+			"gc": false,
+			"rss": 198148096,
+			"cpu": 37.5,
+			"clientHeap": 1130753824,
+			"clientRss": 1890566144,
+			"clientLoopP99": 22,
+			"documentBytes": 563512,
+			"storedBytes": 187266,
+			"records": 407,
+			"updateRecords": 405,
+			"sockets": 50,
+			"compactions": 1,
+			"compactionMaxMs": 12,
+			"folds": 567,
+			"foldMaxMs": 20,
+			"fanOut": 170888,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 47.12744140625
+		},
+		{
+			"t": 401,
+			"online": 48,
+			"acks": {
+				"count": 164,
+				"p50": 12.4,
+				"p90": 41,
+				"p99": 64.3,
+				"p999": 65.2,
+				"max": 65.2
+			},
+			"heapUsed": 22993244,
+			"heapTotal": 107413504,
+			"gc": false,
+			"rss": 274726912,
+			"cpu": 74.6,
+			"clientHeap": 1293802976,
+			"clientRss": 1993277440,
+			"clientLoopP99": 22,
+			"documentBytes": 559066,
+			"storedBytes": 153296,
+			"records": 77,
+			"updateRecords": 75,
+			"sockets": 48,
+			"compactions": 2,
+			"compactionMaxMs": 12,
+			"folds": 744,
+			"foldMaxMs": 20,
+			"fanOut": 245816,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 44.109375
+		},
+		{
+			"t": 412,
+			"online": 49,
+			"acks": {
+				"count": 183,
+				"p50": 10.8,
+				"p90": 27.8,
+				"p99": 55.2,
+				"p999": 80.8,
+				"max": 80.8
+			},
+			"heapUsed": 46845912,
+			"heapTotal": 111263744,
+			"gc": false,
+			"rss": 262012928,
+			"cpu": 28.7,
+			"clientHeap": 1340054912,
+			"clientRss": 1971552256,
+			"clientLoopP99": 24,
+			"documentBytes": 584214,
+			"storedBytes": 178444,
+			"records": 262,
+			"updateRecords": 260,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 12,
+			"folds": 938,
+			"foldMaxMs": 21,
+			"fanOut": 317447,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 43.75927734375
+		},
+		{
+			"t": 422,
+			"online": 49,
+			"acks": {
+				"count": 161,
+				"p50": 12.7,
+				"p90": 53.6,
+				"p99": 161.5,
+				"p999": 204.8,
+				"max": 204.8
+			},
+			"heapUsed": 15684420,
+			"heapTotal": 17088512,
+			"gc": true,
+			"rss": 163840000,
+			"cpu": 38.4,
+			"clientHeap": 1001487696,
+			"clientRss": 2120548352,
+			"clientLoopP99": 26,
+			"documentBytes": 607837,
+			"storedBytes": 202067,
+			"records": 429,
+			"updateRecords": 427,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 12,
+			"folds": 1113,
+			"foldMaxMs": 25,
+			"fanOut": 380544,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 43.30908203125
+		},
+		{
+			"t": 431,
+			"online": 48,
+			"acks": {
+				"count": 172,
+				"p50": 11.6,
+				"p90": 28.9,
+				"p99": 55.6,
+				"p999": 177.4,
+				"max": 177.4
+			},
+			"heapUsed": 30566456,
+			"heapTotal": 46448640,
+			"gc": false,
+			"rss": 193953792,
+			"cpu": 19.5,
+			"clientHeap": 1260350600,
+			"clientRss": 2133770240,
+			"clientLoopP99": 24,
+			"documentBytes": 627662,
+			"storedBytes": 221892,
+			"records": 601,
+			"updateRecords": 349,
+			"sockets": 48,
+			"compactions": 2,
+			"compactionMaxMs": 12,
+			"folds": 1292,
+			"foldMaxMs": 25,
+			"fanOut": 437696,
+			"refusals": {
+				"storage": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 42.49560546875
+		},
+		{
+			"t": 441,
+			"online": 48,
+			"acks": {
+				"count": 153,
+				"p50": 8.6,
+				"p90": 24.1,
+				"p99": 47.3,
+				"p999": 56,
+				"max": 56
+			},
+			"heapUsed": 20248612,
+			"heapTotal": 63225856,
+			"gc": false,
+			"rss": 214679552,
+			"cpu": 22.6,
+			"clientHeap": 1243594528,
+			"clientRss": 2161557504,
+			"clientLoopP99": 22,
+			"documentBytes": 603287,
+			"storedBytes": 154125,
+			"records": 11,
+			"updateRecords": 9,
+			"sockets": 48,
+			"compactions": 3,
+			"compactionMaxMs": 15,
+			"folds": 1461,
+			"foldMaxMs": 31,
+			"fanOut": 504707,
+			"refusals": {
+				"storage": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 39.1708984375
+		},
+		{
+			"t": 451,
+			"online": 47,
+			"acks": {
+				"count": 194,
+				"p50": 8.9,
+				"p90": 22.5,
+				"p99": 38.4,
+				"p999": 43.8,
+				"max": 43.8
+			},
+			"heapUsed": 31037564,
+			"heapTotal": 69255168,
+			"gc": false,
+			"rss": 206323712,
+			"cpu": 56.9,
+			"clientHeap": 1313277736,
+			"clientRss": 2149531648,
+			"clientLoopP99": 25,
+			"documentBytes": 631775,
+			"storedBytes": 182613,
+			"records": 209,
+			"updateRecords": 207,
+			"sockets": 47,
+			"compactions": 3,
+			"compactionMaxMs": 15,
+			"folds": 1665,
+			"foldMaxMs": 31,
+			"fanOut": 549249,
+			"refusals": {
+				"storage": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 45.63330078125
+		},
+		{
+			"t": 461,
+			"online": 49,
+			"acks": {
+				"count": 178,
+				"p50": 15.1,
+				"p90": 1946.1,
+				"p99": 2961.5,
+				"p999": 2969.2,
+				"max": 2969.2
+			},
+			"heapUsed": 60277108,
+			"heapTotal": 126042112,
+			"gc": false,
+			"rss": 375750656,
+			"cpu": 30.6,
+			"clientHeap": 1435508096,
+			"clientRss": 2210152448,
+			"clientLoopP99": 23,
+			"documentBytes": 659085,
+			"storedBytes": 209923,
+			"records": 382,
+			"updateRecords": 380,
+			"sockets": 49,
+			"compactions": 3,
+			"compactionMaxMs": 15,
+			"folds": 1916,
+			"foldMaxMs": 134,
+			"fanOut": 599656,
+			"refusals": {
+				"storage": 40
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 43.6650390625
+		},
+		{
+			"t": 471,
+			"online": 50,
+			"acks": {
+				"count": 186,
+				"p50": 10.4,
+				"p90": 22.6,
+				"p99": 60,
+				"p999": 60.7,
+				"max": 60.7
+			},
+			"heapUsed": 68539992,
+			"heapTotal": 125779968,
+			"gc": false,
+			"rss": 211877888,
+			"cpu": 32.3,
+			"clientHeap": 1430973864,
+			"clientRss": 2168766464,
+			"clientLoopP99": 25,
+			"documentBytes": 651200,
+			"storedBytes": 172067,
+			"records": 69,
+			"updateRecords": 67,
+			"sockets": 50,
+			"compactions": 4,
+			"compactionMaxMs": 21,
+			"folds": 2107,
+			"foldMaxMs": 134,
+			"fanOut": 671090,
+			"refusals": {
+				"storage": 40
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 41.416015625
+		},
+		{
+			"t": 482,
+			"online": 47,
+			"acks": {
+				"count": 184,
+				"p50": 9.2,
+				"p90": 26.3,
+				"p99": 76.9,
+				"p999": 117.7,
+				"max": 117.7
+			},
+			"heapUsed": 17873024,
+			"heapTotal": 18825216,
+			"gc": true,
+			"rss": 179666944,
+			"cpu": 54.2,
+			"clientHeap": 1129877096,
+			"clientRss": 2271526912,
+			"clientLoopP99": 20,
+			"documentBytes": 683016,
+			"storedBytes": 203883,
+			"records": 259,
+			"updateRecords": 257,
+			"sockets": 48,
+			"compactions": 4,
+			"compactionMaxMs": 21,
+			"folds": 2307,
+			"foldMaxMs": 134,
+			"fanOut": 743481,
+			"refusals": {
+				"storage": 40
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 39.455078125
+		},
+		{
+			"t": 491,
+			"online": 48,
+			"acks": {
+				"count": 176,
+				"p50": 8.1,
+				"p90": 18.4,
+				"p99": 198.9,
+				"p999": 235.3,
+				"max": 235.3
+			},
+			"heapUsed": 17933840,
+			"heapTotal": 46612480,
+			"gc": false,
+			"rss": 195264512,
+			"cpu": 36.8,
+			"clientHeap": 1383610184,
+			"clientRss": 2258665472,
+			"clientLoopP99": 21,
+			"documentBytes": 709551,
+			"storedBytes": 230418,
+			"records": 435,
+			"updateRecords": 433,
+			"sockets": 48,
+			"compactions": 4,
+			"compactionMaxMs": 21,
+			"folds": 2492,
+			"foldMaxMs": 134,
+			"fanOut": 801013,
+			"refusals": {
+				"storage": 40
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 38.0234375
+		},
+		{
+			"t": 501,
+			"online": 46,
+			"acks": {
+				"count": 173,
+				"p50": 7.3,
+				"p90": 24.3,
+				"p99": 45.2,
+				"p999": 48.9,
+				"max": 48.9
+			},
+			"heapUsed": 36811444,
+			"heapTotal": 62078976,
+			"gc": false,
+			"rss": 218365952,
+			"cpu": 25.4,
+			"clientHeap": 1463799976,
+			"clientRss": 2320449536,
+			"clientLoopP99": 23,
+			"documentBytes": 698287,
+			"storedBytes": 184912,
+			"records": 82,
+			"updateRecords": 80,
+			"sockets": 46,
+			"compactions": 6,
+			"compactionMaxMs": 21,
+			"folds": 2673,
+			"foldMaxMs": 134,
+			"fanOut": 866346,
+			"refusals": {
+				"storage": 40
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 36.9755859375
+		},
+		{
+			"t": 511,
+			"online": 48,
+			"acks": {
+				"count": 180,
+				"p50": 11.3,
+				"p90": 27.4,
+				"p99": 34.5,
+				"p999": 100.8,
+				"max": 100.8
+			},
+			"heapUsed": 37837832,
+			"heapTotal": 71254016,
+			"gc": false,
+			"rss": 209387520,
+			"cpu": 32.2,
+			"clientHeap": 1480832752,
+			"clientRss": 2323922944,
+			"clientLoopP99": 27,
+			"documentBytes": 725911,
+			"storedBytes": 212536,
+			"records": 269,
+			"updateRecords": 267,
+			"sockets": 48,
+			"compactions": 6,
+			"compactionMaxMs": 21,
+			"folds": 2871,
+			"foldMaxMs": 134,
+			"fanOut": 952680,
+			"refusals": {
+				"storage": 40
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 38.03271484375
+		},
+		{
+			"t": 521,
+			"online": 47,
+			"acks": {
+				"count": 176,
+				"p50": 9.8,
+				"p90": 31.6,
+				"p99": 69.3,
+				"p999": 73.8,
+				"max": 73.8
+			},
+			"heapUsed": 63665348,
+			"heapTotal": 98779136,
+			"gc": false,
+			"rss": 239091712,
+			"cpu": 15.8,
+			"clientHeap": 1590576408,
+			"clientRss": 2397782016,
+			"clientLoopP99": 23,
+			"documentBytes": 755017,
+			"storedBytes": 241642,
+			"records": 448,
+			"updateRecords": 446,
+			"sockets": 47,
+			"compactions": 6,
+			"compactionMaxMs": 21,
+			"folds": 3060,
+			"foldMaxMs": 134,
+			"fanOut": 1007588,
+			"refusals": {
+				"storage": 40
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 36.5537109375
+		},
+		{
+			"t": 531,
+			"online": 47,
+			"acks": {
+				"count": 164,
+				"p50": 10,
+				"p90": 30.5,
+				"p99": 104,
+				"p999": 1673.4,
+				"max": 1673.4
+			},
+			"heapUsed": 55120220,
+			"heapTotal": 107167744,
+			"gc": false,
+			"rss": 260587520,
+			"cpu": 20.5,
+			"clientHeap": 1610341384,
+			"clientRss": 2376957952,
+			"clientLoopP99": 25,
+			"documentBytes": 748073,
+			"storedBytes": 202772,
+			"records": 118,
+			"updateRecords": 116,
+			"sockets": 47,
+			"compactions": 7,
+			"compactionMaxMs": 21,
+			"folds": 3243,
+			"foldMaxMs": 134,
+			"fanOut": 1064376,
+			"refusals": {
+				"storage": 40
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 38.49609375
+		},
+		{
+			"t": 542,
+			"online": 49,
+			"acks": {
+				"count": 170,
+				"p50": 10.1,
+				"p90": 38.3,
+				"p99": 209.7,
+				"p999": 353.3,
+				"max": 353.3
+			},
+			"heapUsed": 18757084,
+			"heapTotal": 20398080,
+			"gc": true,
+			"rss": 176095232,
+			"cpu": 27.6,
+			"clientHeap": 1272022984,
+			"clientRss": 2473492480,
+			"clientLoopP99": 24,
+			"documentBytes": 777924,
+			"storedBytes": 232623,
+			"records": 296,
+			"updateRecords": 294,
+			"sockets": 49,
+			"compactions": 7,
+			"compactionMaxMs": 21,
+			"folds": 3434,
+			"foldMaxMs": 134,
+			"fanOut": 1119829,
+			"refusals": {
+				"storage": 40
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 43.095703125
+		},
+		{
+			"t": 552,
+			"online": 50,
+			"acks": {
+				"count": 178,
+				"p50": 16.3,
+				"p90": 113.9,
+				"p99": 298.5,
+				"p999": 310.8,
+				"max": 310.8
+			},
+			"heapUsed": 21824920,
+			"heapTotal": 47923200,
+			"gc": false,
+			"rss": 193314816,
+			"cpu": 39,
+			"clientHeap": 1472347064,
+			"clientRss": 2443837440,
+			"clientLoopP99": 37,
+			"documentBytes": 802653,
+			"storedBytes": 257352,
+			"records": 480,
+			"updateRecords": 478,
+			"sockets": 50,
+			"compactions": 7,
+			"compactionMaxMs": 21,
+			"folds": 3623,
+			"foldMaxMs": 134,
+			"fanOut": 1195914,
+			"refusals": {
+				"storage": 40
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431176998,
+			"load": 44.84521484375
+		},
+		{
+			"t": 561,
+			"online": 48,
+			"acks": {
+				"count": 172,
+				"p50": 14.9,
+				"p90": 40.7,
+				"p99": 381.2,
+				"p999": 386.8,
+				"max": 386.8
+			},
+			"heapUsed": 56934036,
+			"heapTotal": 102924288,
+			"gc": false,
+			"rss": 248741888,
+			"cpu": 77,
+			"clientHeap": 1614541992,
+			"clientRss": 2482274304,
+			"clientLoopP99": 32,
+			"documentBytes": 794352,
+			"storedBytes": 215929,
+			"records": 153,
+			"updateRecords": 151,
+			"sockets": 0,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 0,
+			"foldMaxMs": 0,
+			"fanOut": 0,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431376832,
+			"load": 48.36328125
+		},
+		{
+			"t": 571,
+			"online": 46,
+			"acks": {
+				"count": 158,
+				"p50": 9.2,
+				"p90": 44.6,
+				"p99": 317.5,
+				"p999": 646.7,
+				"max": 646.7
+			},
+			"heapUsed": 23073072,
+			"heapTotal": 110100480,
+			"gc": false,
+			"rss": 283082752,
+			"cpu": 15.2,
+			"clientHeap": 1623133448,
+			"clientRss": 2553774080,
+			"clientLoopP99": 26,
+			"documentBytes": 820184,
+			"storedBytes": 241761,
+			"records": 318,
+			"updateRecords": 316,
+			"sockets": 46,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 220,
+			"foldMaxMs": 92,
+			"fanOut": 61976,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431376832,
+			"load": 49.73876953125
+		},
+		{
+			"t": 581,
+			"online": 45,
+			"acks": {
+				"count": 178,
+				"p50": 4.7,
+				"p90": 26.3,
+				"p99": 142.9,
+				"p999": 157.6,
+				"max": 157.6
+			},
+			"heapUsed": 27495568,
+			"heapTotal": 111902720,
+			"gc": false,
+			"rss": 298041344,
+			"cpu": 39.3,
+			"clientHeap": 1846566512,
+			"clientRss": 2718842880,
+			"clientLoopP99": 21,
+			"documentBytes": 809363,
+			"storedBytes": 200135,
+			"records": 3,
+			"updateRecords": 1,
+			"sockets": 45,
+			"compactions": 1,
+			"compactionMaxMs": 12,
+			"folds": 416,
+			"foldMaxMs": 92,
+			"fanOut": 117794,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431376832,
+			"load": 44.62451171875
+		},
+		{
+			"t": 591,
+			"online": 45,
+			"acks": {
+				"count": 172,
+				"p50": 4.8,
+				"p90": 11.8,
+				"p99": 29.3,
+				"p999": 29.6,
+				"max": 29.6
+			},
+			"heapUsed": 19141768,
+			"heapTotal": 115867648,
+			"gc": false,
+			"rss": 292896768,
+			"cpu": 23.8,
+			"clientHeap": 1928958232,
+			"clientRss": 2753773568,
+			"clientLoopP99": 19,
+			"documentBytes": 829422,
+			"storedBytes": 214718,
+			"records": 87,
+			"updateRecords": 85,
+			"sockets": 45,
+			"compactions": 2,
+			"compactionMaxMs": 16,
+			"folds": 598,
+			"foldMaxMs": 92,
+			"fanOut": 175514,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431376832,
+			"load": 42.4619140625
+		},
+		{
+			"t": 602,
+			"online": 48,
+			"acks": {
+				"count": 162,
+				"p50": 3.6,
+				"p90": 10.9,
+				"p99": 156.6,
+				"p999": 165,
+				"max": 165
+			},
+			"heapUsed": 18610604,
+			"heapTotal": 19939328,
+			"gc": true,
+			"rss": 186335232,
+			"cpu": 71.5,
+			"clientHeap": 1398496960,
+			"clientRss": 2886500352,
+			"clientLoopP99": 19,
+			"documentBytes": 856102,
+			"storedBytes": 241398,
+			"records": 259,
+			"updateRecords": 257,
+			"sockets": 48,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 6,
+			"foldMaxMs": 1,
+			"fanOut": 618,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 37.525390625
+		},
+		{
+			"t": 611,
+			"online": 49,
+			"acks": {
+				"count": 194,
+				"p50": 4.1,
+				"p90": 13.5,
+				"p99": 196.9,
+				"p999": 205.3,
+				"max": 205.3
+			},
+			"heapUsed": 29893020,
+			"heapTotal": 54018048,
+			"gc": false,
+			"rss": 225656832,
+			"cpu": 40.8,
+			"clientHeap": 1710340064,
+			"clientRss": 2905702400,
+			"clientLoopP99": 22,
+			"documentBytes": 891663,
+			"storedBytes": 276959,
+			"records": 450,
+			"updateRecords": 448,
+			"sockets": 49,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 205,
+			"foldMaxMs": 25,
+			"fanOut": 50137,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 34.4365234375
+		},
+		{
+			"t": 621,
+			"online": 49,
+			"acks": {
+				"count": 181,
+				"p50": 4,
+				"p90": 9.9,
+				"p99": 49.1,
+				"p999": 57.2,
+				"max": 57.2
+			},
+			"heapUsed": 31236492,
+			"heapTotal": 69222400,
+			"gc": false,
+			"rss": 245727232,
+			"cpu": 16,
+			"clientHeap": 1714359632,
+			"clientRss": 2912698368,
+			"clientLoopP99": 20,
+			"documentBytes": 883374,
+			"storedBytes": 236898,
+			"records": 134,
+			"updateRecords": 132,
+			"sockets": 49,
+			"compactions": 1,
+			"compactionMaxMs": 15,
+			"folds": 397,
+			"foldMaxMs": 25,
+			"fanOut": 113202,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 31.92822265625
+		},
+		{
+			"t": 631,
+			"online": 46,
+			"acks": {
+				"count": 176,
+				"p50": 3.7,
+				"p90": 9.3,
+				"p99": 31,
+				"p999": 56.9,
+				"max": 56.9
+			},
+			"heapUsed": 48252720,
+			"heapTotal": 73154560,
+			"gc": false,
+			"rss": 250888192,
+			"cpu": 22.8,
+			"clientHeap": 1762321352,
+			"clientRss": 2910928896,
+			"clientLoopP99": 20,
+			"documentBytes": 908179,
+			"storedBytes": 261703,
+			"records": 315,
+			"updateRecords": 313,
+			"sockets": 46,
+			"compactions": 1,
+			"compactionMaxMs": 15,
+			"folds": 591,
+			"foldMaxMs": 25,
+			"fanOut": 168581,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 28.8447265625
+		},
+		{
+			"t": 641,
+			"online": 47,
+			"acks": {
+				"count": 183,
+				"p50": 3.5,
+				"p90": 7.8,
+				"p99": 23.5,
+				"p999": 34.8,
+				"max": 34.8
+			},
+			"heapUsed": 37934780,
+			"heapTotal": 103284736,
+			"gc": false,
+			"rss": 287703040,
+			"cpu": 35.9,
+			"clientHeap": 1839164816,
+			"clientRss": 2879143936,
+			"clientLoopP99": 19,
+			"documentBytes": 900287,
+			"storedBytes": 222021,
+			"records": 3,
+			"updateRecords": 1,
+			"sockets": 47,
+			"compactions": 2,
+			"compactionMaxMs": 15,
+			"folds": 788,
+			"foldMaxMs": 25,
+			"fanOut": 252201,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 26.73486328125
+		},
+		{
+			"t": 651,
+			"online": 48,
+			"acks": {
+				"count": 159,
+				"p50": 3.6,
+				"p90": 8.4,
+				"p99": 17.5,
+				"p999": 18.7,
+				"max": 18.7
+			},
+			"heapUsed": 45344916,
+			"heapTotal": 114835456,
+			"gc": false,
+			"rss": 293552128,
+			"cpu": 21.8,
+			"clientHeap": 1926910208,
+			"clientRss": 2922561536,
+			"clientLoopP99": 20,
+			"documentBytes": 930838,
+			"storedBytes": 252572,
+			"records": 166,
+			"updateRecords": 164,
+			"sockets": 48,
+			"compactions": 2,
+			"compactionMaxMs": 15,
+			"folds": 963,
+			"foldMaxMs": 25,
+			"fanOut": 329571,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 24.3759765625
+		},
+		{
+			"t": 662,
+			"online": 47,
+			"acks": {
+				"count": 168,
+				"p50": 7,
+				"p90": 209.5,
+				"p99": 428.5,
+				"p999": 675.7,
+				"max": 675.7
+			},
+			"heapUsed": 21070372,
+			"heapTotal": 26230784,
+			"gc": true,
+			"rss": 141246464,
+			"cpu": 51,
+			"clientHeap": 1546180936,
+			"clientRss": 2805039104,
+			"clientLoopP99": 67,
+			"documentBytes": 957192,
+			"storedBytes": 278926,
+			"records": 351,
+			"updateRecords": 349,
+			"sockets": 47,
+			"compactions": 2,
+			"compactionMaxMs": 15,
+			"folds": 1156,
+			"foldMaxMs": 66,
+			"fanOut": 399130,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 22.62646484375
+		},
+		{
+			"t": 671,
+			"online": 48,
+			"acks": {
+				"count": 182,
+				"p50": 12.3,
+				"p90": 106.9,
+				"p99": 632.3,
+				"p999": 2772.4,
+				"max": 2772.4
+			},
+			"heapUsed": 20862252,
+			"heapTotal": 49823744,
+			"gc": false,
+			"rss": 177979392,
+			"cpu": 26.5,
+			"clientHeap": 1774548944,
+			"clientRss": 2855911424,
+			"clientLoopP99": 30,
+			"documentBytes": 944680,
+			"storedBytes": 236191,
+			"records": 23,
+			"updateRecords": 21,
+			"sockets": 48,
+			"compactions": 3,
+			"compactionMaxMs": 29,
+			"folds": 1336,
+			"foldMaxMs": 66,
+			"fanOut": 456811,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 23.69873046875
+		},
+		{
+			"t": 681,
+			"online": 47,
+			"acks": {
+				"count": 170,
+				"p50": 4.6,
+				"p90": 11,
+				"p99": 27.8,
+				"p999": 30.7,
+				"max": 30.7
+			},
+			"heapUsed": 49076880,
+			"heapTotal": 71057408,
+			"gc": false,
+			"rss": 210993152,
+			"cpu": 16,
+			"clientHeap": 1785810968,
+			"clientRss": 2902163456,
+			"clientLoopP99": 23,
+			"documentBytes": 964961,
+			"storedBytes": 250348,
+			"records": 94,
+			"updateRecords": 92,
+			"sockets": 47,
+			"compactions": 4,
+			"compactionMaxMs": 29,
+			"folds": 1518,
+			"foldMaxMs": 66,
+			"fanOut": 512172,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 23.87890625
+		},
+		{
+			"t": 691,
+			"online": 50,
+			"acks": {
+				"count": 180,
+				"p50": 4.8,
+				"p90": 17.8,
+				"p99": 59.4,
+				"p999": 73.4,
+				"max": 73.4
+			},
+			"heapUsed": 45605828,
+			"heapTotal": 72892416,
+			"gc": false,
+			"rss": 234389504,
+			"cpu": 14.5,
+			"clientHeap": 1968257968,
+			"clientRss": 3020652544,
+			"clientLoopP99": 23,
+			"documentBytes": 1000134,
+			"storedBytes": 285521,
+			"records": 286,
+			"updateRecords": 284,
+			"sockets": 50,
+			"compactions": 4,
+			"compactionMaxMs": 29,
+			"folds": 1721,
+			"foldMaxMs": 66,
+			"fanOut": 573792,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 22.37890625
+		},
+		{
+			"t": 701,
+			"online": 50,
+			"acks": {
+				"count": 182,
+				"p50": 7.2,
+				"p90": 26.4,
+				"p99": 88.1,
+				"p999": 109.7,
+				"max": 109.7
+			},
+			"heapUsed": 67738496,
+			"heapTotal": 115359744,
+			"gc": false,
+			"rss": 275382272,
+			"cpu": 27.4,
+			"clientHeap": 2077529304,
+			"clientRss": 3115433984,
+			"clientLoopP99": 28,
+			"documentBytes": 1030237,
+			"storedBytes": 315624,
+			"records": 469,
+			"updateRecords": 467,
+			"sockets": 50,
+			"compactions": 4,
+			"compactionMaxMs": 29,
+			"folds": 1912,
+			"foldMaxMs": 66,
+			"fanOut": 642515,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 22.47705078125
+		},
+		{
+			"t": 711,
+			"online": 50,
+			"acks": {
+				"count": 188,
+				"p50": 5.5,
+				"p90": 13.1,
+				"p99": 27.1,
+				"p999": 38.2,
+				"max": 38.2
+			},
+			"heapUsed": 63116276,
+			"heapTotal": 110903296,
+			"gc": false,
+			"rss": 289226752,
+			"cpu": 28.3,
+			"clientHeap": 2202950088,
+			"clientRss": 3171024896,
+			"clientLoopP99": 23,
+			"documentBytes": 1016464,
+			"storedBytes": 266901,
+			"records": 161,
+			"updateRecords": 159,
+			"sockets": 50,
+			"compactions": 5,
+			"compactionMaxMs": 29,
+			"folds": 2109,
+			"foldMaxMs": 66,
+			"fanOut": 688519,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431417050,
+			"load": 21.3076171875
+		},
+		{
+			"t": 722,
+			"online": 48,
+			"acks": {
+				"count": 220,
+				"p50": 5.7,
+				"p90": 14.5,
+				"p99": 37.6,
+				"p999": 51.4,
+				"max": 51.4
+			},
+			"heapUsed": 26017936,
+			"heapTotal": 41222144,
+			"gc": true,
+			"rss": 202637312,
+			"cpu": 125.2,
+			"clientHeap": 1694632120,
+			"clientRss": 3204939776,
+			"clientLoopP99": 25,
+			"documentBytes": 1058981,
+			"storedBytes": 309418,
+			"records": 387,
+			"updateRecords": 385,
+			"sockets": 10,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 0,
+			"foldMaxMs": 0,
+			"fanOut": 0,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 19.6357421875
+		},
+		{
+			"t": 731,
+			"online": 48,
+			"acks": {
+				"count": 185,
+				"p50": 8.9,
+				"p90": 50.2,
+				"p99": 1007.7,
+				"p999": 1211.5,
+				"max": 1211.5
+			},
+			"heapUsed": 27761836,
+			"heapTotal": 75563008,
+			"gc": false,
+			"rss": 259588096,
+			"cpu": 22.9,
+			"clientHeap": 2007176728,
+			"clientRss": 3230498816,
+			"clientLoopP99": 28,
+			"documentBytes": 1051844,
+			"storedBytes": 267495,
+			"records": 79,
+			"updateRecords": 77,
+			"sockets": 48,
+			"compactions": 1,
+			"compactionMaxMs": 28,
+			"folds": 251,
+			"foldMaxMs": 29,
+			"fanOut": 60192,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 21.06494140625
+		},
+		{
+			"t": 741,
+			"online": 48,
+			"acks": {
+				"count": 171,
+				"p50": 5.4,
+				"p90": 16.8,
+				"p99": 61.8,
+				"p999": 68.3,
+				"max": 68.3
+			},
+			"heapUsed": 47427348,
+			"heapTotal": 77398016,
+			"gc": false,
+			"rss": 253198336,
+			"cpu": 32.9,
+			"clientHeap": 2136486224,
+			"clientRss": 3259891712,
+			"clientLoopP99": 22,
+			"documentBytes": 1076330,
+			"storedBytes": 291981,
+			"records": 253,
+			"updateRecords": 251,
+			"sockets": 48,
+			"compactions": 1,
+			"compactionMaxMs": 28,
+			"folds": 429,
+			"foldMaxMs": 29,
+			"fanOut": 122278,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 19.95263671875
+		},
+		{
+			"t": 752,
+			"online": 49,
+			"acks": {
+				"count": 163,
+				"p50": 5.8,
+				"p90": 14.9,
+				"p99": 78.3,
+				"p999": 82.1,
+				"max": 82.1
+			},
+			"heapUsed": 22781464,
+			"heapTotal": 131416064,
+			"gc": false,
+			"rss": 348585984,
+			"cpu": 140.6,
+			"clientHeap": 2318343280,
+			"clientRss": 3290267648,
+			"clientLoopP99": 23,
+			"documentBytes": 1103474,
+			"storedBytes": 319125,
+			"records": 420,
+			"updateRecords": 418,
+			"sockets": 48,
+			"compactions": 1,
+			"compactionMaxMs": 28,
+			"folds": 609,
+			"foldMaxMs": 95,
+			"fanOut": 171687,
+			"refusals": {
+				"storage": 3
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 19.0302734375
+		},
+		{
+			"t": 761,
+			"online": 47,
+			"acks": {
+				"count": 163,
+				"p50": 131.1,
+				"p90": 3968.6,
+				"p99": 5453.8,
+				"p999": 5474.9,
+				"max": 5474.9
+			},
+			"heapUsed": 52147396,
+			"heapTotal": 150814720,
+			"gc": false,
+			"rss": 469467136,
+			"cpu": 19.4,
+			"clientHeap": 2304529960,
+			"clientRss": 3120627712,
+			"clientLoopP99": 37,
+			"documentBytes": 1094554,
+			"storedBytes": 276808,
+			"records": 67,
+			"updateRecords": 65,
+			"sockets": 47,
+			"compactions": 2,
+			"compactionMaxMs": 28,
+			"folds": 836,
+			"foldMaxMs": 126,
+			"fanOut": 212093,
+			"refusals": {
+				"storage": 41
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 21.71923828125
+		},
+		{
+			"t": 771,
+			"online": 47,
+			"acks": {
+				"count": 166,
+				"p50": 10.6,
+				"p90": 75.7,
+				"p99": 338.6,
+				"p999": 369.8,
+				"max": 369.8
+			},
+			"heapUsed": 99082592,
+			"heapTotal": 151076864,
+			"gc": false,
+			"rss": 245579776,
+			"cpu": 16.1,
+			"clientHeap": 2360112408,
+			"clientRss": 3134226432,
+			"clientLoopP99": 56,
+			"documentBytes": 1112372,
+			"storedBytes": 286686,
+			"records": 105,
+			"updateRecords": 103,
+			"sockets": 47,
+			"compactions": 3,
+			"compactionMaxMs": 28,
+			"folds": 1016,
+			"foldMaxMs": 126,
+			"fanOut": 267002,
+			"refusals": {
+				"storage": 41
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 23.33154296875
+		},
+		{
+			"t": 782,
+			"online": 47,
+			"acks": {
+				"count": 176,
+				"p50": 9.5,
+				"p90": 29.3,
+				"p99": 239.9,
+				"p999": 240.3,
+				"max": 240.3
+			},
+			"heapUsed": 24888060,
+			"heapTotal": 26558464,
+			"gc": true,
+			"rss": 208683008,
+			"cpu": 35.8,
+			"clientHeap": 1829339888,
+			"clientRss": 3444539392,
+			"clientLoopP99": 31,
+			"documentBytes": 1135581,
+			"storedBytes": 309895,
+			"records": 286,
+			"updateRecords": 284,
+			"sockets": 47,
+			"compactions": 3,
+			"compactionMaxMs": 28,
+			"folds": 1203,
+			"foldMaxMs": 126,
+			"fanOut": 321960,
+			"refusals": {
+				"storage": 41
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 22.68408203125
+		},
+		{
+			"t": 791,
+			"online": 47,
+			"acks": {
+				"count": 166,
+				"p50": 8.1,
+				"p90": 22.7,
+				"p99": 62.1,
+				"p999": 62.6,
+				"max": 62.6
+			},
+			"heapUsed": 44962496,
+			"heapTotal": 61423616,
+			"gc": false,
+			"rss": 214990848,
+			"cpu": 22.4,
+			"clientHeap": 2070100392,
+			"clientRss": 3214802944,
+			"clientLoopP99": 31,
+			"documentBytes": 1156961,
+			"storedBytes": 331275,
+			"records": 454,
+			"updateRecords": 452,
+			"sockets": 47,
+			"compactions": 3,
+			"compactionMaxMs": 28,
+			"folds": 1379,
+			"foldMaxMs": 126,
+			"fanOut": 373687,
+			"refusals": {
+				"storage": 41
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 23.59033203125
+		},
+		{
+			"t": 801,
+			"online": 47,
+			"acks": {
+				"count": 165,
+				"p50": 6.9,
+				"p90": 25.3,
+				"p99": 72.2,
+				"p999": 78.1,
+				"max": 78.1
+			},
+			"heapUsed": 42888860,
+			"heapTotal": 78987264,
+			"gc": false,
+			"rss": 208502784,
+			"cpu": 19.2,
+			"clientHeap": 2096402456,
+			"clientRss": 3212066816,
+			"clientLoopP99": 29,
+			"documentBytes": 1156581,
+			"storedBytes": 301934,
+			"records": 124,
+			"updateRecords": 122,
+			"sockets": 47,
+			"compactions": 4,
+			"compactionMaxMs": 28,
+			"folds": 1556,
+			"foldMaxMs": 126,
+			"fanOut": 441785,
+			"refusals": {
+				"storage": 41
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 26.609375
+		},
+		{
+			"t": 811,
+			"online": 50,
+			"acks": {
+				"count": 189,
+				"p50": 7.9,
+				"p90": 22.5,
+				"p99": 63.8,
+				"p999": 93.1,
+				"max": 93.1
+			},
+			"heapUsed": 64959480,
+			"heapTotal": 116211712,
+			"gc": false,
+			"rss": 251789312,
+			"cpu": 26.4,
+			"clientHeap": 2223589128,
+			"clientRss": 3248308224,
+			"clientLoopP99": 29,
+			"documentBytes": 1190568,
+			"storedBytes": 335921,
+			"records": 315,
+			"updateRecords": 313,
+			"sockets": 50,
+			"compactions": 4,
+			"compactionMaxMs": 28,
+			"folds": 1756,
+			"foldMaxMs": 126,
+			"fanOut": 509514,
+			"refusals": {
+				"storage": 41
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 26.6435546875
+		},
+		{
+			"t": 821,
+			"online": 50,
+			"acks": {
+				"count": 176,
+				"p50": 4.6,
+				"p90": 19.1,
+				"p99": 86.4,
+				"p999": 93.4,
+				"max": 93.4
+			},
+			"heapUsed": 74624928,
+			"heapTotal": 126959616,
+			"gc": false,
+			"rss": 275562496,
+			"cpu": 23,
+			"clientHeap": 2435967464,
+			"clientRss": 3394355200,
+			"clientLoopP99": 26,
+			"documentBytes": 1224935,
+			"storedBytes": 370288,
+			"records": 495,
+			"updateRecords": 493,
+			"sockets": 50,
+			"compactions": 4,
+			"compactionMaxMs": 28,
+			"folds": 1946,
+			"foldMaxMs": 126,
+			"fanOut": 570576,
+			"refusals": {
+				"storage": 41
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 26.12158203125
+		},
+		{
+			"t": 832,
+			"online": 47,
+			"acks": {
+				"count": 186,
+				"p50": 5.2,
+				"p90": 24.9,
+				"p99": 86.7,
+				"p999": 94.1,
+				"max": 94.1
+			},
+			"heapUsed": 63589828,
+			"heapTotal": 120668160,
+			"gc": false,
+			"rss": 301170688,
+			"cpu": 23.3,
+			"clientHeap": 2541498776,
+			"clientRss": 3575693312,
+			"clientLoopP99": 26,
+			"documentBytes": 1210197,
+			"storedBytes": 318745,
+			"records": 185,
+			"updateRecords": 183,
+			"sockets": 47,
+			"compactions": 5,
+			"compactionMaxMs": 28,
+			"folds": 2140,
+			"foldMaxMs": 126,
+			"fanOut": 642661,
+			"refusals": {
+				"storage": 41
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431537009,
+			"load": 24.19677734375
+		},
+		{
+			"t": 842,
+			"online": 50,
+			"acks": {
+				"count": 164,
+				"p50": 5.3,
+				"p90": 24.9,
+				"p99": 138.1,
+				"p999": 151.7,
+				"max": 151.7
+			},
+			"heapUsed": 24569256,
+			"heapTotal": 26066944,
+			"gc": true,
+			"rss": 168230912,
+			"cpu": 63.5,
+			"clientHeap": 1978100760,
+			"clientRss": 3492282368,
+			"clientLoopP99": 31,
+			"documentBytes": 1236263,
+			"storedBytes": 344811,
+			"records": 357,
+			"updateRecords": 355,
+			"sockets": 50,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 4,
+			"foldMaxMs": 2,
+			"fanOut": 946,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431656870,
+			"load": 23.265625
+		},
+		{
+			"t": 851,
+			"online": 48,
+			"acks": {
+				"count": 179,
+				"p50": 4.4,
+				"p90": 16.9,
+				"p99": 107.5,
+				"p999": 378.1,
+				"max": 378.1
+			},
+			"heapUsed": 45327040,
+			"heapTotal": 60932096,
+			"gc": false,
+			"rss": 207585280,
+			"cpu": 19.9,
+			"clientHeap": 2138545072,
+			"clientRss": 3465576448,
+			"clientLoopP99": 27,
+			"documentBytes": 1227307,
+			"storedBytes": 305994,
+			"records": 34,
+			"updateRecords": 32,
+			"sockets": 48,
+			"compactions": 1,
+			"compactionMaxMs": 22,
+			"folds": 191,
+			"foldMaxMs": 23,
+			"fanOut": 40147,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431656870,
+			"load": 23.9287109375
+		},
+		{
+			"t": 861,
+			"online": 49,
+			"acks": {
+				"count": 156,
+				"p50": 5.9,
+				"p90": 23.6,
+				"p99": 69.2,
+				"p999": 90.6,
+				"max": 90.6
+			},
+			"heapUsed": 43047628,
+			"heapTotal": 77185024,
+			"gc": false,
+			"rss": 201900032,
+			"cpu": 47.7,
+			"clientHeap": 2276885208,
+			"clientRss": 3399385088,
+			"clientLoopP99": 30,
+			"documentBytes": 1240747,
+			"storedBytes": 313276,
+			"records": 82,
+			"updateRecords": 80,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 22,
+			"folds": 363,
+			"foldMaxMs": 23,
+			"fanOut": 89169,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431656870,
+			"load": 23.8623046875
+		},
+		{
+			"t": 871,
+			"online": 49,
+			"acks": {
+				"count": 178,
+				"p50": 5.3,
+				"p90": 16.8,
+				"p99": 47.6,
+				"p999": 62.8,
+				"max": 62.8
+			},
+			"heapUsed": 30211520,
+			"heapTotal": 92389376,
+			"gc": false,
+			"rss": 222609408,
+			"cpu": 19.8,
+			"clientHeap": 2453010512,
+			"clientRss": 3443965952,
+			"clientLoopP99": 29,
+			"documentBytes": 1273043,
+			"storedBytes": 345572,
+			"records": 264,
+			"updateRecords": 262,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 22,
+			"folds": 552,
+			"foldMaxMs": 27,
+			"fanOut": 151983,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431656870,
+			"load": 23.8349609375
+		},
+		{
+			"t": 881,
+			"online": 48,
+			"acks": {
+				"count": 188,
+				"p50": 4.8,
+				"p90": 22,
+				"p99": 182.4,
+				"p999": 184.1,
+				"max": 184.1
+			},
+			"heapUsed": 55867732,
+			"heapTotal": 121831424,
+			"gc": false,
+			"rss": 298237952,
+			"cpu": 64.5,
+			"clientHeap": 2694884936,
+			"clientRss": 3739779072,
+			"clientLoopP99": 28,
+			"documentBytes": 1308329,
+			"storedBytes": 380858,
+			"records": 459,
+			"updateRecords": 457,
+			"sockets": 48,
+			"compactions": 2,
+			"compactionMaxMs": 22,
+			"folds": 760,
+			"foldMaxMs": 27,
+			"fanOut": 203851,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431656870,
+			"load": 23.43408203125
+		},
+		{
+			"t": 891,
+			"online": 50,
+			"acks": {
+				"count": 201,
+				"p50": 4.1,
+				"p90": 16.2,
+				"p99": 35.4,
+				"p999": 1707.2,
+				"max": 1707.2
+			},
+			"heapUsed": 74709180,
+			"heapTotal": 125157376,
+			"gc": false,
+			"rss": 304332800,
+			"cpu": 23.4,
+			"clientHeap": 2443124968,
+			"clientRss": 3812507648,
+			"clientLoopP99": 27,
+			"documentBytes": 1335702,
+			"storedBytes": 408231,
+			"records": 661,
+			"updateRecords": 409,
+			"sockets": 50,
+			"compactions": 2,
+			"compactionMaxMs": 22,
+			"folds": 969,
+			"foldMaxMs": 27,
+			"fanOut": 247038,
+			"refusals": {
+				"storage": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431656870,
+			"load": 23.25146484375
+		},
+		{
+			"t": 902,
+			"online": 48,
+			"acks": {
+				"count": 176,
+				"p50": 5,
+				"p90": 16.2,
+				"p99": 44.3,
+				"p999": 50.7,
+				"max": 50.7
+			},
+			"heapUsed": 27946400,
+			"heapTotal": 29999104,
+			"gc": true,
+			"rss": 174211072,
+			"cpu": 31.5,
+			"clientHeap": 2117639808,
+			"clientRss": 3780542464,
+			"clientLoopP99": 29,
+			"documentBytes": 1363193,
+			"storedBytes": 435722,
+			"records": 843,
+			"updateRecords": 341,
+			"sockets": 48,
+			"compactions": 2,
+			"compactionMaxMs": 22,
+			"folds": 1160,
+			"foldMaxMs": 31,
+			"fanOut": 306548,
+			"refusals": {
+				"storage": 2
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431656870,
+			"load": 23.45263671875
+		},
+		{
+			"t": 911,
+			"online": 47,
+			"acks": {
+				"count": 165,
+				"p50": 5.6,
+				"p90": 40.6,
+				"p99": 343.6,
+				"p999": 359.2,
+				"max": 359.2
+			},
+			"heapUsed": 47379872,
+			"heapTotal": 60768256,
+			"gc": false,
+			"rss": 224182272,
+			"cpu": 20,
+			"clientHeap": 2506520112,
+			"clientRss": 3829104640,
+			"clientLoopP99": 29,
+			"documentBytes": 1385990,
+			"storedBytes": 458519,
+			"records": 1010,
+			"updateRecords": 258,
+			"sockets": 47,
+			"compactions": 2,
+			"compactionMaxMs": 22,
+			"folds": 1337,
+			"foldMaxMs": 31,
+			"fanOut": 351511,
+			"refusals": {
+				"storage": 3
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431656870,
+			"load": 23.27685546875
+		},
+		{
+			"t": 921,
+			"online": 45,
+			"acks": {
+				"count": 183,
+				"p50": 5.7,
+				"p90": 25.2,
+				"p99": 54,
+				"p999": 58.3,
+				"max": 58.3
+			},
+			"heapUsed": 65690848,
+			"heapTotal": 120782848,
+			"gc": false,
+			"rss": 295272448,
+			"cpu": 91.7,
+			"clientHeap": 2585553512,
+			"clientRss": 3839934464,
+			"clientLoopP99": 28,
+			"documentBytes": 1413450,
+			"storedBytes": 485979,
+			"records": 1199,
+			"updateRecords": 1197,
+			"sockets": 0,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 0,
+			"foldMaxMs": 0,
+			"fanOut": 0,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 24.0888671875
+		},
+		{
+			"t": 931,
+			"online": 49,
+			"acks": {
+				"count": 147,
+				"p50": 16.2,
+				"p90": 79.5,
+				"p99": 621.1,
+				"p999": 787.3,
+				"max": 787.3
+			},
+			"heapUsed": 91738792,
+			"heapTotal": 142475264,
+			"gc": false,
+			"rss": 310525952,
+			"cpu": 40.1,
+			"clientHeap": 2665210968,
+			"clientRss": 3706732544,
+			"clientLoopP99": 42,
+			"documentBytes": 1352810,
+			"storedBytes": 351716,
+			"records": 159,
+			"updateRecords": 157,
+			"sockets": 49,
+			"compactions": 1,
+			"compactionMaxMs": 25,
+			"folds": 216,
+			"foldMaxMs": 40,
+			"fanOut": 72387,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 26.7236328125
+		},
+		{
+			"t": 941,
+			"online": 48,
+			"acks": {
+				"count": 157,
+				"p50": 7.5,
+				"p90": 20.2,
+				"p99": 46,
+				"p999": 46.7,
+				"max": 46.7
+			},
+			"heapUsed": 34354692,
+			"heapTotal": 132251648,
+			"gc": false,
+			"rss": 326647808,
+			"cpu": 22.1,
+			"clientHeap": 2753730496,
+			"clientRss": 3768729600,
+			"clientLoopP99": 31,
+			"documentBytes": 1372811,
+			"storedBytes": 371717,
+			"records": 318,
+			"updateRecords": 316,
+			"sockets": 48,
+			"compactions": 1,
+			"compactionMaxMs": 25,
+			"folds": 382,
+			"foldMaxMs": 40,
+			"fanOut": 148032,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 25.56787109375
+		},
+		{
+			"t": 951,
+			"online": 49,
+			"acks": {
+				"count": 173,
+				"p50": 9.2,
+				"p90": 29.7,
+				"p99": 92.2,
+				"p999": 112.7,
+				"max": 112.7
+			},
+			"heapUsed": 48297596,
+			"heapTotal": 133038080,
+			"gc": false,
+			"rss": 311132160,
+			"cpu": 28.3,
+			"clientHeap": 2768168544,
+			"clientRss": 3760930816,
+			"clientLoopP99": 34,
+			"documentBytes": 1369472,
+			"storedBytes": 345496,
+			"records": 83,
+			"updateRecords": 81,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 25,
+			"folds": 570,
+			"foldMaxMs": 40,
+			"fanOut": 209954,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 25.71044921875
+		},
+		{
+			"t": 962,
+			"online": 49,
+			"acks": {
+				"count": 193,
+				"p50": 5.1,
+				"p90": 28.7,
+				"p99": 284,
+				"p999": 309.4,
+				"max": 309.4
+			},
+			"heapUsed": 26976640,
+			"heapTotal": 28966912,
+			"gc": true,
+			"rss": 201113600,
+			"cpu": 39.3,
+			"clientHeap": 2244300152,
+			"clientRss": 3984654336,
+			"clientLoopP99": 33,
+			"documentBytes": 1399808,
+			"storedBytes": 375832,
+			"records": 286,
+			"updateRecords": 284,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 25,
+			"folds": 782,
+			"foldMaxMs": 40,
+			"fanOut": 290397,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 23.97705078125
+		},
+		{
+			"t": 972,
+			"online": 49,
+			"acks": {
+				"count": 172,
+				"p50": 10.9,
+				"p90": 38.7,
+				"p99": 533.8,
+				"p999": 569.4,
+				"max": 569.4
+			},
+			"heapUsed": 49883036,
+			"heapTotal": 68550656,
+			"gc": false,
+			"rss": 231211008,
+			"cpu": 24.4,
+			"clientHeap": 2548715384,
+			"clientRss": 3967139840,
+			"clientLoopP99": 38,
+			"documentBytes": 1424713,
+			"storedBytes": 400737,
+			"records": 457,
+			"updateRecords": 455,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 25,
+			"folds": 961,
+			"foldMaxMs": 57,
+			"fanOut": 339666,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 24.5595703125
+		},
+		{
+			"t": 982,
+			"online": 49,
+			"acks": {
+				"count": 187,
+				"p50": 26.1,
+				"p90": 485.7,
+				"p99": 944.4,
+				"p999": 949.9,
+				"max": 949.9
+			},
+			"heapUsed": 40769104,
+			"heapTotal": 80871424,
+			"gc": false,
+			"rss": 197885952,
+			"cpu": 23.9,
+			"clientHeap": 2537883552,
+			"clientRss": 3790684160,
+			"clientLoopP99": 61,
+			"documentBytes": 1417212,
+			"storedBytes": 364122,
+			"records": 149,
+			"updateRecords": 147,
+			"sockets": 49,
+			"compactions": 3,
+			"compactionMaxMs": 37,
+			"folds": 1162,
+			"foldMaxMs": 67,
+			"fanOut": 408618,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 29.94677734375
+		},
+		{
+			"t": 991,
+			"online": 48,
+			"acks": {
+				"count": 177,
+				"p50": 17.5,
+				"p90": 57,
+				"p99": 1309.4,
+				"p999": 1334.5,
+				"max": 1334.5
+			},
+			"heapUsed": 52204220,
+			"heapTotal": 109707264,
+			"gc": false,
+			"rss": 256671744,
+			"cpu": 24.9,
+			"clientHeap": 2581537832,
+			"clientRss": 3838541824,
+			"clientLoopP99": 43,
+			"documentBytes": 1449128,
+			"storedBytes": 396038,
+			"records": 332,
+			"updateRecords": 330,
+			"sockets": 48,
+			"compactions": 3,
+			"compactionMaxMs": 37,
+			"folds": 1352,
+			"foldMaxMs": 67,
+			"fanOut": 465293,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 32.11962890625
+		},
+		{
+			"t": 1001,
+			"online": 47,
+			"acks": {
+				"count": 196,
+				"p50": 12.7,
+				"p90": 48.5,
+				"p99": 109.3,
+				"p999": 112.7,
+				"max": 112.7
+			},
+			"heapUsed": 30944576,
+			"heapTotal": 123863040,
+			"gc": false,
+			"rss": 321781760,
+			"cpu": 20.2,
+			"clientHeap": 2763487688,
+			"clientRss": 3882975232,
+			"clientLoopP99": 42,
+			"documentBytes": 1442111,
+			"storedBytes": 358259,
+			"records": 28,
+			"updateRecords": 26,
+			"sockets": 47,
+			"compactions": 4,
+			"compactionMaxMs": 37,
+			"folds": 1551,
+			"foldMaxMs": 67,
+			"fanOut": 521683,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 33.974609375
+		},
+		{
+			"t": 1011,
+			"online": 48,
+			"acks": {
+				"count": 183,
+				"p50": 11.2,
+				"p90": 29,
+				"p99": 74.4,
+				"p999": 89.1,
+				"max": 89.1
+			},
+			"heapUsed": 81142556,
+			"heapTotal": 124649472,
+			"gc": false,
+			"rss": 326205440,
+			"cpu": 26.7,
+			"clientHeap": 2726838720,
+			"clientRss": 3934879744,
+			"clientLoopP99": 39,
+			"documentBytes": 1468084,
+			"storedBytes": 384232,
+			"records": 212,
+			"updateRecords": 210,
+			"sockets": 48,
+			"compactions": 4,
+			"compactionMaxMs": 37,
+			"folds": 1740,
+			"foldMaxMs": 67,
+			"fanOut": 570121,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 34.3046875
+		},
+		{
+			"t": 1022,
+			"online": 48,
+			"acks": {
+				"count": 167,
+				"p50": 9.6,
+				"p90": 35.6,
+				"p99": 86.9,
+				"p999": 97.4,
+				"max": 97.4
+			},
+			"heapUsed": 28323488,
+			"heapTotal": 30539776,
+			"gc": true,
+			"rss": 217350144,
+			"cpu": 42.6,
+			"clientHeap": 2387438624,
+			"clientRss": 4158898176,
+			"clientLoopP99": 38,
+			"documentBytes": 1500922,
+			"storedBytes": 417070,
+			"records": 390,
+			"updateRecords": 388,
+			"sockets": 47,
+			"compactions": 4,
+			"compactionMaxMs": 37,
+			"folds": 1926,
+			"foldMaxMs": 67,
+			"fanOut": 618088,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 34.04931640625
+		},
+		{
+			"t": 1031,
+			"online": 50,
+			"acks": {
+				"count": 188,
+				"p50": 9.5,
+				"p90": 36.6,
+				"p99": 203.8,
+				"p999": 231.3,
+				"max": 231.3
+			},
+			"heapUsed": 37150640,
+			"heapTotal": 79298560,
+			"gc": false,
+			"rss": 270155776,
+			"cpu": 37.4,
+			"clientHeap": 2705049680,
+			"clientRss": 4166615040,
+			"clientLoopP99": 34,
+			"documentBytes": 1494352,
+			"storedBytes": 377724,
+			"records": 79,
+			"updateRecords": 77,
+			"sockets": 50,
+			"compactions": 5,
+			"compactionMaxMs": 37,
+			"folds": 2131,
+			"foldMaxMs": 67,
+			"fanOut": 674147,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 32.28271484375
+		},
+		{
+			"t": 1041,
+			"online": 47,
+			"acks": {
+				"count": 201,
+				"p50": 8.2,
+				"p90": 32.1,
+				"p99": 60.8,
+				"p999": 359.5,
+				"max": 359.5
+			},
+			"heapUsed": 34132872,
+			"heapTotal": 86376448,
+			"gc": false,
+			"rss": 280166400,
+			"cpu": 30.3,
+			"clientHeap": 2670183136,
+			"clientRss": 4182736896,
+			"clientLoopP99": 34,
+			"documentBytes": 1507820,
+			"storedBytes": 379105,
+			"records": 104,
+			"updateRecords": 102,
+			"sockets": 47,
+			"compactions": 6,
+			"compactionMaxMs": 44,
+			"folds": 2342,
+			"foldMaxMs": 67,
+			"fanOut": 748260,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 30.845703125
+		},
+		{
+			"t": 1052,
+			"online": 47,
+			"acks": {
+				"count": 183,
+				"p50": 6.6,
+				"p90": 25.8,
+				"p99": 51.8,
+				"p999": 57.3,
+				"max": 57.3
+			},
+			"heapUsed": 91006108,
+			"heapTotal": 156925952,
+			"gc": false,
+			"rss": 347684864,
+			"cpu": 121.6,
+			"clientHeap": 2818382600,
+			"clientRss": 4186587136,
+			"clientLoopP99": 35,
+			"documentBytes": 1545311,
+			"storedBytes": 416596,
+			"records": 291,
+			"updateRecords": 289,
+			"sockets": 46,
+			"compactions": 6,
+			"compactionMaxMs": 44,
+			"folds": 2541,
+			"foldMaxMs": 161,
+			"fanOut": 820117,
+			"refusals": {
+				"storage": 2
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 28.25537109375
+		},
+		{
+			"t": 1061,
+			"online": 50,
+			"acks": {
+				"count": 129,
+				"p50": 168.8,
+				"p90": 3639.7,
+				"p99": 4477.7,
+				"p999": 5282.6,
+				"max": 5282.6
+			},
+			"heapUsed": 120534492,
+			"heapTotal": 190021632,
+			"gc": false,
+			"rss": 421756928,
+			"cpu": 23.8,
+			"clientHeap": 2944869408,
+			"clientRss": 4221321216,
+			"clientLoopP99": 31,
+			"documentBytes": 1570461,
+			"storedBytes": 441746,
+			"records": 416,
+			"updateRecords": 414,
+			"sockets": 50,
+			"compactions": 6,
+			"compactionMaxMs": 44,
+			"folds": 2728,
+			"foldMaxMs": 194,
+			"fanOut": 870004,
+			"refusals": {
+				"storage": 29
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 25.1279296875
+		},
+		{
+			"t": 1071,
+			"online": 50,
+			"acks": {
+				"count": 166,
+				"p50": 4.1,
+				"p90": 15,
+				"p99": 33.6,
+				"p999": 41.6,
+				"max": 41.6
+			},
+			"heapUsed": 79298792,
+			"heapTotal": 153288704,
+			"gc": false,
+			"rss": 420495360,
+			"cpu": 28.6,
+			"clientHeap": 3075038576,
+			"clientRss": 4332765184,
+			"clientLoopP99": 28,
+			"documentBytes": 1552590,
+			"storedBytes": 389125,
+			"records": 87,
+			"updateRecords": 85,
+			"sockets": 50,
+			"compactions": 7,
+			"compactionMaxMs": 44,
+			"folds": 2910,
+			"foldMaxMs": 194,
+			"fanOut": 946413,
+			"refusals": {
+				"storage": 29
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431736772,
+			"load": 23.29833984375
+		},
+		{
+			"t": 1082,
+			"online": 48,
+			"acks": {
+				"count": 172,
+				"p50": 3.5,
+				"p90": 13.4,
+				"p99": 34.7,
+				"p999": 65.9,
+				"max": 65.9
+			},
+			"heapUsed": 34787308,
+			"heapTotal": 38486016,
+			"gc": true,
+			"rss": 265207808,
+			"cpu": 110.1,
+			"clientHeap": 2519841912,
+			"clientRss": 4589748224,
+			"clientLoopP99": 28,
+			"documentBytes": 1576298,
+			"storedBytes": 412833,
+			"records": 272,
+			"updateRecords": 270,
+			"sockets": 48,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 8,
+			"foldMaxMs": 1,
+			"fanOut": 808,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431897073,
+			"load": 20.70556640625
+		},
+		{
+			"t": 1091,
+			"online": 45,
+			"acks": {
+				"count": 208,
+				"p50": 3.9,
+				"p90": 27.2,
+				"p99": 130.5,
+				"p999": 151.2,
+				"max": 151.2
+			},
+			"heapUsed": 53015308,
+			"heapTotal": 74137600,
+			"gc": false,
+			"rss": 306429952,
+			"cpu": 14.4,
+			"clientHeap": 2768767736,
+			"clientRss": 4591484928,
+			"clientLoopP99": 28,
+			"documentBytes": 1604888,
+			"storedBytes": 441423,
+			"records": 475,
+			"updateRecords": 473,
+			"sockets": 45,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 215,
+			"foldMaxMs": 19,
+			"fanOut": 72054,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431897073,
+			"load": 18.53076171875
+		},
+		{
+			"t": 1101,
+			"online": 48,
+			"acks": {
+				"count": 178,
+				"p50": 3.4,
+				"p90": 9.7,
+				"p99": 34.3,
+				"p999": 55.6,
+				"max": 55.6
+			},
+			"heapUsed": 43096356,
+			"heapTotal": 86458368,
+			"gc": false,
+			"rss": 323551232,
+			"cpu": 21.2,
+			"clientHeap": 2823541768,
+			"clientRss": 4595810304,
+			"clientLoopP99": 29,
+			"documentBytes": 1601609,
+			"storedBytes": 410276,
+			"records": 157,
+			"updateRecords": 155,
+			"sockets": 48,
+			"compactions": 1,
+			"compactionMaxMs": 22,
+			"folds": 408,
+			"foldMaxMs": 22,
+			"fanOut": 126377,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431897073,
+			"load": 16.68359375
+		},
+		{
+			"t": 1111,
+			"online": 49,
+			"acks": {
+				"count": 192,
+				"p50": 3.1,
+				"p90": 10.4,
+				"p99": 62.5,
+				"p999": 73.3,
+				"max": 73.3
+			},
+			"heapUsed": 59950840,
+			"heapTotal": 112672768,
+			"gc": false,
+			"rss": 348536832,
+			"cpu": 42.3,
+			"clientHeap": 2957561152,
+			"clientRss": 4600299520,
+			"clientLoopP99": 27,
+			"documentBytes": 1632929,
+			"storedBytes": 441596,
+			"records": 355,
+			"updateRecords": 353,
+			"sockets": 49,
+			"compactions": 1,
+			"compactionMaxMs": 22,
+			"folds": 614,
+			"foldMaxMs": 22,
+			"fanOut": 185341,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431897073,
+			"load": 15.72900390625
+		},
+		{
+			"t": 1121,
+			"online": 49,
+			"acks": {
+				"count": 201,
+				"p50": 3.6,
+				"p90": 14.7,
+				"p99": 165,
+				"p999": 192.9,
+				"max": 192.9
+			},
+			"heapUsed": 55742472,
+			"heapTotal": 123682816,
+			"gc": false,
+			"rss": 369278976,
+			"cpu": 16.9,
+			"clientHeap": 3038404568,
+			"clientRss": 4608884736,
+			"clientLoopP99": 29,
+			"documentBytes": 1632107,
+			"storedBytes": 407609,
+			"records": 57,
+			"updateRecords": 55,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 22,
+			"folds": 824,
+			"foldMaxMs": 24,
+			"fanOut": 234468,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431897073,
+			"load": 14.55322265625
+		},
+		{
+			"t": 1131,
+			"online": 48,
+			"acks": {
+				"count": 201,
+				"p50": 3.4,
+				"p90": 16.2,
+				"p99": 29.7,
+				"p999": 363.7,
+				"max": 363.7
+			},
+			"heapUsed": 49095848,
+			"heapTotal": 128925696,
+			"gc": false,
+			"rss": 370229248,
+			"cpu": 17.4,
+			"clientHeap": 3112051352,
+			"clientRss": 4614750208,
+			"clientLoopP99": 27,
+			"documentBytes": 1653853,
+			"storedBytes": 417294,
+			"records": 96,
+			"updateRecords": 94,
+			"sockets": 48,
+			"compactions": 3,
+			"compactionMaxMs": 22,
+			"folds": 1042,
+			"foldMaxMs": 24,
+			"fanOut": 276172,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431897073,
+			"load": 13.38525390625
+		},
+		{
+			"t": 1142,
+			"online": 48,
+			"acks": {
+				"count": 161,
+				"p50": 3,
+				"p90": 10,
+				"p99": 29.3,
+				"p999": 198.8,
+				"max": 198.8
+			},
+			"heapUsed": 39226700,
+			"heapTotal": 48726016,
+			"gc": true,
+			"rss": 283295744,
+			"cpu": 95.1,
+			"clientHeap": 2694884584,
+			"clientRss": 4747722752,
+			"clientLoopP99": 25,
+			"documentBytes": 1690725,
+			"storedBytes": 454166,
+			"records": 267,
+			"updateRecords": 265,
+			"sockets": 10,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 0,
+			"foldMaxMs": 0,
+			"fanOut": 0,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431957099,
+			"load": 12.02197265625
+		},
+		{
+			"t": 1151,
+			"online": 47,
+			"acks": {
+				"count": 174,
+				"p50": 3.7,
+				"p90": 72.5,
+				"p99": 1002.7,
+				"p999": 1012.8,
+				"max": 1012.8
+			},
+			"heapUsed": 66616780,
+			"heapTotal": 91717632,
+			"gc": false,
+			"rss": 332955648,
+			"cpu": 12.8,
+			"clientHeap": 2985562720,
+			"clientRss": 4753571840,
+			"clientLoopP99": 27,
+			"documentBytes": 1722856,
+			"storedBytes": 486297,
+			"records": 448,
+			"updateRecords": 446,
+			"sockets": 47,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 233,
+			"foldMaxMs": 15,
+			"fanOut": 47103,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431957099,
+			"load": 11.9189453125
+		},
+		{
+			"t": 1161,
+			"online": 47,
+			"acks": {
+				"count": 189,
+				"p50": 2.7,
+				"p90": 7.1,
+				"p99": 30.6,
+				"p999": 40.3,
+				"max": 40.3
+			},
+			"heapUsed": 41906312,
+			"heapTotal": 108494848,
+			"gc": false,
+			"rss": 354664448,
+			"cpu": 20.6,
+			"clientHeap": 3022481616,
+			"clientRss": 4754685952,
+			"clientLoopP99": 26,
+			"documentBytes": 1708101,
+			"storedBytes": 433863,
+			"records": 141,
+			"updateRecords": 139,
+			"sockets": 47,
+			"compactions": 1,
+			"compactionMaxMs": 21,
+			"folds": 430,
+			"foldMaxMs": 21,
+			"fanOut": 120813,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431957099,
+			"load": 11.02783203125
+		},
+		{
+			"t": 1171,
+			"online": 47,
+			"acks": {
+				"count": 180,
+				"p50": 2.6,
+				"p90": 9.4,
+				"p99": 26.7,
+				"p999": 36.9,
+				"max": 36.9
+			},
+			"heapUsed": 83269096,
+			"heapTotal": 135233536,
+			"gc": false,
+			"rss": 386793472,
+			"cpu": 14.8,
+			"clientHeap": 3123891136,
+			"clientRss": 4766138368,
+			"clientLoopP99": 28,
+			"documentBytes": 1736389,
+			"storedBytes": 462151,
+			"records": 322,
+			"updateRecords": 320,
+			"sockets": 47,
+			"compactions": 1,
+			"compactionMaxMs": 21,
+			"folds": 615,
+			"foldMaxMs": 21,
+			"fanOut": 177814,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431957099,
+			"load": 10.1005859375
+		},
+		{
+			"t": 1181,
+			"online": 47,
+			"acks": {
+				"count": 194,
+				"p50": 2.6,
+				"p90": 8.9,
+				"p99": 27.9,
+				"p999": 941.5,
+				"max": 941.5
+			},
+			"heapUsed": 77960944,
+			"heapTotal": 135970816,
+			"gc": false,
+			"rss": 415072256,
+			"cpu": 13.1,
+			"clientHeap": 3242496840,
+			"clientRss": 4765777920,
+			"clientLoopP99": 26,
+			"documentBytes": 1729896,
+			"storedBytes": 426457,
+			"records": 19,
+			"updateRecords": 17,
+			"sockets": 47,
+			"compactions": 2,
+			"compactionMaxMs": 21,
+			"folds": 817,
+			"foldMaxMs": 21,
+			"fanOut": 242259,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431957099,
+			"load": 9.4150390625
+		},
+		{
+			"t": 1191,
+			"online": 49,
+			"acks": {
+				"count": 189,
+				"p50": 2.9,
+				"p90": 13.7,
+				"p99": 36.5,
+				"p999": 38.9,
+				"max": 38.9
+			},
+			"heapUsed": 73764640,
+			"heapTotal": 138641408,
+			"gc": false,
+			"rss": 403456000,
+			"cpu": 15.9,
+			"clientHeap": 3561829392,
+			"clientRss": 4802281472,
+			"clientLoopP99": 26,
+			"documentBytes": 1768380,
+			"storedBytes": 464941,
+			"records": 213,
+			"updateRecords": 211,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 21,
+			"folds": 1023,
+			"foldMaxMs": 21,
+			"fanOut": 296945,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431957099,
+			"load": 8.80908203125
+		},
+		{
+			"t": 1211,
+			"online": 50,
+			"acks": {
+				"count": 200,
+				"p50": 2.6,
+				"p90": 10.3,
+				"p99": 30.7,
+				"p999": 57281.4,
+				"max": 57281.4
+			},
+			"heapUsed": 36386168,
+			"heapTotal": 38764544,
+			"gc": true,
+			"rss": 293994496,
+			"cpu": 2.5,
+			"clientHeap": 2860865968,
+			"clientRss": 4868882432,
+			"clientLoopP99": 27,
+			"documentBytes": 1803037,
+			"storedBytes": 499598,
+			"records": 415,
+			"updateRecords": 413,
+			"sockets": 50,
+			"compactions": 2,
+			"compactionMaxMs": 21,
+			"folds": 1234,
+			"foldMaxMs": 21,
+			"fanOut": 354716,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791431957099,
+			"load": 7.1357421875
+		}
+	]
+}

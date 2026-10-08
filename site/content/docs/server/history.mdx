@@ -153,6 +153,8 @@ await room.undoRestore(); // the last restore, once
 
 A room without history throws from `listHistory`, `readHistory` and `restoreHistory`.
 
+In the browser, [`HistoryPanel`](/docs/server/history-panel) is the UI over these: the versions with their editors, a read-only preview of one with the blocks added, removed and changed since highlighted, and Restore and Undo restore, through `createHistoryClient` (the requests below) or a client of your own.
+
 ### Over HTTP
 
 `routeDocumentHistory` is the HTTP door to the same methods, authorized as [`routeDocumentSocket`](/docs/server/authorization) authorizes a dial (the same `authorize`, the same refusals, as HTTP statuses):

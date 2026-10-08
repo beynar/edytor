@@ -1,0 +1,176 @@
+---
+title: History panel
+description: A version history panel for your app, as in Notion. It lists the room's versions with their editors, previews one read-only with the blocks added, removed and changed since highlighted, and restores it or undoes the restore.
+icon: history
+---
+
+`HistoryPanel` is the page history of Notion for a document kept by the room's [version history](/docs/server/history): the versions on the right, newest first, the selected one previewed on the left, and **Restore version** under the list. The preview highlights what changed since that version: the blocks added since in green, the blocks removed since in red, the blocks changed since in yellow.
+
+```svelte title="Page.svelte" check
+<script lang="ts">
+	import { Edytor, HistoryPanel, createDocument, createHistoryClient } from 'edytor';
+
+	let { id, token }: { id: string; token: string } = $props();
+
+	const document = createDocument();
+	const client = createHistoryClient({
+		server: 'https://example.com/history',
+		room: id,
+		params: { token }
+	});
+	let open = $state(false);
+</script>
+
+<Edytor {document} server="wss://example.com/rooms" room={id} params={{ token }} />
+
+<button onclick={() => (open = true)}>Version history</button>
+{#if open}
+	<dialog open style="width: min(1000px, 92vw); height: 80vh; padding: 0">
+		<HistoryPanel {client} {document} />
+		<button onclick={() => (open = false)}>Close</button>
+	</dialog>
+{/if}
+```
+
+The panel needs two things: a **client**, which reads and restores the versions, and the **document** the page edits, which it compares each version with. Pass the same `plugins` the page's editor uses so every kind renders in the preview as it does on the page. Place it where you like (a dialog, a side sheet, a route of its own): it fills its container's height and scrolls its preview and its list itself.
+
+## The client
+
+The panel asks a `HistoryClient` for everything it shows and does:
+
+| Method | Answer |
+| --- | --- |
+| `list()` | The versions, newest first: `HistoryVersion[]`, the shape the room's `listHistory()` returns (`{ key, date, slot, bytes, blocks, editors, more, at, expiresAt }`). |
+| `read(key)` | That version as a `JSONDoc`, or `null` when it is gone. |
+| `restore(key)` | Restore it: `{ status: 'applied' \| 'noop' \| 'refused', key, … }`. |
+| `undo()` | Undo the last restore: `{ status: 'applied' \| 'noop' }`. |
+
+`createHistoryClient({ server, room, params, fetch })` is the client for the HTTP door the room ships, [`routeDocumentHistory`](/docs/server/history#over-http). Its requests go to `<server>/<room>`, the room percent-encoded as one path segment, as the provider sends it (a `ws:` or `wss:` server reads as `http:` or `https:`):
+
+| Method | Request | Reads |
+| --- | --- | --- |
+| `list()` | `GET <url>` | the JSON list |
+| `read(key)` | `GET <url>?key=<key>` | the JSON version; `404` is `null` |
+| `restore(key)` | `POST <url>?restore=<key>` | the JSON result; `404` is `{ status: 'refused', key }` |
+| `undo()` | `POST <url>?undo` | the JSON result |
+
+`params` are added to every request (a token): an object, or a function read again at each request, so a refreshed token is used at once. Any other refusal throws a `HistoryRequestError` whose `status` is the HTTP status (`401` expired, `403` denied or a read-only identity's restore, `404` no history, `503` the room cannot serve it). A room id no request can carry (empty, `.` or `..`, over 256 characters, or with a lone surrogate) throws a `TypeError` at once.
+
+Any object with the four methods is a client: your own API routes, a SvelteKit remote function, Durable Object RPC behind your server, or a stub in tests.
+
+```ts title="history.ts" check
+import type { HistoryClient } from 'edytor';
+
+/** The versions through the app's own API, which calls the room over RPC. */
+export const historyOf = (documentId: string): HistoryClient => {
+	const base = `/api/documents/${encodeURIComponent(documentId)}/versions`;
+	const json = async (response: Response) => {
+		if (!response.ok) throw new Error(`versions: ${response.status}`);
+		return response.json();
+	};
+	return {
+		list: () => fetch(base).then(json),
+		read: async (key) => {
+			const response = await fetch(`${base}/${encodeURIComponent(key)}`);
+			return response.status === 404 ? null : json(response);
+		},
+		restore: (key) =>
+			fetch(`${base}/${encodeURIComponent(key)}/restore`, { method: 'POST' }).then(json),
+		undo: () => fetch(`${base}/undo`, { method: 'POST' }).then(json)
+	};
+};
+```
+
+## The list
+
+Each version is a row: its date and half of the day (`Oct 6, 2026 · Morning`), in the room's calendar (the history's `timeZone`); its editors (`ada, bob +2`, or `No editors` for a slot only the server edited); and when it was saved, in the reader's time zone. The panel lists the versions when it mounts (and again for a new `client`) and selects the newest. A click selects a row; in the list, <kbd>↑</kbd> and <kbd>↓</kbd> move the selection, <kbd>Home</kbd> and <kbd>End</kbd> go to the newest and the oldest. The list is a `listbox`, its rows `option`s.
+
+## The preview
+
+The selected version is read (`client.read(key)`) and shown in a read-only `<Edytor>` of its own, with the `plugins` you pass (and the default plugins unless `defaultPlugins={false}`), no block handles, and `previewClass` as its class (your theme's, such as `edytor-notion`). It is a separate document: nothing you do in the preview reaches the page. A version that is gone by the time it is read says so (`labels.unavailable`).
+
+### Changes since the version
+
+With `document`, the panel compares the version with the page, block by block, matching blocks by id (a restore keeps ids, so a block keeps its id across versions):
+
+| Highlight | The block | A restore |
+| --- | --- | --- |
+| Added since (green) | is on the page, not in the version | deletes it |
+| Removed since (red) | is in the version, not on the page | brings it back |
+| Changed since (yellow) | is in both, with another type, data or text (marks included) | rewrites it |
+
+While **Highlight changes** is on (the default, `bind:highlight` to drive it), the preview shows the version with the blocks added since inserted where the page has them, so all three show, and the legend counts them (`Same as the current page` when there are none). Off, it shows the version alone. Each highlight is a tint over the block's own row (not its children), with a bar on its left, drawn in the preview's overlay, never inside its blocks.
+
+The comparison follows the page: an edit on the page, yours or a collaborator's, updates the highlights at once. A move is not a change, and neither is a change of a block's children alone (the child is highlighted, not its parent); the document's own data is not compared. A block inside a closed toggle shows no highlight. Past 2,000 changed blocks, only the first 2,000 are highlighted; the legend counts them all.
+
+`versionDiff(version, current)` is the comparison alone: `{ preview, changes, added, removed, changed }`, `changes` a `Map` from block id to `'added' | 'removed' | 'changed'` and `preview` the version with the added blocks inserted. Use it to show changes in a UI of your own.
+
+## Restore and undo
+
+**Restore version** calls `client.restore(key)`. The room writes the version as a forward edit that every client receives ([what a restore does](/docs/server/history#what-a-restore-does)), so the page updates through its sync and the highlights clear. The panel then says `Version restored.` (`noop`: `The page already matches this version.`; `refused`: the version is gone, the list is read again). After a restore applied from the panel, **Undo restore** appears; it calls `client.undo()`, which undoes the room's last restore (one level, whoever made it), and disappears.
+
+A `401` or `403` (a reader's restore, an expired session) shows `You do not have access to this history.`, any other failure `The history could not be reached.`; `onError` receives the error. For readers, pass `readonly`: the panel shows no Restore and no Undo restore. The status line is a polite live region, so screen readers announce each outcome.
+
+## Props
+
+| Prop | Type | Default | |
+| --- | --- | --- | --- |
+| `client` | `HistoryClient` | | Where the versions come from. |
+| `document` | `EdytorDocument` | | The page's document, compared with each version. Without it, no change is highlighted. |
+| `plugins` | `Plugin[]` | `[]` | The preview's plugins: the page editor's. |
+| `defaultPlugins` | `boolean` | `true` | Whether the preview adds the [default plugins](/docs/plugins#default-plugins). |
+| `readonly` | `boolean` | `false` | Hide Restore and Undo restore. |
+| `highlight` | `boolean` (bindable) | `true` | Highlight the changes since the version. |
+| `locale` | `string \| string[]` | the browser's | The locale of dates and times. |
+| `labels` | `Partial<HistoryPanelLabels>` | | Replace any of the panel's words (below). |
+| `class` | `string` | | The panel's class. |
+| `previewClass` | `string` | | The preview editor's class. |
+| `version` | `Snippet<[HistoryVersion, { selected }]>` | | A row's content, in place of its date, editors and time. |
+| `onRestore` | `(result) => void` | | After each restore the room answered. |
+| `onUndo` | `(result) => void` | | After each undo the room answered. |
+| `onError` | `(error) => void` | | A request failed. |
+
+With `bind:this`, the panel exposes `refresh()` (list the versions again, keeping the selection while it is listed) and `select(key)` (preview a version; `null` for none).
+
+### Words
+
+Every word the panel shows is in `labels`, defaults in `defaultHistoryLabels`; `{n}` stands for a count (`added: '{n} added since'`, `moreEditors: '+{n}'`).
+
+```svelte title="Historique.svelte" check
+<script lang="ts">
+	import { HistoryPanel, type EdytorDocument, type HistoryClient } from 'edytor';
+
+	let { client, document }: { client: HistoryClient; document: EdytorDocument } = $props();
+</script>
+
+<HistoryPanel
+	{client}
+	{document}
+	locale="fr-FR"
+	labels={{
+		title: 'Historique des versions',
+		morning: 'Matin',
+		evening: 'Soir',
+		restore: 'Restaurer cette version',
+		undo: 'Annuler la restauration',
+		added: '{n} ajoutés depuis',
+		removed: '{n} supprimés depuis',
+		changed: '{n} modifiés depuis'
+	}}
+/>
+```
+
+## Styling
+
+The panel is two columns, the list `--edytor-history-side-width` (260px) wide; below 640px of its own width it stacks the list above the preview. Its parts carry `data-edytor-history-*` attributes (`-preview`, `-header`, `-legend`, `-page`, `-side`, `-list`, `-version`, `-actions`, `-status`, `-restore`, `-undo`), and these variables set its colors:
+
+| Variable | |
+| --- | --- |
+| `--edytor-version-added`, `--edytor-version-added-bar` | The tint and bar of a block added since. |
+| `--edytor-version-removed`, `--edytor-version-removed-bar` | Of a block removed since. |
+| `--edytor-version-changed`, `--edytor-version-changed-bar` | Of a block changed since. |
+| `--edytor-history-border`, `--edytor-history-muted`, `--edytor-history-side` | Borders, secondary text, the list's background. |
+| `--edytor-history-hover`, `--edytor-history-selected`, `--edytor-history-accent` | A hovered row, the selected row, the Restore button. |
+| `--edytor-history-error` | A failure's message. |
+
+The defaults are a light theme (Notion's colors, at AA contrast). For a dark theme, set the variables; the tints blend with `multiply`, so give them values that read on a dark page.

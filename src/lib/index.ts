@@ -208,3 +208,21 @@ export {
 	type PresenceOptions,
 	type PresenceShare
 } from './collaboration/index.js';
+
+// ── Version history ────────────────────────────────────────────────────
+export {
+	HistoryPanel,
+	createHistoryClient,
+	HistoryRequestError,
+	versionDiff,
+	defaultHistoryLabels,
+	type HistoryClient,
+	type HistoryClientOptions,
+	type HistoryRestoreResult,
+	type HistoryUndoResult,
+	type HistoryVersion,
+	type HistoryPanelLabels,
+	type HistoryPanelProps,
+	type VersionChange,
+	type VersionDiff
+} from './collaboration/history/index.js';

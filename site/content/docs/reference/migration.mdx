@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### Unreleased
+
+- **Version history panel.** New component `HistoryPanel`: the room's versions with their editors and times, a read-only preview of the selected one with the blocks added, removed and changed since highlighted against the page (`document`), and Restore version and Undo restore. It reads through a `HistoryClient` (`list`, `read`, `restore`, `undo`): `createHistoryClient({ server, room, params, fetch })` speaks the requests `routeDocumentHistory` answers and throws `HistoryRequestError` on a refusal. `versionDiff(version, current)` is the comparison alone. New root names: `HistoryPanel`, `createHistoryClient`, `HistoryRequestError`, `versionDiff`, `defaultHistoryLabels` and the types `HistoryClient`, `HistoryClientOptions`, `HistoryVersion`, `HistoryRestoreResult`, `HistoryUndoResult`, `HistoryPanelProps`, `HistoryPanelLabels`, `VersionDiff`, `VersionChange`. See [History panel](/docs/server/history-panel).
+
 ### From 0.1.0-next.32
 
 - **Mount editable editors in the browser.** The [quick start](/docs/getting-started/quick-start#mount-it-in-a-page) and [installation](/docs/getting-started#verify-the-install) pages now mount the editable editor after hydration, or turn SSR off for the route, as [SvelteKit](/docs/getting-started/sveltekit#editable-editors-mount-after-hydration) always advised: server-rendering an editable `<Edytor>` is not tested. If you copied the earlier quick start into a server-rendered route, wrap the editor in the `onMount` guard. Nothing in the package changed.

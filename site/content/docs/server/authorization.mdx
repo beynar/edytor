@@ -149,7 +149,7 @@ The client sends the token; the provider adds its replica id (`?replica=<clientI
 
 ## Origins and cookies
 
-Both routers take a last `options` argument, `RouteDocumentOptions`:
+Every router (`routeDocumentSocket`, `routeDocumentHistory`, `routeDocumentComments`) takes a last `options` argument, `RouteDocumentOptions`:
 
 ```ts
 routeDocumentSocket(request, env.ROOMS, documentId, authorize, {
@@ -160,7 +160,7 @@ routeDocumentHistory(request, env.ROOMS, documentId, authorize, {
 });
 ```
 
-`allowedOrigins` is a list of page origins (scheme, host and port, as the `Origin` header carries them) or a predicate over the `Origin` header. A request whose `Origin` it does not allow is refused before `authorize` runs: a dial is closed with `4403` (`origin not allowed`), which stops the provider, and an HTTP request (the `lastUpdated` and `snapshot` probes, every history request) is answered `403`. A request without an `Origin` header passes: browsers send one with every WebSocket dial and every cross-origin request, so only a non-browser client omits it, and such a client cannot carry your user's cookies. Without the option, every origin passes.
+`allowedOrigins` is a list of page origins (scheme, host and port, as the `Origin` header carries them) or a predicate over the `Origin` header. A request whose `Origin` it does not allow is refused before `authorize` runs: a dial is closed with `4403` (`origin not allowed`), which stops the provider, and an HTTP request (the `lastUpdated` and `snapshot` probes, every history and comments request) is answered `403`. A request without an `Origin` header passes: browsers send one with every WebSocket dial and every cross-origin request, so only a non-browser client omits it, and such a client cannot carry your user's cookies. Without the option, every origin passes.
 
 :::warning
 Set `allowedOrigins` whenever `authorize` reads a cookie. Browsers send cookies with a WebSocket dial from any page, and the same-origin policy does not apply to WebSockets: without an origin check, another site your user visits can open their document, read it and write as them. `SameSite=Lax` or `Strict` on the session cookie keeps it off a dial from another *site*, but not from another origin of the same site (a subdomain), and `SameSite=None` sends it everywhere. A token in `params`, as in the example above, is not sent by another page, so it needs no origin check, though one does no harm.

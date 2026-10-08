@@ -324,33 +324,55 @@ export const threadOfMark = (key: string): string | null => {
 };
 
 /**
+ * The threads anchored in one block: each thread's runs there, in offset
+ * order (adjacent runs joined; an inline atom counts one unit and ends a
+ * run).
+ */
+export const blockCommentRuns = (
+	doc: Pick<CommentAnchorSource, 'contentItems'>,
+	block: string
+): Map<string, CommentRun[]> => {
+	const anchors = new Map<string, CommentRun[]>();
+	let offset = 0;
+	for (const item of doc.contentItems(block)) {
+		const length = item.kind === 'text' ? item.text.length : 1;
+		if (item.kind === 'text' && item.marks) {
+			for (const [key, value] of Object.entries(item.marks)) {
+				if (value == null || value === false) continue;
+				const thread = threadOfMark(key);
+				if (thread === null) continue;
+				const runs = anchors.get(thread) ?? [];
+				const last = runs.at(-1);
+				if (last && last.offset + last.length === offset) last.length += length;
+				else runs.push({ block, offset, length });
+				anchors.set(thread, runs);
+			}
+		}
+		offset += length;
+	}
+	return anchors;
+};
+
+/**
  * Every thread's anchor in `doc`: the runs of text its `comment:<id>` mark
  * covers, in document order (adjacent runs of one block joined). A split
  * or a merge moves the marked text, never copies it, so a thread keeps its
  * runs through both; a thread whose marked text was deleted has none.
  */
-export const commentAnchors = (doc: CommentAnchorSource): Map<string, CommentRun[]> => {
+export const commentAnchors = (doc: CommentAnchorSource): Map<string, CommentRun[]> =>
+	joinAnchors(doc.order().map((block) => blockCommentRuns(doc, block)));
+
+/** Per-block runs, in document order, as each thread's runs. */
+export const joinAnchors = (
+	blocks: Iterable<Map<string, CommentRun[]>>
+): Map<string, CommentRun[]> => {
 	const anchors = new Map<string, CommentRun[]>();
-	for (const block of doc.order()) {
-		let offset = 0;
-		for (const item of doc.contentItems(block)) {
-			const length = item.kind === 'text' ? item.text.length : 1;
-			if (item.kind === 'text' && item.marks) {
-				for (const [key, value] of Object.entries(item.marks)) {
-					if (value == null || value === false) continue;
-					const thread = threadOfMark(key);
-					if (thread === null) continue;
-					const runs = anchors.get(thread) ?? [];
-					const last = runs.at(-1);
-					if (last && last.block === block && last.offset + last.length === offset)
-						last.length += length;
-					else runs.push({ block, offset, length });
-					anchors.set(thread, runs);
-				}
-			}
-			offset += length;
+	for (const runs of blocks)
+		for (const [thread, list] of runs) {
+			const known = anchors.get(thread);
+			if (known) known.push(...list);
+			else anchors.set(thread, [...list]);
 		}
-	}
 	return anchors;
 };
 

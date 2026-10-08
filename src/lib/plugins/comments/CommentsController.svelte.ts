@@ -7,8 +7,9 @@ import { Text } from '$lib/text/text.svelte.js';
 import { reveal } from '$lib/selection/replaceSelection.js';
 import {
 	COMMENT_MARK,
-	commentAnchors,
+	blockCommentRuns,
 	commentId,
+	joinAnchors,
 	type CommentChange,
 	type CommentRequest,
 	type CommentRun,
@@ -98,12 +99,34 @@ export class CommentsController {
 		this.labels = options.labels ?? englishLabels.comments;
 	}
 
-	/** Every thread's anchor runs, read from the document at each commit. */
+	/**
+	 * The blocks holding an anchor, and their runs by thread: read once at
+	 * the start, then again only for the blocks a commit adds or changes the
+	 * content of (a mark is content).
+	 */
+	#blocks = new Map<string, Map<string, CommentRun[]>>();
+
+	/** Read the anchors of `ids` again (all of the document's, without). */
+	#read = (ids?: Iterable<string>) => {
+		const { facade } = this.edytor;
+		const read = (id: string) => {
+			const runs = facade.isVisibleBlock(id) ? blockCommentRuns(facade, id) : null;
+			if (runs?.size) this.#blocks.set(id, runs);
+			else this.#blocks.delete(id);
+		};
+		if (ids) for (const id of ids) read(id);
+		else {
+			this.#blocks.clear();
+			for (const id of facade.order()) read(id);
+		}
+	};
+
+	/** Every thread's anchor runs, in document order (maintained per commit). */
 	readonly anchors: Map<string, CommentRun[]> = $derived.by(() => {
 		void this.#revision;
-		void this.#version;
-		if (!this.edytor.root) return new Map();
-		return commentAnchors(this.edytor.facade);
+		const { compare } = this.edytor.facade;
+		const blocks = [...this.#blocks.keys()].sort(compare);
+		return joinAnchors(blocks.map((id) => this.#blocks.get(id)!));
 	});
 
 	/** Every thread, in the order of its anchor in the document (threads with none last). */
@@ -166,7 +189,18 @@ export class CommentsController {
 	/** Start hearing the threads: the client's list, its changes, the document's commits. */
 	connect = () => {
 		const { edytor, client } = this;
-		this.#off.push(edytor.facade.onChange(() => this.#revision++));
+		this.#read();
+		this.#off.push(
+			edytor.facade.onChange((change) => {
+				// A block shown again, or a subtree added, may bring anchors anywhere in it.
+				if (change.added.size > 0) this.#read();
+				else {
+					for (const id of change.removed) this.#blocks.delete(id);
+					this.#read(change.content.keys());
+				}
+				this.#revision++;
+			})
+		);
 		const detach = client.attach?.({
 			order: () => edytor.facade.order(),
 			contentItems: (id) => edytor.facade.contentItems(id),
@@ -370,10 +404,9 @@ export class CommentsController {
 	 */
 	follow = () => {
 		if (this.draft) return;
-		const { isCollapsed, startText, yStart } = this.edytor.selection.state;
-		if (!isCollapsed || !startText) return;
-		const block = startText.parent.id;
-		const at = startText.segStart + yStart;
+		const caret = this.edytor.selection.caret;
+		if (!caret) return;
+		const [block, at] = [caret.block.id, caret.offset];
 		const holds = (thread: PlacedThread) =>
 			thread.runs.some(
 				(run) => run.block === block && at > run.offset && at <= run.offset + run.length

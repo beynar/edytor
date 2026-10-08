@@ -1,6 +1,6 @@
 ---
 title: Inline blocks
-description: Define inline atoms such as mentions, render them with snippets, insert and remove them from code, and export them as plain text.
+description: Define inline atoms such as mentions, render them with snippets, insert and remove them from code, and export and import them as plain text and HTML.
 icon: at-sign
 ---
 
@@ -30,6 +30,14 @@ Content always starts and ends with text, and text runs separate atoms; the edit
       type: "(data) => string",
       description: "The atom's plain-text form on copy. Without one, it copies as nothing.",
     },
+    html: {
+      type: "(data) => string",
+      description: "The atom's HTML on copy, inline markup you escape yourself. Without one, an empty `<span data-edytor-inline-block>`.",
+    },
+    parse: {
+      type: "(element: HTMLElement) => Record<string, SerializableContent> | undefined",
+      description: "HTML import: the atom's data when `element`, met inside a line of pasted or dropped HTML, is this atom, else `undefined`. Its contents are then not read as text.",
+    },
   }}
 />
 
@@ -45,7 +53,7 @@ The snippet receives `{ block }`, a view of the atom:
   }}
 />
 
-The core wraps the snippet in `<span data-edytor-inline-block="<type>" data-edytor-id="<id>" contenteditable="false">`. In HTML copied to the clipboard an atom is an empty span with the same `data-edytor-inline-block` attribute; content pasted into an Edytor keeps its atoms through the editor's own clipboard format.
+The core wraps the snippet in `<span data-edytor-inline-block="<type>" data-edytor-id="<id>" contenteditable="false">`. In HTML copied to the clipboard an atom is its `html` form, by default an empty span with the same `data-edytor-inline-block` attribute; content pasted into an Edytor keeps its atoms through the editor's own clipboard format, and HTML from elsewhere becomes atoms where a `parse` hook claims an element (the [equation](/docs/plugins/equation) plugin's inline equation reads MathML this way).
 
 ## A mention atom
 

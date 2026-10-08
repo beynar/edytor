@@ -1,6 +1,12 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { isNativeInteractiveControl, ownsEvent } from './nativeInteractiveControl.js';
 import { runOccurrence } from './onBeforeInput.js';
+import {
+	createEdytorClipboardFragment,
+	writeEdytorClipboardData
+} from '$lib/clipboard/clipboard.js';
+import { endTextDrag, startTextDrag, textDragOf } from '$lib/clipboard/moveText.js';
+import { getDomSelection } from '$lib/selection/domSelection.js';
 
 /**
  * Payloads the editor can consume on drop. Preventing `dragover` is what
@@ -21,9 +27,11 @@ const EDYTOR_BLOCK_DRAG_MIME = 'application/x-edytor-block-id';
 // `dataTransfer.types` cannot distinguish a foreign text drop from an
 // editor-owned text drag (Chrome exposes text/plain + text/html for both).
 // Track the drag source instead: a `dragstart` inside the editor's root node
-// marks the drag as editor-owned, and editor-owned drags never become
-// drops — internal drag-move is not supported (the paired `deleteByDrag` /
-// `insertFromDrop` beforeinput events are also suppressed there).
+// marks the drag as editor-owned. An editor-owned drag is a drop only when
+// it is the view's own text drag (`textDragOf`: a selected range dragged,
+// moved by `dropText`); the browser's paired `deleteByDrag` /
+// `insertFromDrop` beforeinput events never run (the drop is prevented,
+// and `deleteByDrag` is suppressed).
 let internalDragSource: Node | null = null;
 const observedDragRoots = new WeakSet<Node>();
 
@@ -69,6 +77,65 @@ const isInternalDrag = (root: Element, dataTransfer: DataTransfer | null) => {
  */
 const isControlDrop = (root: Element, event: DragEvent) =>
 	!Array.from(event.dataTransfer?.types ?? []).includes('Files') && ownsEvent(root, event);
+
+/**
+ * The view's own text drag: a selected text range dragged from
+ * inside the host, the block handles' drags excluded (their payload's MIME).
+ */
+const isTextDrag = (edytor: Edytor | undefined, root: Element, dataTransfer: DataTransfer | null) =>
+	edytor !== undefined &&
+	textDragOf(edytor) !== undefined &&
+	!Array.from(dataTransfer?.types ?? []).includes(EDYTOR_BLOCK_DRAG_MIME) &&
+	internalDragSource !== null &&
+	root.contains(internalDragSource);
+
+/** Where the view's text drag may land: an editable view, in its text, not a kind's control. */
+const takesTextDrop = (edytor: Edytor, root: Element, event: DragEvent) =>
+	!edytor.readonly &&
+	edytor.dispatcher.permits() &&
+	!edytor.isComposing &&
+	!ownsEvent(root, event) &&
+	!isNativeInteractiveControl(event.target);
+
+/** `target` (a drag's source) lies in the host's selected DOM range. */
+const startsInSelection = (root: Element, target: EventTarget | null) => {
+	const selection = getDomSelection(root);
+	if (!selection?.rangeCount || !(target instanceof Node)) return false;
+	try {
+		return selection.getRangeAt(0).intersectsNode(target);
+	} catch {
+		return false;
+	}
+};
+
+/**
+ * A `dragstart` in the host over a selected text range (a press inside it,
+ * then a drag): the view's text drag. Its data is the range as a clipboard
+ * fragment (a copy's: the private MIME, HTML and plain text), so a drop in
+ * another editor or app takes it as a paste; in this view, `dropText` moves
+ * it. A drag from a kind's own control is the control's, and one that starts
+ * outside the selected range (another draggable in the host) is its own.
+ */
+export const onTextDragStart = (edytor: Edytor, event: DragEvent) => {
+	endTextDrag(edytor);
+	const root = edytor.node;
+	const value = edytor.selection.value;
+	if (!root || ownsEvent(root, event) || value.kind !== 'text') return;
+	if (edytor.selection.state.isCollapsed || edytor.isComposing) return;
+	// Only a drag of the selection itself: another draggable in the host drags its own thing.
+	if (!startsInSelection(root, event.target)) return;
+	const fragment = createEdytorClipboardFragment(edytor);
+	if (!fragment) return;
+	writeEdytorClipboardData(event.dataTransfer, fragment, edytor);
+	if (event.dataTransfer) event.dataTransfer.effectAllowed = edytor.readonly ? 'copy' : 'copyMove';
+	startTextDrag(edytor, { range: value, fragment });
+	// The press is a drag now, no longer a selection (Chromium cancels its pointer here; the
+	// other engines send no release until the drop).
+	edytor.selection.clearPointerDragStart();
+};
+
+/** The drag ended, dropped or not: no text drag. */
+export const onTextDragEnd = (edytor: Edytor) => endTextDrag(edytor);
 
 const isAcceptedForeignDrop = (root: Element, dataTransfer: DataTransfer | null) => {
 	if (!dataTransfer || isInternalDrag(root, dataTransfer)) {
@@ -160,6 +227,26 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor?: Edytor) => {
 		return;
 	}
 	observeInternalDragSources(root.getRootNode());
+
+	// The view's own text drag: a move (a copy with Alt) where it may land.
+	if (isTextDrag(edytor, root, event.dataTransfer)) {
+		const takes = takesTextDrop(edytor!, root, event);
+		if (event.type === 'dragover') {
+			if (!takes) return;
+			event.preventDefault();
+			event.stopPropagation();
+			if (event.dataTransfer) event.dataTransfer.dropEffect = event.altKey ? 'copy' : 'move';
+			return;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		const drag = textDragOf(edytor!)!;
+		if (!takes) return;
+		drag.copy = event.altKey;
+		// Its occurrence's handler takes it (`dropText`): the drop is the paste of a move.
+		drag.dropping = true;
+		return insertFromDrop(edytor!, root, event);
+	}
 
 	if (event.type === 'dragover') {
 		if (isAcceptedForeignDrop(root, event.dataTransfer)) {

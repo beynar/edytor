@@ -2,18 +2,14 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { colorsOfClasses } from '$lib/block/colors.js';
 import type { Flow } from '$lib/crdt/flow.js';
 import type { BlockDefinition } from '$lib/plugins.js';
-import type { JSONContentPart } from '$lib/block/contentRange.js';
-import {
-	jsonBlockToSpec,
-	type JSONBlock,
-	type JSONText,
-	type SerializableContent
-} from '$lib/utils/json.js';
+import { isTextPart, type JSONContentPart } from '$lib/block/contentRange.js';
+import { jsonBlockToSpec, type JSONBlock, type SerializableContent } from '$lib/utils/json.js';
 
-/** What HTML import reads: the kind and mark records, and the document's default child. */
-export type ImportKinds = Pick<Edytor, 'blocks' | 'marks'> & {
-	document: Pick<Edytor['document'], 'defaultChild'>;
-};
+/** What HTML import reads: the kind, mark and atom records, and the document's default child. */
+export type ImportKinds = Pick<Edytor, 'blocks' | 'marks'> &
+	Partial<Pick<Edytor, 'inlineBlocks'>> & {
+		document: Pick<Edytor['document'], 'defaultChild'>;
+	};
 
 type Values = Record<string, SerializableContent>;
 type Line = { type?: string; data?: Values; content: JSONContentPart[]; children?: Line[] };
@@ -85,12 +81,15 @@ export const tagOf = (type: string, kind: BlockDefinition, data: Values) => {
  * `tag`, and each record's `parse` hook first (aliases, sanitized values).
  * A void kind with a `parse` hook (an image, an embed, a video) is found
  * by its hook only, and a void takes only its `figcaption`'s text; an
- * `iframe`, `video` or `audio` no hook claims carries nothing. Unknown
+ * `iframe`, `video` or `audio` no hook claims carries nothing. An atom
+ * kind's `parse` hook claims inline elements (an equation's `<math>`): the
+ * atom, never its text. Unknown
  * elements degrade to text runs; whitespace collapses as HTML renders it. `null` when the HTML carries nothing (`flow.shape`, F-P10).
  */
 export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow | null => {
 	if (!html || html.length > 8 * 1024 * 1024 || typeof DOMParser === 'undefined') return null;
 	const { blocks, marks } = kinds;
+	const atoms = kinds.inlineBlocks ?? new Map();
 	const byTag = new Map<string, Claim>();
 	for (const [type, kind] of blocks) {
 		// A void found by its hook carries its substance in data (a source): its tag alone is none.
@@ -113,6 +112,14 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		}
 		return byTag.get(element.localName);
 	};
+	/** An inline atom an atom kind's hook claims `element` as. */
+	const atomOf = (element: HTMLElement): JSONContentPart | undefined => {
+		for (const [type, atom] of atoms) {
+			const data = atom.parse?.(element);
+			if (data) return { type, data };
+		}
+		return undefined;
+	};
 	const marksOf = (element: HTMLElement) => {
 		const found: Values = {};
 		for (const [name, mark] of marks) {
@@ -123,18 +130,22 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		}
 		return found;
 	};
+	// A kind's hook may claim an element of another namespace (an equation's MathML `<math>`).
 	const isBlock = (node: Node): node is HTMLElement =>
-		node instanceof HTMLElement && (BLOCK.test(node.localName) || kindOf(node) !== undefined);
+		(node instanceof HTMLElement && BLOCK.test(node.localName)) ||
+		(node instanceof Element && kindOf(node as HTMLElement) !== undefined);
 	/** A void kind's element (an image): it shows no text, so a line it is met in ends there. */
 	const isVoid = (node: Node): node is HTMLElement => {
-		const claim = node instanceof HTMLElement ? kindOf(node) : undefined;
+		const claim = node instanceof Element ? kindOf(node as HTMLElement) : undefined;
 		return claim !== undefined && blocks.get(claim.type)?.void === true;
 	};
 
 	const text = (line: Line, value: string, marks: Values, pre: boolean) => {
-		const last = line.content.at(-1) as JSONText | undefined;
+		const before = line.content.at(-1);
+		// After an atom, text starts a run of its own (a space there is kept).
+		const last = before && isTextPart(before) ? before : undefined;
 		if (!pre) value = value.replace(/[ \t\n\f\r]+/g, ' ');
-		if (!pre && (!last || /[ \n]$/.test(last.text))) value = value.replace(/^ /, '');
+		if (!pre && (!before || /[ \n]$/.test(last?.text ?? ''))) value = value.replace(/^ /, '');
 		value = value.replace(/\u00a0/g, ' ');
 		if (!value) return;
 		if (last && JSON.stringify(last.marks ?? {}) === JSON.stringify(marks)) last.text += value;
@@ -146,6 +157,8 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		if (isGlyph(node))
 			return text(at.line(), (node as HTMLElement).getAttribute('alt') ?? '', marks, pre);
 		if (isVoid(node)) return at.apart(node);
+		const atom = node instanceof Element ? atomOf(node as HTMLElement) : undefined;
+		if (atom) return void at.line().content.push(atom);
 		if (!(node instanceof HTMLElement) || SKIP.test(node.localName)) return;
 		if (node.localName === 'br') return text(at.line(), '\n', marks, true);
 		const inner = { ...marks, ...marksOf(node) };
@@ -153,7 +166,8 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 	};
 	/** A line ends without its trailing space or `<br>`. */
 	const end = (line: Line) => {
-		const last = line.content.at(-1) as JSONText | undefined;
+		const at = line.content.at(-1);
+		const last = at && isTextPart(at) ? at : undefined;
 		if (last) last.text = last.text.replace(/ ?\n?$/, '');
 		if (last && !last.text) line.content.pop();
 		return line;

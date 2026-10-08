@@ -119,7 +119,7 @@ export type SlashMenuLabels = {
 	close: string;
 	/** The key shown beside Close. */
 	closeKey: string;
-	/** A section heading, by its group key (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`, `Color`); others show as they are. */
+	/** A section heading, by its group key (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`, `Color`, `Inline`); others show as they are. */
 	groups: Record<string, string>;
 };
 
@@ -352,6 +352,25 @@ export type HistoryPanelLabels = {
 	failed: string;
 };
 
+/** The block and inline equations (`createEquationPlugin`). */
+export type EquationLabels = {
+	/** The block preset, and the block's accessible name. */
+	block: string;
+	/** The inline command. */
+	inline: string;
+	/** An empty block equation. */
+	blockPlaceholder: string;
+	/** An empty inline equation. */
+	inlinePlaceholder: string;
+	/** The editor's accessible name, and its field's. */
+	editor: string;
+	/** The field's placeholder. */
+	placeholder: string;
+	done: string;
+	/** TeX that does not render: shown as the equation's title, with KaTeX's message. */
+	invalid: string;
+};
+
 export type ColumnsLabels = {
 	/** The `columns.<n>` command. */
 	columns: (count: number) => string;
@@ -444,6 +463,7 @@ export type Labels = {
 	table: TableLabels;
 	mention: MentionLabels;
 	history: HistoryPanelLabels;
+	equation: EquationLabels;
 };
 
 /**
@@ -582,7 +602,8 @@ export const englishLabels: Labels = frozen({
 			'Advanced blocks': 'Advanced blocks',
 			Media: 'Media',
 			Layout: 'Layout',
-			Color: 'Color'
+			Color: 'Color',
+			Inline: 'Inline'
 		}
 	},
 	blockMenu: {
@@ -822,6 +843,16 @@ export const englishLabels: Labels = frozen({
 		nothingToUndo: 'There is no restore to undo.',
 		denied: 'You do not have access to this history.',
 		failed: 'The history could not be reached.'
+	},
+	equation: {
+		block: 'Block equation',
+		inline: 'Inline equation',
+		blockPlaceholder: 'Add a TeX equation',
+		inlinePlaceholder: 'New equation',
+		editor: 'Equation',
+		placeholder: 'E = mc^2',
+		done: 'Done',
+		invalid: 'Invalid equation'
 	}
 });
 

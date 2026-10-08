@@ -34,7 +34,7 @@ The HTML and plain text come from the definitions, so exporting a kind looks lik
 - A block kind's `html` form: a tag name that wraps the content then the children (the rich text plugin uses `blockquote` for quotes, `li` for list items), or a function of the block and its serialized content and children. The default is `<p>` around the content. A block's [colours](/docs/plugins/block-menu#block-colors) are a class on its element, as in Notion's export: `block-color-red`, `block-color-red_background`.
 - A block kind's `plain` form, a function; the default is the content, then the children, one per line.
 - A mark's `tag` and `attributes`: bold exports `<strong>`, a link `<a href>`, a color `<span style="color: …">`. A mark without a tag exports its text only.
-- An inline block's `plain` function; by default an inline block exports nothing to plain text.
+- An inline block's `plain` function; by default an inline block exports nothing to plain text. Its `html` function gives its HTML (an [equation](/docs/plugins/equation#clipboard) writes MathML); by default it is an empty `<span data-edytor-inline-block>`.
 
 See [Custom blocks](/docs/customization/blocks) for declaring these forms.
 
@@ -52,7 +52,7 @@ A paste is handled by the first rule that applies:
 
 **Pasting a link over selected text links it**, as in Notion: with [rich text](/docs/plugins/rich-text#pasting-a-link) and a text range selected outside a code block, a paste whose plain text is one URL (`http:`, `https:` or `mailto:`) makes the selected text a link to it and keeps it selected, instead of replacing it. At a caret, a URL is inserted as a link, and undo gives the plain URL back first. This is the rich text plugin's `onPaste` hook (rule 2). Text that is not one URL, a caret inside a link or inline code, and <kbd>Shift</kbd>+paste paste as usual.
 
-Paste is one undo step and is ignored in readonly mode. Dropping content from outside the editor follows the same rules.
+Paste is one undo step and is ignored in readonly mode. Dropping content from outside the editor follows the same rules. Dragging text inside the editor moves it: see [Dragging text](#dragging-text).
 
 ### Where pasted content goes
 
@@ -86,6 +86,8 @@ With the rich text plugin, that maps `h1`–`h3` to headings, `h4`–`h6` to `h3
 **Images inside text.** An element of a void kind (an `img`) met inside a line, even wrapped in inline markup such as Google Docs' `<p><span><img></span></p>`, ends the line there: the image becomes a block of its own, and the text after it a new line of the same kind. `<p>before <img src="…"> after</p>` gives `before`, the image, then `after`. A line left with no text around the image is not kept.
 
 **Emoji and icons drawn as images** stay in the text as their `alt`: an `img` whose `alt` is emoji only (`<img alt="😂" src="…">`, as X and Gmail write emoji), whose class names an emoji or that has `data-emoji` (Slack, WordPress), or whose `width` and `height` are 32 px or less (an icon, an email's tracking pixel, which has no `alt` and so adds nothing). `<p>So funny <img alt="😂" src="…"> right</p>` pastes as one line, `So funny 😂 right`.
+
+**Inline atoms.** An element inside a line becomes an inline atom when an atom kind's `parse(element)` returns data for it; its contents are then not read as text. With the [equation](/docs/plugins/equation#clipboard) plugin, KaTeX's markup or a `<math>` with a TeX annotation becomes an inline equation (a `display="block"` one, a block equation).
 
 **Marks.** Text takes a mark when:
 
@@ -121,6 +123,19 @@ export const inlineExtrasPlugin: Plugin = () => ({
 ```
 
 A block kind's `parse(element)` works the same way and returns the new block's `data`. Definitions are first-wins, so add hooks to kinds you define rather than redefining a bundled one. See [Custom blocks](/docs/customization/blocks).
+
+## Dragging text
+
+Selected text dragged to another place in the editor moves there, as in Notion: press inside the selection, hold, drag, release where the caret shows. The move is one command, `moveText`, and one undo step that gives back both the text and its place:
+
+1. its content goes to the drop point, placed as a paste of the same content would place it (`insertFlow`): marks, inline atoms and lines come along, a range across blocks arrives as lines;
+2. the range is deleted as a replacement deletes it (`replaceRange`): a range across blocks joins them.
+
+Both halves are prepared before anything is written, so a drop either half refuses (a drop point that takes no content, a range the document keeps) writes nothing: the text never leaves without landing.
+
+The moved text is selected after the drop. Hold <kbd>Alt</kbd> (<kbd>Option</kbd>) at the drop to copy instead: the range stays and a copy lands at the drop point. A drop inside the dragged range changes nothing. A readonly view takes no drop, a kind's own control (a field in a block) keeps its own drags and drops, and dragging during an IME composition does nothing. The drag carries the range as a copy carries it (the Edytor fragment, HTML and plain text), so dropping it in another Edytor or another app pastes it there, and the text stays where it was.
+
+Hooks see `moveText` with its payload (`from`: the range's start and end, `to`: the drop point, both in block offsets; `copy`) its `effect`, and the planned steps of both halves (the placement's, then the deletion's; a copy's: the placement's), all before any write; `prevent()` on the command or on any of its steps keeps everything. Block-handle drags are not text drags: they move whole blocks (see [Block handles](/docs/plugins/block-handles)).
 
 ## Plugin hooks
 

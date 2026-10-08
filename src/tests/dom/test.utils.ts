@@ -131,7 +131,7 @@ const resolveText = (edytor: Edytor, text: TextReference) => {
 	return findTextAtPath(edytor, text);
 };
 
-const findDomTextNode = (node: HTMLElement, offset: number) => {
+export const findDomTextNode = (node: HTMLElement, offset: number) => {
 	const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
 	let currentNode = treeWalker.nextNode();
 	let currentOffset = 0;

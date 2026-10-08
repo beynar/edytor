@@ -115,7 +115,8 @@ export const fr: Labels = {
 			'Advanced blocks': 'Blocs avancés',
 			Media: 'Médias',
 			Layout: 'Mise en page',
-			Color: 'Couleur'
+			Color: 'Couleur',
+			Inline: 'En ligne'
 		}
 	},
 	blockMenu: {
@@ -355,6 +356,16 @@ export const fr: Labels = {
 		nothingToUndo: 'Aucune restauration à annuler.',
 		denied: 'Vous n’avez pas accès à cet historique.',
 		failed: 'L’historique est injoignable.'
+	},
+	equation: {
+		block: 'Équation en bloc',
+		inline: 'Équation en ligne',
+		blockPlaceholder: 'Ajouter une équation TeX',
+		inlinePlaceholder: 'Nouvelle équation',
+		editor: 'Équation',
+		placeholder: 'E = mc^2',
+		done: 'Terminé',
+		invalid: 'Équation invalide'
 	}
 };
 

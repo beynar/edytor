@@ -92,6 +92,8 @@ export {
 	tocSemantics,
 	tableKinds,
 	tableSemantics,
+	equationKinds,
+	equationSemantics,
 	richTextKinds,
 	codeKinds,
 	imageKinds,

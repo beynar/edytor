@@ -84,7 +84,13 @@
 		"!dist/**/*.spec.*"
 	],
 	"peerDependencies": {
+		"katex": ">=0.16.0",
 		"svelte": "^5.0.0"
+	},
+	"peerDependenciesMeta": {
+		"katex": {
+			"optional": true
+		}
 	},
 	"main": "./dist/index.js",
 	"devDependencies": {
@@ -109,6 +115,7 @@
 		"fake-indexeddb": "^6.2.5",
 		"globals": "^17.6.0",
 		"jsdom": "^29.0.1",
+		"katex": "0.18.7",
 		"prettier": "^3.8.1",
 		"prettier-plugin-svelte": "^3.5.1",
 		"publint": "^0.3.18",

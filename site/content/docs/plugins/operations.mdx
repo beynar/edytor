@@ -56,6 +56,7 @@ A command is shown first, under its own name. If it is one document plan, each p
 | Deleting a range across blocks            | `deleteContentWithinSelection` | `deleteContentAtRange`, `removeBlock`, `mergeBlockBackward`  |
 | Deleting a block selection                | `deleteBlocks`                 | one `removeBlock` per selected block                         |
 | Paste or drop                             | `insertFlow`                   | `splitBlock`, `insertText`, `addChildBlocks`                 |
+| Dragging selected text in the editor      | `moveText` (one undo step)     | the placement's steps, then the range's deletion's (with <kbd>Alt</kbd>, a copy: the placement's) |
 | Markdown shortcut or slash command        | `setBlock`                     | `deleteContentAtRange` for the removed trigger text          |
 | Turn into (menus, <kbd>Mod</kbd> + <kbd>Alt</kbd> + digit) | `setBlock`, or `insertBlockAfter` for a kind inserted after the block; over several blocks, one per block | the moves and inserts that place the kind |
 | Formatting                                | `markText`                     | none                                                         |
@@ -271,6 +272,7 @@ Text operations carry `text`. Block operations run on `block`.
 | `deleteContentAtRange`         | `{ start: [part, offset], end: [part, offset] }`            |
 | `deleteContentWithinSelection` | `{ replace? }`                                              |
 | `insertFlow`                   | `{ flow, target }`                                          |
+| `moveText`                     | `{ from: { start, end }, to, copy }`: selected text [dragged](/docs/editor/clipboard#dragging-text) to `to` (positions are `{ block, offset }`, block offsets), moved, or copied with <kbd>Alt</kbd>; one undo step |
 | `insertDivider`                | `{}`                                                        |
 | `acceptSuggestion`             | `{ suggestion: { id, at, content } }`: a [suggestion](/docs/editor/suggestions) accepted, one undo step; its planned steps follow it (for a text range, its deletion's) |
 | `replaceMatches`               | `{ matches: { block, offset, length }[], replacement }`: [find and replace](/docs/plugins/find)'s Replace or Replace all, one undo step; a `deleteContentAtRange` and an `insertText` step follow it per match |

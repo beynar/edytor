@@ -17,6 +17,8 @@
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 	import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 	import { tableBlock } from '$lib/crdt/tables.js';
+	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
+	import 'katex/dist/katex.min.css';
 	import type { Plugin } from '$lib/plugins.js';
 	import { page } from '$app/state';
 	import { createIndexeddbSync } from '$lib/collaboration/providers.js';
@@ -81,6 +83,8 @@
 		findPlugin,
 		tocPlugin,
 		tablePlugin,
+		// KaTeX loads the first time an equation shows.
+		createEquationPlugin({ katex: () => import('katex') }),
 		richTextPlugin
 	];
 	const demoValue: JSONDoc = {
@@ -213,6 +217,24 @@
 						content: [{ text: 'const idea = "start somewhere";' }]
 					}
 				]
+			},
+			{
+				id: 'page-math',
+				type: 'paragraph',
+				content: [
+					{ text: 'Write math inline, like ' },
+					{
+						type: 'inlineEquation',
+						id: 'page-math-inline',
+						data: { expression: 'e^{i\\pi} + 1 = 0' }
+					},
+					{ text: ', or as a block:' }
+				]
+			},
+			{
+				id: 'page-equation',
+				type: 'equation',
+				data: { expression: '\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}' }
 			},
 			{
 				id: 'page-mentions',

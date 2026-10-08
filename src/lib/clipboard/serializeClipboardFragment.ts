@@ -35,7 +35,8 @@ const contentHtml = (content: JSONContentPart[] = [], kinds: ExportKinds) =>
 		.map((part) =>
 			isTextPart(part)
 				? textHtml(part, kinds)
-				: `<span data-edytor-inline-block="${escapeHtml(part.type)}"></span>`
+				: (kinds.inlineBlocks.get(part.type)?.html?.(part.data) ??
+					`<span data-edytor-inline-block="${escapeHtml(part.type)}"></span>`)
 		)
 		.join('');
 

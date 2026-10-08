@@ -93,10 +93,6 @@ const run = <O extends TableOperation>(
 	prepare: (payload: BlockOperations[O]) => Prepared
 ) => dispatchPlan(table, operation, payload, prepare, []);
 
-/** The first text of the shown cell `id`, for a caret. */
-const firstCellText = (edytor: Edytor, id: string | null | undefined) =>
-	id ? edytor.idToBlock.get(id)?.firstText : undefined;
-
 /** Insert a row at `index` (`table.insert-row`); the caret goes to its first cell when `caret`. */
 export const insertRow = (table: Block, index: number, caret = false): Block | null => {
 	const { edytor } = table;

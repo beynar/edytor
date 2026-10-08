@@ -154,6 +154,15 @@ export const tocKinds = frozen({
 } satisfies Record<string, KindSemantics>);
 
 /**
+ * The equation plugin's structural row: a block equation is a void that
+ * draws its TeX (`data.expression`) and shows no text of its own. Its
+ * inline equation is an atom, which needs no role.
+ */
+export const equationKinds = frozen({
+	equation: { void: true, rendersContent: false }
+} satisfies Record<string, KindSemantics>);
+
+/**
  * The columns plugin's structural rows: `columns` is a layout of `column`s
  * (`layout.*` in the delete contract), a column a container that holds any
  * block. In {@link defaultSemantics}: a document holding no `columns` block
@@ -351,12 +360,15 @@ export const pageSemantics = semanticsOf(pageKinds);
 export const tocSemantics = semanticsOf(tocKinds);
 /** The table plugin's block roles (a table of rows of cells). */
 export const tableSemantics = semanticsOf(tableKinds);
+/** The equation plugin's block role. */
+export const equationSemantics = semanticsOf(equationKinds);
 /**
- * The rich-text, code, image, media, columns, page, table of contents and
- * table plugins' block roles together (and the rich-text and comment mark edges) — what the room and a headless
+ * The rich-text, code, image, media, columns, page, table of contents,
+ * table and equation plugins' block roles together (and the rich-text and
+ * comment mark edges) — what the room and a headless
  * `createDocument`/`loadDocument` adopt by default (`semantics: {}` checks
- * none). The media, columns, page, table of contents and table plugins are
- * not default plugins of `<Edytor>`, but their roles are here so their
+ * none). The media, columns, page, table of contents, table and equation
+ * plugins are not default plugins of `<Edytor>`, but their roles are here so their
  * blocks read the same on every replica.
  */
 export const defaultSemantics = withMarks(
@@ -368,7 +380,8 @@ export const defaultSemantics = withMarks(
 		layoutKinds,
 		pageKinds,
 		tocKinds,
-		tableKinds
+		tableKinds,
+		equationKinds
 	),
 	{ ...richTextMarks, ...commentMarks }
 );

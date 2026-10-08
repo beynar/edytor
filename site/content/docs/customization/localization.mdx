@@ -4,7 +4,7 @@ description: Translate every word the editor's chrome shows or says, from the me
 icon: languages
 ---
 
-Every word the editor shows or says comes from a dictionary of labels: the menus, the toolbar, the handles' names, the empty image and media panels, the code header, the find bar, the suggestion bar, the comments sidebar, the page, table of contents and page link blocks, the mention and page link menus, the version history panel, the placeholders and what screen readers hear. English is the default. To show another language, pass each plugin its `labels`, and the view its own:
+Every word the editor shows or says comes from a dictionary of labels: the menus, the toolbar, the handles' names, the empty image and media panels, the code header, the find bar, the suggestion bar, the comments sidebar, the page, table of contents and page link blocks, the mention and page link menus, the equations, the version history panel, the placeholders and what screen readers hear. English is the default. To show another language, pass each plugin its `labels`, and the view its own:
 
 | Words | Where to pass them | Section of `Labels` |
 | --- | --- | --- |
@@ -399,6 +399,16 @@ export const fr: Labels = {
 		nothingToUndo: 'Aucune restauration à annuler.',
 		denied: 'Vous n’avez pas accès à cet historique.',
 		failed: 'L’historique est injoignable.'
+	},
+	equation: {
+		block: 'Équation en bloc',
+		inline: 'Équation en ligne',
+		blockPlaceholder: 'Ajouter une équation TeX',
+		inlinePlaceholder: 'Nouvelle équation',
+		editor: 'Équation',
+		placeholder: 'E = mc^2',
+		done: 'Terminé',
+		invalid: 'Équation invalide'
 	}
 };
 

@@ -36,8 +36,10 @@ import type { Popup, PopupOpener } from '$lib/surface/popups.svelte.js';
 import { dragPreview } from './dragPreview.js';
 import { DropIndicator } from './dropIndicator.js';
 import {
+	dropReach,
 	getOwnRowBottom,
 	isBeside,
+	marginAt,
 	nestIndent,
 	overEmptyBody,
 	ownRow,
@@ -99,11 +101,6 @@ const SLOP_Y = 24;
 /** The right beside band: the row's last 15% (Notion), at least this many px. */
 const RIGHT_BAND = 0.15;
 const RIGHT_BAND_MIN = 32;
-/**
- * How far the beside bands reach into the page margins, within a row's
- * height: left, beyond the handle column; right, beyond the editor's edge.
- */
-const MARGIN_X = 120;
 /** The handle column's width when the drag's handle cannot be measured (`+`, grip and gap). */
 const HANDLE_COLUMN = 50;
 
@@ -515,12 +512,14 @@ export class BlockHandleController {
 	}
 
 	/**
-	 * The editor's margins (Notion): during our drag, the page (`body`) is a
-	 * drop target only where `margin` gives a placement — the handle column
-	 * left of the blocks (a reorder of the row there), the page margin beyond
-	 * it and the one right of the editor (beside bands), within a row's
-	 * height — so a row is reached from outside it too, row after row;
-	 * anywhere else the block targets (and their stickiness) stand.
+	 * The editor's margins (Notion, `dnd.reach`): during our drag, the page
+	 * (`body`) is a drop target only where `margin` gives a placement — the
+	 * handle column left of the blocks, the page margin past it and the one
+	 * right of the content, up to the drop reach, within the editor's height
+	 * (a beside band nearest the content, else the row's reorder) — so a row
+	 * is reached from outside it too, row after row; anywhere else the block
+	 * targets (and their stickiness) stand, and a block target holding the
+	 * pointer (its sticky slop) answers before the page.
 	 */
 	private registerMarginTarget(node: HTMLElement) {
 		if (this.registered.has(node)) return;
@@ -566,18 +565,20 @@ export class BlockHandleController {
 	}
 
 	/**
-	 * The editor's left gutter: where its blocks' text starts (the root's
-	 * content box), and the width of the handle column left of it (the drag's
-	 * handle, measured: `+`, grip and the gap to the block).
+	 * The editor's content column (`start`…`end`, the root's content box:
+	 * where its blocks' boxes start and end), the width of the handle column
+	 * left of it (the drag's handle, measured: `+`, grip and the gap to the
+	 * block) and how far the drag reaches past them (`dropReach`, the
+	 * `--edytor-drop-reach` the root inherits).
 	 */
 	private gutter(root: HTMLElement) {
 		const style = root.ownerDocument.defaultView?.getComputedStyle(root);
-		const start =
-			root.getBoundingClientRect().left +
-			root.clientLeft +
-			(parseFloat(style?.paddingLeft ?? '') || 0);
+		const rect = root.getBoundingClientRect();
+		const px = (value: string | undefined) => parseFloat(value ?? '') || 0;
+		const start = rect.left + root.clientLeft + px(style?.paddingLeft);
+		const end = rect.right - px(style?.borderRightWidth) - px(style?.paddingRight);
 		const width = this.handle?.isConnected ? this.handle.getBoundingClientRect().width : 0;
-		return { start, handles: width > 0 ? width : HANDLE_COLUMN };
+		return { start, end, handles: width > 0 ? width : HANDLE_COLUMN, reach: dropReach(style) };
 	}
 
 	/** Whether `x` is in the handle column left of the editor's blocks (`gutter`): the page target's. */
@@ -589,28 +590,35 @@ export class BlockHandleController {
 	}
 
 	/**
-	 * A placement in the editor's margins at the pointer, for the row the
-	 * editor's near edge shows at the pointer's height (`rowAt`: a column's
-	 * block, a nested block's own row):
-	 * - in the handle column left of the blocks (`gutter`), that row's
-	 *   reorder (`reorder`): a drag straight down the handles reorders, row
-	 *   after row, gaps included (never a beside band);
-	 * - beyond it (up to `MARGIN_X`), the band left of that row;
-	 * - right of the editor (up to `MARGIN_X`), the band right of it;
-	 * the bands are `beside`'s, as if the pointer were at that edge, only
-	 * when the document has a layout kind. `undefined` elsewhere.
+	 * A placement in the editor's margins at the pointer (`dnd.reach`), within
+	 * the editor's height, for the row the content's near edge shows at the
+	 * pointer's height (`rowAt`: a nested block's own row; over a layout, the
+	 * row of its first column on the left, of its last on the right, never
+	 * another), by the zone the pointer is in (`marginAt`):
+	 * - the handle column left of the blocks (`gutter`): that row's reorder
+	 *   (`reorder`): a drag straight down the handles reorders, row after
+	 *   row, gaps included (never a beside band);
+	 * - the first `BESIDE_MARGIN` px past it on the left, and past the
+	 *   content's right edge: the beside band of that side (`beside`, as if
+	 *   the pointer were at that edge) when the document has a layout kind
+	 *   and the row offers one (a refused band shows nothing);
+	 * - elsewhere within the reach (and there without a band): the reorder,
+	 *   on the left the handle column's, on the right the one the row's
+	 *   right edge offers (`atRightEdge`).
+	 * `undefined` past the reach, above or below the editor, and inside the
+	 * content (the blocks' own targets answer there).
 	 */
 	private margin(source: Block, { clientX: x, clientY: y }: { clientX: number; clientY: number }) {
 		const root = this.edytor.node;
 		if (!root || this.edytor.readonly) return undefined;
 		const box = root.getBoundingClientRect();
 		if (y < box.top || y > box.bottom) return undefined;
-		const { start, handles } = this.gutter(root);
-		const handle = this.inHandleColumn(x);
-		const left = x < start - handles && x >= start - handles - MARGIN_X;
-		const right = x > box.right && x <= box.right + MARGIN_X;
-		if (!handle && (!this.layouts || (!left && !right))) return undefined;
-		const edge = right ? box.right - 1 : Math.max(box.left, start) + 1;
+		const gutter = this.gutter(root);
+		const zone = marginAt(x, gutter);
+		if (!zone) return undefined;
+		const right = zone.side === 'right';
+		const band = zone.zone === 'beside' && this.layouts;
+		const edge = right ? gutter.end - 1 : gutter.start + 1;
 		const hits = root.ownerDocument.elementsFromPoint?.(edge, y) ?? [];
 		const hit = hits.find((at) => {
 			const block = at.closest<HTMLElement>('[data-edytor-block="true"]');
@@ -618,9 +626,9 @@ export class BlockHandleController {
 		});
 		const node = hit?.closest<HTMLElement>('[data-edytor-block="true"]');
 		const target = node && this.targets.get(node);
-		// Between two rows of the handle column (a margin, a layout's edge), the
-		// reorder shown stays, as a block's sticky slop keeps it.
-		const shown = handle && this.indicator.target === root.ownerDocument.body;
+		// Between two rows where the margin reorders (a margin, a layout's
+		// edge), the reorder shown stays, as a block's sticky slop keeps it.
+		const shown = !band && this.indicator.target === root.ownerDocument.body;
 		const held = shown ? this.indicator.placement : null;
 		const stay = held && !isBeside(held.position) ? held : undefined;
 		if (!node || !target) return stay;
@@ -636,14 +644,44 @@ export class BlockHandleController {
 			row = this.rowAt(data, target, node, { clientX: inner, clientY: y });
 		}
 		if (facade.isLayout(row.id) || !row.node) return stay;
-		if (handle) return this.reorder(source, row, { clientX: x, clientY: y }) ?? undefined;
-		const band = this.beside(
-			source,
-			row,
-			{ clientX: left ? -Infinity : Infinity, clientY: y },
-			left ? 'left' : 'right'
-		);
-		return band ?? undefined;
+		if (band) {
+			const aside = this.beside(
+				source,
+				row,
+				{ clientX: right ? Infinity : -Infinity, clientY: y },
+				zone.side
+			);
+			// A band the document refuses shows nothing; a row offering none (a
+			// nested row on the left, a layout that would stack) reorders.
+			if (aside !== undefined) return aside ?? undefined;
+		}
+		const input = { clientX: x, clientY: y };
+		const placement = right
+			? this.atRightEdge(source, row, input)
+			: this.reorder(source, row, input);
+		return placement ?? undefined;
+	}
+
+	/**
+	 * Right of the content, the placement the row offers at its own right
+	 * edge (`zones` there, by its own row's halves, as its drop target's
+	 * hitbox splits it): the same before, after or inside as just inside the
+	 * content, so nothing jumps as the pointer leaves it; `null` when no
+	 * placement fits.
+	 */
+	private atRightEdge(
+		source: Block,
+		row: Block,
+		{ clientX, clientY }: { clientX: number; clientY: number }
+	): DropPlacement | null {
+		const rect = ownRow(row.node!);
+		const { before, after } = this.zones(source, row, {
+			clientX: Math.min(clientX, rect.right - 1)
+		});
+		const halves = clientY < rect.top + rect.height / 2 ? [before, after] : [after, before];
+		const fits = this.fits(source);
+		const placement = halves.flat().find(fits);
+		return placement ? { ...placement, blocked: !halves[0]!.some(fits) } : null;
 	}
 
 	/**

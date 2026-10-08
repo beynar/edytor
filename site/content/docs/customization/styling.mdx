@@ -259,6 +259,7 @@ The layer sits at its natural place right after the root and positions chrome re
 | `--edytor-drop-indicator-color`   | `rgba(35, 131, 226, 0.43)` | The drop indicator's bar. Read from the target block, so set it on the root or any ancestor. |
 | `--edytor-nest-indent`            | `24px`    | One nesting step: the `[data-edytor-children]` container's indent, and the drop indicator's inside offset. Set it on the root or any ancestor. |
 | `--edytor-drop-backdrop-color`    | `rgba(35, 131, 226, 0.14)` | The [nest backdrop](/docs/plugins/block-handles#the-nest-backdrop) over the future parent's row. Read from that block, so set it on the root or any ancestor. Use one plain color, not `light-dark()`. |
+| `--edytor-drop-reach`             | `240px`   | How far a block drag still drops [outside the blocks](/docs/plugins/block-handles#dropping-outside-the-blocks): past the handle column on the left and past the blocks' right edge. Read from the root, so set it on the root or any ancestor. |
 
 ```css
 [data-edytor] {

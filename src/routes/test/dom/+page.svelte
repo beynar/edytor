@@ -589,7 +589,7 @@
 		slashMenuPlugin,
 		toolbarPlugin,
 		suggestionsPlugin,
-		columnsPlugin,
+		...(data.columns ? [columnsPlugin] : []),
 		richTextPlugin,
 		propsPlugin
 	]);

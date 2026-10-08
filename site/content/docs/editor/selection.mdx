@@ -29,7 +29,7 @@ type SelectionValue =
 
 Text anchors (`DocAnchor`) are bound to characters, not to numeric offsets. When a collaborator types before your caret, your caret stays next to the same character. They are plain JSON, so you can store or send them.
 
-The value is reactive, so `$derived(edytor.selection.value.kind)` updates with the selection.
+The value is reactive, so `$derived(edytor.selection.value.kind)` updates with the selection. It is read-only: `select()` and the setters below replace it, and keep the selected and focused blocks with it.
 
 ## The caret
 
@@ -127,10 +127,11 @@ edytor.selection.select({ kind: 'none' });
 Setters change the value immediately. The browser selection is drawn after the next render, and only when the editor has focus (or nothing else does). When you set the selection from outside the editor, such as a menu button, focus the editor too:
 
 ```ts title="focus.ts" check
-const text = block.firstText;
-if (text) edytor.selection.setAtTextOffset(text, 0);
-edytor.node?.focus({ preventScroll: true });
+edytor.selection.setCaret({ block, offset: 0 });
+edytor.focus();
 ```
+
+`edytor.focus()` keeps the selection; with none, it puts the caret at the start of the first text.
 
 ## Block selection
 
@@ -149,7 +150,7 @@ A block selection is exactly its members:
 - In a code block, the first <kbd>Mod</kbd>+<kbd>A</kbd> selects the code's text; deleting or cutting it leaves one empty line in the code block.
 - Copying a block selection copies only the selected blocks, a selected list or code block with everything in it.
 
-Selected blocks have the `data-edytor-selected` attribute, and the editor's root has `data-edytor-selection="blocks"` while the selection is a block selection (the browser's own text highlight is hidden under it). `edytor.selection.selectedBlocks` is a reactive `Set<Block>` of the blocks as clicked: a grip-selected list is one block there. `edytor.selection.selectedMembers` is what a command over the selection acts on, in document order: the selected blocks, a selected list or code block with its whole subtree (hidden toggle bodies included). Pass it to your own commands, such as `edytor.deleteBlocks({ blocks: edytor.selection.selectedMembers })`. `focusedBlocks` holds the blocks a text selection is in (`data-edytor-focused`).
+Selected blocks have the `data-edytor-selected` attribute, and the editor's root has `data-edytor-selection="blocks"` while the selection is a block selection (the browser's own text highlight is hidden under it). `edytor.selection.selectedBlocks` is a reactive, read-only `Set<Block>` of the blocks as clicked: a grip-selected list is one block there. `edytor.selection.selectedMembers` is what a command over the selection acts on, in document order: the selected blocks, a selected list or code block with its whole subtree (hidden toggle bodies included). Pass it to your own commands, such as `edytor.deleteBlocks({ blocks: edytor.selection.selectedMembers })`. `focusedBlocks` holds the blocks a text selection is in (`data-edytor-focused`).
 
 ## Pending marks
 

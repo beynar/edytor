@@ -57,6 +57,7 @@ The instance exists as soon as the component is created, but `edytor.root` stays
 | `defaultChild(parent)` | `(parent: Block) => string` | The type a new child of `parent` takes. |
 | `awareness` | `Awareness` | The document's presence channel. See [Collaboration](/docs/collaboration). |
 | `cells` | `Cells` | The reactive render state, one cell per visible block (below). |
+| `focus()` | `() => void` | Focus the editor without scrolling, as a click in it would: the selection it has stays, and with none the caret goes to the start of the first text. For a menu button or a shortcut outside the editor. |
 | `clear()` | `() => boolean` | Replace the whole document with one empty block and put the caret in it, as one undo step (the document's [properties](/docs/concepts/properties), `edytor.data`, stay). It is a command: a readonly view or a read-only document refuses it (it answers `false`, and `dispatcher.last` reads `refused`), so a viewer never wipes the shared document. Plugin hooks do not see it. |
 
 ### `edytor.document` and its facade

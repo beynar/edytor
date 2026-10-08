@@ -103,22 +103,24 @@ test.describe('demo block handle alignment', () => {
 		await page.setViewportSize({ width: 1440, height: 1100 });
 		await page.goto('/');
 		await waitForEditorReady(page);
+		// The demo's equation is drawn once KaTeX loads, moving every row below
+		// it: aligned before that proves nothing. Then polled on the misaligned
+		// rows themselves (the overlay follows a layout change a frame later).
+		await page.waitForFunction(
+			() =>
+				document.querySelector('[data-edytor-id="page-equation"] .katex') !== null &&
+				document.fonts.status === 'loaded'
+		);
 		await expect
 			.poll(async () =>
-				(await readBlockAlignment(page)).every(
-					(row) => Math.abs(row.delta) <= ALIGNMENT_TOLERANCE_PX
-				)
+				(await readBlockAlignment(page))
+					.filter((row) => Math.abs(row.delta) > ALIGNMENT_TOLERANCE_PX)
+					.map(
+						(row) =>
+							`${row.id}: handle center ${row.handleCenter.toFixed(1)}px, row center ${row.lineCenter.toFixed(1)}px`
+					)
 			)
-			.toBe(true);
-		const rows = await readBlockAlignment(page);
-		for (const row of rows) {
-			expect
-				.soft(
-					Math.abs(row.delta),
-					`${row.id}: handle center ${row.handleCenter.toFixed(1)}px, row center ${row.lineCenter.toFixed(1)}px`
-				)
-				.toBeLessThanOrEqual(ALIGNMENT_TOLERANCE_PX);
-		}
+			.toEqual([]);
 		issues.assertClean();
 	});
 

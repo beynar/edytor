@@ -242,9 +242,19 @@ const rangeEdge = (
 
 export class EdytorSelection {
 	edytor: Edytor;
-	focusedBlocks = new SvelteSet<Block>();
-	/** The selected blocks as clicked: a grip-selected list is one block. */
-	selectedBlocks = new SvelteSet<Block>();
+	#focused = new SvelteSet<Block>();
+	#selected = new SvelteSet<Block>();
+	/** The blocks the selection touches (read-only: `select()` keeps it). */
+	get focusedBlocks(): ReadonlySet<Block> {
+		return this.#focused;
+	}
+	/**
+	 * The selected blocks as clicked: a grip-selected list is one block
+	 * (read-only: `select()` keeps it).
+	 */
+	get selectedBlocks(): ReadonlySet<Block> {
+		return this.#selected;
+	}
 	/**
 	 * The blocks a command over the block selection acts on, in document
 	 * order: the selected blocks, a selected list or code block with its
@@ -272,9 +282,13 @@ export class EdytorSelection {
 
 	/**
 	 * The selection: a value — none, a text range of two anchors,
-	 * one inline atom, or a set of block ids. Only `select()` replaces it.
+	 * one inline atom, or a set of block ids. Read-only: only `select()`
+	 * replaces it.
 	 */
-	value = $state.raw<SelectionValue>(noSelection);
+	get value(): SelectionValue {
+		return this.#value;
+	}
+	#value = $state.raw<SelectionValue>(noSelection);
 	/** @internal Advanced by every `select()`. */
 	epoch = 0;
 	/**
@@ -394,7 +408,7 @@ export class EdytorSelection {
 	select = (next: SelectionValue, cause: SelectCause = 'model', surface?: { edge?: EdgeSide }) => {
 		next = this.#keepPending(this.#shown(next));
 		const changed = !sameValue(this.value, next);
-		if (changed) this.value = next;
+		if (changed) this.#value = next;
 		const value = this.value;
 		this.epoch++;
 		// A repair is a background display (it never takes focus); a command,
@@ -423,8 +437,8 @@ export class EdytorSelection {
 				: value.kind === 'atom'
 					? [blockOf(value.blockId) ?? []].flat()
 					: [];
-		this.#sync(this.selectedBlocks, selected, 'selected');
-		this.#sync(this.focusedBlocks, focused, 'focused');
+		this.#sync(this.#selected, selected, 'selected');
+		this.#sync(this.#focused, focused, 'focused');
 		if (atom !== this.inlineBlockDeletionTarget || (!atom && this.selectedInlineBlock.size)) {
 			this.selectedInlineBlock.clear();
 			if (atom) this.selectedInlineBlock.add(atom);

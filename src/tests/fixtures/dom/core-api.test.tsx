@@ -106,11 +106,11 @@ describe('UW-22 · data and type setters are commands', () => {
 
 		block.setData({ checked: true });
 		expect(last()).toBe('refused');
-		edytor.dispatcher.last = null;
+		edytor.dispatcher.record(null);
 
 		block.type = 'paragraph';
 		expect(last()).toBe('refused');
-		edytor.dispatcher.last = null;
+		edytor.dispatcher.record(null);
 
 		edytor.atomAt('todo', 'm').setData({ name: 'bob' });
 		expect(last()).toBe('refused');

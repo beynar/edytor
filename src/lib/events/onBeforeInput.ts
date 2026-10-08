@@ -485,7 +485,7 @@ const refuseTargetless = (
 	reuse?: Attempt
 ) => {
 	if (reuse) edytor.attempts.close(reuse);
-	edytor.dispatcher.last = { operation: occurrence.inputType, status: 'refused' };
+	edytor.dispatcher.record({ operation: occurrence.inputType, status: 'refused' });
 	// The caret the browser placed for this key is its own, never adopted.
 	edytor.projector.parked();
 	if (occurrence.cancelable || !occurrence.event) {

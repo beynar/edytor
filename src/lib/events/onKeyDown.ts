@@ -255,7 +255,7 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 
 	if (refused) {
 		e.preventDefault();
-		this.dispatcher.last = { operation: keyed, status: 'refused' };
+		this.dispatcher.record({ operation: keyed, status: 'refused' });
 		this.projector.parked();
 		return;
 	}

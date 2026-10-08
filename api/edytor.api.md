@@ -1260,7 +1260,7 @@ export type DataPatch = {
 export declare class Dispatcher {
     #private;
     private edytor;
-    last: CommandResult | null;
+    get last(): CommandResult | null;
     authoring: SelectionValue | null;
     private active;
     private running;
@@ -1633,6 +1633,7 @@ export declare class Edytor {
     deleteBlocks: (payload: {
         blocks: Block[];
     }) => boolean;
+    focus: () => void;
     clear: () => boolean;
     presence: PresenceWriter;
     destroy: () => void;
@@ -1717,15 +1718,15 @@ export declare class EdytorSelection {
     #private;
     private edytorOnSelectionChange?;
     edytor: Edytor;
-    focusedBlocks: SvelteSet<Block>;
-    selectedBlocks: SvelteSet<Block>;
+    get focusedBlocks(): ReadonlySet<Block>;
+    get selectedBlocks(): ReadonlySet<Block>;
     get selectedMembers(): Block[];
     selectedInlineBlock: SvelteSet<InlineBlock>;
     private pointerDragStart;
     private selectionDocument;
     private shouldKeepModelSelectionForNextTextInsertion;
     private modelSelectionPreservationBlock;
-    value: SelectionValue;
+    get value(): SelectionValue;
     constructor(edytor: Edytor, edytorOnSelectionChange?: ((selection: EdytorSelection) => void) | undefined);
     get projection(): SelectionProjection;
     get state(): SelectionState;

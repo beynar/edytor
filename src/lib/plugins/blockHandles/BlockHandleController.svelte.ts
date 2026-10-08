@@ -388,7 +388,7 @@ export class BlockHandleController {
 			}
 			if (!refused) return out;
 			selection.select(held);
-			dispatcher.last = refused;
+			dispatcher.record(refused);
 			return false;
 		};
 		const detail: BlockAddition = { block, anchor, insert };

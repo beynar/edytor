@@ -14,7 +14,13 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+#### Breaking changes
+
+- **Single-owner state is read-only.** `edytor.selection.value`, `selection.selectedBlocks`, `selection.focusedBlocks` and `edytor.dispatcher.last` can no longer be assigned (the sets are `ReadonlySet`s). Assigning `selection.value` used to leave the selected blocks behind; use `selection.select(value)` or a setter (`setCaret`, `setAtTextOffset`, …), which keep them in step.
+
 #### New
+
+- **`edytor.focus()`.** Focuses the editor without scrolling, keeping its selection, or with none putting the caret at the start of the first text. It replaces `edytor.node?.focus()` after setting a selection from a menu button.
 
 - **The types you meet are exported.** `edytor` now exports the types its props, options, members and callbacks use, so an app can name them: `EdytorProps`, `EdytorOptions`, `Snippets`, every plugin's labels type (`RichTextLabels`, `TableLabels`, …), `Dispatcher`, the selection's (`SelectionValue`, `SelectionPoint`, `SelectionSegment`, `SelectionProjection`, `SelectionState`, `SelectCause`, `PresenceSelection`, `TextAnchor`), a hotkey's `Key`, `Modifier` and `Modifiers`, the plugin author's (`BlockView`, `InlineBlockView`, `BlockElement`, `InitializedPlugin`, `PluginDefinitions`, `PluginOperations`, `TextOperations`, `BlockOperations`, `BlockBeside`, `TriggerRange`, `TextInsertionPayload`, `RichTextLink`, `RichTextMark`), the document's (`EdytorDoc`, `DocumentOptions`, `DataPatch`, `TextRange`, `BlockRole`, `DocAnchor`, `AnchorAffinity`, `Flow`, `FlowLine`, `FlowTarget`, the attribution types) and the sync's (`PrefetchOptions`, `PrefetchResult`, `LastUpdatedOptions`, `EdytorSyncCleanup`, `WebsocketTarget`, `ProtocolMismatch`, `SchemaMismatchDetail`, `CommentMessage`, `AwarenessLike`, `PresenceWriter`).
 
@@ -883,6 +889,7 @@ Every public change since 0.0.11, by area.
 
 ### Editor view, selection and commands
 
+- **`edytor.focus()`** focuses the editor, keeping its selection or putting the caret at the start; `selection.value`, `selectedBlocks`, `focusedBlocks` and `dispatcher.last` are read-only.
 - **Exported types.** The types the root entry's props, options, members and callbacks use are exported from `edytor` (`EdytorProps`, `EdytorOptions`, the labels types, `Dispatcher`, the selection, hotkey, plugin, document and sync types); see the note of the release that added them.
 - **`value` is not bindable.** `<Edytor value>` is the initial content; `bind:value` fails type-checking. Read edits with `onChange` or `edytor.value`.
 - **Component props.** New: `document` (an `EdytorDocument` to render; several views can share one), `actor` (the local author), `room`, `server` and `params` (the view builds its IndexedDB copy and its websocket sync from them), `onSyncExpired` (the room closed with `4401`; refresh `params` before the redial) and `onSyncRefused` (a refusal standing at mount, then each new one), `blockHandles`, `defaultPlugins`, and the root attributes `translate`, `spellcheck`, `autocorrect`, `autocomplete`, `autocapitalize`, `inputmode` and `enterkeyhint`. `sync` takes an `EdytorSync` (a factory from `createIndexeddbSync`/`createWebsocketSync`, or your own) and overrides `room`/`server`. `hotkeys` is typed (see Keymap below). See [the component](/docs/editor/edytor-component).

@@ -466,7 +466,7 @@ export class Edytor {
 	historyUndo = (): void => this.#replay('undo');
 	historyRedo = (): void => this.#replay('redo');
 	#replay = (command: 'undo' | 'redo') => {
-		this.dispatcher.last = { operation: command, status: this.history.replay(command) };
+		this.dispatcher.record({ operation: command, status: this.history.replay(command) });
 	};
 
 	constructor(options: EdytorOptions) {
@@ -1000,6 +1000,20 @@ export class Edytor {
 	atomAt = (id: string, atom: string): InlineBlock => this.idToBlock.atom(id, atom);
 
 	/**
+	 * Focus the editor, as a click in it would, without scrolling: the
+	 * selection it has stays, and with none the caret goes to the start of
+	 * the first text. For a menu button or a shortcut outside the editor.
+	 */
+	focus = (): void => {
+		if (this.selection.value.kind === 'none') {
+			const text = this.root?.firstText;
+			if (text) this.selection.setAtTextOffset(text, 0);
+		}
+		this.expectInternalFocus();
+		this.node?.focus({ preventScroll: true });
+	};
+
+	/**
 	 * Replace the whole document with one empty block and put the caret in it,
 	 * as one undo step. A readonly view or a read-only document refuses it
 	 * (`dispatcher.last` reads `refused`). Answers whether it applied.
@@ -1015,7 +1029,7 @@ export class Edytor {
 			})
 		);
 		if (!newBlock) return false;
-		this.dispatcher.last = { operation: 'clear', status: 'applied' };
+		this.dispatcher.record({ operation: 'clear', status: 'applied' });
 		this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
 		this.expectInternalFocus();
 		this.node?.focus({ preventScroll: true });

@@ -362,7 +362,7 @@ export const keepsSelectedBlocks = (edytor: Edytor, blocks: Block[]) => {
 	const kept = edytor.dispatcher.intercept((plugin) =>
 		vetoable((prevent) => plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks: blocks }))
 	);
-	if (kept) edytor.dispatcher.last = { operation: 'deleteSelectedBlocks', status: 'refused' };
+	if (kept) edytor.dispatcher.record({ operation: 'deleteSelectedBlocks', status: 'refused' });
 	return kept;
 };
 

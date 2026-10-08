@@ -149,7 +149,7 @@ const place = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 	if (!move) {
 		// Refused before any command ran: `last` still reports it (commands#results).
 		const operation = request.blocks.length > 1 ? 'moveBlocks' : 'moveBlock';
-		edytor.dispatcher.last = { operation, status: request.blocks.length ? 'refused' : 'noop' };
+		edytor.dispatcher.record({ operation, status: request.blocks.length ? 'refused' : 'noop' });
 		return [];
 	}
 	const [first, ...rest] = move.blocks;

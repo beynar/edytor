@@ -116,7 +116,7 @@
 					return wrapBlocks(edytor, selected, 'columns', n);
 				const block = edytor.selection.state.startBlock;
 				if (inColumn(block)) {
-					edytor.dispatcher.last = { operation: 'setBlock', status: 'refused' };
+					edytor.dispatcher.record({ operation: 'setBlock', status: 'refused' });
 					return false;
 				}
 				return convertToKind(edytor, block, layoutRow(edytor, n, options));

@@ -198,8 +198,20 @@ const specJSON = (spec: BlockSpec): unknown => ({
 });
 
 export class Dispatcher {
-	/** The last operation's result. */
-	last: CommandResult | null = null;
+	#last: CommandResult | null = null;
+	/** The last operation's result (read-only: the dispatcher records it). */
+	get last(): CommandResult | null {
+		return this.#last;
+	}
+	/**
+	 * Record `result` as the last operation's: a refusal or result decided
+	 * outside a dispatch (a key or input no command took, a gesture the
+	 * layout refused, a history replay).
+	 * @internal
+	 */
+	record(result: CommandResult | null): void {
+		this.#last = result;
+	}
 	/**
 	 * The result selection a command in flight declared before its operations: the seam repair leaves this view's endpoints to it.
 	 */
@@ -340,7 +352,7 @@ export class Dispatcher {
 			}
 		});
 		if (this.applied && this.last?.status !== 'applied' && this.last?.status !== 'failed')
-			this.last = this.applied;
+			this.#last = this.applied;
 		this.applied = null;
 		const after = () => this.cut(kind, 'after');
 		if (out instanceof Promise) return out.finally(after) as T;
@@ -469,15 +481,15 @@ export class Dispatcher {
 				}
 			});
 		} catch (error) {
-			this.last = { operation, status: 'failed', error };
+			this.#last = { operation, status: 'failed', error };
 			throw error;
 		}
 		if (cut === 'both') this.edytor.undoManager?.stopCapturing();
-		this.last = {
+		const own: CommandResult = {
 			operation,
 			status: this.edytor.facade.version === version ? 'noop' : 'applied'
 		};
-		const own = this.last;
+		this.#last = own;
 		if (this.running && own.status === 'applied') this.applied = own;
 		const change = { operation, payload: original, ...context } as AfterOperationPayload;
 		for (const plugin of this.edytor.plugins) plugin.onAfterOperation?.(change);
@@ -505,7 +517,7 @@ export class Dispatcher {
 		if (!this.last) return;
 		const next = { ...this.last, ...patch };
 		if (this.#produced === this.last) this.#produced = next;
-		this.last = next;
+		this.#last = next;
 	}
 
 	/**
@@ -695,7 +707,7 @@ export class Dispatcher {
 
 	/** Record `operation` as refused; answers that result. */
 	#refused(operation: string): CommandResult {
-		return (this.last = { operation, status: 'refused' });
+		return (this.#last = { operation, status: 'refused' });
 	}
 
 	private settle(error: unknown, onPrevent?: () => void): undefined {

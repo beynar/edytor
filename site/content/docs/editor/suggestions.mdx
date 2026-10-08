@@ -169,7 +169,7 @@ A `Suggestion`:
 
 The keys claim nothing while there is no suggestion, so <kbd>Mod</kbd> + <kbd>Enter</kbd> still checks to-dos and opens toggles. Plugins listed before it in `plugins` get the keys first ([Plugin order](/docs/plugins#plugin-order)); in a code line, the [code plugin](/docs/plugins/code)'s <kbd>Tab</kbd> accepts an `end` suggestion too.
 
-Render your own bar with `createSuggestionsPlugin({ bar })`. Placement and keys stay the plugin's:
+Render your own bar with `createSuggestionsPlugin({ bar })`. Placement and keys stay the plugin's. The bar receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (with an `onRetry`), `readonly`, and `labels`, the plugin's words, for your markup:
 
 ```svelte title="AiBar.svelte" check
 <script lang="ts">

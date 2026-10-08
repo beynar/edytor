@@ -42,6 +42,14 @@ The slash menu then lists "Web bookmark" under `Media`, and pasting an `http(s)`
       type: "Partial<Record<string, string[]>>",
       description: "The slash menu's keywords by command id (block.bookmark); they replace the command's own.",
     },
+    menu: {
+      type: "Snippet<[UrlPasteController]>",
+      description: "Replaces the menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass. Keep its ARIA with {@attach controller.popup} and {...controller.option(index)}. See Menus and handles.",
+    },
+    empty: {
+      type: "Snippet<[MediaEmptyController]>",
+      description: "Replaces an empty block's markup (its button and link panel, a readonly view's placeholder). See Menus and handles.",
+    },
   }}
 />
 

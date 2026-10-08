@@ -1,54 +1,489 @@
 ---
 title: Menus and handles
-description: Replace the markup of the slash menu, the selection toolbar, the block menu and the block handles with your own Svelte snippets, while the plugins keep the behavior.
+description: Replace the markup of every built-in popup, menu, toolbar, panel and handle with your own typed Svelte snippet, while the plugins keep the behavior, the keyboard and the accessibility.
 icon: panels-top-left
 ---
 
-The slash menu, the toolbar, the block menu and the block handles ship with Notion's look. Each one also takes a snippet that renders your markup instead. The plugin keeps the behavior: when the UI opens, where it is placed, the keys it claims, and the commands it runs. Your snippet receives a controller (or a payload) to read state from and call actions on.
+The built-in chrome follows Notion: the slash menu, the mention and page link menus, the block menu, the selection toolbar and its link card, the menu a pasted URL opens, the image toolbar, the empty image and media blocks, the comment cards, the suggestion bar, the version history rows and the block handles. Each one takes a snippet that renders your markup instead. The plugin keeps the behavior: when the UI opens, where it is placed, the keys it claims, the commands it runs. Your markup keeps the keyboard and the ARIA of the built-in one through a few attachments the controller hands you.
 
-| UI | Factory | Snippet | Receives |
+## The pattern
+
+Every element is customized the same way:
+
+- **Where.** A snippet option in the plugin's factory options (`createBlockMenuPlugin({ menu })`), or a prop of the component (`<HistoryPanel item>`).
+- **Naming.** A whole surface is named by what it is: `menu`, `toolbar`, `card`, `bar`, `empty`. One row of a list is always `item`.
+- **Typing.** A snippet takes one object argument whose type is exported from `edytor`: `Snippet<[BlockMenuController]>`, `Snippet<[SlashMenuItem]>`. A whole surface receives its controller: its state, its actions, its words (`labels`), `readonly`, and a way to close it. A row receives the shape every list shares, `MenuItemPayload`: `{ item, id, label, selected, run, select, option }`.
+- **Accessibility.** The keyboard and the ARIA live on the controller as [attachments](https://svelte.dev/docs/svelte/@attach), never in the built-in markup only. The built-in markup uses the same attachments, so a snippet that uses them behaves exactly as it does.
+
+| Attachment | Put it on | What it does |
+| --- | --- | --- |
+| `{@attach controller.popup}` | The list (`listbox` or `menu`), or the toolbar | Gives the element its id, and its role and name unless you set them; keeps the focus where it is on a press; publishes the popup to the editor's root (`aria-controls`, `aria-haspopup`, `aria-activedescendant` when the root holds the keyboard) while it is in the page, and withdraws it when it goes |
+| `{@attach controller.keys}` | The element that holds the keyboard: the block menu's or the `+` menu's field, the toolbar | Takes the menu's keys (arrows, <kbd>Home</kbd>, <kbd>End</kbd>, <kbd>Enter</kbd>, <kbd>Escape</kbd>, …), focuses the field when it mounts, and makes a field name the list and its highlighted row |
+| `{...controller.option(index)}` | Each row | Its id, `role`, `aria-selected` (or `aria-checked`), `tabindex="-1"`, `data-selected`, and scrolls the keyboard's row into view. A row payload carries it as `option` |
+| `{@attach controller.flyoutMenu}` | The block menu's open flyout | Its id, role, name and placement beside the menu |
+| `{@attach controller.linkField}` | The toolbar's link field | Its id (unique per editor, for a `label`'s `for`), the focus when the panel opens, <kbd>Enter</kbd> applies, <kbd>Escape</kbd> closes |
+| `{@attach controls.bar}`, `{@attach controls.altField}` | The image toolbar and its alt field | The toolbar's role and name; the alt field's focus, keys, and closing when the focus leaves |
+| `{@attach empty.field}` | An empty block's link field | <kbd>Enter</kbd> embeds the link |
+
+Two rules hold for every snippet:
+
+- **Keep the selection.** A press on a menu must not move the caret. `popup` cancels the `mousedown` of every press in its element but on a field; on anything else that acts on the text (a `+`, a button outside the list), call `preventDefault` on `mousedown`. The toolbar's host does it for every press but in a field.
+- **Mark the element to place** when it is not your snippet's first element: the block menu measures `[data-edytor-block-menu]`; the toolbar's `popup` marks the bar `data-edytor-toolbar-bar` for you.
+
+| UI | Option | Receives | Attachments |
 | --- | --- | --- | --- |
-| [Slash menu](/docs/plugins/slash-menu#custom-markup) | `createSlashMenuPlugin` | `item` (one row) or `menu` (the whole menu) | `SlashMenuItem` or `SlashMenuController` |
-| [Toolbar](/docs/plugins/toolbar#custom-markup) | `createToolbarPlugin` | `toolbar` | `ToolbarController` |
-| [Block menu](/docs/plugins/block-menu#custom-markup) | `createBlockMenuPlugin` | `menu` | `BlockMenuController` |
-| [Block handle](/docs/plugins/block-handles#custom-handle) | `createBlockHandlesPlugin`, or the `blockHandles` prop | `handle` | `BlockHandleSnippetPayload` |
-| [Mention](/docs/plugins/mention), [page link](/docs/plugins/page-link) and any [trigger](/docs/plugins/input-rules#markup-and-accessibility) menu | `createMentionPlugin`, `createPageLinkPlugin`, a trigger's `item` | `item` (one row) | `TriggerItemPayload` |
+| [Slash menu](#slash-menu) | `createSlashMenuPlugin({ menu, item })` | `SlashMenuController`, `SlashMenuItem` | `popup`, `option(index)`; `keys` in a `+` menu |
+| [Mention, page link, any trigger](#mention-page-link-and-other-trigger-menus) | `createMentionPlugin({ menu, item })`, `createPageLinkPlugin({ menu, item })`, a trigger's `menu` and `item` | `TriggerMenuController<T>`, `TriggerItemPayload<T>` | `popup`, `option(index)` |
+| [Block menu](#block-menu) | `createBlockMenuPlugin({ menu })` | `BlockMenuController` | `keys`, `popup`, `option(index)`, `flyoutMenu` |
+| [Toolbar and link card](#toolbar-and-link-card) | `createToolbarPlugin({ toolbar, card })` | `ToolbarController` | `popup`, `keys`, `linkField` |
+| [URL paste menu](#url-paste-menu) | `createEmbedPlugin({ menu })`, `createBookmarkPlugin({ menu })` | `UrlPasteController` | `popup`, `option(index)` |
+| [Image toolbar](#image-toolbar) | `createImagePlugin({ toolbar })` | `ImageControls` | `bar`, `altField` |
+| [Empty image and media blocks](#empty-image-and-media-blocks) | `createImagePlugin({ empty })`, the media plugins' `empty` | `ImageEmptyController`, `MediaEmptyController` | `field` |
+| [Comment cards](#comment-cards) | `createCommentsPlugin({ card })` | `CommentCardPayload` | |
+| [Suggestion bar](#suggestion-bar) | `createSuggestionsPlugin({ bar })` | `SuggestionBarPayload` | |
+| [Version history rows](#version-history-rows) | `<HistoryPanel item>` | `HistoryVersionItem` | its `option` |
+| [Block handle](#block-handle) | `createBlockHandlesPlugin({ handle })`, the `blockHandles` prop | `BlockHandleSnippetPayload` | `use:grip` |
 
-Each factory also takes `labels`, the words of its built-in markup, which its controller carries for yours (`controller.labels`): see [Localization](/docs/customization/localization). All the factories and types are exported from `edytor`. `slashMenuPlugin`, `toolbarPlugin`, `blockMenuPlugin` and `blockHandlesPlugin` are the same plugins with the built-in markup.
+Each factory also takes `labels`, the words of its built-in markup, which its controller carries for yours (`controller.labels`): see [Localization](/docs/customization/localization). Your markup renders in the plugin's host without the built-in styles. `slashMenuPlugin`, `toolbarPlugin`, `blockMenuPlugin` and `blockHandlesPlugin` are the same plugins with the built-in markup.
 
-## Passing a snippet
+A snippet declared at the top level of a component's markup can be used in its `<script>`, so you build the plugins there, as every example below does.
 
-A snippet declared at the top level of a component's markup can be used in its `<script>`, so you can build the plugins there. This editor draws its own slash menu rows and block handles:
+## Slash menu
 
-```svelte title="Editor.svelte" check
+`menu` replaces the whole menu; `item` replaces each row and keeps the built-in sections, empty state and footer. The menu opens on `/` (the editor's root keeps the keyboard: its <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd> are the plugin's) or from a block handle's `+` (`controller.addition` is set: the menu holds the keyboard, through your field with `keys`). See [Slash menu](/docs/plugins/slash-menu#custom-markup).
+
+```svelte title="SlashMenuEditor.svelte" check
+<script lang="ts">
+	import { Edytor, createSlashMenuPlugin, type SlashMenuController } from 'edytor';
+
+	const plugins = [createSlashMenuPlugin({ menu })];
+</script>
+
+{#snippet menu(slash: SlashMenuController)}
+	<div class="menu">
+		{#if slash.addition}
+			<!-- The `+` menu: this field holds the keyboard. -->
+			<input
+				role="combobox"
+				aria-expanded="true"
+				aria-controls={slash.listId}
+				aria-label={slash.labels.filterLabel}
+				placeholder={slash.labels.filter}
+				value={slash.query}
+				oninput={(event) => slash.search(event.currentTarget.value)}
+				{@attach slash.keys}
+			/>
+		{/if}
+		<ul {@attach slash.popup}>
+			{#each slash.commands as command, index (command.id)}
+				<li
+					{...slash.option(index)}
+					onmousemove={() => (slash.selectedIndex = index)}
+					onclick={() => void slash.run(command)}
+				>
+					{command.label}
+					{#if command.hint}<kbd>{command.hint}</kbd>{/if}
+				</li>
+			{:else}
+				<li role="presentation">{slash.labels.noResults}</li>
+			{/each}
+		</ul>
+	</div>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+An `item` row receives a `SlashMenuItem`: the shared row shape (`item` is the command, `run` runs it, removing the `/query` in the same step), with `command` and `icon` (the built-in line icon as a CSS `mask-image` value):
+
+```svelte title="SlashRows.svelte" check
+<script lang="ts">
+	import { Edytor, createSlashMenuPlugin, type SlashMenuItem } from 'edytor';
+
+	const plugins = [createSlashMenuPlugin({ item })];
+</script>
+
+{#snippet item({ command, label, icon, option, run, select }: SlashMenuItem)}
+	<button {...option} class="row" onmousedown={(e) => e.preventDefault()} onmousemove={select} onclick={run}>
+		{#if icon}<span class="icon" style:mask-image={icon}></span>{:else}<span>{command.icon}</span>{/if}
+		{label}
+	</button>
+{/snippet}
+
+<Edytor {plugins} />
+
+<style>
+	.row[data-selected='true'] {
+		background: #f1f1ef;
+	}
+	.icon {
+		width: 18px;
+		height: 18px;
+		background: currentColor;
+		mask-size: contain;
+	}
+</style>
+```
+
+In a `+` menu, the plugin wraps your `menu` in a focused element that holds the keyboard with `keys` too: typing and <kbd>Backspace</kbd> edit `controller.query` when your snippet has no field. `controller.commands` holds only the commands that can run in the block being added; `controller.dismiss()` closes the menu with the selection given back.
+
+## Mention, page link and other trigger menus
+
+A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugins/mention), `[[` for [page links](/docs/plugins/page-link), or your plugin's own) takes `menu` (the whole menu, a `TriggerMenuController<T>`) and `item` (a row, a `TriggerItemPayload<T>`: the shared row shape, `pick` the same as `run`). The editor's root keeps the keyboard; `popup` names the list and its highlighted row from it.
+
+```svelte title="MentionEditor.svelte" check
 <script lang="ts">
 	import {
 		Edytor,
-		createSlashMenuPlugin,
-		type BlockHandleSnippetPayload,
-		type SlashMenuItem
+		createMentionPlugin,
+		type MentionItem,
+		type TriggerMenuController
 	} from 'edytor';
 
-	const plugins = [createSlashMenuPlugin({ item })];
-	const keep = (event: MouseEvent) => event.preventDefault();
+	const people: MentionItem[] = [
+		{ id: 'ada', label: 'Ada Lovelace' },
+		{ id: 'alan', label: 'Alan Turing' }
+	];
+	const plugins = [
+		createMentionPlugin({
+			items: (query) => people.filter((person) => person.label.toLowerCase().includes(query)),
+			menu
+		})
+	];
 </script>
 
-{#snippet item({ command, id, selected, icon, run, select }: SlashMenuItem)}
-	<button
-		{id}
-		role="option"
-		aria-selected={selected}
-		class="row"
-		class:selected
-		onmousedown={keep}
-		onmousemove={select}
-		onclick={run}
-	>
-		{#if icon}<span class="icon" style:mask-image={icon}></span>{:else}<span>{command.icon}</span>{/if}
-		{command.label}
-		{#if command.hint}<kbd>{command.hint}</kbd>{/if}
+{#snippet menu(mentions: TriggerMenuController<MentionItem>)}
+	<ul {@attach mentions.popup} aria-busy={mentions.loading}>
+		{#each mentions.items as person, index (person.id)}
+			<li {...mentions.option(index)} onclick={() => void mentions.pick(person)}>
+				{person.label}
+			</li>
+		{:else}
+			<li role="presentation">{mentions.loading ? mentions.searching : mentions.empty}</li>
+		{/each}
+	</ul>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+## Block menu
+
+`menu` renders while `controller.isOpen`, beside the grip that opened it. Its field holds the keyboard: `keys` gives it the built-in keys (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>→</kbd> opens a row's flyout and <kbd>←</kbd> closes it, <kbd>Enter</kbd> runs the row, <kbd>Delete</kbd> removes the blocks while the query is empty, <kbd>Escape</kbd> closes the flyout, then the menu) and makes it name the menu, or the open flyout, and its highlighted row. `controller.rows` are the keyboard's rows (the actions, then the kinds and the colours a query names); `runSelected()` runs the highlighted one, `runFlyout()` the flyout's. See [Block menu](/docs/plugins/block-menu#custom-markup).
+
+```svelte title="BlockMenuEditor.svelte" check
+<script lang="ts">
+	import { Edytor, createBlockMenuPlugin, type BlockMenuController } from 'edytor';
+
+	const plugins = [createBlockMenuPlugin({ menu })];
+</script>
+
+{#snippet menu(blockMenu: BlockMenuController)}
+	<div class="panel" data-edytor-block-menu>
+		<input
+			aria-label={blockMenu.labels.searchLabel}
+			placeholder={blockMenu.labels.search}
+			value={blockMenu.query}
+			oninput={(event) => blockMenu.search(event.currentTarget.value)}
+			{@attach blockMenu.keys}
+		/>
+		<div {@attach blockMenu.popup}>
+			{#each blockMenu.rows as row, index (`${index}:${row.id}`)}
+				<button
+					type="button"
+					{...blockMenu.option(index)}
+					onmousemove={() => (blockMenu.selectedIndex = index)}
+					onclick={() => {
+						blockMenu.selectedIndex = index;
+						blockMenu.runSelected();
+					}}>{row.label}</button
+				>
+			{/each}
+		</div>
+		{#if blockMenu.flyout}
+			<div class="flyout" {@attach blockMenu.flyoutMenu}>
+				{#each blockMenu.flyoutRows as row, index (row.id)}
+					<button
+						type="button"
+						{...blockMenu.option(index, true)}
+						onclick={() => {
+							blockMenu.flyoutIndex = index;
+							blockMenu.runFlyout();
+						}}>{row.label}</button
+					>
+				{/each}
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+`option(index)` gives each row its role: `menuitem`, a kind's switch `menuitemcheckbox`, a colour `menuitemradio` with its ✓ as `aria-checked`, and a row that opens a flyout `aria-haspopup` and `aria-expanded`. Every action closes the menu and returns the caret to the block (a block holding no text stays selected).
+
+## Toolbar and link card
+
+`toolbar` renders while `controller.isVisible`, above the selection. On the bar, `popup` publishes it to the root (with <kbd>Alt</kbd>+<kbd>F10</kbd> as its shortcut) and marks it for the placement; `keys` makes it one tab stop: <kbd>Alt</kbd>+<kbd>F10</kbd> focuses it, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd> and <kbd>End</kbd> walk its buttons, <kbd>Escape</kbd> gives the focus back to the editor over the same selection. `linkField` is the link panel's field. `card` replaces the card shown under a hovered link (`linkCard: false` shows none). See [Toolbar](/docs/plugins/toolbar#custom-markup).
+
+```svelte title="ToolbarEditor.svelte" check
+<script lang="ts">
+	import { Edytor, createToolbarPlugin, type ToolbarController } from 'edytor';
+
+	const plugins = [createToolbarPlugin({ toolbar, card })];
+</script>
+
+{#snippet toolbar(bar: ToolbarController)}
+	<div class="frame">
+		<div class="bar" {@attach bar.popup} {@attach bar.keys}>
+			{#each bar.marks as { mark, label, icon } (mark)}
+				<button aria-label={label} aria-pressed={bar.isActive(mark)} onclick={() => bar.toggleMark(mark)}
+					>{icon}</button
+				>
+			{/each}
+			<button aria-expanded={bar.panel === 'link'} onclick={() => bar.togglePanel('link')}
+				>{bar.labels.link}</button
+			>
+		</div>
+		{#if bar.panel === 'link'}
+			<label for={bar.linkFieldId}>{bar.labels.linkUrl}</label>
+			<input
+				placeholder={bar.labels.linkPlaceholder}
+				value={bar.linkUrl}
+				oninput={(event) => bar.setLinkUrl(event.currentTarget.value)}
+				{@attach bar.linkField}
+			/>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet card(links: ToolbarController)}
+	<div class="card" role="toolbar" aria-label={links.labels.card}>
+		<span>{links.hoveredHref}</span>
+		<button onclick={() => links.editHovered()}>{links.labels.edit}</button>
+		<button onclick={() => links.removeHovered()}>{links.labels.remove}</button>
+	</div>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+No press on the toolbar or the card takes the editor's focus (their hosts cancel each `mousedown` but in a field), so your buttons need no `mousedown` handler.
+
+## URL paste menu
+
+With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plugin, a bare URL pasted on an empty line becomes a link and opens a menu: Link, Embed, Bookmark. `menu` replaces it (the view's one menu takes the first `menu` its embed and bookmark plugins pass). It renders while `controller.open`, under the line; the editor keeps the keyboard (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> picks, <kbd>Escape</kbd> keeps the link).
+
+```svelte title="PasteMenuEditor.svelte" check
+<script lang="ts">
+	import { Edytor, createEmbedPlugin, type UrlPasteController } from 'edytor';
+
+	const plugins = [createEmbedPlugin({ menu })];
+</script>
+
+{#snippet menu(paste: UrlPasteController)}
+	<ul {@attach paste.popup}>
+		{#each paste.open?.options ?? [] as option, index (option.id)}
+			<li
+				{...paste.option(index)}
+				onmousemove={() => (paste.index = index)}
+				onclick={() => paste.pick(option)}
+			>
+				{option.icon} {option.label}
+			</li>
+		{/each}
+	</ul>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+## Image toolbar
+
+`toolbar` replaces the alignment buttons and the alt text field over the hovered (or selected) image; it renders at the image's top right while the chrome shows and no resize handle drags. The resize handles stay the plugin's. `bar` marks it so a press on it keeps the alt field open (its Alt button toggles it); `altField` focuses the field when it opens, closes it on <kbd>Enter</kbd> or <kbd>Escape</kbd> (the editor takes its keys back) and when the focus leaves it. See [Image](/docs/plugins/image).
+
+```svelte title="ImageEditor.svelte" check
+<script lang="ts">
+	import { Edytor, createImagePlugin, type ImageControls } from 'edytor';
+
+	const plugins = [createImagePlugin({ toolbar })];
+</script>
+
+{#snippet toolbar(image: ImageControls)}
+	<div class="image-toolbar" {@attach image.bar}>
+		<button aria-pressed={image.box?.align === 'left'} onclick={() => image.align('left')}
+			>{image.labels.alignLeft}</button
+		>
+		<button aria-pressed={image.box?.align === 'center'} onclick={() => image.align('center')}
+			>{image.labels.alignCenter}</button
+		>
+		<button aria-expanded={image.editing !== null} onclick={image.toggleAlt}>{image.labels.alt}</button>
+		{#if image.editing !== null && image.editing === image.box?.id}
+			<input
+				aria-label={image.labels.alt}
+				placeholder={image.labels.altPlaceholder}
+				value={image.alt}
+				oninput={(event) => image.setAlt(event.currentTarget.value)}
+				{@attach image.altField}
+			/>
+		{/if}
+	</div>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+## Empty image and media blocks
+
+`empty` replaces an empty block's markup: the image's "Add an image" and its link panel, and the same for the [embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video) and [audio](/docs/plugins/audio) blocks, a readonly view's placeholder included. It receives one controller per empty block: `open`, `draft` (bind your field to it), `failed` (why the last link or upload was not embedded), `embed(value?)`, `upload(file)` (with the plugin's `upload`, `canUpload`), and `readonly` (no control may write: show a placeholder). A media block's controller adds `kind`, `kindLabels`, `label`, `icon`, `accept`, and `pending`, the upload of a pasted or dropped file (`status`, `progress`).
+
+```svelte title="EmptyBlocks.svelte" check
+<script lang="ts">
+	import {
+		Edytor,
+		createImagePlugin,
+		createVideoPlugin,
+		type ImageEmptyController,
+		type MediaEmptyController
+	} from 'edytor';
+
+	const plugins = [
+		createImagePlugin({ empty: emptyImage }),
+		createVideoPlugin({ upload: (file) => upload(file), empty: emptyMedia })
+	];
+</script>
+
+{#snippet emptyImage(image: ImageEmptyController)}
+	{#if image.readonly}
+		<p>{image.labels.image}</p>
+	{:else}
+		<input aria-label={image.labels.link} bind:value={image.draft} {@attach image.field} />
+		<button onclick={() => image.embed()}>{image.labels.embed}</button>
+		{#if image.failed === 'inline'}
+			<small>{image.labels.tooLarge(image.inlineLimit, image.canUpload)}</small>
+		{:else if image.failed}
+			<small>{image.labels.invalid}</small>
+		{/if}
+	{/if}
+{/snippet}
+
+{#snippet emptyMedia(media: MediaEmptyController)}
+	{#if media.pending?.status === 'uploading'}
+		<progress value={media.pending.progress ?? undefined} max="1"></progress>
+	{:else if media.readonly}
+		<p>{media.icon} {media.label}</p>
+	{:else}
+		<input aria-label={media.kindLabels.placeholder} bind:value={media.draft} {@attach media.field} />
+		<button onclick={() => media.embed()}>{media.kindLabels.submit}</button>
+		{#if media.canUpload}
+			<input
+				type="file"
+				accept={media.accept}
+				onchange={(event) => {
+					const file = event.currentTarget.files?.[0];
+					if (file) void media.upload(file);
+				}}
+			/>
+		{/if}
+		{#if media.failed}<small>{media.failed === 'upload' ? media.labels.uploadFailed : media.kindLabels.invalid}</small>{/if}
+	{/if}
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+`upload` here is your own upload function. The markup renders inside the block (the block's own `contenteditable="false"` region), so its fields keep their keys and presses.
+
+## Comment cards
+
+`card` replaces a thread card's markup; the sidebar still places it beside its text. It receives a `CommentCardPayload`: the `thread` (its `comments`, `quote`, `resolved`), the view's `comments` controller (`reply`, `resolve`, `reopen`, `remove`, `mayDelete`, `userOf`, `labels`) and whether the thread is the `active` one. See [Comments](/docs/plugins/comments).
+
+```svelte title="CommentsEditor.svelte" check
+<script lang="ts">
+	import {
+		Edytor,
+		createCommentsPlugin,
+		createMemoryCommentsClient,
+		type CommentCardPayload
+	} from 'edytor';
+
+	const plugins = [
+		createCommentsPlugin({ client: createMemoryCommentsClient({ user: 'ada' }), user: 'ada', card })
+	];
+</script>
+
+{#snippet card({ thread, comments, active }: CommentCardPayload)}
+	<article class:active>
+		<blockquote>{thread.quote}</blockquote>
+		{#each thread.comments as comment (comment.id)}
+			<p><strong>{comments.userOf(comment.author).name ?? comment.author}</strong> {comment.body}</p>
+		{/each}
+		{#if thread.resolved}
+			<button onclick={() => void comments.reopen(thread.id)}>{comments.labels.reopen}</button>
+		{:else}
+			<button onclick={() => void comments.resolve(thread.id)}>{comments.labels.resolve}</button>
+		{/if}
+	</article>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+## Suggestion bar
+
+`bar` replaces the bar under each block [suggestion](/docs/editor/suggestions); the plugin keeps its placement and keys (<kbd>Mod</kbd>+<kbd>Enter</kbd> accepts, <kbd>Escape</kbd> discards). It receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (when the app passed `onRetry`), `readonly` and the plugin's `labels`.
+
+```svelte title="SuggestionsEditor.svelte" check
+<script lang="ts">
+	import { Edytor, createSuggestionsPlugin, type SuggestionBarPayload } from 'edytor';
+
+	const plugins = [createSuggestionsPlugin({ bar })];
+</script>
+
+{#snippet bar({ suggestion, accept, discard, retry, readonly, labels }: SuggestionBarPayload)}
+	<div class="bar">
+		<span>{suggestion.label ?? labels.suggestion}</span>
+		{#if !readonly}<button onmousedown={(e) => e.preventDefault()} onclick={accept}>{labels.accept}</button>{/if}
+		<button onmousedown={(e) => e.preventDefault()} onclick={discard}>{labels.discard}</button>
+		{#if retry}<button onclick={retry}>{labels.retry}</button>{/if}
+	</div>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+## Version history rows
+
+The [history panel](/docs/server/history-panel)'s `item` replaces a version's row in the list. It receives a `HistoryVersionItem`: the shared row shape (`item` and `version` are the version, `label` its date and slot, `run` and `select` preview it) and `option`, which makes your row an `option` of the panel's listbox, the list's one tab stop when it is selected: the list's <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd> and <kbd>End</kbd> walk it. `version` (`Snippet<[HistoryVersion, { selected }]>`) still replaces only a row's content.
+
+```svelte title="Versions.svelte" check
+<script lang="ts">
+	import { HistoryPanel, createHistoryClient, type HistoryVersionItem } from 'edytor';
+
+	let { room }: { room: string } = $props();
+	const client = createHistoryClient({ server: 'https://example.com/history', room });
+</script>
+
+{#snippet item({ version, label, selected, option, run }: HistoryVersionItem)}
+	<button type="button" {...option} class:selected onclick={run}>
+		{label}
+		<small>{version.editors.join(', ')}</small>
 	</button>
 {/snippet}
+
+<HistoryPanel {client} {item} />
+```
+
+## Block handle
+
+`handle` replaces the `+` and the grip. `use:grip` gives any element the grip's behavior: dragging (every block the selection covers when it covers this one, with the count preview), a click that selects the block and opens the block menu (or calls `onActivate`), and the <kbd>Alt</kbd>+arrow moves. `add(above?)` is what the `+` does: it opens the slash menu, and adds nothing until a row is picked. Placement beside the block's first line and the hover fade stay the plugin's. Pass it with `blockHandles={{ handle }}`, alongside `draggable` and `onActivate`, or with `createBlockHandlesPlugin({ handle })`. See [Block handles](/docs/plugins/block-handles#custom-handle).
+
+```svelte title="Handles.svelte" check
+<script lang="ts">
+	import { Edytor, type BlockHandleSnippetPayload } from 'edytor';
+
+	const keep = (event: MouseEvent) => event.preventDefault();
+</script>
 
 {#snippet handle({ label, grip, add, readonly }: BlockHandleSnippetPayload)}
 	{#if !readonly}
@@ -62,63 +497,5 @@ A snippet declared at the top level of a component's markup can be used in its `
 	{/if}
 {/snippet}
 
-<Edytor {plugins} blockHandles={{ handle }} />
-
-<style>
-	.row {
-		display: flex;
-		gap: 8px;
-		width: 100%;
-	}
-	.row.selected {
-		background: #f1f1ef;
-	}
-	.icon {
-		width: 18px;
-		height: 18px;
-		background: currentColor;
-		mask-size: contain;
-	}
-</style>
+<Edytor blockHandles={{ handle }} />
 ```
-
-The row's `icon` is the built-in line icon as a CSS `mask-image` value, so a `currentColor` box masked with it draws the icon; commands without one fall back to their text `command.icon`. Your markup renders in the plugin's host without the built-in styles.
-
-Two rules apply to every snippet:
-
-- **Keep the selection.** Call `preventDefault` on `mousedown` in buttons that act on the text: slash rows, the `+`. Otherwise the click moves the caret before the action runs. The toolbar's host does it for every press but in a field, so a toolbar snippet's buttons need nothing.
-- **Mark the element to place.** The toolbar measures `[data-edytor-toolbar-bar]` and the block menu `[data-edytor-block-menu]` when your markup has them, else the snippet's first element.
-
-## Slash menu
-
-`item` replaces each row and keeps the built-in sections, empty state and footer. `menu` replaces everything; read `controller.commands`, `controller.selectedIndex` and `controller.query`, and call `controller.run(command)` or `controller.close()`. The arrow keys, <kbd>Enter</kbd> and <kbd>Escape</kbd> stay the plugin's either way. See [Slash menu](/docs/plugins/slash-menu#custom-markup).
-
-When the block handle's `+` opens the menu (`controller.addition`):
-
-- the plugin wraps `menu` in a focused element: typing and <kbd>Backspace</kbd> edit `controller.query`, so the document never receives them; a snippet with its own field calls `controller.search(query)`, and `controller.dismiss()` closes it with the selection given back;
-- `controller.commands` holds only the commands that can run in the block being added (each `isEnabled` is asked of it), and `controller.run(command)` adds nothing for one that cannot;
-- keep one keyboard owner in your markup, as the built-in field is: rows that are not <kbd>Tab</kbd> stops, so <kbd>Enter</kbd> runs the highlighted row.
-
-```ts
-const slash = createSlashMenuPlugin({ menu }); // or { item }
-```
-
-## Toolbar
-
-`toolbar` renders while `controller.isVisible`, above the selection. The controller toggles marks (`marks`, `toggleMark`, `isActive` for a pressed state), converts the block (`kinds`, `currentKind`, `turnInto`), colors (`setColor`) and links (`linkUrl`, `setLinkUrl`, `applyLink`, `removeLink`), and tracks one open `panel`. See [Toolbar](/docs/plugins/toolbar#custom-markup).
-
-```ts
-const toolbar = createToolbarPlugin({ toolbar: bar });
-```
-
-## Block menu
-
-`menu` renders while `controller.isOpen`, beside the grip that opened it. The controller has the `block`, the `blocks` its actions apply to (the block selection when it holds `block`), its `actions`, the `kinds` it can turn into, and `turnInto`, `duplicate`, `move`, `remove`, `copyLink` and `close`. Each action, and `close()`, returns a text caret to the block (a block holding no text, such as a divider, stays selected): it replaces the block selection the grip click left. The built-in keys belong to the built-in search field, so a custom menu handles its own. See [Block menu](/docs/plugins/block-menu#custom-markup).
-
-```ts
-const blockMenu = createBlockMenuPlugin({ menu, linkTo: (block) => `#${block.id}` });
-```
-
-## Block handle
-
-`handle` replaces the `+` and the grip. `use:grip` gives any element the grip's behavior: dragging (every block the selection covers when it covers this one, with the count preview), a click that selects the block and opens the block menu (or calls `onActivate`), and the <kbd>Alt</kbd>+arrow moves. `add(above?)` is what the `+` does: it opens the slash menu, and adds nothing until a row is picked. Placement beside the block's first line and the hover fade stay the plugin's. Pass it with `blockHandles={{ handle }}`, alongside `draggable` and `onActivate`, or with `createBlockHandlesPlugin({ handle })`. See [Block handles](/docs/plugins/block-handles#custom-handle).

@@ -34,7 +34,8 @@ It is not a default plugin: list it in `plugins`, in every view of a document th
     },
     href: { type: "(page) => string | undefined", description: "A page's URL when search answers none, such as /pages/<id>." },
     char: { type: "string", description: "The text that opens the menu. Default [[." },
-    item: { type: "Snippet<[TriggerItemPayload<PageLinkItem>]>", description: "Replace each row of the menu." },
+    item: { type: "Snippet<[TriggerItemPayload<PageLinkItem>]>", description: "Replace each row of the menu. Spread its option on the row so the editor names the highlighted row." },
+    menu: { type: "Snippet<[TriggerMenuController<PageLinkItem>]>", description: "Replace the whole menu. Keep its ARIA with {@attach controller.popup} on the list and {...controller.option(index)} on each row. See Menus and handles." },
     labels: { type: "PartialLabels<'pageLink'>", description: "The menu's and the atom's words over the English ones: `menu` (the listbox's name, Pages), `searching` (Searching…), `noResults` (No results) and `untitled` (an atom without a title). See Localization." },
   }}
 />

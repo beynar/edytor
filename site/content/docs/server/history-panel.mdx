@@ -126,6 +126,7 @@ A `401` or `403` (a reader's restore, an expired session) shows `You do not have
 | `class` | `string` | | The panel's class. |
 | `previewClass` | `string` | | The preview editor's class. |
 | `version` | `Snippet<[HistoryVersion, { selected }]>` | | A row's content, in place of its date, editors and time. |
+| `item` | `Snippet<[HistoryVersionItem]>` | | A version's whole row: `{ item, version, id, label, selected, run, select, option }`; spread `option` on the row's button so the list's keys walk it ([Menus and handles](/docs/customization/menus#version-history-rows)). Wins over `version`. |
 | `onRestore` | `(result) => void` | | After each restore the room answered. |
 | `onUndo` | `(result) => void` | | After each undo the room answered. |
 | `onError` | `(error) => void` | | A request failed. |

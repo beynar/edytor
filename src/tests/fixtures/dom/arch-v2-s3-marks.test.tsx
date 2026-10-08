@@ -23,7 +23,7 @@ import { describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Text } from '$lib/text/text.svelte.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONDoc, JSONText } from '$lib/utils/json.js';
 import {

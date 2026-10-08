@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRawSnippet } from 'svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import {

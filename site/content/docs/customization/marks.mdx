@@ -148,32 +148,16 @@ richTextOperations(edytor).setMarkValueAtRange('color', '#d44c47'); // set a val
 richTextOperations(edytor).removeAllMarksAtRange();
 ```
 
-`setMarkAtRange` is typed for the rich text marks. For any mark, call `markText` on each text segment of the selection:
+`setMarkAtRange` toggles any mark the editor defines, over each text segment the selection spans (the rich text marks are typed, any other name is accepted), and at a caret stages it for the next character typed:
 
 ```ts title="toggleMark.ts" check
-import type { EdytorInstance } from 'edytor';
+import { richTextOperations, type EdytorInstance } from 'edytor';
 
-export const toggleMark = (edytor: EdytorInstance, mark: string, value: string | true = true) => {
-	const { texts, startText, endText, yStart, yEnd, isCollapsed, isReversed } = edytor.selection.state;
-	if (!startText || !endText) return;
-	if (isCollapsed) {
-		startText.markText({ mark, value, toggle: true, start: yStart, end: yStart });
-		return;
-	}
-	texts.forEach((text, index) =>
-		text.markText({
-			mark,
-			value,
-			toggle: true,
-			start: index === 0 ? yStart : 0,
-			end: index === texts.length - 1 ? yEnd : text.length
-		})
-	);
-	edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
-};
+export const toggleMark = (edytor: EdytorInstance, mark: string, value?: string) =>
+	richTextOperations(edytor).setMarkAtRange(mark, value);
 ```
 
-`text.markText({ mark, value, toggle, start, end })` formats `start` to `end` of one text segment. With `toggle: true` it removes the mark when every part of the range already has it, and sets it otherwise. A `value` of `null` removes the mark. `text.removeMarksFromText({ start, end })` removes every mark.
+Underneath, `text.markText({ mark, value, toggle, start, end })` formats `start` to `end` of one text segment (offsets inside that segment). With `toggle: true` it removes the mark when every part of the range already has it, and sets it otherwise. A `value` of `null` removes the mark. `text.removeMarksFromText({ start, end })` removes every mark.
 
 Each call is a `markText` operation that plugins see in `onBeforeOperation`.
 

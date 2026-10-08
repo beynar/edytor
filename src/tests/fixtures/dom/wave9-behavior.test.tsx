@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';

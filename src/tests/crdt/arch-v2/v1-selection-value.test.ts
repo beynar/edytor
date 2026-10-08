@@ -25,7 +25,7 @@ import { createDocument } from '../../../lib/crdt/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 
 import * as selection from '$lib/session/selection.js';
 

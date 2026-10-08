@@ -10,7 +10,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 

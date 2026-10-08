@@ -12,6 +12,7 @@ The slash menu, the toolbar, the block menu and the block handles ship with Noti
 | [Toolbar](/docs/plugins/toolbar#custom-markup) | `createToolbarPlugin` | `toolbar` | `ToolbarController` |
 | [Block menu](/docs/plugins/block-menu#custom-markup) | `createBlockMenuPlugin` | `menu` | `BlockMenuController` |
 | [Block handle](/docs/plugins/block-handles#custom-handle) | `createBlockHandlesPlugin`, or the `blockHandles` prop | `handle` | `BlockHandleSnippetPayload` |
+| [Mention](/docs/plugins/mention), [page link](/docs/plugins/page-link) and any [trigger](/docs/plugins/input-rules#markup-and-accessibility) menu | `createMentionPlugin`, `createPageLinkPlugin`, a trigger's `item` | `item` (one row) | `TriggerItemPayload` |
 
 All the factories and types are exported from `edytor`. `slashMenuPlugin`, `toolbarPlugin`, `blockMenuPlugin` and `blockHandlesPlugin` are the same plugins with the built-in markup.
 

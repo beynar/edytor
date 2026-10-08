@@ -53,8 +53,15 @@ export type {
 	PlaceholderView,
 	ChangePayload,
 	AfterOperationPayload,
-	Prevent
+	Prevent,
+	InputRule,
+	InputRuleContext,
+	Trigger,
+	TriggerContext,
+	TriggerItemPayload,
+	TextRuleContext
 } from './plugins.js';
+export type { Caret } from './selection/selection.svelte.js';
 export { PreventionError, isPrevention } from './utils.js';
 export type { CommandResult } from './session/commands.js';
 export { convertToKind, turnCommands, wrapBlocks, wrappable, type KindRow } from './kinds.js';
@@ -84,6 +91,15 @@ export {
 	type CodeLanguage,
 	type CodePluginOptions,
 	markdownShortcutsPlugin,
+	createMentionPlugin,
+	type MentionItem,
+	type MentionData,
+	type MentionPluginOptions,
+	createPageLinkPlugin,
+	type PageLinkItem,
+	type PageLinkData,
+	type PageLinkPluginOptions,
+	type TriggerMenuController,
 	BLOCK_ACTIVATE_EVENT,
 	BLOCK_ADD_EVENT,
 	type BlockActivation,

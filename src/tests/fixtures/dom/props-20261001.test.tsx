@@ -14,7 +14,7 @@ import { Y } from '$lib/crdt/engine.js';
 import { createDocument, loadDocument, type EdytorDocument } from '$lib/crdt/index.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { propsPlugin } from '../../dom/PropsKind.svelte';
 import {

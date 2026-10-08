@@ -38,7 +38,7 @@ import type { JSONDoc } from '$lib/utils/json.js';
 import { runBeforeInputCommand } from '$lib/events/beforeInputCommands.js';
 import { attemptOf } from '$lib/session/attempt.js';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { bannerPlugin } from '../../dom/S6BannerKind.svelte';
 import {

@@ -44,7 +44,7 @@ import { Y } from '$lib/crdt/engine.js';
 import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import type { JSONDoc } from '$lib/utils/json.js';

@@ -1,0 +1,187 @@
+---
+title: Input rules and triggers
+description: Replace typed text as you type (markdown, :smile: to an emoji) with input rules, and open a menu at the caret on a typed character (@ for people, [[ for pages) with triggers.
+icon: keyboard
+---
+
+A plugin declares two kinds of typing behavior as data:
+
+- `inputRules` replace text when what you type completes a pattern: `## ` makes a heading, `:smile:` becomes 😄. The [markdown shortcuts](/docs/plugins/markdown-shortcuts) are input rules.
+- `triggers` open a menu at the caret when you type a character, and replace that character and the text typed after it with the row you pick: `@` mentions a person ([Mention](/docs/plugins/mention)), `[[` links a page ([Page link](/docs/plugins/page-link)). The [slash menu](/docs/plugins/slash-menu) is a trigger too.
+
+Both read and write positions as block offsets: an offset in the block's content, where an inline atom counts as 1. These are the offsets `edytor.document.facade` takes and `edytor.selection.caret` reads ([Selection](/docs/editor/selection#the-caret)).
+
+## Input rules
+
+```ts title="emoji.ts" check
+import type { Plugin } from 'edytor';
+
+const EMOJI: Record<string, string> = { smile: '😄', heart: '❤️' };
+
+/** Typing the closing `:` of `:smile:` replaces it with its emoji. */
+export const emojiPlugin: Plugin = () => ({
+	inputRules: [{ find: /:(\w+):$/, replace: ([, name]) => EMOJI[name!] ?? null }]
+});
+```
+
+<TypeTable
+  type={{
+    find: {
+      type: "RegExp",
+      description: "Tested on the caret's text up to the caret, followed by the typed text. A match must end at the typed text's end (end the pattern with $) and contain all of it.",
+    },
+    replace: {
+      type: "(match, ctx) => string | boolean | null | void",
+      description: "The replacement. A string replaces the whole match, the caret after it. true: you wrote it yourself. false or null, writing nothing: declined.",
+    },
+  }}
+/>
+
+A rule runs when text is typed at a collapsed caret: one `insertText` at the caret, which is what a key, an Android keyboard and the browser's own typing produce. An IME's commit is not checked, nor is a paste. Rules do not run in the lines of a code block (a `lines` island).
+
+The typed text is not in the document yet when `replace` runs, so it is never written: a string replacement takes the place of the matched text before the caret and of the typed text. `hi :smile` + <kbd>:</kbd> gives `hi 😄`, the caret after the emoji.
+
+`replace` receives the match (its `input` is the text the pattern was tested on) and a context:
+
+<TypeTable
+  type={{
+    block: { type: "Block", description: "The block the caret is in." },
+    from: { type: "number", description: "Where the match starts, in block offsets." },
+    to: { type: "number", description: "The caret: where the match ends in the document, the typed text left out." },
+    typed: { type: "string", description: "The typed text that completed the match." },
+    caret: { type: "(offset: number) => void", description: "Set the command's result caret at an offset of block." },
+    remove: { type: "(then?: () => unknown) => boolean", description: "Remove from to to in the same plan as the first operation then runs. Answers whether it was written." },
+    edytor: { type: "EdytorInstance", description: "The editor." },
+  }}
+/>
+
+A pattern's `^` is the start of the caret's text segment, which starts after an inline atom; read `from === 0` for the block's start.
+
+### One command, one undo step
+
+The replacement is a command of its own. With a string, the matched text's removal and the insertion are one plan, so a plugin that refuses either one (in `onBeforeOperation`), a readonly view or the document refusing it writes neither. It is its own undo step, separate from the typing before it: undo after `:smile:` gives back `:smile`, without the colon that was never inserted.
+
+When the replacement is refused or every matching rule declines, the typed text is inserted as usual, the caret after it.
+
+### Writing the replacement yourself
+
+For anything other than text, write it and return `true`. `ctx.remove(then)` removes the matched text in the same plan as the first operation `then` runs, which keeps the pair one refusable command. This rule turns `-> ` at a block's start into a to-do:
+
+```ts title="arrowTodo.ts" check
+import type { Plugin } from 'edytor';
+
+export const arrowTodo: Plugin = () => ({
+	inputRules: [
+		{
+			find: /^->\s$/,
+			replace: (_match, { block, from, remove }) => {
+				if (from !== 0) return false;
+				// Answers whether the removal and the retype were written.
+				return remove(() => {
+					block.type = 'todo-item';
+				});
+			}
+		}
+	]
+});
+```
+
+When `then` runs no operation (a command that writes later), the matched text is removed on its own; when it answers `false`, nothing is removed. Without `then`, `remove()` only removes the text.
+
+### Order
+
+The rules of one plugin run in their list order, and the plugins in theirs: the first rule whose pattern matches and that writes wins. A rule that declines (`false`, `null`, nothing written) hands the text to the next one. A plugin's own `onBeforeOperation` runs before its rules.
+
+## Triggers
+
+```ts title="tags.ts" check
+import type { Plugin } from 'edytor';
+
+const TAGS = ['design', 'engineering', 'research'];
+
+/** `#` opens a menu of tags; picking one writes it as text. */
+export const tagsPlugin: Plugin = () => ({
+	triggers: [
+		{
+			char: '#',
+			name: 'Tags',
+			items: (query) => TAGS.filter((tag) => tag.startsWith(query.toLowerCase())),
+			onPick: (tag: string, { block, from, caret }) => {
+				const at = block.textAtOffset(from);
+				if (!at) return false;
+				at.text.insertText({ value: `#${tag} `, start: at.offset, end: at.offset });
+				caret(from + tag.length + 2);
+			}
+		}
+	]
+});
+```
+
+<TypeTable
+  type={{
+    char: { type: "string", required: true, description: "The text that opens the menu: one character (@), or two ([[) completed by the second." },
+    items: { type: "(query, ctx) => T[] | Promise<T[]>", required: true, description: "The rows for the text typed after char. A promise is a search: the newest query's answer wins." },
+    onPick: { type: "(item, ctx) => unknown", required: true, description: "Write the picked row. Return false, running nothing, to keep the text." },
+    label: { type: "(item) => string", description: "A row's label. Default: the item when it is a string, else its label, title or name." },
+    key: { type: "(item) => string", description: "A row's stable key, for its element id. Default: its id, else its label." },
+    item: { type: "Snippet<[TriggerItemPayload]>", description: "Replace each row's markup." },
+    name: { type: "string", description: "The menu's accessible name. Default Suggestions." },
+    empty: { type: "string", description: "The text shown when no row matches. Default No results." },
+    enabled: { type: "(block) => boolean", description: "Whether the menu may open in block. Default: anywhere but in a code block." },
+  }}
+/>
+
+### When the menu opens and closes
+
+- It opens when `char` is typed at a collapsed caret at the start of a text or after whitespace, as in Notion: `a@b.com` opens nothing. An IME that commits the trigger with more text (`@ad`) opens it with that query.
+- Typing at the query's end filters it: `items(query)` is asked again for each query. While a search is pending the menu keeps its rows and reads "Searching…"; an older answer that arrives after a newer one is dropped.
+- It closes when the caret leaves the query, the selection expands, the trigger is deleted, the query starts with a space, or a query that matches nothing is followed by a space (`@zz ` is prose). A query that matches nothing shows the `empty` text. It does not open in a readonly view, and it closes when the view turns readonly.
+- The query range is anchored in the document, so a collaborator's edits elsewhere in the text do not break it.
+
+### Keys
+
+While a menu is open its keys are the editor's, through the plugin's `hotkeys` (before the plugin's own bindings of the same keys):
+
+| Keys                       | Action                                         |
+| -------------------------- | ---------------------------------------------- |
+| <kbd>↑</kbd>, <kbd>↓</kbd> | Move the highlight (wraps around)              |
+| <kbd>Enter</kbd>           | Pick the highlighted row (when there is one)   |
+| <kbd>Escape</kbd>          | Close the menu and keep the text               |
+| Hover, click               | Highlight, pick                                |
+
+With no row, <kbd>Enter</kbd> and the arrows are the editor's as usual. A press in the menu keeps the editor's focus and the caret at the query.
+
+### Picking
+
+`onPick(item, ctx)` receives the context of the trigger's range: `block`, `from` (where the trigger starts), `to` (the query's end), `query` and `caret(offset)`. The trigger and its query are removed in the same plan as the first operation `onPick` runs, so the pick is one undo step and a refusal keeps the text, with the caret back at the query's end. Before `onPick` runs, the caret is where the trigger was; set the caret you want with `ctx.caret`. To insert an inline atom, `block.addInlineBlock({ offset: from, block })` writes it where the trigger was, and the caret goes after it at `from + 1`:
+
+```ts title="pick.ts" check
+import type { Trigger } from 'edytor';
+
+export const dateTrigger: Trigger<string> = {
+	char: '@',
+	items: (query) => ['today', 'tomorrow'].filter((day) => day.startsWith(query)),
+	onPick: (day, { block, from, caret }) => {
+		const after = block.addInlineBlock({ offset: from, block: { type: 'date', data: { day } } });
+		if (after) caret(from + 1);
+		return !!after;
+	}
+};
+```
+
+### Markup and accessibility
+
+The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-trigger-menu-host`, below the caret (above it when there is no room). The default rows are `button`s with `role="option"` in a `listbox` named by `name`, with `data-testid="trigger-menu-item"` and `data-selected`. An `item` snippet receives a `TriggerItemPayload`:
+
+<TypeTable
+  type={{
+    item: { type: "T", description: "The row." },
+    label: { type: "string", description: "Its label." },
+    id: { type: "string", description: "Its element id: set it (id={row.id}) so the editor names the highlighted row." },
+    selected: { type: "boolean", description: "It is the keyboard's row." },
+    pick: { type: "() => void", description: "Pick it." },
+    select: { type: "() => void", description: "Make it the keyboard's row (hover)." },
+  }}
+/>
+
+Keep `preventDefault` on a row's `mousedown` (the default menu does it for you on its own element), so a click does not move the caret out of the query. While the menu is open the editor's root, which holds the keyboard, names the listbox (`aria-controls`, `aria-haspopup="listbox"`) and its highlighted row (`aria-activedescendant`). See [Accessibility](/docs/editor/accessibility#menus-and-popups).

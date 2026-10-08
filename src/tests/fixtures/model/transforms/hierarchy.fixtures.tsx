@@ -1,5 +1,5 @@
 /** @jsxImportSource ../../../jsx */
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../../atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';

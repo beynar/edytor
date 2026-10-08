@@ -34,7 +34,7 @@ import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import {

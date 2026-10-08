@@ -5,7 +5,10 @@
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { createImagePlugin, imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
-	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+	import { mentionPlugin } from '../../../tests/atMention.svelte';
+	import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+	import { createPageLinkPlugin } from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
+	import type { Plugin } from '$lib/plugins.js';
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
@@ -411,6 +414,35 @@
 			})
 	});
 
+	/** The `triggers` scenario's people, pages (answered after a wait, as a search) and rules. */
+	const triggerMentions = createMentionPlugin({
+		items: (query) =>
+			[
+				{ id: 'u1', label: 'Ada Lovelace' },
+				{ id: 'u2', label: 'Alan Turing' },
+				{ id: 'u3', label: 'Grace Hopper' }
+			].filter((person) => person.label.toLowerCase().includes(query.toLowerCase()))
+	});
+	const triggerPages = createPageLinkPlugin({
+		search: (query) =>
+			new Promise((resolve) =>
+				setTimeout(
+					() =>
+						resolve(
+							[
+								{ id: 'p1', title: 'Roadmap', icon: '🗺️' },
+								{ id: 'p2', title: 'Meeting notes', icon: '📝' }
+							].filter((page) => page.title.toLowerCase().includes(query.toLowerCase()))
+						),
+					50
+				)
+			),
+		href: (page) => `/pages/${page.id}`
+	});
+	const emojiRules: Plugin = () => ({
+		inputRules: [{ find: /:smile:$/, replace: () => '😄' }]
+	});
+
 	const plugins = $derived([
 		...(data.find ? [findPlugin] : []),
 		...(data.media ? [embedPlugin, bookmarkPlugin] : []),
@@ -418,7 +450,9 @@
 		data.scenario === 'image' ? uploadingImagePlugin : imagePlugin,
 		codePlugin,
 		markdownShortcutsPlugin,
-		mentionPlugin,
+		// `triggers=1`: the shipped mention and page-link menus and an input rule, in place of
+		// the fixture's `@` (an empty atom at once).
+		...(data.triggers ? [triggerMentions, triggerPages, emojiRules] : [mentionPlugin]),
 		slashMenuPlugin,
 		toolbarPlugin,
 		suggestionsPlugin,

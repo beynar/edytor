@@ -31,6 +31,24 @@ Text anchors (`DocAnchor`) are bound to characters, not to numeric offsets. When
 
 The value is reactive, so `$derived(edytor.selection.value.kind)` updates with the selection.
 
+## The caret
+
+`edytor.selection.caret` is the collapsed text caret as `{ block, offset }`: the `Block` handle and the offset in its content, where an inline atom counts as 1. It is `null` when the selection is not a caret (a range, an atom, blocks, none). These block offsets are the ones `edytor.document.facade` takes, an input rule's and a trigger's context reads ([Input rules and triggers](/docs/plugins/input-rules)), `block.addInlineBlock({ offset })` inserts at and `dispatcher.caret` takes.
+
+```ts title="caret.ts" check
+const caret = edytor.selection.caret;
+if (caret) {
+	const { block, offset } = caret;
+	// The same caret, two characters on (clamped to the block's content).
+	edytor.selection.setCaret({ block, offset: offset + 2 });
+	// The text segment that shows an offset, and the offset in it.
+	const at = block.textAtOffset(offset);
+	if (at) at.text.insertText({ value: '→ ', start: at.offset, end: at.offset });
+}
+```
+
+`selection.setCaret({ block, offset })` selects a caret there; a block that shows no text (a divider) keeps the selection as it was. `block.textAtOffset(offset)` answers the text segment that shows a block offset and the offset inside it, for the text handle's own methods (a boundary before an inline atom reads the text before it).
+
 ## Reading positions: `state` and `projection`
 
 Anchors are not offsets. For offsets, read one of the two views computed from the value at the current document version. Both are reactive and read-only.
@@ -54,15 +72,13 @@ Anchors are not offsets. For offsets, read one of the two views computed from th
 | --- | --- |
 | `startBlock`, `endBlock` | `Block` handles at each end. |
 | `startText`, `endText` | `Text` handles at each end. |
-| `yStart`, `yEnd` | Offsets inside `startText` and `endText`. |
 | `texts`, `blocks` | Every text segment and block the selection covers. For a `blocks` value, `blocks` are exactly the selected blocks. |
 | `isCollapsed`, `isReversed`, `isBlockSpanning` | As in `projection`. |
 
 ```ts title="state.ts" check
-const { startText, yStart, isCollapsed } = edytor.selection.state;
-if (isCollapsed && startText) startText.insertText({ value: '→ ', start: yStart, end: yStart });
-
+const { startBlock, isCollapsed } = edytor.selection.state;
 const bold = edytor.selection.projection.marks.bold === true;
+if (isCollapsed && startBlock && bold) console.log(`a bold caret in ${startBlock.type}`);
 ```
 
 ## Setting the selection

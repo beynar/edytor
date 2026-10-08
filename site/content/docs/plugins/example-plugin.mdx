@@ -18,7 +18,7 @@ It uses the snippet types from [Typing snippets](/docs/plugins/writing-plugins#t
 
 ```svelte title="src/lib/NotePlugin.svelte" check
 <script module lang="ts">
-	import type { Block, Plugin } from 'edytor';
+	import { richTextOperations, type Block, type Plugin } from 'edytor';
 	import type { BlockSnippetPayload, EdytorInstance } from 'edytor';
 	import './note.css';
 
@@ -31,24 +31,8 @@ It uses the snippet types from [Typing snippets](/docs/plugins/writing-plugins#t
 	};
 
 	/** Toggle the keyboard mark over the selection, or stage it for the next character typed. */
-	const toggleKeyboard = (edytor: EdytorInstance) => {
-		const { texts, startText, endText, yStart, yEnd, isCollapsed, isReversed } =
-			edytor.selection.state;
-		if (!startText || !endText) return;
-		if (isCollapsed) {
-			startText.markText({ mark: 'keyboard', toggle: true, start: yStart, end: yStart });
-			return;
-		}
-		texts.forEach((text, index) =>
-			text.markText({
-				mark: 'keyboard',
-				toggle: true,
-				start: index === 0 ? yStart : 0,
-				end: index === texts.length - 1 ? yEnd : text.length
-			})
-		);
-		edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
-	};
+	const toggleKeyboard = (edytor: EdytorInstance) =>
+		richTextOperations(edytor).setMarkAtRange('keyboard');
 
 	export const notePlugin: Plugin = (edytor) => ({
 		blocks: {

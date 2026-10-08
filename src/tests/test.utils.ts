@@ -15,7 +15,7 @@ import { expect } from 'vitest';
 import { Block } from '$lib/block/block.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from './atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import type { SerializableContent } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';

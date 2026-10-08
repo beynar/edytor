@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 

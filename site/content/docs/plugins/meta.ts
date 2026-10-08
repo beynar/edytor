@@ -7,6 +7,7 @@ export default defineMeta({
     "index",
     "writing-plugins",
     "operations",
+    "input-rules",
     "example-plugin",
     "rich-text",
     "code",
@@ -25,5 +26,6 @@ export default defineMeta({
     "arrow-move",
     "find",
     "mention",
+    "page-link",
   ],
 });

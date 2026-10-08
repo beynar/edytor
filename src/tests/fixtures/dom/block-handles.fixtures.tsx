@@ -3,7 +3,7 @@ import { expect } from 'vitest';
 
 import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 import type { Plugin } from '$lib/plugins.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { dispatchDomKeyDown, flushDomUpdates } from '../../dom/test.utils.js';
 import { defineDomFixture, defineFixtures } from '../types.js';

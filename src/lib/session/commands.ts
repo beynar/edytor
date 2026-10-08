@@ -17,6 +17,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { AfterOperationPayload, ChangePayload, InitializedPlugin } from '$lib/plugins.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import type { Text } from '$lib/text/text.svelte.js';
+import type { Caret } from '$lib/selection/selection.svelte.js';
 import { DEV } from 'esm-env';
 import { PreventionError, vetoable } from '$lib/utils.js';
 import { kindOf } from './attempt.js';
@@ -521,9 +522,26 @@ export class Dispatcher {
 	 * the projector displays it after the flush. With `ops`, the
 	 * caret is declared before the command's operations run — minted while its
 	 * text is live, so it survives them — and written only when they applied;
-	 * meanwhile the seam repair leaves this view's endpoints to it.
+	 * meanwhile the seam repair leaves this view's endpoints to it. Takes a
+	 * text segment and an offset in it, or a `{ block, offset }` caret in
+	 * block offsets (an inline atom counting 1).
 	 */
-	caret = <T>(text: Text | null | undefined, offset: number, ops?: () => T): T | undefined => {
+	caret: {
+		<T>(text: Text | null | undefined, offset: number, ops?: () => T): T | undefined;
+		<T>(caret: Caret | null | undefined, ops?: () => T): T | undefined;
+	} = <T>(
+		target: Text | Caret | null | undefined,
+		...rest: [number, (() => T)?] | [(() => T)?]
+	): T | undefined => {
+		// `{ block, offset }`: block offsets, mapped to the text segment that shows the offset.
+		if (target && 'block' in target) {
+			const at = target.block.textAtOffset(Math.max(0, target.offset));
+			return this.#caret(at?.text, at?.offset ?? 0, rest[0] as (() => T) | undefined);
+		}
+		return this.#caret(target, rest[0] as number, rest[1] as (() => T) | undefined);
+	};
+
+	#caret = <T>(text: Text | null | undefined, offset: number, ops?: () => T): T | undefined => {
 		const selection = this.edytor.selection;
 		const at = text ? Math.max(0, Math.min(offset, text.length)) : 0;
 		const value = text ? selection.textValue(text, at) : null;

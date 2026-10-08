@@ -125,6 +125,121 @@ export type ContentTransformer = (payload: {
 }) => JSONText[];
 
 /**
+ * What an input rule's `replace` and a trigger's `onPick` receive: where the
+ * matched text is, in block offsets (the offsets `edytor.document.facade`
+ * takes, an inline atom counting 1).
+ */
+export type TextRuleContext = {
+	edytor: Edytor;
+	/** The block the text is in. */
+	block: Block;
+	/** Where the matched text starts. */
+	from: number;
+	/**
+	 * Where it ends in the document: the caret, for an input rule (the typed
+	 * text that completed the match is not written yet); the query's end, for
+	 * a trigger.
+	 */
+	to: number;
+	/** Set the command's result caret at `offset` of `block` (block offsets). */
+	caret: (offset: number) => void;
+};
+
+/** What an input rule's `replace` receives besides the match. */
+export type InputRuleContext = TextRuleContext & {
+	/** The typed text that completed the match: part of the match, not in the document. */
+	typed: string;
+	/**
+	 * Remove the matched text (`from` to `to`) in the same plan as the first
+	 * operation `then` runs, so a refusal of either writes neither; without
+	 * `then`, or when it runs no operation (and does not answer `false`),
+	 * the text is removed on its own. Answers whether it was written.
+	 */
+	remove: (then?: () => unknown) => boolean;
+};
+
+/**
+ * Text typed at a caret that matches `find` is replaced (`:smile:` → 😄,
+ * `## ` → a heading): Notion's markdown and autoformat. Rules run for text
+ * typed at a collapsed caret (one `insertText` at it, an IME's commit
+ * excluded), in plugin order then list order; the first that writes wins.
+ * They do not run in the lines of a code block.
+ */
+export type InputRule = {
+	/**
+	 * Tested on the caret's text segment up to the caret, followed by the
+	 * typed text; a match must end at the typed text's end (end it with `$`).
+	 * A segment starts after an inline atom, so `^` is a segment's start:
+	 * read `from` for the block's start (`from === 0`).
+	 */
+	find: RegExp;
+	/**
+	 * The replacement. Return a string to replace the whole match with it
+	 * (one command and one undo step with the matched text's removal; the
+	 * caret after it), or write it yourself and return `true`, usually
+	 * through `ctx.remove(() => …)`. Return `false` or `null`, writing
+	 * nothing, to decline: the next rule is asked, then the typed text is
+	 * inserted as usual, as it is when the replacement is refused (by the
+	 * document, readonly or a plugin's veto).
+	 */
+	replace: (match: RegExpExecArray, ctx: InputRuleContext) => string | boolean | null | void;
+};
+
+/** What a trigger's `items` and `onPick` receive. */
+export type TriggerContext = TextRuleContext & {
+	/** The text typed after the trigger's `char`. */
+	query: string;
+};
+
+/** One row of a trigger's menu, for an `item` snippet. */
+export type TriggerItemPayload<T = unknown> = {
+	item: T;
+	/** The row's label (`label(item)`). */
+	label: string;
+	/** The row's element id: set it (`id={row.id}`) so the editor names the highlighted row. */
+	id: string;
+	/** It is the keyboard's row. */
+	selected: boolean;
+	/** Pick it. */
+	pick: () => void;
+	/** Make it the keyboard's row (hover). */
+	select: () => void;
+};
+
+/**
+ * A character typed at a text's start or after whitespace opens a menu at
+ * the caret (`@` for people, `[[` for pages); the text typed after it is
+ * the query. Picking a row replaces the trigger and its query (`onPick`).
+ * The menu's keys are the editor's while it is open: <kbd>↑</kbd>/<kbd>↓</kbd>
+ * move, <kbd>Enter</kbd> picks, <kbd>Escape</kbd> closes it and keeps the text.
+ */
+export type Trigger<T = any> = {
+	/** The text that opens the menu (one or two characters: `@`, `[[`). */
+	char: string;
+	/** The rows for `query`, at once or as a promise (a search); the newest query wins. */
+	items: (query: string, ctx: TriggerContext) => readonly T[] | Promise<readonly T[]>;
+	/**
+	 * Write the picked row: the trigger and its query (`from` to `to`) are
+	 * removed in the same plan as the first operation it runs (one undo
+	 * step; a refusal keeps them). Set the caret with `ctx.caret`. Return
+	 * `false`, running nothing, to keep the text.
+	 */
+	onPick: (item: T, ctx: TriggerContext) => unknown;
+	/** A row's label: default the item itself when it is a string, else its `label`, `title` or `name`. */
+	label?: (item: T) => string;
+	/** A row's stable key (for the row's element id): default its `id`, else its label. */
+	key?: (item: T) => string;
+	/** Replace each row's markup. */
+	item?: Snippet<[TriggerItemPayload<T>]>;
+	/** The menu's accessible name (default `Suggestions`). */
+	name?: string;
+	/** The text shown when no row matches (default `No results`). */
+	empty?: string;
+	/** Whether the menu may open in `block` (default: a block that is not void and not in a code block). */
+	enabled?: (block: Block) => boolean;
+};
+
+/**
  * Defines the structure of plugin definitions including marks, blocks, inline blocks, and hotkeys.
  */
 export type PluginDefinitions = {
@@ -133,6 +248,10 @@ export type PluginDefinitions = {
 	inlineBlocks?: Record<string, InlineBlockDefinition | Snippet<[InlineBlockSnippetPayload<any>]>>;
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
 	commands?: EditorCommand[];
+	/** Text typed at the caret that a rule replaces (markdown, `:smile:` → 😄). */
+	inputRules?: InputRule[];
+	/** Characters that open a menu of rows at the caret (`@` mentions). */
+	triggers?: Trigger[];
 };
 
 /**

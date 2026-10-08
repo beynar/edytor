@@ -145,7 +145,7 @@ export const openLink = (href: string, view: Window | null = globalThis.window ?
 
 const formatSelectedTextRange = (
 	edytor: Edytor,
-	mark: RichTextMark,
+	mark: string,
 	value: SerializableContent | null | undefined,
 	toggle: boolean
 ) => {
@@ -299,7 +299,12 @@ export const richTextOperations = (edytor: Edytor) => ({
 		}
 		formatSelectedTextRange(edytor, mark, safeValue, false);
 	},
-	setMarkAtRange: (mark: RichTextMark, value?: SerializableContent) => {
+	/**
+	 * Toggle `mark` (any mark the editor defines: the rich text ones are
+	 * typed) over the selection, each text segment it spans; at a caret,
+	 * stage it for the next character typed.
+	 */
+	setMarkAtRange: (mark: RichTextMark | (string & {}), value?: SerializableContent) => {
 		const { yStart, yEnd, startText, endText, isCollapsed } = edytor.selection.state;
 		if (isCollapsed) {
 			if (startText && !selectsBlocks(edytor)) {

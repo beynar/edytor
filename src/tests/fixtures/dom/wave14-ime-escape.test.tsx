@@ -14,7 +14,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { createDocument } from '$lib/crdt/index.js';
 import { convertBlocks, kindCatalogue } from '$lib/kinds.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { createImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';

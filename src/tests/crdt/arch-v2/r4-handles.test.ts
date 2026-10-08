@@ -23,7 +23,7 @@ import { Y } from '../../../lib/crdt/engine.js';
 import { attachDocument } from '../../../lib/crdt/document.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 
 /** Red on the reference (`arch-v2/ref-r4`); green since R4. */
 const row = test;

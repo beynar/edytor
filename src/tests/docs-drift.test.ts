@@ -72,10 +72,6 @@ const stale: [phrase: string | RegExp, why: string][] = [
 	['mention-and-image', 'the mention plugin is not exported; link targets moved'],
 	['14003', 'the generation word is 14004 (schema generation 4)'],
 	['0.0.x', 'the package is a 0.1.0-next pre-release'],
-	[
-		/\b(?:npm i|npm install|pnpm add|yarn add|bun add) edytor(?![@\w/.-])/,
-		'a bare `edytor` installs the incompatible 0.0.11 from npm; install `edytor@next`'
-	],
 	['through the `Keymap`', 'the Keymap class is not exported; bindings go through `hotKeys`'],
 	[
 		'registered to whoever delivers them first',
@@ -191,8 +187,8 @@ describe('docs drift', () => {
 		expect(hits).toEqual([]);
 	});
 
-	it('while the version is a pre-release, every install names the npm tag `edytor@next` (FW-03)', () => {
-		if (!version.includes('-')) return;
+	it('every install names the npm tag the version is published under: `edytor@next` for a -next pre-release, a bare `edytor` from the release candidate on (FW-03)', () => {
+		const channel = /-next\./.test(version) ? 'edytor@next' : 'edytor';
 		const config = readFileSync(join(root, 'site/blume.config.ts'), 'utf8');
 		const site = /cloudflare\(\{\s*site:\s*["']([^"']+)["']/.exec(config)?.[1];
 		expect(site).toBeTruthy();
@@ -207,13 +203,16 @@ describe('docs drift', () => {
 			.filter(([, line]) =>
 				/\b(?:npm i|npm install|pnpm add|yarn add|bun add) \S*edytor/.test(line)
 			);
-		const allowed = [`../edytor/edytor-${version}.tgz`, 'edytor@next'];
-		expect(installs.filter(([, line]) => !allowed.some((target) => line.includes(target)))).toEqual(
-			[]
-		);
-		// CI publishes each pre-release under `next` (a bare `edytor` is the old
-		// 0.0.11): the README, the install page, the server quick start and the
-		// landing page give the tag.
+		const named = (line: string) =>
+			line.includes(`../edytor/edytor-${version}.tgz`) ||
+			(channel === 'edytor@next'
+				? line.includes('edytor@next')
+				: /\b(?:npm i|npm install|pnpm add|yarn add|bun add) edytor(?![@\w/.-])/.test(line));
+		expect(installs.filter(([, line]) => !named(line))).toEqual([]);
+		// CI publishes a -next pre-release under `next` (a bare `edytor` was the
+		// old 0.0.11 then), a release candidate and a release under `latest`:
+		// the README, the install page, the server quick start and the landing
+		// page give the install that gets this version.
 		for (const page of [
 			'README.md',
 			'site/content/docs/getting-started/index.mdx',
@@ -221,7 +220,9 @@ describe('docs drift', () => {
 			// The landing page's Copy install button (XW-05).
 			'site/pages/_home/Hero.astro'
 		])
-			expect(pageText(join(root, page)), page).toContain('pnpm add edytor@next');
+			expect(pageText(join(root, page)), page).toMatch(
+				channel === 'edytor@next' ? /pnpm add edytor@next/ : /pnpm add edytor(?![@\w/.-])/
+			);
 		// The site still serves every tarball it served (lockfiles pin those URLs).
 		expect(hosted).toContain('/edytor-');
 		// The site serves public/ at its root: the pack stages the tarball there

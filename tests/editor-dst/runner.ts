@@ -478,9 +478,13 @@ const pointerDragPoints = (
 				const texts = Array.from(block.querySelectorAll<HTMLElement>('[data-edytor-text="true"]'));
 				const element = edge === 'first' ? texts[0] : texts.at(-1);
 				const rect = (element ?? block).getBoundingClientRect();
+				// Inside the window, as a person's pointer: an empty line's text
+				// element spans its block, which can reach past the viewport, and
+				// Firefox delivers no release outside it (the drag never ends).
+				const clamp = (value: number, max: number) => Math.min(Math.max(value, 1), max - 2);
 				return {
-					x: edge === 'first' ? rect.left + 1 : rect.right - 1,
-					y: rect.top + rect.height / 2
+					x: clamp(edge === 'first' ? rect.left + 1 : rect.right - 1, innerWidth),
+					y: clamp(rect.top + rect.height / 2, innerHeight)
 				};
 			};
 			return { from: edgePoint(startBlock, 'first'), to: edgePoint(endBlock, 'last') };

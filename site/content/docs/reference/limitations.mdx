@@ -4,7 +4,7 @@ description: What edytor does not provide, what is not finished, and the known e
 icon: triangle-alert
 ---
 
-Edytor's collaboration stack is proven by its test suites across Chromium, Firefox and WebKit, but it has no production track record yet. This page lists what is out of scope, what is not built, and the edge cases you may meet; [Platform support](/docs/reference/platform-support) lists the browsers, devices and input methods the suites run, and what they do not (real phones, operating-system IMEs).
+Edytor's collaboration stack is proven by its test suites across Chromium, Firefox and WebKit, but it has no production track record yet. This page lists what is out of scope, what is not built, and the edge cases you may meet; [Platform support](/docs/reference/platform-support) lists the browsers, devices and input methods the suites run, and what they do not (real phones, operating-system IMEs). The screen-reader passes the [accessibility page](/docs/editor/accessibility) lists are not recorded yet.
 
 ## Not provided
 
@@ -67,6 +67,8 @@ The WebSocket's bound starts when the socket opens (or first fails to), so a roo
 
 ## Size and platform limits
 
+- **A document's stored size grows with every edit.** About 72 bytes an edit, for the document's life: the CRDT structure each edit leaves, which the [purge](/docs/server/history#the-purge) barely reduces. A document many people edit every day reaches the 2 MiB default in days to weeks; past the quota the room refuses writes (`4413`) and the provider stops, its later edits unsaved. Raise `EDYTOR_MAX_DOCUMENT_BYTES` as far as the room's memory allows (below). Re-seeding a document from its content, which would shrink it, is not built: every client's local copy would have to start over.
+- **Long pages type slower.** The editor renders every block, with no windowing, and in Chromium each keystroke also costs time proportional to the page. Keep a document to a couple of thousand top-level blocks for typing within a frame; see [Long pages](/docs/customization/styling#long-pages).
 - A room document is capped at 2 MiB stored by default (about 5,000 paragraphs of prose): the room holds the live document in an isolate of 128 MB, where it takes 18 to 46 times its stored size. Raise [the quota](/docs/server/room#quotas) for documents of long text; split very long lists of short blocks across documents. A single WebSocket message is capped at 32 MiB by Cloudflare; both the provider and the room send larger frames as chunks. The image plugin refuses an inline (`data:`) image over 1 MiB: [upload](/docs/plugins/image) it instead.
 - Document ids and user ids are 1 to 256 characters, and a user id with a lone surrogate is refused `4403` (see [authorize](/docs/server/authorization#authorize)). A document id may hold any character: the provider percent-encodes it into one path segment, and your Worker decodes it (see [the quick start](/docs/server/quick-start)). The ids `.` and `..` are the exception, and so is an id with a lone surrogate: a URL collapses those segments (`%2E` too) and cannot encode a lone surrogate, so the provider throws for them and `routeDocumentSocket` closes them `4400`.
 - After a room wakes from hibernation, presence refills as clients renew it, within 15 seconds.

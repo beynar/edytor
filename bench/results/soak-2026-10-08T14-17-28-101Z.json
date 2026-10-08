@@ -1,0 +1,1347 @@
+{
+	"at": "2026-10-08T14:19:30.690Z",
+	"roomName": "soak-2026-10-08T14-17-28-101Z",
+	"server": "local (Miniflare, bench/soak/server.mjs)",
+	"config": {
+		"clients": 6,
+		"minutes": 1.5,
+		"threads": 2,
+		"opsPerSecond": 2,
+		"presenceHz": 20,
+		"dragShare": 0.1,
+		"churnPerMinute": 1,
+		"offlinePerHour": 2,
+		"reloadShare": 0.1,
+		"faults": true,
+		"seed": 1,
+		"port": 4530,
+		"maxBlocks": 400,
+		"maxChars": 60000,
+		"sampleSeconds": 10,
+		"faultScale": 0.15
+	},
+	"durationMinutes": 2,
+	"acks": {
+		"count": 918,
+		"p50": 1.8,
+		"p90": 7.6,
+		"p99": 1415.5,
+		"p999": 3101.7,
+		"max": 3101.7
+	},
+	"acksDisconnected": {
+		"count": 63,
+		"p50": 1037.1,
+		"p90": 2577.6,
+		"p99": 2887,
+		"p999": 2887,
+		"max": 2887
+	},
+	"acksOutsideOffline": {
+		"count": 981,
+		"p50": 2,
+		"p90": 28.3,
+		"p99": 2846.9,
+		"p999": 3101.7,
+		"max": 3101.7
+	},
+	"faultFreeWindows": {
+		"windows": 0,
+		"medianP99": null,
+		"worstP99": null
+	},
+	"replays": {
+		"count": 1,
+		"p50": 6.7,
+		"p90": 6.7,
+		"p99": 6.7,
+		"p999": 6.7,
+		"max": 6.7,
+		"sessions": 1,
+		"edits": 26
+	},
+	"room": {
+		"heapMaxMB": 15.773880004882812,
+		"heapAfterGcMaxMB": 13.459259033203125,
+		"rssMaxMB": 98.53125,
+		"quietHeap": {
+			"heapMB": 6.428916931152344,
+			"documentBytes": 74158
+		},
+		"coldHeap": {
+			"heapMB": 7.007457733154297,
+			"documentBytes": 74271
+		},
+		"documentBytes": 57795,
+		"storedBytes": 15171,
+		"finalCompactionMs": 7,
+		"forcedCompactionsMs": {
+			"count": 7,
+			"p50": 7,
+			"p90": 707,
+			"p99": 707,
+			"p999": 707,
+			"max": 707
+		},
+		"instances": 7,
+		"starts": [
+			{
+				"t": 2,
+				"sockets": 0
+			},
+			{
+				"t": 21,
+				"sockets": 6
+			},
+			{
+				"t": 33,
+				"sockets": 0
+			},
+			{
+				"t": 48,
+				"sockets": 0
+			},
+			{
+				"t": 57,
+				"sockets": 6
+			},
+			{
+				"t": 87,
+				"sockets": 0
+			},
+			{
+				"t": 107,
+				"sockets": 6
+			},
+			{
+				"t": 108,
+				"sockets": 0
+			},
+			{
+				"t": 122,
+				"sockets": 7
+			}
+		],
+		"summed": {
+			"compactions": 4,
+			"folds": 691,
+			"foldMaxMs": 108,
+			"fanOutMessages": 9998,
+			"fanOutBytes": 1448312,
+			"quotaHits": 0,
+			"refusals": {
+				"relayed": 1,
+				"storage": 20
+			}
+		},
+		"log": {
+			"compactions": {
+				"count": 4,
+				"p50": 3,
+				"p90": 4,
+				"p99": 4,
+				"p999": 4,
+				"max": 4
+			},
+			"compactionBytesMax": 57795,
+			"faults": 20,
+			"quota": []
+		},
+		"metrics": {
+			"documentBytes": 57795,
+			"storedBytes": 15171,
+			"records": 2,
+			"rows": 2,
+			"updateRecords": 0,
+			"waitingBytes": 0,
+			"sockets": 6,
+			"buffered": {
+				"sequences": 0,
+				"bytes": 0
+			},
+			"compaction": {
+				"count": 1,
+				"totalMs": 3,
+				"maxMs": 3,
+				"lastMs": 3,
+				"lastBytes": 57795
+			},
+			"fold": {
+				"count": 0,
+				"totalMs": 0,
+				"maxMs": 0,
+				"lastMs": 0
+			},
+			"fanOut": {
+				"messages": 13,
+				"bytes": 1402
+			},
+			"quotaHits": 0,
+			"validationDenials": 0,
+			"refusals": {},
+			"history": {
+				"written": 0,
+				"skipped": 0,
+				"lastKey": null
+			},
+			"purge": {
+				"runs": 0,
+				"horizon": null,
+				"removed": 0,
+				"emptied": 0,
+				"marks": 0,
+				"records": 0,
+				"candidates": 0,
+				"claims": 0,
+				"merged": 0
+			},
+			"since": 1791469170660
+		}
+	},
+	"clients": {
+		"maxEventLoopP99Ms": 54,
+		"maxHeapMB": 68.56658172607422,
+		"heapAfterGcMaxMB": 49.808631896972656,
+		"heapAfterGcPerClientMB": 8.301438649495443
+	},
+	"totals": {
+		"ops": {
+			"jump:applied-local": 36,
+			"type:applied": 660,
+			"merge:applied": 34,
+			"split:applied": 71,
+			"backspace:applied": 109,
+			"cut:applied": 29,
+			"data:applied": 34,
+			"mark:applied": 31,
+			"mark:noop": 16,
+			"move:applied": 39,
+			"cut:noop": 2,
+			"backspace:noop": 9
+		},
+		"closes": {
+			"1000": 9,
+			"1006": 17,
+			"1011": 36
+		},
+		"events": {
+			"unreachable": 36
+		},
+		"reloads": 3,
+		"churns": 6,
+		"offline": 1
+	},
+	"faults": [
+		{
+			"t": 9,
+			"fault": "compaction",
+			"ms": 14,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 21,
+			"fault": "hibernate",
+			"ms": 11,
+			"result": {
+				"evicted": true,
+				"webSockets": "hibernate"
+			}
+		},
+		{
+			"t": 23,
+			"fault": "compaction",
+			"ms": 4,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 27,
+			"fault": "storage-append",
+			"ms": 0,
+			"result": {
+				"ok": true,
+				"on": {
+					"kind": "append",
+					"on": true
+				},
+				"off": {
+					"kind": "append",
+					"on": false
+				}
+			}
+		},
+		{
+			"t": 33,
+			"fault": "evict",
+			"ms": 7,
+			"result": {
+				"evicted": true,
+				"webSockets": "close"
+			}
+		},
+		{
+			"t": 36,
+			"fault": "compaction",
+			"ms": 7,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 48,
+			"fault": "abort",
+			"ms": 8,
+			"result": {
+				"aborted": true,
+				"error": "Error: soak: injected abort"
+			}
+		},
+		{
+			"t": 50,
+			"fault": "compaction",
+			"ms": 5,
+			"result": {
+				"rows": 2
+			}
+		},
+		{
+			"t": 57,
+			"fault": "hibernate",
+			"ms": 4,
+			"result": {
+				"evicted": true,
+				"webSockets": "hibernate"
+			}
+		},
+		{
+			"t": 63,
+			"fault": "compaction",
+			"ms": 5,
+			"result": "Error: soak: injected compaction failure: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)\n    at async Object.fetch (file:///Users/arnaud/code/edytor/.claude/worktrees/agent-a860d56cd69958460/node_modules/.pnpm/miniflare@5.20260926.0-alpha/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5318:22)"
+		},
+		{
+			"t": 72,
+			"fault": "storage-append",
+			"ms": 0,
+			"result": {
+				"ok": true,
+				"on": {
+					"kind": "append",
+					"on": true
+				},
+				"off": {
+					"kind": "append",
+					"on": false
+				}
+			}
+		},
+		{
+			"t": 78,
+			"fault": "compaction",
+			"ms": 707,
+			"result": "Error: soak: injected compaction failure: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)\n    at async Object.fetch (file:///Users/arnaud/code/edytor/.claude/worktrees/agent-a860d56cd69958460/node_modules/.pnpm/miniflare@5.20260926.0-alpha/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5318:22)"
+		},
+		{
+			"t": 87,
+			"fault": "evict",
+			"ms": 22,
+			"result": {
+				"evicted": true,
+				"webSockets": "close"
+			}
+		},
+		{
+			"t": 90,
+			"fault": "compaction",
+			"ms": 23,
+			"result": "Error: soak: injected compaction failure: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)\n    at async Object.fetch (file:///Users/arnaud/code/edytor/.claude/worktrees/agent-a860d56cd69958460/node_modules/.pnpm/miniflare@5.20260926.0-alpha/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5318:22)"
+		},
+		{
+			"t": 93,
+			"fault": "storage-compaction",
+			"ms": 0,
+			"result": {
+				"ok": true,
+				"forced": {
+					"status": 500,
+					"body": "Error: soak: injected compaction failure: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)\n    at async Object.fetch (file:///Users/arnaud/code/edytor/.claude/worktrees/agent-a860d56cd69958460/node_modules/.pnpm/miniflare@5.20260926.0-alpha/node_modules/miniflare/dist/src/workers/core/entry.worker.js:5318:22)"
+				}
+			}
+		}
+	],
+	"forced": [
+		{
+			"what": "offline",
+			"client": 0,
+			"ms": 15000,
+			"done": true
+		},
+		{
+			"what": "reload",
+			"client": 5,
+			"done": true
+		}
+	],
+	"size": {
+		"blocks": 78,
+		"chars": 3297,
+		"stored": 57825,
+		"fresh": 22531,
+		"purged": 53746,
+		"purge": {
+			"removed": 0,
+			"emptied": 0,
+			"marks": 108,
+			"records": 0,
+			"candidates": 38,
+			"claims": 0,
+			"merged": 34
+		},
+		"census": {
+			"clients": 13,
+			"structs": 2695,
+			"gc": 0,
+			"items": {
+				"live": 2315,
+				"deleted": 380,
+				"deletedKeepingContent": 0,
+				"mapEntries": 1748,
+				"sequence": 947
+			},
+			"content": {
+				"ContentAny": {
+					"live": 1290,
+					"deleted": 0,
+					"liveLength": 1290,
+					"deletedLength": 0
+				},
+				"ContentString": {
+					"live": 424,
+					"deleted": 0,
+					"liveLength": 3297,
+					"deletedLength": 0
+				},
+				"ContentType": {
+					"live": 489,
+					"deleted": 0,
+					"liveLength": 489,
+					"deletedLength": 0
+				},
+				"ContentFormat": {
+					"live": 112,
+					"deleted": 0,
+					"liveLength": 112,
+					"deletedLength": 0
+				},
+				"ContentDeleted": {
+					"live": 0,
+					"deleted": 380,
+					"liveLength": 0,
+					"deletedLength": 698
+				}
+			},
+			"text": {
+				"items": 424,
+				"chars": 3297
+			},
+			"keys": {
+				"c/": {
+					"live": 12,
+					"deleted": 0
+				},
+				"l": {
+					"live": 102,
+					"deleted": 168
+				},
+				"u": {
+					"live": 71,
+					"deleted": 0
+				},
+				"id": {
+					"live": 112,
+					"deleted": 0
+				},
+				"n": {
+					"live": 112,
+					"deleted": 0
+				},
+				"type": {
+					"live": 112,
+					"deleted": 0
+				},
+				"d/": {
+					"live": 57,
+					"deleted": 13
+				},
+				"claims": {
+					"live": 112,
+					"deleted": 0
+				},
+				"at": {
+					"live": 112,
+					"deleted": 0
+				},
+				"1.8578952862331128": {
+					"live": 1,
+					"deleted": 0
+				},
+				"b/": {
+					"live": 112,
+					"deleted": 0
+				},
+				"i": {
+					"live": 112,
+					"deleted": 0
+				},
+				"c": {
+					"live": 71,
+					"deleted": 0
+				},
+				"k/": {
+					"live": 235,
+					"deleted": 0
+				},
+				"2.3105388946823779": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.3105388946823779": {
+					"live": 18,
+					"deleted": 0
+				},
+				"v": {
+					"live": 1,
+					"deleted": 0
+				},
+				"schema": {
+					"live": 1,
+					"deleted": 0
+				},
+				"title": {
+					"live": 1,
+					"deleted": 0
+				},
+				"content": {
+					"live": 41,
+					"deleted": 0
+				},
+				"1.48595596": {
+					"live": 40,
+					"deleted": 1
+				},
+				"seed-": {
+					"live": 40,
+					"deleted": 0
+				},
+				"1.708934341042665": {
+					"live": 11,
+					"deleted": 0
+				},
+				"2.708934341042665": {
+					"live": 6,
+					"deleted": 0
+				},
+				"1.3553234721317209": {
+					"live": 12,
+					"deleted": 0
+				},
+				"2.3553234721317209": {
+					"live": 6,
+					"deleted": 0
+				},
+				"3.3553234721317209": {
+					"live": 2,
+					"deleted": 0
+				},
+				"1.7375723480922622": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.7375723480922622": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.896999352981690": {
+					"live": 14,
+					"deleted": 0
+				},
+				"2.896999352981690": {
+					"live": 6,
+					"deleted": 0
+				},
+				"1.1225379547048710": {
+					"live": 7,
+					"deleted": 0
+				},
+				"2.1225379547048710": {
+					"live": 4,
+					"deleted": 0
+				},
+				"1.6629874293420589": {
+					"live": 4,
+					"deleted": 0
+				},
+				"3.6629874293420589": {
+					"live": 3,
+					"deleted": 0
+				},
+				"2.6629874293420589": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.2247594606807438": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.2247594606807438": {
+					"live": 5,
+					"deleted": 0
+				},
+				"1.2247594606807438": {
+					"live": 3,
+					"deleted": 0
+				}
+			}
+		},
+		"censusAfterPurge": {
+			"clients": 13,
+			"structs": 2617,
+			"gc": 63,
+			"items": {
+				"live": 2001,
+				"deleted": 553,
+				"deletedKeepingContent": 0,
+				"mapEntries": 1614,
+				"sequence": 940
+			},
+			"content": {
+				"ContentAny": {
+					"live": 1010,
+					"deleted": 0,
+					"liveLength": 1010,
+					"deletedLength": 0
+				},
+				"ContentString": {
+					"live": 424,
+					"deleted": 0,
+					"liveLength": 3297,
+					"deletedLength": 0
+				},
+				"ContentType": {
+					"live": 455,
+					"deleted": 0,
+					"liveLength": 455,
+					"deletedLength": 0
+				},
+				"ContentFormat": {
+					"live": 112,
+					"deleted": 0,
+					"liveLength": 112,
+					"deletedLength": 0
+				},
+				"ContentDeleted": {
+					"live": 0,
+					"deleted": 553,
+					"liveLength": 0,
+					"deletedLength": 878
+				}
+			},
+			"text": {
+				"items": 424,
+				"chars": 3297
+			},
+			"keys": {
+				"c/": {
+					"live": 12,
+					"deleted": 0
+				},
+				"l": {
+					"live": 102,
+					"deleted": 168
+				},
+				"u": {
+					"live": 71,
+					"deleted": 0
+				},
+				"id": {
+					"live": 112,
+					"deleted": 0
+				},
+				"n": {
+					"live": 112,
+					"deleted": 0
+				},
+				"type": {
+					"live": 112,
+					"deleted": 0
+				},
+				"d/": {
+					"live": 57,
+					"deleted": 13
+				},
+				"claims": {
+					"live": 112,
+					"deleted": 0
+				},
+				"at": {
+					"live": 112,
+					"deleted": 0
+				},
+				"1.8578952862331128": {
+					"live": 1,
+					"deleted": 0
+				},
+				"b/": {
+					"live": 78,
+					"deleted": 34
+				},
+				"i": {
+					"live": 78,
+					"deleted": 0
+				},
+				"c": {
+					"live": 48,
+					"deleted": 0
+				},
+				"k/": {
+					"live": 157,
+					"deleted": 0
+				},
+				"2.3105388946823779": {
+					"live": 3,
+					"deleted": 0
+				},
+				"1.3105388946823779": {
+					"live": 15,
+					"deleted": 3
+				},
+				"v": {
+					"live": 1,
+					"deleted": 0
+				},
+				"schema": {
+					"live": 1,
+					"deleted": 0
+				},
+				"title": {
+					"live": 1,
+					"deleted": 0
+				},
+				"content": {
+					"live": 41,
+					"deleted": 0
+				},
+				"1.48595596": {
+					"live": 24,
+					"deleted": 17
+				},
+				"seed-": {
+					"live": 40,
+					"deleted": 0
+				},
+				"1.708934341042665": {
+					"live": 8,
+					"deleted": 3
+				},
+				"2.708934341042665": {
+					"live": 4,
+					"deleted": 2
+				},
+				"1.3553234721317209": {
+					"live": 11,
+					"deleted": 1
+				},
+				"2.3553234721317209": {
+					"live": 5,
+					"deleted": 1
+				},
+				"3.3553234721317209": {
+					"live": 1,
+					"deleted": 1
+				},
+				"1.7375723480922622": {
+					"live": 1,
+					"deleted": 0
+				},
+				"4.7375723480922622": {
+					"live": 1,
+					"deleted": 0
+				},
+				"1.896999352981690": {
+					"live": 8,
+					"deleted": 6
+				},
+				"2.896999352981690": {
+					"live": 4,
+					"deleted": 2
+				},
+				"1.1225379547048710": {
+					"live": 5,
+					"deleted": 2
+				},
+				"2.1225379547048710": {
+					"live": 3,
+					"deleted": 1
+				},
+				"1.6629874293420589": {
+					"live": 4,
+					"deleted": 0
+				},
+				"3.6629874293420589": {
+					"live": 3,
+					"deleted": 0
+				},
+				"2.6629874293420589": {
+					"live": 2,
+					"deleted": 0
+				},
+				"3.2247594606807438": {
+					"live": 1,
+					"deleted": 0
+				},
+				"2.2247594606807438": {
+					"live": 5,
+					"deleted": 0
+				},
+				"1.2247594606807438": {
+					"live": 3,
+					"deleted": 0
+				},
+				"h": {
+					"live": 1,
+					"deleted": 0
+				}
+			}
+		},
+		"bytes": {
+			"total": 52672,
+			"top": [
+				{
+					"what": "blocks><id>><id> [seq] ContentString",
+					"structs": 423,
+					"bytes": 6586,
+					"share": 12.5
+				},
+				{
+					"what": "blocks><id>><id> [seq] ContentFormat",
+					"structs": 112,
+					"bytes": 5813,
+					"share": 11
+				},
+				{
+					"what": "blocks><id>>at <rank> ContentAny",
+					"structs": 149,
+					"bytes": 4146,
+					"share": 7.9
+				},
+				{
+					"what": "blockattr b/ ContentType",
+					"structs": 112,
+					"bytes": 4123,
+					"share": 7.8
+				},
+				{
+					"what": "blockattr>b/ k/ ContentAny",
+					"structs": 235,
+					"bytes": 3882,
+					"share": 7.4
+				},
+				{
+					"what": "blocks><id> <id> ContentType",
+					"structs": 151,
+					"bytes": 3810,
+					"share": 7.2
+				},
+				{
+					"what": "blocks <id> ContentType",
+					"structs": 111,
+					"bytes": 3653,
+					"share": 6.9
+				},
+				{
+					"what": "blocks><id>><id> [seq] ContentDeleted deleted",
+					"structs": 170,
+					"bytes": 2732,
+					"share": 5.2
+				},
+				{
+					"what": "blocks><id> l ContentDeleted deleted",
+					"structs": 168,
+					"bytes": 1963,
+					"share": 3.7
+				},
+				{
+					"what": "blocks><id> at ContentType",
+					"structs": 111,
+					"bytes": 1924,
+					"share": 3.7
+				},
+				{
+					"what": "blocks><id> type ContentAny",
+					"structs": 111,
+					"bytes": 1813,
+					"share": 3.4
+				},
+				{
+					"what": "blocks><id>><id> [seq] ContentAny",
+					"structs": 105,
+					"bytes": 1689,
+					"share": 3.2
+				},
+				{
+					"what": "blocks><id> id ContentAny",
+					"structs": 111,
+					"bytes": 1591,
+					"share": 3
+				},
+				{
+					"what": "blockattr>b/ i ContentAny",
+					"structs": 112,
+					"bytes": 1495,
+					"share": 2.8
+				},
+				{
+					"what": "blocks><id> n ContentAny",
+					"structs": 111,
+					"bytes": 1480,
+					"share": 2.8
+				}
+			]
+		},
+		"bytesAfterPurge": {
+			"total": 50487,
+			"top": [
+				{
+					"what": "blocks><id>><id> [seq] ContentString",
+					"structs": 423,
+					"bytes": 6586,
+					"share": 13
+				},
+				{
+					"what": "blocks><id>><id> [seq] ContentFormat",
+					"structs": 112,
+					"bytes": 5813,
+					"share": 11.5
+				},
+				{
+					"what": "blocks><id> <id> ContentType",
+					"structs": 151,
+					"bytes": 3810,
+					"share": 7.5
+				},
+				{
+					"what": "blocks <id> ContentType",
+					"structs": 111,
+					"bytes": 3653,
+					"share": 7.2
+				},
+				{
+					"what": "blocks><id>>at <rank> ContentAny",
+					"structs": 111,
+					"bytes": 3162,
+					"share": 6.3
+				},
+				{
+					"what": "blockattr b/ ContentType",
+					"structs": 78,
+					"bytes": 2847,
+					"share": 5.6
+				},
+				{
+					"what": "blocks><id>><id> [seq] ContentDeleted deleted",
+					"structs": 170,
+					"bytes": 2732,
+					"share": 5.4
+				},
+				{
+					"what": "blockattr>b/ k/ ContentAny",
+					"structs": 157,
+					"bytes": 2605,
+					"share": 5.2
+				},
+				{
+					"what": "blocks><id> l ContentDeleted deleted",
+					"structs": 168,
+					"bytes": 1963,
+					"share": 3.9
+				},
+				{
+					"what": "blocks><id> at ContentType",
+					"structs": 111,
+					"bytes": 1924,
+					"share": 3.8
+				},
+				{
+					"what": "blocks><id> type ContentAny",
+					"structs": 111,
+					"bytes": 1813,
+					"share": 3.6
+				},
+				{
+					"what": "blocks><id>><id> [seq] ContentAny",
+					"structs": 105,
+					"bytes": 1689,
+					"share": 3.3
+				},
+				{
+					"what": "blocks><id> id ContentAny",
+					"structs": 111,
+					"bytes": 1591,
+					"share": 3.2
+				},
+				{
+					"what": "textdel [seq] ContentDeleted deleted",
+					"structs": 129,
+					"bytes": 1492,
+					"share": 3
+				},
+				{
+					"what": "blocks><id> n ContentAny",
+					"structs": 111,
+					"bytes": 1480,
+					"share": 2.9
+				}
+			]
+		},
+		"edits": 1007,
+		"bytesPerEdit": 35
+	},
+	"errors": [],
+	"convergence": {
+		"clients": 6,
+		"stateVectors": 1,
+		"distinctJson": 1,
+		"room": true,
+		"joiner": true,
+		"afterEviction": true,
+		"blocks": 78,
+		"chars": 3297,
+		"ok": true
+	},
+	"samples": [
+		{
+			"t": 13,
+			"online": 6,
+			"acks": {
+				"count": 138,
+				"p50": 2.1,
+				"p90": 4.3,
+				"p99": 8.4,
+				"p999": 10.1,
+				"max": 10.1
+			},
+			"heapUsed": 8230724,
+			"heapTotal": 9912320,
+			"gc": false,
+			"rss": 103317504,
+			"cpu": 2.1,
+			"clientHeap": 45964712,
+			"clientRss": 296501248,
+			"clientLoopP99": 13,
+			"documentBytes": 18297,
+			"storedBytes": 7526,
+			"records": 50,
+			"updateRecords": 48,
+			"sockets": 6,
+			"compactions": 1,
+			"compactionMaxMs": 4,
+			"folds": 152,
+			"foldMaxMs": 27,
+			"fanOut": 2107,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791469050110,
+			"load": 4.802734375
+		},
+		{
+			"t": 23,
+			"online": 6,
+			"acks": {
+				"count": 106,
+				"p50": 1.3,
+				"p90": 2.5,
+				"p99": 4.5,
+				"p999": 7.3,
+				"max": 7.3
+			},
+			"heapUsed": 9693300,
+			"heapTotal": 13058048,
+			"gc": false,
+			"rss": 78692352,
+			"cpu": 1.7,
+			"clientHeap": 51343808,
+			"clientRss": 199966720,
+			"clientLoopP99": 12,
+			"documentBytes": 25032,
+			"storedBytes": 14261,
+			"records": 156,
+			"updateRecords": 154,
+			"sockets": 6,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 22,
+			"foldMaxMs": 1,
+			"fanOut": 482,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791469069354,
+			"load": 4.75244140625
+		},
+		{
+			"t": 33,
+			"online": 5,
+			"acks": {
+				"count": 81,
+				"p50": 1.2,
+				"p90": 2,
+				"p99": 3025.1,
+				"p999": 3025.1,
+				"max": 3025.1
+			},
+			"heapUsed": 14916868,
+			"heapTotal": 18300928,
+			"gc": false,
+			"rss": 90898432,
+			"cpu": 5.2,
+			"clientHeap": 53837648,
+			"clientRss": 215515136,
+			"clientLoopP99": 12,
+			"documentBytes": 29463,
+			"storedBytes": 14507,
+			"records": 76,
+			"updateRecords": 74,
+			"sockets": 0,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 0,
+			"foldMaxMs": 0,
+			"fanOut": 0,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791469081282,
+			"load": 4.697265625
+		},
+		{
+			"t": 43,
+			"online": 6,
+			"acks": {
+				"count": 87,
+				"p50": 1.5,
+				"p90": 3.5,
+				"p99": 6.1,
+				"p999": 6.1,
+				"max": 6.1
+			},
+			"heapUsed": 14669532,
+			"heapTotal": 17776640,
+			"gc": false,
+			"rss": 96796672,
+			"cpu": 2.7,
+			"clientHeap": 59633504,
+			"clientRss": 227475456,
+			"clientLoopP99": 13,
+			"documentBytes": 33235,
+			"storedBytes": 13064,
+			"records": 62,
+			"updateRecords": 60,
+			"sockets": 6,
+			"compactions": 1,
+			"compactionMaxMs": 2,
+			"folds": 100,
+			"foldMaxMs": 2,
+			"fanOut": 1401,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791469081282,
+			"load": 4.57666015625
+		},
+		{
+			"t": 53,
+			"online": 6,
+			"acks": {
+				"count": 113,
+				"p50": 2,
+				"p90": 3.6,
+				"p99": 5.6,
+				"p999": 6.8,
+				"max": 6.8
+			},
+			"heapUsed": 16540112,
+			"heapTotal": 20922368,
+			"gc": false,
+			"rss": 99762176,
+			"cpu": 2.9,
+			"clientHeap": 59962656,
+			"clientRss": 234995712,
+			"clientLoopP99": 12,
+			"documentBytes": 38844,
+			"storedBytes": 12649,
+			"records": 41,
+			"updateRecords": 39,
+			"sockets": 6,
+			"compactions": 1,
+			"compactionMaxMs": 0,
+			"folds": 64,
+			"foldMaxMs": 2,
+			"fanOut": 908,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791469096412,
+			"load": 4.11279296875
+		},
+		{
+			"t": 63,
+			"online": 6,
+			"acks": {
+				"count": 92,
+				"p50": 1.3,
+				"p90": 3.2,
+				"p99": 6.9,
+				"p999": 6.9,
+				"max": 6.9
+			},
+			"heapUsed": 6589240,
+			"heapTotal": 7553024,
+			"gc": true,
+			"rss": 92143616,
+			"cpu": 8.5,
+			"clientHeap": 50141696,
+			"clientRss": 242057216,
+			"clientLoopP99": 12,
+			"documentBytes": 45191,
+			"storedBytes": 18996,
+			"records": 135,
+			"updateRecords": 133,
+			"sockets": 6,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 60,
+			"foldMaxMs": 2,
+			"fanOut": 1838,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791469105222,
+			"load": 4.341796875
+		},
+		{
+			"t": 75,
+			"online": 1,
+			"acks": {
+				"count": 86,
+				"p50": 1.7,
+				"p90": 5.1,
+				"p99": 14,
+				"p999": 14,
+				"max": 14
+			},
+			"heapUsed": 10882580,
+			"heapTotal": 14368768,
+			"gc": false,
+			"rss": 69255168,
+			"cpu": 6.3,
+			"clientHeap": 63736416,
+			"clientRss": 114458624,
+			"clientLoopP99": 13,
+			"documentBytes": 50683,
+			"storedBytes": 24488,
+			"records": 221,
+			"updateRecords": 219,
+			"sockets": 1,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 166,
+			"foldMaxMs": 15,
+			"fanOut": 3183,
+			"refusals": {
+				"storage": 20
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791469105222,
+			"load": 5.34228515625
+		},
+		{
+			"t": 83,
+			"online": 6,
+			"acks": {
+				"count": 100,
+				"p50": 11,
+				"p90": 189,
+				"p99": 3101.7,
+				"p999": 3101.7,
+				"max": 3101.7
+			},
+			"heapUsed": 11728124,
+			"heapTotal": 14106624,
+			"gc": false,
+			"rss": 68927488,
+			"cpu": 1.7,
+			"clientHeap": 71897272,
+			"clientRss": 158089216,
+			"clientLoopP99": 54,
+			"documentBytes": 65687,
+			"storedBytes": 39492,
+			"records": 322,
+			"updateRecords": 320,
+			"sockets": 6,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 273,
+			"foldMaxMs": 108,
+			"fanOut": 4267,
+			"refusals": {
+				"storage": 20
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791469105222,
+			"load": 8.29345703125
+		},
+		{
+			"t": 103,
+			"online": 6,
+			"acks": {
+				"count": 115,
+				"p50": 2.4,
+				"p90": 8.2,
+				"p99": 15.7,
+				"p999": 32.7,
+				"max": 32.7
+			},
+			"heapUsed": 14113056,
+			"heapTotal": 19087360,
+			"gc": true,
+			"rss": 81559552,
+			"cpu": 0.2,
+			"clientHeap": 52228136,
+			"clientRss": 182370304,
+			"clientLoopP99": 17,
+			"documentBytes": 74158,
+			"storedBytes": 47963,
+			"records": 439,
+			"updateRecords": 437,
+			"sockets": 6,
+			"compactions": 0,
+			"compactionMaxMs": 0,
+			"folds": 80,
+			"foldMaxMs": 9,
+			"fanOut": 820,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791469135483,
+			"load": 10.3271484375
+		}
+	]
+}

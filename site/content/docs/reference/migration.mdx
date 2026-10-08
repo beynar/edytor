@@ -26,6 +26,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 #### Fixed
 
+- **A drag released where the page cannot see it ends.** Releasing a text selection drag over an embed (a frame of another site) left the editor waiting for the release, so it stopped showing its selection until the next click. The next pointer move ends it.
 - **Typing on a very long page does less work.** The block handles found the blocks near the screen by watching every block, which the browser rechecked after each keystroke (about 6 ms a key at 10,000 blocks). They now look up the few blocks near the screen directly.
 
 ### From 0.1.0-next.43

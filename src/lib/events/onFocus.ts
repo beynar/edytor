@@ -272,6 +272,13 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 		on(node.ownerDocument, 'pointercancel', () => {
 			edytor.selection.clearPointerDragStart();
 		}),
+		// A release the page never saw (over a frame of another origin, or in
+		// Firefox outside the window): the next move with no button down ends
+		// the drag, or the projector would stay held until the next press.
+		on(node.ownerDocument, 'pointermove', (event: PointerEvent) => {
+			if (event.buttons === 0 && edytor.selection.dragging)
+				edytor.selection.clearPointerDragStart();
+		}),
 		on(node, 'focusin', (event: FocusEvent) => {
 			// Focus arriving back inside the editor re-establishes editor
 			// ownership of the selection.

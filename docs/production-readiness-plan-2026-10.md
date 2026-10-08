@@ -31,17 +31,18 @@ dimensions, a verifier per dimension) re-scored the project at `0.1.0-next.39`:
 
 Both blockers are fixed (the link XSS, the license). Shipped by release:
 
-| Release   | Contents                                                                                                                                                                                                                                                                                                                                                            |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `next.32` | Wave 0: link sanitizer XSS, MIT license, true install docs                                                                                                                                                                                                                                                                                                          |
-| `next.34` | Wave 1: room limits, presence quotas, revocation and expiry, attribution trust; CI on every push; curated public API (`edytor/protocol`, API reports); readonly live viewers, one source of truth for roles; image completion; media plugins; link UX and code languages; accessibility and bidi; find and replace; onboarding docs (`next.33` was never published) |
-| `next.36` | Wave 2: input rules and triggers, mentions and page links; i18n (labels); the room soak harness; block colours, toggle headings, page block, table of contents; engine and room splits; version history panel (`next.35` never published)                                                                                                                           |
-| `next.38` | Wave 3: tables; comments; the import cycle broken; typed lint, reactive handles; the user changelog and docs readability; room performance (presence budget, one rebuild per outage); the CI quarantines fixed at their cause; equations; text drag-move; chrome that follows late layout (`next.37` never published)                                               |
-| `next.40` | Wave 4: ticket ids out of the code, YP fork patches, docs history archived, AGENTS.md overview + `docs/agents/`, retired aliases removed (`next.39` never published)                                                                                                                                                                                                |
-| `next.41` | After the second review: the handles' raw write primitives internal and refused on a readonly view; the Limitations page corrected; checkpoint-named test files renamed                                                                                                                                                                                             |
-| `next.42` | Typing in a table costs the cell (no longer O(cells²)); comment quotas: stored bytes, a request rate per user and per socket, no second snapshot, a body read capped at 64 KiB                                                                                                                                                                                      |
-| `next.43` | API: the types an app names exported (176 reachable-not-exported to 102), single-owner state read-only, `edytor.focus()`; SECURITY.md and issue templates; the plugins index fixed (`next.42` never published: a CI race in the handle alignment row)                                                                                                               |
-| `next.44` | Features: markdown paste makes blocks; pasted and dropped files become image, video, audio or file blocks with upload progress                                                                                                                                                                                                                                      |
+| Release      | Contents                                                                                                                                                                                                                                                                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `next.32`    | Wave 0: link sanitizer XSS, MIT license, true install docs                                                                                                                                                                                                                                                                                                          |
+| `next.34`    | Wave 1: room limits, presence quotas, revocation and expiry, attribution trust; CI on every push; curated public API (`edytor/protocol`, API reports); readonly live viewers, one source of truth for roles; image completion; media plugins; link UX and code languages; accessibility and bidi; find and replace; onboarding docs (`next.33` was never published) |
+| `next.36`    | Wave 2: input rules and triggers, mentions and page links; i18n (labels); the room soak harness; block colours, toggle headings, page block, table of contents; engine and room splits; version history panel (`next.35` never published)                                                                                                                           |
+| `next.38`    | Wave 3: tables; comments; the import cycle broken; typed lint, reactive handles; the user changelog and docs readability; room performance (presence budget, one rebuild per outage); the CI quarantines fixed at their cause; equations; text drag-move; chrome that follows late layout (`next.37` never published)                                               |
+| `next.40`    | Wave 4: ticket ids out of the code, YP fork patches, docs history archived, AGENTS.md overview + `docs/agents/`, retired aliases removed (`next.39` never published)                                                                                                                                                                                                |
+| `next.41`    | After the second review: the handles' raw write primitives internal and refused on a readonly view; the Limitations page corrected; checkpoint-named test files renamed                                                                                                                                                                                             |
+| `next.42`    | Typing in a table costs the cell (no longer O(cells²)); comment quotas: stored bytes, a request rate per user and per socket, no second snapshot, a body read capped at 64 KiB                                                                                                                                                                                      |
+| `next.43`    | API: the types an app names exported (176 reachable-not-exported to 102), single-owner state read-only, `edytor.focus()`; SECURITY.md and issue templates; the plugins index fixed (`next.42` never published: a CI race in the handle alignment row)                                                                                                               |
+| `next.44`    | Features: markdown paste makes blocks; pasted and dropped files become image, video, audio or file blocks with upload progress                                                                                                                                                                                                                                      |
+| `1.0.0-rc.1` | WU-50: the API frozen (`DocumentOperations`: the document's operations are its own, `document.facade` deprecated; `select(value)`; the dispatcher's plumbing internal; the document vocabulary exported, 176 reachable-not-exported types down to 38); typing on long pages (the handles' near band by binary search); the release candidate under `latest`         |
 
 The docs site stopped deploying at `next.34` (an invalid front matter in a Wave 2 page); fixed
 on `master` after `next.40`, with a docs-drift row guarding it.
@@ -50,13 +51,15 @@ on `master` after `next.40`, with a docs-drift row guarding it.
 
 Majors, by dimension:
 
-- **API**: ~~public handle methods that write raw bypass readonly~~ (`next.41`); three
-  result shapes for commands (`CommandResult` only as `dispatcher.last`); ~~176 types reachable but not exported~~ (the ones an app names exported; 102
-  left are engine, index and surface internals reached through `edytor.document.facade`,
-  `cells`, `overlay` and `popups`: mark those members `@internal` or export them at WU-50); mutable public fields with one owner (`selection.value`, `dispatcher.last`).
-  Fix before freezing the API report as the 1.0 contract (WU-50).
+- **API**: ~~public handle methods that write raw bypass readonly~~ (`next.41`); result
+  shapes: decided (2026-10-08): handle commands keep their values, `dispatcher.last` is the
+  one status channel; ~~176 types reachable but not exported~~ (38 left at `1.0.0-rc.1`:
+  engine types under `document.doc`/`history`, and session helpers); ~~mutable public fields
+  with one owner~~ (`next.43`); ~~`document.facade` publishing the index~~ (`1.0.0-rc.1`:
+  `DocumentOperations`, decided with the maintainer: the operations live on the document).
 - **Robustness**: the document lifetime ceiling (≈ 72 stored bytes per edit against a 2 MiB
-  quota, `4413` final, no rebase path); ~~comments unbounded, snapshot amplification~~
+  quota, `4413` final, no rebase path; a re-seed drops offline clients' unsynced edits: a
+  maintainer decision, documented on the Limitations page); ~~comments unbounded, snapshot amplification~~
   (`next.42`); ~~typing in a table O(cells²)~~ (`next.42`); client typing linear in page size
   (no windowing).
 - **Features**: ~~markdown paste into blocks~~ (`next.44`); ~~file/video/audio claiming dropped and pasted files
@@ -64,13 +67,16 @@ Majors, by dimension:
 - **Code**: the view-side classes (`EdytorSelection`, `BlockHandleController`, `Edytor`,
   `EdytorDocument`) not split; the room split is a 16-module cycle; master unprotected and the
   nightly and upstream jobs never run yet; ~~about 90 checkpoint-named test files~~ (`next.41`).
-- **Docs**: ~~the Limitations page denies shipped features~~ (`next.41`); the plugins index's
-  defaults table; no browsable API reference; SECURITY.md and issue templates.
+- **Docs**: ~~the Limitations page denies shipped features~~ (`next.41`); ~~the plugins
+  index's defaults table~~, ~~SECURITY.md and issue templates~~ (`next.43`); no browsable API
+  reference (the committed `api/*.api.md` reports are the reviewed surface).
 
 ### What only the maintainer can do
 
 - Apply the `master` branch protection ruleset in CONTRIBUTING.md (a required `CI passed`).
-- `npm deprecate edytor@0.0.11 "use edytor@next"`, and decide when `latest` moves (D2).
+- `npm deprecate edytor@0.0.11 "use edytor"`; after `1.0.0-rc.1` moves `latest`, point `next`
+  at it too (`npm dist-tag add edytor@1.0.0-rc.1 next`), which tokenless CI publishing cannot.
+- Enable GitHub's private vulnerability reporting (SECURITY.md sends reports there).
 - The 4 to 8 hour soak against a deployed staging room (`pnpm soak` against it; recipe in
   `server/room` Load), which needs a deploy.
 - A manual VoiceOver and NVDA pass, and real iOS/Android keyboards.

@@ -155,6 +155,26 @@ const sources = (dir: string): string[] =>
 	});
 
 describe('docs drift', () => {
+	// The site build is strict: a page whose front matter is not valid YAML is
+	// left out and fails the deploy. A plain scalar cannot hold ': ' (or open
+	// with a YAML indicator); such a value is quoted.
+	it('every page front matter is valid YAML (a value holding ": " is quoted)', () => {
+		const bad = docs
+			.filter((path) => path.endsWith('.mdx'))
+			.flatMap((path) => {
+				const front = /^---\n([\s\S]*?)\n---/.exec(readFileSync(path, 'utf8'))?.[1] ?? '';
+				return front
+					.split('\n')
+					.map((line) => /^(\w+):\s+(.*)$/.exec(line))
+					.filter((match): match is RegExpExecArray => match !== null)
+					.filter(
+						([, , value]) =>
+							!/^["'[{|>]/.test(value!) && (/: /.test(value!) || /^[@`%&*!]/.test(value!))
+					)
+					.map(([line]) => `${relative(root, path)}: ${line}`);
+			});
+		expect(bad).toEqual([]);
+	});
 	it('the package carries the license the README badge names (MIT)', () => {
 		const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
 			license?: string;

@@ -13,6 +13,65 @@ This document has two parts:
 
 ---
 
+## Status after execution (2026-10-08)
+
+The plan was executed in four parallel waves (11, 7, 8 and 1 lanes; each lane implemented,
+adversarially reviewed and fixed in its own worktree, then merged and gated on every lane),
+released as `0.1.0-next.32` to `0.1.0-next.40`. A second adversarial review (same five
+dimensions, a verifier per dimension) re-scored the project at `0.1.0-next.39`:
+
+| Dimension                               | 2026-10-07 (`next.31`) |             2026-10-08 (`next.39`) |
+| --------------------------------------- | ---------------------: | ---------------------------------: |
+| Features                                |                     54 |                                 76 |
+| Bugs, robustness, security, performance |                     58 |                                 70 |
+| Code cleanliness and maintainability    |                     55 | 70 (verifier not run: usage limit) |
+| Documentation                           |                     68 |                                 71 |
+| API simplicity                          |                     56 |                                 67 |
+| **Overall**                             |               **≈ 58** |                           **≈ 71** |
+
+Both blockers are fixed (the link XSS, the license). Shipped by release:
+
+| Release   | Contents                                                                                                                                                                                                                                                                                                                                                            |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `next.32` | Wave 0: link sanitizer XSS, MIT license, true install docs                                                                                                                                                                                                                                                                                                          |
+| `next.34` | Wave 1: room limits, presence quotas, revocation and expiry, attribution trust; CI on every push; curated public API (`edytor/protocol`, API reports); readonly live viewers, one source of truth for roles; image completion; media plugins; link UX and code languages; accessibility and bidi; find and replace; onboarding docs (`next.33` was never published) |
+| `next.36` | Wave 2: input rules and triggers, mentions and page links; i18n (labels); the room soak harness; block colours, toggle headings, page block, table of contents; engine and room splits; version history panel (`next.35` never published)                                                                                                                           |
+| `next.38` | Wave 3: tables; comments; the import cycle broken; typed lint, reactive handles; the user changelog and docs readability; room performance (presence budget, one rebuild per outage); the CI quarantines fixed at their cause; equations; text drag-move; chrome that follows late layout (`next.37` never published)                                               |
+| `next.40` | Wave 4: ticket ids out of the code, YP fork patches, docs history archived, AGENTS.md overview + `docs/agents/`, retired aliases removed (`next.39` never published)                                                                                                                                                                                                |
+
+The docs site stopped deploying at `next.34` (an invalid front matter in a Wave 2 page); fixed
+on `master` after `next.40`, with a docs-drift row guarding it.
+
+### What the second review still finds (to plan next)
+
+Majors, by dimension:
+
+- **API**: public handle methods that write raw (`Text.insertAt/deleteAt/formatAt`,
+  `Block.insertChildren/deleteChildren/insertParts`) bypass readonly, hooks and undo; three
+  result shapes for commands (`CommandResult` only as `dispatcher.last`); 176 types reachable
+  but not exported; mutable public fields with one owner (`selection.value`, `dispatcher.last`).
+  Fix before freezing the API report as the 1.0 contract (WU-50).
+- **Robustness**: the document lifetime ceiling (≈ 72 stored bytes per edit against a 2 MiB
+  quota, `4413` final, no rebase path); comments unbounded and outside every room quota (and a
+  snapshot amplification by any socket); typing in a table is O(cells²) per keystroke; client
+  typing linear in page size (no windowing).
+- **Features**: markdown paste into blocks; file/video/audio claiming dropped and pasted files
+  (with upload progress); real-device mobile and touch chrome.
+- **Code**: the view-side classes (`EdytorSelection`, `BlockHandleController`, `Edytor`,
+  `EdytorDocument`) not split; the room split is a 16-module cycle; master unprotected and the
+  nightly and upstream jobs never run yet; about 90 checkpoint-named test files (WU-44 partial).
+- **Docs**: the Limitations and Columns pages deny shipped features; the plugins index's
+  defaults table; no browsable API reference; SECURITY.md and issue templates.
+
+### What only the maintainer can do
+
+- Apply the `master` branch protection ruleset in CONTRIBUTING.md (a required `CI passed`).
+- `npm deprecate edytor@0.0.11 "use edytor@next"`, and decide when `latest` moves (D2).
+- The 4 to 8 hour soak against a deployed staging room (`pnpm soak` against it; recipe in
+  `server/room` Load), which needs a deploy.
+- A manual VoiceOver and NVDA pass, and real iOS/Android keyboards.
+- Sign off decision D8's deviation (pre-release stored formats kept).
+
 ## Part 1: The review
 
 ### Method

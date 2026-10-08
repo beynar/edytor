@@ -306,7 +306,10 @@ const postCommitSchedule = () => {
 		v8.stackTraceLimit = limit;
 		return (
 			/stabilizeCompositionSelection/.test(stack) &&
-			!/Overlay\.invalidate|surface\/overlay\.ts/.test(stack)
+			// The overlay's frame and the presence writer's throttle (a named timer
+			// publishing the new caret) are not a restore: on a slow runner the
+			// commit's write falls within the throttle window and arms it.
+			!/Overlay\.invalidate|surface\/overlay\.ts|collaboration\/awarenessSelection\.ts/.test(stack)
 		);
 	};
 	const setTimeoutOriginal = window.setTimeout;

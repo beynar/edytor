@@ -9,17 +9,27 @@ export type KatexLike = {
 	renderToString: (tex: string, options?: Record<string, unknown>) => string;
 };
 
-/** Loads KaTeX when an equation first shows: `() => import('katex')`. */
+/** Loads KaTeX when an equation first shows: `() => import('katex')` from your bundle. */
 export type KatexLoader = () => Promise<KatexLike | { default: KatexLike }>;
 
 export type EquationPluginOptions = {
 	/**
-	 * Loads KaTeX, lazily, the first time an equation is drawn in a browser:
-	 * `() => import('katex')` (KaTeX is an optional peer dependency; import
-	 * its stylesheet, `katex/dist/katex.min.css`, in your app). Without it,
-	 * an equation shows its TeX source.
+	 * Where KaTeX comes from, loaded the first time an equation is drawn in a
+	 * browser (a server render shows the TeX source and loads nothing):
+	 *
+	 * - absent: jsDelivr (`KATEX_CDN`, KaTeX `KATEX_VERSION`): its module and
+	 *   its stylesheet, added once to the page's head; your app bundles and
+	 *   imports nothing.
+	 * - a URL: another copy of KaTeX's `dist` files (`katex.mjs`,
+	 *   `katex.min.css` and its `fonts/`), as for jsDelivr.
+	 * - a loader, `() => import('katex')`: KaTeX from your bundle (the
+	 *   optional peer dependency); import its stylesheet,
+	 *   `katex/dist/katex.min.css`, in your app.
+	 * - `false`: none; an equation shows its TeX source.
+	 *
+	 * If KaTeX fails to load, equations keep showing their source.
 	 */
-	katex?: KatexLoader;
+	katex?: KatexLoader | string | false;
 	/** TeX macros every equation reads (`{ '\\RR': '\\mathbb{R}' }`). */
 	macros?: Record<string, string>;
 	/** The words the equations and their editor show, over the English ones. */

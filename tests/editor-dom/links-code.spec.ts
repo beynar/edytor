@@ -118,25 +118,89 @@ test.describe('code block languages', () => {
 			.locator('[data-edytor-type="code"] [data-edytor-mark="codeToken"] > span')
 			.evaluateAll((spans) => spans.map((span) => [span.className, span.textContent]));
 
-	test('code.language.picker: picking Python stores it and highlights with its grammar', async ({
+	const button = (page: Page) => page.locator('button[data-edytor-code-language]');
+	const menu = (page: Page) => page.locator('[data-edytor-code-language-menu]');
+	const field = (page: Page) => menu(page).locator('input');
+	const languageOf = async (page: Page) => (await value(page)).children[0]?.data;
+	const caretInCode = async (page: Page) =>
+		page.locator('[data-edytor-type="codeLine"] [data-edytor-text]').first().click();
+
+	test('code.language.picker: a click opens the languages; a click on Python stores it and highlights with its grammar', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
 		await gotoEditorRoute(page, '/test/dom?scenario=code');
-		const picker = page.locator('select[data-edytor-code-language]');
-		await expect(picker).toHaveValue('javascript');
+		await expect(button(page)).toHaveText('JavaScript');
 		await expect.poll(() => tokens(page)).toContainEqual(['th-keyword', 'const']);
-		await picker.selectOption('python');
-		await expect
-			.poll(async () => (await value(page)).children[0]?.data)
-			.toEqual({
-				language: 'python'
-			});
+		await button(page).click();
+		await expect(menu(page)).toBeVisible();
+		await expect(button(page)).toHaveAttribute('aria-expanded', 'true');
+		await expect(field(page)).toBeFocused();
+		await menu(page).getByRole('option', { name: 'Python' }).click();
+		await expect(menu(page)).toHaveCount(0);
+		await expect.poll(() => languageOf(page)).toEqual({ language: 'python' });
+		await expect(button(page)).toHaveText('Python');
 		// `return` is a Python keyword too: its grammar landed and the lines rendered again.
 		await expect.poll(() => tokens(page)).toContainEqual(['th-keyword', 'return']);
 		await expect.poll(() => tokens(page)).not.toContainEqual(['th-keyword', 'const']);
 		const lines = (await value(page)).children[0]?.children?.map((line) => line.content);
 		expect(lines).toEqual([[{ text: 'const a = 1;' }], [{ text: 'return a;' }]]);
+		// One undo step gives JavaScript back.
+		await caretInCode(page);
+		await page.keyboard.press(`${modKey}+z`);
+		await expect.poll(async () => (await languageOf(page)) ?? {}).toEqual({});
+		await expect(button(page)).toHaveText('JavaScript');
+		issues.assertClean();
+	});
+
+	test('code.language.picker: the keys alone — Alt+F10, Enter, a query, the arrows, Enter', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await gotoEditorRoute(page, '/test/dom?scenario=code');
+		await caretInCode(page);
+		await page.keyboard.press('End');
+		await page.keyboard.press('Alt+F10');
+		await expect(button(page)).toBeFocused();
+		await page.keyboard.press('Enter');
+		await expect(field(page)).toBeFocused();
+		await page.keyboard.type('script');
+		await expect(menu(page).getByRole('option')).toHaveText(['JavaScript', 'TypeScript']);
+		await page.keyboard.press('ArrowDown');
+		await expect(menu(page).getByRole('option', { selected: true })).toHaveText('TypeScript');
+		await page.keyboard.press('Enter');
+		await expect(menu(page)).toHaveCount(0);
+		await expect.poll(() => languageOf(page)).toEqual({ language: 'typescript' });
+		// The keys go back to the button, then Escape gives them to the code line.
+		await expect(button(page)).toBeFocused();
+		await expect(button(page)).toHaveText('TypeScript');
+		await page.keyboard.press('Escape');
+		await expect(button(page)).not.toBeFocused();
+		await page.keyboard.type('x');
+		await expect
+			.poll(async () => (await value(page)).children[0]?.children?.[0]?.content)
+			.toEqual([{ text: 'const a = 1;x' }]);
+		issues.assertClean();
+	});
+
+	test('code.language.picker: Escape and a press outside close the list and write nothing', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await gotoEditorRoute(page, '/test/dom?scenario=code');
+		await button(page).click();
+		// The list renders at the overlay's next frame, its field then taking the keys.
+		await expect(field(page)).toBeFocused();
+		await page.keyboard.press('ArrowDown');
+		await page.keyboard.press('Escape');
+		await expect(menu(page)).toHaveCount(0);
+		await button(page).click();
+		await expect(field(page)).toBeFocused();
+		// A press beside the list (it covers the blocks under the header).
+		const viewport = page.viewportSize()!;
+		await page.mouse.click(viewport.width - 10, viewport.height - 10);
+		await expect(menu(page)).toHaveCount(0);
+		expect((await languageOf(page)) ?? {}).toEqual({});
 		issues.assertClean();
 	});
 });

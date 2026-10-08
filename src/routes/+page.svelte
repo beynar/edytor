@@ -18,7 +18,6 @@
 	import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 	import { tableBlock } from '$lib/crdt/tables.js';
 	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
-	import 'katex/dist/katex.min.css';
 	import type { Plugin } from '$lib/plugins.js';
 	import { page } from '$app/state';
 	import { createIndexeddbSync } from '$lib/collaboration/providers.js';
@@ -83,8 +82,8 @@
 		findPlugin,
 		tocPlugin,
 		tablePlugin,
-		// KaTeX loads the first time an equation shows.
-		createEquationPlugin({ katex: () => import('katex') }),
+		// KaTeX loads from jsDelivr the first time an equation shows.
+		createEquationPlugin(),
 		richTextPlugin
 	];
 	const demoValue: JSONDoc = {

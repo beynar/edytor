@@ -147,6 +147,8 @@ export {
 export { tableBlock, type TableBlockOptions } from '../crdt/tables.js';
 export {
 	createEquationPlugin,
+	KATEX_CDN,
+	KATEX_VERSION,
 	type EquationPluginOptions,
 	type EquationData,
 	type KatexLike,

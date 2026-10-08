@@ -372,10 +372,23 @@ describe('each chrome in its labels', () => {
 				children: [{ id: 'l', type: 'codeLine', content: [{ text: 'x' }] }]
 			}
 		]);
-		const picker = one<HTMLSelectElement>('[data-edytor-code-language]');
-		expect(picker.getAttribute('aria-label')).toBe(fr.code.language);
-		expect(picker.selectedOptions[0]?.textContent).toBe(fr.code.languages.plaintext);
-		expect(one('[data-edytor-code-header] button').textContent).toBe(fr.code.copy);
+		const picker = one<HTMLButtonElement>('button[data-edytor-code-language]');
+		expect(picker.getAttribute('aria-label')).toBe(
+			`${fr.code.language}: ${fr.code.languages.plaintext}`
+		);
+		expect(picker.textContent?.trim()).toBe(fr.code.languages.plaintext);
+		expect(one('[data-edytor-code-copy]').textContent).toBe(fr.code.copy);
+		await click(picker);
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		await flushDomUpdates();
+		const field = one<HTMLInputElement>('[data-edytor-code-language-menu] input');
+		expect(field.placeholder).toBe(fr.code.search);
+		expect(field.getAttribute('aria-label')).toBe(fr.code.language);
+		expect(words('[data-edytor-code-language-option]')[0]).toBe(fr.code.languages.plaintext);
+		field.value = 'zzz';
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		await flushDomUpdates();
+		expect(one('[data-edytor-code-language-empty]').textContent).toBe(fr.code.noResults);
 	});
 
 	it('the find bar: fields, count, buttons', async () => {

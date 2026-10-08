@@ -19,7 +19,6 @@
 	import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
 	import { createFilePlugin } from '$lib/plugins/media/FilePlugin.svelte';
 	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
-	import 'katex/dist/katex.min.css';
 	import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
@@ -554,7 +553,8 @@
 			),
 		href: (page) => `/pages/${page.id}`
 	});
-	const equationPlugin = createEquationPlugin({ katex: () => import('katex') });
+	// KaTeX from the CDN, the default (the Playwright fixture serves it offline).
+	const equationPlugin = createEquationPlugin();
 	const emojiRules: Plugin = () => ({
 		inputRules: [{ find: /:smile:$/, replace: () => '😄' }]
 	});

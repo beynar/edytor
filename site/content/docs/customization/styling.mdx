@@ -125,7 +125,7 @@ The block element (`div` here, the default) comes from the kind's `element`; the
 | `data-edytor-color`, `data-edytor-background` | blocks          | The block's text colour and background by palette name (`red`), from `data.color` and `data.background`. See [Block colors](#block-colors). |
 | `data-edytor-children`             | a block's children container | The one element holding a block's nested blocks, indented by one nesting step. See [Nested blocks](#nested-blocks). |
 | `data-edytor-code-header`          | the code block header      | The void header holding the language and the Copy button.               |
-| `data-edytor-code-language`        | the code block language    | The language label inside the header.                                    |
+| `data-edytor-code-language`        | the code block language    | The language button inside the header (its label in a readonly view).   |
 | `data-edytor-image`, `data-edytor-image-empty` | the image block | The wrapper of the `img`, or of the empty state; see [Image](/docs/plugins/image#styling). |
 
 Block attributes are rendered with the element, so they are also present in server-rendered HTML. A kind's own attributes (from `element`) sit beside them. The rich text heading renders as `<div data-edytor-block … data-edytor-type="heading"><h2>…</h2></div>`, its nested blocks after the `h2`, and a quote puts its text in a `blockquote` the same way.

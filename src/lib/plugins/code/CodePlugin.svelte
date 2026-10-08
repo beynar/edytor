@@ -7,6 +7,9 @@
 	import { shown } from '$lib/selection/visibility.js';
 	import { caretBeside } from '$lib/selection/replaceSelection.js';
 	import CodeHeader from './CodeHeader.svelte';
+	import LanguageMenuPanel from './LanguageMenu.svelte';
+	import { LanguageMenu, languageMenus } from './languageMenu.svelte.js';
+	import { onPress } from '$lib/events/onFocus.js';
 	import { keywordsOf, labelsWith } from '$lib/labels.js';
 	import {
 		DEFAULT_CODE_SETTINGS,
@@ -44,6 +47,13 @@
 				labels: labelsWith('code', options.labels)
 			};
 			codeSettings.set(edytor, own);
+			// The view's language list: the first code plugin listed owns it.
+			if (edytor && !languageMenus.has(edytor))
+				languageMenus.set(edytor, new LanguageMenu(edytor, own));
+			const ownMenu = () => {
+				const menu = languageMenus.get(edytor);
+				return menu?.settings === own ? menu : undefined;
+			};
 			/** A line's language: its code block's (read through the cell: a pick re-renders it). */
 			const lineLanguage = (id: string) => {
 				const language = languageOf(edytor.idToBlock.get(id)?.parent?.data, own);
@@ -99,7 +109,31 @@
 			};
 
 			return {
+				onEdytorAttached: ({ node }) => {
+					const menu = ownMenu();
+					if (!menu) return;
+					const offPress = onPress(edytor, node.ownerDocument, menu.pressed, true);
+					const unmount = edytor.overlay.mount(
+						LanguageMenuPanel,
+						{ menu, readonly: () => edytor.readonly },
+						'edytor-code-language-host',
+						// Above the block handles (5), as the equation editor.
+						7,
+						menu.measure
+					);
+					return () => {
+						offPress();
+						unmount();
+						menu.close();
+					};
+				},
 				hotkeys: {
+					// Alt+F10 at a caret in a code line: the keys go to its language button
+					// (as to a toolbar); Escape there gives them back.
+					'alt+f10': ({ prevent }) => {
+						const button = ownMenu()?.buttonAtCaret();
+						if (button) prevent(() => button.focus({ preventScroll: true }));
+					},
 					'mod+a': ({ prevent }) => {
 						// Select the code block's text; once it is (or when it has none), Select
 						// all takes the next step: the code block.

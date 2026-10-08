@@ -2,6 +2,7 @@
 	import {
 		Edytor,
 		richTextPlugin,
+		createEquationPlugin,
 		createDocument,
 		createIndexeddbSync,
 		loadDocument
@@ -33,7 +34,9 @@
 		]
 	};
 
-	const plugins = [richTextPlugin];
+	// The equation plugin's default loads KaTeX from its CDN at first use:
+	// the build and the SSR need no `katex` installed (none is, here).
+	const plugins = [createEquationPlugin(), richTextPlugin];
 
 	// Shared document — two views on ONE EdytorDocument (U9 headline
 	// surface): one facade, one history, one awareness; edits through one

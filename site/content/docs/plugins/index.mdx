@@ -135,6 +135,6 @@ Import it like any other module: `import { highlightPlugin } from './HighlightPl
 | [Comments](/docs/plugins/comments)                     | `createCommentsPlugin`    | Notion's comment threads on text: a sidebar beside it, replies, Resolve and Re-open, kept by the room. Opt-in |
 | [Mention](/docs/plugins/mention)                       | `createMentionPlugin`     | Notion's `@` mentions: a menu of your app's people, picked into an inline mention. Opt-in |
 | [Page link](/docs/plugins/page-link)                   | `createPageLinkPlugin`    | Notion's `[[` page links: a search of your app's pages, picked into an inline link. Opt-in |
-| [Equation](/docs/plugins/equation)                     | `createEquationPlugin`    | Notion's block and inline equations: TeX drawn by KaTeX, which your app loads on demand, edited with a live preview. Opt-in |
+| [Equation](/docs/plugins/equation)                     | `createEquationPlugin`    | Notion's block and inline equations: TeX drawn by KaTeX, loaded from a CDN on demand, edited with a live preview. Opt-in |
 
 All exports come from the package root, `edytor`. The `create…` factories take options, including snippets that replace the menus' and handles' markup (see [Menus and handles](/docs/customization/menus)). For the matching document look, add the [Notion theme](/docs/customization/styling#notion-theme).

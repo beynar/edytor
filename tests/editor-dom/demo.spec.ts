@@ -163,19 +163,35 @@ test.describe('document demo', () => {
 	test('nests a dragged block into the closed toggle row', async ({ page }) => {
 		await page.goto('/');
 		const summary = page.locator('[data-edytor-id="page-toggle"] summary');
-		// Centered: a target at the window's edge puts the pointer in the drag's
-		// auto-scroll zone, which scrolls the page under it mid-drag.
-		await summary.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+		// Both ends of the drag centered as a pair: a pointer near the window's
+		// edge (its top or bottom 180px) is in the drag's auto-scroll zone, which
+		// scrolls the page under it mid-drag (the demo's table stands between the
+		// quote and the toggle, so centering the toggle alone left the quote's
+		// handle in the top zone: the page moved by a pixel after the target was
+		// measured).
+		await summary.evaluate((row) => {
+			const quote = row.ownerDocument.querySelector('[data-edytor-id="page-quote"]')!;
+			const middle = (quote.getBoundingClientRect().top + row.getBoundingClientRect().bottom) / 2;
+			window.scrollBy({ top: middle - window.innerHeight / 2, behavior: 'instant' });
+		});
 		const source = await handle(page, 'page-quote').boundingBox();
 		const target = await summary.boundingBox();
 		if (!source || !target) throw new Error('Missing toggle drag coordinates');
 		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
 		await page.mouse.down();
-		await page.mouse.move(target.x + 80, target.y + target.height / 2, { steps: 12 });
-		await expect(page.locator('[data-edytor-drop-indicator]')).toHaveAttribute(
-			'data-position',
-			'inside'
-		);
+		// The row's lower half (its middle is the before/after boundary), one nest
+		// step past its text: inside.
+		const over = { x: target.x + 80, y: target.y + target.height * 0.75 };
+		await page.mouse.move(over.x, over.y, { steps: 12 });
+		// Chromium's emulated drag may never deliver the stepped move's last
+		// dragover: the pointer is sent there again until one lands.
+		const indicator = page.locator('[data-edytor-drop-indicator]');
+		await expect
+			.poll(async () => {
+				await page.mouse.move(over.x, over.y);
+				return indicator.getAttribute('data-position');
+			})
+			.toBe('inside');
 		// Notion's nesting bar: plain (no border, no dot), below the target's row and
 		// indented one column (24px) past its text: never a box around the target.
 		const bar = await page.locator('[data-edytor-drop-indicator]').evaluate((node) => {

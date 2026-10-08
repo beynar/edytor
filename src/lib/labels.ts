@@ -693,6 +693,7 @@ export const englishLabels: Labels = frozen({
 					}).format(at)
 				: '',
 		failed: 'Could not save the comment. Try again.'
+	},
 	table: {
 		table: 'Table',
 		headerRow: 'Header row',

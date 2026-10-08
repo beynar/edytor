@@ -20,6 +20,7 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { selectedMembers } from '$lib/selection/visibility.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
+import { BLOCK_COLORS, colorable, setBlockColor, type BlockColorField } from '$lib/block/colors.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -38,11 +39,33 @@ export type BlockMenuAction = {
 	icon: string;
 	hint?: string;
 	danger?: boolean;
-	/** Opens the "Turn into" flyout instead of running. */
-	submenu?: true;
+	/** Opens a flyout instead of running: the kinds (`turn`) or the colours (`color`). */
+	submenu?: 'turn' | 'color';
 	isEnabled?: () => boolean;
 	run?: () => unknown;
 };
+
+/** A row of the Color flyout: a text colour or a background, `value` `null` for the default. */
+export type BlockMenuColor = {
+	/** `color.<name>` or `background.<name>` (`color.default`, `background.default`). */
+	id: string;
+	/** Notion's label: "Red text", "Red background", "Default text". */
+	label: string;
+	field: BlockColorField;
+	value: (typeof BLOCK_COLORS)[number] | null;
+};
+
+const capital = (name: string) => name.charAt(0).toUpperCase() + name.slice(1);
+
+/** The Color flyout's rows: the text colours, then the backgrounds, each from the default. */
+const COLOR_ROWS: BlockMenuColor[] = (['color', 'background'] as const).flatMap((field) =>
+	[null, ...BLOCK_COLORS].map((value) => ({
+		id: `${field}.${value ?? 'default'}`,
+		label: `${capital(value ?? 'default')} ${field === 'color' ? 'text' : 'background'}`,
+		field,
+		value
+	}))
+);
 
 export class BlockMenuController {
 	/** The block whose grip opened the menu. */
@@ -57,8 +80,9 @@ export class BlockMenuController {
 	anchor: HTMLElement | null = null;
 	query = $state('');
 	selectedIndex = $state(0);
-	flyout = $state(false);
-	/** The keyboard's row in the "Turn into" flyout. */
+	/** The open flyout: the kinds (`turn`), the colours (`color`), or none. */
+	flyout = $state<false | 'turn' | 'color'>(false);
+	/** The keyboard's row in the open flyout. */
 	flyoutIndex = $state(0);
 
 	constructor(
@@ -83,10 +107,10 @@ export class BlockMenuController {
 		return this.edytor.popups.idOf('block-menu-flyout');
 	}
 
-	/** A row's element id (page-unique; a kind's in the flyout with `flyout`), for `aria-activedescendant`. */
-	rowId = (row: BlockMenuAction | KindRow, flyout = false) =>
+	/** A row's element id (page-unique; a flyout's with `flyout`), for `aria-activedescendant`. */
+	rowId = (row: BlockMenuAction | KindRow | BlockMenuColor, flyout = false) =>
 		this.edytor.popups.idOf(
-			`block-menu-${flyout ? 'flyout-' : ''}${'value' in row ? 'kind-' : ''}${row.id}`
+			`block-menu-${flyout ? 'flyout-' : ''}${'field' in row ? 'color-' : 'value' in row ? 'kind-' : ''}${row.id}`
 		);
 
 	/** Publish the open menu to the view's root (`edytor.popups`), or withdraw it with `null`. */
@@ -100,6 +124,32 @@ export class BlockMenuController {
 	/** The Turn into rows: the kinds, then the commands that turn `blocks` into something (`turnCommands`). */
 	get kinds(): KindRow[] {
 		return [...convertibleKinds(this.edytor), ...turnCommands(this.edytor, this.blocks)];
+	}
+
+	/** The blocks the Color flyout paints: the `members` that take a colour (`colorable`). */
+	get colorable(): Block[] {
+		return this.members.filter(colorable);
+	}
+
+	/** The Color flyout's rows: Notion's text colours, then its backgrounds. */
+	get colors(): BlockMenuColor[] {
+		return COLOR_ROWS;
+	}
+
+	/** Whether every block the flyout paints holds `row`'s colour (its ✓). */
+	isCurrentColor = (row: BlockMenuColor) => {
+		const blocks = this.colorable;
+		return (
+			blocks.length > 0 &&
+			blocks.every(
+				(block) => (this.edytor.facade.blockDataOf(block.id)?.[row.field] ?? null) === row.value
+			)
+		);
+	};
+
+	/** The rows of the open flyout. */
+	get flyoutRows(): Array<KindRow | BlockMenuColor> {
+		return this.flyout === 'color' ? this.colors : this.flyout === 'turn' ? this.kinds : [];
 	}
 
 	/** The row naming the open block. */
@@ -118,8 +168,15 @@ export class BlockMenuController {
 				id: 'turn',
 				label: 'Turn into',
 				icon: 'action.turn',
-				submenu: true,
+				submenu: 'turn',
 				isEnabled: () => convertedBlocks(this.members).length > 0
+			},
+			{
+				id: 'color',
+				label: 'Color',
+				icon: 'action.color',
+				submenu: 'color',
+				isEnabled: () => this.colorable.length > 0
 			},
 			...(this.options.linkTo && this.linked
 				? [
@@ -230,6 +287,21 @@ export class BlockMenuController {
 		else this.caret(block);
 	}
 
+	/**
+	 * Paint the open blocks (`colorable`, a list's items too) with `row`'s
+	 * colour or background as one undo step (`setBlockColor`); the menu
+	 * closes and the blocks stay selected, as in Notion.
+	 */
+	paint(row: BlockMenuColor) {
+		const { blocks } = this;
+		const painted = this.colorable;
+		this.close(false);
+		setBlockColor(this.edytor, painted, row.field, row.value);
+		const live = blocks.flatMap((block) => this.edytor.idToBlock.get(block.id) ?? []);
+		if (live.length) this.edytor.selection.selectBlocks(...live);
+		this.focus();
+	}
+
 	duplicate(block: Block) {
 		const copy = block.duplicateBlock();
 		this.close(false);
@@ -281,22 +353,31 @@ export class BlockMenuController {
 		this.close();
 	}
 
-	/** Run the keyboard row (or open the flyout). */
+	/** Run the keyboard row (or open its flyout). */
 	runSelected() {
 		const row = this.rows[this.selectedIndex];
 		if (!row) return;
 		if ('value' in row) return this.turnInto(row);
-		if (row.submenu) this.openFlyout();
+		if (row.submenu) this.openFlyout(row.submenu);
 		else row.run?.();
 	}
 
+	/** Run the open flyout's keyboard row: convert to its kind, or paint its colour. */
+	runFlyout() {
+		const row = this.flyoutRows[this.flyoutIndex];
+		if (!row) return;
+		if ('field' in row) this.paint(row);
+		else this.turnInto(row);
+	}
+
 	/**
-	 * Open the "Turn into" flyout on its first kind (keyboard or mouse); an
-	 * open one stays as it is. The overlay places it within the viewport.
+	 * Open a flyout on its first row (keyboard or mouse): the "Turn into"
+	 * kinds (default) or the colours; that flyout already open stays as it
+	 * is. The overlay places it within the viewport.
 	 */
-	openFlyout() {
-		if (this.flyout) return;
-		[this.flyout, this.flyoutIndex] = [true, 0];
+	openFlyout(which: 'turn' | 'color' = 'turn') {
+		if (this.flyout === which) return;
+		[this.flyout, this.flyoutIndex] = [which, 0];
 		this.edytor.overlay.invalidate();
 	}
 

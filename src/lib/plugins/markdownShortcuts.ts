@@ -3,6 +3,7 @@ import { convertToKind, type KindRow } from '$lib/kinds.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { TextOperations } from '$lib/text/text.utils.js';
+import { jsonEquals } from '$lib/utils/json.js';
 
 /**
  * Convert `block`, the shortcut's prefix removal leading the conversion: one
@@ -37,6 +38,24 @@ const inlineMarkdown = (before: string, typed: string) => {
 	if (typed === '~')
 		return before.endsWith('~') ? find('~~', '~', 'strike') : find('~', '', 'strike');
 	return null;
+};
+
+/**
+ * The row a shortcut typed at `block`'s start names: a preset converting
+ * `block`'s kind by it (`markdownFrom`), the one sharing the most data
+ * values with the block when several do (a heading's level), else the
+ * first preset whose `markdown` holds it.
+ */
+const shortcutRow = (kinds: KindRow[], block: Block, typed: string) => {
+	const data = block.data ?? {};
+	const shared = (row: KindRow) =>
+		Object.entries(row.value.data ?? {}).filter(([key, value]) => jsonEquals(data[key], value))
+			.length;
+	let best: KindRow | undefined;
+	for (const row of kinds)
+		if (row.markdownFrom?.[block.type]?.includes(typed) && (!best || shared(row) > shared(best)))
+			best = row;
+	return best ?? kinds.find((kind) => kind.markdown?.includes(typed));
 };
 
 /** Markdown prefixes come from the kind catalogue: a row whose shortcut the typed character completes. */
@@ -99,7 +118,7 @@ export const markdownShortcutsPlugin: Plugin = (edytor) => {
 			if (!isCollapsed || !startText || startText !== block.firstText) return;
 			if (payload.value.length !== 1 || !block.convertible) return;
 			const prefix = startText.stringContent.slice(0, yStart);
-			const row = edytor.kinds.find((kind) => kind.markdown?.includes(prefix + payload.value));
+			const row = shortcutRow(edytor.kinds, block, prefix + payload.value);
 			if (!row) return;
 			// A replacing kind (divider, code) would erase the rest: only a block holding just the prefix.
 			const alone =

@@ -14,6 +14,7 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { replacedMark } from '../session/suggestions.svelte.js';
 import type { ContentRun } from '../crdt/index.js';
+import { colorAttributes } from '../block/colors.js';
 
 export type Owned = {
 	/** Attribute → required value ('' for a bare attribute, null when absent). */
@@ -113,10 +114,13 @@ export const ownedOf = (
 	if (entry.kind === 'block') {
 		const handle = edytor.idToBlock.block(block);
 		const { selectedBlocks, focusedBlocks } = edytor.selection;
+		const colors = colorAttributes(cell?.data);
 		return {
 			strict: false,
 			owned: {
 				'data-edytor-block': 'true',
+				'data-edytor-color': colors['data-edytor-color'] ?? null,
+				'data-edytor-background': colors['data-edytor-background'] ?? null,
 				'data-edytor-id': block,
 				'data-edytor-type': cell?.type ?? null,
 				'data-edytor-void': isVoid ? 'true' : null,

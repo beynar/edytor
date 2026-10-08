@@ -28,9 +28,11 @@ What it sets:
 - one 24px nesting step: a block nested under a paragraph, heading or quote starts 24px in, and a list item's or to-do's marker column is the same step wide;
 - a marker column for lists and to-dos: bullets `•` `◦` `▪` by depth, numbers `1.` `a.` `i.` by depth, with a run of numbered items sharing one counter;
 - Notion's blue to-do checkbox, with done text struck through and muted;
-- a toggle caret that rotates as the toggle opens, a 3px quote bar, a 10px-rounded callout panel, a thin divider and the code panel;
+- a toggle caret that rotates as the toggle opens (a toggle heading's centred on its heading), a 3px quote bar, a 10px-rounded callout panel, a thin divider and the code panel;
 - images with rounded corners and a muted caption, and the empty image's gray "Add an image" panel with its link field and blue buttons;
-- inline code in red on a light tint, links underlined at 0.7 opacity, and blue text and block selections.
+- inline code in red on a light tint, links underlined at 0.7 opacity, and blue text and block selections;
+- Notion's page row for a [page block](/docs/plugins/page) and muted entries for a [table of contents](/docs/plugins/table-of-contents);
+- the block colour tokens (below): a callout given a background shows it in place of its panel.
 
 It styles the document only. The block handles, menus and toolbar carry their own Notion look, unless you replace their markup (see [Menus and handles](/docs/customization/menus)). Pair it with [`richTextPlaceholder`](/docs/customization/placeholder#notion-placeholders) for Notion's placeholders.
 
@@ -51,6 +53,8 @@ Adapt it by overriding its custom properties on `.edytor-notion`:
 | `--notion-block-selection`   | `rgba(35, 131, 226, 0.14)`     | Selected blocks                                  |
 | `--notion-font`              | Notion's system sans stack     | Body text                                        |
 | `--notion-mono`              | `'SFMono-Regular', Menlo, …`   | Inline code                                      |
+
+It also declares the [block colour](#block-colors) tokens with Notion's light values, so a theme of yours overrides them in one place (a dark theme, say).
 
 The theme also sets `--edytor-drop-indicator-color` to Notion's `rgba(35, 131, 226, 0.43)`, `--edytor-drop-backdrop-color` to its light nest tint, `rgba(35, 131, 226, 0.14)`, and `--edytor-nest-indent` to `24px` (see [Nested blocks](#nested-blocks)). Its rules are scoped under `.edytor-notion`: to override one, use a more specific selector, or the same selector in a stylesheet loaded after it.
 
@@ -114,6 +118,7 @@ The block element (`div` here, the default) comes from the kind's `element`; the
 | `data-edytor-inline-block="<type>"`| inline atoms               | An atom, non-editable.                                                   |
 | `data-edytor-todo-checkbox`        | the to-do checkbox         | The rich text to-do's `input`, a direct child of the block.              |
 | `data-edytor-callout-icon`         | the callout icon           | The rich text callout's icon `span`.                                     |
+| `data-edytor-color`, `data-edytor-background` | blocks          | The block's text colour and background by palette name (`red`), from `data.color` and `data.background`. See [Block colors](#block-colors). |
 | `data-edytor-children`             | a block's children container | The one element holding a block's nested blocks, indented by one nesting step. See [Nested blocks](#nested-blocks). |
 | `data-edytor-code-header`          | the code block header      | The void header holding the language and the Copy button.               |
 | `data-edytor-code-language`        | the code block language    | The language label inside the header.                                    |
@@ -141,6 +146,27 @@ A block selection is exactly its members: a selected parent does not select its 
 ```css
 [data-edytor-selected] [data-edytor-block]:not([data-edytor-selected]) {
 	background: #fff;
+}
+```
+
+## Block colors
+
+A block's colour and background (`data.color`, `data.background`, set from the [block menu](/docs/plugins/block-menu#block-colors)) render as `data-edytor-color` and `data-edytor-background` on the block element: a name of lowercase letters, digits and hyphens starting with a letter; any other value renders nothing. The core's stylesheet paints Notion's nine names, `gray`, `brown`, `orange`, `yellow`, `green`, `blue`, `purple`, `pink` and `red`, from tokens, each with Notion's light value as its fallback:
+
+| Token                        | Paints                                              |
+| ---------------------------- | --------------------------------------------------- |
+| `--edytor-color-<name>`      | The text colour, `color` on the block (`#cf5148` for red) |
+| `--edytor-background-<name>` | The background, `background-color` on the block (`#fce9e7` for red) |
+
+The colour is inherited by the block's children, as in Notion; a colour mark on text inside wins. Set the tokens for a dark theme, and paint a name of your own with its own rule:
+
+```css
+.dark {
+	--edytor-color-red: #e06c60;
+	--edytor-background-red: #3b2220;
+}
+[data-edytor-block][data-edytor-background='teal'] {
+	background-color: #e0f2f1;
 }
 ```
 

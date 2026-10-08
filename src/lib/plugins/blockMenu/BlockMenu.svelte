@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { iconOf } from '../icons.js';
 	import { keepInView } from '../keepInView.js';
-	import type { BlockMenuController } from './BlockMenuController.svelte.js';
+	import { BLOCK_PALETTE } from '$lib/block/colors.js';
+	import type { BlockMenuColor, BlockMenuController } from './BlockMenuController.svelte.js';
 
 	import type { Snippet } from 'svelte';
 	let {
@@ -23,9 +24,9 @@
 	$effect(() => {
 		if (!controller.isOpen || menu) return void (active = undefined);
 		const row = controller.flyout
-			? controller.kinds[controller.flyoutIndex]
+			? controller.flyoutRows[controller.flyoutIndex]
 			: rows[controller.selectedIndex];
-		const id = row && controller.rowId(row, controller.flyout);
+		const id = row && controller.rowId(row, Boolean(controller.flyout));
 		active = id && frame?.ownerDocument.getElementById(id) ? id : undefined;
 	});
 	/**
@@ -43,6 +44,15 @@
 		return () => controller.publish(null);
 	});
 
+	/** The flyout a menu row opens, if it opens one. */
+	const submenuOf = (row: (typeof rows)[number] | undefined) =>
+		row && 'submenu' in row ? row.submenu : undefined;
+	/** A colour row's swatch: its text colour on a white square, or its background. */
+	const swatch = (row: BlockMenuColor) =>
+		row.value === null
+			? undefined
+			: `var(--edytor-${row.field}-${row.value}, ${BLOCK_PALETTE[row.value][row.field]})`;
+
 	const focusOnMount = (node: HTMLInputElement) => {
 		node.focus({ preventScroll: true });
 	};
@@ -59,13 +69,12 @@
 			if (controller.flyout) controller.flyout = false;
 			else controller.close();
 		} else if (controller.flyout && arrow) {
-			// In the flyout, the arrows walk its kinds.
+			// In a flyout, the arrows walk its rows.
 			event.preventDefault();
-			controller.flyoutIndex = step(controller.flyoutIndex, controller.kinds.length);
+			controller.flyoutIndex = step(controller.flyoutIndex, controller.flyoutRows.length);
 		} else if (controller.flyout && key === 'Enter') {
 			event.preventDefault();
-			const kind = controller.kinds[controller.flyoutIndex];
-			if (kind) controller.turnInto(kind);
+			controller.runFlyout();
 		} else if (key === 'Delete' && !controller.query) {
 			event.preventDefault();
 			controller.remove();
@@ -77,9 +86,9 @@
 			event.preventDefault();
 			controller.selectedIndex = key === 'Home' ? 0 : count - 1;
 			controller.flyout = false;
-		} else if (key === 'ArrowRight' && 'submenu' in (rows[controller.selectedIndex] ?? {})) {
+		} else if (key === 'ArrowRight' && submenuOf(rows[controller.selectedIndex])) {
 			event.preventDefault();
-			controller.openFlyout();
+			controller.openFlyout(submenuOf(rows[controller.selectedIndex]));
 		} else if (key === 'ArrowLeft' && controller.flyout) {
 			event.preventDefault();
 			controller.flyout = false;
@@ -154,14 +163,14 @@
 							data-testid={`block-menu-${row.id}`}
 							style:--block-menu-icon={iconOf(row.icon)}
 							aria-haspopup={row.submenu ? 'menu' : undefined}
-							aria-expanded={row.submenu ? controller.flyout : undefined}
+							aria-expanded={row.submenu ? controller.flyout === row.submenu : undefined}
 							onmousedown={(event) => event.preventDefault()}
 							onmouseenter={() => {
 								controller.selectedIndex = index;
-								if (row.submenu) controller.openFlyout();
+								if (row.submenu) controller.openFlyout(row.submenu);
 								else controller.flyout = false;
 							}}
-							onclick={() => (row.submenu ? controller.openFlyout() : row.run?.())}
+							onclick={() => (row.submenu ? controller.openFlyout(row.submenu) : row.run?.())}
 							>{row.label}</button
 						>
 					{/if}
@@ -171,7 +180,7 @@
 				{/if}
 			</div>
 		</div>
-		{#if controller.flyout}
+		{#if controller.flyout === 'turn'}
 			<div
 				class="block-menu block-menu-flyout"
 				id={controller.flyoutId}
@@ -195,6 +204,41 @@
 							style:--block-menu-icon={iconOf(kind.id)}
 							onmousedown={(event) => event.preventDefault()}
 							onclick={() => controller.turnInto(kind)}>{kind.label}</button
+						>
+					{/each}
+				</div>
+			</div>
+		{:else if controller.flyout === 'color'}
+			<div
+				class="block-menu block-menu-flyout"
+				id={controller.flyoutId}
+				role="menu"
+				aria-label="Color"
+				data-edytor-block-menu-flyout
+			>
+				<div class="block-menu-rows" role="presentation">
+					{#each controller.colors as color, index (color.id)}
+						{#if index === 0 || color.field !== controller.colors[index - 1]!.field}
+							<div class="block-menu-heading" role="presentation">
+								{color.field === 'color' ? 'Text color' : 'Background color'}
+							</div>
+						{/if}
+						<button
+							type="button"
+							role="menuitemradio"
+							aria-checked={controller.isCurrentColor(color)}
+							id={controller.rowId(color, true)}
+							tabindex="-1"
+							class="block-menu-row block-menu-color"
+							data-field={color.field}
+							data-current={controller.isCurrentColor(color)}
+							data-selected={controller.flyoutIndex === index}
+							data-testid={`block-menu-${color.id}`}
+							use:keepInView={controller.flyoutIndex === index}
+							style:--block-menu-swatch={swatch(color)}
+							onmousemove={() => (controller.flyoutIndex = index)}
+							onmousedown={(event) => event.preventDefault()}
+							onclick={() => controller.paint(color)}>{color.label}</button
 						>
 					{/each}
 				</div>
@@ -330,6 +374,28 @@
 	.block-menu-row.danger:hover::before,
 	.block-menu-row.danger[data-selected='true']::before {
 		background: #cf5148;
+	}
+	/*
+	 * A colour row's swatch, as Notion draws it: an "A" in the text colour on
+	 * a bordered square, or a square filled with the background.
+	 */
+	.block-menu-color::before {
+		content: 'A';
+		display: grid;
+		place-items: center;
+		box-sizing: border-box;
+		border-radius: 4px;
+		box-shadow: inset 0 0 0 1px rgba(15, 15, 15, 0.1);
+		background: transparent;
+		-webkit-mask: none;
+		mask: none;
+		color: var(--block-menu-swatch, #2c2c2b);
+		font-size: 13px;
+		font-weight: 500;
+	}
+	.block-menu-color[data-field='background']::before {
+		content: '';
+		background: var(--block-menu-swatch, #fff);
 	}
 	.block-menu-divider {
 		height: 1px;

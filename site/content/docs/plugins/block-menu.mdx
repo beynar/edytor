@@ -1,10 +1,10 @@
 ---
 title: Block menu
-description: The block menu plugin opens Notion's block menu when you click a block handle's grip, with search, Turn into, Duplicate, Move and Delete, and binds Mod+D to duplicate.
+description: The block menu plugin opens Notion's block menu when you click a block handle's grip, with search, Turn into, Color, Duplicate, Move and Delete, and binds Mod+D to duplicate.
 icon: menu
 ---
 
-`blockMenuPlugin` opens a menu when you click a block handle's ⋮⋮ grip: a search field, Turn into, Duplicate, Move up, Move down and Delete, as in Notion. It also binds <kbd>Mod</kbd> + <kbd>D</kbd> to duplicate a block.
+`blockMenuPlugin` opens a menu when you click a block handle's ⋮⋮ grip: a search field, Turn into, Color, Duplicate, Move up, Move down and Delete, as in Notion. It also binds <kbd>Mod</kbd> + <kbd>D</kbd> to duplicate a block.
 
 ```svelte title="Menu.svelte" check
 <script lang="ts">
@@ -45,7 +45,7 @@ The options type is `BlockMenuOptions`.
 
 ## What it shows
 
-The menu opens beside the grip, top-aligned 8px to its right (to its left when the right has no room, flipped up when the space below is short), follows scrolling and resizing, and closes when the grip leaves the view. The Turn into flyout opens beside the menu, to its right (to its left when the right has no room), top-aligned with it and moved up as far as the viewport needs (8px from its edges, by the flyout's laid-out size, so its opening animation never leaves it past the bottom); taller than the viewport, it scrolls inside, so every row stays reachable by the mouse (`[data-edytor-block-menu-flyout]`). From top to bottom:
+The menu opens beside the grip, top-aligned 8px to its right (to its left when the right has no room, flipped up when the space below is short), follows scrolling and resizing, and closes when the grip leaves the view. The Turn into and Color flyouts open beside the menu, to its right (to its left when the right has no room), top-aligned with it and moved up as far as the viewport needs (8px from its edges, by the flyout's laid-out size, so its opening animation never leaves it past the bottom); taller than the viewport, it scrolls inside, so every row stays reachable by the mouse (`[data-edytor-block-menu-flyout]`). From top to bottom:
 
 1. A "Search actions…" field, focused.
 2. A heading naming the block's kind, such as "Heading 2".
@@ -54,13 +54,14 @@ The menu opens beside the grip, top-aligned 8px to its right (to its left when t
 | Row                | Hint                                              | Does                                                                   |
 | ------------------ | ------------------------------------------------- | ---------------------------------------------------------------------- |
 | Turn into ›        |                                                   | Opens a flyout of the kinds that keep content, with ✓ on the current one, then the commands that turn the selected blocks into something (`EditorCommand.turnsInto`): with the columns plugin, "N columns" over N sibling blocks (2 to 5) wraps them in a layout, one per column, and "2 columns" to "5 columns" over one block makes it the first of N columns, each other column holding an empty paragraph (Notion); the blocks stay selected |
+| Color ›            |                                                   | Opens a flyout of Notion's palette: "Text color" (Default text, Gray text, … Red text) then "Background color" (Default background, … Red background), with ✓ on the block's own. A pick paints the blocks (see [Block colors](#block-colors)) and closes the menu; the blocks stay selected |
 | Copy link to block |                                                   | Writes `linkTo(block)` to the clipboard. Only with `linkTo`            |
 | Duplicate          | <kbd>Mod</kbd> + <kbd>D</kbd>                     | Inserts a copy after the block, with fresh ids for it, its children and its atoms |
 | Move up            | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>  | Moves the block one step up                                            |
 | Move down          | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↓</kbd>  | Moves the block one step down                                          |
 | Delete             | <kbd>Del</kbd>                                    | Removes the block; its children take its place (a list or a code block goes with everything in it) |
 
-A row that cannot apply is hidden: Turn into when nothing it applies to is convertible (a void block, an island or a block inside one; a list is never converted, its items are), Move up or Move down when `edytor.canMoveBlocks` refuses the step. The hints show the matching shortcuts; <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> need the [arrow move](/docs/plugins/arrow-move) plugin.
+A row that cannot apply is hidden: Turn into when nothing it applies to is convertible (a void block, an island or a block inside one; a list is never converted, its items are), Color when nothing it applies to takes a colour (a void block such as a divider, a code block or its lines), Move up or Move down when `edytor.canMoveBlocks` refuses the step. The hints show the matching shortcuts; <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> need the [arrow move](/docs/plugins/arrow-move) plugin.
 
 Typing in the field filters the actions by label, and lists the kinds whose label or keywords match under a "Turn into" heading: type `head` and pick "Heading 2" without opening the flyout. The query matches as in the [slash menu](/docs/plugins/slash-menu#what-it-lists): each word starts a word of the label or of a keyword, hyphens ignored, so `todo` and `to do` find "To-do list", `move` finds Move up and Move down, and a letter inside a word (`o` in "Move") matches nothing. With nothing left, the menu shows "No results".
 
@@ -70,17 +71,17 @@ While the menu is open, its search field takes the keys:
 
 | Keys                        | Action                                                          |
 | --------------------------- | --------------------------------------------------------------- |
-| <kbd>↑</kbd>, <kbd>↓</kbd>  | Move the highlight (wraps around); in the flyout, walk its kinds |
+| <kbd>↑</kbd>, <kbd>↓</kbd>  | Move the highlight (wraps around); in a flyout, walk its rows    |
 | <kbd>Home</kbd>, <kbd>End</kbd> | Highlight the first or last row                             |
-| <kbd>→</kbd>                | Open the Turn into flyout from its row                          |
+| <kbd>→</kbd>                | Open the Turn into or Color flyout from its row                 |
 | <kbd>←</kbd>                | Close the flyout                                                |
-| <kbd>Enter</kbd>            | Run the highlighted row, open the flyout from Turn into, or convert to the flyout's highlighted kind |
+| <kbd>Enter</kbd>            | Run the highlighted row, open the flyout from Turn into or Color, or run the flyout's highlighted row (convert, or paint) |
 | <kbd>Delete</kbd>           | Delete the block, or the selected blocks (with an empty search) |
 | <kbd>Escape</kbd>           | Close the flyout, then the menu                                 |
 
 Hovering a row highlights it, in the menu and in the flyout.
 
-The rows are a `menu` of `menuitem`s (the flyout another `menu`, "Turn into"). The search field names the open one (`aria-controls`) and its highlighted row (`aria-activedescendant`), so a screen reader reads each row as the arrows move; the grip that opened the menu has `aria-expanded="true"`. See [Accessibility](/docs/editor/accessibility#menus-and-popups).
+The rows are a `menu` of `menuitem`s (the flyouts other `menu`s: "Turn into", and "Color", whose rows are `menuitemradio`s checked on the block's colours). The search field names the open one (`aria-controls`) and its highlighted row (`aria-activedescendant`), so a screen reader reads each row as the arrows move; the grip that opened the menu has `aria-expanded="true"`. See [Accessibility](/docs/editor/accessibility#menus-and-popups).
 
 ## Behavior
 
@@ -92,6 +93,27 @@ The rows are a `menu` of `menuitem`s (the flyout another `menu`, "Turn into"). T
 - Each action is one undo step, separate from the typing before it however soon it follows, through the same commands as the rest of the editor (`convertToKind`, `duplicateBlock`, `edytor.moveBlocks`, `deleteBlocks`), so plugins can refuse them. Delete is one command, as the keyboard's block delete: `onDeleteSelectedBlocks` runs first, and its `prevent()` or a veto keeps every block. Over several blocks, Turn into and Duplicate skip a block a plugin vetoes and apply to the others ([Refusing an edit](/docs/plugins/operations#refusing-an-edit)).
 
 <kbd>Mod</kbd> + <kbd>D</kbd> duplicates every selected block, in document order and as one undo step, each copy after its block, and selects the copies. Without a block selection it duplicates the block holding the caret and puts the caret in the copy. It is claimed only for a block that can move, and never in a readonly editor.
+
+## Block colors
+
+Color paints the blocks the menu acts on, its `members` (a selected list's items, never the list itself), as Notion does: each block stores its text colour in `data.color` and its background in `data.background`, by palette name (`gray`, `brown`, `orange`, `yellow`, `green`, `blue`, `purple`, `pink`, `red`; `BLOCK_COLORS`). "Default" removes the field. Text colour and background are independent: a block may hold both.
+
+- Only blocks showing their own text take a colour: a paragraph, a heading, a list item, a to-do, a toggle, a callout, a quote. A void block (a divider, an image), a code block and its lines take none.
+- A pick is one command and one undo step over every block (`setBlockColor`, operation `setBlockColor`); each block is its own `patchData` step, so a plugin may veto one and the others are painted.
+- Each field is one property of the block: two people colouring a block at once keep the last write per field, and Turn into, a markdown shortcut and <kbd>Backspace</kbd> at a block's start keep both (a retype keeps the data it does not name).
+- The core renders a valid name as `data-edytor-color` and `data-edytor-background` on the block element, and its stylesheet paints the nine names from theme tokens with Notion's values as fallbacks (`--edytor-color-<name>`, `--edytor-background-<name>`; see [Styling](/docs/customization/styling#block-colors)). The colour reaches the block's children, as in Notion; a text colour mark inside wins.
+
+`setBlockColor(edytor, blocks, field, value)` is the same write from your own UI (a slash command, a shortcut): `field` is `'color'` or `'background'`, `value` a name or `null`, and it answers whether a block changed.
+
+```ts title="paint.ts" check
+import { setBlockColor, type EdytorInstance } from 'edytor';
+
+// The caret's block on a yellow background, as one undo step.
+export const highlightBlock = (edytor: EdytorInstance) => {
+	const block = edytor.selection.state.startBlock;
+	if (block) setBlockColor(edytor, [block], 'background', 'yellow');
+};
+```
 
 ## How it opens
 
@@ -106,7 +128,7 @@ import { BLOCK_ACTIVATE_EVENT, type BlockActivation } from 'edytor';
 
 ## Placement and styling
 
-The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-block-menu-host` and `z-index: 70`. Its markup and styles are built in: a 265px panel with line icons for the built-in kinds and actions, the kind flyout beside it, and a 140ms fade and scale-in. The panel has `data-edytor-block-menu` and `data-testid="block-menu"`, and each action row `data-testid="block-menu-<id>"`, with ids `turn`, `link`, `duplicate`, `up`, `down` and `delete`.
+The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-block-menu-host` and `z-index: 70`. Its markup and styles are built in: a 265px panel with line icons for the built-in kinds and actions, the kind flyout beside it, and a 140ms fade and scale-in. The panel has `data-edytor-block-menu` and `data-testid="block-menu"`, and each action row `data-testid="block-menu-<id>"`, with ids `turn`, `color`, `link`, `duplicate`, `up`, `down` and `delete`; each colour row is `data-testid="block-menu-<field>.<name>"` (`color.red`, `background.default`), its swatch drawn from the same tokens as the blocks.
 
 ## Custom markup
 
@@ -119,10 +141,14 @@ The snippet receives the `BlockMenuController`:
     block: { type: "Block | null", description: "The block whose grip opened the menu." },
     blocks: { type: "Block[]", description: "The blocks the actions apply to, in document order, as clicked: the block selection when it holds block, else block alone. A grip-selected list is one block." },
     members: { type: "Block[]", description: "What Delete and Turn into act on: blocks, a list or a code block with its whole subtree (selection.selectedMembers)." },
-    actions: { type: "BlockMenuAction[]", description: "The rows that apply, filtered by query: { id, label, icon, hint?, danger?, submenu?, run? }. Turn into has submenu: true and no run." },
+    actions: { type: "BlockMenuAction[]", description: "The rows that apply, filtered by query: { id, label, icon, hint?, danger?, submenu?, run? }. Turn into has submenu: 'turn', Color submenu: 'color', and no run." },
     kinds: { type: "KindRow[]", description: "The kinds the block may turn into while keeping its content." },
     currentKind: { type: "KindRow | undefined", description: "The row naming the block: of its kind's rows, the one whose preset data shares the most values with the block's (the first on a tie), so a checked to-do is still To-do list." },
     "turnInto(kind)": { type: "(kind: KindRow) => void", description: "Convert the members (a list's items)." },
+    colors: { type: "BlockMenuColor[]", description: "The Color flyout's rows: { id, label, field: 'color' | 'background', value: name | null }, the text colours then the backgrounds, each from the default." },
+    colorable: { type: "Block[]", description: "The members that take a colour (no void, code block or code line)." },
+    "isCurrentColor(row)": { type: "(row: BlockMenuColor) => boolean", description: "Whether every colourable member holds the row's colour (its ✓)." },
+    "paint(row)": { type: "(row: BlockMenuColor) => void", description: "Paint the colourable members with the row's colour, as one undo step; the menu closes and the blocks stay selected." },
     "duplicate(block)": { type: "(block: Block) => void", description: "Insert a copy after the block (block.duplicateBlock(): fresh ids, one undo step)." },
     "duplicateAll(blocks)": { type: "(blocks: Block[]) => void", description: "Copy each block after itself as one undo step, and select the copies. The Duplicate action calls it for several blocks." },
     "move(direction)": { type: "('up' | 'down') => void", description: "Move the blocks one step." },
@@ -131,9 +157,11 @@ The snippet receives the `BlockMenuController`:
     "close()": { type: "(restoreCaret?: boolean) => void", description: "Close the menu; the caret returns to the block (several blocks stay selected) unless restoreCaret is false." },
     query: { type: "string", description: "The search text. Writable: actions filter by it." },
     selectedIndex: { type: "number", description: "The keyboard's row. Writable." },
-    flyout: { type: "boolean", description: "Whether the Turn into flyout is open. Writable." },
-    flyoutIndex: { type: "number", description: "The keyboard's kind in the flyout. Writable." },
-    "openFlyout()": { type: "() => void", description: "Open the flyout on its first kind; an open flyout stays as it is." },
+    flyout: { type: "false | 'turn' | 'color'", description: "The open flyout: the Turn into kinds, the colours, or none. Writable (false closes it)." },
+    flyoutRows: { type: "Array<KindRow | BlockMenuColor>", description: "The open flyout's rows: kinds, or colours." },
+    flyoutIndex: { type: "number", description: "The keyboard's row in the open flyout. Writable." },
+    "openFlyout(which?)": { type: "(which?: 'turn' | 'color') => void", description: "Open a flyout (Turn into by default) on its first row; that flyout already open stays as it is." },
+    "runFlyout()": { type: "() => void", description: "Run the open flyout's keyboard row: convert to its kind, or paint its colour." },
   }}
 />
 

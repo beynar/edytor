@@ -14,6 +14,9 @@
 	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
 	import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
 	import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
+	import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
+	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
+	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
 	import { clearDocument, createWebsocketSync, type EdytorSync } from '$lib/collaboration/index.js';
 	import {
@@ -373,6 +376,39 @@
 				{ id: 'Z', type: 'paragraph', content: [{ text: 'after' }] }
 			]
 		},
+		// Block colours, toggle headings, a page block and a table of contents
+		// (`polish=1` lists the block menu, the page and toc plugins).
+		polish: {
+			children: [
+				{ id: 'toc', type: 'toc' },
+				{
+					id: 'title',
+					type: 'heading',
+					data: { level: 'h1' },
+					content: [{ text: 'Overview' }]
+				},
+				{ id: 'intro', type: 'paragraph', content: [{ text: 'Paint me' }] },
+				{
+					id: 'faq',
+					type: 'toggle-heading',
+					data: { level: 'h2' },
+					content: [{ text: 'Questions' }],
+					children: [{ id: 'answer', type: 'paragraph', content: [{ text: 'Answers' }] }]
+				},
+				{ id: 'sub', type: 'page', data: { pageId: 'page-2', title: 'Roadmap' } },
+				...Array.from({ length: 40 }, (_, i) => ({
+					id: `filler-${i}`,
+					type: 'paragraph',
+					content: [{ text: `filler ${i}` }]
+				})),
+				{
+					id: 'last',
+					type: 'heading',
+					data: { level: 'h2' },
+					content: [{ text: 'Far below' }]
+				}
+			]
+		},
 		// Deterministic block ids: two clients mounting this scenario seed the
 		// identical spec set, so concurrent `init`s LWW-dedupe to one block per
 		// id instead of duplicating content.
@@ -414,6 +450,18 @@
 	const plugins = $derived([
 		...(data.find ? [findPlugin] : []),
 		...(data.media ? [embedPlugin, bookmarkPlugin] : []),
+		...(data.polish
+			? [
+					blockMenuPlugin,
+					tocPlugin,
+					createPagePlugin({
+						open: (pageId) =>
+							((window as unknown as { __EDYTOR_OPENED_PAGE__?: string }).__EDYTOR_OPENED_PAGE__ =
+								pageId),
+						create: () => 'page-new'
+					})
+				]
+			: []),
 		arrowMovePlugin,
 		data.scenario === 'image' ? uploadingImagePlugin : imagePlugin,
 		codePlugin,

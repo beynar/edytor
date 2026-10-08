@@ -404,6 +404,15 @@ export type KindPreset = {
 	data?: Record<string, SerializableContent>;
 	/** Typed at the start of a block's first text, each converts it (the last character triggers). */
 	markdown?: string[];
+	/**
+	 * Shortcuts that convert a block of another kind into this preset, by
+	 * that kind, typed as `markdown` is: `{ toggle: ['# '] }` makes a toggle
+	 * list a toggle heading. In a block of a named kind they come before
+	 * every preset's `markdown`; when several presets answer one, the one
+	 * whose data shares the most values with the block's wins (a heading's
+	 * level stays).
+	 */
+	markdownFrom?: Record<string, string[]>;
 	/** The slash menu section (default `Basic blocks`). */
 	group?: string;
 };

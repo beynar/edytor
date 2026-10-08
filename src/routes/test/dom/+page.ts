@@ -26,6 +26,8 @@ export const load: PageLoad = ({ url }) => {
 		empty: url.searchParams.get('empty'),
 		// `media=1` lists the embed and bookmark plugins (their paste menu).
 		media: url.searchParams.get('media') === '1',
+		// `polish=1` lists the block menu, the page and the table of contents plugins.
+		polish: url.searchParams.get('polish') === '1',
 		collab: url.searchParams.get('collab'),
 		collabws: url.searchParams.get('collabws'),
 		wsserver: url.searchParams.get('wsserver'),

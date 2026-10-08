@@ -162,7 +162,17 @@ describe('the block menu search matches as the slash menu does (FW-17)', () => {
 		['todo', ['To-do list']],
 		['to do', ['To-do list']],
 		['bullet list', ['Bulleted list']],
-		['head', ['Heading 1', 'Heading 2', 'Heading 3']],
+		[
+			'head',
+			[
+				'Heading 1',
+				'Heading 2',
+				'Heading 3',
+				'Toggle heading 1',
+				'Toggle heading 2',
+				'Toggle heading 3'
+			]
+		],
 		['move', ['Move up', 'Move down']],
 		['dup', ['Duplicate']],
 		// A letter inside words (`Move`, `Callout`) is no match; `ol` starts a keyword.

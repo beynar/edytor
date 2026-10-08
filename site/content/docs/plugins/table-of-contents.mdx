@@ -1,0 +1,70 @@
+---
+title: Table of contents
+description: The table of contents plugin adds Notion's table of contents block, the document's headings listed live, each scrolling to its heading.
+icon: list-tree
+---
+
+`tocPlugin` adds Notion's table of contents: a `toc` block lists the document's headings and toggle headings, live, in reading order, each indented by its level. A click scrolls to the heading. It is not a default plugin: list it.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, tocPlugin, slashMenuPlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[tocPlugin, slashMenuPlugin]} />
+```
+
+The slash menu then lists "Table of contents" under `Advanced blocks` (keywords `toc`, `outline`, `headings`, `contents`). Like a divider it replaces an empty line, and goes after a line that holds text.
+
+## What it lists
+
+- Every `heading` and `toggle-heading` of the document, nested ones included (in a toggle, a column, a list item), in reading order. Its list is drawn from the view, never stored: an edit anywhere (a heading typed, added, removed, turned into text, a peer's change) updates it at once.
+- Each entry is the heading's text (an inline atom, such as a mention, is left out), "Untitled" for an empty heading, and is indented one nesting step per level below the shallowest level listed: a document whose headings start at Heading 2 lists them flush.
+- With no heading, it shows Notion's hint, "Add headings to create a table of contents."
+
+A click scrolls the heading to the top of the view, smoothly, and opens the closed toggles it sits in. The caret and the selection stay where they were. A readonly view lists and scrolls too.
+
+## Options
+
+`createTocPlugin(options)` takes a `TocPluginOptions`:
+
+<TypeTable
+  type={{
+    headingLevel: {
+      type: "(block: { type: string; data: Record<string, unknown> }) => number | null",
+      description: "Which blocks the table lists, and how deep (1 the outermost), else `null`. By default the rich text headings and toggle headings by their `data.level`: `h1` 1, `h2` 2, any other 3, as they are drawn.",
+    },
+  }}
+/>
+
+```ts title="toc.ts" check
+import { createTocPlugin } from 'edytor';
+
+// Your own heading kind beside the rich text ones.
+export const toc = createTocPlugin({
+	headingLevel: ({ type, data }) =>
+		type === 'chapter' ? 1 : type === 'heading' ? (data.level === 'h1' ? 1 : 2) : null
+});
+```
+
+## The kind
+
+| Kind  | Element                                  | Data | Preset                                                |
+| ----- | ---------------------------------------- | ---- | ----------------------------------------------------- |
+| `toc` | `nav` with `aria-label="Table of contents"` | none | Table of contents (☰, group `Advanced blocks`) |
+
+The block is void and shows no text of its own, like a divider. The command id is `block.toc`. Its role is in `defaultSemantics` (`tocKinds`). Its entries are buttons: they keep their events from the editor, so a click never moves the caret.
+
+## Clipboard
+
+Copying exports an empty `<nav data-edytor-toc></nav>` (its list is drawn, never carried) and no plain text; pasting that HTML back imports a table of contents.
+
+## Styling
+
+| Selector                       | Matches                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `[data-edytor-type='toc']`     | The `nav`                                                                 |
+| `[data-edytor-toc-entry]`      | One entry: `data-level` is its heading's level, `--edytor-toc-depth` its steps in, `[data-untitled]` for an empty heading |
+| `[data-edytor-toc-empty]`      | The hint shown with no heading                                            |
+
+Without a theme the entries are plain lines, indented by `--edytor-toc-depth` times `--edytor-nest-indent`. The [Notion theme](/docs/customization/styling#notion-theme) draws them in Notion's secondary text colour, with a hover background.

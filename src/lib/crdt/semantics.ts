@@ -127,6 +127,22 @@ export const mediaKinds = frozen({
 } satisfies Record<string, KindSemantics>);
 
 /**
+ * The page plugin's structural row: a link to another document (a subpage),
+ * void and showing no text of its own, as a divider.
+ */
+export const pageKinds = frozen({
+	page: { void: true, rendersContent: false }
+} satisfies Record<string, KindSemantics>);
+
+/**
+ * The table of contents plugin's structural row: a void that lists the
+ * document's headings, showing no text of its own.
+ */
+export const tocKinds = frozen({
+	toc: { void: true, rendersContent: false }
+} satisfies Record<string, KindSemantics>);
+
+/**
  * The columns plugin's structural rows: `columns` is a layout of `column`s
  * (`layout.*` in the delete contract), a column a container that holds any
  * block. In {@link defaultSemantics}: a document holding no `columns` block
@@ -294,15 +310,20 @@ export const imageSemantics = semanticsOf(imageKinds);
 export const mediaSemantics = semanticsOf(mediaKinds);
 /** The columns plugin's block roles (a layout of columns). */
 export const layoutSemantics = semanticsOf(layoutKinds);
+/** The page plugin's block role (a link to another document). */
+export const pageSemantics = semanticsOf(pageKinds);
+/** The table of contents plugin's block role. */
+export const tocSemantics = semanticsOf(tocKinds);
 /**
- * The rich-text, code, image, media and columns plugins' block roles
- * together — what the room and a headless `createDocument`/`loadDocument`
- * adopt by default (`semantics: {}` checks none). The media and columns
- * plugins are not default plugins of `<Edytor>`, but their roles are here
- * so their blocks read the same on every replica.
+ * The rich-text, code, image, media, columns, page and table of contents
+ * plugins' block roles together — what the room and a headless
+ * `createDocument`/`loadDocument` adopt by default (`semantics: {}` checks
+ * none). The media, columns, page and table of contents plugins are not
+ * default plugins of `<Edytor>`, but their roles are here so their blocks
+ * read the same on every replica.
  */
 export const defaultSemantics = withMarks(
-	semanticsOf(richTextKinds, codeKinds, imageKinds, mediaKinds, layoutKinds),
+	semanticsOf(richTextKinds, codeKinds, imageKinds, mediaKinds, layoutKinds, pageKinds, tocKinds),
 	richTextMarks
 );
 

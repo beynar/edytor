@@ -138,6 +138,9 @@ describe('slash menu: generated from kind records', () => {
 			'block.numbered-list-item 1.',
 			'block.todo-item ☐',
 			'block.toggle ▸',
+			'block.toggle-heading1 ▸H₁',
+			'block.toggle-heading2 ▸H₂',
+			'block.toggle-heading3 ▸H₃',
 			'block.callout ✦',
 			'block.quote ❝',
 			'block.divider —'
@@ -172,6 +175,9 @@ describe('slash menu: generated from kind records', () => {
 			'Numbered list',
 			'To-do list',
 			'Toggle list',
+			'Toggle heading 1',
+			'Toggle heading 2',
+			'Toggle heading 3',
 			'Callout',
 			'Quote',
 			'Divider'

@@ -1686,6 +1686,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         })[];
         onChange: (cb: (change: DocChange) => void) => (() => void);
     };
+    newDoc: (opts?: ConstructorParameters<EngineApi["Doc"]>[0]) => YDoc;
     keepCopies: (doc: EngineDoc) => void;
     purge: (doc: EngineDoc, facade: {
         model: import("./placement/model.js").PlacementModel;
@@ -1794,6 +1795,7 @@ export interface EngineDeepEvent {
 ```ts
 export interface EngineDoc {
     clientID: number;
+    keepReplaced?: ((item: never) => boolean) | null;
     get(key?: string): EngineNode;
     transact<T>(f: (transaction: unknown) => T, origin?: unknown): T;
     on(name: 'update', f: (update: Uint8Array, origin: unknown, doc: EngineDoc, transaction: unknown) => void): void;

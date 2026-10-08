@@ -28,3 +28,6 @@ dist-code
 
 # agent worktrees and local Claude settings
 .claude
+
+# the upstream watch report (scripts/upstream-check.mjs)
+upstream-report

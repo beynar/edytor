@@ -23,6 +23,7 @@ import type { PlacementModel, BlockSpec } from '../placement/model.js';
 import type { BlockAttributionApi } from '../attribution/block.js';
 import type { JsonObj } from './types.js';
 import { hash32, setDocRand } from '../rand.js';
+import { keepingReplaced } from '../incarnations.js';
 import { DOC_DATA_ROOT, SCHEMA } from '../schema.js';
 import { dataLeaves, isObject, writeLeaves } from '../data.js';
 import {
@@ -133,7 +134,7 @@ export const bindSeed = (Y: EngineApi, M: PlacementModel, BA: BlockAttributionAp
 		let n = 0;
 		const mint = (prefix: string) => `${prefix}${writer.toString(36)}.${n++}`;
 		const specs = blocks.map((block) => jsonBlockToSpec(block, false, mint));
-		const raw = new Y.Doc();
+		const raw = keepingReplaced(new Y.Doc());
 		raw.clientID = writer;
 		const scratch = raw as unknown as EngineDoc;
 		let rank = writer; // ranks from the rand seam, seeded by the hash (LCG)

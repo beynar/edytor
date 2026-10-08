@@ -275,8 +275,8 @@ import { bindSync } from './protocols/sync.js';
 export const bindCrdt = (Y: EngineApi) => {
 	const doc = bindEdytorDoc(Y);
 	return {
-		/** Create a v14 document — `new Y.Doc(opts)` on the bound engine. */
-		createDoc: (opts?: ConstructorParameters<EngineApi['Doc']>[0]): YDoc => new Y.Doc(opts),
+		/** Create a v14 edytor document — `new Y.Doc(opts)` on the bound engine, with the document's rules (`doc.newDoc`). */
+		createDoc: (opts?: ConstructorParameters<EngineApi['Doc']>[0]): YDoc => doc.newDoc(opts),
 		/** Engine-free — same class for every engine instance. */
 		Awareness: _Awareness,
 		doc,

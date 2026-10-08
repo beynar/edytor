@@ -22,6 +22,7 @@
  */
 import type { EngineApi, EngineDoc, YDoc } from '../engine-api.js';
 import { bindEdytorDoc } from '../edytor-doc.js';
+import { keepingReplaced } from '../incarnations.js';
 import { PROTOCOL_VERSION, type GenerationRecord } from '../protocols/envelope.js';
 import type { DocumentSemanticsConfig } from '../document.js';
 import { defaultSemantics, facadeConfigOf } from '../semantics.js';
@@ -61,7 +62,7 @@ export const bindGenerations = (Y: EngineApi) => {
 			updates: ReadonlyArray<Uint8Array | { v2: Uint8Array }>,
 			facadeOf: (doc: YDoc) => Reader
 		): JSONDoc => {
-			const doc = new Y.Doc();
+			const doc = keepingReplaced(new Y.Doc());
 			try {
 				Y.transact(doc as never, () => {
 					for (const u of updates)
@@ -84,7 +85,7 @@ export const bindGenerations = (Y: EngineApi) => {
 		 * read with `semantics`.
 		 */
 		seedOf: (value: JSONDoc, semantics?: DocumentSemanticsConfig): Uint8Array => {
-			const doc = new Y.Doc();
+			const doc = keepingReplaced(new Y.Doc());
 			try {
 				const facade = facadeWith(semantics)(doc);
 				facade.seed(value.children, value.data);

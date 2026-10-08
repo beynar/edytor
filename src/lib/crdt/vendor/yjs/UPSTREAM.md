@@ -44,6 +44,20 @@ Upstream test suite is vendored **outside** `src/lib` at
 `vendor-tests/yjs/tests/` so it never ships in `dist`; since P8 it is pruned to
 the kept surface.
 
+## Watching upstream
+
+`.github/workflows/upstream.yml` runs every Monday (and on demand, for a
+given version): `scripts/upstream-check.mjs` asks npm for a `@y/y` published
+after the pin, and when there is one writes `upstream.diff` (pin → newer, P1
+applied to both) and `fork.diff` (newer → this tree) into the run's
+artifact, then materializes the newer engine as `bench/vendor-baseline/yjs`
+so `bench/lib/interop.mjs` (the fork and the newer engine syncing over the
+wire) and the baseline leg of `src/tests/crdt/hardening/r1-p4-format.test.ts`
+(byte-identical stores after every operation) run against it. A red run
+means the re-sync needs care; the re-sync itself is the manual recipe under
+P8. Locally: `node scripts/upstream-check.mjs`, then those two checks, then
+`bench/lib/mk-baseline.sh` to restore the pinned baseline.
+
 ## Local patches
 
 ### P1 — `lib0/` → `lib0-v14/` import specifier rewrite (`src/**`, `global.d.ts`)
@@ -657,8 +671,12 @@ such a node:
   before its children, keeps the subtree on every replica.
 - `tryGcDeleteSet`: such an item is never collected.
 - `Doc#keepReplaced` (instance, default `null`) and `static
-  Doc.keepReplaced` (default `null`): edytor's `bindModel` sets the static
-  to its registry predicate (`crdt/incarnations.ts`).
+  Doc.keepReplaced` (default `null`): edytor sets the instance field of each
+  of its documents to its registry predicate before the document integrates
+  anything (`keepingReplaced` in `crdt/incarnations.ts`: a facade's
+  `create`, `createDoc`/`newDoc`, the scratch documents of admission, seeds,
+  migration and prefetch); the static stays `null`, so another document of
+  the engine keeps upstream's semantics.
 
 A value written over a known one (a sequential overwrite) and a removed
 key (`deleteAttr`) delete their subtree as before. `YNode#applyDelta`

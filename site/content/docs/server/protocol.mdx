@@ -126,7 +126,7 @@ Send large frames through `chunkFrame` if your platform limits message size, and
 
 ## Never attach a document on the server
 
-Do not call `createDocument`, `loadDocument` or `attachDocument` on the document a server holds. They publish the local author into the document's replicated attribution data, so the server would appear as an author in every client. A server works on the raw CRDT document (`bindCrdt(Y).createDoc()` or `new Y.Doc()`) and the sync helpers only.
+Do not call `createDocument`, `loadDocument` or `attachDocument` on the document a server holds. They publish the local author into the document's replicated attribution data, so the server would appear as an author in every client. A server works on the raw CRDT document and the sync helpers only. Make that document with `bindCrdt(Y).createDoc()`, before it integrates anything, never with a bare `new Y.Doc()`: `createDoc` gives it the rule every edytor document carries (when two writers create one block id at once, the losing node keeps its text), and a document without it deletes that text where it integrates the race, then stores and relays the delete.
 
 To read or edit the content server-side (for indexing, exports or bots), load a separate copy from the stored bytes with `loadDocument` and send your edits through a normal client connection, or apply them to that copy and send its update like any other client.
 

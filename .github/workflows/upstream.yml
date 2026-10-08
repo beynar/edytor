@@ -1,0 +1,55 @@
+# Watch upstream (CC-06): the vendored engine is a fork of `@y/y`, pinned in
+# `package.json` (`pnpm.overrides["@y/protocols>@y/y"]`) and recorded in
+# `src/lib/crdt/vendor/yjs/UPSTREAM.md`. Every week this asks npm for a newer
+# `@y/y`; when there is one it diffs it against the pin and against the fork
+# (`scripts/upstream-check.mjs`), then runs the wire interop check and the
+# engine differential against it as the baseline. A red run means the next
+# re-sync needs care; the reports are the run's artifact. Re-syncing stays a
+# manual step (UPSTREAM.md, "Re-syncing with upstream"); this job only reports.
+name: Upstream
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Check this @y/y version instead of the newest one
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream
+  cancel-in-progress: false
+
+jobs:
+  upstream:
+    name: '@y/y against the fork'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Diff the newest @y/y against the pin and the fork
+        id: check
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/upstream-check.mjs --out upstream-report ${VERSION:+--version "$VERSION"}
+      - name: Wire interop (the fork against the newer engine)
+        if: steps.check.outputs.newer != ''
+        # `shell: bash` runs with pipefail: a failed check fails the step through `tee`.
+        shell: bash
+        run: node bench/lib/interop.mjs | tee upstream-report/interop.log
+      - name: Engine differential (byte-identical stores after every operation)
+        if: steps.check.outputs.newer != ''
+        shell: bash
+        run: pnpm exec vitest --config ./vitest.crdt.config.ts --run src/tests/crdt/hardening/r1-p4-format.test.ts | tee upstream-report/differential.log
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.check.outputs.newer != ''
+        with:
+          name: upstream-${{ steps.check.outputs.newer }}
+          path: upstream-report/
+          retention-days: 30

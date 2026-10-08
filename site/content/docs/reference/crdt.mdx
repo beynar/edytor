@@ -46,6 +46,8 @@ export function catchUp(stored: Uint8Array<ArrayBuffer>, updates: Uint8Array<Arr
 
 **What was added:** undo hooks that let the document decide how deleted text comes back and keep a block a peer wrote into when its creation is undone. They are what make [concurrent undo](/docs/collaboration/concurrent-editing) behave; an `UndoManager` you create yourself over a document does not follow those rules, so use `document.history`.
 
+The fork also lets a document keep the node a concurrent write of the same map key replaced, with its subtree (`doc.keepReplaced`, a predicate, `null` by default). Every edytor document carries edytor's rule (two writers creating one block id at once keep both texts): the documents `createDocument`, `attachDocument` and `bindCrdt(Y).createDoc()` give you, and any document a facade binds. The engine's class default stays `null`, so another document of the same engine in your app keeps the upstream behavior. A document must carry the rule before it integrates edytor content: build it with `createDoc()` rather than `new Y.Doc()` followed by `Y.applyUpdate`.
+
 ## `edytor/crdt/edytor`
 
 The same document surface as `edytor`, safe to import in Node, SSR and Workers:

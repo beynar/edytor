@@ -87,7 +87,7 @@ import {
 } from '../text/model.js';
 import { cloneJson } from '../../utils/json.js';
 import { dataLeaves, patchWrites, writeLeaves } from '../data.js';
-import { incarnationNode, isIncarnationId, keepRegistryLosers } from '../incarnations.js';
+import { incarnationNode, isIncarnationId } from '../incarnations.js';
 
 /** Logical block identifier — caller-assigned, immutable per block. */
 export type BlockId = string;
@@ -271,9 +271,6 @@ export type DocOrder = { ids: readonly BlockId[]; at: ReadonlyMap<BlockId, numbe
  * runtime vendor imports (see `engine-api.ts`).
  */
 export const bindModel = (Y: EngineApi) => {
-	// Fork P14 (H13, `id.same.concurrent`): every document of this engine keeps
-	// a registry value a concurrent creation of the same id replaced.
-	Y.Doc.keepReplaced ??= keepRegistryLosers;
 	/** Construct a detached v14 node, viewed through the structural interface. */
 	const newNode = (name: string): EngineNode => new Y.Node(name) as unknown as EngineNode;
 

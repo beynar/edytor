@@ -5,8 +5,9 @@
  * Caller ids are public API, so two writers may create block `N` at once.
  * The registry is a map: its last-writer-wins keeps the larger client's
  * node, and the engine keeps the other node's subtree (fork patch P14,
- * `Doc.keepReplaced` = {@link keepRegistryLosers}): deleted as a value of
- * the key, but its text, claims and placement stay live, never collected.
+ * each edytor document's `keepReplaced` = {@link keepRegistryLosers}, set by
+ * {@link keepingReplaced} before it integrates anything): deleted as a value
+ * of the key, but its text, claims and placement stay live, never collected.
  *
  * The index shows each such LOSING INCARNATION written by a live writer
  * (a client id at or above the seed band, 2^26) through an implicit merge
@@ -39,13 +40,27 @@ type RegistryItem = {
 	content: { type?: unknown };
 };
 
-/** `Doc.keepReplaced` for edytor documents (fork P14): registry values keep their subtree. */
+/** `doc.keepReplaced` of edytor documents (fork P14): registry values keep their subtree. */
 export const keepRegistryLosers = (item: unknown): boolean => {
 	const parent = (item as RegistryItem).parent as {
 		_item: unknown;
 		doc: { share: Map<string, unknown> } | null;
 	} | null;
 	return parent?._item === null && parent.doc?.share.get(REGISTRY_KEY) === parent;
+};
+
+/**
+ * Make `doc` an edytor document for the engine: a registry value a
+ * concurrent creation replaced keeps its subtree (fork P14). Every edytor
+ * document gets it before it integrates anything (a facade's `create`,
+ * `createDoc`, the scratch documents of admission, seeds and migration);
+ * the engine's class default stays upstream's (`null`), so another
+ * document of the same engine keeps upstream's semantics. A rule the
+ * caller set stays.
+ */
+export const keepingReplaced = <D extends { keepReplaced?: unknown }>(doc: D): D => {
+	(doc as { keepReplaced?: unknown }).keepReplaced ??= keepRegistryLosers;
+	return doc;
 };
 
 /** The derived id of a losing incarnation: its key and its item's id. */

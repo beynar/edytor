@@ -29,7 +29,16 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 
 const E = bindEdytorDoc(Y);
-if (process.env.H13_OFF === '1') (Y.Doc as any).keepReplaced = () => false;
+/**
+ * An edytor document (each carries the P14 rule; `H13_OFF=1` turns it off to
+ * show the rows discriminate). A replica that reloads integrates before its
+ * facade exists, so it is one from the start.
+ */
+const edytorDoc = () => {
+	const doc = E.newDoc();
+	if (process.env.H13_OFF === '1') doc.keepReplaced = () => false;
+	return doc;
+};
 const REMOTE = { remote: true };
 const LIVE = 2 ** 26;
 
@@ -54,7 +63,7 @@ const seeded = (blocks) => {
 	return Y.encodeStateAsUpdate(doc);
 };
 const replica = (base: Uint8Array, clientID: number) => {
-	const doc = new Y.Doc();
+	const doc = edytorDoc();
 	doc.clientID = clientID;
 	Y.applyUpdate(doc, base, REMOTE);
 	return { doc, ed: E.create(doc) };
@@ -76,7 +85,7 @@ const sync = (x, y, order: 'xy' | 'yx' = 'xy') => {
 	}
 };
 const reload = (r, clientID: number) => {
-	const doc = new Y.Doc();
+	const doc = edytorDoc();
 	doc.clientID = clientID;
 	Y.applyUpdate(doc, Y.encodeStateAsUpdate(r.doc), REMOTE);
 	return E.create(doc);

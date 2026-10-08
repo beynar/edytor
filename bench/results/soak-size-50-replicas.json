@@ -1,0 +1,1705 @@
+{
+	"config": {
+		"replicas": 50,
+		"edits": 4000,
+		"mix": "soak",
+		"without": [],
+		"sync": 25,
+		"seed": 1
+	},
+	"converged": true,
+	"applied": 3776,
+	"ops": {
+		"data:applied": 101,
+		"merge:applied": 183,
+		"type:applied": 2526,
+		"backspace:applied": 321,
+		"cut:applied": 101,
+		"move:applied": 166,
+		"mark:applied": 107,
+		"split:applied": 271,
+		"jump:applied-local": 124,
+		"mark:noop": 50,
+		"backspace:noop": 37,
+		"cut:noop": 12,
+		"merge:refused": 1
+	},
+	"blocks": 129,
+	"chars": 5441,
+	"stored": 272800,
+	"fresh": 42956,
+	"purged": 239954,
+	"purge": {
+		"removed": 0,
+		"emptied": 0,
+		"marks": 318,
+		"records": 0,
+		"candidates": 138,
+		"claims": 0,
+		"merged": 183
+	},
+	"census": {
+		"clients": 52,
+		"structs": 15382,
+		"gc": 0,
+		"items": {
+			"live": 12482,
+			"deleted": 2900,
+			"deletedKeepingContent": 0,
+			"mapEntries": 10942,
+			"sequence": 4440
+		},
+		"content": {
+			"ContentAny": {
+				"live": 8354,
+				"deleted": 0,
+				"liveLength": 8375,
+				"deletedLength": 0
+			},
+			"ContentType": {
+				"live": 1289,
+				"deleted": 0,
+				"liveLength": 1289,
+				"deletedLength": 0
+			},
+			"ContentDeleted": {
+				"live": 0,
+				"deleted": 2900,
+				"liveLength": 0,
+				"deletedLength": 4018
+			},
+			"ContentFormat": {
+				"live": 902,
+				"deleted": 0,
+				"liveLength": 902,
+				"deletedLength": 0
+			},
+			"ContentString": {
+				"live": 1937,
+				"deleted": 0,
+				"liveLength": 5441,
+				"deletedLength": 0
+			}
+		},
+		"text": {
+			"items": 1937,
+			"chars": 5441
+		},
+		"keys": {
+			"c/": {
+				"live": 51,
+				"deleted": 0
+			},
+			"u": {
+				"live": 271,
+				"deleted": 0
+			},
+			"id": {
+				"live": 312,
+				"deleted": 0
+			},
+			"n": {
+				"live": 312,
+				"deleted": 0
+			},
+			"type": {
+				"live": 312,
+				"deleted": 0
+			},
+			"claims": {
+				"live": 312,
+				"deleted": 0
+			},
+			"at": {
+				"live": 312,
+				"deleted": 0
+			},
+			"1.8858664934242635": {
+				"live": 7,
+				"deleted": 0
+			},
+			"b/": {
+				"live": 312,
+				"deleted": 0
+			},
+			"i": {
+				"live": 312,
+				"deleted": 0
+			},
+			"c": {
+				"live": 271,
+				"deleted": 0
+			},
+			"k/": {
+				"live": 4962,
+				"deleted": 0
+			},
+			"l": {
+				"live": 312,
+				"deleted": 2006
+			},
+			"d/": {
+				"live": 305,
+				"deleted": 18
+			},
+			"3.8858664934242635": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.8858664934242635": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.8858664934242635": {
+				"live": 1,
+				"deleted": 0
+			},
+			"v": {
+				"live": 1,
+				"deleted": 0
+			},
+			"schema": {
+				"live": 1,
+				"deleted": 0
+			},
+			"title": {
+				"live": 1,
+				"deleted": 0
+			},
+			"content": {
+				"live": 41,
+				"deleted": 0
+			},
+			"1.48595596": {
+				"live": 36,
+				"deleted": 5
+			},
+			"seed-": {
+				"live": 40,
+				"deleted": 0
+			},
+			"1.840538780417925": {
+				"live": 7,
+				"deleted": 0
+			},
+			"2.840538780417925": {
+				"live": 3,
+				"deleted": 0
+			},
+			"5.840538780417925": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.840538780417925": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.6804452276405160": {
+				"live": 7,
+				"deleted": 0
+			},
+			"3.6804452276405160": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.6804452276405160": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.6804452276405160": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.4916447509549797": {
+				"live": 4,
+				"deleted": 0
+			},
+			"1.4916447509549797": {
+				"live": 4,
+				"deleted": 2
+			},
+			"4.4916447509549797": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.6525033432367329": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.6525033432367329": {
+				"live": 6,
+				"deleted": 0
+			},
+			"1.2870093915791374": {
+				"live": 5,
+				"deleted": 0
+			},
+			"2.2870093915791374": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.3897927408047899": {
+				"live": 10,
+				"deleted": 0
+			},
+			"2.3897927408047899": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.4678739545707585": {
+				"live": 2,
+				"deleted": 0
+			},
+			"4.4678739545707585": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.4678739545707585": {
+				"live": 5,
+				"deleted": 0
+			},
+			"3.4678739545707585": {
+				"live": 1,
+				"deleted": 1
+			},
+			"2.7319703613312287": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.7319703613312287": {
+				"live": 2,
+				"deleted": 0
+			},
+			"3.7319703613312287": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.1405029287755752": {
+				"live": 10,
+				"deleted": 1
+			},
+			"2.1405029287755752": {
+				"live": 3,
+				"deleted": 0
+			},
+			"1.818916516065720": {
+				"live": 8,
+				"deleted": 0
+			},
+			"2.818916516065720": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.4204145979308642": {
+				"live": 4,
+				"deleted": 1
+			},
+			"1.4204145979308642": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.6995031131089986": {
+				"live": 6,
+				"deleted": 0
+			},
+			"2.6995031131089986": {
+				"live": 3,
+				"deleted": 1
+			},
+			"3.6995031131089986": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.6552690555317112": {
+				"live": 5,
+				"deleted": 0
+			},
+			"2.6552690555317112": {
+				"live": 2,
+				"deleted": 0
+			},
+			"3.6552690555317112": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.1414615368874832": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.1414615368874832": {
+				"live": 7,
+				"deleted": 1
+			},
+			"3.1414615368874832": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.764670568107135": {
+				"live": 4,
+				"deleted": 0
+			},
+			"2.764670568107135": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.764670568107135": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.5964628189717844": {
+				"live": 7,
+				"deleted": 0
+			},
+			"3.5964628189717844": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.5964628189717844": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.3637483480651694": {
+				"live": 4,
+				"deleted": 0
+			},
+			"2.3637483480651694": {
+				"live": 0,
+				"deleted": 1
+			},
+			"3.3637483480651694": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.2190030429100145": {
+				"live": 4,
+				"deleted": 0
+			},
+			"1.2190030429100145": {
+				"live": 3,
+				"deleted": 0
+			},
+			"4.2190030429100145": {
+				"live": 2,
+				"deleted": 0
+			},
+			"5.2190030429100145": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.5893679068993758": {
+				"live": 5,
+				"deleted": 2
+			},
+			"3.5893679068993758": {
+				"live": 1,
+				"deleted": 1
+			},
+			"2.5893679068993758": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.5930174636629351": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.5930174636629351": {
+				"live": 5,
+				"deleted": 0
+			},
+			"2.8466724771453054": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.8466724771453054": {
+				"live": 6,
+				"deleted": 0
+			},
+			"6.8466724771453054": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.8663484047361082": {
+				"live": 6,
+				"deleted": 0
+			},
+			"3.8663484047361082": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.8663484047361082": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.5046134172546165": {
+				"live": 4,
+				"deleted": 0
+			},
+			"2.5046134172546165": {
+				"live": 3,
+				"deleted": 1
+			},
+			"5.5046134172546165": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.5046134172546165": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.2385998112852811": {
+				"live": 5,
+				"deleted": 0
+			},
+			"1.8518010818317984": {
+				"live": 6,
+				"deleted": 0
+			},
+			"6.8518010818317984": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.8518010818317984": {
+				"live": 2,
+				"deleted": 0
+			},
+			"5.8518010818317984": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.7712947582730543": {
+				"live": 5,
+				"deleted": 1
+			},
+			"2.7712947582730543": {
+				"live": 2,
+				"deleted": 0
+			},
+			"4.7712947582730543": {
+				"live": 1,
+				"deleted": 0
+			},
+			"7.7712947582730543": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.2514269251151134": {
+				"live": 5,
+				"deleted": 2
+			},
+			"2.2514269251151134": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.2514269251151134": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.2514269251151134": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.6129925655750335": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.6129925655750335": {
+				"live": 3,
+				"deleted": 0
+			},
+			"1.4275747935317907": {
+				"live": 5,
+				"deleted": 0
+			},
+			"2.4275747935317907": {
+				"live": 5,
+				"deleted": 0
+			},
+			"2.5511890278298479": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.5511890278298479": {
+				"live": 4,
+				"deleted": 0
+			},
+			"3.5511890278298479": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.8407266817064457": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.8407266817064457": {
+				"live": 2,
+				"deleted": 0
+			},
+			"4.8407266817064457": {
+				"live": 1,
+				"deleted": 0
+			},
+			"5.8407266817064457": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.4941996953605885": {
+				"live": 1,
+				"deleted": 1
+			},
+			"2.4941996953605885": {
+				"live": 5,
+				"deleted": 0
+			},
+			"4.4941996953605885": {
+				"live": 0,
+				"deleted": 1
+			},
+			"2.5387402373171926": {
+				"live": 3,
+				"deleted": 0
+			},
+			"1.5387402373171926": {
+				"live": 4,
+				"deleted": 0
+			},
+			"6.5387402373171926": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.1928670263270860": {
+				"live": 4,
+				"deleted": 0
+			},
+			"2.1928670263270860": {
+				"live": 1,
+				"deleted": 1
+			},
+			"3.1928670263270860": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.4368369191974922": {
+				"live": 3,
+				"deleted": 0
+			},
+			"4.4368369191974922": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.4368369191974922": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.4368369191974922": {
+				"live": 2,
+				"deleted": 0
+			},
+			"3.4775887736034997": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.4775887736034997": {
+				"live": 6,
+				"deleted": 0
+			},
+			"2.4775887736034997": {
+				"live": 2,
+				"deleted": 0
+			},
+			"5.4775887736034997": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.8470488988598024": {
+				"live": 4,
+				"deleted": 0
+			},
+			"1.8470488988598024": {
+				"live": 3,
+				"deleted": 0
+			},
+			"3.8470488988598024": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.8470488988598024": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.6699665843020455": {
+				"live": 6,
+				"deleted": 0
+			},
+			"4.6699665843020455": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.6699665843020455": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.6699665843020455": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.7793841525227480": {
+				"live": 4,
+				"deleted": 0
+			},
+			"1.7793841525227480": {
+				"live": 4,
+				"deleted": 0
+			},
+			"3.7793841525227480": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.3961236531091545": {
+				"live": 4,
+				"deleted": 0
+			},
+			"4.3961236531091545": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.3961236531091545": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.3961236531091545": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.8762023726792168": {
+				"live": 5,
+				"deleted": 0
+			},
+			"3.8762023726792168": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.8762023726792168": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.539970227487225": {
+				"live": 6,
+				"deleted": 0
+			},
+			"4.7453032947828864": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.7453032947828864": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.7453032947828864": {
+				"live": 5,
+				"deleted": 0
+			},
+			"3.7453032947828864": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.4867408974152780": {
+				"live": 5,
+				"deleted": 0
+			},
+			"4.4867408974152780": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.4867408974152780": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.5967832322411816": {
+				"live": 9,
+				"deleted": 1
+			},
+			"2.5967832322411816": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.5967832322411816": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.4056360815319734": {
+				"live": 6,
+				"deleted": 1
+			},
+			"2.4056360815319734": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.8114495810853823": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.8114495810853823": {
+				"live": 5,
+				"deleted": 0
+			},
+			"3.5910387053873162": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.5910387053873162": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.5910387053873162": {
+				"live": 6,
+				"deleted": 0
+			},
+			"1.4296738727904719": {
+				"live": 7,
+				"deleted": 0
+			},
+			"3.4296738727904719": {
+				"live": 1,
+				"deleted": 1
+			},
+			"5.4296738727904719": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.4296738727904719": {
+				"live": 1,
+				"deleted": 0
+			}
+		}
+	},
+	"censusAfterPurge": {
+		"clients": 52,
+		"structs": 13418,
+		"gc": 707,
+		"items": {
+			"live": 9173,
+			"deleted": 3538,
+			"deletedKeepingContent": 0,
+			"mapEntries": 8272,
+			"sequence": 4439
+		},
+		"content": {
+			"ContentAny": {
+				"live": 5228,
+				"deleted": 0,
+				"liveLength": 5249,
+				"deletedLength": 0
+			},
+			"ContentType": {
+				"live": 1106,
+				"deleted": 0,
+				"liveLength": 1106,
+				"deletedLength": 0
+			},
+			"ContentDeleted": {
+				"live": 0,
+				"deleted": 3538,
+				"liveLength": 0,
+				"deletedLength": 4657
+			},
+			"ContentFormat": {
+				"live": 902,
+				"deleted": 0,
+				"liveLength": 902,
+				"deletedLength": 0
+			},
+			"ContentString": {
+				"live": 1937,
+				"deleted": 0,
+				"liveLength": 5441,
+				"deletedLength": 0
+			}
+		},
+		"text": {
+			"items": 1937,
+			"chars": 5441
+		},
+		"keys": {
+			"c/": {
+				"live": 51,
+				"deleted": 0
+			},
+			"u": {
+				"live": 271,
+				"deleted": 0
+			},
+			"id": {
+				"live": 312,
+				"deleted": 0
+			},
+			"n": {
+				"live": 312,
+				"deleted": 0
+			},
+			"type": {
+				"live": 312,
+				"deleted": 0
+			},
+			"claims": {
+				"live": 312,
+				"deleted": 0
+			},
+			"at": {
+				"live": 312,
+				"deleted": 0
+			},
+			"1.8858664934242635": {
+				"live": 4,
+				"deleted": 3
+			},
+			"b/": {
+				"live": 129,
+				"deleted": 183
+			},
+			"l": {
+				"live": 312,
+				"deleted": 2006
+			},
+			"k/": {
+				"live": 2620,
+				"deleted": 0
+			},
+			"d/": {
+				"live": 305,
+				"deleted": 18
+			},
+			"3.8858664934242635": {
+				"live": 0,
+				"deleted": 2
+			},
+			"2.8858664934242635": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.8858664934242635": {
+				"live": 0,
+				"deleted": 1
+			},
+			"i": {
+				"live": 129,
+				"deleted": 0
+			},
+			"c": {
+				"live": 125,
+				"deleted": 0
+			},
+			"v": {
+				"live": 1,
+				"deleted": 0
+			},
+			"schema": {
+				"live": 1,
+				"deleted": 0
+			},
+			"title": {
+				"live": 1,
+				"deleted": 0
+			},
+			"content": {
+				"live": 41,
+				"deleted": 0
+			},
+			"1.48595596": {
+				"live": 23,
+				"deleted": 18
+			},
+			"seed-": {
+				"live": 40,
+				"deleted": 0
+			},
+			"1.840538780417925": {
+				"live": 5,
+				"deleted": 2
+			},
+			"2.840538780417925": {
+				"live": 2,
+				"deleted": 1
+			},
+			"5.840538780417925": {
+				"live": 0,
+				"deleted": 1
+			},
+			"3.840538780417925": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.6804452276405160": {
+				"live": 5,
+				"deleted": 2
+			},
+			"3.6804452276405160": {
+				"live": 0,
+				"deleted": 1
+			},
+			"2.6804452276405160": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.6804452276405160": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.4916447509549797": {
+				"live": 4,
+				"deleted": 0
+			},
+			"1.4916447509549797": {
+				"live": 3,
+				"deleted": 3
+			},
+			"4.4916447509549797": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.6525033432367329": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.6525033432367329": {
+				"live": 4,
+				"deleted": 2
+			},
+			"1.2870093915791374": {
+				"live": 3,
+				"deleted": 2
+			},
+			"2.2870093915791374": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.3897927408047899": {
+				"live": 8,
+				"deleted": 2
+			},
+			"2.3897927408047899": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.4678739545707585": {
+				"live": 1,
+				"deleted": 1
+			},
+			"4.4678739545707585": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.4678739545707585": {
+				"live": 3,
+				"deleted": 2
+			},
+			"3.4678739545707585": {
+				"live": 0,
+				"deleted": 2
+			},
+			"2.7319703613312287": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.7319703613312287": {
+				"live": 2,
+				"deleted": 0
+			},
+			"3.7319703613312287": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.1405029287755752": {
+				"live": 8,
+				"deleted": 3
+			},
+			"2.1405029287755752": {
+				"live": 3,
+				"deleted": 0
+			},
+			"1.818916516065720": {
+				"live": 6,
+				"deleted": 2
+			},
+			"2.818916516065720": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.4204145979308642": {
+				"live": 1,
+				"deleted": 4
+			},
+			"1.4204145979308642": {
+				"live": 2,
+				"deleted": 0
+			},
+			"1.6995031131089986": {
+				"live": 4,
+				"deleted": 2
+			},
+			"2.6995031131089986": {
+				"live": 3,
+				"deleted": 1
+			},
+			"3.6995031131089986": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.6552690555317112": {
+				"live": 4,
+				"deleted": 1
+			},
+			"2.6552690555317112": {
+				"live": 1,
+				"deleted": 1
+			},
+			"3.6552690555317112": {
+				"live": 0,
+				"deleted": 2
+			},
+			"2.1414615368874832": {
+				"live": 0,
+				"deleted": 2
+			},
+			"1.1414615368874832": {
+				"live": 3,
+				"deleted": 5
+			},
+			"3.1414615368874832": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.764670568107135": {
+				"live": 2,
+				"deleted": 2
+			},
+			"2.764670568107135": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.764670568107135": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.5964628189717844": {
+				"live": 4,
+				"deleted": 3
+			},
+			"3.5964628189717844": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.5964628189717844": {
+				"live": 1,
+				"deleted": 1
+			},
+			"1.3637483480651694": {
+				"live": 2,
+				"deleted": 2
+			},
+			"2.3637483480651694": {
+				"live": 0,
+				"deleted": 1
+			},
+			"3.3637483480651694": {
+				"live": 0,
+				"deleted": 2
+			},
+			"2.2190030429100145": {
+				"live": 2,
+				"deleted": 2
+			},
+			"1.2190030429100145": {
+				"live": 3,
+				"deleted": 0
+			},
+			"4.2190030429100145": {
+				"live": 1,
+				"deleted": 1
+			},
+			"5.2190030429100145": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.5893679068993758": {
+				"live": 4,
+				"deleted": 3
+			},
+			"3.5893679068993758": {
+				"live": 1,
+				"deleted": 1
+			},
+			"2.5893679068993758": {
+				"live": 1,
+				"deleted": 1
+			},
+			"2.5930174636629351": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.5930174636629351": {
+				"live": 5,
+				"deleted": 0
+			},
+			"2.8466724771453054": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.8466724771453054": {
+				"live": 5,
+				"deleted": 1
+			},
+			"6.8466724771453054": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.8663484047361082": {
+				"live": 6,
+				"deleted": 0
+			},
+			"3.8663484047361082": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.8663484047361082": {
+				"live": 1,
+				"deleted": 1
+			},
+			"1.5046134172546165": {
+				"live": 2,
+				"deleted": 2
+			},
+			"2.5046134172546165": {
+				"live": 3,
+				"deleted": 1
+			},
+			"5.5046134172546165": {
+				"live": 0,
+				"deleted": 1
+			},
+			"3.5046134172546165": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.2385998112852811": {
+				"live": 3,
+				"deleted": 2
+			},
+			"1.8518010818317984": {
+				"live": 5,
+				"deleted": 1
+			},
+			"6.8518010818317984": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.8518010818317984": {
+				"live": 1,
+				"deleted": 1
+			},
+			"5.8518010818317984": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.7712947582730543": {
+				"live": 5,
+				"deleted": 1
+			},
+			"2.7712947582730543": {
+				"live": 1,
+				"deleted": 1
+			},
+			"4.7712947582730543": {
+				"live": 0,
+				"deleted": 1
+			},
+			"7.7712947582730543": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.2514269251151134": {
+				"live": 4,
+				"deleted": 3
+			},
+			"2.2514269251151134": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.2514269251151134": {
+				"live": 1,
+				"deleted": 0
+			},
+			"4.2514269251151134": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.6129925655750335": {
+				"live": 1,
+				"deleted": 1
+			},
+			"1.6129925655750335": {
+				"live": 3,
+				"deleted": 0
+			},
+			"1.4275747935317907": {
+				"live": 4,
+				"deleted": 1
+			},
+			"2.4275747935317907": {
+				"live": 3,
+				"deleted": 2
+			},
+			"2.5511890278298479": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.5511890278298479": {
+				"live": 3,
+				"deleted": 1
+			},
+			"3.5511890278298479": {
+				"live": 0,
+				"deleted": 1
+			},
+			"2.8407266817064457": {
+				"live": 1,
+				"deleted": 1
+			},
+			"1.8407266817064457": {
+				"live": 2,
+				"deleted": 0
+			},
+			"4.8407266817064457": {
+				"live": 1,
+				"deleted": 0
+			},
+			"5.8407266817064457": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.4941996953605885": {
+				"live": 0,
+				"deleted": 2
+			},
+			"2.4941996953605885": {
+				"live": 5,
+				"deleted": 0
+			},
+			"4.4941996953605885": {
+				"live": 0,
+				"deleted": 1
+			},
+			"2.5387402373171926": {
+				"live": 2,
+				"deleted": 1
+			},
+			"1.5387402373171926": {
+				"live": 4,
+				"deleted": 0
+			},
+			"6.5387402373171926": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.1928670263270860": {
+				"live": 3,
+				"deleted": 1
+			},
+			"2.1928670263270860": {
+				"live": 1,
+				"deleted": 1
+			},
+			"3.1928670263270860": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.4368369191974922": {
+				"live": 1,
+				"deleted": 2
+			},
+			"4.4368369191974922": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.4368369191974922": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.4368369191974922": {
+				"live": 1,
+				"deleted": 1
+			},
+			"3.4775887736034997": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.4775887736034997": {
+				"live": 5,
+				"deleted": 1
+			},
+			"2.4775887736034997": {
+				"live": 1,
+				"deleted": 1
+			},
+			"5.4775887736034997": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.8470488988598024": {
+				"live": 3,
+				"deleted": 1
+			},
+			"1.8470488988598024": {
+				"live": 3,
+				"deleted": 0
+			},
+			"3.8470488988598024": {
+				"live": 0,
+				"deleted": 1
+			},
+			"4.8470488988598024": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.6699665843020455": {
+				"live": 4,
+				"deleted": 2
+			},
+			"4.6699665843020455": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.6699665843020455": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.6699665843020455": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.7793841525227480": {
+				"live": 4,
+				"deleted": 0
+			},
+			"1.7793841525227480": {
+				"live": 2,
+				"deleted": 2
+			},
+			"3.7793841525227480": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.3961236531091545": {
+				"live": 2,
+				"deleted": 2
+			},
+			"4.3961236531091545": {
+				"live": 0,
+				"deleted": 1
+			},
+			"3.3961236531091545": {
+				"live": 0,
+				"deleted": 1
+			},
+			"2.3961236531091545": {
+				"live": 1,
+				"deleted": 1
+			},
+			"1.8762023726792168": {
+				"live": 2,
+				"deleted": 3
+			},
+			"3.8762023726792168": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.8762023726792168": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.539970227487225": {
+				"live": 3,
+				"deleted": 3
+			},
+			"4.7453032947828864": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.7453032947828864": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.7453032947828864": {
+				"live": 4,
+				"deleted": 1
+			},
+			"3.7453032947828864": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.4867408974152780": {
+				"live": 3,
+				"deleted": 2
+			},
+			"4.4867408974152780": {
+				"live": 0,
+				"deleted": 1
+			},
+			"3.4867408974152780": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.5967832322411816": {
+				"live": 8,
+				"deleted": 2
+			},
+			"2.5967832322411816": {
+				"live": 1,
+				"deleted": 0
+			},
+			"3.5967832322411816": {
+				"live": 1,
+				"deleted": 0
+			},
+			"1.4056360815319734": {
+				"live": 6,
+				"deleted": 1
+			},
+			"2.4056360815319734": {
+				"live": 1,
+				"deleted": 1
+			},
+			"2.8114495810853823": {
+				"live": 0,
+				"deleted": 2
+			},
+			"1.8114495810853823": {
+				"live": 4,
+				"deleted": 1
+			},
+			"3.5910387053873162": {
+				"live": 2,
+				"deleted": 0
+			},
+			"2.5910387053873162": {
+				"live": 0,
+				"deleted": 1
+			},
+			"1.5910387053873162": {
+				"live": 4,
+				"deleted": 2
+			},
+			"1.4296738727904719": {
+				"live": 5,
+				"deleted": 2
+			},
+			"3.4296738727904719": {
+				"live": 1,
+				"deleted": 1
+			},
+			"5.4296738727904719": {
+				"live": 1,
+				"deleted": 0
+			},
+			"2.4296738727904719": {
+				"live": 1,
+				"deleted": 0
+			},
+			"h": {
+				"live": 1,
+				"deleted": 0
+			}
+		}
+	},
+	"bytes": {
+		"total": 311282,
+		"top": [
+			{
+				"what": "blockattr>b/ k/ ContentAny",
+				"structs": 4962,
+				"bytes": 89578,
+				"share": 28.8
+			},
+			{
+				"what": "blocks><id>><id> [seq] ContentFormat",
+				"structs": 902,
+				"bytes": 49799,
+				"share": 16
+			},
+			{
+				"what": "blocks><id>><id> [seq] ContentString",
+				"structs": 1930,
+				"bytes": 34743,
+				"share": 11.2
+			},
+			{
+				"what": "blocks><id> l ContentDeleted deleted",
+				"structs": 2003,
+				"bytes": 23387,
+				"share": 7.5
+			},
+			{
+				"what": "blocks><id>>at <rank> ContentAny",
+				"structs": 449,
+				"bytes": 13589,
+				"share": 4.4
+			},
+			{
+				"what": "blocks><id>><id> [seq] ContentDeleted deleted",
+				"structs": 836,
+				"bytes": 13460,
+				"share": 4.3
+			},
+			{
+				"what": "blockattr b/ ContentType",
+				"structs": 312,
+				"bytes": 12721,
+				"share": 4.1
+			},
+			{
+				"what": "blocks <id> ContentType",
+				"structs": 311,
+				"bytes": 11451,
+				"share": 3.7
+			},
+			{
+				"what": "blocks><id> <id> ContentType",
+				"structs": 351,
+				"bytes": 9106,
+				"share": 2.9
+			},
+			{
+				"what": "blocks><id>><id> [seq] ContentAny",
+				"structs": 435,
+				"bytes": 7197,
+				"share": 2.3
+			},
+			{
+				"what": "blocks><id> d/ ContentAny",
+				"structs": 304,
+				"bytes": 6846,
+				"share": 2.2
+			},
+			{
+				"what": "blocks><id> at ContentType",
+				"structs": 311,
+				"bytes": 5620,
+				"share": 1.8
+			},
+			{
+				"what": "blocks><id> type ContentAny",
+				"structs": 311,
+				"bytes": 5309,
+				"share": 1.7
+			},
+			{
+				"what": "blocks><id> id ContentAny",
+				"structs": 311,
+				"bytes": 4687,
+				"share": 1.5
+			},
+			{
+				"what": "blockattr>b/ i ContentAny",
+				"structs": 312,
+				"bytes": 4396,
+				"share": 1.4
+			}
+		]
+	},
+	"bytesAfterPurge": {
+		"total": 265752,
+		"top": [
+			{
+				"what": "blocks><id>><id> [seq] ContentFormat",
+				"structs": 902,
+				"bytes": 49799,
+				"share": 18.7
+			},
+			{
+				"what": "blockattr>b/ k/ ContentAny",
+				"structs": 2620,
+				"bytes": 48158,
+				"share": 18.1
+			},
+			{
+				"what": "blocks><id>><id> [seq] ContentString",
+				"structs": 1930,
+				"bytes": 34743,
+				"share": 13.1
+			},
+			{
+				"what": "blocks><id> l ContentDeleted deleted",
+				"structs": 2003,
+				"bytes": 23387,
+				"share": 8.8
+			},
+			{
+				"what": "blocks><id>><id> [seq] ContentDeleted deleted",
+				"structs": 836,
+				"bytes": 13460,
+				"share": 5.1
+			},
+			{
+				"what": "blocks <id> ContentType",
+				"structs": 311,
+				"bytes": 11451,
+				"share": 4.3
+			},
+			{
+				"what": "blocks><id>>at <rank> ContentAny",
+				"structs": 311,
+				"bytes": 9472,
+				"share": 3.6
+			},
+			{
+				"what": "blocks><id> <id> ContentType",
+				"structs": 351,
+				"bytes": 9106,
+				"share": 3.4
+			},
+			{
+				"what": "blocks><id>><id> [seq] ContentAny",
+				"structs": 435,
+				"bytes": 7197,
+				"share": 2.7
+			},
+			{
+				"what": "blocks><id> d/ ContentAny",
+				"structs": 304,
+				"bytes": 6846,
+				"share": 2.6
+			},
+			{
+				"what": "blockattr b/ ContentDeleted deleted",
+				"structs": 183,
+				"bytes": 6351,
+				"share": 2.4
+			},
+			{
+				"what": "blocks><id> at ContentType",
+				"structs": 311,
+				"bytes": 5620,
+				"share": 2.1
+			},
+			{
+				"what": "blockattr b/ ContentType",
+				"structs": 129,
+				"bytes": 5455,
+				"share": 2.1
+			},
+			{
+				"what": "blocks><id> type ContentAny",
+				"structs": 311,
+				"bytes": 5309,
+				"share": 2
+			},
+			{
+				"what": "blocks><id>>at <rank> ContentDeleted deleted",
+				"structs": 166,
+				"bytes": 4914,
+				"share": 1.8
+			}
+		]
+	},
+	"bytesPerEdit": 60.9,
+	"purgedBytesPerEdit": 52.2
+}

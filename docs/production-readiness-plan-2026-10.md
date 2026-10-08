@@ -550,6 +550,35 @@ Run these in order; they touch the same files.
   - The staging Worker (`bench/soak/worker.ts`) refuses every route without `SOAK_TOKEN`
     (`tests/do/soak-worker.test.ts`); operator routes take it as a bearer header, sockets as
     `?token=` (in request logs: Workers Logs stay off in `wrangler.jsonc`).
+  - Follow-ups (lane roomperf, the four findings): (1) presence fan-out has a budget
+    (`room.presence.fanout`: `maxPresenceFanout`/`EDYTOR_MAX_PRESENCE_FANOUT`, 2,000 frames a
+    second over all sockets; past it entries wait per recipient, newest per replica, one frame
+    each at a later message, no timer): the presence worst case rerun on the same machine went
+    from 5.6 million frames, a saturated core, ack p50 22 ms, p99 16 s, max 28 s
+    (`soak-wu16-followup-presence-baseline.json`) to 0.77 million frames, about 35 % of a core,
+    p50 3.8 ms, p99 43 ms, max 0.8 s (`soak-wu16-followup-presence-worst.json`). (2) a storage
+    outage rebuilds once (`room.storage.outage`: a probe append, rolled back, asks storage before
+    a frame that would write; refused frames close `1011` unapplied): 4 rebuilds in the 20-minute
+    run instead of one per refused frame (about 50 an outage); the pre-collection heap peak (125
+    MB used, 171 MB allocated) came all the same, so it is V8 deferring its major collection, not
+    the rebuilds. (3) the stored size per edit is measured by kind of struct (`size.mjs`
+    `bytes`; 50 writers: contributor entries 29 %, mark operations 16 %, text 11 %, replaced
+    `lastChangedBy` 8 %); the purge now deletes the attribution records of blocks merged away
+    before the horizon (`room.purge.merged`, `PurgeReport.merged`), so a purge at a horizon of now
+    gives back 17 % of the 20-minute document, from 5 %. Shrinking it while the document is
+    edited stays a maintainer decision (see the attribution note below). (4) a client holds about
+    30 bytes of heap per stored byte (56 MB at 1.86 MB after a full GC); `bench/soak/heap.mjs`
+    shows the engine's struct store is three quarters of it (about 440 bytes a struct: item, id,
+    content and its array, the types' maps) and the block index the rest: no safe win short of an
+    engine representation change (a fork patch). The 20-minute soak rerun
+    (`soak-wu16-followup-20min.json`, load median 25): 22,615 edits, ack of edits made while
+    connected p50 5.4 ms, p99 613 ms, p99.9 3.2 s, max 4.5 s (was 57 s); while disconnected p99
+    3.0 s, max 3.6 s (was 60 s); median fault-free window p99 51 ms; 3.2 million frames (was
+    6.5); live room heap 36 MB at 1.86 MB; converged. Found on the way, not changed: a text edit
+    in a split-born block stamps its stream's home block (`fold.ts` `locate` maps the backing
+    text to its home), so that block's contributors and `lastChangedBy` take the edit and every
+    later split copies them; whether that is the attribution contract or a bug is for the
+    attribution owner.
 
 **WU-17: client scale profile (R10, R8)**
 

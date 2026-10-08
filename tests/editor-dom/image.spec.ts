@@ -196,4 +196,62 @@ test.describe('image file paste and drop (WU-21)', () => {
 			.toBe(2);
 		issues.assertClean();
 	});
+
+	test('an image and a PDF dropped together: an image block and a file block, one step', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const box = (await page.locator('[data-edytor-text="true"]').last().boundingBox())!;
+		await page.evaluate(
+			({ x, y }) => {
+				const bytes = Uint8Array.from(
+					atob(
+						'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+					),
+					(c) => c.charCodeAt(0)
+				);
+				const transfer = new DataTransfer();
+				transfer.items.add(new File([bytes], 'pixel.png', { type: 'image/png' }));
+				transfer.items.add(new File(['%PDF-1.4'], 'notes.pdf', { type: 'application/pdf' }));
+				const editor = document.querySelector('[data-edytor]')!;
+				for (const type of ['dragover', 'drop'] as const) {
+					const event = new DragEvent(type, {
+						bubbles: true,
+						cancelable: true,
+						dataTransfer: transfer,
+						clientX: x,
+						clientY: y
+					});
+					if (event.dataTransfer !== transfer)
+						Object.defineProperty(event, 'dataTransfer', { value: transfer });
+					editor.dispatchEvent(event);
+				}
+			},
+			{ x: box.x + box.width - 4, y: box.y + box.height / 2 }
+		);
+		await expect(page.locator('[data-edytor-media-uploading] progress')).toHaveCount(1);
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<Value>(page, 'value');
+				return value.children.map((block) => ({
+					type: block.type,
+					src: typeof block.data?.src === 'string' ? block.data.src.slice(0, 5) : undefined,
+					name: block.data?.name
+				}));
+			})
+			.toEqual([
+				{ type: 'image', src: 'data:', name: undefined },
+				{ type: 'paragraph', src: undefined, name: undefined },
+				{ type: 'image', src: 'data:', name: undefined },
+				{ type: 'file', src: 'blob:', name: 'notes.pdf' },
+				{ type: 'paragraph', src: undefined, name: undefined }
+			]);
+		await expect(page.locator('[data-edytor-file-name]')).toHaveText('notes.pdf');
+		await page.keyboard.press(`${modKey}+z`);
+		await expect
+			.poll(async () => (await readJsonByTestId<Value>(page, 'value')).children.length)
+			.toBe(2);
+		issues.assertClean();
+	});
 });

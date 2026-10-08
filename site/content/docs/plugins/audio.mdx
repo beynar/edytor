@@ -18,7 +18,7 @@ The slash menu then lists "Audio" under `Media`. `audioPlugin` is the plugin wit
 
 ## Options
 
-`createAudioPlugin(options)` takes a `MediaPluginOptions`: `upload(file)` uploads a picked file (`accept="audio/*"`) and answers its URL, adding an Upload button to the empty block; `labels` (a `PartialLabels<'media'>`, see [Localization](/docs/customization/localization)) translates the empty panel (audio, upload) and `keywords` the slash keywords of `block.audio`. The answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
+`createAudioPlugin(options)` takes a `MediaPluginOptions`: `upload(file, report)` uploads a file and answers its URL (`report.progress(fraction)` draws the block's bar), adding an Upload button to the empty block (`accept="audio/*"`) and taking pasted and dropped audio files ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)); `labels` (a `PartialLabels<'media'>`, see [Localization](/docs/customization/localization)) translates the empty panel (audio, upload) and `keywords` the slash keywords of `block.audio`. The answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
 
 ## The kind
 

@@ -11,6 +11,7 @@
 		mediaLabels,
 		mediaSourceOf,
 		safeMediaSrc,
+		mediaUploads,
 		type MediaPluginOptions
 	} from './media.js';
 
@@ -33,10 +34,13 @@
 		(options: MediaPluginOptions = {}): Plugin =>
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
-			if (!uploadOf.has(edytor)) uploadOf.set(edytor, options.upload);
+			const first = !!edytor && !uploadOf.has(edytor);
+			if (first) uploadOf.set(edytor, options.upload);
+			const onPaste = first ? mediaUploads(edytor, 'video', options.upload) : undefined;
 			const labels = labelsWith('media', options.labels);
 			mediaLabels.video.claim(edytor, labels);
 			return {
+				...(onPaste ? { onPaste } : {}),
 				blocks: {
 					video: {
 						...mediaKinds.video,

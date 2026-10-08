@@ -17,6 +17,7 @@
 	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
 	import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
 	import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
+	import { createFilePlugin } from '$lib/plugins/media/FilePlugin.svelte';
 	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
 	import 'katex/dist/katex.min.css';
 	import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
@@ -516,6 +517,18 @@
 			})
 	});
 
+	/**
+	 * The `image` scenario's file upload (`media.files`): a local `blob:` URL
+	 * after a short wait, its progress reported half way.
+	 */
+	const uploadingFilePlugin = createFilePlugin({
+		upload: (file, report) =>
+			new Promise((resolve) => {
+				report.progress(0.5);
+				setTimeout(() => resolve(URL.createObjectURL(file)), 150);
+			})
+	});
+
 	/** The `triggers` scenario's people, pages (answered after a wait, as a search) and rules. */
 	const triggerMentions = createMentionPlugin({
 		items: (query) =>
@@ -567,6 +580,7 @@
 			: []),
 		arrowMovePlugin,
 		data.scenario === 'image' ? uploadingImagePlugin : imagePlugin,
+		...(data.scenario === 'image' ? [uploadingFilePlugin] : []),
 		codePlugin,
 		markdownShortcutsPlugin,
 		// `triggers=1`: the shipped mention and page-link menus and an input rule, in place of

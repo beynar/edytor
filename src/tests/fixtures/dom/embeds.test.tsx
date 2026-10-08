@@ -386,7 +386,10 @@ describe('file', () => {
 				size: 5
 			})
 		);
-		expect(upload).toHaveBeenCalledWith(file);
+		expect(upload).toHaveBeenCalledWith(
+			file,
+			expect.objectContaining({ progress: expect.any(Function) })
+		);
 		await flushDomUpdates();
 		const link = document.querySelector<HTMLAnchorElement>('[data-edytor-file] a')!;
 		expect(link.getAttribute('href')).toBe('https://files.example/report.pdf');

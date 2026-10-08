@@ -352,6 +352,7 @@ export type {
 	TriggerRange
 } from './plugins/triggers/TriggerController.svelte.js';
 export type { RichTextLink, RichTextMark } from './plugins/richtext/richTextOperations.js';
+export type { UploadReport, Uploader } from './plugins/uploads.svelte.js';
 export type { AwarenessLike, PresenceWriter } from './collaboration/awarenessSelection.js';
 export type { DataPatch } from './crdt/data.js';
 export type { AnchorAffinity, BlockRole, DocAnchor, TextRange } from './crdt/doc/types.js';

@@ -1,4 +1,7 @@
+import type { Edytor } from '$lib/edytor.svelte.js';
+import type { PluginOperations } from '$lib/plugins.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
+import { fileUploads, type Uploader } from '../uploads.svelte.js';
 import { viewLabels, type PartialLabels } from '$lib/labels.js';
 
 /** The media kinds a view shows the labels of. */
@@ -47,8 +50,13 @@ export const safeMediaSrc = (value: unknown): string | null => {
 
 /** The file, video and audio plugins' options. */
 export type MediaPluginOptions = {
-	/** Upload a picked file and answer its URL; without it only links are embedded. */
-	upload?: (file: File) => Promise<string>;
+	/**
+	 * Upload a file and answer its URL: the empty block's Upload button, and
+	 * the pasted and dropped files the kind takes (`media.files`), each shown
+	 * uploading with the progress it reports. Without it only links are
+	 * embedded.
+	 */
+	upload?: Uploader;
 	/** The words the block shows (its empty panel, its menu row), over the English ones. */
 	labels?: PartialLabels<'media'>;
 	/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
@@ -279,3 +287,40 @@ export const mediaSourceOf = (element: HTMLElement | undefined) =>
 /** HTML-escape `value` for an attribute or text of an export. */
 export const escapeHtml = (value: string) =>
 	value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+/** The files each media kind takes: a video, an audio track, any other file. */
+const ACCEPTS: Record<'video' | 'audio' | 'file', (file: File) => boolean> = {
+	video: (file) => /^video\//i.test(file.type),
+	audio: (file) => /^audio\//i.test(file.type),
+	file: () => true
+};
+
+/**
+ * Register `type`'s uploads on the view's (`media.files`): with an
+ * `upload`, the files it takes (the file kind: any no other kind takes)
+ * become its blocks. Answers the paste hook to list, or `undefined`
+ * without an `upload` or a view.
+ */
+export const mediaUploads = (
+	edytor: Edytor | undefined,
+	type: 'video' | 'audio' | 'file',
+	upload: Uploader | undefined
+): PluginOperations['onPaste'] => {
+	const uploads = upload ? fileUploads(edytor) : undefined;
+	if (!uploads || !upload) return undefined;
+	uploads.register({
+		type,
+		accepts: ACCEPTS[type],
+		fallback: type === 'file',
+		upload,
+		data: (file, answer) => {
+			const src = safeMediaSrc(answer);
+			if (!src) return null;
+			return type === 'file'
+				? { src, name: file.name || fileNameOf(src), size: file.size }
+				: { src };
+		},
+		filled: (data) => safeMediaSrc(data.src) !== null
+	});
+	return uploads.paste;
+};

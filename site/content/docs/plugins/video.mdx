@@ -27,7 +27,7 @@ The slash menu then lists "Video" under `Media`. `videoPlugin` is the plugin wit
 
 ## Options
 
-`createVideoPlugin(options)` takes a `MediaPluginOptions`: `upload(file)` uploads a picked file (`accept="video/*"`) and answers its URL, adding an Upload button to the empty block; `labels` (a `PartialLabels<'media'>`, see [Localization](/docs/customization/localization)) translates the empty panel (video, upload) and `keywords` the slash keywords of `block.video`. The answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
+`createVideoPlugin(options)` takes a `MediaPluginOptions`: `upload(file, report)` uploads a file and answers its URL (`report.progress(fraction)` draws the block's bar), adding an Upload button to the empty block (`accept="video/*"`) and taking pasted and dropped video files ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)); `labels` (a `PartialLabels<'media'>`, see [Localization](/docs/customization/localization)) translates the empty panel (video, upload) and `keywords` the slash keywords of `block.video`. The answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
 
 ## The kind
 

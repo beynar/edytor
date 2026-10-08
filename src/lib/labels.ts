@@ -212,6 +212,10 @@ export type MediaLabels = {
 	video: MediaKindLabels;
 	audio: MediaKindLabels;
 	upload: string;
+	/** A pasted or dropped file's block while it uploads. */
+	uploading: string;
+	/** A pasted or dropped file whose upload failed. */
+	uploadFailed: string;
 	/** A file's size, in bytes. */
 	fileSize: (bytes: number) => string;
 	/** The menu a pasted link opens. */
@@ -705,6 +709,8 @@ export const englishLabels: Labels = frozen({
 			invalid: "That doesn't look like an audio link or upload."
 		},
 		upload: 'Upload',
+		uploading: 'Uploading…',
+		uploadFailed: 'The upload failed: try again or paste a link.',
 		fileSize: bytes,
 		pasteAs: 'Paste as',
 		pasteLink: 'Link'

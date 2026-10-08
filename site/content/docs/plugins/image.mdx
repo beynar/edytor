@@ -89,11 +89,11 @@ In a readonly view the block shows a passive placeholder instead, with no button
 With `upload`, the plugin claims a paste or a drop that carries image files (an `image/*` type), as Notion does:
 
 1. Each file becomes an empty image block, placed where a pasted image goes (after the caret's line, the text after the caret moving to a new line, as for an [HTML image](/docs/editor/clipboard#where-pasted-content-goes); a drop at the drop point, even over a block selection, which it does not replace). All the files of one paste are one command and **one undo step**.
-2. While its file uploads, the block shows it dimmed (a local `blob:` preview) with "Uploading…". This is this view's state only: a peer sees the empty image block until the URL arrives.
+2. While its file uploads, the block shows it dimmed (a local `blob:` preview) with a bar and "Uploading…": the bar fills as `upload(file, report)` calls `report.progress(fraction)`, and is indeterminate without it. This is this view's state only: a peer sees the empty image block until the URL arrives.
 3. When `upload(file)` answers, its URL fills the block's `src`. That write is kept out of the history (`dispatcher.outside`, see [History](/docs/editor/history)), so the paste stays the one step: undo removes the image, URL included, and redo brings it back whole. When the upload ends while the image is not shown (its paste undone, the block deleted), this view keeps the URL and fills the block when it shows again (a redo, an undo of the delete), still outside the history. A block that never comes back gets nothing.
 4. A failed upload, or an answer that is not an accepted source, leaves the block empty, its panel open with "The upload failed: try again or paste a link." Embedding a link or an upload from that panel clears the error.
 
-A paste whose HTML shows text (an office app also puts a picture of the copied text on the clipboard) is imported as HTML instead. A file that is no image, and every file in a view without `upload`, is left to your own [`onPaste`](/docs/editor/clipboard#plugin-hooks) hook (unclaimed, it inserts nothing). A readonly view ignores the paste.
+A paste whose HTML shows text (an office app also puts a picture of the copied text on the clipboard) is imported as HTML instead. A file that is no image goes to the video, audio or file kind given an `upload`, in the same paste ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)); one no kind takes is left to your own [`onPaste`](/docs/editor/clipboard#plugin-hooks) hook (unclaimed, it inserts nothing). A readonly view ignores the paste.
 
 ## Resize, alignment and alt text
 

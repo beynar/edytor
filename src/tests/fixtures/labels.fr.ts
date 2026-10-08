@@ -218,6 +218,8 @@ export const fr: Labels = {
 			invalid: "Ce n'est pas un lien ou un fichier audio."
 		},
 		upload: 'Téléverser',
+		uploading: 'Téléversement…',
+		uploadFailed: 'Le téléversement a échoué : réessayez ou collez un lien.',
 		fileSize: octets,
 		pasteAs: 'Coller comme',
 		pasteLink: 'Lien'

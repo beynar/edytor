@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { mediaLabels, type MediaKind } from './media.js';
+	import { fileUploads, type Uploader } from '../uploads.svelte.js';
 
 	/**
 	 * A media block's empty state (the image's pattern, Notion): an "Add …"
@@ -11,7 +12,10 @@
 	 * upload fills `src`, and only a block still empty when it lands). A
 	 * readonly view, or a suggestion's preview (no `block`), shows a passive
 	 * placeholder: no control may run `upload` (or a bookmark's `unfurl`) for
-	 * a write the view would refuse.
+	 * a write the view would refuse. A pasted or dropped file (`media.files`)
+	 * shows its upload and progress here; a failed one opens the panel with
+	 * its error; data answered while the block was not shown fills it as soon
+	 * as it shows.
 	 */
 	let {
 		block,
@@ -28,7 +32,7 @@
 		icon: string;
 		/** The file picker's `accept`. */
 		accept?: string;
-		upload?: (file: File) => Promise<string>;
+		upload?: Uploader;
 		link: (value: string) => boolean;
 		file?: (file: File, src: string) => boolean;
 	} = $props();
@@ -39,16 +43,41 @@
 	/** The button and placeholder text ("Embed a link"); the file's names its upload. */
 	const label = $derived(upload && 'addOrUpload' in words ? words.addOrUpload : words.add);
 	const { placeholder, submit, invalid } = $derived(words);
+	/** The upload of a pasted or dropped file into this block, if any. */
+	const uploads = $derived(block ? fileUploads(block.edytor) : undefined);
+	const pending = $derived(block ? uploads?.of(block.id) : undefined);
+	// After the flush that shows the block: never inside the transaction that showed it.
+	$effect(() => {
+		if (pending?.status === 'landed' && block && !block.edytor.readonly) {
+			const id = block.id;
+			untrack(() => uploads?.fill(id));
+		}
+	});
 	let draft = $state('');
 	let open = $state(false);
-	let failed = $state(false);
+	let failed = $state<'invalid' | 'upload' | false>(false);
+	// The panel opens on a failed upload, with its error; the user closes it.
+	$effect(() => {
+		if (pending?.status === 'failed')
+			untrack(() => {
+				open = true;
+				failed = 'upload';
+			});
+	});
 
 	const embed = (value: string) => {
-		failed = !link(value);
+		failed = link(value) ? false : 'invalid';
+		if (!failed && block) uploads?.clear(block.id);
 	};
 </script>
 
-{#if !block || block.edytor.readonly}
+{#if pending?.status === 'uploading'}
+	<div data-edytor-media-uploading role="status">
+		<span aria-hidden="true">{icon}</span>
+		<progress value={pending.progress ?? undefined} max="1"></progress>
+		{labels.uploading}
+	</div>
+{:else if !block || block.edytor.readonly}
 	<div data-edytor-media-placeholder><span aria-hidden="true">{icon}</span> {label}</div>
 {:else}
 	<button
@@ -84,9 +113,9 @@
 							const { edytor, id, type } = block;
 							let src: string;
 							try {
-								src = await upload(picked);
+								src = await upload(picked, { progress: () => {} });
 							} catch {
-								failed = true;
+								failed = 'upload';
 								return;
 							}
 							// Write only to the block as it was picked from: still in the
@@ -95,13 +124,15 @@
 							const live = edytor.idToBlock.get(id);
 							if (!live?.isInTree || live.type !== type || edytor.readonly) return;
 							if (edytor.facade.blockDataOf(id)?.src !== undefined) return;
-							failed = !(file ? file(picked, src) : link(src));
+							failed = (file ? file(picked, src) : link(src)) ? false : 'invalid';
 						}}
 					/>
 				</label>
 			{/if}
-			{#if failed}
-				<small data-edytor-media-error>{invalid}</small>
+			{#if failed === 'upload'}
+				<small data-edytor-media-error="upload">{labels.uploadFailed}</small>
+			{:else if failed}
+				<small data-edytor-media-error="invalid">{invalid}</small>
 			{/if}
 		</div>
 	{/if}

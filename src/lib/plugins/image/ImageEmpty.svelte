@@ -8,7 +8,7 @@
 		oversizedInlineImage,
 		safeImageSrc
 	} from './image.js';
-	import type { ImageUploads } from './uploads.svelte.js';
+	import type { FileUploads, Uploader } from '../uploads.svelte.js';
 
 	/**
 	 * Notion's empty image: "Add an image", then a link field (and Upload with
@@ -27,8 +27,8 @@
 		landed = false
 	}: {
 		block: Block | undefined;
-		upload?: (file: File) => Promise<string>;
-		uploads?: ImageUploads;
+		upload?: Uploader;
+		uploads?: FileUploads;
 		error?: 'upload' | null;
 		landed?: boolean;
 	} = $props();
@@ -94,7 +94,7 @@
 							const file = event.currentTarget.files?.[0];
 							if (!file || block?.edytor.readonly !== false) return;
 							try {
-								embed(await upload(file));
+								embed(await upload(file, { progress: () => {} }));
 							} catch {
 								failed = 'upload';
 							}

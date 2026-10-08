@@ -19,7 +19,7 @@
 		type ImageAlign
 	} from './image.js';
 	import { ImageControls } from './controls.svelte.js';
-	import { ImageUploads } from './uploads.svelte.js';
+	import { fileUploads, type FileUploads, type Uploader } from '../uploads.svelte.js';
 	import { onPress } from '$lib/events/onFocus.js';
 	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
 
@@ -37,9 +37,10 @@
 		 * Upload a file and answer its URL. Adds an Upload button to the empty
 		 * block, and claims pasted and dropped image files: each is placed as an
 		 * image block at once (one undo step) and filled with the URL this
-		 * answers. Without it only links are embedded.
+		 * answers (the block shows the progress it reports). Without it only
+		 * links are embedded.
 		 */
-		upload?: (file: File) => Promise<string>;
+		upload?: Uploader;
 		/** The words the block, its empty panel and its chrome show, over the English ones. */
 		labels?: PartialLabels<'image'>;
 		/**
@@ -57,9 +58,9 @@
 
 	/** One view's image state: its plugin's `upload`, the chrome, the uploads in flight. */
 	type View = {
-		upload?: (file: File) => Promise<string>;
+		upload?: Uploader;
 		controls: ImageControls;
-		uploads?: ImageUploads;
+		uploads?: FileUploads;
 	};
 	/** By view; the first image plugin of a view owns it, as its kind's definition (first wins). */
 	const views = new WeakMap<Edytor, View>();
@@ -67,17 +68,6 @@
 
 	/** Recognize any image plugin instance (the component's default yields to yours). */
 	export const isImagePlugin = (plugin: Plugin) => imagePlugins.has(plugin);
-
-	/**
-	 * Whether a pasted `html` shows nothing but images (a copied image's
-	 * `<img>`), so the clipboard's files are the content. HTML with text (an
-	 * office app also puts a picture of the copied text on the clipboard) is
-	 * imported instead.
-	 */
-	const onlyImages = (html: string | undefined) =>
-		!html ||
-		typeof DOMParser === 'undefined' ||
-		!new DOMParser().parseFromString(html, 'text/html').body.textContent?.trim();
 
 	/**
 	 * Notion's image block: an "Add an image" panel until it has a source (a
@@ -93,20 +83,30 @@
 			const own: View = {
 				upload,
 				controls: new ImageControls(edytor, labels),
-				uploads: upload ? new ImageUploads(edytor, upload) : undefined
+				uploads: upload ? fileUploads(edytor) : undefined
 			};
 			// The records read with no view (`plugin(undefined)`) keep no state.
-			if (edytor && !views.has(edytor)) views.set(edytor, own);
+			if (edytor && !views.has(edytor)) {
+				views.set(edytor, own);
+				if (upload)
+					own.uploads?.register({
+						type: 'image',
+						accepts: isImageFile,
+						upload,
+						data: (_file, answer) => {
+							const src = storableImageSrc(answer);
+							return src ? { src } : null;
+						},
+						filled: (data) => safeImageSrc(data.src) !== null,
+						preview: true
+					});
+			}
 			const owns = () => views.get(edytor) === own;
 			return {
-				// A pasted or dropped image file (a drop replays the paste hooks):
-				// placed and uploaded, unless the HTML beside it shows text.
-				onPaste: ({ e, prevent }) => {
-					const uploads = own.uploads;
-					if (!uploads || !owns() || edytor.readonly) return;
-					const files = Array.from(e.clipboardData?.files ?? []).filter(isImageFile);
-					if (files.length && onlyImages(e.clipboardData?.getData('text/html')))
-						prevent(() => uploads.insert(files));
+				// Pasted or dropped files (a drop replays the paste hooks): the
+				// view's uploads place a block per file of every kind that uploads.
+				onPaste: (payload) => {
+					if (owns()) own.uploads?.paste(payload);
 				},
 				// The chrome: in the overlay, for the image under the pointer.
 				onEdytorAttached: ({ node }) => {
@@ -206,9 +206,10 @@
 	{:else if upload?.status === 'uploading'}
 		<div use:block.void data-edytor-image data-edytor-image-uploading data-align="center">
 			{#if upload.preview}<img src={upload.preview} alt="" draggable="false" />{/if}
-			<span data-edytor-image-progress role="status"
-				>{imageLabels.of(block.handle?.edytor).uploading}</span
-			>
+			<span data-edytor-image-progress role="status">
+				<progress value={upload.progress ?? undefined} max="1"></progress>
+				{imageLabels.of(block.handle?.edytor).uploading}
+			</span>
 		</div>
 	{:else}
 		<div use:block.void data-edytor-image-empty>

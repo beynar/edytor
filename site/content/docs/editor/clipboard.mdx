@@ -44,7 +44,7 @@ A paste is handled by the first rule that applies:
 
 1. **An Edytor fragment**, from the custom format or embedded in the HTML. Pasted with full fidelity.
 2. **A plugin's `onPaste` hook**, if one calls `prevent()`.
-3. **Files** (an image from the clipboard, say): ignored unless a plugin's `onPaste` handled them. The [image plugin](/docs/plugins/image#pasting-and-dropping-files) given an `upload` handles image files: each becomes an image block, uploaded.
+3. **Files** (an image from the clipboard, say): ignored unless a plugin's `onPaste` handled them. The media kinds given an `upload` handle them: each file becomes a block of the kind that takes it, uploaded ([Pasted and dropped files](#pasted-and-dropped-files)).
 4. **External `text/html`**, imported as blocks and marks (below).
 5. **Markdown `text/plain`**, as its blocks ([Pasting markdown](#pasting-markdown)).
 6. **`text/plain`**, one block per line.
@@ -70,6 +70,32 @@ The same placement applies to Edytor fragments, HTML and multi-line text:
 - A pasted range replaces the selected text first.
 
 Pasted blocks and inline blocks always get new ids, so pasting twice never creates duplicates. Their marks, data, children and order are kept.
+
+## Pasted and dropped files
+
+Every kind given an `upload` takes the files of a paste or a drop that are its own, as Notion does: an image (`image/*`) to the [image](/docs/plugins/image#pasting-and-dropping-files) block, a video (`video/*`) to the [video](/docs/plugins/video) block, an audio file (`audio/*`) to the [audio](/docs/plugins/audio) block, and any other file to the [file](/docs/plugins/file) block, which takes only what no other kind takes, wherever it is listed.
+
+- The files become one block each, in the clipboard's order, each of its own kind, placed as pasted blocks are (after the caret's line; a drop at the drop point). All of them are one command and **one undo step**. A file no kind takes is left out.
+- Each block shows its upload in this view (an image its local preview): a bar, with "Uploading…", that fills as your `upload` reports progress. `upload(file, report)` may call `report.progress(fraction)` (`0` to `1`) as the file goes; without it the bar is indeterminate. A peer sees the empty block until the URL arrives.
+- The URL `upload` answers fills the block (a file's with its `name` and `size`) outside the history, so the paste stays the one step: undo removes the block, URL included, and redo brings it back whole, even when the upload ended while it was undone.
+- A failed upload, or an answer that is no accepted source, leaves the block empty, its panel open with "The upload failed: try again or paste a link."
+- A paste whose HTML shows text (an office app also puts a picture of the copied text on the clipboard) is imported as HTML instead. A readonly view takes nothing.
+
+```ts title="progress.ts" check
+import { createFilePlugin } from 'edytor';
+
+export const files = createFilePlugin({
+	upload: (file, report) =>
+		new Promise<string>((resolve, reject) => {
+			const request = new XMLHttpRequest();
+			request.open('POST', '/api/uploads');
+			request.upload.onprogress = (event) => report.progress(event.loaded / event.total);
+			request.onload = () => resolve(JSON.parse(request.responseText).url);
+			request.onerror = reject;
+			request.send(file);
+		})
+});
+```
 
 ## Pasting markdown
 

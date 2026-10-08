@@ -19,7 +19,6 @@ export const layoutOps = (c: OpsContext) => {
 		childrenIds,
 		positionOf,
 		ancestorsOf,
-		is,
 		isIsland,
 		isLines,
 		insideIsland,
@@ -27,7 +26,6 @@ export const layoutOps = (c: OpsContext) => {
 		isLayoutItem,
 		holdsLayout,
 		insideItem,
-		order,
 		live,
 		canPlace,
 		isContainer,
@@ -37,10 +35,7 @@ export const layoutOps = (c: OpsContext) => {
 		plan,
 		ranksFor,
 		moveTo,
-		move,
 		landing,
-		dissolving,
-		emptying,
 		emptied
 	} = c;
 

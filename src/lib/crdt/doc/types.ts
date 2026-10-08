@@ -8,7 +8,6 @@ import type { AttributionActor } from '../attribution/index.js';
 import type {
 	BlockId,
 	BlockSpec,
-	ContentItem,
 	InlineSpec,
 	ProjectedBlock,
 	SplitTail

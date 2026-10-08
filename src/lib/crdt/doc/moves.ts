@@ -6,7 +6,7 @@
 import { id as newId } from '../../utils.js';
 import { asBlockSpec, sanitizeSpec, type JSONBlock } from '../../utils/json.js';
 import type { BlockId, BlockSpec, Destination } from '../placement/model.js';
-import { ref, refused } from './plan.js';
+import { ref } from './plan.js';
 import type { Prepared, PlanStep, Plan } from './types.js';
 import type { OpsContext } from './steps.js';
 
@@ -15,17 +15,13 @@ export const moveOps = (c: OpsContext) => {
 	const {
 		doc,
 		M,
-		view,
 		blockTypeOf,
 		blockDataOf,
 		childrenIds,
 		positionOf,
-		is,
 		isVoid,
 		isIsland,
 		isLine,
-		order,
-		next,
 		contentItems,
 		live,
 		canPlace,

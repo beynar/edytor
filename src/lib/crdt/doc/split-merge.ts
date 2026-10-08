@@ -4,12 +4,11 @@
  * `mergeBackward`/`mergeForward` (a first item lifts out of its container,
  * a layout item's first block merges across items).
  */
-import { id as newId } from '../../utils.js';
 import { isIncarnationId } from '../incarnations.js';
 import { sanitizeWireJson } from '../../utils/json.js';
 import { readData } from '../data.js';
 import type { BlockId, SplitTail } from '../placement/model.js';
-import { ref, refused } from './plan.js';
+import { ref } from './plan.js';
 import type { Prepared, PlanStep } from './types.js';
 import type { OpsContext } from './steps.js';
 
@@ -18,15 +17,12 @@ export const splitMergeOps = (c: OpsContext) => {
 	const {
 		doc,
 		M,
-		roles,
 		view,
 		childrenIds,
 		positionOf,
-		is,
 		isVoid,
 		insideIsland,
 		isLayoutItem,
-		order,
 		next,
 		previous,
 		displayLength,

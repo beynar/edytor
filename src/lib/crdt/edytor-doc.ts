@@ -11,9 +11,27 @@
  * - `text/runs.ts` (`bindRuns`) — the maintained run view: immutable run
  *   snapshots, structural sharing, the change report (U05, D9).
  *
- * The schema gate and manifest live in `doc/gate.ts`, the version record
- * and the deterministic seed in `doc/seed.ts`, the public types in
- * `doc/types.ts` and the pure plan helpers in `doc/plan.ts`.
+ * This module is the wiring: `create` builds a facade's parts, each a
+ * module under `doc/` taking an explicit context — the parts before it —
+ * and assembles the facade object.
+ *
+ * - `doc/gate.ts` — the schema manifest and gate (module-level);
+ *   `doc/seed.ts` — the version record and the deterministic seed;
+ *   `doc/types.ts` — the public types; `doc/plan.ts` — op results, a plan's
+ *   effect, ingress normalization.
+ * - `doc/reads.ts` (`DocBase`: the doc, its engine layers, its index and
+ *   roles) — the reads, roles and document order; `doc/capability.ts` —
+ *   structural capability (`canPlace`, `fits`, `canMerge`, the island and
+ *   void rules).
+ * - `doc/funnel.ts` — the write funnel (`write`, `apply`, attribution and
+ *   lineage); `doc/events.ts` — `onChange`; `doc/history.ts` —
+ *   `createUndoManager`; `doc/anchors.ts` — caret anchors.
+ * - `doc/steps.ts` — the step writers every op composes (ranks, settle,
+ *   emptying, dissolving); the prepared op families over them
+ *   (`OpsContext`): `doc/moves.ts`, `doc/layout.ts`, `doc/split-merge.ts`,
+ *   `doc/delete.ts`, `doc/meta.ts` (type and data), `doc/content.ts`
+ *   (text, atoms, marks); range deletion and flow placement are
+ *   `rangeDelete.ts` and `flow.ts`.
  *
  * ── Identity discipline ────────────────────────────────────────────────
  *
@@ -25,106 +43,24 @@
  * replacement (baseline `setBlock` semantics — replacement is a new-identity
  * operation).
  */
-import { setMarkEdges, type MarkEdge } from './text/marks.js';
-import { isIncarnationId } from './incarnations.js';
-import { DEV } from 'esm-env';
-import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode, YUndoManager } from './engine-api.js';
-import { hash32, randOf, setDocRand } from './rand.js';
-import {
-	AT,
-	BLOCK_NODE,
-	DATA,
-	DATA_LEAF_PREFIX,
-	DEL_PREFIX,
-	DOC_DATA_ROOT,
-	HORIZON_ROOT,
-	ID,
-	INLINE_NODE,
-	isNodeLike,
-	LAST_CHANGED_ATTR,
-	TYPE,
-	SCHEMA
-} from './schema.js';
-import {
-	bindModel,
-	displayParentOf,
-	displaySlotOf,
-	isLiveIn,
-	promotedRank,
-	sourceRank,
-	SOURCE_SIDE,
-	type BlockId,
-	type BlockSpec,
-	type ContentItem,
-	type Destination,
-	type InlineSpec,
-	type ModelView,
-	type ProjectedBlock,
-	type SplitTail
-} from './placement/model.js';
-import {
-	bindText,
-	DEAD,
-	displayOf,
-	locate,
-	ownedLength,
-	ownTextIds,
-	type Anchor
-} from './text/model.js';
+import { setMarkEdges } from './text/marks.js';
+import type { EngineApi, EngineDoc, YUndoManager } from './engine-api.js';
+import { TYPE, SCHEMA } from './schema.js';
+import { bindModel, type BlockId, type BlockSpec, type Destination } from './placement/model.js';
+import { bindText } from './text/model.js';
 import { bindDeletes } from './text/deletes.js';
 import { bindPurge, readHorizon } from './purge.js';
 import { restoreDocument } from './restore.js';
-import {
-	bindRuns,
-	ENTRY_FACET,
-	type ContentRun,
-	type DisplayRoles,
-	type Folded,
-	type IndexReport,
-	type RunView
-} from './text/runs.js';
-import { callEach } from './protocols/observable.js';
+import { bindRuns, type DisplayRoles, type RunView } from './text/runs.js';
 import { bindNodes, type DocBlock } from './nodes.js';
-import {
-	followRedone,
-	holdsPending,
-	walkIdSetStructs,
-	type IdSetLike,
-	type StoreStruct
-} from './structs.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
 	type BlockAttribution
 } from './attribution/block.js';
-import type { AttributionActor } from './attribution/index.js';
-import { isLegacyDoc } from './migration/legacy-schema.js';
-import { rangeDeleteOps, type DocPosition } from './rangeDelete.js';
+import { rangeDeleteOps } from './rangeDelete.js';
 import { flowOps, type FlowContext } from './flow.js';
-import {
-	dataLeaves,
-	isObject,
-	itemIds,
-	leafKey,
-	patchWrites,
-	readData,
-	writeLeaves,
-	type DataPatch,
-	type LeafWrite
-} from './data.js';
-import { id as newId } from '../utils.js';
-import {
-	asBlockSpec,
-	cloneJsonSafe,
-	jsonBlockToSpec,
-	jsonEquals,
-	sanitizeSpec,
-	sanitizeWireJson,
-	sanitizeWireString,
-	type JSONBlock,
-	type JSONDoc
-} from '../utils/json.js';
-
+import { sanitizeSpec, type JSONBlock, type JSONDoc } from '../utils/json.js';
 import {
 	assertSchema,
 	assertUsableDoc,
@@ -138,6 +74,7 @@ import {
 	schemaVersion
 } from './doc/gate.js';
 import { bindSeed } from './doc/seed.js';
+import { applied, ref } from './doc/plan.js';
 import { docReads, type DocBase } from './doc/reads.js';
 import { docCapability } from './doc/capability.js';
 import { writeFunnel } from './doc/funnel.js';
@@ -145,24 +82,20 @@ import { docEvents } from './doc/events.js';
 import { docHistory } from './doc/history.js';
 import { docAnchors } from './doc/anchors.js';
 import { planSteps } from './doc/steps.js';
-import { contentOps } from './doc/content.js';
-import { metaOps } from './doc/meta.js';
-import { deleteOps } from './doc/delete.js';
-import { splitMergeOps } from './doc/split-merge.js';
-import { layoutOps } from './doc/layout.js';
 import { moveOps } from './doc/moves.js';
-export { EdytorDocDisposedError, lineageDepthOf } from './doc/funnel.js';
-export { DEFAULT_HISTORY_LIMIT } from './doc/history.js';
-import {
-	applied,
-	effectOf,
-	EMPTY_IDS,
-	NOOP,
-	ref,
-	refused,
-	sanitizeInline,
-	sanitizeItem
-} from './doc/plan.js';
+import { layoutOps } from './doc/layout.js';
+import { splitMergeOps } from './doc/split-merge.js';
+import { deleteOps } from './doc/delete.js';
+import { metaOps } from './doc/meta.js';
+import { contentOps } from './doc/content.js';
+// Types the facade's inferred declaration names: imported here so the
+// emitted `bindEdytorDoc` type names them rather than an import path.
+import type { EngineNode } from './engine-api.js';
+import type { ContentItem, InlineSpec, ModelView, SplitTail } from './placement/model.js';
+import type { Anchor } from './text/model.js';
+import type { ContentRun } from './text/runs.js';
+import type { DocPosition } from './rangeDelete.js';
+import type { DataPatch } from './data.js';
 import type {
 	AnchorAffinity,
 	BlockRole,
@@ -197,6 +130,8 @@ export {
 };
 export { UnsupportedDocError, type SchemaProblem } from './doc/gate.js';
 export { SEED_ORIGIN } from './doc/seed.js';
+export { EdytorDocDisposedError, lineageDepthOf } from './doc/funnel.js';
+export { DEFAULT_HISTORY_LIMIT } from './doc/history.js';
 export type {
 	AnchorAffinity,
 	BlockRole,
@@ -286,7 +221,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const reads = { ...base, ...docReads(base) };
 		const shape = { ...reads, ...docCapability(reads) };
 		const {
-			dataNode,
 			blockJSON,
 			view,
 			blockTypeOf,
@@ -298,17 +232,13 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			pathOf,
 			ancestorsOf,
 			slotOf,
-			is,
 			isVoid,
 			isIsland,
 			isLines,
 			islandOf,
 			insideIsland,
-			isLine,
-			itemKindOf,
 			isLayout,
 			isLayoutItem,
-			holdsLayout,
 			insideItem,
 			order,
 			compare,
@@ -324,7 +254,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			canPlace,
 			isContainer,
 			fits,
-			fitsIn,
 			fitted,
 			emptiable,
 			nestParent,
@@ -351,42 +280,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const { createUndoManager } = docHistory({ ...base, ...funnel, D, BA, releasers, init });
 		const { anchorAt, followUndo, resolveAnchor } = docAnchors(reads);
 		const steps = { ...shape, ...planSteps(shape) };
-		const {
-			REFUSED,
-			HEAD,
-			KEPT,
-			WITH,
-			SELF,
-			AFTER,
-			plan,
-			ranksFor,
-			moveTo,
-			move,
-			exitRanks,
-			pieceRanks,
-			leaving,
-			attr,
-			leavingIsland,
-			settledKind,
-			settle,
-			landing,
-			emptyingAll,
-			dissolving,
-			emptying,
-			emptied,
-			deleting,
-			remove,
-			merge,
-			clamp,
-			atomOf,
-			textIn
-		} = steps;
-		const { insertText, deleteText, formatRange, clearMarks, insertInline, removeInline } =
-			contentOps(steps);
-		const { dataSteps, replaceData, setBlockType, patchData, setBlock } = metaOps(steps);
-		const { deleteBlocks, deleteBlock } = deleteOps(steps);
-		const { splitBlock, mergeBlocks, gone, mergeBackward, mergeForward } = splitMergeOps(steps);
-		const { besideAt, placeBeside, wrapInLayout } = layoutOps(steps);
+		const { REFUSED, plan, ranksFor, move, pieceRanks, attr, settle, dissolving, remove } = steps;
+		// The prepared op families (`OpsContext`: the reads, capability and step writers).
 		const {
 			insertBlocks,
 			moveBlocks,
@@ -396,6 +291,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			liftOut,
 			duplicateBlock
 		} = moveOps(steps);
+		const { besideAt, placeBeside, wrapInLayout } = layoutOps(steps);
+		const { splitBlock, mergeBlocks, mergeBackward, mergeForward } = splitMergeOps(steps);
+		const { deleteBlocks, deleteBlock } = deleteOps(steps);
+		const { dataSteps, replaceData, setBlockType, patchData, setBlock } = metaOps(steps);
+		const { insertText, deleteText, formatRange, clearMarks, insertInline, removeInline } =
+			contentOps(steps);
 
 		/** What range deletion and flow placement read, and the step writers they compose. */
 		const context: FlowContext = {

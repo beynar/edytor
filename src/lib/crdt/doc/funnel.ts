@@ -48,7 +48,7 @@ export type FunnelContext = DocBase &
 
 /** The write funnel of one facade. */
 export const writeFunnel = (c: FunnelContext) => {
-	const { doc, M, T, runsView, dataNode, blockJSON, view, is, order, BA, config } = c;
+	const { doc, M, T, runsView, dataNode, blockJSON, BA, config } = c;
 
 	/**
 	 * Terminal flag — set by `dispose()`. Mutating ops funnel through

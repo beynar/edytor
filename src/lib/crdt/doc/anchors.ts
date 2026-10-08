@@ -11,7 +11,7 @@ import type { DocBase, DocReads } from './reads.js';
 
 /** The anchors of one facade. */
 export const docAnchors = (c: DocBase & DocReads) => {
-	const { Y, doc, T, view, is } = c;
+	const { Y, doc, T, view } = c;
 
 	// ── anchors (R4) ─────────────────────────────────────────────────
 	// An anchor is the home text id plus a relative position; the stream

@@ -25,8 +25,6 @@ import { cloneJsonSafe, type JSONBlock } from '../../utils/json.js';
 import { ref } from './plan.js';
 import type { BlockRole, DataTarget, JsonObj, OrderPolicy } from './types.js';
 
-type View = ModelView;
-
 /** What every part of a document facade is built over: one doc, its engine layers, its index and its roles. */
 export type DocBase = {
 	Y: EngineApi;

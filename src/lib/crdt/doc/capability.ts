@@ -50,15 +50,13 @@ export const docCapability = (c: DocBase & DocReads) => {
 		childrenIds,
 		positionOf,
 		ancestorsOf,
-		is,
 		isVoid,
 		isIsland,
 		islandOf,
 		insideIsland,
 		holdsLayout,
 		insideItem,
-		displayLength,
-		live
+		displayLength
 	} = c;
 
 	// ── structural capability (R5, O8): one answer in advance and at execution ──

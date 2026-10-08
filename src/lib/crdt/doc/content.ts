@@ -10,7 +10,7 @@ import type { OpsContext } from './steps.js';
 
 /** The content ops of one facade, prepared. */
 export const contentOps = (c: OpsContext) => {
-	const { is, contentTarget, REFUSED, plan, clamp, atomOf, textIn } = c;
+	const { contentTarget, REFUSED, plan, clamp, atomOf, textIn } = c;
 
 	// content ops (allowed inside voids — caption contract)
 

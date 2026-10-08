@@ -15,22 +15,18 @@ export const deleteOps = (c: OpsContext) => {
 		childrenIds,
 		positionOf,
 		ancestorsOf,
-		is,
 		itemKindOf,
 		isLayout,
 		isLayoutItem,
-		order,
 		live,
 		REFUSED,
 		plan,
 		moveTo,
-		settledKind,
 		settle,
 		emptyingAll,
 		emptied,
 		deleting,
-		remove,
-		merge
+		remove
 	} = c;
 
 	/**

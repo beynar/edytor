@@ -1,3 +1,4 @@
+import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { englishLabels, type ImageLabels } from '$lib/labels.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
@@ -8,6 +9,11 @@ import {
 	MIN_IMAGE_WIDTH,
 	type ImageAlign
 } from './image.js';
+import { identify, keepFocus } from '../chrome.js';
+
+/** Where a press keeps the alt field open: the toolbar (its Alt button toggles it) and the field's own. */
+const ALT_CHROME =
+	'[data-edytor-image-alt-panel], [data-edytor-image-toolbar], [data-edytor-image-alt]';
 
 /** The hovered image, layer-relative: the `img` box, and its frame's width (the most it may take). */
 export type ImageBox = {
@@ -61,7 +67,7 @@ export class ImageControls {
 	box = $state<ImageBox | null>(null);
 	/** The handle being dragged. */
 	drag = $state<Drag | null>(null);
-	/** The dragged image's width at the pointer (view only). */
+	/** The dragged image's width at the pointer (view only). @internal */
 	preview = $state.raw<{ id: string; width: number } | null>(null);
 	/** Ends the drag in progress without a write. */
 	#cancel: (() => void) | null = null;
@@ -103,12 +109,12 @@ export class ImageControls {
 		return this.box !== null && (this.drag !== null || !this.edytor.readonly);
 	}
 
-	/** An image's width as shown, in px: the drag's preview while a handle drags it, else `data.width`. */
+	/** An image's width as shown, in px: the drag's preview while a handle drags it, else `data.width`. @internal */
 	width = (id: string | undefined, data: Record<string, unknown> | undefined) =>
 		(id !== undefined && this.preview?.id === id ? this.preview.width : undefined) ??
 		imageWidthOf(data);
 
-	/** The pointer is over `target`: the image block holding it, if any. */
+	/** The pointer is over `target`: the image block holding it, if any. @internal */
 	hover = (target: EventTarget | null) => {
 		const frame = (target as Element | null)?.closest?.('[data-edytor-image]');
 		const block = frame?.closest<HTMLElement>('[data-edytor-block="true"]');
@@ -118,7 +124,7 @@ export class ImageControls {
 		this.edytor.overlay.invalidate();
 	};
 
-	/** The pointer left for `to`: the chrome stays while it is over the editor's overlay. */
+	/** The pointer left for `to`: the chrome stays while it is over the editor's overlay. @internal */
 	leave = (to: EventTarget | null) => {
 		const node = to instanceof Node ? to : null;
 		if (node && this.edytor.overlay.layer?.contains(node)) return;
@@ -127,7 +133,7 @@ export class ImageControls {
 		this.edytor.overlay.invalidate();
 	};
 
-	/** The overlay measure: the target image's box. */
+	/** The overlay measure: the target image's box. @internal */
 	measure = (host: HTMLElement, origin: DOMRect) => {
 		const id = this.target;
 		const block = id ? this.edytor.idToBlock.get(id) : undefined;
@@ -152,7 +158,7 @@ export class ImageControls {
 		};
 	};
 
-	/** Measure again in the overlay's next frame. */
+	/** Measure again in the overlay's next frame. @internal */
 	invalidate = () => this.edytor.overlay.invalidate();
 
 	/** Set the target image's alignment: one `patchData` command. */
@@ -182,21 +188,61 @@ export class ImageControls {
 	 * A press anywhere (`onPress`, capture): one outside the alt panel and the
 	 * toolbar (whose Alt button toggles it) closes the field, so the chrome
 	 * follows the pointer again.
+	 * @internal
 	 */
 	pressed = (event: MouseEvent) => {
 		const target = event.target as Element | null;
 		if (this.editing === null) return;
-		if (target?.closest?.('[data-edytor-image-alt-panel], [data-edytor-image-toolbar]')) return;
+		if (target?.closest?.(ALT_CHROME)) return;
 		this.closeAlt();
 	};
 
-	/** Focus left the alt field: for somewhere outside its panel, the field closes. */
+	/** Focus left the alt field: for somewhere outside its panel, the field closes. @internal */
 	blurred = (event: FocusEvent) => {
 		const to = event.relatedTarget;
-		const panel = (event.currentTarget as Element | null)?.closest('[data-edytor-image-alt-panel]');
+		const field = event.currentTarget as Element | null;
+		const panel = field?.closest('[data-edytor-image-alt-panel]') ?? field;
 		// No new focus (the window went to the background): the field stays.
 		if (!(to instanceof Node) || panel?.contains(to)) return;
 		this.closeAlt();
+	};
+
+	/**
+	 * The image's toolbar (`{@attach controls.bar}`): its `toolbar` role and
+	 * name unless it has its own, the mark a press outside the alt field
+	 * reads (a press on the toolbar keeps the field open, so its Alt button
+	 * toggles it), and presses that keep the editor's focus.
+	 */
+	bar: Attachment<HTMLElement> = (node) => {
+		if (!node.hasAttribute('role')) node.setAttribute('role', 'toolbar');
+		if (!node.hasAttribute('aria-label')) node.setAttribute('aria-label', this.labels.toolbar);
+		node.setAttribute('data-edytor-image-toolbar', '');
+		node.addEventListener('mousedown', keepFocus);
+		return () => node.removeEventListener('mousedown', keepFocus);
+	};
+
+	/**
+	 * The alt text field (`{@attach controls.altField}`): focused when it
+	 * opens; Enter or Escape closes it and gives the editor its keys back,
+	 * focus moving out of it (or of the element marked
+	 * `data-edytor-image-alt-panel` around it) closes it, and a press on it
+	 * keeps it open. Write its value with `setAlt`.
+	 */
+	altField: Attachment<HTMLInputElement> = (node) => {
+		identify(node, this.edytor.popups.idOf('image-alt'), undefined, this.labels.alt);
+		node.setAttribute('data-edytor-image-alt', '');
+		node.focus({ preventScroll: true });
+		const keydown = (event: KeyboardEvent) => {
+			if (event.isComposing || (event.key !== 'Enter' && event.key !== 'Escape')) return;
+			event.preventDefault();
+			this.closeAlt(true);
+		};
+		node.addEventListener('keydown', keydown);
+		node.addEventListener('focusout', this.blurred);
+		return () => {
+			node.removeEventListener('keydown', keydown);
+			node.removeEventListener('focusout', this.blurred);
+		};
 	};
 
 	/** Close the alt field; with `keys`, the editor takes the keys back. */
@@ -217,6 +263,7 @@ export class ImageControls {
 	 * A `mousedown` on a handle: no native selection starts there; the press
 	 * itself when no `pointerdown` came before it (`isLonePress`: WebKit's
 	 * first press after a drag), which starts the drag as one would.
+	 * @internal
 	 */
 	mousedown = (event: MouseEvent, side: Drag['side']) => {
 		event.preventDefault();
@@ -227,6 +274,7 @@ export class ImageControls {
 	 * Press on a handle: the drag starts, nothing is written until the
 	 * release. A `pointerdown` tracks its pointer (captured, on the document);
 	 * a lone `mousedown` tracks the mouse on the window.
+	 * @internal
 	 */
 	start = (event: PointerEvent | MouseEvent, side: Drag['side']) => {
 		const { edytor } = this;
@@ -292,7 +340,7 @@ export class ImageControls {
 		edytor.overlay.invalidate();
 	};
 
-	/** The view turned readonly: a drag in progress ends at once, nothing written. */
+	/** The view turned readonly: a drag in progress ends at once, nothing written. @internal */
 	lock = () => {
 		if (this.drag && !this.edytor.dispatcher.permits()) this.#cancel?.();
 		this.editing = null;

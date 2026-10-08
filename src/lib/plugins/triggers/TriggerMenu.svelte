@@ -1,37 +1,41 @@
 <script lang="ts">
-	import { keepInView } from '../keepInView.js';
+	import type { TriggerItemPayload } from '$lib/plugins.js';
 	import type { TriggerMenuController } from './TriggerController.svelte.js';
 
 	let { controller }: { controller: TriggerMenuController<any> } = $props();
 	const items = $derived(controller.items);
 	const row = $derived(controller.trigger.item);
+	const menu = $derived(controller.trigger.menu);
 
 	// An editor turning readonly closes the menu (a pick would be refused).
 	$effect(() => {
 		if (controller.isOpen && controller.readonly) controller.close();
 	});
 
-	/**
-	 * The highlighted row's id, once its element is in the page (a custom
-	 * `item` may set none): the editor's root, which holds the keyboard, names it.
-	 */
-	let list = $state<HTMLElement>();
-	let active = $state<string>();
-	$effect(() => {
-		if (!controller.isOpen) return void (active = undefined);
-		const index = controller.selectedIndex;
-		const id = items[index] === undefined ? undefined : controller.optionId(index);
-		active = id && list?.ownerDocument.getElementById(id) ? id : undefined;
-	});
-	/** The open menu, published to the view's root (`edytor.popups`): the listbox and its highlighted row. */
-	$effect(() => {
-		if (!controller.isOpen || !list) return;
-		controller.publish({ id: controller.listId, haspopup: 'listbox', active });
-		return () => controller.publish(null);
-	});
+	/** The row payload of an `item` snippet. */
+	const payload = (item: unknown, index: number): TriggerItemPayload<unknown> => {
+		const pick = () => void controller.pick(item);
+		return {
+			item,
+			label: controller.labelOf(item),
+			id: controller.optionId(index),
+			selected: index === controller.selectedIndex,
+			run: pick,
+			pick,
+			select: () => (controller.selectedIndex = index),
+			option: controller.option(index)
+		};
+	};
 </script>
 
-{#if controller.isOpen}
+<!--
+	The listbox's id, role and publication to the view's root are the
+	controller's `popup` attachment, a row's attributes its `option(index)`:
+	a custom `menu` that uses them behaves as this one.
+-->
+{#if controller.isOpen && menu}
+	{@render menu(controller)}
+{:else if controller.isOpen}
 	<!-- A press in the menu keeps the editor's focus and its caret at the query. -->
 	<div
 		class="edytor-trigger-menu"
@@ -42,34 +46,21 @@
 	>
 		<div
 			class="edytor-trigger-items"
-			id={controller.listId}
 			role="listbox"
 			aria-label={controller.name}
 			aria-busy={controller.loading}
-			bind:this={list}
+			{@attach controller.popup}
 		>
 			<!-- Keyed by position and key: two rows may share a key (a label without an id). -->
 			{#each items as item, index (`${index}:${controller.keyOf(item)}`)}
 				{#if row}
-					{@render row({
-						item,
-						label: controller.labelOf(item),
-						id: controller.optionId(index),
-						selected: index === controller.selectedIndex,
-						pick: () => void controller.pick(item),
-						select: () => (controller.selectedIndex = index)
-					})}
+					{@render row(payload(item, index))}
 				{:else}
 					<button
 						type="button"
 						class="edytor-trigger-item"
-						id={controller.optionId(index)}
+						{...controller.option(index)}
 						data-testid="trigger-menu-item"
-						data-selected={index === controller.selectedIndex}
-						role="option"
-						tabindex="-1"
-						aria-selected={index === controller.selectedIndex}
-						use:keepInView={index === controller.selectedIndex}
 						onmousemove={() => (controller.selectedIndex = index)}
 						onclick={() => void controller.pick(item)}
 					>

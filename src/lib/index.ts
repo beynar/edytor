@@ -168,7 +168,19 @@ export {
 	createAudioPlugin,
 	safeWebUrl,
 	safeMediaSrc,
+	type MediaKind,
 	type MediaPluginOptions,
+	type MediaEmptyController,
+	type MediaEmptyFailure,
+	type UrlPasteController,
+	type UrlPasteOffer,
+	type UrlPasteOption,
+	type ImageControls,
+	type ImageBox,
+	type ImageEmptyController,
+	type ImageEmptyFailure,
+	type MenuItemPayload,
+	type OptionAttributes,
 	findPlugin,
 	createFindPlugin,
 	findController,
@@ -181,6 +193,7 @@ export {
 	createCommentsPlugin,
 	commentsController,
 	type CommentsPluginOptions,
+	type CommentCardPayload,
 	type CommentsController,
 	type CommentDraft,
 	type CommentNotice,
@@ -309,6 +322,7 @@ export {
 // callback above, exported so an app can name them.
 export type { EdytorProps } from './components/Edytor.svelte';
 export type { EdytorOptions, Snippets } from './edytor.svelte.js';
+export type { HistoryVersionItem } from './collaboration/history/index.js';
 export type {
 	BlockHandlesLabels,
 	BlockMenuLabels,

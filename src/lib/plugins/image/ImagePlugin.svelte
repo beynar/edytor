@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import ImageEmpty from './ImageEmpty.svelte';
@@ -19,6 +20,7 @@
 		type ImageAlign
 	} from './image.js';
 	import { ImageControls } from './controls.svelte.js';
+	import type { ImageEmptyController } from './empty.svelte.js';
 	import { fileUploads, type FileUploads, type Uploader } from '../uploads.svelte.js';
 	import { onPress } from '$lib/events/onFocus.js';
 	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
@@ -48,6 +50,21 @@
 		 * replace its own.
 		 */
 		keywords?: Partial<Record<string, string[]>>;
+		/**
+		 * Replace the toolbar over the hovered image (the alignments and the alt
+		 * field); it renders while `controls.shown` and no handle drags, at the
+		 * image's top right (`controls.box`). The resize handles stay the
+		 * plugin's. Keep its behaviour with `{@attach controls.bar}` on the
+		 * toolbar and `{@attach controls.altField}` on the alt field.
+		 */
+		toolbar?: Snippet<[ImageControls]>;
+		/**
+		 * Replace an empty image's markup (Notion's "Add an image" and its link
+		 * panel, or the placeholder of a readonly view): it receives the
+		 * block's `ImageEmptyController` (`open`, `draft`, `failed`, `embed`,
+		 * `upload`, `readonly`).
+		 */
+		empty?: Snippet<[ImageEmptyController]>;
 	};
 
 	/** The data an image block reads (all optional). */
@@ -61,6 +78,7 @@
 		upload?: Uploader;
 		controls: ImageControls;
 		uploads?: FileUploads;
+		empty?: Snippet<[ImageEmptyController]>;
 	};
 	/** By view; the first image plugin of a view owns it, as its kind's definition (first wins). */
 	const views = new WeakMap<Edytor, View>();
@@ -83,7 +101,8 @@
 			const own: View = {
 				upload,
 				controls: new ImageControls(edytor, labels),
-				uploads: upload ? fileUploads(edytor) : undefined
+				uploads: upload ? fileUploads(edytor) : undefined,
+				empty: pluginOptions.empty
 			};
 			// The records read with no view (`plugin(undefined)`) keep no state.
 			if (edytor && !views.has(edytor)) {
@@ -123,7 +142,7 @@
 					layer?.addEventListener('pointerleave', leave);
 					const unmount = edytor.overlay.mount(
 						ImageChrome,
-						{ controls },
+						{ controls, toolbar: pluginOptions.toolbar },
 						'edytor-image-chrome',
 						// Above the block handles (5) and the column bands (6): it sits on the image.
 						7,
@@ -219,6 +238,7 @@
 				uploads={view?.uploads}
 				error={upload?.status === 'failed' ? 'upload' : null}
 				landed={upload?.status === 'landed'}
+				empty={view?.empty}
 			/>
 		</div>
 	{/if}

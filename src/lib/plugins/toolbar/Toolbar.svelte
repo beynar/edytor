@@ -9,45 +9,14 @@
 
 	const keep = (event: MouseEvent) => event.preventDefault();
 	const labels = $derived(controller.labels);
-
-	/**
-	 * The bar is one tab stop (WAI-ARIA toolbar): the button it last held
-	 * (`stop`, by `data-stop`); the arrows, Home and End walk its buttons,
-	 * Escape gives the focus back to the editor (`controller.release`). Every
-	 * key in it is its own, never the editor's (Enter presses the button).
-	 */
-	let bar = $state<HTMLElement>();
-	let stop = $state('turn');
-	const onfocusin = (event: FocusEvent) => {
-		const at = (event.target as HTMLElement).dataset?.stop;
-		if (at) stop = at;
-	};
-	const onkeydown = (event: KeyboardEvent) => {
-		event.stopPropagation();
-		const buttons = [...(bar?.querySelectorAll<HTMLElement>('[data-stop]') ?? [])];
-		const at = buttons.indexOf(event.target as HTMLElement);
-		const next = {
-			ArrowRight: (at + 1) % buttons.length,
-			ArrowLeft: (at - 1 + buttons.length) % buttons.length,
-			Home: 0,
-			End: buttons.length - 1
-		}[event.key];
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			controller.release();
-		} else if (next !== undefined && at !== -1) {
-			event.preventDefault();
-			buttons[next]?.focus();
-		}
-	};
-	/** The open default bar, published to the view's root (`edytor.popups`); a custom `toolbar` owns its own ARIA. */
-	$effect(() => {
-		if (!controller.isVisible || toolbar || !bar) return;
-		controller.publish({ id: controller.barId, keys: 'Alt+F10' });
-		return () => controller.publish(null);
-	});
 </script>
 
+<!--
+	The bar's id, role, placement mark and publication to the view's root
+	(`popup`), its roving tab stop and Escape (`keys`) and the link field's
+	keys (`linkField`) are the controller's attachments: a custom `toolbar`
+	that uses them behaves as this one.
+-->
 {#if controller.isVisible && toolbar}
 	{@render toolbar(controller)}
 {:else if controller.isVisible}
@@ -55,20 +24,16 @@
 		<div
 			class="selection-toolbar"
 			data-testid="selection-toolbar"
-			data-edytor-toolbar-bar
-			id={controller.barId}
 			role="toolbar"
 			aria-label={labels.bar}
 			tabindex="-1"
-			bind:this={bar}
-			{onkeydown}
-			{onfocusin}
+			{@attach controller.popup}
+			{@attach controller.keys}
 		>
 			<button
 				type="button"
 				class="toolbar-type"
 				data-stop="turn"
-				tabindex={stop === 'turn' ? 0 : -1}
 				aria-haspopup="menu"
 				aria-expanded={controller.panel === 'turn'}
 				onmousedown={keep}
@@ -83,7 +48,6 @@
 				type="button"
 				class="toolbar-link"
 				data-stop="link"
-				tabindex={stop === 'link' ? 0 : -1}
 				data-testid="toolbar-link"
 				aria-expanded={controller.panel === 'link'}
 				style:--toolbar-icon={iconOf('mark.link')}
@@ -96,7 +60,6 @@
 					type="button"
 					class={`toolbar-mark mark-${item.mark}`}
 					data-stop={`mark:${item.mark}`}
-					tabindex={stop === `mark:${item.mark}` ? 0 : -1}
 					aria-label={item.label}
 					title={item.label}
 					data-testid={`toolbar-${item.mark}`}
@@ -110,7 +73,6 @@
 				type="button"
 				class="toolbar-color"
 				data-stop="color"
-				tabindex={stop === 'color' ? 0 : -1}
 				aria-label={labels.color}
 				title={labels.textColor}
 				aria-expanded={controller.panel === 'color'}
@@ -137,26 +99,13 @@
 			</div>
 		{:else if controller.panel === 'link'}
 			<div class="toolbar-panel toolbar-link-panel">
-				<label class="sr-only" for="edytor-toolbar-link">{labels.linkUrl}</label>
+				<label class="sr-only" for={controller.linkFieldId}>{labels.linkUrl}</label>
 				<input
-					id="edytor-toolbar-link"
 					data-testid="toolbar-link-input"
 					placeholder={labels.linkPlaceholder}
 					value={controller.linkUrl}
 					oninput={(event) => controller.setLinkUrl(event.currentTarget.value)}
-					onkeydown={(event) => {
-						if (event.key === 'Enter') {
-							event.preventDefault();
-							controller.applyLink();
-							controller.closePanel(true);
-						} else if (event.key === 'Escape') {
-							event.preventDefault();
-							controller.closePanel(true);
-						}
-					}}
-					{@attach (field) => {
-						if (controller.takeFieldFocus()) field.focus({ preventScroll: true });
-					}}
+					{@attach controller.linkField}
 				/>
 				<button
 					type="button"

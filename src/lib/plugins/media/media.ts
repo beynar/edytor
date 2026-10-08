@@ -1,8 +1,10 @@
+import type { Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { PluginOperations } from '$lib/plugins.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 import { fileUploads, type Uploader } from '../uploads.svelte.js';
 import { viewLabels, type PartialLabels } from '$lib/labels.js';
+import type { MediaEmptyController } from './empty.svelte.js';
 
 /** The media kinds a view shows the labels of. */
 export type MediaKind = 'embed' | 'bookmark' | 'file' | 'video' | 'audio';
@@ -17,6 +19,26 @@ export const mediaLabels: Record<MediaKind, ReturnType<typeof viewLabels<'media'
 	file: viewLabels('media'),
 	video: viewLabels('media'),
 	audio: viewLabels('media')
+};
+
+const empties = new WeakMap<
+	Edytor,
+	Partial<Record<MediaKind, { snippet?: Snippet<[MediaEmptyController]> }>>
+>();
+
+/**
+ * Each view's `empty` snippet, by kind: the first plugin of a kind listed in
+ * a view claims it (with none, the built-in markup), as its kind record.
+ */
+export const mediaEmpty = {
+	claim(edytor: Edytor | undefined, kind: MediaKind, snippet?: Snippet<[MediaEmptyController]>) {
+		if (!edytor) return;
+		const own = empties.get(edytor) ?? {};
+		own[kind] ??= { snippet };
+		empties.set(edytor, own);
+	},
+	of: (edytor: Edytor | undefined, kind: MediaKind) =>
+		edytor ? empties.get(edytor)?.[kind]?.snippet : undefined
 };
 
 /**
@@ -61,6 +83,13 @@ export type MediaPluginOptions = {
 	labels?: PartialLabels<'media'>;
 	/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
 	keywords?: Partial<Record<string, string[]>>;
+	/**
+	 * Replace an empty block's markup (its "Add …" button and link panel, its
+	 * upload's progress, or a readonly view's placeholder): it receives the
+	 * block's `MediaEmptyController` (`open`, `draft`, `failed`, `pending`,
+	 * `embed`, `upload`, `readonly`).
+	 */
+	empty?: Snippet<[MediaEmptyController]>;
 };
 
 /** One allowlisted embed provider: which links it plays, and its player. */

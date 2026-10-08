@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { iconOf } from '../icons.js';
-	import { keepInView } from '../keepInView.js';
 	import type { Snippet } from 'svelte';
 	import type { SlashMenuController } from './SlashMenuController.svelte.js';
 	import type { SlashMenuItem } from './slashMenuPlugin.js';
@@ -22,46 +21,6 @@
 		if (controller.isOpen && controller.readonly) controller.dismiss(false);
 	});
 
-	/** A `+`'s menu holds the keyboard: its keys are the editor's slash keys. */
-	const onkeydown = (event: KeyboardEvent) => {
-		// A key that ends an IME composition (Enter commits it, Escape cancels it) is the IME's.
-		if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
-		const move = { ArrowDown: 1, ArrowUp: -1 }[event.key];
-		if (move) controller.moveSelection(move);
-		else if (event.key === 'Enter') void controller.runSelected();
-		else if (event.key === 'Escape') controller.dismiss();
-		else return;
-		event.preventDefault();
-	};
-	/** Keys on a `menu` snippet with no field of its own: typing is the query. */
-	const typing = (event: KeyboardEvent) => {
-		const { key, ctrlKey, metaKey, target, currentTarget } = event;
-		if (target !== currentTarget || event.defaultPrevented) return onkeydown(event);
-		if (key === 'Backspace') controller.search(controller.query.slice(0, -1));
-		else if (key.length === 1 && !ctrlKey && !metaKey) controller.search(controller.query + key);
-		else return onkeydown(event);
-		event.preventDefault();
-	};
-	/** Focus leaving the `+`'s menu (Tab, another field) closes it. */
-	const onfocusout = (event: FocusEvent) => {
-		const to = event.relatedTarget;
-		const menu = event.currentTarget as HTMLElement;
-		if (controller.addition && to instanceof Node && !menu.contains(to)) controller.dismiss(false);
-	};
-	/**
-	 * The `+`'s field is the menu's one keyboard owner: a row or the footer
-	 * that takes focus (a click, a screen reader) hands it back, a row
-	 * becoming the highlighted one, so the keys and the highlight stay in step.
-	 */
-	let field = $state<HTMLInputElement>();
-	const onfocusin = (event: FocusEvent) => {
-		if (!field || event.target === field) return;
-		const index = commands.findIndex(
-			(command) => command.id === (event.target as HTMLElement).dataset.commandId
-		);
-		if (index !== -1) controller.selectedIndex = index;
-		field.focus({ preventScroll: true });
-	};
 	/** A press in the menu keeps the focus where it is (its field, or the editor's caret). */
 	const keepFocus = (event: MouseEvent) => {
 		if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
@@ -78,51 +37,32 @@
 		return runs;
 	});
 
-	/**
-	 * The highlighted row's id, once its element is in the page (a custom
-	 * `item` may set none): the keyboard's owner names it.
-	 */
-	let list = $state<HTMLElement>();
-	let active = $state<string>();
-	$effect(() => {
-		if (!controller.isOpen || menu) return void (active = undefined);
-		const command = commands[controller.selectedIndex];
-		const id = command && controller.optionId(command);
-		active = id && list?.ownerDocument.getElementById(id) ? id : undefined;
-	});
-	/**
-	 * The open default menu, published to the view's root (`edytor.popups`):
-	 * the listbox, and its highlighted row while the root holds the keyboard
-	 * (a `/` menu; a `+`'s field names it itself); a `+` is told it opened it.
-	 * A custom `menu` owns its own ARIA.
-	 */
-	$effect(() => {
-		if (!controller.isOpen || menu || !list) return;
-		const { addition } = controller;
-		controller.publish({
-			id: controller.listId,
-			haspopup: 'listbox',
-			active: addition ? undefined : active,
-			opener: addition ? { block: addition.block.id, control: 'add' } : undefined
-		});
-		return () => controller.publish(null);
-	});
-
-	const focusOnMount = (node: HTMLElement) => {
-		if (!node.contains(node.ownerDocument.activeElement)) node.focus({ preventScroll: true });
+	/** The row payload of an `item` snippet. */
+	const payload = (command: EditorCommand, index: number): SlashMenuItem => {
+		const run = () => void controller.run(command);
+		return {
+			item: command,
+			command,
+			id: controller.optionId(command),
+			label: command.label,
+			selected: index === controller.selectedIndex,
+			icon: iconOf(command.id),
+			run,
+			select: () => (controller.selectedIndex = index),
+			option: controller.option(index)
+		};
 	};
 </script>
 
+<!--
+	The keys of a `+`'s menu (`keys`), the listbox's id, role and publication
+	to the view's root (`popup`) and a row's attributes (`option(index)`) are
+	the controller's: a custom `menu` or `item` that uses them behaves as
+	this one.
+-->
 {#if controller.isOpen && menu && controller.addition}
 	<!-- The `+`'s menu takes the keyboard from the editor: typing filters it, never the document. -->
-	<div
-		class="slash-keys"
-		tabindex="-1"
-		role="presentation"
-		use:focusOnMount
-		onkeydown={typing}
-		{onfocusout}
-	>
+	<div class="slash-keys" tabindex="-1" role="presentation" {@attach controller.keys}>
 		{@render menu(controller)}
 	</div>
 {:else if controller.isOpen && menu}
@@ -134,13 +74,9 @@
 		tabindex="-1"
 		role="presentation"
 		onmousedown={keepFocus}
-		onkeydown={controller.addition ? onkeydown : undefined}
-		onfocusin={controller.addition ? onfocusin : undefined}
-		{onfocusout}
 	>
 		{#if controller.addition}
 			<input
-				bind:this={field}
 				class="slash-search"
 				placeholder={labels.filter}
 				aria-label={labels.filterLabel}
@@ -148,9 +84,8 @@
 				aria-expanded="true"
 				aria-autocomplete="list"
 				aria-controls={controller.listId}
-				aria-activedescendant={active}
 				value={controller.query}
-				use:focusOnMount
+				{@attach controller.keys}
 				oninput={(event) => controller.search(event.currentTarget.value)}
 			/>
 		{:else}
@@ -158,13 +93,7 @@
 				/{controller.query}
 			</div>
 		{/if}
-		<div
-			class="slash-items"
-			id={controller.listId}
-			role="listbox"
-			aria-label={labels.list}
-			bind:this={list}
-		>
+		<div class="slash-items" role="listbox" aria-label={labels.list} {@attach controller.popup}>
 			{#if commands.length === 0}
 				<div class="slash-empty" data-testid="slash-menu-empty">{labels.noResults}</div>
 			{/if}
@@ -175,31 +104,18 @@
 						</div>{/if}
 					{#each group.rows as { command, index } (command.id)}
 						{#if item}
-							{@render item({
-								command,
-								id: controller.optionId(command),
-								selected: index === controller.selectedIndex,
-								icon: iconOf(command.id),
-								run: () => void controller.run(command),
-								select: () => (controller.selectedIndex = index)
-							})}
+							{@render item(payload(command, index))}
 						{:else}
 							<button
 								type="button"
 								class="slash-item"
-								id={controller.optionId(command)}
+								{...controller.option(index)}
 								data-command-id={command.id}
 								data-icon={command.icon ?? '⋮'}
 								data-glyph={iconOf(command.id) ? undefined : (command.icon ?? '⋮')}
 								data-hint={command.hint}
 								style:--slash-icon={iconOf(command.id)}
-								data-selected={index === controller.selectedIndex}
 								data-testid="slash-menu-item"
-								role="option"
-								tabindex="-1"
-								aria-selected={index === controller.selectedIndex}
-								use:keepInView={index === controller.selectedIndex}
-								onmousedown={(event) => event.preventDefault()}
 								onmousemove={() => (controller.selectedIndex = index)}
 								onclick={() => {
 									void controller.run(command);

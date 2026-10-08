@@ -43,6 +43,10 @@ The slash menu then lists "File" under `Media`. `filePlugin` is the plugin witho
       type: "Partial<Record<string, string[]>>",
       description: "The slash menu's keywords by command id (block.file); they replace the command's own.",
     },
+    empty: {
+      type: "Snippet<[MediaEmptyController]>",
+      description: "Replaces an empty block's markup (its button, link panel and upload, a pasted file's progress, a readonly view's placeholder). See Menus and handles.",
+    },
   }}
 />
 

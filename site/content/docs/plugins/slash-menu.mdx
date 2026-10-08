@@ -97,22 +97,25 @@ The rows are a `listbox` of `option`s, each section a `group` named by its headi
   }}
 />
 
-An `item` snippet receives a `SlashMenuItem`:
+An `item` snippet receives a `SlashMenuItem`, the row shape every menu shares:
 
 <TypeTable
   type={{
-    command: { type: "EditorCommand", description: "The command: id, label, icon, hint, group, keywords." },
-    id: { type: "string", description: "The row's element id: set it (id={item.id}) so the keyboard's owner names the highlighted row (aria-activedescendant)." },
+    item: { type: "EditorCommand", description: "The command: id, label, icon, hint, group, keywords." },
+    command: { type: "EditorCommand", description: "The command again (the same as item)." },
+    id: { type: "string", description: "The row's element id: set it (id={item.id}), or spread option, so the keyboard's owner names the highlighted row (aria-activedescendant)." },
+    label: { type: "string", description: "The command's label." },
     selected: { type: "boolean", description: "It is the keyboard's row." },
     icon: { type: "string | undefined", description: "The built-in line icon as a CSS mask-image value, for the commands that have one." },
     run: { type: "() => void", description: "Run the command; the /query text is removed in the same step." },
     select: { type: "() => void", description: "Make it the keyboard's row, for hover." },
+    option: { type: "OptionAttributes", description: "The row's attributes: spread them on its element ({...option}) for its id, role=option, aria-selected, data-selected, and the scroll into view of the keyboard's row." },
   }}
 />
 
-A `menu` snippet receives the `SlashMenuController`. Read `controller.commands` (the filtered, enabled commands in menu order), `controller.selectedIndex` and `controller.query`; call `controller.run(command)` to run one and `controller.close()` to close the menu and keep the typed text.
+A `menu` snippet receives the `SlashMenuController`. Read `controller.commands` (the filtered, enabled commands in menu order), `controller.selectedIndex` and `controller.query`; call `controller.run(command)` to run one and `controller.close()` to close the menu and keep the typed text. Its attachments keep the built-in keyboard and ARIA: `{@attach controller.popup}` on your list (its id, `listbox` role and name, presses that keep the caret, the root naming it and its highlighted row) and `{...controller.option(index)}` on each row.
 
-When the block handle's `+` opens the menu (`controller.addition` is set), the plugin renders your `menu` inside a focused wrapper that takes the keyboard from the editor: typed characters and <kbd>Backspace</kbd> edit `controller.query`, and <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd> work as above, so nothing typed reaches the document. A snippet with a search field of its own calls `controller.search(query)` from it; the wrapper's keys still move, pick and close. Call `controller.dismiss()` rather than `close()` to close it: it gives the editor back its focus and selection.
+When the block handle's `+` opens the menu (`controller.addition` is set), the menu holds the keyboard. Put `{@attach controller.keys}` on your search field: it is focused, <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd> work as above, and it names the list and its highlighted row; call `controller.search(query)` from its `input`. The plugin also renders your `menu` inside a focused wrapper with the same keys, where typed characters and <kbd>Backspace</kbd> edit `controller.query` when your snippet has no field of its own, so nothing typed reaches the document. Call `controller.dismiss()` rather than `close()` to close it: it gives the editor back its focus and selection.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -121,22 +124,19 @@ When the block handle's `+` opens the menu (`controller.addition` is set), the p
 	const plugins = [createSlashMenuPlugin({ item })];
 </script>
 
-{#snippet item({ command, id, selected, run, select }: SlashMenuItem)}
+{#snippet item({ label, option, run, select }: SlashMenuItem)}
 	<button
-		{id}
-		role="option"
-		aria-selected={selected}
+		{...option}
 		class="row"
-		class:selected
 		onmousedown={(event) => event.preventDefault()}
 		onmousemove={select}
 		onclick={run}
 	>
-		{command.icon} {command.label}
+		{label}
 	</button>
 {/snippet}
 
 <Edytor {plugins} />
 ```
 
-Keep `preventDefault` on `mousedown`, so a click does not move the caret out of the query. Your markup renders in the same fixed host, so the built-in styles no longer apply. See [Menus and handles](/docs/customization/menus) for the other menus.
+Keep `preventDefault` on `mousedown`, so a click does not move the caret out of the query. Your markup renders in the same fixed host, so the built-in styles no longer apply. A complete `menu`, with its field for the `+`, is on [Menus and handles](/docs/customization/menus#slash-menu), with every other menu.

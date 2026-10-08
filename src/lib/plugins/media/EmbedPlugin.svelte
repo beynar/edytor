@@ -4,7 +4,9 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import MediaEmpty from './MediaEmpty.svelte';
 	import { mediaKinds } from '$lib/crdt/semantics.js';
-	import { urlPaste } from './urlPaste.svelte.js';
+	import type { Snippet } from 'svelte';
+	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
+	import type { MediaEmptyController } from './empty.svelte.js';
 	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
 	import {
 		EMBED_ALLOW,
@@ -13,6 +15,7 @@
 		claimed,
 		embedSourceOf,
 		mediaLabels,
+		mediaEmpty,
 		escapeHtml,
 		safeWebUrl,
 		type EmbedProvider
@@ -27,6 +30,21 @@
 		labels?: PartialLabels<'media'>;
 		/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
 		keywords?: Partial<Record<string, string[]>>;
+		/**
+		 * Replace the menu a URL pasted on an empty line opens (Link, Embed,
+		 * Bookmark); it renders while `controller.open`, under the line. The
+		 * view's one menu takes the first `menu` its embed and bookmark
+		 * plugins pass. Its keys stay the editor's; keep its ARIA with
+		 * `{@attach controller.popup}` on the list and
+		 * `{...controller.option(index)}` on each row.
+		 */
+		menu?: Snippet<[UrlPasteController]>;
+		/**
+		 * Replace an empty block's markup (its "Add …" button and link panel,
+		 * or a readonly view's placeholder): it receives the block's
+		 * `MediaEmptyController` (`open`, `draft`, `failed`, `embed`, `readonly`).
+		 */
+		empty?: Snippet<[MediaEmptyController]>;
 	};
 
 	const providersOf = new WeakMap<Edytor, readonly EmbedProvider[]>();
@@ -60,6 +78,7 @@
 			if (!providersOf.has(edytor)) providersOf.set(edytor, allowed);
 			const labels = labelsWith('media', options.labels);
 			mediaLabels.embed.claim(edytor, labels);
+			mediaEmpty.claim(edytor, 'embed', options.empty);
 			return {
 				...urlPaste(
 					edytor,
@@ -69,7 +88,8 @@
 						icon: '⧉',
 						data: (url) => (embedSourceOf(url, allowed) ? { url } : null)
 					},
-					labels
+					labels,
+					options.menu
 				),
 				blocks: {
 					embed: {

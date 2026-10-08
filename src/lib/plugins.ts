@@ -13,6 +13,8 @@ import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import type { DocChange, PlanEffect } from './crdt/edytor-doc.js';
 import type { MarkEdge } from './session/editing/text.js';
 import type { Prevent } from './utils.js';
+import type { MenuItemPayload } from './plugins/chrome.js';
+import type { TriggerMenuController } from './plugins/triggers/TriggerController.svelte.js';
 
 /** What a placeholder function receives: the empty block's declared values. */
 export type PlaceholderView = {
@@ -192,19 +194,14 @@ export type TriggerContext = TextRuleContext & {
 	query: string;
 };
 
-/** One row of a trigger's menu, for an `item` snippet. */
-export type TriggerItemPayload<T = unknown> = {
-	item: T;
-	/** The row's label (`label(item)`). */
-	label: string;
-	/** The row's element id: set it (`id={row.id}`) so the editor names the highlighted row. */
-	id: string;
-	/** It is the keyboard's row. */
-	selected: boolean;
-	/** Pick it. */
+/**
+ * One row of a trigger's menu, for an `item` snippet: the row shape every
+ * menu shares (`label` is `label(item)`; set `id`, or spread `option`, so
+ * the editor names the highlighted row), and `pick`, the same as `run`.
+ */
+export type TriggerItemPayload<T = unknown> = MenuItemPayload<T> & {
+	/** Pick it (the same as `run`). */
 	pick: () => void;
-	/** Make it the keyboard's row (hover). */
-	select: () => void;
 };
 
 /**
@@ -232,6 +229,13 @@ export type Trigger<T = any> = {
 	key?: (item: T) => string;
 	/** Replace each row's markup. */
 	item?: Snippet<[TriggerItemPayload<T>]>;
+	/**
+	 * Replace the whole menu; it renders while `controller.isOpen`, placed at
+	 * the caret. Its keys stay the editor's; keep its ARIA with `{@attach
+	 * controller.popup}` on the list and `{...controller.option(index)}` on
+	 * each row.
+	 */
+	menu?: Snippet<[TriggerMenuController<T>]>;
 	/** The menu's accessible name (default: the view's `labels.triggerMenu`, `Suggestions`). */
 	name?: string;
 	/** The text shown when no row matches (default: the view's `labels.noResults`, `No results`). */

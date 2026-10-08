@@ -13,6 +13,16 @@ import {
 	type PlacedThread
 } from './CommentsController.svelte.js';
 
+/** What a `card` snippet receives: one thread, the view's comments controller, and whether it is the active one. */
+export type CommentCardPayload = {
+	/** The thread, placed beside its text (its comments, its anchor's text, `resolved`). */
+	thread: PlacedThread;
+	/** The view's comments: the actions (reply, resolve, delete, `activate`), the user, `labels`. */
+	comments: CommentsController;
+	/** It is the active thread (its text is selected, or its card was pressed). */
+	active: boolean;
+};
+
 export type CommentsPluginOptions = {
 	/**
 	 * Where the threads live: `createCommentsClient({ server, room })` for
@@ -34,7 +44,7 @@ export type CommentsPluginOptions = {
 	 */
 	onComment?: (change: CommentChange, notice: CommentNotice) => void;
 	/** Replace a thread card's markup (the sidebar still places it). */
-	card?: Snippet<[{ thread: PlacedThread; comments: CommentsController; active: boolean }]>;
+	card?: Snippet<[CommentCardPayload]>;
 	/** The words the sidebar and the toolbar button show, over the English ones. */
 	labels?: PartialLabels<'comments'>;
 };

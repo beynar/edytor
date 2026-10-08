@@ -3,7 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Suggestion } from '$lib/session/suggestions.svelte.js';
 import SuggestionBars from './SuggestionBars.svelte';
-import { labelsWith, type PartialLabels } from '$lib/labels.js';
+import { labelsWith, type PartialLabels, type SuggestionsLabels } from '$lib/labels.js';
 
 /** What a `bar` snippet receives: one block suggestion and its actions. */
 export type SuggestionBarPayload = {
@@ -14,6 +14,8 @@ export type SuggestionBarPayload = {
 	/** Ask for another answer (`onRetry`); `undefined` without one. */
 	retry: (() => void) | undefined;
 	readonly: boolean;
+	/** The words the built-in bar shows (the plugin's `labels`), for yours. */
+	labels: SuggestionsLabels;
 };
 
 export type SuggestionsOptions = {

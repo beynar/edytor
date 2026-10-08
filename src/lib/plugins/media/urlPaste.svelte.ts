@@ -1,3 +1,5 @@
+import type { Snippet } from 'svelte';
+import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { PluginDefinitions, PluginOperations } from '$lib/plugins.js';
@@ -10,6 +12,7 @@ import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
 import UrlPasteMenu from './UrlPasteMenu.svelte';
 import { englishLabels, type MediaLabels } from '$lib/labels.js';
+import { identify, inPage, keepFocus, optionAttributes, type OptionAttributes } from '../chrome.js';
 
 /** A kind a pasted URL can turn its line into (the embed's, the bookmark's). */
 export type UrlPasteOffer = {
@@ -56,7 +59,50 @@ export class UrlPasteController {
 		return this.edytor.readonly;
 	}
 
-	/** The rows for `url`: Link, then each offer that takes it. */
+	/** A custom menu (a media plugin's `menu`): the first one a plugin making an offer passed. */
+	#menu: Snippet<[UrlPasteController]> | undefined;
+
+	/** Take `menu` as the view's menu, unless a plugin listed before passed one. @internal */
+	claimMenu(menu: Snippet<[UrlPasteController]> | undefined) {
+		this.#menu ??= menu;
+	}
+
+	/** The listbox's element id (page-unique), for `aria-controls`. */
+	get listId() {
+		return this.edytor.popups.idOf('url-paste');
+	}
+
+	/** The element id of the row at `index` (page-unique), for `aria-activedescendant`. */
+	optionId = (index: number) => this.edytor.popups.idOf(`url-paste-option-${index}`);
+
+	/**
+	 * The attributes of the row at `index`: spread them on its element
+	 * (`{...controller.option(index)}`): its id, `role="option"`,
+	 * `aria-selected` and `data-selected` for the keyboard's row.
+	 */
+	option = (index: number): OptionAttributes =>
+		optionAttributes(this.optionId(index), 'option', index === this.index);
+
+	/**
+	 * The listbox (`{@attach controller.popup}`): it takes the menu's id, its
+	 * `listbox` role and name unless it has its own, keeps the editor's focus
+	 * on a press, and is published to the view's root (`edytor.popups`) with
+	 * its highlighted row while the menu is open: the editor keeps the
+	 * keyboard (its keys move and pick).
+	 */
+	popup: Attachment<HTMLElement> = (node) => {
+		identify(node, this.listId, 'listbox', this.labels.pasteAs);
+		node.addEventListener('mousedown', keepFocus);
+		$effect(() => {
+			if (!this.open) return;
+			const active = inPage(node, this.optionId(this.index));
+			this.edytor.popups.set('url-paste', { id: this.listId, haspopup: 'listbox', active });
+			return () => this.edytor.popups.set('url-paste', null);
+		});
+		return () => node.removeEventListener('mousedown', keepFocus);
+	};
+
+	/** The rows for `url`: Link, then each offer that takes it. @internal */
 	optionsFor = (url: string): UrlPasteOption[] => [
 		{ id: 'link', label: this.labels.pasteLink, icon: '🔗' },
 		...this.offers.flatMap((offer) =>
@@ -68,6 +114,7 @@ export class UrlPasteController {
 	 * The paste (plugin `onPaste`, so a Shift+paste never reaches it): a
 	 * caret on a line that holds nothing, outside islands and voids, and
 	 * plain text that is one `http(s)` URL some offer takes.
+	 * @internal
 	 */
 	paste: NonNullable<PluginOperations['onPaste']> = ({ e, prevent }) => {
 		const { edytor } = this;
@@ -108,7 +155,7 @@ export class UrlPasteController {
 		return true;
 	};
 
-	/** The caret still rests at the end of the pasted URL, in its line. */
+	/** The caret still rests at the end of the pasted URL, in its line. @internal */
 	stays = () => {
 		const { open, edytor } = this;
 		const { value, state } = edytor.selection;
@@ -145,7 +192,7 @@ export class UrlPasteController {
 		offer.created?.(converted, open.url);
 	};
 
-	/** The hooks of the plugin carrying the menu. */
+	/** The hooks of the plugin carrying the menu. @internal */
 	hooks = (): PluginOperations & PluginDefinitions => ({
 		onPaste: this.paste,
 		hotkeys: {
@@ -174,7 +221,7 @@ export class UrlPasteController {
 			const offPress = onPress(this.edytor, node.ownerDocument, outside, true);
 			const unmount = this.edytor.overlay.mount(
 				UrlPasteMenu,
-				{ controller: this },
+				{ controller: this, menu: this.#menu },
 				'edytor-url-paste-host',
 				50,
 				this.measure
@@ -187,7 +234,7 @@ export class UrlPasteController {
 		}
 	});
 
-	/** Under the pasted line, kept in the viewport; a gone line closes the menu. */
+	/** Under the pasted line, kept in the viewport; a gone line closes the menu. @internal */
 	measure = (host: HTMLElement) => {
 		const { open, edytor } = this;
 		if (!open) return;
@@ -212,20 +259,23 @@ const controllers = new WeakMap<Edytor, UrlPasteController>();
  * gets the menu's hooks to return (its paste, keys and overlay); the others
  * get none, so one view has one menu whatever the plugins listed. One offer
  * per kind: the first listed wins, as its definition does (a plugin listed
- * twice offers once).
+ * twice offers once). The menu's markup is the first `menu` passed.
  */
 export const urlPaste = (
 	edytor: Edytor,
 	offer: UrlPasteOffer,
-	labels?: MediaLabels
+	labels?: MediaLabels,
+	menu?: Snippet<[UrlPasteController]>
 ): PluginOperations & PluginDefinitions => {
 	const known = controllers.get(edytor);
 	if (known) {
 		if (!known.offers.some(({ type }) => type === offer.type)) known.offers.push(offer);
+		known.claimMenu(menu);
 		return {};
 	}
 	const controller = new UrlPasteController(edytor, labels);
 	controllers.set(edytor, controller);
 	controller.offers.push(offer);
+	controller.claimMenu(menu);
 	return controller.hooks();
 };

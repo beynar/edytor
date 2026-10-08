@@ -1,7 +1,9 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { iconOf } from '../icons.js';
 	import type { ToolbarController } from './ToolbarController.svelte.js';
-	let { controller }: { controller: ToolbarController } = $props();
+	let { controller, card }: { controller: ToolbarController; card?: Snippet<[ToolbarController]> } =
+		$props();
 	const labels = $derived(controller.labels);
 </script>
 
@@ -10,7 +12,9 @@
 	Edit and Remove, just below the link. No press on it takes the editor's
 	focus (its host cancels each `mousedown`).
 -->
-{#if controller.card}
+{#if controller.card && card}
+	{@render card(controller)}
+{:else if controller.card}
 	<div
 		class="link-card"
 		data-testid="link-card"

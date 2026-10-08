@@ -269,7 +269,7 @@ declare const MAX_FRAME_BYTES: number;
 ### META_KEY
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 declare const META_KEY: "meta";
 ```
 
@@ -307,7 +307,7 @@ export type ProviderStack = ReturnType<typeof bindProviders>;
 ### SCHEMA_VERSION
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 declare const SCHEMA_VERSION: 5;
 ```
 
@@ -338,7 +338,7 @@ export type SchemaMismatchDetail = {
 ### SchemaMismatchError
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 export declare class SchemaMismatchError extends Error {
     readonly docName: string;
     readonly problem: SchemaProblem;
@@ -349,7 +349,7 @@ export declare class SchemaMismatchError extends Error {
 ### SchemaProblem
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 export type SchemaProblem = {
     kind: 'unversioned' | 'unsupported' | 'foreign';
     version?: number;
@@ -385,7 +385,7 @@ export declare class UndecodableUpdateError extends Error {
 ### UnsupportedDocError
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 export declare class UnsupportedDocError extends Error {
     readonly kind: 'foreign' | 'legacy';
     constructor(kind: 'foreign' | 'legacy');
@@ -512,14 +512,14 @@ declare const assertAdmission: (doc: EngineDoc, docName?: string) => AdmissionVe
 ### assertSchema
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 declare const assertSchema: (doc: EngineDoc, docName?: string) => void;
 ```
 
 ### assertUsableDoc
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 declare const assertUsableDoc: (doc: EngineDoc) => void;
 ```
 
@@ -551,9 +551,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             defaultType?: string;
         }) => void;
         restore: (doc: import("./engine-api.js").EngineDoc, content: import("./index.js").BlockSpec[]) => void;
-        seed: (doc: import("./engine-api.js").EngineDoc, value?: import("./index.js").JSONBlock[], defaultType?: string, data?: {
-            [x: string]: unknown;
-        }) => void;
+        seed: (doc: import("./engine-api.js").EngineDoc, value?: import("./index.js").JSONBlock[], defaultType?: string, data?: import("./doc/types.js").JsonObj) => void;
         isInitialized: (doc: import("./engine-api.js").EngineDoc) => boolean;
         schemaVersion: (doc: import("./engine-api.js").EngineDoc) => number | undefined;
         registryEmpty: (doc: import("./engine-api.js").EngineDoc) => boolean;
@@ -726,9 +724,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 content?: import("./index.js").BlockSpec[];
                 defaultType?: string;
             }) => void>[1]) => void;
-            seed: (value: import("./index.js").JSONBlock[], data?: {
-                [x: string]: unknown;
-            }) => void;
+            seed: (value: import("./index.js").JSONBlock[], data?: import("./doc/types.js").JsonObj) => void;
             isInitialized: () => boolean;
             schemaVersion: () => number | undefined;
             checkSchema: () => import("./edytor-doc.js").SchemaProblem | null;
@@ -755,9 +751,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             blockText: (id: string) => string | null;
             blockTypeOf: (id: string) => string | undefined;
             blockDataOf: (id: string) => Record<string, unknown> | undefined;
-            docData: () => {
-                [x: string]: unknown;
-            };
+            docData: () => import("./doc/types.js").JsonObj;
             dataItemIds: (target: import("./edytor-doc.js").DataTarget, path: readonly string[]) => string[];
             blockAttribution: (id: string) => import("./index.js").BlockAttribution | undefined;
             crdtId: (id: string) => string | null;
@@ -1118,7 +1112,7 @@ declare const bindCrdt: (Y: EngineApi) => {
 ### checkSchema
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 declare const checkSchema: (doc: EngineDoc) => SchemaProblem | null;
 ```
 
@@ -1171,7 +1165,7 @@ declare const inspectAdmission: (doc: EngineDoc, docName?: string) => AdmissionR
 ### isInitialized
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 declare const isInitialized: (doc: EngineDoc) => boolean;
 ```
 
@@ -1291,14 +1285,14 @@ declare const readProtocolVersion: (decoder: decoding.Decoder) => boolean;
 ### registryEmpty
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 declare const registryEmpty: (doc: EngineDoc) => boolean;
 ```
 
 ### schemaVersion
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 declare const schemaVersion: (doc: EngineDoc) => number | undefined;
 ```
 

@@ -11,43 +11,9 @@
  * - `text/runs.ts` (`bindRuns`) — the maintained run view: immutable run
  *   snapshots, structural sharing, the change report (U05, D9).
  *
- * ── Schema manifest ────────────────────────────────────────────────────
- *
- * Unified `Y.Node` cannot distinguish roles by class (no `Y.Text` vs
- * `Y.Map`), so every semantic role is recorded explicitly in {@link SCHEMA}
- * — the constants table below IS the manifest (node names, root keys, attr
- * names). The replicated half of the contract is the version record: init
- * writes `doc.get('meta').setAttr('v', SCHEMA_VERSION)` (+ `schema` name) so
- * ANY replica — including one that only ever applied updates — can read the
- * schema version before mutating (U07's version gate). `doc.get` on a root
- * emits no update, so the read path stays write-free.
- *
- * Replicated layout:
- *
- * ```
- * doc.get('blocks')                      registry — flat map, blockId → node('block')
- *   └ <blockId>                           id/n/type/data/del + content/claims/at
- *                                         (n: incarnation nonce, O23)
- * doc.get('meta')                        version record root
- *   ├ v : number                          SCHEMA_VERSION (LWW attr — concurrent init converges)
- *   └ schema : 'edytor-doc'               SCHEMA_NAME
- * ```
- *
- * ── Deterministic seed (R13, D-3) ───────────────────────────────────────
- *
- * `seed(doc, value)` applies ONE update built in a scratch doc whose writer
- * id is a hash of (generation, canonical seed JSON) in a low band below
- * 2^26: caller ids are kept, missing ids are derived from the hash and
- * position, ranks and incarnation nonces come from the rand seam seeded by
- * the hash. Peers seeding the same value therefore write the SAME items — a
- * late identical seed is a no-op and never erases an edit — while different
- * values union. A shared id resolves by registry LWW (the larger client id):
- * against a block a live replica (uint53 id) wrote, the seed loses; between
- * two different seeds, the larger hash wins and can replace a block edited
- * since (UW-03 residual — never seed a changing snapshot beside a room).
- * An empty value seeds one `defaultType` block. The update is applied
- * with a non-local origin: never an undo step, no attribution stamp.
- * Seeding is explicit: reads never create or normalize state.
+ * The schema gate and manifest live in `doc/gate.ts`, the version record
+ * and the deterministic seed in `doc/seed.ts`, the public types in
+ * `doc/types.ts` and the pure plan helpers in `doc/plan.ts`.
  *
  * ── Identity discipline ────────────────────────────────────────────────
  *
@@ -204,165 +170,83 @@ import {
 	type JSONDoc
 } from '../utils/json.js';
 
-// ── schema manifest ─────────────────────────────────────────────────────
+import {
+	assertSchema,
+	assertUsableDoc,
+	checkSchema,
+	isInitialized,
+	META_KEY,
+	registryEmpty,
+	SCHEMA_NAME,
+	SCHEMA_VERSION,
+	SchemaMismatchError,
+	schemaVersion
+} from './doc/gate.js';
+import { bindSeed } from './doc/seed.js';
+import {
+	applied,
+	effectOf,
+	EMPTY_IDS,
+	NOOP,
+	ref,
+	refused,
+	sanitizeInline,
+	sanitizeItem
+} from './doc/plan.js';
+import type {
+	AnchorAffinity,
+	BlockRole,
+	DataTarget,
+	DocAnchor,
+	DocChange,
+	EdytorDocConfig,
+	JsonObj,
+	OpResult,
+	OrderPolicy,
+	Plan,
+	PlanEffect,
+	PlanStep,
+	Prepared,
+	TextRange
+} from './doc/types.js';
+
+// ── schema manifest and gate (`doc/gate.ts`) ────────────────────────────
 
 export { SCHEMA };
-
-export const SCHEMA_VERSION = SCHEMA.version;
-export const SCHEMA_NAME = SCHEMA.name;
-export const META_KEY = SCHEMA.roots.meta;
-
-/** Origin of the seed update's apply — non-local, like any integrated update. */
-export const SEED_ORIGIN = Symbol('edytor:seed');
-
-// ── schema gate (module-level: pure doc reads, no engine binding) ──────
-
-/**
- * The replicated schema version (`meta.v`) — `undefined` before init.
- * Read-only: `doc.get` on a root emits no update.
- */
-export const schemaVersion = (doc: EngineDoc): number | undefined => {
-	const v = doc.get(SCHEMA.roots.meta).getAttr(SCHEMA.metaAttrs.version);
-	return typeof v === 'number' ? v : undefined;
+export {
+	assertSchema,
+	assertUsableDoc,
+	checkSchema,
+	isInitialized,
+	META_KEY,
+	registryEmpty,
+	SCHEMA_NAME,
+	SCHEMA_VERSION,
+	SchemaMismatchError,
+	schemaVersion
+};
+export { UnsupportedDocError, type SchemaProblem } from './doc/gate.js';
+export { SEED_ORIGIN } from './doc/seed.js';
+export type {
+	AnchorAffinity,
+	BlockRole,
+	DataTarget,
+	DocAnchor,
+	DocChange,
+	EdytorDocConfig,
+	OpResult,
+	OrderPolicy,
+	Plan,
+	PlanEffect,
+	PlanStep,
+	Prepared,
+	TextRange
 };
 
-/** True iff the `blocks` registry holds at least one entry (live or deleted). */
-export const registryEmpty = (doc: EngineDoc): boolean =>
-	doc.get(SCHEMA.roots.registry).attrKeys().next().done === true;
-
-/**
- * True iff the document carries the schema version record. Content alone —
- * e.g. a raw `doc.get('blocks').setAttr('x', …)` write — is NOT proof of
- * initialization: the gate distinguishes "versioned" from "has any registry
- * state" so rogue unversioned writes never masquerade as an initialized doc.
- * A replica that learned `meta.v` purely by applying updates counts.
- */
-export const isInitialized = (doc: EngineDoc): boolean => schemaVersion(doc) !== undefined;
-
-/**
- * A document's relationship to this build's schema:
- *
- * - `unversioned` — registry state exists but `meta.v` is absent. Someone
- *   wrote replicated content without running the schema path (a rogue or
- *   v13-era write). This state must NEVER be persisted/broadcast as a
- *   document update by a provider.
- * - `unsupported` — `meta.v` names a version this build does not speak
- *   (e.g. `99` written by a future build). Content still applies (a replica
- *   cannot refuse structs it already shares a protocol with), but providers
- *   surface a `schema-mismatch` signal so operators can detect skew.
- * - `foreign` — `meta.v` is the supported version but `meta.schema` is
- *   missing or names a DIFFERENT manifest (`'not-edytor'`, a next-gen name,
- *   an app-local doc kind). A valid version number alone does not make the
- *   payload an edytor document — the manifest name is part of the contract
- *   (the version-only check let foreign `meta.schema` values
- *   cross the staging boundary).
- */
-export type SchemaProblem = {
-	kind: 'unversioned' | 'unsupported' | 'foreign';
-	/** The observed `meta.v` (undefined for `unversioned`). */
-	version?: number;
-	/** The observed `meta.schema` (undefined when absent). */
-	schema?: unknown;
-};
-
-/** The observed `meta.schema` manifest name (`undefined` when absent). */
-const schemaName = (doc: EngineDoc): unknown =>
-	doc.get(SCHEMA.roots.meta).getAttr(SCHEMA.metaAttrs.schema);
-
-/**
- * Inspect the document's schema record. `null` = clean (versioned under the
- * supported schema AND manifest name, or completely untouched). Read-only,
- * safe mid-transaction.
- */
-export const checkSchema = (doc: EngineDoc): SchemaProblem | null => {
-	const v = schemaVersion(doc);
-	const name = schemaName(doc);
-	if (v === undefined) {
-		if (registryEmpty(doc)) {
-			// Completely untouched is clean — but a bare FOREIGN manifest
-			// name with no other state is still a foreign claim, not a doc
-			// this build can speak for. A stray copy of our own name is
-			// inert (no registry, no version claim).
-			return name === undefined || name === SCHEMA_NAME ? null : { kind: 'foreign', schema: name };
-		}
-		return { kind: 'unversioned', schema: name };
-	}
-	if (v !== SCHEMA_VERSION) return { kind: 'unsupported', version: v, schema: name };
-	if (name !== SCHEMA_NAME) return { kind: 'foreign', version: v, schema: name };
-	return null;
-};
-
-/** Error raised by {@link assertSchema} — carries the detected problem. */
-export class SchemaMismatchError extends Error {
-	constructor(
-		public readonly docName: string,
-		public readonly problem: SchemaProblem
-	) {
-		super(
-			problem.kind === 'unversioned'
-				? `Document "${docName}" carries replicated registry state but no meta.v schema version — refusing to treat it as initialized.`
-				: problem.kind === 'unsupported'
-					? `Document "${docName}" claims unsupported schema version ${problem.version} (this build speaks ${SCHEMA_VERSION}).`
-					: problem.schema === undefined
-						? `Document "${docName}" carries meta.v=${problem.version} but no meta.schema manifest name — refusing it as an "${SCHEMA_NAME}" document.`
-						: `Document "${docName}" claims foreign schema "${String(problem.schema)}" (this build speaks "${SCHEMA_NAME}").`
-		);
-		this.name = 'SchemaMismatchError';
-	}
-}
-
-/**
- * Hard gate — throws {@link SchemaMismatchError} when `checkSchema` reports a
- * problem. Used by migration and by `Edytor.sync()` before
- * mutating a synced document.
- */
-export const assertSchema = (doc: EngineDoc, docName = 'doc'): void => {
-	const problem = checkSchema(doc);
-	if (problem !== null) throw new SchemaMismatchError(docName, problem);
-};
-
-/**
- * Error raised by {@link assertUsableDoc} — the doc cannot host a v14 facade.
- * `kind` distinguishes a foreign engine object (a real v13 `yjs` Doc — a
- * different CRDT implementation entirely) from a v14 doc that decodes the
- * legacy v13 Edytor schema (applied v13 update rows awaiting migration).
- */
-export class UnsupportedDocError extends Error {
-	constructor(public readonly kind: 'foreign' | 'legacy') {
-		super(
-			kind === 'legacy'
-				? 'Document carries the legacy v13 Edytor schema (`content` root) — ' +
-						'migrate it via `crdt.migration` before attaching an editor.'
-				: 'Document is not a v14 engine doc — the `blocks` registry is not a ' +
-						'unified Y.Node. Use `crdt.createDoc()` (or `new Y.Doc()` from ' +
-						'`edytor/crdt`); a v13 `yjs` Doc must be migrated via ' +
-						'`crdt.migration` (from its stored updates), not passed to the runtime.'
-		);
-		this.name = 'UnsupportedDocError';
-	}
-}
-
-/**
- * Document-boundary guard run by {@link EdytorDocBinding.create} before the
- * runs view attaches. The facade only speaks the v14 unified-node surface —
- * without this gate a foreign doc dies obscurely inside `buildView`
- * (`registry.forEachAttr is not a function`), and a legacy-schema doc would be
- * silently misread. Both fail fast with an actionable error instead.
- */
-export const assertUsableDoc = (doc: EngineDoc): void => {
-	let registry: unknown;
-	try {
-		registry = typeof doc?.get === 'function' ? doc.get(SCHEMA.roots.registry) : undefined;
-	} catch {
-		registry = undefined;
-	}
-	if (!isNodeLike(registry) || typeof registry.forEachAttr !== 'function') {
-		throw new UnsupportedDocError('foreign');
-	}
-	if (isLegacyDoc(doc)) {
-		throw new UnsupportedDocError('legacy');
-	}
-};
+/** The undo steps a document's history keeps by default: older ones are released. */
+export const DEFAULT_HISTORY_LIMIT = 200;
+/** The origin of the transaction that releases a dropped history step's content. */
+const HISTORY_TRIM = Symbol('edytor.history.trim');
 
 /**
  * Raised when a mutating facade op runs after `dispose()` — disposal is
@@ -371,11 +255,6 @@ export const assertUsableDoc = (doc: EngineDoc): void => {
  * counterpart of `DocumentDestroyedError` — kept in this module because a
  * bare `bindEdytorDoc` facade has no document layer above it.
  */
-/** The undo steps a document's history keeps by default: older ones are released. */
-export const DEFAULT_HISTORY_LIMIT = 200;
-/** The origin of the transaction that releases a dropped history step's content. */
-const HISTORY_TRIM = Symbol('edytor.history.trim');
-
 export class EdytorDocDisposedError extends Error {
 	constructor(service?: string) {
 		super(`EdytorDoc${service ? `.${service}` : ''}: facade is disposed.`);
@@ -383,339 +262,8 @@ export class EdytorDocDisposedError extends Error {
 	}
 }
 
-// ── types ───────────────────────────────────────────────────────────────
-
-/** Structural role of a block type (plugin-side policy, resolved per op). */
-export type BlockRole = {
-	/** Not editable through normal structural flow; no children, no merges. */
-	void?: boolean;
-	/** Editable, but its subtree is structurally sealed from outside blocks. */
-	island?: boolean;
-	/**
-	 * An island of lines (code): each direct child displays as its
-	 * `defaultChild` kind and holds no children. Needs
-	 * `island` and a `defaultChild`; other islands keep their structure.
-	 */
-	lines?: boolean;
-	/**
-	 * A layout (columns): it displays only its items — its `defaultChild`
-	 * kind, a container that renders no content — side by side, and only
-	 * while it shows two or more (`layout.*` in the delete contract). Needs
-	 * a `defaultChild`.
-	 */
-	layout?: boolean;
-	/**
-	 * Data paths written as one leaf (`data.atomic`): a top-level key, or
-	 * an array of keys for a nested one (`['link', ['media', 'source']]`). An
-	 * assignment there, or anywhere under it, writes the whole value as one
-	 * last-writer-wins leaf, so two concurrent assignments never merge into a
-	 * value neither wrote: one wins whole.
-	 */
-	atomic?: readonly (string | readonly string[])[];
-};
-
-/** Island-sealing policy for a walk in document order (see `next`). */
-export type OrderPolicy = { sealed?: boolean };
-
-/** Configuration for an attached {@link EdytorDoc}. */
-export type EdytorDocConfig = {
-	/**
-	 * Resolve a block `type` to its structural role — the seam where the
-	 * editor's plugin definitions plug in (e.g. `(t) => edytor.blocks.get(t)`).
-	 * Defaults to no roles (pure engine behavior).
-	 */
-	roleOf?: (type: string) => BlockRole | undefined;
-	/**
-	 * Default block type — the bootstrap block and the default child of the
-	 * root and of any parent type `defaultChildOf` does not answer.
-	 * Defaults to `'paragraph'`.
-	 */
-	defaultType?: string;
-	/**
-	 * The adopted default child type per parent type — the island
-	 * merge-out reset applies it against the children's actual new parent.
-	 */
-	defaultChildOf?: (parentType: string) => string | undefined;
-	/** The adopted `rendersContent` per kind; undeclared kinds render theirs. */
-	rendersContent?: (type: string) => boolean;
-	/**
-	 * The adopted edge of a mark (its record's `edge`): where a concurrent
-	 * insert at each end of a mark operation lands. Undeclared marks are
-	 * `inclusive`; a key `name:<id>` falls back to `name`'s.
-	 */
-	markEdge?: (mark: string) => MarkEdge | undefined;
-	/**
-	 * The kinds `roleOf` answers for — the display reads the line kinds of
-	 * the `lines` islands from them, present in the document or not. Absent: only the kinds of the blocks the document holds.
-	 */
-	kinds?: () => Iterable<string>;
-	/**
-	 * The local actor getter for compact per-block attribution
-	 * (`attribution/block.ts`). Read lazily per op so the document can
-	 * pass `() => this.actor` before the actor field is assigned. When
-	 * absent the facade performs NO block-attribution writes at all —
-	 * bare facades (raw docs, migration seeders, engine-level tests)
-	 * stay byte-identical to the unattributed schema.
-	 */
-	actor?: () => AttributionActor | undefined;
-	/**
-	 * Opt-in per-block lineage depth (`attribution.history`). `> 0` captures
-	 * a subtree checkpoint just before a write displaces the block's current
-	 * `lastChangedBy` owner — handoffs, deletes, and undo/redo touches —
-	 * ring-trimmed to this many entries on the block's `b/<id>` record.
-	 * `0`/absent disables the feature entirely: no captures, no list items,
-	 * byte-identical writes. Requires `actor` — unattributed facades never
-	 * capture.
-	 */
-	lineageDepth?: number;
-	/**
-	 * The document's `writable` guard — called at the write funnel;
-	 * throws while the document is read-only, so an edit is refused rather
-	 * than accepted and then dropped by the quarantined transport.
-	 */
-	assertWritable?: () => void;
-};
-
-/**
- * One committed transaction's semantic diff — the payload {@link EdytorDoc.onChange}
- * subscribers receive. Every collection names the affected ids; `order`
- * carries the NEW child-id list per changed parent so a mirror can apply the
- * diff without re-reading the doc.
- */
-export type DocChange = {
-	/** Transaction origin (local origin object, remote marker, …). */
-	origin: unknown;
-	/** `transaction.local` — false for remote-applied updates. */
-	local: boolean;
-	/** Monotonic event counter per facade. */
-	version: number;
-	/** Newly visible blocks → full projected subtree (incl. content+children). */
-	added: Map<BlockId, ProjectedBlock>;
-	/** Ids no longer visible (deleted, merged-away, or hidden with subtree). */
-	removed: Set<BlockId>;
-	/** Ids whose display parent or sibling index changed. */
-	moved: Set<BlockId>;
-	/** Ids whose `type`/`data` payload changed → new values. */
-	meta: Map<BlockId, { type: string; data?: Record<string, unknown> }>;
-	/** Ids whose visible content changed → the new maintained runs. */
-	content: Map<BlockId, readonly ContentRun[]>;
-	/** Parents (`null` = root) whose visible child list changed → new order
-	 *  (frozen — shared with the retained snapshot baseline). */
-	order: Map<BlockId | null, readonly BlockId[]>;
-	/** The document's own data (`docData()`), when this commit changed it. */
-	data?: Record<string, unknown>;
-};
-
 export type EdytorDoc = ReturnType<EdytorDocBinding['create']>;
 export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
-
-// ── caret anchors (U09) ────────────────────────────────────────────────
-
-/**
- * Selection-endpoint affinity — which side of a position the anchor binds
- * to (see `T.atomAnchorAt`):
- *
- * - `'left'` — bound to the atom BEFORE the position; resolves right after
- *   it, so a concurrent insert exactly at the position lands to the
- *   anchor's right. Used for carets and range ENDS.
- * - `'right'` — bound to the atom AT the position; resolves right before
- *   it, so a concurrent insert lands to the anchor's left — outside a
- *   range starting here. Used for range STARTS.
- */
-export type AnchorAffinity = 'left' | 'right';
-
-/**
- * A selection endpoint: `b` is the home block of the backing text the
- * position lives in (NOT necessarily the block that displays it — merges and
- * splits reroute display while the anchor stays on the same items), `a` an
- * engine relative position whose `a` carries the side (`< 0` left, `>= 0`
- * right). The containing stream and the side are two facts in two fields.
- * JSON-serializable — the presence and history wire shape.
- */
-export type DocAnchor = { b: BlockId; a: Anchor };
-
-// ── internals ───────────────────────────────────────────────────────────
-
-type JsonObj = Record<string, unknown>;
-
-/** Shared frozen empty child list for `DocChange.order` tombstone entries. */
-const EMPTY_IDS = Object.freeze([]) as readonly BlockId[];
-
-/**
- * The observed outcome of one document operation — the one result
- * shape every op returns, empty inputs included. `refused`: the op did not
- * apply and wrote nothing; `noop`: it applied and changed nothing; `applied`:
- * the transaction wrote. Read from the transaction's effects, never predicted.
- */
-export type OpResult = {
-	readonly status: 'refused' | 'noop' | 'applied';
-	/** What the op is about — created, moved, merge target, or its target; empty unless applied. */
-	readonly ids: readonly BlockId[];
-	/** Why a refused op refused, when it names a reason (`'id-collision'`). */
-	readonly reason?: string;
-};
-/** An op body's refusal: `null`, or the reason it names. */
-type Refusal = null | string;
-const NOOP: OpResult = Object.freeze({ status: 'noop', ids: EMPTY_IDS });
-const refused = (reason: Refusal): OpResult =>
-	Object.freeze({ status: 'refused', ids: EMPTY_IDS, ...(reason !== null && { reason }) });
-
-/** A text range an op writes, in display offsets before the write. */
-export type TextRange = { block: BlockId; offset: number; length: number };
-
-/**
- * One planned write, named by the document operation that
- * performs it — the name a hook matches. Steps carry everything
- * their write needs (ranks, marks, offsets), decided at prepare time.
- */
-export type PlanStep =
-	/** `index`: the destination slot at prepare time, as hooks see it. */
-	| {
-			op: 'insertBlocks';
-			parent: BlockId | null;
-			index: number;
-			specs: BlockSpec[];
-			ranks: string[];
-	  }
-	| { op: 'moveBlocks'; ids: BlockId[]; parent: BlockId | null; index: number; ranks: string[] }
-	/** `marks`: the blocks that get this writer's mark; `removes`: those that leave the document. */
-	| { op: 'deleteBlock'; id: BlockId; marks: BlockId[]; removes: BlockId[] }
-	| {
-			op: 'splitBlock';
-			id: BlockId;
-			offset: number;
-			/** Display atoms moving to the new block. */
-			length: number;
-			newId: BlockId;
-			tail: SplitTail;
-			parent: BlockId | null;
-			rank: string;
-	  }
-	/** `at`/`length`: where `from`'s display lands in `into`'s. */
-	| { op: 'mergeBlocks'; from: BlockId; into: BlockId; at: number; length: number }
-	| { op: 'setBlockType'; id: BlockId; type: string }
-	/**
-	 * A data patch (`crdt/data.ts`): of block `id`, of its atom `inlineId`
-	 * (at display `offset`), or of the document (no `id`). `ops` as asked;
-	 * `leaves` the attr writes they plan.
-	 */
-	| {
-			op: 'patchData';
-			id?: BlockId;
-			inlineId?: string;
-			offset?: number;
-			ops: DataPatch[];
-			leaves: LeafWrite[];
-	  }
-	| {
-			op: 'insertText';
-			id: BlockId;
-			offset: number;
-			text: string;
-			marks?: Record<string, unknown>;
-	  }
-	| { op: 'insertInline'; id: BlockId; offset: number; atom: InlineSpec }
-	| { op: 'deleteText'; id: BlockId; offset: number; length: number }
-	| { op: 'removeInline'; id: BlockId; offset: number; inlineId: string }
-	| {
-			op: 'formatRange';
-			id: BlockId;
-			offset: number;
-			length: number;
-			marks: Record<string, unknown>;
-	  };
-
-/** What a data patch edits: a block, one of its inline atoms, or the document (`null`). */
-export type DataTarget = BlockId | null | { block: BlockId; atom: string };
-
-/**
- * What applying a plan does: blocks created, removed (they leave the
- * document), merged (`[from, into]`), moved (a placement written), retyped
- * or given new data (`meta`), and the text ranges written. Derived from the
- * plan's steps; the applied transaction changes exactly this.
- */
-export type PlanEffect = {
-	creates: BlockId[];
-	removes: BlockId[];
-	merges: [from: BlockId, into: BlockId][];
-	moves: BlockId[];
-	meta: BlockId[];
-	textRanges: TextRange[];
-};
-
-/**
- * A prepared operation: its steps, their effect, the ids the op
- * is about, and the document version it was prepared against — valid only
- * there, applied in the same synchronous turn.
- */
-export type Plan = {
-	readonly ids: readonly BlockId[];
-	readonly writes: readonly PlanStep[];
-	readonly effect: PlanEffect;
-	readonly version: number;
-	/** Where the op leaves the caret, when it decides one (`deleteRange`). */
-	readonly at?: DocPosition;
-};
-/** `prepare`'s answer: a plan, or the op's refusal. */
-export type Prepared = Plan | OpResult;
-
-/** Each prepared op, applied: the op itself. */
-type Applied<P> = {
-	[K in keyof P]: P[K] extends (...args: infer A) => Prepared ? (...args: A) => OpResult : never;
-};
-const applied = <P extends Record<string, (...args: never[]) => Prepared>>(
-	prepare: P,
-	apply: (p: Prepared) => OpResult
-): Applied<P> =>
-	Object.fromEntries(
-		Object.entries(prepare).map(([name, op]) => [name, (...args: never[]) => apply(op(...args))])
-	) as Applied<P>;
-
-/** The effect summary of `writes`. */
-const effectOf = (writes: readonly PlanStep[]): PlanEffect => {
-	const e: PlanEffect = {
-		creates: [],
-		removes: [],
-		merges: [],
-		moves: [],
-		meta: [],
-		textRanges: []
-	};
-	const text = (block: BlockId, offset: number, length: number): void => {
-		if (length > 0) e.textRanges.push({ block, offset, length });
-	};
-	const created = (sp: BlockSpec): void => {
-		e.creates.push(sp.id);
-		sp.children?.forEach(created);
-	};
-	for (const w of writes) {
-		if (w.op === 'insertBlocks') w.specs.forEach(created);
-		else if (w.op === 'moveBlocks') e.moves.push(...w.ids);
-		else if (w.op === 'deleteBlock') e.removes.push(...w.removes);
-		else if (w.op === 'splitBlock') {
-			e.creates.push(w.newId);
-			text(w.id, w.offset, w.length);
-		} else if (w.op === 'mergeBlocks') {
-			e.merges.push([w.from, w.into]);
-			text(w.into, w.at, w.length);
-		} else if (w.op === 'setBlockType') e.meta.push(w.id);
-		else if (w.op === 'patchData') {
-			if (w.inlineId !== undefined) text(w.id!, w.offset!, 1);
-			else if (w.id !== undefined) e.meta.push(w.id);
-		} else if (w.op === 'insertText') text(w.id, w.offset, w.text.length);
-		else if (w.op === 'deleteText' || w.op === 'formatRange') text(w.id, w.offset, w.length);
-		else text(w.id, w.offset, 1);
-	}
-	// Text written into a block the plan creates is part of its creation.
-	e.textRanges = e.textRanges.filter((r) => !e.creates.includes(r.block));
-	return e;
-};
-
-/**
- * Ingress for an id reference (O1): it normalizes exactly like a stored id
- * (`sanitizeSpec`), so a write and a later lookup by the same string agree.
- */
-const ref = <I extends string | null>(id: I): I => (id === null ? id : sanitizeWireString(id)) as I;
 
 /**
  * The lineage ring depth, validated — `NaN`/`Infinity`/fractional/negative
@@ -754,137 +302,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	// `schemaVersion`, `registryEmpty`, `isInitialized`, `checkSchema` and
 	// `assertSchema` are module-level (see above) — pure doc reads shared by
 	// providers and migration without re-binding.
-
-	/**
-	 * U1 — stamp a freshly materialized spec tree (all levels) with
-	 * `createdBy`/`contributors`/`lastChangedBy` = `actorId`. Call inside
-	 * the creating transaction; the spec is the normalized one that was stored.
-	 */
-	const stampSpecTree = (doc: EngineDoc, spec: BlockSpec, actorId: string): void => {
-		const node = M.blockNodeOf(doc, spec.id);
-		if (node !== null) BA.stampCreated(doc, node, spec.id, actorId);
-		for (const child of spec.children ?? []) stampSpecTree(doc, child, actorId);
-	};
-
-	/**
-	 * Stamp the version record, absent only: never downgrade a higher
-	 * version written by a newer peer — U07's gate decides compatibility.
-	 */
-	const stamp = (doc: EngineDoc): void => {
-		const meta = doc.get(META_KEY);
-		if (meta.getAttr(SCHEMA.metaAttrs.version) !== undefined) return;
-		meta.setAttr(SCHEMA.metaAttrs.version, SCHEMA_VERSION);
-		meta.setAttr(SCHEMA.metaAttrs.schema, SCHEMA_NAME);
-	};
-
-	/**
-	 * Restore definition (O24, D-22 — migration only): stamp the version
-	 * record (absent only) and make `content` the whole document under its
-	 * own ids, rewritten in place where they exist (the model's
-	 * `restoreBlocks`). Writes no attribution.
-	 */
-	const restore = (doc: EngineDoc, content: BlockSpec[]): void =>
-		doc.transact(() => {
-			stamp(doc);
-			M.restoreBlocks(doc, content.map(sanitizeSpec));
-		});
-
-	/**
-	 * Stamp the version record (absent only) and, into an EMPTY registry,
-	 * bulk-insert `content` — the local materializer: the seed's scratch
-	 * doc, migration's rebuild and fixtures. Without `content` it seeds an
-	 * unstamped empty doc (see {@link seed}). Idempotent otherwise. It
-	 * writes no attribution (authored content goes through the ops).
-	 */
-	const init = (
-		doc: EngineDoc,
-		opts: { content?: BlockSpec[]; defaultType?: string } = {}
-	): void => {
-		const specs = (opts.content ?? []).map(sanitizeSpec);
-		if (specs.length === 0 && registryEmpty(doc) && !isInitialized(doc)) {
-			return seed(doc, [], opts.defaultType);
-		}
-		doc.transact(() => {
-			stamp(doc);
-			if (specs.length === 0 || !registryEmpty(doc)) return;
-			// Bulk path (U7): one sibling read + a local rank chain for the
-			// whole batch. All-or-nothing: a dup spec id refuses the batch.
-			if (!M.insertBlocks(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, specs)) {
-				// Malformed initial content (e.g. a duplicated id) — fall back
-				// to per-spec insertion so valid blocks still load.
-				console.error(
-					'[edytor-doc] initial content refused by bulk insert; retrying per-spec (duplicate block ids are skipped)'
-				);
-				for (const spec of specs) {
-					M.insertBlock(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, spec);
-				}
-			}
-		});
-	};
-
-	/**
-	 * The deterministic seed update (R13, D-3) — see the module header.
-	 * Every seeded block also gets an EMPTY `b/` record (no authorship) so
-	 * later contributor adds land on one shared node.
-	 */
-	const seedUpdate = (
-		value: JSONBlock[],
-		defaultType = 'paragraph',
-		data?: JsonObj
-	): Uint8Array => {
-		// Canonical form (object keys sorted, arrays in order): the hash AND
-		// the build read it, so key order never splits one template.
-		const sorted = (_: string, v: unknown) =>
-			v && typeof v === 'object' && !Array.isArray(v)
-				? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1)))
-				: v;
-		const blocks: JSONBlock[] = JSON.parse(
-			JSON.stringify(value.length > 0 ? value : [{ type: defaultType }], sorted)
-		);
-		// The document's data joins the hash only when it has some (seeds without it keep their
-		// writer), in the canonical form too: the build writes its leaves in that key order.
-		const own =
-			isObject(data) && Object.keys(data).length > 0
-				? (JSON.parse(JSON.stringify(sanitizeWireJson(data), sorted)) as JsonObj)
-				: undefined;
-		const hashed = own === undefined ? blocks : { data: own, blocks };
-		// The writer lives in a low band, [1, 2^26): a registry race is won by
-		// the larger client id and live replicas draw uint53 ids, so a seed
-		// sharing a block id with live content loses to it (UW-03) but for a
-		// live id below the band (~2^-27). Two different seeds collide on one
-		// writer at ~2^-26. The band moved from the full 32 bits: an id-less
-		// template seeded late into a document seeded by an older build
-		// mints new ids and shows twice, once.
-		const writer =
-			hash32(`yjs-v14/${SCHEMA_NAME}@${SCHEMA_VERSION}:${JSON.stringify(hashed)}`) >>> 6 || 1;
-		let n = 0;
-		const mint = (prefix: string) => `${prefix}${writer.toString(36)}.${n++}`;
-		const specs = blocks.map((block) => jsonBlockToSpec(block, false, mint));
-		const raw = new Y.Doc();
-		raw.clientID = writer;
-		const scratch = raw as unknown as EngineDoc;
-		let rank = writer; // ranks from the rand seam, seeded by the hash (LCG)
-		setDocRand(scratch, () => (rank = (Math.imul(rank, 1664525) + 1013904223) >>> 0) / 2 ** 32);
-		init(scratch, { content: specs });
-		const records = (spec: BlockSpec): void => {
-			BA.ensureRecord(scratch, sanitizeWireString(spec.id));
-			spec.children?.forEach(records);
-		};
-		scratch.transact(() => {
-			specs.forEach(records);
-			writeLeaves(scratch.get(DOC_DATA_ROOT), dataLeaves(own));
-		});
-		return Y.encodeStateAsUpdate(raw);
-	};
-
-	/** Apply the deterministic seed of `value` with the non-local {@link SEED_ORIGIN}. */
-	const seed = (
-		doc: EngineDoc,
-		value: JSONBlock[] = [],
-		defaultType?: string,
-		data?: JsonObj
-	): void =>
-		Y.applyUpdate(doc as unknown as YDoc, seedUpdate(value, defaultType, data), SEED_ORIGIN);
+	const { restore, init, seed } = bindSeed(Y, M, BA);
 
 	// ── per-doc facade ──────────────────────────────────────────────────
 
@@ -1807,22 +1225,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			}
 			return null;
 		};
-
-		/** A replacement content item normalized at ingress. */
-		const sanitizeItem = (item: ContentItem): ContentItem =>
-			item.kind === 'text'
-				? {
-						kind: 'text',
-						text: ref(item.text),
-						...(item.marks && { marks: sanitizeWireJson(item.marks) })
-					}
-				: sanitizeInline(item);
-		const sanitizeInline = <I extends InlineSpec>(item: I): I => ({
-			...item,
-			id: ref(item.id),
-			type: ref(item.type),
-			...(item.data !== undefined && { data: sanitizeWireJson(item.data) })
-		});
 
 		// ── prepared ops (R6) ─────────────────────────────────────────────
 		// Every op is `prepare` (pure: `refused`, or a plan of named steps plus

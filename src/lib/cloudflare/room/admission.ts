@@ -49,6 +49,16 @@ import {
 	withoutClients
 } from './updates.js';
 
+/**
+ * Whether a decoded update would write: structs the document does not
+ * hold, deletes of what it holds live, or deletes of what it lacks (they
+ * wait, stored). A join's Step2 of nothing new writes nothing.
+ */
+const writes = (doc: YDoc, decoded: Decoded): boolean =>
+	newWriters(decoded, stateVector(doc)).size > 0 ||
+	(!decoded.ds.isEmpty() &&
+		(freedBy(doc, decoded.ds) > 0 || !unheldDeletes(decoded, new Set(), doc).isEmpty()));
+
 /** The provider's keepalive text frame, and the room's answer. */
 export const PING = 'ping';
 export const PONG = 'pong';
@@ -363,6 +373,11 @@ export class Admission {
 		// 3 · Attribution: new structs only under client ids this user may
 		// write under; another user's are stripped, the rest applied.
 		const decoded = decode(() => Y.decodeUpdate(update));
+		// A storage outage (`room.storage.outage`): a frame that would write
+		// waits for storage to answer, unapplied, so the outage rebuilds once.
+		if (storage.outage !== null && writes(doc, decoded) && !storage.answers()) {
+			return this.unavailable(ws);
+		}
 		// The document quota (H3), net of what the frame deletes.
 		if (
 			decoded.structs.some((struct) => !(struct instanceof Y.Skip)) &&
@@ -587,6 +602,21 @@ export class Admission {
 	private storedDeletes(doc: YDoc, deletes: Decoded['ds']): Decoded['ds'] {
 		const unheld = Y.diffIdSet(deletes, heldDeletes(doc, deletes));
 		return Y.diffIdSet(deletes, Y.diffIdSet(unheld, this.room.storage.storedWaiting));
+	}
+
+	/**
+	 * A frame that would write during a storage outage (`room.storage.outage`):
+	 * closed 1011 before it is applied, the live doc kept as stored. Its
+	 * provider redials and resends; the join rule finds what the room lacks
+	 * once storage answers.
+	 */
+	private unavailable(ws: WebSocket) {
+		const room = this.room;
+		const detail = `outage: ${String(room.storage.outage)}`;
+		room.note({ reason: 'storage', detail });
+		room.log({ edytor: 'fault', reason: 'storage', detail });
+		room.presence.depart(ws);
+		room.close(ws, CLOSE.fault, STORAGE_FAILURE);
 	}
 
 	/**

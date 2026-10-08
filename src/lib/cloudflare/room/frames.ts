@@ -3,6 +3,7 @@
  * while reading the client's bytes is theirs (`malformed`), never the
  * room's.
  */
+import * as encoding from 'lib0-v14/encoding';
 import { READ_ONLY_DENIAL } from '../../crdt/protocols/auth.js';
 import * as E from '../../crdt/protocol.js';
 import type { AwarenessEntry } from '../../crdt/protocol.js';
@@ -25,6 +26,29 @@ export const decode = <T>(read: () => T): T => {
 /** An awareness frame carrying `entries` — no `Awareness` instance involved. */
 export const presenceFrame = (entries: AwarenessEntry[]): Uint8Array =>
 	E.frame(E.messageAwareness, (e) => E.writeVarUint8Array(e, E.writeAwarenessEntries(entries)));
+
+/**
+ * One presence entry as the awareness codec writes it inside a frame,
+ * encoded once for every recipient it waits for ({@link presenceFrameOf}).
+ */
+export const encodePresenceEntry = ({ clientID, clock, state }: AwarenessEntry): Uint8Array =>
+	encoding.encode((e) => {
+		encoding.writeVarUint(e, clientID);
+		encoding.writeVarUint(e, clock);
+		encoding.writeVarString(e, JSON.stringify(state));
+	});
+
+/** An awareness frame of entries encoded apart ({@link encodePresenceEntry}): the codec's bytes. */
+export const presenceFrameOf = (entries: Map<number, Uint8Array>): Uint8Array =>
+	E.frame(E.messageAwareness, (e) =>
+		E.writeVarUint8Array(
+			e,
+			encoding.encode((inner) => {
+				encoding.writeVarUint(inner, entries.size);
+				for (const bytes of entries.values()) encoding.writeUint8Array(inner, bytes);
+			})
+		)
+	);
 
 /**
  * The store-before-ack frame, sent only once what `doc` holds is stored:

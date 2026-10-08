@@ -2,16 +2,17 @@
  * Presence through the instance-free codec (`room.presence.*`): each
  * socket publishes only its own replica's entry, relayed with its actor
  * set to the verified user, held past the presence rate and released at
- * a later message (no timer), and its departure announced when the socket
- * goes.
+ * a later message (no timer), relayed within the room's fan-out budget
+ * (past it, coalesced per recipient), and its departure announced when
+ * the socket goes.
  */
 import { semanticsMismatch } from '../../crdt/semantics.js';
 import type { AwarenessEntry } from '../../crdt/protocol.js';
 import type { YDoc } from '../../crdt/index.js';
-import type { Attachment } from '../DocumentRoom.js';
+import { SOCKET_TAG, type Attachment } from '../DocumentRoom.js';
 import { allowance, type Allowances } from './admission.js';
 import { encodeJSON, type RoomContext } from './context.js';
-import { presenceFrame } from './frames.js';
+import { encodePresenceEntry, presenceFrame, presenceFrameOf } from './frames.js';
 import { stateVector } from './updates.js';
 
 /**
@@ -43,6 +44,15 @@ export class RoomPresence {
 	 * rate allows (the end of any message), or replaced by a newer one.
 	 */
 	private readonly held = new Map<WebSocket, AwarenessEntry>();
+	/**
+	 * Each recipient's entries waiting past the fan-out budget
+	 * (`room.presence.fanout`): by replica, the newest, encoded once for
+	 * every recipient. In order of the recipients' first waiting entry, so
+	 * the budget serves them in turn.
+	 */
+	private readonly waiting = new Map<WebSocket, Map<number, Uint8Array>>();
+	/** The room's presence frame budget: a token bucket, a one-second burst (memory: a wake refills it). */
+	private readonly budget = { tokens: Number.NaN, at: 0 };
 
 	constructor(private readonly room: RoomContext) {}
 
@@ -118,12 +128,82 @@ export class RoomPresence {
 			return this.overRate(ws, attachment);
 		}
 		this.held.delete(ws);
-		this.relay(ws, entry);
+		if (entry.state === null) this.remove(entry, ws);
+		else this.fanOut([entry]);
 	}
 
-	/** Relay a socket's accepted entry: to its sender too (liveness), but a removal. */
-	private relay(ws: WebSocket, entry: AwarenessEntry) {
-		this.room.broadcast(presenceFrame([entry]), entry.state === null ? ws : null);
+	/**
+	 * Relay accepted entries (`room.presence.fanout`): to every socket, the
+	 * sender too (liveness). Within the room's budget of frames a second
+	 * (`maxPresenceFanout`), at once, in one frame; past it, or while
+	 * entries wait already, they wait per recipient, the newest of each
+	 * replica, and {@link drain} sends each recipient's in one frame.
+	 */
+	private fanOut(entries: AwarenessEntry[]) {
+		const sockets = this.room.ctx
+			.getWebSockets(SOCKET_TAG)
+			.filter((socket) => socket.readyState === WebSocket.OPEN);
+		if (sockets.length === 0) return;
+		if (this.waiting.size === 0 && this.take(sockets.length)) {
+			return this.room.broadcast(presenceFrame(entries), null);
+		}
+		const encoded = entries.map((entry) => [entry.clientID, encodePresenceEntry(entry)] as const);
+		for (const socket of sockets) {
+			let waits = this.waiting.get(socket);
+			if (waits === undefined) this.waiting.set(socket, (waits = new Map()));
+			for (const [replica, bytes] of encoded) waits.set(replica, bytes);
+		}
+		this.drain();
+	}
+
+	/**
+	 * A removal goes out at once, never to its sender, and takes the
+	 * replica's waiting entries with it: none follows it out.
+	 */
+	private remove(entry: AwarenessEntry, sender: WebSocket) {
+		for (const waits of this.waiting.values()) waits.delete(entry.clientID);
+		this.room.broadcast(presenceFrame([entry]), sender);
+	}
+
+	/** Take `frames` from the room's fan-out budget. `false`: not that many left. */
+	private take(frames: number): boolean {
+		const perSecond = this.room.limits.maxPresenceFanout;
+		const now = Date.now();
+		const { budget } = this;
+		budget.tokens = Number.isNaN(budget.tokens)
+			? perSecond
+			: Math.min(perSecond, budget.tokens + ((now - budget.at) / 1000) * perSecond);
+		budget.at = now;
+		if (budget.tokens < frames) return false;
+		budget.tokens -= frames;
+		return true;
+	}
+
+	/**
+	 * Send the waiting entries the budget has frames for: each recipient's
+	 * in one frame, the recipients in turn (no timer: at the end of every
+	 * message the room handles, and as entries arrive). What the budget
+	 * cannot send yet waits for the next message (every client renews its
+	 * presence every 15 s).
+	 */
+	private drain() {
+		const { room } = this;
+		for (const [ws, waits] of this.waiting) {
+			if (ws.readyState !== WebSocket.OPEN || waits.size === 0) {
+				this.waiting.delete(ws);
+				continue;
+			}
+			if (!this.take(1)) return;
+			this.waiting.delete(ws);
+			const frame = presenceFrameOf(waits);
+			try {
+				room.send(ws, frame);
+				room.counters.fanOut.messages++;
+				room.counters.fanOut.bytes += frame.length;
+			} catch {
+				// a socket that died meanwhile gets its close event
+			}
+		}
 	}
 
 	/**
@@ -171,31 +251,31 @@ export class RoomPresence {
 	 * entries released together go out as one frame.
 	 */
 	release() {
-		if (this.held.size === 0) return;
-		const due: AwarenessEntry[] = [];
-		for (const [ws, entry] of this.held) {
-			if (ws.readyState !== WebSocket.OPEN) {
-				this.held.delete(ws);
-			} else if (this.allow(ws)) {
-				this.held.delete(ws);
-				if (entry.state === null) this.relay(ws, entry);
-				else due.push(entry);
+		if (this.held.size > 0) {
+			const due: AwarenessEntry[] = [];
+			for (const [ws, entry] of this.held) {
+				if (ws.readyState !== WebSocket.OPEN) {
+					this.held.delete(ws);
+				} else if (this.allow(ws)) {
+					this.held.delete(ws);
+					if (entry.state === null) this.remove(entry, ws);
+					else due.push(entry);
+				}
 			}
+			if (due.length > 0) this.fanOut(due);
 		}
-		if (due.length > 0) this.room.broadcast(presenceFrame(due), null);
+		if (this.waiting.size > 0) this.drain();
 	}
 
 	/** The departure the client may not have announced — from the attachment, so it works after a wake. */
 	depart(ws: WebSocket) {
 		this.held.delete(ws);
+		this.waiting.delete(ws);
 		const attachment = ws.deserializeAttachment() as Attachment | null;
 		if (attachment?.replica == null || attachment.clock === null) return;
 		// Announce once: a later close/error event on this socket is a no-op.
 		ws.serializeAttachment({ ...attachment, clock: null } satisfies Attachment);
 		this.entries.delete(attachment.replica);
-		this.room.broadcast(
-			presenceFrame([{ clientID: attachment.replica, clock: attachment.clock + 1, state: null }]),
-			ws
-		);
+		this.remove({ clientID: attachment.replica, clock: attachment.clock + 1, state: null }, ws);
 	}
 }

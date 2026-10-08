@@ -169,21 +169,6 @@
 					'shift+tab': ({ prevent }) => {
 						if (touchedLines()) prevent(() => indent(-1));
 					},
-					arrowdown: ({ prevent }) => {
-						// ArrowDown in a code block's last line (a code line never wraps) with
-						// nothing after the block: a new block after it takes the caret, so the
-						// code is never a dead end. A block after is the browser's move.
-						const { startBlock: line, isCollapsed } = edytor.selection.state;
-						const code = line?.type === 'codeLine' ? line.parent : undefined;
-						if (!isCollapsed || !code?.parent || line !== code.children.at(-1)) return;
-						if (shown(line, 'blockAfter')) return;
-						prevent(() => {
-							const after = code.insertBlockAfter({
-								block: { type: edytor.defaultChild(code.parent!) }
-							});
-							edytor.dispatcher.caret(after?.firstText, 0);
-						});
-					},
 					'shift+enter': ({ prevent }) => {
 						// Always a new line, in the empty last line too (where Enter leaves the block).
 						const { startBlock: line, isCollapsed } = edytor.selection.state;

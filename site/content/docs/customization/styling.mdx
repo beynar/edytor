@@ -104,6 +104,16 @@ For a paragraph with bold text and a mention, followed by the overlay:
 
 The block element (`div` here, the default) comes from the kind's `element`; the markup inside it (`p`) from the kind's snippet. The `class` prop of `<Edytor>` goes on the root.
 
+## Space below the last block
+
+A click in the root below its last block puts the caret in an empty paragraph at the end of the document, created when the last block is not one (as in Notion). The core gives the root a bottom padding to click in, `--edytor-trailing-space` (`2em` by default). Its rule has no specificity, so any rule of yours that sets the root's padding wins. A taller root works too: the whole area below the content counts.
+
+```css
+[data-edytor] {
+	--edytor-trailing-space: 30vh;
+}
+```
+
 ## Attributes
 
 | Attribute                          | On                         | Meaning                                                                  |

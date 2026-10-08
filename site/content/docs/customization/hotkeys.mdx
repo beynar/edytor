@@ -77,9 +77,11 @@ Every navigation key also has a <kbd>Shift</kbd> variant that extends the select
 | <kbd>Home</kbd>, <kbd>End</kbd>                        | The start or end of the block              | Text               |
 | <kbd>PageUp</kbd>, <kbd>PageDown</kbd>                 | The start or end of the document           | Text               |
 | <kbd>Mod</kbd> + <kbd>↑</kbd>, <kbd>Mod</kbd> + <kbd>↓</kbd> | The start or end of the document         | Text               |
-| <kbd>↑</kbd>, <kbd>↓</kbd>                             | The previous or next line (native)         | Text               |
+| <kbd>↑</kbd>, <kbd>↓</kbd>                             | The previous or next line (native); <kbd>↓</kbd> at the end of the document, out of a nested block (see below) | Text               |
 
 With nothing selected (after a drop or a column resize, an undo that gives back no selection, or <kbd>Escape</kbd>), the navigation keys and their <kbd>Shift</kbd> variants do nothing, as in Notion: the browser places no caret of its own. <kbd>PageUp</kbd> and <kbd>PageDown</kbd> still scroll, and <kbd>Mod</kbd> + <kbd>A</kbd> selects every block. A click, a tap or a focus from outside the editor places the caret.
+
+<kbd>↓</kbd> never leaves you stuck at the end of the document. When the caret is on the last line of the last place it can go, and that place is not a top-level paragraph (the body or header of a toggle, a callout, a quote, a nested list item, a column, a table's last row, a code block's last line, a heading), <kbd>↓</kbd> puts the caret in an empty paragraph after the document's last block, creating it, as one undo step: undo removes it and gives the caret back. When a block follows below the caret, <kbd>↓</kbd> goes there as usual; the next column of the same layout and the next cell of the same table row are beside the caret, not below it. A closed toggle's body is not a place the caret can go. <kbd>Shift</kbd> + <kbd>↓</kbd> only extends the selection, and a readonly editor adds nothing. A click below the last block does the same (see [Styling](/docs/customization/styling#space-below-the-last-block)).
 
 In a [columns layout](/docs/plugins/columns#keys), left, right and word keys follow document order (from the end of column 1 to the start of column 2), and <kbd>↑</kbd>/<kbd>↓</kbd> stay the browser's, which differs per engine.
 
@@ -116,7 +118,6 @@ Rich text, arrow move, suggestions and block handles are on by default in `<Edyt
 | <kbd>Tab</kbd>                                     | Insert a tab at the caret, indent every line a selection touches, or accept an `end` suggestion | [Code](/docs/plugins/code), in a code line |
 | <kbd>Shift</kbd> + <kbd>Tab</kbd>                    | Remove one leading tab (or up to two spaces) from every line the selection touches | Code, in a code line                     |
 | <kbd>Shift</kbd> + <kbd>Enter</kbd>                  | New code line                                    | Code, in a code line                     |
-| <kbd>ArrowDown</kbd>                               | In the code block's last line with nothing after the block, a paragraph after it takes the caret | Code, in the last code line |
 | <kbd>Mod</kbd> + <kbd>A</kbd>                        | Select the whole code block's text               | Code, until its text is selected         |
 | <kbd>Escape</kbd>                                  | Discard the line's `end` suggestions (the key goes on) | Code, in a code line                     |
 | <kbd>↑</kbd>, <kbd>↓</kbd>, <kbd>Enter</kbd>, <kbd>Escape</kbd> | Navigate, run, close                | [Slash menu](/docs/plugins/slash-menu), while open |

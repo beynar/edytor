@@ -315,12 +315,91 @@ export const extendVertically = (edytor: Edytor, dir: Dir): boolean => {
  */
 const natives = new WeakMap<Edytor, { serial: number; dir: Dir; value: SelectionValue }>();
 
-/** Note a plain vertical key over a text selection, then run the block-selection `binding`. */
+/**
+ * Whether a caret stop shows below `block`: a displayable block after it in
+ * document order that is not beside it — in another column of a layout it
+ * sits in, or another cell of its table row (what follows the last column
+ * or the last row is below).
+ */
+const stopBelow = (edytor: Edytor, block: Block): boolean => {
+	const { facade } = edytor;
+	const items = [block.id, ...facade.ancestorsOf(block.id)].filter(
+		(id) => facade.isLayoutItem(id) || facade.isTableCell(id)
+	);
+	const ids = facade.order();
+	const from = ids.indexOf(block.id);
+	if (from < 0) return true;
+	for (let i = from + 1; i < ids.length; i++) {
+		const id = ids[i]!;
+		if (!edytor.selection.displayable(id)) continue;
+		const ancestors = [id, ...facade.ancestorsOf(id)];
+		const beside = items.some(
+			(item) => !ancestors.includes(item) && ancestors.includes(facade.parentOf(item)!)
+		);
+		if (!beside) return true;
+	}
+	return false;
+};
+
+/**
+ * ArrowDown leaves the document's last stop (`nav.trailing.exit`, Notion):
+ * a collapsed caret on the last line of its block (a line box where the
+ * view lays one out, else a line break), with no stop below it, in a block
+ * that is not a top-level block of the root's default kind (a toggle's
+ * body or header, a callout, a quote, a nested item, a column, a table
+ * cell, a code line, a heading). Never in a view that writes nothing.
+ */
+const leavesLastStop = (edytor: Edytor): boolean => {
+	const { selection, root } = edytor;
+	const { value, state } = selection;
+	if (value.kind !== 'text' || !state.isCollapsed || !state.startText || !root) return false;
+	if (!edytor.dispatcher.permits()) return false;
+	const at = { text: state.startText, offset: state.yStart };
+	const block = at.text.parent;
+	if (block.parent?.isRoot && block.type === edytor.defaultChild(root)) return false;
+	const lines = linesOf(block);
+	if (locate(lines, at)?.index !== lines.length - 1) return false;
+	const end = edge(block, 1);
+	if (end && edytor.ports.surface.sameLine(at, end) === false) return false;
+	return !stopBelow(edytor, block);
+};
+
+/**
+ * The trailing paragraph (`nav.trailing`, Notion): the caret goes to an
+ * empty top-level block of the root's default kind after the document's
+ * last top-level block — that block itself when it is one, else a new one
+ * inserted after it (one command, its own undo step: its undo gives the
+ * caret back). Two peers doing it at once each insert theirs. Answers
+ * whether the caret went there (refused in a view that writes nothing,
+ * vetoed by a hook).
+ */
+export const toTrailingParagraph = (edytor: Edytor): boolean => {
+	const { root } = edytor;
+	const last = root?.children.at(-1);
+	if (!root || !last) return false;
+	const kind = edytor.defaultChild(root);
+	if (last.type === kind && last.isEmpty && last.firstText) {
+		edytor.selection.setAtTextOffset(last.firstText, 0);
+		return true;
+	}
+	const after = last.insertBlockAfter({ block: { type: kind } });
+	if (!after?.firstText) return false;
+	edytor.dispatcher.caret(after.firstText, 0);
+	return true;
+};
+
+/**
+ * Note a plain vertical key over a text selection, then run the
+ * block-selection `binding`; ArrowDown at the document's last stop goes to
+ * the trailing paragraph instead (`leavesLastStop`).
+ */
 export const vertical =
 	(dir: Dir, binding: HotKey): HotKey =>
 	(payload) => {
 		const { edytor } = payload;
 		stayWithoutTarget(edytor, payload.prevent);
+		if (dir > 0 && leavesLastStop(edytor))
+			return payload.prevent(() => void toTrailingParagraph(edytor));
 		const { value } = edytor.selection;
 		if (value.kind === 'text') natives.set(edytor, { serial: edytor.intentSerial, dir, value });
 		binding(payload);

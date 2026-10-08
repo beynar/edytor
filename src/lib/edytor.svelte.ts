@@ -35,6 +35,7 @@ import {
 import { Pin } from './surface/pin.svelte.js';
 import { Overlay } from './surface/overlay.js';
 import { Popups } from './surface/popups.svelte.js';
+import { onOneLine } from './surface/lines.js';
 import { withRulesAndTriggers } from './plugins/triggers/triggers.js';
 import { Announcer as AnnouncerState } from './session/announcer.svelte.js';
 import { englishLabels, labelsWith, type EditorLabels, type PartialLabels } from './labels.js';
@@ -279,7 +280,8 @@ export class Edytor {
 			placed: () => this.projector.placed(),
 			parked: () => this.projector.parked(),
 			clear: () => clearDomSelection(this.node),
-			pointAt: (node, offset) => textPointAt.call(this.selection, node, offset)
+			pointAt: (node, offset) => textPointAt.call(this.selection, node, offset),
+			sameLine: (a, b) => onOneLine(a, b)
 		},
 		input: {
 			runIntent: (inputType) => runIntent(this, inputType),

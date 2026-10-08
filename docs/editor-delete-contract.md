@@ -2052,8 +2052,8 @@ the classifier reads their synthetic `selectionchange` as drift.
 
 A press places the DOM caret at once, but the model adopts it only at the
 `selectionchange` the browser queues for it. Keydown handlers read the
-model value: the bindings (`session/bindings.ts`, a kind's `hotkeys`
-such as the code block's ArrowDown, Tab), the structural fallback's
+model value: the bindings (`session/bindings.ts` such as ArrowDown at
+the last stop, `nav.trailing.exit`; a kind's `hotkeys` such as Tab), the structural fallback's
 projection (`getStructuralFallbackInputType`) and the targetless
 admission (`targetless` in `session/attempt.ts`). Chromium runs input
 ahead of ordinary tasks, so a keydown can precede the queued
@@ -2082,6 +2082,61 @@ caret's) in three engines, and the secondary-click row under a 4× CPU
 throttle in Chromium. `endOf` in `tests/editor-dom/code-exit.spec.ts`
 still waits for the click's caret: that row's subject is the code block's
 exit.
+
+## Navigation
+
+### `nav.trailing.exit` — ArrowDown leaves the document's last stop (Notion)
+
+Navigation owns it (`session/navigation.ts`, `leavesLastStop` in the
+built-in ArrowDown, `vertical`), one rule for every kind: no kind keeps a
+rule of its own (the code block's is gone).
+
+- **When.** A collapsed text caret, in a view that writes
+  (`dispatcher.permits()`), on the last line of its block — a line box
+  where the view lays one out (`surface/lines.ts` through
+  `ports.surface.sameLine`; an offset where a line wraps counts on the
+  line it ends, so a doubt leaves the key to the browser), else after the
+  block's last line break — with **no stop below** it, in a block that is
+  **not a top-level block of the root's default kind**.
+- **A stop below** is a displayable block (`selection.displayable`: a
+  mounted text not hidden by view state, so a closed toggle's body holds
+  none, nor does a void) after the caret's block in document order, unless
+  it is beside it: in another column of a layout the block sits in
+  (`isLayoutItem`), or another cell of its table row (`isTableCell`). What
+  follows the last column, or a later row, is below.
+- **What.** The caret goes to the trailing paragraph (`toTrailingParagraph`):
+  an empty block of the root's default kind after the document's last
+  top-level block, inserted by one command (`insertBlockAfter`, its own
+  undo step) and the command's result caret; the undo removes it and
+  restores the caret before the key. An empty top-level paragraph there
+  is a stop below, so the key reaches it as any line (nothing is written).
+- **Not.** Shift+ArrowDown extends (`extendVertically`) and inserts
+  nothing; ArrowDown with a stop below stays the browser's (the table's
+  `verticalFrom` first, inside a table); a range, an atom or a block
+  selection keeps its own rule; a readonly view claims nothing.
+- **Concurrency.** Two peers leaving at once each insert their paragraph
+  (two trailing paragraphs): a plain insert, nothing else to reconcile.
+
+Rows: `src/tests/fixtures/dom/trailing-paragraph.test.tsx` (a toggle's
+child and closed header, a callout, a quote's child, a nested list item, a
+heading, the columns, a table's last row, a code block's last line, and
+the rows where it does not apply), `code-exit.test.tsx`; in browsers,
+`tests/editor-dom/trailing-paragraph.spec.ts` and `code-exit.spec.ts`.
+
+### `nav.trailing.press` — a press below the last block (Notion)
+
+A primary press with no modifier, from a mouse or a pen, on the host
+itself below its last top-level block's box, in a view that writes, is the
+model's (`pointer.belowPress`, classified with the chrome press in
+`events/onFocus.ts`, no listener of its own): the native placement is
+cancelled and the caret goes to the trailing paragraph
+(`toTrailingParagraph`: the last block when it is an empty paragraph, else
+a new one, one undo step). A touch there stays the browser's (it may start
+a scroll). The core gives the host a bottom padding to press in,
+`--edytor-trailing-space` (`2em`, zero specificity).
+
+Rows: `trailing-paragraph.test.tsx` ("a press below the last block") and
+`tests/editor-dom/trailing-paragraph.spec.ts`.
 
 ## Host DOM ownership (D-25)
 

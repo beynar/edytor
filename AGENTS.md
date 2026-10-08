@@ -115,7 +115,7 @@ Each fact has exactly one writer. When a fix seems to need a second writer, the 
 
 ## Testing
 
-Lanes (green at every gate; the rows expected to fail are declared `it.fails` and counted in the latest ledger row). CI (`.github/workflows/ci.yml`) runs the static checks and the unit, `test:crdt`, `test:dom` and `test:do` lanes on every push, Playwright Chromium (four shards) on every pull request; `nightly.yml` runs Firefox, WebKit, mobile, cdp and DST; only the pull request run's gate job is named `CI passed` (any other run's is `CI passed (<event>)`, as it skips Chromium); CONTRIBUTING.md has the lanes, the PR checklist and the branch protection ruleset to apply (not applied yet); `src/tests/ci-gates.test.ts` keeps the workflows, CONTRIBUTING.md and the gate rows in step (no retries, no measured time asserted):
+Lanes (green at every gate; the rows expected to fail are declared `it.fails` and counted in the latest ledger row). CI (`.github/workflows/ci.yml`) runs the static checks and the unit, `test:crdt`, `test:dom` and `test:do` lanes on every push, Playwright Chromium (four shards) on every pull request; `nightly.yml` runs Firefox, WebKit, mobile, cdp and DST; only the pull request run's gate job is named `CI passed` (any other run's is `CI passed (<event>)`, as it skips Chromium); CONTRIBUTING.md has the lanes, the PR checklist and the branch protection ruleset (applied: `master` takes pull requests with a green `CI passed` only); `src/tests/ci-gates.test.ts` keeps the workflows, CONTRIBUTING.md and the gate rows in step (no retries, no measured time asserted):
 
 ```bash
 pnpm check                   # svelte-check, 0/0

@@ -127,12 +127,14 @@ A block kind's `parse(element)` works the same way and returns the new block's `
 
 Selected text dragged to another place in the editor moves there, as in Notion: press inside the selection, hold, drag, release where the caret shows. The move is one command, `moveText`, and one undo step that gives back both the text and its place:
 
-1. the range is deleted as a replacement deletes it (`replaceRange`): a range across blocks joins them;
-2. its content goes where the drop point is after that deletion, placed as a paste of the same content would place it (`insertFlow`): marks, inline atoms and lines come along, a range across blocks arrives as lines.
+1. its content goes to the drop point, placed as a paste of the same content would place it (`insertFlow`): marks, inline atoms and lines come along, a range across blocks arrives as lines;
+2. the range is deleted as a replacement deletes it (`replaceRange`): a range across blocks joins them.
+
+Both halves are prepared before anything is written, so a drop either half refuses (a drop point that takes no content, a range the document keeps) writes nothing: the text never leaves without landing.
 
 The moved text is selected after the drop. Hold <kbd>Alt</kbd> (<kbd>Option</kbd>) at the drop to copy instead: the range stays and a copy lands at the drop point. A drop inside the dragged range changes nothing. A readonly view takes no drop, a kind's own control (a field in a block) keeps its own drags and drops, and dragging during an IME composition does nothing. The drag carries the range as a copy carries it (the Edytor fragment, HTML and plain text), so dropping it in another Edytor or another app pastes it there, and the text stays where it was.
 
-Hooks see `moveText` with its payload (`from`: the range's start and end, `to`: the drop point, both in block offsets; `copy`) and the deletion's planned steps (a copy's: the placement's); `prevent()` keeps everything. Block-handle drags are not text drags: they move whole blocks (see [Block handles](/docs/plugins/block-handles)).
+Hooks see `moveText` with its payload (`from`: the range's start and end, `to`: the drop point, both in block offsets; `copy`) its `effect`, and the planned steps of both halves (the placement's, then the deletion's; a copy's: the placement's), all before any write; `prevent()` on the command or on any of its steps keeps everything. Block-handle drags are not text drags: they move whole blocks (see [Block handles](/docs/plugins/block-handles)).
 
 ## Plugin hooks
 

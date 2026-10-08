@@ -74,14 +74,17 @@
 			})
 			.join('')
 			.trim();
-		let written = false;
-		edytor.transact(() => {
-			block.deleteContentAtRange({ start: [first, yStart], end: [last, yEnd] });
-			written = !!block.addInlineBlock({
+		// The range's removal leads the insertion: one plan, so a veto or a refusal of
+		// either keeps the text (and is its own undo step).
+		const { dispatcher, facade } = edytor;
+		const removal = facade.prepare.deleteText(block.id, from, endText!.segStart + yEnd - from);
+		const run = dispatcher.lead(removal, () =>
+			block.addInlineBlock({
 				offset: from,
 				block: { id: atom, type: INLINE, data: { expression } }
-			});
-		});
+			})
+		);
+		const written = run.taken && dispatcher.last?.status === 'applied';
 		if (written) edytor.selection.setCaret({ block, offset: from + 1 });
 		return written;
 	};

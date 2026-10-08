@@ -2,8 +2,9 @@
 /**
  * Native text drag-move inside the editor (Notion, every text editor): a
  * selected text range dragged to another place in the editor moves there —
- * one command (`moveText`: the range's deletion, then its content placed at
- * the drop point, as a paste places a flow), one undo step that gives both
+ * one command (`moveText`: its content placed at the drop point, as a paste
+ * places a flow, then the range's deletion; both prepared before any write,
+ * so hooks see every step and a refusal writes nothing), one undo step that gives both
  * back; the moved text keeps its marks and atoms, and is selected after the
  * drop. With Alt held at the drop, the text is copied and the range stays.
  * A drop inside the dragged range changes nothing; a readonly view takes no
@@ -250,6 +251,82 @@ describe('dragging selected text moves it (one step)', () => {
 		expect(seen).toContain('moveText');
 		expect(texts(view.edytor)).toEqual(['one two three']);
 	});
+
+	it('hooks see its planned steps and effect before any write: the deletion and the placement', async () => {
+		const seen: { operation: string; effect?: unknown; text: string[] }[] = [];
+		let view: Awaited<ReturnType<typeof mount>> | undefined;
+		const watch: Plugin = () => ({
+			onBeforeOperation: (change) => {
+				const { operation } = change;
+				const effect = operation === 'moveText' ? change.effect : undefined;
+				seen.push({ operation, effect, text: view ? texts(view.edytor) : [] });
+			}
+		});
+		view = await mount([p('a', 'one two three')], { plugins: [watch] });
+		seen.length = 0;
+		await drag(
+			view,
+			[
+				{ block: 'a', offset: 0 },
+				{ block: 'a', offset: 4 }
+			],
+			{ block: 'a', offset: 13 }
+		);
+		const operations = seen.map((s) => s.operation);
+		expect(operations[0]).toBe('moveText');
+		expect(seen[0]!.effect).toBeDefined();
+		expect(operations).toContain('deleteContentAtRange');
+		expect(operations).toContain('insertText');
+		// Every hook ran before the document changed.
+		const steps = seen.slice(0, operations.lastIndexOf('insertText') + 1);
+		for (const s of steps) expect(s.text).toEqual(['one two three']);
+		expect(texts(view.edytor)).toEqual(['two threeone ']);
+	});
+
+	it('a veto of its deletion step keeps everything', async () => {
+		const veto: Plugin = () => ({
+			onBeforeOperation: ({ operation, prevent }) => {
+				if (operation === 'deleteContentAtRange') prevent();
+			}
+		});
+		const view = await mount([p('a', 'one two three')], { plugins: [veto] });
+		const steps = view.edytor.undoManager.undoStack.length;
+		await drag(
+			view,
+			[
+				{ block: 'a', offset: 0 },
+				{ block: 'a', offset: 4 }
+			],
+			{ block: 'a', offset: 13 }
+		);
+		expect(texts(view.edytor)).toEqual(['one two three']);
+		expect(view.edytor.undoManager.undoStack.length).toBe(steps);
+		expect(view.edytor.dispatcher.last).toMatchObject({ operation: 'moveText', status: 'refused' });
+	});
+
+	it('a drop the placement refuses writes nothing: the text stays', async () => {
+		const view = await mount([p('a', 'one two three'), p('b', 'end')]);
+		const { facade } = view.edytor;
+		const real = facade.prepare.insertFlow;
+		facade.prepare.insertFlow = (...args) => {
+			const plan = real(...args);
+			return 'writes' in plan ? { status: 'refused', ids: [] } : plan;
+		};
+		try {
+			await drag(
+				view,
+				[
+					{ block: 'a', offset: 0 },
+					{ block: 'a', offset: 4 }
+				],
+				{ block: 'b', offset: 3 }
+			);
+		} finally {
+			facade.prepare.insertFlow = real;
+		}
+		expect(texts(view.edytor)).toEqual(['one two three', 'end']);
+		expect(view.edytor.dispatcher.last).toMatchObject({ operation: 'moveText', status: 'refused' });
+	});
 });
 
 describe('Alt copies', () => {
@@ -286,6 +363,24 @@ describe('what is not a text move', () => {
 		);
 		expect(enabled).toBe(false);
 		expect(texts(view.edytor)).toEqual(['one two three']);
+	});
+
+	it('a drag that starts outside the selected range is not a text drag', async () => {
+		const view = await mount([p('a', 'one two three'), p('b', 'end')]);
+		const { edytor, editor } = view;
+		const text = edytor.idToBlock.get('a')!.textAtOffset(0)!;
+		await setNativeSelection(edytor, text.text, 0, text.text, 3);
+		// A draggable element of a block's own markup, outside the range.
+		const other = (await domPoint(edytor, { block: 'b', offset: 1 })).node.parentElement!;
+		const data = transfer();
+		other.dispatchEvent(dragEvent('dragstart', data));
+		expect(data.getData('text/plain')).toBe('');
+		const over = dragEvent('dragover', data);
+		editor.dispatchEvent(over);
+		editor.dispatchEvent(dragEvent('drop', data));
+		other.dispatchEvent(dragEvent('dragend', data));
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['one two three', 'end']);
 	});
 
 	it('the drag carries the range as a fragment, for another editor or app', async () => {

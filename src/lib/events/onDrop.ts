@@ -6,6 +6,7 @@ import {
 	writeEdytorClipboardData
 } from '$lib/clipboard/clipboard.js';
 import { endTextDrag, startTextDrag, textDragOf } from '$lib/clipboard/moveText.js';
+import { getDomSelection } from '$lib/selection/domSelection.js';
 
 /**
  * Payloads the editor can consume on drop. Preventing `dragover` is what
@@ -78,7 +79,7 @@ const isControlDrop = (root: Element, event: DragEvent) =>
 	!Array.from(event.dataTransfer?.types ?? []).includes('Files') && ownsEvent(root, event);
 
 /**
- * The view's own text drag (WU-37): a selected text range dragged from
+ * The view's own text drag: a selected text range dragged from
  * inside the host, the block handles' drags excluded (their payload's MIME).
  */
 const isTextDrag = (edytor: Edytor | undefined, root: Element, dataTransfer: DataTransfer | null) =>
@@ -96,12 +97,24 @@ const takesTextDrop = (edytor: Edytor, root: Element, event: DragEvent) =>
 	!ownsEvent(root, event) &&
 	!isNativeInteractiveControl(event.target);
 
+/** `target` (a drag's source) lies in the host's selected DOM range. */
+const startsInSelection = (root: Element, target: EventTarget | null) => {
+	const selection = getDomSelection(root);
+	if (!selection?.rangeCount || !(target instanceof Node)) return false;
+	try {
+		return selection.getRangeAt(0).intersectsNode(target);
+	} catch {
+		return false;
+	}
+};
+
 /**
  * A `dragstart` in the host over a selected text range (a press inside it,
  * then a drag): the view's text drag. Its data is the range as a clipboard
  * fragment (a copy's: the private MIME, HTML and plain text), so a drop in
  * another editor or app takes it as a paste; in this view, `dropText` moves
- * it. A drag from a kind's own control is the control's.
+ * it. A drag from a kind's own control is the control's, and one that starts
+ * outside the selected range (another draggable in the host) is its own.
  */
 export const onTextDragStart = (edytor: Edytor, event: DragEvent) => {
 	endTextDrag(edytor);
@@ -109,6 +122,8 @@ export const onTextDragStart = (edytor: Edytor, event: DragEvent) => {
 	const value = edytor.selection.value;
 	if (!root || ownsEvent(root, event) || value.kind !== 'text') return;
 	if (edytor.selection.state.isCollapsed || edytor.isComposing) return;
+	// Only a drag of the selection itself: another draggable in the host drags its own thing.
+	if (!startsInSelection(root, event.target)) return;
 	const fragment = createEdytorClipboardFragment(edytor);
 	if (!fragment) return;
 	writeEdytorClipboardData(event.dataTransfer, fragment, edytor);

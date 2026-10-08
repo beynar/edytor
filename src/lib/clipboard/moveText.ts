@@ -35,13 +35,22 @@ export const endTextDrag = (edytor: Edytor) => void drags.delete(edytor);
 const compare = (edytor: Edytor, a: SelectionPoint, b: SelectionPoint) =>
 	a.block === b.block ? a.offset - b.offset : edytor.facade.compare(a.block, b.block);
 
+/** `moveText`'s payload: the dragged range, the drop point (block offsets), whether it copies. */
+type MoveText = {
+	from: { start: SelectionPoint; end: SelectionPoint };
+	to: SelectionPoint;
+	copy: boolean;
+};
+
 /**
  * The view's dragged text dropped at `to` (`moveText`, one command and one
- * undo step): the range's deletion (`replaceRange`, the deletion half of a
- * replacement), then its content placed where the drop point is after it
- * (`insertFlow`, as a paste); with `copy`, the placement alone. A move
- * dropped inside its own range changes nothing. The content is selected
- * after. Answers whether it wrote.
+ * undo step): its content placed at the drop point as a paste places a flow
+ * (`insertFlow`), then, for a move, the range deleted as a replacement
+ * deletes it (`replaceRange`); with `copy`, the placement alone. Both halves
+ * are prepared before any write, so hooks see the command's effect and
+ * every step of both, a veto of any of them keeps everything, and a drop
+ * either half refuses writes nothing. A move dropped inside its own range
+ * changes nothing. The content is selected after. Answers whether it wrote.
  */
 export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): boolean => {
 	const { facade, dispatcher } = edytor;
@@ -54,34 +63,47 @@ export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): bo
 	const view = viewOf(edytor);
 	const place = (at: SelectionPoint) =>
 		facade.prepare.insertFlow({ block: at.block, offset: at.offset }, flow, view);
-	/** The plan hooks see: the move's deletion, or the copy's placement. */
-	const prepare = (): Prepared =>
-		copy ? place(to) : facade.prepare.replaceRange(start, end, view);
-	// The drop point, bound to the text before it: the deletion before it moves it.
-	const point: DocAnchor | null = facade.anchorAt(to.block, to.offset, 'left');
+	const remove = ({ start, end }: MoveText['from']) =>
+		facade.prepare.replaceRange(start, end, view);
+	/** Both halves at the current version, as hooks see them (a copy: the placement). */
+	const prepare = ({ from, to, copy }: MoveText): Prepared =>
+		copy ? place(to) : facade.compose(place(to), remove(from));
 	const block = edytor.idToBlock.get(to.block);
-	/** Where the content went: its start (bound to the text before it) and its end. */
-	const placed: { from?: DocAnchor | null; to?: { block: string; offset: number } | null } = {};
-	const payload = { from: { start, end }, to, copy };
-	dispatcher.dispatch('moveText', payload, { block }, (_payload, plan = prepare()) => {
-		if (!('writes' in plan)) return;
-		let at: SelectionPoint | null = to;
-		if (!copy) {
-			applyAt(edytor, plan);
-			const resolved = point && facade.resolveAnchor(point);
-			at = resolved ? { block: resolved.blockId, offset: resolved.offset } : null;
-		}
-		if (!at) return;
-		placed.from = facade.anchorAt(at.block, at.offset, 'left');
-		placed.to = applyAt(edytor, copy ? plan : place(at));
-	});
-	if (dispatcher.last?.status !== 'applied' || !placed.to) return false;
-	const first = placed.from && facade.resolveAnchor(placed.from);
-	const [startText, startOffset] = caretOf.call(
-		edytor,
-		first ? { block: first.blockId, offset: first.offset } : null
+	/** Where the content went: its start and its end, bound to the placed text. */
+	const placed: { from?: DocAnchor | null; to?: DocAnchor | null } = {};
+	const payload: MoveText = { from: { start, end }, to, copy };
+	dispatcher.dispatch(
+		'moveText',
+		payload,
+		{ block },
+		({ from, to, copy }, plan) => {
+			if (!plan || !('writes' in plan)) return;
+			// The range, bound to its own first and last units: the placement outside it leaves them.
+			const first = facade.anchorAt(from.start.block, from.start.offset, 'right');
+			const last = facade.anchorAt(from.end.block, from.end.offset, 'left');
+			placed.from = facade.anchorAt(to.block, to.offset, 'left');
+			const at = applyAt(edytor, place(to));
+			placed.to = at && facade.anchorAt(at.block, at.offset, 'left');
+			if (copy || !at) return;
+			const [a, b] = [first && facade.resolveAnchor(first), last && facade.resolveAnchor(last)];
+			if (!a || !b) return;
+			applyAt(
+				edytor,
+				remove({
+					start: { block: a.blockId, offset: a.offset },
+					end: { block: b.blockId, offset: b.offset }
+				})
+			);
+		},
+		prepare
 	);
-	const [endText, endOffset] = caretOf.call(edytor, placed.to);
+	if (dispatcher.last?.status !== 'applied' || !placed.to) return false;
+	const point = (anchor: DocAnchor | null | undefined) => {
+		const hit = anchor && facade.resolveAnchor(anchor);
+		return hit ? { block: hit.blockId, offset: hit.offset } : null;
+	};
+	const [startText, startOffset] = caretOf.call(edytor, point(placed.from));
+	const [endText, endOffset] = caretOf.call(edytor, point(placed.to));
 	if (startText && endText) edytor.selection.setAtRange(startText, startOffset, endText, endOffset);
 	else if (endText) edytor.selection.setAtTextOffset(endText, endOffset);
 	return true;

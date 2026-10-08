@@ -333,6 +333,46 @@ describe('creating inline equations', () => {
 		expect(contentOf(edytor, 'a')).toEqual([{ text: 'area a^2 here' }]);
 	});
 
+	it('Mod+Shift+E over a block’s whole text: the equation, the caret after it', async () => {
+		const { edytor, editor } = await mount([p('a', 'x^2')]);
+		const text = edytor.idToBlock.get('a')!.firstText!;
+		await setNativeSelection(edytor, text, 0, text, 3);
+		await dispatchDomKeyDown(editor, { key: 'E', metaKey: true, shiftKey: true });
+		expect(contentOf(edytor, 'a')).toEqual([
+			expect.objectContaining({ type: 'inlineEquation', data: { expression: 'x^2' } })
+		]);
+		expect(edytor.selection.caret).toMatchObject({ offset: 1 });
+	});
+
+	it('Mod+Shift+E: a hook refusing the equation keeps the selected text (one plan)', async () => {
+		const seen: string[] = [];
+		const noAtoms: Plugin = () => ({
+			onBeforeOperation: ({ operation, prevent }) => {
+				seen.push(operation);
+				if (operation === 'addInlineBlock') prevent();
+			}
+		});
+		const { edytor, editor } = await mount([p('a', 'area a^2 here')], [noAtoms, equations]);
+		const text = edytor.idToBlock.get('a')!.firstText!;
+		await setNativeSelection(edytor, text, 5, text, 8);
+		await dispatchDomKeyDown(editor, { key: 'E', metaKey: true, shiftKey: true });
+		expect(seen).toContain('addInlineBlock');
+		expect(contentOf(edytor, 'a')).toEqual([{ text: 'area a^2 here' }]);
+	});
+
+	it('Mod+Shift+E: a hook refusing the deletion keeps the text, and no equation lands', async () => {
+		const noDeletes: Plugin = () => ({
+			onBeforeOperation: ({ operation, prevent }) => {
+				if (operation === 'deleteContentAtRange') prevent();
+			}
+		});
+		const { edytor, editor } = await mount([p('a', 'area a^2 here')], [noDeletes, equations]);
+		const text = edytor.idToBlock.get('a')!.firstText!;
+		await setNativeSelection(edytor, text, 5, text, 8);
+		await dispatchDomKeyDown(editor, { key: 'E', metaKey: true, shiftKey: true });
+		expect(contentOf(edytor, 'a')).toEqual([{ text: 'area a^2 here' }]);
+	});
+
 	it('at a caret, Inline equation inserts an empty one and opens its editor', async () => {
 		const { edytor } = await mount([p('a', 'ab')]);
 		await caretAt(edytor, 'a', 1);

@@ -1,6 +1,6 @@
 /**
  * HARDENING U0 / R2 — refused IndexedDB rows deleted during compaction
- * (review `docs/crdt-v14-follow-up-review-2026-09-21.md` §R2, P1).
+ * (review `docs/archive/crdt-v14-follow-up-review-2026-09-21.md` §R2, P1).
  *
  * Hydration correctly refuses a generation-tagged row whose content carries an
  * unsupported schema (`meta.v = 99`): `whenSynced` rejects, the row's bytes are

@@ -118,7 +118,7 @@ Rules that make this safe:
   their own data, and `rollback(name)` + `force` stays an explicit recovery
   path.
 - **Websocket rooms:** BC room name = the generation DB name
-  (`edytor-v14:<name>`); websocket `roomName` is whatever the integrator
+  (`edytor-v14:<name>`); websocket `room` is whatever the integrator
   passes — v13 and v14 clients must use _different_ room names if both stacks
   share a relay (the envelope gate will drop cross-version frames either way —
   see "Wire contract").
@@ -149,9 +149,7 @@ imports a given name at a time, and that exclusivity ends with the tab:
   append-only for every writer, so provider rows are never cleared,
   overwritten or orphaned.
 
-`leaseMs`, `owner`, `pollMs` and `waitMs` are accepted and ignored (they
-described the retired lease); the durable record never carries a lease or an
-owner.
+The durable record never carries a lease or an owner.
 
 ## Statuses and failure modes
 
@@ -320,8 +318,7 @@ forged/confused peers, and stuck migrations.
   - `sync()` is the equivalent in-place path). The appended row is its diff
     against what the generation held (the whole state for a first import).
     `MigrateOptions`: `sourceName`, `force`, `wait`, `onPhase` (testing hook:
-    `claim`, `read`, `materialize`, `rebuild`, `verify`, `persist`); `leaseMs`,
-    `waitMs`, `pollMs`, `owner` are accepted no-ops.
+    `claim`, `read`, `materialize`, `rebuild`, `verify`, `persist`).
 - `status(name)` → `MigrationRecord` (`{v, status, migratedAt?,
 rolledbackAt?, sourceRows?, sourceBytes?, error?}`); `pending` while a tab
   holds the attempt lock.
@@ -344,4 +341,4 @@ rolledbackAt?, sourceRows?, sourceBytes?, error?}`); `pending` while a tab
 - `src/tests/crdt/fixtures/legacy-v13/` — durable v13 binary fixtures +
   generator.
 - Two-page browser proof of the provider/generation stack (Chromium, Firefox,
-  WebKit collaboration specs): `docs/crdt-v14-browser-proof.md`.
+  WebKit collaboration specs): `docs/archive/crdt-v14-browser-proof.md`.

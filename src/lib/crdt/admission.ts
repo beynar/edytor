@@ -1,5 +1,5 @@
 /**
- * `admission.ts` — the ONE document-admission boundary (U8).
+ * `admission.ts` — the ONE document-admission boundary.
  *
  * Every way content enters an {@link EdytorDocument} crosses the same
  * gate here, in the same order, with the same refusal semantics:

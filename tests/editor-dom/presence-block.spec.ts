@@ -4,7 +4,7 @@ import { waitForEditorReady } from './helpers';
 /**
  * A peer sharing blocks only (`presence.share: 'block'`) is drawn as a bar
  * beside the block's own row, with its name, never as a caret. The jsdom
- * rows are `src/tests/fixtures/dom/presence-throttle-20261002.test.tsx`.
+ * rows are `src/tests/fixtures/dom/presence-throttle.test.tsx`.
  */
 const children = [
 	{ id: 'a', type: 'paragraph', content: [{ text: 'Alpha' }] },

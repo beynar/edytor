@@ -606,7 +606,7 @@ export class RoomStorage {
 			const started = now();
 			// Only the waiting deletes are read back: the snapshot is the live doc.
 			const pending = this.records('pending');
-			// The live state, never a merge of the records (P2): memory never
+			// The live state, never a merge of the records: memory never
 			// runs ahead of storage, so it is what they hold, collected.
 			const snapshot = liveState(doc);
 			const sockets = new Set<number>();

@@ -194,7 +194,7 @@ export const followRedone = (
 };
 
 /**
- * Forget `node`'s search markers (vendor-internal `_searchMarker`, P4): a
+ * Forget `node`'s search markers (vendor-internal `_searchMarker`, fork patch YP4): a
  * write made through items directly (a delete or `redoItem`, not the node's
  * own insert/delete methods) leaves their indices stale — the engine's undo
  * drops them the same way after a pop.

@@ -1,5 +1,5 @@
 /**
- * U1 — compact, durable, per-BLOCK attribution on the existing owners.
+ * Compact, durable, per-BLOCK attribution on the existing owners.
  *
  * One block gets one small replicated record plus one block-node attr:
  *
@@ -26,12 +26,12 @@
  * INCARNATIONS — a public block id is recyclable (a caller id created
  * again after its creation was undone, or concurrently by two peers), and a
  * delayed remote write always addresses the incarnation its author saw.
- * Every block node carries the replicated nonce `n` of its incarnation
- * (O23); every `b/<id>` record is stamped (`i`) with the nonce it belongs
+ * Every block node carries the replicated nonce `n` of its incarnation;
+ * every `b/<id>` record is stamped (`i`) with the nonce it belongs
  * to, and `ensureRecord` swaps in a FRESH record whenever the live node's
  * nonce doesn't match — a late write to a dead incarnation lands on an
  * orphaned record the recreated block never reads. An undo/redo copy of the
- * node carries `n` with it, so it keeps its record on every replica (F7).
+ * node carries `n` with it, so it keeps its record on every replica.
  *
  * Suppression, per the ledger contract:
  *
@@ -55,7 +55,7 @@
  * All writes are plain `setAttr`s performed by the owning facade op
  * INSIDE the operation's transaction — the metadata commits in the
  * same update as the content write. No observer-driven follow-up
- * transaction (the U6 `a/` per-content capture pipeline is untouched
+ * transaction (the retired `a/` per-content capture pipeline is untouched
  * and still coexists on the `attribution` root).
  */
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
@@ -136,7 +136,7 @@ export const lineageWatermarkOf = (entries: LineageEntry[]): number => {
 };
 
 // `BLOCK_ATTR_ROOT`/`LAST_CHANGED_ATTR`/`REC_PREFIX` live in the shared
-// `../schema.js` leaf (S10) — re-exported so existing import sites stay.
+// `../schema.js` leaf — re-exported so existing import sites stay.
 export { BLOCK_ATTR_ROOT, LAST_CHANGED_ATTR };
 
 const REC_NODE = 'brec';
@@ -269,8 +269,8 @@ export const bindBlockAttribution = (Y: EngineApi) => {
 		/** Scaffolding with no authorship — used by init for system blocks. */
 		ensureRecord,
 		/**
-		 * A streamless block's nonce was re-minted `from` → `to` (its own text,
-		 * R2): its record, when stamped for `from`, moves to `to`, so the
+		 * A streamless block's nonce was re-minted `from` → `to` (its own text):
+		 * its record, when stamped for `from`, moves to `to`, so the
 		 * block keeps `createdBy` and its contributors. Every replica writes
 		 * the same value.
 		 */

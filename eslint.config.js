@@ -173,7 +173,7 @@ const contextImports = {
 	}
 };
 
-// ── Host writers (plan §12.5 BI2-5, R1, R11) ─────────────────────────────
+// ── Host writers (the host-writer rule) ─────────────────────────────
 //
 // The contenteditable host is written by the renderer only: Svelte template
 // effects and the core's attachment bodies (`components/`, the handles'
@@ -199,13 +199,13 @@ const hostWriterRules = {
 		{
 			selector: `CallExpression[callee.property.name=/^(${HOST_MUTATION})$/][arguments.length<3]`,
 			message:
-				'Only template effects and attachment bodies write the host (BI2-5): render it from cells or declared view state.'
+				'Only template effects and attachment bodies write the host (the host-writer rule, docs/agents/selection-and-input.md): render it from cells or declared view state.'
 		},
 		{
 			selector:
 				'AssignmentExpression[left.property.name=/^(textContent|nodeValue|innerHTML|contentEditable)$/]',
 			message:
-				'Only template effects and attachment bodies write the host (BI2-5): render it from cells or declared view state.'
+				'Only template effects and attachment bodies write the host (the host-writer rule, docs/agents/selection-and-input.md): render it from cells or declared view state.'
 		}
 	]
 };

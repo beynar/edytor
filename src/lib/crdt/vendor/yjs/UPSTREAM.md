@@ -1,7 +1,7 @@
 # Vendored Yjs v14 — provenance & patch manifest
 
 This directory vendors the Yjs v14 engine source plus the exact local patches
-applied on top — an owned fork (arch-v2 decision D1): P8 prunes everything
+applied on top — an owned fork (an architecture-v2 decision): YP8 prunes everything
 edytor does not run on. Do not edit files under `src/` by hand — apply a
 recorded patch and document it here.
 
@@ -33,15 +33,15 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches P1 (import specifiers), P4, P5, P7, P8 (pruning) and P9–P14
-global.d.ts upstream global.d.ts, plus patches P1 and P8
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning) and YP9–YP14
+global.d.ts upstream global.d.ts, plus patches YP1 and YP8
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
 UPSTREAM.md this file
 ```
 
 Upstream test suite is vendored **outside** `src/lib` at
-`vendor-tests/yjs/tests/` so it never ships in `dist`; since P8 it is pruned to
+`vendor-tests/yjs/tests/` so it never ships in `dist`; since YP8 it is pruned to
 the kept surface.
 
 ## Watching upstream
@@ -50,8 +50,8 @@ the kept surface.
 given version): `scripts/upstream-check.mjs` asks npm for a `@y/y` above
 the pin by semver within its major line (14.x, pre-releases included), and
 when there is one downloads both tarballs (each checked against the
-registry's `dist.integrity`), writes `upstream.diff` (pin → newer, P1
-applied to both) and `fork.diff` (newer → this tree, both carrying P1) into
+registry's `dist.integrity`), writes `upstream.diff` (pin → newer, YP1
+applied to both) and `fork.diff` (newer → this tree, both carrying YP1) into
 the run's artifact, says in the summary whether the installed `lib0-v14`
 satisfies the newer engine's `lib0` range (a mismatch is a run warning: a
 red check may then be the older lib0, not the fork), then materializes the newer engine as `bench/vendor-baseline/yjs`
@@ -59,12 +59,12 @@ so `bench/lib/interop.mjs` (the fork and the newer engine syncing over the
 wire) and the baseline leg of `src/tests/crdt/hardening/r1-p4-format.test.ts`
 (byte-identical stores after every operation) run against it. A red run
 means the re-sync needs care; the re-sync itself is the manual recipe under
-P8. Locally: `node scripts/upstream-check.mjs`, then those two checks, then
+YP8. Locally: `node scripts/upstream-check.mjs`, then those two checks, then
 `bench/lib/mk-baseline.sh` to restore the pinned baseline.
 
 ## Local patches
 
-### P1 — `lib0/` → `lib0-v14/` import specifier rewrite (`src/**`, `global.d.ts`)
+### YP1 — `lib0/` → `lib0-v14/` import specifier rewrite (`src/**`, `global.d.ts`)
 
 Reason: the repo kept `lib0@0.2.117` for the v13 runtime when the engine was
 vendored, and the v14 engine needs `lib0@1.0.0-rc.32`; the engine's is the
@@ -85,11 +85,11 @@ Verify: `grep -rn "lib0/" src global.d.ts | grep -v "lib0-v14/"` — only prose
 mentions of "lib0" (comments) remain; every `lib0-v14` occurrence is followed
 by `/`.
 
-### P2 — vendored test specifier rewrite (`vendor-tests/yjs/tests/**`)
+### YP2 — vendored test specifier rewrite (`vendor-tests/yjs/tests/**`)
 
 Same `lib0/` → `lib0-v14/` rewrite, plus relative `../src/` specifiers
 retargeted to the vendored tree, plus the `@y/protocols/sync` import in
-`testHelper.js` redirected to a local shim (P3). Reproduce:
+`testHelper.js` redirected to a local shim (YP3). Reproduce:
 
 ```sh
 cd vendor-tests/yjs/tests
@@ -101,7 +101,7 @@ find . -name '*.js' -exec sed -i '' \
   -e "s|from '@y/protocols/sync'|from './sync-shim.js'|g" {} +
 ```
 
-### P3 — `vendor-tests/yjs/tests/sync-shim.js` (new file, test-only)
+### YP3 — `vendor-tests/yjs/tests/sync-shim.js` (new file, test-only)
 
 Verbatim port of `@y/protocols@1.0.6-rc.1` `src/sync.js` (MIT, Kevin Jahns)
 with the engine import retargeted from `@y/y` to the vendored source and
@@ -109,7 +109,7 @@ with the engine import retargeted from `@y/y` to the vendored source and
 construct a **second engine copy** from npm `@y/y`, breaking `instanceof`
 checks against vendored docs. Test code only — not shipped.
 
-### P4 — format-aware search-marker checkpoints for `applyDelta` + relative positions (WU9)
+### YP4 — format-aware search-marker checkpoints for `applyDelta` + relative positions (WU9)
 
 Reason: profiling the corrected WU8 baseline showed `YNode#applyDelta` always
 starts its `ItemTextListPosition` walk at `_start` — every delta pays
@@ -205,7 +205,7 @@ added path inert = upstream behavior) and requires **byte-identical**
 distant inserts, formatted retains, format-marker inserts, deletes, undo/
 redo, remote apply, GC, nested modify ops, merge/split cycles.
 `src/tests/crdt/hardening/r1-p4-format.test.ts` pins the same-key boundary
-rule (the R1 review's P4 corruption), runs randomized + structured
+rule (the R1 review's YP4 corruption), runs randomized + structured
 differential replays (patched vs disabled vs materialized pre-P4 baseline)
 with per-op `toDelta` + store-byte equality across insert/delete/format/
 undo/remote/GC schedules, and a one-off 18 000-op triple-fixture fuzz ran
@@ -218,14 +218,14 @@ the boundary rule + conservative invalidation, not by disabling seeding.
 `bench/lib/interop.mjs` syncs patched ↔ git-HEAD baseline peers via
 `applyUpdate` — all checks pass.
 
-### P5 — shared item-piece traversal + bounded read-only `RangeCursor` (U3)
+### YP5 — shared item-piece traversal + bounded read-only `RangeCursor` (U3)
 
 Reason: Edytor's formatted range reads and the engine's own `toDelta`
 carried **two** physical-sequence interpretations (the Edytor-side reader
 folded format markers over `node._start` on its own, plus a private
 checkpoint index). U3 consolidates the interpretation into the engine:
 `toDelta` and bounded range reads now consume the same item-piece
-traversal, and the P4 format-aware markers double as the read cursor's
+traversal, and the YP4 format-aware markers double as the read cursor's
 checkpoints — the Edytor-side index is deleted.
 
 Patch (all in `src/` unless noted):
@@ -263,7 +263,7 @@ Patch (all in `src/` unless noted):
   `contentLength`, UTF-16 string clipping identical to clipping a
   `toDelta` insert op, inline/element content, read-your-writes
   mid-transaction. Two deliberate design points:
-  - **Read seed is weaker than the mutation seed (P4):** a read may resume
+  - **Read seed is weaker than the mutation seed (YP4):** a read may resume
     on *any* linked item at-or-left of the target — the forward fold
     reproduces format state — while `applyDelta` still requires the
     *first* item at the index (`a[b]b[b=null]c`: a tail marker anchored on
@@ -285,7 +285,7 @@ Correctness oracle: `src/tests/crdt/range-cursor.test.ts` — bounded
 output vs the whole-node `toDelta` reference over every range (marks
 inherited across boundaries, null clears, surrogate/code-unit clipping,
 inline atoms, tombstoned content+markers, attribution via
-`AttributionsRenderer` (since P8: its test port `ContentMapRenderer`), remote `applyUpdate`, undo/redo,
+`AttributionsRenderer` (since YP8: its test port `ContentMapRenderer`), remote `applyUpdate`, undo/redo,
 open-transaction reads, forward/backward/repeated cursor reuse), read
 purity (no updates/splits/undo/renderer changes; marker perturbation
 invisible to mutations), traversal bounds, and the
@@ -297,7 +297,7 @@ the pre-WU8 `toDelta().toJSON()` oracle at every range, marker pinning
 marks-alias boundary (corruption is confined to one cursor — marker
 snapshots are adopted by private copy), and maintained-view work bounds.
 
-Measured (see `docs/crdt-v14-execution-ledger.md` U3 entry for the full
+Measured (see `docs/archive/crdt-v14-execution-ledger.md` U3 entry for the full
 table): seeded 2k reads of a shared 100k formatted text stay range-sized
 (mean 49 items + 32 markers walked per read, down from 62 + 41 with the
 WU8 Edytor-side index; warm p50 ≈ 0.012 ms) with the marker pool filling
@@ -308,7 +308,7 @@ modest per-item overhead vs the inlined dispatch it replaced (measured
 documented price of sharing the interpretation; the `scratch` reuse keeps
 the common path allocation-free.
 
-P4 measured (`node bench/lib/engine-micro.mjs quick`, 20 000-char fragmented
+YP4 measured (`node bench/lib/engine-micro.mjs quick`, 20 000-char fragmented
 text = 60 k list items; before = `ENGINE_DIR=../vendor-baseline/yjs`
 materialized HEAD copies; post-R1-repair numbers): distant `retain+insert`
 1.80 → 0.92 ms/op (~2×), mid 0.99 → 0.50 (~2×), near unchanged (~0.007 ms —
@@ -326,9 +326,9 @@ would land on a different item in the same-index run), so that workload
 stays ~1.0 ms/op; the win is position-dependent by design, never a
 regression.
 
-### P6 — side-correct current-state attribution rendering (REMOVED by P8)
+### YP6 — side-correct current-state attribution rendering (REMOVED by YP8)
 
-> P8 deleted `src/utils/Renderer.js`, the file this patch lived in; the text
+> YP8 deleted `src/utils/Renderer.js`, the file this patch lived in; the text
 > below is kept as history. The side-correct semantics survive as the
 > test-only `ContentMapRenderer` (`src/tests/crdt/harness/content-map-renderer.js`),
 > which the renderer-plumbing tests install.
@@ -358,9 +358,9 @@ native `toDelta({ renderer })` projection restore the original format actor.
 The attribution and range-cursor slices cover ordinary insertion/deletion,
 torn delivery, custom projection, remote merge, and cursor parity.
 
-### P7 — `YNode#insertAtGapEnd(index, content)`: insert at the end of the gap (arch-v2 D11)
+### YP7 — `YNode#insertAtGapEnd(index, content)`: insert at the end of the gap (arch-v2 D11)
 
-Reason: Edytor's stream boundaries (plan `docs/architecture-v2/plan.md` §2.1,
+Reason: Edytor's stream boundaries (plan `docs/archive/architecture-v2/plan.md` §2.1,
 rule R2) must sit after the whole gap at a split point — after every tombstone
 and every format item that precedes the next live character — so that an undo
 of a text delete (whose copies `redoItem` integrates between the tombstone's
@@ -370,9 +370,9 @@ that displayed it. The public insert cannot place an item there: its walk
 differs from the requested one, and two concurrent formatters can leave two
 same-key items with different values in one gap (the F1 counterexample,
 `a5-concurrent-format-min`). The engine is an owned fork (maintainer decision,
-plan revision 2); P7 is a feature of it, charged to the plan's vendor delta.
+plan revision 2); YP7 is a feature of it, charged to the plan's vendor delta.
 
-Patch (`src/ynode.js`, both hunks delimited by `// P7 begin` / `// P7 end`):
+Patch (`src/ynode.js`, both hunks delimited by `// YP7 begin` / `// YP7 end`):
 
 - `insertAtGapEndHelper(transaction, parent, index, content)` (exported):
   a renderer-free `ItemTextListPosition` walks `index` countable live units
@@ -387,23 +387,23 @@ Patch (`src/ynode.js`, both hunks delimited by `// P7 begin` / `// P7 end`):
   with `new ContentAny(content)` (an array of JSON values, one countable unit
   each). Throws on a detached node.
 - `dts/ynode.d.ts`: the two declarations added by hand (same shapes the
-  generator emits for the JSDoc). Since P8 the generator runs clean and emits
+  generator emits for the JSDoc). Since YP8 the generator runs clean and emits
   them from the JSDoc — nothing in `dts/` is hand-edited any more.
 
-Nothing else changes: P7 adds a path and touches no existing function.
+Nothing else changes: YP7 adds a path and touches no existing function.
 
-Correctness oracle: `src/tests/crdt/p7-gap-end.test.ts`.
+Correctness oracle: `src/tests/crdt/yp7-gap-end.test.ts`.
 - Semantics: the item lands after every tombstone and format item in the gap
   and before the next live content item; the clock advances by exactly one and
   no format item is added; with two live same-key format items of different
   values in the gap (built by a delete concurrent with two formatters) the
-  public insert stops inside the gap while P7 passes both, and the inserted
+  public insert stops inside the gap while YP7 passes both, and the inserted
   unit renders with the fold's formats; mid-item split, index 0, text end, and
   the out-of-range throw; concurrent gap-end inserts converge under three
   client-id assignments.
-- Byte-equality differential (the P4 method): the test materializes the pre-P7
+- Byte-equality differential (the YP4 method): the test materializes the pre-P7
   engine by copying `src/` into `node_modules/.cache/edytor-p7-baseline` with
-  every `// P7 begin … // P7 end` hunk stripped (and asserts the copy has no
+  every `// YP7 begin … // YP7 end` hunk stripped (and asserts the copy has no
   `insertAtGapEnd`), then replays 40 seeded programs × 120 operations over every
   existing public write path — `insert` with and without formats, `delete`,
   `format`, inline `Node` and JSON inserts, `UndoManager` undo/redo, remote
@@ -415,9 +415,9 @@ Correctness oracle: `src/tests/crdt/p7-gap-end.test.ts`.
 Vendor delta: +27 xloc in `src/` (census `--vendor`), plus 9 declaration lines
 in `dts/`.
 
-### P8 — prune the fork to the surface edytor runs on (arch-v2 P3, decision D1)
+### YP8 — prune the fork to the surface edytor runs on (the architecture-v2 pruning step; the fork is owned)
 
-Reason: `crdt/engine.js` (P3.1) hands every `bind*` a 23-symbol engine
+Reason: `crdt/engine.js` hands every `bind*` a 23-symbol engine
 object, so consumer bundles already tree-shake the rest — but the shipped
 source, its declarations, the `edytor/crdt` namespace and the upstream suite
 still carried ≈1,400 execution lines edytor never runs: concrete renderers,
@@ -434,9 +434,9 @@ guard in `index.js`, `AbstractContent` (the content interface) and the XML
 type-ref ids in `structs/Item.js` (wire format). Every surviving upstream
 export stays exported; the renderer INTERFACE stays (`AbstractRenderer`,
 `$renderer`, `useRenderer`, `toDelta({renderer})`, `RangeCursor`'s
-renderer-aware reads, `renderer-helpers.js`), so P4, P5 and P7 are untouched.
+renderer-aware reads, `renderer-helpers.js`), so YP4, YP5 and YP7 are untouched.
 
-Deleted files: `utils/Renderer.js` (and with it P6), `utils/Snapshot.js`,
+Deleted files: `utils/Renderer.js` (and with it YP6), `utils/Snapshot.js`,
 `utils/position-helpers.js`, `utils/delta-helpers.js`, `utils/logging.js`.
 
 Deleted declarations (with their JSDoc):
@@ -481,23 +481,23 @@ diffing tests keep their codec roundtrip). 331 → 222 tests (221 upstream
 tests kept, 110 removed, 1 codec roundtrip replacing two).
 
 Correctness oracle:
-- `src/tests/crdt/p8-surface.test.ts` pins `edytor/crdt`'s exports and
+- `src/tests/crdt/yp8-surface.test.ts` pins `edytor/crdt`'s exports and
   proves closure: rolldown-bundling the engine object + the keep list keeps
   every top-level vendored declaration outside the allowlist above.
 - `bench/lib/mk-baseline.sh` now materializes the PRISTINE upstream engine
-  (`@y/y@14.0.0-rc.26`, installed as the `@y/protocols` peer, + P1), and the
+  (`@y/y@14.0.0-rc.26`, installed as the `@y/protocols` peer, + YP1), and the
   baseline leg of `src/tests/crdt/hardening/r1-p4-format.test.ts` (patched vs
   upstream, per-op `toDelta` + byte-identical `encodeStateAsUpdate`) and
-  `bench/lib/interop.mjs` pass against it; the P4/P7 differentials
-  (`r1-p4-format`, `marker-seed`, `p7-gap-end`) stay green.
+  `bench/lib/interop.mjs` pass against it; the YP4/YP7 differentials
+  (`r1-p4-format`, `marker-seed`, `yp7-gap-end`) stay green.
 
-Re-syncing with upstream: take the new upstream `src/`, apply P1, re-apply
-the P4/P5/P7 hunks (diff this tree against the pinned upstream as in
+Re-syncing with upstream: take the new upstream `src/`, apply YP1, re-apply
+the YP4/YP5/YP7 hunks (diff this tree against the pinned upstream as in
 "Diffing against upstream"), then run `pnpm exec vitest --config
-./vitest.crdt.config.ts --run src/tests/crdt/p8-surface.test.ts` — its
+./vitest.crdt.config.ts --run src/tests/crdt/yp8-surface.test.ts` — its
 closure failure lists exactly the declarations to delete (update `KEPT` for
 deliberate export changes), and regenerate `dts/`.
-### P9 — pending structs record every stacked dependency (`src/utils/encoding.js`)
+### YP9 — pending structs record every stacked dependency (`src/utils/encoding.js`)
 
 Reason: `integrateStructs` walks a dependency stack; when the head waits for a
 client that is already on the stack it records only the head's missing client
@@ -507,20 +507,20 @@ triggers `readUpdateV2`'s retry, and the document holds a pending update it
 could integrate — forever, until some unrelated update from the recorded
 client arrives. Reproduced on the unmodified `@y/y@14.0.0-rc.26` with four
 updates (A1 ← B1 ← A3, A2 independent) delivered as A3, B1, A1, A2; found by
-the arch-v2 phase 2 P1 fuzz (`src/tests/crdt/arch-v2/p1-fuzz.test.ts`, an
+the architecture-v2 phase-2 fuzz (`src/tests/crdt/arch-v2/p1-fuzz.test.ts`, an
 observer fed every update in reverse order stayed pending in 74/1,500 seeds).
 
-Patch (all hunks marked `// P9` or delimited by `// P9 begin` / `// P9 end`):
+Patch (all hunks marked `// YP9` or delimited by `// YP9 begin` / `// YP9 end`):
 a `stackMissing` array parallel to `stack` records the client each stacked
 struct waits for (pushed with the struct, popped with it); `addStackToRestSS`
 first records every one of them in `missingSV` at the store's clock. Recording
 more clients can only cause more retries, never a wrong integration.
 
-Oracle: `src/tests/crdt/p9-p10-engine.test.ts` — the raw program in every
+Oracle: `src/tests/crdt/yp9-yp10-engine.test.ts` — the raw program in every
 delivery order, the facade program the fuzz found in every order, and the
-stripped tree (the P9 hunks removed) stays pending on A3, B1, A1, A2.
+stripped tree (the YP9 hunks removed) stays pending on A3, B1, A1, A2.
 
-### P10 — the formatting cleanup after a remote change runs under an untracked origin (`src/utils/Transaction.js`)
+### YP10 — the formatting cleanup after a remote change runs under an untracked origin (`src/utils/Transaction.js`)
 
 Reason: `cleanupYTextAfterTransaction` deletes the format items a remote
 change made redundant in a new transaction with the `null` origin — the
@@ -531,19 +531,19 @@ the next undo reverted the cleanup instead of the user's last edit
 (`docs/editor-delete-contract.md` `conc.undo.actor-local`,
 `hist.capture-group`). Reproduced on the unmodified `@y/y@14.0.0-rc.26`.
 
-Patch (hunks marked `// P10` or delimited by `// P10 begin` / `// P10 end`):
+Patch (hunks marked `// YP10` or delimited by `// YP10 begin` / `// YP10 end`):
 the cleanup transaction's origin is a module-private
 `Symbol('yjs.formatting-cleanup')`. It stays a local transaction whose update
 providers broadcast like any local write (a replica's cleanup is
 order-dependent, so peers must receive it to converge); no undo manager
 tracks the symbol.
 
-Oracle: `src/tests/crdt/p9-p10-engine.test.ts` — after a peer's replace,
+Oracle: `src/tests/crdt/yp9-yp10-engine.test.ts` — after a peer's replace,
 partial delete or full delete over A's bold run, A's undo stack is unchanged,
 one undo removes A's last edit, and the peers still converge; the stripped
-tree (the P10 hunks removed) puts the cleanup on the stack.
+tree (the YP10 hunks removed) puts the cleanup on the stack.
 
-### P11 — UndoManager `restoreFilter` and `onApply`: the document decides how deleted text comes back (`src/utils/UndoManager.js`, `src/index.js`)
+### YP11 — UndoManager `restoreFilter` and `onApply`: the document decides how deleted text comes back (`src/utils/UndoManager.js`, `src/index.js`)
 
 Reason: the engine's undo re-creates deleted content as COPIES and records no
 writer for a delete. Two peers that delete the same character concurrently and
@@ -554,7 +554,7 @@ text delete marks (`src/lib/crdt/text/deletes.ts`, execution ledger row
 "Text double-delete undo"); the engine needs two hooks for it, and nothing
 else changes.
 
-Patch (hunks marked `// P11` or delimited by `// P11 begin` / `// P11 end`):
+Patch (hunks marked `// YP11` or delimited by `// YP11 begin` / `// YP11 end`):
 
 - `UndoManagerOptions.restoreFilter(item, stackItem) → boolean` (default
   always `true`): asked for every deleted item a popped stack item would
@@ -569,20 +569,20 @@ Patch (hunks marked `// P11` or delimited by `// P11 begin` / `// P11 end`):
 
 The document also reads `iterateStructsByIdSet` and `getItemCleanStart`
 (already exported) through the engine object. `src/utils/Transaction.js`: the
-P10 block moved above the cleanup's JSDoc so the declaration generator binds
+YP10 block moved above the cleanup's JSDoc so the declaration generator binds
 `@param {Transaction}` again (no code change; `dts/` had been left stale).
 
-Oracle: `src/tests/crdt/p11-undo-hooks.test.ts` — the hook rows run on the
-patched tree and on the tree with the P11 hunks stripped (which ignores the
+Oracle: `src/tests/crdt/yp11-undo-hooks.test.ts` — the hook rows run on the
+patched tree and on the tree with the YP11 hunks stripped (which ignores the
 options: the rows discriminate); a differential replays 40 seeded programs ×
 120 operations over the text write paths with undo/redo on both trees with no
 options and requires byte-identical `encodeStateAsUpdate` for both peers and
-an identical render after every operation. The P4/P7 differentials and the
+an identical render after every operation. The YP4/YP7 differentials and the
 upstream suite pass unchanged.
 
 Vendor delta: +9 xloc in `src/` (census `--vendor`: 5,769 → 5,778).
 
-### P12 — UndoManager `withdraw`: the document keeps an item an undo would delete (`src/utils/UndoManager.js`)
+### YP12 — UndoManager `withdraw`: the document keeps an item an undo would delete (`src/utils/UndoManager.js`)
 
 Reason: the engine undoes an insert by deleting the inserted items, and a
 deleted type deletes everything inside it. Undoing a block's creation
@@ -593,26 +593,26 @@ the node and writes a per-writer withdraw mark instead
 (`src/lib/crdt/placement/model.ts` `withdrawOnUndo`); the document index shows
 a withdrawn block while it holds another writer's content.
 
-Patch (hunk delimited by `// P12 begin` / `// P12 end`, option lines marked
-`// P12`):
+Patch (hunk delimited by `// YP12 begin` / `// YP12 end`, option lines marked
+`// YP12`):
 
 - `UndoManagerOptions.withdraw(item, stackItem, transaction) → boolean`
   (default never): asked for every item a popped stack item would delete,
   before `deleteFilter`. `true` keeps the item — the hook may write in its
   place, inside the transaction, and its writes are part of the step the
   other stack captures — and counts as a change, so a step whose only effect
-  was kept is consumed instead of skipped for the next one (like P11's
+  was kept is consumed instead of skipped for the next one (like YP11's
   withheld restore).
 
-Oracle: `src/tests/crdt/p12-undo-withdraw.test.ts` — the hook rows run on the
-patched tree and on the tree with the P12 hunk stripped (which ignores the
+Oracle: `src/tests/crdt/yp12-undo-withdraw.test.ts` — the hook rows run on the
+patched tree and on the tree with the YP12 hunk stripped (which ignores the
 option); a differential replays 30 seeded programs × 100 map and nested-text
 operations with undo/redo on both trees with no option and requires
 byte-identical `encodeStateAsUpdate` for both peers after every operation.
 
 Vendor delta: +6 xloc in `src/`.
 
-### P13 — paired marks: an end closes only its own start (`src/utils/marks.js`, `src/structs/Item.js`, `src/ynode.js`, `src/utils/transaction-helpers.js`, `src/utils/RangeCursor.js`, `src/utils/Doc.js`)
+### YP13 — paired marks: an end closes only its own start (`src/utils/marks.js`, `src/structs/Item.js`, `src/ynode.js`, `src/utils/transaction-helpers.js`, `src/utils/RangeCursor.js`, `src/utils/Doc.js`)
 
 Reason: upstream formatting writes `{key: value}` where a range starts and
 `{key: null}` (or the value it replaced) where it ends, so any end closes
@@ -650,9 +650,9 @@ item is content's, so the comparator reduces to upstream's.
 
 Oracle: `src/tests/crdt/arch-v2/h5-marks.test.ts` (the Peritext cases on
 every swept client-id pair and delivery order; 7 of its 17 rows fail on
-the tree without P13), the upstream suite unchanged.
+the tree without YP13), the upstream suite unchanged.
 
-### P14 — a value a concurrent write replaced keeps its subtree (`src/utils/transaction-helpers.js`, `src/structs/Item.js`, `src/utils/Doc.js`, `src/index.js`)
+### YP14 — a value a concurrent write replaced keeps its subtree (`src/utils/transaction-helpers.js`, `src/structs/Item.js`, `src/utils/Doc.js`, `src/index.js`)
 
 Reason: a map key written concurrently by two clients keeps the rightmost
 value and deletes the others; deleting a node value deletes its whole
@@ -706,7 +706,7 @@ Emits `dts/**/*.d.ts` mirroring `src/` layout, plus `dts/global.d.ts` with
 `/// <reference path="./global.d.ts" />` prepended to `dts/index.d.ts`.
 Emitted types reference `lib0-v14/*` — resolved via the real dependency.
 
-Emit runs clean since P8 (the upstream `TS2589` came from the deleted
+Emit runs clean since YP8 (the upstream `TS2589` came from the deleted
 `utils/delta-helpers.js`).
 
 ## Diffing against upstream
@@ -719,7 +719,7 @@ shasum -a 256 /tmp/yjs.tgz   # expect 4b5ad410…8d7b85
 tar -xzf /tmp/yjs.tgz -C /tmp
 UP=/tmp/yjs-96c96e1fcb1ef6ce866d5264b3f97f7f77b11f64
 
-# engine source: normalize P1 away, then diff — prints exactly the P4–P14 hunks
+# engine source: normalize YP1 away, then diff — prints exactly the YP4–YP14 hunks
 # (the pinned tarball's src/ equals node_modules/@y/y@14.0.0-rc.26/src)
 mkdir -p /tmp/yjs-normalized && cp -R src/lib/crdt/vendor/yjs/src /tmp/yjs-normalized/
 find /tmp/yjs-normalized -name '*.js' -exec sed -i '' 's|lib0-v14|lib0|g' {} +
@@ -727,7 +727,7 @@ diff -r "$UP/src" /tmp/yjs-normalized/src
 diff "$UP/global.d.ts" <(sed 's|lib0-v14|lib0|g' src/lib/crdt/vendor/yjs/global.d.ts)
 diff "$UP/LICENSE" src/lib/crdt/vendor/yjs/LICENSE
 
-# tests: reverse P2 specifiers, then diff (prints the P8 test pruning)
+# tests: reverse YP2 specifiers, then diff (prints the YP8 test pruning)
 cp -R vendor-tests/yjs/tests /tmp/yjs-tests-normalized
 cd /tmp/yjs-tests-normalized && rm -f sync-shim.js && find . -name '*.js' -exec sed -i '' \
   -e "s|from 'lib0-v14/|from 'lib0/|g" -e "s|import('lib0-v14/|import('lib0/|g" \
@@ -742,12 +742,12 @@ diff -r "$UP/tests" /tmp/yjs-tests-normalized
 Runner: `vendor-tests/yjs/upstream.test.js` registers every `testXxx(tc)`
 export as a vitest test with a real `lib0-v14/testing` `TestCase`.
 
-- `pnpm test:crdt` — **216 pass / 6 skipped / 0 failed** since P8 (was 325/6
+- `pnpm test:crdt` — **216 pass / 6 skipped / 0 failed** since YP8 (was 325/6
   before; upstream standard tier; the 6 skips are upstream's own
   `t.skip(!t.production)` extensive-tier gates: 3× y-array, 3× y-map random
   stress tests).
-- `pnpm test:crdt:extensive` (`PRODUCTION=1`) — 331 pass before P8 (~200 s;
-  includes the 30 000-op randomized stress test); 222 tests since P8.
+- `pnpm test:crdt:extensive` (`PRODUCTION=1`) — 331 pass before YP8 (~200 s;
+  includes the 30 000-op randomized stress test); 222 tests since YP8.
 - Reproduce a seed: `YJS_TEST_SEED=<n> pnpm test:crdt`.
 - Vitest runs each test once; upstream's `runTests` repeats `testRepeat*`
   cases for `--repetition-time` ms — that repetition loop is not replicated.

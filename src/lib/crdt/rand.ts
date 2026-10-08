@@ -17,10 +17,10 @@ export const setDocRand = (doc: EngineDoc, rand: () => number): void => {
 /** `doc`'s rank-rand stream — `Math.random` when none was seeded. */
 export const randOf = (doc: EngineDoc): (() => number) => streams.get(doc) ?? Math.random;
 
-/** A fresh 32-bit block incarnation nonce (O23) from `doc`'s stream. */
+/** A fresh 32-bit block incarnation nonce from `doc`'s stream. */
 export const nonceOf = (doc: EngineDoc): number => (randOf(doc)() * 2 ** 32) >>> 0;
 
-/** 32-bit FNV-1a — the seed writer id is this hash of the canonical seed (R13, D53). */
+/** 32-bit FNV-1a — the seed writer id is this hash of the canonical seed. */
 export const hash32 = (text: string): number => {
 	let h = 0x811c9dc5;
 	for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
@@ -30,7 +30,7 @@ export const hash32 = (text: string): number => {
 /**
  * A 53-bit hash (two FNV-1a passes: 32 high bits, 21 low) — a derived writer
  * id spans the engine's whole clientID space, so two concurrent derivations
- * collide at ~2^-53, not ~2^-32 (UW-31). Integer in `[0, 2^53)`.
+ * collide at ~2^-53, not ~2^-32. Integer in `[0, 2^53)`.
  */
 export const hash53 = (text: string): number =>
 	hash32(text) * 2 ** 21 + (hash32(`${text}\u0000`) >>> 11);

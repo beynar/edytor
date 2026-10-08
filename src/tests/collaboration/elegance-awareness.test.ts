@@ -1,6 +1,6 @@
 /**
  * Elegance-review regression pins for awareness presence — see
- * docs/elegance-review-2026-09-23.md:
+ * docs/archive/elegance-review-2026-09-23.md:
  *
  *  - D17: publish and consume used two different "freshest selection by
  *    `t`" contests; a malformed entry with a high `t` was mirrored but

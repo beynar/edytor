@@ -1,6 +1,6 @@
 /**
  * U3 — the vendored bounded read-only `RangeCursor`
- * (`src/lib/crdt/vendor/yjs/src/utils/RangeCursor.js`, UPSTREAM.md P5).
+ * (`src/lib/crdt/vendor/yjs/src/utils/RangeCursor.js`, UPSTREAM.md YP5).
  *
  * Contract under test:
  *

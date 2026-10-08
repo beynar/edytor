@@ -1,5 +1,5 @@
 /**
- * Provider wire envelope — the generation gate (R13, D-2).
+ * Provider wire envelope — the generation gate.
  *
  * Every provider message (BroadcastChannel room traffic AND websocket
  * frames) is prefixed with one varuint GENERATION word before the

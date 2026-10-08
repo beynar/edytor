@@ -270,7 +270,7 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 			return;
 		}
 
-		// A printable key over a selected inline atom types over it (O40).
+		// A printable key over a selected inline atom types over it.
 		if (isPrintableReplacementKey(e) && replaceSelectedAtom(this, e.key)) {
 			e.preventDefault();
 			e.stopPropagation();

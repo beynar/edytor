@@ -1,5 +1,5 @@
 /**
- * Cross-document moves (H10, `room.move` in `docs/editor-delete-contract.md`):
+ * Cross-document moves (`room.move` in `docs/editor-delete-contract.md`):
  * blocks leave document A for document B so that no concurrent edit is
  * lost. Worker-safe; the room (`DocumentRoom.ts`) owns the storage and the
  * transactions, this module the protocol and the merge.
@@ -261,12 +261,6 @@ export const moveBlocksBetweenRooms = async (
 		throw new Error(`moveBlocksBetweenRooms: commit refused (${committed.reason ?? 'unknown'})`);
 	return receipt;
 };
-
-/**
- * @deprecated Use {@link moveBlocksBetweenRooms} (`edytor.moveBlocks` moves
- * blocks inside one document). Removed in the next release.
- */
-export const moveBlocks = moveBlocksBetweenRooms;
 
 /**
  * Forward the late edits document `from` holds (`room.move.late`) to their

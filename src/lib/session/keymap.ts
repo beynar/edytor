@@ -1,5 +1,5 @@
 /**
- * The keymap (R7, O36, §4.3 `session/keymap`): one registry of key bindings,
+ * The keymap: one registry of key bindings,
  * one canonical chord encoding and one precedence rule — the consumer's
  * bindings, then each extension's in list order, then the built-in rows
  * (`session/bindings`). Every binding of a chord runs in that order until one

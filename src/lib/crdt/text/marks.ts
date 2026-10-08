@@ -1,5 +1,5 @@
 /**
- * Paired marks in the document layer (H5, fork patch P13; contract rows
+ * Paired marks in the document layer (fork patch YP13; contract rows
  * `mark.*` in `docs/editor-delete-contract.md`).
  *
  * A mark write is one operation: a start and an end item paired by the
@@ -27,7 +27,7 @@ import { jsonEquals } from '../../utils/json.js';
 /** Whether a mark grows at its edges — always, never, or at its start only. */
 export type MarkEdge = 'inclusive' | 'exclusive' | 'side-dependent';
 
-/** The engine's sides (P13): `0` attaches an item to the content before it, `1` after. */
+/** The engine's sides (fork patch YP13): `0` attaches an item to the content before it, `1` after. */
 const LEFT = 0;
 const RIGHT = 1;
 

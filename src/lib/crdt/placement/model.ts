@@ -1,5 +1,5 @@
 /**
- * Placement engine (U03) — the Edytor document model on vendored Yjs v14.
+ * Placement engine — the Edytor document model on vendored Yjs v14.
  *
  * Architecture: every block is a stable registry entry keyed by its logical
  * id; displayed structure is DERIVED from per-block placement candidate
@@ -10,8 +10,8 @@
  *   └ <blockId>  node('block')             stable identity; survives every move
  *        ├ id / type / data / n            payload attrs (n: incarnation nonce)
  *        ├ del.<writer>                     per-writer delete marks (any live mark = deleted)
- *        ├ content → node('content')       BACKING text of a block created fresh (R2)
- *        ├ claims → node('claims')         ordered merge claims `{m}` (R2)
+ *        ├ content → node('content')       BACKING text of a block created fresh
+ *        ├ claims → node('claims')         ordered merge claims `{m}`
  *        └ at → node('at')                 placement candidate map
  *             └ "<seq>.<clientId>" → { p: parentId|null, r: rank }
  * ```
@@ -35,13 +35,13 @@
  * - Delete marks `del.<writer>` are independent replicated attrs: a marked
  *   block is hidden regardless of which placement candidate wins — explicit
  *   deletion beats concurrent move. Deleting marks the block and every
- *   block it displays through merge claims (R3), a whole-subtree delete
+ *   block it displays through merge claims, a whole-subtree delete
  *   every member; undo removes only the undoer's mark. An unmarked block
  *   under a marked one is promoted into its slot at read time
  *   (`displaySlotOf`), so a concurrent child is never hidden with it; a
  *   block under a void kind (`DisplayOwnership.childless`) likewise.
  *
- * Content ownership (R2, `text/model.ts`): a block displays its stream —
+ * Content ownership (`text/model.ts`): a block displays its stream —
  * delimited by boundary items in a backing text — then the displays of the
  * blocks it claims. A split inserts one boundary; a merge appends one claim;
  * no text is ever copied.
@@ -296,7 +296,7 @@ export const bindModel = (Y: EngineApi) => {
 		const registry = registryOf(doc);
 		const v = registry.getAttr(id);
 		if (isNodeLike(v)) return v;
-		// A losing incarnation (H13) under its derived id.
+		// A losing incarnation under its derived id.
 		return isIncarnationId(id) ? incarnationNode(registry, id, isKeptReplaced) : null;
 	};
 
@@ -314,7 +314,7 @@ export const bindModel = (Y: EngineApi) => {
 	const isLive = (doc: EngineDoc, id: BlockId): boolean => isLiveIn(view(doc), id);
 
 	/**
-	 * The history's creation rule (P12 `withdraw`, `hist.undo.withdraw`): an
+	 * The history's creation rule (fork patch YP12 `withdraw`, `hist.undo.withdraw`): an
 	 * undo never deletes a block the undone step created. Its node and
 	 * structure (attrs, placement candidates, the content and claims nodes)
 	 * stay and the undoer's withdraw mark is written on it; what the step wrote
@@ -368,7 +368,7 @@ export const bindModel = (Y: EngineApi) => {
 
 	// ── content (rich-text sequence) helpers ────────────────────────────
 
-	/** A detached inline-atom node (inputs arrive normalized by the facade's ingress, O1). */
+	/** A detached inline-atom node (inputs arrive normalized by the facade's ingress). */
 	const buildInline = (atom: InlineSpec): EngineNode => {
 		const node = newNode(INLINE_NODE);
 		node.setAttr(ID, atom.id);
@@ -409,7 +409,7 @@ export const bindModel = (Y: EngineApi) => {
 	};
 
 	// ── write primitives ────────────────────────────────────────────────
-	// The document's prepared plans (R6) decide every write; these only
+	// The document's prepared plans decide every write; these only
 	// perform one planned step and never refuse. Must run inside a transaction.
 
 	/**
@@ -425,7 +425,7 @@ export const bindModel = (Y: EngineApi) => {
 	 * `(rank, id)` display sort orders the whole group deterministically.
 	 * On a valid seam the emitted chain is `rankBetween(left, right)` then
 	 * `rankBetween(prev, right)` — with `run`, `rankAfter` (an insert: after a
-	 * block this client ranked, in its run there, H1).
+	 * block this client ranked, in its run there).
 	 */
 	const ranksAt = (
 		siblings: readonly { rank: string }[],
@@ -442,7 +442,7 @@ export const bindModel = (Y: EngineApi) => {
 		}
 		const out: string[] = [];
 		for (let i = 0; i < count; i++) {
-			// An insert extends this client's run after a block it ranked (H1).
+			// An insert extends this client's run after a block it ranked.
 			const r = run
 				? rankAfter(left, right, clientId, rand)
 				: rankBetween(left, right, clientId, rand);
@@ -501,7 +501,7 @@ export const bindModel = (Y: EngineApi) => {
 		return content;
 	};
 
-	/** H5: the marks of `items`, written as paired operations on their integrated text. */
+	/** The marks of `items`, written as paired operations on their integrated text. */
 	const markText = (doc: EngineDoc, content: EngineNode, items: readonly ContentItem[]): void =>
 		writeRunMarks(
 			doc,
@@ -515,14 +515,14 @@ export const bindModel = (Y: EngineApi) => {
 		);
 
 	/**
-	 * Restore definition (O24, D-22 — migration only; a first import
+	 * Restore definition (migration only; a first import
 	 * restores into an empty doc): make `specs` the whole visible document
 	 * under their own ids, in ONE transaction. An existing id keeps its
 	 * registry entry: every delete mark is cleared and its type, data,
 	 * placement and content are rewritten in place — a fresh own text holding
 	 * the spec's content and an empty claims list; a block whose stream still
 	 * starts at a live boundary gets a new nonce, so that boundary goes inert
-	 * and the own text is its stream (R2). An absent id is created. Every other
+	 * and the own text is its stream. An absent id is created. Every other
 	 * block gets this writer's delete mark. Ranks are derived from the tree
 	 * alone and the rewrites are last-writer-wins attrs, so two replicas
 	 * restoring the same specs converge on one copy.
@@ -590,14 +590,14 @@ export const bindModel = (Y: EngineApi) => {
 	/**
 	 * Does any id of `specs` (whole subtrees) collide — with another spec id,
 	 * or with any registry entry, live or deleted? The registry is keyed by
-	 * id, so writing a taken id would replace that block in place (D-12).
+	 * id, so writing a taken id would replace that block in place.
 	 */
 	const collides = (doc: EngineDoc, specs: readonly BlockSpec[]): boolean => {
 		const seen = new Set<BlockId>();
 		const stack = [...specs];
 		while (stack.length > 0) {
 			const sp = stack.pop()!;
-			// A derived incarnation id (U+0000) is never a caller's (H13).
+			// A derived incarnation id (U+0000) is never a caller's.
 			if (seen.has(sp.id) || isIncarnationId(sp.id) || blockNodeOf(doc, sp.id) !== null)
 				return true;
 			seen.add(sp.id);
@@ -607,7 +607,7 @@ export const bindModel = (Y: EngineApi) => {
 	};
 
 	/**
-	 * The seed writer's bulk insert (R1: the document is written by document
+	 * The seed writer's bulk insert (the document is written by document
 	 * operations and, once, by the seed writer — `init`, the local
 	 * materializer): `specs` (whole subtrees, in list order) at `dest` in one
 	 * transaction, all-or-nothing — `false` without writing when the parent
@@ -630,7 +630,7 @@ export const bindModel = (Y: EngineApi) => {
 	/**
 	 * Split `id` at content `offset` into the new block `newId` placed at
 	 * `place`: one boundary item for `newId` at the end of the gap at `offset`
-	 * (P7) and the merge claims that follow it re-inserted on the new block —
+	 * (fork patch YP7) and the merge claims that follow it re-inserted on the new block —
 	 * no text is copied, so an offline edit to the tail keeps landing on the
 	 * same items and displays in the new block after convergence. `tail` is
 	 * the new block's type/data, decided once by the plan. Children are a
@@ -663,7 +663,7 @@ export const bindModel = (Y: EngineApi) => {
 	 * Canonical projection: pure derivation from replicated state — the
 	 * visible tree of live blocks ordered by `(rank, id)`, children of a
 	 * merged-away parent under its owner, those of a deleted parent in its
-	 * slot ({@link displaySlotOf}). Content is each block's display (R2).
+	 * slot ({@link displaySlotOf}). Content is each block's display.
 	 */
 	const project = (doc: EngineDoc): ProjectedDoc => ({ children: R.attach(doc).project() });
 
@@ -695,7 +695,7 @@ export const bindModel = (Y: EngineApi) => {
 	const positionOf = (doc: EngineDoc, id: BlockId): Destination | null =>
 		positionInView(view(doc), id);
 
-	/** Pre-order ids of the visible tree — the document order (O7). */
+	/** Pre-order ids of the visible tree — the document order. */
 	const listBlockIds = (doc: EngineDoc): BlockId[] => [...view(doc).order.ids];
 
 	/** Flat text of a block's OWNED content (atoms render as ''). */

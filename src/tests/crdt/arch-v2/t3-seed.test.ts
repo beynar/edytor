@@ -91,8 +91,8 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 /** A websocket sync factory with the library's DEFAULT options (no resync, default bound). */
 const wsSync = (url) =>
 	providers.createWebsocketSync({
-		serverUrl: url,
-		roomName: 'room',
+		server: url,
+		room: 'room',
 		WebSocketPolyfill: Relay
 	});
 

@@ -1,13 +1,13 @@
 /**
- * U2 — legacy attribution surface: actor dictionary + inert reads over
+ * Legacy attribution surface: actor dictionary + inert reads over
  * pre-existing per-edit records.
  *
- * The U6 capture pipeline (immutable `a/<nonce>/<seq>` ContentMap records
+ * The per-edit capture pipeline of earlier builds (immutable `a/<nonce>/<seq>` ContentMap records
  * written in a follow-up transaction per committed edit, projected onto
- * text runs by U7) is REMOVED: ordinary editing performs no attribution
+ * text runs) is REMOVED: ordinary editing performs no attribution
  * writes at all — one transaction/update per keystroke, no observer hook,
  * no per-edit durable record. The durable block-level model lives in
- * `block.ts` (U1) and is unaffected.
+ * `block.ts` and is unaffected.
  *
  * What this module still owns:
  *
@@ -34,7 +34,7 @@
  *   RETENTION — `a/` state is retained as long as it exists in the
  *   document (no GC of the records themselves); `live()`/renderer
  *   projections are gone, and the engine no longer ships concrete
- *   renderers (UPSTREAM.md P8) — consumers that need a rendered view over
+ *   renderers (fork patch YP8, UPSTREAM.md) — consumers that need a rendered view over
  *   legacy records implement the engine's `AbstractRenderer` over the
  *   `ContentMap` `legacy()` returns and pass it to `toDelta({renderer})`.
  */
@@ -54,7 +54,7 @@ export { ATTRIBUTION_ROOT };
 
 /**
  * Origin of every metadata write this module performs (`u/`/`c/`
- * dictionary publishes only — U2 retired per-edit record writes). Kept
+ * dictionary publishes only — per-edit record writes are retired). Kept
  * out of undo capture; tooling classifies it as bookkeeping.
  */
 export const ATTRIBUTION_ORIGIN = Symbol('edytor.attribution');
@@ -198,7 +198,7 @@ export const bindAttribution = (Y: EngineApi) => {
 	/**
 	 * Attach the actor dictionary to `doc`: publishes this replica's
 	 * `c/`+`u/` records and returns the read-through view. No listeners —
-	 * ordinary edits perform no attribution work (U2).
+	 * ordinary edits perform no attribution work.
 	 */
 	const attach = (doc: EngineDoc, opts: AttachOptions): AttributionController => {
 		const actor = opts.actor;
@@ -258,7 +258,7 @@ export const bindAttribution = (Y: EngineApi) => {
 				}
 				return found ? Y.createContentMap(inserts, deletes) : null;
 			},
-			// U1: `b/<id>` records live on the `blockattr` root and `l` on
+			// `b/<id>` records live on the `blockattr` root and `l` on
 			// the block node — plain replicated reads, no observer needed.
 			block: (blockId) => blockAttributionOf(doc, blockId),
 			// Opt-in ring (`lineage.depth`): read the record's list items

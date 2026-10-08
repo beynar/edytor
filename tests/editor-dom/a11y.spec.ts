@@ -3,7 +3,7 @@
  * editor and its chrome in each state a user meets (idle, the `/` menu, the
  * `+` menu, the block menu, the toolbar, a focused column band), against
  * WCAG 2.2 A and AA, and the keyboard paths the jsdom rows cannot prove
- * (`src/tests/fixtures/dom/a11y-20261007.test.tsx`): Alt+F10 into the
+ * (`src/tests/fixtures/dom/a11y.test.tsx`): Alt+F10 into the
  * toolbar and back, a column band resized from the keyboard, a move
  * announced in the live region. Expected values come from WAI-ARIA 1.2 and
  * the WCAG rules, never from a run.

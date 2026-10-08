@@ -2,9 +2,9 @@
 
 Status: **decided and implemented** (hardening unit 3; revised for Gate-H
 round 3 — structural detection, permanent listener, same-frame repair).
-Driver: `docs/crdt-v14-follow-up-review-2026-09-21.md` §R3 (P1),
-`docs/crdt-v14-hardening-prompt.md` Unit 3, and the Gate-H R3/R5-D6
-findings (`docs/crdt-v14-gateH-review.md`). Base ownership model:
+Driver: `docs/archive/crdt-v14-follow-up-review-2026-09-21.md` §R3 (P1),
+`docs/archive/crdt-v14-hardening-prompt.md` Unit 3, and the Gate-H R3/R5-D6
+findings (`docs/archive/crdt-v14-gateH-review.md`). Base ownership model:
 `docs/crdt-v14-text-ownership-adr.md`.
 Implementation: `src/lib/crdt/edytor-doc.ts` (`repairUndoOwnership` /
 `attachUndoRepair`, driven from `beforeObserverCalls`) +

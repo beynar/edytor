@@ -2,8 +2,8 @@
  * The generation cutover (schema generation 4 → 5, 0.1.0-next.25).
  *
  * Generation 5 changed the format of what a document stores: marks are
- * paired operations (H5, fork patch P13), ranks are variable-length (P7)
- * and a SyncStep2 is v2 on the wire (P5). Bytes of generation 4 are never
+ * paired operations (fork patch YP13), ranks are variable-length
+ * and a SyncStep2 is v2 on the wire. Bytes of generation 4 are never
  * integrated beside generation 5's (every frame and container names its
  * generation, `protocols/envelope.ts`): a container of generation 4 is
  * READ — its records applied to a scratch document, no admission, no

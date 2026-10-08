@@ -36,7 +36,7 @@ export const indexAnchored = (ix: IndexState & IndexClaims) => {
 		invalidateBlock
 	} = ix;
 
-	// ── anchored merge claims (`merge.claim.anchor`, H9's second half) ──
+	// ── anchored merge claims (`merge.claim.anchor`) ──
 	// A claim written since 0.1.0-next.26 carries the end of its holder's
 	// stream as its writer saw it (`a`: the last unit, `r`: the item after
 	// it). A split the writer did not see moves it to the piece that ends

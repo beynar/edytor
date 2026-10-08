@@ -7,7 +7,7 @@ import { trackPageIssues, waitForEditorReady } from './helpers';
  * a cell, Enter is a line break, Backspace at a cell's start stays, Tab and
  * the vertical arrows walk the cells, Tab in the last cell adds a row, the
  * chrome's grip menu and `+` add rows, and a column's band resizes it. The
- * jsdom rows are `src/tests/fixtures/dom/table-20261008.test.tsx`.
+ * jsdom rows are `src/tests/fixtures/dom/table.test.tsx`.
  *
  * `P "before", T{c1, c2}[R1[A "alpha", B "beta"], R2[C "gamma", D "delta"]], Z "after"`.
  */

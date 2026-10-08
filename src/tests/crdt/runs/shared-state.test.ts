@@ -2,7 +2,7 @@
  * WU7 / arch-v2 D9 — the per-document index (`src/lib/crdt/text/runs.ts`,
  * read by `bindModel` and the `EdytorDoc` facade).
  *
- * Contract under test (docs/crdt-v14-follow-up-prompt.md, WU7):
+ * Contract under test (docs/archive/crdt-v14-follow-up-prompt.md, WU7):
  *
  * - ONE OWNER: `bindRuns`' doc-scoped state is the single owner of the
  *   derived indexes — block records, ownership, per-text interval rows,

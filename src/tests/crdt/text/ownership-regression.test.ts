@@ -1,6 +1,6 @@
 /**
  * U04-F1 ownership regressions — the three defects reproduced in the
- * 2026-09-20 progress review (docs/crdt-v14-progress-review-2026-09-20.md),
+ * 2026-09-20 progress review (docs/archive/crdt-v14-progress-review-2026-09-20.md),
  * pinned as hard failures through the assembled `EdytorDoc` facade:
  *
  * - A: typing at the left edge of a mid text after CONCURRENT splits stole

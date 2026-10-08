@@ -3,7 +3,7 @@ import * as s from 'lib0-v14/schema'
 import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 
 /**
- * A `ContentIds` (`{inserts, deletes}` IdSets) — P8 pruned `Y.createContentIds`.
+ * A `ContentIds` (`{inserts, deletes}` IdSets) — YP8 pruned `Y.createContentIds`.
  *
  * @return {ContentIds}
  */

@@ -339,7 +339,7 @@ export function getTextsInSelection(
 }
 
 /**
- * The edge side of a collapsed DOM point at `offset` of `text` (R4): inside
+ * The edge side of a collapsed DOM point at `offset` of `text`: inside
  * when every mark element rendering the character before it contains the
  * point, outside when one does not; `undefined` when that character has none.
  */
@@ -368,7 +368,7 @@ export const getYIndex = (text: Text | null, node: Node | null, _start: number) 
 		return text.length;
 	}
 
-	// A point inside the text element reads the text before it (F-S5); the
+	// A point inside the text element reads the text before it; the
 	// element-boundary rule is for points outside it.
 	const boundaryOffset = parent.contains(node)
 		? null

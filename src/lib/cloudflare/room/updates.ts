@@ -322,9 +322,9 @@ export const withoutPending = <T>(doc: YDoc, read: () => T): T => {
 };
 
 /**
- * The live document as one update (P2): its healed state — the engine
+ * The live document as one update: its healed state — the engine
  * merged what each keystroke wrote and collected deleted content, sparing
- * the text a replica may copy again (`keepCopies`, P11) —, without what
+ * the text a replica may copy again (`keepCopies`) —, without what
  * waits (`withoutPending`). Memory never runs ahead of storage, so it
  * holds exactly what the stored records hold, collected.
  */
@@ -333,7 +333,7 @@ export const liveState = (doc: YDoc): Uint8Array =>
 
 /**
  * A room document's collection rules, before any update applies: it keeps
- * what an editing replica keeps (P11), and the content the last restore
+ * what an editing replica keeps, and the content the last restore
  * deleted while its undo stands (`keep`, `room.history.undo`).
  */
 const prepareRoomDoc = (doc: YDoc, keep: () => Decoded['ds'] | null): void => {

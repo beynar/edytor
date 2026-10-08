@@ -203,7 +203,7 @@
 						}
 					}
 					// A code line never merges out of its island's first or last slot
-					// (the code block renders no content of its own, XW-12).
+					// (the code block renders no content of its own).
 					const siblings = block.parent?.children.length ?? 0;
 					if (operation === 'mergeBlockBackward' && block.index === 0) prevent();
 					if (operation === 'mergeBlockForward' && block.index === siblings - 1) prevent();

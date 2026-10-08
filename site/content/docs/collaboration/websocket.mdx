@@ -94,8 +94,6 @@ A URL collapses a `.` or `..` segment (escaped as `%2E` too), and `encodeURIComp
   }}
 />
 
-`serverUrl` and `roomName`, the names of earlier releases, still work in place of `server` and `room`.
-
 `params` is kept by reference and read each time the provider dials, so you can refresh a short-lived token by updating the object you passed:
 
 ```ts title="src/lib/sync.ts" check

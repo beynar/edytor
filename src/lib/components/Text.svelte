@@ -6,10 +6,10 @@
 	import Mark from './Mark.svelte';
 
 	/**
-	 * One segment of a cell (R2): its render deltas, the empty filler, the
-	 * trailing-newline marker and the placeholder attribute (§2.4, D-8: shown
+	 * One segment of a cell: its render deltas, the empty filler, the
+	 * trailing-newline marker and the placeholder attribute (shown
 	 * by the `::before` rule below). `text` is the handle the element maps to
-	 * for the operations and the selection (R3/R4); a segment re-keyed or
+	 * for the operations and the selection; a segment re-keyed or
 	 * shifted rebinds it without remounting the element.
 	 */
 	let {
@@ -54,7 +54,7 @@
 	/**
 	 * An empty text renders the filler as its first unmarked delta: the same
 	 * keyed item, so the first character typed or composed into an empty
-	 * block lands in the node the browser (and the IME) already holds (BI-15).
+	 * block lands in the node the browser (and the IME) already holds.
 	 */
 	const FILLER: readonly RenderDelta[] = [{ text: '\u200B', marks: [] }];
 
@@ -118,7 +118,7 @@
 -->
 
 <style>
-	/* The placeholder (D-8): the library's rule; out of flow, so the caret stays at the start. */
+	/* The placeholder: the library's rule; out of flow, so the caret stays at the start. */
 	:global([data-edytor-text][data-placeholder]::before) {
 		content: attr(data-placeholder);
 		position: absolute;

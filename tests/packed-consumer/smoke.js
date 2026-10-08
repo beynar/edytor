@@ -129,8 +129,7 @@ assert.equal(typeof crdt.providers.createWebsocketSync, 'function');
 // Local persistence by default, named after the server and room (skipped
 // at runtime here: Node has no indexedDB).
 assert.equal(
-	crdt.providers.createWebsocketSync({ serverUrl: 'wss://example.com/', roomName: 'r' })
-		.persistName,
+	crdt.providers.createWebsocketSync({ server: 'wss://example.com/', room: 'r' }).persistName,
 	'edytor:wss://example.com/r'
 );
 

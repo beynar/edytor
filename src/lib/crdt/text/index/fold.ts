@@ -185,13 +185,13 @@ export const indexFold = (
 			updateBlockRec(id);
 			// A retype that lands with a structure facet is still a retype.
 			if (typeBefore !== undefined && blocks.get(id)?.type !== typeBefore) ix.retyped = true;
-			// A new entry, a nonce or an own text can move streams (R2).
+			// A new entry, a nonce or an own text can move streams.
 			if (kinds.has('entry') || facets.has(NONCE) || facets.has(CONTENT_ATTR)) {
 				ctx.table = true;
 				ctx.named.add(id);
 				noteText(ctx, id, null);
 			}
-			// The key's losing incarnations follow its entry and its liveness (H13).
+			// The key's losing incarnations follow its entry and its liveness.
 			for (const v of syncIncarnations(id)) {
 				ctx.table = true;
 				ctx.named.add(v);
@@ -232,7 +232,7 @@ export const indexFold = (
 	/**
 	 * Move each edited text's row by its edits (or rescan it), re-decide the
 	 * delimiters a boundary change names, re-place the rows they cut, and
-	 * invalidate the readers: the display owner of each edited stream (L7),
+	 * invalidate the readers: the display owner of each edited stream,
 	 * the blocks whose stream changed, every reader of an opaque text.
 	 */
 	const foldTexts = (ctx: FoldCtx): void => {
@@ -282,7 +282,7 @@ export const indexFold = (
 				for (const c of textConsumers.get(home) ?? []) ctx.invalidated.add(c);
 				continue;
 			}
-			// Only the stream each edit lies in changes its display (L7).
+			// Only the stream each edit lies in changes its display.
 			const row = rows.get(home);
 			if (row === undefined) continue;
 			for (const gap of gaps) {
@@ -301,7 +301,7 @@ export const indexFold = (
 		const st = streamOf(id);
 		return st !== undefined && st.end - st.start > st.inert.length;
 	};
-	/** A live unit in `id`'s stream or in the stream of a losing incarnation it shows (H13). */
+	/** A live unit in `id`'s stream or in the stream of a losing incarnation it shows. */
 	const holdsUnit = (id: BlockId): boolean =>
 		streamHolds(id) || (incarnations.get(id)?.some(streamHolds) ?? false);
 
@@ -344,7 +344,7 @@ export const indexFold = (
 			if (rec.deleted === !alive.has(id)) continue;
 			rec.deleted = !alive.has(id);
 			ownerSeeds.add(id);
-			// Its losing incarnations follow it (H13).
+			// Its losing incarnations follow it.
 			for (const v of incarnations.get(id) ?? []) {
 				const inc = blocks.get(v);
 				if (inc === undefined) continue;
@@ -376,7 +376,7 @@ export const indexFold = (
 			if (parent === registryNode) {
 				let id = it!.parentSub;
 				if (typeof id !== 'string') return null;
-				// A losing incarnation's subtree (H13): its derived id; a seed's shows nothing.
+				// A losing incarnation's subtree: its derived id; a seed's shows nothing.
 				if (it!.deleted && kept(it)) {
 					const item = itemOf(cur)!;
 					if (item.id.client < LIVE_WRITERS) return null;
@@ -466,7 +466,7 @@ export const indexFold = (
 	 * Fold the pending part of `tr` — the structs its insert/delete sets
 	 * gained since the last fold — before a read inside it (read-your-
 	 * writes; `transaction.changed` does not grow on a second edit to an
-	 * already-changed type, F11).
+	 * already-changed type).
 	 */
 	const syncPending = (tr: Tx | null | undefined): boolean => {
 		if (tr?.insertSet === undefined || tr.deleteSet === undefined) return false;

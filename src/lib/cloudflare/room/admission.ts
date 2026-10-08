@@ -142,7 +142,7 @@ export class Admission {
 	private onFrame(ws: WebSocket, attachment: Attachment, doc: YDoc, bytes: Uint8Array) {
 		const room = this.room;
 		const limit = room.limits.maxInboundFrameBytes;
-		// The frame quota (H3): never decoded past it.
+		// The frame quota: never decoded past it.
 		if (bytes.length > limit) {
 			return this.overQuota(ws, attachment.user, 'frame', { bytes: bytes.length, limit });
 		}
@@ -330,7 +330,7 @@ export class Admission {
 	private onSync(ws: WebSocket, attachment: Attachment, doc: YDoc, decoder: E.Decoder) {
 		const room = this.room;
 		const syncType = decode(() => E.readVarUint(decoder));
-		// The rate quota (H3) counts every sync message, a Step1 too (it costs a Step2).
+		// The rate quota counts every sync message, a Step1 too (it costs a Step2).
 		if (!this.allow(ws)) {
 			return this.overQuota(ws, attachment.user, 'rate', {
 				perSecond: room.limits.maxUpdatesPerSecond
@@ -349,7 +349,7 @@ export class Admission {
 		if (syncType !== E.messageYjsSyncStep2 && syncType !== E.messageYjsUpdate) {
 			return room.refuse(ws, { reason: 'malformed', detail: `sync type ${syncType}` });
 		}
-		// A SyncStep2 is v2 on the wire (P5): every path below reads v1.
+		// A SyncStep2 is v2 on the wire: every path below reads v1.
 		const update = decode(() => {
 			const payload = E.readVarUint8Array(decoder);
 			return syncType === E.messageYjsSyncStep2 ? sync.step2Update(payload) : payload;
@@ -379,7 +379,7 @@ export class Admission {
 		if (storage.outage !== null && writes(doc, decoded) && !storage.answers()) {
 			return this.unavailable(ws);
 		}
-		// The document quota (H3), net of what the frame deletes.
+		// The document quota, net of what the frame deletes.
 		if (
 			decoded.structs.some((struct) => !(struct instanceof Y.Skip)) &&
 			this.overDocument(update.length, freedBy(doc, decoded.ds))
@@ -393,7 +393,7 @@ export class Admission {
 		const sv = stateVector(doc);
 		const orphans = new Set<number>();
 		const stripped = replicas.attribute(attachment, newWriters(decoded, sv), sv, orphans);
-		// Per-writer block marks (H2): only `n` writes or deletes `del.<n>` /
+		// Per-writer block marks: only `n` writes or deletes `del.<n>` /
 		// `wd.<n>`. A client writing another's is stripped whole, as a client
 		// under another user's id is; a delete of another's mark is dropped.
 		const forgers = forgedWriters(doc, decoded.structs, stripped);
@@ -475,9 +475,9 @@ export class Admission {
 			stripped.size === 0 && dropped === null && attribution.collected.size === 0
 				? update
 				: withoutClients(decoded, stripped, doc, dropped ?? undefined, attribution.collected);
-		// A history slot past its end is written as it was, before the frame (H11).
+		// A history slot past its end is written as it was, before the frame.
 		room.history.closeSlotIfPast();
-		// Validation (H2) reads the document as it was, and records the frame.
+		// Validation reads the document as it was, and records the frame.
 		const validation = room.validation.active ? room.validation.begin(doc, ws) : null;
 		// 4 · Schema: the inbound refusal of a foreign stamp (the update's,
 		// or a pending one it would release — discarded, the sender kept).

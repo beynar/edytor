@@ -69,7 +69,7 @@ export class RoomAccess {
 	/** A request forwarded by the host Worker (`AttachedDocument.fetch`). */
 	async fetch(request: Request): Promise<Response> {
 		const room = this.room;
-		// A history request (H11), forwarded by `routeDocumentHistory` once authorized.
+		// A history request, forwarded by `routeDocumentHistory` once authorized.
 		const op = request.headers.get(HISTORY_HEADER);
 		if (op !== null) {
 			const identity = readIdentity(request.headers);
@@ -87,7 +87,7 @@ export class RoomAccess {
 			return room.comments.request(comments, identity, body);
 		}
 		// The probes, forwarded by `routeDocumentSocket` once authorized:
-		// `lastUpdated` (H12) and `snapshot` (P8: the document as JSON).
+		// `lastUpdated` and `snapshot` (the document as JSON).
 		const probe = request.headers.get(PROBE_HEADER);
 		if (probe === 'lastUpdated' || probe === 'snapshot') {
 			if (readIdentity(request.headers) === null) {

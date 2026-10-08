@@ -1,10 +1,9 @@
 /**
- * Render cells (plan §2.4 "Render cells", "Segments", "Placeholder attribute";
- * §4.4 `surface/cells.ts`; rules R1, R11).
+ * Render cells: segments and the placeholder attribute.
  *
  * One cell per visible block id, `{type, data, childIds, runs}`. The tree is
  * built once from the document's projection; after that it changes only when
- * a commit's change report (D9: `added`, `removed`, `order`, `meta`,
+ * a commit's change report (`added`, `removed`, `order`, `meta`,
  * `content`) is applied. A cell is a frozen value. A patch replaces exactly
  * the cells the report names and keeps every other object, so a consumer can
  * key its reactivity on identity. A cell exists iff the last report left its
@@ -13,12 +12,12 @@
  * Segments are a pure function of a cell's runs: the text between inline
  * atoms, keyed by the id of the atom before it, or `start`. A segment has no
  * identity beyond that key, so typing inside it, or an atom inserted in
- * another segment, never renames it (positional ordinals did, L18).
+ * another segment, never renames it (positional ordinals did).
  *
- * Cells are reactive (R2): each cell and the root list are pointers a patch
+ * Cells are reactive: each cell and the root list are pointers a patch
  * replaces, so a component re-renders only when the cell it reads was named
  * by a report. Components render from cells only; operations and handles
- * read the document index (R3, R4).
+ * read the document index.
  */
 import { SvelteMap, createSubscriber } from 'svelte/reactivity';
 import type { BlockId, ContentRun, DocChange, ProjectedBlock } from '../crdt/index.js';
@@ -87,7 +86,7 @@ export const createCells = (
 		return () => (notifyRoot = () => {});
 	});
 	// A block new to the tree gets its cell; one visible before keeps its cell
-	// and is named again where it changed (K7).
+	// and is named again where it changed.
 	const add = (node: ProjectedBlock, named: Map<BlockId, Partial<Cell>>) => {
 		if (!cells.has(node.id)) named.set(node.id, cellOf(node));
 		node.children.forEach((child) => add(child, named));
@@ -304,7 +303,7 @@ export const segmentDeltas = (
 };
 
 /**
- * `data-placeholder` (§2.4): the cell shows one empty text and no live
+ * `data-placeholder`: the cell shows one empty text and no live
  * composition is in it.
  */
 export const placeholderOf = (cell: Cell, composing: boolean): boolean => {

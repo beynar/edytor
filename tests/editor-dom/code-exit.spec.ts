@@ -5,7 +5,7 @@ import { waitForEditorReady } from './helpers';
  * Leaving a code block by keyboard in real browsers. Enter in the code
  * block's empty last line leaves it (the line goes); ArrowDown in its last
  * line goes below it, creating a paragraph when nothing follows. The jsdom
- * rows are `src/tests/fixtures/dom/code-exit-20261003.test.tsx`.
+ * rows are `src/tests/fixtures/dom/code-exit.test.tsx`.
  */
 const code = (...lines: string[]) => ({
 	id: 'c',

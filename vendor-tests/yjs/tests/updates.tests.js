@@ -25,7 +25,7 @@ import * as array from 'lib0-v14/array'
  */
 
 /**
- * P8 pruned `createContentIdsFromUpdate(V2)` and `encodeStateVectorFromUpdate(V2)` from the
+ * YP8 pruned `createContentIdsFromUpdate(V2)` and `encodeStateVectorFromUpdate(V2)` from the
  * engine (edytor never calls them). These test-side ports (same algorithms, over the kept
  * `decodeUpdate(V2)`) keep the merge/diff assertions below.
  *

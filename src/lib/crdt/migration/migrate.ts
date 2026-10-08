@@ -10,7 +10,7 @@
  *   for this writer as for the provider; the legacy database is never
  *   written, so rollback stays available.
  * - A first import is a fresh identity appended beside whatever a live
- *   provider already stored. `force` is a replace-edit instead (D-22): it
+ *   provider already stored. `force` is a replace-edit instead: it
  *   hydrates the generation, restores every legacy id in place
  *   (restore-definition — delete marks cleared, type, data, placement and
  *   content rewritten, every other block deleted) and appends that diff, so
@@ -21,10 +21,10 @@
  * JSON-level import); logical `b_*`/`i_*` ids do, and verification compares
  * them.
  *
- * Attempt vs progress (O79): the attempt is a `navigator.locks` lock named
+ * Attempt vs progress: the attempt is a `navigator.locks` lock named
  * {@link migrationBcRoom} — crash-released, so no lease, owner or poll
  * exists; where the platform has none (Node 22) an in-process mutex stands
- * in (U-5). Progress is only the durable record, which is never `pending`:
+ * in. Progress is only the durable record, which is never `pending`:
  * `status()` reports `pending` while the lock is held, and `wait: false`
  * asks for the lock `ifAvailable` and returns `busy`.
  */
@@ -103,14 +103,6 @@ export type MigrateOptions = {
 	wait?: boolean;
 	/** Phase observer — invoked BEFORE each phase; throwing simulates a crash. */
 	onPhase?: (phase: MigrationPhase) => void | Promise<void>;
-	/** @deprecated No-op: the attempt is a crash-released lock, not a lease. */
-	leaseMs?: number;
-	/** @deprecated No-op: waiting is queueing on the lock. */
-	waitMs?: number;
-	/** @deprecated No-op: nothing polls. */
-	pollMs?: number;
-	/** @deprecated No-op: no durable owner exists. */
-	owner?: string;
 };
 
 /** The part of the Web Locks API the migrator uses. */
@@ -123,7 +115,7 @@ type Locks = {
 	query(): Promise<{ held?: { name?: string; mode?: string }[] }>;
 };
 
-/** U-5: where `navigator.locks` is absent, an in-process mutex (exclusive only) with its surface. */
+/** Where `navigator.locks` is absent, an in-process mutex (exclusive only) with its surface. */
 const tails = new Map<string, Promise<unknown>>();
 const inProcess: Locks = {
 	request: (name, { ifAvailable }, fn) => {
@@ -145,7 +137,7 @@ const readRecord = async (db: IDBDatabase): Promise<MigrationRecord> =>
 		| undefined) ?? { v: 1, status: 'none' };
 
 /**
- * The legacy rows, in ONE readonly transaction — the fence (D23): a live v13
+ * The legacy rows, in ONE readonly transaction — the fence: a live v13
  * writer's rows land entirely before or after this snapshot (later rows are
  * the `force` path's). Never creates the legacy database.
  */
@@ -185,7 +177,7 @@ export const bindMigration = (Y: EngineApi) => {
 	const reader = bindLegacyReader(Y);
 	const edytorDoc = bindEdytorDoc(Y);
 
-	/** The durable record — NON-CREATING (D23): probing never leaves a database behind. */
+	/** The durable record — NON-CREATING: probing never leaves a database behind. */
 	const stored = async (name: string): Promise<MigrationRecord> => {
 		const db = await openIfExists(generationDbName(name));
 		try {
@@ -205,11 +197,8 @@ export const bindMigration = (Y: EngineApi) => {
 			: stored(name);
 	};
 
-	/** Resolve with the durable record once no tab holds the attempt (the options are no-ops, D-15). */
-	const waitForSettled = (
-		name: string,
-		_options?: { waitMs?: number; pollMs?: number }
-	): Promise<MigrationRecord> =>
+	/** Resolve with the durable record once no tab holds the attempt. */
+	const waitForSettled = (name: string): Promise<MigrationRecord> =>
 		locks().request(migrationBcRoom(name), { mode: 'shared' }, () => stored(name));
 
 	/** One attempt, run while holding the lock. */
@@ -272,7 +261,7 @@ export const bindMigration = (Y: EngineApi) => {
 			if (force) {
 				const [updates, custom] = idb.transact(db, [UPDATES, CUSTOM]);
 				await verifyOrStamp(name, updates, custom);
-				// Rows first (one transaction), then inflate: a snapshot row is v2, maybe gzip (P5).
+				// Rows first (one transaction), then inflate: a snapshot row is v2, maybe gzip.
 				for (const row of await idb.getAll(updates)) {
 					const update = await readRow(row);
 					if (update instanceof Uint8Array) Y.applyUpdate(doc, update);

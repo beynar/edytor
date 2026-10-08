@@ -1,6 +1,6 @@
 /**
  * HARDENING U0 / R4 — public snapshots are mutable aliases of live state
- * (review `docs/crdt-v14-follow-up-review-2026-09-21.md` §R4, P1).
+ * (review `docs/archive/crdt-v14-follow-up-review-2026-09-21.md` §R4, P1).
  *
  * `project()`, `contentItems()`, `block.items` hand out the SAME objects the
  * model/engine holds: `T.contentItemsOf`/`itemsOfRange` emit the live

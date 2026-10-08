@@ -1,4 +1,4 @@
-// Delta helpers for the Text wrapper's JSON value (since R2 nothing renders
+// Delta helpers for the Text wrapper's JSON value (nothing renders
 // from them; the components render cell deltas): the runs view already merges
 // adjacent same-mark text, so a segment's text items map one-to-one onto JSON
 // deltas without touching engine internals.

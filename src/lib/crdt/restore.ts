@@ -1,5 +1,5 @@
 /**
- * Restore a version as a forward edit (H11, `room.history.restore` in
+ * Restore a version as a forward edit (`room.history.restore` in
  * `docs/editor-delete-contract.md`): make the visible document equal a
  * JSON snapshot, inside the caller's ONE transaction, keeping every block
  * id the registry still holds and writing only what differs. Worker-safe
@@ -20,7 +20,7 @@
  *    stream's text replaced through the facade's per-stream delete and
  *    insert, the common prefix and suffix kept;
  * 5. every visible block outside the snapshot gets the writer's delete
- *    mark, with every block it displays (R3);
+ *    mark, with every block it displays;
  * 6. the document's data, patched to the snapshot's.
  */
 import type { EngineDoc, EngineNode } from './engine-api.js';

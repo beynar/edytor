@@ -2,7 +2,7 @@
 
 This note captures the current evidence-backed direction for making Edytor reliable across current Chromium, Firefox, and WebKit browsers.
 
-For execution tracking, use `docs/cross-browser-worklog.md` before starting a
+For execution tracking, use `docs/archive/cross-browser-worklog.md` before starting a
 new browser-hardening slice. That file lists completed coverage, do-not-repeat
 boundaries, verification already run, and the next queue.
 

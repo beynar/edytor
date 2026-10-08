@@ -3,7 +3,7 @@
  * predicate each (rule R5, §2.2 L1, O8, O9, O22; decisions D-11, D-13).
  *
  * Rows (doc lane; the dom halves live in
- * `src/tests/fixtures/dom/arch-v2-d3-capability.test.tsx`):
+ * `src/tests/fixtures/dom/kind-capability.test.tsx`):
  * - F-D4 — `ordered-list > [li "one"]`: Enter at end, middle, start gives
  *   `[li "one", li ""]`, `[li "o", li "ne"]`, `[li "", li "one"]`; merging an
  *   island's child out into the list yields an `li` (G5: "the tail takes the

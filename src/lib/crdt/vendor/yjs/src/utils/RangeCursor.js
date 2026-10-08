@@ -1,10 +1,10 @@
 /**
  * Bounded read-only range cursor over a `YNode`'s item list — a local
- * (Edytor) addition, not upstream source. See UPSTREAM.md (P5).
+ * (Edytor) addition, not upstream source. See UPSTREAM.md (YP5).
  *
  * A `RangeCursor` reads the interval `[i0, i1)` of a list-type `YNode`
  * without materializing the whole node: it seeks via the engine's own
- * search-marker checkpoints (the `formats` snapshots P4 added for
+ * search-marker checkpoints (the `formats` snapshots YP4 added for
  * `applyDelta`'s mutation-cursor seeding are exactly the checkpoints a
  * format-aware range read needs) and emits one {@link RangePiece} per
  * visible piece overlapping the range — the SAME physical-sequence
@@ -34,7 +34,7 @@ import { plantSearchMarker } from '../ynode.js'
 import { createID } from './ID.js'
 import { rendererContentLength, readItemPieces } from './renderer-helpers.js'
 import { updateCurrentFormats } from './transaction-helpers.js'
-import { formatValue } from './marks.js' // P13
+import { formatValue } from './marks.js' // YP13
 
 /**
  * Checkpoint cadence for cold walks: a read that steps this many items
@@ -137,7 +137,7 @@ export class RangeCursor {
    * carrying a `formats` snapshot.
    *
    * Read-seed eligibility is deliberately WEAKER than `applyDelta`'s
-   * mutation seed (UPSTREAM.md P5): a read may resume on ANY item at-or-left
+   * mutation seed (UPSTREAM.md YP5): a read may resume on ANY item at-or-left
    * of the target — the forward fold reproduces format state from the
    * snapshot — while the mutation cursor must anchor on the FIRST item at
    * the index (its `p.left` must be countable-or-null). Both consume the
@@ -232,7 +232,7 @@ export class RangeCursor {
     if (f === null) {
       f = undefined
       this.currentFormats.forEach((v, k) => {
-        v = formatValue(v) // P13: a paired mark renders its winning value
+        v = formatValue(v) // YP13: a paired mark renders its winning value
         if (v != null) (f ??= {})[k] = v
       })
       this._formatsObj = f

@@ -1,23 +1,23 @@
 /**
- * Typed node surface (WU2) — `document.block(id)` handles over the semantic
+ * Typed node surface — `document.block(id)` handles over the semantic
  * model. Each handle is a thin dead-safe wrapper: ops delegate to the
  * facade's ownership-aware operations and return its {@link OpResult}
  * (`refused` on absent/merged ids).
  *
  * Handles are transaction-aware: `childIds()` etc. reflect mutations made
  * earlier in the same transaction.
- * What is COMMIT-BOUND is PUBLICATION (R5): the change report and
+ * What is COMMIT-BOUND is PUBLICATION: the change report and
  * `onChange` fire once per completed transaction with the final coherent
  * state — a mid-transaction read never publishes a partial snapshot, and
  * a change-then-revert transaction publishes nothing.
  *
- * Snapshot isolation (R4): item `marks`/`data` payloads on `items`,
+ * Snapshot isolation: item `marks`/`data` payloads on `items`,
  * `project()`, `runs` and `DocChange` content are canonical deep-frozen
  * objects — mutating a returned snapshot throws (strict mode) or lands on
  * a frozen shared instance, never on live engine state.
  *
  * The read half is deliberately narrow — the consumed set: identity
- * (`id`, `document`), the U1 attribution record, the two content views
+ * (`id`, `document`), the per-block attribution record, the two content views
  * (transaction-aware `items`, commit-synced `runs`), `length` and
  * `childIds`. Richer structure reads (positions, paths, roles, anchors)
  * live on the facade (`positionOf`/`pathOf`/`isVoid`/`anchorAt`/…).

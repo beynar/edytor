@@ -185,9 +185,10 @@ export const fixtures = defineFixtures([
 				throw new Error('Missing startBlock for mounted code suggestion test');
 			}
 
-			startBlock.suggestions = [[{ text: ' // done' }]];
+			edytor.suggestions.add({ end: startBlock.id }, [
+				{ type: startBlock.type, content: [{ text: ' // done' }] }
+			]);
 			await dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab' });
-			return startBlock;
 		},
 		expectSelection: {
 			startBlockPath: [0, 0],
@@ -195,9 +196,8 @@ export const fixtures = defineFixtures([
 			yEnd: 24,
 			isCollapsed: true
 		},
-		assert: async ({ edytor, result }) => {
-			const startBlock = result as { suggestions: unknown };
-			if (startBlock.suggestions !== null) {
+		assert: async ({ edytor }) => {
+			if (edytor.suggestions.list.length !== 0) {
 				throw new Error('Expected code suggestions to be cleared after accepting them');
 			}
 

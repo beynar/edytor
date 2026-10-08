@@ -14,10 +14,10 @@
  * id the room cannot have (`validRoomId`: empty, `.` or `..`, over 256
  * characters, with a lone surrogate) is closed `4400`.
  *
- * A plain `GET <room>?lastUpdated` (no upgrade) is the room's probe (H12):
+ * A plain `GET <room>?lastUpdated` (no upgrade) is the room's probe:
  * authorized the same way, it answers `{ lastUpdated }` as JSON (the room's
  * last stored change, ms since the epoch, or `null`), or `400`, `401` or
- * `403` as an HTTP status. `GET <room>?snapshot` (P8) answers
+ * `403` as an HTTP status. `GET <room>?snapshot` answers
  * `{ lastUpdated, document }`, the document as JSON, the same way: a view
  * shows it while its own copy hydrates (`<Edytor snapshot>`).
  *
@@ -280,7 +280,7 @@ export async function routeDocumentSocket(
 	options?: RouteDocumentOptions
 ): Promise<Response> {
 	// The probes: a plain GET, authorized like a dial, answered with JSON or
-	// an HTTP status — `lastUpdated` (H12) and `snapshot` (P8, the document).
+	// an HTTP status — `lastUpdated` and `snapshot` (the document).
 	const query = new URL(request.url).searchParams;
 	const probe =
 		request.method === 'GET' && request.headers.get('Upgrade') === null

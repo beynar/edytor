@@ -1,5 +1,5 @@
 /**
- * The maintained form of one backing text's boundary table (P1) — the
+ * The maintained form of one backing text's boundary table — the
  * index's row: the text's live boundary items in text order and the live
  * units between them, held in a Fenwick tree so an edit that writes or
  * removes no boundary moves every later boundary in O(log B) instead of a

@@ -46,15 +46,33 @@ describe('component defaults and overrides', () => {
 		});
 	});
 
-	test('keeps the deprecated blockDnd=false behavior', async () => {
+	test('blockHandles=false hides the built-in handles', async () => {
 		const rendered = render(EdytorComponent, {
-			props: { plugins: [richTextPlugin], blockDnd: false }
+			props: { plugins: [richTextPlugin], blockHandles: false }
 		});
 
 		await waitFor(() => {
 			expect(rendered.container.querySelector('[data-edytor-block]')).toBeTruthy();
 		});
 		expect(rendered.container.querySelector('[data-testid="block-handle"]')).toBeNull();
+	});
+
+	test('a retired `blockDnd={false}` prop hides nothing and warns, naming `blockHandles`', async () => {
+		const warn = vi.spyOn(console, 'warn');
+		try {
+			const rendered = render(EdytorComponent, {
+				props: { plugins: [richTextPlugin], ...({ blockDnd: false } as object) }
+			});
+			await waitFor(() => {
+				expect(rendered.container.querySelector('[data-edytor-block]')).toBeTruthy();
+			});
+			expect(rendered.container.querySelectorAll('[data-testid="block-handle"]')).toHaveLength(1);
+			expect(warn.mock.calls.map(([message]) => String(message))).toContainEqual(
+				expect.stringMatching(/`blockDnd`.*removed.*`blockHandles`/)
+			);
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	test('blockHandles=false hides handles even when the default plugin is listed', async () => {
@@ -97,16 +115,6 @@ describe('component defaults and overrides', () => {
 			expect(rendered.container.querySelector('[data-edytor-block]')).toBeTruthy();
 		});
 		expect(rendered.container.querySelector('[data-testid="block-handle"]')).toBeNull();
-	});
-
-	test('explicit blockHandles overrides the deprecated blockDnd prop', async () => {
-		const rendered = render(EdytorComponent, {
-			props: { plugins: [richTextPlugin], blockHandles: true, blockDnd: false }
-		});
-
-		await waitFor(() => {
-			expect(rendered.container.querySelector('[data-testid="block-handle"]')).toBeTruthy();
-		});
 	});
 
 	test('non-draggable handles retain typed activation and block selection', async () => {

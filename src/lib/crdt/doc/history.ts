@@ -72,7 +72,7 @@ export const docHistory = (c: HistoryContext) => {
 	const ops = engineOps(Y);
 
 	/**
-	 * The supported undo seam (gate-2 finding 10 — the U08 rule):
+	 * The supported undo seam:
 	 * a UndoManager SCOPED TO THE BLOCK REGISTRY, attached only after the
 	 * doc carries the schema version record.
 	 *
@@ -104,7 +104,7 @@ export const docHistory = (c: HistoryContext) => {
 		[INLINE_NODE]: [TYPE, DATA]
 	};
 	/**
-	 * Undo repair (UW-01), inside the history transaction. A popped step
+	 * Undo repair, inside the history transaction. A popped step
 	 * deletes its own attr write and re-creates the value that write
 	 * overwrote — unless a concurrent write sits between them, where the
 	 * engine refuses the restore (the peer's value was deleted at
@@ -119,7 +119,7 @@ export const docHistory = (c: HistoryContext) => {
 		walkIdSetStructs(Y, doc, step.deletes, (s) => {
 			const node = s.parent as EngineNode;
 			const key = s.parentSub;
-			// A collected struct (a node the room's purge removed, H7) has no key.
+			// A collected struct (a node the room's purge removed) has no key.
 			if (typeof key !== 'string') return;
 			if (!key.startsWith(DATA_LEAF_PREFIX) && !REPAIRED[node?.name]?.includes(key)) return;
 			if (step.inserts.has(s.id.client, s.id.clock)) return;
@@ -145,9 +145,9 @@ export const docHistory = (c: HistoryContext) => {
 		write(() => {
 			if (!isInitialized(doc)) init(doc);
 		});
-		// Text delete marks (P11): the marks are in scope (an undo removes the
+		// Text delete marks (fork patch YP11): the marks are in scope (an undo removes the
 		// undoer's own), and the history restores text only as the marks allow.
-		// An undone creation withdraws the block instead of deleting it (P12).
+		// An undone creation withdraws the block instead of deleting it (fork patch YP12, `hist.undo.withdraw`).
 		const marks = D.history(doc, () => um);
 		const um: YUndoManager = new Y.UndoManager(
 			[M.registryOf(doc), D.scope(doc), doc.get(DOC_DATA_ROOT)].map(asYNode),
@@ -161,7 +161,7 @@ export const docHistory = (c: HistoryContext) => {
 				withdraw: M.withdrawOnUndo(doc)
 			} as never
 		) as YUndoManager;
-		// A streamless block's own text (R2) is shared by every replica that
+		// A streamless block's own text is shared by every replica that
 		// typed into it first: no history step captures it, so undoing the
 		// first typing removes the typing and keeps the text (and nonce).
 		const skipOwnText = ({ stackItem }: { stackItem: { inserts: IdSetLike } }): void => {
@@ -170,11 +170,11 @@ export const docHistory = (c: HistoryContext) => {
 		};
 		um.on('stack-item-added', skipOwnText);
 		um.on('stack-item-updated', skipOwnText);
-		// P6: the undo stack keeps its newest `limit` steps. A step that
+		// The undo stack keeps its newest `limit` steps. A step that
 		// falls off releases what it kept for its undo (its deleted items),
 		// and the engine collects their content now, as it would have at
 		// the delete without a history (the doc's `gcFilter` still decides:
-		// a text copy another replica may have to copy again stays, P11).
+		// a text copy another replica may have to copy again stays, fork patch YP11).
 		// An item is released only once every step that deleted part of it
 		// fell off (the engine merges deleted items across steps): never
 		// split, so the store keeps its merged items. Only the items
@@ -211,7 +211,7 @@ export const docHistory = (c: HistoryContext) => {
 		releasers.set(um, () =>
 			release(stepsOf<UndoStep>([...um.undoStack.splice(0), ...um.redoStack.splice(0)]))
 		);
-		// H7 (`hist.purge.horizon`): when the room's purge horizon arrives,
+		// The purge horizon (`hist.purge.horizon`): when the room's purge horizon arrives,
 		// every step all of whose inserts the room stored before it is
 		// dropped and released — an undo of it would bring back content
 		// the purge removed. A step that inserted nothing is kept.
@@ -239,7 +239,7 @@ export const docHistory = (c: HistoryContext) => {
 		onTransaction<{ changed: Map<unknown, unknown> }>(doc, 'afterTransaction', (tr) => {
 			if (tr.changed.has(horizonRoot)) prune();
 		});
-		// Lineage for undo/redo (O19, F4): the replay displaces the state
+		// Lineage for undo/redo: the replay displaces the state
 		// every block the popped stack item touches, so each one's subtree
 		// is captured (`force`: lost whoever owns `l`) from the history
 		// transaction's own `beforeTransaction`, before the replay writes.
@@ -248,7 +248,7 @@ export const docHistory = (c: HistoryContext) => {
 		// or re-captures them. Nothing else is stamped for undo/redo: the
 		// engine's replay restores `l`, and `contributors` are add-only.
 		// An undo run inside an enclosing transaction gets no lineage (it
-		// is a defect of its own: it empties the redo stack, F4).
+		// is a defect of its own: it empties the redo stack).
 		if (lineageDepth > 0) {
 			const onBefore = (tr: { origin: unknown }): void => {
 				const stack = um.undoing ? um.undoStack : um.redoing ? um.redoStack : [];

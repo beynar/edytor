@@ -1,6 +1,6 @@
 /**
  * HARDENING D2 — `moveBlocks` must not throw on an equal-rank seam
- * (review `docs/elegance-review-2026-09-23.md` §D2).
+ * (review `docs/archive/elegance-review-2026-09-23.md` §D2).
  *
  * Placement ranks are strings minted by `rankBetween(left, right)`, which
  * throws `RankSpaceExhausted` when `left >= right` with both defined —

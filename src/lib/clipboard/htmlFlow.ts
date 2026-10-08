@@ -74,7 +74,7 @@ export const tagOf = (type: string, kind: BlockDefinition, data: Values) => {
 };
 
 /**
- * External HTML as a flow (P4.1): the browser parses (inert: no script
+ * External HTML as a flow: the browser parses (inert: no script
  * runs, nothing loads), and the tag tables are the records inverted — a
  * catalogue kind's tag per preset (a content-less container takes its
  * default child's tag, one child per text line), a value-less mark's
@@ -84,7 +84,7 @@ export const tagOf = (type: string, kind: BlockDefinition, data: Values) => {
  * `iframe`, `video` or `audio` no hook claims carries nothing. An atom
  * kind's `parse` hook claims inline elements (an equation's `<math>`): the
  * atom, never its text. Unknown
- * elements degrade to text runs; whitespace collapses as HTML renders it. `null` when the HTML carries nothing (`flow.shape`, F-P10).
+ * elements degrade to text runs; whitespace collapses as HTML renders it. `null` when the HTML carries nothing (`flow.shape`).
  */
 export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow | null => {
 	if (!html || html.length > 8 * 1024 * 1024 || typeof DOMParser === 'undefined') return null;

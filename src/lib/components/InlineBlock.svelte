@@ -17,7 +17,7 @@
 
 	const edytor = getContext<Edytor>('edytor');
 	const snippet = $derived(edytor.inlineBlocks.get(part.type)?.snippet);
-	// The snippet's view object (R4, L48): declared values, reactive through the part.
+	// The snippet's view object: declared values, reactive through the part.
 	const view: InlineBlockView = {
 		get id() {
 			return block?.id ?? part.id ?? '';

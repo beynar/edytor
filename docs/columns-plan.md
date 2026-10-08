@@ -27,7 +27,7 @@ already do.
 ## 2. What exists today
 
 **Document.** `columns`/`column` already work as two generic containers in
-the CRDT tests (rescore5/6/7, p1-fuzz, `ROLES_BASE_SEED`): both
+the CRDT tests (the container, line-kind and race suites (`containers-merge-split-retype`, `container-fits`, `outdent-and-shed-races`), p1-fuzz, `ROLES_BASE_SEED`): both
 `rendersContent: false`, `defaultChild: { columns: 'column' }`. `fits`
 (`edytor-doc.ts:1253-1258`) makes a layout hold columns _and containers of
 columns_ (so a layout may sit directly in a layout) and a column hold
@@ -38,16 +38,16 @@ column; Tab after a layout nests into its last column; read-time promotion
 (`displaySlotOf`, `promotedRank`) shows a peer's block added under a deleted
 column in that column's slot, i.e. directly in the layout.
 
-| #   | Gap                                                                                                                                                                                                                                                                                                      |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| G1  | No "≥ 2 columns" rule; a layout left with one column stays one                                                                                                                                                                                                                                           |
-| G2  | Non-columns end up directly in a layout: deleting a column promotes its blocks there (pinned rescore5:819), a peer's add under a deleted column shows there, raw `insertBlocks`, AW-05 (a code line shed into a layout, rescore7:239-342), a table retyped to a layout keeps its rows (rescore7:508-548) |
-| G3  | Deleting a layout promotes its columns, retyped to paragraphs holding children (`settledKind`); a peer's column under a deleted layout shows the same way (`typeOf`, `runs.ts:613-625`)                                                                                                                  |
-| G4  | Merges cross columns (Delete at a column's end pulls the next column's first block; a range joins its ends across columns)                                                                                                                                                                               |
-| G5  | No widths                                                                                                                                                                                                                                                                                                |
-| G6  | No semantics row; `defaultSemantics` (the room's) lacks columns                                                                                                                                                                                                                                          |
-| G7  | No invariant in the fuzz                                                                                                                                                                                                                                                                                 |
-| G8  | Empty columns arise under concurrency and undo (two `placeBeside` on one target, moves racing, undo after a peer edit keeping a withdrawn layout — P12) and nothing hides them                                                                                                                           |
+| #   | Gap                                                                                                                                                                                                                                                                                                                                             |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G1  | No "≥ 2 columns" rule; a layout left with one column stays one                                                                                                                                                                                                                                                                                  |
+| G2  | Non-columns end up directly in a layout: deleting a column promotes its blocks there (pinned in `containers-merge-split-retype.test.ts`), a peer's add under a deleted column shows there, raw `insertBlocks`, AW-05 (a code line shed into a layout, `outdent-and-shed-races.test.ts`), a table retyped to a layout keeps its rows (same file) |
+| G3  | Deleting a layout promotes its columns, retyped to paragraphs holding children (`settledKind`); a peer's column under a deleted layout shows the same way (`typeOf`, `runs.ts:613-625`)                                                                                                                                                         |
+| G4  | Merges cross columns (Delete at a column's end pulls the next column's first block; a range joins its ends across columns)                                                                                                                                                                                                                      |
+| G5  | No widths                                                                                                                                                                                                                                                                                                                                       |
+| G6  | No semantics row; `defaultSemantics` (the room's) lacks columns                                                                                                                                                                                                                                                                                 |
+| G7  | No invariant in the fuzz                                                                                                                                                                                                                                                                                                                        |
+| G8  | Empty columns arise under concurrency and undo (two `placeBeside` on one target, moves racing, undo after a peer edit keeping a withdrawn layout — YP12) and nothing hides them                                                                                                                                                                 |
 
 **View.** Cells and the observer assume no vertical layout (strict only on
 the root and text runs; D-25). DnD assumes one vertical list (`rowAt` stops
@@ -70,7 +70,7 @@ kind (catalogue ids `block.<type><n>`).
 - **D2 — no columns inside a column, by gesture.** Drops, moves, paste
   placement and the slash commands refuse to put a layout (or a subtree
   holding one) inside a column. If one appears anyway (a race, an explicit
-  retype — rescore7:297-304 pins one), it renders normally. No flatten rule.
+  retype — `outdent-and-shed-races.test.ts` pins one), it renders normally. No flatten rule.
 - **D3 — (decided: as Notion) no handles on layouts and columns; a block
   selection covering a whole layout stands for it.** When a block selection holds every shown
   block of every column of a layout, the one resolver (`dragBlocks` /
@@ -173,7 +173,7 @@ false, defaultChild: 'column' }, column: { rendersContent: false } }`;
    else; no displayed empty item; no displayed item outside a layout);
    `doc-ops.ts` gains `placeBeside`; concurrent campaigns for: two
    `placeBeside` on one target, move ‖ dissolve, delete item ‖ add into it,
-   delete layout ‖ add item, undo after a peer edit (P12 withdraw).
+   delete layout ‖ add item, undo after a peer edit (YP12 withdraw).
 
 ## 5. View layer
 
@@ -240,16 +240,16 @@ data-width="…">…`; `parse` claims those attributes; `plain` writes the
 
 ## 6. Tests (written first, each phase)
 
-- **C0** lists and decides every pinned row the change touches: rescore5
+- **C0** lists and decides every pinned row the change touches: `containers-merge-split-retype.test.ts`
   DR-crdt-1 (~747-839, incl. the one-column seed ~795 and delete column ‖ add
-  at 819), rescore6 ZW-14 (214-258: its `mergeBackward` refusals become
-  merges into the previous item, D4), ZW-06 (417-441), rescore7 AW-05 (239-342), a layout in a column
+  at 819), `container-fits.test.ts` ZW-14 (214-258: its `mergeBackward` refusals become
+  merges into the previous item, D4), ZW-06 (417-441), `outdent-and-shed-races.test.ts` AW-05 (239-342), a layout in a column
   (297-304), DR-crdt-2 table → layout (508-548), p1-fuzz CONTAINERS and
   `ROLES_BASE_SEED`, contract lines 549-560 and 740.
 - **CRDT** `layout.test.ts`: every `layout.*` row, sequential and concurrent,
   undo of each op, convergence (display equality across replicas).
 - **DOM** `columns-*.test.tsx`: rendering, widths, one children marker per
-  kind (`children-container-20260930` stays green), commands (caret, one
+  kind (`children-container` stays green), commands (caret, one
   step), handles (none on layout/column, grip only inside), D3 lift, D4 keys,
   Mod+Shift+arrows out, clipboard, truth check.
 - **Browser** `columns.spec.ts` (3 engines + mobile): beside left/right (new

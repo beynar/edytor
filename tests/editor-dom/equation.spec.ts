@@ -20,7 +20,7 @@ const value = (page: Page) => readJsonByTestId<Value>(page, 'value');
  * WU-23 — equations drawn by KaTeX, loaded lazily (Notion): a click on one
  * opens its TeX source under it, each keystroke redraws it, Enter closes
  * it; `$$…$$` typed in text is an inline equation. The model rows are
- * `equation-20261008.test.tsx`.
+ * `equation.test.tsx`.
  */
 test.describe('equations', () => {
 	test('KaTeX draws them; a click edits the source live; Enter closes', async ({ page }) => {

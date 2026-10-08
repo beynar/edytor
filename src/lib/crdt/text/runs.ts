@@ -1,7 +1,7 @@
 /**
- * The per-document index (R6, §2.4 "Per-doc index" and "Change report") —
+ * The per-document index and its change report —
  * the ONE owner of every fact derived from the replicated document: block
- * records, the claim graph, the stream table (R2), resolved placements, the
+ * records, the claim graph, the stream table, resolved placements, the
  * children index and document order, and each block's visible content as
  * ordered, immutable runs.
  *
@@ -28,7 +28,7 @@
  *   have not) — the structs their insert/delete sets gained since the last
  *   fold (the watermark is those sets' lengths). The commit fold takes only
  *   what no read folded.
- * - Each backing text has a maintained row (`text/rows.ts`, P1): its
+ * - Each backing text has a maintained row (`text/rows.ts`): its
  *   boundaries and the live units between them. An edit that writes or
  *   removes no boundary moves the row by its units in the gap it lies in
  *   (found by walking the item list to the nearest boundary), never a
@@ -41,7 +41,7 @@
  *   (or every reader of the text when the fold cannot say: a format marker,
  *   a change inside an atom).
  *
- * Publication is COMMIT-BOUND (R5): a mid-transaction read refreshes the
+ * Publication is COMMIT-BOUND: a mid-transaction read refreshes the
  * cache for read-your-writes, but the change report observes committed
  * state only — nested transactions publish once, and a transaction that
  * nets out unchanged publishes nothing.
@@ -338,7 +338,7 @@ export const bindRuns = (Y: EngineApi) => {
 				ensurePlacements();
 				return order();
 			},
-			// R4: the publication boundary shares THIS interner, so a payload
+			// The publication boundary shares THIS interner, so a payload
 			// emitted by `project()`/`contentItems()` is `===` the runs' one.
 			intern,
 			displays

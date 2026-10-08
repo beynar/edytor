@@ -8,7 +8,7 @@
  * echo suppression + undo exclusion keep working.
  *
  * Wire format (y-protocols' layout; SyncStep2 in the v2 encoding since
- * schema generation 5, P5):
+ * schema generation 5):
  *
  * ```
  *   varuint messageType | payload
@@ -108,7 +108,7 @@ export const bindSync = (Y: EngineApi) => {
 		encoding.writeVarUint8Array(encoder, Y.encodeStateAsUpdateV2(doc, encodedStateVector));
 	};
 
-	/** A SyncStep2 payload (v2, P5) as the v1 update every inbound path applies. */
+	/** A SyncStep2 payload (v2) as the v1 update every inbound path applies. */
 	const step2Update = (payload: Uint8Array): Uint8Array => Y.convertUpdateFormatV2ToV1(payload);
 
 	/** Read SyncStep1 message and reply with SyncStep2. */
@@ -165,7 +165,7 @@ export const bindSync = (Y: EngineApi) => {
 	};
 
 	/**
-	 * Inbound refusal (R13, F8): the schema problem `parts` (decoded updates,
+	 * Inbound refusal: the schema problem `parts` (decoded updates,
 	 * judged together) would write, or `null`. The frame already proved its
 	 * generation; this catches a same-generation writer forging the stamp —
 	 * an attr item under the `meta` root whose value is not this build's

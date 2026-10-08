@@ -69,7 +69,7 @@ export const effectOf = (writes: readonly PlanStep[]): PlanEffect => {
 };
 
 /**
- * Ingress for an id reference (O1): it normalizes exactly like a stored id
+ * Ingress for an id reference: it normalizes exactly like a stored id
  * (`sanitizeSpec`), so a write and a later lookup by the same string agree.
  */
 export const ref = <I extends string | null>(id: I): I =>

@@ -13,7 +13,7 @@ import type { DocBase, DocReads } from './reads.js';
 export const docAnchors = (c: DocBase & DocReads) => {
 	const { Y, doc, T, view } = c;
 
-	// ── anchors (R4) ─────────────────────────────────────────────────
+	// ── anchors ─────────────────────────────────────────────────
 	// An anchor is the home text id plus a relative position; the stream
 	// containing the position says which block displays it. Both reads use
 	// the index folded up to the last write, so they hold mid-transaction.

@@ -276,18 +276,20 @@ export const fixtures = defineFixtures([
 		run: ({ edytor }) => {
 			const block = edytor.selection.state.startBlock;
 			if (!block) {
-				throw new Error('Missing block fixture for suggestText');
+				throw new Error('Missing block fixture for the text suggestion');
 			}
 
-			block.suggestText({ value: ' world' });
-			if (!block.suggestions || block.suggestions.length !== 1) {
+			edytor.suggestions.add({ end: block.id }, [
+				{ type: block.type, content: [{ text: ' world' }] }
+			]);
+			if (edytor.suggestions.at(block.id).end.length !== 1) {
 				throw new Error('Expected a single plain-text suggestion');
 			}
 
-			block.acceptSuggestedText();
+			edytor.suggestions.at(block.id).end.at(-1)?.accept();
 		},
 		assert: ({ edytor }) => {
-			expect(edytor.selection.state.startBlock?.suggestions ?? null).toBeNull();
+			expect(edytor.suggestions.list).toEqual([]);
 		},
 		output: (
 			<root>
@@ -308,19 +310,22 @@ export const fixtures = defineFixtures([
 				throw new Error('Missing block fixture for grouped suggestion test');
 			}
 
-			block.suggestText({
-				value: [
-					{ type: 'mention', data: { id: '42' } },
-					{ text: ' world', marks: { bold: true } }
-				]
-			});
+			edytor.suggestions.add({ end: block.id }, [
+				{
+					type: block.type,
+					content: [
+						{ type: 'mention', data: { id: '42' } },
+						{ text: ' world', marks: { bold: true } }
+					]
+				}
+			]);
 
-			// The atom, then its run of text (R4: no sentinel texts; the ghost text is not content).
-			if (!block.suggestions || block.suggestions.length !== 2) {
+			// The atom, then its run of text (no sentinel texts; the ghost text is not content).
+			if (edytor.suggestions.at(block.id).end.at(-1)?.content[0]?.content?.length !== 2) {
 				throw new Error('Expected grouped suggestions: the inline block, then the text run');
 			}
 
-			block.acceptSuggestedText();
+			edytor.suggestions.at(block.id).end.at(-1)?.accept();
 		},
 		assert: ({ edytor }) => {
 			expectBlockInvariantSnapshot(edytor);
@@ -335,7 +340,7 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelTransformFixture({
-		description: 'clears suggestions when passed null and leaves acceptSuggestedText as a no-op',
+		description: 'a discarded suggestion is gone, and accepting none is a no-op',
 		input: (
 			<root>
 				<paragraph>Hello|</paragraph>
@@ -347,12 +352,13 @@ export const fixtures = defineFixtures([
 				throw new Error('Missing block fixture for suggestion reset test');
 			}
 
-			block.suggestText({ value: ' world' });
-			block.suggestText({ value: null });
-			block.acceptSuggestedText();
+			edytor.suggestions
+				.add({ end: block.id }, [{ type: block.type, content: [{ text: ' world' }] }])
+				.discard();
+			edytor.suggestions.at(block.id).end.at(-1)?.accept();
 		},
 		assert: ({ edytor }) => {
-			expect(edytor.selection.state.startBlock?.suggestions ?? null).toBeNull();
+			expect(edytor.suggestions.list).toEqual([]);
 		},
 		output: (
 			<root>

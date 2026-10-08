@@ -70,7 +70,7 @@
 	};
 
 	/**
-	 * One read pass of the overlay (R11): where each card goes. Beside the
+	 * One read pass of the overlay: where each card goes. Beside the
 	 * text when the viewport has room (Notion's margin), the active card at
 	 * its text's height and the others stacked above and below it without
 	 * overlapping; otherwise only the active card, under its text.

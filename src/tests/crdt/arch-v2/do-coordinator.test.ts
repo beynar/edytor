@@ -530,8 +530,8 @@ const until = async (cond: () => boolean, what: string, timeout = 5000) => {
 const connect = (document, room: string) =>
 	document.attachSync(
 		crdt.providers.createWebsocketSync({
-			serverUrl: SERVER,
-			roomName: room,
+			server: SERVER,
+			room: room,
 			WebSocketPolyfill: ClientSocket,
 			// Each client stands for another machine: no cross-tab channel between them.
 			disableBc: true

@@ -1,5 +1,5 @@
 /**
- * Purge of deleted content past a horizon (H7, `room.purge.what` in
+ * Purge of deleted content past a horizon (`room.purge.what` in
  * `docs/editor-delete-contract.md`). The room calls it from its purge task
  * inside ONE transaction of its own (tracked by no history); it writes real
  * engine deletes, relayed like any edit, so every replica applies them and
@@ -169,7 +169,7 @@ export const bindPurge = (Y: EngineApi) => {
 				grew = true;
 			}
 		}
-		// A losing incarnation (H13) dies with its key's block too.
+		// A losing incarnation dies with its key's block too.
 		for (const id of blocks.keys()) if (isIncarnationId(id) && dead.has(baseIdOf(id))) dead.add(id);
 
 		// ── Which of them go whole ────────────────────────────────────────
@@ -190,7 +190,7 @@ export const bindPurge = (Y: EngineApi) => {
 		for (const id of blocks.keys()) {
 			const s = own.streamOf(id);
 			if (s !== undefined && s.home !== id) join(id, s.home);
-			// A key's block and its losing incarnations go together or stay together (H13).
+			// A key's block and its losing incarnations go together or stay together.
 			if (isIncarnationId(id)) join(id, baseIdOf(id));
 		}
 		const families = new Map<BlockId, BlockId[]>();
@@ -243,7 +243,7 @@ export const bindPurge = (Y: EngineApi) => {
 		}
 		for (const id of removable) {
 			if (isIncarnationId(id)) {
-				// A losing incarnation is no registry value: its subtree goes (H13).
+				// A losing incarnation is no registry value: its subtree goes.
 				// Its node is a deleted value, which the node API writes nothing to:
 				// its attrs' items are deleted directly, in this transaction.
 				const attrs = attrItems<{ deleted: boolean; delete(tr: unknown): void }>(

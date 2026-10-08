@@ -867,7 +867,7 @@ marker-seed differential 11/11 · interop baseline↔patched all pass.
 
 ## 19 — Unit 7: honest same-keystroke browser measurement + 5k verdict (2026-09-21)
 
-Unit 7 of `docs/crdt-v14-hardening-prompt.md`, answering review R7: measure the
+Unit 7 of `docs/archive/crdt-v14-hardening-prompt.md`, answering review R7: measure the
 **repaired** editor end to end, attribute one trusted keystroke across input →
 transaction → maintained-view publication → DOM flush → frame scheduling, and
 decide from evidence whether further optimization is justified. **No `src/lib`
@@ -1188,7 +1188,7 @@ plus registry invariants, wrapper-identity preservation under
 
 ## 20 — Variant C: provenance-gated re-measurement after the 2026-09-23 hardening round (2026-09-23)
 
-The adversarial review (`docs/adversarial-review-2026-09-23.md`, item P2-8)
+The adversarial review (`docs/archive/adversarial-review-2026-09-23.md`, item P2-8)
 correctly noted that the latest browser artifact measured an **older packed
 build** — the tarball predated the day's selection/attribution/readiness
 fixes. This unit closes the provenance hole and re-measures.

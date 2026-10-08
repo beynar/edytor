@@ -1,9 +1,9 @@
 /**
- * The command dispatcher (R7, §4.3 `session/commands`): one per view.
+ * The command dispatcher: one per view.
  *
  * An operation is admitted (readonly, `document.writable`), prepared, shown
  * to every extension hook before any write — the command itself, then each
- * planned step under its documented operation name (D-10) — applied in one
+ * planned step under its documented operation name — applied in one
  * transaction, normalized once per requested block at the end of that
  * transaction (normalizers read handles over the index), and reported (`refused | noop | applied | failed`). A user command (`run`) wraps the
  * operations one gesture issues and closes the undo policy table. `prevent()`
@@ -51,7 +51,7 @@ type Change = {
 };
 
 /**
- * The undo policy (O31, FP-2), owned here: a user command (`run`) applies it
+ * The undo policy, owned here: a user command (`run`) applies it
  * by its kind, and an operation dispatched outside one (a menu action, a
  * plugin, a headless call) by its name. Deletions, paste, drop, formatting
  * and structural operations cut the capture before they write; a paragraph
@@ -103,7 +103,7 @@ type Policy = 'before' | 'both' | 'continue' | undefined;
 /**
  * Whether a `kind` command's writes are text editing an insertion may
  * continue (`history.continues`): the insertions, a composition and a text
- * deletion (FP-2: Delete then typing is one step), never a led conversion.
+ * deletion (Delete then typing is one step), never a led conversion.
  * Anything else — a paste, a structural edit, a data write such as a
  * column resize — ends the step for the typing after it.
  */
@@ -182,7 +182,7 @@ const continuesTyping = (previous: TextPatch | null, patch: TextPatch | null) =>
 
 type Normalizer = (this: Block) => void;
 type Pass = [id: string, normalize: Normalizer];
-/** Passes one normalizer may take on one block per command: the first and 50 re-requests (D25). */
+/** Passes one normalizer may take on one block per command: the first and 50 re-requests. */
 const MAX_PASSES = 51;
 
 const specJSON = (spec: BlockSpec): unknown => ({

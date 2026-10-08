@@ -101,8 +101,8 @@ const room = async () => {
 	const attach = (options = {}) => {
 		const document = createDocument({ value });
 		const sync = providers.createWebsocketSync({
-			serverUrl: url,
-			roomName: 'room',
+			server: url,
+			room: 'room',
 			WebSocketPolyfill: Relay,
 			...options
 		});

@@ -1,13 +1,13 @@
 /**
- * Test-only renderer and id-map builders (UPSTREAM.md P8).
+ * Test-only renderer and id-map builders (UPSTREAM.md YP8).
  *
- * P8 pruned the engine's concrete renderers (`AttributionsRenderer`,
+ * YP8 pruned the engine's concrete renderers (`AttributionsRenderer`,
  * `DiffRenderer`, `SnapshotRenderer`) and the content-id helpers edytor never
  * calls. The renderer PLUMBING stays (`useRenderer`, `toDelta({renderer})`,
  * `RangeCursor`'s renderer-aware splitting, `text/model.ts`'s `plain()`
  * guard), so the tests that prove edytor's behaviour under an active renderer
  * install this one: a port of upstream's `AttributionsRenderer` current-state
- * path (MIT, Kevin Jahns), side-correct like the retired patch P6 — live items
+ * path (MIT, Kevin Jahns), side-correct like the retired patch YP6 — live items
  * read `inserts`, tombstones read `deletes`, a covered tombstone renders with
  * its length.
  */

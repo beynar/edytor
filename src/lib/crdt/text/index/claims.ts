@@ -1,5 +1,5 @@
 /**
- * The claim graph (P3: maintained): each block's owner along the max-stamp
+ * The claim graph (maintained): each block's owner along the max-stamp
  * claims (`top`), the blocks each owner displays, and what a structural
  * change of a block invalidates.
  */
@@ -12,7 +12,7 @@ import type { FoldCtx, IndexState } from './state.js';
 export const indexClaims = (ix: IndexState) => {
 	const { blocks, listConsumers, displaysMap, ownerSeeds, ownerChanged } = ix;
 
-	// ── the claim graph (P3: maintained) ─────────────────────────────
+	// ── the claim graph (maintained) ─────────────────────────────
 	// `top(m)` is the max-stamp claim on `m` held by a live block; each
 	// block's owner follows `top` up (`claimGraph`). A structural change
 	// of a block (its claims, its delete mark, its record) re-decides the

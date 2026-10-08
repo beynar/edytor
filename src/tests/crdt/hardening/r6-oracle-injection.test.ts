@@ -1,6 +1,6 @@
 /**
  * HARDENING U0 / R6 — random-runner oracle accepts injected faults as legit
- * (review `docs/crdt-v14-follow-up-review-2026-09-21.md` §R6, P1).
+ * (review `docs/archive/crdt-v14-follow-up-review-2026-09-21.md` §R6, P1).
  *
  * The strict oracle classifies tag atoms by FATE alone, without checking
  * whether the schedule ever authorized that fate:

@@ -14,7 +14,7 @@
  * replica checked for problems, pending structs and a binary reload equal
  * to its canonical value. Expected values are hand-written from the
  * contracts, never read from production output. The reviewer's reproduction
- * rows stay in `review-20260929-core.test.ts`.
+ * rows stay in `preserve-regressions.test.ts`.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import {

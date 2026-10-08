@@ -434,10 +434,10 @@ permission-denied reply (`protocols/auth.ts`), `awareness`,
 knob for harnesses that drop frames on a live socket — the join rule needs
 no timer). Leaving announces the presence removal on the socket.
 
-`createWebsocketSync({ serverUrl, roomName, params?, WebSocketPolyfill?,
+`createWebsocketSync({ server, room, params?, WebSocketPolyfill?,
 maxBackoffTime?, disableBc?, persist?, persistName? })` — the factory-owned
 provider always dials. By default it also attaches a local IndexedDB store
-(`edytor:<serverUrl>/<roomName>`, or `persistName`; `persist: false` opts
+(`edytor:<server>/<room>`, or `persistName`; `persist: false` opts
 out; skipped without `indexedDB`) as its own provider on the document
 (`EdytorSyncPayload.attach`): stored content decides readiness offline, an
 empty store holds the seed until it answered, and restored edits reach the
@@ -556,8 +556,7 @@ Non-destructive v13 → v14 migration. `bindMigration(Y)` exposes
   `ifAvailable` and returns `busy`. `status(name)` reports `pending` while
   an attempt holds the lock (`locks.query()`), the durable record
   otherwise; `waitForSettled(name)` waits for the lock (shared) and reads
-  the record. `leaseMs`, `owner`, `pollMs` and `waitMs` are accepted and
-  ignored (D-15).
+  the record.
 - **read**: the legacy `<name>` DB's `updates` rows are read raw in one
   readonly transaction; the database is opened non-creating
   (`container.ts` `openIfExists`), so a never-existing name leaves no

@@ -27,7 +27,7 @@ const REHOME_TIE = 0;
 
 /**
  * Deterministic rank strictly below `min` — the candidate-less rehome
- * fallback (U5 fix). The old floor sentinel `encodeRank([{v: RANK_VMIN,
+ * fallback. The old floor sentinel `encodeRank([{v: RANK_VMIN,
  * t: 0}])` sorted first but was un-insertable-above: `rankBetween(
  * undefined, that)` hits the `rSeg.v <= RANK_VMIN` guard and throws
  * `RankSpaceExhausted` — reachable with ZERO boundary inserts (corpus
@@ -150,7 +150,7 @@ export const resolvePlacements = (
 	// Fallback: blocks whose candidates were all cycle-rejected are rehomed
 	// at the root under their argmax rank; a block with NO surviving
 	// candidate mints a deterministic rank strictly below the current root
-	// minimum (rehomeRankBelow — the U5 fix; see its comment). The mint
+	// minimum (rehomeRankBelow; see its comment). The mint
 	// must stay deterministic across replicas: it depends only on the
 	// accepted map + block ids, never on clientID/Math.random.
 	const rehomed: BlockRec[] = [];

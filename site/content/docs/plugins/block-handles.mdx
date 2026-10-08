@@ -56,7 +56,7 @@ The `blockHandles` prop of `<Edytor>` controls the plugin:
   }}
 />
 
-The configuration is read when the editor mounts. `blockDnd={false}` is a deprecated alias of `blockHandles={false}`; `blockHandles` wins when both are set.
+The configuration is read when the editor mounts.
 
 You can also build the plugin yourself and list it in `plugins`: `blockHandlesPlugin` is the default, `createBlockHandlesPlugin(options)` takes the same options as the prop. The editor recognizes either one and does not add a second set of handles. When `blockHandles` is an object, it replaces any handle plugin in the list.
 

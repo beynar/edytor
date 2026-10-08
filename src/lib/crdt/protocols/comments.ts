@@ -1,5 +1,5 @@
 /**
- * Comment threads (decision D6): thread bodies live beside the document,
+ * Comment threads: thread bodies live beside the document,
  * in the room's SQLite (`threads`, `comments`), never in the document; the
  * document holds only each thread's anchor, a `comment:<id>` mark over the
  * text it was made on. This module is the one owner of the rules every

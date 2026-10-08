@@ -22,9 +22,9 @@ export class StackItem {
  * @property {Set<any>} [UndoManagerOptions.trackedOrigins=new Set([null])]
  * @property {boolean} [ignoreRemoteAttributeChanges] By default, the UndoManager will never overwrite remote changes. In some cases this might be the expected behavior. This property enables overwriting remote changes on attribute changes. (previously named `ignoreRemoteMapChanges`)
  * @property {Doc} [doc] The document that this UndoManager operates on. Only needed if typeScope is empty.
- * @property {function(Item,StackItem):boolean} [restoreFilter] Whether popping the stack item may re-create the deleted item (default: always). // P11
- * @property {function(Transaction,StackItem):void} [onApply] Called inside the undo/redo transaction once the stack item is applied; its writes join the step. // P11
- * @property {function(Item,StackItem,Transaction):boolean} [withdraw] Asked for every item a popped stack item would delete; `true` keeps it (the hook may write in its place, in the transaction) and counts as a change (default: never). // P12
+ * @property {function(Item,StackItem):boolean} [restoreFilter] Whether popping the stack item may re-create the deleted item (default: always). // YP11
+ * @property {function(Transaction,StackItem):void} [onApply] Called inside the undo/redo transaction once the stack item is applied; its writes join the step. // YP11
+ * @property {function(Item,StackItem,Transaction):boolean} [withdraw] Asked for every item a popped stack item would delete; `true` keeps it (the hook may write in its place, in the transaction) and counts as a change (default: never). // YP12
  */
 /**
  * @typedef {Object} StackItemEvent
@@ -181,15 +181,15 @@ export type UndoManagerOptions = {
      */
     doc?: Doc | undefined;
     /**
-     * Whether popping the stack item may re-create the deleted item (default: always). // P11
+     * Whether popping the stack item may re-create the deleted item (default: always). // YP11
      */
     restoreFilter?: ((arg0: Item, arg1: StackItem) => boolean) | undefined;
     /**
-     * Called inside the undo/redo transaction once the stack item is applied; its writes join the step. // P11
+     * Called inside the undo/redo transaction once the stack item is applied; its writes join the step. // YP11
      */
     onApply?: ((arg0: Transaction, arg1: StackItem) => void) | undefined;
     /**
-     * Asked for every item a popped stack item would delete; `true` keeps it (the hook may write in its place, in the transaction) and counts as a change (default: never). // P12
+     * Asked for every item a popped stack item would delete; `true` keeps it (the hook may write in its place, in the transaction) and counts as a change (default: never). // YP12
      */
     withdraw?: ((arg0: Item, arg1: StackItem, arg2: Transaction) => boolean) | undefined;
 };

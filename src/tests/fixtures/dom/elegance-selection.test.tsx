@@ -1,7 +1,7 @@
 /** @jsxImportSource ../../jsx */
 /**
  * Elegance-review regression pins for the selection layer — see
- * docs/elegance-review-2026-09-23.md:
+ * docs/archive/elegance-review-2026-09-23.md:
  *
  *  - D3: `applySelectionSnapshot` derived `currentMarks` over
  *    `[0, yEnd)` — the whole prefix — instead of the caret-local

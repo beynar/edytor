@@ -21,7 +21,7 @@
 		id: string;
 		/** A suggestion's block content (`Block`'s `preview`): ghost parts only. */
 		preview?: readonly ContentRun[];
-		/** Dev check (O22): told when the kind's snippet rendered `content()`. */
+		/** Dev check: told when the kind's snippet rendered `content()`. */
 		onrender?: () => void;
 	} = $props();
 
@@ -41,7 +41,7 @@
 	const epoch = $derived(edytor.cells?.epoch(id) ?? 0);
 	const type = $derived(cell?.type ?? edytor.cells?.get(id)?.type);
 	const transform = $derived(type ? edytor.definitionOf(type).transformText : undefined);
-	// The placeholder attribute (§2.4): withheld in the block a composition is in.
+	// The placeholder attribute: withheld in the block a composition is in.
 	const placeholder = $derived(edytor.placeholderAt(id));
 
 	/** Segments are keyed causally (the preceding atom's id, or `start`), never by ordinal. */
@@ -64,7 +64,7 @@
 						partsOf(jsonContentToItems(s.content[0]?.content ?? [], false, () => s.id))
 					)
 	);
-	/** Session content, rendered from JSON as declared view values (L48): no handle, no caret. */
+	/** Session content, rendered from JSON as declared view values: no handle, no caret. */
 	const ghost = (segment: Segment) => ({
 		deltas: segmentDeltas(
 			{ id, type: type ?? '', data: undefined } as Cell,

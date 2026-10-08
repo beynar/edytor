@@ -1,10 +1,10 @@
 /**
- * Text ownership (R2, plan §2.1) — streams delimited by boundary items.
+ * Text ownership — streams delimited by boundary items.
  *
  * Every block created fresh owns a *backing text* (`content` node) whose items
  * are never moved or copied. A split inserts one BOUNDARY ITEM `{s, n}` (one
  * countable unit, never displayed: "block `s`, incarnation `n`, starts right
- * after me") at the end of the gap at the split point (engine primitive P7),
+ * after me") at the end of the gap at the split point (engine primitive, fork patch YP7),
  * so a text holds the streams of every block split off it:
  *
  * - `stream(b)` starts right after `b`'s live boundary whose `n` equals `b`'s
@@ -23,7 +23,7 @@
  * stream's start inserts after its boundary, at its end before the next one;
  * the per-stream delete never removes a boundary; every read skips them.
  *
- * Anchors (R4) are `{b, a}`: `b` the home block of the backing text, `a` an
+ * Anchors are `{b, a}`: `b` the home block of the backing text, `a` an
  * engine relative position (`i` the bound item, `a` the side: `< 0` left). A
  * left-affine caret at a split-born block's start binds its boundary item.
  *
@@ -216,7 +216,7 @@ export type Owner = BlockId | typeof DEAD;
  * `DEAD`; no claim → itself; else the max-stamp live claimer's owner; a
  * cycle resolves to the claimer of its max-stamp edge) — and `top`, each
  * claimed block's max-stamp live claimer. Claims held by deleted blocks are
- * inert (a concurrent merge into a deleted block is voided, ST02b).
+ * inert (a concurrent merge into a deleted block is voided).
  */
 export const claimGraph = (blocks: ReadonlyMap<BlockId, TextBlockRec>) => {
 	const top = new Map<BlockId, { claimer: BlockId; stamp: Stamp }>();
@@ -524,9 +524,9 @@ export const bindText = (Y: EngineApi) => {
 	 * Insert at a display offset, beside the boundary the engine walk and the
 	 * left side choose. The display must be non-empty: a streamless block gets
 	 * its own text first ({@link ownText}). The content goes in its gap
-	 * (`insertInGap`, P13: after the marks attached to the text before it,
+	 * (`insertInGap`, fork patch YP13: after the marks attached to the text before it,
 	 * before those attached to the text after it); text then shows exactly
-	 * `marks` (H5: an operation for each mark its gap gave it otherwise).
+	 * `marks` (an operation for each mark its gap gave it otherwise).
 	 */
 	const insertIntoText = (
 		doc: EngineDoc,
@@ -552,7 +552,7 @@ export const bindText = (Y: EngineApi) => {
 		});
 	};
 
-	/** The per-stream delete: each range lies inside one stream's pieces, so no boundary is ever removed (A-1). */
+	/** The per-stream delete: each range lies inside one stream's pieces, so no boundary is ever removed. */
 	const deleteRange = (
 		doc: EngineDoc,
 		blocks: unknown,
@@ -585,7 +585,7 @@ export const bindText = (Y: EngineApi) => {
 	};
 
 	/**
-	 * Delete the content of streams `streams` (H7, the room's purge of a
+	 * Delete the content of streams `streams` (the room's purge of a
 	 * block deleted past the horizon): every piece, so no boundary goes and
 	 * each stream still delimits, renderer-free, writing no delete mark.
 	 * Streams of one text are deleted from its end, so the indices the
@@ -619,10 +619,10 @@ export const bindText = (Y: EngineApi) => {
 
 	/**
 	 * Split `b`'s display at `offset` for the new block `newId` (incarnation
-	 * `n`): one boundary through P7 at the end of the gap, and the claims that
+	 * `n`): one boundary through fork patch YP7 at the end of the gap, and the claims that
 	 * follow the split point — every claim of the stream's own block, then each
 	 * holder's claims after the one that led down — returned for re-insertion
-	 * on the new block and deleted from their holders (D-21). No text is copied.
+	 * on the new block and deleted from their holders. No text is copied.
 	 */
 	const splitAt = (
 		blocks: ReadonlyMap<BlockId, TextBlockRec>,
@@ -648,7 +648,7 @@ export const bindText = (Y: EngineApi) => {
 		const text = seg.text as EngineNode & { insertAtGapEnd(i: number, c: unknown[]): void };
 		plain(text, () => text.insertAtGapEnd(idx, [{ s: newId, n } satisfies Boundary]));
 		const byHolder = new Map<BlockId, number[]>();
-		// An implicit claim (a losing incarnation, H13) has no list entry: it is
+		// An implicit claim (a losing incarnation) has no list entry: it is
 		// only written, explicitly, on the new block, whose claim outranks it.
 		for (const { holder, claim } of moved)
 			if (claim.seqIndex >= 0)
@@ -690,10 +690,10 @@ export const bindText = (Y: EngineApi) => {
 
 	/**
 	 * Give streamless block `rec` its own text and re-mint its nonce, so a late
-	 * copy of its old boundary is inert (F9). Both writes carry a writer id
+	 * copy of its old boundary is inert. Both writes carry a writer id
 	 * derived from the block's node and its dead incarnation, so replicas that
 	 * type into the block concurrently write the SAME items and both typings
-	 * land in one text (the seed writer's mechanism, R13). Returns the nonce
+	 * land in one text (the seed writer's mechanism). Returns the nonce
 	 * change (the caller moves the block's attribution record with it).
 	 */
 	const ownText = (doc: EngineDoc, rec: TextBlockRec): { from: unknown; to: number } => {
@@ -714,7 +714,7 @@ export const bindText = (Y: EngineApi) => {
 		const to = hash32(`${seed}|n`);
 		const store = storeOf(doc);
 		// The derivation is fresh per incarnation: a writer that already wrote
-		// here is another block's (a hash collision — R13's residual class).
+		// here is another block's (a hash collision, the known residual class).
 		if (DEV && store.getClock(writer) !== 0)
 			console.warn(`[edytor] own-text writer ${writer} of block ${rec.id} collides`);
 		const local = doc.clientID;

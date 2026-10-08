@@ -7,7 +7,7 @@ import * as delta from 'lib0-v14/delta'
 const { init, compare } = Y
 
 /**
- * The items of `node`'s list (P8 pruned `Y.getNodeChildren`).
+ * The items of `node`'s list (YP8 pruned `Y.getNodeChildren`).
  *
  * @param {Y.Node<any>} node
  * @return {Array<Y.Item>}

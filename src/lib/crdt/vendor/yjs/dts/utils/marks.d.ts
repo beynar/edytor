@@ -1,5 +1,5 @@
 /**
- * Paired marks — an edytor fork addition (UPSTREAM.md P13), not upstream source.
+ * Paired marks — an edytor fork addition (UPSTREAM.md YP13), not upstream source.
  *
  * Upstream formatting writes a format item `{key: value}` where a range
  * starts and `{key: null}` (or the previous value) where it ends: any end

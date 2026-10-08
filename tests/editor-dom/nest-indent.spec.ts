@@ -9,7 +9,7 @@ import { trackPageIssues, waitForEditorReady } from './helpers';
  * the `data-edytor-children` container's `--edytor-nest-indent`. Lists,
  * to-dos, toggles and callouts, which already indent through their marker
  * column or padding, keep their children in their text column, unchanged.
- * The marker rows are `children-container-20260930.test.tsx`.
+ * The marker rows are `children-container.test.tsx`.
  */
 
 const kid = (id: string) => ({ id, type: 'paragraph', content: [{ text: id }] });

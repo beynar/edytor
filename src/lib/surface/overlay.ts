@@ -1,5 +1,5 @@
 /**
- * The overlay (plan R11, §2.4 "Overlay geometry", O63): chrome — block
+ * The overlay (its geometry): chrome — block
  * handles, the drop indicator, menus, remote carets and range highlights —
  * lives in one layer next to the contenteditable host, never inside it.
  *
@@ -15,7 +15,7 @@ import { mount, unmount, type Component } from 'svelte';
 
 /**
  * Whether the browser does not render `node`: an ancestor's
- * `content-visibility: auto` skips it off screen (P8), or it is not
+ * `content-visibility: auto` skips it off screen, or it is not
  * displayed. Its geometry is not computed — reading it would force a layout
  * of that subtree, every frame a measure asks — so measures read its nearest
  * rendered ancestor instead (`checkVisibility`; where it is missing, every

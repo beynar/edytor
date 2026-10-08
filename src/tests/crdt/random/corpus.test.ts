@@ -204,7 +204,7 @@ for (const adapterName of SELECTED_ADAPTERS) {
 		 * The roles lane's pinned defects (`ill-formed`). Currently EMPTY —
 		 * seed 11 (the engine `mergeBlocks` showed adopted children above the
 		 * source a concurrent delete of the target revived) was fixed by FW-12
-		 * (repro: `arch-v2/review-20260929-units.test.ts`). Keep the mechanism.
+		 * (repro: `arch-v2/merge-undo-void.test.ts`). Keep the mechanism.
 		 */
 		const KNOWN_ROLES_BUGS = new Map<number, RegExp>();
 

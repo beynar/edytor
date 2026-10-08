@@ -32,7 +32,7 @@ export const deleteOps = (c: OpsContext) => {
 	} = c;
 
 	/**
-	 * Delete a set of blocks (R3, `del.blocks.promote`): this writer's mark on
+	 * Delete a set of blocks (`del.blocks.promote`): this writer's mark on
 	 * every member and on what it displays through merge claims (wins over
 	 * concurrent moves). Only the members leave: the unselected children of a
 	 * deleted block take its slot, in order, with their subtrees, as the

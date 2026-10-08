@@ -51,7 +51,7 @@
 
 	const embed = (value: string) => {
 		const src = safeImageSrc(value);
-		// An inline image over the cap is never stored (H6): it would weigh on every sync.
+		// An inline image over the cap is never stored: it would weigh on every sync.
 		failed = !src ? 'invalid' : oversizedInlineImage(src) ? 'inline' : null;
 		if (src && failed === null && block) {
 			block.data.src = src;

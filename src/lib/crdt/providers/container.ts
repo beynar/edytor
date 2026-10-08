@@ -1,6 +1,6 @@
 /**
- * The v14 IndexedDB container (L58) — one owner for the store names, the row
- * codec (v1 update rows, v2 snapshot rows: P5), the open, the non-creating probe and the ONE verify-or-stamp rule,
+ * The v14 IndexedDB container — one owner for the store names, the row
+ * codec (v1 update rows, v2 snapshot rows: `room.store.v2`), the open, the non-creating probe and the ONE verify-or-stamp rule,
  * shared by the provider and the migrator. Rows are append-only for every
  * writer (a provider's compaction appends its snapshot before deleting the
  * rows it subsumes).
@@ -31,7 +31,7 @@ export const decodeRow = (row: unknown): Uint8Array => {
 };
 
 /**
- * A snapshot row (P5, storage `'v2'`): the document in the v2 encoding,
+ * A snapshot row (storage `'v2'`): the document in the v2 encoding,
  * gzip-compressed where the platform has `CompressionStream` (and that
  * makes it smaller). Update rows stay v1 `ArrayBuffer`s. A build before
  * 0.1.0-next.23 reads such a row as no update at all (`decodeRow` throws),
@@ -73,7 +73,7 @@ export const verifyOrStamp = async (
 };
 
 /**
- * Open `dbName` only if it exists — never creates (B1): an
+ * Open `dbName` only if it exists — never creates: an
  * `indexedDB.open` on an absent name leaves a store-less v1 database behind,
  * poison for a later creating open (store creation runs only inside
  * `onupgradeneeded`). `indexedDB.databases()`, where available, answers

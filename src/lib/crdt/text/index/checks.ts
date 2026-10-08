@@ -129,7 +129,7 @@ export const indexSelfChecks = (
 			const fresh = computeFresh(b).fresh;
 			if (keyOf(fresh) !== keyOf(c.runs)) fail(`runs of ${b}`);
 		}
-		// P3: the claim graph, placements, children index and layout rules.
+		// The claim graph, placements, children index and layout rules.
 		ensurePlacements();
 		const graph = claimGraph(blocks);
 		for (const b of blocks.keys()) {
@@ -152,7 +152,7 @@ export const indexSelfChecks = (
 		}
 		const same = (x: Map<BlockId | null, ChildSlot[]>, y: Map<BlockId | null, ChildSlot[]>) =>
 			x.size === y.size && [...x].every(([p, l]) => keyOf(l) === keyOf(y.get(p) ?? null));
-		// The text orders (D-18) decided afresh: a stale one shows as a slot mismatch.
+		// The text orders decided afresh: a stale one shows as a slot mismatch.
 		ranker.forget();
 		const k0 = childrenIndex(placementsMap, own0);
 		if (!same(k0, ix.kids0)) fail('children index (before the layout rules)');

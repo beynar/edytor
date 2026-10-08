@@ -54,9 +54,9 @@ export const splitMergeOps = (c: OpsContext) => {
 	 * Split `id` at content `offset` into a new sibling `newId` (one boundary
 	 * item and the claims that follow it, no text copied; children follow).
 	 * `tail` decides the sibling's type/data once (default: the source's —
-	 * the kind it displays, RW-01; an empty `tail.type` is the default too).
+	 * the kind it displays; an empty `tail.type` is the default too).
 	 * Refused on `void` blocks and on blocks that render no content (a
-	 * list, a code block: nothing to split, SW8-roles-3). `ids`: the new
+	 * list, a code block: nothing to split). `ids`: the new
 	 * block.
 	 */
 	const splitBlock = (id: BlockId, offset: number, newId: BlockId, tail?: SplitTail): Prepared => {
@@ -69,7 +69,7 @@ export const splitMergeOps = (c: OpsContext) => {
 		if (isCellKind(blockTypeOf(id))) return REFUSED;
 		if (isIncarnationId(born) || M.blockNodeOf(doc, born) !== null) return REFUSED;
 		const [at] = clamp(id, offset, 0);
-		// An empty tail type is the one a view reads mid-retype: copy the kind (YW-07).
+		// An empty tail type is the one a view reads mid-retype: copy the kind.
 		const type = tail?.type ? ref(tail.type) : kindToCopy(id);
 		const t = tail
 			? { type, data: tail.data && sanitizeWireJson(tail.data) }
@@ -95,7 +95,7 @@ export const splitMergeOps = (c: OpsContext) => {
 	 * `into`'s default child, like a baseline merge's — and `from` is
 	 * hidden via the claim (undo restores it). The children stay under
 	 * `from`, ranked after `into`'s children, and display under `into`
-	 * through the claim (FW-12): a concurrent delete of `into` voids the
+	 * through the claim: a concurrent delete of `into` voids the
 	 * claim and `from` comes back with its children, never below them.
 	 * Role rules are `canMerge`'s; a merge that would close a display
 	 * cycle is refused. `ids`: `into`.
@@ -109,7 +109,7 @@ export const splitMergeOps = (c: OpsContext) => {
 		const kids = childrenIds(from);
 		const retype = settle(from, kids, into);
 		const adopt = moveTo(kids, from, kids.length, ranksFor(into, Infinity, kids.length, kids));
-		// A list its only item leaves goes, as with every sibling op (DR-crdt-5).
+		// A list its only item leaves goes, as with every sibling op.
 		return plan([into], emptied([from], [merge(from, into), ...adopt, ...retype], landing(into)));
 	};
 
@@ -118,9 +118,9 @@ export const splitMergeOps = (c: OpsContext) => {
 	 * `from`'s children unnest right after `from`'s vacated sibling slot —
 	 * NOT adopted into `into` — and take the kind they show there
 	 * (`settledKind`: an island's children its parent's default child, a
-	 * paragraph in a list its item, ZW-01); then `from`'s content claims
+	 * paragraph in a list its item); then `from`'s content claims
 	 * into `into`. Ranked after `from`, not at it: a concurrent delete of
-	 * `into` revives `from` above its former children (UW-20).
+	 * `into` revives `from` above its former children.
 	 */
 	const mergeUnnesting = (from: BlockId, into: BlockId): Prepared => {
 		const pos = canMerge(from, into) ? positionOf(from) : null;
@@ -144,12 +144,12 @@ export const splitMergeOps = (c: OpsContext) => {
 	 * Baseline `mergeBlockBackward`: merge `id` into the previous block in
 	 * document order. No previous block → an empty block merges forward,
 	 * else refused. The first item of a container (`isContainer`) outside
-	 * any island lifts out of it instead (YW-02, Notion): it takes the
+	 * any island lifts out of it instead (Notion): it takes the
 	 * container's slot, as its new parent's default child, with its
 	 * children (a first cell stays: nothing leaves an island; a block that
-	 * would land directly in a container it is no item of stays too,
-	 * DR-crdt-1). The first block of a layout item merges across items
-	 * instead, in reading order (`layout.merge`, D4, Notion): into the
+	 * would land directly in a container it is no item of stays too).
+	 * The first block of a layout item merges across items
+	 * instead, in reading order (`layout.merge`, Notion): into the
 	 * previous item's last line, or, in the first item, the line before
 	 * the layout; an item it empties goes and the layout dissolves.
 	 * `ids`: the surviving block.
@@ -190,7 +190,7 @@ export const splitMergeOps = (c: OpsContext) => {
 
 	/**
 	 * Baseline `mergeBlockForward`: pull the next block in document order
-	 * into `id`. A container passes the merge to its first item (YW-02:
+	 * into `id`. A container passes the merge to its first item (`del.merge.container`:
 	 * Delete above a list pulls the item's text up and the list keeps the
 	 * rest, or goes when that was its only item). A container left
 	 * empty (by concurrent edits) is removed instead, by either key.

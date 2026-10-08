@@ -533,8 +533,8 @@ describe('room Durable Object — the shipped headless client path', () => {
 		const connect = (document: ReturnType<typeof E.createDocument>) =>
 			document.attachSync(
 				crdt.providers.createWebsocketSync({
-					serverUrl: `${ORIGIN.replace('https', 'wss')}/rooms`,
-					roomName: room,
+					server: `${ORIGIN.replace('https', 'wss')}/rooms`,
+					room: room,
 					WebSocketPolyfill: SelfWebSocket as unknown as typeof WebSocket
 				})
 			);
@@ -751,8 +751,8 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 		expect(reloaded.doc.clientID).not.toBe(offline.doc.clientID);
 		const release = reloaded.attachSync(
 			crdt.providers.createWebsocketSync({
-				serverUrl: `${ORIGIN.replace('https', 'wss')}/rooms`,
-				roomName: room,
+				server: `${ORIGIN.replace('https', 'wss')}/rooms`,
+				room: room,
 				params: { user: 'bob', replica: String(reloaded.doc.clientID) },
 				WebSocketPolyfill: SelfWebSocket as unknown as typeof WebSocket
 			})
@@ -968,8 +968,8 @@ describe('room Durable Object — bounded catch-up', () => {
 		const b = E.createDocument({ actor: { id: 'bob' }, history: { captureTimeout: 0 } });
 		const release = b.attachSync(
 			crdt.providers.createWebsocketSync({
-				serverUrl: `${ORIGIN.replace('https', 'wss')}/rooms`,
-				roomName: room,
+				server: `${ORIGIN.replace('https', 'wss')}/rooms`,
+				room: room,
 				WebSocketPolyfill: SelfWebSocket as unknown as typeof WebSocket
 			})
 		);

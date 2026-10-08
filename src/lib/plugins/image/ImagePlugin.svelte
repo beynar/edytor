@@ -166,7 +166,7 @@
 							return `<figure${at}>${img}<figcaption>${caption}</figcaption></figure>`;
 						},
 						// A `figure` holding an `img`, or a bare `img`, with an accepted
-						// source; a pasted inline image over the cap is not imported (H6).
+						// source; a pasted inline image over the cap is not imported.
 						parse: (el) => {
 							if (el.localName === 'img') return imgData(el) ?? undefined;
 							const data = el.localName === 'figure' && imgData(el.querySelector('img'));

@@ -35,7 +35,7 @@ import { getItemCleanStart, cleanupFormattingGap } from './utils/transaction-hel
 import { transact } from './utils/Transaction.js'
 import { YEvent } from './utils/YEvent.js'
 import { $doc } from './utils/schemas.js'
-import { foldPaired, formatValue, pairedRole, markClass, MARK_START, MARK_END, SIDE_LEFT } from './utils/marks.js' // P13
+import { foldPaired, formatValue, pairedRole, markClass, MARK_START, MARK_END, SIDE_LEFT } from './utils/marks.js' // YP13
 
 /**
  * @typedef {Object<string,any>|Array<any>|number|null|string|Uint8Array|BigInt|YNode<any>} YValue
@@ -160,7 +160,7 @@ export class ItemTextListPosition {
       switch (this.right.content.constructor) {
         case ContentFormat: {
           if (!this.right.deleted && pairedRole(/** @type {ContentFormat} */ (this.right.content)) >= 0) {
-            // P13: a paired mark is folded, never rewritten by a plain format
+            // YP13: a paired mark is folded, never rewritten by a plain format
             updateCurrentFormats(this.currentFormats, /** @type {ContentFormat} */ (this.right.content))
           } else if (!this.right.deleted) {
             const { key, value } = /** @type {ContentFormat} */ (this.right.content)
@@ -271,7 +271,7 @@ const insertNegatedFormats = (transaction, parent, currPos, negatedFormats) => {
  * @function
  */
 const updateCurrentFormats = (currentFormats, format) => {
-  if (foldPaired(currentFormats, format)) return // P13
+  if (foldPaired(currentFormats, format)) return // YP13
   const { key, value } = format
   if (value === null) {
     currentFormats.delete(key)
@@ -332,7 +332,7 @@ const insertFormats = (transaction, parent, currPos, formats) => {
   return negatedFormats
 }
 
-// P13 begin (edytor fork: paired marks — see UPSTREAM.md P13)
+// YP13 begin (edytor fork: paired marks — see UPSTREAM.md YP13)
 /**
  * The contents an array insert writes (as `insertContentHelper` splits it).
  *
@@ -492,7 +492,7 @@ const markHelper = (transaction, parent, index, length, mark, value, startSide, 
   insertMarkItem(transaction, parent, index + length, endSide, new ContentFormat(MARK_END + mark, [client, k, endSide]))
   dropMarkerFormats(parent)
 }
-// P13 end
+// YP13 end
 
 /**
  * @param {Transaction} transaction
@@ -558,7 +558,7 @@ export const insertContentHelper = (transaction, parent, currPos, insert, format
   }
 }
 
-// P7 begin (edytor fork: insertAtGapEnd — see UPSTREAM.md P7)
+// YP7 begin (edytor fork: insertAtGapEnd — see UPSTREAM.md YP7)
 /**
  * Insert `content` at the END of the gap at live index `index`: walk `index`
  * countable live units, then pass every deleted item and every format item
@@ -592,7 +592,7 @@ export const insertAtGapEndHelper = (transaction, parent, index, content) => {
   const item = new Item(createID(doc.clientID, doc.store.getClock(doc.clientID)), left, left && left.lastId, right, right && right.id, parent, null, content)
   item.integrate(transaction, 0)
 }
-// P7 end
+// YP7 end
 
 /**
  * @param {Transaction} transaction
@@ -883,7 +883,7 @@ const plantMarker = (parent, currPos) => {
 
 /**
  * Plant a format-aware marker at an exact list position — the read-side
- * counterpart of {@link plantMarker} (UPSTREAM.md P5), used by
+ * counterpart of {@link plantMarker} (UPSTREAM.md YP5), used by
  * `RangeCursor`'s bounded reads to leave sparse checkpoints behind cold
  * walks. Unlike `plantMarker` this takes the position directly (no
  * `ItemTextListPosition` — a read cursor carries `{p, index,
@@ -1453,7 +1453,7 @@ export class YNode extends ObservableV2 {
        */
       let currentFormats = {} // saves all current formats for insert
       /**
-       * P13: the open paired mark operations, by mark.
+       * YP13: the open paired mark operations, by mark.
        * @type {Map<string,any>}
        */
       const pairedFormats = new Map()
@@ -1619,7 +1619,7 @@ export class YNode extends ObservableV2 {
             break
           case ContentFormat: {
             let { key, value } = /** @type {ContentFormat} */ (c.content)
-            // P13: a live paired mark item renders as its mark's winning value there
+            // YP13: a live paired mark item renders as its mark's winning value there
             if (pairedRole(/** @type {ContentFormat} */ (c.content)) >= 0) {
               if (c.deleted) break
               foldPaired(pairedFormats, /** @type {ContentFormat} */ (c.content))
@@ -1834,7 +1834,7 @@ export class YNode extends ObservableV2 {
         const content = item.content
         if (itemsToRender === null && !retainInserts) {
           // Current-state render — the same physical-sequence interpretation
-          // `RangeCursor`'s bounded reads consume (UPSTREAM.md P5):
+          // `RangeCursor`'s bounded reads consume (UPSTREAM.md YP5):
           // `readItemPieces` produces the item's AttributedContent pieces
           // (renderer-claimed → readContent mode 1; ContentFormat → one
           // marker piece; tombstoned → nothing; live → whole item) and the
@@ -2319,7 +2319,7 @@ export class YNode extends ObservableV2 {
     this.applyDelta(delta.create().retain(index).insert(/** @type {any} */ (content), format).done())
   }
 
-  // P7 begin (edytor fork: insertAtGapEnd — see UPSTREAM.md P7)
+  // YP7 begin (edytor fork: insertAtGapEnd — see UPSTREAM.md YP7)
   /**
    * Insert `content` (an array of JSON values, one countable unit each) at the end of the gap at
    * live index `index`: after every deleted item and every format item that precedes the next live
@@ -2334,9 +2334,9 @@ export class YNode extends ObservableV2 {
       insertAtGapEndHelper(transaction, this, index, new ContentAny(content))
     })
   }
-  // P7 end
+  // YP7 end
 
-  // P13 begin (edytor fork: paired marks — see UPSTREAM.md P13, utils/marks.js)
+  // YP13 begin (edytor fork: paired marks — see UPSTREAM.md YP13, utils/marks.js)
   /**
    * Insert `content` (a string, or an array of JSON values and nodes) at
    * live index `index` with no format item: its origin is the gap's last
@@ -2379,7 +2379,7 @@ export class YNode extends ObservableV2 {
       markHelper(transaction, this, index, length, mark, value, startSide, endSide)
     })
   }
-  // P13 end
+  // YP13 end
 
   /**
    * Inserts new content at an index.

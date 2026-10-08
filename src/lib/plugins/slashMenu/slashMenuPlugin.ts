@@ -45,7 +45,7 @@ export const createSlashMenuPlugin =
 
 		/**
 		 * Beside the caret (below a `+` it was opened from), kept in the
-		 * viewport; measured in the overlay's frame, written after (R11), as
+		 * viewport; measured in the overlay's frame, written after, as
 		 * is the close of a `+` menu whose block is gone.
 		 */
 		const positionMenu = (host: HTMLElement) => {

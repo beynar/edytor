@@ -9,7 +9,7 @@ import {
 } from '$lib/selection/replaceSelection.js';
 
 /**
- * One relative step (D-5) for the selected blocks; with `caret`, the block
+ * One relative step for the selected blocks; with `caret`, the block
  * holding the caret moves too (Notion's Mod+Shift+Up/Down; a code line's
  * code block), the caret riding along, and so do the blocks a text range
  * spans (`getSelectionBlocks`, as a handle drag takes them), the range kept.

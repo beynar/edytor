@@ -20,7 +20,7 @@ import type { LiveRow, RowItem } from '../rows.js';
 import type { ContentRun, DisplayRoles, Folded } from '../runs.js';
 import type { Cached } from './shared.js';
 
-// ── the edits of one fold (L7 narrowing, P1) ──────────────────
+// ── the edits of one fold (narrowed to what changed) ──────────
 //
 // A keystroke inserts or deletes countable items in one backing text.
 // The fold records each edited item (the part the fold's id sets
@@ -133,7 +133,7 @@ export const indexState = (Y: EngineApi, T: TextEngine, doc: EngineDoc) => {
 		// ── roles
 		/** The role table the display reads; `null` → none. */
 		roles: null as DisplayRoles | null,
-		/** A stored kind changed since the last report: derived kinds may follow it (XW-08). */
+		/** A stored kind changed since the last report: derived kinds may follow it. */
 		retyped: false,
 
 		// ── placements and the children index (`placement.ts`, `layout.ts`)
@@ -141,7 +141,7 @@ export const indexState = (Y: EngineApi, T: TextEngine, doc: EngineDoc) => {
 		dissolved: new Set<BlockId>(),
 		/** Resolved placements. */
 		placementsMap: new Map<BlockId, ResolvedPlacement>(),
-		/** D-18: the texts whose pieces' order is re-decided at the next pass (`order.split.text`). */
+		/** The texts whose pieces' order is re-decided at the next pass (`order.split.text`). */
 		regroup: new Set<BlockId>(),
 		/** A block's argmax candidate parent → the blocks naming it (its entry decides theirs). */
 		byArgParent: new Map<BlockId, Set<BlockId>>(),
@@ -186,7 +186,7 @@ export const indexState = (Y: EngineApi, T: TextEngine, doc: EngineDoc) => {
 
 		// ── records (`records.ts`)
 		/**
-		 * The losing incarnations each key shows (H13, `id.same.concurrent`):
+		 * The losing incarnations each key shows (`id.same.concurrent`):
 		 * blocks of their own under derived ids, claimed by the key's block
 		 * before its own claims (`incarnations.ts`).
 		 */

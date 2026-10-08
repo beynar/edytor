@@ -10,7 +10,7 @@ const checkRelativePositions = ytext => {
     // for all types of associations..
     for (let assoc = -1; assoc < 2; assoc++) {
       const rpos = Y.createRelativePositionFromTypeIndex(ytext, i, assoc)
-      // P8: the binary relative-position codec is pruned, and the JSON form drops the empty
+      // YP8: the binary relative-position codec is pruned, and the JSON form drops the empty
       // root name these fixtures use (`ydoc.get()`), so resolve the position itself.
       const decodedRpos = rpos
       const absPos = /** @type {Y.AbsolutePosition} */ (Y.createAbsolutePositionFromRelativePosition(decodedRpos, /** @type {Y.Doc} */ (ytext.doc)))

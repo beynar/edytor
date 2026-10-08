@@ -239,8 +239,8 @@ describe('G-e retained surface — status, backoff, liveness, auth, the socket s
 	it('createWebsocketSync forwards params, the socket seam and the backoff; target = server + room', async () => {
 		const url = uniqueUrl();
 		const sync = providers.createWebsocketSync({
-			serverUrl: `${url}/`,
-			roomName: 'r',
+			server: `${url}/`,
+			room: 'r',
 			params: { token: 't' },
 			WebSocketPolyfill: Relay,
 			maxBackoffTime: 50
@@ -404,8 +404,8 @@ describe('G-e retired surface (D-24)', () => {
 	it('createWebsocketSync always dials: connect/protocols/resyncInterval are not options', async () => {
 		const url = uniqueUrl();
 		const sync = providers.createWebsocketSync({
-			serverUrl: url,
-			roomName: 'r',
+			server: url,
+			room: 'r',
 			connect: false,
 			protocols: ['x'],
 			resyncInterval: 20,

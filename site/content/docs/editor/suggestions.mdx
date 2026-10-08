@@ -292,9 +292,9 @@ textToBlocks('## Plan\n- [ ] Ship it\nSee **notes**');
 //  { type: 'paragraph', content: [{ text: 'See ' }, { text: 'notes', marks: { bold: true } }] }]
 ```
 
-## The block API
+## The block API, before `edytor.suggestions`
 
-`block.suggestText({ value })`, `block.suggestions` and `block.acceptSuggestedText()` are deprecated wrappers over an `{ end: block.id }` suggestion. `block.suggestions` reads the content of the block's latest `end` suggestion as parts (`JSONText[]` runs and atoms) and setting it replaces the block's `end` suggestions (`null` drops them). Unlike before, such a suggestion stays when the selection leaves the block, and accepting it moves the caret to its end ([migration](/docs/reference/migration#from-010-next9)).
+`block.suggestText({ value })`, `block.suggestions` and `block.acceptSuggestedText()` are gone: add an `{ end: block.id }` suggestion with `edytor.suggestions.add`, read the block's with `edytor.suggestions.at(block.id).end`, and accept one with `suggestion.accept()` ([migration](/docs/reference/migration#unreleased)).
 
 ## Limitations
 

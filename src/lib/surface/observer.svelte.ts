@@ -1,6 +1,5 @@
 /**
- * The compare-to-truth observer (R11, R12; plan §2.2 L8, §2.4 "Divergence
- * set", §4.4 `surface/observer`): the only interpreter of DOM changes. After a
+ * The compare-to-truth observer (the divergence set): the only interpreter of DOM changes. After a
  * flush has written the host, a content whose text differs from its cell, a
  * strict container whose children differ from what the cells render, a
  * registered element that went missing, or an owned attribute that differs
@@ -32,7 +31,7 @@
  *   its host, which restores the cell; while a model-owned window is open,
  *   other divergence waits for it; structure restores the cell; the live
  *   composition host is the IME's; read-only divergence is inverted at the
- *   flip back. A kind's own markup around its slots is the kind's (D-25).
+ *   flip back. A kind's own markup around its slots is the kind's.
  */
 import { tick, untrack } from 'svelte';
 import type { DocAnchor, YTransaction } from '../crdt/index.js';
@@ -74,7 +73,7 @@ const IDENTITY_ATTRIBUTES = [
 const IDENTITY = IDENTITY_ATTRIBUTES.map((name) => `[${name}]`).join(',');
 /** View-only content the core renders in the host: an `end` ghost text, a block suggestion's preview. */
 const SUGGESTION = '[data-edytor-text-suggestion], [data-edytor-suggestion]';
-/** The rest a live composition merged into its host, rendered after it (`pin.rest`, GX-04). */
+/** The rest a live composition merged into its host, rendered after it (`pin.rest`). */
 const REST = '[data-edytor-composition-rest]';
 /** A foreign writer that re-damages every heal: the heals stop for a window (Quill's bound). */
 const BOUND = 100;
@@ -127,7 +126,7 @@ const caretIn = (nodes: Node[]) => {
 };
 
 export class SurfaceObserver {
-	/** The render epoch (one owner, R10/R12): cell patches, view state, re-display requests. */
+	/** The render epoch (one owner): cell patches, view state, re-display requests. */
 	epoch = $state(0);
 	/** The records signal: the MutationObserver named elements to compare. */
 	records = $state(0);
@@ -157,9 +156,9 @@ export class SurfaceObserver {
 	#readonly = new Set<string | null>();
 	#host: string | null = null;
 	#heals = 0;
-	/** The pass wrote the host itself: a render (the projector displays after it, R10). */
+	/** The pass wrote the host itself: a render (the projector displays after it). */
 	#wrote = false;
-	/** Records arrived since the last pass (O55: a display waiting on them gets a pass). */
+	/** Records arrived since the last pass (a display waiting on them gets a pass). */
 	#fresh = false;
 	#window: ReturnType<typeof setTimeout> | null = null;
 
@@ -342,7 +341,7 @@ export class SurfaceObserver {
 	/**
 	 * Records name a content while the model still equals its render (no patch
 	 * since the last pass): that render is its base, and a browser edit on it
-	 * gets an anchor at its position, minted now (R4).
+	 * gets an anchor at its position, minted now.
 	 */
 	#seen = (id: string) => {
 		const cell = this.edytor.cells?.get(id);
@@ -748,7 +747,7 @@ export class SurfaceObserver {
 	 * Added nodes the core does not render where it renders: an unregistered
 	 * element claiming a core identity (a clone, removed with its added root),
 	 * and a node inside a content's run between two of its registered elements
-	 * (the run is the core's; the kind's markup around it is the kind's, D-25).
+	 * (the run is the core's; the kind's markup around it is the kind's).
 	 * A live composition's rest element is the core's own (`pin.rest`).
 	 */
 	#clones = () => {
@@ -899,7 +898,7 @@ const modelMarks = (edytor: Edytor, text: Text, at: number) =>
 		.join();
 
 /**
- * Adopt what the browser made of `text` (R8, O59) — the only adopter: one
+ * Adopt what the browser made of `text` — the only adopter: one
  * user command through the dispatcher (hooks, undo policy — a change no input
  * occurrence owns is its own undo step —, marks for insertion), placed by the
  * prefix/suffix diff that prefers the owning attempt's target (else `prefer`,
@@ -960,7 +959,7 @@ export const adopt = async (
 	// node the browser wrote, that node keeps its copy — re-render.
 	const moved = adopted && insert !== '' && shown !== modelMarks(edytor, text, at);
 	if (!adopted || drifted || moved) text.refreshFromModel();
-	// Deferred past the re-render (the P2.3 pin: selecting in the turn left the
+	// Deferred past the re-render (selecting in the same turn left the
 	// native caret at 0), so it checks the gesture serial: a gesture since the
 	// adoption owns the selection, and its caret and pending marks stand
 	// (review 2026-09-29).

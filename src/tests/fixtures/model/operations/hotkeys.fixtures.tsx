@@ -131,7 +131,9 @@ export const fixtures = defineFixtures([
 				throw new Error('Missing startBlock for code suggestion test');
 			}
 
-			startBlock.suggestions = [[{ text: ' // done' }]];
+			edytor.suggestions.add({ end: startBlock.id }, [
+				{ type: startBlock.type, content: [{ text: ' // done' }] }
+			]);
 			await runHotkey(edytor, 'tab');
 		},
 		output: {
@@ -148,7 +150,7 @@ export const fixtures = defineFixtures([
 			}
 		} as never,
 		assert: ({ edytor }) => {
-			expect(edytor.selection.state.startBlock?.suggestions ?? null).toBeNull();
+			expect(edytor.suggestions.list).toEqual([]);
 		}
 	}),
 	defineModelOperationFixture({
@@ -169,11 +171,13 @@ export const fixtures = defineFixtures([
 				throw new Error('Missing startBlock for suggestion clear test');
 			}
 
-			startBlock.suggestions = [[{ text: ' // done' }]];
+			edytor.suggestions.add({ end: startBlock.id }, [
+				{ type: startBlock.type, content: [{ text: ' // done' }] }
+			]);
 			await runHotkey(edytor, 'escape');
 		},
 		assert: ({ edytor }) => {
-			expect(edytor.selection.state.startBlock?.suggestions ?? null).toBeNull();
+			expect(edytor.suggestions.list).toEqual([]);
 		}
 	}),
 	defineModelOperationFixture({

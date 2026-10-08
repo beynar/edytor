@@ -1,5 +1,5 @@
 /**
- * The bundled plugins' block roles as document semantics (UW-10).
+ * The bundled plugins' block roles as document semantics.
  *
  * Views adopt roles from their plugins' block definitions; a document no
  * view configures — a headless `createDocument`, the Durable Object room —
@@ -340,7 +340,7 @@ export const semanticsMismatch = (ours: Record<string, string>, theirs: unknown)
 		.sort();
 };
 
-/** `config` with a mark-edge table (H5), frozen. */
+/** `config` with a mark-edge table, frozen. */
 const withMarks = <C extends object>(config: C, marks: Record<string, { edge: MarkEdge }>) =>
 	frozen(Object.assign({}, config, { marks }));
 

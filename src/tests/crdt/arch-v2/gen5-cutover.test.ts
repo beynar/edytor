@@ -11,7 +11,8 @@
  * - the seed of that JSON is deterministic and reads back as it;
  * - a local IndexedDB store of generation 4 converts into its successor
  *   (`createIndexeddbSync`), which a room-backed store does not;
- * - a SyncStep2 is v2 on the wire (P5) and an Update stays v1.
+ * - next.6 data (an array leaf, the whole-data attribute) converts as its arrays;
+ * - a SyncStep2 is v2 on the wire (`room.store.v2`) and an Update stays v1.
  */
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import 'fake-indexeddb/auto';
@@ -42,6 +43,7 @@ import {
 	readProtocolVersion
 } from '../../../lib/crdt/protocols/envelope.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 
 const crdt = bindCrdt(Y);
 const fixture = (name: string) =>
@@ -92,6 +94,48 @@ describe('the generation-4 reader', () => {
 		const created = createDocument({ value: VALUE, semantics: defaultSemantics });
 		expect(created.facade.toJSON()).toEqual(VALUE);
 		created.destroy();
+	});
+});
+
+describe('pre-release data formats reach generation 5 through the cutover', () => {
+	// 0.1.0-next.6 stored an array as one leaf (`d/<path>` holding the whole
+	// array), and documents before it the whole `data` attribute. Both are
+	// generation 4 (generation 5 began at 0.1.0-next.25), so a build of
+	// generation 5 meets them only in the cutover, which reads them with this
+	// build's reader and seeds what it reads: generation 5 then holds items,
+	// never the old forms.
+	const withPreReleaseData = () => {
+		const doc = new Y.Doc();
+		Y.applyUpdate(doc, V1);
+		const facade = bindEdytorDoc(Y).create(doc);
+		doc.transact(() => {
+			facade.model.blockNodeOf(doc, 'n').setAttr('d/labels', ['x', 'y']);
+			facade.model.blockNodeOf(doc, 'p').setAttr('data', { tags: ['p', 'q'], k: 1 });
+		}, 'next.6');
+		facade.dispose();
+		const update = Y.encodeStateAsUpdate(doc);
+		doc.destroy();
+		return update;
+	};
+
+	it('a next.6 array leaf and a whole-data attribute read as their arrays, and seed as items', () => {
+		const value = crdt.generations.previousJSONWith([withPreReleaseData()], defaultSemantics);
+		const byId = (json, id) => json.children.find((block) => block.id === id);
+		expect(byId(value, 'n').data).toEqual({ labels: ['x', 'y'] });
+		expect(byId(value, 'p').data).toEqual({ tags: ['p', 'q'], k: 1 });
+		// Seeded as generation 5: the same data, and no leaf or attribute of the old forms.
+		const document = loadDocument(crdt.generations.seedOf(value, defaultSemantics), {
+			semantics: defaultSemantics
+		});
+		expect(document.facade.toJSON()).toEqual(value);
+		for (const id of ['n', 'p']) {
+			const node = document.facade.model.blockNodeOf(document.doc, id);
+			const keys = [...node.attrKeys()];
+			expect(keys, id).not.toContain('data');
+			for (const key of keys.filter((k) => k.startsWith('d/')))
+				expect(Array.isArray(node.getAttr(key)) && node.getAttr(key).length > 0, key).toBe(false);
+		}
+		document.destroy();
 	});
 });
 

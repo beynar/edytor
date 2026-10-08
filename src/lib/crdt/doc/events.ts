@@ -26,7 +26,7 @@ export const docEvents = (c: { runsView: RunView }) => {
 	let unsubscribe: (() => void) | null = null;
 	/** One `DocChange` per commit, from the index's change report (the fold). */
 	const emitChange = (report: IndexReport, origin: unknown, local: boolean): void => {
-		// R5 listener isolation: a throwing subscriber never starves the rest.
+		// Listener isolation: a throwing subscriber never starves the rest.
 		callEach('[edytor-doc] change', [...subs], {
 			origin,
 			local,
@@ -40,8 +40,8 @@ export const docEvents = (c: { runsView: RunView }) => {
 	 * transaction that changed the visible document, local and remote.
 	 * No writes, ever. Returns an unsubscribe; with no subscriber left the
 	 * index stops building reports.
-	 * One named exception: the composition session's D-20 commit
-	 * (`session/composition` `restructured`) writes from its subscriber —
+	 * One named exception: the composition session's commit
+	 * that re-places its host's block (`session/composition` `restructured`) writes from its subscriber —
 	 * safe because the engine queues a transaction opened in an `update`
 	 * handler until the current one finishes, so every listener sees the
 	 * structural change's report first and the commit's report after it.

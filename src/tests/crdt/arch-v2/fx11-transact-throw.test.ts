@@ -2,7 +2,7 @@
  * FX-11 (client side): a document's `transact(fn)` is one transaction and
  * one undo step, but not a rollback: a throw from `fn` keeps the writes
  * made before it (documents.mdx says so). The room's `transact` does the
- * same (tests/do/review-20260930-fx.test.ts).
+ * same (tests/do/transact-throw.test.ts).
  */
 import { describe, expect, it } from 'vitest';
 import { createDocument } from '$lib/crdt/index.js';

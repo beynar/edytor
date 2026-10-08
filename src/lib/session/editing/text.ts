@@ -1,13 +1,13 @@
 /**
- * The marks of an insertion (O29, §4.3 `session/editing/text`): ONE rule for
+ * The marks of an insertion: ONE rule for
  * every path that inserts text — typing, soft break, IME commit, native
  * adoption, plain paste, programmatic `insertText`. Yjs v14 inserts
  * unformatted text unless every mark is named, so the editor always decides.
  *
  * explicit (the caller's own marks) → a replaced range's common marks →
  * pending marks (a caret fact, values kept) → the neighbour before, else
- * after → each mark record's edge policy (O69), which reads the admitted
- * edge side (R4) and never the DOM.
+ * after → each mark record's edge policy, which reads the admitted
+ * edge side and never the DOM.
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { selectedTextSpans } from '$lib/selection/visibility.js';
@@ -22,8 +22,8 @@ import { jsonEquals as same, type JSONText, type SerializableContent } from '$li
  */
 export type EdgeSide = 'inside' | 'outside';
 /**
- * O69: whether a mark grows at its edges — always, never, or by the admitted
- * side (trailing edge). The document reads the same value (H5) for where a
+ * Whether a mark grows at its edges — always, never, or by the admitted
+ * side (trailing edge). The document reads the same value for where a
  * concurrent insert at a mark's ends lands.
  */
 export type { MarkEdge } from '$lib/crdt/text/marks.js';
@@ -84,7 +84,7 @@ export const marksForInsertion = (
 };
 
 /**
- * The marks of text inserted at an attempt's selection (O29), read before it
+ * The marks of text inserted at an attempt's selection, read before it
  * is replaced: typing, a soft break, a plain paste, an IME's first preview.
  */
 export const insertionMarks = (edytor: Edytor, snapshot: Attempt): Marks => {

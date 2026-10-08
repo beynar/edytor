@@ -54,10 +54,10 @@ export const docReads = (c: DocBase) => {
 				? (M.blockNodeOf(doc, id) ?? undefined)
 				: (T.findAtom(view().own, id, inlineId)?.node as EngineNode | undefined);
 
-	/** The one serializer (L14): `id`'s subtree in the public `JSONBlock` shape. */
+	/** The one serializer: `id`'s subtree in the public `JSONBlock` shape. */
 	const blockJSON = (id: BlockId): JSONBlock => {
 		const type = blockTypeOf(id);
-		// A registered block always has a type once its updates are all in (UW-01):
+		// A registered block always has a type once its updates are all in:
 		// `''` is the absent-id shape, or an out-of-order delivery's transient.
 		if (DEV && type === undefined && M.blockNodeOf(doc, id) !== null && !holdsPending(doc))
 			throw new Error(`[edytor-doc] block ${id} has no type`);
@@ -89,7 +89,7 @@ export const docReads = (c: DocBase) => {
 		const d = node && readData(node);
 		// `cloneJsonSafe`: the read path stays total even when the stored
 		// attr holds a non-JSON value that bypassed boundary validation
-		// (raw write / remote payload) — never crash a read (R4).
+		// (raw write / remote payload) — never crash a read.
 		return d !== undefined && d !== null ? (cloneJsonSafe(d) as JsonObj) : undefined;
 	};
 	/** The document's own data (`{}` when it has none). */
@@ -167,7 +167,7 @@ export const docReads = (c: DocBase) => {
 		ancestorsOf(id, v).find((a) => isIsland(a)) ?? null;
 	/** True iff `id` sits strictly inside an island subtree. */
 	const insideIsland = (id: BlockId, v?: View): boolean => islandOf(id, v) !== null;
-	/** `id` is a line — directly in an island declared `lines` — and holds no children (FW-01). */
+	/** `id` is a line — directly in an island declared `lines` — and holds no children. */
 	const isLine = (id: BlockId): boolean => {
 		const parent = positionOf(id)?.parent;
 		return parent != null && isLines(parent);
@@ -184,7 +184,7 @@ export const docReads = (c: DocBase) => {
 		const parent = positionOf(id)?.parent;
 		return parent != null && blockTypeOf(id) === itemKindOf(parent);
 	};
-	/** `id` is a layout or holds one in its shown subtree (D2, `layout.nest`). */
+	/** `id` is a layout or holds one in its shown subtree (`layout.nest`). */
 	const holdsLayout = (id: BlockId): boolean => isLayout(id) || childrenIds(id).some(holdsLayout);
 	/** `id` is a layout item or sits inside one. */
 	const insideItem = (id: BlockId, v?: View): boolean =>
@@ -292,7 +292,7 @@ export const docReads = (c: DocBase) => {
 		};
 	};
 
-	// ── document order (O7): one pre-order over visible blocks ────────
+	// ── document order: one pre-order over visible blocks ────────
 
 	/** The document order — `view().order`, shared by every consumer. */
 	const order = (): readonly BlockId[] => view().order.ids;
@@ -308,7 +308,7 @@ export const docReads = (c: DocBase) => {
 
 	/**
 	 * The neighbour of `id` in document order (`dir` 1: next, -1: previous).
-	 * `sealed` is the island-sealing policy (R5): the walk never enters an
+	 * `sealed` is the island-sealing policy: the walk never enters an
 	 * island it did not start in — from outside, an island is one unit
 	 * (its root is visited, its interior skipped); from inside, the walk
 	 * may leave. Operations that need the seal pass it; the order itself
@@ -339,7 +339,7 @@ export const docReads = (c: DocBase) => {
 	 * absent/deleted blocks. This is the transaction-aware counterpart
 	 * of the commit-synced {@link runsView} read surface.
 	 *
-	 * R4: the range reader emits BORROWED `marks`/`data` (cursor format
+	 * The range reader emits BORROWED `marks`/`data` (cursor format
 	 * state / the replicated inline attr) — every item's payload is
 	 * swapped for the view's canonical frozen instance before it crosses
 	 * the public boundary, so callers can't mutate engine state through

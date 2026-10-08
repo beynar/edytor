@@ -43,12 +43,12 @@ export const planSteps = (c: StepsContext) => {
 		defaultChild
 	} = c;
 
-	// ── prepared ops (R6) ─────────────────────────────────────────────
+	// ── prepared ops ─────────────────────────────────────────────
 	// Every op is `prepare` (pure: `refused`, or a plan of named steps plus
 	// its effect summary, against the current version) then `apply(plan)`;
 	// composites compose their steps into one plan, so a hook sees the
 	// whole command before any write and a refusal refuses before one.
-	// Each prepare normalizes its inputs once, here at ingress (O1): ids
+	// Each prepare normalizes its inputs once, here at ingress: ids
 	// and strings as the wire would deliver them, payloads cloned.
 
 	const REFUSED = refused(null);
@@ -61,12 +61,12 @@ export const planSteps = (c: StepsContext) => {
 		version: runsView.version()
 	});
 
-	/** This client's next clock: what its source ranks are tied by (`sourceRank`, DW-05). */
+	/** This client's next clock: what its source ranks are tied by (`sourceRank`). */
 	const clock = () => doc.store?.getClock(doc.clientID) ?? 0;
 	/**
 	 * `count` ranks at `index` among `parent`'s children, the moving
 	 * `exclude` left out. `run`: new blocks, which extend this client's run
-	 * after a block it ranked (H1, `order.insert.run`); a move never does
+	 * after a block it ranked (`order.insert.run`); a move never does
 	 * (the rank-growth guard).
 	 */
 	const ranksFor = (
@@ -97,7 +97,7 @@ export const planSteps = (c: StepsContext) => {
 	 * Every planned move carries the type steps that keep what the moved
 	 * blocks show: one displayed out of an island as another kind than its
 	 * stored one (`displayType`) gets that kind written, so leaving the
-	 * island's slot never brings the island's child kind back (RW-01).
+	 * island's slot never brings the island's child kind back.
 	 */
 	const moveTo = (
 		ids: BlockId[],
@@ -119,7 +119,7 @@ export const planSteps = (c: StepsContext) => {
 		moveTo(ids, parent, index, ranksFor(parent, index, ids.length, ids));
 	/**
 	 * Ranks for blocks leaving `outer` for the gap right before it (`after`:
-	 * right after it), in the order they come from (`sourceRank`, CW-01):
+	 * right after it), in the order they come from (`sourceRank`):
 	 * two peers that split or lift out of the same list at once keep the
 	 * text in its order, whatever their client ids. Each part names the
 	 * block in `outer` it stands at (`at`; one that shows no text of its
@@ -174,7 +174,7 @@ export const planSteps = (c: StepsContext) => {
 	 * keep its pieces in text order, whatever their client ids. Counted
 	 * from the end — the text after the split point, most first — so a
 	 * peer's own edit before its split point (typing, then Enter; a paste
-	 * over a selection) does not move it (DR-crdt-7); an unseen edit after
+	 * over a selection) does not move it; an unseen edit after
 	 * it does (the residual, in the delete contract).
 	 */
 	const pieceRanks = (id: BlockId, at: number, count: number): string[] => {
@@ -208,7 +208,7 @@ export const planSteps = (c: StepsContext) => {
 	 * guard). A kind counts as the same only when the block is stored and
 	 * shown as it: a move in the same plan pins the kind a block shows
 	 * (`moveTo`), so a paragraph shown as its list's item (`itemOf`) that
-	 * an outdent settles back to a paragraph is written back (DR-crdt-3).
+	 * an outdent settles back to a paragraph is written back.
 	 */
 	const attr = (id: BlockId, key: typeof TYPE, value: string): PlanStep[] => {
 		const same = M.blockNodeOf(doc, id)!.getAttr(key) === value;
@@ -222,24 +222,24 @@ export const planSteps = (c: StepsContext) => {
 	 * - an island's child takes `parent`'s default child (it leaves the
 	 *   island's kinds) — unless that renders no content while the child
 	 *   does: a line then takes the document's default kind (a code line
-	 *   shed into a columns layout is a paragraph, AW-05), any other child
+	 *   shed into a columns layout is a paragraph), any other child
 	 *   keeps its kind, as `typeOf` shows one a peer adds meanwhile;
 	 * - a container's item (its default child) takes `parent`'s default
-	 *   child — an item never shows outside its list (YW-02) — unless it
-	 *   stays inside an outer container of that kind (a nested list,
-	 *   SW8-roles-4), or that kind renders no content (a column in a
-	 *   columns layout: its text would vanish, DR-crdt-1);
+	 *   child — an item never shows outside its list — unless it
+	 *   stays inside an outer container of that kind (a nested list),
+	 *   or that kind renders no content (a column in a
+	 *   columns layout: its text would vanish);
 	 * - then a plain block that does not fit `parent` (`fits`: a paragraph
 	 *   shed into a list) becomes its item, when that item renders content
-	 *   (ZW-01, `fitted`). A block that cannot (a paragraph in a columns
+	 *   (`fitted`). A block that cannot (a paragraph in a columns
 	 *   layout) keeps its kind: its text never vanishes; any other kind (an
-	 *   image, a code block, a heading) keeps its kind (DR-crdt-1).
+	 *   image, a code block, a heading) keeps its kind.
 	 */
 	/**
 	 * The kind a child of `island` (now `kind`) takes where the default
 	 * child is `to`: `to` — unless `to` renders no content while the child
 	 * does (its text would vanish): a line then takes the document's
-	 * default kind, any other child keeps its kind (AW-05, as `typeOf`).
+	 * default kind, any other child keeps its kind (as `typeOf`).
 	 */
 	const leavingIsland = (island: BlockId, kind: string | undefined, to: string) => {
 		if (rendersContentOf(to) || (kind !== undefined && !rendersContentOf(kind))) return to;
@@ -284,7 +284,7 @@ export const planSteps = (c: StepsContext) => {
 	 * `kept`, and only an `emptiable` one (a container holding text of its
 	 * own stays). The containers are found together, deepest first: a
 	 * list that loses its last item along with a list nested in it goes
-	 * too (SW9-containers-2). Then every layout the plan leaves with one
+	 * too. Then every layout the plan leaves with one
 	 * item or none dissolves (`dissolving`); `removed`: blocks the plan
 	 * deletes besides (a block delete's members), which only that counts.
 	 */
@@ -381,7 +381,7 @@ export const planSteps = (c: StepsContext) => {
 		kept?: ReadonlySet<BlockId | null>
 	): PlanStep[] => emptyingAll([container], leaving, writes, kept);
 	/**
-	 * Delete (R3): `removes` leave. Every one is marked with what it
+	 * Delete: `removes` leave. Every one is marked with what it
 	 * displays — an unmarked one would be promoted into the deleted slot
 	 * (`displaySlotOf`).
 	 */

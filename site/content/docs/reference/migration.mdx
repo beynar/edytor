@@ -14,7 +14,28 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+#### Breaking changes
+
+- **The deprecated aliases are gone.** Each had its release; rename before you upgrade:
+
+  | Removed | Use |
+  | --- | --- |
+  | `hotKeys` (the `<Edytor>` prop and the `Edytor` option) | `hotkeys` |
+  | `blockDnd` (the `<Edytor>` prop) | `blockHandles` (`blockHandles={false}` hides the handles) |
+  | `serverUrl`, `roomName` (`createWebsocketSync`, `prefetch`, `lastUpdated`, `documentSnapshot`) | `server`, `room` |
+  | `attachDocument(this, options)`, `AttachDocumentOptions` (`edytor/cloudflare`) | `attachRoom(this, options)`, `AttachRoomOptions` |
+  | `moveBlocks(namespace, move)` (`edytor/cloudflare`) | `moveBlocksBetweenRooms(namespace, move)` |
+  | A KV namespace itself as `history.store` | `kvHistory(namespace)` |
+  | `block.suggestText({ value })`, `block.suggestions`, `block.acceptSuggestedText()` | `edytor.suggestions.add({ end: block.id }, content)`, `edytor.suggestions.at(block.id).end`, `suggestion.accept()` |
+  | `MigrateOptions.leaseMs`, `waitMs`, `pollMs`, `owner` and `waitForSettled(name, options)`'s options (no-ops) | nothing: leave them out |
+
+  - A `hotKeys` or `blockDnd` prop (or a `hotKeys` option to `new Edytor`) is ignored, whatever its value: no binding is registered and the handles stay. In development it warns, naming the replacement.
+  - `createWebsocketSync({ serverUrl, roomName })` throws a `TypeError` that names `server` and `room`.
+  - A room whose `history.store` is a bare KV namespace keeps no history: it notes a `history` refusal (`history.store: not a HistoryStore`) at its first use of the history, listing versions answers `404` and a restore throws. Nothing else fails, so check the room's refusals after upgrading. The `EDYTOR_HISTORY` binding is unchanged: the room still wraps a KV binding in `kvHistory` itself. `kvHistory` writes what earlier releases wrote, so their versions list, preview and restore as before.
+
+#### Kept: pre-release stored formats
+
+Documents stored by 0.1.0-next.6 (atomic array leaves, the whole-`data` attribute), containers written by 0.1.0-next.22 (no storage format) and alarms armed by 0.1.0-next.23 all load as before. They are all schema generation 4, so they reach this release through the generation cutover, which reads them with this build's reader: that reader is kept.
 
 ### From 0.1.0-next.37
 
@@ -730,7 +751,7 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 ### Collaboration and providers
 
 - `attachDocumentSync` is removed: use `document.attachSync`. The presence format changed (one entry per view in `selections`), so old and new clients do not see each other's carets.
-- `createWebsocketSync` takes `{ server, room }`, the names of the `<Edytor server room>` props (`serverUrl` and `roomName` still work). It keeps a local IndexedDB copy by default (`persist`, `persistName`) and syncs tabs by default (`disableBc`). It no longer takes `connect`, `protocols` or `resyncInterval`; pass tokens in `params`.
+- `createWebsocketSync` takes `{ server, room }`, the names of the `<Edytor server room>` props (`serverUrl` and `roomName` were removed after a deprecation). It keeps a local IndexedDB copy by default (`persist`, `persistName`) and syncs tabs by default (`disableBc`). It no longer takes `connect`, `protocols` or `resyncInterval`; pass tokens in `params`.
 - The provider sends the room id percent-encoded as one path segment (`acme/roadmap` dials `…/rooms/acme%2Froadmap`): a server that routes on the path must decode it. The ids `.` and `..` throw, as a URL collapses those segments, and so do an empty id, one over 256 characters and one with a lone surrogate.
 - `WebsocketProvider` lost the `protocols` option, the `sync` event (use `synced`) and `wsconnecting` (use the `status` event). It gained `saved`, `unsaved`, `readOnly` (the room's read-only notice), the `'saved'` event, the `refused`, `expired` and `unreachable` events, and the `connectTimeout` option.
 - `IndexeddbPersistence` lost `get`, `set` and `del`.
@@ -757,7 +778,7 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ### Migration API
 
-- `MigrationRecord` no longer has `owner` or `leaseUntil`, and is never stored as `pending`. The `leaseMs`, `owner`, `pollMs` and `waitMs` options are accepted and ignored.
+- `MigrationRecord` no longer has `owner` or `leaseUntil`, and is never stored as `pending`. The `leaseMs`, `owner`, `pollMs` and `waitMs` options are gone (they were ignored).
 - `force` restores the v13 content in place instead of overwriting, and a store of another generation makes `migrate` throw `GenerationMismatchError`.
 
 ## Complete list of changes
@@ -835,7 +856,7 @@ Every public change since 0.0.11, by area.
 ### Editor view, selection and commands
 
 - **`value` is not bindable.** `<Edytor value>` is the initial content; `bind:value` fails type-checking. Read edits with `onChange` or `edytor.value`.
-- **Component props.** New: `document` (an `EdytorDocument` to render; several views can share one), `actor` (the local author), `room`, `server` and `params` (the view builds its IndexedDB copy and its websocket sync from them), `onSyncExpired` (the room closed with `4401`; refresh `params` before the redial) and `onSyncRefused` (a refusal standing at mount, then each new one), `blockHandles` (`blockDnd` is its deprecated alias), `defaultPlugins`, and the root attributes `translate`, `spellcheck`, `autocorrect`, `autocomplete`, `autocapitalize`, `inputmode` and `enterkeyhint`. `sync` takes an `EdytorSync` (a factory from `createIndexeddbSync`/`createWebsocketSync`, or your own) and overrides `room`/`server`. `hotKeys` is typed (see Keymap below). See [the component](/docs/editor/edytor-component).
+- **Component props.** New: `document` (an `EdytorDocument` to render; several views can share one), `actor` (the local author), `room`, `server` and `params` (the view builds its IndexedDB copy and its websocket sync from them), `onSyncExpired` (the room closed with `4401`; refresh `params` before the redial) and `onSyncRefused` (a refusal standing at mount, then each new one), `blockHandles`, `defaultPlugins`, and the root attributes `translate`, `spellcheck`, `autocorrect`, `autocomplete`, `autocapitalize`, `inputmode` and `enterkeyhint`. `sync` takes an `EdytorSync` (a factory from `createIndexeddbSync`/`createWebsocketSync`, or your own) and overrides `room`/`server`. `hotkeys` is typed (see Keymap below). See [the component](/docs/editor/edytor-component).
 - **Handles.** `Block`, `Text` and `InlineBlock` are id-only handles over the document index: getters read the document (inside a command they see its writes); they are **not reactive** (except `data`, a reactive proxy). Templates read the snippet's view object or `edytor.cells`.
   - `new Block({block})`, `new Text({…content})` and `new InlineBlock({block})` are gone: use `block.insertChildren(index, JSONBlock[] | Block[])` (a handle moves) and `block.insertParts(index, (JSONText | JSONInlineBlock)[])`; `deleteParts` is removed (use `deleteContentAtRange`).
   - A `Text` is the `ordinal`-th segment of its block (`text.id` = `t:<block>:<ordinal>`) with no identity across commits; key extension state by block id and anchor.
@@ -868,7 +889,7 @@ Every public change since 0.0.11, by area.
 - **Keymap.** The `hotkeys` module is deleted: the types move to the package root (`HotKey`, `HotKeyCombination`; `HotKeyModifier`, `Single/DoubleModifierCombination` removed). `HotKeys` → the editor's internal keymap, whose `Keymap` class is not exported (`isHotkey` → `handle`, `run(chord)`, `offered`; no `init`).
   - A `HotKey` payload's `event` is optional. A key binding runs once per occurrence.
   - Chords take up to three modifiers in any order, plus punctuation and `f1`–`f12`; `space` matches the space bar. Unknown tokens (`cmd`, `esc`, `return`, …) fail type-checking and warn in development.
-  - The `hotKeys` prop is typed `Partial<Record<HotKeyCombination, HotKey>>`.
+  - The `hotkeys` prop is typed `Partial<Record<HotKeyCombination, HotKey>>`.
 - **Navigation.** Shift+Home/End/PageUp/PageDown, Shift+↑/↓ and Mod+Shift+↑/↓ move the focus and keep the anchor (Mod+Shift+↑/↓ only where the default [arrow move](/docs/plugins/arrow-move) plugin has no block to move; otherwise it moves the caret's block); word keys are visual under RTL; arrows skip a collapsed toggle's body; an atom selection carries the side it was anchored on (`from`).
 - **Input and IME.** `edytor.attempts` (the input attempts) and `edytor.composition` (the session: `live`, `phase`, `host`, `owns(node)`, `ended(fn)`, `restructured(change)`) are new; `edytor.isComposing` is read-only.
   - Removed: `compositionState`, `compositionStartReplacementState`, `hasHandledCompositionInput`, `compositionText`, `resolveCompositionRegion`, `shouldIgnoreCompositionKeyDown`, `Text.toCompositionDomOffset`, and the input-fallback flags and timers on `Edytor`.
@@ -907,7 +928,7 @@ Every public change since 0.0.11, by area.
 - **Snippets render inner markup.** The core renders, registers and marks void the block element (`use:block.attach` and `BlockView.attach`/`InlineBlockView.attach` are removed; `use:block.void` still marks inner chrome). Block snippets receive `block: BlockView` = `{ id, type, data, selected, focused, handle, void }`; inline-atom snippets `block: InlineBlockView` = `{ id, type, data, selected, handle }` (`handle` is `undefined` for a suggested atom). Commands and document reads go through `block.handle`. `onBlockAttached` runs once per element, and the attach hooks may return a cleanup. Identity attributes are declarative (present in server-rendered HTML).
 - **`transformText`** receives declared values `{ text: { stringContent, value }, block: { id, type, data }, content }`, not handles.
 - **Marks at insertion** follow one rule (explicit → a replaced range's common marks → pending → the neighbour → the mark's `edge`); `insertText` without marks resolves them by that rule; plain paste inherits the caret's marks; Mod+B at the start of a bold run toggles bold off.
-- **Suggestions.** `edytor.suggestions` proposes content at a position, session-only until `accept()` (one command, `acceptSuggestion`, one undo step), with the default `suggestionsPlugin` bar and keys and `textToBlocks` ([Suggestions](/docs/editor/suggestions)); `BlockView.handle` is `undefined` in a suggestion's preview. `block.suggestText`, `block.suggestions` (plain JSON parts) and `block.acceptSuggestedText` are deprecated wrappers over an `{ end }` suggestion, which survives selection changes; `edytor.selection.suggestions`, `rawSuggestions` and the readonly Proxy wrappers are removed.
+- **Suggestions.** `edytor.suggestions` proposes content at a position, session-only until `accept()` (one command, `acceptSuggestion`, one undo step), with the default `suggestionsPlugin` bar and keys and `textToBlocks` ([Suggestions](/docs/editor/suggestions)); `BlockView.handle` is `undefined` in a suggestion's preview. An `{ end }` suggestion survives selection changes. `block.suggestText`, `block.suggestions`, `block.acceptSuggestedText`, `edytor.selection.suggestions`, `rawSuggestions` and the readonly Proxy wrappers are removed.
 - **HTML import is core.** The HTML paste plugin (never exported) and its hand-written parser are gone; external HTML paste and drop are imported by the core through the browser's parser and the records (`parse` hooks on kind and mark records; see [clipboard](/docs/editor/clipboard)). A plugin's `onPaste` still runs first. The code plugin highlights through TanStack Highlight, and the package declares `sideEffects` so it (and its CSS) ships only in apps that import `codePlugin`.
 - **Notion behavior.** See [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role).
   - Markdown `> ` makes a toggle and `" ` a quote; `+ `, `a. `, `i. ` and inline markdown are new, and a prefix converts at the caret, keeping the text after it.
@@ -963,7 +984,7 @@ Every public change since 0.0.11, by area.
 - **Presence wire.** `selections[viewKey] = { start, end, collapsed, reversed, t }` for text (`DocAnchor`s), `{ blocks, t }` for a block set, `{ atom, block, t }` for an atom; the legacy `selection` mirror, `startTextId`/`yStart` fields and numeric fallbacks are gone. A view writes only its own key and clears it on destroy. `publishPresence` replaces `createAwarenessSelection`/`publishAwarenessSelection`/`clearAwarenessSelection`; `attachDocumentSync` is removed (use `document.attachSync`). A lost socket clears remote carets in that tab only.
 - **Presence throttle default.** A view writes its presence at most once every 50 ms (`DEFAULT_PRESENCE_THROTTLE`; it was `0`, every change): `presence={{ throttle: 0 }}` restores every write.
 - **Presence cost.** The `presence` prop (`{ share: 'caret' | 'block' | 'none', throttle }`, `edytor.presence`, `PresenceWriter`) throttles a view's presence writes and can share only the focused block or nothing; peers sharing blocks are drawn as a bar beside them (`[data-edytor-remote-block]`), and a client's freshest entry wins whatever its kind ([presence](/docs/collaboration/presence#sharing-less-at-scale)).
-- **`createWebsocketSync`** takes `server`, `room`, `params`, `maxBackoffTime`, `connectTimeout`, `onExpired`, `WebSocketPolyfill`, `disableBc`, `persist` and `persistName` (`connect`, `protocols` and `resyncInterval` are removed; `serverUrl`/`roomName` are deprecated aliases of `server`/`room`).
+- **`createWebsocketSync`** takes `server`, `room`, `params`, `maxBackoffTime`, `connectTimeout`, `onExpired`, `WebSocketPolyfill`, `disableBc`, `persist` and `persistName` (`connect`, `protocols`, `resyncInterval`, `serverUrl` and `roomName` are removed).
   - It persists locally by default: an IndexedDB store beside the socket (`persist: false` opts out, `persistName` renames it from `edytor:<server>/<room>`; the returned sync's `persistName` is the name to pass to `clearDocument`), skipped where there is no `indexedDB`, attached through the new `EdytorSyncPayload.attach`. While the store exists it carries the cross-tab channel; `disableBc` turns both off (`IndexeddbPersistence` gains a `disableBc` option).
   - `connectTimeout` (default 10 000 ms, `Infinity` for no limit) closes a dial that neither opens nor fails, like a failed one.
   - The room name is percent-encoded into one path segment of the URL (`encodeURIComponent`), so a server that routes on the raw path must decode it: `acme/roadmap` dials `…/rooms/acme%2Froadmap`. An id a URL cannot carry (`''`, `.`, `..`, over 256 characters, or with a lone surrogate) throws a `TypeError` at construction.
@@ -989,9 +1010,9 @@ Every public change since 0.0.11, by area.
 
 ### The room (`edytor/cloudflare`)
 
-- **`edytor/cloudflare` (new).** `DocumentRoom`, `attachDocument` and `routeDocumentSocket(request, namespace, documentId, authorize)` replace the coordinator you wrote yourself; see [the room](/docs/server/room).
-  - The entry also exports `AttachedDocument` (what `attachDocument` returns: the socket handlers plus `transact`, `read`, `compact`, `dropWaitingDeletes`, `reset` and the diagnostics; forward the ones you call over RPC), `SOCKET_TAG`, `noTimers`, `ROOM_ORIGIN` (the origin of the room's own edits), `IDENTITY_HEADERS`, the defaults `DEFAULT_MAX_ROW_BYTES`, `DEFAULT_COMPACT_AFTER` and `DEFAULT_SAVE_AFTER`, and the caps `MAX_REFUSALS` and `MAX_WAITING_DELETES` (the delete ranges the room keeps waiting for items it does not hold).
-  - Its types: `AttachDocumentOptions`, `Attachment`, `DocumentRoomEnv`, `LoadedDocument`, `Refusal`, `ReplicaOwner`, `SavedDocument`, `SocketIdentity`, `AuthorizeDocumentSocket`, `ExpiredCredential`, `DocumentNamespace` and `DocumentIdentity`.
+- **`edytor/cloudflare` (new).** `DocumentRoom`, `attachRoom` and `routeDocumentSocket(request, namespace, documentId, authorize)` replace the coordinator you wrote yourself; see [the room](/docs/server/room).
+  - The entry also exports `AttachedDocument` (what `attachRoom` returns: the socket handlers plus `transact`, `read`, `compact`, `dropWaitingDeletes`, `reset` and the diagnostics; forward the ones you call over RPC), `SOCKET_TAG`, `noTimers`, `ROOM_ORIGIN` (the origin of the room's own edits), `IDENTITY_HEADERS`, the defaults `DEFAULT_MAX_ROW_BYTES`, `DEFAULT_COMPACT_AFTER` and `DEFAULT_SAVE_AFTER`, and the caps `MAX_REFUSALS` and `MAX_WAITING_DELETES` (the delete ranges the room keeps waiting for items it does not hold).
+  - Its types: `AttachRoomOptions`, `Attachment`, `DocumentRoomEnv`, `LoadedDocument`, `Refusal`, `ReplicaOwner`, `SavedDocument`, `SocketIdentity`, `AuthorizeDocumentSocket`, `ExpiredCredential`, `DocumentNamespace` and `DocumentIdentity`.
   - `requestedReplica(request)` reads the dial's client id for `authorize`, and `closedSocket(code, reason)` turns a dial away from your own Worker with a close the provider understands (an HTTP error reaches the browser as `1006`, which it redials forever).
   - The room binds `{ user, replica, readOnly }` to each socket, strips the content of updates under another user's client ids, and applies `defaultSemantics` to server edits.
 
@@ -1011,18 +1032,18 @@ Every public change since 0.0.11, by area.
 - **Room compaction.** The room's compaction stores the live document (`encodeStateAsUpdate` without what waits), never a merge of the stored updates, and the room's document applies the text-delete `gcFilter` from its creation (`bindCrdt(Y).doc.keepCopies`, new), so it keeps a deleted restoration copy's text. `bindCrdt(Y).admission.admitUpdate` takes several updates (applied in one transaction, `{ v2: bytes }` for one in the v2 encoding) and `{ prepare }`.
 - **Storage format v2.** Snapshots (room compaction, the IndexedDB store's `storeState`) are v2 and gzip-compressed where `CompressionStream` exists; update rows stay v1. The generation record gains `storage` (`GenerationRecord.storage`, `STORAGE_FORMAT`, `STORED_GENERATION_RECORD`); a record without it is v1, and an unknown format is a `GenerationMismatchError`. An IndexedDB snapshot row is the object `{ v2 }`. The room's `records(kind?)` returns `StoredRecord`s, `{ kind, record, bytes, v2 }` (a compressed snapshot inflated) and `compressed()` is new (also over RPC).
 - **Room quotas.** `maxDocumentBytes`, `maxUpdatesPerSecond` and `maxInboundFrameBytes` (`EDYTOR_MAX_DOCUMENT_BYTES`, `EDYTOR_MAX_UPDATES_PER_SECOND`, `EDYTOR_MAX_INBOUND_FRAME_BYTES`; defaults `DEFAULT_MAX_DOCUMENT_BYTES`, `DEFAULT_MAX_UPDATES_PER_SECOND`, `DEFAULT_MAX_INBOUND_FRAME_BYTES`); a write past one closes its socket `4413` (`CLOSE.quota`; the close-code table `CLOSE` is now exported from `edytor/crdt/edytor`), refusal reason `quota`. `createChunkReader(maxBytes?)` throws `ChunkLimitError` for a sequence announcing more.
-- **Room validation.** `AttachDocumentOptions.validate(frame)` and `DocumentRoom.validate`, with a `FrameValidation`: `{ user, replica, touched, dataChanged, before, after, facade }`, `before`/`after` returning a `ValidatedBlock` (`{ id, type, data, content, parent }`) or `null`; `false` or a throw denies, and the room undoes the frame (refusal entry `denied`). Per-writer marks of another writer are stripped (refusal reason `mark`). `facade.releaseHistory(um)` drops every step of a history `createUndoManager` made and releases what they kept, by the history limit's rule.
+- **Room validation.** `AttachRoomOptions.validate(frame)` and `DocumentRoom.validate`, with a `FrameValidation`: `{ user, replica, touched, dataChanged, before, after, facade }`, `before`/`after` returning a `ValidatedBlock` (`{ id, type, data, content, parent }`) or `null`; `false` or a throw denies, and the room undoes the frame (refusal entry `denied`). Per-writer marks of another writer are stripped (refusal reason `mark`). `facade.releaseHistory(um)` drops every step of a history `createUndoManager` made and releases what they kept, by the history limit's rule.
 - **Room metrics and log.** `metrics()`, `RoomMetrics` and `Timing`; the `log` option, `DocumentRoom.log`, `RoomLogEntry` and `EDYTOR_LOG`.
 - **Version history.** The room keeps two versions a day (first in a KV namespace; see the history stores below): the `history` option of `attachDocument` (`HistoryOptions`: `{ store, retentionDays, timeZone, maxValueBytes }`), `DocumentRoom.history()` (the `EDYTOR_HISTORY` binding with `EDYTOR_HISTORY_RETENTION_DAYS` and `EDYTOR_HISTORY_TIME_ZONE` by default); `DEFAULT_RETENTION_DAYS` and `HISTORY_MAX_VALUE_BYTES`. See [History and purge](/docs/server/history).
   - The room's `listHistory()` (`HistoryEntry[]`), `readHistory(key)`, `restoreHistory(key, { user })` (`RestoreResult`, origin `RESTORE_ORIGIN`), `undoRestore({ user })` and `historyWritten()`, also over RPC, and `routeDocumentHistory(request, namespace, documentId, authorize)` for HTTP.
   - Refusal reason `history`; `RoomMetrics.history`; log entries `history` and `restore`. `bindCrdt(Y).doc.restoreTo(doc, facade, json)` is the restore itself.
-- **History stores.** `HistoryOptions.store` takes a `HistoryStore` (`maxValueBytes`, `nativeTtl`, `put(key, value, { expiresAt, metadata })`, `get(key)`, `list(prefix, cursor)` of `HistoryStoreRecord`s, `delete(key)`), a `HistoryStoreFactory` over the room's storage (`HistoryRoomStorage`), or a `KVLike` (deprecated, wrapped).
+- **History stores.** `HistoryOptions.store` takes a `HistoryStore` (`maxValueBytes`, `nativeTtl`, `put(key, value, { expiresAt, metadata })`, `get(key)`, `list(prefix, cursor)` of `HistoryStoreRecord`s, `delete(key)`), or a `HistoryStoreFactory` over the room's storage (`HistoryRoomStorage`); a KV namespace (`KVLike`) goes through `kvHistory`.
   - Adapters `kvHistory(namespace)`, `r2History(bucket)` (an `R2BucketLike`) and `roomHistory({ maxBytes, maxValueBytes })`, with `R2_HISTORY_MAX_VALUE_BYTES`, `ROOM_HISTORY_MAX_BYTES` and `ROOM_HISTORY_MAX_VALUE_BYTES`; `HistoryMetadata` is exported; `HistoryEntry.expiresAt`.
   - `EDYTOR_HISTORY` takes a KV or R2 binding or `"room"`; the alarm's `retention` task deletes expired versions.
 - **Concurrent creations of one id.** The losing node of a concurrent creation of one block id keeps its subtree (`isKeptReplaced` exported from `edytor/crdt`, `Doc.keepReplaced`), and its text shows at the end of the winner's (an implicit merge claim); `insertBlock`, `splitBlock` and pastes refuse an id holding U+0000.
 - **Anchored merges.** A merge claim stores the end of the block it joins (`MergeClaim.a`, `MergeClaim.r`; `Claim.holder` names the block that stores a claim shown in another); a concurrent split moves it to the split's last piece. `TextBlockRec.listClaims` is a record's stored list, `claims` its effective claims.
 - **Per-block locks.** `lockedBlocks(options)` and `LockOptions` (`key`, `subtree`, `bypass`); the `locks` option of `attachDocument`, `DocumentRoom.locks()` and the `EDYTOR_LOCKS` variable.
-- **Cross-document moves.** `moveBlocks(namespace, move)` and `forwardLateEdits(namespace, from)`; the `rooms` option, `DocumentRoom.rooms()` and the `EDYTOR_ROOMS` binding; `DEFAULT_MOVE_GRACE_DAYS`. See [moving blocks between documents](/docs/server/moves).
+- **Cross-document moves.** `moveBlocksBetweenRooms(namespace, move)` and `forwardLateEdits(namespace, from)`; the `rooms` option, `DocumentRoom.rooms()` and the `EDYTOR_ROOMS` binding; `DEFAULT_MOVE_GRACE_DAYS`. See [moving blocks between documents](/docs/server/moves).
   - The room's `exportBlocks(ids)`, `importBlocks(request)`, `commitMove(moveId, receipt)`, `abortMove(moveId)`, `lateEdits()`, `ackLateEdits(moveId, seq)` and `applyLateEdits(batch)`, also over RPC.
   - The types `MoveNamespace`, `MoveRoom`, `MoveDestination`, `ExportedBlocks`, `ImportRequest`, `ImportReceipt`, `CommitResult`, `LateEdit`, `LateEditBatch` and `MovedState`.
   - Log entries `move` and `late`; the alarm's `forward` task; tables `moves` and `late`.
@@ -1032,6 +1053,6 @@ Every public change since 0.0.11, by area.
 
 ### Migration
 
-- `MigrationRecord` loses `owner` and `leaseUntil` and is never stored `pending`; `MigrateOptions.leaseMs/owner/pollMs/waitMs` and `waitForSettled`'s options are accepted no-ops (a crash-released `navigator.locks` lock arbitrates; `status()` reports `pending`, `wait: false` returns `busy`).
+- `MigrationRecord` loses `owner` and `leaseUntil` and is never stored `pending`; `MigrateOptions` has no lease options and `waitForSettled` takes only the name (a crash-released `navigator.locks` lock arbitrates; `status()` reports `pending`, `wait: false` returns `busy`).
 - `MigrationPhase` loses `activate`/`announce`; there are no BroadcastChannel migration announcements.
 - `force` restores legacy ids in place instead of overwriting a snapshot row; `result.update` is the full migrated state; a foreign-generation container makes `migrate` throw `GenerationMismatchError`. `bindCrdt(Y).doc.restore` is new.

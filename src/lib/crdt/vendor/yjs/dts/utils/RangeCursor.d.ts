@@ -84,7 +84,7 @@ export class RangeCursor {
      * carrying a `formats` snapshot.
      *
      * Read-seed eligibility is deliberately WEAKER than `applyDelta`'s
-     * mutation seed (UPSTREAM.md P5): a read may resume on ANY item at-or-left
+     * mutation seed (UPSTREAM.md YP5): a read may resume on ANY item at-or-left
      * of the target — the forward fold reproduces format state from the
      * snapshot — while the mutation cursor must anchor on the FIRST item at
      * the index (its `p.left` must be countable-or-null). Both consume the

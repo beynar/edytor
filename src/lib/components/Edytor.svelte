@@ -74,7 +74,7 @@
 		);
 	const defaultValue: JSONDoc = {
 		// Empty document — the facade seeds the canonical bootstrap block of
-		// the document's `defaultType` on `sync()` (D1). No block types are
+		// the document's `defaultType` on `sync()`. No block types are
 		// named here, so mounting with a plugin set that lacks the optional
 		// `mention`/`code`/`codeLine` definitions can't crash.
 		children: []
@@ -86,8 +86,6 @@
 		blockHandles?: boolean | BlockHandlesOptions;
 		/** Add rich text, arrow moves, the suggestion UI and images unless `plugins` lists them (default `true`). */
 		defaultPlugins?: boolean;
-		/** @deprecated Use `blockHandles`; `false` also hides the built-in handles. */
-		blockDnd?: boolean;
 		class?: string;
 		/** The root textbox's accessible name (or name it with `aria-labelledby`). */
 		'aria-label'?: string;
@@ -117,8 +115,6 @@
 		readonly?: boolean;
 		/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. Read once. */
 		hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
-		/** @deprecated Use `hotkeys` (the name a plugin's bindings use). Removed in the next release. */
-		hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
 		/** After every commit that changed the visible document: a `JSONDoc`, the type `value` takes. */
 		onChange?: (value: JSONDoc) => void;
 		/**
@@ -201,7 +197,6 @@
 		plugins: userPlugins,
 		blockHandles,
 		defaultPlugins = true,
-		blockDnd = true,
 		class: className,
 		'aria-label': ariaLabel,
 		'aria-labelledby': ariaLabelledby,
@@ -214,7 +209,6 @@
 		readonly = false,
 		value = defaultValue,
 		hotkeys,
-		hotKeys,
 		sync,
 		room,
 		server,
@@ -246,14 +240,14 @@
 		readonly,
 		plugins: withHandles(
 			defaultPlugins ? withDefaults(userPlugins) : userPlugins,
-			blockHandles ?? blockDnd
+			blockHandles ?? true
 		),
 		document: edytorDocument,
 		doc,
 		awareness,
 		actor,
 		requireHydration,
-		hotkeys: hotkeys ?? hotKeys,
+		hotkeys,
 		onSelectionChange,
 		onChange,
 		onDocChange,
@@ -265,9 +259,9 @@
 
 	edytor = new EdytorClass(initialEdytorOptions);
 
-	// ONE attach path for owned and injected documents (U5/F3): `attachSync`
+	// ONE attach path for owned and injected documents: `attachSync`
 	// tracks the provider on the DOCUMENT's lifetime (one provider per
-	// transport target, settle-or-bound readiness, R13). It attaches while the tree
+	// transport target, settle-or-bound readiness). It attaches while the tree
 	// initializes (client only), so every sibling view's provider is in
 	// flight before any view decides on mount. A view-owned document still
 	// dies with the component: `edytor.destroy()` runs `document.destroy()`,
@@ -280,13 +274,13 @@
 	});
 	const initialSync = untrack((): EdytorSync | undefined => {
 		// The server render builds no provider. A readonly view attaches its
-		// sync like an editable one (D3, a live viewer): `readonly` refuses
+		// sync like an editable one (a live viewer): `readonly` refuses
 		// this view's writes, never the room's updates, so a flip keeps it.
 		if (typeof window === 'undefined') return undefined;
 		if (sync || room === undefined) return sync;
 		if (server === undefined) return createIndexeddbSync(room);
 		// Per author: the room refuses one user's socket delivering another's edits.
-		// Named from the server the socket dials (no trailing slash, GX-08).
+		// Named from the server the socket dials (no trailing slash).
 		const persistName = `edytor:${actor ? `${actor.id}@` : ''}${server.replace(/\/+$/, '')}/${room}`;
 		// An id no dial can carry is refused as the router would (4400), never thrown
 		// from the view; its local copy is kept, as the socket's companion would be.
@@ -350,10 +344,10 @@
 	/** The chrome popup open on this view (`edytor.popups`): the root names it while it is. */
 	const popup = $derived(edytor.popups.current);
 
-	// The display projector (R10): the root `$effect.pre` notes the focused
+	// The display projector: the root `$effect.pre` notes the focused
 	// element before the flush writes the DOM; the root `$effect` — the last
 	// effect of the editor subtree — displays the selection after them.
-	// The compare-to-truth observer (R12): the pre pass snapshots edited
+	// The compare-to-truth observer: the pre pass snapshots edited
 	// contents before the flush's writes, the compare pass runs after them.
 	$effect.pre(edytor.surface.pre);
 	$effect.pre(edytor.projector.pre);
@@ -433,7 +427,7 @@
 		></span>
 	</div>
 {:else if snapshot}
-	<!-- P8: the room's JSON, read-only, while this view's document hydrates. -->
+	<!-- The room's JSON, read-only, while this view's document hydrates. -->
 	<div data-edytor-snapshot style="display: contents">
 		<Snapshot
 			value={snapshot}
@@ -441,7 +435,6 @@
 			plugins={userPlugins}
 			{defaultPlugins}
 			{blockHandles}
-			{blockDnd}
 			class={className}
 			{placeholder}
 			{labels}

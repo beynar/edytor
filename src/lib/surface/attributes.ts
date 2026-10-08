@@ -1,6 +1,5 @@
 /**
- * The attribute-ownership table (R11, R12; plan §4.4 `surface/observer`, §5
- * L33). The core declares which attributes it owns on the elements it renders;
+ * The attribute-ownership table. The core declares which attributes it owns on the elements it renders;
  * after a flush an owned attribute that differs from the table is foreign
  * damage and is healed in place. Everything else on a tolerant element (the
  * root, a block element: plugin attach hooks, component props, `open` on a
@@ -40,8 +39,8 @@ const RTL =
 	/[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}\p{Script=Samaritan}\p{Script=Mandaic}\p{Script=Adlam}\p{Script=Hanifi_Rohingya}\p{Script=Mende_Kikakui}\p{Script=Old_Hungarian}\u200F]/u;
 
 /**
- * A block element's `dir` (bidi, F14), from its own text's first strong
- * character (UAX #9, P2, as `dir="auto"` reads it): a line opening with
+ * A block element's `dir` (bidi), from its own text's first strong
+ * character (UAX #9, as `dir="auto"` reads it): a line opening with
  * Hebrew or Arabic is right to left in any page, its caret, alignment and
  * arrows with it (`selection.rtl`); one holding no strong character (empty,
  * digits, punctuation) has none and keeps its parent's (`auto` would read

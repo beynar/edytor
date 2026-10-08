@@ -11,8 +11,7 @@
 /**
  * The structural subset of a KV namespace {@link kvHistory} uses — a
  * Workers `KVNamespace` binding satisfies it, and so does an in-memory
- * fake. Passed as `history.store` itself it is wrapped by
- * {@link kvHistory} (deprecated: pass `kvHistory(namespace)`).
+ * fake. As `history.store` it goes through {@link kvHistory}.
  */
 export type KVLike = {
 	put(
@@ -107,10 +106,10 @@ export type HistoryStoreFactory = (room: HistoryRoomStorage) => HistoryStore;
 export type HistoryOptions = {
 	/**
 	 * The store: a {@link HistoryStore} ({@link kvHistory}, {@link r2History}
-	 * or your own), {@link roomHistory}`()`, or — deprecated — a KV namespace
-	 * itself (any {@link KVLike}, wrapped by {@link kvHistory}).
+	 * or your own) or {@link roomHistory}`()`. A KV namespace goes through
+	 * {@link kvHistory}.
 	 */
-	store: HistoryStore | HistoryStoreFactory | KVLike;
+	store: HistoryStore | HistoryStoreFactory;
 	/** How long a version is kept, in days (default 30). */
 	retentionDays?: number;
 	/** The IANA time zone whose noon and midnight end the slots (default `'UTC'`). */
@@ -528,7 +527,7 @@ export const roomHistory =
 		};
 	};
 
-/** A {@link HistoryStore} (its numeric `maxValueBytes` says so), as opposed to a bare KV namespace. */
+/** A {@link HistoryStore} (its numeric `maxValueBytes` and its `delete` say so). */
 const isHistoryStore = (store: unknown): store is HistoryStore =>
 	typeof (store as HistoryStore | null)?.maxValueBytes === 'number' &&
 	typeof (store as HistoryStore).delete === 'function';
@@ -541,7 +540,8 @@ export const isR2Bucket = (store: unknown): store is R2BucketLike =>
 /**
  * The store `history.store` names, built for this room: a
  * {@link HistoryStore} as it is, a factory ({@link roomHistory}) over the
- * room's storage, and a bare KV namespace through {@link kvHistory}.
+ * room's storage. Anything else (a KV namespace itself) is refused: it goes
+ * through {@link kvHistory}.
  */
 export const resolveHistoryStore = (
 	store: HistoryOptions['store'],
@@ -549,5 +549,7 @@ export const resolveHistoryStore = (
 ): HistoryStore => {
 	if (typeof store === 'function') return store(room);
 	if (isHistoryStore(store)) return store;
-	return kvHistory(store as KVLike);
+	throw new TypeError(
+		'history.store: not a HistoryStore. Wrap a KV namespace in kvHistory(namespace), an R2 bucket in r2History(bucket)'
+	);
 };

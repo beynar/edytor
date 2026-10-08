@@ -1,6 +1,6 @@
 /**
  * HARDENING U0 / R1 — P4 format-aware search-marker corruption (review
- * `docs/crdt-v14-follow-up-review-2026-09-21.md` §R1, P1).
+ * `docs/archive/crdt-v14-follow-up-review-2026-09-21.md` §R1, P1).
  *
  * `updateMarkerFormats` (src/lib/crdt/vendor/yjs/src/ynode.js:522) folds an
  * inserted format marker into EVERY later cached `marker.formats` snapshot —

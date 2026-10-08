@@ -58,7 +58,7 @@ export const readDomText = (text: Text) => {
 		}
 	}
 
-	// An empty text's filler shares its node with what the browser typed, on either side (F-I22).
+	// An empty text's filler shares its node with what the browser typed, on either side.
 	if (text.isEmpty) return value.replaceAll(ZERO_WIDTH_SPACE, '');
 
 	if (text.endsWithNewline && value.endsWith(ZERO_WIDTH_SPACE)) {
@@ -238,7 +238,7 @@ const repairDrift = async (
 		eventTarget.text.refreshFromModel();
 	}
 	target.text.refreshFromModel();
-	// The attempt decided the caret; `select()` it — the projector displays it (V4) —
+	// The attempt decided the caret; `select()` it — the projector displays it —
 	// unless a gesture came during the wait: the selection is then the user's.
 	if (edytor.intentSerial !== serial) return;
 	edytor.selection.setAtTextOffset(target.text, Math.min(target.offset, target.text.length));
@@ -261,7 +261,7 @@ const claimOf = (edytor: Edytor, event: Event) => {
 
 /**
  * An `input` event. Model-owned drift is repaired here; browser-made text is
- * never adopted here: the mutation queue is the only adopter (R8, L31), so
+ * never adopted here: the mutation queue is the only adopter, so
  * the `input` flushes it — a browser-owned attempt's change is adopted there,
  * once, through the dispatcher — then closes the attempt it belongs to.
  */

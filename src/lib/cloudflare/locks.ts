@@ -1,6 +1,6 @@
 /**
- * Per-block locks (H10, `room.locks` in `docs/editor-delete-contract.md`):
- * a `validate` hook (H2, accept-then-compensate) that keeps a locked block
+ * Per-block locks (`room.locks` in `docs/editor-delete-contract.md`):
+ * a `validate` hook (accept-then-compensate) that keeps a locked block
  * its owner's. Worker-safe: no timers, no browser globals.
  *
  * A block is locked when its data names a user under `key` (default

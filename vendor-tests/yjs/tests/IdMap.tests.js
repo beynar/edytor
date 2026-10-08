@@ -74,7 +74,7 @@ export const testAmMerge = _tc => {
 }
 
 /**
- * P8 keeps the IdMap wire codec (the inverse of the `readIdMap` that decodes legacy
+ * YP8 keeps the IdMap wire codec (the inverse of the `readIdMap` that decodes legacy
  * attribution records) and prunes the IdMap set algebra (`mergeIdMaps`, `diffIdMap`,
  * `intersectMaps`): the codec roundtrip of upstream's diffing tests stays.
  *
@@ -96,7 +96,7 @@ export const testRepeatRandomDeletes = tc => {
   const client = Array.from(idset.clients.keys())[0]
   const clock = prng.int31(tc.prng, 0, clockRange)
   const len = prng.int31(tc.prng, 0, math.round((clockRange - clock) * 1.2)) // allow exceeding range to cover more edge cases
-  // P8: `diffIdMap` is pruned — compare against membership taken before the delete instead
+  // YP8: `diffIdMap` is pruned — compare against membership taken before the delete instead
   const before = Array.from({ length: clockRange * 2 }, (_, c) => idset.has(client, c))
   idset.delete(client, clock, len)
   for (let c = 0; c < before.length; c++) {
@@ -117,7 +117,7 @@ export const testUserAttributionEncodingBenchmark = tc => {
   const currentTime = time.getUnixTime()
   const ydoc = new YY.Doc()
   ydoc.on('afterTransaction', tr => {
-    // P8: `createIdMapFromIdSet` is pruned — add the ranges directly
+    // YP8: `createIdMapFromIdSet` is pruned — add the ranges directly
     tr.insertSet.forEach((r, client) => attributions.add(client, r.clock, r.len, [createContentAttribute('insert', 'userX'), createContentAttribute('insertAt', currentTime)]))
     tr.deleteSet.forEach((r, client) => attributions.add(client, r.clock, r.len, [createContentAttribute('delete', 'userX'), createContentAttribute('deleteAt', currentTime)]))
   })

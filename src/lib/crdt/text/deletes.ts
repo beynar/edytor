@@ -1,5 +1,5 @@
 /**
- * Per-writer text delete marks — D54 applied to text (fork patch P11).
+ * Per-writer text delete marks — the block delete marks' rule applied to text (fork patch YP11).
  *
  * Deleting text tombstones its engine items, and the engine's undo brings
  * text back as COPIES (new items). The engine records no writer for a
@@ -39,7 +39,7 @@
  * Writes a local step needs join it (`onApply`, the facade's delete), so an
  * undo stays one update. Writes a REMOTE change calls for run in one
  * follow-up transaction under an origin no history tracks, like the
- * engine's formatting cleanup (P10). Pending characters, holding and
+ * engine's formatting cleanup (fork patch YP10). Pending characters, holding and
  * deduplication are session facts: a writer whose history ended no longer
  * hides a concurrent restoration, though its live mark still withholds every
  * later undo.
@@ -143,7 +143,7 @@ export const bindDeletes = (Y: EngineApi) => {
 				if (!it.deleted) for (const [r, bytes] of recordsIn(it, null)) fn(r, bytes);
 		};
 		attrItems<Unit>(st.restored).forEach((it) => {
-			// A record the purge deleted names nothing any more (H7).
+			// A record the purge deleted names nothing any more.
 			if (!it.deleted) for (const [r, bytes] of recordsIn(it, null)) indexRecord(st, r, bytes);
 		});
 		records(st.marks, (r, bytes) => indexMark(st, r, bytes));
@@ -308,7 +308,7 @@ export const bindDeletes = (Y: EngineApi) => {
 	/** After every commit: index its records; after a remote one, keep this replica's facts. */
 	const react = (s: State, tr: Tr): void => {
 		const fresh = sync(s, tr);
-		// A purge (H7) deletes marks past the horizon: nothing comes back for
+		// A purge deletes marks past the horizon: nothing comes back for
 		// it, and a pending character only they held stays deleted.
 		if ((tr.changed as Map<unknown, unknown>).has(s.horizon)) {
 			for (const p of s.policies)
@@ -325,7 +325,7 @@ export const bindDeletes = (Y: EngineApi) => {
 	};
 
 	/**
-	 * P4: the spans of this writer's last record merged with `spans`, when a
+	 * The spans of this writer's last record merged with `spans`, when a
 	 * delete may fold into it — it is the records list's last element, live,
 	 * this replica's, written in this transaction or in the step still
 	 * capturing (`open`: the history steps whose capture group is open), or
@@ -363,7 +363,7 @@ export const bindDeletes = (Y: EngineApi) => {
 	};
 
 	/**
-	 * P4: delete this replica's last record (the list's tail, {@link foldInto})
+	 * Delete this replica's last record (the list's tail, {@link foldInto})
 	 * and append `bytes` right after it, by item: no index walk over the
 	 * list's tombstones. The list's search markers are dropped (their
 	 * positions no longer hold).
@@ -432,7 +432,7 @@ export const bindDeletes = (Y: EngineApi) => {
 				return out;
 			});
 			if (spans.length === 0) return;
-			// P4: a delete in the step that wrote this writer's last record
+			// A delete in the step that wrote this writer's last record
 			// (a backspace run) folds into it, its spans merged — one record per
 			// step, not per keystroke. The record is replaced (deleted and
 			// written again), never edited, so an undo of the step still takes
@@ -455,7 +455,7 @@ export const bindDeletes = (Y: EngineApi) => {
 
 		/**
 		 * Whether every live mark holding a character of `spans` was written
-		 * where `old` says (H7: a withdrawn block's content was deleted
+		 * where `old` says (a withdrawn block's content was deleted
 		 * before the horizon). Characters no mark holds count as old.
 		 */
 		heldBefore: (
@@ -470,7 +470,7 @@ export const bindDeletes = (Y: EngineApi) => {
 		},
 
 		/**
-		 * The purge's part (H7, `room.purge.what`), inside the purge
+		 * The purge's part (`room.purge.what`), inside the purge
 		 * transaction: delete every text delete mark record `old` names, and
 		 * every restoration record `old` names whose copies are all deleted
 		 * and that no remaining mark holds; its copies are forgotten (the
@@ -519,7 +519,7 @@ export const bindDeletes = (Y: EngineApi) => {
 			return { marks, records: doomed.length };
 		},
 
-		/** The `restoreFilter` and `onApply` options of a history on `doc` (P11). */
+		/** The `restoreFilter` and `onApply` options of a history on `doc` (fork patch YP11). */
 		history: (doc: EngineDoc, um: () => YUndoManager) => {
 			const s = attach(doc);
 			const p: Policy = { um, watch: [], tr: null, units: [] };

@@ -1,15 +1,15 @@
 /**
- * EdytorDoc (U06) — the assembled document model.
+ * EdytorDoc — the assembled document model.
  *
  * This module binds the three proven engine layers over ONE Y.Doc into the
- * single public surface the command layer (U08) and providers (U07) consume:
+ * single public surface the command layer and providers consume:
  *
  * - `placement/model.ts` (`bindModel`) — stable block registry + placement
- *   candidates; identity-preserving move/nest/split/merge (U03).
+ *   candidates; identity-preserving move/nest/split/merge.
  * - `text/model.ts` (`bindText`) — stable backing texts delimited by stream
- *   boundaries + merge claims (R2); split/merge never copy text.
+ *   boundaries + merge claims; split/merge never copy text.
  * - `text/runs.ts` (`bindRuns`) — the maintained run view: immutable run
- *   snapshots, structural sharing, the change report (U05, D9).
+ *   snapshots, structural sharing, the change report.
  *
  * This module is the wiring: `create` builds a facade's parts, each a
  * module under `doc/` taking an explicit context — the parts before it —
@@ -36,7 +36,7 @@
  * ── Identity discipline ────────────────────────────────────────────────
  *
  * Relocation (move/nest/unnest/split/merge/delete-with-children) preserves
- * block AND atom identity — the U03/U04 contract. New identity is created
+ * block AND atom identity. New identity is created
  * ONLY by ops whose purpose is fresh identity: `insertBlock`
  * (caller-assigned ids; nested spec children included), `duplicateBlock`
  * (explicit fresh ids for paste/drag-clone), and `setBlock` content/children
@@ -195,14 +195,14 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const defaultChildOf = config.defaultChildOf ?? (() => undefined);
 		const rendersContentOf = config.rendersContent ?? (() => true);
 		const runsView: RunView = R.attach(doc);
-		// The role table — the display and every guard below ask it. UW-21b:
+		// The role table — the display and every guard below ask it.
 		// a void kind displays no children — the index sheds them into its
 		// slot at read time, so a child a peer nests or splits under a block
 		// another peer retypes to a void shows on every replica. A block
 		// promoted out of an island displays as its display parent's default
 		// child, as a delete of the island retypes the ones it saw. An island
-		// declared `lines` holds only lines of its `defaultChild` kind
-		// (FW-01, XW-03). A layout displays only its items — its
+		// declared `lines` holds only lines of its `defaultChild` kind.
+		// A layout displays only its items — its
 		// `defaultChild` kind — and only two or more (`layout.*`). A table
 		// displays only its rows and a row only its cells (`table.*`).
 		const roles: DisplayRoles = {
@@ -362,7 +362,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 							: undefined
 		};
 
-		/** Every document op, prepared (R6) — `apply(prepare.op(…))` is the op. */
+		/** Every document op, prepared — `apply(prepare.op(…))` is the op. */
 		const prepare = {
 			insertBlocks,
 			insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => insertBlocks(dest, [spec]),
@@ -453,7 +453,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		// ── facade object ─────────────────────────────────────────────────
 
-		/** A read taking an id first: the id normalizes at ingress (O1). */
+		/** A read taking an id first: the id normalizes at ingress. */
 		const byRef =
 			<I extends BlockId | null, A extends unknown[], R>(f: (id: I, ...rest: A) => R) =>
 			(id: I, ...rest: A): R =>
@@ -495,7 +495,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			 * it after each frame.
 			 */
 			releaseHistory: (um: YUndoManager): void => releasers.get(um)?.(),
-			// reads — every id argument normalizes at ingress (O1)
+			// reads — every id argument normalizes at ingress
 			project: () => M.project(doc),
 			toJSON,
 			blockJSON: byRef(blockJSON),
@@ -531,7 +531,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			compare: (a: BlockId, b: BlockId) => compare(ref(a), ref(b)),
 			next: byRef(next),
 			previous: byRef(previous),
-			// caret anchors (U09) — backing-text-bound selection endpoints
+			// caret anchors — backing-text-bound selection endpoints
 			anchorAt: byRef(anchorAt),
 			resolveAnchor,
 			followUndo,
@@ -564,7 +564,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			 */
 			tableGrid: byRef(reads.tableGrid),
 			insideIsland: byRef((id: BlockId) => insideIsland(id)),
-			// structural capability (R5)
+			// structural capability
 			canPlace: (ids: readonly BlockId[], parent?: BlockId | null) =>
 				canPlace(ids.map(ref), parent == null ? parent : ref(parent)),
 			canMerge: (from: BlockId, into: BlockId) => canMerge(ref(from), ref(into)),
@@ -578,7 +578,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			landingOf: (id: BlockId, kind: string, after?: boolean) =>
 				landingOf(ref(id), ref(kind), after),
 			defaultChild: byRef(defaultChild),
-			// maintained runs (U05 surface, bound to this doc)
+			// maintained runs (bound to this doc)
 			runs: byRef(runsView.runs),
 			contentJSON: byRef(runsView.contentJSON),
 			// events
@@ -593,11 +593,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			// transactions (composed ops already run in one; expose for callers
 			// that batch several ops into one undo step / one event)
 			transact: <R>(fn: () => R, origin?: unknown): R => write(() => doc.transact(fn, origin)),
-			// escape hatch for U08/debugging — the bound engine layers.
+			// escape hatch for the history and debugging — the bound engine layers.
 			model: M,
 			text: T,
 			runsView,
-			// ── model-state version + typed node surface (WU2) ──────────
+			// ── model-state version + typed node surface ──────────
 			/**
 			 * The index version — bumps on every fold that changed derived
 			 * state, mid-transaction writes included. Read surfaces that

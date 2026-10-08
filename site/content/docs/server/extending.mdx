@@ -35,7 +35,7 @@ export default {
 That is the whole server. `routeDocumentSocket` works with any namespace whose objects host a document, and [authorization](/docs/server/authorization) is unchanged.
 
 :::note
-`attachRoom` comes from `edytor/cloudflare` and hosts a document in a Durable Object. It was called `attachDocument` before, a name it keeps as a deprecated alias for one release; the `attachDocument` exported by `edytor` and `edytor/crdt/edytor` is a different function, which wraps an engine document in the browser or Node.
+`attachRoom` comes from `edytor/cloudflare` and hosts a document in a Durable Object. It was called `attachDocument` in earlier pre-releases, a name `edytor/cloudflare` no longer exports; the `attachDocument` exported by `edytor` and `edytor/crdt/edytor` is a different function, which wraps an engine document in the browser or Node.
 :::
 
 ## What `attachRoom(this, options)` does

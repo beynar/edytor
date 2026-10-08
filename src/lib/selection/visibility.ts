@@ -24,7 +24,7 @@ export const hidden = (block: Block, removed?: ReadonlySet<Block>): boolean => {
 	const hider = block.node?.closest(HIDDEN);
 	if (!hider || !removed?.size) return !!hider;
 	// What hides: a `hidden` element itself, else the closed `<details>` it sits in
-	// (which a snippet may render children directly under, YW-12).
+	// (which a snippet may render children directly under).
 	const cause = hider.matches('[hidden]') ? hider : hider.parentElement!;
 	let owner: Block | undefined = block;
 	while (owner && !owner.node?.contains(cause)) owner = owner.parent;
@@ -55,9 +55,9 @@ export const shown = (
  * body is not in a range, and a split of its header leaves it there,
  * `flow.split`; with `removed`, whether a block stays hidden once those
  * blocks go), a list's flat item kind (`itemKind`: a pasted numbered
- * item landing in an `ordered-list` is its item, AW-08), and a container's
+ * item landing in an `ordered-list` is its item), and a container's
  * header whose body shows (`header`: a paste at its end leads its body, as
- * Enter opens a first child, HX-10), or `'closed'` for any closed `<details>`.
+ * Enter opens a first child), or `'closed'` for any closed `<details>`.
  */
 export const viewOf = (edytor: Edytor) => {
 	const blocks = new WeakMap<ReadonlySet<string>, Set<Block>>();
@@ -88,7 +88,7 @@ export const viewOf = (edytor: Edytor) => {
  * The blocks a block selection (or `blocks`) acts on, in document order:
  * its members, a selected block that shows only its children (a list its
  * items, a code block its lines) with its whole subtree, as its highlight
- * shows (`sel.blocks.exact`, GX-02). Delete, cut, copy, paste and typing
+ * shows (`sel.blocks.exact`). Delete, cut, copy, paste and typing
  * over it, Turn into, marks and the toolbar read it; marks skip the hidden
  * part of that subtree ({@link rangeCovers}). The blocks as clicked are
  * `selection.selectedBlocks`: a grip-selected list is one block to a menu.
@@ -116,7 +116,7 @@ type TextRange = RangeEndpoints & { texts: Text[] };
  * with the range member that hides it, any member but the head, and the head
  * too when the range starts at its start (it dies with the range). A
  * replacement (`replace`) keeps the head and its body. The live block
- * selection covers exactly its members (`sel.blocks.exact`, FX-07; a list
+ * selection covers exactly its members (`sel.blocks.exact`; a list
  * or a code block with its subtree, {@link selectedMembers}), never a
  * closed toggle's hidden body: its delete keeps that body, and marks on a
  * selected list leave it as it is. Copy, cut, delete, marks and the

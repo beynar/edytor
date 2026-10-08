@@ -151,7 +151,7 @@ export const wrapBlocks = (edytor: Edytor, blocks: Block[], kind?: string, colum
 
 /**
  * The kind `block` shows as: its own, or an item's list's `itemKind` (a
- * `list-item` of an `ordered-list` is a numbered item, DR-behavior-3).
+ * `list-item` of an `ordered-list` is a numbered item).
  */
 const shownKind = (block: Block) => block.list?.definition.itemKind ?? block.type;
 
@@ -210,8 +210,8 @@ export const holdsNothing = (edytor: Edytor, block: Block) => {
  * list, and a block inserted after one splits the list there). A kind
  * rendering no content (a divider) holds no caret: block `next`, of the
  * default kind where it lands, follows it. An emptied document's line
- * creates them (DR-behavior-2). Turn into and the horizontal rule share it,
- * and prepare it from the payload hooks leave (BW-03).
+ * creates them. Turn into and the horizontal rule share it,
+ * and prepare it from the payload hooks leave.
  */
 export const placing = (
 	block: Block,
@@ -260,14 +260,14 @@ export const convertToKind = (
 	if (!block?.convertible) return false;
 	const value = structuredClone(row.value);
 	const { parent: holder } = block;
-	// The kind an item already shows as keeps it in its list (DR-behavior-3); a
+	// The kind an item already shows as keeps it in its list; a
 	// list's own flat kind makes a block shed into it its item (SW10-lists-1).
 	if (value.type === shownKind(block)) value.type = block.type;
 	else if (holder?.isContainer && value.type === holder.definition.itemKind)
 		value.type = edytor.defaultChild(holder);
 	const after = row.replaces && !holdsNothing(edytor, block);
 	const [next, touched] = [id('b'), lineage(block)];
-	// The kind as hooks leave it (BW-03): placed, normalized by its kind, and given the caret.
+	// The kind as hooks leave it: placed, normalized by its kind, and given the caret.
 	let kind: Partial<JSONBlock> & { id: string } = { ...value, id: id('b') };
 	const converted = (payload: Partial<JSONBlock>) => {
 		kind = { ...payload, id: after ? (payload.id ?? kind.id) : block.id };
@@ -307,8 +307,8 @@ export const convertToKind = (
 /**
  * The blocks a Turn into over `blocks` converts, in document order: the
  * convertible ones. A list container is not, whether a text range, a block
- * selection or its grip names it: the items selected with it convert
- * (ZW-02). A closed toggle's hidden body is skipped (Select all selects it).
+ * selection or its grip names it: the items selected with it convert.
+ * A closed toggle's hidden body is skipped (Select all selects it).
  */
 export const convertedBlocks = (blocks: Iterable<Block>): Block[] =>
 	[...blocks].filter((block) => block.convertible && !hidden(block));
@@ -317,8 +317,8 @@ export const convertedBlocks = (blocks: Iterable<Block>): Block[] =>
  * Convert several blocks (`convertedBlocks`) to a row's kind as one undo
  * step, keeping the selection (Notion's Turn into over several blocks): one
  * conversion per block, each one plan, so a block the document refuses or
- * an extension vetoes keeps its kind and the others convert (`dispatcher.each`,
- * BW-02). A block selection keeps the converted blocks selected, even once
+ * an extension vetoes keeps its kind and the others convert (`dispatcher.each`).
+ * A block selection keeps the converted blocks selected, even once
  * the list that held them is gone (its items lifted out of it). Answers
  * whether any conversion applied.
  */

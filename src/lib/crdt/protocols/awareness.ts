@@ -12,7 +12,7 @@
  * awareness updates are byte-compatible with v13 on the wire. The provider
  * layer still tags every room message with the protocol-version envelope —
  * wire compatibility is not peer compatibility (presence payload versioning
- * is U09's concern).
+ * is the presence layer's concern).
  */
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';

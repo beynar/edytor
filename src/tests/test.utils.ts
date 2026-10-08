@@ -767,3 +767,20 @@ export const runHotkey = async (
 		defaultPrevented: event.defaultPrevented
 	};
 };
+
+/**
+ * The text of `block`'s latest `{ end }` suggestion (`edytor.suggestions`),
+ * `null` when it has none.
+ */
+export const endSuggestion = (edytor: Edytor, block: Block): string | null => {
+	const content = edytor.suggestions.at(block.id).end.at(-1)?.content[0]?.content;
+	if (!content?.length) return null;
+	return content.map((part) => ('text' in part ? part.text : '')).join('');
+};
+
+/** Replace `block`'s `{ end }` suggestions with one of `text` (`null`: drop them). */
+export const suggestEnd = (edytor: Edytor, block: Block, text: string | null): void => {
+	for (const suggestion of edytor.suggestions.at(block.id).end) suggestion.discard();
+	if (text !== null)
+		edytor.suggestions.add({ end: block.id }, [{ type: block.type, content: [{ text }] }]);
+};

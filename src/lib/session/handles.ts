@@ -1,5 +1,5 @@
 /**
- * Handles (plan §2.4 "Handles", §4.3 `session/handles.ts`, R4): the id-only
+ * Handles: the id-only
  * `Block`, `Text` and `InlineBlock` that extensions, normalizers and the
  * view's own code hold. A handle's getters read the document index — which
  * folds mid-transaction behind its watermark, so a read inside a command
@@ -9,7 +9,7 @@
  *
  * One handle per id: blocks by id, texts by (block, ordinal) — a text is the
  * `ordinal`-th segment of its block and has no identity across commits
- * (K5) —, atoms by atom id. The cache is pruned from a commit's `removed`;
+ * —, atoms by atom id. The cache is pruned from a commit's `removed`;
  * a handle for a dead id answers through `isInTree` / `isInDocument`.
  */
 import { Block } from '../block/block.svelte.js';

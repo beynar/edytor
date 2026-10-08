@@ -67,7 +67,7 @@ const toRemoteRect = (
 });
 
 const getFallbackRect = (point: DomPoint, origin: DOMRect, editor: HTMLElement) => {
-	// A text the browser skips rendering (content-visibility, P8): its nearest rendered ancestor.
+	// A text the browser skips rendering (content-visibility): its nearest rendered ancestor.
 	const textRect = point.text.node && rendered(point.text.node).getBoundingClientRect();
 	const editorRect = editor.getBoundingClientRect();
 	return toRemoteRect(
@@ -117,7 +117,7 @@ const getSelectionRects = (
 	if (range.collapsed) {
 		return [];
 	}
-	// Skipped by the browser (content-visibility, P8): its nearest rendered ancestor stands for it.
+	// Skipped by the browser (content-visibility): its nearest rendered ancestor stands for it.
 	if (
 		(start.text.node && renderSkipped(start.text.node)) ||
 		(end.text.node && renderSkipped(end.text.node))
@@ -173,7 +173,7 @@ const blockBar = (edytor: Edytor, ids: string[], origin: DOMRect): RemoteSelecti
 	return toRemoteRect({ left: left - 6, top, width: 2, height: bottom - top }, origin);
 };
 
-/** The peers' carets, ranges and block bars, relative to the overlay's `origin` (R11, F-T8). */
+/** The peers' carets, ranges and block bars, relative to the overlay's `origin`. */
 export const getRenderedRemoteSelections = (
 	edytor: Edytor,
 	origin: DOMRect
@@ -183,7 +183,7 @@ export const getRenderedRemoteSelections = (
 		return [];
 	}
 
-	// U8a — phase split: resolve/validate every remote selection first,
+	// Phase split: resolve/validate every remote selection first,
 	// touch layout APIs only when at least one candidate survives.
 	// `editor.getBoundingClientRect()` used to run unconditionally at the
 	// top — a synchronous layout read on EVERY awareness/doc invalidation

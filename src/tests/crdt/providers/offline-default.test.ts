@@ -151,8 +151,8 @@ const databases = async () => (await indexedDB.databases()).map((db) => db.name)
 
 const wsSync = (serverUrl, options = {}) =>
 	providers.createWebsocketSync({
-		serverUrl,
-		roomName: 'room',
+		server: serverUrl,
+		room: 'room',
 		WebSocketPolyfill: Socket,
 		maxBackoffTime: 40,
 		...options

@@ -58,7 +58,7 @@ const isTextInsertionInput = (inputType: string) =>
 	inputType !== 'insertFromDrop' &&
 	['text', 'composition', 'payload'].includes(kindOf(inputType) ?? '');
 
-/** The Android no-op-Backspace and model-owned drift deadlines (plan §9.1 rule 5). */
+/** The Android no-op-Backspace and model-owned drift deadlines (named, counted browser rules). */
 const NATIVE_INPUT_REPAIR_WINDOW_MS = 150;
 
 const getBeforeInputTextTargetRange = (
@@ -125,7 +125,7 @@ const shouldSyncBeforeInputTargetRange = (
 		targetTextRange.yEnd === yStart
 	) {
 		// The engine re-reports the admitted caret, canonicalized (Chromium moves
-		// ` tail`@0 into `Link`@4): the caret keeps its admitted edge side (R4).
+		// ` tail`@0 into `Link`@4): the caret keeps its admitted edge side.
 		return false;
 	}
 	if (!deleteDir(reported)) {
@@ -352,7 +352,7 @@ const androidNoOpBackspaceDeadline = (edytor: Edytor, attempt: Attempt) => {
 	}
 
 	setTimeout(() => {
-		// Did this attempt's adoption apply (or refuse) a deletion (BI-8)?
+		// Did this attempt's adoption apply (or refuse) a deletion?
 		if (
 			attempt.phase === 'applied' ||
 			attempt.phase === 'failed' ||
@@ -517,7 +517,7 @@ export const admitKeyAttempt = (edytor: Edytor, inputType: string, data?: string
 		'model'
 	);
 	edytor.attempts.drift(attempt, 'refresh', 50);
-	// The missing-`beforeinput` deadline (plan §9.1 rule 5).
+	// The missing-`beforeinput` deadline (a named, counted browser rule).
 	setTimeout(() => void runKeyAttempt(edytor, attempt));
 };
 

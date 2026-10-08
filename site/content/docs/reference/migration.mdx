@@ -16,6 +16,12 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 Nothing yet.
 
+### From 0.1.0-next.40
+
+#### Breaking changes
+
+- **The handles' raw write primitives are internal.** `Text.insertAt`, `deleteAt` and `formatAt`, and `Block.insertChildren`, `deleteChildren` and `insertParts`, wrote to the shared document directly: no hooks, no undo step of their own, and they wrote even on a readonly view. They are no longer in the published types, and on a view that refuses writes (readonly, a read-only document) they write nothing. Use the commands instead (`text.insertText`, `text.markText`, `block.deleteContentAtRange`, `block.insertBlockAfter`…), or `edytor.document.facade` for a deliberate raw write outside every view.
+
 ### From 0.1.0-next.39
 
 No package change: 0.1.0-next.39 was tagged but not published (a test of its CI run failed); this release carries it. Upgrading from 0.1.0-next.38, read the section below.

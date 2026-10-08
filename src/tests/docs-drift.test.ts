@@ -311,7 +311,16 @@ describe('docs drift', () => {
 		expect(from).not.toContain(version);
 		const named = (text: string) =>
 			[...text.matchAll(/\b\d+\.\d+\.\d+-next\.\d+\b/g)].map(([mention]) => mention);
-		expect(named(notes).filter((mention) => !servedVersions().includes(mention))).toEqual([]);
+		// A version tagged but never served (unserved-versions.txt) may be named too.
+		const unserved = readFileSync(join(root, 'site/scripts/unserved-versions.txt'), 'utf8')
+			.split('\n')
+			.filter((line) => line && !line.startsWith('#'));
+		expect(unserved.filter((v) => servedVersions().includes(v))).toEqual([]);
+		expect(
+			named(notes).filter(
+				(mention) => !servedVersions().includes(mention) && !unserved.includes(mention)
+			)
+		).toEqual([]);
 		const mentions = docs.flatMap((path) => {
 			const text = pageText(path);
 			return named(path === migration ? text.replace(upgrades, '') : text).map(

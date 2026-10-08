@@ -366,7 +366,9 @@ A task with a checkbox that writes `data.done`, a markdown prefix, clipboard for
 				normalizeContent: ({ block }) => {
 					const text = block.firstText;
 					const at = text?.stringContent.indexOf('\n') ?? -1;
-					if (text && at !== -1) return () => text.deleteAt(at, 1);
+					if (text && at !== -1)
+						return () =>
+							block.deleteContentAtRange({ start: [text.index, at], end: [text.index, at + 1] });
 				}
 			}
 		}

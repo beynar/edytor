@@ -437,9 +437,13 @@ export class Block {
 
 	/**
 	 * Insert children at `index`: a JSON spec is created (its id kept, minted
-	 * when missing); a block handle moves there with its identity.
+	 * when missing); a block handle moves there with its identity. A raw
+	 * write for the editor's own commands: nothing on a view whose dispatcher
+	 * refuses writes (readonly, a read-only document).
+	 * @internal
 	 */
 	insertChildren = (index: number, blocks: (JSONBlock | Block)[]): void => {
+		if (!this.edytor.dispatcher.permits()) return;
 		const { facade } = this.edytor;
 		const parent = this.isRoot ? null : this.id;
 		blocks.forEach((block, k) => {
@@ -448,8 +452,13 @@ export class Block {
 		});
 	};
 
-	/** Delete `length` visible children from `index`, each with its subtree (a document delete). */
+	/**
+	 * Delete `length` visible children from `index`, each with its subtree (a
+	 * document delete). Raw, as `insertChildren`.
+	 * @internal
+	 */
 	deleteChildren = (index: number, length = 1): void => {
+		if (!this.edytor.dispatcher.permits()) return;
 		const ids = this.edytor.facade.childrenIds(this.isRoot ? null : this.id);
 		for (const id of ids.slice(index, index + length).reverse())
 			this.edytor.facade.block(id).delete({ keepChildren: false });
@@ -457,9 +466,11 @@ export class Block {
 
 	/**
 	 * Insert content before part `index` (a text segment or an inline atom):
-	 * each entry is a text's runs or an atom, as JSON.
+	 * each entry is a text's runs or an atom, as JSON. Raw, as `insertChildren`.
+	 * @internal
 	 */
 	insertParts = (index: number, parts: (JSONText[] | JSONInlineBlock)[]): void => {
+		if (!this.edytor.dispatcher.permits()) return;
 		const model = this.model;
 		if (!model) return;
 		const all = this.edytor.idToBlock.parts(this.id);

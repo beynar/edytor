@@ -112,16 +112,23 @@ export class Text {
 	// the block's display space (read from the index, so a write after another
 	// in the same transaction lands right).
 
-	/** Insert `text` (optionally marked) at segment-local `offset`. */
+	// They write raw (no hooks, no undo policy of their own): the commands
+	// that call them passed the dispatcher's admission, and a call a readonly
+	// view or a read-only document would refuse writes nothing.
+
+	/** Insert `text` (optionally marked) at segment-local `offset`. @internal */
 	insertAt = (offset: number, text: string, marks?: Record<string, unknown> | null): boolean =>
+		this.edytor.dispatcher.permits() &&
 		accepted(this.parent.model?.insertText(this.segStart + offset, text, marks ?? undefined));
 
-	/** Delete `length` atoms at segment-local `offset`. */
+	/** Delete `length` atoms at segment-local `offset`. @internal */
 	deleteAt = (offset: number, length: number): boolean =>
+		this.edytor.dispatcher.permits() &&
 		accepted(this.parent.model?.deleteText(this.segStart + offset, length));
 
-	/** Multi-mark format over `[offset, offset+length)` — `null` values remove the mark. */
+	/** Multi-mark format over `[offset, offset+length)` — `null` values remove the mark. @internal */
 	formatAt = (offset: number, length: number, attributes: Record<string, unknown>): boolean =>
+		this.edytor.dispatcher.permits() &&
 		accepted(this.parent.model?.format(this.segStart + offset, length, attributes));
 
 	private batch = batch.bind(this);

@@ -16,11 +16,11 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 ## Not finished
 
 - **Simple tables only.** The [table plugin](/docs/plugins/table) is Notion's simple table: cells of text, no merged cells, no cell selection, no sorting, filters or formulas, and no database views. A text range across cells deletes each cell's covered text; copy of a part of a table copies its text.
-- **No comments.** No comment threads, sidebar or resolve flow. A [`comment:<id>` mark](/docs/customization/marks#how-concurrent-marks-merge) per thread can anchor the threads your application stores and shows.
-- **Version history has no UI.** The room keeps [two versions a day](/docs/server/history) and lists, previews and restores them [from code or over HTTP](/docs/server/history#list-preview-restore); the panel that shows them to people is yours to build.
+- **Comments are plain text.** The [comments plugin](/docs/plugins/comments) keeps threads on text ranges with replies, resolve and reopen, stored by the room. A comment has no formatting, mentions or attachments, cannot be edited once posted, and anchors to text only (not to a block); there is no comment-only access level: a read-only identity can read threads but not write them.
+- **Version history is two versions a day.** The room keeps [two versions a day](/docs/server/history), and the [history panel](/docs/server/history-panel) lists, previews (with the blocks added, removed and changed since) and restores them; there is no per-edit timeline (see History and purge below).
 - **Suggestions stay in one view.** A [suggestion](/docs/editor/suggestions) (text, blocks or a rewrite proposed by your AI) shows only in the view that made it until it is accepted: another tab or a collaborator cannot review it, and a reload loses it.
 - **No property schema.** [Properties](/docs/concepts/properties) take any JSON; validate or normalize in `onBeforeOperation`.
-- **Columns: no keyboard resize.** A [columns layout](/docs/plugins/columns#resizing) is resized with the pointer only, and columns have no colours of their own.
+- **Columns have no colours of their own.** A [columns layout](/docs/plugins/columns#resizing) resizes with the pointer or, on a focused gap, with the arrow keys.
 - **Array items that are strings or numbers have no key.** An object item's proxy follows its item, so a keyed `{#each}` row stays on it; a row bound to a string item by index (`bind:value={tags[i]}`) writes whatever item is at that index when a collaborator inserts or removes one above it. Store objects for rows several people edit.
 
 ## Localization
@@ -58,7 +58,7 @@ The WebSocket's bound starts when the socket opens (or first fails to), so a roo
 - **Undoing a split** joins the halves again, even if someone typed in the second half. See [concurrent editing](/docs/collaboration/concurrent-editing#undoing-a-new-block-keeps-a-peers-text).
 - **Contributors are block lineage, not authorship.** `attribution.block(id).contributors` lists who edited that block id (through splits and merges too), not who wrote the text shown now.
 - **Your own `UndoManager`.** An undo manager created directly with `new Y.UndoManager` over the document does not follow edytor's undo rules. Use `document.history`.
-- **Read-only views and `sync`.** A `readonly` view ignores its `sync`, `room` and `server` props; attach the sync to the document and pass it as `document`.
+- **A read-only view syncs read-only.** A `readonly` view with `room` and `server` (or `sync`) connects and shows peers' edits live, and writes nothing; the room decides what an identity may write (`readOnly` in `authorize`).
 - **`saved` after a reload.** The provider counts what the document's actor wrote, recognized by the client ids the document binds to that actor. Without an `actor`, the anonymous id changes every session, so edits made before a reload no longer count in `unsaved`. A delete restored from the local copy counts only when its update wrote no other author's content, since a delete does not record who made it.
 - **Columns: a selection dragged over the bare gap.** Dragging a text selection from column 1 into the gap between two columns never selects column 2, but past the gap's middle (over the gap itself, not a block's handle) it extends to the end of column 1.
 - **Columns: <kbd>Escape</kbd> from the block menu** opened on a block in a column gives back a caret, not the block selection.

@@ -157,9 +157,6 @@ export declare class Block {
         text: Text;
         offset: number;
     } | null;
-    insertChildren: (index: number, blocks: (JSONBlock | Block)[]) => void;
-    deleteChildren: (index: number, length?: number) => void;
-    insertParts: (index: number, parts: (JSONText[] | JSONInlineBlock)[]) => void;
 }
 ```
 
@@ -2360,9 +2357,6 @@ export declare class Text {
     get segStart(): number;
     get isInDocument(): boolean;
     refreshFromModel: () => void;
-    insertAt: (offset: number, text: string, marks?: Record<string, unknown> | null) => boolean;
-    deleteAt: (offset: number, length: number) => boolean;
-    formatAt: (offset: number, length: number, attributes: Record<string, unknown>) => boolean;
     private batch;
     getMarksAtRange: (yStart: number, yEnd: number) => JSONText[];
     insertText: (args_0: {

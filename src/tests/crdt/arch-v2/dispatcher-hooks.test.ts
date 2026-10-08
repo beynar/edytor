@@ -236,6 +236,20 @@ describe('readonly refuses every mutating command', () => {
 		expect([bytes(), undo()]).toEqual([0, 0]);
 	});
 
+	row("the handles' segment and child primitives write nothing on a readonly view", () => {
+		const { edytor, bytes, undo } = view([], { readonly: true });
+		const a = text(edytor, 'a');
+		expect(a.insertAt(0, 'X')).toBe(false);
+		expect(a.deleteAt(0, 1)).toBe(false);
+		expect(a.formatAt(0, 1, { bold: true })).toBe(false);
+		const root = edytor.root!;
+		root.insertChildren(0, [{ type: 'paragraph', content: [{ text: 'new' }] }]);
+		root.deleteChildren(0, 1);
+		edytor.idToBlock.get('b')!.insertParts(0, [[{ text: 'Y' }]]);
+		expect(texts(edytor)).toEqual(ORIGINAL);
+		expect([bytes(), undo()]).toEqual([0, 0]);
+	});
+
 	row('a read-only document (writable false) refuses before any write, without throwing', () => {
 		const { edytor, document, undo } = view();
 		document.doc.transact(() => document.doc.get('meta').setAttr('v', 99));

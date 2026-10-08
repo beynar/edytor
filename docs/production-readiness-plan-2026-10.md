@@ -78,8 +78,9 @@ Majors, by dimension:
 ### What only the maintainer can do
 
 - ~~Apply the `master` branch protection ruleset in CONTRIBUTING.md~~ (applied 2026-10-08).
-- `npm deprecate edytor@0.0.11 "use edytor"`; after `1.0.0-rc.1` moves `latest`, point `next`
-  at it too (`npm dist-tag add edytor@1.0.0-rc.1 next`), which tokenless CI publishing cannot.
+- ~~`npm deprecate edytor@0.0.11 "use edytor"`; point `next` at the release candidate~~ (done
+  2026-10-08: `latest` and `next` are `1.0.0-rc.2`, `0.0.11` deprecated). Point `next` again at
+  each later release candidate: tokenless CI publishing cannot.
 - Enable GitHub's private vulnerability reporting (SECURITY.md sends reports there).
 - The 4 to 8 hour soak against a deployed staging room (`pnpm soak` against it; recipe in
   `server/room` Load), which needs a deploy.

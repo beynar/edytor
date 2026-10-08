@@ -25,41 +25,6 @@
  * replacement (baseline `setBlock` semantics — replacement is a new-identity
  * operation).
  *
- * ── Island/void enforcement (operation-layer, not stored) ──────────────
- *
- * Roles are resolved operation-time via `config.roleOf(type)`, through one
- * role table (`DisplayRoles`) that the index's display and every guard
- * below ask of a block's shown kind — the editor derives them from plugin
- * block definitions, exactly like the baseline's
- * `block.definition.island/void`. They are deliberately NOT replicated block
- * data: the schema stays policy-free, and a replica with different plugins
- * reads the same document. Enforced rules (baseline semantics, see
- * `plugins.ts` + `block.utils.ts`):
- *
- * - `void`: cannot accept children (insert/move/nest into void rejected),
- *   cannot merge either direction, cannot be split. Content edits ARE
- *   allowed — void rendered content (captions) stays editable per the
- *   baseline contract. Deletion is allowed (delete is not editing).
- * - `island`: editable content, but its subtree is structurally sealed —
- *   a block inside an island (`insideIsland`) cannot be moved, nested,
- *   unnested, or merged across the island boundary. Merges INSIDE one
- *   island are allowed; merging an island child into the island itself is
- *   allowed when the island renders its content (XW-12). Moving or merging
- *   INTO an island subtree is rejected. An island declared `lines` (code)
- *   holds only lines of its `defaultChild` kind, and a line holds no
- *   children (FW-01, XW-03: the display enforces it against undo,
- *   `insertBlocks` refuses a line parent); any other island keeps its
- *   structure. `canPlace` and `canMerge` are the one answer, asked in
- *   advance or by the ops (R5).
- * - Island merge: when an island block itself is merged (backward or
- *   forward), its children are unnested to the vacated sibling slot and
- *   reset to the default child of that slot's parent (`defaultChild`).
- * - Baseline merges NEVER adopt the merged block's children — they unnest
- *   to the vacated slot. The facade exposes both: `mergeBlocks` is the
- *   engine primitive (children adopt into the target — TX09c contract —
- *   by staying under the source, which the target's claim displays, FW-12),
- *   `mergeBackward`/`mergeForward` reproduce the baseline command shape.
- *
  * ── Change events ──────────────────────────────────────────────────────
  *
  * `onChange` emits one {@link DocChange} per committed transaction (local
@@ -183,6 +148,8 @@ import {
 	schemaVersion
 } from './doc/gate.js';
 import { bindSeed } from './doc/seed.js';
+import { docReads, type DocBase } from './doc/reads.js';
+import { docCapability } from './doc/capability.js';
 import {
 	applied,
 	effectOf,
@@ -343,6 +310,59 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 		if (config.roleOf) runsView.roles(roles);
 
+		// The facade's parts, each over the ones before it (`doc/*`).
+		const base: DocBase = { doc, M, T, runsView, roles, roleOf, rendersContentOf };
+		const reads = { ...base, ...docReads(base) };
+		const shape = { ...reads, ...docCapability(reads) };
+		const {
+			dataNode,
+			blockJSON,
+			view,
+			blockTypeOf,
+			blockDataOf,
+			docData,
+			dataItemIds,
+			childrenIds,
+			positionOf,
+			pathOf,
+			ancestorsOf,
+			slotOf,
+			is,
+			isVoid,
+			isIsland,
+			isLines,
+			islandOf,
+			insideIsland,
+			isLine,
+			itemKindOf,
+			isLayout,
+			isLayoutItem,
+			holdsLayout,
+			insideItem,
+			order,
+			compare,
+			next,
+			previous,
+			displayLength,
+			contentItems,
+			hasBlock,
+			live,
+			contentTarget
+		} = reads;
+		const {
+			canPlace,
+			isContainer,
+			fits,
+			fitsIn,
+			fitted,
+			emptiable,
+			nestParent,
+			canMerge,
+			rendersContent,
+			defaultChild,
+			kindToCopy
+		} = shape;
+
 		/**
 		 * Terminal flag — set by `dispose()`. Mutating ops funnel through
 		 * `write`, so gating there covers every facade write + `transact` +
@@ -458,14 +478,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			BA.retarget(doc, id, from, to);
 		};
 
-		/** The node a data patch writes: block `id`, its atom `inlineId`, or the document's data root. */
-		const dataNode = (id?: BlockId, inlineId?: string): EngineNode | undefined =>
-			id === undefined
-				? doc.get(DOC_DATA_ROOT)
-				: inlineId === undefined
-					? (M.blockNodeOf(doc, id) ?? undefined)
-					: (T.findAtom(view().own, id, inlineId)?.node as EngineNode | undefined);
-
 		/** One planned step, written (the plan decided it; writers never refuse). */
 		const writeStep = (w: PlanStep, f: Frame): void => {
 			// Structural steps need no view: delete marks and placements write one node.
@@ -541,323 +553,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				})
 			);
 		};
-
-		/** The one serializer (L14): `id`'s subtree in the public `JSONBlock` shape. */
-		const blockJSON = (id: BlockId): JSONBlock => {
-			const type = blockTypeOf(id);
-			// A registered block always has a type once its updates are all in (UW-01):
-			// `''` is the absent-id shape, or an out-of-order delivery's transient.
-			if (DEV && type === undefined && M.blockNodeOf(doc, id) !== null && !holdsPending(doc))
-				throw new Error(`[edytor-doc] block ${id} has no type`);
-			const block: JSONBlock = {
-				type: type ?? '',
-				id,
-				data: (blockDataOf(id) ?? {}) as JSONBlock['data']
-			};
-			const content = runsView.contentJSON(id) as JSONBlock['content'] & unknown[];
-			if (content.length > 0) block.content = content;
-			const children = childrenIds(id);
-			if (children.length > 0) block.children = children.map(blockJSON);
-			return block;
-		};
-
-		/** The doc's index, folded up to the last write (read-your-writes). */
-		const view = (): ModelView => runsView.view();
-		type View = ModelView;
-
-		// ── reads ────────────────────────────────────────────────────────
-
-		const blockTypeOf = (id: BlockId): string | undefined => {
-			const t = runsView.displayType(id) ?? M.blockNodeOf(doc, id)?.getAttr(TYPE);
-			return typeof t === 'string' ? t : undefined;
-		};
-
-		const blockDataOf = (id: BlockId): Record<string, unknown> | undefined => {
-			const node = M.blockNodeOf(doc, id);
-			const d = node && readData(node);
-			// `cloneJsonSafe`: the read path stays total even when the stored
-			// attr holds a non-JSON value that bypassed boundary validation
-			// (raw write / remote payload) — never crash a read (R4).
-			return d !== undefined && d !== null ? (cloneJsonSafe(d) as JsonObj) : undefined;
-		};
-		/** The document's own data (`{}` when it has none). */
-		const docData = (): JsonObj => cloneJsonSafe(readData(doc.get(DOC_DATA_ROOT)) ?? {});
-		/**
-		 * The ids of the items of the array at `path` in a block's, an atom's
-		 * or the document's data (`[]` where none is): what a path names an
-		 * item by (`~…`), so it reaches that item wherever peers move it.
-		 */
-		const dataItemIds = (target: DataTarget, path: readonly string[]): string[] => {
-			const [id, atom] =
-				typeof target === 'object' && target ? [target.block, target.atom] : [target ?? undefined];
-			const node = dataNode(id && ref(id), atom && ref(atom));
-			return node && Array.isArray(path) ? itemIds(node, path) : [];
-		};
-
-		/** Ordered visible children of `parent` (`null` = root) — canonical read. */
-		const childrenIds = (parent: BlockId | null): BlockId[] =>
-			(view().kids.get(parent) ?? []).map((k) => k.id);
-
-		const positionOf = (id: BlockId): Destination | null => M.positionOf(doc, id);
-
-		/** Index path from the root (`[i, j, …]`), or null when hidden/absent. */
-		const pathOf = (id: BlockId): number[] | null => {
-			const v = view();
-			const path: number[] = [];
-			let cur: BlockId | null = id;
-			while (cur !== null) {
-				const pos = M.positionInView(v, cur);
-				if (!pos) return null;
-				path.unshift(pos.index);
-				cur = pos.parent;
-			}
-			return path;
-		};
-
-		/** Display ancestors of `id`, nearest first (`null` parent = root → stop). */
-		const ancestorsOf = (id: BlockId, v: View = view()): BlockId[] => {
-			const out: BlockId[] = [];
-			if (!isLiveIn(v, id)) return out;
-			for (let p = displayParentOf(v.own, v.placements.get(id)!, v.placements, id); p !== null; ) {
-				out.push(p as BlockId);
-				p = displayParentOf(v.own, v.placements.get(p as BlockId)!, v.placements, p as BlockId);
-			}
-			return out;
-		};
-
-		/**
-		 * The replicated slot of any registered block, dead or live (the seam
-		 * of a vanished endpoint, `anchors.seam`): where it displays, or would
-		 * ({@link displaySlotOf}) — the raw placement when no live parent is
-		 * reachable.
-		 */
-		const slotOf = (id: BlockId): { parent: BlockId | null; rank: string } | null => {
-			const v = view();
-			const pl = v.placements.get(id);
-			if (!pl) return null;
-			const slot = displaySlotOf(v.own, v.placements, pl, id);
-			return slot.parent === DEAD ? pl : (slot as { parent: BlockId | null; rank: string });
-		};
-
-		// ── roles (island/void) ───────────────────────────────────────────
-
-		/** The role table's answer for `id`'s shown kind (`false` without one). */
-		const is = (id: BlockId, role: (type: string) => boolean): boolean => {
-			const t = blockTypeOf(id);
-			return t !== undefined && role(t);
-		};
-		const isVoid = (id: BlockId): boolean => is(id, roles.childless);
-		const isIsland = (id: BlockId): boolean => is(id, roles.island);
-		/** An island that holds only lines (a code block: its role says `lines`). */
-		const isLines = (id: BlockId): boolean => is(id, (type) => roles.line(type) !== undefined);
-		/** Nearest island-typed display ancestor of `id`, or null. */
-		const islandOf = (id: BlockId, v: View = view()): BlockId | null =>
-			ancestorsOf(id, v).find((a) => isIsland(a)) ?? null;
-		/** True iff `id` sits strictly inside an island subtree. */
-		const insideIsland = (id: BlockId, v?: View): boolean => islandOf(id, v) !== null;
-		/** `id` is a line — directly in an island declared `lines` — and holds no children (FW-01). */
-		const isLine = (id: BlockId): boolean => {
-			const parent = positionOf(id)?.parent;
-			return parent != null && isLines(parent);
-		};
-		/** The item kind of `id` when it is a layout (its role says `layout`): its default child. */
-		const itemKindOf = (id: BlockId): string | undefined => {
-			const type = blockTypeOf(id);
-			return type === undefined ? undefined : roles.layout(type);
-		};
-		/** `id` is a layout (`layout.*`). */
-		const isLayout = (id: BlockId): boolean => itemKindOf(id) !== undefined;
-		/** `id` is a layout item: of its layout's item kind, directly in it (a column). */
-		const isLayoutItem = (id: BlockId): boolean => {
-			const parent = positionOf(id)?.parent;
-			return parent != null && blockTypeOf(id) === itemKindOf(parent);
-		};
-		/** `id` is a layout or holds one in its shown subtree (D2, `layout.nest`). */
-		const holdsLayout = (id: BlockId): boolean => isLayout(id) || childrenIds(id).some(holdsLayout);
-		/** `id` is a layout item or sits inside one. */
-		const insideItem = (id: BlockId, v?: View): boolean =>
-			[id, ...ancestorsOf(id, v)].some(isLayoutItem);
-
-		// ── structural capability (R5, O8): one answer in advance and at execution ──
-
-		/**
-		 * May `ids` be placed under `parent` (`null` = the root)? Every id is
-		 * live, distinct and outside any island interior (island subtrees are
-		 * sealed); the destination is live, neither void nor an island nor
-		 * inside one, and not inside any moved block's own subtree; and every
-		 * block fits it as the kind `kindOf` gives (`fits`; a move keeps its
-		 * kind) or already sits in it (a reorder changes nothing a list holds:
-		 * an image shed into a list still moves among its items, AW-06); and
-		 * no layout, nor a block holding one, lands inside a layout item
-		 * (D2, `layout.nest`).
-		 * Without a `parent`: may these blocks move at all (the drag
-		 * affordance). The move ops refuse exactly when this answers `false`.
-		 * (`insertBlock` is looser — island interiors are built by inserting
-		 * into them.)
-		 */
-		const canPlace = (
-			ids: readonly BlockId[],
-			parent?: BlockId | null,
-			kindOf: (id: BlockId) => string | undefined = blockTypeOf
-		): boolean => {
-			const v = view();
-			if (ids.length === 0 || new Set(ids).size !== ids.length) return false;
-			if (ids.some((id) => !isLiveIn(v, id) || insideIsland(id, v))) return false;
-			if (parent === undefined || parent === null) return true;
-			if (!isLiveIn(v, parent) || isVoid(parent)) return false;
-			const stays = (id: BlockId) => positionOf(id)?.parent === parent;
-			if (!ids.every((id) => stays(id) || fits(parent, kindOf(id)))) return false;
-			if (insideItem(parent, v) && ids.some(holdsLayout)) return false;
-			return ![parent, ...ancestorsOf(parent, v)].some((a) => isIsland(a) || ids.includes(a));
-		};
-
-		/**
-		 * A container: a block that shows only its children — no content of
-		 * its own, neither void nor an island (a list, a table row, a column).
-		 */
-		const isContainer = (id: BlockId): boolean =>
-			!rendersContent(id) && !isVoid(id) && !isIsland(id);
-		/**
-		 * THE container rule (ZW-01, ZW-14): may a block of `kind` sit directly
-		 * under `parent` (`null` = the root)? A container whose default child is
-		 * a kind of its own — its item (a list's `list-item`, a columns
-		 * layout's `column`) — holds only its items, and containers of them
-		 * when the item renders content (a list directly in a list, from JSON
-		 * or the API; a layout holds no layout, `layout.fits`); one whose
-		 * default child is the document's (a column) holds any block. Every
-		 * structural placement asks it: a move is refused where its blocks do
-		 * not fit (`canPlace`), Tab nests under a container's last item
-		 * (`nestParent`), an outdent or a lift is refused where the block would
-		 * not fit, and a block a merge, delete or range sheds into a container
-		 * takes its item kind when it is a plain block (`fitted`). Explicit kind
-		 * writes (`insertBlocks`, a retype) place what they are told (the
-		 * view's Turn into places the kind where it fits first, `liftOut`); a
-		 * plain block stored directly in a list still shows as its item (the
-		 * index's `typeOf`, AW-04), whatever write or race put it there.
-		 */
-		const fits = (parent: BlockId | null, kind: string | undefined): boolean =>
-			parent === null || fitsIn(blockTypeOf(parent) ?? '', kind);
-		/** `fits`, by the parent's kind (a block not written yet: `placeBeside`'s new item). */
-		const fitsIn = (parentType: string, kind: string | undefined): boolean => {
-			if (!roles.container(parentType)) return true;
-			const item = roles.defaultChild(parentType);
-			if (item === defaultChild(null) || kind === item) return true;
-			return (
-				kind !== undefined &&
-				roles.container(kind) &&
-				roles.defaultChild(kind) === item &&
-				rendersContentOf(item)
-			);
-		};
-		/**
-		 * `kind`, or — where a plain block (the document's default kind, or
-		 * none: a pasted run) does not fit `parent` — `parent`'s item, when
-		 * that renders content (a paragraph landing in a list is its item; one
-		 * in a columns layout keeps its kind: its text never vanishes). Any
-		 * other kind keeps its kind and data wherever a merge, a delete or a
-		 * paste sheds it — an image under a bullet stays an image, a heading a
-		 * heading, a to-do keeps its check (DR-crdt-1) — as a peer's
-		 * concurrent promotion shows it (`typeOf` resets only the default
-		 * kind); an outdent or a move that would place one directly in a list
-		 * is refused (`fits`).
-		 */
-		const fitted = (parent: BlockId | null, kind: string | undefined): string | undefined => {
-			if (fits(parent, kind) || (kind !== undefined && kind !== defaultChild(null))) return kind;
-			const item = defaultChild(parent);
-			return rendersContentOf(item) ? item : kind;
-		};
-		/** A container that goes once it loses every child: it holds no text of its own (a peer's retype can leave some, hidden: it renders none). */
-		const emptiable = (id: BlockId): boolean => isContainer(id) && displayLength(id) === 0;
-		/**
-		 * Where `ids` nest when nested into `parent` (Tab, a drop inside it):
-		 * `parent`, or — a container they are no items of — its last child,
-		 * and so on down. Tab after a list nests under its last item (Notion);
-		 * a last child that holds no children (an image, a code block) is
-		 * answered as it is, and `canPlace` refuses it, as Tab right under
-		 * that block is refused (AW-07).
-		 */
-		const nestParent = (ids: readonly BlockId[], parent: BlockId): BlockId => {
-			let at = parent;
-			while (!ids.every((id) => fits(at, blockTypeOf(id)))) {
-				const last = childrenIds(at).at(-1);
-				if (last === undefined) break;
-				at = last;
-			}
-			return at;
-		};
-
-		/**
-		 * May `fromId`'s content merge into `intoId`? Both live and distinct,
-		 * neither void, `intoId` renders its content (a list, a table row or a
-		 * code block shows none, so a first item, cell or line never merges
-		 * into it — XW-12, DR-crdt-2), `fromId` renders its own unless it is
-		 * an island (a list or a row never merges as a whole: its items would
-		 * leave it — YW-02), and the merge stays on one side of an island
-		 * boundary (a block may merge into its own island root — that stays
-		 * inside — but nothing from outside merges into an island).
-		 */
-		const canMerge = (fromId: BlockId, intoId: BlockId): boolean => {
-			const v = view();
-			if (fromId === intoId || !isLiveIn(v, fromId) || !isLiveIn(v, intoId)) return false;
-			if (isVoid(fromId) || isVoid(intoId)) return false;
-			if (!rendersContent(intoId) || !(rendersContent(fromId) || isIsland(fromId))) return false;
-			const islandFrom = islandOf(fromId, v);
-			if (intoId === islandFrom) return true;
-			return islandFrom === islandOf(intoId, v) && !isIsland(intoId);
-		};
-
-		/** `id`'s shown kind renders its content (R5, O22). */
-		const rendersContent = (id: BlockId): boolean => rendersContentOf(blockTypeOf(id) ?? '');
-
-		/** The adopted default child type under `parent` (`null` = the root). */
-		const defaultChild = (parent: BlockId | null): string =>
-			roles.defaultChild(parent === null ? null : (blockTypeOf(parent) ?? null));
-		/**
-		 * The kind a new block copies from `id` (a split tail, a flow's tail,
-		 * a duplicate and each of its descendants). A type a peer's retype is
-		 * replacing can be missing while its new value is pending: the copy
-		 * then takes its parent's default child, never a missing type
-		 * (SW7-crdt-1, DR-crdt-1: it showed as `unknown` everywhere, for good).
-		 */
-		const kindToCopy = (id: BlockId): string =>
-			blockTypeOf(id) ?? defaultChild(positionOf(id)?.parent ?? null);
-
-		// ── document order (O7): one pre-order over visible blocks ────────
-
-		/** The document order — `view().order`, shared by every consumer. */
-		const order = (): readonly BlockId[] => view().order.ids;
-
-		/**
-		 * Compare two blocks in document order (negative: `a` first). A block
-		 * that is not visible sorts after every visible one.
-		 */
-		const compare = (a: BlockId, b: BlockId): number => {
-			const { at } = view().order;
-			return (at.get(a) ?? Infinity) - (at.get(b) ?? Infinity) || 0;
-		};
-
-		/**
-		 * The neighbour of `id` in document order (`dir` 1: next, -1: previous).
-		 * `sealed` is the island-sealing policy (R5): the walk never enters an
-		 * island it did not start in — from outside, an island is one unit
-		 * (its root is visited, its interior skipped); from inside, the walk
-		 * may leave. Operations that need the seal pass it; the order itself
-		 * is never re-derived.
-		 */
-		const step = (id: BlockId, dir: 1 | -1, policy?: OrderPolicy): BlockId | null => {
-			const v = view();
-			const { ids, at } = v.order;
-			const i = at.get(id);
-			if (i === undefined) return null;
-			const open = policy?.sealed ? new Set(ancestorsOf(id, v)) : null;
-			for (let j = i + dir; j >= 0 && j < ids.length; j += dir) {
-				const island = open && islandOf(ids[j], v);
-				if (!island || open!.has(island)) return ids[j];
-			}
-			return null;
-		};
-		const next = (id: BlockId, policy?: OrderPolicy) => step(id, 1, policy);
-		const previous = (id: BlockId, policy?: OrderPolicy) => step(id, -1, policy);
 
 		// ── change events ─────────────────────────────────────────────────
 
@@ -1125,33 +820,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			}
 			return um;
 		};
-
-		/** Display length (UTF-16 units + inline atoms) of `id`'s content, read-your-writes. */
-		const displayLength = (id: BlockId): number => ownedLength(view().own.display(id) ?? []);
-
-		/**
-		 * Resolved display content of `id` — the canonical `ContentItem[]`
-		 * (text runs + inline atoms in display order) from the live view, so
-		 * it reflects writes made earlier in the same transaction. `[]` for
-		 * absent/deleted blocks. This is the transaction-aware counterpart
-		 * of the commit-synced {@link runsView} read surface.
-		 *
-		 * R4: the range reader emits BORROWED `marks`/`data` (cursor format
-		 * state / the replicated inline attr) — every item's payload is
-		 * swapped for the view's canonical frozen instance before it crosses
-		 * the public boundary, so callers can't mutate engine state through
-		 * the snapshot. Item wrappers and the array stay fresh and mutable.
-		 */
-		const contentItems = (id: BlockId): ContentItem[] => runsView.contentItems(id);
-
-		/** Registry membership — the block exists (may be delete-marked or merged away). */
-		const hasBlock = (id: BlockId): boolean => M.blockNodeOf(doc, id) !== null;
-
-		/** The one liveness answer (`M.isLive`): `id` renders in `project()`. O(depth). */
-		const live = (id: BlockId): boolean => M.isLive(doc, id);
-		/** A live block that can hold content: it has a claims list (a streamless block gets its own text on first write). */
-		const contentTarget = (id: BlockId): boolean =>
-			live(id) && view().blocks.get(id)?.claimsNode !== undefined;
 
 		// ── anchors (R4) ─────────────────────────────────────────────────
 		// An anchor is the home text id plus a relative position; the stream

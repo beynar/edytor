@@ -1,0 +1,19 @@
+name: Feature request
+description: Something the editor or the room should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you are building, and what you cannot do today
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: The behaviour, or the API you would call. How Notion or another editor does it helps.
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do instead today

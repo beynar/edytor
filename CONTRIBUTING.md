@@ -7,6 +7,11 @@ what, and the contracts the tests cite; the topic file of the area you change, u
 [`docs/agents/`](docs/agents/), has its rules. Most bugs that look random come from fixing a behaviour
 in the wrong layer.
 
+## Reporting
+
+A bug or a feature request is an issue; the templates ask for the version, the steps and the
+document's JSON value. A vulnerability is never a public issue: see [`SECURITY.md`](SECURITY.md).
+
 ## Set up
 
 Node 22 or newer (CI uses Node 24) and pnpm 10.

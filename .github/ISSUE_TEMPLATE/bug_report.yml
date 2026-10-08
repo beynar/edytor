@@ -1,0 +1,56 @@
+name: Bug report
+description: Something the editor or the room does wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. A vulnerability goes through the [security advisory form](https://github.com/beynar/edytor/security/advisories/new) instead (see SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: '`npm view edytor dist-tags.next`, or the commit you run'
+      placeholder: 0.1.0-next.42
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Typing, selection or IME
+        - Blocks, drag and drop, handles or menus
+        - Copy, cut and paste
+        - Undo and redo
+        - Collaboration, sync or offline
+        - The room (edytor/cloudflare)
+        - A plugin (table, columns, comments, media, …)
+        - Docs
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser, OS and device
+      placeholder: Chrome 140 on macOS 15, Safari on iPhone 15, Android with Gboard…
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      description: From a fresh page. Keys, clicks and what you typed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened
+    validations:
+      required: true
+  - type: textarea
+    id: document
+    attributes:
+      label: The document's JSON value
+      description: '`edytor.value` (or `document.facade.toJSON()`) just before the steps; the smallest one that shows the bug.'
+      render: json

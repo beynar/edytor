@@ -10,7 +10,8 @@
 <p>
     <a href="https://edytor.dev/docs">Documentation</a> •
     <a href="#quick-start">Quick start</a> •
-    <a href="https://edytor.dev/docs/reference/migration">Changelog</a>
+    <a href="https://edytor.dev/docs/reference/migration">Changelog</a> •
+    <a href="SECURITY.md">Security</a>
   </p>
 </div>
 

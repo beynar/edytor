@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/beynar/edytor/security/advisories/new
+    about: Privately, never in a public issue (see SECURITY.md).
+  - name: Documentation
+    url: https://edytor.dev/docs
+    about: Guides, the plugins, the room and the changelog.

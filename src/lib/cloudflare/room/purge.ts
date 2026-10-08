@@ -7,7 +7,7 @@
 import { Y } from '../../crdt/engine.js';
 import type { PurgeReport } from '../../crdt/purge.js';
 import { asEngineDoc } from '../../crdt/structs.js';
-import { PURGE_ORIGIN, noTimers } from '../DocumentRoom.js';
+import { PURGE_ORIGIN, noTimers } from './shared.js';
 import { DEFAULT_RETENTION_DAYS } from '../history.js';
 import { DAY, crdt, knob, type RoomContext } from './context.js';
 import { sameBytes } from './updates.js';

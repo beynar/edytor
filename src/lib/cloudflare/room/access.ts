@@ -6,6 +6,7 @@
  * revocation, a changed access, an expired credential.
  */
 import { CLOSE } from '../../crdt/providers/room.js';
+import type { Attachment, SocketIdentity } from '../DocumentRoom.js';
 import {
 	COMMENTS_HEADER,
 	HISTORY_HEADER,
@@ -14,10 +15,8 @@ import {
 	PROBE_HEADER,
 	SOCKET_TAG,
 	closedSocket,
-	noTimers,
-	type Attachment,
-	type SocketIdentity
-} from '../DocumentRoom.js';
+	noTimers
+} from './shared.js';
 import { STORAGE_FAILURE, type RoomContext } from './context.js';
 import { readOnlyFrame, step1Frame } from './frames.js';
 import { StorageFault } from './replicas.js';

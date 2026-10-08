@@ -10,7 +10,7 @@ import { asEngineDoc, attrItems } from '../../crdt/structs.js';
 import type { EngineNode } from '../../crdt/engine-api.js';
 import type { EdytorDoc, JSONBlock, YDoc } from '../../crdt/index.js';
 import { toBlockSpec } from '../../utils/json.js';
-import { noTimers } from '../DocumentRoom.js';
+import { noTimers } from './shared.js';
 import {
 	DEFAULT_MOVE_GRACE_DAYS,
 	contentOf,

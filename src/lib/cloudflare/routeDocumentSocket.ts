@@ -32,7 +32,7 @@ import {
 	IDENTITY_HEADERS,
 	PROBE_HEADER,
 	closedSocket
-} from './DocumentRoom.js';
+} from './room/shared.js';
 import { parseReplica } from './room/access.js';
 import { MAX_COMMENT_REQUEST_BYTES } from './room/comments.js';
 

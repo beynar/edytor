@@ -4,7 +4,7 @@
  * earliest. The tasks themselves are their owners' (`AttachedDocument`
  * wires them): this module decides only when each runs.
  */
-import { noTimers } from '../DocumentRoom.js';
+import { noTimers } from './shared.js';
 import type { RoomContext } from './context.js';
 
 /** The room's alarm tasks (`room.alarm.tasks`), in the order an alarm runs them. */

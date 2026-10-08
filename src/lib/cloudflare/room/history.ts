@@ -16,14 +16,8 @@ import {
 	stepsOf
 } from '../../crdt/structs.js';
 import type { JSONDoc, YDoc, YUndoManager } from '../../crdt/index.js';
-import {
-	PURGE_ORIGIN,
-	RESTORE_ORIGIN,
-	noTimers,
-	type Attachment,
-	type RestoreResult,
-	type SocketIdentity
-} from '../DocumentRoom.js';
+import type { Attachment, RestoreResult, SocketIdentity } from '../DocumentRoom.js';
+import { PURGE_ORIGIN, RESTORE_ORIGIN, noTimers } from './shared.js';
 import {
 	DEFAULT_RETENTION_DAYS,
 	HISTORY_MAX_VALUE_BYTES,

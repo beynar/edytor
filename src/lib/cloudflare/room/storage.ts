@@ -16,14 +16,8 @@ import {
 } from '../../crdt/protocols/envelope.js';
 import { gunzip, isGzip, packed } from '../../crdt/storage.js';
 import type { JSONBlock, JSONDoc, YDoc } from '../../crdt/index.js';
-import {
-	SOCKET_TAG,
-	noTimers,
-	type Attachment,
-	type LoadedDocument,
-	type ReplicaOwner,
-	type StoredRecord
-} from '../DocumentRoom.js';
+import type { Attachment, LoadedDocument, ReplicaOwner, StoredRecord } from '../DocumentRoom.js';
+import { SOCKET_TAG, noTimers } from './shared.js';
 import { parseReplica } from './access.js';
 import { crdt, encodeJSON, now, tally, type Decoded, type RoomContext } from './context.js';
 import { updateFrame } from './frames.js';

@@ -24,14 +24,13 @@ import {
 	type CommentSnapshot,
 	type CommentThread
 } from '../../crdt/protocols/comments.js';
+import type { Attachment, SocketIdentity } from '../DocumentRoom.js';
 import {
 	DEFAULT_MAX_COMMENT_BYTES,
 	DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND,
 	SOCKET_TAG,
-	noTimers,
-	type Attachment,
-	type SocketIdentity
-} from '../DocumentRoom.js';
+	noTimers
+} from './shared.js';
 import { allowance, type Bucket } from './admission.js';
 import { knob, type RoomContext } from './context.js';
 import { decode } from './frames.js';

@@ -13,17 +13,14 @@ import { CLOSE } from '../../crdt/providers/room.js';
 import { asEngineDoc } from '../../crdt/structs.js';
 import { defaultSemantics, facadeConfigOf, semanticsDigest } from '../../crdt/semantics.js';
 import type { DocumentSemanticsConfig, EdytorDoc, JSONDoc, YDoc } from '../../crdt/index.js';
-import {
-	MAX_REFUSALS,
-	ROOM_ORIGIN,
-	SOCKET_TAG,
-	noTimers,
-	type AttachRoomOptions,
-	type AttachedDocument,
-	type Refusal,
-	type RoomLogEntry,
-	type Timing
+import type {
+	AttachRoomOptions,
+	AttachedDocument,
+	Refusal,
+	RoomLogEntry,
+	Timing
 } from '../DocumentRoom.js';
+import { MAX_REFUSALS, ROOM_ORIGIN, SOCKET_TAG, noTimers } from './shared.js';
 import type { RoomAccess } from './access.js';
 import type { Admission } from './admission.js';
 import type { RoomComments } from './comments.js';

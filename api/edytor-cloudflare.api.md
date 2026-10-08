@@ -320,14 +320,14 @@ declare const DEFAULT_MAX_BUFFERED_BYTES: number;
 ### DEFAULT_MAX_COMMENT_BYTES
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const DEFAULT_MAX_COMMENT_BYTES: number;
 ```
 
 ### DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND = 2;
 ```
 
@@ -674,7 +674,7 @@ export type HistoryStoreRecord = {
 ### IDENTITY_HEADERS
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const IDENTITY_HEADERS: {
     readonly user: "X-Edytor-User";
     readonly replica: "X-Edytor-Replica";
@@ -793,7 +793,7 @@ declare const MAX_COMMENT_LENGTH = 10000;
 ### MAX_REFUSALS
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const MAX_REFUSALS = 100;
 ```
 
@@ -807,7 +807,7 @@ declare const MAX_THREADS = 5000;
 ### MAX_WAITING_DELETES
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const MAX_WAITING_DELETES = 1024;
 ```
 
@@ -867,14 +867,14 @@ export type MovedState = {
 ### PROBE_HEADER
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const PROBE_HEADER = "X-Edytor-Probe";
 ```
 
 ### PURGE_ORIGIN
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const PURGE_ORIGIN: unique symbol;
 ```
 
@@ -932,7 +932,7 @@ declare const R2_HISTORY_MAX_VALUE_BYTES: number;
 ### RESTORE_ORIGIN
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const RESTORE_ORIGIN: unique symbol;
 ```
 
@@ -953,7 +953,7 @@ declare const ROOM_HISTORY_MAX_VALUE_BYTES: number;
 ### ROOM_ORIGIN
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const ROOM_ORIGIN: unique symbol;
 ```
 
@@ -1111,7 +1111,7 @@ export type RouteDocumentOptions = {
 ### SOCKET_TAG
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const SOCKET_TAG = "edytor";
 ```
 
@@ -1197,7 +1197,7 @@ declare const attachRoom: (host: DurableObject<any>, options?: AttachRoomOptions
 ### closedSocket
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const closedSocket: (code: number, reason: string) => Response;
 ```
 
@@ -1258,7 +1258,7 @@ declare const moveBlocksBetweenRooms: (namespace: MoveNamespace, move: {
 ### noTimers
 
 ```ts
-// cloudflare/DocumentRoom.d.ts
+// cloudflare/room/shared.d.ts
 declare const noTimers: <T>(fn: () => T) => T;
 ```
 

@@ -8,7 +8,8 @@
 import { ATTRIBUTION_ROOT } from '../../crdt/schema.js';
 import { asEngineDoc } from '../../crdt/structs.js';
 import type { YDoc } from '../../crdt/index.js';
-import { ROOM_ORIGIN, type Attachment, type ReplicaOwner } from '../DocumentRoom.js';
+import type { Attachment, ReplicaOwner } from '../DocumentRoom.js';
+import { ROOM_ORIGIN } from './shared.js';
 import type { RoomContext } from './context.js';
 import { BINDING_PREFIX } from './forged.js';
 import { stateVector } from './updates.js';

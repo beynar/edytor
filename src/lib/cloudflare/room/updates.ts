@@ -7,7 +7,7 @@ import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../../crdt/engine.js';
 import type { YDoc } from '../../crdt/index.js';
 import { asEngineDoc, keepFromCollection } from '../../crdt/structs.js';
-import { ROOM_ORIGIN } from '../DocumentRoom.js';
+import { ROOM_ORIGIN } from './shared.js';
 import { crdt, type Decoded, type Item, type Struct } from './context.js';
 
 export const stateVector = (doc: YDoc): Map<number, number> =>

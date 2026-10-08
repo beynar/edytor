@@ -6,12 +6,8 @@
  */
 import type { DocChange, YDoc, YUndoManager } from '../../crdt/index.js';
 import { asEngineDoc } from '../../crdt/structs.js';
-import {
-	ROOM_ORIGIN,
-	type Attachment,
-	type FrameValidation,
-	type ValidatedBlock
-} from '../DocumentRoom.js';
+import type { Attachment, FrameValidation, ValidatedBlock } from '../DocumentRoom.js';
+import { ROOM_ORIGIN } from './shared.js';
 import { lockedBlocks } from '../locks.js';
 import { crdt, type RoomContext } from './context.js';
 

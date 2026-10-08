@@ -9,7 +9,8 @@
 import { semanticsMismatch } from '../../crdt/semantics.js';
 import type { AwarenessEntry } from '../../crdt/protocol.js';
 import type { YDoc } from '../../crdt/index.js';
-import { SOCKET_TAG, type Attachment } from '../DocumentRoom.js';
+import type { Attachment } from '../DocumentRoom.js';
+import { SOCKET_TAG } from './shared.js';
 import { allowance, type Allowances } from './admission.js';
 import { encodeJSON, type RoomContext } from './context.js';
 import { encodePresenceEntry, presenceFrame, presenceFrameOf } from './frames.js';

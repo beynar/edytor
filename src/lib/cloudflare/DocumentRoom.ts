@@ -47,7 +47,7 @@
  *   replace: those deletes wait with them, in memory); compaction keeps
  *   the pending records apart, and rewrites them as the deletes still
  *   waiting; a frame that discards a forged stamp drops them. At most
- *   {@link MAX_WAITING_DELETES} ranges wait, stored or in memory: a frame
+ *   `MAX_WAITING_DELETES` ranges wait, stored or in memory: a frame
  *   that would pass it has its waiting deletes dropped (refusal `waiting`,
  *   left out of the ack), the rest applied. Compaction reclaims the
  *   waiting deletes of client ids no user registered and no socket holds;
@@ -154,6 +154,24 @@ import { ReplicaRegistry } from './room/replicas.js';
 import { Scheduler } from './room/scheduler.js';
 import { RoomStorage } from './room/storage.js';
 import { RoomValidation } from './room/validation.js';
+import { noTimers, SOCKET_TAG } from './room/shared.js';
+export {
+	closedSocket,
+	COMMENTS_HEADER,
+	DEFAULT_MAX_COMMENT_BYTES,
+	DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND,
+	HISTORY_HEADER,
+	HISTORY_KEY_HEADER,
+	IDENTITY_HEADERS,
+	MAX_REFUSALS,
+	MAX_WAITING_DELETES,
+	noTimers,
+	PROBE_HEADER,
+	PURGE_ORIGIN,
+	RESTORE_ORIGIN,
+	ROOM_ORIGIN,
+	SOCKET_TAG
+} from './room/shared.js';
 
 /** Under SQLite-backed Durable Objects' 2 MB row cap, with room for the other columns. */
 export const DEFAULT_MAX_ROW_BYTES = 2_000_000 - 4096;
@@ -214,16 +232,6 @@ export const DEFAULT_MAX_PRESENCE_FANOUT = 2000;
 const QUOTA_CEILING = 2 ** 40;
 
 /**
- * Delete ranges the room keeps waiting for items it does not hold (a
- * relayer's delete of an author's edit a restore lost). Every update the
- * engine applies re-reads them, so they are capped.
- */
-export const MAX_WAITING_DELETES = 1024;
-
-/** Refusals kept in `refusals` (the newest); `refusalCounts` counts every one. */
-export const MAX_REFUSALS = 100;
-
-/**
  * A client id and the user who owns it (the room's replica registry). An
  * empty `user` marks an id a restore without a registry left unowned: its
  * first authenticated writer claims it.
@@ -257,36 +265,6 @@ export type SavedDocument = {
 
 /** What `onLoad` may return: JSON, a bare v14 update, or `{ update, replicas }` (a `SavedDocument`). */
 export type LoadedDocument = JSONDoc | Uint8Array | Pick<SavedDocument, 'update' | 'replicas'>;
-
-/** The header `routeDocumentSocket` sets on an authorized probe: `lastUpdated` or `snapshot`. */
-export const PROBE_HEADER = 'X-Edytor-Probe';
-
-/** The transaction origin of the room's own edits (`transact`, `onLoad` seeds). */
-export const ROOM_ORIGIN = Symbol('edytor-room');
-/** The transaction origin of a history restore: the room's restore history tracks it. */
-export const RESTORE_ORIGIN = Symbol('edytor-restore');
-/** The transaction origin of the room's purge: tracked by no history. */
-export const PURGE_ORIGIN = Symbol('edytor-purge');
-/** The header `routeDocumentHistory` sets on an authorized history request. */
-export const HISTORY_HEADER = 'X-Edytor-History';
-/** The version key of a history `read` or `restore` request. */
-export const HISTORY_KEY_HEADER = 'X-Edytor-History-Key';
-/** The header `routeDocumentComments` sets on an authorized comments request: `list` or `post`. */
-export const COMMENTS_HEADER = 'X-Edytor-Comments';
-
-/**
- * Headers carrying the identity `routeDocumentSocket` verified — never the
- * client's. The user id is percent-encoded (`encodeURIComponent`): a header
- * value is trimmed and cannot carry every character, and a user id is any
- * string.
- */
-export const IDENTITY_HEADERS = {
-	user: 'X-Edytor-User',
-	replica: 'X-Edytor-Replica',
-	access: 'X-Edytor-Access',
-	/** When the credential expires, ms since the epoch (absent: never). */
-	expires: 'X-Edytor-Expires'
-} as const;
 
 /**
  * Optional knobs (strings, as `vars` arrive): row size, outgoing frame
@@ -478,43 +456,12 @@ export type RoomLogEntry =
 /** `pending`: deletes of items the room does not hold yet (they wait for them). */
 type RowKind = 'generation' | 'update' | 'snapshot' | 'pending';
 
-/**
- * An upgrade accepted and closed at once, so the client reads `code`: a
- * browser sees an HTTP error at the upgrade only as `1006`, which a
- * provider cannot tell from a network failure. Refuse a dial your Worker
- * turns away itself with it: the provider stops at `1008` or `4xxx`
- * (except `4401`, redialed), and redials after anything else (`CLOSE`,
- * `isRefusal` in `crdt/providers/room.ts`).
- */
-export const closedSocket = (code: number, reason: string): Response => {
-	const [client, server] = Object.values(new WebSocketPair());
-	server.accept();
-	server.close(code, reason);
-	return new Response(null, { status: 101, webSocket: client });
-};
-
 /** A stored record, reassembled: its kind, record number, bytes, and whether they are v2 (a v2 container's snapshot). */
 export type StoredRecord = {
 	kind: RowKind;
 	record: number;
 	bytes: Uint8Array<ArrayBuffer>;
 	v2: boolean;
-};
-
-/** Run an entry point with timers forbidden — a pending timer keeps a Durable Object from hibernating. */
-export const noTimers = <T>(fn: () => T): T => {
-	const g = globalThis as Record<string, unknown>;
-	const saved = [g.setTimeout, g.setInterval];
-	const forbidden = () => {
-		throw new Error('room scheduled a timer (a Durable Object could not hibernate)');
-	};
-	g.setTimeout = forbidden;
-	g.setInterval = forbidden;
-	try {
-		return fn();
-	} finally {
-		[g.setTimeout, g.setInterval] = saved;
-	}
 };
 
 // ── Validation ────────────────────────────────────────────────
@@ -565,25 +512,20 @@ export type CommentOptions = {
 	maxLength?: number;
 	/**
 	 * The bytes the room's comments may hold (default
-	 * {@link DEFAULT_MAX_COMMENT_BYTES}, 4 MiB): each body and quote in UTF-8
+	 * `DEFAULT_MAX_COMMENT_BYTES`, 4 MiB): each body and quote in UTF-8
 	 * plus 128 a comment. A thread or reply past it is refused `413`; a
 	 * delete frees its bytes.
 	 */
 	maxBytes?: number;
 	/**
 	 * Comment requests per second (default
-	 * {@link DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND}, a ten-second burst):
+	 * `DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND`, a ten-second burst):
 	 * over HTTP per verified user (past it, `429`), and a socket's comment
 	 * messages per socket (past it, dropped). RPC calls are the host's own and
 	 * are not counted.
 	 */
 	maxRequestsPerSecond?: number;
 };
-
-/** The bytes a room's comments hold at most, by default (4 MiB). */
-export const DEFAULT_MAX_COMMENT_BYTES = 4 * 1024 * 1024;
-/** Comment requests per second and user (or socket), by default. */
-export const DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND = 2;
 
 /** What {@link attachRoom} (and `DocumentRoom`) takes. */
 export type AttachRoomOptions = {
@@ -701,9 +643,6 @@ const purgeAfterDays = (value: unknown): number | false | undefined => {
 	return Number.isInteger(n) && n > 0 ? n : undefined;
 };
 
-/** The tag of the document's sockets: other sockets of the object are left to you. */
-export const SOCKET_TAG = 'edytor';
-
 /**
  * One edytor document living in a Durable Object's storage: the room
  * logic, independent of the class that hosts it. Create it with
@@ -728,7 +667,7 @@ export class AttachedDocument {
 	failure: Error | null = null;
 	/** Latest presence entry per replica, for join snapshots (memory: refills after a wake). */
 	presence = new Map<number, AwarenessEntry>();
-	/** The newest {@link MAX_REFUSALS} refusals since this instance started (diagnostics; memory only). */
+	/** The newest `MAX_REFUSALS` refusals since this instance started (diagnostics; memory only). */
 	refusals: Refusal[] = [];
 	/** Every refusal since this instance started, by reason. */
 	refusalCounts: Partial<Record<Refusal['reason'], number>> = {};
@@ -1095,7 +1034,7 @@ export class AttachedDocument {
 
 	/**
 	 * Drop every waiting delete, stored or in memory (callable over RPC):
-	 * the way out when a writer filled {@link MAX_WAITING_DELETES} with
+	 * the way out when a writer filled `MAX_WAITING_DELETES` with
 	 * deletes of registered ids' items, which compaction keeps. A dropped
 	 * delete's item shows if it ever arrives — but for an entry a waiting
 	 * rewrite replaces, which that rewrite deletes should it integrate.

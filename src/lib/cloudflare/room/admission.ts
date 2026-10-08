@@ -13,7 +13,8 @@ import { Y } from '../../crdt/engine.js';
 import * as E from '../../crdt/protocol.js';
 import { ChunkLimitError, ChunkSequenceError, CLOSE } from '../../crdt/providers/room.js';
 import type { YDoc } from '../../crdt/index.js';
-import { MAX_WAITING_DELETES, noTimers, type Attachment } from '../DocumentRoom.js';
+import type { Attachment } from '../DocumentRoom.js';
+import { MAX_WAITING_DELETES, noTimers } from './shared.js';
 import { STORAGE_FAILURE, now, sync, tally, type Decoded, type RoomContext } from './context.js';
 import {
 	attributionWrites,

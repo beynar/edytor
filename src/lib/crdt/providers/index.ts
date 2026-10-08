@@ -181,7 +181,7 @@ export const bindProviders = (Y: EngineApi) => {
 	 * for a dial that gets in.
 	 */
 	const createWebsocketSync = (options: WebsocketSyncOptions): WebsocketSync => {
-		const [serverUrl, roomName] = targetOf(options);
+		const [serverUrl, roomName] = targetOf('createWebsocketSync', options);
 		const room = `${serverUrl}/${roomName}`;
 		const persistName =
 			options.persist === false ? undefined : (options.persistName ?? `edytor:${room}`);
@@ -261,13 +261,14 @@ export const bindProviders = (Y: EngineApi) => {
 
 	/**
 	 * `[serverUrl (no trailing slash), room]` of a target, the room id checked.
-	 * The target is `{ server, room }`; the names before them are refused.
+	 * The target is `{ server, room }`; the names before them are refused, in
+	 * a message that names the `caller` it was passed to.
 	 */
-	const targetOf = (options: WebsocketTarget): [string, string] => {
+	const targetOf = (caller: string, options: WebsocketTarget): [string, string] => {
 		const { server, room } = options;
 		if (typeof server !== 'string' || typeof room !== 'string')
 			throw new TypeError(
-				'createWebsocketSync: the target is `server` and `room` (`serverUrl` and `roomName` are gone)'
+				`${caller}: the target is \`server\` and \`room\` (\`serverUrl\` and \`roomName\` are gone)`
 			);
 		assertRoomId(room);
 		return [server.replace(/\/+$/, ''), room];
@@ -283,7 +284,7 @@ export const bindProviders = (Y: EngineApi) => {
 	 * after `timeout`, or where there is no IndexedDB.
 	 */
 	const prefetch = (options: PrefetchOptions): Promise<PrefetchResult> => {
-		const [serverUrl, room] = targetOf(options);
+		const [serverUrl, room] = targetOf('prefetch', options);
 		if (typeof indexedDB === 'undefined') {
 			return Promise.reject(new TypeError('prefetch needs IndexedDB to keep the document'));
 		}
@@ -342,7 +343,7 @@ export const bindProviders = (Y: EngineApi) => {
 	 * `prefetch` it. Throws on an HTTP error (`403` refused, `401` expired).
 	 */
 	const lastUpdated = async (options: LastUpdatedOptions): Promise<number | null> => {
-		const [serverUrl, room] = targetOf(options);
+		const [serverUrl, room] = targetOf('lastUpdated', options);
 		const url = new URL(`${serverUrl.replace(/^ws/, 'http')}/${encodeURIComponent(room)}`);
 		for (const [key, value] of Object.entries(options.params ?? {}))
 			url.searchParams.set(key, value);
@@ -363,7 +364,7 @@ export const bindProviders = (Y: EngineApi) => {
 	 * HTTP error (`403` refused, `401` expired).
 	 */
 	const documentSnapshot = async (options: LastUpdatedOptions): Promise<JSONDoc | null> => {
-		const [serverUrl, room] = targetOf(options);
+		const [serverUrl, room] = targetOf('documentSnapshot', options);
 		const url = new URL(`${serverUrl.replace(/^ws/, 'http')}/${encodeURIComponent(room)}`);
 		for (const [key, value] of Object.entries(options.params ?? {}))
 			url.searchParams.set(key, value);

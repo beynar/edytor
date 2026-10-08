@@ -247,17 +247,17 @@ record yet. Only a soak test (WU-16) and real users remove that.
 
 ### Decisions needed up front
 
-| #   | Decision                                    | Default proposal                                                                                                                       | Blocks |
-| --- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| D1  | License                                     | MIT, as the README badge already claims                                                                                                | WU-02  |
-| D2  | When `latest` moves to 0.1.x                | Deprecate 0.0.11 now; move `latest` at 1.0-rc                                                                                          | WU-03  |
-| D3  | Readonly views connect to their room        | Yes: a readonly view attaches its sync, and the room sends it updates only                                                             | WU-11  |
-| D4  | Headless `createDocument` default semantics | `defaultSemantics` by default, `semantics: {}` to opt out                                                                              | WU-12  |
-| D5  | Attribution trust model                     | The room binds `c/<client>` to the verified user and refuses writes to another user's `u/`                                             | WU-07  |
-| D6  | Where comment threads live                  | Thread bodies in the room's SQLite behind an RPC/HTTP route; the document holds only anchor marks                                      | WU-34  |
-| D7  | Table model                                 | A layout-like container (`table` → `row` → `cell`, cell a text island), with row/column ranks as data                                  | WU-30  |
-| D8  | Supported pre-release formats at 1.0        | Keep the v13 import and generation 5; drop next.6 atomic leaves, next.22 containers and next.23 alarm rows behind a one-shot migration | WU-44  |
-| D9  | CI budget                                   | Unit, crdt, dom and do on every push; Playwright Chromium on PR; Firefox, WebKit, mobile and DST nightly                               | WU-08  |
+| #   | Decision                                    | Default proposal                                                                                                                                                                                                          | Blocks |
+| --- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| D1  | License                                     | MIT, as the README badge already claims                                                                                                                                                                                   | WU-02  |
+| D2  | When `latest` moves to 0.1.x                | Deprecate 0.0.11 now; move `latest` at 1.0-rc                                                                                                                                                                             | WU-03  |
+| D3  | Readonly views connect to their room        | Yes: a readonly view attaches its sync, and the room sends it updates only                                                                                                                                                | WU-11  |
+| D4  | Headless `createDocument` default semantics | `defaultSemantics` by default, `semantics: {}` to opt out                                                                                                                                                                 | WU-12  |
+| D5  | Attribution trust model                     | The room binds `c/<client>` to the verified user and refuses writes to another user's `u/`                                                                                                                                | WU-07  |
+| D6  | Where comment threads live                  | Thread bodies in the room's SQLite behind an RPC/HTTP route; the document holds only anchor marks                                                                                                                         | WU-34  |
+| D7  | Table model                                 | A layout-like container (`table` → `row` → `cell`, cell a text island), with row/column ranks as data                                                                                                                     | WU-30  |
+| D8  | Supported pre-release formats at 1.0        | Keep the v13 import and generation 5; drop next.6 atomic leaves, next.22 containers and next.23 alarm rows behind a one-shot migration. Deviation (WU-44, awaiting sign-off): kept until the generation-6 bump, see WU-44 | WU-44  |
+| D9  | CI budget                                   | Unit, crdt, dom and do on every push; Playwright Chromium on PR; Firefox, WebKit, mobile and DST nightly                                                                                                                  | WU-08  |
 
 ### Units of work
 
@@ -897,7 +897,9 @@ conflict matrix.
     deprecated aliases.
 - Effort: 5 d. Mostly mechanical and can be split per directory, but it touches many files:
   run it last in each area.
-- Status (2026-10-08): done in the tree, with D8 kept as recorded below.
+- Status (2026-10-08): partial. Comments, fork-patch names, the archive, the guide and the
+  aliases are done; the test renames are about 60% done (remaining groups below); D8 is not
+  carried out (a deviation awaiting the user's sign-off, below).
 - Outcome:
   - Comments: the 793 ticket ids of `src/lib` comments (686 lines) are contract rows or prose.
     `scripts/ticket-ids.mjs` lists any new one in a `src/lib` comment or in the guide's prose
@@ -909,7 +911,18 @@ conflict matrix.
   - Tests: 140 checkpoint-named files renamed by behaviour: every one of
     `src/tests/fixtures/dom` and `tests/do`, the arch-v2 review, re-score and wave files of
     `src/tests/crdt/arch-v2`, the arch-v2 and wave Playwright specs, and the YP patch tests.
-    References are updated outside the archive.
+    References are updated outside the archive. `src/tests/api`'s `wu13-commands` and
+    `wu14-naming` are now `command-surface` and `naming`.
+  - Tests still checkpoint-named, for a follow-up unit (about 90 files):
+    - `src/tests/crdt/arch-v2`: the `cw01`, `d1`–`d12`, `fx11`, `gen5`, `gx05`, `h1`–`h11`,
+      `i3`, `nw11`, `p1`/`p4`/`p6`/`p28`, `r1`/`r2`/`r4`/`r8`, `s1`, `sw16`, `t3`/`t5`,
+      `uw31` and `v1`/`v3` files (44);
+    - the directories `src/tests/crdt/hardening`, `gate1`, `gate2`, `gate3`, `gateF1`,
+      `gateF2` and `phase5`, `src/tests/gate3` and `src/tests/fixtures/dom/gate3`;
+    - `src/tests/crdt/attribution/u3-*`, `runs/u8b-fanout`, `u11-profile`,
+      `src/tests/fixtures/model/phase10-*`;
+    - the Playwright specs `tests/editor-dom/columns-round3`–`round8`, `p1-*` (with
+      `p1-helpers.ts`), `r2-render` and `r3-ops`.
   - `docs/archive/` holds the planning history: architecture-v2, reviews, research, baseline,
     and the earlier plans, handoffs and gate reviews. Links are fixed.
   - The guide is `AGENTS.md` (the overview: identity, topic guides, contexts, the owners table,
@@ -920,11 +933,15 @@ conflict matrix.
     `node scripts/agents-coverage.mjs <old AGENTS.md>` checks every identifier and every rule
     fragment of the old file against the guide, each kept once. Run on the 9199716 file, it
     reports 1,584 identifiers and 2,068 fragments with none missing or doubled.
+  - Size, accepted: the overview is about 4,000 words (31 KB without the table padding, 50 KB
+    on disk), twice the 2-to-3-page target. Most of it is the owners table, kept whole because
+    it is the one place that names each fact's owner; its details already live in the topic
+    files. Slimming its cells is left to a follow-up if the size hurts.
   - Aliases removed (migration "Unreleased", Breaking changes): `hotKeys`, `blockDnd`,
     `serverUrl`/`roomName`, the cloudflare `attachDocument`/`AttachDocumentOptions` and
     `moveBlocks`, a bare KV namespace as `history.store`, the block suggestion wrappers, and
     the migrator's no-op lease options.
-- D8, kept and why: the next.6 data forms (an array as one leaf, the whole-`data` attribute),
+- D8, a deviation awaiting the user's sign-off (the decision row says drop): the next.6 data forms (an array as one leaf, the whole-`data` attribute),
   next.22 containers (a record without `storage`) and next.23 alarm rows are all schema
   generation 4 (generation 5 began at next.25). A generation-5 build already meets them only
   through a one-shot migration, the generation cutover (`room.generation.convert`, the local
@@ -936,6 +953,12 @@ conflict matrix.
   next.23 alarm rule is one line (an alarm with no due rows is a due save). It is kept because
   a room last run by next.23 may still hold a due save. Revisit with the next generation
   bump: generation 6 can drop generation 4's reader and these forms with it.
+  The alternative, not taken: the legacy reading (the whole-`data` attribute and the atomic
+  array leaf under the leaves) also runs in the live read path, `effective` in
+  `crdt/data.ts`, on every generation-5 read, although no generation-5 writer is known to
+  write those forms (to verify before the move). It could move into the generation-4 reader (`previousJSON`) alone, which would
+  carry out D8's drop for generation 5 without breaking the cutover. That is a change to the
+  data read path and needs its own unit and tests.
 
 **WU-45: lint, dependencies, fork hygiene (CC-06, CC-09, CC-10)**
 

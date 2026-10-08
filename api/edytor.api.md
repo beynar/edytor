@@ -1096,7 +1096,7 @@ export declare class Edytor {
     moveBlocks: (request: BlockMoveRequest) => Block[];
     historyUndo: () => void;
     historyRedo: () => void;
-    constructor({ snippets, readonly, hotkeys, plugins, document, doc, awareness, actor, requireHydration, presence, sync, value, onSelectionChange, placeholder, labels, onChange, onDocChange }: EdytorOptions);
+    constructor(options: EdytorOptions);
     private unknownKinds;
     definitionOf: (type: string) => BlockDefinition;
     private _valueCache;

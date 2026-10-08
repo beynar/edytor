@@ -29,9 +29,9 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
   | `block.suggestText({ value })`, `block.suggestions`, `block.acceptSuggestedText()` | `edytor.suggestions.add({ end: block.id }, content)`, `edytor.suggestions.at(block.id).end`, `suggestion.accept()` |
   | `MigrateOptions.leaseMs`, `waitMs`, `pollMs`, `owner` and `waitForSettled(name, options)`'s options (no-ops) | nothing: leave them out |
 
-  - A `hotKeys` or `blockDnd` prop now reads as a snippet override naming no kind, which registers nothing and warns in development.
+  - A `hotKeys` or `blockDnd` prop (or a `hotKeys` option to `new Edytor`) is ignored, whatever its value: no binding is registered and the handles stay. In development it warns, naming the replacement.
   - `createWebsocketSync({ serverUrl, roomName })` throws a `TypeError` that names `server` and `room`.
-  - A room whose `history.store` is a bare KV namespace throws when it first writes or lists a version (`history.store: not a HistoryStore`). The `EDYTOR_HISTORY` binding is unchanged: the room still wraps a KV binding in `kvHistory` itself. `kvHistory` writes what earlier releases wrote, so their versions list, preview and restore as before.
+  - A room whose `history.store` is a bare KV namespace keeps no history: it notes a `history` refusal (`history.store: not a HistoryStore`) at its first use of the history, listing versions answers `404` and a restore throws. Nothing else fails, so check the room's refusals after upgrading. The `EDYTOR_HISTORY` binding is unchanged: the room still wraps a KV binding in `kvHistory` itself. `kvHistory` writes what earlier releases wrote, so their versions list, preview and restore as before.
 
 #### Kept: pre-release stored formats
 

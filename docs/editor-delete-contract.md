@@ -2222,7 +2222,7 @@ a block delete 43 / 65, an Enter 355 / 293, five keystrokes merged
 
 ### `room.quota` — a write past a quota is refused, the socket closed `4413` (H3)
 
-Three quotas, each a `vars` setting and an `attachDocument` option:
+Three quotas, each a `vars` setting and an `attachRoom` option:
 `maxDocumentBytes` (2 MiB: what the records hold, uncompressed, plus the
 engine's waiting structs; checked after compacting the update records,
 net of the content the frame deletes, so a frame that deletes at least

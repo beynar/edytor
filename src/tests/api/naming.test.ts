@@ -1,5 +1,5 @@
 /**
- * WU-14 (API-11, API-13, API-14): naming and papercuts, on the headless view.
+ * Naming and papercuts, on the headless view.
  *
  * - API-13 — the bindings option is `hotkeys`, as a plugin's field is
  *   (`hotKeys`, its alias, is gone: `retired-aliases.test.ts`). The `value` the

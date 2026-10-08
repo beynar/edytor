@@ -132,6 +132,23 @@ export type Snippets = {
 /** What a snippet override's suffix names (the DEV warning for one that names nothing). */
 const OVERRIDDEN = { Mark: 'mark', InlineBlock: 'inline kind', Block: 'kind' } as const;
 
+/**
+ * Names an earlier release took and what replaced them. An untyped caller
+ * still passing one (an option, or an `<Edytor>` prop, which reaches the view
+ * among the snippets whatever its value) gets nothing from it and a
+ * development warning naming the replacement.
+ */
+const RETIRED: Record<string, string> = {
+	hotKeys: '`hotkeys`',
+	blockDnd: '`blockHandles` (`blockHandles={false}` hides the handles)'
+};
+const warnRetired = (source: object | undefined) => {
+	if (!DEV || !source) return;
+	for (const [name, use] of Object.entries(RETIRED))
+		if (Object.hasOwn(source, name))
+			console.warn(`[edytor] \`${name}\` was removed and is ignored: use ${use}.`);
+};
+
 export type EdytorOptions = {
 	readonly?: boolean;
 	snippets?: Snippets;
@@ -452,25 +469,28 @@ export class Edytor {
 		this.dispatcher.last = { operation: command, status: this.history.replay(command) };
 	};
 
-	constructor({
-		snippets,
-		readonly,
-		hotkeys,
-		plugins,
-		document,
-		doc,
-		awareness,
-		actor,
-		requireHydration,
-		presence,
-		sync,
-		value,
-		onSelectionChange,
-		placeholder,
-		labels,
-		onChange,
-		onDocChange
-	}: EdytorOptions) {
+	constructor(options: EdytorOptions) {
+		const {
+			snippets,
+			readonly,
+			hotkeys,
+			plugins,
+			document,
+			doc,
+			awareness,
+			actor,
+			requireHydration,
+			presence,
+			sync,
+			value,
+			onSelectionChange,
+			placeholder,
+			labels,
+			onChange,
+			onDocChange
+		} = options;
+		warnRetired(options);
+		warnRetired(snippets);
 		this.labels = labelsWith('editor', labels);
 		if (document !== undefined) {
 			if (
@@ -537,6 +557,7 @@ export class Edytor {
 				['Block', this.blocks]
 			] as const;
 			for (const [key, snippet] of Object.entries(snippets || {})) {
+				if (Object.hasOwn(RETIRED, key)) continue;
 				const override = overrides.find(([suffix]) => key.endsWith(suffix));
 				const name = override && key.slice(0, -override[0].length);
 				if (override && name && override[1].has(name)) {

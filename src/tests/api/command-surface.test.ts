@@ -1,5 +1,5 @@
 /**
- * WU-13 (API-07, API-08, API-09): the command surface, on the headless view.
+ * The command surface, on the headless view.
  *
  * - API-07 — `prevent()` records the hook's veto and returns: the hook runs
  *   to its end, a `try/catch` in it can no longer swallow the veto, the

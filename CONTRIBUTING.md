@@ -162,8 +162,12 @@ ruleset (Settings → Rules → Rulesets → New branch ruleset):
   date before merging" and "Do not allow bypassing the above settings".)
 
 `publish.yml` runs on a `v*` tag: it calls `ci.yml` on the tagged commit with the Chromium lane
-and publishes to npm only when it passed. `nightly.yml` runs Firefox, WebKit, the mobile
-projects, CDP and DST every night on `master`; a red night is an issue to fix, not a gate.
+and publishes to npm only when it passed (`next` for a `-next.N` pre-release, `latest` for a
+release candidate and a release). `nightly.yml` runs Firefox, WebKit, the mobile
+projects, CDP and DST every night on `master` (WebKit's projects, CDP and DST on macOS:
+Apple's WebKit and the Mac keys the specs press; on another host the shared fixture makes an
+emulated Safari or iPhone report that host's platform, so `mod` is the key a spec presses); a
+red night is an issue to fix, not a gate.
 
 ## License
 

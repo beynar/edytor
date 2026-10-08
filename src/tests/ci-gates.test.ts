@@ -147,6 +147,22 @@ describe('ci.yml — the gate on every push and pull request (D9)', () => {
 });
 
 describe('nightly.yml — the slow lanes (D9)', () => {
+	it('WebKit, mobile WebKit, CDP and DST run on macOS: Apple WebKit, and the Mac keys the specs press', () => {
+		const runner = (project: string) => {
+			const entry = new RegExp(
+				`- project: ${project}\\n\\s+browser: \\w+\\n\\s+os: ([\\w-]+)`
+			).exec(nightly);
+			return entry?.[1];
+		};
+		for (const project of ['webkit', 'mobile-webkit', 'cdp'])
+			expect(runner(project), project).toBe('macos-latest');
+		for (const project of ['firefox', 'mobile-chromium'])
+			expect(runner(project), project).toBe('ubuntu-latest');
+		expect(nightly).toMatch(/runs-on: \$\{\{ matrix\.os \}\}/);
+		const [, dst] = [...jobs(nightly)].find(([, job]) => job.includes('pnpm test:dst'))!;
+		expect(dst).toMatch(/^ {4}runs-on: macos-latest$/m);
+	});
+
 	it('runs Firefox, WebKit, both mobile projects, CDP and DST', () => {
 		for (const project of ['firefox', 'webkit', 'mobile-chromium', 'mobile-webkit', 'cdp'])
 			expect(nightly, project).toMatch(new RegExp(`^\\s+- project: ${project}$`, 'm'));

@@ -2,6 +2,8 @@
 # the two mobile projects, the CDP IME lane and the DST editor-input corpus,
 # every night on `master` (and on demand). A red night is an issue to fix,
 # not a gate: CI (`ci.yml`) is the gate. CONTRIBUTING.md lists the lanes.
+# WebKit's projects, CDP and DST run on macOS: Apple's WebKit (the engine
+# the docs support, not WebKitGTK) and the Mac keys the specs press.
 name: Nightly
 
 on:
@@ -19,7 +21,7 @@ concurrency:
 jobs:
   browsers:
     name: ${{ matrix.project }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -27,14 +29,19 @@ jobs:
         include:
           - project: firefox
             browser: firefox
+            os: ubuntu-latest
           - project: webkit
             browser: webkit
+            os: macos-latest
           - project: mobile-chromium
             browser: chromium
+            os: ubuntu-latest
           - project: mobile-webkit
             browser: webkit
+            os: macos-latest
           - project: cdp
             browser: chromium
+            os: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -58,7 +65,7 @@ jobs:
 
   dst:
     name: DST (solo in three engines, collab in Chromium)
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4

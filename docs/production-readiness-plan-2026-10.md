@@ -728,12 +728,30 @@ conflict matrix.
 - Done when: the oracle suites, fuzz and every lane are green, with no file over about 800
   lines in `crdt/` outside the vendor.
 - Effort: 4 d.
+- Status (2026-10-08): done. `crdt/edytor-doc.ts` (3,544 → 628 lines) is the wiring: the
+  schema gate, seed, public types and plan helpers are `crdt/doc/{gate,seed,types,plan}.ts`;
+  each facade part is a `crdt/doc/` module over an explicit context, the parts before it
+  (`reads`, `capability`, `funnel`, `events`, `history`, `anchors`, `steps`), and the op
+  families take `OpsContext` (`moves`, `layout`, `split-merge`, `delete`, `meta`, `content`).
+  Every `crdt/doc/` file is under 500 lines. The API report changed only in declaration file
+  labels and `JsonObj`, now an exported alias. `bench:crdt`, run alternately on the base and
+  the split tree under the same load: within run-to-run noise (keystroke 1k blocks facade p50
+  1.44/1.21 ms base, 1.33/1.25 ms split; structural p50 at 20k blocks 0.12/0.10 ms enter both).
 
 **WU-41: split `bindRuns` (CC-02)**
 
 - Scope: split `crdt/text/runs.ts` into fold, claims, placement maintenance, layout rules and
   self-checks.
 - Effort: 3 d.
+- Status (2026-10-08): done. `crdt/text/runs.ts` (2,845 → 438 lines) declares the index's
+  types and wires `crdt/text/index/` parts over one shared state object (`state.ts`; the
+  fields a part reassigns are read through it): `claims`, `anchored` (anchored merge claims),
+  `streams`, `layout` (the layout rules), `placement` (placement maintenance, `typeOf`),
+  `records`, `cache` (the run cache), `fold`, `report` and `checks` (the self-checks, reached
+  through `ix.checks`). The largest part is `fold.ts` (537 lines). The API report is
+  unchanged; the vitest lanes run with the self-checks on. **Remaining over about 800 lines
+  in `crdt/`:** `document.ts`, `placement/model.ts`, `text/model.ts` and `text/deletes.ts`
+  (see below if split).
 
 **WU-42: split `AttachedDocument` (CC-02)**
 

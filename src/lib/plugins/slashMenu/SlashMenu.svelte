@@ -4,6 +4,7 @@
 	import type { Snippet } from 'svelte';
 	import type { SlashMenuController } from './SlashMenuController.svelte.js';
 	import type { SlashMenuItem } from './slashMenuPlugin.js';
+	import type { EditorCommand } from '$lib/plugins.js';
 
 	let {
 		controller,
@@ -64,6 +65,48 @@
 	const keepFocus = (event: MouseEvent) => {
 		if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
 	};
+	/** The rows by group, in order (Notion's headings): a `group` per run of one group's rows. */
+	const groups = $derived.by(() => {
+		const runs: { name: string; rows: { command: EditorCommand; index: number }[] }[] = [];
+		commands.forEach((command, index) => {
+			const name = command.group ?? '';
+			const run = runs.at(-1);
+			if (run && run.name === name) run.rows.push({ command, index });
+			else runs.push({ name, rows: [{ command, index }] });
+		});
+		return runs;
+	});
+
+	/**
+	 * The highlighted row's id, once its element is in the page (a custom
+	 * `item` may set none): the keyboard's owner names it.
+	 */
+	let list = $state<HTMLElement>();
+	let active = $state<string>();
+	$effect(() => {
+		if (!controller.isOpen || menu) return void (active = undefined);
+		const command = commands[controller.selectedIndex];
+		const id = command && controller.optionId(command);
+		active = id && list?.ownerDocument.getElementById(id) ? id : undefined;
+	});
+	/**
+	 * The open default menu, published to the view's root (`edytor.popups`):
+	 * the listbox, and its highlighted row while the root holds the keyboard
+	 * (a `/` menu; a `+`'s field names it itself); a `+` is told it opened it.
+	 * A custom `menu` owns its own ARIA.
+	 */
+	$effect(() => {
+		if (!controller.isOpen || menu || !list) return;
+		const { addition } = controller;
+		controller.publish({
+			id: controller.listId,
+			haspopup: 'listbox',
+			active: addition ? undefined : active,
+			opener: addition ? { block: addition.block.id, control: 'add' } : undefined
+		});
+		return () => controller.publish(null);
+	});
+
 	const focusOnMount = (node: HTMLElement) => {
 		if (!node.contains(node.ownerDocument.activeElement)) node.focus({ preventScroll: true });
 	};
@@ -87,9 +130,8 @@
 	<div
 		class="slash-menu"
 		data-testid="slash-menu"
-		role="listbox"
-		aria-label="Block commands"
 		tabindex="-1"
+		role="presentation"
 		onmousedown={keepFocus}
 		onkeydown={controller.addition ? onkeydown : undefined}
 		onfocusin={controller.addition ? onfocusin : undefined}
@@ -101,6 +143,11 @@
 				class="slash-search"
 				placeholder="Type to filter…"
 				aria-label="Filter block commands"
+				role="combobox"
+				aria-expanded="true"
+				aria-autocomplete="list"
+				aria-controls={controller.listId}
+				aria-activedescendant={active}
 				value={controller.query}
 				use:focusOnMount
 				oninput={(event) => controller.search(event.currentTarget.value)}
@@ -110,44 +157,54 @@
 				/{controller.query}
 			</div>
 		{/if}
-		<div class="slash-items">
+		<div
+			class="slash-items"
+			id={controller.listId}
+			role="listbox"
+			aria-label="Block commands"
+			bind:this={list}
+		>
 			{#if commands.length === 0}
 				<div class="slash-empty" data-testid="slash-menu-empty">No results</div>
 			{/if}
-			{#each commands as command, index (command.id)}
-				{#if index === 0 || command.group !== commands[index - 1]?.group}
-					{#if command.group}<div class="slash-heading">{command.group}</div>{/if}
-				{/if}
-				{#if item}
-					{@render item({
-						command,
-						selected: index === controller.selectedIndex,
-						icon: iconOf(command.id),
-						run: () => void controller.run(command),
-						select: () => (controller.selectedIndex = index)
-					})}
-				{:else}
-					<button
-						type="button"
-						class="slash-item"
-						data-command-id={command.id}
-						data-icon={command.icon ?? '⋮'}
-						data-glyph={iconOf(command.id) ? undefined : (command.icon ?? '⋮')}
-						data-hint={command.hint}
-						style:--slash-icon={iconOf(command.id)}
-						data-selected={index === controller.selectedIndex}
-						data-testid="slash-menu-item"
-						role="option"
-						tabindex="-1"
-						aria-selected={index === controller.selectedIndex}
-						use:keepInView={index === controller.selectedIndex}
-						onmousedown={(event) => event.preventDefault()}
-						onmousemove={() => (controller.selectedIndex = index)}
-						onclick={() => {
-							void controller.run(command);
-						}}>{command.label}</button
-					>
-				{/if}
+			{#each groups as group, at (`${at}:${group.name}`)}
+				<div role="group" aria-label={group.name || undefined}>
+					{#if group.name}<div class="slash-heading" aria-hidden="true">{group.name}</div>{/if}
+					{#each group.rows as { command, index } (command.id)}
+						{#if item}
+							{@render item({
+								command,
+								id: controller.optionId(command),
+								selected: index === controller.selectedIndex,
+								icon: iconOf(command.id),
+								run: () => void controller.run(command),
+								select: () => (controller.selectedIndex = index)
+							})}
+						{:else}
+							<button
+								type="button"
+								class="slash-item"
+								id={controller.optionId(command)}
+								data-command-id={command.id}
+								data-icon={command.icon ?? '⋮'}
+								data-glyph={iconOf(command.id) ? undefined : (command.icon ?? '⋮')}
+								data-hint={command.hint}
+								style:--slash-icon={iconOf(command.id)}
+								data-selected={index === controller.selectedIndex}
+								data-testid="slash-menu-item"
+								role="option"
+								tabindex="-1"
+								aria-selected={index === controller.selectedIndex}
+								use:keepInView={index === controller.selectedIndex}
+								onmousedown={(event) => event.preventDefault()}
+								onmousemove={() => (controller.selectedIndex = index)}
+								onclick={() => {
+									void controller.run(command);
+								}}>{command.label}</button
+							>
+						{/if}
+					{/each}
+				</div>
 			{/each}
 		</div>
 		<button
@@ -223,7 +280,7 @@
 	}
 	.slash-heading {
 		padding: 8px 8px 4px;
-		color: #7d7a75;
+		color: #73726e;
 		font-size: 12px;
 		font-weight: 500;
 		line-height: 16px;
@@ -264,7 +321,7 @@
 	.slash-item[data-hint]::after {
 		content: attr(data-hint);
 		margin-left: auto;
-		color: #a19e99;
+		color: #73726e;
 		font-size: 12px;
 	}
 	.slash-item[data-selected='true'] {
@@ -272,7 +329,7 @@
 	}
 	.slash-empty {
 		padding: 6px 8px;
-		color: #7d7a75;
+		color: #73726e;
 	}
 	.slash-footer {
 		display: flex;
@@ -282,7 +339,7 @@
 		height: 36px;
 		padding: 0 12px;
 		border-top: 1px solid rgba(28, 19, 1, 0.08);
-		color: #7d7a75;
+		color: #73726e;
 		font: inherit;
 		cursor: pointer;
 	}
@@ -290,7 +347,9 @@
 		background: rgba(33, 27, 23, 0.04);
 	}
 	.slash-footer kbd {
-		color: #a19e99;
+		padding: 0;
+		background: none;
+		color: #73726e;
 		font: inherit;
 		font-size: 12px;
 	}

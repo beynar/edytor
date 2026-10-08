@@ -14,6 +14,35 @@
 		if (controller.isOpen && controller.readonly) controller.close(false);
 	});
 
+	/**
+	 * The keyboard's row (the flyout's while it is open), once its element is
+	 * in the page: the search field, which holds the keyboard, names it.
+	 */
+	let frame = $state<HTMLElement>();
+	let active = $state<string>();
+	$effect(() => {
+		if (!controller.isOpen || menu) return void (active = undefined);
+		const row = controller.flyout
+			? controller.kinds[controller.flyoutIndex]
+			: rows[controller.selectedIndex];
+		const id = row && controller.rowId(row, controller.flyout);
+		active = id && frame?.ownerDocument.getElementById(id) ? id : undefined;
+	});
+	/**
+	 * The open default menu, published to the view's root (`edytor.popups`),
+	 * the grip that opened it told so. A custom `menu` owns its own ARIA.
+	 */
+	$effect(() => {
+		const { block } = controller;
+		if (!block || menu || !frame) return;
+		controller.publish({
+			id: controller.menuId,
+			haspopup: 'menu',
+			opener: { block: block.id, control: 'grip' }
+		});
+		return () => controller.publish(null);
+	});
+
 	const focusOnMount = (node: HTMLInputElement) => {
 		node.focus({ preventScroll: true });
 	};
@@ -64,19 +93,14 @@
 {#if controller.isOpen && menu}
 	{@render menu(controller)}
 {:else if controller.isOpen}
-	<div class="block-menu-frame">
-		<div
-			class="block-menu"
-			role="menu"
-			aria-label="Block actions"
-			data-testid="block-menu"
-			data-edytor-block-menu
-			tabindex="-1"
-		>
+	<div class="block-menu-frame" bind:this={frame}>
+		<div class="block-menu" data-testid="block-menu" data-edytor-block-menu tabindex="-1">
 			<div class="block-menu-search">
 				<input
 					placeholder="Search actions…"
 					aria-label="Search actions"
+					aria-controls={controller.flyout ? controller.flyoutId : controller.menuId}
+					aria-activedescendant={active}
 					value={controller.query}
 					use:focusOnMount
 					oninput={(event) => {
@@ -87,18 +111,22 @@
 					{onkeydown}
 				/>
 			</div>
-			<div class="block-menu-rows">
+			<div class="block-menu-rows" id={controller.menuId} role="menu" aria-label="Block actions">
 				{#if !controller.query}
-					<div class="block-menu-heading">{controller.currentKind?.label ?? 'Block'}</div>
+					<div class="block-menu-heading" role="presentation">
+						{controller.currentKind?.label ?? 'Block'}
+					</div>
 				{/if}
 				{#each rows as row, index ('value' in row ? `kind:${row.id}` : row.id)}
 					{#if 'value' in row}
 						{#if index === 0 || !('value' in rows[index - 1]!)}
-							<div class="block-menu-heading">Turn into</div>
+							<div class="block-menu-heading" role="presentation">Turn into</div>
 						{/if}
 						<button
 							type="button"
 							role="menuitem"
+							id={controller.rowId(row)}
+							tabindex="-1"
 							class="block-menu-row"
 							data-selected={index === controller.selectedIndex}
 							use:keepInView={index === controller.selectedIndex}
@@ -110,10 +138,13 @@
 					{:else}
 						{#if row.id === 'delete' || row.id === 'duplicate'}<div
 								class="block-menu-divider"
+								role="separator"
 							></div>{/if}
 						<button
 							type="button"
 							role="menuitem"
+							id={controller.rowId(row)}
+							tabindex="-1"
 							class="block-menu-row"
 							class:danger={row.danger}
 							data-selected={index === controller.selectedIndex}
@@ -136,23 +167,26 @@
 					{/if}
 				{/each}
 				{#if rows.length === 0}
-					<div class="block-menu-empty">No results</div>
+					<div class="block-menu-empty" role="presentation">No results</div>
 				{/if}
 			</div>
 		</div>
 		{#if controller.flyout}
 			<div
 				class="block-menu block-menu-flyout"
+				id={controller.flyoutId}
 				role="menu"
 				aria-label="Turn into"
 				data-edytor-block-menu-flyout
 			>
-				<div class="block-menu-rows">
-					<div class="block-menu-heading">Turn into</div>
+				<div class="block-menu-rows" role="presentation">
+					<div class="block-menu-heading" role="presentation">Turn into</div>
 					{#each controller.kinds as kind, index (kind.id)}
 						<button
 							type="button"
 							role="menuitem"
+							id={controller.rowId(kind, true)}
+							tabindex="-1"
 							class="block-menu-row"
 							data-current={kind === controller.currentKind}
 							data-selected={controller.flyoutIndex === index}
@@ -238,7 +272,7 @@
 	}
 	.block-menu-heading {
 		padding: 6px 8px 4px;
-		color: #7d7a75;
+		color: #73726e;
 		font-size: 12px;
 		font-weight: 500;
 		line-height: 16px;
@@ -271,7 +305,7 @@
 	.block-menu-row[data-submenu]::after,
 	.block-menu-row[data-current='true']::after {
 		margin-left: auto;
-		color: #a19e99;
+		color: #73726e;
 		font-size: 12px;
 	}
 	.block-menu-row[data-hint]::after {
@@ -304,6 +338,6 @@
 	}
 	.block-menu-empty {
 		padding: 6px 8px;
-		color: #7d7a75;
+		color: #73726e;
 	}
 </style>

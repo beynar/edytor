@@ -62,6 +62,8 @@ The menu mounts in the editor's overlay, in a `position: fixed` host with the at
 
 The menu's markup and styles are built in, after Notion's: sections with a heading, 28px rows with a line icon for the built-in kinds (a command's text `icon` otherwise), the `hint` on the right, "No results" for a bare `/` when no command is enabled, and a "Close menu · esc" footer that closes it on click. It fades and scales in over 140ms, and the highlighted row scrolls into view. The typed query is not shown: it stays in a visually hidden element with `data-testid="slash-menu-query"` for screen readers and tests. Each item carries `data-command-id`, `data-selected` and `data-hint`.
 
+The rows are a `listbox` of `option`s, each section a `group` named by its heading. While the menu is open the element holding the keyboard names the list (`aria-controls`) and the highlighted row (`aria-activedescendant`): the editor's root for a typed `/`, the search field (a `combobox`) for a `+`. See [Accessibility](/docs/editor/accessibility#menus-and-popups).
+
 ## Custom markup
 
 `createSlashMenuPlugin` takes snippets that replace the menu's markup. The plugin keeps everything else: opening on `/`, the query, the filtering, <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd>, and the placement.
@@ -84,6 +86,7 @@ An `item` snippet receives a `SlashMenuItem`:
 <TypeTable
   type={{
     command: { type: "EditorCommand", description: "The command: id, label, icon, hint, group, keywords." },
+    id: { type: "string", description: "The row's element id: set it (id={item.id}) so the keyboard's owner names the highlighted row (aria-activedescendant)." },
     selected: { type: "boolean", description: "It is the keyboard's row." },
     icon: { type: "string | undefined", description: "The built-in line icon as a CSS mask-image value, for the commands that have one." },
     run: { type: "() => void", description: "Run the command; the /query text is removed in the same step." },
@@ -102,8 +105,11 @@ When the block handle's `+` opens the menu (`controller.addition` is set), the p
 	const plugins = [createSlashMenuPlugin({ item })];
 </script>
 
-{#snippet item({ command, selected, run, select }: SlashMenuItem)}
+{#snippet item({ command, id, selected, run, select }: SlashMenuItem)}
 	<button
+		{id}
+		role="option"
+		aria-selected={selected}
 		class="row"
 		class:selected
 		onmousedown={(event) => event.preventDefault()}

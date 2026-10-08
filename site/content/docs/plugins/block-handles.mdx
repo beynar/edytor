@@ -66,6 +66,7 @@ A handle sits in the editor's overlay layer, left of its block, aligned with the
 - In a column's gap the column resize band is the gap's left part, 10px wide and the layout's height: wherever its gray guide shows, at any height, a press resizes. A block's handle spans the rest of the gap, its `+` (18px there) and its grip together flush with the block (Notion's `+ ⋮⋮`; at the default 46px gap, 10 + 18 + 18, neither is under the band), and its box covers the block's whole row: a pointer anywhere in it hovers the block, shown or not, so the grip is reached from any side, as in Notion. Column 1's handles sit in the editor's gutter, over no gap, as a root block's do.
 - While a text selection runs (a press in the editor, until its release), the handles and the column resize bands take no pointer, so the browser computes the selection against the text, never selecting a block (Notion; over the bare gap between two columns, see the [columns' limitations](/docs/plugins/columns#limitations)).
 - The buttons are gray (`#ada9a3`) with a 6px-rounded hover background.
+- The buttons are named after the block's kind, from its preset label: the grip "Heading 1 block: drag to move, click for actions", the `+` "Add a block below Heading 1 (Alt: above)". While the menu a `+` or a grip opened is open, that button has `aria-expanded="true"`, `aria-controls` (the menu) and `aria-haspopup`. See [Accessibility](/docs/editor/accessibility#block-handles).
 
 ### The + button
 
@@ -80,6 +81,7 @@ A `handle` snippet replaces the `+` and the grip of every handle. The plugin kee
 <TypeTable
   type={{
     block: { type: "Block", description: "The block's handle." },
+    label: { type: "string", description: "The block's kind as people read it, from its preset label (\"Heading 1\"): name your buttons with it." },
     grip: { type: "action", description: "use:grip makes an element the grip: dragging (when draggable), a click that selects the block and opens its menu, and the Alt+arrow moves while it has focus." },
     add: { type: "(alt?: boolean) => void", description: "What + does: the slash menu offers what to add below (with true, Alt+click: above, or for a block directly in a column a new column right of its column); nothing is added until a row is picked." },
     addable: { type: "boolean", description: "Whether the block takes a +: always true (a block in a column too, as in Notion)." },
@@ -93,10 +95,14 @@ A `handle` snippet replaces the `+` and the grip of every handle. The plugin kee
 	import { Edytor, type BlockHandleSnippetPayload } from 'edytor';
 </script>
 
-{#snippet handle({ block, grip, add, readonly }: BlockHandleSnippetPayload)}
+{#snippet handle({ label, grip, add, readonly }: BlockHandleSnippetPayload)}
 	{#if !readonly}
-		<button onmousedown={(event) => event.preventDefault()} onclick={(event) => add(event.altKey)}>+</button>
-		<button use:grip aria-label={`Move ${block.type} block`}>⠿</button>
+		<button
+			aria-label={`Add a block below ${label}`}
+			onmousedown={(event) => event.preventDefault()}
+			onclick={(event) => add(event.altKey)}>+</button
+		>
+		<button use:grip aria-label={`Move ${label} block`}>⠿</button>
 	{/if}
 {/snippet}
 

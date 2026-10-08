@@ -1,0 +1,130 @@
+---
+title: Accessibility
+description: What assistive technology gets from an Edytor view, how to name the editor, the keyboard paths into its menus, toolbar and column bands, the live announcements, right-to-left text, and the known gaps.
+icon: accessibility
+---
+
+An Edytor view is one editable region, a `role="textbox"` with `aria-multiline="true"`, whose blocks render as the elements their kinds declare (headings as `h1`–`h3`, quotes as `blockquote`, code as `pre`). Its chrome (block handles, menus, the toolbar, the column bands) lives beside it in the overlay, and each piece carries the WAI-ARIA 1.2 pattern it follows. This page lists what you get and what you need to add.
+
+## Name the editor
+
+A textbox needs an accessible name. Pass one of these props; they go to the root element:
+
+| Prop | Use it for |
+| --- | --- |
+| `aria-label` | A name of its own: `aria-label="Page content"`. |
+| `aria-labelledby` | The id of the element that names it, such as the page title above it. |
+| `aria-describedby` | The id of a hint or an error message. |
+| `id` | A `<label for>`, a skip link or your own `aria-labelledby` elsewhere. |
+
+```svelte title="Page.svelte" check
+<script lang="ts">
+	import { Edytor } from 'edytor';
+</script>
+
+<h1 id="page-title">Meeting notes</h1>
+<p id="page-hint">Type / for blocks.</p>
+<Edytor aria-labelledby="page-title" aria-describedby="page-hint" />
+```
+
+All four follow updates. A readonly view also carries `aria-readonly="true"`.
+
+## Menus and popups
+
+While a menu is open, the element that holds the keyboard names it with `aria-controls`, and names its highlighted row with `aria-activedescendant`, so a screen reader reads each row as the arrows move, without the focus leaving the text:
+
+| Popup | Holds the keyboard | On the editor's root | On the control that opened it |
+| --- | --- | --- | --- |
+| [Slash menu](/docs/plugins/slash-menu), opened by typing `/` | The root | `aria-controls` (the `listbox`), `aria-haspopup="listbox"`, `aria-activedescendant` (the highlighted `option`) | none |
+| Slash menu opened by a handle's `+` | Its search field, a `combobox` with `aria-controls`, `aria-activedescendant` and `aria-expanded="true"` | `aria-controls`, `aria-haspopup="listbox"` | the `+`: `aria-expanded="true"`, `aria-controls`, `aria-haspopup` |
+| [Block menu](/docs/plugins/block-menu) | Its search field: `aria-controls` (the `menu`, or the Turn into flyout while it is open) and `aria-activedescendant` (the highlighted `menuitem`) | `aria-controls`, `aria-haspopup="menu"` | the grip: `aria-expanded="true"`, `aria-controls`, `aria-haspopup="menu"` |
+| [Selection toolbar](/docs/plugins/toolbar) | The root, until <kbd>Alt</kbd>+<kbd>F10</kbd> | `aria-controls` (the `toolbar`), `aria-keyshortcuts="Alt+F10"` | none |
+
+The attributes are present only while the popup is open. The root is a textbox, which takes no `aria-expanded` in WAI-ARIA 1.2, so the open state is on the control that opened the popup. Ids are unique per view (`edytor-<n>-…`), so several editors on a page never share one.
+
+The menus' rows are not <kbd>Tab</kbd> stops: the field or the root owns the keys (<kbd>↑</kbd>, <kbd>↓</kbd>, <kbd>Enter</kbd>, <kbd>Escape</kbd>). The slash menu's sections are groups named by their headings (`role="group"` with `aria-label`).
+
+### The toolbar from the keyboard
+
+With a text range selected and the toolbar shown, <kbd>Alt</kbd>+<kbd>F10</kbd> moves the focus to its first button (the editors' convention: Google Docs, TinyMCE, CKEditor). The bar is one tab stop (`role="toolbar"`): <kbd>←</kbd> and <kbd>→</kbd> walk its buttons, <kbd>Home</kbd> and <kbd>End</kbd> go to the first and the last, <kbd>Enter</kbd> or <kbd>Space</kbd> press one, and <kbd>Escape</kbd> gives the focus back to the editor over the same selection. Keys pressed in the bar never reach the document.
+
+### Custom menus
+
+The ids and the publishing above belong to the built-in markup. A custom snippet keeps them as follows:
+
+- A slash menu `item` snippet receives `id`: set it on the row (`id={item.id}`), and the root or the field names the highlighted row as it does for the built-in rows. A row without it is still listed; only `aria-activedescendant` is left out.
+- A whole custom `menu` (slash menu or block menu) or `toolbar` snippet owns its ARIA. The controllers expose the ids (`listId` and `optionId(command)` on the slash menu's, `menuId`, `flyoutId` and `rowId(row)` on the block menu's, `barId` on the toolbar's) and `publish(popup)`, which writes `{ id, haspopup?, active?, keys?, opener? }` to the root (`publish(null)` withdraws it). Publish from an `$effect` once your markup is in the page, so every id names an element.
+
+## Block handles
+
+Each handle is named after its block's kind, read from the kind's preset label: the grip is "Heading 1 block: drag to move, click for actions", the `+` "Add a block below Heading 1 (Alt: above)". A custom `handle` snippet receives the same text as `label`. With a grip focused, <kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> <kbd>←</kbd> move the block (`aria-keyshortcuts` says so); <kbd>Enter</kbd> or <kbd>Space</kbd> opens its block menu. From the text, <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> moves the caret's block and <kbd>Tab</kbd>/<kbd>Shift</kbd>+<kbd>Tab</kbd> nest it (see [Hotkeys](/docs/customization/hotkeys)).
+
+## Column widths from the keyboard
+
+With the [columns plugin](/docs/plugins/columns), the band in the gap between two columns is a focusable `separator` (`aria-orientation="vertical"`, named "Resize columns"), valued by the left column's share of the pair in percent (`aria-valuenow`, 0 to 100). The bands of the layout that holds the caret are in the page, after the editor, so <kbd>Shift</kbd>+<kbd>Tab</kbd> from the content after the editor (or a screen reader's cursor) reaches them, and a focused band stays while it holds the focus.
+
+| Key | Effect |
+| --- | --- |
+| <kbd>→</kbd> / <kbd>←</kbd> | Move the gap by 1% of the layout's width: the left column grows or shrinks, the right one the other way |
+| <kbd>Shift</kbd>+<kbd>→</kbd> / <kbd>Shift</kbd>+<kbd>←</kbd> | By 10% |
+| <kbd>Home</kbd> / <kbd>End</kbd> | The left column, then the right one, at its narrowest (`minWidth`) |
+| <kbd>Escape</kbd> | Give the keys back to the editor |
+
+Each press writes both columns' weights, keeping their sum, as one undo step, as a pointer drag's release does. Focused, the band shows its guide in the resize color. Every key pressed on a band is the band's: none reaches the document.
+
+## Announcements
+
+Changes a screen does not say by itself are announced in a polite live region (`role="status"`, `aria-live="polite"`) in the overlay, `[data-edytor-live]`, visually hidden:
+
+| Change | Announced |
+| --- | --- |
+| A move of one block or several: a drag, the handle's <kbd>Alt</kbd>+arrows, <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>, the block menu's Move, `edytor.moveBlocks` | "Moved Heading 1 block down", "Moved 3 blocks up", "Moved Text block" for a drop |
+| <kbd>Tab</kbd> or <kbd>Shift</kbd>+<kbd>Tab</kbd>, and the handle's <kbd>Alt</kbd>+<kbd>→</kbd>/<kbd>←</kbd> | "Indented To-do list block", "Outdented 2 blocks" |
+| A delete of selected blocks: <kbd>Backspace</kbd>, <kbd>Delete</kbd>, cut, the block menu's Delete | "Deleted 2 blocks", "Deleted Heading 2 block" |
+
+Only this view's own gestures are announced, never a collaborator's, and a refused move says nothing. A plugin can announce its own changes with `edytor.announcer.say(message)`.
+
+## Right-to-left text
+
+Each block takes the direction of its own text: the first strong character of its text (a letter of any script, as `dir="auto"` reads it, Unicode's UAX #9) sets `dir="rtl"` or `dir="ltr"` on the block element. A Hebrew or Arabic line in an English page is right to left: it aligns right, its caret starts on the right, and the arrow keys move visually (<kbd>←</kbd> goes forward in it), as in a right-to-left page; an English line in an Arabic page stays left to right. A block holding no strong character (empty, digits, punctuation) has no `dir` and keeps its parent's, so an empty line in a right-to-left page stays right to left. Set `dir="rtl"` on an element around the editor for a right-to-left page.
+
+The direction is set on the block, not on its text, because browsers move the caret by the direction of the paragraph, not of an inline run. Inside a line, a <kbd>Shift</kbd>+arrow step is the browser's: Chromium and WebKit extend visually, Firefox logically (its `bidi.edit.caret_movement_style`).
+
+## Colors
+
+The built-in chrome and the code block's syntax colors meet WCAG AA contrast (4.5:1) on their backgrounds; the secondary gray is `#73726e` (`--notion-text-secondary` in the [Notion theme](/docs/customization/styling)). The list kinds keep their `li`, `ul` and `ol` tags for styles and the HTML export, with `role="none"`: a list's items are sibling blocks, never the only children of one list element, so assistive technology would read each as an orphan list item.
+
+## Testing
+
+`tests/editor-dom/a11y.spec.ts` runs [axe-core](https://github.com/dequelabs/axe-core) (`@axe-core/playwright`) over the demo editor and its overlay against WCAG 2.2 A and AA, idle and with each menu, the toolbar and a column band in use, in Chromium, Firefox and WebKit; `tests/editor-dom/bidi.spec.ts` checks the caret and selection in Hebrew and Arabic lines mixed with English. Run the same audit over your own page:
+
+```ts title="a11y.spec.ts"
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test } from '@playwright/test';
+
+test('the editor passes axe', async ({ page }) => {
+	await page.goto('/notes');
+	const { violations } = await new AxeBuilder({ page })
+		.include('.editor-wrapper')
+		.withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+		.analyze();
+	expect(violations).toEqual([]);
+});
+```
+
+### Screen readers
+
+An automated audit checks markup, not what a person hears. The manual passes are recorded here:
+
+| Reader | Browser | Status |
+| --- | --- | --- |
+| VoiceOver (macOS) | Safari | Not yet recorded |
+| NVDA (Windows) | Firefox, Chrome | Not yet recorded |
+
+A pass covers: the editor's name on focus; typing, then reading back by line and by word; the `/` menu read row by row as the arrows move and its pick; the `+` and block menus; <kbd>Alt</kbd>+<kbd>F10</kbd> into the toolbar and <kbd>Escape</kbd> back; a move and a delete announced; a column band's value as it changes; a Hebrew line read in order.
+
+## Known gaps
+
+- **Target size.** The grip, and a column block's `+`, are Notion's 18px wide, under WCAG 2.2's 24px minimum for a pointer target (2.5.8, AA); the keyboard paths above reach the same actions.
+- **Leaving the editor with the keyboard.** <kbd>Tab</kbd> and <kbd>Shift</kbd>+<kbd>Tab</kbd> nest and unnest blocks inside the editor, as in Notion, so they do not move the focus out of it. Give keyboard users a way out next to the editor (a skip link, or a landmark the page's other controls follow).
+- **List semantics.** A bulleted, numbered or to-do list is read as its lines, not as a list with a count (see [Colors](#colors) above for why).

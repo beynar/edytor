@@ -6,7 +6,8 @@
 	 * (`ColumnResize`), in the overlay: each band the gap's left part, above
 	 * the block handles (their `+` and grip together right of it, `gaps.ts`);
 	 * hovered, it shows a gray guide in its middle: where the guide shows, a
-	 * press resizes.
+	 * press resizes. A band is a focusable separator: its arrows resize
+	 * (`resize.key`), focused it shows its guide in the resize color.
 	 */
 	let { resize }: { resize: ColumnResize } = $props();
 
@@ -19,11 +20,20 @@
 <div role="presentation">
 	{#if resize.shown}
 		{#each resize.strips as strip (`${strip.left}|${strip.right}`)}
+			<!-- A focusable separator is a widget (WAI-ARIA window splitter): its keys resize. -->
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 			<div
 				data-edytor-column-resize
 				data-left={strip.left}
 				data-right={strip.right}
-				aria-hidden="true"
+				role="separator"
+				tabindex="0"
+				aria-label="Resize columns"
+				aria-orientation="vertical"
+				aria-valuenow={strip.value}
+				aria-valuemin="0"
+				aria-valuemax="100"
+				aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Home End"
 				style:left="{strip.x}px"
 				style:top="{strip.top}px"
 				style:width="{strip.width}px"
@@ -34,6 +44,9 @@
 				data-selecting={resize.selecting ? 'true' : undefined}
 				onpointerdown={(event) => resize.start(event, strip)}
 				onmousedown={(event) => resize.mousedown(event, strip)}
+				onkeydown={(event) => resize.key(event, strip)}
+				onfocus={() => resize.focus(strip, true)}
+				onblur={() => resize.focus(strip, false)}
 			></div>
 		{/each}
 	{/if}
@@ -75,6 +88,15 @@
 
 	[data-edytor-column-resize]:hover:not([data-dragging='true'])::after {
 		opacity: 1;
+	}
+
+	/* Focused from the keyboard: the guide shows in the resize color. */
+	[data-edytor-column-resize]:focus-visible {
+		outline: none;
+	}
+	[data-edytor-column-resize]:focus-visible::after {
+		opacity: 1;
+		background: var(--edytor-column-resize-color, rgba(35, 131, 226, 0.43));
 	}
 
 	/* Notion's resize line: a thin blue rule where the gap will be. */

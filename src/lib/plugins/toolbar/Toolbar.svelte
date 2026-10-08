@@ -8,6 +8,43 @@
 	}: { controller: ToolbarController; toolbar?: Snippet<[ToolbarController]> } = $props();
 
 	const keep = (event: MouseEvent) => event.preventDefault();
+
+	/**
+	 * The bar is one tab stop (WAI-ARIA toolbar): the button it last held
+	 * (`stop`, by `data-stop`); the arrows, Home and End walk its buttons,
+	 * Escape gives the focus back to the editor (`controller.release`). Every
+	 * key in it is its own, never the editor's (Enter presses the button).
+	 */
+	let bar = $state<HTMLElement>();
+	let stop = $state('turn');
+	const onfocusin = (event: FocusEvent) => {
+		const at = (event.target as HTMLElement).dataset?.stop;
+		if (at) stop = at;
+	};
+	const onkeydown = (event: KeyboardEvent) => {
+		event.stopPropagation();
+		const buttons = [...(bar?.querySelectorAll<HTMLElement>('[data-stop]') ?? [])];
+		const at = buttons.indexOf(event.target as HTMLElement);
+		const next = {
+			ArrowRight: (at + 1) % buttons.length,
+			ArrowLeft: (at - 1 + buttons.length) % buttons.length,
+			Home: 0,
+			End: buttons.length - 1
+		}[event.key];
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			controller.release();
+		} else if (next !== undefined && at !== -1) {
+			event.preventDefault();
+			buttons[next]?.focus();
+		}
+	};
+	/** The open default bar, published to the view's root (`edytor.popups`); a custom `toolbar` owns its own ARIA. */
+	$effect(() => {
+		if (!controller.isVisible || toolbar || !bar) return;
+		controller.publish({ id: controller.barId, keys: 'Alt+F10' });
+		return () => controller.publish(null);
+	});
 </script>
 
 {#if controller.isVisible && toolbar}
@@ -18,12 +55,19 @@
 			class="selection-toolbar"
 			data-testid="selection-toolbar"
 			data-edytor-toolbar-bar
+			id={controller.barId}
 			role="toolbar"
 			aria-label="Text formatting"
+			tabindex="-1"
+			bind:this={bar}
+			{onkeydown}
+			{onfocusin}
 		>
 			<button
 				type="button"
 				class="toolbar-type"
+				data-stop="turn"
+				tabindex={stop === 'turn' ? 0 : -1}
 				aria-haspopup="menu"
 				aria-expanded={controller.panel === 'turn'}
 				onmousedown={keep}
@@ -35,6 +79,8 @@
 			<button
 				type="button"
 				class="toolbar-link"
+				data-stop="link"
+				tabindex={stop === 'link' ? 0 : -1}
 				data-testid="toolbar-link"
 				aria-expanded={controller.panel === 'link'}
 				style:--toolbar-icon={iconOf('mark.link')}
@@ -46,6 +92,8 @@
 				<button
 					type="button"
 					class={`toolbar-mark mark-${item.mark}`}
+					data-stop={`mark:${item.mark}`}
+					tabindex={stop === `mark:${item.mark}` ? 0 : -1}
 					aria-label={item.label}
 					title={item.label}
 					data-testid={`toolbar-${item.mark}`}
@@ -58,6 +106,8 @@
 			<button
 				type="button"
 				class="toolbar-color"
+				data-stop="color"
+				tabindex={stop === 'color' ? 0 : -1}
 				aria-label="Color"
 				title="Text color"
 				aria-expanded={controller.panel === 'color'}
@@ -282,7 +332,7 @@
 	}
 	.toolbar-heading {
 		padding: 6px 8px 4px;
-		color: #7d7a75;
+		color: #73726e;
 		font-size: 12px;
 		font-weight: 500;
 		line-height: 16px;
@@ -322,7 +372,7 @@
 			0 0 0 2px rgba(35, 131, 226, 0.35);
 	}
 	.toolbar-link-action {
-		color: #7d7a75;
+		color: #73726e;
 		font-size: 13px;
 	}
 	.toolbar-swatches {

@@ -18,6 +18,7 @@ import {
 import type { Text } from '$lib/text/text.svelte.js';
 import { convertBlocks, convertibleKinds, rowOf, type KindRow } from '$lib/kinds.js';
 import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
+import type { Popup } from '$lib/surface/popups.svelte.js';
 
 /** Notion's palette: text colors and their backgrounds, by name. */
 export const TOOLBAR_COLORS = [
@@ -54,6 +55,23 @@ export class ToolbarController {
 
 	get isVisible() {
 		return this.shown && !this.edytor.readonly;
+	}
+
+	/** The bar's element id (page-unique), for the root's `aria-controls`. */
+	get barId() {
+		return this.edytor.popups.idOf('toolbar');
+	}
+
+	/** Publish the shown bar to the view's root (`edytor.popups`), or withdraw it with `null`. */
+	publish = (popup: Popup | null) => this.edytor.popups.set('toolbar', popup);
+
+	/** Give the keyboard back to the editor (Escape in the bar), over the held selection. */
+	release() {
+		const snapshot = this.selectionSnapshot;
+		this.panel = null;
+		if (snapshot) this.restoreSelection(snapshot);
+		this.edytor.expectInternalFocus();
+		this.edytor.node?.focus({ preventScroll: true });
 	}
 
 	updateFromSelection(selection = this.edytor.selection) {

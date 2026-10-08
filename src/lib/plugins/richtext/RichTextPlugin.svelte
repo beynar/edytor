@@ -38,6 +38,13 @@
 	/** A native disclosure: the browser owns `open` (declared view state). */
 	const disclosure = { element: 'details', viewState: ['open'] };
 	/**
+	 * A list's elements without list semantics (`role="none"`): a list's items
+	 * are sibling blocks, never the only children of one `ul` or `ol`, so an
+	 * `li` would be an orphan list item to assistive technology (WCAG 1.3.1);
+	 * the tags stay for styles and the HTML export.
+	 */
+	const unlisted = (tag: 'li' | 'ul' | 'ol') => ({ tag, attributes: { role: 'none' } });
+	/**
 	 * Notion's three heading levels: a missing level is h1, any other (a
 	 * stored `h4`–`h6`, as HTML import reads them) h3.
 	 */
@@ -353,7 +360,7 @@
 				'bulleted-list-item': {
 					continues: true,
 					snippet: listItem,
-					element: 'li',
+					element: unlisted('li'),
 					presets: [
 						{
 							label: 'Bulleted list',
@@ -367,7 +374,7 @@
 				'numbered-list-item': {
 					continues: true,
 					snippet: listItem,
-					element: 'li',
+					element: unlisted('li'),
 					presets: [
 						{
 							label: 'Numbered list',
@@ -438,17 +445,17 @@
 					...richTextKinds['ordered-list'],
 					itemKind: 'numbered-list-item',
 					snippet: list,
-					element: 'ol',
+					element: unlisted('ol'),
 					html: 'ol'
 				},
 				'unordered-list': {
 					...richTextKinds['unordered-list'],
 					itemKind: 'bulleted-list-item',
 					snippet: list,
-					element: 'ul',
+					element: unlisted('ul'),
 					html: 'ul'
 				},
-				'list-item': { snippet: listItem, element: 'li', html: 'li' },
+				'list-item': { snippet: listItem, element: unlisted('li'), html: 'li' },
 				horizontalRule: {
 					...richTextKinds.horizontalRule,
 					element: 'hr',

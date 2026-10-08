@@ -188,6 +188,7 @@ const nest =
 			const index = startText?.index;
 			// The block's command reveals a closed toggle it lands in or that adopts (ZW-09).
 			const block = (selectedBlock || startBlock)?.[operation]();
+			if (block) edytor.announcer.moved({ blocks: [block], direction }, [block]);
 			if (block && selectedBlock) edytor.selection.selectBlocks(block);
 			else if (block && index !== undefined) caretAt(edytor, block.content[index] as Text, yStart);
 		});

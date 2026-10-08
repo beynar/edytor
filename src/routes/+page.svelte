@@ -260,6 +260,7 @@
 							value={initialValue}
 							{sync}
 							class="demo-edytor"
+							aria-label="A calmer place to think"
 							blockHandles={page.url.searchParams.get('handles') === '0' ? false : undefined}
 							placeholder={richTextPlaceholder}
 							bind:edytor

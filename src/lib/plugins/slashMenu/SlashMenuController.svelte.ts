@@ -6,6 +6,7 @@ import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 import { project, type SelectionValue } from '$lib/session/selection.js';
 import { matchesQuery } from '$lib/kinds.js';
 import type { BlockAddition } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
+import type { Popup } from '$lib/surface/popups.svelte.js';
 
 /** The trigger `/` and the query's end, held as anchors so peers' edits move them (L52). */
 type ActiveSlashRange = { trigger: TextAnchor; end: TextAnchor };
@@ -100,6 +101,17 @@ export class SlashMenuController {
 	get readonly() {
 		return this.edytor.readonly;
 	}
+
+	/** The listbox's element id (page-unique), for `aria-controls`. */
+	get listId() {
+		return this.edytor.popups.idOf('slash-menu');
+	}
+
+	/** A row's element id (page-unique), for `aria-activedescendant`: set it on a custom `item`. */
+	optionId = (command: EditorCommand) => this.edytor.popups.idOf(`slash-menu-${command.id}`);
+
+	/** Publish the open menu to the view's root (`edytor.popups`), or withdraw it with `null`. */
+	publish = (popup: Popup | null) => this.edytor.popups.set('slash-menu', popup);
 
 	/** Matching commands, grouped (groups in first-seen order): the menu's rows and keyboard order. */
 	get commands() {

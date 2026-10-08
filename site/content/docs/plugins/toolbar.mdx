@@ -61,7 +61,7 @@ The toolbar shows when all of these hold:
 - no whole block and no inline atom is selected;
 - the selection is not inside a void or an island block (such as a code block).
 
-It follows the selection as it changes, and repositions on scroll, resize and edits. Buttons keep the selection: clicking one does not move the caret, and the selection is restored after the format is applied. A press anywhere on the toolbar, its background included, never takes the editor's focus: typing after it goes on in the editor, replacing the selected text. Only its fields (the link panel's URL field) take focus.
+It follows the selection as it changes, and repositions on scroll, resize and edits. While it shows, the editor's root names it (`aria-controls`) and the key that reaches it (`aria-keyshortcuts="Alt+F10"`): <kbd>Alt</kbd>+<kbd>F10</kbd> moves the focus to its first button, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd> and <kbd>End</kbd> walk the bar (one tab stop), and <kbd>Escape</kbd> gives the focus back to the editor over the same selection ([Accessibility](/docs/editor/accessibility#the-toolbar-from-the-keyboard)). Buttons keep the selection: clicking one does not move the caret, and the selection is restored after the format is applied. A press anywhere on the toolbar, its background included, never takes the editor's focus: typing after it goes on in the editor, replacing the selected text. Only its fields (the link panel's URL field) take focus.
 
 ## Keyboard
 

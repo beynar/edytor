@@ -31,6 +31,9 @@ import {
 } from './surface/cells.js';
 import { Pin } from './surface/pin.svelte.js';
 import { Overlay } from './surface/overlay.js';
+import { Popups } from './surface/popups.svelte.js';
+import { Announcer as AnnouncerState } from './session/announcer.svelte.js';
+import Announcer from './components/Announcer.svelte';
 import RemoteSelections from './collaboration/RemoteSelections.svelte';
 import SuggestionRanges from './components/SuggestionRanges.svelte';
 import type { Block } from './block/block.svelte.js';
@@ -255,6 +258,10 @@ export class Edytor {
 	readonly pin = new Pin();
 	/** The chrome layer outside the host: handles, menus, remote carets. */
 	readonly overlay = new Overlay();
+	/** The chrome popups open on this view (`surface/popups`): what the root's ARIA names. */
+	readonly popups = new Popups();
+	/** What this view announces to assistive technology (`session/announcer`): its block moves and deletes. */
+	readonly announcer: AnnouncerState = new AnnouncerState(this);
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONDoc) => void;
 	placeholder?: Placeholder;
@@ -1017,9 +1024,15 @@ export class Edytor {
 			target: this.overlay.layer!,
 			props: { edytor: this }
 		});
+		// The polite live region: what this view's block moves and deletes did.
+		const live = mount(Announcer, {
+			target: this.overlay.layer!,
+			props: { announcer: this.announcer }
+		});
 		this.off.push(
 			() => unmount(presence),
 			() => unmount(ranges),
+			() => unmount(live),
 			detachOverlay
 		);
 		this.plugins.forEach((plugin) => {

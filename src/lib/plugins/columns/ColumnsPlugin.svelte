@@ -134,6 +134,8 @@
 			const resize = new ColumnResize(edytor, options.minWidth ?? 0.1);
 			return {
 				commands: [2, 3, 4, 5].map((n) => layoutCommand(edytor, n)),
+				// The layout holding the caret shows its bands (the keyboard's way to them).
+				onSelectionChange: () => edytor.overlay.invalidate(),
 				// The resize bands: in the overlay, for the layout under the pointer.
 				onEdytorAttached: ({ node }) => {
 					const over = (event: PointerEvent) => resize.hover(event.target);

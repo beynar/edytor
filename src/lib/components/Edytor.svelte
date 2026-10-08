@@ -87,6 +87,14 @@
 		/** @deprecated Use `blockHandles`; `false` also hides the built-in handles. */
 		blockDnd?: boolean;
 		class?: string;
+		/** The root textbox's accessible name (or name it with `aria-labelledby`). */
+		'aria-label'?: string;
+		/** The id(s) of the element(s) naming the root textbox (a page title, a field label). */
+		'aria-labelledby'?: string;
+		/** The id(s) of the element(s) describing the root textbox (a hint, an error). */
+		'aria-describedby'?: string;
+		/** The root textbox's id (a `<label for>`, a skip link). */
+		id?: string;
 		edytor?: EdytorClass;
 		/** The assembled document this view renders (see `crdt/document.ts`). */
 		document?: EdytorDocument;
@@ -182,6 +190,10 @@
 		defaultPlugins = true,
 		blockDnd = true,
 		class: className,
+		'aria-label': ariaLabel,
+		'aria-labelledby': ariaLabelledby,
+		'aria-describedby': ariaDescribedby,
+		id,
 		edytor = $bindable(),
 		// Aliased so the DOM `document` global keeps working in this scope.
 		document: edytorDocument,
@@ -318,6 +330,9 @@
 
 	setContext('edytor', edytor);
 
+	/** The chrome popup open on this view (`edytor.popups`): the root names it while it is. */
+	const popup = $derived(edytor.popups.current);
+
 	// The display projector (R10): the root `$effect.pre` notes the focused
 	// element before the flush writes the DOM; the root `$effect` — the last
 	// effect of the editor subtree — displays the selection after them.
@@ -369,6 +384,8 @@
 </script>
 
 {#if edytor.synced}
+	<!-- The editing host is focusable (contenteditable): no tabindex of its own. -->
+	<!-- svelte-ignore a11y_aria_activedescendant_has_tabindex -->
 	<div
 		class={className}
 		use:edytor.attach
@@ -378,8 +395,16 @@
 		data-edytor-selection={edytor.selection.value.kind === 'blocks' ? 'blocks' : undefined}
 		contenteditable={!readonly}
 		role="textbox"
+		{id}
+		aria-label={ariaLabel}
+		aria-labelledby={ariaLabelledby}
+		aria-describedby={ariaDescribedby}
 		aria-multiline="true"
 		aria-readonly={readonly ? 'true' : 'false'}
+		aria-controls={popup?.id}
+		aria-haspopup={popup?.haspopup}
+		aria-activedescendant={popup?.active}
+		aria-keyshortcuts={popup?.keys}
 		{translate}
 	>
 		{#each edytor.cells?.rootIds ?? [] as id (id)}<Block {id} />{/each}<span
@@ -402,6 +427,10 @@
 			{blockDnd}
 			class={className}
 			{placeholder}
+			aria-label={ariaLabel}
+			aria-labelledby={ariaLabelledby}
+			aria-describedby={ariaDescribedby}
+			{id}
 			{...snippets}
 		/>
 	</div>

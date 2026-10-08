@@ -82,6 +82,7 @@
 	import Child from './Block.svelte';
 	import Content from './Content.svelte';
 	import Suggestion from './Suggestion.svelte';
+	import { blockDir, ownText } from '../surface/attributes.js';
 
 	let {
 		id,
@@ -111,6 +112,18 @@
 	const contentElement = $derived(
 		definition && elementOf(definition.contentElement, cell?.data, id)
 	);
+	/** Its direction from its own text (`blockDir`, bidi): none in a preview. */
+	const dir = $derived(preview ? null : blockDir(ownText(cell?.runs ?? [])));
+	/**
+	 * `dir` as an attribute, absent when `null`: Svelte writes `dir` as a
+	 * property, which would leave `dir=""` where the table wants none.
+	 */
+	const direction = (node: HTMLElement, value: 'rtl' | 'ltr' | null) => {
+		const write = (next: 'rtl' | 'ltr' | null) =>
+			next ? node.setAttribute('dir', next) : node.removeAttribute('dir');
+		write(value);
+		return { update: write };
+	};
 	/** Registers the block element (O45): one element per block, re-registered when the tag changes. */
 	const register = (node: HTMLElement) => block.handle?.attach(node);
 	/** The block element's attributes: the kind's, then the core's. */
@@ -181,6 +194,7 @@
 			{...attributes}
 			style:user-select={definition.void ? 'none' : undefined}
 			use:register
+			use:direction={dir}
 		/><!--
 -->{:else}<!--
 --><svelte:element
@@ -188,6 +202,7 @@
 			{...attributes}
 			style:user-select={definition.void ? 'none' : undefined}
 			use:register
+			use:direction={dir}
 			><!--
 		-->{#if definition.snippet}<!--
 		-->{@render definition.snippet({

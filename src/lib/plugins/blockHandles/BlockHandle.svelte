@@ -17,11 +17,17 @@
 	const grip = $derived(controller.grip(block));
 	/** Alt+click on the `+` of a block directly in a column adds a column right of it (Notion). */
 	const beside = $derived(controller.addsColumn(block));
+	/** The block's kind as people read it: the controls' names. */
+	const label = $derived(controller.labelOf(block));
+	/** The menus this handle's `+` and grip opened, while open: their `aria-expanded`. */
+	const added = $derived(controller.opened(block, 'add'));
+	const gripped = $derived(controller.opened(block, 'grip'));
 </script>
 
 {#if handle}
 	{@render handle({
 		block,
+		label,
 		grip,
 		add: (above = false) => controller.addBlock(block, above),
 		addable: true,
@@ -36,8 +42,11 @@
 		hidden={controller.readonly}
 		data-testid="block-add"
 		aria-label={beside
-			? 'Add a block below (Alt: a column to the right)'
-			: 'Add a block below (Alt: above)'}
+			? `Add a block below ${label} (Alt: a column to the right)`
+			: `Add a block below ${label} (Alt: above)`}
+		aria-expanded={added ? 'true' : undefined}
+		aria-controls={added?.id}
+		aria-haspopup={added?.haspopup}
 		title={beside
 			? 'Click to add below\nAlt-click to add a column to the right'
 			: 'Click to add below\nAlt-click to add a block above'}
@@ -66,7 +75,10 @@
 		hidden={controller.readonly}
 		data-testid="block-handle"
 		data-block-id={block.id}
-		aria-label={`Move ${block.type} block`}
+		aria-label={`${label} block: drag to move, click for actions`}
+		aria-expanded={gripped ? 'true' : undefined}
+		aria-controls={gripped?.id}
+		aria-haspopup={gripped?.haspopup}
 		aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowRight Alt+ArrowLeft"
 		data-draggable={controller.draggable ? 'true' : undefined}
 	>

@@ -15,8 +15,12 @@ export const weightOf = (data: Record<string, unknown> | undefined) => {
 
 /** The resize band in the gap between the columns `left` and `right` (`bandOf`), layer-relative. */
 export type Strip = {
+	/** The layout, and the columns on each side. */
+	layout: string;
 	left: string;
 	right: string;
+	/** The left column's share of the pair's weights, in percent (`aria-valuenow`). */
+	value: number;
 	x: number;
 	top: number;
 	width: number;
@@ -33,6 +37,8 @@ type Drag = {
 	at: number;
 	/** The left column's width, the pair's, and the narrowest either may get. */
 	width: number;
+	/** The layout's width. */
+	span: number;
 	sum: number;
 	min: number;
 	/** The left column's left edge and the gap after it. */
@@ -61,10 +67,18 @@ type Drag = {
  * Neither column goes under `minWidth` × the layout's width, in the view
  * only (the document stores weights). Positions are read in the overlay's
  * measure, once per frame.
+ *
+ * The keyboard (WAI-ARIA window splitter): a band is a focusable vertical
+ * separator, valued by the left column's share of the pair; its arrows move
+ * the gap (`key`). The bands of the layout holding the caret are in the
+ * page too, so the keyboard reaches them, and a focused band stays while it
+ * holds the focus.
  */
 export class ColumnResize {
 	/** The layout under the pointer. */
 	hovered = $state<string | null>(null);
+	/** The layout whose band holds the focus. */
+	focused = $state<string | null>(null);
 	/** A block drag is in progress: no strip takes the pointer. */
 	dragging = $state(false);
 	/** The measured strips of the hovered layout. */
@@ -93,9 +107,29 @@ export class ColumnResize {
 		return this.drag === null && this.edytor.selection.dragging;
 	}
 
-	/** Whether the strips show: over a layout of an editable view, or while one drags. */
+	/**
+	 * The layout whose bands show: the one a strip drags, else the one under
+	 * the pointer, the one a band holds the focus of, the one holding the caret.
+	 */
+	private get layout(): string | null {
+		return this.drag?.left.parent?.id ?? this.hovered ?? this.focused ?? this.caretLayout;
+	}
+
+	/** The innermost layout holding the selection's start (the keyboard's). */
+	private get caretLayout(): string | null {
+		const { facade, selection } = this.edytor;
+		for (
+			let block: Block | null | undefined = selection.state.startBlock;
+			block && !block.isRoot;
+			block = block.parent
+		)
+			if (block.id && facade.isLayout(block.id)) return block.id;
+		return null;
+	}
+
+	/** Whether the strips show: for a layout of an editable view (`layout`), or while one drags. */
 	get shown() {
-		return this.drag !== null || (!this.edytor.readonly && !this.dragging && !!this.hovered);
+		return this.drag !== null || (!this.edytor.readonly && !this.dragging && !!this.layout);
 	}
 
 	/** A column's weight as shown: the drag's preview while a strip drags it, else its stored one. */
@@ -158,7 +192,7 @@ export class ColumnResize {
 
 	/** The bands of the hovered layout (`bandOf` each gap): none when it stacks or shows fewer than two columns. */
 	private gaps(origin: DOMRect): Strip[] {
-		const id = this.drag?.left.parent?.id ?? this.hovered;
+		const id = this.layout;
 		const layout = id ? this.edytor.idToBlock.get(id) : undefined;
 		const node = layout?.node;
 		if (!layout || !node?.isConnected) return [];
@@ -171,10 +205,15 @@ export class ColumnResize {
 			const gap = gapBefore(item);
 			if (!gap) return [];
 			const band = bandOf(gap);
+			const [left, right] = [shown[index]!, item].map((column) =>
+				this.weight(column.id, column.data)
+			);
 			return [
 				{
+					layout: layout.id,
 					left: shown[index]!.id,
 					right: item.id,
+					value: Math.round((100 * left!) / (left! + right!)),
 					x: band.left - origin.left,
 					top: box.top - origin.top,
 					width: band.width,
@@ -211,30 +250,14 @@ export class ColumnResize {
 	start = (event: PointerEvent | MouseEvent, strip: Strip) => {
 		const { edytor } = this;
 		if (event.button !== 0 || edytor.readonly || this.drag) return;
-		const left = edytor.idToBlock.get(strip.left);
-		const right = edytor.idToBlock.get(strip.right);
-		const layout = left?.parent;
-		const [a, b, box] = [left, right, layout].map((block) => block?.node?.getBoundingClientRect());
-		if (!left || !right || !a || !b || !box) return;
+		const pair = this.pair(strip, event.clientX);
+		if (!pair) return;
 		event.preventDefault();
 		event.stopPropagation();
 		const target = event.currentTarget as HTMLElement | null;
 		const pointer = event.type === 'pointerdown';
 		if (pointer) target?.setPointerCapture?.((event as PointerEvent).pointerId);
-		this.drag = {
-			strip,
-			left,
-			right,
-			from: event.clientX,
-			at: event.clientX,
-			width: a.width,
-			sum: a.width + b.width,
-			min: this.minWidth * box.width,
-			start: a.left,
-			gap: b.left - a.right,
-			top: box.top,
-			height: box.height
-		};
+		this.drag = pair;
 		const document = target?.ownerDocument ?? edytor.node?.ownerDocument;
 		const tracked = pointer ? document : document?.defaultView;
 		const [moves, ups] = pointer ? ['pointermove', 'pointerup'] : ['mousemove', 'mouseup'];
@@ -278,6 +301,62 @@ export class ColumnResize {
 		edytor.overlay.invalidate();
 	};
 
+	/** `strip`'s two columns as they are now, measured, a drag from `from`; `null` when one is gone. */
+	private pair(strip: Strip, from: number): Drag | null {
+		const left = this.edytor.idToBlock.get(strip.left);
+		const right = this.edytor.idToBlock.get(strip.right);
+		const layout = left?.parent;
+		const [a, b, box] = [left, right, layout].map((block) => block?.node?.getBoundingClientRect());
+		if (!left || !right || !a || !b || !box) return null;
+		return {
+			strip,
+			left,
+			right,
+			from,
+			at: from,
+			width: a.width,
+			span: box.width,
+			sum: a.width + b.width,
+			min: this.minWidth * box.width,
+			start: a.left,
+			gap: b.left - a.right,
+			top: box.top,
+			height: box.height
+		};
+	}
+
+	/**
+	 * A key on a focused band: ArrowRight/ArrowLeft move the gap by 1% of the
+	 * layout's width (Shift: 10%), Home/End to the narrowest either column
+	 * may get (the drag's minimum); each press writes both weights, keeping
+	 * their sum, as one undo step (`release`). Every key there is the band's,
+	 * never the editor's; Escape gives the keys back to the editor.
+	 */
+	key = (event: KeyboardEvent, strip: Strip) => {
+		const { edytor } = this;
+		event.stopPropagation();
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			return takeKeys(edytor);
+		}
+		const step = ({ ArrowLeft: -1, ArrowRight: 1 } as Record<string, number>)[event.key];
+		const edge = ({ Home: -Infinity, End: Infinity } as Record<string, number>)[event.key];
+		if (step === undefined && edge === undefined) return;
+		event.preventDefault();
+		if (this.drag || !edytor.dispatcher.permits()) return;
+		const pair = this.pair(strip, 0);
+		if (!pair) return;
+		pair.at = edge ?? step! * (event.shiftKey ? 0.1 : 0.01) * pair.span;
+		this.release(pair);
+		edytor.overlay.invalidate();
+	};
+
+	/** A band took (`true`) or lost the focus: its layout's bands stay while it holds it. */
+	focus = (strip: Strip, focused: boolean) => {
+		this.focused = focused ? strip.layout : null;
+		this.edytor.overlay.invalidate();
+	};
+
 	/**
 	 * The view turned readonly (or the document read-only): a drag in progress
 	 * ends at once, its preview dropped, nothing written (its release would be
@@ -313,6 +392,8 @@ const sameStrips = (a: Strip[], b: Strip[]) =>
 	a.length === b.length &&
 	a.every(
 		(strip, index) =>
+			strip.layout === b[index]!.layout &&
+			strip.value === b[index]!.value &&
 			strip.left === b[index]!.left &&
 			strip.right === b[index]!.right &&
 			strip.x === b[index]!.x &&

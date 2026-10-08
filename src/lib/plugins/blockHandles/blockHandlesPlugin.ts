@@ -12,6 +12,8 @@ export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
 /** What a `handle` snippet receives. */
 export type BlockHandleSnippetPayload = {
 	block: Block;
+	/** The block's kind as people read it ("Heading 1", its preset's label): name your controls with it. */
+	label: string;
 	/** An action: `use:grip` makes an element the drag grip, menu button and Alt+arrow target. */
 	grip: (node: HTMLElement) => { destroy(): void };
 	/**

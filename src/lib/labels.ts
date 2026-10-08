@@ -227,8 +227,12 @@ export type MediaLabels = {
 export type CodeLabels = {
 	/** The preset. */
 	code: string;
-	/** The language picker's name. */
+	/** The language picker's name (its button reads "<language>: <the block's language>"). */
 	language: string;
+	/** The language list's search field placeholder. */
+	search: string;
+	/** The language list when no language matches the query. */
+	noResults: string;
 	copy: string;
 	copied: string;
 	/** A language's label, by id, over the language list's own. */
@@ -718,6 +722,8 @@ export const englishLabels: Labels = frozen({
 	code: {
 		code: 'Code',
 		language: 'Code language',
+		search: 'Search for a language…',
+		noResults: 'No results',
 		copy: 'Copy',
 		copied: 'Copied',
 		languages: {}

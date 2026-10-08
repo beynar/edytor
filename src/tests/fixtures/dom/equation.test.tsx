@@ -173,10 +173,10 @@ describe('rendering', () => {
 		expect(error.getAttribute('title')).toContain('Invalid equation');
 	});
 
-	it('without a KaTeX loader the TeX source shows as it is', async () => {
+	it('without KaTeX (`katex: false`) the TeX source shows as it is', async () => {
 		await mount(
 			[{ id: 'e', type: 'equation', data: { expression: 'x^2' } }],
-			[createEquationPlugin()]
+			[createEquationPlugin({ katex: false })]
 		);
 		await flushDomUpdates();
 		const source = document.querySelector('[data-edytor-equation] [data-edytor-equation-source]');

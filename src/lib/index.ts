@@ -197,6 +197,8 @@ export {
 	tableBlock,
 	type TableBlockOptions,
 	createEquationPlugin,
+	KATEX_CDN,
+	KATEX_VERSION,
 	type EquationPluginOptions,
 	type EquationData,
 	type KatexLike,

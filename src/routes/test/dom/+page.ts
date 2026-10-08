@@ -26,7 +26,7 @@ export const load: PageLoad = ({ url }) => {
 		empty: url.searchParams.get('empty'),
 		// `media=1` lists the embed and bookmark plugins (their paste menu).
 		media: url.searchParams.get('media') === '1',
-		// `equation=1` lists the equation plugin (KaTeX loaded lazily).
+		// `equation=1` lists the equation plugin (KaTeX loaded from the CDN at first use).
 		equation: url.searchParams.get('equation') === '1',
 		// `triggers=1` lists the mention and page-link plugins and an emoji input rule.
 		triggers: url.searchParams.get('triggers') === '1',

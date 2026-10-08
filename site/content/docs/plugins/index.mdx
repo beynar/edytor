@@ -70,13 +70,11 @@ Plugins are read once, when the component mounts. Changing the array afterwards 
 | [`suggestionsPlugin`](/docs/editor/suggestions#the-default-ui) | after yours | `suggestionsPlugin` or any `createSuggestionsPlugin(...)` in your list |
 | [`imagePlugin`](/docs/plugins/image) | after yours | `imagePlugin` or any `createImagePlugin(...)` in your list |
 | [`richTextPlugin`](/docs/plugins/rich-text) | last | `richTextPlugin` in your list |
-| [Page](/docs/plugins/page)                             | `pagePlugin`, `createPagePlugin` | Notion's subpage block: a link to another document with its title, opened, named and created by your functions. Opt-in |
-| [Table of contents](/docs/plugins/table-of-contents)   | `tocPlugin`, `createTocPlugin` | Notion's table of contents: the document's headings, live, each scrolling to its heading. Opt-in |
 | [Block handles](/docs/plugins/block-handles) | first | the `blockHandles` prop, or a handles plugin in your list |
 
 The example above therefore runs block handles, your five plugins, then arrow move, suggestions, image and rich text. A default you list yourself stays where you put it, so older code that passes `plugins={[richTextPlugin]}` still works.
 
-Some bundled plugins are not defaults: list [`columnsPlugin`](/docs/plugins/columns), [`codePlugin`](/docs/plugins/code), [`findPlugin`](/docs/plugins/find), [comments](/docs/plugins/comments), the media plugins ([embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)), the [page](/docs/plugins/page), [table of contents](/docs/plugins/table-of-contents) , [table](/docs/plugins/table) and [equation](/docs/plugins/equation) plugins, the menus, the toolbar and markdown shortcuts yourself when you want them.
+Some bundled plugins are not defaults: list [`columnsPlugin`](/docs/plugins/columns), [`codePlugin`](/docs/plugins/code), [`findPlugin`](/docs/plugins/find), [comments](/docs/plugins/comments), the media plugins ([embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)), the [page](/docs/plugins/page), [table of contents](/docs/plugins/table-of-contents), [table](/docs/plugins/table) and [equation](/docs/plugins/equation) plugins, the menus, the toolbar and markdown shortcuts yourself when you want them.
 
 Pass `defaultPlugins={false}` to get exactly your list (block handles still follow `blockHandles`). The defaults are added by the `<Edytor>` component, per view; the editor instance underneath has none of its own.
 
@@ -132,6 +130,8 @@ Import it like any other module: `import { highlightPlugin } from './HighlightPl
 | [Markdown shortcuts](/docs/plugins/markdown-shortcuts) | `markdownShortcutsPlugin` | Block prefixes such as `# ` or `- `, and inline `**bold**`, `*italic*`, `` `code` ``, `~strike~` |
 | [Arrow move](/docs/plugins/arrow-move)                 | `arrowMovePlugin`         | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the caret's block; <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves selected blocks. On by default |
 | [Find and replace](/docs/plugins/find)                 | `findPlugin`, `createFindPlugin` | <kbd>Mod</kbd> + <kbd>F</kbd> opens a find and replace bar: matches highlighted, closed toggles opened, Replace all in one undo step. Opt-in: list it in `plugins` |
+| [Page](/docs/plugins/page)                             | `pagePlugin`, `createPagePlugin` | Notion's subpage block: a link to another document with its title, opened, named and created by your functions. Opt-in |
+| [Table of contents](/docs/plugins/table-of-contents)   | `tocPlugin`, `createTocPlugin` | Notion's table of contents: the document's headings, live, each scrolling to its heading. Opt-in |
 | [Comments](/docs/plugins/comments)                     | `createCommentsPlugin`    | Notion's comment threads on text: a sidebar beside it, replies, Resolve and Re-open, kept by the room. Opt-in |
 | [Mention](/docs/plugins/mention)                       | `createMentionPlugin`     | Notion's `@` mentions: a menu of your app's people, picked into an inline mention. Opt-in |
 | [Page link](/docs/plugins/page-link)                   | `createPageLinkPlugin`    | Notion's `[[` page links: a search of your app's pages, picked into an inline link. Opt-in |

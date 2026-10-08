@@ -10,7 +10,7 @@
 <p>
     <a href="https://edytor.dev/docs">Documentation</a> •
     <a href="#quick-start">Quick start</a> •
-    <a href="https://edytor.dev/docs/reference/migration">Migrating from 0.0.11</a>
+    <a href="https://edytor.dev/docs/reference/migration">Changelog</a>
   </p>
 </div>
 
@@ -102,7 +102,7 @@ The [documentation site](https://edytor.dev/docs) is the single source for the A
 - [Editor](https://edytor.dev/docs/editor/edytor-component): the component, commands, selection, history, clipboard, readonly
 - [Plugins](https://edytor.dev/docs/plugins) and [customization](https://edytor.dev/docs/customization/blocks): bundled plugins, custom blocks and marks, [hotkeys and editing behavior](https://edytor.dev/docs/customization/hotkeys)
 - [Collaboration](https://edytor.dev/docs/collaboration) and [server](https://edytor.dev/docs/server/quick-start): documents, providers, presence, the Durable Object room and its protocol
-- [Reference](https://edytor.dev/docs/reference/document-api): the document API, [troubleshooting](https://edytor.dev/docs/reference/troubleshooting), [migration from 0.0.11](https://edytor.dev/docs/reference/migration), limitations, [platform support](https://edytor.dev/docs/reference/platform-support)
+- [Reference](https://edytor.dev/docs/reference/document-api): the document API, [troubleshooting](https://edytor.dev/docs/reference/troubleshooting), the [changelog](https://edytor.dev/docs/reference/migration) (with [migration from 0.0.11](https://edytor.dev/docs/reference/migration#upgrading-from-0011)), [importing v13 documents](https://edytor.dev/docs/reference/v13-import), limitations, [platform support](https://edytor.dev/docs/reference/platform-support)
 
 ## Contributing
 

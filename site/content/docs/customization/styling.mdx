@@ -77,7 +77,11 @@ Measured in Chromium at 1280×900 on `/test/large` (top-level blocks of mixed ki
 | Moving a block (Mod+Shift+↓)        |       100 ms |        126 ms |        245 ms |         288 ms |
 | Pasting 50 lines                    |       172 ms |        218 ms |        325 ms |         404 ms |
 
-What grows with the page is the mount (about 0.13 ms a block) and the keys. At 1,000 blocks a character takes 9 ms and Enter 24 ms; at 2,000, 17 and 50 ms. Much of a character's time on a long page is the browser's: in Chromium, moving the DOM caret inside an input event costs time proportional to the page (1.2 ms at 1,000 blocks, 14 ms at 5,000, 30 ms at 10,000, about 58 ms at 20,000; nothing outside the event), and a keystroke moves it twice (patching the text node resets the caret, and the editor puts it back). A key that adds, removes or moves a top-level block (Enter, a move, a paste) costs two to three times a character, most of it the editor's own work, also proportional to the number of blocks. The editor renders every block, with no windowing: it would break native selection, find-in-page and IME. Keep a document to a couple of thousand top-level blocks for typing within a frame; for longer content, make each page its own document ([A page is a document](/docs/server/moves#a-page-is-a-document)).
+What grows with the page is the mount (about 0.13 ms a block) and the keys. At 1,000 blocks a character takes 9 ms and Enter 24 ms; at 2,000, 17 and 50 ms. Keep a document to a couple of thousand top-level blocks for typing within a frame; for longer content, make each page its own document ([A page is a document](/docs/server/moves#a-page-is-a-document)).
+
+- **The browser's share.** Much of a character's time on a long page is the browser's: in Chromium, moving the DOM caret inside an input event costs time proportional to the page (1.2 ms at 1,000 blocks, 14 ms at 5,000, 30 ms at 10,000, about 58 ms at 20,000; nothing outside the event), and a keystroke moves it twice (patching the text node resets the caret, and the editor puts it back).
+- **Structural keys.** A key that adds, removes or moves a top-level block (Enter, a move, a paste) costs two to three times a character, most of it the editor's own work, also proportional to the number of blocks.
+- **No windowing.** The editor renders every block, with no windowing: it would break native selection, find-in-page and IME.
 
 ## The rendered DOM
 

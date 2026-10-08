@@ -4,11 +4,20 @@ description: What people see when they delete, undo, split, merge and move the s
 icon: git-merge
 ---
 
-Edytor merges concurrent edits without conflicts, and it follows one principle when two people touch the same content: keep what nobody removed, and never duplicate what both did. This page lists the rules users run into, each with a short Alice and Bob example. "At the same time" means before either has seen the other's edit, whether because of latency or because one of them was offline.
+Edytor merges concurrent edits without conflicts. Two people typing in different blocks, or in the same paragraph, both keep their text, and every replica ends with the same document.
+
+When two people touch the same content, edytor follows one principle: **keep what nobody removed, and never duplicate what both did.** This page shows each rule users run into as an Alice and Bob table. "At the same time" means before either has seen the other's edit, whether because of latency or because one of them was offline. Each table reads top to bottom; a row shows what each person does, then what they see.
 
 ## Undo is your own
 
-Undo and redo revert only your own edits. When Alice deletes a block, Bob edits another one, and Alice undoes, her block comes back and Bob's edit stays. See [History](/docs/editor/history) for undo steps in the editor.
+Undo and redo revert only your own edits.
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Deletes the "Draft" block. | Types "!" in another block, "Notes". |
+| 2 | Undoes. "Draft" comes back. | "Notes!" keeps Bob's edit. |
+
+See [History](/docs/editor/history) for undo steps in the editor.
 
 ## Concurrent deletes and undo
 
@@ -22,9 +31,20 @@ Each person's delete of a piece of text is recorded as theirs. A character is vi
 
 Both see `hello` after step 2 and `hello world` after step 3, never `hello world world`.
 
+**Edge cases**
+
 - A restoration made before a peer's concurrent delete arrived is hidden as soon as that delete arrives. It becomes part of the peer's delete, and the peer's undo brings it back.
 - Text typed and deleted within one undo step leaves no trace; no undo can bring it back.
 - Deletes are kept for 30 days, then purged by the room ([`purgeAfterDays`](/docs/server/history#the-purge)): after that, an undo of the delete restores nothing, and nobody's delete record is left to hold the text. A [version](/docs/server/history) of the document restores anything within those 30 days.
+
+## An explicit delete wins over concurrent typing
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Deletes the "Draft" block. | Types " v2" in "Draft", without having seen the delete. |
+| 2 | "Draft" is gone. | "Draft" is gone, with " v2"; Bob's caret moves to where the block was. |
+
+This applies to text in the deleted block. A block Bob adds under it, or splits off inside it, is kept in its place (see [Deleting a block keeps its children](#deleting-a-block-keeps-its-children)). It also applies to deletes only: undoing a block's creation is not a delete (see [Undoing a new block keeps a peer's text](#undoing-a-new-block-keeps-a-peers-text)).
 
 ## Deleting a block keeps its children
 
@@ -65,22 +85,15 @@ Undoing the creation of a block (inserting it, pasting it, pressing Enter at the
 
 This holds even when Bob's text arrives after Alice's undo. If Bob later deletes his text, the empty line goes away; Alice's redo brings her part back beside Bob's.
 
-**The exception: undoing a split.** When a line is split in two, the second half is text that moved, not text that was typed, so undoing the split joins the halves again, whoever typed in the second half:
+:::note
+**Undoing a split is the exception.** When a line is split in two, the second half is text that moved, not text that was typed, so undoing the split joins the halves again, whoever typed in the second half.
+:::
 
 | | Alice | Bob |
 | --- | --- | --- |
 | 1 | Splits "hello world" after "hello". | |
 | 2 | | Types "!" at the end of " world". |
 | 3 | Undoes. One line: "hello world!". | |
-
-## An explicit delete wins over concurrent typing
-
-| | Alice | Bob |
-| --- | --- | --- |
-| 1 | Deletes the "Draft" block. | Types " v2" in "Draft", without having seen the delete. |
-| 2 | "Draft" is gone. | "Draft" is gone, with " v2"; Bob's caret moves to where the block was. |
-
-This applies to text in the deleted block. A block Bob adds under it, or splits off inside it, is kept in its place (see [Deleting a block keeps its children](#deleting-a-block-keeps-its-children)). It also applies to deletes only: undoing a block's creation is not a delete (see above).
 
 ## An emptied document shows a virtual paragraph
 
@@ -124,19 +137,46 @@ A block keeps its id and its CRDT identity when it is moved, nested, split or me
 | New lines after one line | Presses <kbd>Enter</kbd> at the end of "x" and types three lines, "a1", "a2", "a3". | Does the same: "b1", "b2", "b3". | Each person's lines together: "x", "a1", "a2", "a3", "b1", "b2", "b3", or Bob's lines first. Which person's lines come first depends on the client ids; they never interleave. |
 | Merge into a deleted line | Joins "item", which has nested lines, into "hello" above (Backspace at its start). | Deletes "hello". | "item" is back in its place, its former nested lines right after it, in order. |
 | `mergeFrom` into a deleted block | Calls `hello.mergeFrom(item)`: the nested lines of "item" become the last children of "hello". | Deletes "hello". | "item" is back in its place, with its nested lines still under it. |
-
-Moving a block into its own subtree is refused, and concurrent moves that would form a cycle are resolved the same way on every replica: no block becomes unreachable.
+| A cycle | Moves "A" under "B". | Moves "B" under "A". | Resolved the same way on every replica: no block becomes unreachable. Moving a block into its own subtree is refused outright. |
 
 ## Which races keep the text order
 
-The rows above that say "whatever the client ids", and the list races below, hold when each person makes one of these gestures between two syncs: <kbd>Enter</kbd> inside a line, a paste of several lines of text into a line, <kbd>Backspace</kbd> at the start of a list's first item or of a block with nested lines, Turn into on one list item, or <kbd>Shift+Tab</kbd> on one line or on adjacent lines. Text typed or deleted before the caret's position does not count as another one; text typed or deleted after it, before the sync, can reverse the pieces (Alice types " again" at the end of "hello world" and presses <kbd>Enter</kbd> after "hello wo" while Bob presses <kbd>Enter</kbd> after "hello": "rld again" shows before " wo"; Alice deletes "rld" and presses <kbd>Enter</kbd> after "hello" while Bob presses <kbd>Enter</kbd> after "hello w": "o" shows before " w"). Tests run each race on up to 240 pairs of client ids and check the order on every one.
+The rows above that say "whatever the client ids", and the list races below, hold when each person makes one of these gestures between two syncs: <kbd>Enter</kbd> inside a line, a paste of several lines of text into a line, <kbd>Backspace</kbd> at the start of a list's first item or of a block with nested lines, Turn into on one list item, or <kbd>Shift+Tab</kbd> on one line or on adjacent lines. Tests run each race on up to 240 pairs of client ids and check the order on every one.
+
+Text typed or deleted before the caret's position does not count as another gesture. But the pieces of two splits of one block are ordered by the text after each split point, so text Alice typed or deleted after her own split point, before the sync, can reverse them:
+
+| | Alice | Bob | Both see |
+| --- | --- | --- | --- |
+| Typed after the split point | Types " again" at the end of "hello world", then presses <kbd>Enter</kbd> after "hello wo". | Presses <kbd>Enter</kbd> after "hello". | "rld again" before " wo". |
+| Deleted after the split point | Deletes "rld", then presses <kbd>Enter</kbd> after "hello". | Presses <kbd>Enter</kbd> after "hello w". | "o" before " w". |
 
 Other races converge too: both people see the same document and no text is lost. But the order of the new or moved blocks can depend on the client ids in these cases:
 
-- **A new block next to a line.** <kbd>Enter</kbd> at the start or end of a line adds a new block beside it instead of splitting it (at the end of a line with nested lines that is no toggle, callout or quote, it splits), and so do Duplicate and a kind picked from the handle's + button (the + alone adds nothing), and a paste at the start of a line whose first pasted line is a list, a code block, a divider or an image. So does <kbd>Enter</kbd> inside the first line of a toggle that is open, or of a callout or quote with nested lines: the text after the caret becomes a new first nested line; and so does a paste at the end of that line. Alice presses <kbd>Enter</kbd> at the end of "hello world" and types "foo" while Bob presses <kbd>Enter</kbd> after "hello": "foo" can show before " world". The lines one person adds one after another stay together: a line added right after a line the same person added extends that person's run there, so nobody else's line lands inside it.
-- **A paste of whole blocks, or over selected blocks.** Blocks copied with a block selection paste (or drop) after the caret's line, and a paste (or typing) over selected blocks takes their place; both add new blocks beside a line. Alice pastes two copied blocks with her caret in "hello wo|rld" while Bob presses <kbd>Enter</kbd> after "hello": Bob's " world" can show before Alice's two blocks, never between them.
-- **Several gestures before a sync.** Alice presses <kbd>Enter</kbd> twice, or adds a line after a block or duplicates it and then presses <kbd>Enter</kbd> inside it, while Bob splits or lifts next to it: one of Alice's lines can show out of order. Turn into over several blocks at once counts as one gesture per block: Alice turns the list items "a" and "b" into headings while Bob outdents "c", the item after them, and "b" can show after "c". <kbd>Shift+Tab</kbd> over several items counts as one gesture per group of adjacent items: over "a" and "b" together it keeps the order, but over "a" and "c" (with "b" not selected) while Bob outdents "d", "d" can show before "b".
-- **Moves.** A drag, the block handle's <kbd>Alt+↑</kbd>, <kbd>Alt+↓</kbd> and <kbd>Alt+→</kbd>, <kbd>Mod+Shift+↑</kbd>/<kbd>↓</kbd>, the block menu's Move up and Move down, and <kbd>Tab</kbd>, against another person's edit next to the moved block. (The handle's <kbd>Alt+←</kbd> is the outdent, which keeps the order like <kbd>Shift+Tab</kbd>.) Alice presses <kbd>Tab</kbd> on the line after "x" while Bob presses <kbd>Enter</kbd> at the end of the last line nested under "x": Bob's new line can show after Alice's.
+| Case | Alice | Bob | What can happen |
+| --- | --- | --- | --- |
+| A new block next to a line | Presses <kbd>Enter</kbd> at the end of "hello world" and types "foo". | Presses <kbd>Enter</kbd> after "hello". | "foo" can show before " world". |
+| A paste of whole blocks, or over selected blocks | Pastes two copied blocks with her caret in "hello wo\|rld". | Presses <kbd>Enter</kbd> after "hello". | Bob's " world" can show before Alice's two blocks, never between them. |
+| Several gestures before a sync | Presses <kbd>Enter</kbd> twice, or adds a line after a block or duplicates it and then presses <kbd>Enter</kbd> inside it. | Splits or lifts next to it. | One of Alice's lines can show out of order. |
+| Turn into over several blocks | Turns the list items "a" and "b" into headings at once. | Outdents "c", the item after them. | "b" can show after "c". |
+| <kbd>Shift+Tab</kbd> over items that are not adjacent | Outdents "a" and "c" together ("b" not selected). | Outdents "d". | "d" can show before "b". |
+| Moves | Presses <kbd>Tab</kbd> on the line after "x". | Presses <kbd>Enter</kbd> at the end of the last line nested under "x". | Bob's new line can show after Alice's. |
+
+What each case covers:
+
+- **A new block next to a line.** <kbd>Enter</kbd> at the start or end of a line adds a new block beside it instead of splitting it (at the end of a line with nested lines that is no toggle, callout or quote, it splits). So do Duplicate, a kind picked from the handle's + button (the + alone adds nothing), and a paste at the start of a line whose first pasted line is a list, a code block, a divider or an image. So does <kbd>Enter</kbd> inside the first line of a toggle that is open, or of a callout or quote with nested lines: the text after the caret becomes a new first nested line; and so does a paste at the end of that line. The lines one person adds one after another stay together: a line added right after a line the same person added extends that person's run there, so nobody else's line lands inside it.
+- **A paste of whole blocks, or over selected blocks.** Blocks copied with a block selection paste (or drop) after the caret's line, and a paste (or typing) over selected blocks takes their place; both add new blocks beside a line.
+- **Several gestures before a sync.** Turn into over several blocks at once counts as one gesture per block. <kbd>Shift+Tab</kbd> over several items counts as one gesture per group of adjacent items: over "a" and "b" together it keeps the order.
+- **Moves.** A drag, the block handle's <kbd>Alt+↑</kbd>, <kbd>Alt+↓</kbd> and <kbd>Alt+→</kbd>, <kbd>Mod+Shift+↑</kbd>/<kbd>↓</kbd>, the block menu's Move up and Move down, and <kbd>Tab</kbd>, against another person's edit next to the moved block. (The handle's <kbd>Alt+←</kbd> is the outdent, which keeps the order like <kbd>Shift+Tab</kbd>.)
+
+## Splits and joins next to a moved block
+
+A split or a join racing a move of the same block keeps every piece of text, but not always next to the block it came from.
+
+| | Alice | Bob | Both see |
+| --- | --- | --- | --- |
+| Split, then a move | Presses <kbd>Enter</kbd> in a block, or pastes several lines into it. | Outdents or lifts that block, splits its list at a later item, presses <kbd>Enter</kbd> in its parent (which moves it under the new line), or outdents an earlier nested line of its parent (<kbd>Shift+Tab</kbd>, which takes it along as a nested line). | Alice's new line stays where she made it, beside the block's old place: it shows before or after the block's text instead of right after it. |
+
+A split and a join of the same line are the Merge and split row of [Moves, splits and merges keep identity](#moves-splits-and-merges-keep-identity), and two splits of one block after a typed edit are under [Which races keep the text order](#which-races-keep-the-text-order). Earlier releases put a joined line after the first piece of a split, and a client of one still shows it so until it upgrades: see [the upgrade notes](/docs/reference/migration#from-010-next25).
 
 ## Conflicting type changes
 
@@ -153,9 +193,7 @@ If Bob's quote had won, Alice's undo changes nothing: the quote stays. The same 
 
 ## Void blocks hold no children
 
-Turning a block into a void kind (an image, a divider) moves its nested blocks out, right after it, in order: nothing renders a void block's children. Undo puts them back under the block.
-
-The same holds for whatever Bob puts under the block without having seen the change: a void block never shows children.
+Turning a block into a void kind (an image, a divider) moves its nested blocks out, right after it, in order: nothing renders a void block's children. Undo puts them back under the block. The same holds for whatever Bob puts under the block without having seen the change.
 
 | | Alice | Bob |
 | --- | --- | --- |
@@ -185,11 +223,48 @@ A code line holds no nested blocks, and a code block holds only code lines: the 
 | Nests the paragraph below under "let a" (Tab) | The paragraph shows right after the code block, where it can be edited and moved. |
 | Turns "let a" into a heading | "let a" shows as a code line in the code block. If Alice redoes, it is a heading again. |
 
-If someone later deletes "let a", the paragraph Bob nested under it stays right after the code block; it never moves into the code block as a code line. And when Bob turns a code block into a paragraph while Alice adds a line to it, both lines show as paragraphs under it, whether or not another code block exists in the document. Only a code block's lines change kind this way: a table turned into another kind keeps its rows as rows, and so does a row Alice adds meanwhile.
+**Edge cases**
 
-Nothing merges into a code block from outside it: `mergeFrom` refuses the merge and `canMerge` answers `false`. Its first line does not merge into it either, because a code block shows no text of its own. The rule holds for every block that renders no content: the first item of a list and the first cell of a table row never merge into their container, and a list or a row never merges as a whole. Instead, Delete at the end of the block above a list pulls the first item's text up and leaves the rest of the list in place, and Backspace (`mergeBackward`) at the start of a list's first item moves it out of the list as a paragraph (unless it stays inside an outer list of that kind: the first item of a nested list stays a list item of its parent item). A first cell stays where it is. A list holds only list items: a paragraph a merge, delete, outdent or paste would leave in it becomes a list item, a move of one into it is refused, and <kbd>Tab</kbd> after a list nests under its last item. Any other block (an image, a code block, a heading, a to-do) keeps its kind and data where a merge, delete or paste leaves it in a list, and an outdent or move that would place one directly in a list is refused. A list that loses its last item is removed. If a collaborator adds an item to a list while you delete, lift or move its only item, the new item stays, shown as a paragraph where the list was; undoing your edit puts it back in the list. The other way round, a paragraph a collaborator splits under an item you delete shows in the list as an item. A text selection that starts above a list keeps the list's remaining items, and <kbd>Shift+Tab</kbd> on a middle item splits the list around it: the list keeps the items after it, so an item Bob appends meanwhile (Enter at the end of the last item) stays at the end of it. An item Bob adds among the items before the outdented one meanwhile ends up after it. When both outdent, lift (<kbd>Backspace</kbd> at the start of the first item) or turn into another kind items of one list at once, one item each, the text keeps its order whatever their client ids ([which races keep it](#which-races-keep-the-text-order)), and a list left empty is removed by the next key next to it. Two races are exceptions. In a list nested directly in a list, if Alice moves an item of the inner list into the outer one (<kbd>Shift+Tab</kbd>) or lifts it out of both lists while Bob lifts a later item of the inner list out of both (Turn into a heading, a divider or a code block), Alice's item can end up after Bob's. And a divider or code block Alice inserts after an item (Turn into on an item with text) can show above that item when Bob outdents or turns into another kind a later item of the same list and his client id wins it; the text keeps its order.
+- If someone later deletes "let a", the paragraph Bob nested under it stays right after the code block; it never moves into the code block as a code line.
+- When Bob turns a code block into a paragraph while Alice adds a line to it, both lines show as paragraphs under it, whether or not another code block exists in the document.
+- Only a code block's lines change kind this way: a table turned into another kind keeps its rows as rows, and so does a row Alice adds meanwhile.
+- Nothing merges into a code block from outside it: `mergeFrom` refuses the merge and `canMerge` answers `false`. Its first line does not merge into it either, because a code block shows no text of its own.
 
-Splits have residuals of their own. A block Alice creates by pressing <kbd>Enter</kbd> in a block, or by pasting several lines into it, stays where she made it, beside that block, even when Bob meanwhile moves the block elsewhere: Bob outdents or lifts it, splits its list at a later item, presses <kbd>Enter</kbd> in its parent, which moves it under the new line, or outdents an earlier nested line of its parent (<kbd>Shift+Tab</kbd>), which takes it along as a nested line. Alice's new line then shows before or after the block's text instead of right after it. A line Bob joins into a block (<kbd>Backspace</kbd> at its start) while Alice splits that block follows the split's last piece, as either order of the two gestures puts it: Bob joins "world" into "hello" while Alice presses <kbd>Enter</kbd> after "he", and both see "he", then "lloworld". (Earlier releases put it after the first piece, and a client of one still shows it so until it upgrades: see [the upgrade notes](/docs/reference/migration#from-010-next25).) And the pieces of two splits of one block are ordered by the text after each split point, so text Alice typed or deleted after her own split point before it reached Bob can reverse them: Alice types " again" at the end of "hello world" and presses <kbd>Enter</kbd> after "hello wo" while Bob presses <kbd>Enter</kbd> after "hello", and both see "hello", "rld again", " wo". Whatever the race (Alice outdents a middle item while Bob lifts or outdents the one above it, or undoes a Turn into), a paragraph never shows directly in a list: on every replica it shows as a list item, and it leaves the list as a paragraph like any other item. One race can leave another kind there: if Bob turns the item above into a heading or a to-do (Turn into, the slash menu, `# `) while Alice outdents, the item may stay in the list Alice's outdent splits off. It keeps its kind, data and place, as a heading a merge leaves in a list does. The editor, a headless document and the room's `transact` apply the same rules.
+## Lists and other containers
+
+A block that renders no content of its own (a list, a code block, a table row) never takes text by a merge: the first item of a list and the first cell of a table row never merge into their container, and a list or a row never merges as a whole.
+
+| Gesture | What happens |
+| --- | --- |
+| <kbd>Delete</kbd> at the end of the block above a list | The first item's text comes up; the rest of the list stays in place. |
+| <kbd>Backspace</kbd> (`mergeBackward`) at the start of a list's first item | The item moves out of the list as a paragraph, unless it stays inside an outer list of that kind: the first item of a nested list stays a list item of its parent item. |
+| <kbd>Backspace</kbd> at the start of a table row's first cell | The cell stays where it is. |
+| A merge, delete, outdent or paste that would leave a paragraph in a list | The paragraph becomes a list item. A move of one into a list is refused, and <kbd>Tab</kbd> after a list nests under its last item. |
+| The same for any other block (an image, a code block, a heading, a to-do) | A merge, delete or paste keeps its kind and data where it leaves it in a list; an outdent or move that would place one directly in a list is refused. |
+| A list loses its last item | The list is removed. |
+| A text selection that starts above a list is deleted | The list keeps its remaining items. |
+| <kbd>Shift+Tab</kbd> on a middle item | The list splits around it: the list keeps the items after it. |
+
+When two people edit one list at the same time:
+
+| | Alice | Bob | Both see |
+| --- | --- | --- | --- |
+| The only item goes | Deletes, lifts or moves the list's only item. | Adds an item to the list. | Bob's item stays, shown as a paragraph where the list was. Alice's undo puts it back in the list. |
+| A split under a deleted item | Deletes an item. | Splits a paragraph under that item. | The new paragraph shows in the list, as an item. |
+| An outdent and an append | Outdents a middle item (<kbd>Shift+Tab</kbd>). | Appends an item (<kbd>Enter</kbd> at the end of the last item). | Bob's item stays at the end of the list that keeps the items after Alice's. |
+| An outdent and an insert before it | Outdents a middle item. | Adds an item among the items before it. | Bob's item ends up after Alice's. |
+| One item each | Outdents, lifts (<kbd>Backspace</kbd> at the start of the first item) or turns into another kind one item. | Does the same to another item of the same list. | The text keeps its order whatever their client ids ([which races keep it](#which-races-keep-the-text-order)). A list left empty is removed by the next key next to it. |
+| A middle item and the one above it | Outdents a middle item. | Lifts or outdents the item above it, or undoes a Turn into. | A paragraph never shows directly in a list: on every replica it shows as a list item, and it leaves the list as a paragraph like any other item. |
+
+**Edge cases**
+
+| | Alice | Bob | What can happen |
+| --- | --- | --- | --- |
+| Nested lists | In a list nested directly in a list, moves an item of the inner list into the outer one (<kbd>Shift+Tab</kbd>) or lifts it out of both lists. | Lifts a later item of the inner list out of both (Turn into a heading, a divider or a code block). | Alice's item can end up after Bob's. |
+| A divider after an item | Inserts a divider or code block after an item (Turn into on an item with text). | Outdents, or turns into another kind, a later item of the same list, and his client id wins. | Alice's divider or code block can show above her item; the text keeps its order. |
+| A retype and an outdent | Outdents an item. | Turns the item above into a heading or a to-do (Turn into, the slash menu, `# `). | The heading may stay in the list Alice's outdent splits off. It keeps its kind, data and place, as a heading a merge leaves in a list does. |
+
+The editor, a headless document and the room's `transact` apply the same rules.
 
 ## Layouts
 
@@ -199,6 +274,8 @@ A [columns layout](/docs/plugins/columns) is shown by its role, on every replica
 | --- | --- | --- |
 | 1 | Deletes the only block of column 2 in a two-column layout. Column 2 goes, and the layout, left with one column, shows as column 1's blocks. | Adds a line under that block, in column 2. |
 | 2 | After both sync: column 1's blocks where the layout was, then Bob's line, for both. | |
+
+**Edge cases**
 
 - Two people dragging blocks beside the same block at once each wrap it in a layout: the block ends in one of them, and the other, left with one column, shows as its blocks. Which one keeps the block is not claimed.
 - A block a collaborator adds to a column another person deletes shows right after the layout; a column a collaborator adds to a layout another person deletes shows as its blocks, after the layout's.

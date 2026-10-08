@@ -32,7 +32,7 @@ export function catchUp(stored: Uint8Array<ArrayBuffer>, updates: Uint8Array<Arr
 }
 ```
 
-`edytor/crdt` is edytor's own fork of Yjs v14, based on `@y/y` 14.0.0-rc.26. It is not the `yjs` package from npm: v13 documents and peers are not compatible with it (see [migration](/docs/reference/migration)), and you should not install `yjs` next to it expecting the two to share documents.
+`edytor/crdt` is edytor's own fork of Yjs v14, based on `@y/y` 14.0.0-rc.26. It is not the `yjs` package from npm: v13 documents and peers are not compatible with it (see [importing v13 documents](/docs/reference/v13-import)), and you should not install `yjs` next to it expecting the two to share documents.
 
 **What it ships:**
 
@@ -87,7 +87,7 @@ await provider.whenSynced;
 | `Awareness` | The presence class. |
 | `.doc` | The document-model layer over a raw doc: `create(doc, config?)` returns a bare facade with no history and no attribution, plus `init`, `seed`, `restore`, `isInitialized`, `schemaVersion`, `checkSchema`, `assertSchema` and the schema constants. |
 | `.providers` | `IndexeddbPersistence`, `WebsocketProvider`, `createIndexeddbSync`, `createWebsocketSync`, `clearDocument`, `storeState`. |
-| `.migration` | `migrate`, `status`, `waitForSettled`, `rollback`. See [migration](/docs/reference/migration). |
+| `.migration` | `migrate`, `status`, `waitForSettled`, `rollback`. See [importing v13 documents](/docs/reference/v13-import). |
 | `.sync` | The sync protocol readers and writers, `applyRemote`, `lacks`, `writeSaved`, `readSaved`. See [the protocol](/docs/server/protocol). |
 | `.admission` | `admitUpdate(update, name?)`: decode bytes onto a scratch document, check them, and return the document, or throw. |
 | `.attribution` | The attribution service that documents attach automatically. |

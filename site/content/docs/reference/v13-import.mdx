@@ -1,0 +1,91 @@
+---
+title: Importing v13 documents
+description: Move documents stored by the v13 (yjs) engine of edytor 0.0.11 to the current engine.
+icon: import
+---
+
+Edytor 0.0.11 stored documents with the v13 engine (the `yjs` package). The current engine cannot open them, share a database with them or join their rooms. If your app kept documents in the browser with 0.0.11, run the migrator once per document before opening it: it **imports** the content into a new store and leaves the v13 data untouched.
+
+Upgrading your code from 0.0.11 is a separate step: see the [changelog](/docs/reference/migration#upgrading-from-0011).
+
+## Migrate before you open
+
+Call `prepareDocument(name)` before each document opens. Running it at every start is safe: when there is nothing to import, it only marks the store as migrated.
+
+```ts src/lib/migrate.ts check
+import * as Y from 'edytor/crdt';
+import { bindCrdt } from 'edytor/crdt/edytor';
+
+const { migration } = bindCrdt(Y);
+
+export async function prepareDocument(name: string): Promise<void> {
+  const record = await migration.status(name);
+  if (record.status === 'none' || record.status === 'failed') {
+    const result = await migration.migrate(name);
+    if (result.status === 'failed') console.error('migration failed', result.error);
+  } else if (record.status === 'pending') {
+    await migration.waitForSettled(name); // another tab is migrating
+  }
+  // 'rolledback' is an operator decision: never migrate over it automatically.
+}
+```
+
+```svelte title="src/lib/MigratedEditor.svelte" check
+<script lang="ts">
+  import { Edytor } from 'edytor';
+  import { prepareDocument } from '$lib/migrate';
+
+  let { name }: { name: string } = $props();
+</script>
+
+{#await prepareDocument(name) then}
+  <Edytor room={name} />
+{/await}
+```
+
+The migrator reads the browser's v13 IndexedDB database named `<name>` and writes the import into the store `createIndexeddbSync(name)` opens. It never writes the v13 database, so the old build keeps working on its data and a rollback stays possible.
+
+## What the import keeps
+
+| Survives | Does not survive |
+| --- | --- |
+| The block tree, nesting and order | CRDT identity: the imported document is new |
+| Text, marks, inline blocks and block `data` | Edit history and undo stacks |
+| Block and inline block ids (they are data) | Updates still pending on an offline v13 device |
+| | Presence |
+
+## Statuses
+
+`migration.status(name)` and `migrate` report one of these:
+
+| Status | Meaning | What to do |
+| --- | --- | --- |
+| `none` | Never migrated. | Migrate. |
+| `pending` | A tab is importing right now (reported by `status`, never stored). | Wait with `waitForSettled(name)`. |
+| `active` | Imported, or nothing to import. | Open the document. |
+| `failed` | Refused: the source is not a v13 edytor document, or it holds updates whose dependencies never arrived (a device that went offline). | Retry once that device has synced. Do not force. |
+| `rolledback` | Rolled back by an operator. | `migrate` refuses unless you pass `{ force: true }`. |
+
+## How the import behaves
+
+- **One tab imports.** Tabs migrating the same document take turns through a browser lock; only one imports. `migrate(name, { wait: false })` returns `{ status: 'busy' }` instead of waiting.
+- **All or nothing.** `migrate` verifies the import against the v13 content, ids included, before committing it, and commits it atomically. An interrupted import leaves nothing behind and runs again next time.
+- **The result.** `result.update` holds the migrated state: `loadDocument(result.update)` opens it headlessly. `result.json` holds the content, for comparison with a v13 export.
+- **Another target store.** To import into another store, such as the local copy of a WebSocket document, pass the v13 name as the source: `migrate(sync.persistName, { sourceName: 'doc-42' })`.
+
+:::warning
+For a document shared through a room, import once, on one client, and let the room distribute it.
+:::
+
+## Rollback and re-import
+
+- **Roll back.** `migration.rollback(name)` marks the store rolled back and empties it. The v13 database is untouched, so pointing the old build at it again is the rollback.
+- **Start over.** `clearDocument(name)` deletes the new store entirely.
+- **Re-import.** `migrate(name, { force: true })` re-reads the v13 database and restores it in place: every v13 block gets back its type, data, position and content, and blocks created since are deleted. It replaces rather than merges, so use it during a quiet window, to recover edits from a v13 device that came back online after the cutover.
+
+## Rooms and servers
+
+- **No mixed rooms.** v13 and current clients never exchange edits: each drops the other's frames. Ship the new build to every client before announcing the cutover, and use different room names if both versions share a relay.
+- **Offline v13 devices.** A v13 device that stays offline through the cutover keeps its edits in its own v13 database. They do not appear in the new document unless you re-import them with `force`.
+- **Documents on a server.** The migrator reads browser IndexedDB only. For v13 documents stored elsewhere, export their JSON with your v13 build and create the new documents with `createDocument({ value })`.
+- **Detecting v13 bytes.** `loadDocument` refuses v13 bytes with `UnsupportedDocError` (reason `legacy`), and `isLegacyDoc(doc)` detects a v13 document.

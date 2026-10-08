@@ -70,7 +70,17 @@ A command the document itself refuses is still shown, without steps, so a plugin
 
 Call `prevent()` on the command or on any of its steps to refuse the whole command. Nothing is written and no undo step is recorded. `prevent` records the veto and returns, so the rest of your hook still runs (`return` after it when nothing else should happen); the first call decides.
 
-A gesture over several blocks that issues one command per part refuses only the part you veto, as the document refuses a part it cannot apply: Turn into over several blocks (one command per block), <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd> over several runs of siblings (one per run) or over several lines of a code block (one `insertText` or `deleteContentAtRange` per line), formatting across blocks (one `markText` per block) and the block menu's Duplicate. The other parts apply, together one undo step, and `dispatcher.last` reports `applied` when one did. A block-selection delete, from the keyboard (any <kbd>Backspace</kbd> or <kbd>Delete</kbd> chord) or the block menu, is one command: a veto keeps every block. So is typing or a paste over a block selection: one `insertFlow` replaces the blocks, and a veto keeps them all (`onDeleteSelectedBlocks` runs first, see [Writing plugins](/docs/plugins/writing-plugins)). Your own gesture gets the same rule from `edytor.dispatcher.each(kind, parts, part)`.
+A gesture over several blocks that issues one command per part refuses only the part you veto, as the document refuses a part it cannot apply. The other parts apply, together one undo step, and `dispatcher.last` reports `applied` when one did. Your own gesture gets the same rule from `edytor.dispatcher.each(kind, parts, part)`.
+
+| Gesture | Commands | A veto keeps |
+| --- | --- | --- |
+| Turn into over several blocks | One per block | The vetoed block |
+| <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd> over several runs of siblings | One per run | The vetoed run |
+| <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd> over several lines of a code block | One `insertText` or `deleteContentAtRange` per line | The vetoed line |
+| Formatting across blocks | One `markText` per block | The vetoed block |
+| The block menu's Duplicate | One per block | The vetoed block |
+| A block-selection delete, from the keyboard (any <kbd>Backspace</kbd> or <kbd>Delete</kbd> chord) or the block menu | One | Every block |
+| Typing or a paste over a block selection | One `insertFlow` replacing the blocks (`onDeleteSelectedBlocks` runs first, see [Writing plugins](/docs/plugins/writing-plugins)) | Every block |
 
 ```ts title="lockedBlocks.ts" check
 import type { Plugin } from 'edytor';

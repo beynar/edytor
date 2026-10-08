@@ -137,7 +137,18 @@ A block selection that holds every shown block of every column of a layout stand
 
 <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and <kbd>↑</kbd>/<kbd>↓</kbd> over a block selection step over a layout and its columns to the next shown block, never selecting a column: from column 1's last block, the next is column 2's first. Typing, a composition or a paste over a block selection in a column replaces the blocks in place: the column and its layout stay.
 
-A text selection made with the mouse that has one end in a column and the other outside that column becomes a block selection, as in Notion: a drag from a column into another column of the same layout, a drag from above or below a layout into one of its columns, a drag from a column out of the layout, and a <kbd>Shift</kbd>+click in another column or outside the layout. It selects every block from one end to the other, in reading order (from a column into the next: the rest of column 1, then column 2's blocks down to the pointer's row), each highlighted as a selected block, with no text highlight. Over the bare gap between two columns the drag keeps to the nearest column: up to the gap's middle it is still a text selection in its row of column 1; past it, it enters column 2. Dragged back so that both ends are in one column again (or both outside the layout), it is a text selection again. A sweep from column 1's first block to the last column's last block selects the whole layout. Released, the blocks stay selected: <kbd>Backspace</kbd> or <kbd>Delete</kbd> removes them (a column it empties goes, and the layout dissolves when one column is left), copy and cut take them, and typing replaces them in place (the column and its layout stay). <kbd>Shift</kbd>+arrows, and a drag from above a layout to below it, stay text selections in reading order.
+A text selection made with the mouse that has one end in a column and the other outside that column becomes a block selection, as in Notion. It selects every block from one end to the other, in reading order (from a column into the next: the rest of column 1, then column 2's blocks down to the pointer's row), each highlighted as a selected block, with no text highlight. Released, the blocks stay selected: <kbd>Backspace</kbd> or <kbd>Delete</kbd> removes them (a column it empties goes, and the layout dissolves when one column is left), copy and cut take them, and typing replaces them in place (the column and its layout stay).
+
+| Gesture | Selection |
+| --- | --- |
+| A drag from a column into another column of the same layout | Blocks |
+| A drag from above or below a layout into one of its columns | Blocks |
+| A drag from a column out of the layout | Blocks |
+| A <kbd>Shift</kbd>+click in another column or outside the layout | Blocks |
+| A sweep from column 1's first block to the last column's last block | The whole layout |
+| A drag over the bare gap between two columns | Up to the gap's middle, still a text selection in its row of column 1; past it, it enters column 2. |
+| A drag back so that both ends are in one column again (or both outside the layout) | Text again |
+| <kbd>Shift</kbd>+arrows, and a drag from above a layout to below it | Text, in reading order |
 
 While a text selection is being dragged, the handles and the resize bands take no pointer, so the selection follows the text the browser finds under the pointer.
 

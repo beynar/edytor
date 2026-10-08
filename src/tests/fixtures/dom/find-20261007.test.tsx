@@ -52,7 +52,7 @@ const mount = (options: { plugins?: Plugin[]; readonly?: boolean } = {}) =>
 
 const texts = (edytor: Edytor) => {
 	const out: Record<string, string> = {};
-	const walk = (blocks: JSONDoc['children']) => {
+	const walk = (blocks: JSONDoc['children'] | undefined) => {
 		for (const block of blocks ?? []) {
 			out[block.id!] = (block.content ?? [])
 				.map((part) => ('text' in part ? part.text : '@'))

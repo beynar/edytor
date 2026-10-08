@@ -1,10 +1,10 @@
 ---
 title: Table
-description: The table plugin adds Notion's simple table, a grid of text cells. Tab between cells, add rows and columns from the table's edges, move and delete them from their grips, resize columns, header row and column. Opt-in.
+description: The table plugin adds Notion's simple table, a grid of text cells. Tab between cells, add rows and columns from the table's edges, drag rows and columns by their grips, move and delete them from the grips' menus, resize columns within the page, header row and column. Opt-in.
 icon: table
 ---
 
-`tablePlugin` adds Notion's simple table: a grid of **cells**, each holding text (its lines are line breaks), in **rows** and **columns**. You make one with the slash menu or the block menu's Turn into ("Table"), or by pasting an HTML table. Hover it to add a row (the `+` under it) or a column (the `+` beside it), and to reach a row's and a column's grip, whose menus insert, move and delete them. Drag a column's right edge to resize it. The table's block menu inserts and deletes rows and columns where the caret was, and has Notion's **Header row** and **Header column** switches.
+`tablePlugin` adds Notion's simple table: a grid of **cells**, each holding text (its lines are line breaks), in **rows** and **columns**. You make one with the slash menu or the block menu's Turn into ("Table"), or by pasting an HTML table. Hover it to add a row (the `+` under it) or a column (the `+` beside it), and to reach a row's and a column's grip: drag it to move the row or column, click it for its menu (insert, move, delete). Drag a column's right edge to resize it, as far as the page leaves room. The table's block menu inserts and deletes rows and columns where the caret was, and has Notion's **Header row** and **Header column** switches.
 
 The plugin is not a default plugin: list it in `plugins`.
 
@@ -126,9 +126,13 @@ Hover a table:
 
 - **`+` under the table**: a row at its end, the caret in its first cell.
 - **`+` beside the table**: a column at its end.
-- **A row's grip**, left of the row: Insert above, Insert below, Move up, Move down, Delete row.
-- **A column's grip**, above the column: Insert left, Insert right, Move left, Move right, Delete column.
+- **A row's grip**, left of the row: drag it up or down to move the row; click it for its menu: Insert above, Insert below, Move up, Move down, Delete row.
+- **A column's grip**, above the column: drag it left or right to move the column, its cells with it; click it for its menu: Insert left, Insert right, Move left, Move right, Delete column.
 - **A column's right edge**: drag to resize it (a live preview, written at the release, one undo step; <kbd>Escape</kbd> puts it back). Each edge is also a focusable `separator`: <kbd>→</kbd> and <kbd>←</kbd> widen or narrow the column by 8px, with <kbd>Shift</kbd> by 32px.
+
+While a grip drags, a blue line shows between the two rows (columns) where it would land, and a picture of the row (column) follows the pointer; the table's box scrolls sideways, and the page up and down, when the pointer nears their edges. The drop is the menu's move: one undo step, the caret staying in its cell. A drop at the row's own place, more than 32px outside the table, or after <kbd>Escape</kbd> moves nothing. The menus' Move items stay the keyboard's way.
+
+A resize never makes the table wider than the room it has: the page's text column, or the column of a layout (or the toggle, the callout) it sits in. The dragged column stops where the others leave no more room, in the preview and in the width written, and never narrows below `minColumnWidth`. A table already wider than its place (widths set on a wider screen, by you or someone else, or a narrower window) keeps its stored widths and scrolls sideways inside its own box, which never reaches past the page; there a column can narrow but none can grow. Only what the box shows has chrome: a column edge or grip scrolled out of view has none, and the `+` beside the table shows once its last column is in view.
 
 Deleting a table's last row or last column deletes the table. Every action is one undo step, refused in a readonly view (which shows none of these controls). The table's own block handle drags, duplicates and deletes the whole table; rows and cells have no handle.
 
@@ -158,7 +162,7 @@ These rules come from the document's roles: list the plugin in every view; a hea
 
 ## Styling
 
-`table.css` lays the table out as a CSS grid of the columns' widths, each row a subgrid, and scrolls it sideways when it is wider than the page.
+`table.css` lays the table out as a CSS grid of the columns' widths, each row a subgrid, in a box as wide as the table's place: the table gives that box no width of its own (`contain: inline-size`), so a page that sizes the editor by its content does not grow with a wide table, and the grid scrolls sideways inside the box when it is wider.
 
 | Variable | Default | Sets |
 | --- | --- | --- |
@@ -166,6 +170,7 @@ These rules come from the document's roles: list the plugin in every view; a hea
 | `--edytor-table-header-background` | `rgb(247, 246, 243)` | A header cell's background |
 | `--edytor-table-grip-background` | `#fff` | The row and column grips |
 | `--edytor-table-resize-color` | `rgba(35, 131, 226, 0.43)` | A column edge's resize line |
+| `--edytor-table-drop-color` | `rgba(35, 131, 226, 0.43)` | The drop line of a row's or column's drag |
 
 | Selector | Matches |
 | --- | --- |
@@ -174,7 +179,10 @@ These rules come from the document's roles: list the plugin in every view; a hea
 | `[data-edytor-table-row]` | A row |
 | `[data-edytor-table-cell]` | A cell (`data-edytor-column`: its position; `data-edytor-table-header="true"` for a header cell) |
 | `[data-edytor-table-pad]` | A padded cell's placeholder |
-| `[data-edytor-table-grip]`, `[data-edytor-table-add]`, `[data-edytor-table-resize]` | The chrome, in the overlay |
+| `[data-edytor-table-scroll]` | The table's box, which scrolls the grid sideways |
+| `[data-edytor-table-grip]`, `[data-edytor-table-add]`, `[data-edytor-table-resize]` | The chrome, in the overlay (`data-dragging="true"` on a grip while it drags) |
+| `[data-edytor-table-drop]` | The drop line of a grip's drag (`row` or `column`, `data-gap`: its position among the rows or columns) |
+| `[data-edytor-table-drag-preview]` | The picture following the pointer during a grip's drag |
 | `.edytor-table-menu` | A grip's menu |
 
 ## Document API

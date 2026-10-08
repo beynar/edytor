@@ -1,4 +1,4 @@
-import { autoScrollFor } from './autoScroll.js';
+import { autoScrollFor } from '$lib/dnd/autoScroll.js';
 import type { ElementDropTargetEventPayloadMap } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 
 import type { Block } from '$lib/block/block.svelte.js';
@@ -29,6 +29,7 @@ import {
 	shownText
 } from '$lib/selection/replaceSelection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
+import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { kindLabel } from '$lib/kinds.js';
 import { englishLabels, type BlockHandlesLabels } from '$lib/labels.js';
 import type { Popup, PopupOpener } from '$lib/surface/popups.svelte.js';
@@ -45,8 +46,6 @@ import {
 	type DropPlacement
 } from './geometry.js';
 import { stacks } from '../columns/stacking.js';
-
-const blockDragMimeType = 'application/x-edytor-block-id';
 
 /**
  * The DOM event a handle click dispatches on the editor when no `onActivate`
@@ -354,7 +353,7 @@ export class BlockHandleController {
 			element,
 			canDrag: () => !this.edytor.readonly && block.movable,
 			getInitialData: () => ({ owner: this.owner, blockId: block.id }),
-			getInitialDataForExternal: () => ({ [blockDragMimeType]: block.id }),
+			getInitialDataForExternal: () => ({ [EDYTOR_BLOCK_DRAG_MIME]: block.id }),
 			// The moved blocks are known, and drop targets exist, from the start of
 			// our drag (before any target is looked up).
 			onGenerateDragPreview: ({ nativeSetDragImage, location }) => {

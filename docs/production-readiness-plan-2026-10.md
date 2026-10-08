@@ -81,8 +81,8 @@ Majors, by dimension:
 - ~~`npm deprecate edytor@0.0.11 "use edytor"`; point `next` at the release candidate~~ (done
   2026-10-08: `latest` and `next` are `1.0.0-rc.2`, `0.0.11` deprecated). Point `next` again at
   each later release candidate: tokenless CI publishing cannot.
-- Enable GitHub's private vulnerability reporting (SECURITY.md sends reports there).
-- The 4 to 8 hour soak against a deployed staging room (`pnpm soak` against it; recipe in
+- ~~Enable GitHub's private vulnerability reporting~~ (enabled 2026-10-08).
+- (Deferred 2026-10-08, with the VoiceOver pass.) The 4 to 8 hour soak against a deployed staging room (`pnpm soak` against it; recipe in
   `server/room` Load), which needs a deploy.
 - A manual VoiceOver and NVDA pass, and real iOS/Android keyboards.
 - Sign off decision D8's deviation (pre-release stored formats kept).

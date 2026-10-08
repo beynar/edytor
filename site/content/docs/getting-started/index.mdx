@@ -6,10 +6,10 @@ icon: download
 
 Edytor ships as one npm package, `edytor`. It contains the `<Edytor>` component, the bundled plugins, the collaborative document API and its CRDT engine, and a Cloudflare Durable Object room.
 
-:::warning[Early development]
-Edytor is a pre-release (`0.1.0-next.44`) and is not ready for production. The API can change between releases without a compatibility layer.
+:::warning[Release candidate]
+Edytor `1.0.0-rc.1` is the 1.0 release candidate: its API is frozen, and a change to it before 1.0 is a listed breaking change. It has no production track record yet; read the [limitations](/docs/reference/limitations).
 
-These docs describe that release. The `edytor@0.0.11` that npm installs without a tag predates it and uses a different API; the [changelog](/docs/reference/migration) lists every change.
+These docs describe that release. `edytor@0.0.11`, which npm installed without a tag before it, predates it and uses a different API; the [changelog](/docs/reference/migration) lists every change.
 :::
 
 ## Requirements
@@ -21,15 +21,15 @@ These docs describe that release. The `edytor@0.0.11` that npm installs without 
 
 ## Install
 
-The pre-release is on npm under the `next` tag:
+The release candidate is on npm under `latest`:
 
 ```package-install
-pnpm add edytor@next
+pnpm add edytor
 ```
 
-Name the tag: a bare `edytor` resolves to the old, incompatible `0.0.11`. Each pre-release is published from CI with npm provenance.
+Each release is published from CI with npm provenance. The pre-releases before it are under the `next` tag.
 
-Earlier installs by URL keep working: this site still serves every pre-release tarball it hosted, each at its versioned URL, and the bytes under a URL never change, so a lockfile's URL and integrity hash stay valid. Switch to `edytor@next` when you upgrade.
+Earlier installs by URL keep working: this site still serves every pre-release tarball it hosted, each at its versioned URL, and the bytes under a URL never change, so a lockfile's URL and integrity hash stay valid. Switch to `edytor` when you upgrade.
 
 If your project does not have Svelte yet, add it too:
 
@@ -49,13 +49,13 @@ To build the tarball yourself, from a clone of the repository (`master`):
 cd edytor           # your clone
 pnpm install
 pnpm package        # builds dist/
-pnpm pack           # writes edytor-0.1.0-next.44.tgz
+pnpm pack           # writes edytor-1.0.0-rc.1.tgz
 ```
 
 Then, in your project, install the file:
 
 ```package-install
-pnpm add ../edytor/edytor-0.1.0-next.44.tgz
+pnpm add ../edytor/edytor-1.0.0-rc.1.tgz
 ```
 
 ## Verify the install

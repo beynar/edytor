@@ -68,14 +68,14 @@ Measured in Chromium at 1280×900 on `/test/large` (top-level blocks of mixed ki
 
 | Measure                             | 5,000 blocks | 5,000, `auto` | 10,000 blocks | 10,000, `auto` |
 | ----------------------------------- | -----------: | ------------: | ------------: | -------------: |
-| First paint                         |       956 ms |        974 ms |      1,907 ms |       1,922 ms |
-| of which the view's mount           |       615 ms |        610 ms |      1,317 ms |       1,079 ms |
-| Layout through the load             |        39 ms |         13 ms |         69 ms |          26 ms |
-| Scroll frame (80px a frame), median |       8.4 ms |         34 ms |         41 ms |          75 ms |
-| Typing a character                  |        56 ms |         59 ms |        118 ms |         123 ms |
-| Enter                               |       139 ms |        184 ms |        299 ms |         391 ms |
-| Moving a block (Mod+Shift+↓)        |       100 ms |        126 ms |        245 ms |         288 ms |
-| Pasting 50 lines                    |       172 ms |        218 ms |        325 ms |         404 ms |
+| First paint | 751 ms | 795 ms | 1,576 ms | 1,406 ms |
+| of which the view's mount | 485 ms | 425 ms | 924 ms | 831 ms |
+| Layout through the load | 29 ms | 9 ms | 56 ms | 20 ms |
+| Scroll frame (80px a frame), median | 8.3 ms | 18 ms | 17 ms | 52 ms |
+| Typing a character | 23 ms | 29 ms | 71 ms | 78 ms |
+| Enter | 91 ms | 111 ms | 253 ms | 277 ms |
+| Moving a block (Mod+Shift+↓) | 55 ms | 64 ms | 148 ms | 176 ms |
+| Pasting 50 lines | 127 ms | 148 ms | 279 ms | 334 ms |
 
 What grows with the page is the mount (about 0.13 ms a block) and the keys. At 1,000 blocks a character takes 9 ms and Enter 24 ms; at 2,000, 17 and 50 ms. Keep a document to a couple of thousand top-level blocks for typing within a frame; for longer content, make each page its own document ([A page is a document](/docs/server/moves#a-page-is-a-document)).
 

@@ -65,8 +65,8 @@ Majors, by dimension:
 - **Features**: ~~markdown paste into blocks~~ (`next.44`); ~~file/video/audio claiming dropped and pasted files
   (with upload progress)~~ (`next.44`); real-device mobile and touch chrome.
 - **Code**: the view-side classes (`EdytorSelection`, `BlockHandleController`, `Edytor`,
-  `EdytorDocument`) not split; the room split is a 16-module cycle; master unprotected and the
-  nightly and upstream jobs never run yet; ~~about 90 checkpoint-named test files~~ (`next.41`).
+  `EdytorDocument`) not split; the room split is a 16-module cycle; master unprotected; ~~the nightly never run~~ (first runs on Linux failed WebKit's Mac
+  keys; on macOS since, green at `1.0.0-rc.1`); ~~about 90 checkpoint-named test files~~ (`next.41`).
 - **Docs**: ~~the Limitations page denies shipped features~~ (`next.41`); ~~the plugins
   index's defaults table~~, ~~SECURITY.md and issue templates~~ (`next.43`); no browsable API
   reference (the committed `api/*.api.md` reports are the reviewed surface).

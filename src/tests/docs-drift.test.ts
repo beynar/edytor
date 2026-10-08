@@ -198,7 +198,10 @@ describe('docs drift', () => {
 				.split('\n')
 				.map((line) => [`${relative(root, path)}: ${line.trim()}`, line] as const);
 		// Every install of edytor: the npm tag, or a local build of the tarball.
+		// The changelog's history names the installs of its time.
+		const changelog = join(root, 'site/content/docs/reference/migration.mdx');
 		const installs = docs
+			.filter((path) => path !== changelog)
 			.flatMap(lines)
 			.filter(([, line]) =>
 				/\b(?:npm i|npm install|pnpm add|yarn add|bun add) \S*edytor/.test(line)
@@ -310,8 +313,9 @@ describe('docs drift', () => {
 		// so x is never the version that ships those changes (DW-06).
 		const from = [...notes.matchAll(/### From (\S+)\n/g)].map(([, v]) => v);
 		expect(from).not.toContain(version);
+		// This package's pre-releases and release candidates (0.x, 1.x).
 		const named = (text: string) =>
-			[...text.matchAll(/\b\d+\.\d+\.\d+-next\.\d+\b/g)].map(([mention]) => mention);
+			[...text.matchAll(/\b[01]\.\d+\.\d+-(?:next|rc)\.\d+\b/g)].map(([mention]) => mention);
 		// A version tagged but never served (unserved-versions.txt) may be named too.
 		const unserved = readFileSync(join(root, 'site/scripts/unserved-versions.txt'), 'utf8')
 			.split('\n')

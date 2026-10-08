@@ -14,6 +14,12 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 0.1.0-next.44
+
+`1.0.0-rc.1` is the 1.0 release candidate, published under `latest` (`pnpm add edytor`; the `next` tag keeps the pre-releases). Its API is frozen: the published types are the 1.0 contract, and a change to them before 1.0 comes with a note under Breaking changes. `document.facade`, deprecated here, is the one exception: it goes in the next release.
+
 #### Breaking changes
 
 - **`selection.select(value)` takes the value only.** Its second argument named an internal cause (how the projector should treat the change); pass the value alone. The `SelectCause` type is no longer exported.

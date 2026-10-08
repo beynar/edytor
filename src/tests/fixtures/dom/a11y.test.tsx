@@ -26,6 +26,7 @@ import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { englishLabels } from '$lib/labels.js';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -217,6 +218,29 @@ describe('the toolbar: named by the root, reached with Alt+F10', () => {
 		await caretIn(edytor, 'a', 2);
 		expect(editor.hasAttribute('aria-controls')).toBe(false);
 		expect(editor.hasAttribute('aria-keyshortcuts')).toBe(false);
+	});
+
+	it('the link field’s label names it, and two views’ fields never share an id', async () => {
+		const views = [
+			await render([p('a', 'hello')], [toolbarPlugin]),
+			await render([p('b', 'world')], [toolbarPlugin])
+		];
+		const fields: HTMLInputElement[] = [];
+		for (const { edytor, container } of views) {
+			const text = edytor.root!.children[0]!.firstText!;
+			edytor.selection.setAtRange(text, 0, text, 5);
+			await flushDomUpdates();
+			await click(container.querySelector('[data-testid="toolbar-link"]')!);
+			const field = container.querySelector<HTMLInputElement>(
+				'[data-testid="toolbar-link-input"]'
+			)!;
+			expect(document.activeElement).toBe(field);
+			expect(document.querySelector(`label[for="${field.id}"]`)?.textContent).toBe(
+				englishLabels.toolbar.linkUrl
+			);
+			fields.push(field);
+		}
+		expect(fields[0]!.id).not.toBe(fields[1]!.id);
 	});
 });
 

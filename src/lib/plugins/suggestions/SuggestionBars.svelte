@@ -49,7 +49,8 @@
 		},
 		discard: suggestion.discard,
 		retry: suggestion.retryable ? suggestion.retry : undefined,
-		readonly: edytor.readonly
+		readonly: edytor.readonly,
+		labels
 	});
 	const keep = (event: MouseEvent) => event.preventDefault();
 </script>

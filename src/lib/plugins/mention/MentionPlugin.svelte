@@ -6,6 +6,7 @@
 		TriggerContext,
 		TriggerItemPayload
 	} from '$lib/plugins.js';
+	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
 	import { labelsWith, type PartialLabels } from '$lib/labels.js';
 
 	/** A person the mention menu offers: what your app's directory answers. */
@@ -33,6 +34,12 @@
 		char?: string;
 		/** Replace each row of the menu. */
 		item?: Snippet<[TriggerItemPayload<MentionItem>]>;
+		/**
+		 * Replace the whole menu; it renders while `controller.isOpen`, at the
+		 * caret. Keep its ARIA with `{@attach controller.popup}` on the list and
+		 * `{...controller.option(index)}` on each row.
+		 */
+		menu?: Snippet<[TriggerMenuController<MentionItem>]>;
 		/** The words the menu shows and says, over the English ones. */
 		labels?: PartialLabels<'mention'>;
 	};
@@ -68,6 +75,7 @@
 					label: (person: MentionItem) => person.label,
 					key: (person: MentionItem) => person.id,
 					item: options.item ?? row,
+					menu: options.menu,
 					onPick: (person: MentionItem, { block, from, caret }) => {
 						const data: MentionData = { id: person.id, label: person.label };
 						const after = block.addInlineBlock({ offset: from, block: { type: 'mention', data } });
@@ -89,18 +97,14 @@
 	>
 {/snippet}
 
-{#snippet row({ item, id, selected, pick, select }: TriggerItemPayload<MentionItem>)}
+{#snippet row({ item, option, run, select }: TriggerItemPayload<MentionItem>)}
 	<button
 		type="button"
 		class="edytor-mention-row"
-		{id}
-		role="option"
-		tabindex="-1"
-		aria-selected={selected}
-		data-selected={selected}
+		{...option}
 		data-testid="trigger-menu-item"
 		onmousemove={select}
-		onclick={pick}
+		onclick={run}
 	>
 		<span class="avatar" aria-hidden="true">
 			{#if avatarOf(item.avatar)}

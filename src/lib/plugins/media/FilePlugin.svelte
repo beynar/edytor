@@ -9,6 +9,7 @@
 		escapeHtml,
 		fileNameOf,
 		mediaLabels,
+		mediaEmpty,
 		safeMediaSrc,
 		mediaUploads,
 		type MediaPluginOptions
@@ -38,6 +39,7 @@
 			const onPaste = first ? mediaUploads(edytor, 'file', options.upload) : undefined;
 			const labels = labelsWith('media', options.labels);
 			mediaLabels.file.claim(edytor, labels);
+			mediaEmpty.claim(edytor, 'file', options.empty);
 			return {
 				...(onPaste ? { onPaste } : {}),
 				blocks: {

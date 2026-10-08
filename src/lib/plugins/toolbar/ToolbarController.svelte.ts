@@ -1,3 +1,4 @@
+import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
@@ -20,6 +21,10 @@ import { convertBlocks, convertibleKinds, rowOf, type KindRow } from '$lib/kinds
 import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
 import { englishLabels, type ToolbarLabels } from '$lib/labels.js';
+import { identify } from '../chrome.js';
+
+/** The bar's controls the arrows walk (a disabled one is skipped). */
+const STOPS = 'button:not([disabled]), input:not([disabled]), select:not([disabled])';
 
 /** Notion's palette: text colors and their backgrounds, by name (shown through the labels' `colors`). */
 export const TOOLBAR_COLORS = [
@@ -72,6 +77,103 @@ export class ToolbarController {
 
 	/** Publish the shown bar to the view's root (`edytor.popups`), or withdraw it with `null`. */
 	publish = (popup: Popup | null) => this.edytor.popups.set('toolbar', popup);
+
+	/** The link panel's field id (page-unique): a `label`'s `for`. */
+	get linkFieldId() {
+		return this.edytor.popups.idOf('toolbar-link');
+	}
+
+	/** The control the bar's one tab stop is on (its `data-stop`, else its place), kept while it shows. */
+	#stop: string | number = 0;
+
+	/**
+	 * The bar (`{@attach controller.popup}`): it takes the bar's id, its
+	 * `toolbar` role and name unless it has its own, the placement's mark
+	 * (`data-edytor-toolbar-bar`, which the toolbar's shortcut also reads),
+	 * and is published to the view's root (`edytor.popups`, with that
+	 * shortcut as its `aria-keyshortcuts`) while it is in the page.
+	 */
+	popup: Attachment<HTMLElement> = (node) => {
+		identify(node, this.barId, 'toolbar', this.labels.bar);
+		node.setAttribute('data-edytor-toolbar-bar', '');
+		this.publish({ id: this.barId, keys: 'Alt+F10' });
+		return () => this.publish(null);
+	};
+
+	/**
+	 * The bar's keys (`{@attach controller.keys}`, WAI-ARIA toolbar): one tab
+	 * stop, the control it last held (`tabindex="0"`, every other `-1`); the
+	 * arrows, Home and End walk its controls, Escape gives the focus back to
+	 * the editor over the held selection (`release`). Every key in it is its
+	 * own, never the editor's (Enter presses the button).
+	 */
+	keys: Attachment<HTMLElement> = (node) => {
+		const stops = () => [...node.querySelectorAll<HTMLElement>(STOPS)];
+		const keyOf = (stop: HTMLElement, at: number) => stop.dataset.stop ?? at;
+		/** One tab stop: the remembered control, else the first. */
+		const rove = () => {
+			const all = stops();
+			const at = all.findIndex((stop, index) => keyOf(stop, index) === this.#stop);
+			all.forEach((stop, index) => (stop.tabIndex = index === Math.max(0, at) ? 0 : -1));
+		};
+		const focusin = (event: FocusEvent) => {
+			const all = stops();
+			const at = all.indexOf(event.target as HTMLElement);
+			if (at === -1) return;
+			this.#stop = keyOf(all[at]!, at);
+			rove();
+		};
+		const keydown = (event: KeyboardEvent) => {
+			event.stopPropagation();
+			if (event.defaultPrevented) return;
+			const all = stops();
+			const at = all.indexOf(event.target as HTMLElement);
+			const next = {
+				ArrowRight: (at + 1) % all.length,
+				ArrowLeft: (at - 1 + all.length) % all.length,
+				Home: 0,
+				End: all.length - 1
+			}[event.key];
+			if (event.key === 'Escape') {
+				event.preventDefault();
+				this.release();
+			} else if (next !== undefined && at !== -1) {
+				event.preventDefault();
+				all[next]?.focus();
+			}
+		};
+		rove();
+		node.addEventListener('focusin', focusin);
+		node.addEventListener('keydown', keydown);
+		return () => {
+			node.removeEventListener('focusin', focusin);
+			node.removeEventListener('keydown', keydown);
+		};
+	};
+
+	/**
+	 * The link panel's field (`{@attach controller.linkField}`): its id
+	 * (`linkFieldId`), the focus when the panel was just opened (Mod+K, Edit,
+	 * the Link button), Enter applies the link and Escape closes the panel,
+	 * both giving the editor its focus and the selection back.
+	 */
+	linkField: Attachment<HTMLInputElement> = (node) => {
+		node.id = this.linkFieldId;
+		if (this.takeFieldFocus()) node.focus({ preventScroll: true });
+		const keydown = (event: KeyboardEvent) => {
+			if (event.defaultPrevented || event.isComposing) return;
+			if (event.key === 'Enter') {
+				event.preventDefault();
+				this.applyLink();
+				this.closePanel(true);
+			} else if (event.key === 'Escape') {
+				event.preventDefault();
+				this.closePanel(true);
+			}
+		};
+		node.addEventListener('keydown', keydown);
+		return () => node.removeEventListener('keydown', keydown);
+	};
 
 	/** Give the keyboard back to the editor (Escape in the bar), over the held selection. */
 	release() {

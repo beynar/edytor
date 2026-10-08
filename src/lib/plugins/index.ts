@@ -7,6 +7,7 @@ export {
 	type RichTextPluginOptions
 } from './richtext/RichTextPlugin.svelte';
 export { arrowMovePlugin } from './arrowMove/arrowMove.js';
+export type { MenuItemPayload, OptionAttributes } from './chrome.js';
 export {
 	BLOCK_ACTIVATE_EVENT,
 	BLOCK_ADD_EVENT,
@@ -102,7 +103,16 @@ export {
 export { filePlugin, createFilePlugin } from './media/FilePlugin.svelte';
 export { videoPlugin, createVideoPlugin } from './media/VideoPlugin.svelte';
 export { audioPlugin, createAudioPlugin } from './media/AudioPlugin.svelte';
-export { safeWebUrl, safeMediaSrc, type MediaPluginOptions } from './media/media.js';
+export {
+	safeWebUrl,
+	safeMediaSrc,
+	type MediaKind,
+	type MediaPluginOptions
+} from './media/media.js';
+export type { MediaEmptyController, MediaEmptyFailure } from './media/empty.svelte.js';
+export type { UrlPasteController, UrlPasteOffer, UrlPasteOption } from './media/urlPaste.svelte.js';
+export type { ImageControls, ImageBox } from './image/controls.svelte.js';
+export type { ImageEmptyController, ImageEmptyFailure } from './image/empty.svelte.js';
 export type { BlockHandleController } from './blockHandles/BlockHandleController.svelte.js';
 export {
 	columnsPlugin,
@@ -121,7 +131,8 @@ export { findMatches, type FindMatch, type FindOptions } from './find/search.js'
 export {
 	createCommentsPlugin,
 	commentsController,
-	type CommentsPluginOptions
+	type CommentsPluginOptions,
+	type CommentCardPayload
 } from './comments/commentsPlugin.js';
 export type {
 	CommentsController,

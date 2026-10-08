@@ -12,24 +12,28 @@ import SlashMenu from './SlashMenu.svelte';
 import { caretRect, placeBelow } from '../triggers/place.js';
 import { SlashMenuController, type TextInsertionPayload } from './SlashMenuController.svelte.js';
 import { labelsWith, type PartialLabels } from '$lib/labels.js';
+import type { MenuItemPayload } from '../chrome.js';
 
-/** One row, for an `item` snippet. */
-export type SlashMenuItem = {
+/**
+ * One row, for an `item` snippet: the row shape every menu shares (`item`
+ * is the command, `label` its label, `run` runs it, removing the `/query`
+ * first; set `id`, or spread `option`, so the keyboard's owner names the
+ * highlighted row), with the command again and its icon.
+ */
+export type SlashMenuItem = MenuItemPayload<EditorCommand> & {
+	/** The command (the same as `item`). */
 	command: EditorCommand;
-	/** The row's element id: set it (`id={item.id}`) so the keyboard's owner names the highlighted row. */
-	id: string;
-	/** The keyboard's row. */
-	selected: boolean;
 	/** The built-in line icon as a CSS `mask-image` value, when the command has one. */
 	icon: string | undefined;
-	/** Run the command (removes the `/query` first). */
-	run: () => void;
-	/** Make this the keyboard's row (hover). */
-	select: () => void;
 };
 
 export type SlashMenuOptions = {
-	/** Replace the whole menu; it renders while `controller.isOpen`. Keys and placement stay the plugin's. */
+	/**
+	 * Replace the whole menu; it renders while `controller.isOpen`. Keys and
+	 * placement stay the plugin's. Keep its ARIA with `{@attach
+	 * controller.popup}` on the list and `{...controller.option(index)}` on
+	 * each row; in a `+`'s menu, `{@attach controller.keys}` on your field.
+	 */
 	menu?: Snippet<[SlashMenuController]>;
 	/** Replace each row of the default menu. */
 	item?: Snippet<[SlashMenuItem]>;

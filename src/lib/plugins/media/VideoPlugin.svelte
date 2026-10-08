@@ -9,6 +9,7 @@
 		claimed,
 		escapeHtml,
 		mediaLabels,
+		mediaEmpty,
 		mediaSourceOf,
 		safeMediaSrc,
 		mediaUploads,
@@ -39,6 +40,7 @@
 			const onPaste = first ? mediaUploads(edytor, 'video', options.upload) : undefined;
 			const labels = labelsWith('media', options.labels);
 			mediaLabels.video.claim(edytor, labels);
+			mediaEmpty.claim(edytor, 'video', options.empty);
 			return {
 				...(onPaste ? { onPaste } : {}),
 				blocks: {

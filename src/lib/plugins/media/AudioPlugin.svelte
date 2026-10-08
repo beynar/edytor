@@ -9,6 +9,7 @@
 		claimed,
 		escapeHtml,
 		mediaLabels,
+		mediaEmpty,
 		mediaSourceOf,
 		safeMediaSrc,
 		mediaUploads,
@@ -38,6 +39,7 @@
 			const onPaste = first ? mediaUploads(edytor, 'audio', options.upload) : undefined;
 			const labels = labelsWith('media', options.labels);
 			mediaLabels.audio.claim(edytor, labels);
+			mediaEmpty.claim(edytor, 'audio', options.empty);
 			return {
 				...(onPaste ? { onPaste } : {}),
 				blocks: {

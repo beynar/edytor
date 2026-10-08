@@ -4,8 +4,10 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import MediaEmpty from './MediaEmpty.svelte';
 	import { mediaKinds } from '$lib/crdt/semantics.js';
-	import { urlPaste } from './urlPaste.svelte.js';
-	import { escapeHtml, mediaLabels, safeWebUrl } from './media.js';
+	import type { Snippet } from 'svelte';
+	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
+	import type { MediaEmptyController } from './empty.svelte.js';
+	import { escapeHtml, mediaEmpty, mediaLabels, safeWebUrl } from './media.js';
 	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
 
 	/** What an `unfurl` answers about a page; every field optional. */
@@ -29,6 +31,21 @@
 		labels?: PartialLabels<'media'>;
 		/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
 		keywords?: Partial<Record<string, string[]>>;
+		/**
+		 * Replace the menu a URL pasted on an empty line opens (Link, Embed,
+		 * Bookmark); it renders while `controller.open`, under the line. The
+		 * view's one menu takes the first `menu` its embed and bookmark
+		 * plugins pass. Its keys stay the editor's; keep its ARIA with
+		 * `{@attach controller.popup}` on the list and
+		 * `{...controller.option(index)}` on each row.
+		 */
+		menu?: Snippet<[UrlPasteController]>;
+		/**
+		 * Replace an empty block's markup (its "Add …" button and link panel,
+		 * or a readonly view's placeholder): it receives the block's
+		 * `MediaEmptyController` (`open`, `draft`, `failed`, `embed`, `readonly`).
+		 */
+		empty?: Snippet<[MediaEmptyController]>;
 	};
 
 	const unfurlOf = new WeakMap<Edytor, BookmarkPluginOptions['unfurl']>();
@@ -103,6 +120,7 @@
 			if (!unfurlOf.has(edytor)) unfurlOf.set(edytor, options.unfurl);
 			const labels = labelsWith('media', options.labels);
 			mediaLabels.bookmark.claim(edytor, labels);
+			mediaEmpty.claim(edytor, 'bookmark', options.empty);
 			return {
 				...urlPaste(
 					edytor,
@@ -113,7 +131,8 @@
 						data: (url) => ({ url }),
 						created: (block, url) => void fill(block, url)
 					},
-					labels
+					labels,
+					options.menu
 				),
 				blocks: {
 					bookmark: {

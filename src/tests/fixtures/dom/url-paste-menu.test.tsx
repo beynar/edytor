@@ -196,6 +196,24 @@ describe('pasting a URL on an empty line offers Link / Embed / Bookmark (Notion)
 			['bookmark', 'false']
 		]);
 	});
+
+	it('the root holds the keyboard: it names the open listbox and its highlighted option (WAI-ARIA 1.2)', async () => {
+		const view = await render([embedPlugin, bookmarkPlugin], [empty()]);
+		const named = (attribute: string) => {
+			const id = view.editor.getAttribute(attribute);
+			return id ? document.getElementById(id) : null;
+		};
+		await pasteAt(view, 'p', 0, { 'text/plain': YOUTUBE });
+		expect(named('aria-controls')).toBe(menu());
+		expect(view.editor.getAttribute('aria-haspopup')).toBe('listbox');
+		const rows = [...document.querySelectorAll('[data-edytor-url-paste-option]')];
+		expect(named('aria-activedescendant')).toBe(rows[0]);
+		await dispatchDomKeyDown(view.editor, { key: 'ArrowDown' });
+		expect(named('aria-activedescendant')).toBe(rows[1]);
+		await dispatchDomKeyDown(view.editor, { key: 'Escape' });
+		for (const attribute of ['aria-controls', 'aria-activedescendant', 'aria-haspopup'])
+			expect(view.editor.hasAttribute(attribute)).toBe(false);
+	});
 });
 
 describe('elsewhere the paste is unchanged', () => {

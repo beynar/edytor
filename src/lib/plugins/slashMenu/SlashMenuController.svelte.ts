@@ -1,3 +1,5 @@
+import { untrack } from 'svelte';
+import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EditorCommand } from '$lib/plugins.js';
@@ -6,6 +8,8 @@ import { BASIC_BLOCKS, matchesQuery } from '$lib/kinds.js';
 import { englishLabels, type SlashMenuLabels } from '$lib/labels.js';
 import type { BlockAddition } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { TextTriggerController } from '$lib/plugins/triggers/TriggerController.svelte.js';
+import type { Popup } from '$lib/surface/popups.svelte.js';
+import { attribute, inPage, isField, keepFocus, namesRows } from '../chrome.js';
 
 export type { TextInsertionPayload } from '$lib/plugins/triggers/TriggerController.svelte.js';
 
@@ -96,6 +100,94 @@ export class SlashMenuController extends TextTriggerController {
 
 	/** A row's element id (page-unique), for `aria-activedescendant`: set it on a custom `item`. */
 	optionId = (command: EditorCommand) => this.edytor.popups.idOf(`slash-menu-${command.id}`);
+
+	protected get listName() {
+		return this.labels.list;
+	}
+
+	protected rowIdAt(index: number) {
+		const command = this.commands[index];
+		return command && this.optionId(command);
+	}
+
+	/** A `+`'s menu names its highlighted row from its own field, and tells the `+` it opened it. */
+	protected popupOf(active: string | undefined): Popup {
+		const { addition } = this;
+		return addition
+			? {
+					id: this.listId,
+					haspopup: 'listbox',
+					opener: { block: addition.block.id, control: 'add' }
+				}
+			: { id: this.listId, haspopup: 'listbox', active };
+	}
+
+	/**
+	 * The element that holds a `+` menu's keyboard (`{@attach controller.keys}`:
+	 * its field, or the element a custom `menu` is wrapped in). Focused when
+	 * it mounts, it takes the menu's keys (↑/↓ walk the rows, Enter runs the
+	 * highlighted one, Escape closes the menu and gives the selection back);
+	 * on an element that is not a field, typing and Backspace edit the query.
+	 * A field takes the keys of the whole menu, names the list and its highlighted row (`aria-controls`,
+	 * `aria-activedescendant`), and takes the focus back from any other part
+	 * of the menu (a row a click or a screen reader focused, which becomes
+	 * the highlighted one). Focus leaving the menu closes it. A `/` menu
+	 * leaves the keys to the editor: there it does nothing.
+	 */
+	keys: Attachment<HTMLElement> = (node) => {
+		if (!untrack(() => this.addition)) return;
+		const menu = node.closest<HTMLElement>('[data-edytor-slash-menu-host]') ?? node;
+		const field = isField(node);
+		untrack(() => {
+			if (!node.contains(node.ownerDocument.activeElement)) node.focus({ preventScroll: true });
+		});
+		const keydown = (event: KeyboardEvent) => {
+			// A key that ends an IME composition (Enter commits it, Escape cancels it) is the IME's.
+			if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+			const { key, ctrlKey, metaKey } = event;
+			const move = { ArrowDown: 1, ArrowUp: -1 }[key];
+			if (!field && event.target === node && key === 'Backspace')
+				this.search(this.query.slice(0, -1));
+			else if (!field && event.target === node && key.length === 1 && !ctrlKey && !metaKey)
+				this.search(this.query + key);
+			else if (move) this.moveSelection(move);
+			else if (key === 'Enter') void this.runSelected();
+			else if (key === 'Escape') this.dismiss();
+			else return;
+			event.preventDefault();
+		};
+		const focusin = (event: FocusEvent) => {
+			const target = event.target as HTMLElement;
+			if (!field || target === node) return;
+			const index = this.commands.findIndex(
+				(command) => target.closest?.(`[id="${this.optionId(command)}"]`) !== null
+			);
+			if (index !== -1) this.selectedIndex = index;
+			node.focus({ preventScroll: true });
+		};
+		const focusout = (event: FocusEvent) => {
+			const to = event.relatedTarget;
+			if (this.addition && to instanceof Node && !menu.contains(to)) this.dismiss(false);
+		};
+		// A field takes the keys of the whole menu (a row a screen reader focused); a wrapper, its own.
+		const keyed = field ? menu : node;
+		keyed.addEventListener('keydown', keydown);
+		menu.addEventListener('focusin', focusin);
+		menu.addEventListener('focusout', focusout);
+		menu.addEventListener('mousedown', keepFocus);
+		$effect(() => {
+			if (!field) return;
+			attribute(node, 'aria-controls', this.listId);
+			if (namesRows(node))
+				attribute(node, 'aria-activedescendant', inPage(node, this.rowIdAt(this.selectedIndex)));
+		});
+		return () => {
+			keyed.removeEventListener('keydown', keydown);
+			menu.removeEventListener('focusin', focusin);
+			menu.removeEventListener('focusout', focusout);
+			menu.removeEventListener('mousedown', keepFocus);
+		};
+	};
 
 	protected get count() {
 		return this.commands.length;

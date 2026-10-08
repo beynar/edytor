@@ -15,6 +15,7 @@
 	import { versionDiff } from './diff.js';
 	import { versionHighlightsPlugin } from './versionHighlights.js';
 	import { labelsWith } from '$lib/labels.js';
+	import { optionAttributes } from '$lib/plugins/chrome.js';
 
 	let {
 		client,
@@ -28,6 +29,7 @@
 		class: className,
 		previewClass,
 		version: versionRow,
+		item: itemRow,
 		onRestore,
 		onUndo,
 		onError
@@ -186,6 +188,20 @@
 
 	const selectedEntry = $derived(versions?.find((entry) => entry.key === selected) ?? null);
 
+	/** The panel's own prefix: its rows' ids are page-unique. */
+	const uid = $props.id();
+	/** The row of `entry` at `index`: an option, the list's one tab stop when it is selected (else the first). */
+	const optionOf = (entry: HistoryVersion, index: number) => {
+		const isSelected = entry.key === selected;
+		return optionAttributes(
+			`${uid}-version-${index}`,
+			'option',
+			isSelected,
+			{ tabindex: isSelected || (selected === null && index === 0) ? 0 : -1 },
+			false
+		);
+	};
+
 	/** The listbox's keys: the arrows, Home and End move the selection and the focus. */
 	const onListKey = (event: KeyboardEvent) => {
 		if (!versions?.length) return;
@@ -272,28 +288,41 @@
 					aria-label={labels.versions}
 					onkeydown={onListKey}
 				>
-					{#each versions as entry (entry.key)}
+					{#each versions as entry, index (entry.key)}
 						{@const isSelected = entry.key === selected}
+						{@const option = optionOf(entry, index)}
+						{@const preview = () => void select(entry.key)}
 						<li role="presentation">
-							<button
-								type="button"
-								role="option"
-								aria-selected={isSelected}
-								tabindex={isSelected || (selected === null && entry === versions[0]) ? 0 : -1}
-								data-edytor-history-version={entry.key}
-								onclick={() => void select(entry.key)}
-							>
-								{#if versionRow}
-									{@render versionRow(entry, { selected: isSelected })}
-								{:else}
-									<span data-edytor-history-version-title>{titleOf(entry)}</span>
-									<span data-edytor-history-version-editors>{editorsOf(entry)}</span>
-									<span data-edytor-history-version-time>
-										{labels.saved}
-										<time datetime={new Date(entry.at).toISOString()}>{timeOf(entry)}</time>
-									</span>
-								{/if}
-							</button>
+							{#if itemRow}
+								{@render itemRow({
+									item: entry,
+									version: entry,
+									id: option.id,
+									label: titleOf(entry),
+									selected: isSelected,
+									run: preview,
+									select: preview,
+									option
+								})}
+							{:else}
+								<button
+									type="button"
+									{...option}
+									data-edytor-history-version={entry.key}
+									onclick={preview}
+								>
+									{#if versionRow}
+										{@render versionRow(entry, { selected: isSelected })}
+									{:else}
+										<span data-edytor-history-version-title>{titleOf(entry)}</span>
+										<span data-edytor-history-version-editors>{editorsOf(entry)}</span>
+										<span data-edytor-history-version-time>
+											{labels.saved}
+											<time datetime={new Date(entry.at).toISOString()}>{timeOf(entry)}</time>
+										</span>
+									{/if}
+								</button>
+							{/if}
 						</li>
 					{/each}
 				</ul>

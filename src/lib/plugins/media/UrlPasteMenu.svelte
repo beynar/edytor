@@ -1,31 +1,40 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { UrlPasteController } from './urlPaste.svelte.js';
 
-	let { controller }: { controller: UrlPasteController } = $props();
+	let {
+		controller,
+		menu
+	}: { controller: UrlPasteController; menu?: Snippet<[UrlPasteController]> } = $props();
 	// An editor turning readonly closes the menu (its conversions would be refused).
 	$effect(() => {
 		if (controller.open && controller.readonly) controller.close();
 	});
 </script>
 
-{#if controller.open}
-	<!-- The editor keeps the keyboard: its keys move and pick (the plugin's hotkeys). -->
+<!--
+	The editor keeps the keyboard: its keys move and pick (the plugin's
+	hotkeys). The listbox's id, role and publication to the view's root are
+	the controller's `popup` attachment, a row's attributes its
+	`option(index)`: a custom `menu` that uses them behaves as this one.
+-->
+{#if controller.open && menu}
+	{@render menu(controller)}
+{:else if controller.open}
 	<div
 		class="url-paste-menu"
 		data-edytor-url-paste-menu
 		role="listbox"
 		aria-label={controller.labels.pasteAs}
 		tabindex="-1"
-		onmousedown={(event) => event.preventDefault()}
+		{@attach controller.popup}
 	>
 		{#each controller.open.options as option, index (option.id)}
 			<button
 				type="button"
 				class="url-paste-option"
+				{...controller.option(index)}
 				data-edytor-url-paste-option={option.id}
-				role="option"
-				tabindex="-1"
-				aria-selected={index === controller.index}
 				onmousemove={() => (controller.index = index)}
 				onclick={() => controller.pick(option)}
 				><span aria-hidden="true">{option.icon}</span>{option.label}</button

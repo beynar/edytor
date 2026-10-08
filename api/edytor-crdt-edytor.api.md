@@ -194,7 +194,7 @@ export type CreateDocumentOptions = DocumentOptions & {
 ### DEFAULT_HISTORY_LIMIT
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/history.d.ts
 declare const DEFAULT_HISTORY_LIMIT = 200;
 ```
 
@@ -418,7 +418,7 @@ export type EdytorDoc = ReturnType<EdytorDocBinding['create']>;
 ### EdytorDocDisposedError
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/funnel.d.ts
 export declare class EdytorDocDisposedError extends Error {
     constructor(service?: string);
 }

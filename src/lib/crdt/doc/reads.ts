@@ -5,7 +5,7 @@
  * for a block's shown kind, and the document order.
  */
 import { DEV } from 'esm-env';
-import type { EngineDoc, EngineNode } from '../engine-api.js';
+import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
 import { DOC_DATA_ROOT, TYPE } from '../schema.js';
 import {
 	displayParentOf,
@@ -29,6 +29,7 @@ type View = ModelView;
 
 /** What every part of a document facade is built over: one doc, its engine layers, its index and its roles. */
 export type DocBase = {
+	Y: EngineApi;
 	doc: EngineDoc;
 	M: PlacementModel;
 	T: TextEngine;

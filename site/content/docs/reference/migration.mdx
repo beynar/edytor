@@ -14,6 +14,12 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 0.1.0-next.42
+
+`0.1.0-next.42` was never published to npm: upgrading from `0.1.0-next.41`, read the notes of both sections.
+
 #### Breaking changes
 
 - **Single-owner state is read-only.** `edytor.selection.value`, `selection.selectedBlocks`, `selection.focusedBlocks` and `edytor.dispatcher.last` can no longer be assigned (the sets are `ReadonlySet`s). Assigning `selection.value` used to leave the selected blocks behind; use `selection.select(value)` or a setter (`setCaret`, `setAtTextOffset`, …), which keep them in step.

@@ -32,8 +32,10 @@ refuse() {
 	echo "$2" >&2
 	exit 1
 }
-# Download $SITE/edytor-$1.tgz to $2; print the HTTP status (000 when unreachable).
-fetch() { curl -sS -o "$2" -w '%{http_code}' "$SITE/edytor-$1.tgz" 2>/dev/null || true; }
+# Download $SITE/edytor-$1.tgz to $2; print the HTTP status (000 when
+# unreachable). A transient answer (a timeout, 408, 429, 500, 502, 503, 504)
+# is retried: one 502 among forty tarballs used to refuse the whole deploy.
+fetch() { curl -sS --retry 5 --retry-delay 3 --retry-connrefused -o "$2" -w '%{http_code}' "$SITE/edytor-$1.tgz" 2>/dev/null || true; }
 
 LIVE=$(mktemp -d)
 trap 'rm -rf "$LIVE"' EXIT

@@ -30,6 +30,11 @@ const stripBlock = (block: SerializedBlock): SerializedBlock => {
 };
 
 /** Handles mount once the viewport observer reports: wait until every visible block has one. */
+/**
+ * One handle per shown block, each placed: a handle mounts hidden and shows
+ * once the overlay's next measure places it, and a hidden one takes no focus
+ * (a `focus()` or a key press before it lands on the body).
+ */
 const settleHandles = (page: Page) =>
 	expect
 		.poll(() =>
@@ -37,7 +42,13 @@ const settleHandles = (page: Page) =>
 				const blocks = Array.from(
 					document.querySelectorAll<HTMLElement>('[data-edytor-block="true"]')
 				).filter((block) => block.getBoundingClientRect().height > 0);
-				return document.querySelectorAll('[data-testid="block-handle"]').length === blocks.length;
+				const hosts = Array.from(
+					document.querySelectorAll<HTMLElement>('[data-edytor-block-handle-host]')
+				);
+				return (
+					document.querySelectorAll('[data-testid="block-handle"]').length === blocks.length &&
+					hosts.every((host) => host.style.visibility !== 'hidden')
+				);
 			})
 		)
 		.toBe(true);

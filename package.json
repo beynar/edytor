@@ -83,7 +83,13 @@
 		"!dist/**/*.spec.*"
 	],
 	"peerDependencies": {
+		"katex": ">=0.16.0",
 		"svelte": "^5.0.0"
+	},
+	"peerDependenciesMeta": {
+		"katex": {
+			"optional": true
+		}
 	},
 	"main": "./dist/index.js",
 	"devDependencies": {
@@ -110,6 +116,7 @@
 		"fake-indexeddb": "^6.2.5",
 		"globals": "^17.6.0",
 		"jsdom": "^29.0.1",
+		"katex": "0.18.7",
 		"lib0": "^0.2.117",
 		"postcss": "^8.5.8",
 		"prettier": "^3.8.1",

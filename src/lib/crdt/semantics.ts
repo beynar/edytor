@@ -143,6 +143,15 @@ export const tocKinds = frozen({
 } satisfies Record<string, KindSemantics>);
 
 /**
+ * The equation plugin's structural row: a block equation is a void that
+ * draws its TeX (`data.expression`) and shows no text of its own. Its
+ * inline equation is an atom, which needs no role.
+ */
+export const equationKinds = frozen({
+	equation: { void: true, rendersContent: false }
+} satisfies Record<string, KindSemantics>);
+
+/**
  * The columns plugin's structural rows: `columns` is a layout of `column`s
  * (`layout.*` in the delete contract), a column a container that holds any
  * block. In {@link defaultSemantics}: a document holding no `columns` block
@@ -314,16 +323,27 @@ export const layoutSemantics = semanticsOf(layoutKinds);
 export const pageSemantics = semanticsOf(pageKinds);
 /** The table of contents plugin's block role. */
 export const tocSemantics = semanticsOf(tocKinds);
+/** The equation plugin's block role. */
+export const equationSemantics = semanticsOf(equationKinds);
 /**
- * The rich-text, code, image, media, columns, page and table of contents
- * plugins' block roles together — what the room and a headless
+ * The rich-text, code, image, media, columns, page, table of contents and
+ * equation plugins' block roles together — what the room and a headless
  * `createDocument`/`loadDocument` adopt by default (`semantics: {}` checks
- * none). The media, columns, page and table of contents plugins are not
- * default plugins of `<Edytor>`, but their roles are here so their blocks
- * read the same on every replica.
+ * none). The media, columns, page, table of contents and equation plugins
+ * are not default plugins of `<Edytor>`, but their roles are here so their
+ * blocks read the same on every replica.
  */
 export const defaultSemantics = withMarks(
-	semanticsOf(richTextKinds, codeKinds, imageKinds, mediaKinds, layoutKinds, pageKinds, tocKinds),
+	semanticsOf(
+		richTextKinds,
+		codeKinds,
+		imageKinds,
+		mediaKinds,
+		layoutKinds,
+		pageKinds,
+		tocKinds,
+		equationKinds
+	),
 	richTextMarks
 );
 

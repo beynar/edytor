@@ -17,6 +17,8 @@
 	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
 	import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
 	import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
+	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
+	import 'katex/dist/katex.min.css';
 	import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
@@ -62,6 +64,28 @@
 					type: 'paragraph',
 					content: [{ text: 'tail' }]
 				}
+			]
+		},
+		// With `equation=1`: an inline equation in a line, a block equation, a line after.
+		equation: {
+			children: [
+				{
+					type: 'paragraph',
+					content: [
+						{ text: 'see ' },
+						{ type: 'inlineEquation', data: { expression: 'x^2' } },
+						{ text: ' here' }
+					]
+				},
+				{ type: 'equation', data: { expression: 'a+b' } },
+				{ type: 'paragraph', content: [{ text: 'tail' }] }
+			]
+		},
+		// Text drag-move: two lines of words.
+		words: {
+			children: [
+				{ type: 'paragraph', content: [{ text: 'alpha beta gamma' }] },
+				{ type: 'paragraph', content: [{ text: 'delta epsilon' }] }
 			]
 		},
 		compositionRepeat: {
@@ -475,6 +499,7 @@
 			),
 		href: (page) => `/pages/${page.id}`
 	});
+	const equationPlugin = createEquationPlugin({ katex: () => import('katex') });
 	const emojiRules: Plugin = () => ({
 		inputRules: [{ find: /:smile:$/, replace: () => '😄' }]
 	});
@@ -482,6 +507,7 @@
 	const plugins = $derived([
 		...(data.find ? [findPlugin] : []),
 		...(data.media ? [embedPlugin, bookmarkPlugin] : []),
+		...(data.equation ? [equationPlugin] : []),
 		...(data.polish
 			? [
 					blockMenuPlugin,

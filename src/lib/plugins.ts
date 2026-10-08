@@ -488,6 +488,17 @@ export type InlineBlockDefinition = {
 	snippet: Snippet<[InlineBlockSnippetPayload<any>]>;
 	/** Clipboard plain-text form of the atom; default none. */
 	plain?: (data: JSONInlineBlock['data']) => string;
+	/**
+	 * Clipboard HTML form of the atom (inline markup, escaped by you); default
+	 * an empty `<span data-edytor-inline-block>`.
+	 */
+	html?: (data: JSONInlineBlock['data']) => string;
+	/**
+	 * HTML import: the atom's data when `element`, met in a line's inline
+	 * content, is this atom, else `undefined`. Its contents are then not read
+	 * as text.
+	 */
+	parse?: (element: HTMLElement) => Record<string, SerializableContent> | undefined;
 };
 
 export type MarkDefinition = {

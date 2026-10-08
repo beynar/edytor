@@ -111,7 +111,8 @@ export const fr: Labels = {
 			'Basic blocks': 'Blocs de base',
 			'Advanced blocks': 'Blocs avancés',
 			Media: 'Médias',
-			Layout: 'Mise en page'
+			Layout: 'Mise en page',
+			Inline: 'En ligne'
 		}
 	},
 	blockMenu: {
@@ -268,6 +269,16 @@ export const fr: Labels = {
 		searching: 'Recherche…',
 		noResults: 'Aucun résultat',
 		untitled: 'Sans titre'
+	},
+	equation: {
+		block: 'Équation en bloc',
+		inline: 'Équation en ligne',
+		blockPlaceholder: 'Ajouter une équation TeX',
+		inlinePlaceholder: 'Nouvelle équation',
+		editor: 'Équation',
+		placeholder: 'E = mc^2',
+		done: 'Terminé',
+		invalid: 'Équation invalide'
 	}
 };
 

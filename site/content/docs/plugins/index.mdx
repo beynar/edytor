@@ -76,7 +76,7 @@ Plugins are read once, when the component mounts. Changing the array afterwards 
 
 The example above therefore runs block handles, your five plugins, then arrow move, suggestions, image and rich text. A default you list yourself stays where you put it, so older code that passes `plugins={[richTextPlugin]}` still works.
 
-Some bundled plugins are not defaults: list [`columnsPlugin`](/docs/plugins/columns), [`codePlugin`](/docs/plugins/code), [`findPlugin`](/docs/plugins/find), the media plugins ([embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)), the [page](/docs/plugins/page) and [table of contents](/docs/plugins/table-of-contents) plugins, the menus, the toolbar and markdown shortcuts yourself when you want them.
+Some bundled plugins are not defaults: list [`columnsPlugin`](/docs/plugins/columns), [`codePlugin`](/docs/plugins/code), [`findPlugin`](/docs/plugins/find), the media plugins ([embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)), the [page](/docs/plugins/page), [table of contents](/docs/plugins/table-of-contents) and [equation](/docs/plugins/equation) plugins, the menus, the toolbar and markdown shortcuts yourself when you want them.
 
 Pass `defaultPlugins={false}` to get exactly your list (block handles still follow `blockHandles`). The defaults are added by the `<Edytor>` component, per view; the editor instance underneath has none of its own.
 
@@ -133,5 +133,6 @@ Import it like any other module: `import { highlightPlugin } from './HighlightPl
 | [Find and replace](/docs/plugins/find)                 | `findPlugin`, `createFindPlugin` | <kbd>Mod</kbd> + <kbd>F</kbd> opens a find and replace bar: matches highlighted, closed toggles opened, Replace all in one undo step. Opt-in: list it in `plugins` |
 | [Mention](/docs/plugins/mention)                       | `createMentionPlugin`     | Notion's `@` mentions: a menu of your app's people, picked into an inline mention. Opt-in |
 | [Page link](/docs/plugins/page-link)                   | `createPageLinkPlugin`    | Notion's `[[` page links: a search of your app's pages, picked into an inline link. Opt-in |
+| [Equation](/docs/plugins/equation)                     | `createEquationPlugin`    | Notion's block and inline equations: TeX drawn by KaTeX, which your app loads on demand, edited with a live preview. Opt-in |
 
 All exports come from the package root, `edytor`. The `create…` factories take options, including snippets that replace the menus' and handles' markup (see [Menus and handles](/docs/customization/menus)). For the matching document look, add the [Notion theme](/docs/customization/styling#notion-theme).

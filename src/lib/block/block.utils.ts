@@ -142,6 +142,17 @@ export type BlockOperations = {
 		replace?: boolean;
 	};
 	insertFlow: { flow: Flow; target: FlowTarget };
+	/**
+	 * A text range dragged inside the editor and dropped at `to` (block
+	 * offsets): deleted, then its content placed where `to` is after the
+	 * deletion — or, with `copy` (Alt), only placed. The planned steps hooks
+	 * see are the deletion's (a copy's: the placement's).
+	 */
+	moveText: {
+		from: { start: { block: string; offset: number }; end: { block: string; offset: number } };
+		to: { block: string; offset: number };
+		copy: boolean;
+	};
 	deleteBlocks: { blocks: Block[] };
 	/** Wrap sibling blocks in a new layout of `kind` and `columns` items, one block per item (`layout.wrap`). */
 	wrapBlocks: { blocks: Block[]; kind?: string; columns?: number };

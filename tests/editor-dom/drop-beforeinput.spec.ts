@@ -244,7 +244,9 @@ test.describe('browser drop behavior', () => {
 		issues.assertClean();
 	});
 
-	test('keeps internal drag-move prevented — a drop inside the editor copies nothing', async ({
+	// A drag from inside the editor with no selected text range is not a text drag
+	// (`text-drag.spec.ts` moves a selected range).
+	test('keeps an internal drag with no text range prevented — the drop copies nothing', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);

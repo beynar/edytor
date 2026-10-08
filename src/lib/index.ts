@@ -180,7 +180,12 @@ export {
 	tocPlugin,
 	createTocPlugin,
 	type TocPluginOptions,
-	type TocHeadingLevel
+	type TocHeadingLevel,
+	createEquationPlugin,
+	type EquationPluginOptions,
+	type EquationData,
+	type KatexLike,
+	type KatexLoader
 } from './plugins/index.js';
 export { BLOCK_COLORS, setBlockColor, type BlockColorField } from './block/colors.js';
 

@@ -113,7 +113,7 @@ export type SlashMenuLabels = {
 	close: string;
 	/** The key shown beside Close. */
 	closeKey: string;
-	/** A section heading, by its group key (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`); others show as they are. */
+	/** A section heading, by its group key (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`, `Inline`); others show as they are. */
 	groups: Record<string, string>;
 };
 
@@ -287,6 +287,25 @@ export type PageLinkLabels = {
 	untitled: string;
 };
 
+/** The block and inline equations (`createEquationPlugin`). */
+export type EquationLabels = {
+	/** The block preset, and the block's accessible name. */
+	block: string;
+	/** The inline command. */
+	inline: string;
+	/** An empty block equation. */
+	blockPlaceholder: string;
+	/** An empty inline equation. */
+	inlinePlaceholder: string;
+	/** The editor's accessible name, and its field's. */
+	editor: string;
+	/** The field's placeholder. */
+	placeholder: string;
+	done: string;
+	/** TeX that does not render: shown as the equation's title, with KaTeX's message. */
+	invalid: string;
+};
+
 export type ColumnsLabels = {
 	/** The `columns.<n>` command. */
 	columns: (count: number) => string;
@@ -311,6 +330,7 @@ export type Labels = {
 	page: PageLabels;
 	toc: TocLabels;
 	pageLink: PageLinkLabels;
+	equation: EquationLabels;
 };
 
 /**
@@ -445,7 +465,8 @@ export const englishLabels: Labels = frozen({
 			'Basic blocks': 'Basic blocks',
 			'Advanced blocks': 'Advanced blocks',
 			Media: 'Media',
-			Layout: 'Layout'
+			Layout: 'Layout',
+			Inline: 'Inline'
 		}
 	},
 	blockMenu: {
@@ -602,6 +623,16 @@ export const englishLabels: Labels = frozen({
 		searching: 'Searching…',
 		noResults: 'No results',
 		untitled: 'Untitled'
+	},
+	equation: {
+		block: 'Block equation',
+		inline: 'Inline equation',
+		blockPlaceholder: 'Add a TeX equation',
+		inlinePlaceholder: 'New equation',
+		editor: 'Equation',
+		placeholder: 'E = mc^2',
+		done: 'Done',
+		invalid: 'Invalid equation'
 	}
 });
 

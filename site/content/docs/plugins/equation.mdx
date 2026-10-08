@@ -1,0 +1,124 @@
+---
+title: Equation
+description: The equation plugin adds Notion's block and inline equations, TeX drawn by KaTeX loaded on demand, edited in a field under the equation with a live preview.
+icon: sigma
+---
+
+`createEquationPlugin` adds Notion's equations: a block equation (`equation`) and an inline equation in text (`inlineEquation`), each holding its TeX source and drawn by [KaTeX](https://katex.org). It is not a default plugin: list it, and give it KaTeX.
+
+KaTeX is an optional peer dependency of `edytor`: install it in your app, import its stylesheet once, and pass a loader. The plugin calls the loader the first time an equation shows in a browser, so KaTeX is a separate chunk that pages without math never download.
+
+```bash
+pnpm add katex
+```
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import 'katex/dist/katex.min.css';
+	import { Edytor, createEquationPlugin, slashMenuPlugin } from 'edytor';
+
+	const equations = createEquationPlugin({ katex: () => import('katex') });
+</script>
+
+<Edytor plugins={[equations, slashMenuPlugin]} />
+```
+
+Without `katex`, or until it loads (and in a server render), an equation shows its TeX source.
+
+## Creating equations
+
+- **Block equation**: the slash menu's "Block equation" (group `Advanced blocks`, keywords `math`, `tex`, `latex`, `katex`, `formula`, `equation`). Like a divider it replaces an empty line and goes after a line that holds text; its editor opens at once.
+- **Inline equation**: the slash menu's "Inline equation" (group `Inline`), or <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd>. Over selected text in one block, the text becomes the equation's source, in one undo step; at a caret, an empty equation is inserted and its editor opens.
+- **Typed**: `$$E=mc^2$$` in text becomes an inline equation when you type the last `$`, the caret after it. One undo step gives the typed text back. Input rules do not run in code blocks.
+
+## Editing
+
+A click on an equation in an editable view, or <kbd>Enter</kbd> on a selected one, opens its editor under it: the TeX source in a field, and Done. Every keystroke writes the source (`data.expression`), so the equation itself is the live preview, and the typing is one undo step. TeX KaTeX cannot read shows the source in red, titled "Invalid equation" with KaTeX's message, which the editor also shows under the field.
+
+| Key | In the editor |
+| --- | --- |
+| <kbd>Enter</kbd> | Done: closes the editor |
+| <kbd>Shift</kbd> + <kbd>Enter</kbd> | A new line in a block equation; Done in an inline one |
+| <kbd>Escape</kbd> | Closes the editor, the source as typed |
+
+A press or a focus outside the editor closes it too. After it closes, a block equation stays selected and the caret goes after an inline one. An inline equation closed empty is removed, as in Notion. A readonly view draws equations and opens no editor.
+
+## Options
+
+`createEquationPlugin(options)` takes an `EquationPluginOptions`:
+
+<TypeTable
+  type={{
+    katex: {
+      type: "() => Promise<KatexLike | { default: KatexLike }>",
+      description: "Loads KaTeX: `() => import('katex')`. Called once, the first time an equation shows in a browser. Without it, equations show their TeX source.",
+    },
+    macros: {
+      type: "Record<string, string>",
+      description: "TeX macros every equation reads: `{ '\\\\RR': '\\\\mathbb{R}' }`.",
+    },
+    labels: {
+      type: "PartialLabels<'equation'>",
+      description: "The words over the English ones: `block` (\"Block equation\"), `inline` (\"Inline equation\"), `blockPlaceholder` (\"Add a TeX equation\"), `inlinePlaceholder` (\"New equation\"), `editor`, `placeholder`, `done` and `invalid`. See [Localization](/docs/customization/localization).",
+    },
+    keywords: {
+      type: "Partial<Record<string, string[]>>",
+      description: "The slash keywords of `block.equation` and `equation.inline`, which replace their own.",
+    },
+  }}
+/>
+
+KaTeX runs untrusted (`trust: false`): `\href`, `\url`, `\includegraphics` and the HTML extensions draw nothing that links or loads, so its markup is safe to show for any peer's TeX. `strict` warnings are off.
+
+```ts title="equations.ts" check
+import { createEquationPlugin } from 'edytor';
+
+export const equations = createEquationPlugin({
+	katex: () => import('katex'),
+	macros: { '\\RR': '\\mathbb{R}' },
+	labels: { blockPlaceholder: 'Add a formula' }
+});
+```
+
+## The kinds
+
+| Kind | Where | Data | Created by |
+| --- | --- | --- | --- |
+| `equation` | a block (`div`) | `{ expression: string }` | "Block equation" (`block.equation`, √x, `Advanced blocks`) |
+| `inlineEquation` | an inline atom in text | `{ expression: string }` | "Inline equation" (`equation.inline`), <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd>, `$$…$$` |
+
+The block equation is void and shows no text of its own, like a divider; its role is in `defaultSemantics` (`equationKinds`), so the room and headless documents read it alike. The inline equation is an atom: the caret steps over it and a selection takes it whole.
+
+```ts title="seed.ts" check
+import type { JSONDoc } from 'edytor';
+
+export const value: JSONDoc = {
+	children: [
+		{
+			type: 'paragraph',
+			content: [
+				{ text: 'Euler: ' },
+				{ type: 'inlineEquation', data: { expression: 'e^{i\\pi} + 1 = 0' } }
+			]
+		},
+		{ type: 'equation', data: { expression: '\\int_0^1 x^2\\,dx = \\frac{1}{3}' } }
+	]
+};
+```
+
+## Clipboard
+
+Copying writes each equation as MathML whose `application/x-tex` annotation is its source, inside KaTeX's `katex` class (a block equation's `<math display="block">` in a `div[data-edytor-equation]`), so other apps paste math, and the plain text is the source. HTML import reads equations back from KaTeX's markup (`.katex`, `.katex-display`) or a bare `<math>` with a TeX annotation (or an `alttext`): a `display="block"` one as a block equation, any other as an inline equation in its line. Without the plugin, math imports nothing.
+
+## Styling
+
+| Selector | Matches |
+| --- | --- |
+| `[data-edytor-equation]` | A block equation's drawing (`[data-empty]` when it has no source, `[data-editing]` while edited) |
+| `[data-edytor-inline-equation]` | An inline equation (`[data-empty]`, `[data-editing]`, `[data-selected]`) |
+| `[data-edytor-equation-placeholder]` | An empty equation's placeholder |
+| `[data-edytor-equation-error]` | TeX KaTeX cannot read, shown as its source |
+| `[data-edytor-equation-source]` | The source shown while KaTeX loads, or without it |
+| `[data-edytor-equation-editor]` | The editor, in the overlay (`data-display="block"` or `"inline"`); `--edytor-equation-editor-background` |
+
+KaTeX's own classes (`.katex`, `.katex-display`) style the drawing; its stylesheet must be loaded.

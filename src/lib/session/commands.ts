@@ -73,6 +73,8 @@ const CUT: Record<string, 'before' | 'both'> = {
 	insertFromPaste: 'before',
 	insertFromPasteAsQuotation: 'before',
 	insertFromDrop: 'before',
+	// A text drag's drop: typing after it is a step of its own.
+	moveText: 'both',
 	insertBlock: 'before',
 	format: 'before',
 	// An accepted suggestion: typing after it is a step of its own.

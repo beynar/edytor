@@ -20,6 +20,7 @@ export default defineMeta({
     "columns",
     "page",
     "table-of-contents",
+    "equation",
     "block-handles",
     "block-menu",
     "slash-menu",

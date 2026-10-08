@@ -19,6 +19,7 @@ import {
 	pageSemantics,
 	richTextSemantics,
 	tocSemantics,
+	equationSemantics,
 	type DocumentSemanticsConfig,
 	type EdytorDocument,
 	type JSONDoc
@@ -35,6 +36,7 @@ import { videoPlugin } from '$lib/plugins/media/VideoPlugin.svelte';
 import { audioPlugin } from '$lib/plugins/media/AudioPlugin.svelte';
 import { pagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
+import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
 
 const value: JSONDoc = {
 	children: [
@@ -95,6 +97,7 @@ const BUNDLED = {
 		audio: { void: true, island: false, lines: false },
 		page: { void: true, island: false, lines: false },
 		toc: { void: true, island: false, lines: false },
+		equation: { void: true, island: false, lines: false },
 		code: { void: false, island: true, lines: true },
 		columns: { void: false, island: false, lines: false, layout: true }
 	},
@@ -107,7 +110,8 @@ const BUNDLED = {
 		columns: false,
 		column: false,
 		page: false,
-		toc: false
+		toc: false,
+		equation: false
 	},
 	defaultChild: {
 		'ordered-list': 'list-item',
@@ -127,7 +131,7 @@ describe('defaultSemantics on a headless document', () => {
 		expect(edits({})).toEqual(['applied', 'applied', 'applied', 'applied']);
 	});
 
-	it('merges the seven plugin tables', () => {
+	it('merges the eight plugin tables', () => {
 		expect(defaultSemantics).toEqual({
 			roles: {
 				...richTextSemantics.roles,
@@ -136,7 +140,8 @@ describe('defaultSemantics on a headless document', () => {
 				...mediaSemantics.roles,
 				...layoutSemantics.roles,
 				...pageSemantics.roles,
-				...tocSemantics.roles
+				...tocSemantics.roles,
+				...equationSemantics.roles
 			},
 			rendersContent: {
 				...richTextSemantics.rendersContent,
@@ -145,7 +150,8 @@ describe('defaultSemantics on a headless document', () => {
 				...mediaSemantics.rendersContent,
 				...layoutSemantics.rendersContent,
 				...pageSemantics.rendersContent,
-				...tocSemantics.rendersContent
+				...tocSemantics.rendersContent,
+				...equationSemantics.rendersContent
 			},
 			defaultChild: {
 				...richTextSemantics.defaultChild,
@@ -166,7 +172,8 @@ describe('defaultSemantics on a headless document', () => {
 			...media,
 			columnsPlugin,
 			pagePlugin,
-			tocPlugin
+			tocPlugin,
+			createEquationPlugin()
 		];
 		const viewed = createDocument({ value });
 		const view = new Edytor({ document: viewed, plugins });

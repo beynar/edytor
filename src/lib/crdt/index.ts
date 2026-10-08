@@ -90,6 +90,8 @@ export {
 	pageSemantics,
 	tocKinds,
 	tocSemantics,
+	equationKinds,
+	equationSemantics,
 	richTextKinds,
 	codeKinds,
 	imageKinds,

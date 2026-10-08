@@ -9,6 +9,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { flowOfFragment, flowOfText, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
+import { dropText, textDragOf } from '$lib/clipboard/moveText.js';
 import { cloneJson, type JSONText } from '$lib/utils/json.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
 import { selectedTextSpans } from '$lib/selection/visibility.js';
@@ -178,6 +179,21 @@ const runDataTransferPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer)
 	}
 };
 
+/** The drop point the browser reported, in block offsets (`null`: not in a text). */
+const dropPoint = (edytor: Edytor, snapshot: Attempt) => {
+	const range = snapshot.declared;
+	const text =
+		range && edytor.node?.contains(range.startContainer)
+			? edytor.selection.getTextOfNode(range.startContainer, range.startOffset)
+			: null;
+	if (!text) return null;
+	const offset = Math.max(
+		0,
+		Math.min(getYIndex(text, range!.startContainer, range!.startOffset), text.length)
+	);
+	return { block: text.parent.id, offset: text.segStart + offset };
+};
+
 // A drop reported while whole blocks are selected must insert at the drop
 // point — not replace the block selection. The earlier target-range sync is
 // skipped for block selections (the DOM caret sits inside a selected block),
@@ -209,6 +225,14 @@ const resolveDropPoint = (edytor: Edytor, snapshot: Attempt) => {
  * Unclaimed files insert nothing rather than degrading to file-name text.
  */
 const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
+	// The view's own text drag dropped here: a move (a copy with Alt) of its range.
+	const drag = textDragOf(edytor);
+	if (drag?.dropping && snapshot.inputType === 'insertFromDrop') {
+		drag.dropping = false;
+		const to = dropPoint(edytor, snapshot);
+		if (to) dropText(edytor, drag, to);
+		return;
+	}
 	const dataTransfer = snapshot.dataTransfer ?? null;
 	const fragment = readEdytorClipboardFragment(dataTransfer);
 	if (!fragment && dataTransfer) {

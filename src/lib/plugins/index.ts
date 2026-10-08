@@ -125,3 +125,10 @@ export {
 	type TocPluginOptions,
 	type TocHeadingLevel
 } from './toc/TocPlugin.svelte';
+export {
+	createEquationPlugin,
+	type EquationPluginOptions,
+	type EquationData,
+	type KatexLike,
+	type KatexLoader
+} from './equation/EquationPlugin.svelte';

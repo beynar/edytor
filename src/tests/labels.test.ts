@@ -76,7 +76,8 @@ describe('labelsWith', () => {
 			'Basic blocks': 'Basic blocks',
 			'Advanced blocks': 'Advanced blocks',
 			Media: 'Médias',
-			Layout: 'Layout'
+			Layout: 'Layout',
+			Inline: 'Inline'
 		});
 	});
 

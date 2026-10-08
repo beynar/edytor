@@ -49,8 +49,9 @@ on `master` after `next.40`, with a docs-drift row guarding it.
 Majors, by dimension:
 
 - **API**: ~~public handle methods that write raw bypass readonly~~ (`next.41`); three
-  result shapes for commands (`CommandResult` only as `dispatcher.last`); 176 types reachable
-  but not exported; mutable public fields with one owner (`selection.value`, `dispatcher.last`).
+  result shapes for commands (`CommandResult` only as `dispatcher.last`); ~~176 types reachable but not exported~~ (the ones an app names exported; 102
+  left are engine, index and surface internals reached through `edytor.document.facade`,
+  `cells`, `overlay` and `popups`: mark those members `@internal` or export them at WU-50); mutable public fields with one owner (`selection.value`, `dispatcher.last`).
   Fix before freezing the API report as the 1.0 contract (WU-50).
 - **Robustness**: the document lifetime ceiling (≈ 72 stored bytes per edit against a 2 MiB
   quota, `4413` final, no rebase path); ~~comments unbounded, snapshot amplification~~

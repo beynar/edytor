@@ -298,3 +298,79 @@ export {
 	type VersionChange,
 	type VersionDiff
 } from './collaboration/history/index.js';
+
+// ── Types the exports above use ────────────────────────────────────────
+// The types a consumer meets through a prop, an option, a member or a
+// callback above, exported so an app can name them.
+export type { EdytorProps } from './components/Edytor.svelte';
+export type { EdytorOptions, Snippets } from './edytor.svelte.js';
+export type {
+	BlockHandlesLabels,
+	BlockMenuLabels,
+	CodeLabels,
+	ColumnsLabels,
+	CommentsLabels,
+	EditorLabels,
+	EquationLabels,
+	FindLabels,
+	ImageLabels,
+	MediaKindLabels,
+	MediaLabels,
+	MentionLabels,
+	PageLabels,
+	PageLinkLabels,
+	RichTextLabels,
+	SlashMenuLabels,
+	SuggestionsLabels,
+	TableLabels,
+	TocLabels,
+	ToolbarLabels
+} from './labels.js';
+export type {
+	BlockElement,
+	BlockView,
+	InitializedPlugin,
+	InlineBlockView,
+	PluginDefinitions,
+	PluginOperations
+} from './plugins.js';
+export type { Dispatcher } from './session/commands.js';
+export type {
+	PresenceSelection,
+	SelectCause,
+	SelectionPoint,
+	SelectionProjection,
+	SelectionSegment,
+	SelectionValue
+} from './session/selection.js';
+export type { SelectionState, TextAnchor } from './selection/selection.svelte.js';
+export type { Key, Modifier, Modifiers } from './session/keymap.js';
+export type { TextOperations } from './text/text.utils.js';
+export type { BlockBeside, BlockOperations } from './block/block.utils.js';
+export type {
+	TextInsertionPayload,
+	TriggerRange
+} from './plugins/triggers/TriggerController.svelte.js';
+export type { RichTextLink, RichTextMark } from './plugins/richtext/richTextOperations.js';
+export type { AwarenessLike, PresenceWriter } from './collaboration/awarenessSelection.js';
+export type { DataPatch } from './crdt/data.js';
+export type { AnchorAffinity, BlockRole, DocAnchor, TextRange } from './crdt/doc/types.js';
+export type { Flow, FlowLine, FlowTarget } from './crdt/flow.js';
+export type { EdytorDoc } from './crdt/edytor-doc.js';
+export type { DocumentOptions } from './crdt/document.js';
+export type {
+	ActorProfile,
+	AttributionActor,
+	BlockLineageEntry,
+	DocumentAttribution
+} from './crdt/attribution/attribution.js';
+export type { ActorId, BlockAttribution } from './crdt/attribution/block.js';
+export type { CommentMessage } from './crdt/protocols/comments.js';
+export type {
+	EdytorSyncCleanup,
+	LastUpdatedOptions,
+	PrefetchOptions,
+	PrefetchResult,
+	WebsocketTarget
+} from './crdt/providers/index.js';
+export type { ProtocolMismatch, SchemaMismatchDetail } from './crdt/providers/room.js';

@@ -84,7 +84,7 @@ export type Caret = { block: Block; offset: number };
  * `content`, `marks`, the `isAt…`/`is…Spanning` flags, `islandRoot`,
  * `voidRoot` — are read from `selection.projection`.
  */
-type SelectionState = {
+export type SelectionState = {
 	yStart: number;
 	yEnd: number;
 	isCollapsed: boolean;

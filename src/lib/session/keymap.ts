@@ -31,10 +31,12 @@ type Chars<S extends string, Acc = never> = S extends `${infer C}${infer R}`
 const CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789`~!@#$%^&*()-_=+[]{}\\|;:\'",.<>/?';
 // prettier-ignore
 const NAMED = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab', 'enter', 'backspace', 'delete', 'space', 'escape', 'home', 'end', 'pageup', 'pagedown', 'insert', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12'] as const;
-type Key = Chars<typeof CHARS> | (typeof NAMED)[number];
-type Modifier = 'mod' | 'alt' | 'ctrl' | 'shift';
+/** A key a chord names: a one-character key or a named one, lower case. */
+export type Key = Chars<typeof CHARS> | (typeof NAMED)[number];
+/** A chord's modifier (`mod`: Cmd on Apple platforms, Ctrl elsewhere). */
+export type Modifier = 'mod' | 'alt' | 'ctrl' | 'shift';
 /** One to three distinct modifiers, in any order. */
-type Modifiers = {
+export type Modifiers = {
 	[A in Modifier]:
 		| A
 		| {

@@ -56,7 +56,7 @@ export type EdytorAwarenessState = {
  * Structural awareness surface used by `publishPresence` — the real
  * `Awareness` satisfies it; tests may substitute stubs.
  */
-type AwarenessLike = {
+export type AwarenessLike = {
 	getLocalState: () => Record<string, unknown> | null;
 	setLocalState: (state: Record<string, unknown> | null) => void;
 };

@@ -144,7 +144,23 @@ describe('entry points', () => {
 				.filter(Boolean)
 		);
 		expect(plugins.size).toBeGreaterThan(20);
-		expect(root.filter((name) => !plugins.has(name)).length).toBeLessThanOrEqual(132);
+		// The types the other exports use (a prop's, a member's, a callback's)
+		// are named so an app can write them; they add no concept, and the
+		// section exports types only.
+		const used = index.slice(index.indexOf('// ── Types the exports above use'));
+		expect(used).not.toMatch(/^export \{/m);
+		const types = new Set(
+			[...used.matchAll(/^export type \{([^}]*)\}/gm)].flatMap(([, list]) =>
+				list
+					.split(',')
+					.map((part) => part.trim())
+					.filter(Boolean)
+			)
+		);
+		expect(types.size).toBeGreaterThan(50);
+		expect(
+			root.filter((name) => !plugins.has(name) && !types.has(name)).length
+		).toBeLessThanOrEqual(132);
 		expect(names('edytor-protocol')).toEqual(expect.arrayContaining(WIRE));
 	});
 });

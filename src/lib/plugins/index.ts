@@ -143,6 +143,8 @@ export {
 	isTablePlugin,
 	type TablePluginOptions
 } from './table/TablePlugin.svelte';
+// The table kind's value as JSON (also on `edytor/crdt/edytor`).
+export { tableBlock, type TableBlockOptions } from '../crdt/tables.js';
 export {
 	createEquationPlugin,
 	type EquationPluginOptions,

@@ -50,15 +50,21 @@ type MoveText = {
  * are prepared before any write, so hooks see the command's effect and
  * every step of both, a veto of any of them keeps everything, and a drop
  * either half refuses writes nothing. A move dropped inside its own range
- * changes nothing. The content is selected after. Answers whether it wrote.
+ * changes nothing. The content is selected after; when nothing was written,
+ * the range stays selected. Answers whether it wrote.
  */
 export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): boolean => {
 	const { facade, dispatcher } = edytor;
 	const { start, end } = project(drag.range, facade);
 	if (!start || !end) return false;
 	const { copy } = drag;
+	/** Nothing written: the range stays selected (the drop's point is not adopted). */
+	const keep = () => {
+		edytor.selection.select(drag.range, 'model');
+		return false;
+	};
 	// A move onto itself: nothing to write.
-	if (!copy && compare(edytor, start, to) <= 0 && compare(edytor, to, end) <= 0) return false;
+	if (!copy && compare(edytor, start, to) <= 0 && compare(edytor, to, end) <= 0) return keep();
 	const flow: Flow = flowOfFragment(drag.fragment);
 	const view = viewOf(edytor);
 	const place = (at: SelectionPoint) =>
@@ -97,7 +103,7 @@ export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): bo
 		},
 		prepare
 	);
-	if (dispatcher.last?.status !== 'applied' || !placed.to) return false;
+	if (dispatcher.last?.status !== 'applied' || !placed.to) return keep();
 	const point = (anchor: DocAnchor | null | undefined) => {
 		const hit = anchor && facade.resolveAnchor(anchor);
 		return hit ? { block: hit.blockId, offset: hit.offset } : null;

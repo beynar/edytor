@@ -229,6 +229,28 @@ describe('dragging selected text moves it (one step)', () => {
 		);
 		expect(texts(view.edytor)).toEqual(['one two three']);
 		expect(view.edytor.undoManager.undoStack.length).toBe(steps);
+		// The range stays selected (a press at its edge that the browser takes as a drag).
+		expect(selected(view.edytor)).toEqual([
+			{ block: 'a', offset: 4 },
+			{ block: 'a', offset: 8 }
+		]);
+	});
+
+	it('dropped at its own start, nothing changes and the range stays selected', async () => {
+		const view = await mount([p('a', 'one two'), p('b', 'three four')]);
+		await drag(
+			view,
+			[
+				{ block: 'a', offset: 1 },
+				{ block: 'b', offset: 3 }
+			],
+			{ block: 'a', offset: 1 }
+		);
+		expect(texts(view.edytor)).toEqual(['one two', 'three four']);
+		expect(selected(view.edytor)).toEqual([
+			{ block: 'a', offset: 1 },
+			{ block: 'b', offset: 3 }
+		]);
 	});
 
 	it('hooks see one moveText command; a veto keeps everything', async () => {

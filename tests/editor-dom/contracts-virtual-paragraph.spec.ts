@@ -8,7 +8,7 @@
  * contract's, hand-written.
  */
 import { expect, test, type Page } from './editorTest';
-import { b, domSelection, model, open, openRoom } from './p1-helpers';
+import { b, domSelection, model, open, openRoom } from './probe-helpers';
 
 type EdytorWindow = Window & { __EDYTOR__?: any };
 

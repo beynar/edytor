@@ -11,7 +11,7 @@
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
 import { createDocument } from '../../../lib/crdt/index.js';
-import { tree } from './p1-harness.js';
+import { tree } from './replica-harness.js';
 
 describe('adopting a void role late reports the change (rescore low, UW-21)', () => {
 	it('one DocChange at adoption: K leaves P for P’s slot', () => {

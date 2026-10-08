@@ -1,7 +1,7 @@
 /** @jsxImportSource ../../jsx */
 /**
  * arch-v2 — checkpoint D6 rows, dom lane (the doc halves live in
- * `src/tests/crdt/arch-v2/d6-range-delete.test.ts`).
+ * `src/tests/crdt/arch-v2/range-delete.test.ts`).
  *
  * - F-D12 — `[ordered-list > [i1 "one", i2 "two"], P "three"]`; select
  *   i1@0 → P@2; Backspace → `[P "ree"]`, caret `P@0`; no empty container

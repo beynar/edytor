@@ -29,7 +29,7 @@ record before/after for every change, report unmet targets honestly.
 - Node `v24.21.0`, pnpm `10.32.1`
 - Repo: `/Users/arnaud/code/edytor` @ the U11 working tree (uncommitted v14 work
   is the baseline — see `crdt-v14-execution-ledger.md`)
-- Profiling: `src/tests/crdt/u11-profile.test.ts` — 30 timed iterations per
+- Profiling: `src/tests/crdt/keystroke-cost-profile.test.ts` — 30 timed iterations per
   metric (10–15 for the heavier load paths), p50/p95/mean over wall-clock
   `performance.now()` inside one vitest process. Numbers are single-machine,
   ±20–40% run-to-run noise; p50 is the headline.
@@ -155,7 +155,7 @@ end-to-end path now measures **3.73 ms p50** (next table).
 
 ## 5 — U11 profile + optimizations (before → after)
 
-`src/tests/crdt/u11-profile.test.ts`, 1,000 flat blocks, isolated run.
+`src/tests/crdt/keystroke-cost-profile.test.ts`, 1,000 flat blocks, isolated run.
 
 | metric                                 |   before |       after |                 Δ |
 | -------------------------------------- | -------: | ----------: | ----------------: |
@@ -239,7 +239,7 @@ Result composition after fix (~3.7 ms/keystroke @1k): `insertText` ~1.6 ms
 
 - `bench/bundle.js` is the durable bundle measurement entry (writes
   `bench/results/bundle-*.json` + `bundle-latest.json`).
-- `src/tests/crdt/u11-profile.test.ts` is the durable per-keystroke/load
+- `src/tests/crdt/keystroke-cost-profile.test.ts` is the durable per-keystroke/load
   profile (~3 s in the green lane).
 - Candidate U12+ item if keystroke latency still matters: a facet-driven
   DocChange path (reuse the runs view's per-event invalidation set so
@@ -293,7 +293,7 @@ covering live `meta` items.
 | remote burst, 50 keystrokes             |   0.011 ms | `applyMs` incl. scan, stagedTotal = 0 |
 | reconnect diff (50 offline edits)       |   0.071 ms | one 130 B diff → fast path            |
 
-Refusal semantics unchanged — `src/tests/crdt/gateF1/wu3b-staging.test.ts`
+Refusal semantics unchanged — `src/tests/crdt/text-model-probes/inbound-refusal.test.ts`
 (9 tests) covers SyncStep2 full-state, `meta.v` overwrite, foreign
 `meta.schema`, meta attr deletion, unversioned `blocks` writes, pending
 causal deps and corrupt payloads; `schema-boundary.test.ts` (9 tests) still

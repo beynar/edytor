@@ -10,7 +10,7 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
-import { allText, clientPairs, converge, tree } from './p1-harness.js';
+import { allText, clientPairs, converge, tree } from './replica-harness.js';
 
 /**
  * The two-peer races run on 240 client-id assignments, not only the three

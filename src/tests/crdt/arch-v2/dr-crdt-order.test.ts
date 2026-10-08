@@ -14,7 +14,7 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
-import { clientPairs, converge } from './p1-harness.js';
+import { clientPairs, converge } from './replica-harness.js';
 import {
 	ALL,
 	insertedAbove,
@@ -23,7 +23,7 @@ import {
 	semantics,
 	type Gesture,
 	type Residual
-} from './cw01-sweep.js';
+} from './gesture-order-sweep.js';
 
 /** Each converged outcome of `a ‖ b` on `seed`: the blocks' texts in document order. */
 const texts = (seed, a: (ed) => { status: string }, b: (ed) => { status: string }, n = 48) => {

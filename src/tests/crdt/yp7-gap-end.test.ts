@@ -6,7 +6,7 @@
  * every format item before the next live content item, then inserts with the
  * formats in effect there, adding no format item.
  *
- * Differential oracle (the YP4 method, `marker-seed.test.ts` / `r1-p4-format`):
+ * Differential oracle (the YP4 method, `marker-seed.test.ts` / `search-marker-format`):
  * the pre-P7 engine is materialized from the vendored tree with the YP7 hunks
  * stripped; identical op programs over every existing public write path
  * (insert with and without formats, delete, format, multi-op deltas, inline

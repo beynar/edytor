@@ -10,9 +10,9 @@ Implementation: `src/lib/crdt/edytor-doc.ts` (`repairUndoOwnership` /
 `attachUndoRepair`, driven from `beforeObserverCalls`) +
 `src/lib/crdt/text/model.ts` (`undoRepairClaims`, `resolveAnchor`'s
 `followUndoneDeletions` parameter).
-Tests: `src/tests/crdt/hardening/r3-undo-ownership.test.ts`,
-`src/tests/crdt/hardening/gateH-r3-probes.test.ts`,
-`src/tests/crdt/gateF2/wu6-delete-range.test.ts` (amended undo probe),
+Tests: `src/tests/crdt/hardening/undo-ownership-split-tail.test.ts`,
+`src/tests/crdt/hardening/undo-ownership-probes.test.ts`,
+`src/tests/crdt/text-model-probes/delete-range-disjoint-segs.test.ts` (amended undo probe),
 `src/tests/crdt/text/ownership-regression.test.ts` (amended undo/redo
 expectations).
 
@@ -31,7 +31,7 @@ with `followUndoneDeletions = false` — deliberately, because following
 resolves _past_ the resurrected copies. The copies are then swallowed by
 whichever surviving record still covers their landing gap.
 
-Pinned reproduction (`src/tests/crdt/hardening/r3-undo-ownership.test.ts`):
+Pinned reproduction (`src/tests/crdt/hardening/undo-ownership-split-tail.test.ts`):
 
 ```ts
 b = 'hello world';
@@ -248,7 +248,7 @@ in the default `trackedOrigins` — so the remote insert becomes a local undo
 stack item. The first `undo()` pops the remote insert (deleting `!`); the
 second pops the delete and the repair restores `world` to `tail`. Both
 replicas converge. This is now pinned in
-`r3-undo-ownership.test.ts` ('remote edit BETWEEN delete and undo').
+`undo-ownership-split-tail.test.ts` ('remote edit BETWEEN delete and undo').
 
 Whether a collaborative editor _should_ capture remote edits into the local
 undo stack is a product-level question (a `trackedOrigins` filter or a

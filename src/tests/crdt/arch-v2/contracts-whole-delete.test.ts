@@ -6,7 +6,7 @@
  * duplicates just by performing the same action. Two peers deleting the
  * whole document keep the same block, so they converge to one empty block.
  *
- * Every row runs through the facade on real replicas (`p1-harness.ts`):
+ * Every row runs through the facade on real replicas (`replica-harness.ts`):
  * delivery through the providers' admission, quiescence, then each replica
  * checked for problems, pending structs and a binary reload equal to its
  * canonical value, under every two-replica client-id assignment. Expected
@@ -21,7 +21,7 @@ import {
 	seedUpdate,
 	type Replica,
 	type SeedBlock
-} from './p1-harness.js';
+} from './replica-harness.js';
 
 const opened: Replica[] = [];
 afterEach(() => {

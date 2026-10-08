@@ -5,7 +5,7 @@
  * rows are in `contracts-preserve.test.ts`.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { replica, seedUpdate, quiesce, reloadCanonical, type Replica } from './p1-harness.js';
+import { replica, seedUpdate, quiesce, reloadCanonical, type Replica } from './replica-harness.js';
 
 const opened: Replica[] = [];
 afterEach(() => {

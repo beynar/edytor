@@ -174,7 +174,7 @@ Two complementary mechanisms (same layering as plan §4):
   **before** mutation (`isSelfOrDescendant` walks the composed chain) and
   return `false` — zero update bytes.
 
-Evidence: `src/tests/crdt/gate1/display-cycle.test.ts` (3 tests),
+Evidence: `src/tests/crdt/model-edges/display-cycle.test.ts` (3 tests),
 `reachability.test.ts` sweep **0/150 seeds** with vanished blocks (was
 ~29/150 pre-fix), corpus `unreachable-block`×0.
 

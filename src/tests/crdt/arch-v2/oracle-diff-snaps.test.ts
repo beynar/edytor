@@ -3,7 +3,7 @@
  * runnable: snapshots built from the public projection + maintained runs,
  * diffed by the oracle, must describe the same change the facade's
  * `onChange` reports for each commit. Since D9 the report comes from the
- * index's fold; the random-corpus comparison is `d9-fold-report.test.ts`.
+ * index's fold; the random-corpus comparison is `index-fold-report.test.ts`.
  */
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import { describe, expect, test } from 'vitest';

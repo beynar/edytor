@@ -28,7 +28,7 @@ recorded patch and document it here.
 
 The v13 provider stack (`y-protocols`, `y-websocket`, `y-indexeddb`, `lib0@0.2`)
 is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
-`src/tests/crdt/gate2/public-boundary.test.ts` refuse it.
+`src/tests/crdt/boundary-attacks/public-boundary.test.ts` refuse it.
 
 ## Layout
 
@@ -56,7 +56,7 @@ the run's artifact, says in the summary whether the installed `lib0-v14`
 satisfies the newer engine's `lib0` range (a mismatch is a run warning: a
 red check may then be the older lib0, not the fork), then materializes the newer engine as `bench/vendor-baseline/yjs`
 so `bench/lib/interop.mjs` (the fork and the newer engine syncing over the
-wire) and the baseline leg of `src/tests/crdt/hardening/r1-p4-format.test.ts`
+wire) and the baseline leg of `src/tests/crdt/hardening/search-marker-format.test.ts`
 (byte-identical stores after every operation) run against it. A red run
 means the re-sync needs care; the re-sync itself is the manual recipe under
 YP8. Locally: `node scripts/upstream-check.mjs`, then those two checks, then
@@ -204,7 +204,7 @@ added path inert = upstream behavior) and requires **byte-identical**
 `encodeStateAsUpdate` output plus identical rendered deltas — covering
 distant inserts, formatted retains, format-marker inserts, deletes, undo/
 redo, remote apply, GC, nested modify ops, merge/split cycles.
-`src/tests/crdt/hardening/r1-p4-format.test.ts` pins the same-key boundary
+`src/tests/crdt/hardening/search-marker-format.test.ts` pins the same-key boundary
 rule (the R1 review's YP4 corruption), runs randomized + structured
 differential replays (patched vs disabled vs materialized pre-P4 baseline)
 with per-op `toDelta` + store-byte equality across insert/delete/format/
@@ -291,7 +291,7 @@ purity (no updates/splits/undo/renderer changes; marker perturbation
 invisible to mutations), traversal bounds, and the
 `a[b]b[b=null]c` read-seed-vs-mutation-seed counterexample.
 `src/tests/crdt/runs/range-reads.test.ts` +
-`gateF2/wu8-range-reads.test.ts` cover the Edytor projection: parity vs
+`text-model-probes/range-read-hazards.test.ts` cover the Edytor projection: parity vs
 the pre-WU8 `toDelta().toJSON()` oracle at every range, marker pinning
 (`index` = anchor's left edge, `formats` = fold at that edge), the
 marks-alias boundary (corruption is confined to one cursor — marker
@@ -486,10 +486,10 @@ Correctness oracle:
   every top-level vendored declaration outside the allowlist above.
 - `bench/lib/mk-baseline.sh` now materializes the PRISTINE upstream engine
   (`@y/y@14.0.0-rc.26`, installed as the `@y/protocols` peer, + YP1), and the
-  baseline leg of `src/tests/crdt/hardening/r1-p4-format.test.ts` (patched vs
+  baseline leg of `src/tests/crdt/hardening/search-marker-format.test.ts` (patched vs
   upstream, per-op `toDelta` + byte-identical `encodeStateAsUpdate`) and
   `bench/lib/interop.mjs` pass against it; the YP4/YP7 differentials
-  (`r1-p4-format`, `marker-seed`, `yp7-gap-end`) stay green.
+  (`search-marker-format`, `marker-seed`, `yp7-gap-end`) stay green.
 
 Re-syncing with upstream: take the new upstream `src/`, apply YP1, re-apply
 the YP4/YP5/YP7 hunks (diff this tree against the pinned upstream as in
@@ -507,7 +507,7 @@ triggers `readUpdateV2`'s retry, and the document holds a pending update it
 could integrate — forever, until some unrelated update from the recorded
 client arrives. Reproduced on the unmodified `@y/y@14.0.0-rc.26` with four
 updates (A1 ← B1 ← A3, A2 independent) delivered as A3, B1, A1, A2; found by
-the architecture-v2 phase-2 fuzz (`src/tests/crdt/arch-v2/p1-fuzz.test.ts`, an
+the architecture-v2 phase-2 fuzz (`src/tests/crdt/arch-v2/replica-fuzz.test.ts`, an
 observer fed every update in reverse order stayed pending in 74/1,500 seeds).
 
 Patch (all hunks marked `// YP9` or delimited by `// YP9 begin` / `// YP9 end`):
@@ -648,7 +648,7 @@ fork adds paired marks (Peritext / Loro anchor pairing), schema generation 5:
 Plain formats (every upstream test) are untouched: the class of a plain
 item is content's, so the comparator reduces to upstream's.
 
-Oracle: `src/tests/crdt/arch-v2/h5-marks.test.ts` (the Peritext cases on
+Oracle: `src/tests/crdt/arch-v2/paired-marks.test.ts` (the Peritext cases on
 every swept client-id pair and delivery order; 7 of its 17 rows fail on
 the tree without YP13), the upstream suite unchanged.
 
@@ -687,7 +687,7 @@ key (`deleteAttr`) delete their subtree as before. `YNode#applyDelta`
 still writes nothing to a deleted node, so the kept node's own attrs are
 frozen; its children (a text, a list, a map) are ordinary live types.
 
-Oracle: `src/tests/crdt/phase5/h13-same-id.test.ts` (the losing text shows
+Oracle: `src/tests/crdt/placement/same-id-concurrent.test.ts` (the losing text shows
 on every replica and after a reload; two fuzzes), the upstream suite
 unchanged.
 

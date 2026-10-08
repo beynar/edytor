@@ -92,7 +92,7 @@ wrote a fresh paragraph, so two peers kept two.)_ Pins:
 `contracts-whole-delete.test.ts` (facade, three client-id assignments),
 `contracts-whole-delete.test.tsx` (command dispatch, two mounted peers),
 `contracts-whole-delete.spec.ts` (three engines, two contexts over the
-websocket relay), `d6-range-delete.test.ts`.
+websocket relay), `range-delete.test.ts`.
 
 ### `del.range.nested-tail` — head flat, tail nested
 
@@ -354,7 +354,7 @@ heading never shows its hidden body under a heading (SW18, DR-crdt-2). Headless 
 `header`), the body moves to the tail as `flow.split` says. The new first
 children take plain ranks, as Enter's (a residual,
 [`order-scope`](../src/tests/crdt/arch-v2/order-scope.test.ts)). HX-10.
-Pins: `d7-flow.test.ts` (`flow.header`), `paste-header.test.tsx`.
+Pins: `flow-placement.test.ts` (`flow.header`), `paste-header.test.tsx`.
 
 ### `flow.lines` — a code line takes plain lines
 
@@ -399,7 +399,7 @@ island (`flow.lines`). A parent that holds no children (a void, an
 island's line) or is not live refuses the op before any write. In an
 emptied document a root slot replaces the virtual paragraph
 (`doc.empty.virtual`). Caret: the end of the last placed block's last
-shown line (`flow.whole`). Pins: `d7-flow.test.ts` (`flow.place`),
+shown line (`flow.whole`). Pins: `flow-placement.test.ts` (`flow.place`),
 `suggestions.test.tsx`.
 
 ### `flow.container` — a line placed in a list is its item
@@ -495,7 +495,7 @@ promoted child is settled by the placement's last-writer-wins. Undo of the
 delete removes the marks: everything placed under the block comes back
 under it. Pins: `contracts-preserve.test.ts` (split of a promoted child
 with its grandchild, typing into the tail, nested promote-deletes, a
-concurrent child, the whole-subtree control), `p1-scenarios.test.ts` §9
+concurrent child, the whole-subtree control), `replica-scenarios.test.ts` §9
 (9a-9d) and 6b, `scenarios/active-model.ts` MV06b,
 `scenarios/active-text.ts` ST02d, `preserve-regressions.test.ts`; the
 corpus and p1 oracle `promotion-hidden` (on by default,
@@ -667,7 +667,7 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   paragraph above a list ‖ Backspace or Turn into on its first item reads
   the paragraph's pieces, then the item. A list the two splits leave with no item shows nothing and the
   next key next to it removes it (both outdent `b`: each made a `ul'`,
-  one stays empty). Residuals, pinned in `cw01-order-sweep.test.ts`:
+  one stays empty). Residuals, pinned in `gesture-order-sweep.test.ts`:
   - in a list nested directly in a list, `[ul > [a, ul2 > [b, c, x], d]]`,
     the two splits can move blocks at different levels, so neither
     contests the other's: Ada moves `b` into `ul` (Shift+Tab, or
@@ -738,7 +738,7 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   holder. A client of 0.1.0-next.25 reads an anchored claim as a plain one
   (its holder's), so until every client upgrades the two releases can
   disagree on which block shows a merged text after such a race (each
-  converges with its own release). Pins: `phase5/r4-merge-anchor.test.ts`
+  converges with its own release). Pins: `text/merge-claim-anchor.test.ts`
   (48 client-id pairs), `dr-crdt-order.test.ts` (the matrix excuses no
   merge any more).
 - `order.split.text` (D-18, H9, 0.1.0-next.25): blocks whose streams lie
@@ -753,7 +753,7 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   decides between different clients' pieces, which concurrent splits make.
   A moved piece stands where it was moved. Two peers pressing Enter in one
   block at once read the text's order on every client-id pair, whatever
-  each typed after its split point (`h9-split-order.test.ts`,
+  each typed after its split point (`split-text-order.test.ts`,
   `dr-crdt-order.test.ts`); a container header's Enter ‖ another's keeps
   the text order too (two outcomes before).
 - `order.insert.run` (H1, CRDT study 2026-10): a block inserted right
@@ -768,7 +768,7 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   in the band, so it sorts before or after the whole run, never inside it.
   Two peers that each press Enter at the end of one block and type
   several lines keep each one's lines together on every client-id pair
-  (`h1-block-runs.test.ts`: `x a1 a2 a3 b1 b2 b3 q` or `x b1 b2 b3 a1 a2
+  (`block-insert-runs.test.ts`: `x a1 a2 a3 b1 b2 b3 q` or `x b1 b2 b3 a1 a2
 a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
   stay together around a peer's split. Which peer's run comes first
   still follows the client ids (below). The ranks stay inside the EW-02
@@ -876,7 +876,7 @@ Headless `mergeForward`/`mergeBackward`, `mergeBlocks`, `unNestBlocks`,
 view's keys and selections call them): a text range across the same seam
 agrees with the Delete key (`del.range.nested-tail`, DR-crdt-4). Pins:
 `containers-merge-split-retype.test.ts`, `lists-keep-items.test.tsx`, `container-fits.test.ts`,
-`outdent-and-shed-races.test.ts`, `d6-range-delete.test.ts`.
+`outdent-and-shed-races.test.ts`, `range-delete.test.ts`.
 
 ### `del.caret.one-command` — each branch is one prepared command
 
@@ -939,7 +939,7 @@ caret sits beside an inline atom, a `\n`, or the block's edge — the unit
 is the neighbour, deleted like a character: the atom, the break, or the
 block merge/unnest of `del.caret.*` (a word delete at an empty
 paragraph's end pulls in the next block). Pinned: `command-programs.test.tsx`
-(P1.1b word rows), `p1-delete.spec.ts`; mirrored by the DST delete oracle,
+(P1.1b word rows), `word-delete-and-list-keys.spec.ts`; mirrored by the DST delete oracle,
 which falls back to its character delete for an empty unit.
 
 ### `del.unit.soft-line` — a line ends at a line break
@@ -1077,7 +1077,7 @@ keep their properties across kinds: a to-do `{checked: true, color: 'red'}`
 turned into a heading is `{checked: true, color: 'red', level: 'h1'}`, and
 turned back into a to-do `{checked: false, color: 'red', level: 'h1'}` (the
 preset's leaf is set). A peer's concurrent property write survives the
-retype (`h4-retype-keeps-data.test.ts`). Replacing the whole data stays
+retype (`retype-keeps-data.test.ts`). Replacing the whole data stays
 `setBlockData` (`block.setData`, a root patch); a flow's join (`redata`)
 writes the pasted line's data whole, as before.
 
@@ -1091,7 +1091,7 @@ writes the path's whole value as one leaf (`patchWrites`' `atomic`,
 `collapse`) and deletes every leaf stored under it, so two concurrent
 assignments are one last-writer-wins attr: `{url: a, title: A}` ‖
 `{url: b, kind: video}` ends as one of the two, whole, on every client-id
-pair (`h8-atomic-data.test.ts`), where per-leaf merging gave
+pair (`atomic-data.test.ts`), where per-leaf merging gave
 `{url: b, title: A, kind: video}`. A write inside the path writes it
 whole too, so it loses to a concurrent assignment or wins over it whole.
 An object leaf reads as its keys (`effective`), so a block created with
@@ -1114,7 +1114,7 @@ client, clock)`. So two overlapping writes of one value union (bold "The
 quick" ‖ bold "quick fox" → "The quick fox" bold), two values overlap
 with one winner where both cover and each keeps its own part elsewhere
 (no end clears another write's tail), and a write made after seeing
-another wins where it covers (`h5-marks.test.ts`, the Peritext cases on
+another wins where it covers (`paired-marks.test.ts`, the Peritext cases on
 every swept client-id pair). Nothing cleans up mark items: an undo
 deletes its operation's two items, a redo writes copies paired as before.
 
@@ -1192,7 +1192,7 @@ while it holds at most 8 spans (`FOLD_SPANS`). A backspace run is one
 record. The record is replaced, never edited, so an undo of the step takes
 back exactly what the step deleted, a writer's undo never restores what
 another writer's record holds, and a redo writes it again
-(`p4-delete-marks-fold.test.ts`, `text-delete-marks.test.ts`). The purge
+(`delete-records-fold.test.ts`, `text-delete-marks.test.ts`). The purge
 (H7) drops folded records like any other.
 
 ### `sel.presence.wire` — one presence entry per view
@@ -1247,7 +1247,7 @@ block stays only while it holds a child. An undone creation keeps its id
 (like a deleted block's): re-creating it is refused. Controls: an explicit
 delete still wins over an unseen insertion (`conc.delete-wins-block`).
 Pins: `contracts-preserve.test.ts`, `contracts-undo-withdraw.test.tsx`,
-`yp12-undo-withdraw.test.ts`, `p1-scenarios.test.ts` 5d/5f.
+`yp12-undo-withdraw.test.ts`, `replica-scenarios.test.ts` 5d/5f.
 
 ### `conc.seed.late` — a seed that meets existing content
 
@@ -1266,7 +1266,7 @@ never combine `createDocument({ value })` (it seeds immediately) with
 `attachSync` to a room that may hold those ids. Version boundary: an
 id-less template seeded late into a document an older build seeded (full
 32-bit writer) mints new ids and shows twice, once. Pins:
-`t3-seed.test.ts` (UW-03 rows, F-T11/F-T12/F-T17).
+`seed-readiness.test.ts` (UW-03 rows, F-T11/F-T12/F-T17).
 
 ### `id.same.concurrent` — two creations of one id keep both texts (H13)
 
@@ -1311,7 +1311,7 @@ text's pieces; `N` stands at the winner's place); a client of an earlier
 release deletes the losing subtree when it integrates the race, and that
 delete reaches every replica (convergent, the text lost as before);
 writes to the losing node's own attrs (type, data, delete marks) are
-dropped. Pins: `phase5/h13-same-id.test.ts` (six client-id pairs, both
+dropped. Pins: `placement/same-id-concurrent.test.ts` (six client-id pairs, both
 delivery orders, duplicate delivery, a reload; three writers; seeds; the
 purge; two fuzzes: colliding ids, no character lost; and with deletes and
 undo, converged).
@@ -1330,9 +1330,9 @@ from the document's roles, so every replica with the same roles agrees
 without a repair write, and the retype's own moves write the rank the
 read gives (`promotedRank`), so a split tail stays after its head. Undo
 of the retype (A retypes, B nests Q, A undoes) puts Q back under the
-block: its placement never changed. Pins: `p1-scenarios.test.ts`
+block: its placement never changed. Pins: `replica-scenarios.test.ts`
 ("capabilities under concurrency"), `merge-undo-void.test.ts`
-(UW-21), `p1-fuzz.test.ts` and the `void-children` well-formed check.
+(UW-21), `replica-fuzz.test.ts` and the `void-children` well-formed check.
 
 ### `conc.island-reset` — no island child kind outside its island
 
@@ -1356,10 +1356,10 @@ kept, so undo of the delete or merge shows it under the island again as a
 - Enter in it (`splitBlock` without a tail) gives the tail the type it
   shows.
 
-Pins: `p1-scenarios.test.ts` ("promoted blocks keep no container-only
+Pins: `replica-scenarios.test.ts` ("promoted blocks keep no container-only
 kind", RW-01 rows), and the `island-kind` well-formed check (over
 `lines` islands, whose line kind belongs nowhere else), held on
-settled states by the p1 harness and the corpus's `roles` lane (a delivery
+settled states by the replica harness and the corpus's `roles` lane (a delivery
 out of causal order may show a moved line before the retype that preceded
 it).
 
@@ -1446,7 +1446,7 @@ so a replica that missed the write and one that applied it agree. Pins:
 with display equality across replicas, and undone), the `layout-shape`
 well-formed check (a displayed layout holds two or more displayed items
 and nothing else, no displayed item is empty, no item displays outside a
-layout), held by the p1 fuzz's container lane and the corpus's `roles`
+layout), held by the replica fuzz's container lane and the corpus's `roles`
 lane.
 
 `C` below is `P, C:columns[K1:column[A, A2], K2:column[B]], Z`.
@@ -1583,7 +1583,7 @@ the block selection and asks one display, which clears the native range
 it as on any block selection (`sel.blocks.exact`, `layout.flow-slot`). A
 range over a whole layout from above it to below it, and the keyboard
 (D7), keep text ranges in document order. Pins:
-`columns-drag-select.test.tsx`, `columns-round8.spec.ts`.
+`columns-drag-select.test.tsx`, `columns-cross-column-selection.spec.ts`.
 
 ### `layout.wrap` — `wrapInLayout(ids, kind?, columns?)`: Turn into N columns (Notion)
 
@@ -1665,7 +1665,7 @@ concurrent with display equality across replicas, and undone), the
 only, each displayed row cells only, one per listed column at most, in the
 table's column order, then withdrawn cells of unlisted columns; no row or
 cell displays outside its table), held by
-the p1 harness and the corpus's `tables` lane.
+the replica harness and the corpus's `tables` lane.
 
 `T` below is `P, T:table{columns: [c1, c2]}[R1:tableRow[A:c1, B:c2],
 R2:tableRow[C:c1, D:c2]], Z` (`A:c1`: a cell whose `data.column` is `c1`).
@@ -2211,7 +2211,7 @@ refused until `reset()`. A browser store of generation 4
 (`edytor-v14:<name>`) is left as it was beside the new one
 (`edytor-v14-g5:<name>`): a document stored only there converts into it
 (`convertPrevious`), one a room keeps takes the room's state
-(`gen5-cutover.test.ts`, `tests/do/gen5-cutover.test.ts`).
+(`generation-5-cutover.test.ts`, `tests/do/gen5-cutover.test.ts`).
 
 ### `net.step2.v2` — a SyncStep2 is v2, an Update v1 (P5 wire)
 

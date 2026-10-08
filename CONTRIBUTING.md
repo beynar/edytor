@@ -85,7 +85,7 @@ The gate lanes assert operation counts, never the wall clock (CC-05). A test tha
 (`folds`), their input (`foldedPairs`, `foldedStructs`), the blocks it recomputed
 (`recomputes`) and the items range reads walked (`itemsWalked`), and the row states a scaling
 contract, for example "ten times the blocks, the same recomputes and at most eleven times the
-fold input" (`src/tests/crdt/arch-v2/d6-range-delete.test.ts`, `p1-scale.test.ts`,
+fold input" (`src/tests/crdt/arch-v2/range-delete.test.ts`, `facade-scale.test.ts`,
 `src/tests/fixtures/dom/ops-read-document.test.tsx`, `src/tests/crdt/range-cursor.test.ts`).
 Counts are the same on a laptop and on a loaded shared runner.
 
@@ -96,7 +96,7 @@ with the rest under `bench/results/`. The counts see only the index's work. Remo
 encode/load are not counted by any gate row: their scaling with the document or its history is
 checked only by `pnpm bench:scale`, which reports and fails nothing (a follow-up in the
 production plan, WU-09). A browser row may measure a time and report it as a test
-annotation (`tests/editor-dom/r3-ops.spec.ts`), never assert it.
+annotation (`tests/editor-dom/large-delete-linear-work.spec.ts`), never assert it.
 
 A row waits for the fact it needs, never for a delay or a count that only usually holds: in the
 room lane `vi.waitFor` defaults to 10 s (`tests/do/setup.ts`), a seeded `RawClient` waits for

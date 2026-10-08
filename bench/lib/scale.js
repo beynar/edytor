@@ -2,12 +2,12 @@
  * Scale timings (CC-05) — the wall-clock half of the gate rows that now
  * count operations instead:
  *
- * - P1 scale (`src/tests/crdt/arch-v2/p1-scale.test.ts`): document work at
+ * - P1 scale (`src/tests/crdt/arch-v2/facade-scale.test.ts`): document work at
  *   1,000 and 5,000 blocks (construct, load, keystroke, remote keystroke,
  *   Enter, Backspace, bold, a range delete across 40 blocks, a keystroke in
  *   a merged block), 2,000 inserts received as one batch and one by one, and
  *   a 5,000-keystroke history.
- * - F-O5 (`d6-range-delete.test.ts`, `d9-fold-report.test.ts`): a range
+ * - F-O5 (`range-delete.test.ts`, `index-fold-report.test.ts`): a range
  *   delete and a selected-block delete over 1,000 paragraphs, and 1,000
  *   inserts in one transaction against 1,000 separate ones.
  *

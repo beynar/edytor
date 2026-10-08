@@ -9,7 +9,7 @@
  * contract's (docs/editor-delete-contract.md), hand-written.
  */
 import { expect, test, type Page } from './editorTest';
-import { b, model, open } from './p1-helpers';
+import { b, model, open } from './probe-helpers';
 
 const FAMILY = [
 	b('P', 'parent', { children: [b('C', 'child'), b('D', 'second')] }),

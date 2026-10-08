@@ -1,7 +1,7 @@
 /** @jsxImportSource ../../jsx */
 /**
  * arch-v2 — checkpoint D7 rows, dom lane (the doc rows live in
- * `src/tests/crdt/arch-v2/d7-flow.test.ts`): paste, drop and fragment
+ * `src/tests/crdt/arch-v2/flow-placement.test.ts`): paste, drop and fragment
  * insertion all place a flow through ONE prepared document op (`doc/flow`).
  *
  * - F-P5 (decision D-4) — `X`, `Y` pasted at `Hello|World` through the

@@ -1,6 +1,6 @@
 /**
  * Re-score 11 (EW-05, EW-11, DW-05): what the text-order promise covers.
- * The client-id sweeps (`cw01-order-sweep`, `dr-crdt-order`, the rescore7
+ * The client-id sweeps (`gesture-order-sweep`, `dr-crdt-order`, the rescore7
  * and wave10 rows on `clientPairs`) prove it for one structural gesture per
  * peer between syncs — a split, a paste of lines into a line, a lift, an
  * outdent, a Turn into, a merge that unnests children — with text typed
@@ -21,8 +21,8 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
-import { clientPairs, converge, quiesce, replica, seedUpdate } from './p1-harness.js';
-import { para, semantics } from './cw01-sweep.js';
+import { clientPairs, converge, quiesce, replica, seedUpdate } from './replica-harness.js';
+import { para, semantics } from './gesture-order-sweep.js';
 
 type Step = (ed) => { status: string } | undefined;
 const ok = (r) => {

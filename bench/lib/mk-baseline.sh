@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Materialize the PRISTINE upstream engine for interop/differential checks
 # against the patched working tree (bench/lib/interop.mjs, bench/lib/engine-micro.mjs
-# ENGINE_DIR, and the baseline leg of src/tests/crdt/hardening/r1-p4-format.test.ts).
+# ENGINE_DIR, and the baseline leg of src/tests/crdt/hardening/search-marker-format.test.ts).
 #
 # Source: the pinned `@y/y@14.0.0-rc.26` package (installed as the `@y/protocols`
 # peer) — its `src/` is byte-identical to the vendored commit before patches

@@ -290,7 +290,7 @@ Split/merge are ordinary item writes: undo tombstones them. Proven in
   and deterministic, but "who wins" carries no semantic intent.
 - **Left-edge typing rewrites the covering record per keystroke** —
   measured **72.8 B/char** for 100 inserts at offset 0 of a split tail
-  (`gate1/growth.test.ts`), vs ~53 B/move: the dominant per-op wire cost
+  (`model-edges/growth.test.ts`), vs ~53 B/move: the dominant per-op wire cost
   observed in the gate-1 review (finding #7). It is bounded — one record
   rewrite per char, never payload copy — so this is recorded as a **U11
   optimization candidate**, not a correctness fix: an anchor-with-offset

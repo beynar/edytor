@@ -11,7 +11,7 @@
  *   report naming only the touched blocks, and the command's index work
  *   (folds, their input, recomputes, the view's reads) linear in what it
  *   touches: counted, never timed (CC-05). The key-to-frame time is measured
- *   in the browser (`tests/editor-dom/r3-ops.spec.ts`; jsdom's DOM removal is
+ *   in the browser (`tests/editor-dom/large-delete-linear-work.spec.ts`; jsdom's DOM removal is
  *   not the product's); the compare pass the row also counts is R6's.
  * - Operations never read the mirror mid-transaction: typing, Enter, a merge,
  *   a paste, Tab and a format each make one change report and no whole-tree

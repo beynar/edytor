@@ -27,7 +27,7 @@ already do.
 ## 2. What exists today
 
 **Document.** `columns`/`column` already work as two generic containers in
-the CRDT tests (the container, line-kind and race suites (`containers-merge-split-retype`, `container-fits`, `outdent-and-shed-races`), p1-fuzz, `ROLES_BASE_SEED`): both
+the CRDT tests (the container, line-kind and race suites (`containers-merge-split-retype`, `container-fits`, `outdent-and-shed-races`), replica-fuzz, `ROLES_BASE_SEED`): both
 `rendersContent: false`, `defaultChild: { columns: 'column' }`. `fits`
 (`edytor-doc.ts:1253-1258`) makes a layout hold columns _and containers of
 columns_ (so a layout may sit directly in a layout) and a column hold
@@ -244,7 +244,7 @@ data-width="…">…`; `parse` claims those attributes; `plain` writes the
   DR-crdt-1 (~747-839, incl. the one-column seed ~795 and delete column ‖ add
   at 819), `container-fits.test.ts` ZW-14 (214-258: its `mergeBackward` refusals become
   merges into the previous item, D4), ZW-06 (417-441), `outdent-and-shed-races.test.ts` AW-05 (239-342), a layout in a column
-  (297-304), DR-crdt-2 table → layout (508-548), p1-fuzz CONTAINERS and
+  (297-304), DR-crdt-2 table → layout (508-548), replica-fuzz CONTAINERS and
   `ROLES_BASE_SEED`, contract lines 549-560 and 740.
 - **CRDT** `layout.test.ts`: every `layout.*` row, sequential and concurrent,
   undo of each op, convergence (display equality across replicas).

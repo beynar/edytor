@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
-import { converge, replica, seedUpdate } from './p1-harness.js';
+import { converge, replica, seedUpdate } from './replica-harness.js';
 
 const dataOf = (o, id = 'A') => o.ed.blockDataOf(id);
 const settled = (outcomes, check: (o) => void) => {

@@ -8,7 +8,7 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it, vi } from 'vitest';
-import { converge, tree } from './p1-harness.js';
+import { converge, tree } from './replica-harness.js';
 import { createDocument, defaultSemantics } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';

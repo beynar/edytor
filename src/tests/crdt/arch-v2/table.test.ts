@@ -12,7 +12,7 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
-import { converge } from './p1-harness.js';
+import { converge } from './replica-harness.js';
 import * as crdt from '../../../lib/crdt/index.js';
 import { createDocument, tableBlock } from '../../../lib/crdt/index.js';
 import { defaultSemantics, semanticsOf, tableKinds } from '../../../lib/crdt/semantics.js';

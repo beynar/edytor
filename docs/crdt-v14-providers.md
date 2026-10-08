@@ -690,7 +690,7 @@ test:crdt`):
   rejects, room still joined).
 - **SY02** `persistence.test.ts` — hydration from stored rows; compaction
   snapshot + later rows reconstruct the complete document.
-- **R2** `hardening/r2-idb-compaction.test.ts` — refused rows survive every
+- **R2** `hardening/idb-compaction-forged-rows.test.ts` — refused rows survive every
   maintenance path byte-for-byte: explicit and timed compaction, mixed
   valid+refused stores, close/reopen, repeated attempts, dependent rows in
   both seed orders, post-sync refusals discovered inside `storeState`'s

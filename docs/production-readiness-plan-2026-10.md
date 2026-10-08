@@ -389,7 +389,7 @@ record yet. Only a soak test (WU-16) and real users remove that.
 - Scope:
   - Replace wall-clock asserts in gate lanes with operation-count budgets (items walked,
     folds, reports), as `range-cursor.test.ts` does. Known files:
-    `crdt/arch-v2/d6-range-delete.test.ts:553-574` and
+    `crdt/arch-v2/range-delete.test.ts:553-574` and
     `fixtures/dom/ops-read-document.test.tsx:163,191`. Grep for `performance.now()` with
     `toBeLessThan`.
   - Move absolute timings to `bench:crdt`.
@@ -897,9 +897,9 @@ conflict matrix.
     deprecated aliases.
 - Effort: 5 d. Mostly mechanical and can be split per directory, but it touches many files:
   run it last in each area.
-- Status (2026-10-08): partial. Comments, fork-patch names, the archive, the guide and the
-  aliases are done; the test renames are about 60% done (remaining groups below); D8 is not
-  carried out (a deviation awaiting the user's sign-off, below).
+- Status (2026-10-08): done. Comments, fork-patch names, the archive, the guide, the aliases
+  and the test renames are done; D8 is not carried out (a deviation awaiting the user's
+  sign-off, below).
 - Outcome:
   - Comments: the 793 ticket ids of `src/lib` comments (686 lines) are contract rows or prose.
     `scripts/ticket-ids.mjs` lists any new one in a `src/lib` comment or in the guide's prose
@@ -913,16 +913,36 @@ conflict matrix.
     `src/tests/crdt/arch-v2`, the arch-v2 and wave Playwright specs, and the YP patch tests.
     References are updated outside the archive. `src/tests/api`'s `wu13-commands` and
     `wu14-naming` are now `command-surface` and `naming`.
-  - Tests still checkpoint-named, for a follow-up unit (about 90 files):
+  - The rest of the checkpoint-named tests, 110 files, renamed by behaviour with `git mv`
+    (contents unchanged but for the imports and references that name a renamed file):
     - `src/tests/crdt/arch-v2`: the `cw01`, `d1`–`d12`, `fx11`, `gen5`, `gx05`, `h1`–`h11`,
       `i3`, `nw11`, `p1`/`p4`/`p6`/`p28`, `r1`/`r2`/`r4`/`r8`, `s1`, `sw16`, `t3`/`t5`,
-      `uw31` and `v1`/`v3` files (44);
-    - the directories `src/tests/crdt/hardening`, `gate1`, `gate2`, `gate3`, `gateF1`,
-      `gateF2` and `phase5`, `src/tests/gate3` and `src/tests/fixtures/dom/gate3`;
-    - `src/tests/crdt/attribution/u3-*`, `runs/u8b-fanout`, `u11-profile`,
-      `src/tests/fixtures/model/phase10-*`;
-    - the Playwright specs `tests/editor-dom/columns-round3`–`round8`, `p1-*` (with
-      `p1-helpers.ts`), `r2-render` and `r3-ops`.
+      `uw31` and `v1`/`v3` files (47, helpers included: `p1-harness.ts` is
+      `replica-harness.ts`, `p1-ops.ts` `replica-ops.ts`, `cw01-sweep.ts`
+      `gesture-order-sweep.ts`; e.g. `d6-range-delete` is `range-delete`, `h5-marks`
+      `paired-marks`, `p1-fuzz` `replica-fuzz`);
+    - `src/tests/crdt/hardening` keeps its name, its files named by what they probe
+      (`r1-p4-format` is `search-marker-format`, `gateH-r3-probes` `undo-ownership-probes`);
+      `gate1` is `model-edges/`, `gate2` `boundary-attacks/` (`lifecycle` is
+      `websocket-lifecycle`), `gateF1` and `gateF2` are one `text-model-probes/`; `gate3`'s
+      file went to `providers/`, `phase5`'s to `placement/same-id-concurrent`,
+      `document/keep-replaced-per-doc` and `text/merge-claim-anchor`;
+      `src/tests/gate3/app-context.test.tsx` is `src/tests/app-context.test.tsx` and
+      `fixtures/dom/gate3/lifecycle-dom` is `fixtures/dom/mount-lifecycle`;
+    - `attribution/u3-*` are `persistence-paths` and `attribution-semantics`,
+      `runs/u8b-fanout` is `shared-backing-fanout`, `u11-profile` `keystroke-cost-profile`,
+      `fixtures/model/phase10-*` `operation-sequence-invariants` and `model-scale`;
+    - the Playwright specs: `columns-round3`–`round8` are `columns-mouse-gestures`,
+      `columns-resize-guide`, `columns-no-caret-keys` (and `columns-no-caret-ime.cdp`),
+      `columns-gap-selection` and `columns-cross-column-selection`; `p1-*` are
+      `word-delete-and-list-keys`, `foreign-dom`, `ime-undo.cdp`, `selection-races` and
+      `probe-helpers.ts`; `r2-render` is `render-from-cells`, `r3-ops`
+      `large-delete-linear-work`.
+    - Every lane selects the same tests as before (unit, `test:crdt`, `test:dom`, `test:do`
+      and the Playwright list: the same counts). References are updated outside the archive
+      (contract rows, ADRs, `UPSTREAM.md`, the upstream workflow, bench, CONTRIBUTING.md,
+      AGENTS.md's "replica harness"); `tsconfig.tests.json`'s stale `src/tests/api/wu*.ts`
+      glob names `command-surface` and `naming` again.
   - `docs/archive/` holds the planning history: architecture-v2, reviews, research, baseline,
     and the earlier plans, handoffs and gate reviews. Links are fixed.
   - The guide is `AGENTS.md` (the overview: identity, topic guides, contexts, the owners table,
@@ -948,7 +968,7 @@ conflict matrix.
   store's conversion). That cutover reads them with this build's reader: `previousJSON` reads
   through the current facade, and `isPreviousGenerationRecord` takes a record without
   `storage`. So the reader is the migration's own code, and dropping it would break loading.
-  A new row in `src/tests/crdt/arch-v2/gen5-cutover.test.ts` proves a generation-4 state with
+  A new row in `src/tests/crdt/arch-v2/generation-5-cutover.test.ts` proves a generation-4 state with
   next.6 data converts with its arrays and seeds generation 5 without the old forms. The
   next.23 alarm rule is one line (an alarm with no due rows is a due save). It is kept because
   a room last run by next.23 may still hold a due save. Revisit with the next generation

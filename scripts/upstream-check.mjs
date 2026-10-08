@@ -18,7 +18,7 @@
  *    range (the differential lanes run the newer engine on it);
  * 3. materializes the newer engine (+ P1) as `bench/vendor-baseline/yjs`,
  *    the baseline the differential lanes read (`bench/lib/interop.mjs`, the
- *    baseline leg of `src/tests/crdt/hardening/r1-p4-format.test.ts`), so
+ *    baseline leg of `src/tests/crdt/hardening/search-marker-format.test.ts`), so
  *    the workflow runs them against it next.
  *
  * "Newer" is by semver within the pin's major line (14.x, pre-releases

@@ -15,7 +15,7 @@ import { Y } from '../../../lib/crdt/engine.js';
 import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
 import { mulberry32 } from '../harness/rng.js';
-import { CLIENT_IDS, converge, LIVE, replica, seedUpdate } from './p1-harness.js';
+import { CLIENT_IDS, converge, LIVE, replica, seedUpdate } from './replica-harness.js';
 
 const dataOf = (o, id = 'A') => o.ed.blockDataOf(id);
 const settled = (outcomes, check: (o) => void) => {

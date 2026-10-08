@@ -8,7 +8,7 @@
  * hand-written.
  */
 import { expect, test, type Page } from './editorTest';
-import { b, domSelection, mod, model, open, openRoom, selection, setDom } from './p1-helpers';
+import { b, domSelection, mod, model, open, openRoom, selection, setDom } from './probe-helpers';
 
 type EdytorWindow = Window & { __EDYTOR__?: any };
 

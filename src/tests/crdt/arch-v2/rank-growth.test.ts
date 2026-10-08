@@ -17,8 +17,8 @@ import { loadDocument } from '$lib/crdt/index.js';
 import { setDocRand } from '$lib/crdt/rand.js';
 import { decodeRank, encodeRank, rankBetween } from '$lib/crdt/placement/rank.js';
 import { mulberry32 } from '../harness/rng.js';
-import { seedUpdate } from './p1-harness.js';
-import { para } from './cw01-sweep.js';
+import { seedUpdate } from './replica-harness.js';
+import { para } from './gesture-order-sweep.js';
 
 const ok = (r) => {
 	if (r && r.status !== undefined && r.status !== 'applied')

@@ -8,7 +8,7 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
-import { converge, tree } from './p1-harness.js';
+import { converge, tree } from './replica-harness.js';
 import { createDocument } from '../../../lib/crdt/index.js';
 import { readData } from '../../../lib/crdt/data.js';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';

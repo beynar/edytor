@@ -9,7 +9,7 @@
  * 3. `doc.empty.virtual` — see `src/tests/fixtures/dom/contracts-virtual-paragraph.test.tsx`
  *    and the browser specs (the document layer writes nothing for it).
  *
- * Every row runs through the facade on real replicas (`p1-harness.js`):
+ * Every row runs through the facade on real replicas (`replica-harness.js`):
  * delivery through the providers' admission, then quiescence, and each
  * replica checked for problems, pending structs and a binary reload equal
  * to its canonical value. Expected values are hand-written from the
@@ -25,7 +25,7 @@ import {
 	seedUpdate,
 	type Replica,
 	type SeedBlock
-} from './p1-harness.js';
+} from './replica-harness.js';
 
 const opened: Replica[] = [];
 afterEach(() => {

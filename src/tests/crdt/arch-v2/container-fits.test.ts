@@ -10,7 +10,7 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
-import { allText, converge, tree } from './p1-harness.js';
+import { allText, converge, tree } from './replica-harness.js';
 
 /**
  * Lists, a table island (rows and cells), code as an island of lines, columns of columns.

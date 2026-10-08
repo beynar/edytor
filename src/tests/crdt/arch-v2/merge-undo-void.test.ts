@@ -9,7 +9,7 @@
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
 import { createDocument } from '../../../lib/crdt/index.js';
-import { converge, replica, seedUpdate, tree } from './p1-harness.js';
+import { converge, replica, seedUpdate, tree } from './replica-harness.js';
 
 /** Every outcome converged, well-formed, and shows `expected`. */
 const expectTree = (outcomes, expected: string) => {

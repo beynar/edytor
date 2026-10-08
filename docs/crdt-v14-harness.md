@@ -272,7 +272,7 @@ probe pins this (one tag's real destroyed-by-reload loss stays
 - a `locateTagAtoms` returning `null` (success with no findable atoms) →
   `ok:false`, violations `lost-edit`.
 
-Gate-F1 adds two more permanent proofs in `gateF1/wu3a-oracle.test.ts`:
+Gate-F1 adds two more permanent proofs in `text-model-probes/oracle-honesty.test.ts`:
 
 - a stub returning `uncovered` everywhere on a schedule containing a real
   lossy reload → the atom-correlated tag stays `convergent-loss`, the

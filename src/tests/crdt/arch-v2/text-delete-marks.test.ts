@@ -15,7 +15,7 @@
  * undid, exactly one copy returns — the D54 rule of blocks (F-D18) applied to
  * text.
  *
- * Every row runs through the facade on real documents (`p1-harness.ts`):
+ * Every row runs through the facade on real documents (`replica-harness.ts`):
  * three client-id assignments, an observer fed every update in both orders
  * (each twice), a binary reload of every replica, and quiescence (a replica
  * that must hide or restore a copy after a remote change writes it in a
@@ -33,7 +33,7 @@ import {
 	replica,
 	seedUpdate,
 	type Replica
-} from './p1-harness.js';
+} from './replica-harness.js';
 import { mulberry32 } from '../harness/rng.js';
 import { loadDocument } from '../../../lib/crdt/index.js';
 

@@ -7,7 +7,7 @@
  * claimed at its keydown. Expected values are hand-written.
  */
 import { expect, test, type Page } from './editorTest';
-import { b, model, open } from './p1-helpers';
+import { b, model, open } from './probe-helpers';
 
 const shape = async (page: Page) =>
 	(await model(page)).map((row) => `${'  '.repeat(row.depth)}${row.id}:${row.text}`);

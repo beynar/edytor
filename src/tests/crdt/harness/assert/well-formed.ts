@@ -42,7 +42,7 @@
  *   their one order; no row displays outside a table of its kind, no cell
  *   outside a row of one (`table.*`: the read-time rules own the display).
  *
- * The runner (`random/runner.ts`) and the p1 harness (`arch-v2/p1-harness.ts`)
+ * The runner (`random/runner.ts`) and the replica harness (`arch-v2/replica-harness.ts`)
  * both feed {@link wellFormedProblems}; each backend supplies the inputs it
  * can answer, and a check whose input is absent is skipped.
  */

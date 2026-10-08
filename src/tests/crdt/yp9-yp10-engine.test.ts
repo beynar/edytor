@@ -1,7 +1,7 @@
 /**
  * Vendored-engine patches YP9 and YP10 (`src/lib/crdt/vendor/yjs/UPSTREAM.md`),
  * found by the arch-v2 phase 2 P1 fuzz campaign
- * (`src/tests/crdt/arch-v2/p1-fuzz.test.ts`); both reproduce on the
+ * (`src/tests/crdt/arch-v2/replica-fuzz.test.ts`); both reproduce on the
  * unmodified upstream `@y/y@14.0.0-rc.26`.
  *
  * YP9 — pending updates stay pending forever. `integrateStructs` records in
@@ -34,7 +34,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
-import { permutations, replica, seedUpdate } from './arch-v2/p1-harness.js';
+import { permutations, replica, seedUpdate } from './arch-v2/replica-harness.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const VENDOR = join(here, '../../lib/crdt/vendor/yjs/src');

@@ -38,7 +38,7 @@
 // @ts-nocheck -- tests drive the vendored engine and the facade through untyped fixtures.
 import { Y } from '../../../../lib/crdt/engine.js';
 import { createDocument, loadDocument } from '../../../../lib/crdt/index.js';
-import { REMOTE, crdt } from '../p1-harness.js';
+import { REMOTE, crdt } from '../replica-harness.js';
 import type { ContractAdapter, ContractPeer, Observation, Reference, Seed } from './adapter.js';
 
 const json = (s: Seed) => ({

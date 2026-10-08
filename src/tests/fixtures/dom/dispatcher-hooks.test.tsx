@@ -1,7 +1,7 @@
 /** @jsxImportSource ../../jsx */
 /**
  * arch-v2 — checkpoint S1 rows, dom lane (the headless halves live in
- * `src/tests/crdt/arch-v2/s1-dispatcher.test.ts`): one dispatcher per view
+ * `src/tests/crdt/arch-v2/dispatcher-hooks.test.ts`): one dispatcher per view
  * (R7, §4.3 `session/commands.ts`, D-10, FP-2, FP-6).
  *
  * - F-O3 — range delete, paste, split, convert and move with a counting

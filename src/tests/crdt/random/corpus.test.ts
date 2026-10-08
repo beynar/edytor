@@ -189,7 +189,7 @@ for (const adapterName of SELECTED_ADAPTERS) {
 		 * as harness noise): seed → the exact failure signature the strict
 		 * lane must keep reporting. A different failure (or a fixed model)
 		 * fails the seed loudly; the minimal repro lives in
-		 * `hardening/u5-min-rank-rehome.test.ts`. The placement model is
+		 * `hardening/candidateless-rehome-rank.test.ts`. The placement model is
 		 * shared by the `model` and `doc` lanes, so the pin applies to both.
 		 *
 		 * Currently EMPTY — the seed-96 `rank space exhausted` pin was fixed

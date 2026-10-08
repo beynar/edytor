@@ -334,7 +334,7 @@ rolledbackAt?, sourceRows?, sourceBytes?, error?}`); `pending` while a tab
   logical ids preserved / CRDT identity reset; empty and foreign DBs), CO03
   (concurrent migrators → one row + one `alreadyActive`; idempotent re-run;
   crash-resume at each boundary; rollback requires `force`).
-- `src/tests/crdt/arch-v2/t5-migration.test.ts` — the lock, the atomic
+- `src/tests/crdt/arch-v2/migration-attempt-progress.test.ts` — the lock, the atomic
   commit, and `force` as restore-definition (F-T3, F-T15, F-T16, the
   in-process fallback); the browser half of F-T16 in
   `tests/editor-dom/collaboration.spec.ts`.

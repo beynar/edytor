@@ -1,7 +1,7 @@
 /** @jsxImportSource ../../jsx */
 /**
  * arch-v2 — checkpoint D3 rows, dom lane (the doc halves live in
- * `src/tests/crdt/arch-v2/d3-capability.test.ts`).
+ * `src/tests/crdt/arch-v2/kind-capability.test.ts`).
  *
  * - F-D4 — `ordered-list > [li "one"]`: Enter at end, middle, start gives
  *   `[li "one", li ""]`, `[li "o", li "ne"]`, `[li "", li "one"]`; an island

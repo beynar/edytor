@@ -8,7 +8,7 @@
  * block from one end's block to the other's, in reading order (never the
  * layout or a column); back in one column it is a text range again; a
  * range no pointer made (a script's, the keyboard's, D7) stays a text
- * range. The browser lanes (`columns-round8.spec.ts`) drive the real
+ * range. The browser lanes (`columns-cross-column-selection.spec.ts`) drive the real
  * drag; here the press is dispatched and the native range set as the
  * browser would extend it.
  *

@@ -255,6 +255,8 @@ export declare class BlockHandleController {
     constructor(edytor: Edytor, options?: BlockHandleControllerOptions);
     get readonly(): boolean;
     get draggable(): boolean;
+    labelOf: (block: Block) => string;
+    opened: (block: Block, control: PopupOpener["control"]) => Popup | undefined;
     grip: (block: Block) => (node: HTMLElement) => {
         destroy: () => void;
     };
@@ -308,6 +310,7 @@ export declare class BlockHandleController {
 // plugins/blockHandles/blockHandlesPlugin.d.ts
 export type BlockHandleSnippetPayload = {
     block: Block;
+    label: string;
     grip: (node: HTMLElement) => {
         destroy(): void;
     };
@@ -364,6 +367,10 @@ export declare class BlockMenuController {
     constructor(edytor: Edytor, options?: BlockMenuOptions);
     get isOpen(): boolean;
     get readonly(): boolean;
+    get menuId(): string;
+    get flyoutId(): string;
+    rowId: (row: BlockMenuAction | KindRow, flyout?: boolean) => string;
+    publish: (popup: Popup | null) => void;
     get members(): Block[];
     get kinds(): KindRow[];
     get currentKind(): KindRow | undefined;
@@ -754,6 +761,8 @@ export declare class Edytor {
     private dataRevision;
     get data(): EdytorDocData;
     readonly overlay: Overlay;
+    readonly popups: Popups;
+    readonly announcer: AnnouncerState;
     private off;
     private onChange?;
     placeholder?: Placeholder;
@@ -1335,6 +1344,9 @@ export declare class SlashMenuController {
     private isExecutingCommand;
     constructor(edytor: Edytor);
     get readonly(): boolean;
+    get listId(): string;
+    optionId: (command: EditorCommand) => string;
+    publish: (popup: Popup | null) => void;
     get commands(): EditorCommand[];
     private enabled;
     handleTextInsertion(text: Text, block: Block, payload: TextInsertionPayload): void;
@@ -1359,6 +1371,7 @@ export declare class SlashMenuController {
 // plugins/slashMenu/slashMenuPlugin.d.ts
 export type SlashMenuItem = {
     command: EditorCommand;
+    id: string;
     selected: boolean;
     icon: string | undefined;
     run: () => void;
@@ -1670,6 +1683,9 @@ export declare class ToolbarController {
     hovered: HTMLAnchorElement | null;
     constructor(edytor: Edytor);
     get isVisible(): boolean;
+    get barId(): string;
+    publish: (popup: Popup | null) => void;
+    release(): void;
     updateFromSelection(selection?: EdytorSelection): void;
     setLinkUrl(value: string): void;
     get marks(): {
@@ -2371,6 +2387,10 @@ export type EdytorProps = Snippets & {
     defaultPlugins?: boolean;
     blockDnd?: boolean;
     class?: string;
+    'aria-label'?: string;
+    'aria-labelledby'?: string;
+    'aria-describedby'?: string;
+    id?: string;
     edytor?: EdytorClass;
     document?: EdytorDocument;
     doc?: YDoc;
@@ -4257,6 +4277,21 @@ export type TextAnchor = {
 };
 ```
 
+#### session/announcer.svelte.d.ts#Announcer
+
+```ts
+export declare class Announcer {
+    private edytor;
+    message: string;
+    serial: number;
+    constructor(edytor: Edytor);
+    say: (message: string) => void;
+    what: (blocks: readonly Block[]) => string;
+    moved: (request: BlockMoveRequest, moved: readonly Block[]) => void;
+    deleted: (what: string) => void;
+}
+```
+
 #### session/commands.d.ts#Dispatcher
 
 ```ts
@@ -4633,6 +4668,39 @@ export declare class Overlay {
     invalidate: () => void;
     mount: <Props extends Record<string, unknown>>(component: Component<Props>, props: Props, name: string, zIndex: number, measure: (host: HTMLElement, origin: DOMRect) => (() => void) | void) => () => void;
     attach: (host: HTMLElement) => () => void;
+}
+```
+
+#### surface/popups.svelte.d.ts#Popup
+
+```ts
+export type Popup = {
+    id: string;
+    haspopup?: 'listbox' | 'menu' | 'dialog';
+    active?: string;
+    keys?: string;
+    opener?: PopupOpener;
+};
+```
+
+#### surface/popups.svelte.d.ts#PopupOpener
+
+```ts
+export type PopupOpener = {
+    block: string;
+    control: 'add' | 'grip';
+};
+```
+
+#### surface/popups.svelte.d.ts#Popups
+
+```ts
+export declare class Popups {
+    #private;
+    idOf: (name: string) => string;
+    set: (owner: string, popup: Popup | null) => void;
+    get current(): Popup | undefined;
+    openedBy: (block: string, control: PopupOpener["control"]) => Popup | undefined;
 }
 ```
 

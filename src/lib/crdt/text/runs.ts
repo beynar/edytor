@@ -53,8 +53,8 @@
  * advancing the published tree in place (after a whole rebuild, the
  * reachable tree is compared).
  *
- * The index keeps every fact it shares in one state object
- * (`index/state.ts`); its module-level helpers are `index/shared.ts`.
+ * The index is built from parts under `index/`, each over the shared state
+ * (`index/state.ts`) and the parts before it: the claim graph (`claims.ts`), anchored merge claims (`anchored.ts`). The rest is built here.
  */
 import type {
 	EngineApi,
@@ -183,6 +183,8 @@ import {
 	type Facet,
 	type Deps
 } from './index/shared.js';
+import { indexClaims } from './index/claims.js';
+import { indexAnchored } from './index/anchored.js';
 
 export { CONTENT_ATTR, ENTRY_FACET, indexChecks } from './index/shared.js';
 
@@ -375,8 +377,10 @@ export const bindRuns = (Y: EngineApi) => {
 	};
 
 	const buildView = (doc: EngineDoc): RunView => {
-		// The index's state, one object its parts share (`index/state.ts`).
-		const ix = indexState(Y, T, doc);
+		// The index's state, one object its parts share (`index/state.ts`), and the parts built over it (`index/*`).
+		const ix0 = indexState(Y, T, doc);
+		const ix1 = Object.assign(ix0, indexClaims(ix0));
+		const ix = Object.assign(ix1, indexAnchored(ix1));
 		const {
 			registry,
 			dataRoot,
@@ -411,7 +415,17 @@ export const bindRuns = (Y: EngineApi) => {
 			dirty,
 			foldStats,
 			frames,
-			candidates
+			candidates,
+			ensureOwners,
+			ownerOf,
+			top,
+			displays,
+			noteClaims,
+			invalidateBlock,
+			sameClaims,
+			effectiveClaims,
+			targetOf,
+			applyRetargets
 		} = ix;
 
 		const docData = (): Record<string, unknown> => cloneJsonSafe(readData(dataRoot) ?? {});
@@ -458,142 +472,6 @@ export const bindRuns = (Y: EngineApi) => {
 			};
 		};
 		type EditLookup = ReturnType<typeof makeEditIndex>;
-
-		/** Union-ever claim targets per holder (never shrinks: a dropped claim still invalidates). */
-		const effects = new Map<BlockId, Set<BlockId>>();
-
-		// ── the claim graph (P3: maintained) ─────────────────────────────
-		// `top(m)` is the max-stamp claim on `m` held by a live block; each
-		// block's owner follows `top` up (`claimGraph`). A structural change
-		// of a block (its claims, its delete mark, its record) re-decides the
-		// `top` of the blocks it claims (before and after) and the owners of
-		// those blocks and of every block whose `top` chain reaches them —
-		// never the whole graph.
-		const owners = new Map<BlockId, Owner>();
-		const topOf = new Map<BlockId, { claimer: BlockId; stamp: Stamp }>();
-		/** Claimer → the blocks it tops. */
-		const topInv = new Map<BlockId, Set<BlockId>>();
-		/** Claimed block → the blocks whose claims list names it (live or not). */
-		const claimersOf = new Map<BlockId, Set<BlockId>>();
-		let ownersBuilt = false;
-		/** The max-stamp claim on `m` held by a live block. */
-		const topClaim = (m: BlockId): { claimer: BlockId; stamp: Stamp } | undefined => {
-			let best: { claimer: BlockId; stamp: Stamp } | undefined;
-			for (const holder of claimersOf.get(m) ?? []) {
-				const rec = blocks.get(holder);
-				if (rec === undefined || rec.deleted) continue;
-				for (const c of rec.claims)
-					if (c.m === m && (best === undefined || cmpStamp(c.stamp, best.stamp) > 0))
-						best = { claimer: holder, stamp: c.stamp };
-			}
-			return best;
-		};
-		const setTop = (m: BlockId, t: { claimer: BlockId; stamp: Stamp } | undefined): boolean => {
-			const old = topOf.get(m);
-			if (old?.claimer === t?.claimer && (old === undefined || cmpStamp(old.stamp, t!.stamp) === 0))
-				return false;
-			if (old !== undefined) dropFrom(topInv, old.claimer, m);
-			if (t === undefined) topOf.delete(m);
-			else {
-				topOf.set(m, t);
-				addTo(topInv, t.claimer, m);
-			}
-			return true;
-		};
-		/** `owner(b)` along `top` (`claimGraph`'s walk), memoized into `owners`. */
-		const walkOwner = (b: BlockId): void => {
-			const path: BlockId[] = [];
-			let cur = b;
-			let result: Owner;
-			for (;;) {
-				const known = owners.get(cur);
-				if (known !== undefined) {
-					result = known;
-					break;
-				}
-				const rec = blocks.get(cur);
-				if (!rec || rec.deleted) {
-					result = DEAD;
-					break;
-				}
-				const at = path.indexOf(cur);
-				if (at >= 0) {
-					let best = topOf.get(path[at])!;
-					for (const member of path.slice(at)) {
-						const t = topOf.get(member)!;
-						if (cmpStamp(t.stamp, best.stamp) > 0) best = t;
-					}
-					result = best.claimer;
-					break;
-				}
-				const t = topOf.get(cur);
-				if (t === undefined) {
-					result = cur;
-					break;
-				}
-				path.push(cur);
-				cur = t.claimer;
-			}
-			if (blocks.has(cur)) owners.set(cur, result);
-			for (const x of path) owners.set(x, result);
-		};
-		const setDisplay = (b: BlockId, from: Owner | undefined, to: Owner | undefined): void => {
-			if (typeof from === 'string') dropFrom(displaysMap, from, b);
-			if (typeof to === 'string') addTo(displaysMap, to, b);
-		};
-		const ensureOwners = (): void => {
-			if (!ownersBuilt) {
-				ownersBuilt = true;
-				ownerSeeds.clear();
-				const graph = claimGraph(blocks);
-				owners.clear();
-				for (const [b, o] of graph.owners) if (blocks.has(b)) owners.set(b, o);
-				topOf.clear();
-				topInv.clear();
-				claimersOf.clear();
-				for (const [holder, rec] of blocks)
-					for (const c of rec.claims) addTo(claimersOf, c.m, holder);
-				for (const m of claimersOf.keys()) setTop(m, topClaim(m));
-				displaysMap.clear();
-				for (const b of blocks.keys()) setDisplay(b, undefined, owners.get(b));
-				return;
-			}
-			if (ownerSeeds.size === 0) return;
-			// The tops a seed's claims (now, and those it dropped: noted in `claimersOf` changes) decide.
-			const affected = new Set<BlockId>();
-			const stack: BlockId[] = [];
-			for (const x of ownerSeeds) {
-				stack.push(x);
-				for (const m of claimTargets.get(x) ?? []) if (setTop(m, topClaim(m))) stack.push(m);
-				for (const c of blocks.get(x)?.claims ?? [])
-					if (setTop(c.m, topClaim(c.m))) stack.push(c.m);
-			}
-			ownerSeeds.clear();
-			claimTargets.clear();
-			for (let x = stack.pop(); x !== undefined; x = stack.pop()) {
-				if (affected.has(x)) continue;
-				affected.add(x);
-				for (const m of topInv.get(x) ?? []) stack.push(m);
-			}
-			const before = new Map<BlockId, Owner | undefined>();
-			for (const x of affected) {
-				before.set(x, owners.get(x));
-				owners.delete(x);
-			}
-			for (const x of affected) if (blocks.has(x)) walkOwner(x);
-			for (const [x, was] of before) {
-				const now = owners.get(x);
-				if (now === was) continue;
-				setDisplay(x, was, now);
-				ownerChanged.add(x);
-			}
-		};
-		/** The claims each seed held before its record changed (their tops are re-decided too). */
-		const claimTargets = new Map<BlockId, Set<BlockId>>();
-		const ownerOf = (b: BlockId): Owner => {
-			ensureOwners();
-			return owners.get(b) ?? DEAD;
-		};
 
 		// ── the stream table (R2, P1) ────────────────────────────────────
 		// One maintained row per backing text (keyed by its home block): its
@@ -771,21 +649,12 @@ export const bindRuns = (Y: EngineApi) => {
 				const item = itemKind(owner);
 				return item !== undefined && blocks.get(child)?.type !== item;
 			},
-			top: (m) => {
-				ensureOwners();
-				return topOf.get(m)?.claimer;
-			},
+			top,
 			streamOf,
 			streamsIn,
 			streamAt,
 			display: (b) => displayOf(b, blocks, ownShim),
 			textRank: (id, parent, rank) => ranker.rank(id, parent, rank)
-		};
-
-		/** The blocks `owner` displays (the delete step's marks). */
-		const displays = (owner: BlockId): readonly BlockId[] => {
-			ensureOwners();
-			return [...(displaysMap.get(owner) ?? [])];
 		};
 
 		// ── placements and the children index (P3: maintained) ────────────
@@ -1369,188 +1238,6 @@ export const bindRuns = (Y: EngineApi) => {
 			};
 		};
 
-		// ── anchored merge claims (`merge.claim.anchor`, H9's second half) ──
-		// A claim written since 0.1.0-next.26 carries the end of its holder's
-		// stream as its writer saw it (`a`: the last unit, `r`: the item after
-		// it). A split the writer did not see moves it to the piece that ends
-		// that region: its EFFECTIVE claimer is the block of the segment just
-		// before `r` (the text's last segment when `r` is null), if that is
-		// the holder's segment or one after it in the holder's row. Records
-		// carry their list (`listClaims`) and their effective claims
-		// (`claims`: their own that stay, then those other holders' anchors
-		// move to them, by stamp); every reader of claims reads the effective
-		// ones. Targets change only with a row's cuts: re-decided after each
-		// fold's texts for the holders whose record changed and those anchored
-		// in a re-placed row.
-		const anchorHomes = new Map<BlockId, Set<BlockId>>();
-		const sameClaims = (x: readonly Claim[], y: readonly Claim[]): boolean =>
-			x.length === y.length &&
-			x.every(
-				(c, i) =>
-					c.m === y[i].m &&
-					c.holder === y[i].holder &&
-					c.seqIndex === y[i].seqIndex &&
-					cmpStamp(c.stamp, y[i].stamp) === 0
-			);
-		/** `b`'s effective claims: its own that stay with it, then the others' moved to it, by stamp. */
-		function effectiveClaims(b: BlockId, list: readonly Claim[]): Claim[] {
-			const targets = attachOf.get(b);
-			const own = targets === undefined ? list : list.filter((_, i) => (targets[i] ?? b) === b);
-			const holders = foreignOf.get(b);
-			if (holders === undefined) return own as Claim[];
-			const moved: Claim[] = [];
-			for (const h of holders) {
-				const hr = blocks.get(h);
-				const ts = attachOf.get(h);
-				if (hr === undefined || ts === undefined) continue;
-				(hr.listClaims ?? hr.claims).forEach((c, i) => {
-					if (ts[i] === b) moved.push({ ...c, holder: h });
-				});
-			}
-			moved.sort((x, y) => cmpStamp(x.stamp, y.stamp));
-			return [...own, ...moved];
-		}
-		type StoreLike = {
-			getClock(client: number): number;
-			getItem(id: { client: number; clock: number }): unknown;
-		};
-		const store = (doc as unknown as { store: StoreLike }).store;
-		/** The struct holding unit `ref`, and the unit's offset in it (`null`: none held). */
-		const unitAt = (ref: { c: number; k: number }): [RowItem & StoreStruct, number] | null => {
-			if (store.getClock(ref.c) <= ref.k) return null;
-			const s = store.getItem({ client: ref.c, clock: ref.k }) as unknown as RowItem &
-				StoreStruct & { parent?: unknown };
-			if (s?.parent === undefined || s.parent === null) return null;
-			return [s, ref.k - s.id.clock];
-		};
-		/** The gap of row `row` unit `off` of `it` lies in (`-1`: stale, the walk met an unknown boundary). */
-		const gapOfUnit = (row: LiveRow, it: RowItem, off: number): number => {
-			const arr = it.content?.arr;
-			if (!it.deleted && it.countable !== false && arr !== undefined) {
-				const key = (k: number) => row.keyIndex.get(`${it.id.client}:${it.id.clock + k}`);
-				for (let k = off; k >= 0; k--)
-					if (isBoundary(arr[k])) {
-						const j = key(k);
-						if (j === undefined) return -1;
-						// The unit itself, a boundary: the units before it.
-						return k === off ? j : j + 1;
-					}
-				for (let k = off + 1; k < it.length; k++)
-					if (isBoundary(arr[k])) {
-						const j = key(k);
-						return j === undefined ? -1 : j;
-					}
-			}
-			return gapOfItem(row, it);
-		};
-		/** The effective claimer of `holder`'s claim `c`. */
-		const targetOf = (holder: BlockId, c: Claim): [BlockId] => {
-			if (c.a === undefined) return [holder];
-			const at = streamIx.get(holder);
-			const row = at && rows.get(at.home);
-			if (row === undefined) return [holder];
-			const a = unitAt(c.a);
-			if (a === null || (a[0] as { parent?: unknown }).parent !== row.text) return [holder];
-			const k0 = segmentOfCut(row, at!.cut);
-			let gap = row.bounds.length;
-			if (c.r != null) {
-				const r = unitAt(c.r);
-				if (r === null || (r[0] as { parent?: unknown }).parent !== row.text) return [holder];
-				gap = gapOfUnit(row, r[0], r[1]);
-			}
-			if (k0 < 0 || gap < 0) return [holder];
-			const k = segmentOfGap(row, gap);
-			const target = k < k0 ? null : headOf(row, k);
-			return [target ?? holder];
-		};
-		/**
-		 * The rows whose placement may move `holder`'s anchored claim `c`: its
-		 * stream's and its anchor's text's. `null` while it is unresolved — the
-		 * holder has no stream, or an anchor names a unit not integrated yet
-		 * (a payload is no dependency: the claim can arrive first) — and
-		 * re-decided at every fold.
-		 */
-		const watchOf = (holder: BlockId, c: Claim): BlockId[] | null => {
-			if (c.a !== undefined && unitAt(c.a) === null) return null;
-			if (c.r != null && unitAt(c.r) === null) return null;
-			const homes: BlockId[] = [];
-			const own = streamIx.get(holder)?.home;
-			if (own !== undefined) homes.push(own);
-			const a = c.a === undefined ? null : unitAt(c.a);
-			const text = a === null ? undefined : homeOfText.get((a[0] as { parent: object }).parent);
-			if (text !== undefined && text !== own) homes.push(text);
-			return homes.length === 0 ? null : homes;
-		};
-		/**
-		 * The retarget pass: re-decide the targets of the holders queued, move
-		 * their claims between effective claimers, and re-read the claims of
-		 * every block that gained or lost one (its claim facts and readers).
-		 */
-		const applyRetargets = (ctx: FoldCtx | null): void => {
-			for (const h of retargets) {
-				const rec = blocks.get(h);
-				const before = attachOf.get(h);
-				for (const home of anchorHomes.get(h) ?? []) dropFrom(anchoredIn, home, h);
-				anchorHomes.delete(h);
-				let after: BlockId[] | undefined;
-				unresolved.delete(h);
-				for (const [i, c] of (rec?.listClaims ?? []).entries()) {
-					if (c.a === undefined) continue;
-					const [t] = targetOf(h, c);
-					const watch = watchOf(h, c);
-					if (watch === null) unresolved.add(h);
-					else
-						for (const home of watch) {
-							addTo(anchoredIn, home, h);
-							addTo(anchorHomes, h, home);
-						}
-					if (t !== h) (after ??= new Array((rec!.listClaims ?? []).length).fill(h))[i] = t;
-				}
-				const was = new Set(before ?? []);
-				const now = new Set(after ?? []);
-				for (const t of was) if (t !== h && !now.has(t)) dropFrom(foreignOf, t, h);
-				for (const t of now) if (t !== h) addTo(foreignOf, t, h);
-				if (after === undefined) attachOf.delete(h);
-				else attachOf.set(h, after);
-				if (before !== undefined || after !== undefined) {
-					reclaim.add(h);
-					for (const t of was) reclaim.add(t);
-					for (const t of now) reclaim.add(t);
-				}
-			}
-			retargets.clear();
-			for (const b of reclaim) {
-				const rec = blocks.get(b);
-				if (rec === undefined) continue;
-				const before = rec.claims;
-				const after = effectiveClaims(b, rec.listClaims ?? before);
-				if (sameClaims(before, after)) continue;
-				rec.claims = after;
-				noteClaims(b, before, after);
-				if (ctx !== null) invalidateBlock(b, ctx, before);
-			}
-			reclaim.clear();
-		};
-
-		const noteEffects = (id: BlockId, claims: readonly Claim[]): void => {
-			let fx = effects.get(id);
-			if (fx === undefined) effects.set(id, (fx = new Set()));
-			for (const c of claims) fx.add(c.m);
-		};
-		/** `id`'s claims went from `before` to `after`: its claim facts follow. */
-		const noteClaims = (id: BlockId, before: readonly Claim[], after: readonly Claim[]): void => {
-			noteEffects(id, after);
-			const was = new Set(before.map((c) => c.m));
-			const now = new Set(after.map((c) => c.m));
-			for (const m of was)
-				if (!now.has(m)) {
-					dropFrom(claimersOf, m, id);
-					addTo(claimTargets, id, m);
-				}
-			for (const m of now) if (!was.has(m)) addTo(claimersOf, m, id);
-			ownerSeeds.add(id);
-		};
-
 		/**
 		 * Rebuild (or create, or drop) block `id`'s record, and note what the
 		 * maintained facts must re-decide: its owner and the tops of the
@@ -1754,15 +1441,6 @@ export const bindRuns = (Y: EngineApi) => {
 
 		// ── the fold ─────────────────────────────────────────────────────
 		const parentOf = (id: BlockId): BlockId | null | undefined => blocks.get(id)?.cands[0]?.p;
-		/** A structural change of `id`: its readers, and the blocks it claims, re-read. */
-		const invalidateBlock = (id: BlockId, ctx: FoldCtx, claimsBefore: Claim[] = []): void => {
-			ctx.invalidated.add(id);
-			for (const c of listConsumers.get(id) ?? []) ctx.invalidated.add(c);
-			for (const m of new Set([...(effects.get(id) ?? []), ...claimsBefore.map((c) => c.m)])) {
-				ctx.invalidated.add(m);
-				for (const c of listConsumers.get(m) ?? []) ctx.invalidated.add(c);
-			}
-		};
 
 		/** Note edits of `id`'s own text (`null`: unknown — rescan, every reader re-reads). */
 		const noteText = (ctx: FoldCtx, id: BlockId, e: TextEdits | null): void => {

@@ -14,6 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 0.1.0-next.38
+
 #### Breaking changes
 
 - **The deprecated aliases are gone.** Each had its release; rename before you upgrade:
@@ -33,9 +37,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
   - `createWebsocketSync({ serverUrl, roomName })` throws a `TypeError` that names `server` and `room`.
   - A room whose `history.store` is a bare KV namespace keeps no history: it notes a `history` refusal (`history.store: not a HistoryStore`) at its first use of the history, listing versions answers `404` and a restore throws. Nothing else fails, so check the room's refusals after upgrading. The `EDYTOR_HISTORY` binding is unchanged: the room still wraps a KV binding in `kvHistory` itself. `kvHistory` writes what earlier releases wrote, so their versions list, preview and restore as before.
 
-#### Kept: pre-release stored formats
-
-Documents stored by 0.1.0-next.6 (atomic array leaves, the whole-`data` attribute), containers written by 0.1.0-next.22 (no storage format) and alarms armed by 0.1.0-next.23 all load as before. They are all schema generation 4, so they reach this release through the generation cutover, which reads them with this build's reader: that reader is kept.
+- **Pre-release stored formats still load (nothing to do).** Documents stored by 0.1.0-next.6 (atomic array leaves, the whole-`data` attribute), containers written by 0.1.0-next.22 (no storage format) and alarms armed by 0.1.0-next.23 all load as before. They are all schema generation 4, so they reach this release through the generation cutover, which reads them with this build's reader: that reader is kept.
 
 ### From 0.1.0-next.37
 

@@ -112,7 +112,7 @@ export class Scheduler {
 		void this.room.ctx.storage.setAlarm(next);
 	}
 
-	/** The due times stored (`due.<task>`); an alarm armed by 0.1.0-next.23 (none stored) is a due save. */
+	/** The due times stored (`due.<task>`); an alarm armed before the scheduler (none stored) is a due save. */
 	readDues() {
 		const rows = this.room.sql
 			.exec<{

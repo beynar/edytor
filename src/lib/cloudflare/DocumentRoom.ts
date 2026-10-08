@@ -858,7 +858,7 @@ export class AttachedDocument {
 
 	/**
 	 * When the room last stored a change (ms since the epoch), or `null`
-	 * for a room that stored none since 0.1.0-next.23. Cheap: one
+	 * for a room that stored none since it records the time. Cheap: one
 	 * row, no document. `routeDocumentSocket` answers it over HTTP
 	 * (`GET <room>?lastUpdated`), also over RPC.
 	 */

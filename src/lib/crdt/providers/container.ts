@@ -33,8 +33,8 @@ export const decodeRow = (row: unknown): Uint8Array => {
 /**
  * A snapshot row (storage `'v2'`): the document in the v2 encoding,
  * gzip-compressed where the platform has `CompressionStream` (and that
- * makes it smaller). Update rows stay v1 `ArrayBuffer`s. A build before
- * 0.1.0-next.23 reads such a row as no update at all (`decodeRow` throws),
+ * makes it smaller). Update rows stay v1 `ArrayBuffer`s. A build from
+ * before the v2 snapshots reads such a row as no update at all (`decodeRow` throws),
  * so it fails to load the store instead of misreading it.
  */
 export type SnapshotRow = { v2: ArrayBuffer };

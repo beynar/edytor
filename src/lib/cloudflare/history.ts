@@ -311,8 +311,8 @@ const finite = (value: unknown): number | null => {
  * Versions in a Workers KV namespace (the room history's first store): KV's
  * TTL expires them (`nativeTtl`, `expirationTtl` = the retention, at least
  * KV's 60 s), its listing's `expiration` is each one's `expiresAt`, its
- * metadata the room's. Values up to KV's 25 MiB. Versions written by
- * 0.1.0-next.24 and next.25 (a bare namespace as the store) read as they are.
+ * metadata the room's. Values up to KV's 25 MiB. Versions written by the
+ * pre-releases that took a bare namespace as the store read as they are.
  */
 export const kvHistory = (namespace: KVLike): HistoryStore => ({
 	maxValueBytes: HISTORY_MAX_VALUE_BYTES,

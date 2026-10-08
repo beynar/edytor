@@ -41,6 +41,7 @@ Both blockers are fixed (the link XSS, the license). Shipped by release:
 | `next.41` | After the second review: the handles' raw write primitives internal and refused on a readonly view; the Limitations page corrected; checkpoint-named test files renamed                                                                                                                                                                                             |
 | `next.42` | Typing in a table costs the cell (no longer O(cells²)); comment quotas: stored bytes, a request rate per user and per socket, no second snapshot, a body read capped at 64 KiB                                                                                                                                                                                      |
 | `next.43` | API: the types an app names exported (176 reachable-not-exported to 102), single-owner state read-only, `edytor.focus()`; SECURITY.md and issue templates; the plugins index fixed (`next.42` never published: a CI race in the handle alignment row)                                                                                                               |
+| `next.44` | Features: markdown paste makes blocks; pasted and dropped files become image, video, audio or file blocks with upload progress                                                                                                                                                                                                                                      |
 
 The docs site stopped deploying at `next.34` (an invalid front matter in a Wave 2 page); fixed
 on `master` after `next.40`, with a docs-drift row guarding it.
@@ -58,8 +59,8 @@ Majors, by dimension:
   quota, `4413` final, no rebase path); ~~comments unbounded, snapshot amplification~~
   (`next.42`); ~~typing in a table O(cells²)~~ (`next.42`); client typing linear in page size
   (no windowing).
-- **Features**: ~~markdown paste into blocks~~ (after `next.43`); ~~file/video/audio claiming dropped and pasted files
-  (with upload progress)~~ (after `next.43`); real-device mobile and touch chrome.
+- **Features**: ~~markdown paste into blocks~~ (`next.44`); ~~file/video/audio claiming dropped and pasted files
+  (with upload progress)~~ (`next.44`); real-device mobile and touch chrome.
 - **Code**: the view-side classes (`EdytorSelection`, `BlockHandleController`, `Edytor`,
   `EdytorDocument`) not split; the room split is a 16-module cycle; master unprotected and the
   nightly and upstream jobs never run yet; ~~about 90 checkpoint-named test files~~ (`next.41`).

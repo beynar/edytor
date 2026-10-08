@@ -14,6 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 0.1.0-next.43
+
 #### New
 
 - **Pasted and dropped files become their blocks.** With an `upload`, the video, audio and file plugins take pasted and dropped files as the image plugin does: one block per file, each of the kind that takes it (the file block takes what no other kind does), in order, as one undo step, each showing its upload. `upload` receives a second argument, `report`, whose `progress(fraction)` fills the block's bar (the image block's too); an `upload` that ignores it keeps working. The `Uploader` and `UploadReport` types are exported. See [Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files).

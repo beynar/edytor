@@ -11,7 +11,7 @@ body:
     attributes:
       label: Version
       description: '`npm view edytor dist-tags.next`, or the commit you run'
-      placeholder: 0.1.0-next.43
+      placeholder: 0.1.0-next.44
     validations:
       required: true
   - type: dropdown

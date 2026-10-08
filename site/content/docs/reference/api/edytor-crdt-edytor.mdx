@@ -1548,7 +1548,6 @@ export interface EdytorDocument extends Omit<DocumentOperations, 'transact'> {
 }
 export declare class EdytorDocument {
     readonly doc: YDoc;
-    get facade(): DocumentOperations;
     readonly awareness: Awareness;
     readonly actor: DocumentActor;
     get attribution(): DocumentAttribution;
@@ -1615,7 +1614,6 @@ export declare class EdytorDocument {
 ```
 
 - `doc`: The underlying engine doc — raw reads/providers borrow it; they never own it.
-- `facade`: The document's operations, as before they were the document's own.
 - `awareness`: One shared awareness instance for every view/provider of this document.
 - `actor`: The local actor identity (anonymous opaque id when none was supplied).
 - `attribution`: The attribution surface — compact per-block records, the replicated actor dictionary (`u/` profiles, `c/` replica bindings), and a `legacy()` read over any pre-existing `a/` per-edit records written by earlier builds.

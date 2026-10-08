@@ -14,6 +14,14 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 1.0.0-rc.1
+
+#### Breaking changes
+
+- **`document.facade` is gone.** Deprecated in `1.0.0-rc.1`, it is no longer in the published types: call the operations on the document itself (`document.insertBlock(…)`, `document.toJSON()`).
+
 #### New
 
 - **An API reference.** The docs list every name each entry point exports, with its declaration and documentation, generated from the published types: [`edytor`](/docs/reference/api/edytor), [`edytor/cloudflare`](/docs/reference/api/edytor-cloudflare), [`edytor/protocol`](/docs/reference/api/edytor-protocol) and [`edytor/crdt/edytor`](/docs/reference/api/edytor-crdt-edytor).

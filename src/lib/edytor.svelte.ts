@@ -367,7 +367,7 @@ export class Edytor {
 	 */
 	get facade(): ViewDoc {
 		return (this.lens ??= virtualLens(
-			this.document.raw,
+			this.document.facade,
 			() => this.document.ready,
 			() => this.document.defaultChild(null),
 			(kind) => ({

@@ -677,7 +677,6 @@ export interface EdytorDocument extends Omit<DocumentOperations, 'transact'> {
 // crdt/document.d.ts
 export declare class EdytorDocument {
     readonly doc: YDoc;
-    get facade(): DocumentOperations;
     readonly awareness: Awareness;
     readonly actor: DocumentActor;
     get attribution(): DocumentAttribution;

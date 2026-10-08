@@ -1,8 +1,8 @@
 /**
  * The document's operations are its own members (`DocumentOperations`):
  * every name `DOCUMENT_OPERATIONS` lists reads through to the bound
- * facade, so `document.insertBlock(…)` writes as `document.facade` did;
- * `facade` stays one release, deprecated, the same operations.
+ * facade (`document.facade`, internal since `1.0.0-rc.2`), so
+ * `document.insertBlock(…)` writes exactly as the binding does.
  */
 import { describe, expect, it } from 'vitest';
 import { createDocument } from '$lib/crdt/document.js';
@@ -14,7 +14,7 @@ describe('document.operations', () => {
 		for (const name of DOCUMENT_OPERATIONS) expect(document[name], name).toBeDefined();
 	});
 
-	it('writes and reads through the document, as through its deprecated facade', () => {
+	it('writes and reads through the document, as through its internal binding', () => {
 		const document = createDocument({
 			value: { children: [{ id: 'p1', type: 'paragraph', content: [{ text: 'hello' }] }] }
 		});

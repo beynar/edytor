@@ -383,15 +383,7 @@ export class EdytorDocument {
 	 * the document's lease on the maintained runs view.
 	 * @internal
 	 */
-	readonly raw: EdytorDoc;
-	/**
-	 * The document's operations, as before they were the document's own.
-	 * @deprecated Call them on the document (`document.insertBlock(…)`,
-	 * `document.toJSON()`); `facade` goes in the next release.
-	 */
-	get facade(): DocumentOperations {
-		return this.raw;
-	}
+	readonly facade: EdytorDoc;
 	/** One shared awareness instance for every view/provider of this document. */
 	readonly awareness: Awareness;
 	/** The local actor identity (anonymous opaque id when none was supplied). */
@@ -495,7 +487,7 @@ export class EdytorDocument {
 		this.doc = init.doc;
 		this._ownsDoc = init.ownsDoc;
 		this._defaultType = init.semantics?.defaultType ?? 'paragraph';
-		this.raw = init.binding.create(asEngineDoc(this.doc), {
+		this.facade = init.binding.create(asEngineDoc(this.doc), {
 			roleOf: (type) => this._capability.roles.get(type),
 			kinds: () => this._capability.roles.keys(),
 			defaultType: this._defaultType,
@@ -514,7 +506,7 @@ export class EdytorDocument {
 		// facade's, read through so each call reaches the live binding.
 		for (const name of DOCUMENT_OPERATIONS) {
 			if (name === 'transact') continue;
-			Object.defineProperty(this, name, { get: () => this.raw[name], configurable: true });
+			Object.defineProperty(this, name, { get: () => this.facade[name], configurable: true });
 		}
 		this.awareness = init.awareness ?? new init.awarenessCtor(this.doc);
 		this._ownsAwareness = init.awareness === undefined;
@@ -739,7 +731,7 @@ export class EdytorDocument {
 				(role) => role?.void || role?.island || role?.layout || role?.table
 			)
 		)
-			this.raw.rolesChanged();
+			this.facade.rolesChanged();
 	};
 
 	/**
@@ -814,7 +806,7 @@ export class EdytorDocument {
 			// Hydrated/loaded doc — asserted above; content is left alone.
 			this._readiness = 'hydrated';
 		} else {
-			this.raw.seed(value.children, value.data);
+			this.facade.seed(value.children, value.data);
 			this._readiness = 'local';
 		}
 		this._attachHistory();
@@ -907,7 +899,7 @@ export class EdytorDocument {
 		//   `applyUpdate` — stamped or originless — can enter the local undo
 		//   stack. This is the actual remote-exclusion contract; untracked
 		//   remote origins are belt-and-suspenders on top of it.
-		this._history = this.raw.createUndoManager({
+		this._history = this.facade.createUndoManager({
 			trackedOrigins: this._trackedOrigins,
 			captureTimeout: this._historyOptions?.captureTimeout,
 			limit: this.historyLimit,
@@ -939,7 +931,7 @@ export class EdytorDocument {
 		if (this._destroyed) {
 			throw new DocumentDestroyedError('transact');
 		}
-		return this.raw.transact(cb, origin);
+		return this.facade.transact(cb, origin);
 	};
 
 	/**
@@ -1217,7 +1209,7 @@ export class EdytorDocument {
 		// The facade's doc `update` subscriptions + this document's lease on
 		// the doc-shared run view (the view itself survives while another
 		// facade holds a lease, or until the doc dies).
-		this.raw.dispose();
+		this.facade.dispose();
 
 		// Awareness is document-shared — destroy it only when the document
 		// created it (an injected instance belongs to its caller).

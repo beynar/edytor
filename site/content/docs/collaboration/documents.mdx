@@ -56,7 +56,7 @@ copy.toJSON(); // same JSON as the source
 
 | Member | Description |
 | --- | --- |
-| Operations and reads | The document's own: `insertBlock`, `insertText`, `toJSON`, `childrenIds`, order queries, `onChange`… (`DocumentOperations`; `facade` is their deprecated former home). See the [document API reference](/docs/reference/document-api). |
+| Operations and reads | The document's own: `insertBlock`, `insertText`, `toJSON`, `childrenIds`, order queries, `onChange`… (`DocumentOperations`). See the [document API reference](/docs/reference/document-api). |
 | `history` | The shared undo manager (`undo()`, `redo()`, `stopCapturing()`). Throws `DocumentNotReadyError` while the document is `pending`. |
 | `clearHistory()` | Empty the undo and redo stacks. Otherwise they keep the newest `history.limit` steps (200 by default). |
 | `awareness` | The one presence instance for every view and provider. See [Presence](/docs/collaboration/presence). |

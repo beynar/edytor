@@ -14,7 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+#### Fixed
+
+- **Chrome follows the blocks when they move with no edit.** Block handles and the other chrome were measured again only on an edit, a scroll or a resize of the editor or the window. A block laid out again without one (a font or a stylesheet that loads late, an equation KaTeX draws after the first render, an editor whose height the page fixes) left every handle beside its block's old place. The overlay now also measures again when a block's element changes size. Nothing to change in your code.
+- **<kbd>↑</kbd> at the end of a wrapped cell's first line stays in the table's column.** Where a cell's first line wraps, the caret at that line's end is also the next line's start, and the browser does not say on which line it shows it. The arrow was left to the browser there, which moved the caret to the row's other cell (the line before it in the page's order), not the cell above; <kbd>↓</kbd> at the start of the last line did the same with the next cell. The key now moves the caret to that edge line: the next press leaves the cell. Nothing to change in your code.
 
 ### From 0.1.0-next.36
 

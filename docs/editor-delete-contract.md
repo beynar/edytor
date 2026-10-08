@@ -1823,8 +1823,12 @@ line nearest the caret's x (above the table: the browser's line before
 it), ArrowDown on its last line to the row below (below the table: the
 line after it). A line is a line box: in a wrapped cell the browser moves
 the caret through the other lines; an offset where a line wraps counts on
-the line away from the edge, so a doubt leaves the key to the browser
-(without a layout, the lines are the line breaks). Left and Right cross
+the line away from the edge, except where the edge line itself wraps: that
+offset shows at the edge line's end or at the next line's start and the DOM
+does not say which, while the browser, from the edge line, would leave the
+cell to the line before (after) it in DOM order (the row's other cell), so
+the key is claimed and the caret goes to the edge line, nearest its x on
+the other line (without a layout, the lines are the line breaks). Left and Right cross
 cells in reading order. Nothing nests or outdents in a table: Tab never
 nests a cell. An empty cell shows no placeholder (its role, whatever the
 editor's placeholder).

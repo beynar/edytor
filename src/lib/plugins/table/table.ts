@@ -241,7 +241,8 @@ const sameLine = (a: DOMRect, b: DOMRect) =>
  * (`table.keys`): the caret goes to the nearest shown cell above (below) in
  * the same column, on its last (first) line, at the caret's x. A line is a
  * line box, so a wrapped cell's other lines are the browser's to move
- * through (the key is not claimed there); where nothing is laid out, the
+ * through (the key is not claimed there), except the offset where the edge
+ * line wraps, which goes to the edge line; where nothing is laid out, the
  * lines are the text's line breaks and the column a character count.
  * `false` where no row is there: the browser moves out of the table.
  */
@@ -252,15 +253,27 @@ export const verticalFrom = (cell: Block, step: 1 | -1): boolean => {
 	if (!at || !isCollapsed || !startText) return false;
 	if (step < 0 ? startText !== cell.firstText : startText !== cell.lastText) return false;
 	const value = startText.stringContent;
-	// A wrap offset counts on the line away from the edge: then the browser moves the caret.
+	const column = yStart - value.lastIndexOf('\n', yStart - 1) - 1;
+	// Read on the line away from the edge first: a wrap offset is on both lines.
 	const caret = caretBox(startText, yStart, step < 0);
 	const edge = caret && caretBox(startText, step < 0 ? 0 : value.length, step < 0);
 	if (caret && edge) {
-		// Not on the edge line box: the browser moves the caret inside the cell.
-		if (!sameLine(caret, edge)) return false;
+		if (!sameLine(caret, edge)) {
+			// The offset where the edge line wraps shows at that line's end or at the
+			// next line's start, and the DOM does not say which (no affinity). The
+			// browser, shown on the edge line, would leave the cell to the line before
+			// (after) it in DOM order, the row's other cell: the caret goes to the edge
+			// line, at its x on the other line, as the browser moves it from there.
+			const other = caretBox(startText, yStart, step > 0);
+			if (!other || !sameLine(other, edge)) return false;
+			edytor.selection.setAtTextOffset(
+				startText,
+				landing(startText, -step as 1 | -1, caret, column)
+			);
+			return true;
+		}
 	} else if (step < 0 ? value.lastIndexOf('\n', yStart - 1) >= 0 : value.indexOf('\n', yStart) >= 0)
 		return false;
-	const column = yStart - value.lastIndexOf('\n', yStart - 1) - 1;
 	for (let row = at.row + step; row >= 0 && row < at.grid.rows.length; row += step) {
 		const target = cellAt(at.table, at.grid, row, at.column);
 		const text = step < 0 ? target?.lastText : target?.firstText;

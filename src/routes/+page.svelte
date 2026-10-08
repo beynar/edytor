@@ -121,25 +121,6 @@
 				content: [{ text: 'Start with a thought. Give it structure when you need it.' }]
 			},
 			{
-				id: 'page-mentions',
-				type: 'paragraph',
-				content: [
-					{ text: 'Ask ' },
-					{ type: 'mention', id: 'page-mention-ada', data: { id: 'ada', label: 'Ada Lovelace' } },
-					{ text: ' about the ' },
-					{
-						type: 'pageLink',
-						id: 'page-link-roadmap',
-						data: { id: 'roadmap', title: 'Roadmap', icon: '🗺️', href: '#roadmap' }
-					},
-					{ text: ': type ' },
-					{ text: '@', marks: { code: true } },
-					{ text: ' to mention someone, ' },
-					{ text: '[[', marks: { code: true } },
-					{ text: ' to link a page.' }
-				]
-			},
-			{
 				id: 'page-task-one',
 				type: 'todo-item',
 				data: { checked: false },
@@ -216,6 +197,25 @@
 						type: 'codeLine',
 						content: [{ text: 'const idea = "start somewhere";' }]
 					}
+				]
+			},
+			{
+				id: 'page-mentions',
+				type: 'paragraph',
+				content: [
+					{ text: 'Ask ' },
+					{ type: 'mention', id: 'page-mention-ada', data: { id: 'ada', label: 'Ada Lovelace' } },
+					{ text: ' about the ' },
+					{
+						type: 'pageLink',
+						id: 'page-link-roadmap',
+						data: { id: 'roadmap', title: 'Roadmap', icon: '🗺️', href: '#roadmap' }
+					},
+					{ text: ': type ' },
+					{ text: '@', marks: { code: true } },
+					{ text: ' to mention someone, ' },
+					{ text: '[[', marks: { code: true } },
+					{ text: ' to link a page.' }
 				]
 			},
 			{ id: 'page-end', type: 'paragraph', content: [{ text: '' }] }

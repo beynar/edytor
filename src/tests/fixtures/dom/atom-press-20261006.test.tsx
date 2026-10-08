@@ -7,10 +7,23 @@
  * gesture. That `selectionchange` is drift (displayed over: the atom stays
  * selected and the host shows no range), never adopted as a text caret. The
  * next press inside the host is the user's again.
+ *
+ * An atom a key selects (Shift+ArrowRight onto it) is the same case without
+ * the press: the display clears the host's range, Chromium parks a caret at
+ * the host's start at the next key, and its `selectionchange` can arrive after
+ * that key counted as a gesture. It stays the browser's: the atom stays
+ * selected and the next Shift+arrow extends from it (V6, the browser rows in
+ * `tests/editor-dom/arch-v2-v6-navigation.spec.ts`).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
-import { flushDomUpdates, renderDomEdytor, textNodeOf } from '../../dom/test.utils.js';
+import {
+	dispatchDomKeyDown,
+	flushDomUpdates,
+	renderDomEdytor,
+	setNativeSelection,
+	textNodeOf
+} from '../../dom/test.utils.js';
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -106,6 +119,38 @@ describe('a press on an inline atom', () => {
 		expect({ block: start?.block, offset: start?.offset, isCollapsed }).toEqual({
 			block: edytor.facade.order()[1],
 			offset: 'lead '.length + 1 + 2,
+			isCollapsed: true
+		});
+	});
+});
+
+describe('an atom a key selected', () => {
+	it('keeps the atom selected over the caret the browser parks at the next key', async () => {
+		const rendered = await render();
+		const { edytor, editor } = rendered;
+		const block = edytor.idToBlock.block(edytor.facade.order()[1]!);
+		const [lead, atom] = block.content as [never, InlineBlock];
+		// The browser focuses the host for its caret (jsdom does not).
+		editor.focus();
+		await setNativeSelection(edytor, lead, 'lead '.length);
+		await dispatchDomKeyDown(editor, { key: 'ArrowRight', shiftKey: true });
+		expect(edytor.selection.value).toMatchObject({ kind: 'atom', atomId: atom.id, from: 'before' });
+
+		// The next key (its Shift) counts as a gesture; the caret Chromium parked
+		// at the host's start for it is reported after.
+		const first = edytor.idToBlock.block(edytor.facade.order()[0]!).content[0];
+		window.getSelection()!.collapse(leafOf(await textNodeOf(first as never)), 0);
+		await dispatchDomKeyDown(editor, { key: 'Shift', shiftKey: true });
+		document.dispatchEvent(new Event('selectionchange'));
+		await flushDomUpdates();
+		expect(edytor.selection.value).toMatchObject({ kind: 'atom', atomId: atom.id });
+
+		await dispatchDomKeyDown(editor, { key: 'ArrowLeft', shiftKey: true });
+		const { start, isCollapsed } = edytor.selection.projection;
+		expect(edytor.selection.value.kind).toBe('text');
+		expect({ block: start?.block, offset: start?.offset, isCollapsed }).toEqual({
+			block: block.id,
+			offset: 'lead '.length,
 			isCollapsed: true
 		});
 	});

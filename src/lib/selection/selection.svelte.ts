@@ -50,7 +50,6 @@ import {
 	type SelectionValue
 } from '$lib/session/selection.js';
 import { seam } from '$lib/crdt/anchors.js';
-import { getTextPath } from '$lib/events/events.utils.js';
 import { landed } from '$lib/session/navigation.js';
 import * as visibility from './visibility.js';
 import {

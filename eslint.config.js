@@ -236,7 +236,10 @@ const repoConfig = [
 			'vendor-tests/**',
 			// generated pristine-vendor copy materialized by bench/lib/mk-baseline.sh
 			// for differential/interop lanes (gitignored, recreated on demand)
-			'bench/vendor-baseline/**'
+			'bench/vendor-baseline/**',
+			// agent worktrees (each lints itself) and the upstream watch's report
+			'.claude/**',
+			'upstream-report/**'
 		]
 	},
 	js.configs.recommended,
@@ -339,5 +342,53 @@ export default [
 		linterOptions: { reportUnusedDisableDirectives: 'off' },
 		plugins: { edytor: { rules: { 'worker-safe-imports': workerSafeImports } } },
 		rules: workerSafeRules
+	},
+	// ── Unused code (CC-09) ──────────────────────────────────────────────
+	//
+	// The library's own sources hold no unused import, variable or
+	// parameter: an intentional one is named `_…` (a positional parameter
+	// a callback signature requires, a destructured rest's sibling).
+	{
+		files: ['src/lib/**/*.{ts,js,svelte}'],
+		ignores: [VENDOR],
+		plugins: { '@typescript-eslint': tsPlugin },
+		rules: {
+			'@typescript-eslint/no-unused-vars': [
+				'error',
+				{
+					args: 'after-used',
+					argsIgnorePattern: '^_',
+					varsIgnorePattern: '^_',
+					caughtErrors: 'none',
+					destructuredArrayIgnorePattern: '^_',
+					ignoreRestSiblings: true
+				}
+			]
+		}
+	},
+	// ── Typed rules for the transports (CC-09) ───────────────────────────
+	//
+	// The providers and the room live on promises (IndexedDB, sockets,
+	// Durable Object storage, alarms): a promise nobody awaits or catches
+	// loses its rejection, and an async function handed where a void
+	// callback is expected (an event listener, `forEach`) drops it too.
+	// These two rules need type information, so they run on these
+	// directories only (the type-aware program costs seconds per file set).
+	{
+		files: ['src/lib/crdt/providers/**/*.ts', 'src/lib/cloudflare/**/*.ts'],
+		languageOptions: {
+			parser: tsParser,
+			parserOptions: { sourceType: 'module', projectService: true, tsconfigRootDir: ROOT }
+		},
+		rules: {
+			'@typescript-eslint/no-floating-promises': 'error',
+			// A provider's `destroy()` overrides the observable's with a promise
+			// that settles once its store closed (and never rejects): callers of
+			// the base signature may drop it.
+			'@typescript-eslint/no-misused-promises': [
+				'error',
+				{ checksVoidReturn: { inheritedMethods: false } }
+			]
+		}
 	}
 ];

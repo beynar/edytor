@@ -6,6 +6,7 @@
 import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../../crdt/engine.js';
 import type { YDoc } from '../../crdt/index.js';
+import { asEngineDoc, keepFromCollection } from '../../crdt/structs.js';
 import { ROOM_ORIGIN } from '../DocumentRoom.js';
 import { crdt, type Decoded, type Item, type Struct } from './context.js';
 
@@ -336,11 +337,11 @@ export const liveState = (doc: YDoc): Uint8Array =>
  * deleted while its undo stands (`keep`, `room.history.undo`).
  */
 const prepareRoomDoc = (doc: YDoc, keep: () => Decoded['ds'] | null): void => {
-	crdt.doc.keepCopies(doc as never);
-	const d = doc as unknown as { gcFilter: (it: Item) => boolean };
-	const gc = d.gcFilter;
-	d.gcFilter = (it) =>
-		gc(it) && !(keep()?.intersects(it.id.client, it.id.clock, it.length) ?? false);
+	crdt.doc.keepCopies(asEngineDoc(doc));
+	keepFromCollection<Item>(
+		doc,
+		(it) => !(keep()?.intersects(it.id.client, it.id.clock, it.length) ?? false)
+	);
 };
 
 /** A fresh room document (`prepareRoomDoc`'s collection rules). */

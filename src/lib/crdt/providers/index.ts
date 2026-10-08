@@ -10,6 +10,7 @@
 import type { EngineApi, YDoc } from '../engine-api.js';
 import type { JSONDoc } from '../../utils/json.js';
 import type { Awareness } from '../protocols/awareness.js';
+import { keepingReplaced } from '../incarnations.js';
 import { bindIndexeddbProvider, type IndexeddbProvider } from './indexeddb.js';
 import { assertRoomId, SyncRefusedError } from './room.js';
 import { bindWebsocketProvider, type WebsocketProviderEvents } from './websocket.js';
@@ -290,7 +291,7 @@ export const bindProviders = (Y: EngineApi) => {
 		if (typeof indexedDB === 'undefined') {
 			return Promise.reject(new TypeError('prefetch needs IndexedDB to keep the document'));
 		}
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		const local = new idb.IndexeddbPersistence(
 			options.persistName ?? `edytor:${serverUrl}/${room}`,
 			doc,

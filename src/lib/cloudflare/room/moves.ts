@@ -6,6 +6,8 @@
  */
 import { Y } from '../../crdt/engine.js';
 import { DEL_PREFIX, REGISTRY_KEY } from '../../crdt/schema.js';
+import { asEngineDoc, attrItems } from '../../crdt/structs.js';
+import type { EngineNode } from '../../crdt/engine-api.js';
 import type { EdytorDoc, JSONBlock, YDoc } from '../../crdt/index.js';
 import { toBlockSpec } from '../../utils/json.js';
 import { noTimers } from '../DocumentRoom.js';
@@ -30,13 +32,6 @@ import { DAY, crdt, type RoomContext } from './context.js';
 
 /** A forward of late edits that failed runs again this much later (`room.move.late`). */
 const FORWARD_RETRY = 60_000;
-
-/** The registry node surface the moves read and write. */
-type RegistryNode = {
-	forEachAttr(f: (value: unknown, key: string) => void): void;
-	getAttr(key: string): unknown;
-	deleteAttr(key: string): void;
-};
 
 export class RoomMoves {
 	/** The blocks moved out and watched for late edits, by id → their move (`null`: not read yet). */
@@ -324,18 +319,20 @@ export class RoomMoves {
 	private markedBetween(doc: YDoc, marker: number, c0: number, c1: number): string[] {
 		const out: string[] = [];
 		const key = `${DEL_PREFIX}${marker}`;
-		(doc.get(REGISTRY_KEY) as unknown as RegistryNode).forEachAttr((node: unknown, id: string) => {
-			const item = (
-				node as { _map?: Map<string, { id: { client: number; clock: number } }> }
-			)._map?.get(key);
-			if (
-				item !== undefined &&
-				item.id.client === marker &&
-				item.id.clock >= c0 &&
-				item.id.clock < c1
-			)
-				out.push(id);
-		});
+		asEngineDoc(doc)
+			.get(REGISTRY_KEY)
+			.forEachAttr((node: unknown, id: string) => {
+				const item = (
+					node as { _map?: Map<string, { id: { client: number; clock: number } }> }
+				)._map?.get(key);
+				if (
+					item !== undefined &&
+					item.id.client === marker &&
+					item.id.clock >= c0 &&
+					item.id.clock < c1
+				)
+					out.push(id);
+			});
 		return out;
 	}
 
@@ -468,17 +465,14 @@ export class RoomMoves {
 		Y.applyUpdateV2(copy, Y.encodeStateAsUpdateV2(this.room.requireDoc()));
 		const facade = this.room.facadeOf(copy);
 		try {
-			const registry = copy.get(REGISTRY_KEY) as unknown as RegistryNode;
+			const registry = asEngineDoc(copy).get(REGISTRY_KEY);
 			copy.transact(() => {
 				for (const move of moves) {
 					const key = `${DEL_PREFIX}${move.marker}`;
 					for (const id of JSON.parse(move.watched) as string[]) {
-						const node = registry.getAttr(id) as RegistryNode | undefined;
-						const item = (
-							node as unknown as {
-								_map?: Map<string, { deleted: boolean; id: { client: number; clock: number } }>;
-							}
-						)?._map?.get(key);
+						const node = registry.getAttr(id) as EngineNode | undefined;
+						type Entry = { deleted: boolean; id: { client: number; clock: number } };
+						const item = node && attrItems<Entry>(node).get(key);
 						if (
 							item !== undefined &&
 							!item.deleted &&

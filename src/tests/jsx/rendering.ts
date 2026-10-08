@@ -53,7 +53,7 @@ function _renderJSX(
 		return textNode;
 	}
 	if (isSpan(tag)) {
-		const { children, content } = _renderChildren(props, accumulatedMarks);
+		const { content } = _renderChildren(props, accumulatedMarks);
 		return {
 			type: 'text',
 			content: content
@@ -61,7 +61,7 @@ function _renderJSX(
 	}
 	if (isMarkOrText(tag)) {
 		const newMarks = { ...accumulatedMarks, [tag]: true };
-		const { children, content } = _renderChildren(props, newMarks);
+		const { content } = _renderChildren(props, newMarks);
 		return {
 			type: 'text',
 			content: content

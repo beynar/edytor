@@ -319,7 +319,7 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 		if (r !== null) callEach('[edytor-doc] change', [...reportSubs], r, origin, local);
 	};
 	const onUpdate = (_u: Uint8Array, origin: unknown, _d: EngineDoc, tr: unknown): void => {
-		if ((tr as Tx).changed?.has(dataRoot as never)) dataChanged = true;
+		if ((tr as Tx).changed?.has(dataRoot)) dataChanged = true;
 		publish(origin, (tr as { local?: boolean }).local === true);
 	};
 

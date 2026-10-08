@@ -17,7 +17,7 @@ import type { SessionPorts } from './session/ports.js';
 import { Attempts } from './session/attempt.js';
 import { Composition } from './session/composition.svelte.js';
 import { Suggestions } from './session/suggestions.svelte.js';
-import { type JSONBlock, type JSONDoc } from '$lib/utils/json.js';
+import { type JSONDoc } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
 import { Projector } from './surface/projector.svelte.js';
@@ -47,6 +47,7 @@ import { Handles } from './session/handles.js';
 import { id } from './utils.js';
 import { Y } from '$lib/crdt/engine.js';
 import { markName } from '$lib/crdt/text/marks.js';
+import { callEach } from '$lib/crdt/protocols/observable.js';
 import {
 	attachDocument,
 	bindCrdt,
@@ -108,6 +109,9 @@ import {
 	getDomSelectionSnapshot
 } from './selection/domSelection.js';
 
+/** A consumer that is set (a prop or a plugin hook left out is `undefined`). */
+const isListener = <F>(listener: F | undefined): listener is F => listener !== undefined;
+
 export type Snippets = {
 	// `mentionInlineBlock` satisfies BOTH the `*InlineBlock` and `*Block`
 	// domain patterns, so property lookup intersects the matching arms —
@@ -154,8 +158,17 @@ export type EdytorOptions = {
 	presence?: PresenceOptions;
 	sync?: boolean;
 	value?: JSONDoc;
-	/** After every commit that changed the visible document: the value, in the shape `value` takes. */
+	/**
+	 * After every commit that changed the visible document: the value, in
+	 * the shape `value` takes (a whole-document export per commit).
+	 */
 	onChange?: (value: JSONDoc) => void;
+	/**
+	 * After every commit that changed the visible document: what it changed
+	 * (blocks added, removed, moved, retyped, edited), with no export. Read
+	 * `edytor.value` when you need the document (it is memoized per version).
+	 */
+	onDocChange?: (change: DocChange) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: Placeholder;
 	/** The words this view says itself (its announcements, a suggestion's name); English by default. */
@@ -288,6 +301,7 @@ export class Edytor {
 	readonly labels: EditorLabels = englishLabels.editor;
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONDoc) => void;
+	private onDocChange?: (change: DocChange) => void;
 	placeholder?: Placeholder;
 	/** @internal The view's composition session (R8, L7, O34): at most one, live then tail. */
 	readonly composition: Composition = new Composition(this);
@@ -457,7 +471,8 @@ export class Edytor {
 		onSelectionChange,
 		placeholder,
 		labels,
-		onChange
+		onChange,
+		onDocChange
 	}: EdytorOptions) {
 		this.labels = labelsWith('editor', labels);
 		if (document !== undefined) {
@@ -481,6 +496,7 @@ export class Edytor {
 		}
 		this.readonly = readonly || false;
 		this.onChange = onChange;
+		this.onDocChange = onDocChange;
 		this.presence = new PresenceWriter(this.awareness, this.presenceKey, presence);
 
 		// From here on a throw must unwind what this view already claimed
@@ -738,13 +754,16 @@ export class Edytor {
 		} finally {
 			this.suppressCaretScrollDepth--;
 		}
+		// The report itself: no export. Each consumer is isolated (logged,
+		// never rethrown), as the facade isolates its subscribers.
+		const reports = [this.onDocChange, ...this.plugins.map((plugin) => plugin.onDocChange)];
+		callEach('[edytor] onDocChange', reports.filter(isListener), change);
 		// `this.value` is a full-document export (O(doc) — ~17ms at 5k
 		// blocks) — compute it only when a consumer actually exists.
-		if (this.onChange || this.plugins.some((plugin) => plugin.onChange)) {
-			const value = this.value;
-			this.onChange?.(value);
-			for (const plugin of this.plugins) plugin.onChange?.(value);
-		}
+		const values = [this.onChange, ...this.plugins.map((plugin) => plugin.onChange)].filter(
+			isListener
+		);
+		if (values.length > 0) callEach('[edytor] onChange', values, this.value);
 	};
 
 	/**

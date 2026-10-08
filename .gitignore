@@ -20,3 +20,6 @@ bench/vendor-baseline/
 bench/browser-app/dist/
 .arch-v2/
 test-results/
+
+# the upstream watch report (scripts/upstream-check.mjs)
+upstream-report/

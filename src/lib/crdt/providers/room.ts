@@ -61,7 +61,8 @@ import {
 	writeProtocolVersion
 } from '../protocols/envelope.js';
 import { checkSchema, SchemaMismatchError, type SchemaProblem } from '../admission.js';
-import type { EngineDoc, YDoc } from '../engine-api.js';
+import type { YDoc } from '../engine-api.js';
+import { asEngineDoc } from '../structs.js';
 
 export const messageSync = 0;
 export const messageAwareness = 1;
@@ -205,8 +206,7 @@ const awarenessFrame = (awareness: Awareness, clients: number[], states?: Awaren
 	);
 
 /** The outbound quarantine: a read-only document does not spread. */
-export const quarantined = (doc: YDoc): boolean =>
-	checkSchema(doc as unknown as EngineDoc) !== null;
+export const quarantined = (doc: YDoc): boolean => checkSchema(asEngineDoc(doc)) !== null;
 
 /** The lifecycle a provider carries — installed by {@link initLifecycle}. */
 export type LifecycleHost = {

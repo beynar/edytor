@@ -4,7 +4,7 @@
  * its region, re-decided after each fold's texts.
  */
 import type { BlockId } from '../../placement/model.js';
-import type { StoreStruct } from '../../structs.js';
+import { storeOf, type StoreStruct } from '../../structs.js';
 import { type Claim, cmpStamp, isBoundary } from '../model.js';
 import {
 	type LiveRow,
@@ -77,15 +77,11 @@ export const indexAnchored = (ix: IndexState & IndexClaims) => {
 		moved.sort((x, y) => cmpStamp(x.stamp, y.stamp));
 		return [...own, ...moved];
 	}
-	type StoreLike = {
-		getClock(client: number): number;
-		getItem(id: { client: number; clock: number }): unknown;
-	};
-	const store = (doc as unknown as { store: StoreLike }).store;
+	const store = storeOf(doc);
 	/** The struct holding unit `ref`, and the unit's offset in it (`null`: none held). */
 	const unitAt = (ref: { c: number; k: number }): [RowItem & StoreStruct, number] | null => {
 		if (store.getClock(ref.c) <= ref.k) return null;
-		const s = store.getItem({ client: ref.c, clock: ref.k }) as unknown as RowItem &
+		const s = store.getItem({ client: ref.c, clock: ref.k }) as RowItem &
 			StoreStruct & { parent?: unknown };
 		if (s?.parent === undefined || s.parent === null) return null;
 		return [s, ref.k - s.id.clock];

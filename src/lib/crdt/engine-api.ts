@@ -110,6 +110,12 @@ export interface EngineNode {
 /** Structural minimum of the vendored `Y.Doc`. */
 export interface EngineDoc {
 	clientID: number;
+	/**
+	 * Which node values a concurrent write of the same key replaced keep
+	 * their subtree (`null`: none, upstream's semantics). Every edytor
+	 * document carries the block registry's rule.
+	 */
+	keepReplaced?: ((item: never) => boolean) | null;
 	get(key?: string): EngineNode;
 	transact<T>(f: (transaction: unknown) => T, origin?: unknown): T;
 	/**

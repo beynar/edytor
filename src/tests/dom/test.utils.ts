@@ -11,7 +11,7 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONDoc } from '$lib/utils/json.js';
 import { Text as ModelText } from '$lib/text/text.svelte.js';
 import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
-import type { Awareness, EdytorDocument, YDoc } from '$lib/crdt/index.js';
+import type { Awareness, DocChange, EdytorDocument, YDoc } from '$lib/crdt/index.js';
 import type { EdytorSync, PresenceOptions } from '$lib/collaboration/index.js';
 import type { RenderedNode } from '../jsx/types.js';
 import {
@@ -42,6 +42,7 @@ export type RenderDomEdytorOptions = {
 	value?: JSONDoc;
 	autoSelectFixture?: boolean;
 	onChange?: (value: JSONDoc) => void;
+	onDocChange?: (change: DocChange) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	/** The root textbox's name and id, forwarded by `<Edytor>`. */
 	label?: {
@@ -373,6 +374,7 @@ export const renderDomEdytor = async (
 			sync: options.sync,
 			presence: options.presence,
 			onChange: options.onChange,
+			onDocChange: options.onDocChange,
 			onSelectionChange: options.onSelectionChange,
 			label: options.label,
 			onReady: (nextEdytor: Edytor) => {

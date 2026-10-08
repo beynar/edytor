@@ -82,7 +82,21 @@ if (block) {
 }
 ```
 
-Handles are not reactive, except their `data`. A template that reads `block.type` does not update when the type changes. Read handles in event handlers and commands, and use the reactive sources below in templates. `block.data`, `atom.data` and `edytor.data` are live proxies whose reads are reactive and whose assignments are commands (see [Properties](/docs/concepts/properties)).
+Handle getters are reactive. Read in a template, a `$derived` or an `$effect`, a getter depends on the [cells](#reading-state-reactively) its answer comes from, so `{block.type}` updates when the block is retyped, here or by a peer, and `block.children`, `block.content`, `text.stringContent` or `block.isInTree` follow their commits too. Read anywhere else (an event handler, a command), a getter is a plain read of the document. `block.data`, `atom.data` and `edytor.data` are live proxies whose reads are reactive and whose assignments are commands (see [Properties](/docs/concepts/properties)).
+
+```svelte title="src/lib/BlockBadge.svelte" check
+<script lang="ts">
+	import type { Block } from 'edytor';
+
+	let { block }: { block: Block } = $props();
+	// Re-runs when the block is retyped or its children change, by anyone.
+	const label = $derived(`${block.type} · ${block.children.length} children`);
+</script>
+
+{#if block.isInTree}<span>{label}</span>{/if}
+```
+
+What a getter depends on: `type`, `children`, `content` and `isInTree` the block's own cell; `parent` and `index` that cell and its parent's (a move patches the parent's child list); a `Text`'s and an `InlineBlock`'s getters their block's cell; `value` (the block's JSON, its subtree included) every commit. Getters that derive from these (`isEmpty`, `firstText`, `depth`, `definition`, …) follow them.
 
 | Handle | Identity | Useful members |
 | --- | --- | --- |
@@ -100,7 +114,7 @@ Inside a command, handle getters see the command's own earlier writes, so a norm
 
 Use these in templates, `$derived` and `$effect`:
 
-- **Block snippets** receive a view object, `block`, whose `type`, `data`, `selected` and `focused` are reactive. `block.handle` is the non-reactive handle for commands (`undefined` in a suggestion's preview).
+- **Block snippets** receive a view object, `block`, whose `type`, `data`, `selected` and `focused` are reactive. `block.handle` is the handle for commands (`undefined` in a suggestion's preview); its getters are reactive too.
 
   ```svelte
   {#snippet callout({ block, content })}
@@ -129,8 +143,23 @@ Use these in templates, `$derived` and `$effect`:
 
 - **`edytor.data`** (the document's properties) and the `data` of a block or inline block are reactive proxies: `{edytor.data.title}` updates when anyone changes it.
 
-- **`edytor.value`** is reactive and recomputes the whole JSON after each change. Fine for a word count or a save button; use `cells` for anything per block.
+- **`edytor.value`** is reactive and recomputes the whole JSON after each change. Fine for a word count or a save button; use `cells` or the handles for anything per block.
+
+- **`onDocChange`** (an `<Edytor>` prop and a plugin hook) receives each commit's change report, a [`DocChange`](/docs/reference/document-api): the blocks added, removed and moved, those whose type or data (`meta`) or content changed, and the new child order of each parent that changed. Unlike `onChange`, it exports nothing, so it costs nothing on a large document. The report is the document's own, shared with every other consumer and view, so it is read-only; a consumer that throws is logged and the others still run. Read `edytor.value` from it only when you need the JSON (a debounced save):
+
+  ```ts title="src/lib/autosave.ts" check
+  import type { DocChange, EdytorInstance } from 'edytor';
+
+  // `<Edytor onDocChange={autosave(edytor, save)}>`: one export a second at most.
+  export const autosave = (edytor: EdytorInstance, save: (json: unknown) => void, delay = 1000) => {
+  	let timer: ReturnType<typeof setTimeout> | undefined;
+  	return (_change: DocChange) => {
+  		clearTimeout(timer);
+  		timer = setTimeout(() => save(edytor.value), delay);
+  	};
+  };
+  ```
 
 - **`edytor.selection.value`**, `selection.state` and `selection.projection` are reactive, as are `selection.selectedBlocks` and `selection.focusedBlocks`.
 
-Everything else, including handles, `facade` reads and definitions, is imperative: read it when you need it.
+Everything else, including `facade` reads and definitions, is imperative: read it when you need it.

@@ -6,6 +6,7 @@
  */
 import { Y } from '../../crdt/engine.js';
 import type { PurgeReport } from '../../crdt/purge.js';
+import { asEngineDoc } from '../../crdt/structs.js';
 import { PURGE_ORIGIN, noTimers } from '../DocumentRoom.js';
 import { DEFAULT_RETENTION_DAYS } from '../history.js';
 import { DAY, crdt, knob, type RoomContext } from './context.js';
@@ -95,7 +96,7 @@ export class RoomPurge {
 		room.transacting = true;
 		try {
 			room.facade.transact(() => {
-				report = crdt.doc.purge(doc as never, room.facade, horizon);
+				report = crdt.doc.purge(asEngineDoc(doc), room.facade, horizon);
 			}, PURGE_ORIGIN);
 		} finally {
 			room.transacting = false;

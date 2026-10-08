@@ -7,6 +7,7 @@ import { readData } from '../../data.js';
 import type { EngineNode } from '../../engine-api.js';
 import { baseIdOf, incarnationNode, incarnationsOf, isIncarnationId } from '../../incarnations.js';
 import { type BlockId, type BlockRec, candidatesOf } from '../../placement/model.js';
+import { engineOps } from '../../structs.js';
 import {
 	CLAIMS,
 	CONTENT,
@@ -47,8 +48,7 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & Inde
 	// ── records ──────────────────────────────────────────────────────
 
 	/** P14's predicate: the registry values the engine keeps. */
-	const kept = (item: unknown): boolean =>
-		(Y as unknown as { isKeptReplaced(item: unknown): boolean }).isKeptReplaced(item);
+	const kept = engineOps(Y).isKeptReplaced;
 	/** The node of `id`: its registry value, or the losing incarnation a derived id names. */
 	const nodeAt = (id: BlockId): unknown => {
 		const v = registry.getAttr(id);

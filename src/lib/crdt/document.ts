@@ -143,7 +143,8 @@
 import type { MarkEdge } from './text/marks.js';
 import { DEV } from 'esm-env';
 import { Y } from './engine.js';
-import type { EngineApi, EngineDoc, YDoc, YUndoManager } from './engine-api.js';
+import type { EngineApi, YDoc, YUndoManager } from './engine-api.js';
+import { asEngineDoc } from './structs.js';
 import {
 	bindAttribution,
 	type AttributionBinding,
@@ -162,7 +163,7 @@ import {
 import { assertAdmission, assertSchema, bindAdmission, checkSchema } from './admission.js';
 import { Awareness } from './protocols/awareness.js';
 import { callEach } from './protocols/observable.js';
-import type { EdytorSync, EdytorSyncCleanup, EdytorSyncPayload } from './providers/index.js';
+import type { EdytorSync, EdytorSyncCleanup } from './providers/index.js';
 import { SyncRefusedError } from './providers/room.js';
 import { TRANSACTION } from '../constants.js';
 import type { JSONDoc } from '../utils/json.js';
@@ -476,7 +477,7 @@ export class EdytorDocument {
 		this.doc = init.doc;
 		this._ownsDoc = init.ownsDoc;
 		this._defaultType = init.semantics?.defaultType ?? 'paragraph';
-		this.facade = init.binding.create(this.doc as unknown as EngineDoc, {
+		this.facade = init.binding.create(asEngineDoc(this.doc), {
 			roleOf: (type) => this._capability.roles.get(type),
 			kinds: () => this._capability.roles.keys(),
 			defaultType: this._defaultType,
@@ -489,7 +490,7 @@ export class EdytorDocument {
 			lineageDepth: init.lineage?.depth,
 			// The `writable` guard: a write on a read-only document refuses
 			// with the `SchemaMismatchError` naming the stamp.
-			assertWritable: () => assertSchema(this.doc as unknown as EngineDoc, 'document')
+			assertWritable: () => assertSchema(asEngineDoc(this.doc), 'document')
 		});
 		this.awareness = init.awareness ?? new init.awarenessCtor(this.doc);
 		this._ownsAwareness = init.awareness === undefined;
@@ -512,7 +513,7 @@ export class EdytorDocument {
 		// replica's actor dictionary entries (`c/`+`u/`) once; ordinary
 		// edits perform no attribution work (U2) and per-block records are
 		// written inside the owning op's transaction by the facade.
-		this._attributionCtl = init.attribution.attach(this.doc as unknown as EngineDoc, {
+		this._attributionCtl = init.attribution.attach(asEngineDoc(this.doc), {
 			actor: this.actor
 		});
 		if (init.semantics) {
@@ -576,7 +577,7 @@ export class EdytorDocument {
 	 * neither persist nor broadcast it.
 	 */
 	get writable(): boolean {
-		return checkSchema(this.doc as unknown as EngineDoc) === null;
+		return checkSchema(asEngineDoc(this.doc)) === null;
 	}
 
 	/**
@@ -777,7 +778,7 @@ export class EdytorDocument {
 		if (this._readiness !== 'pending') {
 			return;
 		}
-		const verdict = assertAdmission(this.doc as unknown as EngineDoc, 'document');
+		const verdict = assertAdmission(asEngineDoc(this.doc), 'document');
 		if (verdict === 'initialized') {
 			// Hydrated/loaded doc — asserted above; content is left alone.
 			this._readiness = 'hydrated';
@@ -971,10 +972,9 @@ export class EdytorDocument {
 	private _decide = (value: JSONDoc | undefined, report = false, synced = false): void => {
 		if (this._destroyed || this.ready) return;
 		// H12: an empty document waits for a provider that synced.
-		if (this.requireHydration && !synced && !isInitialized(this.doc as unknown as EngineDoc))
-			return;
+		if (this.requireHydration && !synced && !isInitialized(asEngineDoc(this.doc))) return;
 		const waiting = this._pendingSyncs > 0 || this._refusals.size > 0;
-		if (waiting && !isInitialized(this.doc as unknown as EngineDoc)) return;
+		if (waiting && !isInitialized(asEngineDoc(this.doc))) return;
 		try {
 			this.sync(value);
 		} catch (error) {
@@ -1305,7 +1305,7 @@ export const bindDocument = (Y: EngineApi) => {
 			// doc is trivially `'fresh'`; the uniform call keeps the gate
 			// structural rather than assumed.
 			const doc = new Y.Doc();
-			assertAdmission(doc as unknown as EngineDoc, 'created document');
+			assertAdmission(asEngineDoc(doc), 'created document');
 			const document = init({
 				doc,
 				ownsDoc: true,
@@ -1406,7 +1406,7 @@ export const bindDocument = (Y: EngineApi) => {
 			}
 			// Doc-level admission before composition — a refusal is typed
 			// and leaves the borrowed doc untouched (see the docstring).
-			assertAdmission(doc as unknown as EngineDoc, 'attached document');
+			assertAdmission(asEngineDoc(doc), 'attached document');
 			const document = init({
 				doc,
 				ownsDoc: false,

@@ -44,7 +44,8 @@
  * operation).
  */
 import { setMarkEdges } from './text/marks.js';
-import type { EngineApi, EngineDoc, YUndoManager } from './engine-api.js';
+import type { EngineApi, EngineDoc, YDoc, YUndoManager } from './engine-api.js';
+import { keepingReplaced } from './incarnations.js';
 import { TYPE, SCHEMA } from './schema.js';
 import { bindModel, type BlockId, type BlockSpec, type Destination } from './placement/model.js';
 import { bindText } from './text/model.js';
@@ -89,13 +90,16 @@ import { deleteOps } from './doc/delete.js';
 import { metaOps } from './doc/meta.js';
 import { contentOps } from './doc/content.js';
 // Types the facade's inferred declaration names: imported here so the
-// emitted `bindEdytorDoc` type names them rather than an import path.
+// emitted `bindEdytorDoc` type names them rather than an import path
+// (`api/` reports the difference), so no value of the module reads them.
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import type { EngineNode } from './engine-api.js';
 import type { ContentItem, InlineSpec, ModelView, SplitTail } from './placement/model.js';
 import type { Anchor } from './text/model.js';
 import type { ContentRun } from './text/runs.js';
 import type { DocPosition } from './rangeDelete.js';
 import type { DataPatch } from './data.js';
+/* eslint-enable @typescript-eslint/no-unused-vars */
 import type {
 	AnchorAffinity,
 	BlockRole,
@@ -180,6 +184,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	// ── per-doc facade ──────────────────────────────────────────────────
 
 	const create = (doc: EngineDoc, config: EdytorDocConfig = {}) => {
+		keepingReplaced(doc);
 		// Document-boundary check — foreign (v13-engine) and legacy-schema docs
 		// fail fast here rather than inside the runs view (see assertUsableDoc).
 		assertUsableDoc(doc);
@@ -599,6 +604,15 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		SchemaMismatchError,
 		/** Attach the per-doc facade. */
 		create,
+		/**
+		 * A new engine document that is an edytor document from the start:
+		 * a registry value a concurrent creation replaced keeps its subtree
+		 * (each edytor document carries the rule; the engine's default stays
+		 * upstream's). `create` gives it to a document it adopts, which must
+		 * not have integrated anything yet.
+		 */
+		newDoc: (opts?: ConstructorParameters<EngineApi['Doc']>[0]): YDoc =>
+			keepingReplaced(new Y.Doc(opts)),
 		/**
 		 * Keep, on `doc`, the text a replica may have to copy again: its
 		 * `gcFilter` then spares a deleted copy's content, as every facade's

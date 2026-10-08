@@ -20,8 +20,10 @@
  *
  * Worker-safe: the room converts its container at load.
  */
-import type { EngineApi, EngineDoc, YDoc } from '../engine-api.js';
+import type { EngineApi, YDoc } from '../engine-api.js';
+import { asEngineDoc } from '../structs.js';
 import { bindEdytorDoc } from '../edytor-doc.js';
+import { keepingReplaced } from '../incarnations.js';
 import { PROTOCOL_VERSION, type GenerationRecord } from '../protocols/envelope.js';
 import type { DocumentSemanticsConfig } from '../document.js';
 import { defaultSemantics, facadeConfigOf } from '../semantics.js';
@@ -48,7 +50,7 @@ export const bindGenerations = (Y: EngineApi) => {
 	const facadeWith =
 		(semantics: DocumentSemanticsConfig = defaultSemantics) =>
 		(doc: YDoc) =>
-			docs.create(doc as unknown as EngineDoc, facadeConfigOf(semantics));
+			docs.create(asEngineDoc(doc), facadeConfigOf(semantics));
 	const generations = {
 		isPreviousGenerationRecord,
 		/**
@@ -61,12 +63,12 @@ export const bindGenerations = (Y: EngineApi) => {
 			updates: ReadonlyArray<Uint8Array | { v2: Uint8Array }>,
 			facadeOf: (doc: YDoc) => Reader
 		): JSONDoc => {
-			const doc = new Y.Doc();
+			const doc = keepingReplaced(new Y.Doc());
 			try {
-				Y.transact(doc as never, () => {
+				Y.transact(doc, () => {
 					for (const u of updates)
-						if (u instanceof Uint8Array) Y.applyUpdate(doc as never, u);
-						else Y.applyUpdateV2(doc as never, u.v2);
+						if (u instanceof Uint8Array) Y.applyUpdate(doc, u);
+						else Y.applyUpdateV2(doc, u.v2);
 				});
 				const facade = facadeOf(doc);
 				try {
@@ -84,12 +86,12 @@ export const bindGenerations = (Y: EngineApi) => {
 		 * read with `semantics`.
 		 */
 		seedOf: (value: JSONDoc, semantics?: DocumentSemanticsConfig): Uint8Array => {
-			const doc = new Y.Doc();
+			const doc = keepingReplaced(new Y.Doc());
 			try {
 				const facade = facadeWith(semantics)(doc);
 				facade.seed(value.children, value.data);
 				facade.dispose();
-				return Y.encodeStateAsUpdate(doc as never);
+				return Y.encodeStateAsUpdate(doc);
 			} finally {
 				doc.destroy();
 			}

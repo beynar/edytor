@@ -281,6 +281,13 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	 */
 	const clearDocument = (name: string) => idb.deleteDB(generationDbName(name));
 
+	/**
+	 * Each provider's doc-`destroy` listener: it ends the provider (it never
+	 * rejects: the close is caught). Kept off the class, so it is not part
+	 * of the provider's public shape.
+	 */
+	const destroyWithDoc = new WeakMap<object, () => void>();
+
 	class IndexeddbPersistence extends IsolatedObservable<{
 		synced: (provider: IndexeddbPersistence) => void;
 		'protocol-mismatch': (mismatch: ProtocolMismatch, provider: IndexeddbPersistence) => void;
@@ -383,7 +390,9 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 					// A read-only doc's pre-hydration state is never persisted.
 					const beforeApplyUpdatesCallback = (updatesStore: IDBObjectStore) => {
 						if (!quarantined(doc)) {
-							idb.addAutoKey(updatesStore, encodeRow(Y.encodeStateAsUpdate(doc)));
+							idb
+								.addAutoKey(updatesStore, encodeRow(Y.encodeStateAsUpdate(doc)))
+								.catch((error) => this.emit('message-error', [error, this]));
 						}
 					};
 					// Hydrated: join the room and claim `synced` (lifetime).
@@ -445,7 +454,9 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 
 			doc.on('update', this._storeUpdate);
 			this.awareness.on('update', this._awarenessUpdateHandler);
-			doc.on('destroy', this.destroy);
+			const onDocDestroy = (): void => void this.destroy();
+			destroyWithDoc.set(this, onDocDestroy);
+			doc.on('destroy', onDocDestroy);
 		}
 
 		/** The lifetime hydration claim. */
@@ -497,7 +508,8 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 				clearTimeout(this._storeTimeoutId);
 			}
 			this.doc.off('update', this._storeUpdate);
-			this.doc.off('destroy', this.destroy);
+			const onDocDestroy = destroyWithDoc.get(this);
+			if (onDocDestroy) this.doc.off('destroy', onDocDestroy);
 			this.awareness.off('update', this._awarenessUpdateHandler);
 			this.disconnectBc();
 			if (this._ownsAwareness) {

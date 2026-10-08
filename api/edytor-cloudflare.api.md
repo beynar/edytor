@@ -1215,15 +1215,15 @@ export type DocChange = {
     origin: unknown;
     local: boolean;
     version: number;
-    added: Map<BlockId, ProjectedBlock>;
-    removed: Set<BlockId>;
-    moved: Set<BlockId>;
-    meta: Map<BlockId, {
+    added: ReadonlyMap<BlockId, ProjectedBlock>;
+    removed: ReadonlySet<BlockId>;
+    moved: ReadonlySet<BlockId>;
+    meta: ReadonlyMap<BlockId, {
         type: string;
         data?: Record<string, unknown>;
     }>;
-    content: Map<BlockId, readonly ContentRun[]>;
-    order: Map<BlockId | null, readonly BlockId[]>;
+    content: ReadonlyMap<BlockId, readonly ContentRun[]>;
+    order: ReadonlyMap<BlockId | null, readonly BlockId[]>;
     data?: Record<string, unknown>;
 };
 ```
@@ -1686,6 +1686,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         })[];
         onChange: (cb: (change: DocChange) => void) => (() => void);
     };
+    newDoc: (opts?: ConstructorParameters<EngineApi["Doc"]>[0]) => YDoc;
     keepCopies: (doc: EngineDoc) => void;
     purge: (doc: EngineDoc, facade: {
         model: import("./placement/model.js").PlacementModel;
@@ -1794,6 +1795,7 @@ export interface EngineDeepEvent {
 ```ts
 export interface EngineDoc {
     clientID: number;
+    keepReplaced?: ((item: never) => boolean) | null;
     get(key?: string): EngineNode;
     transact<T>(f: (transaction: unknown) => T, origin?: unknown): T;
     on(name: 'update', f: (update: Uint8Array, origin: unknown, doc: EngineDoc, transaction: unknown) => void): void;

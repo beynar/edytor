@@ -180,6 +180,7 @@ export const statsPlugin: Plugin = () => ({
 ```
 
 - `onChange(value)` runs after every commit that changed the visible document: local edits, remote edits and undo or redo. `value` is the full JSON export, computed only when an `onChange` consumer exists. It is the same value the `<Edytor onChange>` prop receives.
+- `onDocChange(change)` runs after the same commits with the change report (`DocChange`: the blocks added, removed, moved, retyped or edited) and exports nothing, so a plugin that reacts to some blocks pays for those only. The report is shared with every other consumer and view, so it is read-only. A hook that throws is logged and the other consumers still run, as for `onChange`.
 - `onSelectionChange(selection)` runs after the selection value changed. A remote edit that only shifts where the selection is drawn does not trigger it. `selection` is the editor's `EdytorSelection`: `selection.value` is the value, `selection.state` the resolved texts and offsets.
 
 ## Input and clipboard hooks

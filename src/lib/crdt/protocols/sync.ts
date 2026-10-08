@@ -49,7 +49,8 @@ import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import { SCHEMA, SCHEMA_NAME, SCHEMA_VERSION } from '../edytor-doc.js';
 import type { SchemaProblem } from '../admission.js';
-import type { EngineApi, EngineDoc, YDoc } from '../engine-api.js';
+import type { EngineApi, YDoc } from '../engine-api.js';
+import { asEngineDoc, attrItems } from '../structs.js';
 
 export type SyncProtocol = ReturnType<typeof bindSync>;
 
@@ -176,13 +177,11 @@ export const bindSync = (Y: EngineApi) => {
 	 * is judged when it can (see {@link applyRemote}).
 	 */
 	const foreignStamp = (doc: YDoc, parts: Decoded[]): SchemaProblem | null => {
-		const meta = (doc as unknown as EngineDoc).get(SCHEMA.roots.meta) as unknown as {
-			_map: Map<string, Attr>;
-		};
+		const meta = attrItems<Attr>(asEngineDoc(doc).get(SCHEMA.roots.meta));
 		const at = ({ client, clock }: Id) => `${client}:${clock}`;
 		const deleted = ({ client, clock }: Id) => parts.some((p) => p.ds.has(client, clock));
 		const keyOf = new Map<string, unknown>();
-		for (const item of meta._map.values()) {
+		for (const item of meta.values()) {
 			for (let it: Attr | null | undefined = item; it; it = it.left)
 				keyOf.set(at(it.id), it.parentSub);
 		}
@@ -212,8 +211,8 @@ export const bindSync = (Y: EngineApi) => {
 			}
 		}
 		// A key that held or gets a stamp must keep a live one.
-		for (const key of new Set([...meta._map.keys(), ...written])) {
-			const item = meta._map.get(key as string);
+		for (const key of new Set([...meta.keys(), ...written])) {
+			const item = meta.get(key as string);
 			const live = item !== undefined && !item.deleted;
 			const kept = live && !deleted(item.id);
 			if ((live || written.has(key)) && !kept && !rewritten.has(key)) {

@@ -25,6 +25,7 @@
  * it (the same contract the U00 fixtures pin).
  */
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
+import { asEngineDoc } from '../structs.js';
 import {
 	cloneJson,
 	type JSONBlock,
@@ -158,12 +159,13 @@ export const bindLegacyReader = (Y: EngineApi) => {
 	 * update rows. Throws when the decoded doc is not the v13 Edytor schema.
 	 */
 	const readLegacyJSON = (updates: Uint8Array[]): JSONDoc => {
-		const doc = new Y.Doc() as unknown as EngineDoc;
-		Y.transact(doc as YDocType, () => {
+		const raw = new Y.Doc();
+		Y.transact(raw, () => {
 			for (const update of updates) {
-				Y.applyUpdate(doc as YDocType, update);
+				Y.applyUpdate(raw, update);
 			}
 		});
+		const doc = asEngineDoc(raw);
 		// Fail closed on un-integratable rows: pendingStructs/pendingDs are
 		// non-null while CRDT dependencies are missing — the materialized
 		// JSON would silently omit that content (gate-2 migration probe).
@@ -199,6 +201,3 @@ export const bindLegacyReader = (Y: EngineApi) => {
 
 	return { readLegacyJSON, readLegacyJSONFromDoc, isLegacyDoc };
 };
-
-// local alias so readLegacyJSON can call Y.transact with the engine doc type
-type YDocType = InstanceType<EngineApi['Doc']>;

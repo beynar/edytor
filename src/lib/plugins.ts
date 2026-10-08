@@ -10,7 +10,7 @@ import type { TextOperations } from './text/text.utils.js';
 import type { BlockOperations } from './block/block.utils.js';
 import type { EdytorSelection } from './selection/selection.svelte.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
-import type { PlanEffect } from './crdt/edytor-doc.js';
+import type { DocChange, PlanEffect } from './crdt/edytor-doc.js';
 import type { MarkEdge } from './session/editing/text.js';
 import type { Prevent } from './utils.js';
 
@@ -49,8 +49,9 @@ export type BlockView<D = Record<string, any>> = {
 	readonly selected: boolean;
 	readonly focused: boolean;
 	/**
-	 * The block's id-only handle (non-reactive reads, commands); `undefined`
-	 * in a suggestion's preview, which is no block of the document.
+	 * The block's id-only handle (its getters, reactive in a template, and
+	 * its commands); `undefined` in a suggestion's preview, which is no block
+	 * of the document.
 	 */
 	readonly handle: Block | undefined;
 	/** Marks inner chrome (a header, a toolbar) non-editable; the block element is the core's. */
@@ -275,6 +276,11 @@ export type PluginOperations = {
 	onAfterOperation?: (payload: AfterOperationPayload) => void;
 	/** Called when the editor value changes: the same `JSONDoc` shape `<Edytor value>` takes. */
 	onChange?: (value: JSONDoc) => void;
+	/**
+	 * Called after every commit that changed the visible document, with what
+	 * it changed (the change report), without exporting the document.
+	 */
+	onDocChange?: (change: DocChange) => void;
 	/** Called when the selection changes */
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	/** The placeholder of an empty block: rendered by a `::before` rule the library ships. */

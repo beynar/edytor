@@ -10,6 +10,7 @@
 import { Y } from '../../crdt/engine.js';
 import * as E from '../../crdt/protocol.js';
 import { CLOSE } from '../../crdt/providers/room.js';
+import { asEngineDoc } from '../../crdt/structs.js';
 import { defaultSemantics, facadeConfigOf, semanticsDigest } from '../../crdt/semantics.js';
 import type { DocumentSemanticsConfig, EdytorDoc, JSONDoc, YDoc } from '../../crdt/index.js';
 import {
@@ -210,7 +211,7 @@ export class RoomContext {
 
 	/** A facade over `doc` obeying the room's block roles (`semantics`). */
 	facadeOf(doc: YDoc): EdytorDoc {
-		return crdt.doc.create(doc as never, this.lookups) as EdytorDoc;
+		return crdt.doc.create(asEngineDoc(doc), this.lookups) as EdytorDoc;
 	}
 
 	/**
@@ -270,7 +271,7 @@ export class RoomContext {
 			this.storage.heal();
 			const doc = this.requireDoc();
 			this.history.closeSlotIfPast();
-			if (!crdt.doc.isInitialized(doc as never)) this.facade.seed([]);
+			if (!crdt.doc.isInitialized(asEngineDoc(doc))) this.facade.seed([]);
 			let result!: T;
 			let thrown = null as { error: unknown } | null;
 			this.transacting = true;

@@ -7,6 +7,14 @@
 import { Y } from '../../crdt/engine.js';
 import * as E from '../../crdt/protocol.js';
 import { gunzip, packed } from '../../crdt/storage.js';
+import {
+	asEngineDoc,
+	collectable,
+	collectNow,
+	collects,
+	engineOps,
+	stepsOf
+} from '../../crdt/structs.js';
 import type { JSONDoc, YDoc, YUndoManager } from '../../crdt/index.js';
 import {
 	PURGE_ORIGIN,
@@ -356,7 +364,7 @@ export class RoomHistory {
 			room.transacting = true;
 			try {
 				room.facade.transact(() => {
-					report = crdt.doc.restoreTo(doc as never, room.facade, json);
+					report = crdt.doc.restoreTo(asEngineDoc(doc), room.facade, json);
 				}, RESTORE_ORIGIN);
 			} finally {
 				room.transacting = false;
@@ -367,7 +375,7 @@ export class RoomHistory {
 				room.storage.heal();
 				throw error;
 			}
-			const step = history.undoStack.at(-1) as unknown as RestoreStep | undefined;
+			const step = stepsOf<RestoreStep>(history.undoStack).at(-1);
 			if (step === undefined) return { status: 'noop', key, ...report };
 			const kept: RestoreStep = {
 				key,
@@ -406,11 +414,13 @@ export class RoomHistory {
 			const history = this.restoreHistoryOf();
 			// A woken room rebuilds the step from its table.
 			if (history.undoStack.length === 0) {
-				history.undoStack.push({
+				stepsOf<Pick<RestoreStep, 'inserts' | 'deletes'> & { meta: Map<unknown, unknown> }>(
+					history.undoStack
+				).push({
 					inserts: step.inserts,
 					deletes: step.deletes,
 					meta: new Map()
-				} as never);
+				});
 			}
 			this.closeSlotIfPast();
 			this.writer = options.user ?? step.user;
@@ -500,12 +510,11 @@ export class RoomHistory {
 		if (history !== null) room.facade.releaseHistory(history);
 		const doc = room.live;
 		if (doc === null) return;
-		const d = doc as unknown as { gc: boolean; gcFilter: (it: Item) => boolean };
+		const gc = collects(doc);
 		doc.transact((tr: unknown) => {
-			Y.iterateStructsByIdSet(tr as never, step.deletes as never, (struct: unknown) => {
-				const it = struct as Item & { keep?: boolean; gc(tr: unknown, parentGCd: boolean): void };
-				if (it instanceof Y.Item && it.deleted && it.keep !== true && d.gc && d.gcFilter(it))
-					it.gc(tr, false);
+			engineOps(Y).iterate<Item & { keep?: boolean }>(tr, step.deletes, (it) => {
+				if (it instanceof Y.Item && it.deleted && it.keep !== true && gc && collectable(doc, it))
+					collectNow(it, tr);
 			});
 		});
 	}

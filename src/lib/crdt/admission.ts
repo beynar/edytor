@@ -74,6 +74,8 @@ import {
 } from './edytor-doc.js';
 import type { SchemaProblem } from './edytor-doc.js';
 import type { EngineApi, EngineDoc, YDoc } from './engine-api.js';
+import { asEngineDoc } from './structs.js';
+import { keepingReplaced } from './incarnations.js';
 
 // ── shared gate vocabulary (one doorway for document + transport layers) ──
 export {
@@ -185,7 +187,7 @@ export const bindAdmission = (Y: EngineApi) => ({
 			prepare?: (doc: YDoc) => void;
 		} = {}
 	): YDoc => {
-		const doc = new Y.Doc();
+		const doc = keepingReplaced(new Y.Doc());
 		options.prepare?.(doc);
 		const apply = (part: Uint8Array | { v2: Uint8Array }) =>
 			part instanceof Uint8Array ? Y.applyUpdate(doc, part) : Y.applyUpdateV2(doc, part.v2);
@@ -197,7 +199,7 @@ export const bindAdmission = (Y: EngineApi) => ({
 		} catch (cause) {
 			throw new UndecodableUpdateError(docName, cause);
 		}
-		assertAdmission(doc as unknown as EngineDoc, docName);
+		assertAdmission(asEngineDoc(doc), docName);
 		return doc;
 	}
 });

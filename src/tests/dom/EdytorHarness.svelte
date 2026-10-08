@@ -3,7 +3,7 @@
 	import type { Plugin } from '$lib/plugins.js';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
-	import type { Awareness, EdytorDocument, YDoc } from '$lib/crdt/index.js';
+	import type { Awareness, DocChange, EdytorDocument, YDoc } from '$lib/crdt/index.js';
 	import type { EdytorSync, PresenceOptions } from '$lib/collaboration/index.js';
 
 	type Props = {
@@ -24,6 +24,7 @@
 		sync?: EdytorSync;
 		presence?: PresenceOptions;
 		onChange?: (value: JSONDoc) => void;
+		onDocChange?: (change: DocChange) => void;
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		onReady?: (edytor: EdytorContext) => void;
 		/** The root textbox's name and id (`aria-label`, `aria-labelledby`, `aria-describedby`, `id`). */
@@ -53,6 +54,7 @@
 		sync,
 		presence,
 		onChange,
+		onDocChange,
 		onSelectionChange,
 		onReady = () => {},
 		label
@@ -87,6 +89,7 @@
 	{sync}
 	{presence}
 	{onChange}
+	{onDocChange}
 	{onSelectionChange}
 	{...label}
 />

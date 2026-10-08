@@ -134,8 +134,6 @@ export class RoomStorage {
 	/** The waiting deletes stored as `pending` records (the engine may hold more, in memory). */
 	storedWaiting: Decoded['ds'] = Y.createIdSet();
 	private nextRecord = 0;
-	/** How the container stores its snapshots (its generation record says; a fresh one: this build's). */
-	private format: StorageFormat = 'v2';
 	/** The snapshot compression in flight (`compressed()`). */
 	private compressing: Promise<unknown> = Promise.resolve();
 	/** The raw bytes of the compressed snapshot record (`records` reads it; only `start` can inflate). */
@@ -303,7 +301,6 @@ export class RoomStorage {
 				return this.fail(error, true);
 			}
 			room.live?.destroy();
-			this.format = STORED_GENERATION_RECORD.storage!;
 			this.adopt(doc);
 			this.storedWaiting = waiting;
 			this.compressLater(record, snapshot);
@@ -366,7 +363,6 @@ export class RoomStorage {
 				// A fresh room: the generation record is written with the first stored record.
 				room.state.origin = { kind: 'fresh' };
 				this.documentBytes = 0;
-				this.format = STORED_GENERATION_RECORD.storage!;
 				this.storedWaiting = Y.createIdSet();
 				this.adopt(roomDoc(() => room.history.restoreKeep));
 				return;
@@ -387,7 +383,6 @@ export class RoomStorage {
 				`room ${room.ctx.id}`,
 				() => room.history.restoreKeep
 			);
-			this.format = storageOf(found);
 			this.documentBytes = rest.reduce((n, record) => n + record.bytes.length, 0);
 			this.adopt(doc);
 			// Every delete the engine holds waiting came from the rows.
@@ -444,7 +439,6 @@ export class RoomStorage {
 				);
 		});
 		room.history.clearRestore();
-		this.format = STORED_GENERATION_RECORD.storage!;
 		this.documentBytes = snapshot.length;
 		this.updates = 0;
 		this.storedWaiting = Y.createIdSet();
@@ -645,7 +639,6 @@ export class RoomStorage {
 				throw error;
 			}
 			this.updates = 0;
-			this.format = STORED_GENERATION_RECORD.storage!;
 			this.storedWaiting = still;
 			this.compressLater(record, snapshot);
 			// Unknown ids' deletes go, the ones waiting in memory with a rewrite too.

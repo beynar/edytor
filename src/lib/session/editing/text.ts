@@ -27,7 +27,6 @@ export type EdgeSide = 'inside' | 'outside';
  * concurrent insert at a mark's ends lands.
  */
 export type { MarkEdge } from '$lib/crdt/text/marks.js';
-import type { MarkEdge } from '$lib/crdt/text/marks.js';
 export type Marks = Record<string, SerializableContent>;
 /** Marks staged at a caret for the next insertion: the full set, values kept (`null` = off). */
 export type PendingMarks = Record<string, SerializableContent | null>;

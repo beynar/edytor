@@ -61,6 +61,7 @@
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
 import { REGISTRY_KEY, type BlockId } from '../placement/model.js';
 import { BLOCK_ATTR_ROOT, isNodeLike, LAST_CHANGED_ATTR, NONCE, REC_PREFIX } from '../schema.js';
+import { attrItems, newNode as makeNode, onTransaction } from '../structs.js';
 
 /** The durable per-block attribution record a replica sees. */
 export type ActorId = string;
@@ -166,7 +167,7 @@ const blockNodeOf = (doc: EngineDoc, id: BlockId): EngineNode | null => {
 /** Client id of the replica that wrote the CURRENT `l` map item (null when none/deleted). */
 const lTipWriter = (node: EngineNode): number | null => {
 	type Tip = { id?: { client: number; clock: number }; deleted?: boolean };
-	const item = (node as unknown as { _map?: Map<string, Tip | null> })._map?.get(LAST_CHANGED_ATTR);
+	const item = attrItems<Tip | null>(node).get(LAST_CHANGED_ATTR);
 	return item != null && !item.deleted && item.id !== undefined ? item.id.client : null;
 };
 
@@ -223,7 +224,7 @@ export const lineageOf = (doc: EngineDoc, id: BlockId): LineageEntry[] | undefin
  * plain setAttrs so the metadata commits in the same update.
  */
 export const bindBlockAttribution = (Y: EngineApi) => {
-	const newNode = (name: string): EngineNode => new Y.Node(name) as unknown as EngineNode;
+	const newNode = (name: string): EngineNode => makeNode(Y, name);
 
 	/**
 	 * Get-or-create the `b/<id>` record for `node`'s incarnation (its nonce).
@@ -378,11 +379,7 @@ export const bindBlockAttribution = (Y: EngineApi) => {
 				const wm = lineageWatermarkOf(rec.toArray() as LineageEntry[]);
 				if (rec.length > wm) rec.delete(0, rec.length - wm);
 			};
-			(
-				doc as unknown as {
-					on(name: 'afterTransaction', f: (t: unknown, d: EngineDoc) => void): void;
-				}
-			).on('afterTransaction', (transaction) => {
+			onTransaction<unknown>(doc, 'afterTransaction', (transaction) => {
 				try {
 					const changed = (transaction as { changed?: Map<unknown, Set<string | null>> })?.changed;
 					if (changed === undefined) return;

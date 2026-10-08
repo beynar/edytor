@@ -5,6 +5,7 @@
  * frame, as the room's own transaction.
  */
 import type { DocChange, YDoc, YUndoManager } from '../../crdt/index.js';
+import { asEngineDoc } from '../../crdt/structs.js';
 import {
 	ROOM_ORIGIN,
 	type Attachment,
@@ -140,7 +141,7 @@ export class RoomValidation {
 			created.off = facade.onChange((change) => this.indexChange(created, change));
 			v = this.validation = created;
 		}
-		if (v.history === null && crdt.doc.isInitialized(doc as never)) {
+		if (v.history === null && crdt.doc.isInitialized(asEngineDoc(doc))) {
 			v.history = this.room.facade.createUndoManager({
 				captureTimeout: 0,
 				trackedOrigins: new Set()
@@ -172,16 +173,14 @@ export class RoomValidation {
 			v.states.set(id, state);
 		};
 		for (const id of change.removed) drop(id);
-		const add = (block: {
-			id: string;
-			children: ReadonlyArray<{ id: string; children: never[] }>;
-		}) => {
+		type Added = { id: string; children: readonly Added[] };
+		const add = (block: Added) => {
 			touch(block.id);
 			read(block.id, false);
 			v.children.set(block.id, this.room.facade.childrenIds(block.id));
 			block.children.forEach(add);
 		};
-		for (const block of change.added.values()) add(block as never);
+		for (const block of change.added.values()) add(block);
 		for (const id of change.moved) read(id, true);
 		for (const id of change.meta.keys()) read(id, false);
 		for (const id of change.content.keys()) read(id, false);

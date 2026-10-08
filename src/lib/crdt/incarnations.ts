@@ -5,8 +5,9 @@
  * Caller ids are public API, so two writers may create block `N` at once.
  * The registry is a map: its last-writer-wins keeps the larger client's
  * node, and the engine keeps the other node's subtree (fork patch P14,
- * `Doc.keepReplaced` = {@link keepRegistryLosers}): deleted as a value of
- * the key, but its text, claims and placement stay live, never collected.
+ * each edytor document's `keepReplaced` = {@link keepRegistryLosers}, set by
+ * {@link keepingReplaced} before it integrates anything): deleted as a value
+ * of the key, but its text, claims and placement stay live, never collected.
  *
  * The index shows each such LOSING INCARNATION written by a live writer
  * (a client id at or above the seed band, 2^26) through an implicit merge
@@ -22,6 +23,7 @@
  */
 import type { EngineNode } from './engine-api.js';
 import { REGISTRY_KEY, isNodeLike } from './schema.js';
+import { attrItems, itemOf } from './structs.js';
 
 /** Live writers draw uint53 ids; seeds write below this band (`seedUpdate`). */
 export const LIVE_WRITERS = 2 ** 26;
@@ -39,13 +41,27 @@ type RegistryItem = {
 	content: { type?: unknown };
 };
 
-/** `Doc.keepReplaced` for edytor documents (fork P14): registry values keep their subtree. */
+/** `doc.keepReplaced` of edytor documents (fork P14): registry values keep their subtree. */
 export const keepRegistryLosers = (item: unknown): boolean => {
 	const parent = (item as RegistryItem).parent as {
 		_item: unknown;
 		doc: { share: Map<string, unknown> } | null;
 	} | null;
 	return parent?._item === null && parent.doc?.share.get(REGISTRY_KEY) === parent;
+};
+
+/**
+ * Make `doc` an edytor document for the engine: a registry value a
+ * concurrent creation replaced keeps its subtree (fork P14). Every edytor
+ * document gets it before it integrates anything (a facade's `create`,
+ * `createDoc`, the scratch documents of admission, seeds and migration);
+ * the engine's class default stays upstream's (`null`), so another
+ * document of the same engine keeps upstream's semantics. A rule the
+ * caller set stays.
+ */
+export const keepingReplaced = <D extends { keepReplaced?: unknown }>(doc: D): D => {
+	(doc as { keepReplaced?: unknown }).keepReplaced ??= keepRegistryLosers;
+	return doc;
 };
 
 /** The derived id of a losing incarnation: its key and its item's id. */
@@ -74,7 +90,7 @@ export const incarnationsOf = (
 	id: string,
 	isKept: (item: unknown) => boolean
 ): Incarnation[] => {
-	const map = (registry as unknown as { _map: Map<string, RegistryItem> })._map;
+	const map = attrItems<RegistryItem>(registry);
 	const current = map.get(id);
 	if (current === undefined || current.deleted) return [];
 	const out: Incarnation[] = [];
@@ -99,6 +115,6 @@ export const incarnationNode = (
 
 /** The registry item a node is the value of (`null` for a node outside the registry). */
 export const registryItemOf = (node: EngineNode, registry: EngineNode): RegistryItem | null => {
-	const item = node._item as unknown as RegistryItem | null;
+	const item = itemOf<RegistryItem>(node);
 	return item !== null && item.parent === registry ? item : null;
 };

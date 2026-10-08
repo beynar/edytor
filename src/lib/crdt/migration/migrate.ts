@@ -30,9 +30,11 @@
  */
 import * as idb from 'lib0-v14/indexeddb';
 import * as f from 'lib0-v14/function';
-import type { EngineApi, EngineDoc, YDoc } from '../engine-api.js';
+import type { EngineApi, YDoc } from '../engine-api.js';
+import { asEngineDoc } from '../structs.js';
 import { bindEdytorDoc } from '../edytor-doc.js';
 import { bindLegacyReader } from './legacy-schema.js';
+import { keepingReplaced } from '../incarnations.js';
 import { generationDbName } from '../protocols/envelope.js';
 import {
 	CUSTOM,
@@ -266,7 +268,7 @@ export const bindMigration = (Y: EngineApi) => {
 			const json: JSONDoc = { children: legacy.children.map((b, i) => withFallbackIds(b, `${i}`)) };
 
 			await onPhase?.('rebuild');
-			const doc = new Y.Doc();
+			const doc = keepingReplaced(new Y.Doc());
 			if (force) {
 				const [updates, custom] = idb.transact(db, [UPDATES, CUSTOM]);
 				await verifyOrStamp(name, updates, custom);
@@ -279,15 +281,15 @@ export const bindMigration = (Y: EngineApi) => {
 			}
 			const base = Y.encodeStateVector(doc);
 			edytorDoc.restore(
-				doc as unknown as EngineDoc,
+				asEngineDoc(doc),
 				json.children.map((b) => jsonBlockToSpec(b))
 			);
 			const update = Y.encodeStateAsUpdate(doc);
 
 			await onPhase?.('verify');
-			const check = new Y.Doc();
+			const check = keepingReplaced(new Y.Doc());
 			Y.applyUpdate(check, update);
-			if (!f.equalityDeep(edytorDoc.create(check as unknown as EngineDoc).toJSON(), json)) {
+			if (!f.equalityDeep(edytorDoc.create(asEngineDoc(check)).toJSON(), json)) {
 				return failed(
 					'verification failed: migrated document does not reproduce the legacy logical JSON'
 				);

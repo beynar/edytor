@@ -30,6 +30,7 @@ import {
 } from './schema.js';
 import { bindDeletes, type Span } from './text/deletes.js';
 import { baseIdOf, isIncarnationId } from './incarnations.js';
+import { attrItems, firstItem } from './structs.js';
 
 /** The horizon: the time and encoded state vector of the room's epoch (`room.purge.timing`). */
 export type Horizon = { at: number; sv: Uint8Array };
@@ -59,8 +60,7 @@ type Item = {
 	content: { arr?: unknown[] };
 };
 
-const mapOf = (node: EngineNode): Map<string, Item> =>
-	(node as unknown as { _map: Map<string, Item> })._map;
+const mapOf = (node: EngineNode): Map<string, Item> => attrItems<Item>(node);
 
 /** The horizon a document holds (`null`: never purged). */
 export const readHorizon = (doc: EngineDoc): Horizon | null => {
@@ -112,11 +112,7 @@ export const bindPurge = (Y: EngineApi) => {
 			const out: Span[] = [];
 			let at = 0;
 			let inside = s.start === 0;
-			for (
-				let it = (s.text as unknown as { _start: Item | null })._start;
-				it !== null;
-				it = it.right
-			) {
+			for (let it = firstItem<Item>(s.text); it !== null; it = it.right) {
 				const live = !it.deleted && it.countable !== false;
 				if (live && at >= s.end) break;
 				if (inside) out.push({ c: it.id.client, k: it.id.clock, n: it.length });
@@ -243,10 +239,9 @@ export const bindPurge = (Y: EngineApi) => {
 				// A losing incarnation is no registry value: its subtree goes (H13).
 				// Its node is a deleted value, which the node API writes nothing to:
 				// its attrs' items are deleted directly, in this transaction.
-				const attrs = mapOf(blocks.get(id)!.node) as unknown as Map<
-					string,
-					{ deleted: boolean; delete(tr: unknown): void }
-				>;
+				const attrs = attrItems<{ deleted: boolean; delete(tr: unknown): void }>(
+					blocks.get(id)!.node
+				);
 				doc.transact((tr) => {
 					for (const item of attrs.values()) if (!item.deleted) item.delete(tr);
 				});

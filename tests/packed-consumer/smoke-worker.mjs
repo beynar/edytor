@@ -193,7 +193,7 @@ try {
 	}, 'the round trip');
 	const facade = crdt.doc.create(reader);
 	assert.equal(facade.blockText('p1'), 'packed Worker');
-	assert.deepEqual(facade.toJSON(), writer.facade.toJSON());
+	assert.deepEqual(facade.toJSON(), writer.toJSON());
 	facade.dispose();
 
 	// Another user writing under the writer's client id: the room strips those
@@ -205,7 +205,7 @@ try {
 	const forged = [];
 	forgedDoc.on('update', (u) => forged.push(u));
 	const forger = E.attachDocument(forgedDoc, { actor: { id: 'mallory' } });
-	forger.facade.insertText('p1', 0, 'FORGED ');
+	forger.insertText('p1', 0, 'FORGED ');
 	forger.destroy();
 	const mallory = await dial('smoke', '?user=mallory');
 	mallory.ws.send(E.frame(E.messageSync, (e) => sync.writeUpdate(e, Y.mergeUpdates(forged))));

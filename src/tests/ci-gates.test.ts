@@ -166,6 +166,16 @@ describe('publish.yml — nothing ships without CI on the tagged commit', () => 
 		expect(job).toMatch(new RegExp(`^ {4}needs: ${gate![0]}$`, 'm'));
 	});
 
+	it('a -next.N pre-release goes under `next`; a release candidate and a release under `latest`', () => {
+		const expression = /tag=\$\(node -p '([^']+)'\)/.exec(publish)?.[1];
+		expect(expression).toBeDefined();
+		const tagOf = (version: string) =>
+			new Function('require', `return ${expression}`)(() => ({ version })) as string;
+		expect(tagOf('0.1.0-next.44')).toBe('next');
+		expect(tagOf('1.0.0-rc.1')).toBe('latest');
+		expect(tagOf('1.0.0')).toBe('latest');
+	});
+
 	it('mints an OIDC token only in the publish job', () => {
 		const top = publish.slice(0, publish.indexOf('\njobs:\n'));
 		expect(top).not.toContain('id-token');

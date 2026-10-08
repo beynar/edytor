@@ -144,11 +144,11 @@ const rootDoc: EdytorDocument = createDocument({
 	semantics: bindings.defaultSemantics
 });
 const rootReadiness: DocumentReadiness = rootDoc.readiness;
-const rootProjected: ProjectedDoc = rootDoc.facade.project();
-rootDoc.transact(() => rootDoc.facade.insertText(rootProjected.children[0]!.id, 0, '!'));
-rootDoc.facade.insertBlock(
+const rootProjected: ProjectedDoc = rootDoc.project();
+rootDoc.transact(() => rootDoc.insertText(rootProjected.children[0]!.id, 0, '!'));
+rootDoc.insertBlock(
 	{ parent: null, index: 1 },
-	bindings.toBlockSpec(rootDoc.facade.blockJSON('root-p1'), { freshIds: true })
+	bindings.toBlockSpec(rootDoc.blockJSON('root-p1'), { freshIds: true })
 );
 rootDoc.history.undo();
 const rootAttribution: DocumentAttribution = rootDoc.attribution;
@@ -173,5 +173,5 @@ void rootAttached;
 // BW-08: the `view` argument types of the range and flow operations.
 const rangeView: bindings.RangeView = { hidden: (id) => id === 'body' };
 const flowView: bindings.FlowView = { ...rangeView, itemKind: () => 'list-item' };
-rootDoc.facade.prepare.deleteRange({ block: 'a', offset: 0 }, { block: 'a', offset: 1 }, rangeView);
-rootDoc.facade.prepare.insertFlow({ block: 'a', offset: 0 }, { lines: [] }, flowView);
+rootDoc.prepare.deleteRange({ block: 'a', offset: 0 }, { block: 'a', offset: 1 }, rangeView);
+rootDoc.prepare.insertFlow({ block: 'a', offset: 0 }, { lines: [] }, flowView);

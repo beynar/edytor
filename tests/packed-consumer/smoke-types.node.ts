@@ -89,7 +89,9 @@ const edDoc: bindings.EdytorDocument = bindings.createDocument({
 });
 const readiness: bindings.DocumentReadiness = edDoc.readiness;
 const actor: bindings.DocumentActor = edDoc.actor;
-const facade: bindings.EdytorDoc = edDoc.facade;
+const facade: bindings.DocumentOperations = edDoc;
+const deprecated: bindings.DocumentOperations = edDoc.facade;
+void deprecated;
 const exported: bindings.JSONDoc = facade.toJSON();
 const projected: bindings.ProjectedDoc = facade.project();
 const firstProjected: bindings.ProjectedBlock | undefined = projected.children[0];

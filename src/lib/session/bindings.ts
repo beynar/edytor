@@ -9,7 +9,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { extendVertically, navigationBindings, stayWithoutTarget, vertical } from './navigation.js';
-import { insertLineBreak, runIntent } from '$lib/events/beforeInputCommands.js';
 import { attemptOf, caretAt, intentSnapshot } from './attempt.js';
 import {
 	flipToggles,
@@ -212,7 +211,7 @@ const kill =
 		const { edytor, prevent } = payload;
 		if (ownsDeleteSelection(edytor)) return deleteSelection(payload);
 		const { state, projection } = edytor.selection;
-		if (state.startText) prevent(() => runIntent(edytor, inputType(projection)));
+		if (state.startText) prevent(() => edytor.ports.input.runIntent(inputType(projection)));
 	};
 
 /**
@@ -250,7 +249,7 @@ const emacs: Record<string, HotKey> = {
 		if (ownsDeleteSelection(edytor) || !edytor.selection.state.startText) return;
 		prevent(() =>
 			edytor.dispatcher.run('insertBlock', () =>
-				insertLineBreak(edytor, intentSnapshot(edytor, 'insertLineBreak'), 'before')
+				edytor.ports.input.insertLineBreak(intentSnapshot(edytor, 'insertLineBreak'), 'before')
 			)
 		);
 	},

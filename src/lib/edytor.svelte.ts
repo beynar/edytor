@@ -11,6 +11,9 @@ import { onInput } from './events/onInput.js';
 import { onPaste } from './events/onPaste.js';
 import { preventUnsupportedDrop } from './events/onDrop.js';
 import { attachFocus, selectionIsInside } from './events/onFocus.js';
+import { insertLineBreak, runIntent } from './events/beforeInputCommands.js';
+import { textPointAt } from './selection/selection.utils.js';
+import type { SessionPorts } from './session/ports.js';
 import { Attempts } from './session/attempt.js';
 import { Composition } from './session/composition.svelte.js';
 import { Suggestions } from './session/suggestions.svelte.js';
@@ -97,7 +100,7 @@ import {
 } from './edytor.utils.js';
 import { Dispatcher } from './session/commands.js';
 import { History } from './session/history.js';
-import { kindCatalogue, kindCommand, type KindRow } from './kinds.js';
+import { kindCatalogue, kindCommand, UNKNOWN_KIND, type KindRow } from './kinds.js';
 import {
 	clearDomSelection,
 	getActiveElement,
@@ -184,9 +187,6 @@ export type RootBlock = Block & {
  */
 const sharedCrdt = bindCrdt(Y);
 
-/** The definition of a kind the view does not register: no roles, no snippet (`definitionOf`). */
-export const UNKNOWN_KIND: BlockDefinition = Object.freeze({});
-
 /** Register definitions a first extension has not: a bare snippet is `{ snippet }`. */
 const define = <T extends object>(into: Map<string, T>, definitions: object = {}) => {
 	for (const [key, value] of Object.entries(definitions))
@@ -240,6 +240,24 @@ export class Edytor {
 	readonly projector: Projector = new Projector(this);
 	/** @internal The compare-to-truth observer (R12): registry, the render epoch, the passes, the only adopter (R8, L31). */
 	readonly surface: SurfaceObserver = new SurfaceObserver(this);
+	/**
+	 * @internal What the session asks of the surface and the input commands
+	 * (`session/ports.ts`): the session never imports them, the root wires them here.
+	 */
+	readonly ports: SessionPorts = {
+		surface: {
+			park: (text, offset) => this.projector.park(text, offset),
+			flush: () => void this.surface.flush(),
+			placed: () => this.projector.placed(),
+			parked: () => this.projector.parked(),
+			clear: () => clearDomSelection(this.node),
+			pointAt: (node, offset) => textPointAt.call(this.selection, node, offset)
+		},
+		input: {
+			runIntent: (inputType) => runIntent(this, inputType),
+			insertLineBreak: (snapshot, caret) => insertLineBreak(this, snapshot, caret)
+		}
+	};
 	/** What the components render: one cell per visible block, patched from change reports. */
 	cells = $state.raw<Cells>();
 	/** Bumped by each commit that changed the document's data: what `docData()` readers track. */

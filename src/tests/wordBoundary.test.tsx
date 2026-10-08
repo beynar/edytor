@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createOperationEdytor, runBeforeInput, runHotkey } from './test.utils.js';
 
-// D18 — one word-boundary rule (`events/wordBoundary.ts`) shared by
+// D18 — one word-boundary rule (`text/wordBoundary.ts`) shared by
 // caret word jumps and `deleteWord*`: a word is a run of Unicode
 // letters/numbers/`_`; whitespace and punctuation are boundaries. These
 // pins reproduce the old divergence — `deleteWord*` matched `\S+` runs

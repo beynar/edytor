@@ -60,16 +60,15 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { JSONText } from '$lib/utils/json.js';
-import { insertionMarks } from '$lib/events/beforeInputCommands.js';
 import { flushSync } from 'svelte';
 import {
 	replaceSelectionForInsertion,
 	selectedBlocksExit
 } from '$lib/selection/replaceSelection.js';
 import type { DomSelectionSnapshot } from '$lib/selection/domSelection.js';
-import { getYIndex } from '$lib/selection/selection.utils.js';
 import { attemptOf, intentSnapshot, kindOf, untargeted, type Attempt } from './attempt.js';
 import type { SelectionValue } from './selection.js';
+import { insertionMarks } from './editing/text.js';
 
 export type Phase = 'live' | 'tail' | 'gone';
 type Marks = Record<string, unknown>;
@@ -378,17 +377,15 @@ export class Composition {
 		if (!at) return null;
 		flushSync();
 		if (!at.text.node) return null;
-		edytor.projector.park(at.text, at.offset);
+		edytor.ports.surface.park(at.text, at.offset);
 		return { text: at.text, from: at.offset, to: at.offset };
 	}
 
 	/** The text and offset of the caret the browser parked for a session with no target. */
 	#parkedAt(dom: DomSelectionSnapshot | null) {
 		const node = dom?.anchorNode;
-		const text = node ? this.edytor.selection.getTextOfNode(node) : null;
-		if (!node || !text?.node) return null;
-		const offset = getYIndex(text, node, dom.anchorOffset);
-		return { text, from: offset, to: offset };
+		const at = node ? this.edytor.ports.surface.pointAt(node, dom.anchorOffset) : null;
+		return at && { text: at.text, from: at.offset, to: at.offset };
 	}
 
 	/** The host's block and its ancestors (none once it is not visible). */
@@ -582,7 +579,7 @@ export class Composition {
 		const caret = keep && startText ? { text: startText, offset: yStart } : this.#caret;
 		this.#release();
 		if (caret) void edytor.stabilizeCompositionSelection(caret.text, caret.offset);
-		void edytor.surface.flush();
+		edytor.ports.surface.flush();
 		for (const fn of this.#waiting.splice(0)) fn();
 		return true;
 	}

@@ -6,7 +6,7 @@ import { prepareDeleteContent } from '$lib/edytor.utils.js';
 import { deleteSelectedBlocks, deleteSelectedRange } from '$lib/selection/replaceSelection.js';
 import { shown } from '$lib/selection/visibility.js';
 import { caretAt, type Attempt } from '$lib/session/attempt.js';
-import { getNextWordEndOffset, getPreviousWordStartOffset } from './wordBoundary.js';
+import { getNextWordEndOffset, getPreviousWordStartOffset } from '$lib/text/wordBoundary.js';
 
 /** A forward delete at a live composition's region keeps the preview (the IME owns it). */
 const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Attempt) =>

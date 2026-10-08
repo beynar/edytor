@@ -26,7 +26,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import { getNextGraphemeEnd, getPreviousGraphemeStart } from '$lib/text/text.utils.js';
-import { getNextWordEndOffset, getPreviousWordStartOffset } from '$lib/events/wordBoundary.js';
+import { getNextWordEndOffset, getPreviousWordStartOffset } from '$lib/text/wordBoundary.js';
 import { getSelectedBlocksInDocumentOrder, shownText } from '$lib/selection/replaceSelection.js';
 import type { HotKey } from './keymap.js';
 import type { SelectionValue } from './selection.js';

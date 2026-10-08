@@ -1,6 +1,7 @@
 <script module lang="ts">
 	import { DEV } from 'esm-env';
-	import { UNKNOWN_KIND, type Edytor } from '../edytor.svelte.js';
+	import type { Edytor } from '../edytor.svelte.js';
+	import { UNKNOWN_KIND } from '../kinds.js';
 	import { voidChrome, type Block as BlockHandle } from '../block/block.svelte.js';
 	import type { BlockDefinition, BlockView } from '../plugins.js';
 	import type { PreviewCell } from '../surface/cells.js';

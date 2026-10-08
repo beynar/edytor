@@ -9,7 +9,10 @@
  * after → each mark record's edge policy (O69), which reads the admitted
  * edge side (R4) and never the DOM.
  */
+import type { Edytor } from '$lib/edytor.svelte.js';
+import { selectedTextSpans } from '$lib/selection/visibility.js';
 import type { Text } from '$lib/text/text.svelte.js';
+import type { Attempt } from '../attempt.js';
 import { jsonEquals as same, type JSONText, type SerializableContent } from '$lib/utils/json.js';
 
 /**
@@ -79,4 +82,22 @@ export const marksForInsertion = (
 			return edge === 'side-dependent' && (!fromBefore || side !== 'outside');
 		})
 	);
+};
+
+/**
+ * The marks of text inserted at an attempt's selection (O29), read before it
+ * is replaced: typing, a soft break, a plain paste, an IME's first preview.
+ */
+export const insertionMarks = (edytor: Edytor, snapshot: Attempt): Marks => {
+	const { startText, yStart, isCollapsed } = snapshot;
+	if (!startText || edytor.selection.selectedBlocks.size > 0) return {};
+	const texts = snapshot.texts.length ? snapshot.texts : [startText];
+	const replaced = selectedTextSpans(edytor, { ...snapshot, texts }, { replace: true }).flatMap(
+		({ text, start, end }) => text.getMarksAtRange(start, end)
+	);
+	return marksForInsertion(startText, yStart, {
+		replaced: isCollapsed ? undefined : replaced,
+		side: snapshot.edge,
+		pending: edytor.selection.pending
+	});
 };

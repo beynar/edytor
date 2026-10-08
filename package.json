@@ -20,6 +20,7 @@
 		"test:typecheck": "svelte-check --tsconfig ./tsconfig.tests.json",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:worker": "node scripts/check-worker-bundle.mjs",
+		"check:deps": "node scripts/deps.mjs",
 		"check:docs": "node scripts/check-docs.mjs",
 		"check:api": "node scripts/api-report.mjs --check",
 		"api:report": "node scripts/api-report.mjs",

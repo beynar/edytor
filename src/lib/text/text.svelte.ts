@@ -1,4 +1,4 @@
-import { Edytor } from '../edytor.svelte.js';
+import type { Edytor } from '../edytor.svelte.js';
 import { type JSONText } from '$lib/utils/json.js';
 import { Block } from '../block/block.svelte.js';
 import {
@@ -12,7 +12,6 @@ import {
 	splitText
 } from './text.utils.js';
 import { deltaToJson, runsToDeltas } from './deltas.js';
-import { climb } from '$lib/selection/selection.utils.js';
 import type { OpResult } from '$lib/crdt/index.js';
 import type { ContentPart } from '$lib/session/handles.js';
 
@@ -148,12 +147,12 @@ export class Text {
 			[] as (() => void)[]
 		);
 		let insideVoid = this.parent.definition.void;
-		climb(this.parent, (block) => {
-			if (block instanceof Block && block.definition.void) {
+		for (let block: unknown = this.parent; block instanceof Block; block = block.parent) {
+			if (block.definition.void) {
 				insideVoid = true;
-				return true;
+				break;
 			}
-		});
+		}
 
 		if (insideVoid) {
 			node.setAttribute('contenteditable', 'true');

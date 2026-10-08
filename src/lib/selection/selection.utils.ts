@@ -1,7 +1,5 @@
-import { EdytorSelection } from './selection.svelte.js';
-import { Text } from '../text/text.svelte.js';
-import { Block } from '$lib/block/block.svelte.js';
-import { Edytor } from '$lib/edytor.svelte.js';
+import type { EdytorSelection } from './selection.svelte.js';
+import type { Text } from '../text/text.svelte.js';
 import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import type { DomSelectionSnapshot } from './domSelection.js';
 import type { EdgeSide } from '$lib/session/editing/text.js';
@@ -386,6 +384,12 @@ export const getYIndex = (text: Text | null, node: Node | null, _start: number) 
 	return start;
 };
 
+/** The mounted text and display offset a DOM point stands in, or `null` (`edytor.ports.surface.pointAt`). */
+export function textPointAt(this: EdytorSelection, node: Node, offset: number) {
+	const text = getTextOfNode.call(this, node);
+	return text?.node ? { text, offset: getYIndex(text, node, offset) } : null;
+}
+
 const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
 const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
 
@@ -418,14 +422,6 @@ export const getRangesFromSelection = (
 	return Array.from({ length: selection.rangeCount }, (_, i) => selection.getRangeAt(i));
 };
 
-export const climb = (block: Block | Edytor | undefined, cb: (block: Block) => void | true) => {
-	if (!block) return;
-	let parent: Block | Edytor | undefined = block;
-	while (parent && parent instanceof Block) {
-		if (cb(parent)) break;
-		parent = parent.parent;
-	}
-};
 export const climbDom = (node: Node | undefined | null, cb: (node: Node) => void | true) => {
 	if (!node) return;
 	let parent: Node | HTMLElement | null = node;

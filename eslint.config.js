@@ -6,6 +6,7 @@ import svelte from 'eslint-plugin-svelte';
 import globals from 'globals';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { FORBIDDEN, contextOf, relOf, resolveModule } from './scripts/contexts.mjs';
 
 // ── Worker-safe CRDT boundary ─────────────────────────────────────────────
 //
@@ -117,6 +118,60 @@ const workerSafeRules = {
 	'edytor/worker-safe-imports': 'error'
 };
 const VENDOR = 'src/lib/crdt/vendor/**';
+
+// ── Import direction between the view contexts ───────────────────────────
+//
+// Each src/lib module belongs to one context (`scripts/contexts.mjs`, the
+// table in AGENTS.md "The top-level model"). The session never value-imports
+// the surface (`surface/`, `events/`, `components/`, the DOM selection), the
+// chrome or the composition root: what it asks of the surface is a port the
+// root implements (`session/ports.ts`, `edytor.ports`). The surface never
+// value-imports the chrome or the root. `import type` is free (it vanishes
+// at build). `scripts/deps.mjs` and `src/tests/deps.test.ts` check the same
+// rule over the whole graph and that no cycle crosses contexts.
+const contextImports = {
+	meta: {
+		type: 'problem',
+		docs: { description: 'Keep value imports between the view contexts one-way' },
+		schema: []
+	},
+	create(context) {
+		const from = contextOf(relOf(context.filename));
+		const banned = FORBIDDEN[from];
+		if (!banned) return {};
+		const typeOnly = (node) => {
+			if (node.importKind === 'type' || node.exportKind === 'type') return true;
+			const specifiers = node.specifiers ?? [];
+			return (
+				specifiers.length > 0 &&
+				specifiers.every(
+					(s) =>
+						(s.type === 'ImportSpecifier' && s.importKind === 'type') ||
+						(s.type === 'ExportSpecifier' && s.exportKind === 'type')
+				)
+			);
+		};
+		const check = (node) => {
+			const source = node.source;
+			if (!source || source.type !== 'Literal' || typeof source.value !== 'string') return;
+			if (node.type !== 'ImportExpression' && typeOnly(node)) return;
+			const target = resolveModule(context.filename, source.value);
+			const to = target && contextOf(target);
+			if (to && banned.includes(to)) {
+				context.report({
+					node: source,
+					message: `Import direction: the ${from} context must not value-import "${source.value}" (${to}). Declare a port the composition root implements (session/ports.ts), or use \`import type\` — see AGENTS.md "The top-level model".`
+				});
+			}
+		};
+		return {
+			ImportDeclaration: check,
+			ExportNamedDeclaration: check,
+			ExportAllDeclaration: check,
+			ImportExpression: check
+		};
+	}
+};
 
 // ── Host writers (plan §12.5 BI2-5, R1, R11) ─────────────────────────────
 //
@@ -271,6 +326,12 @@ export default [
 		files: ['src/lib/**/*.{ts,js,svelte}'],
 		ignores: [...HOST_WRITERS, 'src/lib/crdt/**', 'src/lib/cloudflare/**'],
 		rules: hostWriterRules
+	},
+	{
+		files: ['src/lib/**/*.{ts,js,svelte}'],
+		ignores: [VENDOR],
+		plugins: { 'edytor-contexts': { rules: { 'context-imports': contextImports } } },
+		rules: { 'edytor-contexts/context-imports': 'error' }
 	},
 	{
 		files: WORKER_SAFE,

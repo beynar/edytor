@@ -96,7 +96,7 @@ export const targetless = (edytor: Edytor, intent: string) => {
 
 /** Nowhere to act: the selection value is `none` and no gesture placed the host's DOM caret. */
 export const untargeted = (edytor: Edytor) =>
-	edytor.selection.value.kind === 'none' && !edytor.projector.placed();
+	edytor.selection.value.kind === 'none' && !edytor.ports.surface.placed();
 
 /** The target's facts a command reads, projected when the attempt runs. */
 const facts = (edytor: Edytor) => {

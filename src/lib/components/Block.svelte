@@ -83,6 +83,7 @@
 	import Content from './Content.svelte';
 	import Suggestion from './Suggestion.svelte';
 	import { blockDir, ownText } from '../surface/attributes.js';
+	import { colorAttributes } from '../block/colors.js';
 
 	let {
 		id,
@@ -130,6 +131,8 @@
 	const attributes = $derived(
 		element && {
 			...element.attributes,
+			// Its colour and background by palette name (`block/colors.ts`).
+			...colorAttributes(cell?.data),
 			'data-edytor-block': 'true',
 			'data-edytor-id': preview ? undefined : id,
 			'data-edytor-type': cell?.type,
@@ -240,6 +243,66 @@
 	 */
 	:global([data-edytor-children]) {
 		padding-inline-start: var(--edytor-nest-indent, 24px);
+	}
+	/*
+	 * Block colours (`block/colors.ts`): Notion's palette by name, each a
+	 * theme token with Notion's light value as its fallback. The text colour
+	 * and the background reach the block's children, as in Notion; a mark's
+	 * own colour inside wins.
+	 */
+	:global([data-edytor-block][data-edytor-color='gray']) {
+		color: var(--edytor-color-gray, #7d7a75);
+	}
+	:global([data-edytor-block][data-edytor-color='brown']) {
+		color: var(--edytor-color-brown, #9f765a);
+	}
+	:global([data-edytor-block][data-edytor-color='orange']) {
+		color: var(--edytor-color-orange, #d27b2d);
+	}
+	:global([data-edytor-block][data-edytor-color='yellow']) {
+		color: var(--edytor-color-yellow, #cb9434);
+	}
+	:global([data-edytor-block][data-edytor-color='green']) {
+		color: var(--edytor-color-green, #50946e);
+	}
+	:global([data-edytor-block][data-edytor-color='blue']) {
+		color: var(--edytor-color-blue, #387dc9);
+	}
+	:global([data-edytor-block][data-edytor-color='purple']) {
+		color: var(--edytor-color-purple, #9a6bb4);
+	}
+	:global([data-edytor-block][data-edytor-color='pink']) {
+		color: var(--edytor-color-pink, #c14c8a);
+	}
+	:global([data-edytor-block][data-edytor-color='red']) {
+		color: var(--edytor-color-red, #cf5148);
+	}
+	:global([data-edytor-block][data-edytor-background='gray']) {
+		background-color: var(--edytor-background-gray, #f0efed);
+	}
+	:global([data-edytor-block][data-edytor-background='brown']) {
+		background-color: var(--edytor-background-brown, #f5ede9);
+	}
+	:global([data-edytor-block][data-edytor-background='orange']) {
+		background-color: var(--edytor-background-orange, #fbebde);
+	}
+	:global([data-edytor-block][data-edytor-background='yellow']) {
+		background-color: var(--edytor-background-yellow, #f9f3dc);
+	}
+	:global([data-edytor-block][data-edytor-background='green']) {
+		background-color: var(--edytor-background-green, #e8f1ec);
+	}
+	:global([data-edytor-block][data-edytor-background='blue']) {
+		background-color: var(--edytor-background-blue, #e5f2fc);
+	}
+	:global([data-edytor-block][data-edytor-background='purple']) {
+		background-color: var(--edytor-background-purple, #f3ebf9);
+	}
+	:global([data-edytor-block][data-edytor-background='pink']) {
+		background-color: var(--edytor-background-pink, #fae9f1);
+	}
+	:global([data-edytor-block][data-edytor-background='red']) {
+		background-color: var(--edytor-background-red, #fce9e7);
 	}
 	/*
 	 * An empty line a suggestion replaces (Ask AI on an empty line): the

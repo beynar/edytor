@@ -53,6 +53,7 @@ export const fr: Labels = {
 		checkbox: 'Fait',
 		placeholders: {
 			heading: (level) => `Titre ${level}`,
+			toggleHeading: (level) => `Titre dépliant ${level}`,
 			list: 'Liste',
 			todo: 'Tâche',
 			toggle: 'Liste dépliante',

@@ -30,11 +30,13 @@ With the rich text and code plugins, the prefixes are Notion's:
 | `[] ` or `[ ] `             | To-do                              |
 | `" `                        | Quote                              |
 | `> `                        | Toggle                             |
+| `> ` in a heading           | Toggle heading of the heading's level |
+| `# `, `## `, `### ` in a toggle or toggle heading | Toggle heading 1, 2, 3 |
 | `---`                       | Divider                            |
 | ` ``` `                     | Code block (code plugin)           |
 
 :::note
-As in Notion, `> ` makes a toggle and `" ` a quote.
+As in Notion, `> ` makes a toggle and `" ` a quote. In a heading, `> ` makes it a toggle heading instead, and in a toggle `# ` makes a toggle heading 1: `> # ` typed on a new line is a toggle heading 1.
 :::
 
 ## How it triggers
@@ -83,4 +85,15 @@ blocks: {
 }
 ```
 
-The last character of a prefix triggers it. A prefix without a trailing space, such as `---`, converts as soon as it is complete. See [Blocks](/docs/customization/blocks#presets) for presets and the [example plugin](/docs/plugins/example-plugin) for a full kind.
+The last character of a prefix triggers it. A prefix without a trailing space, such as `---`, converts as soon as it is complete.
+
+A preset may also convert blocks of named kinds with prefixes of their own (`markdownFrom`, by kind). In a block of a named kind they come before every preset's `markdown`, and when several presets answer the typed prefix, the one whose data shares the most values with the block's wins. This is how a heading's `> ` keeps its level:
+
+```ts
+presets: (['h1', 'h2', 'h3'] as const).map((level, i) => ({
+	label: `Toggle heading ${i + 1}`,
+	data: { level },
+	// `> ` in any heading (the preset of its level wins), `## ` in a toggle.
+	markdownFrom: { heading: ['> '], toggle: [`${'#'.repeat(i + 1)} `] }
+}))
+``` See [Blocks](/docs/customization/blocks#presets) for presets and the [example plugin](/docs/plugins/example-plugin) for a full kind.

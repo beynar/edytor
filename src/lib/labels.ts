@@ -53,6 +53,7 @@ export type RichTextLabels = {
 	/** `createRichTextPlaceholder`'s texts. */
 	placeholders: {
 		heading: (level: 1 | 2 | 3) => string;
+		toggleHeading: (level: 1 | 2 | 3) => string;
 		list: string;
 		todo: string;
 		toggle: string;
@@ -338,6 +339,7 @@ export const englishLabels: Labels = frozen({
 		checkbox: 'Done',
 		placeholders: {
 			heading: (level) => `Heading ${level}`,
+			toggleHeading: (level) => `Toggle heading ${level}`,
 			list: 'List',
 			todo: 'To-do',
 			toggle: 'Toggle',

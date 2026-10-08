@@ -771,7 +771,17 @@ describe('the slash menu in prose', () => {
 	it.each([
 		['/list', ['Bulleted list', 'Numbered list', 'To-do list', 'Toggle list']],
 		['/todo', ['To-do list']],
-		['/head', ['Heading 1', 'Heading 2', 'Heading 3']]
+		[
+			'/head',
+			[
+				'Heading 1',
+				'Heading 2',
+				'Heading 3',
+				'Toggle heading 1',
+				'Toggle heading 2',
+				'Toggle heading 3'
+			]
+		]
 	])('%j matches labels and keywords by word prefix', async (typed, expected) => {
 		const { editor } = await render([slashMenuPlugin]);
 		await type(editor, typed);
@@ -783,7 +793,8 @@ describe('the slash menu in prose', () => {
 		['/to do', ['To-do list'], 'todo-item'],
 		['/bullet l', ['Bulleted list'], 'bulleted-list-item'],
 		['/bullet list', ['Bulleted list'], 'bulleted-list-item'],
-		['/heading 2', ['Heading 2'], 'heading']
+		// Notion lists the toggle heading after the heading; Enter takes the first.
+		['/heading 2', ['Heading 2', 'Toggle heading 2'], 'heading']
 	])(
 		'%j keeps the menu open: each word starts a word of the label, in order (FW-18)',
 		async (typed, expected, kind) => {

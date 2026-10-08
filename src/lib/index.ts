@@ -128,6 +128,7 @@ export {
 	type BlockMenuOptions,
 	type BlockMenuController,
 	type BlockMenuAction,
+	type BlockMenuColor,
 	suggestionsPlugin,
 	createSuggestionsPlugin,
 	type SuggestionsOptions,
@@ -172,8 +173,16 @@ export {
 	type FindController,
 	type ReplaceMatches,
 	type FindMatch,
-	type FindOptions
+	type FindOptions,
+	pagePlugin,
+	createPagePlugin,
+	type PagePluginOptions,
+	tocPlugin,
+	createTocPlugin,
+	type TocPluginOptions,
+	type TocHeadingLevel
 } from './plugins/index.js';
+export { BLOCK_COLORS, setBlockColor, type BlockColorField } from './block/colors.js';
 
 // ── Localization ───────────────────────────────────────────────────────
 export { englishLabels, type Labels, type PartialLabels } from './labels.js';

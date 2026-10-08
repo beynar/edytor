@@ -97,7 +97,14 @@ describe('the + opens the insert menu and changes nothing', () => {
 		await plus('a');
 		await search('head');
 		const rows = [...document.querySelectorAll('[data-testid="slash-menu-item"]')];
-		expect(rows.map((row) => row.textContent)).toEqual(['Heading 1', 'Heading 2', 'Heading 3']);
+		expect(rows.map((row) => row.textContent)).toEqual([
+			'Heading 1',
+			'Heading 2',
+			'Heading 3',
+			'Toggle heading 1',
+			'Toggle heading 2',
+			'Toggle heading 3'
+		]);
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'paragraph "b"']);
 		await key('ArrowDown');
 		expect(rows[1]!.getAttribute('data-selected')).toBe('true');

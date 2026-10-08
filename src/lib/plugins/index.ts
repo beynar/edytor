@@ -67,7 +67,8 @@ export {
 export type {
 	BlockMenuOptions,
 	BlockMenuController,
-	BlockMenuAction
+	BlockMenuAction,
+	BlockMenuColor
 } from './blockMenu/BlockMenuController.svelte.js';
 export {
 	imagePlugin,
@@ -117,3 +118,10 @@ export {
 } from './find/findPlugin.js';
 export type { FindController, ReplaceMatches } from './find/FindController.svelte.js';
 export { findMatches, type FindMatch, type FindOptions } from './find/search.js';
+export { pagePlugin, createPagePlugin, type PagePluginOptions } from './page/PagePlugin.svelte';
+export {
+	tocPlugin,
+	createTocPlugin,
+	type TocPluginOptions,
+	type TocHeadingLevel
+} from './toc/TocPlugin.svelte';

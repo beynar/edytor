@@ -10,6 +10,11 @@ const heading = (n: number) =>
 	svg(
 		`<path d="M3.5 5v10M10 5v10M3.5 10H10"/><text x="12" y="15.5" font-size="8" font-family="Arial" font-weight="700" fill="black" stroke="none">${n}</text>`
 	);
+/** A toggle heading: the toggle's triangle, then the heading's level. */
+const toggleHeading = (n: number) =>
+	svg(
+		`<path d="M3 7l4 3-4 3z" fill="black"/><path d="M9 5v10M14 5v10M9 10h5"/><text x="15.5" y="16" font-size="6" font-family="Arial" font-weight="700" fill="black" stroke="none">${n}</text>`
+	);
 
 /** A layout of `n` columns: `n` rounded panels side by side. */
 const columns = (n: number) => {
@@ -36,6 +41,15 @@ const ICONS: Record<string, string> = {
 		'<rect x="3.5" y="3.5" width="13" height="13" rx="2.5"/><path d="M7 10.3l2.1 2.1 4-4.6"/>'
 	),
 	'block.toggle': svg('<path d="M7.5 5.5l6 4.5-6 4.5z" fill="black"/>'),
+	'block.toggle-heading1': toggleHeading(1),
+	'block.toggle-heading2': toggleHeading(2),
+	'block.toggle-heading3': toggleHeading(3),
+	'block.toc': svg(
+		'<path d="M3.5 5.5h13M6.5 10h10M9.5 14.5h7"/><circle cx="3.7" cy="10" r=".6" fill="black"/><circle cx="6.7" cy="14.5" r=".6" fill="black"/>'
+	),
+	'page.new': svg(
+		'<path d="M11.5 2.5H6A1.5 1.5 0 0 0 4.5 4v12A1.5 1.5 0 0 0 6 17.5h8a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2.5v4h4M7.5 10.5h5M7.5 13.5h5"/>'
+	),
 	'block.quote': svg(
 		'<path d="M4.5 4.5v11" stroke-width="2"/><path d="M8.5 6.5h8M8.5 10h8M8.5 13.5h5"/>'
 	),

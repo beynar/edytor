@@ -16,7 +16,9 @@ import {
 	imageSemantics,
 	layoutSemantics,
 	mediaSemantics,
+	pageSemantics,
 	richTextSemantics,
+	tocSemantics,
 	type DocumentSemanticsConfig,
 	type EdytorDocument,
 	type JSONDoc
@@ -31,6 +33,8 @@ import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
 import { filePlugin } from '$lib/plugins/media/FilePlugin.svelte';
 import { videoPlugin } from '$lib/plugins/media/VideoPlugin.svelte';
 import { audioPlugin } from '$lib/plugins/media/AudioPlugin.svelte';
+import { pagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
+import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 
 const value: JSONDoc = {
 	children: [
@@ -89,6 +93,8 @@ const BUNDLED = {
 		file: { void: true, island: false, lines: false },
 		video: { void: true, island: false, lines: false },
 		audio: { void: true, island: false, lines: false },
+		page: { void: true, island: false, lines: false },
+		toc: { void: true, island: false, lines: false },
 		code: { void: false, island: true, lines: true },
 		columns: { void: false, island: false, lines: false, layout: true }
 	},
@@ -99,7 +105,9 @@ const BUNDLED = {
 		'unordered-list': false,
 		code: false,
 		columns: false,
-		column: false
+		column: false,
+		page: false,
+		toc: false
 	},
 	defaultChild: {
 		'ordered-list': 'list-item',
@@ -119,21 +127,25 @@ describe('defaultSemantics on a headless document', () => {
 		expect(edits({})).toEqual(['applied', 'applied', 'applied', 'applied']);
 	});
 
-	it('merges the five plugin tables', () => {
+	it('merges the seven plugin tables', () => {
 		expect(defaultSemantics).toEqual({
 			roles: {
 				...richTextSemantics.roles,
 				...codeSemantics.roles,
 				...imageSemantics.roles,
 				...mediaSemantics.roles,
-				...layoutSemantics.roles
+				...layoutSemantics.roles,
+				...pageSemantics.roles,
+				...tocSemantics.roles
 			},
 			rendersContent: {
 				...richTextSemantics.rendersContent,
 				...codeSemantics.rendersContent,
 				...imageSemantics.rendersContent,
 				...mediaSemantics.rendersContent,
-				...layoutSemantics.rendersContent
+				...layoutSemantics.rendersContent,
+				...pageSemantics.rendersContent,
+				...tocSemantics.rendersContent
 			},
 			defaultChild: {
 				...richTextSemantics.defaultChild,
@@ -147,7 +159,15 @@ describe('defaultSemantics on a headless document', () => {
 
 	it("is what the bundled plugins' views adopt, and those views attach to it", () => {
 		const media = [embedPlugin, bookmarkPlugin, filePlugin, videoPlugin, audioPlugin];
-		const plugins = [richTextPlugin, codePlugin, imagePlugin, ...media, columnsPlugin];
+		const plugins = [
+			richTextPlugin,
+			codePlugin,
+			imagePlugin,
+			...media,
+			columnsPlugin,
+			pagePlugin,
+			tocPlugin
+		];
 		const viewed = createDocument({ value });
 		const view = new Edytor({ document: viewed, plugins });
 		expect(structural(viewed)).toEqual(BUNDLED);

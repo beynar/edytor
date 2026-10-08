@@ -99,6 +99,8 @@
 		return ({ type, data, focused }: PlaceholderView): string | null => {
 			if (type === 'heading')
 				return placeholders.heading(Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3);
+			if (type === 'toggle-heading')
+				return placeholders.toggleHeading(Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3);
 			if (type === 'bulleted-list-item' || type === 'numbered-list-item') return placeholders.list;
 			if (type === 'todo-item') return placeholders.todo;
 			if (type === 'toggle') return placeholders.toggle;
@@ -481,6 +483,41 @@
 							markdown: ['> ']
 						}
 					])
+				},
+				// Notion's toggle headings: a heading's text as a toggle's header over its
+				// children. From a heading, `>` + space at its start makes it one (its level
+				// kept); from a toggle, `#`, `##` or `###` + space; so `> # ` typed on a new
+				// line is a toggle heading 1.
+				'toggle-heading': {
+					container: true,
+					snippet: details,
+					...disclosure,
+					contentElement: (data) => headingLevel(data.level),
+					presets: (['h1', 'h2', 'h3'] as const).map((level) => {
+						const n = level.slice(1);
+						const hashes = '#'.repeat(Number(n));
+						return {
+							label: `Toggle heading ${n}`,
+							icon: `▸H${['₁', '₂', '₃'][Number(n) - 1]}`,
+							keywords: ['toggle', 'heading', 'collapse'],
+							data: { level },
+							markdownFrom: {
+								heading: ['> '],
+								toggle: [`${hashes} `],
+								'toggle-heading': [`${hashes} `]
+							}
+						};
+					}),
+					// HTML import: a `details` whose summary holds an h1–h3 (its own export).
+					parse: (el) => {
+						if (el.localName !== 'details') return;
+						const tag = el.querySelector(':scope > summary > :is(h1, h2, h3, h4, h5, h6)');
+						return tag ? { level: headingLevel(tag.localName) } : undefined;
+					},
+					html: (block, content, children) => {
+						const tag = headingLevel(block.data?.level);
+						return `<details><summary><${tag}>${content}</${tag}></summary>${children}</details>`;
+					}
 				},
 				callout: {
 					container: true,

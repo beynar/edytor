@@ -1,0 +1,96 @@
+---
+title: Page
+description: The page plugin adds Notion's subpage block, a link to another document with its title, opened, named and created by functions you provide.
+icon: file-text
+---
+
+`createPagePlugin` adds Notion's subpage block: a `page` block links to another document by its id and shows that page's title. A click opens it; with `create`, the slash menu's "Page" makes a new page and a block linking to it. It is not a default plugin: list it.
+
+Each page is a document of its own, one [room](/docs/server/room) per page (see [A page is a document](/docs/server/moves#a-page-is-a-document)). The block only names the page: moving a subpage under another parent is moving this block, and the page itself, its content and its history, never moves.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, createPagePlugin, slashMenuPlugin } from 'edytor';
+
+	// Your app's pages: their titles, as reactive state, follow renames.
+	let titles = $state<Record<string, string>>({ 'doc-42': 'Roadmap' });
+
+	const page = createPagePlugin({
+		open: (pageId) => (location.href = `/p/${pageId}`),
+		href: (pageId) => `/p/${pageId}`,
+		title: (pageId) => titles[pageId],
+		create: () => {
+			const pageId = crypto.randomUUID();
+			titles[pageId] = 'Untitled';
+			return { pageId, title: 'Untitled' };
+		}
+	});
+</script>
+
+<Edytor plugins={[page, slashMenuPlugin]} />
+```
+
+`pagePlugin` is the plugin without options: the block shows the title it stores and opens nothing.
+
+## Options
+
+`createPagePlugin(options)` takes a `PagePluginOptions`:
+
+<TypeTable
+  type={{
+    open: {
+      type: "(pageId: string) => void",
+      description: "Open the page (navigate to it): a click on the block. Without it the block is a plain link when `href` gives one, else inert.",
+    },
+    title: {
+      type: "(pageId: string) => string | null | undefined | Promise<string | null | undefined>",
+      description: "The page's title now. Read from reactive state, the block follows renames. `null` or `undefined` while unknown: the block shows the title it stores, else \"Untitled\".",
+    },
+    href: {
+      type: "(pageId: string) => string",
+      description: "A URL for the page: the block is a link to it, so a modified click (Mod, Shift, the middle button) opens a new tab or window, and its HTML export links it. A script URL is dropped.",
+    },
+    create: {
+      type: "() => string | { pageId: string; title?: string } | null | undefined",
+      description: "Create a page and answer its id (and title). Adds the \"Page\" command; without it there is none.",
+    },
+  }}
+/>
+
+A `title` answer that differs from the stored title is stored on the block, as one data write outside the undo history, by a view that may write: so a view without the lookup, the room, the HTML export and a readonly viewer show it. An undo never brings back a stale title. A promise's answer is used once it settles, and only for the page it was asked about.
+
+## The "Page" command
+
+With `create`, the plugin adds the command `page.new`, "Page" in the slash menu (group `Basic blocks`, keywords `subpage`, `new page`, `document`, `link`) and the `+` menu. It calls `create()`, then, as one command and one undo step, turns the caret's line into the page block when the line holds nothing, or inserts the block after it otherwise, then calls `open` with the new id (Notion opens a new page at once). A `create` that answers no valid id adds nothing.
+
+A page id is any string of 1 to 256 characters, a room id's bounds. With [Cloudflare rooms](/docs/server/room) a room exists from its first dial, so a page id can be made in the browser (`crypto.randomUUID()`); authorize it in [`authorize`](/docs/server/authorization) like any room.
+
+To insert a block yourself (a "Link to page" picker of yours), insert it like any block: `{ type: 'page', data: { pageId: 'doc-42', title: 'Roadmap' } }`.
+
+## Turning blocks into a page
+
+Notion's "Turn into page" moves content into a new page. Do it with [cross-document moves](/docs/server/moves): from your Worker, `moveBlocksBetweenRooms` the selected blocks into the new page's room (it keeps edits made during the move), then put a page block where they were. The plugin does not do the move itself: it needs your Worker route and your authorization of both pages.
+
+## The kind
+
+| Kind   | Element | Data                                  | Preset                   |
+| ------ | ------- | ------------------------------------- | ------------------------ |
+| `page` | `div`   | `{ pageId: string, title?: string }`  | none (the `page.new` command) |
+
+The block is void and shows no text of its own, like a divider: it takes no children, is never merged and is selected whole. Its role is in `defaultSemantics` (`pageKinds`), so the room and headless documents treat it as void too. A stored `pageId` that is no string or is longer than 256 characters opens nothing; a title is trimmed and capped at 300 characters, and rendered as text.
+
+## Clipboard
+
+- Copying exports `<p data-edytor-page="id"><a href="…">title</a></p>` (the title alone without `href`); the plain text is the title.
+- Pasting that HTML back imports a page block with its id and title.
+
+## Styling
+
+| Selector                        | Matches                                         |
+| ------------------------------- | ----------------------------------------------- |
+| `[data-edytor-type='page']`     | The block                                       |
+| `[data-edytor-page-link]`       | The link: an `a` with `href`, else a `button`   |
+| `[data-edytor-page-icon]`       | The page icon (drawn by the theme)              |
+| `[data-edytor-page-title]`      | The title; `[data-untitled]` when it has none   |
+
+The [Notion theme](/docs/customization/styling#notion-theme) draws Notion's page row: the page icon, the title underlined, a hover background.

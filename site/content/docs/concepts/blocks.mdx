@@ -18,6 +18,7 @@ Every block has a kind, its `type`, and properties, its `data` (a heading's `lev
 | `numbered-list-item` | `li` | | Continues on <kbd>Enter</kbd>. |
 | `todo-item` | `div` with a checkbox | `checked: boolean` | Clicking the checkbox writes `checked`. Continues on <kbd>Enter</kbd>. |
 | `toggle` | `details` | | Children form the collapsible body. Continues on <kbd>Enter</kbd>; a header over its children (`container`). |
+| `toggle-heading` | `details` > `summary` > `h1`–`h3` | `level: 'h1' \| 'h2' \| 'h3'` | Notion's toggle heading: a heading as a toggle's header (`container`). |
 | `callout` | `div` | `icon: string` | The icon defaults to `💡`. A header over its children (`container`). |
 | `quote` | `div` > `blockquote` | | A header over its children (`container`), which render after the `blockquote`. |
 | `divider` | `hr` | | Void, no content. Converting a block to it adds a paragraph after it for the caret. |
@@ -25,11 +26,13 @@ Every block has a kind, its `type`, and properties, its `data` (a heading's `lev
 | `list-item` | `li` | | |
 | `details`, `horizontalRule` | `details`, `hr` | | Not offered in menus (they have no presets). |
 
-Continuing kinds and `container` headers are described in [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role).
+Continuing kinds and `container` headers are described in [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role). Any block that shows its own text may hold `color` and `background` in its data, palette names the [block menu](/docs/plugins/block-menu#block-colors) sets and the core renders.
 
 `imagePlugin` provides `image`, a void `figure` with an image from `data.src` and an editable caption (see [Image](/docs/plugins/image)).
 
 `codePlugin` provides `code`, an island whose children are `codeLine` blocks (default child `codeLine`), highlighted as you type.
+
+`createPagePlugin` (opt-in) provides `page`, a void link to another document (`data.pageId`, `data.title`; see [Page](/docs/plugins/page)), and `tocPlugin` (opt-in) `toc`, a void listing the document's headings (see [Table of contents](/docs/plugins/table-of-contents)).
 
 `columnsPlugin` (opt-in) provides `columns`, a layout whose children are `column` blocks shown side by side, each holding any blocks (see [Layouts](#layouts) and [Columns](/docs/plugins/columns)).
 

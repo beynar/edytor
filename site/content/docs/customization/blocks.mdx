@@ -215,6 +215,7 @@ A preset is one way to create the kind. Each preset becomes a row of the kind ca
     keywords: { type: "string[]", description: "Extra search terms for menus." },
     data: { type: "object", description: "The new block's data." },
     markdown: { type: "string[]", description: "Prefixes that convert a block when typed at its start. The last character triggers. The first one is shown as the slash menu hint." },
+    markdownFrom: { type: "Record<string, string[]>", description: "Prefixes that convert a block of a named kind into this preset, typed as markdown is: { toggle: ['# '] } makes a toggle a toggle heading. In a block of a named kind they come before every preset's markdown; when several presets answer, the one whose data shares the most values with the block's wins (a heading's level stays)." },
     group: { type: "string", default: "'Basic blocks'", description: "The slash menu section. The image and code presets use 'Media'." },
   }}
 />

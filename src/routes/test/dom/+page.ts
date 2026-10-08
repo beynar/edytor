@@ -28,6 +28,8 @@ export const load: PageLoad = ({ url }) => {
 		media: url.searchParams.get('media') === '1',
 		// `triggers=1` lists the mention and page-link plugins and an emoji input rule.
 		triggers: url.searchParams.get('triggers') === '1',
+		// `polish=1` lists the block menu, the page and the table of contents plugins.
+		polish: url.searchParams.get('polish') === '1',
 		collab: url.searchParams.get('collab'),
 		collabws: url.searchParams.get('collabws'),
 		wsserver: url.searchParams.get('wsserver'),

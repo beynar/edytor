@@ -335,8 +335,11 @@ test.describe('columns: slash commands', () => {
 		await clickAt(page, 'B', 'end');
 		const menu = page.locator('[data-testid="slash-menu"]');
 		await page.keyboard.type(' /2 ');
-		// "2 columns" is disabled in a column (D2): "Heading 2" still matches.
-		await expect(page.locator('[data-testid="slash-menu-item"]')).toHaveText(['Heading 2']);
+		// "2 columns" is disabled in a column (D2): "Heading 2" (and its toggle) still match.
+		await expect(page.locator('[data-testid="slash-menu-item"]')).toHaveText([
+			'Heading 2',
+			'Toggle heading 2'
+		]);
 		await page.keyboard.type('c');
 		await expect(menu).toHaveCount(0);
 		await page.keyboard.type('ol');

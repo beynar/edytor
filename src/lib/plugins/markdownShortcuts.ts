@@ -1,5 +1,7 @@
+import type { Block } from '$lib/block/block.svelte.js';
 import { convertToKind, type KindRow } from '$lib/kinds.js';
 import type { InputRule, Plugin } from '$lib/plugins.js';
+import { jsonEquals } from '$lib/utils/json.js';
 
 /**
  * Notion's inline markdown, completed by the typed closing character: the
@@ -45,13 +47,36 @@ const INLINE = new RegExp(
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/**
+ * The row a shortcut typed at `block`'s start names: a preset converting
+ * `block`'s kind by it (`markdownFrom`), the one sharing the most data
+ * values with the block when several do (a heading's level), else the
+ * first preset whose `markdown` holds it.
+ */
+const shortcutRow = (kinds: KindRow[], block: Block, typed: string) => {
+	const data = block.data ?? {};
+	const shared = (row: KindRow) =>
+		Object.entries(row.value.data ?? {}).filter(([key, value]) => jsonEquals(data[key], value))
+			.length;
+	let best: KindRow | undefined;
+	for (const row of kinds)
+		if (row.markdownFrom?.[block.type]?.includes(typed) && (!best || shared(row) > shared(best)))
+			best = row;
+	return best ?? kinds.find((kind) => kind.markdown?.includes(typed));
+};
+
 /** Markdown prefixes come from the kind catalogue: a row whose shortcut the typed character completes. */
 export const markdownShortcutsPlugin: Plugin = (edytor) => {
 	/** The catalogue's prefixes as one pattern, from a text's start (built once the catalogue is). */
 	let prefixes: { kinds: readonly KindRow[]; find: RegExp } | null = null;
 	const prefixPattern = () => {
 		if (prefixes?.kinds !== edytor.kinds) {
-			const all = edytor.kinds.flatMap((kind) => kind.markdown ?? []).map(escape);
+			const all = edytor.kinds
+				.flatMap((kind) => [
+					...(kind.markdown ?? []),
+					...Object.values(kind.markdownFrom ?? {}).flat()
+				])
+				.map(escape);
 			prefixes = {
 				kinds: edytor.kinds,
 				find: all.length ? new RegExp(`^(?:${all.join('|')})$`) : /(?!)/
@@ -109,7 +134,7 @@ export const markdownShortcutsPlugin: Plugin = (edytor) => {
 		},
 		replace: (match, { block, from, to, typed, remove }) => {
 			if (from !== 0 || typed.length !== 1 || !block.convertible) return false;
-			const row = edytor.kinds.find((kind) => kind.markdown?.includes(match[0]));
+			const row = shortcutRow(edytor.kinds, block, match[0]);
 			if (!row) return false;
 			// A replacing kind (divider, code) would erase the rest: only a block holding just the prefix.
 			const text = block.firstText;

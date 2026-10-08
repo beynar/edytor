@@ -8,14 +8,14 @@ A block belongs to one document. Moving it to another document is a copy and a d
 
 ## A page is a document
 
-Model each page as its own document (one room per page), and a subpage as a block that links to it: an inline block or a block kind of your own whose data holds the page's id (`{ "type": "page-link", "data": { "page": "doc-42" } }`). This is what Notion does, and it is what scales here:
+Model each page as its own document (one room per page), and a subpage as a block that links to it: the [page plugin](/docs/plugins/page)'s `page` block (`{ "type": "page", "data": { "pageId": "doc-42", "title": "Roadmap" } }`), or an inline block or a kind of your own whose data holds the page's id. This is what Notion does, and it is what scales here:
 
 - **Loading and syncing** cost what one page costs, not the whole workspace. A room holds one page's blocks in memory and on its socket.
 - **Permissions** follow pages: [`authorize`](/docs/server/authorization) admits a user to a page, read-only or not, and [per-block locks](/docs/server/extending#per-block-locks) refine it inside one.
 - **History and purge** run per page, on each room's alarm.
 - **Moving a subpage** to another parent is a change of one link block (move it, or delete it here and insert it there): the page itself, its content and its history, does not move.
 
-Move blocks between documents only to move content: a few paragraphs from a draft into a published page, a section split out into a page of its own.
+Move blocks between documents only to move content: a few paragraphs from a draft into a published page, a section split out into a page of its own (Notion's "Turn into page": move the blocks into the new page's room, then put a `page` block where they were).
 
 ## Move blocks
 

@@ -70,11 +70,13 @@ Plugins are read once, when the component mounts. Changing the array afterwards 
 | [`suggestionsPlugin`](/docs/editor/suggestions#the-default-ui) | after yours | `suggestionsPlugin` or any `createSuggestionsPlugin(...)` in your list |
 | [`imagePlugin`](/docs/plugins/image) | after yours | `imagePlugin` or any `createImagePlugin(...)` in your list |
 | [`richTextPlugin`](/docs/plugins/rich-text) | last | `richTextPlugin` in your list |
+| [Page](/docs/plugins/page)                             | `pagePlugin`, `createPagePlugin` | Notion's subpage block: a link to another document with its title, opened, named and created by your functions. Opt-in |
+| [Table of contents](/docs/plugins/table-of-contents)   | `tocPlugin`, `createTocPlugin` | Notion's table of contents: the document's headings, live, each scrolling to its heading. Opt-in |
 | [Block handles](/docs/plugins/block-handles) | first | the `blockHandles` prop, or a handles plugin in your list |
 
 The example above therefore runs block handles, your five plugins, then arrow move, suggestions, image and rich text. A default you list yourself stays where you put it, so older code that passes `plugins={[richTextPlugin]}` still works.
 
-Some bundled plugins are not defaults: list [`columnsPlugin`](/docs/plugins/columns), [`codePlugin`](/docs/plugins/code), [`findPlugin`](/docs/plugins/find), the media plugins ([embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)), the menus, the toolbar and markdown shortcuts yourself when you want them.
+Some bundled plugins are not defaults: list [`columnsPlugin`](/docs/plugins/columns), [`codePlugin`](/docs/plugins/code), [`findPlugin`](/docs/plugins/find), the media plugins ([embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)), the [page](/docs/plugins/page) and [table of contents](/docs/plugins/table-of-contents) plugins, the menus, the toolbar and markdown shortcuts yourself when you want them.
 
 Pass `defaultPlugins={false}` to get exactly your list (block handles still follow `blockHandles`). The defaults are added by the `<Edytor>` component, per view; the editor instance underneath has none of its own.
 
@@ -114,7 +116,7 @@ Import it like any other module: `import { highlightPlugin } from './HighlightPl
 
 | Plugin                                                 | Export                    | What it adds                                                                               |
 | ------------------------------------------------------ | ------------------------- | ------------------------------------------------------------------------------------------ |
-| [Rich text](/docs/plugins/rich-text)                   | `richTextPlugin`          | Paragraphs, headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks, and Notion's shortcuts. On by default |
+| [Rich text](/docs/plugins/rich-text)                   | `richTextPlugin`          | Paragraphs, headings, lists, to-dos, toggles, toggle headings, callouts, quotes, dividers, ten marks, and Notion's shortcuts. On by default |
 | [Code](/docs/plugins/code)                             | `codePlugin`              | Code blocks with syntax highlighting and a Copy button                                     |
 | [Image](/docs/plugins/image)                           | `imagePlugin`, `createImagePlugin` | Notion's image block: embed from a link or your upload, with an editable caption. On by default |
 | [Embed](/docs/plugins/embed)                           | `embedPlugin`, `createEmbedPlugin` | Notion's embed block: a YouTube, Vimeo, Loom, Figma, CodePen or Spotify player in a sandboxed frame, from an allowlist you can extend. Opt-in |
@@ -123,7 +125,7 @@ Import it like any other module: `import { highlightPlugin } from './HighlightPl
 | [Video](/docs/plugins/video) and [Audio](/docs/plugins/audio) | `videoPlugin`, `createVideoPlugin`, `audioPlugin`, `createAudioPlugin` | Video and audio files in the browser's players, linked or uploaded. Opt-in |
 | [Columns](/docs/plugins/columns)                       | `columnsPlugin`, `createColumnsPlugin` | Notion's multi-column layouts: drag a block beside another, "2 columns" to "5 columns", resize by dragging the gap. Opt-in: list it in `plugins` |
 | [Block handles](/docs/plugins/block-handles)           | `blockHandlesPlugin`, `createBlockHandlesPlugin` | A `+` and a drag grip beside each block, drag and drop, keyboard moves. On by default |
-| [Block menu](/docs/plugins/block-menu)                 | `blockMenuPlugin`, `createBlockMenuPlugin` | Notion's block menu on a grip click: search, Turn into, Duplicate, Move, Delete |
+| [Block menu](/docs/plugins/block-menu)                 | `blockMenuPlugin`, `createBlockMenuPlugin` | Notion's block menu on a grip click: search, Turn into, Color, Duplicate, Move, Delete |
 | [Slash menu](/docs/plugins/slash-menu)                 | `slashMenuPlugin`, `createSlashMenuPlugin` | A sectioned command menu opened by typing `/`                             |
 | [Toolbar](/docs/plugins/toolbar)                       | `toolbarPlugin`, `createToolbarPlugin` | A floating toolbar over text selections: Turn into, link, marks and colors    |
 | [Markdown shortcuts](/docs/plugins/markdown-shortcuts) | `markdownShortcutsPlugin` | Block prefixes such as `# ` or `- `, and inline `**bold**`, `*italic*`, `` `code` ``, `~strike~` |

@@ -40,10 +40,12 @@
 		"test:crdt:extensive": "PRODUCTION=1 vitest --config ./vitest.crdt.config.ts --run",
 		"test:crdt:pending": "vitest --config ./vitest.crdt-pending.config.ts --run",
 		"test:do": "svelte-kit sync && vitest --config tests/do/vitest.config.ts --run",
-		"test:do:typecheck": "svelte-kit sync && tsc -p tests/do/tsconfig.json",
+		"test:do:typecheck": "svelte-kit sync && tsc -p tests/do/tsconfig.json && tsc -p bench/soak/tsconfig.json",
 		"test:hosted": "env -u FORCE_COLOR -u NO_COLOR playwright test --config=tests/hosted/playwright.config.ts",
 		"bench:crdt": "node --expose-gc bench/run.js",
 		"bench:scale": "node bench/scale.js",
+		"soak": "node bench/soak/run.mjs",
+		"soak:smoke": "node bench/soak/run.mjs --clients 6 --threads 2 --minutes 1.5 --ops 2 --fault-scale 0.15",
 		"bench:browser": "node bench/browser.js",
 		"bench:runs": "BENCH_RUNS=1 vitest --config ./vitest.crdt.config.ts --run src/tests/crdt/runs/runs.bench.test.ts",
 		"census": "node scripts/census.mjs"

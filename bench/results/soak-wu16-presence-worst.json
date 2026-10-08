@@ -1,0 +1,571 @@
+{
+	"at": "2026-10-08T02:42:59.414Z",
+	"room": {
+		"heapMaxMB": 59.99983215332031,
+		"heapAfterGcMaxMB": 33.199562072753906,
+		"rssMaxMB": 452.453125,
+		"documentBytes": 889140,
+		"storedBytes": 220285,
+		"finalCompactionMs": 670,
+		"forcedCompactionsMs": {
+			"count": 0,
+			"p50": null,
+			"p90": null,
+			"p99": null,
+			"p999": null,
+			"max": null
+		},
+		"instances": 3,
+		"starts": [
+			{
+				"t": 1,
+				"sockets": 0
+			},
+			{
+				"t": 122,
+				"sockets": 24
+			},
+			{
+				"t": 155,
+				"sockets": 50
+			},
+			{
+				"t": 156,
+				"sockets": 0
+			}
+		],
+		"summed": {
+			"compactions": 20,
+			"folds": 9741,
+			"foldMaxMs": 85,
+			"fanOutMessages": 4992993,
+			"fanOutBytes": 917182393,
+			"quotaHits": 0,
+			"refusals": {
+				"relayed": 1
+			}
+		},
+		"log": {
+			"compactions": {
+				"count": 20,
+				"p50": 9,
+				"p90": 19,
+				"p99": 62,
+				"p999": 62,
+				"max": 62
+			},
+			"compactionBytesMax": 889140,
+			"faults": 0,
+			"quota": []
+		},
+		"metrics": {
+			"documentBytes": 889140,
+			"storedBytes": 220285,
+			"records": 2,
+			"rows": 2,
+			"updateRecords": 0,
+			"waitingBytes": 0,
+			"sockets": 50,
+			"buffered": {
+				"sequences": 0,
+				"bytes": 0
+			},
+			"compaction": {
+				"count": 1,
+				"totalMs": 19,
+				"maxMs": 19,
+				"lastMs": 19,
+				"lastBytes": 889140
+			},
+			"fold": {
+				"count": 51,
+				"totalMs": 472,
+				"maxMs": 36,
+				"lastMs": 4
+			},
+			"fanOut": {
+				"messages": 2601,
+				"bytes": 487048
+			},
+			"quotaHits": 0,
+			"validationDenials": 0,
+			"refusals": {},
+			"history": {
+				"written": 0,
+				"skipped": 0,
+				"lastKey": null
+			},
+			"purge": {
+				"runs": 0,
+				"horizon": null,
+				"removed": 0,
+				"emptied": 0,
+				"marks": 0,
+				"records": 0,
+				"candidates": 0,
+				"claims": 0
+			},
+			"since": 1791427378306
+		}
+	},
+	"server": "local (Miniflare, bench/soak/server.mjs)",
+	"config": {
+		"clients": 50,
+		"minutes": 2,
+		"threads": 5,
+		"opsPerSecond": 2,
+		"presenceHz": 20,
+		"dragShare": 1,
+		"churnPerMinute": 1,
+		"offlinePerHour": 2,
+		"reloadShare": 0.1,
+		"faults": false,
+		"seed": 1,
+		"port": 4540,
+		"maxBlocks": 400,
+		"maxChars": 60000,
+		"sampleSeconds": 10,
+		"faultScale": 1
+	},
+	"durationMinutes": 2.6,
+	"acks": {
+		"count": 10556,
+		"p50": 991.1,
+		"p90": 4535.9,
+		"p99": 18610.6,
+		"p999": 31683.3,
+		"max": 54016
+	},
+	"replays": {
+		"count": 2,
+		"p50": 19357.5,
+		"p90": 19357.5,
+		"p99": 19357.5,
+		"p999": 19357.5,
+		"max": 19357.5,
+		"sessions": 2,
+		"edits": 98
+	},
+	"clients": {
+		"maxEventLoopP99Ms": 32,
+		"maxHeapMB": 1279.367202758789
+	},
+	"totals": {
+		"ops": {
+			"backspace:applied": 1270,
+			"type:applied": 8788,
+			"mark:applied": 377,
+			"move:applied": 546,
+			"mark:noop": 205,
+			"cut:applied": 343,
+			"data:applied": 416,
+			"jump:applied-local": 373,
+			"split:applied": 918,
+			"merge:applied": 591,
+			"merge:refused": 4,
+			"backspace:noop": 146,
+			"move:refused": 4,
+			"split:refused": 1,
+			"cut:noop": 62,
+			"type:refused": 1,
+			"type:noop": 22,
+			"merge:noop": 3,
+			"jump:noop": 2,
+			"move:noop": 2,
+			"split:noop": 3
+		},
+		"closes": {
+			"1000": 76,
+			"1006": 101
+		},
+		"events": {
+			"unreachable": 46
+		},
+		"reloads": 4,
+		"churns": 129,
+		"offline": 3
+	},
+	"faults": [],
+	"errors": [],
+	"convergence": {
+		"clients": 50,
+		"stateVectors": 1,
+		"distinctJson": 1,
+		"room": true,
+		"joiner": true,
+		"afterEviction": true,
+		"blocks": 398,
+		"chars": 13942,
+		"ok": true
+	},
+	"samples": [
+		{
+			"t": 22,
+			"online": 44,
+			"acks": {
+				"count": 742,
+				"p50": 537.6,
+				"p90": 2568.9,
+				"p99": 2852.9,
+				"p999": 2920.3,
+				"max": 2920.3
+			},
+			"heapUsed": 57302096,
+			"heapTotal": 87080960,
+			"gc": false,
+			"rss": 305020928,
+			"cpu": 97.5,
+			"clientHeap": 380010808,
+			"clientRss": 1106313216,
+			"clientLoopP99": 14,
+			"documentBytes": 86442,
+			"storedBytes": 43497,
+			"records": 253,
+			"updateRecords": 251,
+			"sockets": 49,
+			"compactions": 2,
+			"compactionMaxMs": 3,
+			"folds": 1303,
+			"foldMaxMs": 21,
+			"fanOut": 689985,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791427223355,
+			"load": 26.0390625
+		},
+		{
+			"t": 28,
+			"online": 36,
+			"acks": {
+				"count": 797,
+				"p50": 1760.2,
+				"p90": 4238.7,
+				"p99": 7336.8,
+				"p999": 7576.4,
+				"max": 7576.4
+			},
+			"heapUsed": 62914384,
+			"heapTotal": 97828864,
+			"gc": false,
+			"rss": 315736064,
+			"cpu": 100.1,
+			"clientHeap": 384124520,
+			"clientRss": 1212104704,
+			"clientLoopP99": 13,
+			"documentBytes": 133930,
+			"storedBytes": 70279,
+			"records": 378,
+			"updateRecords": 376,
+			"sockets": 45,
+			"compactions": 3,
+			"compactionMaxMs": 4,
+			"folds": 1928,
+			"foldMaxMs": 39,
+			"fanOut": 1015095,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791427223355,
+			"load": 25.23486328125
+		},
+		{
+			"t": 36,
+			"online": 43,
+			"acks": {
+				"count": 770,
+				"p50": 1085.5,
+				"p90": 4037.7,
+				"p99": 15749.6,
+				"p999": 23442.5,
+				"max": 23442.5
+			},
+			"heapUsed": 13384740,
+			"heapTotal": 106217472,
+			"gc": false,
+			"rss": 327876608,
+			"cpu": 98.2,
+			"clientHeap": 467248232,
+			"clientRss": 1377140736,
+			"clientLoopP99": 15,
+			"documentBytes": 185612,
+			"storedBytes": 59932,
+			"records": 114,
+			"updateRecords": 112,
+			"sockets": 49,
+			"compactions": 5,
+			"compactionMaxMs": 4,
+			"folds": 2688,
+			"foldMaxMs": 39,
+			"fanOut": 1392127,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791427223355,
+			"load": 24.2548828125
+		},
+		{
+			"t": 46,
+			"online": 41,
+			"acks": {
+				"count": 792,
+				"p50": 569.2,
+				"p90": 1841.7,
+				"p99": 2687.9,
+				"p999": 8760,
+				"max": 8760
+			},
+			"heapUsed": 23173164,
+			"heapTotal": 107266048,
+			"gc": false,
+			"rss": 332201984,
+			"cpu": 99.5,
+			"clientHeap": 668061000,
+			"clientRss": 1539325952,
+			"clientLoopP99": 13,
+			"documentBytes": 259908,
+			"storedBytes": 110872,
+			"records": 472,
+			"updateRecords": 470,
+			"sockets": 47,
+			"compactions": 6,
+			"compactionMaxMs": 5,
+			"folds": 3551,
+			"foldMaxMs": 39,
+			"fanOut": 1875747,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791427223355,
+			"load": 24.5419921875
+		},
+		{
+			"t": 58,
+			"online": 46,
+			"acks": {
+				"count": 817,
+				"p50": 727,
+				"p90": 1646.9,
+				"p99": 8554.8,
+				"p999": 9664.8,
+				"max": 9664.8
+			},
+			"heapUsed": 52667432,
+			"heapTotal": 108576768,
+			"gc": false,
+			"rss": 336789504,
+			"cpu": 98.9,
+			"clientHeap": 833949632,
+			"clientRss": 1745715200,
+			"clientLoopP99": 14,
+			"documentBytes": 320659,
+			"storedBytes": 117778,
+			"records": 336,
+			"updateRecords": 334,
+			"sockets": 47,
+			"compactions": 8,
+			"compactionMaxMs": 6,
+			"folds": 4427,
+			"foldMaxMs": 39,
+			"fanOut": 2392271,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791427223355,
+			"load": 23.23291015625
+		},
+		{
+			"t": 70,
+			"online": 40,
+			"acks": {
+				"count": 808,
+				"p50": 854.9,
+				"p90": 2372.7,
+				"p99": 3792,
+				"p999": 9295.9,
+				"max": 9295.9
+			},
+			"heapUsed": 20601776,
+			"heapTotal": 37797888,
+			"gc": true,
+			"rss": 267780096,
+			"cpu": 101.6,
+			"clientHeap": 614051040,
+			"clientRss": 1841086464,
+			"clientLoopP99": 14,
+			"documentBytes": 384089,
+			"storedBytes": 123205,
+			"records": 216,
+			"updateRecords": 214,
+			"sockets": 48,
+			"compactions": 10,
+			"compactionMaxMs": 9,
+			"folds": 5312,
+			"foldMaxMs": 39,
+			"fanOut": 2856492,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791427223355,
+			"load": 22.2548828125
+		},
+		{
+			"t": 78,
+			"online": 45,
+			"acks": {
+				"count": 852,
+				"p50": 483.5,
+				"p90": 1725.7,
+				"p99": 10597,
+				"p999": 18077.4,
+				"max": 18077.4
+			},
+			"heapUsed": 45838780,
+			"heapTotal": 88653824,
+			"gc": false,
+			"rss": 332906496,
+			"cpu": 99.2,
+			"clientHeap": 973015968,
+			"clientRss": 1904017408,
+			"clientLoopP99": 16,
+			"documentBytes": 456543,
+			"storedBytes": 130067,
+			"records": 131,
+			"updateRecords": 129,
+			"sockets": 44,
+			"compactions": 12,
+			"compactionMaxMs": 11,
+			"folds": 6243,
+			"foldMaxMs": 39,
+			"fanOut": 3342788,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791427223355,
+			"load": 21.2255859375
+		},
+		{
+			"t": 87,
+			"online": 48,
+			"acks": {
+				"count": 888,
+				"p50": 427.8,
+				"p90": 1430.1,
+				"p99": 5639.1,
+				"p999": 7744.2,
+				"max": 7744.2
+			},
+			"heapUsed": 25068484,
+			"heapTotal": 109101056,
+			"gc": false,
+			"rss": 347537408,
+			"cpu": 98.9,
+			"clientHeap": 1134283680,
+			"clientRss": 2112356352,
+			"clientLoopP99": 18,
+			"documentBytes": 549668,
+			"storedBytes": 188848,
+			"records": 488,
+			"updateRecords": 486,
+			"sockets": 47,
+			"compactions": 13,
+			"compactionMaxMs": 11,
+			"folds": 7109,
+			"foldMaxMs": 39,
+			"fanOut": 3821268,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791427223355,
+			"load": 20.64697265625
+		},
+		{
+			"t": 123,
+			"online": 45,
+			"acks": {
+				"count": 859,
+				"p50": 419.6,
+				"p90": 1259.8,
+				"p99": 5003.4,
+				"p999": 7662.6,
+				"max": 7662.6
+			},
+			"heapUsed": 25000108,
+			"heapTotal": 115916800,
+			"gc": false,
+			"rss": 450347008,
+			"cpu": 47,
+			"clientHeap": 1299273160,
+			"clientRss": 2492858368,
+			"clientLoopP99": 18,
+			"documentBytes": 600797,
+			"storedBytes": 600857,
+			"records": 3,
+			"updateRecords": 1,
+			"sockets": 47,
+			"compactions": 16,
+			"compactionMaxMs": 62,
+			"folds": 8129,
+			"foldMaxMs": 63,
+			"fanOut": 4371169,
+			"refusals": {
+				"relayed": 1
+			},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791427223355,
+			"load": 21.0498046875
+		},
+		{
+			"t": 155,
+			"online": 50,
+			"acks": {
+				"count": 3231,
+				"p50": 3091.3,
+				"p90": 5720.3,
+				"p99": 26071.8,
+				"p999": 51245.5,
+				"max": 54016
+			},
+			"heapUsed": 34812264,
+			"heapTotal": 123699200,
+			"gc": true,
+			"rss": 474431488,
+			"cpu": 2,
+			"clientHeap": 1341513744,
+			"clientRss": 3168321536,
+			"clientLoopP99": 32,
+			"documentBytes": 935450,
+			"storedBytes": 326590,
+			"records": 340,
+			"updateRecords": 338,
+			"sockets": 50,
+			"compactions": 3,
+			"compactionMaxMs": 19,
+			"folds": 1561,
+			"foldMaxMs": 85,
+			"fanOut": 619223,
+			"refusals": {},
+			"quotaHits": 0,
+			"failure": null,
+			"since": 1791427345275,
+			"load": 20.69482421875
+		}
+	]
+}

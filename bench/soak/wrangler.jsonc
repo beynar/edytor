@@ -1,0 +1,25 @@
+{
+	// The soak's staging room (WU-16): `worker.ts` — the shipped room as
+	// `SoakRoom` with the soak's operator routes — deployed to a staging
+	// account, never to production. Every request must carry
+	// `?token=<SOAK_TOKEN>`: set it first with
+	//   wrangler secret put SOAK_TOKEN -c bench/soak/wrangler.jsonc
+	// then deploy with
+	//   wrangler deploy -c bench/soak/wrangler.jsonc
+	// and run `node bench/soak/run.mjs --server wss://<host>/rooms --token <SOAK_TOKEN>`
+	// (site: server/room, "Load").
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "edytor-soak",
+	"main": "worker.ts",
+	"compatibility_date": "2026-09-26",
+	"durable_objects": {
+		"bindings": [{ "name": "ROOM", "class_name": "SoakRoom" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["SoakRoom"] }],
+	"vars": {
+		// The room's history in its own SQLite (the production default of a host with no KV).
+		"EDYTOR_HISTORY": "room"
+	},
+	// The room logs one JSON line per compaction, quota hit, denial or fault: `wrangler tail`.
+	"observability": { "enabled": true }
+}

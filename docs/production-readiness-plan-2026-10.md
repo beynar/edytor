@@ -503,6 +503,32 @@ Run these in order; they touch the same files.
   in `server/room.mdx` and the ledger.
 - Depends on WU-04 and WU-05.
 - Effort: 4 d.
+- Outcome (deviations, decided): the harness is `bench/soak/` (`run.mjs`, `clients.mjs` worker
+  threads of real `createDocument` + `WebsocketProvider` clients, `server.mjs` Miniflare,
+  `worker.ts`/`local.ts` the shipped room as `SoakRoom` with fault routes, `wrangler.jsonc` for
+  staging; `pnpm soak`, `pnpm soak:smoke`). The run was local (Miniflare on a shared M4 Pro
+  laptop), 50 clients for 20 minutes, not 4 to 8 hours on staging: the staging recipe is in
+  `server/room.mdx` (Load). Faults: hibernation and eviction (`workerd:unsafe`), `ctx.abort()`,
+  2 s storage outages (a trigger failing update appends), 30 s failing compactions, forced
+  compactions. Presence is 20 Hz while a client drags (10 % of its time) plus one per edit; all
+  clients at 20 Hz was run apart (2 minutes). Heap is read in workerd through its inspector
+  (`Runtime.getHeapUsage` after `HeapProfiler.collectGarbage`), which WU-04 could not.
+  - Numbers (`bench/results/soak-wu16-20min.json`): 22,457 edits; ack p50 3.8 ms, p99 329 ms,
+    p99.9 2.9 s, max 36 s (a writer's 1011 backoff after a storage outage); p99 32 ms in the
+    median fault-free 10 s window; 33 offline replays, max 334 ms; compactions p50 16 ms, max
+    34 ms; live heap 34 MB at 1.69 MB stored (18 bytes a byte), 127 MB before collection after
+    an outage's rebuilds; 12 restarts, all injected; converged (50 clients, the room, a joiner,
+    the reloaded room). Near the quota (`soak-wu16-near-quota.json`, 1.93 MB): 33 MB live idle,
+    52 MB while 50 clients caught up after an eviction, under 70 % of 128 MB.
+  - No divergence and no crash loop: nothing to fix in an owner. Findings left open: (1) stored
+    size follows edits (70 to 80 bytes an edit; 1.7 MB stored for 20,000 visible characters),
+    so a busy document reaches the 2 MiB default in days: a quota sizing or purge-cadence
+    decision, documented in `server/room.mdx`; (2) presence fan-out is quadratic: 50 clients at
+    20 Hz (35,000 frames a second) saturate the room's core (ack p99 19 s, one eviction under
+    load, still converged; `soak-wu16-presence-worst.json`); (3) during a storage outage every
+    failing frame rebuilds the document from its rows (`fault` → `rebuild`), so an outage costs
+    rows × frames of CPU and garbage, and writers whose redials all failed back off for up to
+    30 s. Candidates for WU-42 (room split) or a later room unit.
 
 **WU-17: client scale profile (R10, R8)**
 

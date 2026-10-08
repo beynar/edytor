@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### Unreleased
+
+- **Load numbers for the room.** [The room](/docs/server/room#load) has a Load section: a 20-minute soak of 50 clients with injected faults (hibernation, eviction, reset, storage outages, failing compactions). It records ack latency, heap per stored byte measured in workerd, compaction times and convergence, the two limits it found (stored size follows edits, presence fan-out is quadratic), and how to run the multi-hour soak on staging. Nothing in the package changed.
+
 ### From 0.1.0-next.33
 
 - **No package change.** 0.1.0-next.33 was tagged but never published to npm (its CI run failed on the room lane's setup); this release carries the same package. Upgrading from 0.1.0-next.32, read the section below.

@@ -1,0 +1,5 @@
+{
+	// `pnpm test:do:typecheck` checks the soak's Worker with the room tests' types.
+	"extends": "../../tests/do/tsconfig.json",
+	"include": ["./*.ts"]
+}

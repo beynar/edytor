@@ -749,9 +749,13 @@ conflict matrix.
   `streams`, `layout` (the layout rules), `placement` (placement maintenance, `typeOf`),
   `records`, `cache` (the run cache), `fold`, `report` and `checks` (the self-checks, reached
   through `ix.checks`). The largest part is `fold.ts` (537 lines). The API report is
-  unchanged; the vitest lanes run with the self-checks on. **Remaining over about 800 lines
-  in `crdt/`:** `document.ts`, `placement/model.ts`, `text/model.ts` and `text/deletes.ts`
-  (see below if split).
+  unchanged; the vitest lanes run with the self-checks on. For the 800-line bound, the same
+  lane moved the module-level functions out of `placement/model.ts` (1,325 → 758:
+  `resolve.ts`, `source.ts`, `display.ts`) and `text/model.ts` (982 → 763: `items.ts`,
+  `ranges.ts`, `streams.ts`), both re-exporting them, and the marks and copies index out of
+  `text/deletes.ts` (959 → 601: `delete-index.ts`). **Remaining:** `crdt/document.ts`
+  (1,438 lines, about 830 of them the public `EdytorDocument` class, whose shape the API
+  report pins); splitting it means moving method logic out of the class, a follow-up unit.
 
 **WU-42: split `AttachedDocument` (CC-02)**
 

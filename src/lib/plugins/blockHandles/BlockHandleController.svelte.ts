@@ -33,6 +33,15 @@ import { kindLabel } from '$lib/kinds.js';
 import { englishLabels, type BlockHandlesLabels } from '$lib/labels.js';
 import type { Popup, PopupOpener } from '$lib/surface/popups.svelte.js';
 import { dragPreview } from './dragPreview.js';
+import { DropIndicator } from './dropIndicator.js';
+import {
+	getOwnRowBottom,
+	isBeside,
+	nestIndent,
+	ownRow,
+	ownTextRow,
+	type DropPlacement
+} from './geometry.js';
 import { stacks } from '../columns/stacking.js';
 
 const blockDragMimeType = 'application/x-edytor-block-id';
@@ -79,14 +88,6 @@ const keyMoves: Record<string, BlockMoveDirection> = {
 type DragLocation = ElementDropTargetEventPayloadMap['onDrag']['location'];
 type DropTargetRecord = DragLocation['current']['dropTargets'][number];
 
-type DropPlacement = {
-	target: Block;
-	node: HTMLElement;
-	position: BlockMovePosition;
-	/** The pointer's half was refused (the hitbox's `blocked`): this is the placement it gave way to. */
-	blocked?: boolean;
-};
-
 /** The drop target data key of the row the hitbox measured (`rowAt`). */
 const ROW = 'edytorRow';
 /** The drop target data key of a beside band beyond the editor's edges (`margin`). */
@@ -106,27 +107,10 @@ const MARGIN_X = 120;
 /** The handle column's width when the drag's handle cannot be measured (`+`, grip and gap). */
 const HANDLE_COLUMN = 50;
 
-const isBeside = (position: BlockMovePosition): position is 'left' | 'right' =>
-	position === 'left' || position === 'right';
-
 type BlockHandleControllerOptions = {
 	draggable: boolean;
 	onActivate?: (activation: BlockActivation) => void;
 	labels?: BlockHandlesLabels;
-};
-
-const getOwnRowBottom = (node: HTMLElement) => {
-	const rect = node.getBoundingClientRect();
-	// Block nodes wrap their children in the DOM; the parent's placement
-	// bands belong to its own row, ending where the first child begins.
-	const firstChild = node.querySelector<HTMLElement>('[data-edytor-block="true"]');
-	const childRect = firstChild?.getBoundingClientRect();
-	return childRect &&
-		childRect.height > 0 &&
-		childRect.top >= rect.top &&
-		childRect.top < rect.bottom
-		? childRect.top
-		: rect.bottom;
 };
 
 /**
@@ -152,72 +136,11 @@ const endsDocument = (block: Block) => {
 	return true;
 };
 
-/** A block's own row: its box down to where its first child begins. */
-const ownRow = (node: HTMLElement) => {
-	const rect = node.getBoundingClientRect();
-	return new DOMRect(
-		rect.left,
-		rect.top,
-		rect.width,
-		Math.max(0, getOwnRowBottom(node) - rect.top)
-	);
-};
-
-/** The first line of a block's own text (not a child's), or the block's box. */
-const ownTextRow = (node: HTMLElement) => {
-	const text = Array.from(node.querySelectorAll<HTMLElement>('[data-edytor-text="true"]')).find(
-		(element) => element.closest('[data-edytor-block="true"]') === node
-	);
-	const row = text?.getClientRects()[0];
-	return row && row.height > 0 ? row : node.getBoundingClientRect();
-};
 /** Where a block's own text starts: its level's column. */
 const column = (block: Block) => ownTextRow(block.node!).left;
 
-/**
- * One nesting step, a nested child's indent when the target has no visible
- * child to measure: the `--edytor-nest-indent` the children container is
- * indented by (in px), else its default.
- */
-const NEST_INDENT = 24;
-const nestIndent = (node: HTMLElement) => {
-	const value = node.ownerDocument.defaultView
-		?.getComputedStyle(node)
-		.getPropertyValue('--edytor-nest-indent')
-		.trim();
-	return value?.endsWith('px') ? parseFloat(value) : NEST_INDENT;
-};
-/** Notion's drop bar: 4px of translucent blue. */
-const DROP_INDICATOR_COLOR = 'rgba(35, 131, 226, 0.43)';
-/** The nest backdrop's theming variable (its defaults are in `BlockHandle.svelte`). */
-const BACKDROP_COLOR = '--edytor-drop-backdrop-color';
-const BAR = 4;
-/**
- * Notion's nest backdrop: a soft rounded tint over the future parent's own
- * row, drawn by the overlay layer under the drop line — never a style on the
- * block, so rounded block styles and nesting cannot bend it. One per drag,
- * made at its start so it fades in (`data-shown`) and out.
- */
-const backdrop = (document: Document) => {
-	const node = document.createElement('div');
-	node.dataset.edytorDropBackdrop = 'true';
-	node.setAttribute('aria-hidden', 'true');
-	return node;
-};
-
 export class BlockHandleController {
 	private readonly owner = {};
-	private indicatorNode: HTMLElement | null = null;
-	private indicatorOverlay: HTMLElement | null = null;
-	private activeDropTarget: HTMLElement | null = null;
-	private activePlacement: DropPlacement | null = null;
-	/** The indicator's measure in the overlay, while one is shown. */
-	private offIndicator: (() => void) | null = null;
-	/**
-	 * The nest backdrop: one per drag, in the overlay; `data-shown` while the
-	 * placement nests (it fades out in place, then goes with the drag).
-	 */
-	private backdrop: HTMLElement | null = null;
 	/** Candidate drop targets; registered with the drag library only during our drag. */
 	private readonly targets = new Map<HTMLElement, Block>();
 	private readonly registered = new Map<HTMLElement, () => void>();
@@ -227,6 +150,8 @@ export class BlockHandleController {
 	private scrolling: (() => void) | null = null;
 	/** The blocks the drag in progress moves (`dragBlocks` when it started). */
 	private group: Block[] = [];
+	/** The drop bar and the nest backdrop in the overlay, while our drag runs. */
+	private readonly indicator: DropIndicator;
 	/** The selection the drag in progress replaced when it started: its undo step restores it. */
 	private held: SelectionValue | null = null;
 	/** The handle the drag in progress started from: its width is the handle column's. */
@@ -237,7 +162,13 @@ export class BlockHandleController {
 	constructor(
 		private edytor: Edytor,
 		private options: BlockHandleControllerOptions = { draggable: true }
-	) {}
+	) {
+		this.indicator = new DropIndicator(edytor, {
+			group: () => this.group,
+			besideOf: (block) => this.besideOf(block),
+			layoutOf: (outer) => this.layoutOf(outer)
+		});
+	}
 
 	get readonly() {
 		return this.edytor.readonly;
@@ -449,9 +380,7 @@ export class BlockHandleController {
 				this.registerMarginTarget(element.ownerDocument.body);
 				this.scrolling?.();
 				this.scrolling = root ? autoScrollFor(root, (data) => data.owner === this.owner) : null;
-				this.backdrop?.remove();
-				this.backdrop = backdrop(element.ownerDocument);
-				this.edytor.overlay.layer?.prepend(this.backdrop);
+				this.indicator.begin(element.ownerDocument);
 			},
 			// The moved blocks show selected while they move (a text range becomes their
 			// block selection); the drop's undo step restores the selection held before.
@@ -468,9 +397,7 @@ export class BlockHandleController {
 			onDrop: ({ location }) =>
 				queueMicrotask(() => {
 					if (location.current.dropTargets.length) takeKeys(this.edytor);
-					this.clearIndicator();
-					this.backdrop?.remove();
-					this.backdrop = null;
+					this.indicator.end();
 					this.scrolling?.();
 					this.scrolling = null;
 					for (const off of this.registered.values()) off();
@@ -492,7 +419,7 @@ export class BlockHandleController {
 			if (this.targets.get(node) === target) this.targets.delete(node);
 			this.registered.get(node)?.();
 			this.registered.delete(node);
-			if (this.activeDropTarget === node) this.clearIndicator();
+			if (this.indicator.target === node) this.indicator.clear();
 		};
 	}
 
@@ -535,7 +462,7 @@ export class BlockHandleController {
 			// which the drag library would otherwise let it keep), nor over another column.
 			getIsSticky: ({ source, input }) => {
 				const dragSource = this.getDragSource(source.data);
-				const active = this.activeDropTarget;
+				const active = this.indicator.target;
 				if (!dragSource || this.edytor.readonly || !active || !node.contains(active)) return false;
 				const rect = node.getBoundingClientRect();
 				return (
@@ -556,8 +483,8 @@ export class BlockHandleController {
 			// The target left hands the placement to the innermost one still current (an
 			// outer target of its chain that sticks), before the next move asks it to stick.
 			onDragLeave: ({ location, source }) => {
-				if (this.activeDropTarget !== node) return;
-				this.clearIndicator();
+				if (this.indicator.target !== node) return;
+				this.indicator.clear();
 				const [current] = location.current.dropTargets;
 				if (current) this.showIndicator(current.element as HTMLElement, location, source.data);
 			},
@@ -566,10 +493,10 @@ export class BlockHandleController {
 				if (current?.element !== node) return;
 				const dragSource = this.getDragSource(source.data);
 				const placement =
-					this.activeDropTarget === node && this.activePlacement
-						? this.activePlacement
+					this.indicator.target === node && this.indicator.placement
+						? this.indicator.placement
 						: this.placement(current, source.data, location.current.input) || null;
-				this.clearIndicator();
+				this.indicator.clear();
 				if (
 					dragSource &&
 					placement &&
@@ -607,8 +534,8 @@ export class BlockHandleController {
 			onDragEnter: ({ location, source }) => this.showIndicator(node, location, source.data),
 			onDrag: ({ location, source }) => this.showIndicator(node, location, source.data),
 			onDragLeave: ({ location, source }) => {
-				if (this.activeDropTarget !== node) return;
-				this.clearIndicator();
+				if (this.indicator.target !== node) return;
+				this.indicator.clear();
 				const [current] = location.current.dropTargets;
 				if (current) this.showIndicator(current.element as HTMLElement, location, source.data);
 			},
@@ -617,10 +544,10 @@ export class BlockHandleController {
 				if (current?.element !== node) return;
 				const dragSource = this.getDragSource(source.data);
 				const placement =
-					this.activeDropTarget === node && this.activePlacement
-						? this.activePlacement
+					this.indicator.target === node && this.indicator.placement
+						? this.indicator.placement
 						: dragSource && this.margin(dragSource, location.current.input);
-				this.clearIndicator();
+				this.indicator.clear();
 				if (
 					dragSource &&
 					placement &&
@@ -693,8 +620,8 @@ export class BlockHandleController {
 		const target = node && this.targets.get(node);
 		// Between two rows of the handle column (a margin, a layout's edge), the
 		// reorder shown stays, as a block's sticky slop keeps it.
-		const shown = handle && this.activeDropTarget === root.ownerDocument.body;
-		const held = shown ? this.activePlacement : null;
+		const shown = handle && this.indicator.target === root.ownerDocument.body;
+		const held = shown ? this.indicator.placement : null;
 		const stay = held && !isBeside(held.position) ? held : undefined;
 		if (!node || !target) return stay;
 		const data = { owner: this.owner, blockId: source.id };
@@ -1123,198 +1050,7 @@ export class BlockHandleController {
 		if (current?.element !== node) return;
 		const placement = this.placement(current, data, location.current.input);
 		// A refused beside band shows nothing.
-		if (placement === false) return this.clearIndicator();
-		if (!placement) return;
-		const shown = this.activePlacement;
-		if (
-			this.activeDropTarget === node &&
-			shown?.target === placement.target &&
-			shown.position === placement.position &&
-			shown.blocked === placement.blocked
-		) {
-			this.edytor.overlay.invalidate();
-			return;
-		}
-		this.clearIndicator();
-		this.activeDropTarget = node;
-		this.activePlacement = placement;
-		this.indicatorNode = placement.node;
-		placement.node.dataset.edytorBlockDropPosition = placement.position;
-		this.showOverlay(placement);
-	}
-
-	private showOverlay(placement: DropPlacement) {
-		const document = placement.node.ownerDocument;
-		const overlay = document.createElement('div');
-		overlay.dataset.edytorDropIndicator = 'true';
-		overlay.dataset.position = placement.position;
-		if (placement.blocked) overlay.dataset.blocked = 'true';
-		overlay.setAttribute('aria-hidden', 'true');
-		const count = this.group.length;
-		// How many blocks move, as data only: the bar shows no badge.
-		if (count > 1) overlay.dataset.count = String(count);
-		const color = document.defaultView
-			?.getComputedStyle(placement.node)
-			.getPropertyValue('--edytor-drop-indicator-color')
-			.trim();
-		overlay.style.setProperty('--edytor-drop-indicator-color', color || DROP_INDICATOR_COLOR);
-		const layer = this.edytor.overlay.layer;
-		layer?.append(overlay);
-		this.indicatorOverlay = overlay;
-		const measure = (origin: DOMRect) => {
-			const writes = [this.positionIndicator(origin), this.positionBackdrop(placement, origin)];
-			return () => writes.forEach((write) => write?.());
-		};
-		// Placed at once (it must not show at the layer's origin for a frame), then per frame.
-		if (layer) measure(layer.getBoundingClientRect())();
-		this.offIndicator = this.edytor.overlay.add(measure);
-	}
-
-	/**
-	 * The block a placement makes the dragged blocks' parent when the drop
-	 * nests them: for `inside`, the target, or the item a container nests
-	 * them under (`nestParent`, as the move does); for before/after, the
-	 * target's parent unless it already holds them all (a plain reorder) or
-	 * is the root. A container shows no row of its own (a list): none.
-	 */
-	private nestParent({ target, position }: DropPlacement) {
-		const { edytor, group } = this;
-		// Beside: a column of a layout, never a nest.
-		if (isBeside(position)) return null;
-		const ids = group.map((block) => block.id);
-		const parent =
-			position === 'inside'
-				? (edytor.idToBlock.get(edytor.facade.nestParent(ids, target.id)) ?? target)
-				: target.parent;
-		if (!parent?.node || parent.isRoot || parent.isContainer) return null;
-		if (position !== 'inside' && group.every((block) => block.parent === parent)) return null;
-		return parent;
-	}
-
-	/**
-	 * Layer-relative geometry of the nest backdrop (`backdrop`): the future
-	 * parent's box (`nestParent`, read per frame: a peer's change may change
-	 * it), down to where its first child begins; hidden when the placement
-	 * does not nest.
-	 */
-	private positionBackdrop(placement: DropPlacement, origin: DOMRect) {
-		const { backdrop } = this;
-		if (!backdrop) return;
-		const parent = this.nestParent(placement);
-		const node = parent?.node;
-		if (!parent || !node?.isConnected) return () => delete backdrop.dataset.shown;
-		const rect = ownRow(node);
-		const color = node.ownerDocument.defaultView
-			?.getComputedStyle(node)
-			.getPropertyValue(BACKDROP_COLOR)
-			.trim();
-		return () => {
-			backdrop.dataset.blockId = parent.id;
-			if (color) backdrop.style.setProperty(BACKDROP_COLOR, color);
-			else backdrop.style.removeProperty(BACKDROP_COLOR);
-			Object.assign(backdrop.style, {
-				left: `${rect.left - origin.left}px`,
-				top: `${rect.top - origin.top}px`,
-				width: `${rect.width}px`,
-				height: `${rect.height}px`
-			});
-			backdrop.dataset.shown = 'true';
-		};
-	}
-
-	/**
-	 * Layer-relative geometry of Notion's plain bar: centered between the
-	 * two siblings of the slot, or — inside the target — where the child lands,
-	 * indented to the child's column.
-	 */
-	private positionIndicator(origin: DOMRect) {
-		const placement = this.activePlacement;
-		const overlay = this.indicatorOverlay;
-		if (!placement || !overlay) return;
-		if (isBeside(placement.position)) return this.positionBeside(placement, origin);
-		const rect = placement.node.getBoundingClientRect();
-		const place = (left: number, width: number, center: number) => () => {
-			overlay.style.left = `${left - origin.left}px`;
-			overlay.style.width = `${width}px`;
-			overlay.style.top = `${center - BAR / 2 - origin.top}px`;
-		};
-		if (placement.position === 'inside') {
-			// Where the child lands (the gap after the last visible child, else after
-			// the target's own row), from the child's indent to the target's right edge.
-			const row = ownTextRow(placement.node);
-			const { target } = placement;
-			const lastNode = target.children.at(-1)?.node;
-			const last = lastNode?.getBoundingClientRect();
-			const shown = last && last.height > 0 ? last : null;
-			const next = target.parent?.children[target.index + 1]?.node?.getBoundingClientRect();
-			const end = shown ? shown.bottom : getOwnRowBottom(placement.node);
-			const land = next && next.top >= end ? (end + next.top) / 2 : end + 4;
-			const left =
-				shown && lastNode ? ownTextRow(lastNode).left : row.left + nestIndent(placement.node);
-			return place(left, Math.max(16, rect.right - left), land);
-		}
-
-		const siblings = placement.target.parent?.children;
-		const index = placement.target.index + (placement.position === 'after' ? 1 : 0);
-		const previous = siblings?.[index - 1]?.node?.getBoundingClientRect();
-		const next = siblings?.[index]?.node?.getBoundingClientRect();
-		if (previous && next && previous.bottom <= next.top) {
-			const left = Math.min(previous.left, next.left);
-			const width = Math.max(previous.right, next.right) - left;
-			return place(left, width, (previous.bottom + next.top) / 2);
-		}
-		const edge = placement.position === 'before' ? rect.top : rect.bottom;
-		return place(rect.left, rect.width, edge);
-	}
-
-	/**
-	 * A beside placement's bar: vertical, 4px, at the edge of the block it
-	 * stands beside (`besideOf`: the whole list beside an item), its height;
-	 * when it adds a column to a layout, the layout's height, in the middle
-	 * of the gap to the neighbouring column, else at the layout's edge.
-	 */
-	private positionBeside(placement: DropPlacement, origin: DOMRect) {
-		const overlay = this.indicatorOverlay;
-		const outer = this.besideOf(placement.target);
-		if (!overlay || !outer.node) return;
-		const right = placement.position === 'right';
-		const at = this.layoutOf(outer);
-		let edge: number;
-		let box: DOMRect;
-		if (at?.layout?.node && at.item.node) {
-			box = at.layout.node.getBoundingClientRect();
-			const own = at.item.node.getBoundingClientRect();
-			const near = (right ? at.item.nextBlock : at.item.previousBlock)?.node;
-			const next = near?.getBoundingClientRect();
-			const shown = next && next.width > 0 ? next : null;
-			if (!shown) edge = right ? box.right : box.left;
-			else edge = right ? (own.right + shown.left) / 2 : (shown.right + own.left) / 2;
-		} else {
-			box = outer.node.getBoundingClientRect();
-			edge = right ? box.right : box.left;
-		}
-		return () => {
-			Object.assign(overlay.style, {
-				left: `${edge - BAR / 2 - origin.left}px`,
-				top: `${box.top - origin.top}px`,
-				width: `${BAR}px`,
-				height: `${box.height}px`
-			});
-		};
-	}
-
-	private clearIndicator() {
-		if (this.indicatorNode) {
-			delete this.indicatorNode.dataset.edytorBlockDropPosition;
-			this.indicatorNode = null;
-		}
-		this.offIndicator?.();
-		this.offIndicator = null;
-		// Fades out where it was; the next nesting placement shows it again.
-		if (this.backdrop) delete this.backdrop.dataset.shown;
-		this.indicatorOverlay?.remove();
-		this.indicatorOverlay = null;
-		this.activeDropTarget = null;
-		this.activePlacement = null;
+		if (placement === false) return this.indicator.clear();
+		if (placement) this.indicator.show(node, placement);
 	}
 }

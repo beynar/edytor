@@ -386,17 +386,12 @@ export declare class BlockHandleController {
     private edytor;
     private options;
     private readonly owner;
-    private indicatorNode;
-    private indicatorOverlay;
-    private activeDropTarget;
-    private activePlacement;
-    private offIndicator;
-    private backdrop;
     private readonly targets;
     private readonly registered;
     dragging: string | null;
     private scrolling;
     private group;
+    private readonly indicator;
     private held;
     private handle;
     private gripped;
@@ -444,12 +439,6 @@ export declare class BlockHandleController {
     private placement;
     private getDragSource;
     private showIndicator;
-    private showOverlay;
-    private nestParent;
-    private positionBackdrop;
-    private positionIndicator;
-    private positionBeside;
-    private clearIndicator;
 }
 ```
 

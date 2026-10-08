@@ -323,6 +323,41 @@ export type CommentsLabels = {
 	failed: string;
 };
 
+/** The table block and its controls (`createTablePlugin`). */
+export type TableLabels = {
+	/** The "Table" command, and a table's accessible name. */
+	table: string;
+	/** The block menu's switches. */
+	headerRow: string;
+	headerColumn: string;
+	/** The block menu's rows: at the row and column of the cell the caret was in (else the last ones). */
+	insertRowAbove: string;
+	insertRowBelow: string;
+	insertColumnLeft: string;
+	insertColumnRight: string;
+	/** The row and column menus. */
+	insertAbove: string;
+	insertBelow: string;
+	insertLeft: string;
+	insertRight: string;
+	moveUp: string;
+	moveDown: string;
+	moveLeft: string;
+	moveRight: string;
+	deleteRow: string;
+	deleteColumn: string;
+	/** The `+` under the table and beside it. */
+	addRow: string;
+	addColumn: string;
+	/** The grips that open the row and column menus. */
+	rowMenu: string;
+	columnMenu: string;
+	/** A column's resize band. */
+	resize: string;
+	/** A padded cell (a row showing none in a column): its first press creates it. */
+	emptyCell: string;
+};
+
 /** Every section of the dictionary. */
 export type Labels = {
 	editor: EditorLabels;
@@ -341,6 +376,7 @@ export type Labels = {
 	toc: TocLabels;
 	pageLink: PageLinkLabels;
 	comments: CommentsLabels;
+	table: TableLabels;
 };
 
 /**
@@ -657,6 +693,30 @@ export const englishLabels: Labels = frozen({
 					}).format(at)
 				: '',
 		failed: 'Could not save the comment. Try again.'
+	table: {
+		table: 'Table',
+		headerRow: 'Header row',
+		headerColumn: 'Header column',
+		insertRowAbove: 'Insert row above',
+		insertRowBelow: 'Insert row below',
+		insertColumnLeft: 'Insert column left',
+		insertColumnRight: 'Insert column right',
+		insertAbove: 'Insert above',
+		insertBelow: 'Insert below',
+		insertLeft: 'Insert left',
+		insertRight: 'Insert right',
+		moveUp: 'Move up',
+		moveDown: 'Move down',
+		moveLeft: 'Move left',
+		moveRight: 'Move right',
+		deleteRow: 'Delete row',
+		deleteColumn: 'Delete column',
+		addRow: 'Add a row',
+		addColumn: 'Add a column',
+		rowMenu: 'Row options',
+		columnMenu: 'Column options',
+		resize: 'Resize column',
+		emptyCell: 'Empty cell'
 	}
 });
 

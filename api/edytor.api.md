@@ -210,6 +210,8 @@ export type BlockDefinition = {
     island?: boolean;
     lines?: boolean;
     layout?: boolean;
+    table?: boolean;
+    menu?: (block: Block) => KindMenuAction[];
     atomic?: readonly (string | readonly string[])[];
     rendersContent?: boolean;
     continues?: boolean;
@@ -369,6 +371,7 @@ export type BlockMenuAction = {
     icon: string;
     hint?: string;
     danger?: boolean;
+    checked?: boolean;
     submenu?: 'turn' | 'color';
     isEnabled?: () => boolean;
     run?: () => unknown;
@@ -1597,6 +1600,20 @@ export type JSONText = {
 };
 ```
 
+### KindMenuAction
+
+```ts
+// plugins.d.ts
+export type KindMenuAction = {
+    id: string;
+    label: string;
+    icon?: string;
+    checked?: boolean;
+    isEnabled?: () => boolean;
+    run: () => unknown;
+};
+```
+
 ### KindPreset
 
 ```ts
@@ -2246,6 +2263,34 @@ declare const TOOLBAR_COLORS: readonly [
 ];
 ```
 
+### TableBlockOptions
+
+```ts
+// crdt/tables.d.ts
+export type TableBlockOptions = {
+    rows?: number;
+    columns?: number;
+    cells?: readonly (readonly (string | readonly JSONText[])[])[];
+    headerRow?: boolean;
+    headerColumn?: boolean;
+    widths?: readonly (number | undefined)[];
+};
+```
+
+### TablePluginOptions
+
+```ts
+// plugins/table/table.d.ts
+export type TablePluginOptions = {
+    rows?: number;
+    columns?: number;
+    columnWidth?: number;
+    minColumnWidth?: number;
+    labels?: PartialLabels<'table'>;
+    keywords?: Partial<Record<string, string[]>>;
+};
+```
+
 ### Text
 
 ```ts
@@ -2805,6 +2850,13 @@ declare const createSlashMenuPlugin: (options?: SlashMenuOptions) => Plugin;
 declare const createSuggestionsPlugin: (options?: SuggestionsOptions) => Plugin;
 ```
 
+### createTablePlugin
+
+```ts
+// plugins/table/TablePlugin.svelte.d.ts
+declare const createTablePlugin: (options?: TablePluginOptions) => Plugin;
+```
+
 ### createTocPlugin
 
 ```ts
@@ -2940,6 +2992,13 @@ declare const isImagePlugin: (plugin: Plugin) => boolean;
 ```ts
 // utils.d.ts
 declare const isPrevention: (error: unknown) => error is PreventionError;
+```
+
+### isTablePlugin
+
+```ts
+// plugins/table/TablePlugin.svelte.d.ts
+declare const isTablePlugin: (plugin: Plugin) => boolean;
 ```
 
 ### lastUpdated
@@ -3080,6 +3139,20 @@ declare const storableImageSrc: (value: unknown) => string | null;
 ```ts
 // plugins/suggestions/suggestionsPlugin.d.ts
 declare const suggestionsPlugin: Plugin;
+```
+
+### tableBlock
+
+```ts
+// crdt/tables.d.ts
+declare const tableBlock: (options?: TableBlockOptions) => JSONBlock;
+```
+
+### tablePlugin
+
+```ts
+// plugins/table/TablePlugin.svelte.d.ts
+declare const tablePlugin: Plugin;
 ```
 
 ### textToBlocks
@@ -3268,6 +3341,31 @@ export type BlockOperations = {
         columns?: number;
     };
     insertDivider: {};
+    insertTableRow: {
+        index: number;
+    };
+    deleteTableRows: {
+        rows: Block[];
+    };
+    insertTableColumn: {
+        index: number;
+        width?: number;
+    };
+    deleteTableColumn: {
+        column: string | number;
+    };
+    moveTableColumn: {
+        column: string | number;
+        to: number;
+    };
+    moveTableRows: {
+        rows: Block[];
+        to: number;
+    };
+    fillTableCell: {
+        row: string;
+        column: string | number;
+    };
 };
 ```
 
@@ -3463,6 +3561,7 @@ export type BlockRole = {
     island?: boolean;
     lines?: boolean;
     layout?: boolean;
+    table?: boolean;
     atomic?: readonly (string | readonly string[])[];
 };
 ```
@@ -3697,6 +3796,13 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView) => Prepared;
             deleteRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView) => Prepared;
             replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView) => Prepared;
+            insertTableRow: (table: BlockId, index: number) => Prepared;
+            deleteTableRows: (rows: readonly BlockId[]) => Prepared;
+            insertTableColumn: (table: BlockId, index: number, width?: number) => Prepared;
+            deleteTableColumn: (table: BlockId, column: string | number) => Prepared;
+            moveTableColumn: (table: BlockId, column: string | number, to: number) => Prepared;
+            moveTableRows: (rows: readonly BlockId[], to: number) => Prepared;
+            fillTableCell: (row: BlockId, column: string | number) => Prepared;
             insertBlocks: (dest: Destination, specs: readonly (BlockSpec | JSONBlock)[]) => Prepared;
             insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => Prepared;
             moveBlocks: (ids: readonly BlockId[], dest: Destination) => Prepared;
@@ -3814,8 +3920,15 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => OpResult;
         deleteRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
         replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
-        insertBlocks: (dest: Destination, specs: readonly (BlockSpec | JSONBlock)[]) => OpResult;
-        insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => OpResult;
+        insertTableRow: (table: string, index: number) => OpResult;
+        deleteTableRows: (rows: readonly string[]) => OpResult;
+        insertTableColumn: (table: string, index: number, width?: number | undefined) => OpResult;
+        deleteTableColumn: (table: string, column: string | number) => OpResult;
+        moveTableColumn: (table: string, column: string | number, to: number) => OpResult;
+        moveTableRows: (rows: readonly string[], to: number) => OpResult;
+        fillTableCell: (row: string, column: string | number) => OpResult;
+        insertBlocks: (dest: Destination, specs: readonly (JSONBlock | BlockSpec)[]) => OpResult;
+        insertBlock: (dest: Destination, spec: JSONBlock | BlockSpec) => OpResult;
         moveBlocks: (ids: readonly string[], dest: Destination) => OpResult;
         moveBlock: (id: string, dest: Destination) => OpResult;
         nestBlock: (id: string, parent: string) => OpResult;
@@ -3912,6 +4025,21 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         isLayoutItem: (id: string) => boolean;
         besideAt: (id: BlockId, kind?: string) => string;
         islandOf: (id: string) => string | null;
+        isTable: (id: string) => boolean;
+        isTableRow: (id: string) => boolean;
+        isTableCell: (id: string) => boolean;
+        tableOf: (id: string) => string | null;
+        tableColumns: (id: string) => {
+            id: string;
+            width?: number;
+        }[] | null;
+        tableGrid: (id: string) => {
+            columns: string[];
+            rows: {
+                id: BlockId;
+                cells: (BlockId | null)[];
+            }[];
+        } | null;
         insideIsland: (id: string) => boolean;
         canPlace: (ids: readonly BlockId[], parent?: BlockId | null) => boolean;
         canMerge: (from: BlockId, into: BlockId) => boolean;
@@ -4289,6 +4417,7 @@ export type DisplayOwnership = Ownership & {
     passes?: (b: BlockId) => boolean;
     sheds?: (owner: BlockId, child: BlockId) => boolean;
     textRank?: (id: BlockId, parent: BlockId | null, rank: string) => string;
+    slotRank?: (owner: BlockId, id: BlockId, rank: string) => string | undefined;
 };
 ```
 
@@ -4958,6 +5087,8 @@ export type DisplayRoles = {
     lineKinds: () => Iterable<string>;
     layout: (type: string) => string | undefined;
     layoutKinds: () => Iterable<string>;
+    table: (type: string) => string | undefined;
+    tableKinds: () => Iterable<string>;
 };
 ```
 
@@ -5336,6 +5467,36 @@ export type SuggestionsLabels = {
     retry: string;
     ctrl: string;
     escape: string;
+};
+```
+
+#### labels.d.ts#TableLabels
+
+```ts
+export type TableLabels = {
+    table: string;
+    headerRow: string;
+    headerColumn: string;
+    insertRowAbove: string;
+    insertRowBelow: string;
+    insertColumnLeft: string;
+    insertColumnRight: string;
+    insertAbove: string;
+    insertBelow: string;
+    insertLeft: string;
+    insertRight: string;
+    moveUp: string;
+    moveDown: string;
+    moveLeft: string;
+    moveRight: string;
+    deleteRow: string;
+    deleteColumn: string;
+    addRow: string;
+    addColumn: string;
+    rowMenu: string;
+    columnMenu: string;
+    resize: string;
+    emptyCell: string;
 };
 ```
 

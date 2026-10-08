@@ -156,6 +156,20 @@ export type BlockOperations = {
 	wrapBlocks: { blocks: Block[]; kind?: string; columns?: number };
 	/** A divider at the caret: its steps are the conversion, insertion or split it plans. */
 	insertDivider: {};
+	/** A table's row at `index`, one empty cell per column (`table.insert-row`). */
+	insertTableRow: { index: number };
+	/** A table's rows, with their cells (`table.delete-row`). */
+	deleteTableRows: { rows: Block[] };
+	/** A table's column at `index`, an empty cell in every row (`table.insert-column`). */
+	insertTableColumn: { index: number; width?: number };
+	/** A table's column, by id or position, with its cells (`table.delete-column`). */
+	deleteTableColumn: { column: string | number };
+	/** A table's column moved to position `to` (`table.move-column`). */
+	moveTableColumn: { column: string | number; to: number };
+	/** A table's rows moved to position `to` among its rows (`table.move-row`). */
+	moveTableRows: { rows: Block[]; to: number };
+	/** The cell a row shows none of in `column`, created (`table.pad`). */
+	fillTableCell: { row: string; column: string | number };
 };
 
 /**

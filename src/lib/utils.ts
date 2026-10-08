@@ -1,6 +1,6 @@
 let alphabet = 'useandom26T198340PX75pxJACKVERYMINDBUSHWOLFGQZbfghjklqvwyzrict';
 
-export const id = (prefix: 't' | 'b' | 'i' | 'v' | 's') => {
+export const id = (prefix: 't' | 'b' | 'i' | 'v' | 's' | 'c') => {
 	const e = 10;
 	let t = '',
 		r = crypto.getRandomValues(new Uint8Array(e));

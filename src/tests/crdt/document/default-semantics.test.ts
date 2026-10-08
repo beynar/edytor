@@ -20,6 +20,7 @@ import {
 	richTextSemantics,
 	commentMarks,
 	tocSemantics,
+	tableSemantics,
 	type DocumentSemanticsConfig,
 	type EdytorDocument,
 	type JSONDoc
@@ -36,6 +37,7 @@ import { videoPlugin } from '$lib/plugins/media/VideoPlugin.svelte';
 import { audioPlugin } from '$lib/plugins/media/AudioPlugin.svelte';
 import { pagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
+import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 
 const value: JSONDoc = {
 	children: [
@@ -79,7 +81,9 @@ const edits = (semantics?: DocumentSemanticsConfig) => {
 
 /** The adopted non-default rows: roles that are void/island/layout, kinds without content, default children. */
 const structural = ({ semantics }: EdytorDocument) => ({
-	roles: Object.fromEntries([...semantics.roles].filter(([, r]) => r.void || r.island || r.layout)),
+	roles: Object.fromEntries(
+		[...semantics.roles].filter(([, r]) => r.void || r.island || r.layout || r.table)
+	),
 	rendersContent: Object.fromEntries([...semantics.rendersContent].filter(([, r]) => !r)),
 	defaultChild: Object.fromEntries(semantics.defaultChild)
 });
@@ -97,7 +101,9 @@ const BUNDLED = {
 		page: { void: true, island: false, lines: false },
 		toc: { void: true, island: false, lines: false },
 		code: { void: false, island: true, lines: true },
-		columns: { void: false, island: false, lines: false, layout: true }
+		columns: { void: false, island: false, lines: false, layout: true },
+		table: { void: false, island: false, lines: false, table: true },
+		tableCell: { void: false, island: true, lines: false }
 	},
 	rendersContent: {
 		divider: false,
@@ -108,13 +114,17 @@ const BUNDLED = {
 		columns: false,
 		column: false,
 		page: false,
-		toc: false
+		toc: false,
+		table: false,
+		tableRow: false
 	},
 	defaultChild: {
 		'ordered-list': 'list-item',
 		'unordered-list': 'list-item',
 		code: 'codeLine',
-		columns: 'column'
+		columns: 'column',
+		table: 'tableRow',
+		tableRow: 'tableCell'
 	}
 };
 
@@ -128,7 +138,7 @@ describe('defaultSemantics on a headless document', () => {
 		expect(edits({})).toEqual(['applied', 'applied', 'applied', 'applied']);
 	});
 
-	it('merges the seven plugin tables', () => {
+	it('merges the eight plugin tables', () => {
 		expect(defaultSemantics).toEqual({
 			roles: {
 				...richTextSemantics.roles,
@@ -137,7 +147,8 @@ describe('defaultSemantics on a headless document', () => {
 				...mediaSemantics.roles,
 				...layoutSemantics.roles,
 				...pageSemantics.roles,
-				...tocSemantics.roles
+				...tocSemantics.roles,
+				...tableSemantics.roles
 			},
 			rendersContent: {
 				...richTextSemantics.rendersContent,
@@ -146,12 +157,14 @@ describe('defaultSemantics on a headless document', () => {
 				...mediaSemantics.rendersContent,
 				...layoutSemantics.rendersContent,
 				...pageSemantics.rendersContent,
-				...tocSemantics.rendersContent
+				...tocSemantics.rendersContent,
+				...tableSemantics.rendersContent
 			},
 			defaultChild: {
 				...richTextSemantics.defaultChild,
 				...codeSemantics.defaultChild,
-				...layoutSemantics.defaultChild
+				...layoutSemantics.defaultChild,
+				...tableSemantics.defaultChild
 			},
 			// H5: the rich-text plugin's mark edges (the link's), and the comment's
 			// anchor, which never grows (`comment.anchor`, WU-34).
@@ -168,7 +181,8 @@ describe('defaultSemantics on a headless document', () => {
 			...media,
 			columnsPlugin,
 			pagePlugin,
-			tocPlugin
+			tocPlugin,
+			tablePlugin
 		];
 		const viewed = createDocument({ value });
 		const view = new Edytor({ document: viewed, plugins });

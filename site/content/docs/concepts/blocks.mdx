@@ -110,6 +110,19 @@ The document shows a layout by its role, on every replica, whatever a race store
 
 Edits write what those rules show: an item emptied by a delete, a merge or a move goes, and a layout left with one item is replaced by that item's blocks, in the same undo step. Merges cross items in reading order: <kbd>Backspace</kbd> at the start of a column's first block joins the previous column's last line. A block selection holding every block of every item stands for the layout. See [Columns](/docs/plugins/columns) for the gestures and the API.
 
+## Tables
+
+A kind whose record says `table: true` is a **table**, like the table plugin's `table`. Its `defaultChild` is its row kind (`tableRow`, a container), whose `defaultChild` is its cell kind (`tableCell`, an island holding text). The table lists its columns in `data.columns`, in order, and each cell names its column in `data.column`, so a column moves or goes by one write of that list.
+
+The document shows a table by its role, on every replica, whatever a race stored:
+
+- a row shows its cells in the table's column order;
+- a cell shows only in a row of a table, for a listed column, once (a cell an undo withdrew while it holds another person's text still shows, its column after the listed ones);
+- a row shows only in a table and while it shows a cell, a table while it shows a row;
+- a row showing no cell for a column is padded there by the view, and the first edit there creates the cell.
+
+A cell never moves, merges or splits: <kbd>Enter</kbd> in it is a line break and <kbd>Backspace</kbd> at its start does nothing. See [Table](/docs/plugins/table) for the gestures and the API.
+
 ## Default children
 
 When the editor creates a block next to the caret, the new block takes its parent's **default child** type. This covers <kbd>Enter</kbd> at the start or end of a block, the second half of a block split with <kbd>Enter</kbd>, and the lines of an island that merges out. At the root, pressing <kbd>Enter</kbd> at the end of a heading or a quote therefore creates a paragraph; inside an `ordered-list`, it creates a `list-item`.

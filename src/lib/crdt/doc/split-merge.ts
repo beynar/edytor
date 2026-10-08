@@ -21,6 +21,8 @@ export const splitMergeOps = (c: OpsContext) => {
 		childrenIds,
 		positionOf,
 		isVoid,
+		isCellKind,
+		blockTypeOf,
 		insideIsland,
 		isLayoutItem,
 		next,
@@ -63,6 +65,8 @@ export const splitMergeOps = (c: OpsContext) => {
 		const pos = positionOf(id);
 		const rec = view().blocks.get(id);
 		if (pos === null || isVoid(id) || !rendersContent(id) || !rec?.claimsNode) return REFUSED;
+		// A table's cell holds its lines as line breaks: it never splits (`table.split`).
+		if (isCellKind(blockTypeOf(id))) return REFUSED;
 		if (isIncarnationId(born) || M.blockNodeOf(doc, born) !== null) return REFUSED;
 		const [at] = clamp(id, offset, 0);
 		// An empty tail type is the one a view reads mid-retype: copy the kind (YW-07).

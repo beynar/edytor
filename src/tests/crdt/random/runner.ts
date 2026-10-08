@@ -184,6 +184,8 @@ export const expectedViolations = (ops: CrdtOps): Set<string> => {
 	if (ops.classifyTagAtoms) {
 		s.add('moved-edit');
 		s.add('deleted-legit');
+		// A cell the table rules hide keeps its text, hidden with it (`table.cell`).
+		if (ops.tables?.size) s.add('hidden-legit');
 	} else {
 		// Legacy block-text check: a random later delete can erase the tag —
 		// the class is evidence, never a proof on its own.
@@ -1047,7 +1049,9 @@ export const runSchedule = (
 				hiddenUnderDeleted: () =>
 					hiddenUnderDeleted(p.doc, ops.dissolved && ((id) => ops.dissolved!(p, id))),
 				reportedKind: ops.reportedKind && ((id) => ops.reportedKind!(p, id)),
-				layouts: ops.layouts
+				layouts: ops.layouts,
+				tables: ops.tables,
+				withdrawn: ops.withdrawn && ((id) => ops.withdrawn!(p, id))
 			}).map((x) => `${p.name}: ${x}`);
 		});
 	let firstIllFormed: { step: number; problems: string[] } | null = null;
@@ -1130,6 +1134,27 @@ export const runSchedule = (
 		return { id, target, side: op.idIndex % 2 ? ('left' as const) : ('right' as const) };
 	};
 
+	/**
+	 * A `moveBlock` step whose `destIndex` is 6, or that would move a table's
+	 * cell (a cell never moves), is a table operation on adapters that offer
+	 * them and no layout (the generator's draws are unchanged, so other
+	 * adapters' schedules are too): on the table holding the block at
+	 * `idIndex`, chosen by `parentIndex`. Everything stored under
+	 * the table may be deleted or re-placed, and new rows and cells minted.
+	 * `undefined`: not a table step (no table there either: a plain move).
+	 */
+	const tableStep = (peer: Peer, op: Extract<DocOp, { kind: 'moveBlock' }>) => {
+		if (!ops.tableOp || ops.layouts?.size) return undefined;
+		const id = resolveId(peer, op.idIndex);
+		const at = id === undefined ? null : (ops.tableOf?.(peer, id) ?? null);
+		if (at === null || (op.destIndex !== 6 && !at.cell)) return undefined;
+		const all = new Set([at.table, ...at.members]);
+		return {
+			env: slack(peer, at.table, { delSet: all, placements: all, blocksMinted: 64 }),
+			exec: () => ops.tableOp!(peer, at.table, op.parentIndex)
+		};
+	};
+
 	const planIntent = (
 		peer: Peer,
 		op: DocOp,
@@ -1180,6 +1205,8 @@ export const runSchedule = (
 				};
 			}
 			case 'moveBlock': {
+				const tabled = tableStep(peer, op);
+				if (tabled !== undefined) return tabled;
 				const drop = beside(peer, op);
 				if (drop !== null) {
 					// The moved block, the wrapped target (and the blocks above it it may
@@ -1511,6 +1538,11 @@ export const runSchedule = (
 				break;
 			}
 			case 'moveBlock': {
+				const tabled = tableStep(peer, op);
+				if (tabled !== undefined) {
+					tabled.exec();
+					break;
+				}
 				const drop = beside(peer, op);
 				if (drop !== null) {
 					ops.placeBeside!(peer, [drop.id], drop.target, drop.side);
@@ -2196,6 +2228,7 @@ export const runSchedule = (
 			verdict = 'mutated-edit';
 		} else if (has('stolen')) verdict = 'stolen-edit';
 		else if (has('moved')) verdict = 'moved-edit';
+		else if (has('hidden')) verdict = 'hidden-legit';
 		else if (has('present')) verdict = 'present';
 		else verdict = 'deleted-legit';
 		const detail = fates

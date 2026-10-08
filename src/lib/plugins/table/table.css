@@ -1,0 +1,202 @@
+/*
+ * Tables (`table.*` in the delete contract): Notion's simple table. The
+ * table's grid is a CSS grid of its columns' widths (the template the kind
+ * sets from `data.columns`); each row is a subgrid of it, its cells and its
+ * placeholders (`table.pad`) items of that row: a placeholder sits at its
+ * column, the cells fill the others in order. Neither the grid nor a row is
+ * a nesting step: their indent is zeroed. Wider than the page, the table
+ * scrolls sideways.
+ */
+[data-edytor-block][data-edytor-table][data-edytor-type] {
+	padding-inline: 0;
+	--edytor-table-border-color: var(--edytor-table-border, rgb(233, 233, 231));
+}
+[data-edytor-table-scroll] {
+	overflow-x: auto;
+	overflow-y: hidden;
+	/* Room for the `+` under it (the chrome's), so it never covers the next block. */
+	padding-block: 2px 20px;
+}
+[data-edytor-table] [data-edytor-children][data-edytor-table-grid] {
+	display: grid;
+	width: max-content;
+	padding-inline-start: 0;
+	border-top: 1px solid var(--edytor-table-border-color);
+	border-left: 1px solid var(--edytor-table-border-color);
+}
+[data-edytor-block][data-edytor-table-row][data-edytor-type] {
+	display: grid;
+	grid-column: 1 / -1;
+	grid-template-columns: subgrid;
+	margin: 0;
+	padding: 0;
+	border-radius: 0;
+}
+[data-edytor-table-row] > [data-edytor-children][data-edytor-table-cells] {
+	display: contents;
+}
+[data-edytor-block][data-edytor-table-cell][data-edytor-type],
+[data-edytor-table-pad] {
+	grid-row: 1;
+	min-width: 0;
+	min-height: 33px;
+	margin: 0;
+	padding: 7px 9px;
+	border-radius: 0;
+	border-right: 1px solid var(--edytor-table-border-color);
+	border-bottom: 1px solid var(--edytor-table-border-color);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	box-sizing: border-box;
+}
+[data-edytor-table-pad] {
+	cursor: text;
+	user-select: none;
+	-webkit-user-select: none;
+}
+/* A header row's or header column's cells: Notion's gray, a little bolder. */
+[data-edytor-block][data-edytor-table-cell][data-edytor-table-header='true'] {
+	background: var(--edytor-table-header-background, rgb(247, 246, 243));
+	font-weight: 600;
+}
+[data-edytor-table-row] [data-edytor-table-cell] > [data-edytor-children] {
+	padding-inline-start: 0;
+}
+
+/* ── The chrome (overlay): grips, `+` bars, resize bands, menus ─────── */
+[data-edytor-table-chrome] button[data-edytor-table-grip],
+[data-edytor-table-chrome] button[data-edytor-table-add],
+[data-edytor-table-chrome] [data-edytor-table-resize] {
+	position: absolute;
+	margin: 0;
+	padding: 0;
+	border: none;
+	pointer-events: auto;
+	touch-action: none;
+}
+[data-edytor-table-chrome][data-selecting='true'] > * {
+	pointer-events: none;
+}
+[data-edytor-table-chrome] button[data-edytor-table-grip] {
+	width: 18px;
+	height: 24px;
+	border-radius: 4px;
+	background: var(--edytor-table-grip-background, #fff);
+	box-shadow:
+		0 0 0 1px rgba(15, 15, 15, 0.1),
+		0 2px 4px rgba(15, 15, 15, 0.1);
+	color: rgba(55, 53, 47, 0.45);
+	cursor: grab;
+}
+[data-edytor-table-chrome] button[data-edytor-table-grip='column'] {
+	width: 24px;
+	height: 18px;
+}
+[data-edytor-table-chrome] button[data-edytor-table-grip]::before {
+	content: '⋮⋮';
+	font-size: 10px;
+	letter-spacing: -2px;
+	line-height: 24px;
+}
+[data-edytor-table-chrome] button[data-edytor-table-grip='column']::before {
+	content: '⋯';
+	font-size: 14px;
+	letter-spacing: 0;
+	line-height: 18px;
+}
+[data-edytor-table-chrome] button[data-edytor-table-add] {
+	height: 16px;
+	border-radius: 3px;
+	background: rgba(55, 53, 47, 0.04);
+	color: rgba(55, 53, 47, 0.45);
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 80ms ease;
+}
+[data-edytor-table-chrome] button[data-edytor-table-add='column'] {
+	width: 16px;
+}
+[data-edytor-table-chrome] button[data-edytor-table-add]::before {
+	content: '+';
+	font-size: 14px;
+}
+[data-edytor-table-chrome] button[data-edytor-table-add]:hover,
+[data-edytor-table-chrome] button[data-edytor-table-add]:focus-visible {
+	opacity: 1;
+	background: rgba(55, 53, 47, 0.08);
+}
+[data-edytor-table-chrome] [data-edytor-table-resize] {
+	width: 8px;
+	cursor: col-resize;
+}
+[data-edytor-table-chrome] [data-edytor-table-resize]::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 3px;
+	width: 2px;
+	background: var(--edytor-table-resize-color, rgba(35, 131, 226, 0.43));
+	opacity: 0;
+	pointer-events: none;
+}
+[data-edytor-table-chrome] [data-edytor-table-resize]:hover::after,
+[data-edytor-table-chrome] [data-edytor-table-resize]:focus-visible::after,
+[data-edytor-table-chrome] [data-edytor-table-resize][data-dragging='true']::after {
+	opacity: 1;
+}
+[data-edytor-table-chrome] [data-edytor-table-resize]:focus-visible {
+	outline: none;
+}
+.edytor-table-menu {
+	position: absolute;
+	z-index: 1;
+	min-width: 180px;
+	padding: 6px;
+	border-radius: 10px;
+	background: var(--edytor-menu-background, #fff);
+	box-shadow:
+		0 0 0 1px rgba(15, 15, 15, 0.05),
+		0 3px 6px rgba(15, 15, 15, 0.1),
+		0 9px 24px rgba(15, 15, 15, 0.2);
+	pointer-events: auto;
+}
+.edytor-table-menu-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 4px 8px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: rgb(55, 53, 47);
+	font: inherit;
+	font-size: 14px;
+	text-align: start;
+	cursor: pointer;
+}
+.edytor-table-menu-row::before {
+	content: '';
+	flex: none;
+	width: 20px;
+	height: 20px;
+	background: #383836;
+	-webkit-mask: var(--table-menu-icon) center / 20px no-repeat;
+	mask: var(--table-menu-icon) center / 20px no-repeat;
+}
+.edytor-table-menu-row:hover:not(:disabled),
+.edytor-table-menu-row:focus-visible {
+	background: rgba(33, 27, 23, 0.06);
+	outline: none;
+}
+.edytor-table-menu-row:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+.edytor-table-menu-row.danger:hover:not(:disabled) {
+	color: #cf5148;
+}
+.edytor-table-menu-row.danger:hover:not(:disabled)::before {
+	background: #cf5148;
+}

@@ -169,10 +169,20 @@ export const indexState = (Y: EngineApi, T: TextEngine, doc: EngineDoc) => {
 		/** Blocks whose candidates or record changed, whose display state changed. */
 		placementSeeds: new Set<BlockId>(),
 		stateSeeds: new Set<BlockId>(),
-		/** Per block: whether its kind is a layout, an item, a lines island (with its line kind). */
-		kindsOf: new Map<BlockId, { layout: boolean; item: boolean; line?: string }>(),
+		/**
+		 * Per block: whether its kind is a layout, an item, a lines island
+		 * (with its line kind), a table, a table's row or a row's cell.
+		 */
+		kindsOf: new Map<
+			BlockId,
+			{ layout: boolean; item: boolean; line?: string; table: boolean; row: boolean; cell: boolean }
+		>(),
 		/** The item kinds the roles declare, and those the document holds. */
 		itemKinds: new Set<string>(),
+		/** The row kinds of the table kinds the roles declare and the document holds, with their cell kinds. */
+		rowKinds: new Map<string, string>(),
+		/** The cell kinds of {@link rowKinds}. */
+		cellKinds: new Set<string>(),
 
 		// ── records (`records.ts`)
 		/**

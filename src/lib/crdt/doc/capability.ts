@@ -56,6 +56,8 @@ export const docCapability = (c: DocBase & DocReads) => {
 		insideIsland,
 		holdsLayout,
 		insideItem,
+		isRowKind,
+		isCellKind,
 		displayLength
 	} = c;
 
@@ -70,7 +72,8 @@ export const docCapability = (c: DocBase & DocReads) => {
 	 * kind) or already sits in it (a reorder changes nothing a list holds:
 	 * an image shed into a list still moves among its items, AW-06); and
 	 * no layout, nor a block holding one, lands inside a layout item
-	 * (D2, `layout.nest`).
+	 * (D2, `layout.nest`). A table's cell never moves, and its row only
+	 * within its table (`table.fits`).
 	 * Without a `parent`: may these blocks move at all (the drag
 	 * affordance). The move ops refuse exactly when this answers `false`.
 	 * (`insertBlock` is looser — island interiors are built by inserting
@@ -84,6 +87,12 @@ export const docCapability = (c: DocBase & DocReads) => {
 		const v = view();
 		if (ids.length === 0 || new Set(ids).size !== ids.length) return false;
 		if (ids.some((id) => !isLiveIn(v, id) || insideIsland(id, v))) return false;
+		// A cell moves only with its column, never as a block (`table.fits`).
+		if (ids.some((id) => isCellKind(blockTypeOf(id)))) return false;
+		// A row moves only within its table: a table's rows are reordered, never re-homed.
+		const rows = ids.filter((id) => isRowKind(blockTypeOf(id)));
+		if (rows.length > 0 && parent !== undefined)
+			if (parent === null || rows.some((id) => positionOf(id)?.parent !== parent)) return false;
 		if (parent === undefined || parent === null) return true;
 		if (!isLiveIn(v, parent) || isVoid(parent)) return false;
 		const stays = (id: BlockId) => positionOf(id)?.parent === parent;
@@ -180,6 +189,8 @@ export const docCapability = (c: DocBase & DocReads) => {
 		const v = view();
 		if (fromId === intoId || !isLiveIn(v, fromId) || !isLiveIn(v, intoId)) return false;
 		if (isVoid(fromId) || isVoid(intoId)) return false;
+		// Nothing merges into or out of a table's cell (`table.merge`).
+		if (isCellKind(blockTypeOf(fromId)) || isCellKind(blockTypeOf(intoId))) return false;
 		if (!rendersContent(intoId) || !(rendersContent(fromId) || isIsland(fromId))) return false;
 		const islandFrom = islandOf(fromId, v);
 		if (intoId === islandFrom) return true;

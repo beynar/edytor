@@ -24,6 +24,7 @@ describe('wellFormed checks', () => {
 			'seed-displacement',
 			'promotion-hidden',
 			'layout-shape',
+			'table-shape',
 			'report-kind'
 		]);
 	});

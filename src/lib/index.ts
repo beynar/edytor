@@ -42,6 +42,7 @@ export type { HotKey, HotKeyCombination } from './session/keymap.js';
 export type {
 	Plugin,
 	KindPreset,
+	KindMenuAction,
 	EditorCommand,
 	BlockDefinition,
 	MarkDefinition,
@@ -188,7 +189,11 @@ export {
 	tocPlugin,
 	createTocPlugin,
 	type TocPluginOptions,
-	type TocHeadingLevel
+	type TocHeadingLevel,
+	tablePlugin,
+	createTablePlugin,
+	isTablePlugin,
+	type TablePluginOptions
 } from './plugins/index.js';
 export { BLOCK_COLORS, setBlockColor, type BlockColorField } from './block/colors.js';
 
@@ -208,6 +213,7 @@ export {
 	defaultSemantics,
 	semanticsOf,
 	mergeSemantics,
+	tableBlock,
 	SemanticConflictError,
 	DocumentNotReadyError,
 	DocumentDestroyedError,
@@ -220,6 +226,7 @@ export {
 	type DocumentActor,
 	type DocumentReadiness,
 	type KindSemantics,
+	type TableBlockOptions,
 	type JSONDoc,
 	type JSONBlock,
 	type JSONText,

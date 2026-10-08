@@ -98,10 +98,19 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
       default: "false",
       description: "A layout, like the columns plugin's `columns`: its `defaultChild` is its item kind (a column: a container with `rendersContent: false` that holds any block), shown side by side. Needs `rendersContent: false` and `defaultChild`. It holds only its items, no layout goes inside an item, and the document shows it by its role on every replica: a block stored directly in it shows right after it, an item showing no block does not show, a layout showing one item or none shows as that item's blocks, and an item outside a layout shows as its blocks. Edits write the same (an emptied item goes, a one-item layout dissolves), merges cross items in reading order, and the beside drop bands, `placeBeside` and `wrapInLayout` use the layout kind. See [Layouts](/docs/concepts/blocks#layouts) and [Columns](/docs/plugins/columns).",
     },
+    table: {
+      type: "boolean",
+      default: "false",
+      description: "A table, like the table plugin's `table`: its `defaultChild` is its row kind (a container with `rendersContent: false`), whose own `defaultChild` is its cell kind (an island that renders its text). Needs `rendersContent: false` and `defaultChild`. The table lists its columns in `data.columns` (`{ id, width? }`) and each cell names its column in `data.column`; the document shows every row's cells in that order, a cell of no listed column or a second cell for one, a row showing no cell and a table showing no row do not show, and a cell never moves, merges or splits. See [Tables](/docs/concepts/blocks#tables) and [Table](/docs/plugins/table).",
+    },
     atomic: {
       type: "(string | string[])[]",
       default: "[]",
       description: "Data paths written as one value: a top-level key (`'link'`), or an array of keys for a nested one (`['media', 'source']`). Setting `block.data.link`, or a key inside it, writes the whole `link` as one property, so two people setting it at once end with one of their two values, never a mix of both (properties elsewhere merge key by key). Every view of a document, a headless document and the room must declare the same paths: pass them to `semanticsOf` too. See [Properties](/docs/concepts/properties#how-concurrent-edits-merge).",
+    },
+    menu: {
+      type: "(block: Block) => KindMenuAction[]",
+      description: "Rows the block menu adds for a block of this kind opened alone, after Color: `{ id, label, icon?, checked?, isEnabled?, run }`. A row with `checked` is a switch (`menuitemcheckbox`), like a table's Header row: `run` runs it and the menu stays open. Any other row closes the menu after `run`: a caret its action placed stays, else the menu gives its caret back (a table's Insert row below).",
     },
     presets: {
       type: "KindPreset[]",

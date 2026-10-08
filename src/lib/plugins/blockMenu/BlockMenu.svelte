@@ -152,7 +152,9 @@
 							></div>{/if}
 						<button
 							type="button"
-							role="menuitem"
+							role={row.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+							aria-checked={row.checked}
+							data-checked={row.checked}
 							id={controller.rowId(row)}
 							tabindex="-1"
 							class="block-menu-row"
@@ -359,6 +361,20 @@
 	.block-menu-row[data-submenu]::after {
 		content: '›';
 		font-size: 16px;
+	}
+	/* A kind's switch (a table's Header row): Notion's small toggle. */
+	.block-menu-row[data-checked]::after {
+		content: '';
+		flex: none;
+		margin-left: auto;
+		width: 26px;
+		height: 14px;
+		border-radius: 7px;
+		background:
+			radial-gradient(circle at 7px 50%, #fff 5px, transparent 5.5px), rgba(55, 53, 47, 0.2);
+	}
+	.block-menu-row[data-checked='true']::after {
+		background: radial-gradient(circle at 19px 50%, #fff 5px, transparent 5.5px), #2383e2;
 	}
 	.block-menu-row[data-current='true']::after {
 		content: '✓';

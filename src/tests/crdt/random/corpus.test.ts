@@ -31,7 +31,8 @@
  *   `raw` (RawNodeOps copy semantics — diagnostic lane),
  *   `model` / `doc` (production adapters — strict lane), `roles` (the `doc`
  *   facade with block roles over a seed holding an island and a void —
- *   strict lane, RW-01),
+ *   strict lane, RW-01), `tables` (the `doc` facade with the table roles over
+ *   a seed holding a table, its ops racing the generic ones — strict lane),
  *   or `all` (default). Each adapter seeds from its own schema
  *   (`BASE_SEED` vs `MODEL_BASE_SEED`).
  *
@@ -55,8 +56,13 @@ import { runSchedule, expectedViolations, type RunResult } from './runner.js';
 import { minimizeSchedule, describeSchedule } from './shrink.js';
 import { createRawNodeOps } from '../harness/ops/raw-node-ops.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
-import { createDocOps, ROLES } from '../harness/ops/doc-ops.js';
-import { BASE_SEED, MODEL_BASE_SEED, ROLES_BASE_SEED } from '../scenarios/seeds.js';
+import { createDocOps, ROLES, TABLES } from '../harness/ops/doc-ops.js';
+import {
+	BASE_SEED,
+	MODEL_BASE_SEED,
+	ROLES_BASE_SEED,
+	TABLES_BASE_SEED
+} from '../scenarios/seeds.js';
 import type { CrdtOps } from '../harness/ops/crdt-ops.js';
 
 const FAILURE_DIR = fileURLToPath(new URL('./failures', import.meta.url));
@@ -95,7 +101,11 @@ const ADAPTERS: Record<string, { make: () => CrdtOps; seed: unknown; suffix: str
 	// RW-01: the facade with block roles over a seed holding a code island
 	// and a void — island merges/deletes/promotions and void shedding, held
 	// to `void-children` and `island-kind`.
-	roles: { make: () => createDocOps(ROLES), seed: ROLES_BASE_SEED, suffix: '.roles' }
+	roles: { make: () => createDocOps(ROLES), seed: ROLES_BASE_SEED, suffix: '.roles' },
+	// WU-30: the facade with the table roles over a seed holding a table: the
+	// table ops (a moveBlock step with destIndex 6, `tableOp`) race the
+	// generic ones, held to `table-shape`.
+	tables: { make: () => createDocOps(TABLES), seed: TABLES_BASE_SEED, suffix: '.tables' }
 };
 const SELECTED_ADAPTERS = (process.env.CRDT_ADAPTER ?? 'all').split(',').flatMap((s) => {
 	const name = s.trim();
@@ -229,7 +239,7 @@ for (const adapterName of SELECTED_ADAPTERS) {
 				const pinned =
 					adapterName === 'model' || adapterName === 'doc'
 						? { bug: KNOWN_MODEL_BUGS.get(seed), kind: 'crash' }
-						: adapterName === 'roles'
+						: adapterName === 'roles' || adapterName === 'tables'
 							? { bug: KNOWN_ROLES_BUGS.get(seed), kind: 'ill-formed' }
 							: undefined;
 				const knownBug = pinned?.bug;

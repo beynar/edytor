@@ -20,6 +20,7 @@ import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../../lib/crdt/edytor-doc.js';
 import type { Peer } from '../peer-set.js';
 import type { CrdtOps } from './crdt-ops.js';
+import { hasDeleteMark, hasWithdrawMark } from '../../../../lib/crdt/schema.js';
 import {
 	expectedProjectedIds,
 	locateTagAtoms,
@@ -41,7 +42,10 @@ const ok = (r: { status: string }): boolean => r.status !== 'refused';
  */
 export type DocOpsRoles = {
 	/** Kind → role (`island` / `lines` / `void` / `layout`). */
-	roles: Record<string, { island?: boolean; lines?: boolean; void?: boolean; layout?: boolean }>;
+	roles: Record<
+		string,
+		{ island?: boolean; lines?: boolean; void?: boolean; layout?: boolean; table?: boolean }
+	>;
 	/** Parent kind → its default child kind. */
 	defaultChild: Record<string, string>;
 	/** Kinds that render no content of their own (containers, islands, voids). */
@@ -79,6 +83,36 @@ export const ROLES: DocOpsRoles = {
 		'unordered-list': false,
 		columns: false,
 		column: false
+	}
+};
+
+/**
+ * The tables lane's roles (`table.*`, WU-30): a `table` of `tableRow`s of
+ * `tableCell`s (the bundled `tableKinds`) beside a code island, a void and a
+ * list, so the generic ops race the table rules and the table ops
+ * (`tableOp`) race each other and the generic ones.
+ */
+export const TABLES: DocOpsRoles = {
+	roles: {
+		code: { island: true, lines: true },
+		divider: { void: true },
+		table: { table: true },
+		tableRow: {},
+		tableCell: { island: true },
+		'unordered-list': {}
+	},
+	defaultChild: {
+		code: 'codeLine',
+		table: 'tableRow',
+		tableRow: 'tableCell',
+		'unordered-list': 'list-item'
+	},
+	rendersContent: {
+		code: false,
+		divider: false,
+		table: false,
+		tableRow: false,
+		'unordered-list': false
 	}
 };
 
@@ -140,6 +174,18 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 	);
 	const layoutKinds = new Set([...layouts.keys(), ...layouts.values()]);
 
+	/** Table kind → its row and cell kinds (`table-shape`), and the kinds the table rules may hide. */
+	const tables = new Map(
+		Object.entries(roles?.defaultChild ?? {})
+			.filter(([parent]) => roles!.roles[parent]?.table)
+			.map(([table, row]) => [table, { row, cell: roles!.defaultChild[row] ?? 'paragraph' }])
+	);
+	const tableKinds = new Set([...tables].flatMap(([table, k]) => [table, k.row, k.cell]));
+	/** A live block of a table's kind the table rules hide: its text is hidden with it (`table.cell`). */
+	const tableHidden = (peer: Peer, id: string) =>
+		tableKinds.has(ed(peer).model.blockNodeOf(peer.doc, id)?.getAttr('type')) &&
+		ed(peer).runsView.dissolved(id);
+
 	const islandKinds = new Map(
 		Object.entries(roles?.defaultChild ?? {})
 			.filter(([parent]) => roles!.roles[parent]?.island && roles!.roles[parent]?.lines)
@@ -174,6 +220,69 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 			},
 			layouts,
 			dissolved: (peer, id) => ed(peer).runsView.dissolved(id),
+			...(tables.size > 0 && {
+				tables,
+				withdrawn: (peer, id) => {
+					const node = ed(peer).model.blockNodeOf(peer.doc, id);
+					return node != null && hasWithdrawMark(node) && !hasDeleteMark(node);
+				},
+				tableOf: (peer, id) => {
+					const f = ed(peer);
+					const table = f.tableOf(id);
+					if (table === null) return null;
+					const members: string[] = [];
+					const walk = (b: string) => {
+						for (const c of f.childrenIds(b)) {
+							members.push(c);
+							walk(c);
+						}
+					};
+					walk(table);
+					// Stored but hidden ones too: a dissolved cell is still the table's.
+					for (const b of f.listBlockIds())
+						if (f.tableOf(b) === table && !members.includes(b) && b !== table) members.push(b);
+					return { table, members, cell: f.isTableCell(id) };
+				},
+				tableOp: (peer, table, pick) =>
+					peer.transact(() => {
+						const f = ed(peer);
+						const grid = f.tableGrid(table);
+						if (grid === null) return false;
+						const rows = grid.rows;
+						const width = grid.columns.length;
+						const at = (n: number) => (n >> 3) % Math.max(1, rows.length + 1);
+						const col = (n: number) => (n >> 3) % Math.max(1, width + 1);
+						switch (pick % 7) {
+							case 0:
+								return ok(f.insertTableRow(table, at(pick)));
+							case 1:
+								return rows.length > 0 && ok(f.deleteTableRows([rows[at(pick) % rows.length].id]));
+							case 2:
+								return ok(f.insertTableColumn(table, col(pick)));
+							case 3:
+								return width > 0 && ok(f.deleteTableColumn(table, col(pick) % width));
+							case 4:
+								return (
+									width > 1 &&
+									ok(f.moveTableColumn(table, col(pick) % width, (col(pick) + 1) % width))
+								);
+							case 5:
+								return (
+									rows.length > 1 &&
+									ok(
+										f.moveTableRows([rows[at(pick) % rows.length].id], (at(pick) + 1) % rows.length)
+									)
+								);
+							default: {
+								for (const row of rows) {
+									const pad = row.cells.indexOf(null);
+									if (pad >= 0) return ok(f.fillTableCell(row.id, grid.columns[pad]));
+								}
+								return ok(f.insertTableRow(table, rows.length));
+							}
+						}
+					})
+			}),
 			placeBeside: (peer, ids, target, side) =>
 				peer.transact(() => ok(ed(peer).placeBeside(ids, target, side)))
 		}),
@@ -217,6 +326,8 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 		// block of another kind missing from the projection is still a loss.
 		expectedProjectedIds: (peer) => {
 			const expected = expectedProjectedIds(peer);
+			if (tables.size > 0)
+				for (const id of [...expected]) if (tableHidden(peer, id)) expected.delete(id);
 			if (layoutKinds.size === 0) return expected;
 			const f = ed(peer);
 			for (const id of [...expected])
@@ -232,7 +343,17 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 		// unchanged — same for the U5 mutation-surface snapshot and the
 		// dead-owner explainer.
 		locateTagAtoms,
-		classifyTagAtoms,
+		// A tag in a cell the table rules hide is hidden with it, not lost (`table.cell`).
+		classifyTagAtoms: (peer, target, atoms, context) =>
+			classifyTagAtoms(peer, target, atoms, context).map((fate) =>
+				(fate.kind === 'unreachable' || fate.kind === 'dead-owner') &&
+				tables.size > 0 &&
+				[fate.kind === 'unreachable' ? fate.owner : fate.holders[0]].some(
+					(owner) => owner !== undefined && tableHidden(peer, owner)
+				)
+					? { kind: 'hidden', owner: fate.kind === 'unreachable' ? fate.owner : fate.holders[0] }
+					: fate
+			),
 		tagAtomDeps,
 		captureOpState,
 		// With roles, a block's children are the ones it displays: a split or a

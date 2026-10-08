@@ -133,10 +133,14 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & Inde
 	/** A withdrawn block without a delete mark: its `deleted` is settled after each fold. */
 	const noteShell = (id: BlockId): void => {
 		const rec = blocks.get(id);
+		const was = shells.has(id);
 		// A losing incarnation is never withdrawn on its own: its key's block decides (H13).
-		if (isIncarnationId(id)) return void shells.delete(id);
-		if (rec !== undefined && !rec.deleted && hasWithdrawMark(rec.node)) shells.add(id);
+		if (isIncarnationId(id)) shells.delete(id);
+		else if (rec !== undefined && !rec.deleted && hasWithdrawMark(rec.node)) shells.add(id);
 		else shells.delete(id);
+		// A withdrawn cell shows in a column its table no longer lists (`table.cell`): re-place it.
+		if (was !== shells.has(id) && rec !== undefined && ix.cellKinds.has(rec.type))
+			stateSeeds.add(id);
 	};
 	const ensureRec = (id: BlockId): void => {
 		if (!blocks.has(id)) updateBlockRec(id);

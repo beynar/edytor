@@ -490,9 +490,17 @@ export class EdytorSelection {
 	 * shown line and its end to its last (a list's items, `rangeEdge`, GX-03);
 	 * a void's passes on as a caret does. With none, the value stays as it
 	 * was. Every caret write passes here, and so does the repair after a
-	 * change this view did not make.
+	 * change this view did not make. A table's row or cell is never a block
+	 * of a block selection: it stands for its table (`table.fits`).
 	 */
 	#shown = (next: SelectionValue): SelectionValue => {
+		if (next.kind === 'blocks') {
+			const { facade } = this.edytor;
+			const ids = next.ids.map((id) =>
+				facade.isTableCell(id) || facade.isTableRow(id) ? (facade.tableOf(id) ?? id) : id
+			);
+			return ids.some((id, i) => id !== next.ids[i]) ? blockSelection([...new Set(ids)]) : next;
+		}
 		if (next.kind !== 'text') return next;
 		const { start, end, isReversed } = project(next, this.edytor.facade);
 		const caret = next.focus === next.anchor;

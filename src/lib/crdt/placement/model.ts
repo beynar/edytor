@@ -220,6 +220,13 @@ export type DisplayOwnership = Ownership & {
 	 * {@link textRanker}).
 	 */
 	textRank?: (id: BlockId, parent: BlockId | null, rank: string) => string;
+	/**
+	 * The rank `id` displays at directly under `owner`, its placement's own
+	 * parent, when a rule other than its placement orders it there (a
+	 * table's cell, at its column's position: `table.columns`); `undefined`:
+	 * its placement decides.
+	 */
+	slotRank?: (owner: BlockId, id: BlockId, rank: string) => string | undefined;
 };
 
 /** One entry of a children list: `reset` — the island it displays out of ({@link displaySlotOf}). */

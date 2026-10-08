@@ -131,6 +131,29 @@ const english = () => {
 		(word) => word.length > 2 && !french.has(word)
 	);
 };
+/**
+ * The English words `page` says outside the French labels it shows: each
+ * French label is taken out first (longest first), so `Table` inside
+ * `Table des matières` is French while a `Table` on its own is a leak.
+ */
+const leaked = (page: string) => {
+	let rest = page;
+	for (const said of [...new Set(wordsOf(fr))].sort((a, b) => b.length - a.length))
+		rest = rest.replace(
+			new RegExp(`(?<![\\p{L}])${said.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}])`, 'gu'),
+			'\n'
+		);
+	return english().filter((word) => says(rest, word));
+};
+
+describe('the English-leak check', () => {
+	it('a French label holding an English word hides it; the word on its own leaks', () => {
+		expect(leaked(fr.toc.toc)).toEqual([]);
+		expect(leaked(`${fr.toc.toc}\n${englishLabels.table.table}`)).toEqual([
+			englishLabels.table.table
+		]);
+	});
+});
 
 describe('the rich text factory', () => {
 	it('a listed createRichTextPlugin replaces the default rich text plugin', async () => {
@@ -451,6 +474,6 @@ describe('no English reaches the page', () => {
 		await click(one('[data-edytor-id="v"] [data-edytor-media-add]'));
 		look();
 		const page = seen.join('\n');
-		expect(english().filter((word) => says(page, word))).toEqual([]);
+		expect(leaked(page)).toEqual([]);
 	});
 });

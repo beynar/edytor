@@ -18,6 +18,7 @@ export default defineMeta({
     "video",
     "audio",
     "columns",
+    "table",
     "page",
     "table-of-contents",
     "block-handles",

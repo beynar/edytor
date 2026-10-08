@@ -1399,6 +1399,7 @@ export type BlockRole = {
     island?: boolean;
     lines?: boolean;
     layout?: boolean;
+    table?: boolean;
     atomic?: readonly (string | readonly string[])[];
 };
 ```
@@ -1663,6 +1664,13 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView) => Prepared;
             deleteRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView) => Prepared;
             replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView) => Prepared;
+            insertTableRow: (table: BlockId, index: number) => Prepared;
+            deleteTableRows: (rows: readonly BlockId[]) => Prepared;
+            insertTableColumn: (table: BlockId, index: number, width?: number) => Prepared;
+            deleteTableColumn: (table: BlockId, column: string | number) => Prepared;
+            moveTableColumn: (table: BlockId, column: string | number, to: number) => Prepared;
+            moveTableRows: (rows: readonly BlockId[], to: number) => Prepared;
+            fillTableCell: (row: BlockId, column: string | number) => Prepared;
             insertBlocks: (dest: Destination, specs: readonly (BlockSpec | JSONBlock)[]) => Prepared;
             insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => Prepared;
             moveBlocks: (ids: readonly BlockId[], dest: Destination) => Prepared;
@@ -1780,8 +1788,15 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => OpResult;
         deleteRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
         replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
-        insertBlocks: (dest: Destination, specs: readonly (BlockSpec | JSONBlock)[]) => OpResult;
-        insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => OpResult;
+        insertTableRow: (table: string, index: number) => OpResult;
+        deleteTableRows: (rows: readonly string[]) => OpResult;
+        insertTableColumn: (table: string, index: number, width?: number | undefined) => OpResult;
+        deleteTableColumn: (table: string, column: string | number) => OpResult;
+        moveTableColumn: (table: string, column: string | number, to: number) => OpResult;
+        moveTableRows: (rows: readonly string[], to: number) => OpResult;
+        fillTableCell: (row: string, column: string | number) => OpResult;
+        insertBlocks: (dest: Destination, specs: readonly (JSONBlock | BlockSpec)[]) => OpResult;
+        insertBlock: (dest: Destination, spec: JSONBlock | BlockSpec) => OpResult;
         moveBlocks: (ids: readonly string[], dest: Destination) => OpResult;
         moveBlock: (id: string, dest: Destination) => OpResult;
         nestBlock: (id: string, parent: string) => OpResult;
@@ -1878,6 +1893,21 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         isLayoutItem: (id: string) => boolean;
         besideAt: (id: BlockId, kind?: string) => string;
         islandOf: (id: string) => string | null;
+        isTable: (id: string) => boolean;
+        isTableRow: (id: string) => boolean;
+        isTableCell: (id: string) => boolean;
+        tableOf: (id: string) => string | null;
+        tableColumns: (id: string) => {
+            id: string;
+            width?: number;
+        }[] | null;
+        tableGrid: (id: string) => {
+            columns: string[];
+            rows: {
+                id: BlockId;
+                cells: (BlockId | null)[];
+            }[];
+        } | null;
         insideIsland: (id: string) => boolean;
         canPlace: (ids: readonly BlockId[], parent?: BlockId | null) => boolean;
         canMerge: (from: BlockId, into: BlockId) => boolean;
@@ -2228,6 +2258,7 @@ export type DisplayOwnership = Ownership & {
     passes?: (b: BlockId) => boolean;
     sheds?: (owner: BlockId, child: BlockId) => boolean;
     textRank?: (id: BlockId, parent: BlockId | null, rank: string) => string;
+    slotRank?: (owner: BlockId, id: BlockId, rank: string) => string | undefined;
 };
 ```
 
@@ -2508,6 +2539,8 @@ export type DisplayRoles = {
     lineKinds: () => Iterable<string>;
     layout: (type: string) => string | undefined;
     layoutKinds: () => Iterable<string>;
+    table: (type: string) => string | undefined;
+    tableKinds: () => Iterable<string>;
 };
 ```
 

@@ -71,6 +71,18 @@ const ICONS: Record<string, string> = {
 	'block.audio': svg(
 		'<path d="M7.5 14.5V5l9-1.5v9.5"/><circle cx="5.5" cy="14.5" r="2"/><circle cx="14.5" cy="13" r="2"/>'
 	),
+	'block.table': svg(
+		'<rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="M2.5 8h15M2.5 12.3h15M7.5 3.5v13M12.5 3.5v13"/>'
+	),
+	'table.header-row': svg(
+		'<rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="M2.5 8h15" /><path d="M3 4h14v4H3z" fill="black" opacity=".35" stroke="none"/>'
+	),
+	'table.header-column': svg(
+		'<rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="M7.5 3.5v13"/><path d="M3 4h4.5v12H3z" fill="black" opacity=".35" stroke="none"/>'
+	),
+	'table.left': svg('<path d="M16 10H4.5M9 5.5L4.5 10 9 14.5"/>'),
+	'table.right': svg('<path d="M4 10h11.5M11 5.5l4.5 4.5-4.5 4.5"/>'),
+	'table.insert': svg('<path d="M10 4.5v11M4.5 10h11"/>'),
 	'columns.2': columns(2),
 	'columns.3': columns(3),
 	'columns.4': columns(4),

@@ -18,6 +18,8 @@ export const deleteOps = (c: OpsContext) => {
 		itemKindOf,
 		isLayout,
 		isLayoutItem,
+		isTable,
+		isTableRow,
 		live,
 		REFUSED,
 		plan,
@@ -52,6 +54,14 @@ export const deleteOps = (c: OpsContext) => {
 		// A layout goes with its items: their blocks take its slot (`layout.dissolving`).
 		for (const id of [...set])
 			if (isLayout(id)) for (const kid of childrenIds(id)) if (isLayoutItem(kid)) set.add(kid);
+		// A table goes with its rows and cells, a row with its cells: none shows outside them (`table.delete-row`).
+		const whole = (id: BlockId): void => {
+			for (const kid of childrenIds(id)) {
+				set.add(kid);
+				whole(kid);
+			}
+		};
+		for (const id of [...set]) if (isTable(id) || isTableRow(id)) whole(id);
 		if (subtree) {
 			const roots = [...set].filter((id) => !ancestorsOf(id).some((a) => set.has(a)));
 			return plan(

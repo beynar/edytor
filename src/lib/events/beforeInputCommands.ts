@@ -251,6 +251,9 @@ const splitHeader = (block: Block, text: Text, index: number, open: boolean | un
 
 const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	if (editSelectedBlocks(edytor)) return;
+	// Enter in a table's cell is a line break in it: a cell never splits (`table.merge`).
+	const cell = snapshot.startText?.parent;
+	if (cell && edytor.facade.isTableCell(cell.id)) return insertLineBreak(edytor, snapshot);
 	const target = replaceSelectionWithCollapsedTarget(edytor, snapshot);
 	if (!target) {
 		return;

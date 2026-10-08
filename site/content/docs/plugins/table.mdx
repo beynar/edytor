@@ -1,0 +1,217 @@
+---
+title: Table
+description: The table plugin adds Notion's simple table, a grid of text cells. Tab between cells, add rows and columns from the table's edges, move and delete them from their grips, resize columns, header row and column. Opt-in.
+icon: table
+---
+
+`tablePlugin` adds Notion's simple table: a grid of **cells**, each holding text (its lines are line breaks), in **rows** and **columns**. You make one with the slash menu or the block menu's Turn into ("Table"), or by pasting an HTML table. Hover it to add a row (the `+` under it) or a column (the `+` beside it), and to reach a row's and a column's grip, whose menus insert, move and delete them. Drag a column's right edge to resize it. The table's block menu inserts and deletes rows and columns where the caret was, and has Notion's **Header row** and **Header column** switches.
+
+The plugin is not a default plugin: list it in `plugins`.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, tablePlugin, slashMenuPlugin, blockMenuPlugin } from 'edytor';
+	import 'edytor/themes/notion.css';
+
+	const plugins = [tablePlugin, slashMenuPlugin, blockMenuPlugin];
+</script>
+
+<div class="edytor-notion">
+	<Edytor {plugins} />
+</div>
+```
+
+List it in every view that may open a document holding tables. A view without it does not know the kinds: it shows a table's cells one under the other, as unknown kinds (the document still applies the rules below). Its stylesheet is imported with it.
+
+## Options
+
+`createTablePlugin(options)` takes a `TablePluginOptions`; `tablePlugin` is the plugin with the defaults.
+
+<TypeTable
+  type={{
+    rows: { type: "number", default: "3", description: "The rows of a new table (the Table command)." },
+    columns: { type: "number", default: "3", description: "The columns of a new table." },
+    columnWidth: {
+      type: "number",
+      default: "120",
+      description: "A column's width in pixels when it sets none (Notion's).",
+    },
+    minColumnWidth: {
+      type: "number",
+      default: "48",
+      description: "The narrowest a resize leaves a column, in pixels.",
+    },
+    labels: {
+      type: "PartialLabels<'table'>",
+      description: "The command's, the switches', the menus' and the controls' words, over the English ones. See Localization.",
+    },
+    keywords: {
+      type: "Partial<Record<string, string[]>>",
+      description: "The slash menu's keywords of the Table command (block.table); they replace its own.",
+    },
+  }}
+/>
+
+```ts title="plugins.ts" check
+import { createTablePlugin, isTablePlugin, type Plugin } from 'edytor';
+
+export const table: Plugin = createTablePlugin({ rows: 2, columns: 4, columnWidth: 160 });
+isTablePlugin(table); // true: any table plugin instance
+```
+
+## The kinds
+
+| Kind        | Element                                          | Data                                                                                              | Role                                                                                  |
+| ----------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `table`     | `div[data-edytor-table][role=table]`             | `{ columns: { id: string; width?: number }[]; headerRow?: boolean; headerColumn?: boolean }` | A table (`table: true`): renders no content, default child `tableRow`                 |
+| `tableRow`  | `div[data-edytor-table-row][role=row]`           |                                                                                                   | A container that renders no content, default child `tableCell`                        |
+| `tableCell` | `div[data-edytor-table-cell][role=cell]`         | `{ column: string }`                                                                              | A text island: its text holds its lines as line breaks                                |
+
+`table` is a **table**: its kind record says `table: true`, a [block role](/docs/customization/blocks#options) like `layout`, and its `defaultChild` is its row kind, whose `defaultChild` is the cell kind. The core never names the three kinds: every rule below is read from the role, so a kind of your own with `table: true` behaves the same. The rows are exported as data: `tableKinds` and `tableSemantics` on `edytor/crdt/edytor`, both part of [`defaultSemantics`](/docs/reference/document-api), so a headless document and the [room](/docs/server/room) read tables as a view does.
+
+The **columns are data**: the table lists them in order in `data.columns`, each with an id and an optional width in pixels, and each cell names its column in `data.column`. Moving a column reorders that list and moves no cell; deleting one removes it from the list with its cells. Rows are blocks, in the table's order. A header cell is one in the first row of a table whose `headerRow` is set, or in the first column of one whose `headerColumn` is; it renders as a `columnheader` or `rowheader`.
+
+`tableBlock` builds a table as JSON, with column ids derived from their position (`c1`, `c2`, …), so a value holding it seeds the same table every time:
+
+```ts title="value.ts" check
+import { createDocument, tableBlock } from 'edytor';
+
+const document = createDocument({
+	value: {
+		children: [
+			tableBlock({
+				cells: [
+					['Name', 'Role'],
+					['Ada', 'Engineering']
+				],
+				headerRow: true,
+				widths: [160]
+			})
+		]
+	}
+});
+```
+
+A table written without `columns` (by hand) shows each row's cells in their order; the first column operation on it lists its columns (`c1`, `c2`, … by position, as `tableBlock` names them, so two people doing it at once list the same ones) and names each cell's column, in its own step.
+
+## What shows
+
+The document shows a table by read-time rules, on every replica, whatever the stored tree holds (the `table.*` rows of the delete contract):
+
+- **A row shows its cells in the table's column order**, whatever their stored order.
+- **A cell shows only in a row of a table, for a column the table lists, once.** A cell of a deleted column, a second cell for one column, or a cell left outside a row by a race does not show, with its text.
+- **Undo never hides a collaborator's text.** Undoing a column insert takes the column out of the list, but a cell of it that holds another person's text stays, in a column shown after the listed ones (its other rows padded), until that text is deleted. Typing in one of its padded cells lists the column again, last; deleting the column deletes its cells.
+- **A row shows only in a table, and only while it shows a cell; a table only while it shows a row.**
+- **A row is padded to the table's columns.** A row showing no cell for a column (a collaborator's row inserted while another person added a column) shows an empty placeholder there, the view's alone: the first press in it creates the cell and puts the caret in it.
+- Any other block stored in a table or a row shows right after the table.
+
+## Editing
+
+| Keys | In a cell |
+| --- | --- |
+| Typing, marks, inline atoms | As in any text |
+| <kbd>Enter</kbd>, <kbd>Shift</kbd>+<kbd>Enter</kbd> | A line break in the cell: a cell never splits |
+| <kbd>Backspace</kbd> at a cell's start, <kbd>Delete</kbd> at its end | Nothing: nothing merges into or out of a cell |
+| <kbd>Backspace</kbd> at the start of the block after a table | The caret goes to the end of the last cell |
+| <kbd>Tab</kbd> | The end of the next cell, row by row; in the last cell, a new row after it, the caret in its first cell (Notion) |
+| <kbd>Shift</kbd>+<kbd>Tab</kbd> | The end of the previous cell; in the first, nothing (the caret stays where it is) |
+| <kbd>↑</kbd> on a cell's first line, <kbd>↓</kbd> on its last | The cell above or below in the same column, on its last (first) line, nearest the caret's horizontal position; out of the table, the browser moves the caret. A line is a line as it wraps on screen: in a wrapped cell the arrows move through its lines first |
+| <kbd>←</kbd>, <kbd>→</kbd> | Reading order: from a row's last cell to the next row's first |
+
+A text range across cells deletes the text it covers in each cell and removes no cell or row; with one end outside the table, the blocks between the end and the table go and nothing merges into a cell; a table wholly inside the range goes with it. The slash menu does not open in a cell, and a cell is never turned into another kind. A block selection never holds a row or a cell: selecting one (<kbd>Mod</kbd>+<kbd>A</kbd> twice in a cell) selects the table, so a block action (Delete, Duplicate, a move) acts on the whole table. A paste into a cell joins its lines with line breaks.
+
+## Rows and columns
+
+Hover a table:
+
+- **`+` under the table**: a row at its end, the caret in its first cell.
+- **`+` beside the table**: a column at its end.
+- **A row's grip**, left of the row: Insert above, Insert below, Move up, Move down, Delete row.
+- **A column's grip**, above the column: Insert left, Insert right, Move left, Move right, Delete column.
+- **A column's right edge**: drag to resize it (a live preview, written at the release, one undo step; <kbd>Escape</kbd> puts it back). Each edge is also a focusable `separator`: <kbd>→</kbd> and <kbd>←</kbd> widen or narrow the column by 8px, with <kbd>Shift</kbd> by 32px.
+
+Deleting a table's last row or last column deletes the table. Every action is one undo step, refused in a readonly view (which shows none of these controls). The table's own block handle drags, duplicates and deletes the whole table; rows and cells have no handle.
+
+The **block menu** of a table (`BlockDefinition.menu`, rows of `KindMenuAction`) adds the keyboard's way to the rows and columns: **Insert row above**, **Insert row below**, **Insert column left**, **Insert column right**, **Delete row** and **Delete column**, at the row and column of the cell the caret was last in (the grip that opens the menu keeps it; with no caret in the table, its last row and column). An insert closes the menu and puts the caret in the new cell. Then two switches, **Header row** and **Header column**, each one data write and one undo step; the menu stays open.
+
+## Clipboard
+
+- An HTML `<table>` pasted outside a table imports as a table: a column per cell of its widest row, its first row a header row when every cell of it is a `<th>` (a header column when every row starts with one). Marks inside the cells are kept.
+- A copied table exports `<table><tbody><tr><td>…`, the header row's and header column's cells as `<th>`, and plain text with cells separated by tabs, rows by line breaks.
+- Pasted into a cell, anything (a table included) lands as its text, its lines joined by line breaks.
+- Cells copied out of a table with a text range paste elsewhere as lines of text, never as stray cells.
+- An Edytor fragment (a copy from one editor to another) keeps the table as stored.
+
+## Collaboration
+
+Every replica applies the read-time rules above, so two people editing a table at once see the same grid after they sync:
+
+- One person inserts a row while another deletes a column: the new row's cell for the deleted column does not show.
+- One person inserts a column while another inserts a row: the new row is padded in the new column until someone types there.
+- One person types in a cell while another deletes its row: the row goes, with the text.
+- One person moves a column while another inserts a row: the new row shows its cells in the moved order.
+- One person inserts a column, another types in it, and the first undoes the insert: the typed text stays, its column shown last (see What shows).
+- Two people filling the same padded cell at once each create a cell; one shows (the first by block id), and text typed in the other before they synced does not show.
+- On a table written without `columns`, a column deleted while another person runs any other column operation stays listed, emptied: both list the columns at once, and the delete loses to the other's list.
+
+These rules come from the document's roles: list the plugin in every view; a headless document holds them by default (`defaultSemantics`), as the room does. See [concurrent editing](/docs/collaboration/concurrent-editing).
+
+## Styling
+
+`table.css` lays the table out as a CSS grid of the columns' widths, each row a subgrid, and scrolls it sideways when it is wider than the page.
+
+| Variable | Default | Sets |
+| --- | --- | --- |
+| `--edytor-table-border` | `rgb(233, 233, 231)` | The cells' borders |
+| `--edytor-table-header-background` | `rgb(247, 246, 243)` | A header cell's background |
+| `--edytor-table-grip-background` | `#fff` | The row and column grips |
+| `--edytor-table-resize-color` | `rgba(35, 131, 226, 0.43)` | A column edge's resize line |
+
+| Selector | Matches |
+| --- | --- |
+| `[data-edytor-table]` | The table's block element (`data-edytor-table-header-row`, `data-edytor-table-header-column` when set) |
+| `[data-edytor-table-grid]` | The grid (its `style` sets the columns' widths) |
+| `[data-edytor-table-row]` | A row |
+| `[data-edytor-table-cell]` | A cell (`data-edytor-column`: its position; `data-edytor-table-header="true"` for a header cell) |
+| `[data-edytor-table-pad]` | A padded cell's placeholder |
+| `[data-edytor-table-grip]`, `[data-edytor-table-add]`, `[data-edytor-table-resize]` | The chrome, in the overlay |
+| `.edytor-table-menu` | A grip's menu |
+
+## Document API
+
+On a document whose roles hold a table kind (a view with the plugin, or `defaultSemantics`, a headless document's default), every operation is one prepared plan (`apply(prepare.op(…))`) and one undo step:
+
+```ts title="table.ts" check
+import { createDocument, tableBlock } from 'edytor';
+
+const { facade } = createDocument({
+	value: { children: [{ ...tableBlock({ cells: [['a', 'b']] }), id: 't' }] }
+});
+
+facade.insertTableRow('t', 1); // a row of empty cells at the end
+facade.insertTableColumn('t', 0, 200); // a 200px column first, a cell in every row
+facade.moveTableColumn('t', 'c2', 0); // reorder: no cell moves
+facade.deleteTableColumn('t', 'c1');
+facade.tableGrid('t'); // { columns: [...], rows: [{ id, cells: [...] }] }
+```
+
+| API | What it does |
+| --- | --- |
+| `insertTableRow(table, index)` | A row with one empty cell per column at `index` among the rows |
+| `deleteTableRows(rows)` | The rows with their cells; a table left with no row goes too |
+| `insertTableColumn(table, index, width?)` | A new column in `data.columns` and an empty cell for it in every row |
+| `deleteTableColumn(table, column)` | The column (by id or position) and its cells (every entry of `data.columns` naming it); the last column takes the table |
+| `moveTableColumn(table, column, to)` | One reorder of `data.columns` |
+| `moveTableRows(rows, to)` | A move among the table's rows (refused out of it) |
+| `fillTableCell(row, column)` | Creates a padded cell (in a column shown unlisted, lists it again, last) |
+| `isTable(id)`, `isTableRow(id)`, `isTableCell(id)`, `tableOf(id)` | Whether a block is a table, its row or its cell, and the table holding it |
+| `tableColumns(table)` | The listed columns (`{ id, width? }[]`), or `null` |
+| `tableGrid(table)` | The column ids and each shown row's cells by column, `null` for a padded cell |
+
+Header flags and widths are data patches: `facade.patchData(table, [{ path: ['headerRow'], value: true }])`, and a width on the column's entry by its item id, `[{ path: ['columns', facade.dataItemIds(table, ['columns'])[i], 'width'], value: 200 }]` (a position works too, but counts every entry the stored array holds). `tableGrid` lists the listed columns, then any column it shows unlisted (an undone insert's, holding someone's text); `deleteTableColumn` and `fillTableCell` take its id or position, `moveTableColumn` refuses it. A cell never moves as a block, nothing merges into or out of one and it never splits (`canPlace`, `canMerge`, `splitBlock` refuse); a row moves only within its table. In a view, the commands run as `insertTableRow`, `deleteTableRows`, `insertTableColumn`, `deleteTableColumn`, `moveTableColumn`, `moveTableRows` and `fillTableCell`, so hooks see and may refuse them.
+
+## Limitations
+
+- No merged cells, no cell selection (a mouse drag across cells is a text range), no cell colours, no sorting or formulas: this is Notion's simple table, not a database.
+- Copying part of a table copies the cells' text, not a smaller table.
+- A client of an earlier pre-release shows a stored table as unknown kinds, one cell under the other.

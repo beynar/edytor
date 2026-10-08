@@ -708,9 +708,12 @@ export class EdytorDocument {
 		if (DEV) this._warnLines();
 		// A newly void kind sheds its children at read time (UW-21b); a block
 		// promoted out of a newly island kind displays as a default child; a
-		// newly layout kind displays only its items (`layout.*`).
+		// newly layout kind displays only its items (`layout.*`), a newly
+		// table kind only its rows (`table.*`).
 		if (
-			Object.values(config.roles ?? {}).some((role) => role?.void || role?.island || role?.layout)
+			Object.values(config.roles ?? {}).some(
+				(role) => role?.void || role?.island || role?.layout || role?.table
+			)
 		)
 			this.facade.rolesChanged();
 	};
@@ -728,6 +731,10 @@ export class EdytorDocument {
 			if (role.layout && !defaultChild.has(type))
 				console.warn(
 					`[edytor] "${type}" declares \`layout\` without a \`defaultChild\` (its column kind): it is no layout.`
+				);
+			if (role.table && !defaultChild.has(type))
+				console.warn(
+					`[edytor] "${type}" declares \`table\` without a \`defaultChild\` (its row kind): it is no table.`
 				);
 			if (!role.lines) continue;
 			const line = defaultChild.get(type);

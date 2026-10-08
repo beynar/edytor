@@ -46,6 +46,7 @@ import {
 } from './shared.js';
 import type { FoldCtx, IndexState, TextEdit, TextEdits, Tx } from './state.js';
 import type { IndexStreams } from './streams.js';
+import type { IndexLayout } from './layout.js';
 
 /** The fold of one doc's index, over every part it folds into. */
 export const indexFold = (
@@ -53,6 +54,7 @@ export const indexFold = (
 		IndexClaims &
 		IndexStreams &
 		IndexAnchored &
+		IndexLayout &
 		IndexPlacement &
 		IndexRecords &
 		IndexCache
@@ -94,7 +96,8 @@ export const indexFold = (
 		updateBlockRec,
 		ensureRec,
 		syncIncarnations,
-		computeRuns
+		computeRuns,
+		tableFacts
 	} = ix;
 	const ops = engineOps(Y);
 
@@ -207,12 +210,15 @@ export const indexFold = (
 			}
 			if (kinds.has('meta') && rec) {
 				const was = rec.type;
+				const facts = tableFacts(id, rec.data);
 				rec.type = typeAttr(rec.node);
 				rec.data = readData(rec.node);
 				if (rec.type !== was) {
 					ix.retyped = true;
 					noteKind(id);
 				}
+				// A table's columns or a cell's column re-place the table's cells (`table.columns`).
+				if (tableFacts(id, rec.data) !== facts) stateSeeds.add(id);
 				// A retype that changes the kind's display shape re-parents
 				// (or re-kinds) its children.
 				if (ix.roles !== null && !sameShape(ix.roles, was, rec.type)) stateSeeds.add(id);

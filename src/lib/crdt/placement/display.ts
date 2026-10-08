@@ -222,9 +222,14 @@ export const displaySlotOf = (
 	id: BlockId
 ): { parent: Owner | null; rank: string; reset: BlockId | null } => {
 	let { parent, rank } = pl;
-	// D-18: a piece of a text shown under its own placement's parent takes its text-order rank.
-	const direct = (owner: BlockId | null): string =>
-		own.textRank === undefined || owner !== pl.parent ? rank : own.textRank(id, owner, rank);
+	// D-18: a piece of a text shown under its own placement's parent takes its text-order rank;
+	// a table's cell its column's (`table.columns`).
+	const direct = (owner: BlockId | null): string => {
+		if (owner !== pl.parent) return rank;
+		const ruled = owner === null ? undefined : own.slotRank?.(owner, id, rank);
+		if (ruled !== undefined) return ruled;
+		return own.textRank === undefined ? rank : own.textRank(id, owner, rank);
+	};
 	let reset: BlockId | null = null;
 	/** The first parent it is promoted out of (a deleted or childless one). */
 	let promoted: BlockId | null = null;

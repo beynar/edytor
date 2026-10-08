@@ -147,7 +147,8 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				};
 			},
 			onBlockAttached: ({ node, block }) => {
-				if (!block.movable) return;
+				// A table's rows move by its own row menus, its cells never (`table.fits`).
+				if (!block.movable || edytor.facade.isTableRow(block.id)) return;
 				const offDropTarget = controller.addDropTarget(node, block);
 				// A layout and its columns are drop targets but have no handle (D3, as
 				// Notion): a block selection covering a layout stands for it.

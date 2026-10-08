@@ -558,7 +558,7 @@ declare const DEFAULT_PRESENCE_THROTTLE = 50;
 ### DocChange
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/types.d.ts
 export type DocChange = {
     origin: unknown;
     local: boolean;
@@ -1201,7 +1201,7 @@ export type MediaPluginOptions = {
 ### OpResult
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/types.d.ts
 export type OpResult = {
     readonly status: 'refused' | 'noop' | 'applied';
     readonly ids: readonly BlockId[];
@@ -1231,7 +1231,7 @@ export type PlaceholderView = {
 ### Plan
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/types.d.ts
 export type Plan = {
     readonly ids: readonly BlockId[];
     readonly writes: readonly PlanStep[];
@@ -1251,7 +1251,7 @@ export type Plugin = (editor: Edytor) => PluginDefinitions & PluginOperations;
 ### Prepared
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/types.d.ts
 export type Prepared = Plan | OpResult;
 ```
 
@@ -1309,7 +1309,7 @@ export type ResolvedAt = Exclude<SuggestionAt, {
 ### SchemaMismatchError
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 export declare class SchemaMismatchError extends Error {
     readonly docName: string;
     readonly problem: SchemaProblem;
@@ -1745,7 +1745,7 @@ export declare class UndecodableUpdateError extends Error {
 ### UnsupportedDocError
 
 ```ts
-// crdt/edytor-doc.d.ts
+// crdt/doc/gate.d.ts
 export declare class UnsupportedDocError extends Error {
     readonly kind: 'foreign' | 'legacy';
     constructor(kind: 'foreign' | 'legacy');
@@ -2513,45 +2513,23 @@ export type LeafWrite = readonly [
 ];
 ```
 
-#### crdt/document.d.ts#DocumentOptions
+#### crdt/doc/gate.d.ts#SchemaProblem
 
 ```ts
-export type DocumentOptions = {
-    actor?: DocumentActor;
-    semantics?: DocumentSemanticsConfig;
-    awareness?: Awareness;
-    history?: {
-        captureTimeout?: number;
-        limit?: number;
-    };
-    lineage?: {
-        depth?: number;
-    };
-    requireHydration?: boolean;
+export type SchemaProblem = {
+    kind: 'unversioned' | 'unsupported' | 'foreign';
+    version?: number;
+    schema?: unknown;
 };
 ```
 
-#### crdt/document.d.ts#DocumentSemanticsConfig
-
-```ts
-export type DocumentSemanticsConfig = {
-    roles?: Record<string, BlockRole>;
-    rendersContent?: Record<string, boolean>;
-    defaultChild?: Record<string, string>;
-    defaultType?: string;
-    marks?: Record<string, {
-        edge?: MarkEdge;
-    }>;
-};
-```
-
-#### crdt/edytor-doc.d.ts#AnchorAffinity
+#### crdt/doc/types.d.ts#AnchorAffinity
 
 ```ts
 export type AnchorAffinity = 'left' | 'right';
 ```
 
-#### crdt/edytor-doc.d.ts#BlockRole
+#### crdt/doc/types.d.ts#BlockRole
 
 ```ts
 export type BlockRole = {
@@ -2563,7 +2541,7 @@ export type BlockRole = {
 };
 ```
 
-#### crdt/edytor-doc.d.ts#DataTarget
+#### crdt/doc/types.d.ts#DataTarget
 
 ```ts
 export type DataTarget = BlockId | null | {
@@ -2572,7 +2550,7 @@ export type DataTarget = BlockId | null | {
 };
 ```
 
-#### crdt/edytor-doc.d.ts#DocAnchor
+#### crdt/doc/types.d.ts#DocAnchor
 
 ```ts
 export type DocAnchor = {
@@ -2581,19 +2559,7 @@ export type DocAnchor = {
 };
 ```
 
-#### crdt/edytor-doc.d.ts#EdytorDoc
-
-```ts
-export type EdytorDoc = ReturnType<EdytorDocBinding['create']>;
-```
-
-#### crdt/edytor-doc.d.ts#EdytorDocBinding
-
-```ts
-export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
-```
-
-#### crdt/edytor-doc.d.ts#EdytorDocConfig
+#### crdt/doc/types.d.ts#EdytorDocConfig
 
 ```ts
 export type EdytorDocConfig = {
@@ -2609,13 +2575,13 @@ export type EdytorDocConfig = {
 };
 ```
 
-#### crdt/edytor-doc.d.ts#JsonObj
+#### crdt/doc/types.d.ts#JsonObj
 
 ```ts
-type JsonObj = Record<string, unknown>;
+export type JsonObj = Record<string, unknown>;
 ```
 
-#### crdt/edytor-doc.d.ts#OrderPolicy
+#### crdt/doc/types.d.ts#OrderPolicy
 
 ```ts
 export type OrderPolicy = {
@@ -2623,7 +2589,7 @@ export type OrderPolicy = {
 };
 ```
 
-#### crdt/edytor-doc.d.ts#PlanEffect
+#### crdt/doc/types.d.ts#PlanEffect
 
 ```ts
 export type PlanEffect = {
@@ -2639,7 +2605,7 @@ export type PlanEffect = {
 };
 ```
 
-#### crdt/edytor-doc.d.ts#PlanStep
+#### crdt/doc/types.d.ts#PlanStep
 
 ```ts
 export type PlanStep = {
@@ -2715,17 +2681,7 @@ export type PlanStep = {
 };
 ```
 
-#### crdt/edytor-doc.d.ts#SchemaProblem
-
-```ts
-export type SchemaProblem = {
-    kind: 'unversioned' | 'unsupported' | 'foreign';
-    version?: number;
-    schema?: unknown;
-};
-```
-
-#### crdt/edytor-doc.d.ts#TextRange
+#### crdt/doc/types.d.ts#TextRange
 
 ```ts
 export type TextRange = {
@@ -2733,6 +2689,50 @@ export type TextRange = {
     offset: number;
     length: number;
 };
+```
+
+#### crdt/document.d.ts#DocumentOptions
+
+```ts
+export type DocumentOptions = {
+    actor?: DocumentActor;
+    semantics?: DocumentSemanticsConfig;
+    awareness?: Awareness;
+    history?: {
+        captureTimeout?: number;
+        limit?: number;
+    };
+    lineage?: {
+        depth?: number;
+    };
+    requireHydration?: boolean;
+};
+```
+
+#### crdt/document.d.ts#DocumentSemanticsConfig
+
+```ts
+export type DocumentSemanticsConfig = {
+    roles?: Record<string, BlockRole>;
+    rendersContent?: Record<string, boolean>;
+    defaultChild?: Record<string, string>;
+    defaultType?: string;
+    marks?: Record<string, {
+        edge?: MarkEdge;
+    }>;
+};
+```
+
+#### crdt/edytor-doc.d.ts#EdytorDoc
+
+```ts
+export type EdytorDoc = ReturnType<EdytorDocBinding['create']>;
+```
+
+#### crdt/edytor-doc.d.ts#EdytorDocBinding
+
+```ts
+export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
 ```
 
 #### crdt/edytor-doc.d.ts#bindEdytorDoc
@@ -2763,7 +2763,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
     isInitialized: (doc: EngineDoc) => boolean;
     schemaVersion: (doc: EngineDoc) => number | undefined;
     registryEmpty: (doc: EngineDoc) => boolean;
-    checkSchema: (doc: EngineDoc) => SchemaProblem | null;
+    checkSchema: (doc: EngineDoc) => import("./edytor-doc.js").SchemaProblem | null;
     assertSchema: (doc: EngineDoc, docName?: string) => void;
     SchemaMismatchError: typeof SchemaMismatchError;
     create: (doc: EngineDoc, config?: EdytorDocConfig) => {
@@ -2935,7 +2935,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         seed: (value: JSONBlock[], data?: JsonObj) => void;
         isInitialized: () => boolean;
         schemaVersion: () => number | undefined;
-        checkSchema: () => SchemaProblem | null;
+        checkSchema: () => import("./edytor-doc.js").SchemaProblem | null;
         assertSchema: () => void;
         dispose: () => void;
         createUndoManager: (options?: ConstructorParameters<EngineApi["UndoManager"]>[1] & {

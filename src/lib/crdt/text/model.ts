@@ -26,14 +26,42 @@
  * Anchors (R4) are `{b, a}`: `b` the home block of the backing text, `a` an
  * engine relative position (`i` the bound item, `a` the side: `< 0` left). A
  * left-affine caret at a split-born block's start binds its boundary item.
+ *
+ * The item guards are `text/items.ts`, the range reads `text/ranges.ts` and
+ * the stream table `text/streams.ts` (re-exported here); this module declares
+ * the text model's types and binds its reads and writes to an engine.
  */
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode } from '../engine-api.js';
-import { CONTENT, CONTENT_NODE, ID, NONCE, SCHEMA, TYPE } from '../schema.js';
-import { readData } from '../data.js';
+import { CONTENT, CONTENT_NODE, ID, NONCE, SCHEMA } from '../schema.js';
 import { DEV } from 'esm-env';
 import { hash32, hash53 } from '../rand.js';
 import { bindDeletes, type Span } from './deletes.js';
 import { fitMarks, writeMarks } from './marks.js';
+import { nodeStart } from './items.js';
+import { readRange } from './ranges.js';
+import {
+	delimiters,
+	displayOf,
+	locate,
+	ownedLength,
+	pieces,
+	placeText,
+	rangesOf,
+	scanText
+} from './streams.js';
+
+export { isBoundary, nodeStart } from './items.js';
+export { canonKey, deepFreeze, inlineItemOf, protectItems, readRange } from './ranges.js';
+export {
+	byId,
+	delimiters,
+	displayOf,
+	locate,
+	ownedLength,
+	pieces,
+	placeText,
+	scanText
+} from './streams.js';
 
 export type BlockId = string;
 
@@ -83,8 +111,6 @@ export type Claim = {
 
 /** Boundary-item payload in a backing text. */
 export type Boundary = { s: BlockId; n: unknown };
-export const isBoundary = (v: unknown): v is Boundary =>
-	v != null && typeof v === 'object' && typeof (v as Boundary).s === 'string' && 'n' in v;
 
 /** Structural item for sequence walks (`node._start`). */
 export type SeqItem = {
@@ -95,9 +121,6 @@ export type SeqItem = {
 	right: SeqItem | null;
 	content: { getContent(): unknown[]; str?: string; arr?: unknown[]; type?: EngineNode };
 };
-
-export const nodeStart = (node: EngineNode): SeqItem | null =>
-	(node as unknown as { _start?: SeqItem | null })._start ?? null;
 
 /** The live merge claims of a `claims` list, with their stamps. */
 export const readClaims = (node: EngineNode | undefined): Claim[] => {
@@ -120,22 +143,6 @@ export const readClaims = (node: EngineNode | undefined): Claim[] => {
 		}
 	}
 	return out;
-};
-
-// ── bounded formatted range reads ────────────────────────────────────
-//
-// Reads go through the vendored `Y.RangeCursor` (P5): it walks the live item
-// list with the same `readItemPieces` dispatch `toDelta` consumes and seeds
-// itself from the engine's search-marker checkpoints, so a read costs the
-// checkpoint gap plus the range. Emitted `marks` ALIAS the cursor's format
-// state: consumers treat them as read-only (the index interns them).
-
-/** Canonical JSON key (sorted keys, recursive) — mark-set equality/interning. */
-export const canonKey = (v: unknown): string => {
-	if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null';
-	if (Array.isArray(v)) return `[${v.map(canonKey).join(',')}]`;
-	const keys = Object.keys(v as Record<string, unknown>).sort();
-	return `{${keys.map((k) => `${JSON.stringify(k)}:${canonKey((v as Record<string, unknown>)[k])}`).join(',')}}`;
 };
 
 /** One emitted range-read element — the `ContentItem` shape. */
@@ -165,84 +172,6 @@ export type RangeCursor = {
 
 /** Per-read instrumentation: sequence items stepped over / format markers seen. */
 export type RangeReadStats = { items: number; markers: number };
-
-const marksEqual = (
-	a: Record<string, unknown> | undefined,
-	b: Record<string, unknown> | undefined
-): boolean => a === b || (a !== undefined && b !== undefined && canonKey(a) === canonKey(b));
-
-/** Recursively freeze a JSON payload (the interners' canonical copies). */
-export const deepFreeze = <T>(v: T): T => {
-	if (v !== null && typeof v === 'object') {
-		for (const k of Object.keys(v as Record<string, unknown>))
-			deepFreeze((v as Record<string, unknown>)[k]);
-		Object.freeze(v);
-	}
-	return v;
-};
-
-/**
- * Publication boundary for range-read items (R4): a text item's `marks` can
- * alias the cursor's format state and an inline item's `data` IS the
- * replicated attr object, so each payload is swapped for `intern`'s frozen
- * canonical copy before it leaves the document layer.
- */
-export const protectItems = (items: RangeItem[], intern: <T>(v: T) => T): RangeItem[] => {
-	for (const item of items) {
-		if (item.kind === 'text') {
-			if (item.marks !== undefined) item.marks = intern(item.marks);
-		} else if (item.data !== undefined) {
-			item.data = intern(item.data);
-		}
-	}
-	return items;
-};
-
-/** One inline-atom element → its `ContentItem` shape. */
-export const inlineItemOf = (entry: unknown): RangeItem => {
-	const node = entry as EngineNode;
-	const data = readData(node);
-	return {
-		kind: 'inline',
-		id: node.getAttr(ID) as string,
-		type: node.getAttr(TYPE) as string,
-		...(data === undefined ? {} : { data: data as Record<string, unknown> })
-	};
-};
-
-/**
- * Read `[i0, i1)` through the cursor: text pieces as UTF-16 slices under their
- * folded marks (adjacent equal marks merge), inline atoms one item each.
- * Boundary items are skipped — the one read predicate R2 needs.
- */
-export const readRange = (
-	cur: RangeCursor,
-	i0: number,
-	i1: number,
-	stats?: RangeReadStats,
-	items: RangeItem[] = []
-): RangeItem[] => {
-	for (const piece of cur.read(i0, i1, stats)) {
-		if (piece.deleted || piece.len === 0) continue;
-		const c = piece.content;
-		if (typeof c.str === 'string') {
-			const marks = piece.formats;
-			const slice = c.str.slice(piece.offset, piece.offset + piece.len);
-			const last = items[items.length - 1];
-			if (last !== undefined && last.kind === 'text' && marksEqual(last.marks, marks)) {
-				(last as { text: string }).text += slice;
-			} else {
-				items.push({ kind: 'text', text: slice, ...(marks === undefined ? {} : { marks }) });
-			}
-		} else if (typeof c.getContent === 'function') {
-			const arr = c.getContent();
-			for (let k = piece.offset; k < piece.offset + piece.len; k++) {
-				if (!isBoundary(arr[k])) items.push(inlineItemOf(arr[k]));
-			}
-		}
-	}
-	return items;
-};
 
 // ── records and the claim graph ──────────────────────────────────────
 
@@ -356,73 +285,6 @@ export type Stream = {
 	inert: number[];
 };
 
-/** Scan `text` (live space, renderer-free) for its boundary items. */
-export const scanText = (home: BlockId, text: EngineNode): TextRow => {
-	const bounds: Bound[] = [];
-	let at = 0;
-	for (let it = nodeStart(text); it !== null; it = it.right) {
-		if (it.deleted || it.countable === false) continue;
-		const arr = it.content.arr;
-		if (arr !== undefined) {
-			for (let j = 0; j < it.length; j++) {
-				const v = arr[j];
-				if (isBoundary(v))
-					bounds.push({ s: v.s, n: v.n, at: at + j, key: `${it.id.client}:${it.id.clock + j}` });
-			}
-		}
-		at += it.length;
-	}
-	return { home, text, bounds, len: at, key: bounds.map((b) => b.key).join(',') };
-};
-
-export const byId = (a: string, b: string): number => {
-	const [ac, ak] = a.split(':').map(Number);
-	const [bc, bk] = b.split(':').map(Number);
-	return ac - bc || ak - bk;
-};
-
-/** Each block's delimiting boundary: the lowest-id live boundary whose nonce matches its record. */
-export const delimiters = (
-	blocks: ReadonlyMap<BlockId, Pick<TextBlockRec, 'n'>>,
-	rows: Iterable<TextRow>
-): Map<BlockId, string> => {
-	const out = new Map<BlockId, string>();
-	for (const row of rows) {
-		for (const b of row.bounds) {
-			if (blocks.get(b.s)?.n !== b.n) continue;
-			const cur = out.get(b.s);
-			if (cur === undefined || byId(b.key, cur) < 0) out.set(b.s, b.key);
-		}
-	}
-	return out;
-};
-
-/**
- * The streams of one text, in text order: the home's head (unless delimited
- * elsewhere), then one per delimiting boundary — one sweep over the
- * boundaries (each non-delimiting one is an inert boundary of the stream it
- * sits in).
- */
-export const placeText = (row: TextRow, delim: ReadonlyMap<BlockId, string>): Stream[] => {
-	const out: Stream[] = [];
-	let block: BlockId | null = delim.has(row.home) ? null : row.home;
-	let start = 0;
-	let inert: number[] = [];
-	const close = (end: number) => {
-		if (block !== null) out.push({ block, home: row.home, text: row.text, start, end, inert });
-	};
-	for (const b of row.bounds) {
-		if (delim.get(b.s) !== b.key) {
-			inert.push(b.at);
-			continue;
-		}
-		close(b.at);
-		[block, start, inert] = [b.s, b.at + 1, []];
-	}
-	close(row.len);
-	return out;
-};
-
 /** A displayed piece: `[i0, i1)` of `text` (home `t`) holds content only; `block` owns its stream. */
 export type Seg = {
 	t: BlockId;
@@ -449,87 +311,6 @@ export type Ownership = {
 	display: (b: BlockId) => Seg[] | null;
 	/** `b`'s effective claims (`merge.claim.anchor`), when the context computed them. */
 	claimsOf?: (b: BlockId) => readonly Claim[];
-};
-
-/** A stream's content pieces: the range minus its inert boundaries (at least one piece). */
-export const pieces = (s: Stream): [number, number][] => {
-	const out: [number, number][] = [];
-	let a = s.start;
-	for (const x of [...s.inert, s.end]) {
-		if (x > a || out.length === 0) out.push([a, x]);
-		a = x + 1;
-	}
-	return out;
-};
-
-/**
- * `display(b)`: `b`'s stream, then each effective claim's display, in claim
- * order. `track(x, home)` reports every walked block and the home of its
- * stream (the index's dependency capture). `null` when `b` is hidden, unless
- * `hidden` asks for the pieces a hidden block would show (an anchor minted in
- * a merged-away or deleted block binds its items all the same).
- */
-export const displayOf = (
-	b: BlockId,
-	blocks: ReadonlyMap<BlockId, TextBlockRec>,
-	own: Pick<Ownership, 'ownerOf' | 'top' | 'streamOf'>,
-	track?: (x: BlockId, home: BlockId | undefined) => void,
-	hidden = false
-): Seg[] | null => {
-	if (!hidden && own.ownerOf(b) !== b) return null;
-	const out: Seg[] = [];
-	const seen = new Set<BlockId>();
-	const walk = (x: BlockId, path: Seg['path']): void => {
-		seen.add(x);
-		const s = own.streamOf(x);
-		track?.(x, s?.home);
-		if (s !== undefined) {
-			for (const [i0, i1] of pieces(s))
-				out.push({ t: s.home, text: s.text, block: x, i0, i1, path });
-		}
-		blocks.get(x)?.claims.forEach((c, entry) => {
-			const r = blocks.get(c.m);
-			if (r === undefined || r.deleted || seen.has(c.m) || own.top(c.m) !== x) return;
-			walk(c.m, [...path, { holder: x, entry }]);
-		});
-	};
-	walk(b, []);
-	return out;
-};
-
-export const ownedLength = (segs: readonly Seg[]): number =>
-	segs.reduce((n, s) => n + s.i1 - s.i0, 0);
-
-/**
- * Display offset → piece + engine index. `left` (typing: left wins at a seam)
- * takes the first piece whose end reaches `k`; `right` the piece holding the
- * unit at `k` (the last piece at the display end). `null` for an empty display.
- */
-export const locate = (segs: readonly Seg[], k: number, side: 'left' | 'right' = 'left') => {
-	let acc = 0;
-	for (let i = 0; i < segs.length; i++) {
-		const len = segs[i].i1 - segs[i].i0;
-		const last = i === segs.length - 1;
-		if (side === 'left' ? k <= acc + len : k < acc + len || (last && k === acc + len)) {
-			return { seg: segs[i], idx: segs[i].i0 + Math.max(0, k - acc) };
-		}
-		acc += len;
-	}
-	return null;
-};
-
-/** `[k0, k1)` of a display as engine ranges, rightmost first (indices stay valid while writing). */
-const rangesOf = (segs: readonly Seg[], k0: number, k1: number) => {
-	const out: { text: EngineNode; a: number; b: number }[] = [];
-	let acc = 0;
-	for (const s of segs) {
-		const len = s.i1 - s.i0;
-		const lo = Math.max(k0, acc);
-		const hi = Math.min(k1, acc + len);
-		if (hi > lo) out.push({ text: s.text, a: s.i0 + lo - acc, b: s.i0 + hi - acc });
-		acc += len;
-	}
-	return out.sort((x, y) => y.a - x.a);
 };
 
 /** Every write addresses live-content space: a renderer on a backing text is a read concern. */

@@ -12,7 +12,10 @@
  * - the anchor (`room.comments.anchor`): a removed thread's `comment:<id>`
  *   marks leave the document, relayed to every client;
  * - the hook (`room.comments.hook`): `onComment` hears each change, and a
- *   throw from it leaves the change standing.
+ *   throw from it leaves the change standing;
+ * - the quotas (`room.comments.quota`): the comments' bytes, the request
+ *   rate per user over HTTP and per socket, a body read no further than
+ *   its limit.
  *
  * Expected values come from the contract rows and the site pages.
  */
@@ -26,7 +29,7 @@ import type {
 	CommentThread
 } from '../../src/lib/crdt/protocol.js';
 import { E, ORIGIN, RawClient, SelfWebSocket, crdt, para, readFacade } from './client';
-import type { CommentRoom } from './worker';
+import { setNow, type CommentRoom } from './worker';
 
 declare global {
 	namespace Cloudflare {
@@ -383,5 +386,104 @@ describe('room.comments.hook', () => {
 		const added = await add(room, 'h1');
 		expect(added.type).toBe('added');
 		expect((await list(room)).threads.map((t) => t.id)).toEqual(['h1']);
+	});
+});
+
+describe('room.comments.quota', () => {
+	const T = 1_800_000_000_000;
+	const counts = (room: string) => inRoom(room, (r) => ({ ...r.refusalCounts }));
+	const frozen = (room: string, at = T) =>
+		inRoom(room, (_r, state) => setNow(state.storage.sql, at));
+
+	it('a thread or reply past the comments’ bytes is refused 413; a delete frees its bytes', async () => {
+		// 2,000 bytes: each comment counts its body, its thread's quote with
+		// the first one, and 128 bytes.
+		const room = 'comments-bytes-quota';
+		await add(room, 't1', 'a'.repeat(800)); // 800 + 13 + 128 = 941
+		await add(room, 't2', 'b'.repeat(800), { user: 'bob' }); // 1,882
+		const over = await post(room, { op: 'add', thread: 't3', body: 'c', quote: 'q' });
+		expect(over.status).toBe(413);
+		expect(await over.text()).toMatch(/byte quota/);
+		expect((await post(room, { op: 'reply', thread: 't1', body: 'é'.repeat(5) })).status).toBe(413);
+		expect((await list(room)).threads.map((t) => t.id)).toEqual(['t1', 't2']);
+		expect(await counts(room)).toMatchObject({ comments: 2 });
+		await changeOf(room, { op: 'delete', thread: 't2' }, { user: 'bob' });
+		await add(room, 't3', 'c');
+		expect((await list(room)).threads.map((t) => t.id)).toEqual(['t1', 't3']);
+	});
+
+	it('HTTP requests past a user’s comment rate answer 429; another user and a later second pass', async () => {
+		// One request a second, a burst of ten, on the room's clock.
+		const room = 'comments-rate-http';
+		await frozen(room);
+		for (let i = 0; i < 10; i++)
+			expect((await SELF.fetch(url(room, { user: 'ada' }))).status).toBe(200);
+		expect((await SELF.fetch(url(room, { user: 'ada' }))).status).toBe(429);
+		expect((await post(room, { op: 'add', thread: 't1', body: 'x' })).status).toBe(429);
+		// Read-only identities are counted too; each user has a bucket of their own.
+		expect((await SELF.fetch(url(room, { user: 'cy', access: 'read' }))).status).toBe(200);
+		expect(await counts(room)).toMatchObject({ comments: 2 });
+		await frozen(room, T + 1_000);
+		expect((await post(room, { op: 'add', thread: 't1', body: 'x' })).status).toBe(200);
+		expect((await SELF.fetch(url(room, { user: 'ada' }))).status).toBe(429);
+		// The host's own RPC calls are not counted.
+		expect(
+			(await stub(room).comment({ op: 'resolve', thread: 't1' }, { user: 'ada' })).status
+		).toBe('applied');
+	});
+
+	it('a subscribe while subscribed answers nothing; a socket’s comment messages past the rate are dropped', async () => {
+		const room = 'comments-rate-socket';
+		await frozen(room);
+		await stub(room).comment({ op: 'add', thread: 't1', body: 'x' }, { user: 'ada' });
+		const reader = await RawClient.connect(room, undefined, { user: 'cy', access: 'read' });
+		await vi.waitFor(() => expect(reader.readOnly).toBe(true));
+		const subscribed = () =>
+			inRoom(room, (_r, state) =>
+				state
+					.getWebSockets()
+					.map((ws) => (ws.deserializeAttachment() as { comments?: boolean }).comments === true)
+			);
+		reader.subscribeComments(); // 1: a snapshot
+		reader.subscribeComments(); // 2: already subscribed, nothing
+		await vi.waitFor(() => expect(reader.comments.length).toBe(1));
+		for (let i = 0; i < 4; i++) {
+			reader.subscribeComments(false); // 3, 5, 7, 9
+			reader.subscribeComments(); // 4, 6, 8, 10: a snapshot each
+		}
+		await vi.waitFor(() => expect(reader.comments.length).toBe(5));
+		expect(reader.comments.every((m) => m.type === 'snapshot')).toBe(true);
+		// The eleventh message is past the burst: dropped, the socket stays subscribed.
+		reader.subscribeComments(false);
+		await vi.waitFor(async () => expect(await counts(room)).toMatchObject({ comments: 1 }));
+		expect(await subscribed()).toEqual([true]);
+		expect(reader.closed).toBeNull();
+		// A second later, a token: the unsubscribe stands.
+		await frozen(room, T + 1_000);
+		reader.subscribeComments(false);
+		await vi.waitFor(async () => expect(await subscribed()).toEqual([false]));
+		expect(reader.comments.length).toBe(5);
+		reader.close();
+	});
+
+	it('the route reads a body no further than 64 KiB, with no Content-Length too', async () => {
+		const room = 'comments-quota-body';
+		let pulled = 0;
+		const chunk = new Uint8Array(16 * 1024).fill(0x20);
+		const endless = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				pulled += chunk.byteLength;
+				controller.enqueue(chunk);
+			}
+		});
+		const response = await SELF.fetch(url(room, { user: 'ada' }), {
+			method: 'POST',
+			body: endless,
+			// @ts-expect-error a streamed request body (no Content-Length)
+			duplex: 'half'
+		});
+		expect(response.status).toBe(413);
+		expect(pulled).toBeLessThan(1024 * 1024);
+		expect((await list(room)).threads).toEqual([]);
 	});
 });

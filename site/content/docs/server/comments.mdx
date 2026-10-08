@@ -62,7 +62,7 @@ The requests a `POST` carries:
 | `{ op: 'resolve', thread }`, `{ op: 'reopen', thread }` | Resolves the thread, or opens it again. Resolving a resolved thread is a `noop`. |
 | `{ op: 'delete', thread, comment? }` | Deletes one comment. Without `comment`, or with the thread's first one, deletes the whole thread. |
 
-A refusal is a status: `400` for an invalid document id, request or id, an empty body or one over 10,000 characters; `401` when `authorize` returns `{ expired: true }`; `403` when it denies the request, when a read-only identity writes, or when a user deletes another user's comment; `404` for a thread or comment the room does not hold, or a room with comments off; `405` for another method; `409` for a thread or comment id already taken; `413` for a request body over 64 KiB, a thread of 500 comments or a document of 5,000 threads; `503` when the room cannot serve it.
+A refusal is a status: `400` for an invalid document id, request or id, an empty body or one over 10,000 characters; `401` when `authorize` returns `{ expired: true }`; `403` when it denies the request, when a read-only identity writes, or when a user deletes another user's comment; `404` for a thread or comment the room does not hold, or a room with comments off; `405` for another method; `409` for a thread or comment id already taken; `413` for a request body over 64 KiB (read no further, with or without a `Content-Length`), a thread of 500 comments, a document of 5,000 threads, or a thread or reply past the room's [comment bytes](#quotas); `429` when the user is past the room's [comment rate](#quotas); `503` when the room cannot serve it.
 
 ## The rules
 
@@ -115,7 +115,7 @@ A `removed` thread takes its anchor with it: the room removes its `comment:<id>`
 
 ### Live
 
-A socket asks for the changes with a `messageComments` subscribe; the room answers every thread (`{ seq, threads }`) at once, then sends each change. The subscription lives in the socket's attachment, so it survives hibernation, and a reconnected socket subscribes again, which answers what it missed. Sockets that do not ask receive nothing. The frames are in [the protocol](/docs/server/protocol#comments). [`createCommentsClient`](/docs/plugins/comments#the-client) subscribes on the socket the page's websocket sync already holds.
+A socket asks for the changes with a `messageComments` subscribe; the room answers every thread (`{ seq, threads }`) at once, then sends each change. The subscription lives in the socket's attachment, so it survives hibernation, and a reconnected socket subscribes again, which answers what it missed. Sockets that do not ask receive nothing. A subscribe on a socket already subscribed answers nothing, and a socket's comment messages draw from the [comment rate](#quotas) (a bucket per socket): past it, a message is dropped and the subscription stays as it was. The frames are in [the protocol](/docs/server/protocol#comments). [`createCommentsClient`](/docs/plugins/comments#the-client) subscribes on the socket the page's websocket sync already holds.
 
 ## Notifications
 
@@ -144,10 +144,22 @@ With `attachRoom`, pass `comments: { onComment }`. `onComment` hears every chang
 
 | Option | Default | |
 | --- | --- | --- |
-| `comments` (`attachRoom`) | on | `{ onComment, maxLength }`, or `false` to keep no comments: every comments request answers `404` and a subscribe receives an empty snapshot. |
+| `comments` (`attachRoom`) | on | `{ onComment, maxLength, maxBytes, maxRequestsPerSecond }`, or `false` to keep no comments: every comments request answers `404` and a subscribe receives an empty snapshot. |
 | `EDYTOR_COMMENTS` (`DocumentRoom`) | unset | `off` keeps no comments. |
+| `maxBytes`, `EDYTOR_MAX_COMMENT_BYTES` | 4 MiB (`DEFAULT_MAX_COMMENT_BYTES`) | The bytes the room's comments hold at most. See [Quotas](#quotas). |
+| `maxRequestsPerSecond`, `EDYTOR_MAX_COMMENT_REQUESTS_PER_SECOND` | 2 (`DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND`) | Comment requests per second, a ten-second burst. See [Quotas](#quotas). |
 | `onComment` (`DocumentRoom`, overridable) | nothing | See [Notifications](#notifications). |
+
+## Quotas
+
+Comments are on by default, so the room bounds what anyone allowed in can make it hold and send:
+
+- **Bytes.** The comments of a room hold at most `maxBytes` (4 MiB by default): each comment counts its body in UTF-8, plus its thread's quote with the first comment, plus 128 bytes (`commentBytes`, `COMMENT_ROW_BYTES`). A thread or reply past it is refused `413` (`full`); a delete frees its bytes. Resolving, reopening and deleting are never refused for size.
+- **Rate.** Over HTTP, each verified user, read-only ones included, has a bucket of `maxRequestsPerSecond` requests a second (2 by default, a ten-second burst: 20 at once), lists and posts alike: past it, `429`. Each socket has a bucket of its own for its comment messages: past it, a subscribe or unsubscribe is dropped, the socket stays. A subscribe while subscribed sends no second snapshot. RPC calls (`comment`, `listComments`) are the host's own and are not counted.
+- **Body.** `routeDocumentComments` reads a `POST` body no further than 64 KiB, whether or not it declares a `Content-Length`.
+
+Each refusal is logged `comments` (`{ user, quota: 'bytes' | 'rate', limit }`) and counted in `refusalCounts.comments`. The buckets live in the room's memory: a wake refills them.
 
 ## Storage
 
-Threads live in two tables of the room's SQLite storage, `threads` (one row per thread: its id, block, quote, creator, time and resolution) and `comments` (one row per comment), created at the first request; the `meta` table keeps the last sequence number under `comments`. See [Internals](/docs/server/internals#storage-tables). They are not the document: compaction, the history's versions, a restore and the purge leave them as they are, `onSave` does not receive them (read them with `listComments()`), and a [generation cutover](/docs/server/room#generation-cutover) keeps them. Their size is not counted in the document quota; the limits above bound it (500 comments of 10,000 characters per thread, 5,000 threads).
+Threads live in two tables of the room's SQLite storage, `threads` (one row per thread: its id, block, quote, creator, time and resolution) and `comments` (one row per comment), created at the first request; the `meta` table keeps the last sequence number under `comments`. See [Internals](/docs/server/internals#storage-tables). They are not the document: compaction, the history's versions, a restore and the purge leave them as they are, `onSave` does not receive them (read them with `listComments()`), and a [generation cutover](/docs/server/room#generation-cutover) keeps them. Their size is not counted in the document quota; their own [byte quota](#quotas) bounds it, besides the limits above (500 comments of 10,000 characters per thread, 5,000 threads).

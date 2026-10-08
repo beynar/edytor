@@ -14,6 +14,18 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+Nothing yet.
+
+### From 0.1.0-next.41
+
+#### Breaking changes
+
+- **Comments have quotas.** Comments are on in every room, so the room now bounds them: their stored bytes (`maxBytes`, `EDYTOR_MAX_COMMENT_BYTES`, 4 MiB by default; past it a new thread or reply answers `413`) and their request rate (`maxRequestsPerSecond`, `EDYTOR_MAX_COMMENT_REQUESTS_PER_SECOND`, 2 a second with a ten-second burst, per user over HTTP: past it `429`; per socket for its subscribes, which are dropped past it). A subscribe on a socket already subscribed no longer sends a second snapshot, and `routeDocumentComments` reads a body no further than 64 KiB even without a `Content-Length`. Raise the limits if your pages hold more; a client that posts in bursts should retry a `429`. See [Server comments](/docs/server/comments#quotas).
+
+#### New
+
+- **Comment quota exports.** `edytor/cloudflare` exports `DEFAULT_MAX_COMMENT_BYTES`, `DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND`, `COMMENT_ROW_BYTES` and `commentBytes`; `decideComment` takes `bytes` and `maxBytes`; the refusal reason `comments` is logged and counted in `refusalCounts`.
+
 #### Fixed
 
 - **Typing in a table no longer slows down with its size squared.** Each cell worked out its column by reading every cell of the table, so a keystroke re-rendered every cell, each reading every other one. A cell now reads only its table's column list; a keystroke costs the cell and one pass of the table's chrome.
@@ -1056,6 +1068,7 @@ Every public change since 0.0.11, by area.
   - `EDYTOR_HISTORY` takes a KV or R2 binding or `"room"`; the alarm's `retention` task deletes expired versions.
 - **Concurrent creations of one id.** The losing node of a concurrent creation of one block id keeps its subtree (`isKeptReplaced` exported from `edytor/crdt`, `Doc.keepReplaced`), and its text shows at the end of the winner's (an implicit merge claim); `insertBlock`, `splitBlock` and pastes refuse an id holding U+0000.
 - **Anchored merges.** A merge claim stores the end of the block it joins (`MergeClaim.a`, `MergeClaim.r`; `Claim.holder` names the block that stores a claim shown in another); a concurrent split moves it to the split's last piece. `TextBlockRec.listClaims` is a record's stored list, `claims` its effective claims.
+- **Comment quotas.** `CommentOptions.maxBytes` and `maxRequestsPerSecond` (`EDYTOR_MAX_COMMENT_BYTES`, `EDYTOR_MAX_COMMENT_REQUESTS_PER_SECOND`; defaults `DEFAULT_MAX_COMMENT_BYTES`, `DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND`), `COMMENT_ROW_BYTES`, `commentBytes`, `decideComment`'s `bytes` and `maxBytes`, the refusal reason `comments` and the `429` of `routeDocumentComments`.
 - **Per-block locks.** `lockedBlocks(options)` and `LockOptions` (`key`, `subtree`, `bypass`); the `locks` option of `attachDocument`, `DocumentRoom.locks()` and the `EDYTOR_LOCKS` variable.
 - **Cross-document moves.** `moveBlocksBetweenRooms(namespace, move)` and `forwardLateEdits(namespace, from)`; the `rooms` option, `DocumentRoom.rooms()` and the `EDYTOR_ROOMS` binding; `DEFAULT_MOVE_GRACE_DAYS`. See [moving blocks between documents](/docs/server/moves).
   - The room's `exportBlocks(ids)`, `importBlocks(request)`, `commitMove(moveId, receipt)`, `abortMove(moveId)`, `lateEdits()`, `ackLateEdits(moveId, seq)` and `applyLateEdits(batch)`, also over RPC.

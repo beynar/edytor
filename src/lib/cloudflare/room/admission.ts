@@ -66,23 +66,30 @@ export const PONG = 'pong';
 /** Seconds of the update rate a socket may spend at once. */
 const BURST_SECONDS = 10;
 
+/** A token bucket: its tokens, refilled since `at` (ms). */
+export type Bucket = { tokens: number; at: number };
+
 /** Each socket's allowance (a token bucket; memory: a wake refills it). */
-export type Allowances = WeakMap<WebSocket, { tokens: number; at: number }>;
+export type Allowances = WeakMap<WebSocket, Bucket>;
 
 /**
- * A token bucket per socket, refilled at `perSecond` up to ten seconds'
- * worth: takes one token. `false`: over the rate.
+ * A token bucket per key (a socket, a user), refilled at `perSecond` up to
+ * ten seconds' worth: takes one token. `false`: over the rate.
  */
-export const allowance = (allowances: Allowances, ws: WebSocket, perSecond: number): boolean => {
-	const now = Date.now();
+export const allowance = <K>(
+	allowances: { get(key: K): Bucket | undefined; set(key: K, bucket: Bucket): unknown },
+	key: K,
+	perSecond: number,
+	now: number = Date.now()
+): boolean => {
 	const burst = perSecond * BURST_SECONDS;
-	const held = allowances.get(ws) ?? { tokens: burst, at: now };
-	const tokens = Math.min(burst, held.tokens + ((now - held.at) / 1000) * perSecond);
+	const held = allowances.get(key) ?? { tokens: burst, at: now };
+	const tokens = Math.min(burst, held.tokens + (Math.max(0, now - held.at) / 1000) * perSecond);
 	if (tokens < 1) {
-		allowances.set(ws, { tokens, at: now });
+		allowances.set(key, { tokens, at: now });
 		return false;
 	}
-	allowances.set(ws, { tokens: tokens - 1, at: now });
+	allowances.set(key, { tokens: tokens - 1, at: now });
 	return true;
 };
 

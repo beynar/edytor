@@ -163,6 +163,8 @@ Set these as `vars` in `wrangler.jsonc`. All are optional.
 | `EDYTOR_MAX_PRESENCE_BYTES` | 16,384 (16 KiB) | The largest [presence](#identity-and-presence) state a socket may publish, as JSON. |
 | `EDYTOR_MAX_PRESENCE_PER_SECOND` | 50 | Presence messages per second and socket, a bucket apart from the update rate ([presence](#identity-and-presence)). |
 | `EDYTOR_MAX_PRESENCE_FANOUT` | 2,000 | Presence frames per second the room sends over all its sockets; past it, entries wait per recipient and go out together ([presence](#identity-and-presence)). |
+| `EDYTOR_MAX_COMMENT_BYTES` | 4,194,304 (4 MiB) | The bytes the room's [comments](/docs/server/comments#quotas) hold at most; a thread or reply past it is refused `413`. |
+| `EDYTOR_MAX_COMMENT_REQUESTS_PER_SECOND` | 2 | Comment requests per second and user over HTTP, and comment messages per socket, a ten-second burst ([comments](/docs/server/comments#quotas)). |
 | `EDYTOR_MAX_BUFFERED_BYTES` | twice the frame quota | The chunk sequences in flight on all sockets together ([catch-up](#catch-up-of-large-documents)). Never below the frame quota. |
 | `EDYTOR_LOG` | | `off` silences the room's [log](#metrics-and-log). |
 | `EDYTOR_PURGE_AFTER_DAYS` | the retention, else 30 | Days after which deleted content is [purged](/docs/server/history#the-purge); `off` never purges. |

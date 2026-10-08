@@ -22,6 +22,8 @@ export {
 	DEFAULT_MAX_PRESENCE_BYTES,
 	DEFAULT_MAX_PRESENCE_PER_SECOND,
 	DEFAULT_MAX_PRESENCE_FANOUT,
+	DEFAULT_MAX_COMMENT_BYTES,
+	DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND,
 	MAX_REFUSALS,
 	MAX_WAITING_DELETES,
 	ROOM_ORIGIN,
@@ -66,11 +68,13 @@ export {
 } from './history.js';
 export { type PurgeReport } from '../crdt/purge.js';
 export {
+	COMMENT_ROW_BYTES,
 	COMMENT_STATUS,
 	MAX_COMMENT_LENGTH,
 	MAX_COMMENTS_PER_THREAD,
 	MAX_THREADS,
 	commentAnchors,
+	commentBytes,
 	decideComment,
 	type ThreadComment,
 	type CommentActor,

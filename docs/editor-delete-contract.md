@@ -2644,6 +2644,28 @@ from the document the plugin attached, outside the view's history. Pins:
 before the request is answered; a throw is logged (`fault`) and the change
 stands. Pins: `tests/do/comments.test.ts` (hook).
 
+### `room.comments.quota` — what anyone allowed in can make a room hold and send
+
+Comments are on by default, so their store is bounded apart from the
+document quota:
+
+- **Bytes.** A thread or reply that would bring the stored comments past
+  `maxBytes` (default 4 MiB) is refused `full` (`413`): each comment counts
+  its body in UTF-8, its thread's quote with the first comment, and
+  `COMMENT_ROW_BYTES` (`commentBytes`). The rule is `decideComment`'s
+  (`bytes`, `maxBytes` of its context); the memory client passes none.
+- **Rate.** Over HTTP, each verified user (read-only ones included) draws
+  one token a request from a bucket of `maxRequestsPerSecond` a second
+  (default 2, a ten-second burst), on the room's clock: past it, `429`.
+  Each socket's comment messages draw from a bucket of its own: past it,
+  the message is dropped, the subscription unchanged, the socket kept. A
+  subscribe while subscribed answers no snapshot. RPC is not counted.
+- **Body.** `routeDocumentComments` reads a body no further than 64 KiB,
+  declared length or not (`413`).
+
+Each refusal is noted `comments` (`{ user, quota, limit }`). Pins:
+`tests/do/comments.test.ts` (quota).
+
 ### `room.move` — moving blocks between documents (H10)
 
 Three room calls, each idempotent, run by `moveBlocks(namespace, { from,

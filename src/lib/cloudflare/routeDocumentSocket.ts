@@ -226,6 +226,34 @@ export async function routeDocumentHistory(
 }
 
 /**
+ * A request's body as text, read no further than `max` bytes (`null`: it
+ * holds more, its declared length or not).
+ */
+const bodyWithin = async (request: Request, max: number): Promise<string | null> => {
+	if (request.body === null) return '';
+	const reader = request.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let length = 0;
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		length += value.byteLength;
+		if (length > max) {
+			await reader.cancel().catch(() => {});
+			return null;
+		}
+		chunks.push(value);
+	}
+	const bytes = new Uint8Array(length);
+	let at = 0;
+	for (const chunk of chunks) {
+		bytes.set(chunk, at);
+		at += chunk.byteLength;
+	}
+	return new TextDecoder().decode(bytes);
+};
+
+/**
  * The host Worker's door to a document's comment threads, authorized as
  * {@link routeDocumentSocket} authorizes a dial, forwarding only the
  * verified identity:
@@ -242,7 +270,8 @@ export async function routeDocumentHistory(
  * write, another user's comment, an `Origin` that `options.allowedOrigins`
  * does not list), `404` (no such thread or comment, or the room keeps no
  * comments), `405` (another method), `409` (a thread or comment id taken),
- * `413` (a body over 64 KiB, or too many threads or comments).
+ * `413` (a body over 64 KiB, too many threads or comments, or the room's
+ * comment bytes full), `429` (the user past the room's comment rate).
  */
 export async function routeDocumentComments(
 	request: Request,
@@ -261,9 +290,8 @@ export async function routeDocumentComments(
 		const declared = Number(request.headers.get('Content-Length') ?? 0);
 		if (declared > MAX_COMMENT_REQUEST_BYTES)
 			return new Response('request too large', { status: 413 });
-		body = await request.text();
-		if (new TextEncoder().encode(body).length > MAX_COMMENT_REQUEST_BYTES)
-			return new Response('request too large', { status: 413 });
+		body = await bodyWithin(request, MAX_COMMENT_REQUEST_BYTES);
+		if (body === null) return new Response('request too large', { status: 413 });
 	}
 	const headers = identityHeaders(identity);
 	headers.set(COMMENTS_HEADER, op);

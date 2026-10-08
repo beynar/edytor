@@ -38,6 +38,8 @@ Both blockers are fixed (the link XSS, the license). Shipped by release:
 | `next.36` | Wave 2: input rules and triggers, mentions and page links; i18n (labels); the room soak harness; block colours, toggle headings, page block, table of contents; engine and room splits; version history panel (`next.35` never published)                                                                                                                           |
 | `next.38` | Wave 3: tables; comments; the import cycle broken; typed lint, reactive handles; the user changelog and docs readability; room performance (presence budget, one rebuild per outage); the CI quarantines fixed at their cause; equations; text drag-move; chrome that follows late layout (`next.37` never published)                                               |
 | `next.40` | Wave 4: ticket ids out of the code, YP fork patches, docs history archived, AGENTS.md overview + `docs/agents/`, retired aliases removed (`next.39` never published)                                                                                                                                                                                                |
+| `next.41` | After the second review: the handles' raw write primitives internal and refused on a readonly view; the Limitations page corrected; checkpoint-named test files renamed                                                                                                                                                                                             |
+| `next.42` | Typing in a table costs the cell (no longer O(cells²)); comment quotas: stored bytes, a request rate per user and per socket, no second snapshot, a body read capped at 64 KiB                                                                                                                                                                                      |
 
 The docs site stopped deploying at `next.34` (an invalid front matter in a Wave 2 page); fixed
 on `master` after `next.40`, with a docs-drift row guarding it.
@@ -46,21 +48,20 @@ on `master` after `next.40`, with a docs-drift row guarding it.
 
 Majors, by dimension:
 
-- **API**: public handle methods that write raw (`Text.insertAt/deleteAt/formatAt`,
-  `Block.insertChildren/deleteChildren/insertParts`) bypass readonly, hooks and undo; three
+- **API**: ~~public handle methods that write raw bypass readonly~~ (`next.41`); three
   result shapes for commands (`CommandResult` only as `dispatcher.last`); 176 types reachable
   but not exported; mutable public fields with one owner (`selection.value`, `dispatcher.last`).
   Fix before freezing the API report as the 1.0 contract (WU-50).
 - **Robustness**: the document lifetime ceiling (≈ 72 stored bytes per edit against a 2 MiB
-  quota, `4413` final, no rebase path); comments unbounded and outside every room quota (and a
-  snapshot amplification by any socket); typing in a table is O(cells²) per keystroke; client
-  typing linear in page size (no windowing).
+  quota, `4413` final, no rebase path); ~~comments unbounded, snapshot amplification~~
+  (`next.42`); ~~typing in a table O(cells²)~~ (`next.42`); client typing linear in page size
+  (no windowing).
 - **Features**: markdown paste into blocks; file/video/audio claiming dropped and pasted files
   (with upload progress); real-device mobile and touch chrome.
 - **Code**: the view-side classes (`EdytorSelection`, `BlockHandleController`, `Edytor`,
   `EdytorDocument`) not split; the room split is a 16-module cycle; master unprotected and the
-  nightly and upstream jobs never run yet; about 90 checkpoint-named test files (WU-44 partial).
-- **Docs**: the Limitations and Columns pages deny shipped features; the plugins index's
+  nightly and upstream jobs never run yet; ~~about 90 checkpoint-named test files~~ (`next.41`).
+- **Docs**: ~~the Limitations page denies shipped features~~ (`next.41`); the plugins index's
   defaults table; no browsable API reference; SECURITY.md and issue templates.
 
 ### What only the maintainer can do

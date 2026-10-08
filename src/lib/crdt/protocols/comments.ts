@@ -20,6 +20,12 @@ export const MAX_QUOTE_LENGTH = 300;
 export const MAX_COMMENTS_PER_THREAD = 500;
 /** Threads one document holds at most, resolved ones included. */
 export const MAX_THREADS = 5_000;
+/**
+ * What one stored comment counts against a store's byte quota beyond its
+ * text (its ids, author, times; a thread's row is counted with its first
+ * comment).
+ */
+export const COMMENT_ROW_BYTES = 128;
 /** The mark a thread's anchor is: `comment:<thread id>` (a key of its own per thread). */
 export const COMMENT_MARK = 'comment';
 
@@ -175,6 +181,14 @@ export type CommentContext = {
 	seq: number;
 	/** The longest body (default {@link MAX_COMMENT_LENGTH}; only lowered). */
 	maxLength?: number;
+	/**
+	 * The bytes the store holds ({@link commentBytes} of every comment and
+	 * quote): a thread or reply that would pass `maxBytes` is refused
+	 * (`full`). Absent: no byte quota.
+	 */
+	bytes?: number;
+	/** The store's byte quota (with `bytes`). */
+	maxBytes?: number;
 	/** A fresh comment id (default {@link commentId}). */
 	newId?: () => string;
 };
@@ -192,6 +206,32 @@ const bodyOf = (body: string, max: number): string | CommentOutcome => {
 	if (text.length > max) return refuse('invalid', `comment over ${max} characters`);
 	return text;
 };
+
+/** The message of a thread or reply refused past its store's byte quota (`full`). */
+export const OVER_BYTE_QUOTA = 'comments over their byte quota';
+
+/** UTF-8 bytes of `text`. */
+const utf8 = (text: string): number => {
+	let bytes = 0;
+	for (let i = 0; i < text.length; i++) {
+		const code = text.charCodeAt(i);
+		if (code < 0x80) bytes += 1;
+		else if (code < 0x800) bytes += 2;
+		else if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+			bytes += 4;
+			i++;
+		} else bytes += 3;
+	}
+	return bytes;
+};
+
+/**
+ * What a stored comment counts against a byte quota: its body's and its
+ * thread's quote's UTF-8 bytes (the quote with the first comment only),
+ * plus {@link COMMENT_ROW_BYTES}.
+ */
+export const commentBytes = (body: string, quote = ''): number =>
+	utf8(body) + utf8(quote) + COMMENT_ROW_BYTES;
 
 /** A quote as stored: one line of white space collapsed, cut at {@link MAX_QUOTE_LENGTH}. */
 const quoteOf = (quote: string | undefined): string =>
@@ -221,6 +261,10 @@ export const decideComment = (
 	const { thread, now: at, seq } = context;
 	const max = Math.min(context.maxLength ?? MAX_COMMENT_LENGTH, MAX_COMMENT_LENGTH);
 	const user = actor.user;
+	const overQuota = (body: string, quote?: string) =>
+		context.bytes !== undefined &&
+		context.maxBytes !== undefined &&
+		context.bytes + commentBytes(body, quote) > context.maxBytes;
 	const newComment = (body: string, id: string | undefined): ThreadComment | CommentOutcome => {
 		const text = bodyOf(body, max);
 		if (typeof text !== 'string') return text;
@@ -243,12 +287,14 @@ export const decideComment = (
 			return refuse('invalid', 'invalid block id');
 		const comment = newComment(request.body, request.comment);
 		if ('status' in comment) return comment;
+		const quote = quoteOf(request.quote);
+		if (overQuota(comment.body, quote)) return refuse('full', OVER_BYTE_QUOTA);
 		return applied(
 			'added',
 			{
 				id: request.thread,
 				block: request.block ?? null,
-				quote: quoteOf(request.quote),
+				quote,
 				createdBy: user,
 				createdAt: at,
 				resolved: null,
@@ -267,6 +313,7 @@ export const decideComment = (
 			if ('status' in comment) return comment;
 			if (thread.comments.some(({ id }) => id === comment.id))
 				return refuse('exists', 'comment exists');
+			if (overQuota(comment.body)) return refuse('full', OVER_BYTE_QUOTA);
 			return applied(
 				'replied',
 				{ ...thread, comments: [...thread.comments, comment], rev: seq },

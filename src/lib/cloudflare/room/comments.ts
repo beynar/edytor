@@ -9,9 +9,11 @@
 import * as E from '../../crdt/protocol.js';
 import {
 	COMMENT_MARK,
+	COMMENT_ROW_BYTES,
 	COMMENT_STATUS,
 	commentAnchors,
 	decideComment,
+	OVER_BYTE_QUOTA,
 	parseCommentRequest,
 	validCommentId,
 	type ThreadComment,
@@ -22,8 +24,16 @@ import {
 	type CommentSnapshot,
 	type CommentThread
 } from '../../crdt/protocols/comments.js';
-import { SOCKET_TAG, noTimers, type Attachment, type SocketIdentity } from '../DocumentRoom.js';
-import type { RoomContext } from './context.js';
+import {
+	DEFAULT_MAX_COMMENT_BYTES,
+	DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND,
+	SOCKET_TAG,
+	noTimers,
+	type Attachment,
+	type SocketIdentity
+} from '../DocumentRoom.js';
+import { allowance, type Bucket } from './admission.js';
+import { knob, type RoomContext } from './context.js';
 import { decode } from './frames.js';
 
 /** The `meta` key holding the comments' last sequence number. */
@@ -31,6 +41,9 @@ const SEQ_KEY = 'comments';
 
 /** The largest request body `routeDocumentComments` forwards, in bytes. */
 export const MAX_COMMENT_REQUEST_BYTES = 64 * 1024;
+
+/** The users whose request rate the room tracks at once (the oldest is forgotten past it). */
+const MAX_RATE_USERS = 1_000;
 
 type ThreadRow = {
 	id: string;
@@ -67,6 +80,10 @@ const commentOf = (row: CommentRow): ThreadComment => ({
 
 export class RoomComments {
 	private ready = false;
+	/** Each verified user's HTTP request allowance (memory: a wake refills it). */
+	private readonly users = new Map<string, Bucket>();
+	/** Each socket's comment message allowance. */
+	private readonly sockets = new WeakMap<WebSocket, Bucket>();
 
 	constructor(private readonly room: RoomContext) {}
 
@@ -133,6 +150,43 @@ export class RoomComments {
 			.toArray()
 			.map(commentOf);
 		return threadOf(row, comments);
+	}
+
+	/**
+	 * The bytes the comments hold, as the byte quota counts them
+	 * (`commentBytes`: each body and quote in UTF-8, plus a row's cost).
+	 */
+	private bytes(): number {
+		const { sql, tables } = this.room;
+		const comments = sql
+			.exec<{
+				bytes: number | null;
+				n: number;
+			}>(`SELECT SUM(LENGTH(CAST(body AS BLOB))) AS bytes, COUNT(*) AS n FROM ${tables.comments}`)
+			.one();
+		const quotes =
+			sql
+				.exec<{
+					bytes: number | null;
+				}>(`SELECT SUM(LENGTH(CAST(quote AS BLOB))) AS bytes FROM ${tables.threads}`)
+				.one().bytes ?? 0;
+		return (comments.bytes ?? 0) + quotes + comments.n * COMMENT_ROW_BYTES;
+	}
+
+	/**
+	 * Whether `key` (a user over HTTP, a socket) is within the comment
+	 * rate; past it the room notes it (`comments`, `quota: 'rate'`).
+	 */
+	private allow<K>(
+		buckets: { get(key: K): Bucket | undefined; set(key: K, bucket: Bucket): unknown },
+		key: K,
+		user: string
+	): boolean {
+		const room = this.room;
+		const limit = limitsOf(room).maxRequestsPerSecond;
+		if (allowance(buckets, key, limit, room.clock())) return true;
+		room.note({ reason: 'comments', detail: { user, quota: 'rate', limit } });
+		return false;
 	}
 
 	/** Every thread, oldest first, with the last sequence number. */
@@ -224,13 +278,21 @@ export class RoomComments {
 				request.op === 'add'
 					? sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${tables.threads}`).one().n
 					: 0;
+			const maxBytes = limitsOf(room).maxBytes;
 			const decided = decideComment(request, actor, {
 				thread,
 				threads,
 				now: room.clock(),
 				seq: this.seq() + 1,
-				maxLength: commentsOptions(room).maxLength
+				maxLength: commentsOptions(room).maxLength,
+				bytes: request.op === 'add' || request.op === 'reply' ? this.bytes() : undefined,
+				maxBytes
 			});
+			if (decided.status === 'refused' && decided.message === OVER_BYTE_QUOTA)
+				room.note({
+					reason: 'comments',
+					detail: { user: actor.user, quota: 'bytes', limit: maxBytes }
+				});
 			if (decided.status !== 'applied') return decided;
 			this.store(decided.change);
 			this.broadcast(decided.change);
@@ -292,7 +354,9 @@ export class RoomComments {
 	 * A socket's comment message (`messageComments`): a subscribe marks its
 	 * attachment (it survives hibernation) and is answered with every
 	 * thread; an unsubscribe clears it. Any other comment message from a
-	 * client is malformed. Subscribes share the socket's presence rate.
+	 * client is malformed. A subscribe while subscribed answers nothing; a
+	 * socket's comment messages past the comment rate are dropped (its
+	 * subscription unchanged), the socket stays.
 	 */
 	onMessage(ws: WebSocket, attachment: Attachment, decoder: E.Decoder) {
 		const room = this.room;
@@ -300,9 +364,10 @@ export class RoomComments {
 		if (message.type !== 'subscribe') {
 			return room.refuse(ws, { reason: 'malformed', detail: `comment message ${message.type}` });
 		}
-		if (!room.presence.allow(ws)) return room.presence.overRate(ws, attachment);
+		if (!this.allow(this.sockets, ws, attachment.user)) return;
+		const was = attachment.comments === true;
 		ws.serializeAttachment({ ...attachment, comments: message.on } satisfies Attachment);
-		if (!message.on) return;
+		if (!message.on || was) return;
 		const snapshot = this.list();
 		room.send(
 			ws,
@@ -319,6 +384,11 @@ export class RoomComments {
 	 */
 	async request(op: string, identity: SocketIdentity, body: string): Promise<Response> {
 		if (!this.enabled) return new Response('no comments', { status: 404 });
+		const users = this.users;
+		if (!users.has(identity.user) && users.size >= MAX_RATE_USERS)
+			users.delete(users.keys().next().value!);
+		if (!this.allow(users, identity.user, identity.user))
+			return new Response('too many comment requests', { status: 429 });
 		try {
 			if (op === 'list') return Response.json(this.list());
 			if (op !== 'post') return new Response('unknown request', { status: 400 });
@@ -348,4 +418,17 @@ export class RoomComments {
 const commentsOptions = (room: RoomContext) => {
 	const options = room.options.comments;
 	return options === false || options === undefined ? {} : options;
+};
+
+/** The room's comment quotas, defaults applied. */
+const limitsOf = (room: RoomContext) => {
+	const options = commentsOptions(room);
+	return {
+		maxBytes: knob(options.maxBytes, DEFAULT_MAX_COMMENT_BYTES, 128 * 1024 * 1024),
+		maxRequestsPerSecond: knob(
+			options.maxRequestsPerSecond,
+			DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND,
+			1_000
+		)
+	};
 };

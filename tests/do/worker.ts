@@ -558,12 +558,24 @@ export class HostObject extends DurableObject<Env> {
  * Comment threads (rooms `comments-*`, `room.comments.*`): `onComment`
  * records each change in a `heard` table; by name, `comments-throw-*`
  * throws from it, `comments-off-*` keeps no comments (`EDYTOR_COMMENTS`
- * `off`, as a host sets it).
+ * `off`, as a host sets it), `comments-bytes-*` holds 2,000 bytes of
+ * comments, `comments-rate-*` takes one comment request a second (a burst
+ * of ten). The clock is `setNow`'s.
  */
 export class CommentRoom extends DocumentRoom<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
-		const off = (ctx.id.name ?? '').startsWith('comments-off-');
-		super(ctx, off ? { ...env, EDYTOR_COMMENTS: 'off' } : env);
+		const name = ctx.id.name ?? '';
+		super(ctx, {
+			...env,
+			...(name.startsWith('comments-off-') ? { EDYTOR_COMMENTS: 'off' } : {}),
+			...(name.startsWith('comments-bytes-') ? { EDYTOR_MAX_COMMENT_BYTES: 2_000 } : {}),
+			...(name.startsWith('comments-rate-') ? { EDYTOR_MAX_COMMENT_REQUESTS_PER_SECOND: 1 } : {})
+		});
+	}
+
+	/** The fake clock (`setNow`), else the wall clock. */
+	protected override now(): number {
+		return fakeNow(this.ctx.storage.sql);
 	}
 
 	protected override async onComment(change: CommentChange) {

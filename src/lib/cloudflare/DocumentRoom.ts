@@ -331,6 +331,10 @@ export type DocumentRoomEnv = {
 	EDYTOR_ROOMS?: MoveNamespace;
 	/** `off`: the room keeps no comment threads (its comments requests answer `404`). */
 	EDYTOR_COMMENTS?: string;
+	/** The bytes the room's comments may hold ({@link CommentOptions.maxBytes}). */
+	EDYTOR_MAX_COMMENT_BYTES?: string | number;
+	/** Comment requests per second ({@link CommentOptions.maxRequestsPerSecond}). */
+	EDYTOR_MAX_COMMENT_REQUESTS_PER_SECOND?: string | number;
 };
 
 /** What a socket is bound to: its verified user, its replica (Yjs client id), its access. */
@@ -378,6 +382,10 @@ export type Refusal = {
 		// ({ user, quota: 'rate', limit }; one entry per burst, `refusalCounts` counts each
 		// message): an entry coalesced (the newest is relayed later), a query dropped. The socket stays.
 		| 'presence'
+		// A comment request past the room's comment rate ({ user, quota: 'rate', limit }: over
+		// HTTP answered 429, a socket's comment message dropped, the socket stays), or a thread
+		// or reply past its byte quota ({ user, quota: 'bytes', limit }: refused 413).
+		| 'comments'
 		// Per-writer block marks (`del.<n>`, `wd.<n>`) the sender may not write
 		// or delete, stripped ({ user, writers, ranges }); the rest of the frame applies.
 		| 'mark'
@@ -555,7 +563,27 @@ export type CommentOptions = {
 	onComment?: (change: CommentChange) => void | Promise<void>;
 	/** The longest comment body (default and ceiling 10,000 characters). */
 	maxLength?: number;
+	/**
+	 * The bytes the room's comments may hold (default
+	 * {@link DEFAULT_MAX_COMMENT_BYTES}, 4 MiB): each body and quote in UTF-8
+	 * plus 128 a comment. A thread or reply past it is refused `413`; a
+	 * delete frees its bytes.
+	 */
+	maxBytes?: number;
+	/**
+	 * Comment requests per second (default
+	 * {@link DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND}, a ten-second burst):
+	 * over HTTP per verified user (past it, `429`), and a socket's comment
+	 * messages per socket (past it, dropped). RPC calls are the host's own and
+	 * are not counted.
+	 */
+	maxRequestsPerSecond?: number;
 };
+
+/** The bytes a room's comments hold at most, by default (4 MiB). */
+export const DEFAULT_MAX_COMMENT_BYTES = 4 * 1024 * 1024;
+/** Comment requests per second and user (or socket), by default. */
+export const DEFAULT_MAX_COMMENT_REQUESTS_PER_SECOND = 2;
 
 /** What {@link attachRoom} (and `DocumentRoom`) takes. */
 export type AttachRoomOptions = {
@@ -1210,7 +1238,11 @@ export class DocumentRoom<
 		const comments = (): CommentOptions | false =>
 			String(knobs.EDYTOR_COMMENTS ?? '') === 'off'
 				? false
-				: { onComment: (change) => this.onComment(change) };
+				: {
+						onComment: (change) => this.onComment(change),
+						maxBytes: Number(knobs.EDYTOR_MAX_COMMENT_BYTES),
+						maxRequestsPerSecond: Number(knobs.EDYTOR_MAX_COMMENT_REQUESTS_PER_SECOND)
+					};
 		this.room = new AttachedDocument(ctx, {
 			maxRowBytes: Number(knobs.EDYTOR_MAX_ROW_BYTES),
 			maxFrameBytes: Number(knobs.EDYTOR_MAX_FRAME_BYTES),

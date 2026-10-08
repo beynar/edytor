@@ -99,11 +99,6 @@ export class RoomHistory {
 		});
 	}
 
-	/** The room's id: its name (`getByName`), else the object's id. */
-	private get roomId(): string {
-		return this.room.ctx.id.name ?? this.room.ctx.id.toString();
-	}
-
 	// ── Slots (`room.history.slots`) ─────────────────────────────────────
 
 	/** The verified user a stored change is written for (a socket's, or the restorer's), or `null`. */
@@ -170,14 +165,14 @@ export class RoomHistory {
 			// No document to read (its rows unreadable, or refused): that slot is skipped.
 			scheduler.unschedule('history');
 			this.skipVersion({
-				key: historyKey(this.roomId, slotAt(end - 1, config.timeZone)),
+				key: historyKey(this.room.roomId, slotAt(end - 1, config.timeZone)),
 				error: 'room unavailable'
 			});
 			return null;
 		}
 		return noTimers(() => {
 			const doc = room.live!;
-			const key = historyKey(this.roomId, slotAt(end - 1, config.timeZone));
+			const key = historyKey(this.room.roomId, slotAt(end - 1, config.timeZone));
 			const editors = room.sql
 				.exec<{ user: string }>(`SELECT user FROM ${room.tables.editors} ORDER BY rowid`)
 				.toArray()
@@ -188,7 +183,7 @@ export class RoomHistory {
 			this.slotEditors.clear();
 			scheduler.unschedule('history');
 			if (key === null) {
-				this.skipVersion({ room: this.roomId, reason: 'key longer than 512 bytes' });
+				this.skipVersion({ room: this.room.roomId, reason: 'key longer than 512 bytes' });
 				return null;
 			}
 			return { key, raw, blocks, editors, at: room.clock() };
@@ -258,7 +253,7 @@ export class RoomHistory {
 		for await (const { key, expiresAt, metadata } of this.storedVersions(config.store)) {
 			// Past its expiry it is gone, whether or not the store deleted it yet.
 			if (expiresAt !== null && expiresAt <= now) continue;
-			const entry = historyEntry(this.roomId, key, metadata, expiresAt);
+			const entry = historyEntry(this.room.roomId, key, metadata, expiresAt);
 			if (entry !== null) out.push(entry);
 		}
 		return out.sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
@@ -266,7 +261,7 @@ export class RoomHistory {
 
 	/** Every version key the store holds under this room's prefix, page by page. */
 	private async *storedVersions(store: HistoryStore) {
-		const prefix = historyPrefix(this.roomId);
+		const prefix = historyPrefix(this.room.roomId);
 		let cursor: string | undefined;
 		do {
 			const page = await store.list(prefix, cursor);
@@ -291,7 +286,7 @@ export class RoomHistory {
 		try {
 			const expired: string[] = [];
 			for await (const { key, expiresAt } of this.storedVersions(config.store)) {
-				if (expiresAt === null || parseHistoryKey(this.roomId, key) === null) continue;
+				if (expiresAt === null || parseHistoryKey(this.room.roomId, key) === null) continue;
 				if (expiresAt <= now) expired.push(key);
 				else next = Math.min(next, expiresAt);
 			}
@@ -308,7 +303,7 @@ export class RoomHistory {
 	async read(key: string): Promise<JSONDoc | null> {
 		const room = this.room;
 		const config = this.requireHistory();
-		if (parseHistoryKey(this.roomId, key) === null) return null;
+		if (parseHistoryKey(this.room.roomId, key) === null) return null;
 		const found = await config.store.get(key);
 		if (found === null || (found.expiresAt !== null && found.expiresAt <= room.clock()))
 			return null;

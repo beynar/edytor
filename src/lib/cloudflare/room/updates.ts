@@ -5,40 +5,12 @@
  */
 import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../../crdt/engine.js';
-import type { JSONBlock, JSONDoc, YDoc } from '../../crdt/index.js';
-import { ROOM_ORIGIN, type LoadedDocument, type ReplicaOwner } from '../DocumentRoom.js';
-import { parseReplica } from './access.js';
+import type { YDoc } from '../../crdt/index.js';
+import { ROOM_ORIGIN } from '../DocumentRoom.js';
 import { crdt, type Decoded, type Item, type Struct } from './context.js';
 
 export const stateVector = (doc: YDoc): Map<number, number> =>
 	Y.decodeStateVector(Y.encodeStateVector(doc));
-
-/**
- * What `onLoad` returned, as one update and its registry (`null`: none
- * came with it). JSON is seeded into a scratch doc. Any other shape is
- * refused (TypeError) — it would otherwise seed an empty document that
- * `onSave` later writes over the real one.
- */
-export const loadedUpdate = (
-	found: LoadedDocument,
-	seed: (value: JSONDoc) => Uint8Array
-): { update: Uint8Array; replicas: ReplicaOwner[] | null } => {
-	if (found instanceof Uint8Array) return { update: found, replicas: null };
-	if (typeof found === 'object' && found !== null) {
-		if ('update' in found && found.update instanceof Uint8Array) {
-			const replicas = found.replicas;
-			const valid = (owner: ReplicaOwner) =>
-				parseReplica(owner?.replica) !== null &&
-				typeof owner.user === 'string' &&
-				owner.user.length <= 256;
-			if (Array.isArray(replicas) && replicas.every(valid))
-				return { update: found.update, replicas };
-		} else if ('children' in found && Array.isArray(found.children)) {
-			return { update: seed(found as JSONDoc), replicas: [] };
-		}
-	}
-	throw new TypeError('onLoad returned neither a JSONDoc, a v14 update nor { update, replicas }');
-};
 
 /** The client ids a decoded update writes structs under that `sv` does not hold yet. */
 export const newWriters = ({ structs }: Decoded, sv: Map<number, number>): Set<number> => {
@@ -377,10 +349,6 @@ export const roomDoc = (keep: () => Decoded['ds'] | null): YDoc => {
 	prepareRoomDoc(doc, keep);
 	return doc;
 };
-
-/** How many blocks `children` holds, nested ones included. */
-export const countBlocks = (children: readonly JSONBlock[]): number =>
-	children.reduce((n, block) => n + 1 + countBlocks(block.children ?? []), 0);
 
 /** Admit stored or loaded updates into a room document (`prepareRoomDoc`'s collection rules). */
 export const admit = (

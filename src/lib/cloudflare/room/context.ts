@@ -60,7 +60,7 @@ export const now = (): number =>
 		? performance.now()
 		: Date.now();
 
-export const timing = (): Timing => ({ count: 0, totalMs: 0, maxMs: 0, lastMs: 0 });
+const timing = (): Timing => ({ count: 0, totalMs: 0, maxMs: 0, lastMs: 0 });
 export const tally = (t: Timing, ms: number) => {
 	t.count++;
 	t.totalMs += ms;
@@ -189,6 +189,11 @@ export class RoomContext {
 			late: `${prefix}late`
 		};
 		this.clock = options.now ?? Date.now;
+	}
+
+	/** The room's id: its name (`getByName`), else the object's id. */
+	get roomId(): string {
+		return this.ctx.id.name ?? this.ctx.id.toString();
 	}
 
 	// ── The document ─────────────────────────────────────────────────────

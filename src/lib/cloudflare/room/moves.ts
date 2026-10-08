@@ -49,11 +49,6 @@ export class RoomMoves {
 		this.watched = null;
 	}
 
-	/** The room's id: its name (`getByName`), else the object's id. */
-	private get roomId(): string {
-		return this.room.ctx.id.name ?? this.room.ctx.id.toString();
-	}
-
 	private ensureMoves() {
 		const { sql, tables } = this.room;
 		sql.exec(
@@ -241,7 +236,7 @@ export class RoomMoves {
 			.toArray()
 			.map((row) => ({
 				moveId: row.move,
-				from: this.roomId,
+				from: this.room.roomId,
 				...(row.peer === null ? {} : { to: row.peer }),
 				seq: row.seq,
 				edits: JSON.parse(row.edits) as LateEdit[]

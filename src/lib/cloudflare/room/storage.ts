@@ -15,7 +15,7 @@ import {
 	type StorageFormat
 } from '../../crdt/protocols/envelope.js';
 import { gunzip, isGzip, packed } from '../../crdt/storage.js';
-import type { YDoc } from '../../crdt/index.js';
+import type { JSONBlock, JSONDoc, YDoc } from '../../crdt/index.js';
 import {
 	SOCKET_TAG,
 	noTimers,
@@ -24,16 +24,15 @@ import {
 	type ReplicaOwner,
 	type StoredRecord
 } from '../DocumentRoom.js';
+import { parseReplica } from './access.js';
 import { crdt, encodeJSON, now, tally, type Decoded, type RoomContext } from './context.js';
 import { updateFrame } from './frames.js';
 import {
 	addIds,
 	admit,
-	countBlocks,
 	deletesUpdate,
 	forgetWaiting,
 	liveState,
-	loadedUpdate,
 	pendingDeletes,
 	rangeCount,
 	roomDoc,
@@ -41,14 +40,14 @@ import {
 } from './updates.js';
 
 /** A stored record's kind. `pending`: deletes of items the room does not hold yet (they wait for them). */
-export type RowKind = StoredRecord['kind'];
+type RowKind = StoredRecord['kind'];
 type Row = { kind: RowKind; record: number; part: number; parts: number; bytes: ArrayBuffer };
 
 /** Longest wait between the save alarms of a room that cannot read its rows. */
 const MAX_SAVE_RETRY = 5 * 60_000;
 
 /** A stored record missing some of its rows, or one that does not inflate: the container is corrupt, not the read. */
-export class TornRecord extends Error {
+class TornRecord extends Error {
 	constructor(detail = 'torn record') {
 		super(detail);
 	}
@@ -60,6 +59,37 @@ class CompressedRecord extends Error {
 		super('compressed record not inflated');
 	}
 }
+
+/**
+ * What `onLoad` returned, as one update and its registry (`null`: none
+ * came with it). JSON is seeded into a scratch doc. Any other shape is
+ * refused (TypeError) — it would otherwise seed an empty document that
+ * `onSave` later writes over the real one.
+ */
+const loadedUpdate = (
+	found: LoadedDocument,
+	seed: (value: JSONDoc) => Uint8Array
+): { update: Uint8Array; replicas: ReplicaOwner[] | null } => {
+	if (found instanceof Uint8Array) return { update: found, replicas: null };
+	if (typeof found === 'object' && found !== null) {
+		if ('update' in found && found.update instanceof Uint8Array) {
+			const replicas = found.replicas;
+			const valid = (owner: ReplicaOwner) =>
+				parseReplica(owner?.replica) !== null &&
+				typeof owner.user === 'string' &&
+				owner.user.length <= 256;
+			if (Array.isArray(replicas) && replicas.every(valid))
+				return { update: found.update, replicas };
+		} else if ('children' in found && Array.isArray(found.children)) {
+			return { update: seed(found as JSONDoc), replicas: [] };
+		}
+	}
+	throw new TypeError('onLoad returned neither a JSONDoc, a v14 update nor { update, replicas }');
+};
+
+/** How many blocks `children` holds, nested ones included. */
+const countBlocks = (children: readonly JSONBlock[]): number =>
+	children.reduce((n, block) => n + 1 + countBlocks(block.children ?? []), 0);
 
 /** Rows grouped into their records, in write order; a record missing rows throws. */
 const reassemble = (

@@ -118,7 +118,7 @@ Copy this into the pull request description:
 - [ ] Lanes: `check`, `lint`, `check:worker` (when `crdt` or `cloudflare` was touched),
       `check:docs`, unit, `test:crdt`, `test:dom`, `test:do` (room), Playwright in three engines
       (view), DST (input)
-- [ ] Site docs and `reference/migration.mdx` updated; `docs-drift` passes
+- [ ] Site docs updated, and a user-facing note under `### Unreleased` in `reference/migration.mdx` (the changelog: no ticket ids or file paths); `docs-drift` passes
 - [ ] Version bumped and appended to `served-versions.txt` when the packed code changes
 - [ ] Scores re-checked on the dimension touched (focused review: only what the unit changed)
 

@@ -23,7 +23,15 @@ icon: radio-tower
 />
 ```
 
-The view dials `<server>/<room>?replica=<clientID>&<params>`, here `wss://rooms.example.com/rooms/doc-42?replica=…&token=…`. A room id is any string of 1 to 256 characters except `.`, `..` and one with a lone surrogate (half of an emoji, as `title.slice(0, 40)` can leave): it is percent-encoded (`encodeURIComponent`) into one path segment, so `/`, `%`, `#` and `?` in it reach their own room, and the server decodes it (see the [quick start](/docs/server/quick-start)). A URL collapses a `.` or `..` segment (escaped as `%2E` too), and `encodeURIComponent` cannot encode a lone surrogate, so the provider and `createWebsocketSync` throw a `TypeError` for those ids, and for an empty or longer one, instead of dialing a path no room answers. `<Edytor server room>` never throws for such an id, in the browser or in the server render: the view, editable or readonly, reports it through `onSyncRefused` as the `4400` refusal the server would send. `replica` is the document's client id, added at every dial so the room can bind it to the user at connection time; see [Authorization](/docs/server/authorization#replicas). A `replica` in `params` overrides it. `params` is read at every dial, so a refreshed token reaches the next reconnect.
+The view dials `<server>/<room>?replica=<clientID>&<params>`, here `wss://rooms.example.com/rooms/doc-42?replica=…&token=…`. `params` is read at every dial, so a refreshed token reaches the next reconnect. `replica` is the document's client id, added at every dial so the room can bind it to the user at connection time; see [Authorization](/docs/server/authorization#replicas). A `replica` in `params` overrides it.
+
+### Room ids
+
+A room id is any string of 1 to 256 characters except `.`, `..` and one with a lone surrogate (half of an emoji, as `title.slice(0, 40)` can leave). It is percent-encoded (`encodeURIComponent`) into one path segment, so `/`, `%`, `#` and `?` in it reach their own room, and the server decodes it (see the [quick start](/docs/server/quick-start)).
+
+:::note
+A URL collapses a `.` or `..` segment (escaped as `%2E` too), and `encodeURIComponent` cannot encode a lone surrogate. So the provider and `createWebsocketSync` throw a `TypeError` for those ids, and for an empty one or one over 256 characters, instead of dialing a path no room answers. `<Edytor server room>` never throws for such an id, in the browser or in the server render: the view, editable or readonly, reports it through `onSyncRefused` as the `4400` refusal the server would send.
+:::
 
 The props build a `createWebsocketSync` for you. Use the factory directly for the options below, or to share one document between several views: `createDocument({ actor })`, then `document.attachSync(createWebsocketSync(…))`, then `<Edytor {document} />` in each view.
 
@@ -199,11 +207,36 @@ A listener that throws is logged with `console.error`, and the other listeners a
 
 The edytor room stores every update in SQLite before it acknowledges it. The provider compares those acknowledgements with what this replica wrote:
 
-- `unsaved` counts updates the room has not confirmed that this document's actor wrote: in this session, in this user's other tabs, and before a reload (edits restored from the local copy). The document binds each client id to its actor, so the provider knows which ids are the user's own. Give the document an `actor`: an anonymous one gets a new id per session, so its edits from before a reload no longer count. A seed this replica wrote counts too. The binding records themselves are bookkeeping and never count. A read-only socket counts nothing: the room sends it a read-only notice when it joins (no `permission-denied`), and its provider sets `readOnly`, drops what it counted and reports `saved`, whatever the local copy, the other tabs or a seed hold. Edits the room never stored (made offline before the access changed, say) stay unstored and are not sent: to warn the user, check `readOnly` in the `'saved'` listener, and remember `unsaved` from the event before it (an `unsaved` above zero dropped to `0` with `readOnly` set means those edits were not stored). An edit made while read-only is refused, one `permission-denied` per frame. If a later dial of the same provider may write (a refreshed token), what the actor wrote counts again until the room stores it. A provider on a bare engine doc, with no actor binding, counts everything the doc holds.
-- `saved` is `true` once all of those are confirmed. Content written by other actors never counts, even when it only reached the room through this client: after a restore from an older snapshot, the room strips another user's edits it no longer holds, and they stay stripped until their author returns. Deleting such content is stored at once: the delete waits in the room and applies when the author's edit returns, so the text does not come back. A delete counts as saved only once the room names it in an acknowledgement; if the room already holds its limit of waiting deletes (`MAX_WAITING_DELETES`, 1,024 ranges), it drops the delete, which stays unsaved (and the text comes back when its author returns) until a later connection resends it and the room stores it. An edit of a block whose last change the restore lost stays unsaved until that change's author returns: every edit rewrites the block's last-changed-by attribute, and that rewrite builds on the lost change (see [restoring from an older snapshot](/docs/server/authorization#restoring-from-an-older-snapshot)). A delete that adds no new data (undoing a block deletion, for example) stays unsaved until the room confirms that exact delete. A delete restored from the local copy counts only if its update wrote no other actor's content, since a delete does not record who made it.
+- `saved` is `true` once the room has confirmed every update this document's actor wrote.
+- `unsaved` counts the updates the room has not confirmed yet: in this session, in this user's other tabs, and before a reload (edits restored from the local copy).
 - The `'saved'` event fires with `{ saved, unsaved }` whenever either changes.
 
 Use it for a "Saving… / Saved" indicator or to warn before closing a tab (a `beforeunload` prompt: when the user stays, the providers keep running). A server that sends no acknowledgements (another relay, for example) leaves `unsaved` counting forever.
+
+### What counts
+
+- **Your actor's updates.** The document binds each client id to its actor, so the provider knows which ids are the user's own. Give the document an `actor`: an anonymous one gets a new id per session, so its edits from before a reload no longer count. A seed this replica wrote counts too. The binding records themselves are bookkeeping and never count. A provider on a bare engine doc, with no actor binding, counts everything the doc holds.
+- **Not other actors' content.** Content written by other actors never counts, even when it only reached the room through this client: after a restore from an older snapshot, the room strips another user's edits it no longer holds, and they stay stripped until their author returns.
+
+### Read-only sockets
+
+A read-only socket counts nothing: the room sends it a read-only notice when it joins (no `permission-denied`), and its provider sets `readOnly`, drops what it counted and reports `saved`, whatever the local copy, the other tabs or a seed hold.
+
+- Edits the room never stored (made offline before the access changed, say) stay unstored and are not sent. To warn the user, check `readOnly` in the `'saved'` listener, and remember `unsaved` from the event before it: an `unsaved` above zero dropped to `0` with `readOnly` set means those edits were not stored.
+- An edit made while read-only is refused, one `permission-denied` per frame.
+- If a later dial of the same provider may write (a refreshed token), what the actor wrote counts again until the room stores it.
+
+### Deletes
+
+A delete counts as saved only once the room names it in an acknowledgement.
+
+| A delete of… | Counts as saved |
+| --- | --- |
+| Content the room does not hold yet (another user's edit a restore stripped) | At once: the room stores the delete, which waits in the room and applies when the author's edit returns, so the text does not come back. |
+| Anything, while the room already holds its limit of waiting deletes (`MAX_WAITING_DELETES`, 1,024 ranges) | Not yet: the room drops it, so it stays unsaved (and the text comes back when its author returns) until a later connection resends it and the room stores it. |
+| A block whose last change the restore lost | Once that change's author returns: every edit rewrites the block's last-changed-by attribute, and that rewrite builds on the lost change (see [restoring from an older snapshot](/docs/server/authorization#restoring-from-an-older-snapshot)). |
+| Nothing new (undoing a block deletion, for example) | Once the room confirms that exact delete. |
+| Content restored from the local copy | Only if its update wrote no other actor's content, since a delete does not record who made it. |
 
 ## Refusals
 

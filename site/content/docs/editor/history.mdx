@@ -61,9 +61,29 @@ Edytor groups edits the way a text editor does:
 
 A command that plugins refuse records nothing. One `edytor.transact` call is never split across steps.
 
-These rules do not depend on how fast you work: a menu action a few milliseconds after typing is still its own step, and so is the kind picked from the block handle's <kbd>+</kbd> (the new block and its kind are one step; opening the menu adds nothing). Commands you call yourself are one step each: block commands (`block.insertBlockAfter`, `block.setBlock`, `block.addChildBlock`, `block.patchData`, deletions and the rest) and text commands such as `text.markText`. Only `text.insertText` and `block.addInlineBlock` can join the previous step, and only when they continue at the caret that step left, as typing does; and a property write (`patchData`) that sets text joins the step of the one before it when it sets the same properties of the same block to text, such as typing into an input bound to `block.data.title` (a flag, a number or a delete is always its own step) (see [Properties](/docs/concepts/properties#commands-hooks-and-undo)). To make several commands one step, run them in one `edytor.transact` call: that is the only guarantee. `edytor.dispatcher.run(kind, body)` makes what `body` runs synchronously one step, as long as its commands commit within the capture window. It starts no step between them, but each command still commits on its own, so two steps result when `captureTimeout` is `0` or when `body` takes longer than the window, and commands after an `await` in an async `body` are grouped as if you had called them on their own. Do the async work before calling `run`, or wrap the commands in `edytor.transact`. `kind` names the edit (an input type such as `insertText`, or `format`, `insertBlock`, `insertFromPaste`), and the rules above apply by it: a kind they do not cover (`run('myConvert', …)`) starts a new step, as a structural edit does, so it never joins the typing before it.
+These rules do not depend on how fast you work: a menu action a few milliseconds after typing is still its own step, and so is the kind picked from the block handle's <kbd>+</kbd> (the new block and its kind are one step; opening the menu adds nothing).
+
+### Commands you call
+
+- **One step each.** Block commands (`block.insertBlockAfter`, `block.setBlock`, `block.addChildBlock`, `block.patchData`, deletions and the rest) and text commands such as `text.markText` are each a step.
+- **Continuing at the caret.** Only `text.insertText` and `block.addInlineBlock` can join the previous step, and only when they continue at the caret that step left, as typing does.
+- **Typing into a property.** A property write (`patchData`) that sets text joins the step of the one before it when it sets the same properties of the same block to text, such as typing into an input bound to `block.data.title`. A flag, a number or a delete is always its own step (see [Properties](/docs/concepts/properties#commands-hooks-and-undo)).
+
+### Several commands as one step
+
+To make several commands one step, run them in one `edytor.transact` call: that is the only guarantee.
+
+`edytor.dispatcher.run(kind, body)` makes what `body` runs synchronously one step, as long as its commands commit within the capture window. `kind` names the edit (an input type such as `insertText`, or `format`, `insertBlock`, `insertFromPaste`), and the rules above apply by it: a kind they do not cover (`run('myConvert', …)`) starts a new step, as a structural edit does, so it never joins the typing before it.
+
+:::warning
+`run` starts no step between its commands, but each command still commits on its own. So two steps result when `captureTimeout` is `0` or when `body` takes longer than the window, and commands after an `await` in an async `body` are grouped as if you had called them on their own. Do the async work before calling `run`, or wrap the commands in `edytor.transact`.
+:::
+
+### Writes outside the history
 
 A write that completes a step already taken belongs to no step of its own: `edytor.dispatcher.outside(body)` runs `body`'s commands outside the history. They are admitted (refused in readonly), shown to hooks and recorded in `dispatcher.last` like any command, but they start no step and join none, so the typing around them groups as if they never came. The image plugin uses it for an upload's URL: pasting an image file places the image block at once (one step), and the URL that arrives later fills it outside the history. Undoing the paste removes the image, URL included, and redo brings it back whole. Call it only where the step it completes covers its write (here, by creating the block). It throws, writing nothing, when called inside another transaction (inside `edytor.transact`, a command or a change callback), since its writes would take that transaction's step: call it from a later task, as an upload's answer is.
+
+### Capture window and limit
 
 Set the capture window when you create the document. `0` makes every commit its own step:
 

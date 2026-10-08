@@ -53,7 +53,15 @@ This table is the reference for what <kbd>Enter</kbd> and <kbd>Backspace</kbd> d
 
 Arrow keys that walk a block selection do not enter an island (such as a code block) from outside, and they skip the hidden body of a closed toggle.
 
-A text selection never reaches a closed toggle's hidden body. From inside its header to a block after it, <kbd>Backspace</kbd>, <kbd>Delete</kbd>, cut, typing, <kbd>Enter</kbd> and paste join what is left to the header and keep the body as its children; formatting and copy leave the body out. A paste of several lines, like <kbd>Enter</kbd>, leaves the body under the header and puts the rest in new blocks after it. When the selection starts at the header's start, <kbd>Backspace</kbd>, <kbd>Delete</kbd> and cut delete the toggle with its body, as they do a toggle the selection covers whole, and copy and formatting include the body; typing, <kbd>Enter</kbd> and paste keep the header and its body. When nothing else would be left, the toggle stays, empty and without its body. When the selection ends at the end of a closed toggle's header, the toggle goes and its body takes its place, shown, where the caret can land.
+A text selection never reaches a closed toggle's hidden body. What a key does with it depends on where the selection starts and ends:
+
+| The selection | <kbd>Backspace</kbd>, <kbd>Delete</kbd>, cut | Typing, <kbd>Enter</kbd>, paste | Formatting, copy |
+| --- | --- | --- | --- |
+| From inside a closed toggle's header to a block after it | Join what is left to the header and keep the body as its children. | The same; a paste of several lines, like <kbd>Enter</kbd>, leaves the body under the header and puts the rest in new blocks after it. | Leave the body out. |
+| From the header's start | Delete the toggle with its body, as they do a toggle the selection covers whole. | Keep the header and its body. | Include the body. |
+| Ending at the end of a closed toggle's header | The toggle goes and its body takes its place, shown, where the caret can land. | | |
+
+When nothing else would be left, the toggle stays, empty and without its body.
 
 ### Navigation
 

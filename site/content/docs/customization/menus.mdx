@@ -91,7 +91,13 @@ Two rules apply to every snippet:
 
 ## Slash menu
 
-`item` replaces each row and keeps the built-in sections, empty state and footer. `menu` replaces everything; read `controller.commands`, `controller.selectedIndex` and `controller.query`, and call `controller.run(command)` or `controller.close()`. The arrow keys, <kbd>Enter</kbd> and <kbd>Escape</kbd> stay the plugin's either way. When the block handle's `+` opens the menu (`controller.addition`), the plugin wraps `menu` in a focused element: typing and <kbd>Backspace</kbd> edit `controller.query`, so the document never receives them; a snippet with its own field calls `controller.search(query)`, and `controller.dismiss()` closes it with the selection given back. `controller.commands` then holds only the commands that can run in the block being added (each `isEnabled` is asked of it), and `controller.run(command)` adds nothing for one that cannot. Keep one keyboard owner in your markup, as the built-in field is: rows that are not <kbd>Tab</kbd> stops, so <kbd>Enter</kbd> runs the highlighted row. See [Slash menu](/docs/plugins/slash-menu#custom-markup).
+`item` replaces each row and keeps the built-in sections, empty state and footer. `menu` replaces everything; read `controller.commands`, `controller.selectedIndex` and `controller.query`, and call `controller.run(command)` or `controller.close()`. The arrow keys, <kbd>Enter</kbd> and <kbd>Escape</kbd> stay the plugin's either way. See [Slash menu](/docs/plugins/slash-menu#custom-markup).
+
+When the block handle's `+` opens the menu (`controller.addition`):
+
+- the plugin wraps `menu` in a focused element: typing and <kbd>Backspace</kbd> edit `controller.query`, so the document never receives them; a snippet with its own field calls `controller.search(query)`, and `controller.dismiss()` closes it with the selection given back;
+- `controller.commands` holds only the commands that can run in the block being added (each `isEnabled` is asked of it), and `controller.run(command)` adds nothing for one that cannot;
+- keep one keyboard owner in your markup, as the built-in field is: rows that are not <kbd>Tab</kbd> stops, so <kbd>Enter</kbd> runs the highlighted row.
 
 ```ts
 const slash = createSlashMenuPlugin({ menu }); // or { item }

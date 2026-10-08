@@ -65,7 +65,14 @@ The block is void: it is not part of the text flow, takes no children and is nev
 
 A source is accepted only when it is an `http:` or `https:` URL, a `blob:` URL or an inline `data:image/…` URL. Any other value, in the document or typed in the panel, is treated as no source. The check is exported as `safeImageSrc(value)` (the accepted source, or `null`), `isImagePlugin(plugin)` tells whether a plugin is an image plugin, and the types `ImageData` and `ImageAlign` and the constant `MIN_IMAGE_WIDTH` are exported too. A failed `upload` shows the panel's error instead of an image.
 
-An inline image is stored in the document itself, and every catch-up and every update that carries the block sends it again, so the plugin takes one only up to `MAX_INLINE_IMAGE_BYTES` (1 MiB of its `data:` URL). A larger one pasted in the link field is refused with a message that points to the Upload button (or, without `upload`, to hosting the file and pasting its link), and an HTML paste does not import it. Give the plugin an `upload` that stores the file and answers its URL: that is the way to add a large image. In a collaborative document it is also the way to add more than a few: the [room's document quota](/docs/server/room#quotas) is 2 MiB by default, so two or three inline images near the cap fill it, and the room then refuses every later edit. `storableImageSrc(value)` is the check the writes use (`safeImageSrc`, but no inline image over the cap); a document that already holds a larger one still shows it.
+An inline image is stored in the document itself, and every catch-up and every update that carries the block sends it again, so the plugin takes one only up to `MAX_INLINE_IMAGE_BYTES` (1 MiB of its `data:` URL). Give the plugin an `upload` that stores the file and answers its URL: that is the way to add a large image.
+
+- A larger one pasted in the link field is refused with a message that points to the Upload button (or, without `upload`, to hosting the file and pasting its link), and an HTML paste does not import it. A document that already holds a larger one still shows it.
+- `storableImageSrc(value)` is the check the writes use (`safeImageSrc`, but no inline image over the cap).
+
+:::warning
+In a collaborative document, `upload` is also the way to add more than a few images: the [room's document quota](/docs/server/room#quotas) is 2 MiB by default, so two or three inline images near the cap fill it, and the room then refuses every later edit.
+:::
 
 ## Empty block
 

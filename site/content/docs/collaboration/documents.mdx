@@ -50,7 +50,7 @@ const copy = loadDocument(bytes); // readiness 'hydrated'
 copy.facade.toJSON(); // same JSON as the source
 ```
 
-`loadDocument` checks the bytes on a scratch copy first. Corrupt bytes throw `UndecodableUpdateError`, a schema this build cannot own throws `SchemaMismatchError`, and a v13 (`yjs`) document throws `UnsupportedDocError` with reason `legacy`; see [Migration](/docs/reference/migration). Your bytes are never modified.
+`loadDocument` checks the bytes on a scratch copy first. Corrupt bytes throw `UndecodableUpdateError`, a schema this build cannot own throws `SchemaMismatchError`, and a v13 (`yjs`) document throws `UnsupportedDocError` with reason `legacy`; see [importing v13 documents](/docs/reference/v13-import). Your bytes are never modified.
 
 ## The document object
 

@@ -1432,3 +1432,125 @@ describe('documented command results (editor/commands)', () => {
 		expect(ids(edytor)).toEqual(['c', 'b', 'a', 'd']);
 	});
 });
+
+/**
+ * Readability (WU-19, DOC-09, DOC-10). A page leads with the common case and
+ * keeps its edge cases in tables, callouts or an "Edge cases" section; a
+ * paragraph long enough to be a wall of text is a list or a table waiting to
+ * happen. The changelog is written for users: per release, what breaks, what
+ * is new and what was fixed, never a ticket, a contract row or a file of the
+ * repository. Importing v13 documents is a guide of its own.
+ */
+describe('docs readability (WU-19)', () => {
+	const site = files(join(root, 'site/content/docs'));
+	const read = (path: string) => readFileSync(join(root, 'site/content/docs', path), 'utf8');
+	const CHANGELOG = 'reference/migration.mdx';
+	const IMPORT = 'reference/v13-import.mdx';
+
+	/** The lines of a page outside fenced code and table rows, with their numbers. */
+	const prose = (text: string) => {
+		let fence: string | null = null;
+		return text.split('\n').flatMap((line, i) => {
+			const open = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+			if (fence) {
+				if (open && line.trim() === fence) fence = null;
+				return [];
+			}
+			if (open) {
+				fence = open;
+				return [];
+			}
+			return /^\s*\|/.test(line) ? [] : [[i + 1, line] as const];
+		});
+	};
+
+	it('no prose line of the site docs is over 1,200 characters (tables and code aside)', () => {
+		const long = site.flatMap((path) =>
+			prose(readFileSync(path, 'utf8'))
+				.filter(([, line]) => line.length > 1200)
+				.map(([at, line]) => `${relative(root, path)}:${at} (${line.length})`)
+		);
+		expect(long).toEqual([]);
+	});
+
+	it('the changelog and the v13 import guide name no ticket, contract row or repository path', () => {
+		// The ticket grammar `pnpm check:api` rejects in public JSDoc
+		// (`scripts/api-report.mjs`), function keys (`Alt+F10`) and Cloudflare's
+		// R2 aside.
+		const ticket =
+			/\b(?!UTF-|ES20|R2\b(?!-)|D1[\s*]+(?:database|binding)\b)(?:[A-Z]{1,3}\d{1,3}[a-z]?|[A-Z]{1,3}-\d{1,3}[a-z]?|[A-Z]{2}\d?-[a-z]+-\d+)\b|§\s?\d+(?:\.\d+)*/g;
+		// The contract rows' namespaces (`del.blocks.promote`, `room.compact.*`).
+		const row =
+			/^(?:(?:del|flow|sel|hist|layout|order|room|net|conc|merge|mark|link)(?:\.[\w*-]+)+|doc\.(?:empty|hydrate)\b.*|data\.(?:atomic|retype)\b.*|id\.same\b.*|code\.language\b.*|crdt\.doc\b.*|[\w.]+\.\*)$/;
+		const hits = [CHANGELOG, IMPORT].flatMap((page) =>
+			prose(read(page)).flatMap(([at, line]) => {
+				const text = line.replace(/<kbd>[^<]*<\/kbd>|\+F\d{1,2}\b/g, '');
+				const found = [
+					...[...text.matchAll(ticket)].map(([code]) => code),
+					...[...text.matchAll(/fork patch|contract row/gi)].map(([phrase]) => phrase),
+					...[...text.matchAll(/`([^`]+)`/g)]
+						.map(([, code]) => code!)
+						.filter(
+							(code) =>
+								row.test(code) ||
+								/^(?:src|site|docs|tests|scripts|\.github)\//.test(code) ||
+								/^[\w-]+\/[\w./-]+\.(?:ts|js|svelte|md|mdx)$/.test(code)
+						)
+				];
+				return found.map((what) => `${page}:${at}: ${what}`);
+			})
+		);
+		expect(hits).toEqual([]);
+	});
+
+	it('every changelog release lists its changes as breaking, new or fixed', () => {
+		const notes = /\n## Upgrading between pre-releases\n([\s\S]*?)(?=\n## )/.exec(
+			read(CHANGELOG)
+		)![1]!;
+		const releases = notes.split(/\n(?=### )/).filter((part) => part.startsWith('### From '));
+		expect(releases.length).toBeGreaterThan(30);
+		const LABELS = ['#### Breaking changes', '#### New', '#### Fixed'];
+		for (const release of releases) {
+			const [heading, ...body] = release.split('\n');
+			const labels = body.filter((line) => line.startsWith('#### '));
+			// Only those three, in that order, each at most once.
+			const order = labels.map((label) => LABELS.indexOf(label));
+			expect(order, heading).not.toContain(-1);
+			expect(order, heading).toEqual([...new Set(order)].sort());
+			// Nothing but a lead paragraph before the first label (a release
+			// that changed nothing has that paragraph alone).
+			const lead = body
+				.slice(0, labels.length ? body.indexOf(labels[0]!) : undefined)
+				.filter((line) => line.trim());
+			expect(
+				lead.filter((line) => /^\s*(?:- |\d+\. )/.test(line)),
+				heading
+			).toEqual([]);
+		}
+		// Changes not yet released wait under "Unreleased", right after the heading.
+		expect(notes.trimStart()).toMatch(/^### Unreleased\n/);
+	});
+
+	it('the v13 import guide is a page of its own, in the reference sidebar', () => {
+		const guide = read(IMPORT);
+		expect(guide).toContain('migration.migrate(name)');
+		expect(guide).toContain('`rolledback`');
+		expect(read('reference/meta.ts')).toMatch(/"migration",\s*"v13-import"/);
+		expect(read(CHANGELOG)).not.toContain('## Importing v13 documents');
+		const stale = site
+			.filter((path) => readFileSync(path, 'utf8').includes('migration#importing-v13-documents'))
+			.map((path) => relative(root, path));
+		expect(stale).toEqual([]);
+	});
+
+	it('concurrent editing states each rule with an Alice and Bob table', () => {
+		const page = read('collaboration/concurrent-editing.mdx');
+		const sections = page.split(/\n(?=## )/).slice(1);
+		expect(sections.length).toBeGreaterThan(8);
+		const tableless = sections
+			.filter((section) => !/^\|[^\n]*\bAlice\b[^\n]*\|[^\n]*\bBob\b[^\n]*\|$/m.test(section))
+			.map((section) => section.split('\n')[0]);
+		// The closing note on versions is no race.
+		expect(tableless).toEqual(['## Mixed versions']);
+	});
+});

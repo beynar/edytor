@@ -22,6 +22,7 @@ import type { IndexPlacement } from './placement.js';
 import { dropFrom, sameShape, typeAttr } from './shared.js';
 import type { IndexState } from './state.js';
 
+/** The block records of one doc's index. */
 export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & IndexPlacement) => {
 	const {
 		Y,

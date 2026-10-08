@@ -15,6 +15,7 @@ import {
 } from '../rows.js';
 import type { IndexState, Placed } from './state.js';
 
+/** The stream table of one doc's index, over its state. */
 export const indexStreams = (ix: IndexState) => {
 	const {
 		blocks,

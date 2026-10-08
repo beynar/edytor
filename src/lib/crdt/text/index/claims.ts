@@ -8,6 +8,7 @@ import { type Claim, DEAD, type Owner, type Stamp, claimGraph, cmpStamp } from '
 import { addTo, dropFrom } from './shared.js';
 import type { FoldCtx, IndexState } from './state.js';
 
+/** The claim graph of one doc's index, over its state. */
 export const indexClaims = (ix: IndexState) => {
 	const { blocks, listConsumers, displaysMap, ownerSeeds, ownerChanged } = ix;
 

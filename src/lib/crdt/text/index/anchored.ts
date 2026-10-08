@@ -18,6 +18,7 @@ import type { IndexClaims } from './claims.js';
 import { addTo, dropFrom } from './shared.js';
 import type { FoldCtx, IndexState } from './state.js';
 
+/** The anchored merge claims of one doc's index, over its state and claim graph. */
 export const indexAnchored = (ix: IndexState & IndexClaims) => {
 	const {
 		doc,

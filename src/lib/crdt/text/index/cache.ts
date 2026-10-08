@@ -10,6 +10,7 @@ import type { IndexPlacement } from './placement.js';
 import { type Deps, runEquals } from './shared.js';
 import type { IndexState } from './state.js';
 
+/** The run cache of one doc's index. */
 export const indexCache = (ix: IndexState & IndexPlacement) => {
 	const { T, blocks, textConsumers, listConsumers, cache, dirty, foldStats, frames, ownShim } = ix;
 

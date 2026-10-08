@@ -6,8 +6,9 @@ import type { BlockId, ChildSlot } from '../../placement/model.js';
 import type { DisplayRoles } from '../runs.js';
 import type { IndexState } from './state.js';
 
+/** The layout rules of one doc's index, over its state. */
 export const indexLayout = (ix: IndexState) => {
-	const { T, blocks, kindsOf } = ix;
+	const { blocks, kindsOf } = ix;
 
 	/** `ask` of `b`'s stored kind; `undefined` without roles or a record. */
 	const role = <T>(b: BlockId, ask: (r: DisplayRoles, type: string) => T): T | undefined => {

@@ -35,6 +35,7 @@ import { addTo, dropFrom } from './shared.js';
 import type { IndexState, Slot } from './state.js';
 import type { IndexStreams } from './streams.js';
 
+/** Placement maintenance of one doc's index, over its state, claims, streams and layout rules. */
 export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & IndexLayout) => {
 	const {
 		blocks,

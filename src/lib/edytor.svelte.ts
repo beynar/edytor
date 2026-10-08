@@ -1070,8 +1070,8 @@ export class Edytor {
 			}),
 			// Pointer and focus ownership, and the focus-time caret restore.
 			...attachFocus(this, node),
-			on(node, 'mousedown', this.selection.preventNativeTripleClick),
-			on(node, 'click', this.selection.handleTripleClick),
+			on(node, 'mousedown', this.selection.pointer.preventTripleClick),
+			on(node, 'click', this.selection.pointer.tripleClick),
 			// Settle queued mutation repairs before the native menu opens —
 			// spellcheck suggestions are computed against the DOM at this
 			// moment (PM flushes its DOM observer on contextmenu for the

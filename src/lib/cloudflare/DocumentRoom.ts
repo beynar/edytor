@@ -612,7 +612,8 @@ export type AttachRoomOptions = {
 	 */
 	semantics?: DocumentSemanticsConfig;
 	/**
-	 * Version history in KV (`room.history.*`): the room writes its
+	 * Version history, in the store `HistoryOptions.store` names (a KV namespace, an R2 bucket or
+	 * the room's own storage): the room writes its
 	 * state twice a day — the morning's at local noon, the evening's at
 	 * midnight, in `timeZone` — when it changed, for `retentionDays`; read
 	 * and restore them with `listHistory`, `readHistory`, `restoreHistory`

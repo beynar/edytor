@@ -131,7 +131,7 @@ export const onTextDragStart = (edytor: Edytor, event: DragEvent) => {
 	startTextDrag(edytor, { range: value, fragment });
 	// The press is a drag now, no longer a selection (Chromium cancels its pointer here; the
 	// other engines send no release until the drop).
-	edytor.selection.clearPointerDragStart();
+	edytor.selection.pointer.release();
 };
 
 /** The drag ended, dropped or not: no text drag. */

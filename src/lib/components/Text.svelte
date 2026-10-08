@@ -70,7 +70,7 @@
 			if (event.button !== 0 || event.detail !== 1 || event.shiftKey || !start) return;
 			const movement = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
 			if (movement < 4 && text)
-				edytor.selection.setTextSelectionFromPointer(text, event.clientX, event.clientY);
+				edytor.selection.pointer.placeAt(text, event.clientX, event.clientY);
 		};
 		node.addEventListener('pointerdown', pointerdown);
 		node.addEventListener('click', click);

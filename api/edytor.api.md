@@ -2072,7 +2072,6 @@ export declare class EdytorSelection {
     get selectedBlocks(): ReadonlySet<Block>;
     get selectedMembers(): Block[];
     selectedInlineBlock: SvelteSet<InlineBlock>;
-    private pointerDragStart;
     private selectionDocument;
     private shouldKeepModelSelectionForNextTextInsertion;
     private modelSelectionPreservationBlock;
@@ -2091,13 +2090,8 @@ export declare class EdytorSelection {
     clearInlineBlockSelection: () => void;
     selectInlineBlock: (inlineBlock: InlineBlock, from?: AtomSide) => void;
     private isStateBlockContentRange;
-    private getBlockOfNode;
-    private isInsideEditableText;
     private getNonNativeEditableIslandBlock;
-    private getNonNativeEditableBlockChromeBlock;
     private normalizeTextRangePoints;
-    private getTextPointFromClientPoint;
-    private getTextOffsetFromClientPoint;
     createTextAnchor: (text: Text, offset: number, affinity?: "left" | "right") => TextAnchor | null;
     resolveTextAnchor: (anchor: TextAnchor) => {
         text: Text;

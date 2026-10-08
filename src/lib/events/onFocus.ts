@@ -120,9 +120,9 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 		lastPointerDownInsideEditorAt = getEventTimeStamp(event);
 		edytor.projector.pressed();
 		edytor.selection.clearModelSelectionPreservation();
-		edytor.selection.capturePointerDragStart(event);
+		edytor.selection.pointer.capture(event);
 		edytor.selection.clearInlineBlockSelection();
-		edytor.selection.collapseSelectedBlocksAtPointer(event);
+		edytor.selection.pointer.collapseBlocksAt(event);
 	};
 
 	const clearNativeSelectionAfterExternalFocus = () => {
@@ -242,14 +242,14 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 			{ capture: true }
 		),
 		// A press on a block's non-editable chrome places the caret in its text.
-		on(node, 'pointerdown', edytor.selection.handleNonNativeEditableBlockChromePointerDown, {
+		on(node, 'pointerdown', edytor.selection.pointer.chromePress, {
 			capture: true
 		}),
 		on(
 			node,
 			'mousedown',
 			(event: MouseEvent) => {
-				if (lone(event)) edytor.selection.handleNonNativeEditableBlockChromePointerDown(event);
+				if (lone(event)) edytor.selection.pointer.chromePress(event);
 			},
 			{ capture: true }
 		),
@@ -260,24 +260,23 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 		}),
 		on(node, 'pointerup', (event: PointerEvent) => {
 			edytor.markUserGesture();
-			edytor.selection.restoreInlineAtomDragRange(event);
+			edytor.selection.pointer.restoreAtomRange(event);
 		}),
 		// A drag released OUTSIDE the editor never reaches the node-level
 		// pointerup — without this `pointerDragStart` stays armed forever
 		// and remote-edit restores would stay suppressed.
 		on(node.ownerDocument, 'pointerup', () => {
 			edytor.markUserGesture();
-			edytor.selection.clearPointerDragStart();
+			edytor.selection.pointer.release();
 		}),
 		on(node.ownerDocument, 'pointercancel', () => {
-			edytor.selection.clearPointerDragStart();
+			edytor.selection.pointer.release();
 		}),
 		// A release the page never saw (over a frame of another origin, or in
 		// Firefox outside the window): the next move with no button down ends
 		// the drag, or the projector would stay held until the next press.
 		on(node.ownerDocument, 'pointermove', (event: PointerEvent) => {
-			if (event.buttons === 0 && edytor.selection.dragging)
-				edytor.selection.clearPointerDragStart();
+			if (event.buttons === 0 && edytor.selection.dragging) edytor.selection.pointer.release();
 		}),
 		on(node, 'focusin', (event: FocusEvent) => {
 			// Focus arriving back inside the editor re-establishes editor

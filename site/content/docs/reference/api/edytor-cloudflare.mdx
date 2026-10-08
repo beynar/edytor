@@ -222,7 +222,7 @@ export type AttachRoomOptions = {
 - `rooms`: The rooms blocks move to (`room.move`): with it, the room forwards the late edits of blocks it moved out to their destination itself, on its alarm; without it, they wait for the host's `forwardLateEdits`.
 - `log`: The room's log: one entry per compaction, quota hit, denial or fault.
 - `semantics`: The block roles `transact` edits obey — the document semantics your clients' plugins declare (`defaultType` also names the block an empty room is seeded with).
-- `history`: Version history in KV (`room.history.*`): the room writes its state twice a day — the morning's at local noon, the evening's at midnight, in `timeZone` — when it changed, for `retentionDays`; read and restore them with `listHistory`, `readHistory`, `restoreHistory` and `undoRestore` (or `routeDocumentHistory`).
+- `history`: Version history, in the store `HistoryOptions.store` names (a KV namespace, an R2 bucket or the room's own storage): the room writes its state twice a day — the morning's at local noon, the evening's at midnight, in `timeZone` — when it changed, for `retentionDays`; read and restore them with `listHistory`, `readHistory`, `restoreHistory` and `undoRestore` (or `routeDocumentHistory`).
 - `purgeAfterDays`: Days after which deleted content is purged from the room and every replica (`room.purge.*`): default the history's `retentionDays`, else 30; `false` never purges.
 - `now`: The room's clock, ms since the epoch (default `Date.now`): its slots, epochs and alarm read it.
 - `comments`: Comment threads (`room.comments`): kept in the room's `threads` and `comments` tables, read and written through `routeDocumentComments` (or `listComments` and `comment` over RPC), each change sent to the sockets that subscribed.

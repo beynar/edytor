@@ -558,7 +558,7 @@ export async function onBeforeInput(this: Edytor, event: InputEvent) {
 	this.keymap.offered = null;
 	if (event.inputType === 'deleteByDrag' && event.isTrusted) {
 		event.preventDefault();
-		this.selection.clearPointerDragStart();
+		this.selection.pointer.release();
 		return;
 	}
 

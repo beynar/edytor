@@ -387,9 +387,9 @@
 		// begins — the guard keeps one from starting on non-editable
 		// chrome (markers, void/island chrome, plugin UI). A press on that
 		// chrome is the press's (`events/onFocus.ts`).
-		node.addEventListener('selectstart', selection.onSelectStart);
+		node.addEventListener('selectstart', selection.pointer.onSelectStart);
 		return {
-			destroy: () => node.removeEventListener('selectstart', selection.onSelectStart)
+			destroy: () => node.removeEventListener('selectstart', selection.pointer.onSelectStart)
 		};
 	};
 </script>

@@ -526,7 +526,7 @@ const runKeyAttempt = async (edytor: Edytor, attempt: Attempt) => {
 	edytor.attempts.arm(attempt, NATIVE_INPUT_REPAIR_WINDOW_MS);
 	// The browser may have moved the selection since the keydown: the key
 	// acts on its anchored target, which followed any concurrent edit.
-	edytor.selection.select(attempt.target, 'repair');
+	edytor.selection.commit(attempt.target, 'repair');
 	const { state, selectedBlocks } = edytor.selection;
 	if (selectedBlocks.size > 0) {
 		edytor.selection.selectBlocks(...selectedBlocks);

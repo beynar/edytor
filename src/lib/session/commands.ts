@@ -214,6 +214,7 @@ export class Dispatcher {
 	}
 	/**
 	 * The result selection a command in flight declared before its operations: the seam repair leaves this view's endpoints to it.
+	 * @internal
 	 */
 	authoring: SelectionValue | null = null;
 	/** An operation's body is running: nested operations are its steps. */
@@ -248,6 +249,7 @@ export class Dispatcher {
 	/** `outside` is running: its commands cut no step and enter none. */
 	private untracked = false;
 
+	/** @internal */
 	constructor(private edytor: Edytor) {}
 
 	/**
@@ -277,19 +279,28 @@ export class Dispatcher {
 		}
 	};
 
-	/** The plan `lead` holds for the next dispatched operation (a slash trigger's removal), if any. */
+	/**
+	 * The plan `lead` holds for the next dispatched operation (a slash trigger's removal), if any.
+	 * @internal
+	 */
 	get pendingLead(): Plan | null {
 		return this.leading;
 	}
 
-	/** Admission: a readonly view or a read-only document refuses every mutating command. */
-	/** Admission: not readonly, a writable document, and one decided when it requires hydration. */
+	/**
+	 * Whether this view accepts writes now: not readonly, its document
+	 * writable, and decided when it requires hydration. Every command asks
+	 * it first; a plugin's own write outside a command asks it too.
+	 */
 	permits = () =>
 		!this.edytor.readonly &&
 		this.edytor.document.writable &&
 		(this.edytor.document.ready || !this.edytor.document.requireHydration);
 
-	/** Apply the undo policy's cut before a `kind` command writes. */
+	/**
+	 * Apply the undo policy's cut before a `kind` command writes.
+	 * @internal
+	 */
 	cut = (kind: string, phase: 'before' | 'after' = 'before') => {
 		if (this.untracked) return;
 		const policy = this.decide(policyOf(kind));
@@ -301,6 +312,7 @@ export class Dispatcher {
 	 * Run `body` as a prevention scope: a `prevent()` from a hook in it, or a
 	 * veto of an operation it issues, aborts it; `onPrevent` runs, then the
 	 * replacement callback.
+	 * @internal
 	 */
 	scope = <T>(body: () => T, onPrevent?: () => void): T | undefined => {
 		let out: T;
@@ -317,7 +329,10 @@ export class Dispatcher {
 			: out;
 	};
 
-	/** Run every extension's `call`; answer whether one of them prevented. */
+	/**
+	 * Run every extension's `call`; answer whether one of them prevented.
+	 * @internal
+	 */
 	intercept = (call: (plugin: InitializedPlugin) => void, onPrevent?: () => void) => {
 		let hit = false;
 		this.scope(
@@ -615,6 +630,7 @@ export class Dispatcher {
 	 * requested, not run: each (block, normalizer) runs once per request, at
 	 * the end of the command's transaction. Answers whether the request was
 	 * queued.
+	 * @internal
 	 */
 	defer = (block: Block, normalize: Normalizer): boolean => {
 		const [id, fn] = this.current ?? [];
@@ -624,10 +640,16 @@ export class Dispatcher {
 		return true;
 	};
 
-	/** A normalizer's work: part of the command's transaction (its operations are steps). */
+	/**
+	 * A normalizer's work: part of the command's transaction (its operations are steps).
+	 * @internal
+	 */
 	write = (work: () => void) => this.edytor.transact(work);
 
-	/** Request a normalization pass of block `id` (deduped against the pending ones). */
+	/**
+	 * Request a normalization pass of block `id` (deduped against the pending ones).
+	 * @internal
+	 */
 	request = (id: string, normalize: Normalizer) => {
 		const pending = this.queue.slice(this.current ? this.queue.indexOf(this.current) + 1 : 0);
 		if (!pending.some(([i, n]) => i === id && n === normalize)) this.queue.push([id, normalize]);
@@ -638,6 +660,7 @@ export class Dispatcher {
 	 * inside it, also when the transaction's callback threw: its writes stay. A pass reads handles over the index, so a normalizer sees what
 	 * the command (and the previous pass) wrote; a pass that asks for its
 	 * block again runs again, at most {@link MAX_PASSES} times.
+	 * @internal
 	 */
 	drain = () => {
 		if (this.draining) return;

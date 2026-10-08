@@ -638,6 +638,6 @@ export class Projector {
 		const minted = this.#minted;
 		if (minted?.transaction !== transaction) return;
 		this.#minted = null;
-		this.edytor.selection.select(minted.value, 'dom');
+		this.edytor.selection.commit(minted.value, 'dom');
 	};
 }

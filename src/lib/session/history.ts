@@ -175,7 +175,7 @@ export class History {
 			selection.restoreDeadSelectionEndpoints();
 			return true;
 		}
-		selection.select(restored, 'history');
+		selection.commit(restored, 'history');
 		return true;
 	}
 }

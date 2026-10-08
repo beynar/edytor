@@ -60,7 +60,7 @@ export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): bo
 	const { copy } = drag;
 	/** Nothing written: the range stays selected (the drop's point is not adopted). */
 	const keep = () => {
-		edytor.selection.select(drag.range, 'model');
+		edytor.selection.select(drag.range);
 		return false;
 	};
 	// A move onto itself: nothing to write.

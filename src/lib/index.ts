@@ -337,7 +337,6 @@ export type {
 export type { Dispatcher } from './session/commands.js';
 export type {
 	PresenceSelection,
-	SelectCause,
 	SelectionPoint,
 	SelectionProjection,
 	SelectionSegment,

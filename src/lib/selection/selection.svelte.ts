@@ -400,12 +400,20 @@ export class EdytorSelection {
 	};
 
 	/**
+	 * Replace the selection with `next` (none, a text range of two anchors,
+	 * one inline atom, or a set of block ids), keeping the selected and
+	 * focused blocks, presence and `onSelectionChange` in step.
+	 */
+	select = (next: SelectionValue): void => this.commit(next);
+
+	/**
 	 * The one commit point: replaces the value, advances the epoch and
 	 * applies every side effect once — the selected, atom and focused sets
 	 * (hooks and attributes), and, when the value changed, presence and `onSelectionChange`.
 	 * `surface` carries the mark-edge side the value was observed with.
+	 * @internal
 	 */
-	select = (next: SelectionValue, cause: SelectCause = 'model', surface?: { edge?: EdgeSide }) => {
+	commit = (next: SelectionValue, cause: SelectCause = 'model', surface?: { edge?: EdgeSide }) => {
 		next = this.#keepPending(this.#shown(next));
 		const changed = !sameValue(this.value, next);
 		if (changed) this.#value = next;
@@ -976,7 +984,7 @@ export class EdytorSelection {
 		const blocks = focus && !anchor.isRoot && !focus.isRoot && acrossColumns(anchor, focus);
 		if (!blocks || !blocks.length) return false;
 		this.#across = true;
-		this.select(blockSelection(blocks.map((block) => block.id)), 'dom');
+		this.commit(blockSelection(blocks.map((block) => block.id)), 'dom');
 		this.edytor.projector.observe();
 		return true;
 	};
@@ -1267,7 +1275,7 @@ export class EdytorSelection {
 			return;
 		}
 
-		this.select(this.textValue(startText, yStart, endText ?? startText, yEnd, isReversed), 'dom', {
+		this.commit(this.textValue(startText, yStart, endText ?? startText, yEnd, isReversed), 'dom', {
 			edge: isCollapsed ? getMarkEdgeSide(startText, startNode, yStart) : undefined
 		});
 		this.edytor.projector.observe();
@@ -1424,7 +1432,7 @@ export class EdytorSelection {
 			const live = value.ids.filter((id) => facade.isVisibleBlock(id));
 			if (live.length === value.ids.length) return;
 			if (live.length) {
-				this.select(blockSelection(live), 'repair');
+				this.commit(blockSelection(live), 'repair');
 				return;
 			}
 			dead = value.ids[0] ?? null;
@@ -1481,7 +1489,7 @@ export class EdytorSelection {
 	};
 
 	/** Select a repaired caret (the projector displays it). */
-	#land = (target: SelectionValue) => this.select(target, 'repair');
+	#land = (target: SelectionValue) => this.commit(target, 'repair');
 
 	/**
 	 * A text range from `first`'s first shown line to `last`'s last (the

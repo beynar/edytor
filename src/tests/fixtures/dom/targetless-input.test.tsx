@@ -160,7 +160,7 @@ describe('an input with no target', () => {
 			editor.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 			await setNativeSelection(edytor, text, 3);
 			expect(edytor.selection.value.kind).toBe('text');
-			edytor.selection.select({ kind: 'none' }, cause);
+			edytor.selection.commit({ kind: 'none' }, cause);
 			await flushDomUpdates();
 			// The browser parks a caret at the host's start after the next key.
 			await dispatchDomKeyDown(editor, { key: 'Escape' });

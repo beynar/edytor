@@ -14,6 +14,11 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+#### Breaking changes
+
+- **`selection.select(value)` takes the value only.** Its second argument named an internal cause (how the projector should treat the change); pass the value alone. The `SelectCause` type is no longer exported.
+- **The dispatcher's plumbing is internal.** `edytor.dispatcher` keeps `last`, `permits()`, `run`, `each`, `dispatch`, `lead`, `caret` and `outside`; its normalization queue (`defer`, `request`, `drain`, `write`), its undo cut (`cut`), its prevention scopes (`scope`, `intercept`), `authoring` and `pendingLead` are no longer in the published types. `permits()` is now documented: whether the view accepts writes.
+
 #### Fixed
 
 - **Typing on a very long page does less work.** The block handles found the blocks near the screen by watching every block, which the browser rechecked after each keystroke (about 6 ms a key at 10,000 blocks). They now look up the few blocks near the screen directly.
@@ -904,6 +909,7 @@ Every public change since 0.0.11, by area.
 
 ### Editor view, selection and commands
 
+- **`selection.select(value)`** takes the value only; the dispatcher publishes `last`, `permits()`, `run`, `each`, `dispatch`, `lead`, `caret` and `outside`, the rest is internal.
 - **`edytor.focus()`** focuses the editor, keeping its selection or putting the caret at the start; `selection.value`, `selectedBlocks`, `focusedBlocks` and `dispatcher.last` are read-only.
 - **Pasted and dropped files.** The video, audio and file plugins with `upload` take their files (`media.files`); `upload(file, report)` reports progress (`Uploader`, `UploadReport`); the media labels gain `uploading` and `uploadFailed`.
 - **Markdown paste.** A `text/plain` paste holding block markdown is placed as its blocks (`textToBlocks`); see [Pasting markdown](/docs/editor/clipboard#pasting-markdown).

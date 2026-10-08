@@ -13,7 +13,8 @@ const isTextPart = (part: Block['content'][number] | undefined): part is Text =>
 /**
  * An id-only inline-atom handle: atom `id`, shown in
  * block `blockId`. Getters read the document index; `node` is the element
- * that renders it (a Surface fact).
+ * that renders it (a Surface fact). A reactive reader of a getter depends on
+ * the block's cell, so it re-runs when a commit changes the block's content.
  */
 export class InlineBlock {
 	_def = 'inline' as const;
@@ -36,6 +37,7 @@ export class InlineBlock {
 	}
 
 	get #item() {
+		if ($effect.tracking()) this.edytor.cells?.get(this.blockId);
 		const parts = this.edytor.idToBlock.parts(this.blockId);
 		const part = parts.find((part) => part.kind === 'inline' && part.item.id === this.id);
 		return part?.kind === 'inline' ? part.item : undefined;

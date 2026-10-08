@@ -133,6 +133,8 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ### Unreleased
 
+- **Handle getters are reactive.** A template, `$derived` or `$effect` that reads a `Block`, `Text` or `InlineBlock` getter (`block.type`, `block.children`, `block.content`, `block.parent`, `block.index`, `block.isInTree`, `text.stringContent`, `atom.type`, …) re-runs when a commit changes it, as `block.data` already did; read elsewhere, a getter is the same plain read of the document. A template that read `edytor.cells` only to make a handle getter update can read the getter. See [Handles](/docs/concepts/editor-instance#handles).
+- **`onDocChange`.** New `<Edytor onDocChange>` prop, `EdytorOptions.onDocChange` and plugin hook: each commit's change report (`DocChange`), with no whole-document export, where `onChange` exports the document every commit.
 - **`Doc.keepReplaced` is per document.** Binding the engine no longer sets the engine's class default (`Y.Doc.keepReplaced` stays `null`, upstream's behavior, for every other document of the engine in your app); each edytor document carries the rule on itself (`doc.keepReplaced`): `createDocument`, `attachDocument`, `bindCrdt(Y).createDoc()`, the new `bindEdytorDoc(Y).newDoc()`, and any document a facade binds (`create(doc)`; a rule you set yourself stays). A document must carry it before it integrates edytor content: a server or a script that built its document with `new Y.Doc()` and applied stored updates before binding builds it with `createDoc()` instead ([Protocol](/docs/server/protocol)).
 
 ### From 0.1.0-next.34

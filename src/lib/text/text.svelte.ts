@@ -23,7 +23,9 @@ const accepted = (r: OpResult | undefined): boolean => r !== undefined && r.stat
  * An id-only text handle: the `ordinal`-th text segment
  * of block `blockId` — no identity across commits beyond that position.
  * Getters read the document index; mutators write through the block's model.
- * `node` is the element that renders the segment (a Surface fact).
+ * `node` is the element that renders the segment (a Surface fact). A
+ * reactive reader of a getter depends on the block's cell, so it re-runs
+ * when a commit changes the block's content.
  */
 export class Text {
 	readonly = false;
@@ -47,6 +49,7 @@ export class Text {
 
 	/** This segment in its block's parts, and its position among them. */
 	get #at(): { part?: Extract<ContentPart, { kind: 'text' }>; index: number } {
+		if ($effect.tracking()) this.edytor.cells?.get(this.blockId);
 		const parts = this.edytor.idToBlock.parts(this.blockId);
 		for (let index = 0, k = 0; index < parts.length; index++) {
 			const part = parts[index]!;

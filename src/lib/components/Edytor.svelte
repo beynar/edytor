@@ -6,6 +6,7 @@
 	import {
 		SyncRefusedError,
 		type Awareness,
+		type DocChange,
 		type DocumentActor,
 		type EdytorDocument,
 		type YDoc
@@ -120,6 +121,11 @@
 		hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
 		/** After every commit that changed the visible document: a `JSONDoc`, the type `value` takes. */
 		onChange?: (value: JSONDoc) => void;
+		/**
+		 * After every commit that changed the visible document: the change report
+		 * (`DocChange`), with no whole-document export. Read once.
+		 */
+		onDocChange?: (change: DocChange) => void;
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		/** The initial content, read once (not bindable): follow edits with `onChange` or `edytor.value`. */
 		value?: JSONDoc;
@@ -221,6 +227,7 @@
 		actor,
 		presence,
 		onChange,
+		onDocChange,
 		onSelectionChange,
 		placeholder,
 		labels,
@@ -249,6 +256,7 @@
 		hotkeys: hotkeys ?? hotKeys,
 		onSelectionChange,
 		onChange,
+		onDocChange,
 		sync: !!sync || room !== undefined,
 		value,
 		placeholder,

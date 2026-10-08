@@ -151,8 +151,17 @@ export type EdytorOptions = {
 	presence?: PresenceOptions;
 	sync?: boolean;
 	value?: JSONDoc;
-	/** After every commit that changed the visible document: the value, in the shape `value` takes. */
+	/**
+	 * After every commit that changed the visible document: the value, in
+	 * the shape `value` takes (a whole-document export per commit).
+	 */
 	onChange?: (value: JSONDoc) => void;
+	/**
+	 * After every commit that changed the visible document: what it changed
+	 * (blocks added, removed, moved, retyped, edited), with no export. Read
+	 * `edytor.value` when you need the document (it is memoized per version).
+	 */
+	onDocChange?: (change: DocChange) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: Placeholder;
 	/** The words this view says itself (its announcements, a suggestion's name); English by default. */
@@ -270,6 +279,7 @@ export class Edytor {
 	readonly labels: EditorLabels = englishLabels.editor;
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONDoc) => void;
+	private onDocChange?: (change: DocChange) => void;
 	placeholder?: Placeholder;
 	/** @internal The view's composition session (R8, L7, O34): at most one, live then tail. */
 	readonly composition: Composition = new Composition(this);
@@ -439,7 +449,8 @@ export class Edytor {
 		onSelectionChange,
 		placeholder,
 		labels,
-		onChange
+		onChange,
+		onDocChange
 	}: EdytorOptions) {
 		this.labels = labelsWith('editor', labels);
 		if (document !== undefined) {
@@ -463,6 +474,7 @@ export class Edytor {
 		}
 		this.readonly = readonly || false;
 		this.onChange = onChange;
+		this.onDocChange = onDocChange;
 		this.presence = new PresenceWriter(this.awareness, this.presenceKey, presence);
 
 		// From here on a throw must unwind what this view already claimed
@@ -720,6 +732,9 @@ export class Edytor {
 		} finally {
 			this.suppressCaretScrollDepth--;
 		}
+		// The report itself: no export.
+		this.onDocChange?.(change);
+		for (const plugin of this.plugins) plugin.onDocChange?.(change);
 		// `this.value` is a full-document export (O(doc) — ~17ms at 5k
 		// blocks) — compute it only when a consumer actually exists.
 		if (this.onChange || this.plugins.some((plugin) => plugin.onChange)) {

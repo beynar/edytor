@@ -828,6 +828,7 @@ export declare class Edytor {
     readonly labels: EditorLabels;
     private off;
     private onChange?;
+    private onDocChange?;
     placeholder?: Placeholder;
     get isComposing(): boolean;
     readonly suggestions: Suggestions;
@@ -845,7 +846,7 @@ export declare class Edytor {
     moveBlocks: (request: BlockMoveRequest) => Block[];
     historyUndo: () => void;
     historyRedo: () => void;
-    constructor({ snippets, readonly, hotkeys, hotKeys, plugins, document, doc, awareness, actor, requireHydration, presence, sync, value, onSelectionChange, placeholder, labels, onChange }: EdytorOptions);
+    constructor({ snippets, readonly, hotkeys, hotKeys, plugins, document, doc, awareness, actor, requireHydration, presence, sync, value, onSelectionChange, placeholder, labels, onChange, onDocChange }: EdytorOptions);
     private unknownKinds;
     definitionOf: (type: string) => BlockDefinition;
     private _valueCache;
@@ -2985,6 +2986,7 @@ export type EdytorProps = Snippets & {
     hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
     hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
     onChange?: (value: JSONDoc) => void;
+    onDocChange?: (change: DocChange) => void;
     onSelectionChange?: (selection: EdytorSelection) => void;
     value?: JSONDoc;
     placeholder?: Placeholder;
@@ -4679,6 +4681,7 @@ export type EdytorOptions = {
     sync?: boolean;
     value?: JSONDoc;
     onChange?: (value: JSONDoc) => void;
+    onDocChange?: (change: DocChange) => void;
     onSelectionChange?: (selection: EdytorSelection) => void;
     placeholder?: Placeholder;
     labels?: PartialLabels<'editor'>;
@@ -5052,6 +5055,7 @@ export type PluginOperations = {
     onBeforeOperation?: <C extends ChangePayload>(payload: C) => C['payload'] | void;
     onAfterOperation?: (payload: AfterOperationPayload) => void;
     onChange?: (value: JSONDoc) => void;
+    onDocChange?: (change: DocChange) => void;
     onSelectionChange?: (selection: EdytorSelection) => void;
     placeholder?: Placeholder;
     onEdytorAttached?: (payload: {

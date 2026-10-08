@@ -52,12 +52,6 @@ import type { DocBlock } from '$lib/crdt/index.js';
 import { revealed } from '$lib/selection/replaceSelection.js';
 import { propsProxy } from '$lib/session/props.js';
 
-/**
- * An id-only block handle (§2.4 "Handles", R4): every getter reads the
- * document index (transaction-aware), every mutator issues a command. The
- * view keeps one per id (`edytor.idToBlock`); `node` is the element the core
- * renders for it (O45).
- */
 /** Mark an element inside a block's markup as non-editable chrome (`block.void`, a preview's too). */
 export const voidChrome = (node: HTMLElement) => {
 	node.setAttribute('data-edytor-void', `true`);
@@ -65,6 +59,16 @@ export const voidChrome = (node: HTMLElement) => {
 	node.setAttribute('contenteditable', 'false');
 };
 
+/**
+ * An id-only block handle: every getter reads the document index
+ * (transaction-aware), every mutator issues a command. The view keeps one per
+ * id (`edytor.idToBlock`); `node` is the element the core renders for it.
+ *
+ * A reactive reader (a template, a `$derived`, an `$effect`) of a getter
+ * depends on the cells the answer comes from (this block's, its parent's,
+ * the root's list), so it re-runs when a commit changes them, as `data`
+ * does; a read anywhere else is a plain read of the document.
+ */
 export class Block {
 	readonly = false;
 	readonly edytor: Edytor;
@@ -80,6 +84,18 @@ export class Block {
 		return this.id === 'root';
 	}
 
+	/**
+	 * Under a reactive reader, depend on block `id`'s cell (the root: its
+	 * child list): the commit that patches it re-runs the reader. A cell
+	 * that goes away (the block died) re-runs it too.
+	 */
+	#track(id: string = this.id): void {
+		if (!$effect.tracking()) return;
+		const cells = this.edytor.cells;
+		if (id === 'root') void cells?.rootIds;
+		else cells?.get(id);
+	}
+
 	/** The typed document node — `null` for the root. */
 	get model(): DocBlock | null {
 		return this.isRoot ? null : this.edytor.facade.block(this.id);
@@ -87,17 +103,23 @@ export class Block {
 
 	/** The display parent (the root for a top-level block); none for the root or a dead block. */
 	get parent(): Block | undefined {
-		const at = this.isRoot ? null : this.edytor.facade.positionOf(this.id);
+		if (this.isRoot) return undefined;
+		this.#track();
+		const at = this.edytor.facade.positionOf(this.id);
+		// The parent's child list names this block: a move patches it.
+		if (at) this.#track(at.parent ?? 'root');
 		return at ? this.edytor.idToBlock.block(at.parent ?? 'root') : undefined;
 	}
 
 	get children(): Block[] {
+		this.#track();
 		const { facade, idToBlock } = this.edytor;
 		return facade.childrenIds(this.isRoot ? null : this.id).map(idToBlock.block);
 	}
 
 	/** Text segments and inline atoms, alternating, starting and ending with a text. */
 	get content(): (Text | InlineBlock)[] {
+		this.#track();
 		const handles = this.edytor.idToBlock;
 		let ordinal = 0;
 		return handles
@@ -110,7 +132,9 @@ export class Block {
 	}
 
 	get type(): string {
-		return this.isRoot ? 'root' : (this.edytor.facade.blockTypeOf(this.id) ?? '');
+		if (this.isRoot) return 'root';
+		this.#track();
+		return this.edytor.facade.blockTypeOf(this.id) ?? '';
 	}
 	/** Retype the block — the `setBlock` command (readonly, hooks, `dispatcher.last`). */
 	set type(value: string) {
@@ -209,7 +233,11 @@ export class Block {
 	}
 
 	get index(): number {
-		return (!this.isRoot && this.edytor.facade.positionOf(this.id)?.index) || 0;
+		if (this.isRoot) return 0;
+		const at = this.edytor.facade.positionOf(this.id);
+		this.#track();
+		if (at) this.#track(at.parent ?? 'root');
+		return at?.index || 0;
 	}
 
 	get depth(): number {
@@ -229,7 +257,9 @@ export class Block {
 
 	/** The block is visible in the document (a dead handle answers false). */
 	get isInTree(): boolean {
-		return this.isRoot || this.edytor.facade.isVisibleBlock(this.id);
+		if (this.isRoot) return true;
+		this.#track();
+		return this.edytor.facade.isVisibleBlock(this.id);
 	}
 
 	/**
@@ -290,6 +320,8 @@ export class Block {
 
 	/** This block's JSON — the document's one serializer (`facade.blockJSON`). */
 	get value(): JSONBlock {
+		// Its subtree's: every commit re-runs a reactive reader.
+		if ($effect.tracking()) void this.edytor.valueRevision;
 		if (!this.isRoot) return this.edytor.facade.blockJSON(this.id);
 		const { data = {}, children } = this.edytor.facade.toJSON();
 		return { type: 'root', id: 'root', data, ...(children.length > 0 && { children }) };

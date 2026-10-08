@@ -128,6 +128,13 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
   - Handles are named after the kind's preset label: the grip "Heading 1 block: drag to move, click for actions" (was "Move heading block"), the `+` "Add a block below Heading 1 (Alt: above)".
   - The list kinds' `li`, `ul` and `ol` elements have `role="none"` (a list's items are sibling blocks, never one list's children). A selector on `role` or a test reading list roles changes.
   - Grays the chrome uses for text are `#73726e` (was `#7d7a75` and `#a19e99`), `--notion-text-secondary` included, and the code block's syntax colors are darkened to a 4.5:1 contrast (WCAG AA).
+- **Autolink.** With the rich text plugin, a URL typed before a space becomes a link when the space is typed, and a URL pasted at a caret is inserted as a link; each link is an undo step of its own, so undo gives the plain text back ([links](/docs/plugins/rich-text#links)).
+  - A test that types a URL followed by a space now finds a `link` mark on it.
+  - <kbd>Mod</kbd>+click on a link opens it in a new tab.
+  - `richTextOperations` adds `linkText(text, start, end, href)` and `unlinkText(text, start, end)`.
+- **Image: pasted and dropped files.** `createImagePlugin({ upload })` now claims a paste or a drop that carries image files: each becomes an image block at once (one undo step), shown uploading, and the URL `upload` answers fills its `src` outside the history (`dispatcher.outside`), so undoing the paste removes the image whole ([pasting and dropping files](/docs/plugins/image#pasting-and-dropping-files)).
+  - A paste whose HTML shows text is still imported as HTML.
+  - If your own `onPaste` hook uploaded pasted images, list it before the image plugin (yours is first by default) or drop it.
 
 #### New
 
@@ -144,10 +151,6 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
   - `createChunkReader(maxBytes?, admit?)` takes the `admit` hook and exposes `buffered`; `metrics()` reports `buffered: { sequences, bytes }`.
 - **Index work counters.** The debugging surface `facade.runsView.debug` also counts, read-only, the index's fold passes (`folds`), the changed `(type, key)` pairs they folded (`foldedPairs`) and the structs the reads inside a transaction folded (`foldedStructs`); `debug.reset()` clears them with the others. Nothing else changes. The test suite uses them to state "stays fast" as operation counts instead of timings.
 - **Long pages: `--edytor-block-visibility` stays opt-in.** Profiled again at 5,000 and 10,000 blocks: it shortens the first layout but not the first paint, slows scroll frames two to four times, leaves typing unchanged and makes Enter, moves and pastes about a quarter slower; the numbers are under [long pages](/docs/customization/styling#long-pages). Nothing changes.
-- **Autolink.** With the rich text plugin, a URL typed before a space becomes a link when the space is typed, and a URL pasted at a caret is inserted as a link; each link is an undo step of its own, so undo gives the plain text back ([links](/docs/plugins/rich-text#links)).
-  - A test that types a URL followed by a space now finds a `link` mark on it.
-  - <kbd>Mod</kbd>+click on a link opens it in a new tab.
-  - `richTextOperations` adds `linkText(text, start, end, href)` and `unlinkText(text, start, end)`.
 - **Toolbar: Mod+K and the link card.** <kbd>Mod</kbd>+<kbd>K</kbd> opens the toolbar's link panel ([keyboard](/docs/plugins/toolbar#keyboard)); the link field takes the focus when the panel opens, and <kbd>Enter</kbd> or <kbd>Escape</kbd> in it gives the editor its focus back. An app binding <kbd>Mod</kbd>+<kbd>K</kbd> itself keeps it: consumer bindings come first.
   - Hovering a link shows a card with Open, Edit and Remove ([link card](/docs/plugins/toolbar#link-card)), mounted in the overlay as `data-edytor-link-card-host`; `createToolbarPlugin({ linkCard: false })` shows none.
   - `ToolbarController` adds `openLinkPanel()`, `closePanel(focus?)`, `takeFieldFocus()` and `hovered`.
@@ -155,9 +158,6 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
   - Lines are highlighted with their language's grammar, loaded the first time one renders: JSX ships with the plugin, the others are chunks of their own.
   - New exports: `createCodePlugin({ languages, defaultLanguage })`, `CODE_LANGUAGES`, `loadCodeLanguage`, and the types `CodeLanguage` and `CodePluginOptions`.
   - A theme rule for `[data-edytor-code-language]` now styles a `select` in editable views.
-- **Image: pasted and dropped files.** `createImagePlugin({ upload })` now claims a paste or a drop that carries image files: each becomes an image block at once (one undo step), shown uploading, and the URL `upload` answers fills its `src` outside the history (`dispatcher.outside`), so undoing the paste removes the image whole ([pasting and dropping files](/docs/plugins/image#pasting-and-dropping-files)).
-  - A paste whose HTML shows text is still imported as HTML.
-  - If your own `onPaste` hook uploaded pasted images, list it before the image plugin (yours is first by default) or drop it.
 - **Image: alt text, width and alignment.** The image block reads `data.alt` (its `alt`, `""` without one), `data.width` (CSS px) and `data.align` (`'left'`, `'center'` by default, `'right'`). Hovering an image, or selecting its block, shows resize handles and a toolbar (alignment, alt text) in the overlay ([resize, alignment and alt text](/docs/plugins/image#resize-alignment-and-alt-text)).
   - The wrapper `[data-edytor-image]` is now a flex row carrying `data-align`, and the copied HTML carries the `alt`, a `width` and the figure's `data-align`.
   - New exports: `MIN_IMAGE_WIDTH` and the types `ImageData` and `ImageAlign`.
@@ -914,16 +914,18 @@ Every public change since 0.0.11, by area.
   - `requestedReplica(request)` reads the dial's client id for `authorize`, and `closedSocket(code, reason)` turns a dial away from your own Worker with a close the provider understands (an HTTP error reaches the browser as `1006`, which it redials forever).
   - The room binds `{ user, replica, readOnly }` to each socket, strips the content of updates under another user's client ids, and applies `defaultSemantics` to server edits.
 
-**Close codes** the room and its router send, and what the provider does:
+**Close codes** the room and its router send (the `CLOSE` table; see [the room](/docs/server/room#admission) for each reason), and what the provider does:
 
 | Code | When | The provider |
 | --- | --- | --- |
 | `4400` | An empty document id, `.`, `..`, one over 256 characters or one with a lone surrogate (`authorize` is not called). | Stops. |
-| `4403` | `authorize` returns `null`. | Stops. |
-| `4401` | `authorize` returns `{ expired: true }` (`ExpiredCredential`). | Redials. |
+| `4401` | `authorize` returns `{ expired: true }` (`ExpiredCredential`), or the `expiresAt` it returned passed. | Redials, reading `params` again. |
+| `4403` | `authorize` returns `null` or an invalid identity (a `userId` empty, not a string, over 256 characters or with a lone surrogate, an invalid `replica`), the page's origin is not in `allowedOrigins`, or the room revoked the user's access (`closeUser`, `setAccess(user, 'none')`). | Stops. |
 | `4409` | A replica id another user holds. | Stops. |
-| `1008` | Undecodable bytes, or a stored document the room refuses (`refused: container`). | Stops. |
-| `1011` | A fault of the room itself. | Retries. |
+| `4413` | A room quota (`quota: document`, `quota: rate`, `quota: frame`): the write is not applied. | Stops. |
+| `1008` | `refused: <reason>`: a frame of another generation (`generation`), a replica the dial does not own (`replica`), a forged schema stamp (`schema`), undecodable bytes (`malformed`), a socket the room holds no user for (`identity`), or a stored document the room refuses (`container`). | Stops. |
+| `1011` | A fault of the room itself (`storage failure`, `internal error`, `room busy`, `room unavailable`). | Retries, backing off while it repeats. |
+| `1012` | `access changed`: the room granted write access to a read-only socket (`setAccess(user, 'write')`). | Redials at once. |
 
 - **Room compaction.** The room's compaction stores the live document (`encodeStateAsUpdate` without what waits), never a merge of the stored updates, and the room's document applies the text-delete `gcFilter` from its creation (`bindCrdt(Y).doc.keepCopies`, new), so it keeps a deleted restoration copy's text. `bindCrdt(Y).admission.admitUpdate` takes several updates (applied in one transaction, `{ v2: bytes }` for one in the v2 encoding) and `{ prepare }`.
 - **Storage format v2.** Snapshots (room compaction, the IndexedDB store's `storeState`) are v2 and gzip-compressed where `CompressionStream` exists; update rows stay v1. The generation record gains `storage` (`GenerationRecord.storage`, `STORAGE_FORMAT`, `STORED_GENERATION_RECORD`); a record without it is v1, and an unknown format is a `GenerationMismatchError`. An IndexedDB snapshot row is the object `{ v2 }`. The room's `records(kind?)` returns `StoredRecord`s, `{ kind, record, bytes, v2 }` (a compressed snapshot inflated) and `compressed()` is new (also over RPC).

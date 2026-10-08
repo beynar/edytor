@@ -26,7 +26,7 @@ import type { JSONDoc } from '$lib/utils/json.js';
 import { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { validRoomId } from '$lib/crdt/providers/room.js';
+import { CLOSE, validRoomId } from '$lib/crdt/providers/room.js';
 
 const root = join(import.meta.dirname, '../..');
 
@@ -1552,5 +1552,156 @@ describe('docs readability (WU-19)', () => {
 			.map((section) => section.split('\n')[0]);
 		// The closing note on versions is no race.
 		expect(tableless).toEqual(['## Mixed versions']);
+	});
+
+	/** The body of a page's section, from its heading to the next of its level or above. */
+	const section = (page: string, heading: string) => {
+		const text = read(page);
+		const at = text.indexOf(`\n${heading}\n`);
+		expect(at, `${page}: ${heading}`).toBeGreaterThan(-1);
+		const level = heading.split(' ')[0]!.length;
+		const rest = text.slice(at + heading.length + 2);
+		const end = rest.search(new RegExp(`\\n#{1,${level}} `));
+		return end === -1 ? rest : rest.slice(0, end);
+	};
+	/** The cells of a table row. */
+	const cells = (row: string) =>
+		row
+			.trim()
+			.replace(/^\||\|$/g, '')
+			.split(/(?<!\\)\|/)
+			.map((cell) => cell.trim());
+
+	it('the saved state keeps each rule where it applies, as the provider counts it', () => {
+		const page = 'collaboration/websocket.mdx';
+		const counts = section(page, '### What counts');
+		const deletes = section(page, '### Deletes');
+		// Any edit of a block whose last change a restore lost waits, typing
+		// included: it is no rule of deletes.
+		expect(counts).toMatch(/Any edit of such a block, typing included, stays unsaved/);
+		expect(deletes).not.toMatch(/last change/);
+		// The cap counts only deletes of content the room does not hold.
+		const rows = deletes.split('\n').filter((line) => /^\| (?!---|A delete of)/.test(line));
+		const capped = rows.filter((row) => row.includes('MAX_WAITING_DELETES'));
+		expect(capped).toHaveLength(1);
+		expect(cells(capped[0]!)[0]).toMatch(/^Content the room does not hold yet/);
+		// A delete in an update that wrote another actor's content is never
+		// tracked (`OwnWrites.track`), so it never holds `saved` false.
+		const foreign = rows.filter((row) => /another actor's content/.test(cells(row)[0]!));
+		expect(foreign).toHaveLength(1);
+		expect(cells(foreign[0]!)[1]).toMatch(/not counted at all, so it never holds `saved` false/);
+		// The factory paragraph belongs to Connect, not to the room ids.
+		const connect = section(page, '## Connect');
+		expect(connect.indexOf('The props build a `createWebsocketSync`')).toBeGreaterThan(-1);
+		expect(connect.indexOf('The props build a `createWebsocketSync`')).toBeLessThan(
+			connect.indexOf('### Room ids')
+		);
+	});
+
+	it("the changelog's close-code table names every code the provider reads", () => {
+		const table = read(CHANGELOG).split('**Close codes**')[1]!.split('\n\n')[1]!;
+		const rows = new Map(
+			table
+				.split('\n')
+				.slice(2)
+				.map((row) => cells(row))
+				.map(([code, ...rest]) => [code!.replace(/`/g, ''), rest.join(' | ')] as const)
+		);
+		for (const code of Object.values(CLOSE)) expect(rows.has(String(code)), `${code}`).toBe(true);
+		expect(rows.get('4403')).toMatch(/invalid identity/);
+		expect(rows.get('4403')).toMatch(/allowedOrigins/);
+		expect(rows.get('4403')).toMatch(/closeUser/);
+		for (const reason of ['generation', 'replica', 'schema', 'malformed', 'identity', 'container'])
+			expect(rows.get('1008'), reason).toContain(`(\`${reason}\`)`);
+	});
+
+	it('the closed-toggle selection table leaves no key unanswered', () => {
+		const table = section('customization/hotkeys.mdx', '### Selection')
+			.split('A text selection never reaches a closed toggle')[1]!
+			.split('\n\n')[1]!;
+		const rows = table.split('\n').slice(2);
+		expect(rows.length).toBeGreaterThan(1);
+		for (const row of rows)
+			expect(
+				cells(row).filter((cell) => !cell),
+				row
+			).toEqual([]);
+		expect(read('customization/hotkeys.mdx')).toMatch(
+			/ends at the end of a closed toggle's header, every key that removes it/
+		);
+	});
+
+	it('no callout holds a table, and a page says a thing once', () => {
+		const inCallout = site.flatMap((path) => {
+			let open = false;
+			return readFileSync(path, 'utf8')
+				.split('\n')
+				.flatMap((line, i) => {
+					if (/^:::\w/.test(line)) open = true;
+					else if (line.trim() === ':::') open = false;
+					else if (open && /^\s*\|/.test(line)) return [`${relative(root, path)}:${i + 1}`];
+					return [];
+				});
+		});
+		expect(inCallout).toEqual([]);
+		expect(read('server/extending.mdx').match(/your own RPC methods/g)).toHaveLength(1);
+	});
+
+	it('concurrent editing lists each race in one table', () => {
+		// A race is its people's gestures: rows naming the same quoted texts
+		// and calls in the Alice and Bob cells are the same race.
+		const page = read('collaboration/concurrent-editing.mdx');
+		const seen = new Map<string, string>();
+		const twice: string[] = [];
+		for (const block of page.split('\n\n')) {
+			const lines = block.split('\n').filter((line) => line.startsWith('|'));
+			if (lines.length < 3) continue;
+			const head = cells(lines[0]!);
+			const alice = head.indexOf('Alice');
+			const bob = head.indexOf('Bob');
+			if (alice < 0 || bob < 0) continue;
+			for (const row of lines.slice(2)) {
+				const parts = cells(row);
+				if (/^\d+$/.test(parts[0]!)) continue; // a numbered story, not a race
+				const quoted = [
+					...new Set(
+						[...`${parts[alice]} ${parts[bob]}`.matchAll(/"([^"]+)"|`([^`]+)`/g)].map(
+							([, text, code]) => text ?? `\`${code}\``
+						)
+					)
+				]
+					.sort()
+					.join('|');
+				if (!quoted) continue;
+				if (seen.has(quoted)) twice.push(`${seen.get(quoted)} / ${parts[0]}`);
+				else seen.set(quoted, parts[0]!);
+			}
+		}
+		expect(twice).toEqual([]);
+	});
+
+	it('the changelog files what asks apps to act under breaking changes', () => {
+		const notes = /\n## Upgrading between pre-releases\n([\s\S]*?)(?=\n## )/.exec(
+			read(CHANGELOG)
+		)![1]!;
+		const asks = /\bIf your own\b|\bA test that\b|\bTests that\b|\bdrop it\b/;
+		const filed = notes.split(/\n(?=### )/).flatMap((release) =>
+			release
+				.split(/\n(?=#### )/)
+				.filter((part) => part.startsWith('#### New'))
+				.flatMap((part) =>
+					part
+						.split('\n')
+						.filter((line) => asks.test(line))
+						.map((line) => `${release.split('\n')[0]}: ${line.slice(0, 80)}`)
+				)
+		);
+		expect(filed).toEqual([]);
+	});
+
+	it('the README names the changelog and the v13 import guide', () => {
+		const readme = readFileSync(join(root, 'README.md'), 'utf8');
+		expect(readme).toContain('https://edytor.dev/docs/reference/v13-import');
+		expect(readme).toMatch(/\[changelog\]\(https:\/\/edytor\.dev\/docs\/reference\/migration\)/);
 	});
 });

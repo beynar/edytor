@@ -25,6 +25,8 @@ icon: radio-tower
 
 The view dials `<server>/<room>?replica=<clientID>&<params>`, here `wss://rooms.example.com/rooms/doc-42?replica=…&token=…`. `params` is read at every dial, so a refreshed token reaches the next reconnect. `replica` is the document's client id, added at every dial so the room can bind it to the user at connection time; see [Authorization](/docs/server/authorization#replicas). A `replica` in `params` overrides it.
 
+The props build a `createWebsocketSync` for you. Use the factory directly for the options below, or to share one document between several views: `createDocument({ actor })`, then `document.attachSync(createWebsocketSync(…))`, then `<Edytor {document} />` in each view.
+
 ### Room ids
 
 A room id is any string of 1 to 256 characters except `.`, `..` and one with a lone surrogate (half of an emoji, as `title.slice(0, 40)` can leave). It is percent-encoded (`encodeURIComponent`) into one path segment, so `/`, `%`, `#` and `?` in it reach their own room, and the server decodes it (see the [quick start](/docs/server/quick-start)).
@@ -32,8 +34,6 @@ A room id is any string of 1 to 256 characters except `.`, `..` and one with a l
 :::note
 A URL collapses a `.` or `..` segment (escaped as `%2E` too), and `encodeURIComponent` cannot encode a lone surrogate. So the provider and `createWebsocketSync` throw a `TypeError` for those ids, and for an empty one or one over 256 characters, instead of dialing a path no room answers. `<Edytor server room>` never throws for such an id, in the browser or in the server render: the view, editable or readonly, reports it through `onSyncRefused` as the `4400` refusal the server would send.
 :::
-
-The props build a `createWebsocketSync` for you. Use the factory directly for the options below, or to share one document between several views: `createDocument({ actor })`, then `document.attachSync(createWebsocketSync(…))`, then `<Edytor {document} />` in each view.
 
 ## Options
 
@@ -217,6 +217,7 @@ Use it for a "Saving… / Saved" indicator or to warn before closing a tab (a `b
 
 - **Your actor's updates.** The document binds each client id to its actor, so the provider knows which ids are the user's own. Give the document an `actor`: an anonymous one gets a new id per session, so its edits from before a reload no longer count. A seed this replica wrote counts too. The binding records themselves are bookkeeping and never count. A provider on a bare engine doc, with no actor binding, counts everything the doc holds.
 - **Not other actors' content.** Content written by other actors never counts, even when it only reached the room through this client: after a restore from an older snapshot, the room strips another user's edits it no longer holds, and they stay stripped until their author returns.
+- **Edits of a block whose last change a restore lost.** Any edit of such a block, typing included, stays unsaved until that change's author returns: every edit rewrites the block's last-changed-by attribute, and that rewrite builds on the lost change (see [restoring from an older snapshot](/docs/server/authorization#restoring-from-an-older-snapshot)).
 
 ### Read-only sockets
 
@@ -230,13 +231,12 @@ A read-only socket counts nothing: the room sends it a read-only notice when it 
 
 A delete counts as saved only once the room names it in an acknowledgement.
 
-| A delete of… | Counts as saved |
+| A delete of… | When it counts as saved |
 | --- | --- |
 | Content the room does not hold yet (another user's edit a restore stripped) | At once: the room stores the delete, which waits in the room and applies when the author's edit returns, so the text does not come back. |
-| Anything, while the room already holds its limit of waiting deletes (`MAX_WAITING_DELETES`, 1,024 ranges) | Not yet: the room drops it, so it stays unsaved (and the text comes back when its author returns) until a later connection resends it and the room stores it. |
-| A block whose last change the restore lost | Once that change's author returns: every edit rewrites the block's last-changed-by attribute, and that rewrite builds on the lost change (see [restoring from an older snapshot](/docs/server/authorization#restoring-from-an-older-snapshot)). |
+| Content the room does not hold yet, while the room already holds its limit of such waiting deletes (`MAX_WAITING_DELETES`, 1,024 ranges) | Not yet: the room drops it, so it stays unsaved (and the text comes back when its author returns) until a later connection resends it and the room stores it. A delete of content the room holds is applied and acknowledged as usual. |
 | Nothing new (undoing a block deletion, for example) | Once the room confirms that exact delete. |
-| Content restored from the local copy | Only if its update wrote no other actor's content, since a delete does not record who made it. |
+| Content restored from the local copy, in an update that also wrote another actor's content | It is not counted at all, so it never holds `saved` false: a delete does not record who made it. |
 
 ## Refusals
 

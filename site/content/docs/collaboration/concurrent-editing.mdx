@@ -86,14 +86,14 @@ Undoing the creation of a block (inserting it, pasting it, pressing Enter at the
 This holds even when Bob's text arrives after Alice's undo. If Bob later deletes his text, the empty line goes away; Alice's redo brings her part back beside Bob's.
 
 :::note
-**Undoing a split is the exception.** When a line is split in two, the second half is text that moved, not text that was typed, so undoing the split joins the halves again, whoever typed in the second half:
+**Undoing a split is the exception.** When a line is split in two, the second half is text that moved, not text that was typed, so undoing the split joins the halves again, whoever typed in the second half.
+:::
 
 | | Alice | Bob |
 | --- | --- | --- |
 | 1 | Splits "hello world" after "hello". | |
 | 2 | | Types "!" at the end of " world". |
 | 3 | Undoes. One line: "hello world!". | |
-:::
 
 ## An emptied document shows a virtual paragraph
 
@@ -143,7 +143,7 @@ A block keeps its id and its CRDT identity when it is moved, nested, split or me
 
 The rows above that say "whatever the client ids", and the list races below, hold when each person makes one of these gestures between two syncs: <kbd>Enter</kbd> inside a line, a paste of several lines of text into a line, <kbd>Backspace</kbd> at the start of a list's first item or of a block with nested lines, Turn into on one list item, or <kbd>Shift+Tab</kbd> on one line or on adjacent lines. Tests run each race on up to 240 pairs of client ids and check the order on every one.
 
-Text typed or deleted before the caret's position does not count as another gesture. Text typed or deleted after it, before the sync, can reverse the pieces:
+Text typed or deleted before the caret's position does not count as another gesture. But the pieces of two splits of one block are ordered by the text after each split point, so text Alice typed or deleted after her own split point, before the sync, can reverse them:
 
 | | Alice | Bob | Both see |
 | --- | --- | --- | --- |
@@ -175,10 +175,8 @@ A split or a join racing a move of the same block keeps every piece of text, but
 | | Alice | Bob | Both see |
 | --- | --- | --- | --- |
 | Split, then a move | Presses <kbd>Enter</kbd> in a block, or pastes several lines into it. | Outdents or lifts that block, splits its list at a later item, presses <kbd>Enter</kbd> in its parent (which moves it under the new line), or outdents an earlier nested line of its parent (<kbd>Shift+Tab</kbd>, which takes it along as a nested line). | Alice's new line stays where she made it, beside the block's old place: it shows before or after the block's text instead of right after it. |
-| Split and join | Presses <kbd>Enter</kbd> after "he" in "hello". | Joins "world" into "hello" (<kbd>Backspace</kbd> at its start). | "he", then "lloworld": the joined line follows the split's last piece, as either order of the two gestures puts it. |
-| Two splits, one after a typed edit | Types " again" at the end of "hello world" and presses <kbd>Enter</kbd> after "hello wo", before the sync. | Presses <kbd>Enter</kbd> after "hello". | "hello", "rld again", " wo": the pieces of two splits of one block are ordered by the text after each split point, so text Alice typed or deleted after her own split point can reverse them. |
 
-Earlier releases put a joined line after the first piece of a split, and a client of one still shows it so until it upgrades: see [the upgrade notes](/docs/reference/migration#from-010-next25).
+A split and a join of the same line are the Merge and split row of [Moves, splits and merges keep identity](#moves-splits-and-merges-keep-identity), and two splits of one block after a typed edit are under [Which races keep the text order](#which-races-keep-the-text-order). Earlier releases put a joined line after the first piece of a split, and a client of one still shows it so until it upgrades: see [the upgrade notes](/docs/reference/migration#from-010-next25).
 
 ## Conflicting type changes
 

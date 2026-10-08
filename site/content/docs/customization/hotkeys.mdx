@@ -59,9 +59,10 @@ A text selection never reaches a closed toggle's hidden body. What a key does wi
 | --- | --- | --- | --- |
 | From inside a closed toggle's header to a block after it | Join what is left to the header and keep the body as its children. | The same; a paste of several lines, like <kbd>Enter</kbd>, leaves the body under the header and puts the rest in new blocks after it. | Leave the body out. |
 | From the header's start | Delete the toggle with its body, as they do a toggle the selection covers whole. | Keep the header and its body. | Include the body. |
-| Ending at the end of a closed toggle's header | The toggle goes and its body takes its place, shown, where the caret can land. | | |
 
 When nothing else would be left, the toggle stays, empty and without its body.
+
+When the selection ends at the end of a closed toggle's header, every key that removes it (<kbd>Backspace</kbd>, <kbd>Delete</kbd>, cut, typing, <kbd>Enter</kbd>, paste) removes the toggle with it, and its body takes its place, shown, where the caret can land.
 
 ### Navigation
 

@@ -2148,7 +2148,7 @@ time left (none: no alarm). A start that finds a due time already past
 leaves it to the alarm, but a slot past its end is written at once
 (`room.history.slots`). An alarm armed by 0.1.0-next.23 (no due rows)
 counts as a due save at its time. The scheduler is the only writer of the
-alarm (`schedule`, `alarm` in `cloudflare/DocumentRoom.ts`).
+alarm (`schedule`, `alarm` in `cloudflare/room/scheduler.ts`).
 
 ### `room.history.slots` — two snapshots a day, only when changed (H11)
 

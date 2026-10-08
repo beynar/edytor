@@ -30,9 +30,9 @@ import {
 	HISTORY_KEY_HEADER,
 	IDENTITY_HEADERS,
 	PROBE_HEADER,
-	closedSocket,
-	parseReplica
+	closedSocket
 } from './DocumentRoom.js';
+import { parseReplica } from './room/access.js';
 
 /** A namespace whose objects host a document (`DocumentRoom`, or any object with `attachRoom`). */
 export type DocumentNamespace = {

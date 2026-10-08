@@ -31,6 +31,7 @@ import {
 	shape,
 	storedUpdate
 } from './client';
+import { failReads, internals } from './internals';
 
 const hooked = (room: string) => env.HOOKED.getByName(room);
 const inHooked = <T>(room: string, fn: (r: HookedRoom, state: DurableObjectState) => T) =>
@@ -46,16 +47,6 @@ const storedText = (r: Room, id: string) => {
 	const stored = crdt.createDoc();
 	Y.applyUpdate(stored, storedUpdate(r.records()));
 	return readFacade(stored, (f) => f.blockText(id));
-};
-
-/** The room's next `failures` reads of its rows throw (a transient I/O error). */
-const failReads = (r: Room, failures: number) => {
-	const room = r.room as unknown as { records: () => unknown };
-	const records = room.records.bind(room);
-	room.records = () => {
-		if (failures-- > 0) throw new Error('injected read failure');
-		return records();
-	};
 };
 
 const FAIL_APPEND =
@@ -94,7 +85,7 @@ describe('RW-08 · a read fault while the room starts stays retryable (1011)', (
 		await inRoom(room, (r, state) => {
 			state.storage.sql.exec(FAIL_APPEND);
 			// The rebuild's read fails, and so does the retry at the next dial.
-			failReads(r, 2);
+			failReads(r.room, 2);
 		});
 		document.transact(() => document.facade.insertText('p', 5, '!'));
 		await vi.waitFor(() =>
@@ -126,8 +117,8 @@ describe('RW-08 · a read fault while the room starts stays retryable (1011)', (
 		// The start the constructor runs, with its read of the rows failing
 		// (and the retry of the first dial after it).
 		const failure = await inRoom(room, async (r) => {
-			failReads(r, 2);
-			await (r.room as unknown as { start: () => Promise<void> }).start();
+			failReads(r.room, 2);
+			await internals(r.room).storage.start();
 			return [r.failure?.message, r.doc];
 		});
 		expect(failure).toEqual(['injected read failure', null]);

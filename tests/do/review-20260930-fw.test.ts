@@ -37,6 +37,7 @@ import {
 	shape,
 	storedUpdate
 } from './client';
+import { failReads, internals } from './internals';
 
 const hooked = (room: string) => env.HOOKED.getByName(room);
 const inHooked = <T>(room: string, fn: (r: HookedRoom, state: DurableObjectState) => T) =>
@@ -52,16 +53,6 @@ const stored = <T>(r: Room, read: (facade: Facade) => T) => {
 	const doc = crdt.createDoc();
 	Y.applyUpdate(doc, storedUpdate(r.records()));
 	return readFacade(doc, read);
-};
-
-/** The room's next `failures` reads of its rows throw (a transient I/O error). */
-const failReads = (r: Room, failures: number) => {
-	const room = r.room as unknown as { records: () => unknown };
-	const records = room.records.bind(room);
-	room.records = () => {
-		if (failures-- > 0) throw new Error('injected read failure');
-		return records();
-	};
 };
 
 /** The first block's text in each `onSave` mirror, oldest first. */
@@ -198,8 +189,8 @@ describe('FW-11 · an alarm during a retryable failure keeps the save due', () =
 
 		// The room restarts and cannot read its rows; the alarm's own retry fails too.
 		await inHooked(room, async (r) => {
-			failReads(r, 2);
-			await (r.room as unknown as { start: () => Promise<void> }).start();
+			failReads(r.room, 2);
+			await internals(r.room).storage.start();
 			expect(r.doc).toBeNull();
 		});
 		await runDurableObjectAlarm(hooked(room));
@@ -225,8 +216,8 @@ describe('FW-11 · an alarm during a retryable failure keeps the save due', () =
 		tab.close();
 
 		await inHooked(room, async (r) => {
-			failReads(r, 1);
-			await (r.room as unknown as { start: () => Promise<void> }).start();
+			failReads(r.room, 1);
+			await internals(r.room).storage.start();
 			expect(r.doc).toBeNull();
 		});
 		expect(await runDurableObjectAlarm(hooked(room))).toBe(true);

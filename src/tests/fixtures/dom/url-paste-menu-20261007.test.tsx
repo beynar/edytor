@@ -199,7 +199,8 @@ describe('pasting a URL on an empty line offers Link / Embed / Bookmark (Notion)
 });
 
 describe('elsewhere the paste is unchanged', () => {
-	it('a line holding text: the URL is pasted as before, no menu', async () => {
+	// A URL pasted at a caret is linked by the rich text plugin's autolink (`link.*`).
+	it('a line holding text: the URL is pasted and linked as before, no menu', async () => {
 		const view = await render(
 			[embedPlugin, bookmarkPlugin],
 			[{ id: 'p', type: 'paragraph', content: [{ text: 'see ' }] }]
@@ -207,7 +208,10 @@ describe('elsewhere the paste is unchanged', () => {
 		await pasteAt(view, 'p', 4, { 'text/plain': YOUTUBE });
 		expect(menu()).toBeNull();
 		expect(canonicalTree(view.edytor)).toEqual([
-			{ type: 'paragraph', content: [{ text: `see ${YOUTUBE}` }] }
+			{
+				type: 'paragraph',
+				content: [{ text: 'see ' }, { text: YOUTUBE, marks: { link: { href: YOUTUBE } } }]
+			}
 		]);
 	});
 
@@ -216,7 +220,10 @@ describe('elsewhere the paste is unchanged', () => {
 			const view = await render([embedPlugin, bookmarkPlugin], [empty()]);
 			await pasteAt(view, 'p', 0, { 'text/plain': text });
 			expect(menu()).toBeNull();
-			expect(canonicalTree(view.edytor)[0]!.content).toEqual([{ text }]);
+			// A mailto is linked (autolink); the others stay plain.
+			expect(canonicalTree(view.edytor)[0]!.content).toEqual([
+				text.startsWith('mailto:') ? { text, marks: { link: { href: text } } } : { text }
+			]);
 			document.body.innerHTML = '';
 		}
 	});
@@ -234,12 +241,12 @@ describe('elsewhere the paste is unchanged', () => {
 		]);
 	});
 
-	it('a view with neither plugin keeps the plain paste', async () => {
+	it('a view with neither plugin keeps the paste (the URL linked), no menu', async () => {
 		const view = await render([], [empty()]);
 		await pasteAt(view, 'p', 0, { 'text/plain': YOUTUBE });
 		expect(menu()).toBeNull();
 		expect(canonicalTree(view.edytor)).toEqual([
-			{ type: 'paragraph', content: [{ text: YOUTUBE }] }
+			{ type: 'paragraph', content: [{ text: YOUTUBE, marks: { link: { href: YOUTUBE } } }] }
 		]);
 	});
 });

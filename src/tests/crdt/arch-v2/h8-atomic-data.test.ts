@@ -17,11 +17,11 @@ const ok = (r) => {
 	if (r && r.status !== undefined && r.status !== 'applied')
 		throw new Error(`refused: ${JSON.stringify(r)}`);
 };
-const semantics = semanticsOf({ embed: { atomic: ['link', ['media', 'source']] } });
+const semantics = semanticsOf({ widget: { atomic: ['link', ['media', 'source']] } });
 const A = { url: 'a', title: 'A' };
 const B = { url: 'b', kind: 'video' };
 const seeds = [
-	{ id: 'e', type: 'embed', text: '', data: { link: { url: 'x', title: 'X' }, size: 1 } },
+	{ id: 'e', type: 'widget', text: '', data: { link: { url: 'x', title: 'X' }, size: 1 } },
 	{ id: 'p', type: 'paragraph', text: '', data: { link: { url: 'x', title: 'X' } } }
 ];
 
@@ -92,24 +92,24 @@ describe('H8: an atomic data path is written as one leaf', () => {
 
 	it('the document adopts the paths as part of the role; a conflicting declaration throws', () => {
 		const document = createDocument({ semantics });
-		expect(document.semantics.roles.get('embed')).toMatchObject({
+		expect(document.semantics.roles.get('widget')).toMatchObject({
 			atomic: [['link'], ['media', 'source']]
 		});
 		// The same set in another order and spelling is the same declaration.
-		document.adoptSemantics({ roles: { embed: { atomic: [['media', 'source'], 'link'] } } });
-		expect(() => document.adoptSemantics({ roles: { embed: { atomic: ['link'] } } })).toThrow();
+		document.adoptSemantics({ roles: { widget: { atomic: [['media', 'source'], 'link'] } } });
+		expect(() => document.adoptSemantics({ roles: { widget: { atomic: ['link'] } } })).toThrow();
 		document.destroy();
 	});
 
 	it('a view adopts a kind record’s atomic paths, and its data writes follow them', () => {
 		const embedPlugin = () => ({
-			blocks: { embed: { snippet: (() => null) as never, atomic: ['link'] } }
+			blocks: { widget: { snippet: (() => null) as never, atomic: ['link'] } }
 		});
 		const document = createDocument({
-			value: { children: [{ id: 'e', type: 'embed', data: { link: { url: 'x', title: 'X' } } }] }
+			value: { children: [{ id: 'e', type: 'widget', data: { link: { url: 'x', title: 'X' } } }] }
 		});
 		const edytor = new Edytor({ document, plugins: [embedPlugin, richTextPlugin] });
-		expect(document.semantics.roles.get('embed')).toMatchObject({ atomic: [['link']] });
+		expect(document.semantics.roles.get('widget')).toMatchObject({ atomic: [['link']] });
 		edytor.idToBlock.get('e')!.data.link = { url: 'y' };
 		expect(document.facade.resolveBlock('e').getAttr('d/link')).toEqual({ url: 'y' });
 		expect(document.facade.blockDataOf('e')).toEqual({ link: { url: 'y' } });

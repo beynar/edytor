@@ -111,7 +111,7 @@ describe('the room logs a client whose roles differ (semantics digest)', () => {
 		await vi.waitFor(() => expect(ada.synced && bob.synced).toBe(true), SLOW);
 		const agreeing = E.semanticsDigest(E.defaultSemantics);
 		const embed = E.semanticsDigest(
-			E.mergeSemantics(E.defaultSemantics, E.semanticsOf({ embed: { void: true } }))
+			E.mergeSemantics(E.defaultSemantics, E.semanticsOf({ widget: { void: true } }))
 		);
 		bob.setPresence(202, 1, { semantics: agreeing });
 		ada.setPresence(101, 1, { semantics: embed });
@@ -119,7 +119,7 @@ describe('the room logs a client whose roles differ (semantics digest)', () => {
 		await vi.waitFor(() => expect(ada.presence.get(101)?.clock).toBe(2), SLOW);
 		await vi.waitFor(() => expect(bob.presence.get(101)?.clock).toBe(2), SLOW);
 		expect(await semanticsLog(room)).toEqual([
-			{ edytor: 'semantics', user: 'ada', kinds: ['embed'] }
+			{ edytor: 'semantics', user: 'ada', kinds: ['widget'] }
 		]);
 		expect(ada.closed).toBeNull();
 		for (const client of [ada, bob]) client.close();

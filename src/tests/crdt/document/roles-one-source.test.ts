@@ -80,7 +80,7 @@ describe('semanticsOf reads plugin kind records', () => {
 	it('keeps the structural fields of each record and nothing else', () => {
 		const snippet = () => {};
 		const blocks = {
-			embed: {
+			widget: {
 				void: true,
 				rendersContent: false,
 				atomic: ['link'],
@@ -92,8 +92,8 @@ describe('semanticsOf reads plugin kind records', () => {
 			callout: { island: true, defaultChild: 'paragraph', container: true, continues: false }
 		};
 		expect(semanticsOf(blocks)).toEqual({
-			roles: { embed: { void: true, atomic: ['link'] }, note: {}, callout: { island: true } },
-			rendersContent: { embed: false },
+			roles: { widget: { void: true, atomic: ['link'] }, note: {}, callout: { island: true } },
+			rendersContent: { widget: false },
 			defaultChild: { callout: 'paragraph' }
 		});
 	});
@@ -116,7 +116,7 @@ describe('semanticsOf reads plugin kind records', () => {
 });
 
 describe('mergeSemantics', () => {
-	const embed = semanticsOf({ embed: { void: true, rendersContent: false, atomic: ['link'] } });
+	const embed = semanticsOf({ widget: { void: true, rendersContent: false, atomic: ['link'] } });
 
 	it('merges field by field and keeps the bundled rows', () => {
 		const merged = mergeSemantics(defaultSemantics, embed, {
@@ -124,16 +124,16 @@ describe('mergeSemantics', () => {
 		});
 		expect(merged.roles).toEqual({
 			...defaultSemantics.roles,
-			embed: { void: true, atomic: ['link'] }
+			widget: { void: true, atomic: ['link'] }
 		});
-		expect(merged.rendersContent).toEqual({ ...defaultSemantics.rendersContent, embed: false });
+		expect(merged.rendersContent).toEqual({ ...defaultSemantics.rendersContent, widget: false });
 		expect(merged.defaultChild).toEqual(defaultSemantics.defaultChild);
 		expect(merged.marks).toEqual({ ...richTextMarks, comment: { edge: 'exclusive' } });
 		expect(merged.defaultType).toBeUndefined();
-		expect(Object.isFrozen(merged.roles.embed)).toBe(true);
+		expect(Object.isFrozen(merged.roles.widget)).toBe(true);
 		// The room and a headless document read it as they read the bundled one.
 		const document = createDocument({ semantics: merged });
-		expect(document.rendersContent('embed')).toBe(false);
+		expect(document.rendersContent('widget')).toBe(false);
 		expect(document.rendersContent('divider')).toBe(false);
 		document.destroy();
 	});
@@ -181,12 +181,12 @@ describe('the semantics digest (dev-time check)', () => {
 	it('names the kinds a client declares otherwise than the room', () => {
 		const room = semanticsDigest(defaultSemantics);
 		const client = semanticsDigest(
-			mergeSemantics(semanticsOf({ ...richTextKinds, paragraph: {}, embed: { void: true } }), {
+			mergeSemantics(semanticsOf({ ...richTextKinds, paragraph: {}, widget: { void: true } }), {
 				marks: richTextMarks,
 				defaultType: 'paragraph'
 			})
 		);
-		expect(semanticsMismatch(room, client)).toEqual(['embed']);
+		expect(semanticsMismatch(room, client)).toEqual(['widget']);
 		// A kind the client does not know is not its mismatch (a view without the plugin).
 		expect(semanticsMismatch(room, semanticsDigest(semanticsOf(richTextKinds)))).toEqual([]);
 		expect(
@@ -209,13 +209,13 @@ describe('the semantics digest (dev-time check)', () => {
 		expect(advertised).toHaveProperty('codeLine');
 		expect(semanticsMismatch(semanticsDigest(defaultSemantics), advertised)).toEqual([]);
 
-		document.adoptSemantics(semanticsOf({ embed: { void: true } }));
+		document.adoptSemantics(semanticsOf({ widget: { void: true } }));
 		expect(
 			semanticsMismatch(
 				semanticsDigest(defaultSemantics),
 				document.awareness.getLocalState()?.semantics
 			)
-		).toEqual(['embed']);
+		).toEqual(['widget']);
 		view.destroy();
 		document.destroy();
 	});

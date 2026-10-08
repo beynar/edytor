@@ -79,6 +79,28 @@ so.
 
 Estimate: about two weeks of focused work, the replay and its convergence tests most of it.
 
+## Measured: compacting stale blocks instead (2026-10-08)
+
+Could the room trim a document by rewriting blocks nobody edits any more, with no re-seed?
+`bench/soak/compact.mjs` builds the soak's document (8 writers, about 3,750 edits, 130 blocks)
+and compacts the least recently changed blocks, then purges at a horizon of now:
+
+| What                                                                  | Stored (v2) | Gzipped |                         Change |
+| --------------------------------------------------------------------- | ----------: | ------: | -----------------------------: |
+| As is                                                                 |     194 KiB |  47 KiB |                                |
+| Purge only                                                            |     181 KiB |  44 KiB |                            −7% |
+| Every block's text deleted and inserted again, then purge             |     189 KiB |  46 KiB |                     −0% to −6% |
+| Every block's content replaced (`setBlock`), then purge               |     196 KiB |  47 KiB |                     +1% to −5% |
+| Every leaf block deleted and inserted fresh (upper bound; ids change) |     142 KiB |  30 KiB | −27% (25–75% stale: 0 to +10%) |
+| Fresh seed of the same JSON (a re-seed)                               |      44 KiB |  11 KiB |                           −78% |
+
+Rewriting inside a block gives nothing back: a text stream keeps every item it ever held (a
+deleted item stays as a small tombstone so concurrent edits still find their place) and every
+format boundary, so a rewrite only adds to them. Even replacing whole blocks, which a real
+feature could not do without changing their ids, recovers about a quarter: the block registry,
+the attribution records and the placement entries of every block ever created stay. Only a
+re-seed reaches the floor.
+
 ## Alternatives
 
 - **Drop unsaved offline edits** with a warning instead of replaying: about half the work, but it

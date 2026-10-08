@@ -625,15 +625,15 @@ export type DocChange = {
     origin: unknown;
     local: boolean;
     version: number;
-    added: Map<BlockId, ProjectedBlock>;
-    removed: Set<BlockId>;
-    moved: Set<BlockId>;
-    meta: Map<BlockId, {
+    added: ReadonlyMap<BlockId, ProjectedBlock>;
+    removed: ReadonlySet<BlockId>;
+    moved: ReadonlySet<BlockId>;
+    meta: ReadonlyMap<BlockId, {
         type: string;
         data?: Record<string, unknown>;
     }>;
-    content: Map<BlockId, readonly ContentRun[]>;
-    order: Map<BlockId | null, readonly BlockId[]>;
+    content: ReadonlyMap<BlockId, readonly ContentRun[]>;
+    order: ReadonlyMap<BlockId | null, readonly BlockId[]>;
     data?: Record<string, unknown>;
 };
 ```
@@ -4217,7 +4217,6 @@ declare const bindProviders: (Y: EngineApi) => {
                 updated: number[];
                 removed: number[];
             }, origin: unknown) => void;
-            readonly _destroyWithDoc: () => void;
             get synced(): boolean;
             messageHandlers: Record<number, import("./room.js").RoomMessageHandler<any>>;
             readMessage: (buf: Uint8Array, emitSynced: boolean) => import("lib0-v14/encoding").Encoder;

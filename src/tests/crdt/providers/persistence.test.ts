@@ -225,6 +225,28 @@ describe('SY03: lifecycle', () => {
 		expect((await readRows(name)).length).toBe(rowsBefore);
 	});
 
+	test("the doc's destroy ends the provider; a destroyed provider leaves no doc listener", async () => {
+		const destroyListeners = (doc) => doc._observers.get('destroy')?.size ?? 0;
+		const doc = new Y.Doc();
+		const p = new providers.IndexeddbPersistence(uniqueName('doc-destroy'), doc);
+		await p.whenSynced;
+		doc.destroy();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(p._destroyed).toBe(true);
+
+		const kept = new Y.Doc();
+		// The presence instance keeps its own doc listener: inject it, count the provider's alone.
+		const awareness = new Awareness(kept);
+		const before = destroyListeners(kept);
+		const q = new providers.IndexeddbPersistence(uniqueName('doc-destroy-off'), kept, {
+			awareness
+		});
+		await q.whenSynced;
+		expect(destroyListeners(kept)).toBeGreaterThan(before);
+		await q.destroy();
+		expect(destroyListeners(kept)).toBe(before);
+	});
+
 	test('owned awareness is destroyed with the provider; injected awareness is not', async () => {
 		const name = uniqueName('aw-own');
 		const docOwned = new Y.Doc();

@@ -16,6 +16,7 @@ import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { bindCrdt } from '../../../lib/crdt/index.js';
 import { attachDocument, createDocument } from '../../../lib/crdt/index.js';
 import { keepRegistryLosers } from '../../../lib/crdt/incarnations.js';
+import { REGISTRY_KEY } from '../../../lib/crdt/schema.js';
 
 const E = bindEdytorDoc(Y);
 const crdt = bindCrdt(Y);
@@ -47,12 +48,18 @@ describe('keepReplaced is per document', () => {
 		expect(doc.keepReplaced).toBe(own);
 	});
 
-	it('a plain document of the same engine deletes a replaced value’s subtree (upstream)', () => {
+	/**
+	 * Two writers create one block id at once, under the block registry
+	 * (the race of two peers creating an empty document's virtual paragraph).
+	 * Returns the losing writer's text that stays live on each side.
+	 */
+	const race = (rule?: typeof keepRegistryLosers) => {
 		const write = (clientID: number, text: string) => {
 			const doc = new Y.Doc();
+			if (rule) doc.keepReplaced = rule;
 			doc.clientID = clientID;
 			const node = new Y.Node('n');
-			doc.get('m').setAttr('k', node);
+			doc.get(REGISTRY_KEY).setAttr('k', node);
 			node.insert(0, text);
 			return doc;
 		};
@@ -60,13 +67,23 @@ describe('keepReplaced is per document', () => {
 		const b = write(LIVE + 2, 'b');
 		Y.applyUpdate(a, Y.encodeStateAsUpdate(b));
 		Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
-		// The loser (the smaller client's node) is deleted with its text on both.
-		for (const doc of [a, b]) {
-			let kept = 0;
+		return [a, b].map((doc) => {
+			let text = '';
 			doc.store.clients.get(LIVE + 1).forEach((s) => {
-				if (!s.deleted) kept++;
+				if (!s.deleted && typeof s.content?.str === 'string') text += s.content.str;
 			});
-			expect(kept).toBe(0);
-		}
+			return text;
+		});
+	};
+
+	it('a plain document of the same engine deletes a replaced registry value’s subtree (upstream)', () => {
+		// The loser (the smaller client's node) is deleted with its text on both:
+		// binding the engine gave plain documents no rule, not even under the registry key.
+		expect(race()).toEqual(['', '']);
+	});
+
+	it('the same race on documents carrying the rule keeps the loser’s subtree', () => {
+		// The losing node keeps its text, on both replicas.
+		expect(race(keepRegistryLosers)).toEqual(['a', 'a']);
 	});
 });

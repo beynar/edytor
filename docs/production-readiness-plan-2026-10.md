@@ -850,6 +850,24 @@ conflict matrix.
     `keepReplaced` per document instead of `Y.Doc.keepReplaced ??=`; add a scheduled job that
     diffs and tests against new `@y/y` tags.
 - Effort: 3.5 d.
+- Status (2026-10-08): done in the tree, with two recorded deviations.
+- Outcome (deviations, recorded for review):
+  - The typed accessors live in `src/lib/crdt/structs.ts`, typed against the vendored dts,
+    not in the vendored fork itself. `pnpm census` counts 46 casts left (from 148): 34 inside
+    `structs.ts`, 1 for the UndoManager options (`doc/history.ts`), 11 outside the engine
+    (DOM, JSON, the Durable Object host, a socket polyfill). The casts are centralized in one
+    module, not removed. Removing them means adding the accessor types to `vendor/yjs/dts`
+    through `UPSTREAM.md`; that is a follow-up.
+  - `noUnusedLocals` stays off in `tsconfig`: `@typescript-eslint/no-unused-vars` enforces the
+    same rule across `src/lib` (the type-only imports `edytor-doc.ts` needs for its emitted
+    declarations would trip the compiler flag).
+  - `keepReplaced` is per document (`keepingReplaced`). A raw `new Y.Doc()` that integrates
+    edytor content before it is bound no longer gets the rule; the docs and the migration
+    note send servers and scripts to `bindCrdt(Y).createDoc()`.
+  - The weekly upstream job verifies each tarball's integrity, picks the newest 14.x by
+    semver, and reports a `lib0` range the installed `lib0-v14` does not satisfy. Its first
+    local run found `@y/y` 14.0.0-rc.28, which asks `lib0@^1.0.0-rc.35` (installed: rc.32).
+    Interop and the differential still pass against it. The re-sync stays manual.
 
 **WU-46: reactivity model (API-12)**
 
@@ -858,6 +876,12 @@ conflict matrix.
   longer exports the whole document on every commit.
 - Effort: 2.5 d. It touches `block/block.svelte.ts` and `edytor.svelte.ts`; sequence it after
   Lane A.
+- Status (2026-10-08): done. The handle getters depend on the cells when a reactive reader
+  reads them (`$effect.tracking()`), and plain reads stay document reads. `onDocChange` (an
+  `EdytorOptions` field, an `<Edytor>` prop and a plugin hook) receives each commit's
+  `DocChange` and exports nothing. Each `onDocChange`/`onChange` consumer is isolated (a throw
+  is logged). The report is shared by every subscriber of the document, so its collections
+  are typed `ReadonlyMap`/`ReadonlySet`.
 
 #### Wave 5: 1.0 release candidate
 

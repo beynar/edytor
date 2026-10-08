@@ -145,7 +145,7 @@ Use these in templates, `$derived` and `$effect`:
 
 - **`edytor.value`** is reactive and recomputes the whole JSON after each change. Fine for a word count or a save button; use `cells` or the handles for anything per block.
 
-- **`onDocChange`** (an `<Edytor>` prop and a plugin hook) receives each commit's change report, a [`DocChange`](/docs/reference/document-api): the blocks added, removed and moved, those whose type or data (`meta`) or content changed, and the new child order of each parent that changed. Unlike `onChange`, it exports nothing, so it costs nothing on a large document. Read `edytor.value` from it only when you need the JSON (a debounced save):
+- **`onDocChange`** (an `<Edytor>` prop and a plugin hook) receives each commit's change report, a [`DocChange`](/docs/reference/document-api): the blocks added, removed and moved, those whose type or data (`meta`) or content changed, and the new child order of each parent that changed. Unlike `onChange`, it exports nothing, so it costs nothing on a large document. The report is the document's own, shared with every other consumer and view, so it is read-only; a consumer that throws is logged and the others still run. Read `edytor.value` from it only when you need the JSON (a debounced save):
 
   ```ts title="src/lib/autosave.ts" check
   import type { DocChange, EdytorInstance } from 'edytor';

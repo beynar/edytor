@@ -38,6 +38,9 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: node scripts/upstream-check.mjs --out upstream-report ${VERSION:+--version "$VERSION"}
+      - name: Flag a lib0 the newer engine does not accept
+        if: steps.check.outputs.lib0 == 'mismatch'
+        run: echo "::warning title=lib0 mismatch::@y/y ${{ steps.check.outputs.newer }} asks a newer lib0 than lib0-v14 installs; a red check below may be lib0, not the fork (see the summary)"
       - name: Wire interop (the fork against the newer engine)
         if: steps.check.outputs.newer != ''
         # `shell: bash` runs with pipefail: a failed check fails the step through `tee`.

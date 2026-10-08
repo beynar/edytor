@@ -131,6 +131,10 @@ const stale: [phrase: string | RegExp, why: string][] = [
 		'Enter and Shift+Enter over a block selection remove nothing and never ask keepsSelectedBlocks (EW-10)'
 	],
 	[
+		/is `new Y\.Doc\(\)` (?:followed by|\+) `Y\.applyUpdate|`new Y\.Doc\(options\)` on the bound engine\. \||const doc = new Y\.Doc\(\);\s*Y\.applyUpdate/,
+		"a bare `new Y.Doc()` lacks edytor's keep-replaced rule: a document that integrates edytor content is `bindCrdt(Y).createDoc()`"
+	],
+	[
 		/\(a list, a code block\)/,
 		'a code block is an island: never removed with its lines; an emptied list goes but is not named (EW-08)'
 	]

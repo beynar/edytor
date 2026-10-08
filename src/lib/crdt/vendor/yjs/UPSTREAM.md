@@ -47,10 +47,14 @@ the kept surface.
 ## Watching upstream
 
 `.github/workflows/upstream.yml` runs every Monday (and on demand, for a
-given version): `scripts/upstream-check.mjs` asks npm for a `@y/y` published
-after the pin, and when there is one writes `upstream.diff` (pin → newer, P1
-applied to both) and `fork.diff` (newer → this tree) into the run's
-artifact, then materializes the newer engine as `bench/vendor-baseline/yjs`
+given version): `scripts/upstream-check.mjs` asks npm for a `@y/y` above
+the pin by semver within its major line (14.x, pre-releases included), and
+when there is one downloads both tarballs (each checked against the
+registry's `dist.integrity`), writes `upstream.diff` (pin → newer, P1
+applied to both) and `fork.diff` (newer → this tree, both carrying P1) into
+the run's artifact, says in the summary whether the installed `lib0-v14`
+satisfies the newer engine's `lib0` range (a mismatch is a run warning: a
+red check may then be the older lib0, not the fork), then materializes the newer engine as `bench/vendor-baseline/yjs`
 so `bench/lib/interop.mjs` (the fork and the newer engine syncing over the
 wire) and the baseline leg of `src/tests/crdt/hardening/r1-p4-format.test.ts`
 (byte-identical stores after every operation) run against it. A red run

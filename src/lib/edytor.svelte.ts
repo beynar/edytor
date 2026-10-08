@@ -44,6 +44,7 @@ import { Handles } from './session/handles.js';
 import { id } from './utils.js';
 import { Y } from '$lib/crdt/engine.js';
 import { markName } from '$lib/crdt/text/marks.js';
+import { callEach } from '$lib/crdt/protocols/observable.js';
 import {
 	attachDocument,
 	bindCrdt,
@@ -104,6 +105,9 @@ import {
 	getDomSelection,
 	getDomSelectionSnapshot
 } from './selection/domSelection.js';
+
+/** A consumer that is set (a prop or a plugin hook left out is `undefined`). */
+const isListener = <F>(listener: F | undefined): listener is F => listener !== undefined;
 
 export type Snippets = {
 	// `mentionInlineBlock` satisfies BOTH the `*InlineBlock` and `*Block`
@@ -732,16 +736,16 @@ export class Edytor {
 		} finally {
 			this.suppressCaretScrollDepth--;
 		}
-		// The report itself: no export.
-		this.onDocChange?.(change);
-		for (const plugin of this.plugins) plugin.onDocChange?.(change);
+		// The report itself: no export. Each consumer is isolated (logged,
+		// never rethrown), as the facade isolates its subscribers.
+		const reports = [this.onDocChange, ...this.plugins.map((plugin) => plugin.onDocChange)];
+		callEach('[edytor] onDocChange', reports.filter(isListener), change);
 		// `this.value` is a full-document export (O(doc) — ~17ms at 5k
 		// blocks) — compute it only when a consumer actually exists.
-		if (this.onChange || this.plugins.some((plugin) => plugin.onChange)) {
-			const value = this.value;
-			this.onChange?.(value);
-			for (const plugin of this.plugins) plugin.onChange?.(value);
-		}
+		const values = [this.onChange, ...this.plugins.map((plugin) => plugin.onChange)].filter(
+			isListener
+		);
+		if (values.length > 0) callEach('[edytor] onChange', values, this.value);
 	};
 
 	/**

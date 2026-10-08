@@ -1215,15 +1215,15 @@ export type DocChange = {
     origin: unknown;
     local: boolean;
     version: number;
-    added: Map<BlockId, ProjectedBlock>;
-    removed: Set<BlockId>;
-    moved: Set<BlockId>;
-    meta: Map<BlockId, {
+    added: ReadonlyMap<BlockId, ProjectedBlock>;
+    removed: ReadonlySet<BlockId>;
+    moved: ReadonlySet<BlockId>;
+    meta: ReadonlyMap<BlockId, {
         type: string;
         data?: Record<string, unknown>;
     }>;
-    content: Map<BlockId, readonly ContentRun[]>;
-    order: Map<BlockId | null, readonly BlockId[]>;
+    content: ReadonlyMap<BlockId, readonly ContentRun[]>;
+    order: ReadonlyMap<BlockId | null, readonly BlockId[]>;
     data?: Record<string, unknown>;
 };
 ```

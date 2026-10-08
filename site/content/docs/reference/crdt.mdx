@@ -22,9 +22,13 @@ Import the engine only through `edytor/crdt`, so your app holds exactly one engi
 
 ```ts title="src/lib/engine.ts" check
 import * as Y from 'edytor/crdt';
+import { bindCrdt } from 'edytor/crdt/edytor';
+
+const crdt = bindCrdt(Y);
 
 export function catchUp(stored: Uint8Array<ArrayBuffer>, updates: Uint8Array<ArrayBuffer>[], otherDoc: Y.Doc) {
-  const doc = new Y.Doc();
+  // An edytor document: createDoc() carries edytor's rules, a bare new Y.Doc() does not.
+  const doc = crdt.createDoc();
   Y.applyUpdate(doc, stored);
   const merged = Y.mergeUpdates(updates);
   const missing = Y.encodeStateAsUpdate(doc, Y.encodeStateVector(otherDoc));
@@ -42,7 +46,7 @@ export function catchUp(stored: Uint8Array<ArrayBuffer>, updates: Uint8Array<Arr
 - id sets and id maps with their codecs, and `RangeCursor`;
 - the renderer interface (`AbstractRenderer`, `$renderer`) for a renderer you write yourself.
 
-**What was pruned:** the concrete renderers, snapshots, the update logging, diffing and obfuscation helpers, the binary relative-position codec, id-set algebra beyond the basics, and the content-id helpers. Edytor never used them. A document built from an update is `new Y.Doc()` followed by `Y.applyUpdate(doc, update)`.
+**What was pruned:** the concrete renderers, snapshots, the update logging, diffing and obfuscation helpers, the binary relative-position codec, id-set algebra beyond the basics, and the content-id helpers. Edytor never used them. A document built from an update is a new document followed by `Y.applyUpdate(doc, update)`: `bindCrdt(Y).createDoc()` when the update holds edytor content (see the keep-replaced rule below), `new Y.Doc()` only for a document that never holds any.
 
 **What was added:** undo hooks that let the document decide how deleted text comes back and keep a block a peer wrote into when its creation is undone. They are what make [concurrent undo](/docs/collaboration/concurrent-editing) behave; an `UndoManager` you create yourself over a document does not follow those rules, so use `document.history`.
 
@@ -85,7 +89,7 @@ await provider.whenSynced;
 
 | Member | Contents |
 | --- | --- |
-| `createDoc(options?)` | `new Y.Doc(options)` on the bound engine. |
+| `createDoc(options?)` | A new document on the bound engine (`new Y.Doc(options)`) carrying edytor's keep-replaced rule. Build every raw document that holds edytor content with it; a bare `new Y.Doc()` is for documents that never do. |
 | `Awareness` | The presence class. |
 | `.doc` | The document-model layer over a raw doc: `create(doc, config?)` returns a bare facade with no history and no attribution, plus `init`, `seed`, `restore`, `isInitialized`, `schemaVersion`, `checkSchema`, `assertSchema` and the schema constants. |
 | `.providers` | `IndexeddbPersistence`, `WebsocketProvider`, `createIndexeddbSync`, `createWebsocketSync`, `clearDocument`, `storeState`. |

@@ -181,7 +181,10 @@ const repoConfig = [
 			'vendor-tests/**',
 			// generated pristine-vendor copy materialized by bench/lib/mk-baseline.sh
 			// for differential/interop lanes (gitignored, recreated on demand)
-			'bench/vendor-baseline/**'
+			'bench/vendor-baseline/**',
+			// agent worktrees (each lints itself) and the upstream watch's report
+			'.claude/**',
+			'upstream-report/**'
 		]
 	},
 	js.configs.recommended,

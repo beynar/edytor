@@ -112,7 +112,9 @@ export type EdytorDocConfig = {
  * One committed transaction's semantic diff — the payload {@link EdytorDoc.onChange}
  * subscribers receive. Every collection names the affected ids; `order`
  * carries the NEW child-id list per changed parent so a mirror can apply the
- * diff without re-reading the doc.
+ * diff without re-reading the doc. The report is shared: every subscriber
+ * of the document (each view over it, its cells included) receives the same
+ * object, so it is read-only.
  */
 export type DocChange = {
 	/** Transaction origin (local origin object, remote marker, …). */
@@ -122,18 +124,18 @@ export type DocChange = {
 	/** Monotonic event counter per facade. */
 	version: number;
 	/** Newly visible blocks → full projected subtree (incl. content+children). */
-	added: Map<BlockId, ProjectedBlock>;
+	added: ReadonlyMap<BlockId, ProjectedBlock>;
 	/** Ids no longer visible (deleted, merged-away, or hidden with subtree). */
-	removed: Set<BlockId>;
+	removed: ReadonlySet<BlockId>;
 	/** Ids whose display parent or sibling index changed. */
-	moved: Set<BlockId>;
+	moved: ReadonlySet<BlockId>;
 	/** Ids whose `type`/`data` payload changed → new values. */
-	meta: Map<BlockId, { type: string; data?: Record<string, unknown> }>;
+	meta: ReadonlyMap<BlockId, { type: string; data?: Record<string, unknown> }>;
 	/** Ids whose visible content changed → the new maintained runs. */
-	content: Map<BlockId, readonly ContentRun[]>;
+	content: ReadonlyMap<BlockId, readonly ContentRun[]>;
 	/** Parents (`null` = root) whose visible child list changed → new order
 	 *  (frozen — shared with the retained snapshot baseline). */
-	order: Map<BlockId | null, readonly BlockId[]>;
+	order: ReadonlyMap<BlockId | null, readonly BlockId[]>;
 	/** The document's own data (`docData()`), when this commit changed it. */
 	data?: Record<string, unknown>;
 };

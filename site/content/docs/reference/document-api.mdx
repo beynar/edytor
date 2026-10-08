@@ -196,7 +196,7 @@ Whether a block type renders its own content is a document-level question: `docu
 
 ## Changes
 
-`facade.onChange(callback)` calls back once per committed transaction that changed the visible document or its data, local or remote, and returns an unsubscribe function. A callback that throws is logged; the other callbacks and the document carry on.
+`facade.onChange(callback)` calls back once per committed transaction that changed the visible document or its data, local or remote, and returns an unsubscribe function. A callback that throws is logged; the other callbacks and the document carry on. Every callback of the document (each view over it, its rendering included) receives the same report object, so its collections are read-only (`ReadonlyMap`, `ReadonlySet`): copy one before you change it.
 
 ```ts title="on-change.ts" check
 const off = facade.onChange((change) => {
@@ -206,12 +206,12 @@ const off = facade.onChange((change) => {
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `added` | `Map<BlockId, ProjectedBlock>` | Newly visible blocks, with their subtree. |
-| `removed` | `Set<BlockId>` | Blocks no longer visible (deleted or merged away). A block under a deleted parent is not removed: it takes the parent's place. |
-| `moved` | `Set<BlockId>` | Blocks whose parent or position changed. |
-| `meta` | `Map<BlockId, { type, data? }>` | Blocks whose type or data changed. An inline block's data change is a `content` change of its block. |
-| `content` | `Map<BlockId, readonly ContentRun[]>` | Blocks whose visible content changed, with the new runs. |
-| `order` | `Map<BlockId \| null, readonly BlockId[]>` | Parents whose child list changed, with the new order. |
+| `added` | `ReadonlyMap<BlockId, ProjectedBlock>` | Newly visible blocks, with their subtree. |
+| `removed` | `ReadonlySet<BlockId>` | Blocks no longer visible (deleted or merged away). A block under a deleted parent is not removed: it takes the parent's place. |
+| `moved` | `ReadonlySet<BlockId>` | Blocks whose parent or position changed. |
+| `meta` | `ReadonlyMap<BlockId, { type, data? }>` | Blocks whose type or data changed. An inline block's data change is a `content` change of its block. |
+| `content` | `ReadonlyMap<BlockId, readonly ContentRun[]>` | Blocks whose visible content changed, with the new runs. |
+| `order` | `ReadonlyMap<BlockId \| null, readonly BlockId[]>` | Parents whose child list changed, with the new order. |
 | `data` | `Record<string, unknown> \| undefined` | The document's data, when the transaction changed it. |
 | `origin`, `local` | `unknown`, `boolean` | The transaction's origin, and `false` for edits that came from a provider. |
 | `version` | `number` | Increases with every change event. |

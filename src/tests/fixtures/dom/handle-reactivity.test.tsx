@@ -172,6 +172,14 @@ describe('onDocChange', () => {
 		expect([...reports[0]!.content.keys()]).toEqual([one!.id]);
 		expect(reports[1]!.meta.get(two!.id)?.type).toBe('quote');
 		expect(exports).not.toHaveBeenCalled();
+		// The report is shared with every subscriber of the document: read-only.
+		const mutate = (change: DocChange) => {
+			// @ts-expect-error a shared report is read-only
+			change.removed.add(one!.id);
+			// @ts-expect-error a shared report is read-only
+			change.order.set(null, []);
+		};
+		void mutate;
 	});
 
 	it('a plugin’s onDocChange receives the same reports', async () => {
@@ -192,5 +200,46 @@ describe('onDocChange', () => {
 		await flushDomUpdates();
 		expect(seen).toHaveLength(1);
 		expect(seen[0]!.content.size).toBe(1);
+	});
+
+	it('a throwing consumer is logged and never starves the others', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const calls: string[] = [];
+		const { edytor } = await renderDomEdytor(
+			<root>
+				<paragraph>One|</paragraph>
+			</root>,
+			{
+				onDocChange: () => {
+					calls.push('prop onDocChange');
+					throw new Error('prop onDocChange');
+				},
+				onChange: () => {
+					calls.push('prop onChange');
+					throw new Error('prop onChange');
+				},
+				plugins: [
+					richTextPlugin,
+					mentionPlugin,
+					(() => ({
+						onDocChange: () => {
+							calls.push('plugin onDocChange');
+							throw new Error('plugin onDocChange');
+						},
+						onChange: () => void calls.push('plugin onChange')
+					})) as Plugin
+				]
+			}
+		);
+		edytor.root!.children[0]!.model!.insertText(0, 'A');
+		await flushDomUpdates();
+		expect(calls).toEqual([
+			'prop onDocChange',
+			'plugin onDocChange',
+			'prop onChange',
+			'plugin onChange'
+		]);
+		expect(logged).toHaveBeenCalledTimes(3);
+		expect(edytor.value.children[0]!.content).toEqual([{ text: 'AOne' }]);
 	});
 });

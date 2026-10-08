@@ -18,6 +18,7 @@ import {
 	attachRoom,
 	closedSocket,
 	requestedReplica,
+	routeDocumentComments,
 	routeDocumentHistory,
 	routeDocumentSocket,
 	kvHistory,
@@ -29,6 +30,7 @@ import {
 	type KVLike,
 	type R2BucketLike,
 	type AuthorizeDocumentSocket,
+	type CommentChange,
 	type DocumentRoomEnv,
 	type RoomLogEntry,
 	type LoadedDocument,
@@ -555,7 +557,38 @@ export class HostObject extends DurableObject<Env> {
 	}
 }
 
+/**
+ * Comment threads (rooms `comments-*`, `room.comments.*`): `onComment`
+ * records each change in a `heard` table; by name, `comments-throw-*`
+ * throws from it, `comments-off-*` keeps no comments (`EDYTOR_COMMENTS`
+ * `off`, as a host sets it).
+ */
+export class CommentRoom extends DocumentRoom<Env> {
+	constructor(ctx: DurableObjectState, env: Env) {
+		const off = (ctx.id.name ?? '').startsWith('comments-off-');
+		super(ctx, off ? { ...env, EDYTOR_COMMENTS: 'off' } : env);
+	}
+
+	protected override async onComment(change: CommentChange) {
+		if ((this.ctx.id.name ?? '').startsWith('comments-throw-')) throw new Error('mailer down');
+		const sql = this.ctx.storage.sql;
+		sql.exec('CREATE TABLE IF NOT EXISTS heard (change TEXT)');
+		sql.exec('INSERT INTO heard VALUES (?)', JSON.stringify(change));
+	}
+
+	/** The changes `onComment` received, oldest first. */
+	heard(): CommentChange[] {
+		const sql = this.ctx.storage.sql;
+		sql.exec('CREATE TABLE IF NOT EXISTS heard (change TEXT)');
+		return sql
+			.exec<{ change: string }>('SELECT change FROM heard ORDER BY rowid')
+			.toArray()
+			.map(({ change }) => JSON.parse(change) as CommentChange);
+	}
+}
+
 export type Env = DocumentRoomEnv & {
+	COMMENTS: DurableObjectNamespace<CommentRoom>;
 	ROOM: DurableObjectNamespace<DocumentRoom>;
 	HOOKED: DurableObjectNamespace<HookedRoom>;
 	PLAIN: DurableObjectNamespace<PlainObject>;
@@ -573,6 +606,8 @@ export type Env = DocumentRoomEnv & {
 export const ROOM_ROUTE = /^\/rooms\/([^/]+)(\/compact)?\/?$/;
 /** `/history/<name>`: the room's version history (`routeDocumentHistory`). */
 export const HISTORY_ROUTE = /^\/history\/([^/]+)\/?$/;
+/** `/comments/<name>`: the room's comment threads (`routeDocumentComments`). */
+export const COMMENTS_ROUTE = /^\/comments\/([^/]+)\/?$/;
 
 export const authorizeFromQuery: AuthorizeDocumentSocket = (request) => {
 	const query = new URL(request.url).searchParams;
@@ -619,6 +654,18 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 			originsOf(name)
 		);
 	}
+	const comments = COMMENTS_ROUTE.exec(url.pathname);
+	if (comments) {
+		const name = roomOf(comments[1]);
+		if (name === null) return new Response('invalid document id', { status: 400 });
+		return routeDocumentComments(
+			request,
+			name.startsWith('comments-') ? env.COMMENTS : env.ROOM,
+			name,
+			authorizeFromQuery,
+			originsOf(name)
+		);
+	}
 	const match = ROOM_ROUTE.exec(url.pathname);
 	if (!match) return new Response('not found', { status: 404 });
 	const name = roomOf(match[1]);
@@ -638,6 +685,9 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 	}
 	if (name.startsWith('moving-')) {
 		return routeDocumentSocket(request, env.MOVES, name, authorizeFromQuery);
+	}
+	if (name.startsWith('comments-')) {
+		return routeDocumentSocket(request, env.COMMENTS, name, authorizeFromQuery);
 	}
 	if (name.startsWith('quota-')) {
 		return routeDocumentSocket(request, env.QUOTA, name, authorizeFromQuery);

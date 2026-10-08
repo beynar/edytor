@@ -18,6 +18,7 @@ import {
 	mediaSemantics,
 	pageSemantics,
 	richTextSemantics,
+	commentMarks,
 	tocSemantics,
 	type DocumentSemanticsConfig,
 	type EdytorDocument,
@@ -152,8 +153,9 @@ describe('defaultSemantics on a headless document', () => {
 				...codeSemantics.defaultChild,
 				...layoutSemantics.defaultChild
 			},
-			// H5: the rich-text plugin's mark edges (the link's).
-			marks: richTextSemantics.marks
+			// H5: the rich-text plugin's mark edges (the link's), and the comment's
+			// anchor, which never grows (`comment.anchor`, WU-34).
+			marks: { ...richTextSemantics.marks, ...commentMarks }
 		});
 	});
 

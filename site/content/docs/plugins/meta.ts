@@ -27,6 +27,7 @@ export default defineMeta({
     "markdown-shortcuts",
     "arrow-move",
     "find",
+    "comments",
     "mention",
     "page-link",
   ],

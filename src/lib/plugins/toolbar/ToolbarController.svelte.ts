@@ -244,6 +244,8 @@ export class ToolbarController {
 	}
 
 	toggleMark(mark: string) {
+		const run = this.edytor.marks.get(mark)?.toolbar?.run;
+		if (run) return run(this.edytor);
 		this.runWithSelection(() => {
 			richTextOperations(this.edytor).setMarkAtRange(mark as RichTextMark);
 		});

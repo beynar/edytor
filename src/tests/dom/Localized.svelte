@@ -19,6 +19,8 @@
 	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
+	import { createCommentsPlugin } from '$lib/plugins/comments/commentsPlugin.js';
+	import { createMemoryCommentsClient } from '$lib/collaboration/comments/client.js';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import { fr, frKeywords } from '../fixtures/labels.fr.js';
 
@@ -43,6 +45,11 @@
 		createColumnsPlugin({ labels: fr.columns }),
 		createPagePlugin({ labels: fr.page, keywords: frKeywords, create: () => 'page-1' }),
 		createTocPlugin({ labels: fr.toc, keywords: frKeywords }),
+		createCommentsPlugin({
+			labels: fr.comments,
+			client: createMemoryCommentsClient({ user: 'ada' }),
+			user: 'ada'
+		}),
 		createRichTextPlugin({ labels: fr.richText, keywords: frKeywords })
 	];
 </script>

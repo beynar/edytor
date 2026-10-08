@@ -1,0 +1,153 @@
+---
+title: Comments
+description: Comment threads kept by the room beside the document, read and written over HTTP or RPC, sent live to the sockets that ask, with a hook for notifications.
+icon: message-square
+---
+
+The room keeps a document's comment threads, as in Notion: a thread starts on some text, collects replies, and is resolved or reopened. Thread bodies live in the room's SQLite storage, beside the document and never in it; the document holds only each thread's anchor, a [`comment:<id>` mark](/docs/plugins/comments#anchors) over the text it was made on. The browser side is the [comments plugin](/docs/plugins/comments).
+
+Comments are on in every room. Nothing is stored until the first thread, and nothing reaches a client until it asks: the threads are read and written over HTTP (`routeDocumentComments`) or RPC, and each change is sent to the sockets that subscribed.
+
+## Over HTTP
+
+`routeDocumentComments` is the HTTP door to a room's threads, authorized as [`routeDocumentSocket`](/docs/server/authorization) authorizes a dial (the same `authorize`, the same refusals, as HTTP statuses). Mount it at a path of your own:
+
+```ts src/worker.ts check
+import {
+  DocumentRoom,
+  closedSocket,
+  routeDocumentComments,
+  routeDocumentSocket
+} from 'edytor/cloudflare';
+
+export { DocumentRoom };
+
+type Env = { ROOMS: DurableObjectNamespace<DocumentRoom> };
+
+const authorize = async (request: Request) => {
+  const userId = new URL(request.url).searchParams.get('user'); // check a session instead
+  return userId ? { userId } : null;
+};
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const { pathname } = new URL(request.url);
+    const match = /^\/(?:rooms|comments)\/([^/]+)$/.exec(pathname);
+    if (!match) return new Response('not found', { status: 404 });
+    let documentId: string; // percent-encoded, as the clients send it
+    try {
+      documentId = decodeURIComponent(match[1]);
+    } catch {
+      return closedSocket(4400, 'invalid document id');
+    }
+    if (pathname.startsWith('/comments/')) {
+      return routeDocumentComments(request, env.ROOMS, documentId, authorize);
+    }
+    return routeDocumentSocket(request, env.ROOMS, documentId, authorize);
+  }
+} satisfies ExportedHandler<Env>;
+```
+
+| Request | Answer |
+| --- | --- |
+| `GET <url>` | Every thread, oldest first, and the sequence number of the last change: `{ seq, threads }`. |
+| `POST <url>` | One request, as JSON (below), made as the verified user: `{ status: 'applied', change }`, or `{ status: 'noop', thread }` when it changed nothing. |
+
+The requests a `POST` carries:
+
+| Body | Does |
+| --- | --- |
+| `{ op: 'add', thread, body, quote?, block?, comment? }` | Starts thread `thread` (an id the client picks: its anchor mark names it) with its first comment. `quote` is the text it was made on (kept as one line, at most 300 characters) and `block` the block it starts in, both for display. |
+| `{ op: 'reply', thread, body, comment? }` | Adds a comment to the thread. |
+| `{ op: 'resolve', thread }`, `{ op: 'reopen', thread }` | Resolves the thread, or opens it again. Resolving a resolved thread is a `noop`. |
+| `{ op: 'delete', thread, comment? }` | Deletes one comment. Without `comment`, or with the thread's first one, deletes the whole thread. |
+
+A refusal is a status: `400` for an invalid document id, request or id, an empty body or one over 10,000 characters; `401` when `authorize` returns `{ expired: true }`; `403` when it denies the request, when a read-only identity writes, or when a user deletes another user's comment; `404` for a thread or comment the room does not hold, or a room with comments off; `405` for another method; `409` for a thread or comment id already taken; `413` for a request body over 64 KiB, a thread of 500 comments or a document of 5,000 threads; `503` when the room cannot serve it.
+
+## The rules
+
+One rule decides every request, in the room and in the clients' [memory store](/docs/plugins/comments#a-client-without-a-room) alike (`decideComment`, exported for a store of your own):
+
+- **Who writes.** Anyone with write access adds threads, replies, resolves and reopens. A read-only identity lists the threads and changes none (`403`).
+- **Who deletes.** A comment's author deletes it. The first comment stands for its thread: deleting it, or the thread, is its creator's, and removes the replies too. Over RPC, a `moderator` deletes anyone's.
+- **Ids.** A thread or comment id is 1 to 64 of `A-Z a-z 0-9 _ -`. The client picks the thread's id; a comment's id is the room's unless the request names one.
+- **Bodies.** Plain text, line breaks kept, trailing white space dropped, at most 10,000 characters (`maxLength` lowers it).
+- **Sequence.** Each change takes the document's next sequence number (`seq`), and the thread it changes carries it as `rev`.
+
+## Over RPC
+
+The room's methods, for your own routes, bots and moderation:
+
+```ts title="moderate.ts" check
+import type { DocumentRoom } from 'edytor/cloudflare';
+
+export const removeThread = async (
+  rooms: DurableObjectNamespace<DocumentRoom>,
+  documentId: string,
+  thread: string
+) => {
+  const room = rooms.getByName(documentId);
+  const { threads } = await room.listComments();
+  if (!threads.some((t) => t.id === thread)) return null;
+  return room.comment({ op: 'delete', thread }, { user: 'moderation', moderator: true });
+};
+```
+
+- `listComments()` answers `{ seq, threads }`.
+- `comment(request, { user, readOnly?, moderator? })` decides one request under the rules above and answers `{ status: 'applied', change }`, `{ status: 'noop', thread }` or `{ status: 'refused', reason, message }` (`reason`: `invalid`, `read-only`, `forbidden`, `missing`, `exists`, `full`).
+
+## What a change does
+
+An applied change is stored (the thread, its comments and the sequence number, in one SQLite transaction), then sent to every socket that subscribed, then passed to `onComment`:
+
+```ts
+type CommentChange = {
+  type: 'added' | 'replied' | 'resolved' | 'reopened' | 'deleted' | 'removed';
+  thread: CommentThread; // after the change; for `removed`, as it was
+  comment: ThreadComment | null; // added or deleted, else null
+  user: string; // who made it
+  at: number;
+  seq: number;
+};
+```
+
+A `removed` thread takes its anchor with it: the room removes its `comment:<id>` marks from the document as one room transaction, stored and sent to every client like any edit, so no client shows a highlight with no thread behind it. A resolved thread keeps its anchor (reopening it shows the highlight again). A thread whose text was deleted keeps its comments: it has no anchor until an undo brings the text back.
+
+### Live
+
+A socket asks for the changes with a `messageComments` subscribe; the room answers every thread (`{ seq, threads }`) at once, then sends each change. The subscription lives in the socket's attachment, so it survives hibernation, and a reconnected socket subscribes again, which answers what it missed. Sockets that do not ask receive nothing. The frames are in [the protocol](/docs/server/protocol#comments). [`createCommentsClient`](/docs/plugins/comments#the-client) subscribes on the socket the page's websocket sync already holds.
+
+## Notifications
+
+Override `onComment` to send an email, a push notification or a webhook when a thread changes. It runs after the change is stored and sent, and the request is answered once it settles; a throw is logged (`fault`), and the change stands:
+
+```ts src/room.ts check
+import { DocumentRoom, type CommentChange } from 'edytor/cloudflare';
+
+type Env = { NOTIFY: Queue<{ to: string[]; change: CommentChange }> };
+
+export class Room extends DocumentRoom<Env> {
+  protected override async onComment(change: CommentChange) {
+    if (change.type !== 'added' && change.type !== 'replied') return;
+    // Everyone in the thread but the writer.
+    const to = [...new Set(change.thread.comments.map((c) => c.author))].filter(
+      (user) => user !== change.user
+    );
+    if (to.length > 0) await this.env.NOTIFY.send({ to, change });
+  }
+}
+```
+
+With `attachRoom`, pass `comments: { onComment }`. `onComment` hears every change, the room's own over RPC included; to notify of mentions, read them from `change.comment.body`.
+
+## Options
+
+| Option | Default | |
+| --- | --- | --- |
+| `comments` (`attachRoom`) | on | `{ onComment, maxLength }`, or `false` to keep no comments: every comments request answers `404` and a subscribe receives an empty snapshot. |
+| `EDYTOR_COMMENTS` (`DocumentRoom`) | unset | `off` keeps no comments. |
+| `onComment` (`DocumentRoom`, overridable) | nothing | See [Notifications](#notifications). |
+
+## Storage
+
+Threads live in two tables of the room's SQLite storage, `threads` (one row per thread: its id, block, quote, creator, time and resolution) and `comments` (one row per comment), created at the first request; the `meta` table keeps the last sequence number under `comments`. See [Internals](/docs/server/internals#storage-tables). They are not the document: compaction, the history's versions, a restore and the purge leave them as they are, `onSave` does not receive them (read them with `listComments()`), and a [generation cutover](/docs/server/room#generation-cutover) keeps them. Their size is not counted in the document quota; the limits above bound it (500 comments of 10,000 characters per thread, 5,000 threads).

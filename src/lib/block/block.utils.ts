@@ -134,6 +134,15 @@ export type BlockOperations = {
 		matches: { block: string; offset: number; length: number }[];
 		replacement: string;
 	};
+	/**
+	 * A comment thread's anchor (`plugins/comments`): its `comment:<thread>`
+	 * mark over each run of the text it was made on, one plan, one undo step
+	 * (its steps: a `formatRange` per run).
+	 */
+	addComment: {
+		thread: string;
+		runs: { block: string; offset: number; length: number }[];
+	};
 	deleteContentAtRange: {
 		start: [number, number];
 		end: [number, number];

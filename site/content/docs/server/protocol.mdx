@@ -24,6 +24,7 @@ varuint GENERATION | varuint messageType | payload
 | `3` | `messageQueryAwareness` | client to server | None. Asks for everyone's presence. |
 | `4` | `messageSaved` | server to client | The server's state vector (`varUint8Array`), then optionally the acknowledged deletes. |
 | `5` | `messageChunk` | server to client | One piece of a frame too large to send whole. |
+| `6` | `messageComments` | both | A comment subtype, then its body. See [Comments](#comments). |
 
 ### Sync
 
@@ -56,6 +57,20 @@ A chunk sequence is a `start` frame (`0`, then the total length), any number of 
 - The reader assembles a sequence into one buffer of the announced size, allocated at the `start`, and its `buffered` property is that size while the sequence is in flight (0 otherwise).
 - `admit(total)`, asked at each `start` before the allocation, may throw to refuse the sequence or return `false` to skip it (its parts are dropped and its `end` returns `null`). The edytor room uses it to skip a read-only socket's sequences and to bound what all its sockets buffer together.
 
+### Comments
+
+A document's [comment threads](/docs/server/comments) are not in the document: the room keeps them, and tells the sockets that ask about each change. The subtypes:
+
+| Subtype | Name | Direction | Body |
+| --- | --- | --- | --- |
+| `0` | `commentsSubscribe` | client to server | A `varuint`: `1` to start hearing the changes, `0` to stop. |
+| `1` | `commentsSnapshot` | server to client | A `varString` of JSON, `{ seq, threads }`: every thread, and the sequence number of the last change. The answer to a subscribe. |
+| `2` | `commentsChange` | server to client | A `varString` of JSON, one change: `{ type, thread, comment, user, at, seq }`. |
+
+The room sends comment messages only to a socket that subscribed, so a client that never asks never receives one: older clients are unaffected and the generation word is unchanged. The subscription is part of the socket's attachment, kept through hibernation, and a reconnected socket subscribes again. A client must not send a snapshot or a change: the room refuses one as `malformed` (`1008`), as it refuses any message type it does not know, so subscribe only to a room that keeps comments. Subscribes share the socket's presence rate. Write and read them with `writeCommentsSubscribe(encoder, on)`, `writeCommentsSnapshot(encoder, snapshot)`, `writeCommentsChange(encoder, change)` and `readCommentsMessage(decoder)`.
+
+A change's `seq` grows by one per change in the document; each thread carries the `seq` of its last change as `rev`. A client merges what it hears by `rev`: an older thread never replaces a newer one, and a snapshot removes the threads it lacks unless a change after its `seq` made them. The shipped provider subscribes while a listener watches the room (`watchComments`, what [`createCommentsClient`](/docs/plugins/comments#the-client) uses).
+
 ## Exported helpers
 
 All from `edytor/protocol`:
@@ -65,7 +80,8 @@ All from `edytor/protocol`:
 | `bindCrdt(Y).sync` | `writeSyncStep1`, `writeSyncStep2`, `step2Update(payload)`, `readSyncStep1`, `readSyncStep2`, `writeUpdate`, `readUpdate`, `readSyncMessage`, `lacks(doc, stateVector)`, `applyRemote(doc, update, origin)`, `writeSaved`, `readSaved`. |
 | `frame(type, write)` | Build a frame: the generation word, the type, then whatever `write(encoder)` writes. |
 | `GENERATION`, `generationWord`, `PROTOCOL_VERSION`, `SCHEMA_VERSION`, `readProtocolVersion` | The generation gate. |
-| `messageSync`, `messageAwareness`, `messageAuth`, `messageQueryAwareness`, `messageSaved`, `messageChunk` | Message types. |
+| `messageSync`, `messageAwareness`, `messageAuth`, `messageQueryAwareness`, `messageSaved`, `messageChunk`, `messageComments` | Message types. |
+| `commentsSubscribe`, `commentsSnapshot`, `commentsChange`, `writeCommentsSubscribe`, `writeCommentsSnapshot`, `writeCommentsChange`, `readCommentsMessage` | The comment messages. |
 | `messageYjsSyncStep1`, `messageYjsSyncStep2`, `messageYjsUpdate` | Sync subtypes. |
 | `messagePermissionDenied`, `writePermissionDenied(encoder, reason)` | The auth reply to a refused write. |
 | `messageReadOnly`, `writeReadOnly(encoder)` | The read-only notice at the join. |
@@ -144,3 +160,4 @@ To read or edit the content server-side (for indexing, exports or bots), load a 
 - Peers of different generations never exchange edits: each side drops the other's frames and reports `'protocol-mismatch'`.
 - A v13 `yjs` peer or `y-websocket` server cannot join a room. An opaque relay that forwards frames byte for byte without decoding them works, but it cannot acknowledge saves or chunk frames.
 - Clients that predate `messageSaved` and `messageChunk` report them through `'message-error'` and otherwise sync small documents normally.
+- A room that predates `messageComments` closes a socket that subscribes (`1008`, `malformed`): the comments plugin subscribes only through its client, so upgrade the room before you list the plugin.

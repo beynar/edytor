@@ -159,6 +159,7 @@ export class Admission {
 				const entries = decode(() => E.readAwarenessEntries(E.readVarUint8Array(decoder)));
 				return room.presence.onPresence(ws, attachment, doc, entries);
 			}
+			if (type === E.messageComments) return room.comments.onMessage(ws, attachment, decoder);
 			if (type === E.messageQueryAwareness) {
 				// A query costs a snapshot of every entry: past the rate, dropped.
 				if (!room.presence.allow(ws)) return room.presence.overRate(ws, attachment);

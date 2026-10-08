@@ -389,6 +389,7 @@ export const bindProviders = (Y: EngineApi) => {
 		documentSnapshot,
 		IndexeddbPersistence: idb.IndexeddbPersistence,
 		WebsocketProvider: ws.WebsocketProvider,
+		watchComments: ws.watchComments,
 		storeState: idb.storeState,
 		clearDocument: idb.clearDocument,
 		PREFERRED_TRIM_SIZE: idb.PREFERRED_TRIM_SIZE,

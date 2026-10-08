@@ -105,6 +105,15 @@ export const richTextMarks = frozen({
 	link: { edge: 'side-dependent' }
 } satisfies Record<string, { edge: MarkEdge }>);
 
+/**
+ * The comments plugin's mark edge: a comment's anchor (`comment:<id>`)
+ * never grows at its ends, so text typed or inserted concurrently right
+ * after commented text stays out of the comment (Notion).
+ */
+export const commentMarks = frozen({
+	comment: { edge: 'exclusive' }
+} satisfies Record<string, { edge: MarkEdge }>);
+
 /** `codePlugin`'s structural rows: the code block is an island of `codeLine`s (`lines`). */
 export const codeKinds = frozen({
 	code: { island: true, lines: true, rendersContent: false, defaultChild: 'codeLine' }
@@ -316,7 +325,7 @@ export const pageSemantics = semanticsOf(pageKinds);
 export const tocSemantics = semanticsOf(tocKinds);
 /**
  * The rich-text, code, image, media, columns, page and table of contents
- * plugins' block roles together — what the room and a headless
+ * plugins' block roles together (and the rich-text and comment mark edges) — what the room and a headless
  * `createDocument`/`loadDocument` adopt by default (`semantics: {}` checks
  * none). The media, columns, page and table of contents plugins are not
  * default plugins of `<Edytor>`, but their roles are here so their blocks
@@ -324,7 +333,7 @@ export const tocSemantics = semanticsOf(tocKinds);
  */
 export const defaultSemantics = withMarks(
 	semanticsOf(richTextKinds, codeKinds, imageKinds, mediaKinds, layoutKinds, pageKinds, tocKinds),
-	richTextMarks
+	{ ...richTextMarks, ...commentMarks }
 );
 
 /**

@@ -294,6 +294,35 @@ export type ColumnsLabels = {
 	resize: string;
 };
 
+/** The comments plugin (`createCommentsPlugin`): its toolbar button, sidebar and composer. */
+export type CommentsLabels = {
+	/** The toolbar button and the sidebar's accessible name. */
+	comment: string;
+	/** The sidebar's accessible name. */
+	sidebar: string;
+	/** The new thread's field. */
+	placeholder: string;
+	/** A thread's reply field. */
+	reply: string;
+	/** The button posting a new thread or a reply. */
+	post: string;
+	cancel: string;
+	resolve: string;
+	reopen: string;
+	delete: string;
+	/** A resolved thread's line, with who resolved it. */
+	resolvedBy: (name: string) => string;
+	/** The button showing the resolved threads, with their count. */
+	showResolved: (count: number) => string;
+	hideResolved: string;
+	/** The current user, in place of their name. */
+	you: string;
+	/** When a comment was written (ms since the epoch). */
+	when: (at: number) => string;
+	/** A request the server refused or could not answer. */
+	failed: string;
+};
+
 /** Every section of the dictionary. */
 export type Labels = {
 	editor: EditorLabels;
@@ -311,6 +340,7 @@ export type Labels = {
 	page: PageLabels;
 	toc: TocLabels;
 	pageLink: PageLinkLabels;
+	comments: CommentsLabels;
 };
 
 /**
@@ -602,6 +632,31 @@ export const englishLabels: Labels = frozen({
 		searching: 'Searching…',
 		noResults: 'No results',
 		untitled: 'Untitled'
+	},
+	comments: {
+		comment: 'Comment',
+		sidebar: 'Comments',
+		placeholder: 'Add a comment…',
+		reply: 'Reply…',
+		post: 'Comment',
+		cancel: 'Cancel',
+		resolve: 'Resolve',
+		reopen: 'Re-open',
+		delete: 'Delete',
+		resolvedBy: (name) => `Resolved by ${name}`,
+		showResolved: (count) => `Resolved (${count})`,
+		hideResolved: 'Hide resolved',
+		you: 'You',
+		when: (at) =>
+			Number.isFinite(at)
+				? new Intl.DateTimeFormat('en', {
+						month: 'short',
+						day: 'numeric',
+						hour: 'numeric',
+						minute: '2-digit'
+					}).format(at)
+				: '',
+		failed: 'Could not save the comment. Try again.'
 	}
 });
 

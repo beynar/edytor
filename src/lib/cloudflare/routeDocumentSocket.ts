@@ -26,6 +26,7 @@
  */
 import { CLOSE, validRoomId } from '../crdt/providers/room.js';
 import {
+	COMMENTS_HEADER,
 	HISTORY_HEADER,
 	HISTORY_KEY_HEADER,
 	IDENTITY_HEADERS,
@@ -33,6 +34,7 @@ import {
 	closedSocket
 } from './DocumentRoom.js';
 import { parseReplica } from './room/access.js';
+import { MAX_COMMENT_REQUEST_BYTES } from './room/comments.js';
 
 /** A namespace whose objects host a document (`DocumentRoom`, or any object with `attachRoom`). */
 export type DocumentNamespace = {
@@ -221,6 +223,53 @@ export async function routeDocumentHistory(
 		return new Response('no such version', { status: 404 }); // no header carries it: no key is one
 	}
 	return rooms.getByName(documentId).fetch(new Request(request.url, { method: 'GET', headers }));
+}
+
+/**
+ * The host Worker's door to a document's comment threads, authorized as
+ * {@link routeDocumentSocket} authorizes a dial, forwarding only the
+ * verified identity:
+ *
+ * - `GET <url>` → every thread and the last change's sequence number
+ *   (`{ seq, threads }`), as JSON;
+ * - `POST <url>` with a JSON body (`{ op: 'add' | 'reply' | 'resolve' |
+ *   'reopen' | 'delete', thread, … }`) → what it did (`{ status:
+ *   'applied', change }` or `{ status: 'noop', thread }`), as the
+ *   verified user.
+ *
+ * A refusal is an HTTP status: `400` (an invalid document id or request),
+ * `401` (`{ expired: true }`), `403` (denied, a read-only identity's
+ * write, another user's comment, an `Origin` that `options.allowedOrigins`
+ * does not list), `404` (no such thread or comment, or the room keeps no
+ * comments), `405` (another method), `409` (a thread or comment id taken),
+ * `413` (a body over 64 KiB, or too many threads or comments).
+ */
+export async function routeDocumentComments(
+	request: Request,
+	rooms: DocumentNamespace,
+	documentId: string,
+	authorize: AuthorizeDocumentSocket,
+	options?: RouteDocumentOptions
+): Promise<Response> {
+	const op = request.method === 'GET' ? 'list' : request.method === 'POST' ? 'post' : null;
+	if (op === null) return new Response('method not allowed', { status: 405 });
+	const identity = await authorized(request, documentId, authorize, statusOf, options);
+	if (identity instanceof Response) return identity;
+	if (op === 'post' && identity.readOnly) return new Response('read-only', { status: 403 });
+	let body: string | null = null;
+	if (op === 'post') {
+		const declared = Number(request.headers.get('Content-Length') ?? 0);
+		if (declared > MAX_COMMENT_REQUEST_BYTES)
+			return new Response('request too large', { status: 413 });
+		body = await request.text();
+		if (new TextEncoder().encode(body).length > MAX_COMMENT_REQUEST_BYTES)
+			return new Response('request too large', { status: 413 });
+	}
+	const headers = identityHeaders(identity);
+	headers.set(COMMENTS_HEADER, op);
+	return rooms
+		.getByName(documentId)
+		.fetch(new Request(request.url, { method: op === 'post' ? 'POST' : 'GET', headers, body }));
 }
 
 export async function routeDocumentSocket(

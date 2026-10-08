@@ -9,8 +9,9 @@
  *   `.admission`, `.doc`, `.createDoc` on an engine you pass in;
  * - the frame contract `varuint GENERATION | varuint messageType |
  *   payload`, the generation records and the message types, the
- *   store-before-ack frame (`messageSaved`) and the bounded catch-up codec
- *   (`chunkFrame`/`createChunkReader`, `messageChunk`);
+ *   store-before-ack frame (`messageSaved`), the bounded catch-up codec
+ *   (`chunkFrame`/`createChunkReader`, `messageChunk`) and the comment
+ *   messages (`messageComments`);
  * - the lib0 helpers that read and write frame bodies, and the awareness
  *   codec that needs no `Awareness` instance (whose sweep timer blocks
  *   hibernation);
@@ -67,6 +68,7 @@ export {
 	messageQueryAwareness,
 	messageSaved,
 	messageChunk,
+	messageComments,
 	MAX_FRAME_BYTES,
 	chunkFrame,
 	createChunkReader,
@@ -88,6 +90,21 @@ export {
 	writePermissionDenied,
 	writeReadOnly
 } from './protocols/auth.js';
+
+export {
+	commentsSubscribe,
+	commentsSnapshot,
+	commentsChange,
+	writeCommentsSubscribe,
+	writeCommentsSnapshot,
+	writeCommentsChange,
+	readCommentsMessage,
+	type CommentChange,
+	type CommentMessage,
+	type CommentSnapshot,
+	type CommentThread,
+	type ThreadComment
+} from './protocols/comments.js';
 
 export {
 	applyAwarenessUpdate,

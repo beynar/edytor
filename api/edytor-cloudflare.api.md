@@ -39,6 +39,7 @@ export type AttachRoomOptions = {
     history?: HistoryOptions;
     purgeAfterDays?: number | false;
     now?: () => number;
+    comments?: CommentOptions | false;
 };
 ```
 
@@ -98,6 +99,8 @@ export declare class AttachedDocument {
     }): Promise<{
         status: 'applied' | 'noop';
     }>;
+    listComments(): CommentSnapshot;
+    comment(request: CommentRequest, actor: CommentActor): Promise<CommentOutcome>;
     exportBlocks(ids: string[]): ExportedBlocks;
     importBlocks(request: ImportRequest): ImportReceipt;
     commitMove(moveId: string, receipt: {
@@ -141,6 +144,7 @@ export declare class AttachedDocument {
 // cloudflare/DocumentRoom.d.ts
 export type Attachment = SocketIdentity & {
     clock: number | null;
+    comments?: boolean;
 };
 ```
 
@@ -149,6 +153,141 @@ export type Attachment = SocketIdentity & {
 ```ts
 // cloudflare/routeDocumentSocket.d.ts
 export type AuthorizeDocumentSocket = (request: Request, documentId: string) => DocumentIdentity | ExpiredCredential | null | Promise<DocumentIdentity | ExpiredCredential | null>;
+```
+
+### COMMENT_STATUS
+
+```ts
+// crdt/protocols/comments.d.ts
+declare const COMMENT_STATUS: Readonly<Record<CommentRefusal, number>>;
+```
+
+### CommentActor
+
+```ts
+// crdt/protocols/comments.d.ts
+export type CommentActor = {
+    user: string;
+    readOnly?: boolean;
+    moderator?: boolean;
+};
+```
+
+### CommentChange
+
+```ts
+// crdt/protocols/comments.d.ts
+export type CommentChange = {
+    type: 'added' | 'replied' | 'resolved' | 'reopened' | 'deleted' | 'removed';
+    thread: CommentThread;
+    comment: ThreadComment | null;
+    user: string;
+    at: number;
+    seq: number;
+};
+```
+
+### CommentOptions
+
+```ts
+// cloudflare/DocumentRoom.d.ts
+export type CommentOptions = {
+    onComment?: (change: CommentChange) => void | Promise<void>;
+    maxLength?: number;
+};
+```
+
+### CommentOutcome
+
+```ts
+// crdt/protocols/comments.d.ts
+export type CommentOutcome = {
+    status: 'applied';
+    change: CommentChange;
+} | {
+    status: 'noop';
+    thread: CommentThread;
+} | {
+    status: 'refused';
+    reason: CommentRefusal;
+    message: string;
+};
+```
+
+### CommentRefusal
+
+```ts
+// crdt/protocols/comments.d.ts
+export type CommentRefusal = 'invalid' | 'read-only' | 'forbidden' | 'missing' | 'exists' | 'full';
+```
+
+### CommentRequest
+
+```ts
+// crdt/protocols/comments.d.ts
+export type CommentRequest = {
+    op: 'add';
+    thread: string;
+    body: string;
+    quote?: string;
+    block?: string | null;
+    comment?: string;
+} | {
+    op: 'reply';
+    thread: string;
+    body: string;
+    comment?: string;
+} | {
+    op: 'resolve';
+    thread: string;
+} | {
+    op: 'reopen';
+    thread: string;
+} | {
+    op: 'delete';
+    thread: string;
+    comment?: string;
+};
+```
+
+### CommentRun
+
+```ts
+// crdt/protocols/comments.d.ts
+export type CommentRun = {
+    block: string;
+    offset: number;
+    length: number;
+};
+```
+
+### CommentSnapshot
+
+```ts
+// crdt/protocols/comments.d.ts
+export type CommentSnapshot = {
+    seq: number;
+    threads: CommentThread[];
+};
+```
+
+### CommentThread
+
+```ts
+// crdt/protocols/comments.d.ts
+export type CommentThread = {
+    id: string;
+    block: string | null;
+    quote: string;
+    createdBy: string;
+    createdAt: number;
+    resolved: {
+        by: string;
+        at: number;
+    } | null;
+    comments: ThreadComment[];
+    rev: number;
+};
 ```
 
 ### CommitResult
@@ -279,6 +418,7 @@ export declare class DocumentRoom<Env = DocumentRoomEnv> extends DurableObject<E
     protected onLoad(): Promise<LoadedDocument | null | undefined>;
     protected onSave(_document: SavedDocument): Promise<void>;
     protected validate(_frame: FrameValidation): boolean | void;
+    protected onComment(_change: CommentChange): void | Promise<void>;
     protected log(entry: RoomLogEntry): void;
     protected semantics(): DocumentSemanticsConfig;
     protected history(): HistoryOptions | undefined;
@@ -320,6 +460,8 @@ export declare class DocumentRoom<Env = DocumentRoomEnv> extends DurableObject<E
     purge(): (PurgeReport & {
         horizon: number;
     }) | null;
+    listComments(): CommentSnapshot;
+    comment(request: CommentRequest, actor: CommentActor): Promise<CommentOutcome>;
     closeUser(userId: string, code?: number, reason?: string): {
         sockets: number;
     };
@@ -372,6 +514,7 @@ export type DocumentRoomEnv = {
     EDYTOR_HISTORY_TIME_ZONE?: string;
     EDYTOR_LOCKS?: string;
     EDYTOR_ROOMS?: MoveNamespace;
+    EDYTOR_COMMENTS?: string;
 };
 ```
 
@@ -615,11 +758,32 @@ export type LockOptions = {
 };
 ```
 
+### MAX_COMMENTS_PER_THREAD
+
+```ts
+// crdt/protocols/comments.d.ts
+declare const MAX_COMMENTS_PER_THREAD = 500;
+```
+
+### MAX_COMMENT_LENGTH
+
+```ts
+// crdt/protocols/comments.d.ts
+declare const MAX_COMMENT_LENGTH = 10000;
+```
+
 ### MAX_REFUSALS
 
 ```ts
 // cloudflare/DocumentRoom.d.ts
 declare const MAX_REFUSALS = 100;
+```
+
+### MAX_THREADS
+
+```ts
+// crdt/protocols/comments.d.ts
+declare const MAX_THREADS = 5000;
 ```
 
 ### MAX_WAITING_DELETES
@@ -830,6 +994,11 @@ export type RoomLogEntry = {
     key: string;
     user: string | null;
     undo: boolean;
+} | {
+    edytor: 'comment';
+    type: CommentChange['type'];
+    thread: string;
+    user: string;
 } | ({
     edytor: 'purge';
     horizon: number;
@@ -963,6 +1132,18 @@ export type StoredRecord = {
 };
 ```
 
+### ThreadComment
+
+```ts
+// crdt/protocols/comments.d.ts
+export type ThreadComment = {
+    id: string;
+    author: string;
+    body: string;
+    createdAt: number;
+};
+```
+
 ### Timing
 
 ```ts
@@ -1007,6 +1188,20 @@ declare const attachRoom: (host: DurableObject<any>, options?: AttachRoomOptions
 ```ts
 // cloudflare/DocumentRoom.d.ts
 declare const closedSocket: (code: number, reason: string) => Response;
+```
+
+### commentAnchors
+
+```ts
+// crdt/protocols/comments.d.ts
+declare const commentAnchors: (doc: CommentAnchorSource) => Map<string, CommentRun[]>;
+```
+
+### decideComment
+
+```ts
+// crdt/protocols/comments.d.ts
+declare const decideComment: (request: CommentRequest, actor: CommentActor, context: CommentContext) => CommentOutcome;
 ```
 
 ### forwardLateEdits
@@ -1083,6 +1278,13 @@ declare const roomHistory: (options?: {
     maxBytes?: number;
     maxValueBytes?: number;
 }) => HistoryStoreFactory;
+```
+
+### routeDocumentComments
+
+```ts
+// cloudflare/routeDocumentSocket.d.ts
+export declare function routeDocumentComments(request: Request, rooms: DocumentNamespace, documentId: string, authorize: AuthorizeDocumentSocket, options?: RouteDocumentOptions): Promise<Response>;
 ```
 
 ### routeDocumentHistory
@@ -2112,6 +2314,34 @@ export type AwarenessEntry = {
     clientID: number;
     clock: number;
     state: Record<string, unknown> | null;
+};
+```
+
+#### crdt/protocols/comments.d.ts#CommentAnchorSource
+
+```ts
+export type CommentAnchorSource = {
+    order(): readonly string[];
+    contentItems(id: string): ReadonlyArray<{
+        kind: 'text';
+        text: string;
+        marks?: Record<string, unknown>;
+    } | {
+        kind: 'inline';
+    }>;
+};
+```
+
+#### crdt/protocols/comments.d.ts#CommentContext
+
+```ts
+export type CommentContext = {
+    thread: CommentThread | null;
+    threads: number;
+    now: number;
+    seq: number;
+    maxLength?: number;
+    newId?: () => string;
 };
 ```
 

@@ -50,7 +50,7 @@ marks: {
 }
 ```
 
-The `icon` is text: a letter, a symbol or an emoji.
+The `icon` is text: a letter, a symbol or an emoji. With `run`, the button calls it instead of toggling the mark: the [comments plugin](/docs/plugins/comments)'s `comment` mark declares `toolbar: { label: 'Comment', icon: '💬', run }`, which opens a thread on the selection.
 
 ## When it shows
 
@@ -114,7 +114,7 @@ The snippet receives the `ToolbarController`. Every action keeps and restores th
 <TypeTable
   type={{
     marks: { type: "{ mark, label, icon }[]", description: "The marks that declare a toolbar button, in registration order." },
-    "toggleMark(mark)": { type: "(mark: string) => void", description: "Toggle a mark over the selection." },
+    "toggleMark(mark)": { type: "(mark: string) => void", description: "Toggle a mark over the selection, or call its toolbar entry's run when it has one." },
     "isActive(mark)": { type: "(mark: string) => boolean", description: "Whether the mark covers every character of the selection, for a pressed state." },
     kinds: { type: "KindRow[]", description: "The kinds the block may turn into while keeping its content." },
     currentKind: { type: "KindRow | undefined", description: "The row naming the selection's block: of its kind's rows, the one whose preset data shares the most values with the block's (the first on a tie)." },

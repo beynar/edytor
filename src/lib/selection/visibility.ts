@@ -50,6 +50,20 @@ export const shown = (
 };
 
 /**
+ * Whether `block` is a container's header whose body shows (`body.enter`):
+ * it has children, it is an open `<details>` (a toggle), or its kind's body
+ * shows even empty (`body`: a callout). Enter at its end opens a first
+ * child and a paste there leads its body (`flow.header`); a closed
+ * `<details>` never, whatever its kind.
+ */
+export const bodyShows = (block: Block): boolean => {
+	const { container, body } = block.definition;
+	const open = (block.node as HTMLDetailsElement | undefined)?.open;
+	if (!container || open === false) return false;
+	return block.hasChildren || open === true || !!body;
+};
+
+/**
  * What the view knows that the document does not, for the document's range
  * and flow ops: what it hides (`del.range.hidden-body`: a closed toggle's
  * body is not in a range, and a split of its header leaves it there,
@@ -77,9 +91,8 @@ export const viewOf = (edytor: Edytor) => {
 		// keeps its kind when a paste fills it.
 		header: (id: string) => {
 			const block = edytor.idToBlock.get(id);
-			const open = (block?.node as HTMLDetailsElement | undefined)?.open;
-			if (open === false) return 'closed' as const;
-			return !!block?.definition.container && (block.hasChildren || !!open);
+			if ((block?.node as HTMLDetailsElement | undefined)?.open === false) return 'closed' as const;
+			return !!block && bodyShows(block);
 		}
 	};
 };

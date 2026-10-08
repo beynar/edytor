@@ -415,10 +415,18 @@ export type BlockDefinition = {
 	/**
 	 * A container kind (Notion's toggles, callouts, quotes): its content is a
 	 * header over its children. Enter at the end of a header with children
-	 * opens a first child of `defaultChild`; a closed `details` header (the
+	 * opens a first child of `defaultChild`, as at the end of an open
+	 * `details` header without children; a closed `details` header (the
 	 * browser owns `open`) opens a sibling after instead, children untouched.
 	 */
 	container?: boolean;
+	/**
+	 * A container whose children are a body that shows even while it is
+	 * empty (Notion's callout: a title over its content): Enter at the end of
+	 * its header opens its first child, as an open toggle's does, and a paste
+	 * there leads that body. Needs `container`.
+	 */
+	body?: boolean;
 	/**
 	 * The type a new child of this block takes by default (Enter inside a
 	 * child, a split, an island merged out into it). Adopted by the

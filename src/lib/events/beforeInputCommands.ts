@@ -16,6 +16,7 @@ import { id, vetoable } from '$lib/utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan, prepareSplitKeepingChildren } from '$lib/block/block.utils.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
+import { bodyShows } from '$lib/selection/visibility.js';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
 import { INTENTS, caretAt, intentSnapshot, kindOf, type Attempt } from '$lib/session/attempt.js';
@@ -333,11 +334,11 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 		return caretAt(edytor, current.firstText, 0);
 	}
 
-	// A container's header (toggle, callout, quote) with children, or an open
-	// toggle's even without, keeps them: Enter opens a first child (Notion); a
+	// A container's header whose body shows (`body.enter`: one with children, an
+	// open toggle, a callout) keeps it: Enter opens a first child (Notion); a
 	// closed toggle's — the browser owns `open` — a sibling after it instead.
 	const open = (current.node as HTMLDetailsElement | undefined)?.open;
-	const header = current.definition.container && (current.hasChildren || open);
+	const header = current.definition.container && (current.hasChildren || bodyShows(current));
 
 	if (isAtEndOfBlock) {
 		if (header) {

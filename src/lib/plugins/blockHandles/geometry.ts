@@ -65,3 +65,16 @@ export const nestIndent = (node: HTMLElement) => {
 		.trim();
 	return value?.endsWith('px') ? parseFloat(value) : NEST_INDENT;
 };
+
+/**
+ * Whether `y` is over the hint of `node`'s empty body (`body.hint`, a kind's
+ * `data-edytor-empty-body` element: an open toggle's, a callout's): a drop
+ * there goes inside the block.
+ */
+export const overEmptyBody = (node: HTMLElement, y: number) => {
+	const hint = Array.from(node.querySelectorAll('[data-edytor-empty-body]')).find(
+		(element) => element.closest('[data-edytor-block="true"]') === node
+	);
+	const rect = hint?.getBoundingClientRect();
+	return !!rect && rect.height > 0 && y >= rect.top && y <= rect.bottom;
+};

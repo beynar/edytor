@@ -15,7 +15,7 @@ icon: type
 <Edytor />
 ```
 
-`createRichTextPlugin({ labels, keywords })` builds it in another language: `labels` (a `PartialLabels<'richText'>`) names the presets, the toolbar's mark buttons and the to-do checkbox, and `keywords` replaces a preset's slash keywords by command id (see [Localization](/docs/customization/localization)); `richTextPlugin` is the English one. A listed instance replaces the default. List it yourself to translate it, to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
+`createRichTextPlugin({ labels, keywords, callout })` builds it in another language or with other callout icons (see [Toggles and callouts](#toggles-and-callouts)): `labels` (a `PartialLabels<'richText'>`) names the presets, the toolbar's mark buttons and the to-do checkbox, and `keywords` replaces a preset's slash keywords by command id (see [Localization](/docs/customization/localization)); `richTextPlugin` is the English one. A listed instance replaces the default. List it yourself to translate it, to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
 
 ## Block kinds
 
@@ -28,7 +28,7 @@ icon: type
 | `todo-item`          | `div` with a checkbox      | `{ checked: boolean }`         | To-do list (`[ ] `, `[] `)                                 |
 | `toggle`             | `details`, content in `summary` | none                      | Toggle list (`> `)                                         |
 | `toggle-heading`     | `details`, an `h1` to `h3` in `summary` | `{ level: 'h1' }` | Toggle heading 1, 2, 3 (`> ` in a heading; `# `, `## `, `### ` in a toggle) |
-| `callout`            | `div` with an icon         | `{ icon: string }`             | Callout (icon `💡`)                                        |
+| `callout`            | `div`: icon, title, content | `{ icon: string }`            | Callout (icon `💡`)                                        |
 | `quote`              | `div` with a `blockquote`  | none                           | Quote (`" `)                                               |
 | `divider`            | `hr`, void, no content     | none                           | Divider (`---`)                                            |
 
@@ -46,13 +46,58 @@ Behavior worth knowing:
 - Bulleted and numbered items, to-dos and toggles are [continuing kinds](/docs/customization/blocks#continuing-kinds): <kbd>Enter</kbd> opens another of the same kind (an unchecked to-do), and in an empty one ends the list. Toggles, callouts and quotes are [containers](/docs/customization/blocks#containers): <kbd>Enter</kbd> at the end of one with children, or of an open toggle, opens a first child, and in the middle of the header moves the rest of the text into that first child. <kbd>Backspace</kbd> at the start of any kind but a paragraph turns it into a paragraph first. [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role) has the full rules.
 - Headings have Notion's three levels. A `heading`'s tag follows `data.level`, `h1` to `h3`, and so does its copied HTML. Without a level it is `h1`; any other level (a stored `h5`, say) renders and copies as `h3`, as pasting `h4` to `h6` gives a level `h3` heading.
 - The `h1`–`h3` of a heading and the `blockquote` of a quote wrap the block's own text only. The block element is a `div`, and nested blocks render after the tag, in a sibling `div`: the page's heading styles do not reach them, and a screen reader does not read them as part of the heading. Style the text through `[data-edytor-type='heading'] > h2`, the block through `[data-edytor-type='heading']`. The tag is the kinds' `contentElement`, so a `headingBlock` or `quoteBlock` snippet override keeps it around `content()`.
-- A `toggle` is a native `<details>`. The browser owns its `open` attribute, so opening and closing it is not an edit and is never reverted. Arrow keys skip the body of a closed toggle.
+- A `toggle` is a native `<details>`. The browser owns its `open` attribute, so opening and closing it is not an edit and is never reverted. Arrow keys skip the body of a closed toggle. A toggle you create (the slash menu, `> `, Turn into a block without children) opens, so you can write its content right away (see [Toggles and callouts](#toggles-and-callouts)).
 - A `toggle-heading` is Notion's toggle heading: a heading's text as a toggle's header, `data.level` as on a heading. It is a `<details>` whose `summary` holds the `h1`–`h3`, and behaves as a toggle: a container, whose closed body is hidden and skipped; <kbd>Enter</kbd> at the end of an open one opens a first child, of a closed one a paragraph after it (it does not continue itself, as a heading does not). Turn into moves between a heading, a toggle heading and a toggle keeping the text, the children and the level. As in Notion, `> ` typed at a heading's start makes it a toggle heading of its level, and `# `, `## ` or `### ` at a toggle's (or a toggle heading's) start a toggle heading of that level, so `> # ` on a new line is a toggle heading 1 ([markdown shortcuts](/docs/plugins/markdown-shortcuts)). Its HTML is `<details><summary><h2>…</h2></summary>…</details>`, which pastes back as a toggle heading. The [table of contents](/docs/plugins/table-of-contents) lists it with the headings.
 - Every block that shows its own text takes a colour and a background from the [block menu](/docs/plugins/block-menu#block-colors) (`data.color`, `data.background`).
 - The `todo-item` checkbox (`data-edytor-todo-checkbox`) shows `data.checked`. Clicking it, or <kbd>Mod</kbd> + <kbd>Enter</kbd> in the to-do (or over selected blocks, each shown to-do, while the toggles among them open or close), flips `checked` as one undo step. It does not change in a readonly editor.
-- A `callout` shows `data.icon` in a `data-edytor-callout-icon` span, `💡` when it has none.
+- A `callout` is an icon, a title and a content: see [Toggles and callouts](#toggles-and-callouts).
 - The `paragraph` element carries no classes of its own: style it through `[data-edytor-type='paragraph']`.
 - Pasted `ol > li` becomes a numbered item and other `li` a bulleted item.
+
+## Toggles and callouts
+
+A toggle's and a callout's own text is a header; their children are a body that holds any blocks, nested any way. In an open toggle, and in a callout, an empty body shows a hint ("Empty toggle. Click or drop blocks inside.", "Empty callout. Click or drop blocks inside."). Clicking it starts the body: an empty paragraph as its first child, the caret in it, one undo step. A block dragged by its handle onto the hint goes inside. From the keyboard, <kbd>Enter</kbd> at the end of the header goes into the body. The hint is not content: it is not editable, not copied, not read by assistive technology, and a readonly editor does not show it (`[data-edytor-empty-body]` styles it).
+
+A callout is Notion's: an icon, a title and a content.
+
+- Its title is its own text, semibold (`[data-edytor-callout-title]`), with the placeholder "Callout title" while empty ([placeholders](#placeholders)). <kbd>Enter</kbd> at the end of the title, or in the middle of it, goes into the content, whether or not it has blocks yet.
+- Its content is its children, any blocks. Copied, a callout is `<div data-edytor-callout="💡"><p>Title</p>…</div>`, which pastes back as the callout, its icon kept; as plain text, its title then its content.
+- Its icon is `data.icon`: the editor's default when the callout has none (`💡`, or the `callout.icon` option), no icon when it is `''`. A new callout takes the default. Set it from code as any data, `block.data.icon = '🔥'`.
+- Clicking the icon (`[data-edytor-callout-icon]`, a button named "Change icon", "Add icon" when the callout has none) opens a picker under it. Picking an icon, or Remove icon, is one undo step; Escape, <kbd>Tab</kbd> or a click elsewhere closes it unchanged. The arrows move through the icons (up and down by a row), Home and End go to the ends, <kbd>Enter</kbd> or <kbd>Space</kbd> picks, and the editor gets the keys back with its caret. The block menu of a callout has a Change icon row, the keyboard's way to the picker. A readonly editor shows the icon only.
+
+```svelte title="CalloutIcons.svelte" check
+<script lang="ts">
+	import { CALLOUT_ICONS, Edytor, createRichTextPlugin } from 'edytor';
+
+	// New callouts take 📌; the picker offers the default icons and a unicorn.
+	const richText = createRichTextPlugin({
+		callout: { icon: '📌', icons: [...CALLOUT_ICONS, '🦄'] }
+	});
+</script>
+
+<Edytor plugins={[richText]} />
+```
+
+`callout.picker` replaces the picker's markup with your snippet. It receives the picker (`CalloutIconPicker`): the callout it is open on (`block`), the choices (`icons`), the icon the callout shows (`current`), `set(icon)`, `remove()` and `close()`, its words (`labels`) and `readonly`. Put `{@attach picker.keys}` and `{@attach picker.popup}` on its element, which then takes the focus and the keys and is announced to assistive technology, and spread `picker.option(i)` on each row: its id, role, state (`data-active` on the keyboard's row, `aria-checked` on the current icon) and handlers; `picker.option(picker.icons.length)` is Remove icon. The editor places it under the icon.
+
+```svelte title="IconPicker.svelte" check
+<script lang="ts">
+	import { Edytor, createRichTextPlugin, type CalloutIconPicker } from 'edytor';
+
+	const richText = createRichTextPlugin({ callout: { picker: iconPicker } });
+</script>
+
+{#snippet iconPicker(picker: CalloutIconPicker)}
+	<div class="icons" {@attach picker.keys} {@attach picker.popup}>
+		{#each picker.icons as icon, index (index)}
+			<button type="button" {...picker.option(index)}>{icon}</button>
+		{/each}
+		<button type="button" {...picker.option(picker.icons.length)}>{picker.labels.remove}</button>
+	</div>
+{/snippet}
+
+<Edytor plugins={[richText]} />
+```
 
 ## Marks
 

@@ -514,16 +514,14 @@ describe('containers on Enter', () => {
 		expect(shape(edytor)).toEqual([['toggle', 'title', [['paragraph', 'body']]]]);
 	});
 
-	it('Enter at the end of a callout without children starts a paragraph after it', async () => {
+	it("Enter at the end of a callout's title without content starts its content (`body.enter`)", async () => {
 		const { edytor, editor } = await render([], {
 			children: [{ type: 'callout', data: { icon: '💡' }, content: [{ text: 'note' }] }]
 		});
 		await enterAtEnd(edytor, editor);
-		expect(shape(edytor)).toEqual([
-			['callout', 'note', []],
-			['paragraph', '', []]
-		]);
-		expect(edytor.selection.state.startBlock?.index).toBe(1);
+		expect(shape(edytor)).toEqual([['callout', 'note', [['paragraph', '']]]]);
+		const caret = edytor.selection.state.startBlock!;
+		expect([caret.type, caret.parent?.type, caret.index]).toEqual(['paragraph', 'callout', 0]);
 	});
 });
 

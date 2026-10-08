@@ -57,6 +57,16 @@ export const fr: Labels = {
 			code: 'Code'
 		},
 		checkbox: 'Fait',
+		emptyBody: {
+			toggle: 'Bloc dépliant vide. Cliquez ou déposez des blocs ici.',
+			callout: 'Encadré vide. Cliquez ou déposez des blocs ici.'
+		},
+		calloutIcon: {
+			change: 'Changer l’icône',
+			add: 'Ajouter une icône',
+			picker: 'Icônes de l’encadré',
+			remove: 'Retirer l’icône'
+		},
 		placeholders: {
 			heading: (level) => `Titre ${level}`,
 			toggleHeading: (level) => `Titre dépliant ${level}`,
@@ -64,7 +74,7 @@ export const fr: Labels = {
 			todo: 'Tâche',
 			toggle: 'Liste dépliante',
 			quote: 'Citation vide',
-			callout: 'Écrivez quelque chose…',
+			callout: 'Titre de l’encadré',
 			caption: 'Ajoutez une légende…',
 			empty: 'Tapez « / » pour les commandes'
 		}

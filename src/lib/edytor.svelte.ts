@@ -14,7 +14,7 @@ import { attachFocus, selectionIsInside } from './events/onFocus.js';
 import { Attempts } from './session/attempt.js';
 import { Composition } from './session/composition.svelte.js';
 import { Suggestions } from './session/suggestions.svelte.js';
-import { type JSONBlock, type JSONDoc } from '$lib/utils/json.js';
+import { type JSONDoc } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
 import { Projector } from './surface/projector.svelte.js';

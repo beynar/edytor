@@ -89,13 +89,16 @@ import { deleteOps } from './doc/delete.js';
 import { metaOps } from './doc/meta.js';
 import { contentOps } from './doc/content.js';
 // Types the facade's inferred declaration names: imported here so the
-// emitted `bindEdytorDoc` type names them rather than an import path.
+// emitted `bindEdytorDoc` type names them rather than an import path
+// (`api/` reports the difference), so no value of the module reads them.
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import type { EngineNode } from './engine-api.js';
 import type { ContentItem, InlineSpec, ModelView, SplitTail } from './placement/model.js';
 import type { Anchor } from './text/model.js';
 import type { ContentRun } from './text/runs.js';
 import type { DocPosition } from './rangeDelete.js';
 import type { DataPatch } from './data.js';
+/* eslint-enable @typescript-eslint/no-unused-vars */
 import type {
 	AnchorAffinity,
 	BlockRole,

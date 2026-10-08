@@ -25,3 +25,6 @@ docs/architecture-v2/
 # the docs site is its own package (Blume)
 site
 dist-code
+
+# agent worktrees and local Claude settings
+.claude

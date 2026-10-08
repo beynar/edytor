@@ -184,7 +184,7 @@
 </script>
 
 <script lang="ts">
-	import type { JSONBlock, JSONDoc } from '../utils/json.js';
+	import type { JSONDoc } from '../utils/json.js';
 	import { onDestroy, onMount, setContext, untrack } from 'svelte';
 	import type { HotKey, HotKeyCombination } from '$lib/session/keymap.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';

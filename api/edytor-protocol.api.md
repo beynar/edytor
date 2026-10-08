@@ -910,6 +910,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                     updated: number[];
                     removed: number[];
                 }, origin: unknown) => void;
+                readonly _destroyWithDoc: () => void;
                 get synced(): boolean;
                 messageHandlers: Record<number, import("./providers/room.js").RoomMessageHandler<any>>;
                 readMessage: (buf: Uint8Array, emitSynced: boolean) => import("lib0-v14/encoding").Encoder;
@@ -1589,6 +1590,7 @@ declare const bindProviders: (Y: EngineApi) => {
                 updated: number[];
                 removed: number[];
             }, origin: unknown) => void;
+            readonly _destroyWithDoc: () => void;
             get synced(): boolean;
             messageHandlers: Record<number, import("./room.js").RoomMessageHandler<any>>;
             readMessage: (buf: Uint8Array, emitSynced: boolean) => import("lib0-v14/encoding").Encoder;
@@ -1780,6 +1782,7 @@ declare const bindIndexeddbProvider: (Y: EngineApi) => {
                 updated: number[];
                 removed: number[];
             }, origin: unknown) => void;
+            readonly _destroyWithDoc: () => void;
             get synced(): boolean;
             messageHandlers: Record<number, RoomMessageHandler<any>>;
             readMessage: (buf: Uint8Array, emitSynced: boolean) => encoding.Encoder;

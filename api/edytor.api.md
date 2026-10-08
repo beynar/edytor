@@ -4213,6 +4213,7 @@ declare const bindProviders: (Y: EngineApi) => {
                 updated: number[];
                 removed: number[];
             }, origin: unknown) => void;
+            readonly _destroyWithDoc: () => void;
             get synced(): boolean;
             messageHandlers: Record<number, import("./room.js").RoomMessageHandler<any>>;
             readMessage: (buf: Uint8Array, emitSynced: boolean) => import("lib0-v14/encoding").Encoder;

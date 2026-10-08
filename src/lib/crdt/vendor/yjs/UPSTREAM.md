@@ -21,15 +21,19 @@ recorded patch and document it here.
 
 | Package | Pin | Purpose |
 | ------- | --- | ------- |
-| `lib0-v14` | `npm:lib0@1.0.0-rc.32` | the engine's `lib0` dep (`^1.0.0-rc.29` upstream), **aliased** so the v13 runtime keeps `lib0@0.2.117` |
-| `lib0` | `^0.2.117` | unchanged — still used by `yjs@13.6.30`, `y-protocols`, `localProvider.ts` |
-| `@y/protocols` | `1.0.6-rc.1` (devDep) | reference for U07 provider port; `@y/y` peer override-pinned to `14.0.0-rc.26` |
-| `yjs` | `13.6.30` | unchanged — the live v13 runtime |
+| `lib0-v14` | `npm:lib0@1.0.0-rc.32` | the engine's `lib0` dep (`^1.0.0-rc.29` upstream), **aliased** so the name never meets the `lib0@0.2` line `yjs@13` installs for itself |
+| `@y/protocols` | `1.0.6-rc.1` (devDep) | installs the pristine `@y/y@14.0.0-rc.26` (its peer, override-pinned) that `bench/lib/mk-baseline.sh` materializes for the differential lanes; the protocol ports in `src/lib/crdt/protocols/` cite it |
+| `yjs` | `13.6.30` (devDep) | the v13 engine, for the legacy-fixture and v13→v14 migration tests only (never shipped) |
+| `yjs-14-move` | `npm:yjs@14.0.0-1` (devDep) | the historical move-engine regression test (`src/tests/crdt/historical/issue-694.test.ts`) |
+
+The v13 provider stack (`y-protocols`, `y-websocket`, `y-indexeddb`, `lib0@0.2`)
+is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
+`src/tests/crdt/gate2/public-boundary.test.ts` refuse it.
 
 ## Layout
 
 ```text
-src/        upstream src/, plus patches P1 (import specifiers), P4, P5, P7 and P8 (pruning)
+src/        upstream src/, plus patches P1 (import specifiers), P4, P5, P7, P8 (pruning) and P9–P14
 global.d.ts upstream global.d.ts, plus patches P1 and P8
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -44,9 +48,10 @@ the kept surface.
 
 ### P1 — `lib0/` → `lib0-v14/` import specifier rewrite (`src/**`, `global.d.ts`)
 
-Reason: the repo keeps `lib0@0.2.117` for the v13 runtime; the v14 engine needs
-`lib0@1.0.0-rc.32`. Both are real dependencies (`lib0` and the `lib0-v14` npm
-alias), so the vendored source references `lib0-v14/*` literally — **no
+Reason: the repo kept `lib0@0.2.117` for the v13 runtime when the engine was
+vendored, and the v14 engine needs `lib0@1.0.0-rc.32`; the engine's is the
+`lib0-v14` npm alias (the v13 line is now only `yjs@13`'s own, for the
+migration tests), so the vendored source references `lib0-v14/*` literally — **no
 Vite/bundler alias is involved at runtime or in the packed artifact**.
 
 110 occurrences rewritten (imports and `import('lib0/…')` JSDoc references).
@@ -476,8 +481,6 @@ closure failure lists exactly the declarations to delete (update `KEPT` for
 deliberate export changes), and regenerate `dts/`.
 ### P9 — pending structs record every stacked dependency (`src/utils/encoding.js`)
 
-(P8 is reserved for the phase-2 P3 fork pruning.)
-
 Reason: `integrateStructs` walks a dependency stack; when the head waits for a
 client that is already on the stack it records only the head's missing client
 in the pending state vector (`missingSV`). The dependency of the struct at the
@@ -694,7 +697,7 @@ shasum -a 256 /tmp/yjs.tgz   # expect 4b5ad410…8d7b85
 tar -xzf /tmp/yjs.tgz -C /tmp
 UP=/tmp/yjs-96c96e1fcb1ef6ce866d5264b3f97f7f77b11f64
 
-# engine source: normalize P1 away, then diff — prints exactly the P4–P8 hunks
+# engine source: normalize P1 away, then diff — prints exactly the P4–P14 hunks
 # (the pinned tarball's src/ equals node_modules/@y/y@14.0.0-rc.26/src)
 mkdir -p /tmp/yjs-normalized && cp -R src/lib/crdt/vendor/yjs/src /tmp/yjs-normalized/
 find /tmp/yjs-normalized -name '*.js' -exec sed -i '' 's|lib0-v14|lib0|g' {} +

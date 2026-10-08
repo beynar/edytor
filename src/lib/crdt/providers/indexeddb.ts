@@ -383,7 +383,9 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 					// A read-only doc's pre-hydration state is never persisted.
 					const beforeApplyUpdatesCallback = (updatesStore: IDBObjectStore) => {
 						if (!quarantined(doc)) {
-							idb.addAutoKey(updatesStore, encodeRow(Y.encodeStateAsUpdate(doc)));
+							idb
+								.addAutoKey(updatesStore, encodeRow(Y.encodeStateAsUpdate(doc)))
+								.catch((error) => this.emit('message-error', [error, this]));
 						}
 					};
 					// Hydrated: join the room and claim `synced` (lifetime).
@@ -445,8 +447,14 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 
 			doc.on('update', this._storeUpdate);
 			this.awareness.on('update', this._awarenessUpdateHandler);
-			doc.on('destroy', this.destroy);
+			doc.on('destroy', this._destroyWithDoc);
 		}
+
+		/**
+		 * The doc's `destroy` ends the provider (it never rejects: the close is caught).
+		 * @internal
+		 */
+		readonly _destroyWithDoc = (): void => void this.destroy();
 
 		/** The lifetime hydration claim. */
 		get synced(): boolean {
@@ -497,7 +505,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 				clearTimeout(this._storeTimeoutId);
 			}
 			this.doc.off('update', this._storeUpdate);
-			this.doc.off('destroy', this.destroy);
+			this.doc.off('destroy', this._destroyWithDoc);
 			this.awareness.off('update', this._awarenessUpdateHandler);
 			this.disconnectBc();
 			if (this._ownsAwareness) {

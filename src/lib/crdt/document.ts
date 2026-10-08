@@ -162,7 +162,7 @@ import {
 import { assertAdmission, assertSchema, bindAdmission, checkSchema } from './admission.js';
 import { Awareness } from './protocols/awareness.js';
 import { callEach } from './protocols/observable.js';
-import type { EdytorSync, EdytorSyncCleanup, EdytorSyncPayload } from './providers/index.js';
+import type { EdytorSync, EdytorSyncCleanup } from './providers/index.js';
 import { SyncRefusedError } from './providers/room.js';
 import { TRANSACTION } from '../constants.js';
 import type { JSONDoc } from '../utils/json.js';

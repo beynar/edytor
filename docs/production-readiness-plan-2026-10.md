@@ -60,7 +60,7 @@ Majors, by dimension:
   `DocumentOperations`, decided with the maintainer: the operations live on the document).
 - **Robustness**: the document lifetime ceiling (≈ 72 stored bytes per edit against a 2 MiB
   quota, `4413` final, no rebase path; a re-seed drops offline clients' unsynced edits: a
-  maintainer decision, documented on the Limitations page); ~~comments unbounded, snapshot amplification~~
+  maintainer decision, documented on the Limitations page; the design is `docs/design/document-reseed.md`); ~~comments unbounded, snapshot amplification~~
   (`next.42`); ~~typing in a table O(cells²)~~ (`next.42`); client typing linear in page size
   (no windowing).
 - **Features**: ~~markdown paste into blocks~~ (`next.44`); ~~file/video/audio claiming dropped and pasted files

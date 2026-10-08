@@ -21,6 +21,9 @@
 	import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 	import { createCommentsPlugin } from '$lib/plugins/comments/commentsPlugin.js';
 	import { createMemoryCommentsClient } from '$lib/collaboration/comments/client.js';
+	import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+	import { createPageLinkPlugin } from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
+	import type { Plugin } from '$lib/plugins.js';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import { fr, frKeywords } from '../fixtures/labels.fr.js';
 
@@ -50,6 +53,10 @@
 			client: createMemoryCommentsClient({ user: 'ada' }),
 			user: 'ada'
 		}),
+		createMentionPlugin({ labels: fr.mention, items: () => [] }),
+		createPageLinkPlugin({ labels: fr.pageLink, search: () => [] }),
+		// An app's own trigger naming nothing: the view's words.
+		(() => ({ triggers: [{ char: '%', items: () => [], onPick: () => true }] })) as Plugin,
 		createRichTextPlugin({ labels: fr.richText, keywords: frKeywords })
 	];
 </script>

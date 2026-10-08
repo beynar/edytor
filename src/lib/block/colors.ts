@@ -107,3 +107,37 @@ export const setBlockColor = (
 	});
 	return applied.some(Boolean);
 };
+
+/** The class Notion's HTML export gives a block's colour: `block-color-<name>`, `block-color-<name>_background`. */
+const CLASS = /^block-color-([a-z]+)(_background)?$/;
+/** Notion's export names the palette's green `teal`. */
+const EXPORTED: Record<string, (typeof BLOCK_COLORS)[number]> = { teal: 'green' };
+
+/**
+ * A block's colours as the classes Notion's HTML export writes
+ * (`block-color-red`, `block-color-red_background`), space-separated; empty
+ * when it holds none. The copy's `text/html` names them so.
+ */
+export const colorClasses = (data: Readonly<Record<string, unknown>> | undefined) => {
+	const color = colorName(data?.color);
+	const background = colorName(data?.background);
+	return [color && `block-color-${color}`, background && `block-color-${background}_background`]
+		.filter(Boolean)
+		.join(' ');
+};
+
+/**
+ * The palette colours `element`'s classes name as Notion's HTML export does
+ * (its `teal` read as green): what a paste keeps. A class naming no palette
+ * colour adds nothing.
+ */
+export const colorsOfClasses = (element: Element): { color?: string; background?: string } => {
+	const found: { color?: string; background?: string } = {};
+	for (const name of element.classList) {
+		const [, raw, background] = CLASS.exec(name) ?? [];
+		const color = raw && (EXPORTED[raw] ?? raw);
+		if (!color || !(BLOCK_COLORS as readonly string[]).includes(color)) continue;
+		found[background ? 'background' : 'color'] = color;
+	}
+	return found;
+};

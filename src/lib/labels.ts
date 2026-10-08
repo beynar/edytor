@@ -30,6 +30,12 @@ export type EditorLabels = {
 	/** A move to a place (a drop). */
 	moved: (what: string) => string;
 	deleted: (what: string) => string;
+	/** A trigger menu's accessible name when its trigger names none (`Trigger.name`). */
+	triggerMenu: string;
+	/** A trigger menu's text while a search is pending, when its trigger says none. */
+	searching: string;
+	/** A trigger menu's text when no row matches, when its trigger says none. */
+	noResults: string;
 };
 
 /** The rich text kinds and marks: menu rows, toolbar buttons, placeholders. */
@@ -113,7 +119,7 @@ export type SlashMenuLabels = {
 	close: string;
 	/** The key shown beside Close. */
 	closeKey: string;
-	/** A section heading, by its group key (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`); others show as they are. */
+	/** A section heading, by its group key (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`, `Color`); others show as they are. */
 	groups: Record<string, string>;
 };
 
@@ -287,6 +293,65 @@ export type PageLinkLabels = {
 	untitled: string;
 };
 
+/** The `@` mention menu (`createMentionPlugin`). */
+export type MentionLabels = {
+	/** The menu's accessible name. */
+	menu: string;
+	/** The menu while a search is pending, with no rows. */
+	searching: string;
+	noResults: string;
+};
+
+/** The version history panel (`HistoryPanel`). */
+export type HistoryPanelLabels = {
+	/** The panel's name (its `aria-label`). */
+	title: string;
+	/** The list's name. */
+	versions: string;
+	/** The first half of a day (before local noon). */
+	morning: string;
+	/** The second half of a day (until midnight). */
+	evening: string;
+	loading: string;
+	/** No version stored yet. */
+	empty: string;
+	/** A version's editors are unknown (a server edit). */
+	noEditors: string;
+	/** Editors left out of a version's list, after the names shown. */
+	moreEditors: (count: number) => string;
+	/** Shown before a version's write time. */
+	saved: string;
+	/** The preview's name (its `aria-label`). */
+	preview: string;
+	/** Pick a version to preview it. */
+	choose: string;
+	/** The highlight toggle. */
+	highlight: string;
+	/** Blocks added since the version. */
+	added: (count: number) => string;
+	/** Blocks removed since the version. */
+	removed: (count: number) => string;
+	/** Blocks changed since the version. */
+	changed: (count: number) => string;
+	/** The version equals the current document. */
+	same: string;
+	restore: string;
+	restoring: string;
+	undo: string;
+	restored: string;
+	/** A restore that changed nothing (`noop`). */
+	unchanged: string;
+	/** The version is gone (`refused`). */
+	unavailable: string;
+	undone: string;
+	/** An undo with no restore to undo (`noop`). */
+	nothingToUndo: string;
+	/** A `401` or `403`. */
+	denied: string;
+	/** Any other failure. */
+	failed: string;
+};
+
 export type ColumnsLabels = {
 	/** The `columns.<n>` command. */
 	columns: (count: number) => string;
@@ -377,6 +442,8 @@ export type Labels = {
 	pageLink: PageLinkLabels;
 	comments: CommentsLabels;
 	table: TableLabels;
+	mention: MentionLabels;
+	history: HistoryPanelLabels;
 };
 
 /**
@@ -427,7 +494,10 @@ export const englishLabels: Labels = frozen({
 		indented: (what) => `Indented ${what}`,
 		outdented: (what) => `Outdented ${what}`,
 		moved: (what) => `Moved ${what}`,
-		deleted: (what) => `Deleted ${what}`
+		deleted: (what) => `Deleted ${what}`,
+		triggerMenu: 'Suggestions',
+		searching: 'Searching…',
+		noResults: 'No results'
 	},
 	richText: {
 		kinds: {
@@ -511,7 +581,8 @@ export const englishLabels: Labels = frozen({
 			'Basic blocks': 'Basic blocks',
 			'Advanced blocks': 'Advanced blocks',
 			Media: 'Media',
-			Layout: 'Layout'
+			Layout: 'Layout',
+			Color: 'Color'
 		}
 	},
 	blockMenu: {
@@ -718,6 +789,39 @@ export const englishLabels: Labels = frozen({
 		columnMenu: 'Column options',
 		resize: 'Resize column',
 		emptyCell: 'Empty cell'
+	},
+	mention: {
+		menu: 'People',
+		searching: 'Searching…',
+		noResults: 'No results'
+	},
+	history: {
+		title: 'Version history',
+		versions: 'Versions',
+		morning: 'Morning',
+		evening: 'Evening',
+		loading: 'Loading…',
+		empty: 'No versions yet. A version is saved twice a day while the page changes.',
+		noEditors: 'No editors',
+		moreEditors: (count) => `+${count}`,
+		saved: 'Saved',
+		preview: 'Version preview',
+		choose: 'Choose a version to preview it.',
+		highlight: 'Highlight changes',
+		added: (count) => `${count} added since`,
+		removed: (count) => `${count} removed since`,
+		changed: (count) => `${count} changed since`,
+		same: 'Same as the current page',
+		restore: 'Restore version',
+		restoring: 'Restoring…',
+		undo: 'Undo restore',
+		restored: 'Version restored.',
+		unchanged: 'The page already matches this version.',
+		unavailable: 'This version is no longer available.',
+		undone: 'Restore undone.',
+		nothingToUndo: 'There is no restore to undo.',
+		denied: 'You do not have access to this history.',
+		failed: 'The history could not be reached.'
 	}
 });
 

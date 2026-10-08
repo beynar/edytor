@@ -290,6 +290,27 @@ describe('each chrome in its labels', () => {
 		expect(texts('.slash-heading')).toContain(fr.slashMenu.groups['Advanced blocks']);
 	});
 
+	it('the trigger menus: mentions, page links, and a trigger that names nothing', async () => {
+		const { edytor, editor } = await setup([p('a'), p('b'), p('c')]);
+		const menu = async (id: string, typed: string) => {
+			await caretIn(edytor, id);
+			await type(editor, typed);
+			return {
+				name: one('[data-testid="trigger-menu"] [role="listbox"]').getAttribute('aria-label'),
+				empty: one('[data-testid="trigger-menu-empty"]').textContent?.trim()
+			};
+		};
+		expect(await menu('a', '@')).toEqual({ name: fr.mention.menu, empty: fr.mention.noResults });
+		expect(await menu('b', '[[')).toEqual({
+			name: fr.pageLink.menu,
+			empty: fr.pageLink.noResults
+		});
+		expect(await menu('c', '%')).toEqual({
+			name: fr.editor.triggerMenu,
+			empty: fr.editor.noResults
+		});
+	});
+
 	it('the handles: named after the kind, in the labels', async () => {
 		await setup([{ id: 'h', type: 'heading', data: { level: 'h1' }, content: [{ text: 'T' }] }]);
 		expect(one('[data-testid="block-handle"][data-block-id="h"]').getAttribute('aria-label')).toBe(
@@ -472,6 +493,9 @@ describe('no English reaches the page', () => {
 		look();
 		await click(one('[data-edytor-image-add]'));
 		await click(one('[data-edytor-id="v"] [data-edytor-media-add]'));
+		look();
+		await caretIn(edytor, 'a');
+		await type(editor, ' @');
 		look();
 		const page = seen.join('\n');
 		expect(leaked(page)).toEqual([]);

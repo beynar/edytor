@@ -36,12 +36,9 @@ const shape = (page: Page) =>
 
 /**
  * Click at the end of code line `id`, and wait until the model holds that
- * caret. An unmodified key handled at keydown (the code block's ArrowDown,
- * the targetless admission) reads the model value, which the click's caret
- * reaches only at its `selectionchange`; Chromium may run the keydown first
- * on a busy main thread. That is the documented residual
- * `sel.key.before-adoption` (docs/editor-delete-contract.md), not this row's
- * subject, so the row waits for the adoption before pressing.
+ * caret: this row's subject is the code block's exit, not the click's
+ * adoption (`sel.key.before-adoption`, docs/editor-delete-contract.md, has
+ * its own rows in `selection.spec.ts`).
  */
 const endOf = async (page: Page, id: string) => {
 	const text = page.locator(`[data-edytor-id="${id}"] [data-edytor-text]`);

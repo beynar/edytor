@@ -16,8 +16,20 @@ import { fr } from './fixtures/labels.fr.js';
 
 const LIB = join(process.cwd(), 'src/lib');
 
-/** Not chrome a view ships: the reference mention plugin (unexported), the vendored engine, the room. */
-const SKIPPED = ['plugins/mention/', 'crdt/', 'cloudflare/'];
+/** Not chrome a view ships: the engine (vendored included) and the room. */
+const SKIPPED = ['crdt/', 'cloudflare/'];
+
+/**
+ * Literals that name something but are not words to translate: the toolbar's
+ * color names are keys (its `colors` labels show them), an embed provider's
+ * name is a brand.
+ */
+const NOT_WORDS: Array<[file: string, line: RegExp]> = [
+	['plugins/toolbar/ToolbarController.svelte.ts', /^name: '[A-Z][a-z]+', text: /],
+	['plugins/media/media.ts', /^name: '[A-Za-z]+',$/]
+];
+const notWord = (name: string, line: string) =>
+	NOT_WORDS.some(([file, pattern]) => name === file && pattern.test(line.trim()));
 
 const files = (dir: string): string[] =>
 	readdirSync(dir).flatMap((name) => {
@@ -76,7 +88,8 @@ describe('labelsWith', () => {
 			'Basic blocks': 'Basic blocks',
 			'Advanced blocks': 'Advanced blocks',
 			Media: 'Médias',
-			Layout: 'Layout'
+			Layout: 'Layout',
+			Color: 'Color'
 		});
 	});
 
@@ -132,11 +145,15 @@ describe('no hard-coded chrome words', () => {
 		expect(found).toEqual([]);
 	});
 
-	it('no plugin names a row, a preset, a hint or a placeholder with a literal (group names are keys)', () => {
+	it('no plugin or panel names a row, a menu, a preset, a hint or a placeholder with a literal (group names are keys)', () => {
 		const found: string[] = [];
 		for (const { path, name } of library.filter(
 			({ name }) =>
-				(name.startsWith('plugins/') || name.startsWith('session/') || name === 'kinds.ts') &&
+				(name.startsWith('plugins/') ||
+					name.startsWith('session/') ||
+					name.startsWith('collaboration/') ||
+					name.startsWith('components/') ||
+					name === 'kinds.ts') &&
 				// Language names (the picker's labels, overridable by `labels.languages`), icons.
 				!name.endsWith('code/languages.ts') &&
 				!name.endsWith('plugins/icons.ts')
@@ -146,9 +163,18 @@ describe('no hard-coded chrome words', () => {
 				/(label|hint|title|placeholder)\s*[:=]\s*(['"`])[A-Za-z][^'"`]*\2.*$/gm
 			))
 				if (WORD.test(line!)) found.push(`${name}: ${line!.trim()}`);
+			// A menu's name, its empty or pending text (`name: 'People'`); never an
+			// error's own name (`this.name = …`) or a lowercase attribute value.
+			for (const [line] of source.matchAll(
+				/(?<![.\w])(name|empty|searching|loading)\s*[:=]\s*(['"`])[A-Z][a-z][^'"`]*\2.*$/gm
+			))
+				if (!notWord(name, line!)) found.push(`${name}: ${line!.trim()}`);
+			// A word a missing option falls back to (`trigger.name ?? 'Suggestions'`).
+			for (const [line] of source.matchAll(/(\?\?|\|\|)\s*(['"`])[A-Z][a-z][^'"`]*\2.*$/gm))
+				found.push(`${name}: ${line!.trim()}`);
 			// A sentence built around a value (`Moved ${what} up`, `${n} columns`); the
 			// session's others are developer warnings.
-			if (name.startsWith('session/') && !name.endsWith('announcer.svelte.ts')) continue;
+			if (!name.startsWith('plugins/') && !name.endsWith('session/announcer.svelte.ts')) continue;
 			for (const [line] of source.matchAll(
 				/`(?:[A-Z][a-z]+ [^`]*\$\{|[^`]*\$\{[^}]*\} [a-z]{2,}[^`]*`).*$/gm
 			))

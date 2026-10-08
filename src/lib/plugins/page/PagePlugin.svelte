@@ -4,6 +4,7 @@
 	import { pageKinds } from '$lib/crdt/semantics.js';
 	import { convertToKind, type KindRow } from '$lib/kinds.js';
 	import { keywordsOf, labelsWith } from '$lib/labels.js';
+	import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 	import PageLink from './PageLink.svelte';
 	import { pageHtml, pageIdOf, pageLabels, pageTitleOf, type PagePluginOptions } from './page.js';
 
@@ -16,8 +17,9 @@
 	 * id (`data.pageId`), and shows its title (`data.title`, the cache your
 	 * `title` lookup refreshes). Each page is a document of its own (a room
 	 * per page): moving a subpage is moving this block, and the page itself,
-	 * its content and history, never moves. A click opens it (`open`), a
-	 * modified click on an `href` opens a new tab. With `create`, the "Page"
+	 * its content and history, never moves. A click opens it (`open`), and so
+	 * does Enter over it selected alone; a modified or middle click opens it
+	 * in a new tab (`{ newTab: true }`, the browser's own on an `href`). With `create`, the "Page"
 	 * command (slash menu, `+`) creates a page, inserts a block linking to it
 	 * where the caret is (an empty line becomes it) and opens it.
 	 *
@@ -40,6 +42,19 @@
 			const labels = pageLabels.of(edytor);
 			const { create } = own;
 			return {
+				hotkeys: {
+					// Enter over a page block selected alone opens it (Notion).
+					enter: ({ prevent }) => {
+						const [block, ...rest] = getSelectedBlocksInDocumentOrder(edytor);
+						const pageId =
+							block?.type === 'page' &&
+							!rest.length &&
+							pageIdOf(edytor.facade.blockDataOf(block.id)?.pageId);
+						if (!pageId || !own.open) return;
+						const open = own.open;
+						prevent(() => open(pageId, { newTab: false }));
+					}
+				},
 				blocks: {
 					page: {
 						...pageKinds.page,
@@ -91,7 +106,7 @@
 										replaces: true
 									};
 									const applied = convertToKind(edytor, block, row);
-									if (applied) own.open?.(pageId);
+									if (applied) own.open?.(pageId, { newTab: false });
 									return applied;
 								}
 							}

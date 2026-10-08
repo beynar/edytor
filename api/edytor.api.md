@@ -422,7 +422,8 @@ export declare class BlockMenuController {
     get currentKind(): KindRow | undefined;
     get actions(): BlockMenuAction[];
     get matchingKinds(): KindRow[];
-    get rows(): Array<BlockMenuAction | KindRow>;
+    get matchingColors(): BlockMenuColor[];
+    get rows(): Array<BlockMenuAction | KindRow | BlockMenuColor>;
     open(block: Block, anchor: HTMLElement): void;
     close(restoreCaret?: boolean): void;
     move(direction: 'up' | 'down'): void;
@@ -961,6 +962,7 @@ export type EditorCommand = {
     isEnabled?: (edytor: Edytor) => boolean;
     run: (edytor: Edytor) => unknown | Promise<unknown>;
     turnsInto?: (blocks: Block[]) => boolean;
+    searchOnly?: boolean;
 };
 ```
 
@@ -1344,7 +1346,7 @@ type HistoryPanel = ReturnType<typeof HistoryPanel>;
 ### HistoryPanelLabels
 
 ```ts
-// collaboration/history/panel.d.ts
+// labels.d.ts
 export type HistoryPanelLabels = {
     title: string;
     versions: string;
@@ -1353,14 +1355,14 @@ export type HistoryPanelLabels = {
     loading: string;
     empty: string;
     noEditors: string;
-    moreEditors: string;
+    moreEditors: (count: number) => string;
     saved: string;
     preview: string;
     choose: string;
     highlight: string;
-    added: string;
-    removed: string;
-    changed: string;
+    added: (count: number) => string;
+    removed: (count: number) => string;
+    changed: (count: number) => string;
     same: string;
     restore: string;
     restoring: string;
@@ -1387,7 +1389,7 @@ export type HistoryPanelProps = {
     readonly?: boolean;
     highlight?: boolean;
     locale?: string | string[];
-    labels?: Partial<HistoryPanelLabels>;
+    labels?: PartialLabels<'history'>;
     class?: string;
     previewClass?: string;
     version?: Snippet<[
@@ -1787,6 +1789,7 @@ export type MentionPluginOptions = {
     item?: Snippet<[
         TriggerItemPayload<MentionItem>
     ]>;
+    labels?: PartialLabels<'mention'>;
 };
 ```
 
@@ -1845,7 +1848,9 @@ export type PageLinkPluginOptions = {
 ```ts
 // plugins/page/page.d.ts
 export type PagePluginOptions = {
-    open?: (pageId: string) => void;
+    open?: (pageId: string, how: {
+        newTab: boolean;
+    }) => void;
     title?: (pageId: string) => string | null | undefined | Promise<string | null | undefined>;
     href?: (pageId: string) => string;
     create?: () => string | {
@@ -5298,6 +5303,9 @@ export type EditorLabels = {
     outdented: (what: string) => string;
     moved: (what: string) => string;
     deleted: (what: string) => string;
+    triggerMenu: string;
+    searching: string;
+    noResults: string;
 };
 ```
 
@@ -5377,6 +5385,16 @@ export type MediaLabels = {
     fileSize: (bytes: number) => string;
     pasteAs: string;
     pasteLink: string;
+};
+```
+
+#### labels.d.ts#MentionLabels
+
+```ts
+export type MentionLabels = {
+    menu: string;
+    searching: string;
+    noResults: string;
 };
 ```
 

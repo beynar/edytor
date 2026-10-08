@@ -127,9 +127,30 @@
 						{controller.currentKind?.label ?? labels.block}
 					</div>
 				{/if}
-				{#each rows as row, index ('value' in row ? `kind:${row.id}` : row.id)}
-					{#if 'value' in row}
-						{#if index === 0 || !('value' in rows[index - 1]!)}
+				{#each rows as row, index ('field' in row ? `color:${row.id}` : 'value' in row ? `kind:${row.id}` : row.id)}
+					{#if 'field' in row}
+						{#if index === 0 || !('field' in rows[index - 1]!)}
+							<div class="block-menu-heading" role="presentation">{labels.color}</div>
+						{/if}
+						<button
+							type="button"
+							role="menuitemradio"
+							aria-checked={controller.isCurrentColor(row)}
+							id={controller.rowId(row)}
+							tabindex="-1"
+							class="block-menu-row block-menu-color"
+							data-field={row.field}
+							data-current={controller.isCurrentColor(row)}
+							data-selected={index === controller.selectedIndex}
+							data-testid={`block-menu-${row.id}`}
+							use:keepInView={index === controller.selectedIndex}
+							style:--block-menu-swatch={swatch(row)}
+							onmousedown={(event) => event.preventDefault()}
+							onmousemove={() => (controller.selectedIndex = index)}
+							onclick={() => controller.paint(row)}>{row.label}</button
+						>
+					{:else if 'value' in row}
+						{#if index === 0 || !('value' in rows[index - 1]!) || 'field' in rows[index - 1]!}
 							<div class="block-menu-heading" role="presentation">{labels.turnInto}</div>
 						{/if}
 						<button

@@ -2008,32 +2008,40 @@ fixture/harness paths that write the DOM selection directly
 helpers in `tests/editor-*/`) call `edytor.markUserGesture()` first, or
 the classifier reads their synthetic `selectionchange` as drift.
 
-### `sel.key.before-adoption` — a key the press's caret has not reached (residual)
+### `sel.key.before-adoption` — a key the press's caret has not reached
 
 A press places the DOM caret at once, but the model adopts it only at the
 `selectionchange` the browser queues for it. Keydown handlers read the
 model value: the bindings (`session/bindings.ts`, a kind's `hotkeys`
-such as the code block's ArrowDown), the structural fallback's
+such as the code block's ArrowDown, Tab), the structural fallback's
 projection (`getStructuralFallbackInputType`) and the targetless
-admission (`targetless` in `session/attempt.ts`). Only a chord with a
-command modifier re-reads the DOM first
-(`shouldRefreshSelectionBeforeKeyDown` in `events/onKeyDown.ts`); an
-unmodified key (Enter, an arrow, a character) does not. An occurrence
-that reaches `beforeinput` is admitted at its declared range
-(`syncSelectionFromDeclaredRange`), so typed text lands at the press's
-caret; a key a binding handles at keydown, or one refused as targetless
-before any caret was adopted, acts on the value before the press.
+admission (`targetless` in `session/attempt.ts`). Chromium runs input
+ahead of ordinary tasks, so a keydown can precede the queued
+`selectionchange` when the main thread is busy (a loaded test runner, a
+slow device); a primary press's release reads the DOM again
+(`selection.svelte.ts` `#dropped`), a secondary press (a right-click) has
+no such read.
 
-Chromium runs input ahead of ordinary tasks, so a keydown can precede the
-queued `selectionchange` when the main thread is busy (a loaded test
-runner, a slow device). Residual, not fixed: re-reading the DOM before
-every key would adopt the carets the projector classifies as drift
-(`sel.drift.churn`, the parked carets). The fix belongs to the keydown
-path: re-read the DOM when an intent gesture (`intentSerial`) is newer
-than the last adopted `selectionchange`. Until then the Playwright rows
-that press a key right after a click wait for the model to hold the
-click's caret (`endOf` in `tests/editor-dom/code-exit.spec.ts`), a
-documented wait for this row, not a mask.
+Rule: a key reads the DOM first when a press inside the host (or a focus
+from outside it) is newer than the projector's last observation
+(`projector.unobserved()`: the press's gesture serial, `pressed`, above
+the serial of the last display or adopted `selectionchange`). It runs the
+one classifier (`selection.onSelectionChange`), as the queued event
+would, before the targetless admission, the bindings and the fallback
+(`events/onKeyDown.ts`). Any other key keeps the value: a key never
+adopts a caret the projector classifies as drift (`sel.drift.churn`, the
+parked carets), and a command-modifier chord still re-reads the DOM
+(`shouldRefreshSelectionBeforeKeyDown`). An occurrence that reaches
+`beforeinput` is admitted at its declared range
+(`syncSelectionFromDeclaredRange`) as before.
+
+Rows: `tests/editor-dom/selection.spec.ts` "a key bound at keydown acts at
+a secondary click whose selectionchange is still queued" (the press's
+`selectionchange` held back: Tab nests the clicked block, not the old
+caret's) in three engines, and the secondary-click row under a 4× CPU
+throttle in Chromium. `endOf` in `tests/editor-dom/code-exit.spec.ts`
+still waits for the click's caret: that row's subject is the code block's
+exit.
 
 ## Host DOM ownership (D-25)
 

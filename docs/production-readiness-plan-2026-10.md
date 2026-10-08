@@ -400,7 +400,9 @@ record yet. Only a soak test (WU-16) and real users remove that.
   `foldedPairs`, `foldedStructs`, `recomputes`, `itemsWalked`); timings are `pnpm bench:scale`;
   seed-73 is fixed and no Playwright project retries. Residual races are named, not masked:
   `sel.key.before-adoption` in `docs/editor-delete-contract.md` (a key before the click's
-  `selectionchange`). **Follow-up:** remote admission, engine integration, the undo manager and
+  `selectionchange`). Fixed 2026-10-08: a key after a press reads the DOM first
+  (`projector.unobserved()`), and the grip-column row waits for Chromium to deliver each
+  drag move; neither row is skipped on CI any more. **Follow-up:** remote admission, engine integration, the undo manager and
   encode/load scaling are checked only by `bench:scale`, which fails nothing; a deterministic
   count for one of them (the structs or ranges admission visits) would put them back in a gate.
 

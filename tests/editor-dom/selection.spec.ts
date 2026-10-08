@@ -21,12 +21,24 @@ import {
 	readJsonByTestId,
 	setSelectionAtInlineElementBoundary,
 	setSelectionByTextIndex,
+	holdSelectionChange,
+	throttleCpu,
 	trackPageIssues,
 	imageLinkField
 } from './helpers';
 
 const gotoSelectionFixture = async (page: Page, path: string) => {
 	await gotoEditorRoute(page, path);
+};
+
+/** The root blocks' texts. */
+const readRootLines = async (page: Page) => {
+	const value = await readJsonByTestId<{
+		children: Array<{ content?: Array<{ text?: string }> }>;
+	}>(page, 'value');
+	return value.children.map((child) =>
+		(child.content ?? []).map((part) => part.text ?? '').join('')
+	);
 };
 
 const setSelectionInsideShell = async (
@@ -1272,92 +1284,77 @@ test.describe('browser selection behavior', () => {
 		issues.assertClean();
 	});
 
-	test('uses the secondary-click target for the next keyboard edit', async ({
-		page,
-		browserName
+	/**
+	 * A secondary click selects the word under it under the Mac editing
+	 * behaviour (Blink's and WebKit's `ShouldSelectOnContextualMenuClick`), so
+	 * the typed key replaces it; Firefox, and Chromium or WebKit on Linux and
+	 * Windows, place a caret there (`mac-secondary-click-word-selection`).
+	 */
+	const contextClickSelectsWord = (browserName: string) =>
+		process.platform === 'darwin' && browserName !== 'firefox';
+
+	// The slow row throttles Chromium's main thread (as a loaded CI runner,
+	// where a key can run before the press's `selectionchange`:
+	// `sel.key.before-adoption`).
+	for (const slow of [false, true])
+		test(`uses the secondary-click target for the next keyboard edit${slow ? ' (slow main thread)' : ''}`, async ({
+			page,
+			browserName
+		}) => {
+			test.skip(slow && browserName !== 'chromium', 'CPU throttling is a Chromium protocol call');
+			const issues = trackPageIssues(page);
+
+			await gotoSelectionFixture(page, '/test/dom?scenario=basic&empty=last');
+			await setSelectionByTextIndex(page, 0, 1);
+
+			const point = await getCaretPoint(page, 1, 2);
+			const restore = slow ? await throttleCpu(page) : null;
+			await page.mouse.click(point.x, point.y, { button: 'right' });
+			await page.keyboard.press('Escape');
+			await page.keyboard.type('X');
+			await restore?.();
+
+			const word = contextClickSelectsWord(browserName);
+			await expect.poll(() => readRootLines(page)).toEqual(['lead', word ? 'X' : 'noXte', '']);
+			const caret = word ? 1 : 3;
+			await expectSelection(page, {
+				startBlockPath: [1],
+				endBlockPath: [1],
+				yStart: caret,
+				yEnd: caret,
+				isCollapsed: true
+			});
+
+			issues.assertClean();
+		});
+
+	test('a key bound at keydown acts at a secondary click whose selectionchange is still queued', async ({
+		page
 	}) => {
-		// Quarantined on CI runners: a key typed before the press's selectionchange
-		// is adopted still lands at the old caret there (residual
-		// sel.key.before-adoption, docs/production-readiness-plan-2026-10.md WU-09).
-		test.skip(!!process.env.CI, 'residual sel.key.before-adoption on slow runners');
+		// `sel.key.before-adoption`: Tab is the keymap's at keydown, from the
+		// model value. The press's `selectionchange` is held back, as a busy main
+		// thread delays it: the key reads the DOM caret the press left.
 		const issues = trackPageIssues(page);
 
 		await gotoSelectionFixture(page, '/test/dom?scenario=basic&empty=last');
 		await setSelectionByTextIndex(page, 0, 1);
 
 		const point = await getCaretPoint(page, 1, 2);
+		const release = await holdSelectionChange(page);
 		await page.mouse.click(point.x, point.y, { button: 'right' });
 		await page.keyboard.press('Escape');
-		await page.keyboard.type('X');
+		await page.keyboard.press('Tab');
+		await release();
 
 		await expect
 			.poll(async () => {
 				const value = await readJsonByTestId<{
-					children: Array<{ content?: Array<{ text?: string }> }>;
+					children: Array<{ children?: Array<{ content?: Array<{ text?: string }> }> }>;
 				}>(page, 'value');
-				return value.children.map((child) =>
-					(child.content ?? []).map((part) => part.text ?? '').join('')
-				);
+				return value.children.map((child) => child.children?.length ?? 0);
 			})
-			.toEqual(
-				expectedByBrowser(browserName, ['lead', 'noXte', ''], {
-					chromium: {
-						value: ['lead', 'X', ''],
-						quirk: {
-							id: 'chromium-secondary-click-word-selection',
-							because: 'Chromium selects the secondary-clicked word before keyboard replacement'
-						}
-					},
-					webkit: {
-						value: ['lead', 'X', ''],
-						quirk: {
-							id: 'webkit-secondary-click-word-selection',
-							because: 'WebKit selects the secondary-clicked word before keyboard replacement'
-						}
-					}
-				})
-			);
-		await expectSelection(
-			page,
-			expectedByBrowser(
-				browserName,
-				{
-					startBlockPath: [1],
-					endBlockPath: [1],
-					yStart: 3,
-					yEnd: 3,
-					isCollapsed: true
-				},
-				{
-					chromium: {
-						value: {
-							startBlockPath: [1],
-							endBlockPath: [1],
-							yStart: 1,
-							yEnd: 1,
-							isCollapsed: true
-						},
-						quirk: {
-							id: 'chromium-secondary-click-word-selection-caret',
-							because: 'Chromium replacement leaves the caret after the replacement text'
-						}
-					},
-					webkit: {
-						value: {
-							startBlockPath: [1],
-							endBlockPath: [1],
-							yStart: 1,
-							yEnd: 1,
-							isCollapsed: true
-						},
-						quirk: {
-							id: 'webkit-secondary-click-word-selection-caret',
-							because: 'WebKit replacement leaves the caret after the replacement text'
-						}
-					}
-				}
-			)
-		);
+			.toEqual([1, 0]);
+		await expect.poll(() => readRootLines(page)).toEqual(['lead', '']);
 
 		issues.assertClean();
 	});

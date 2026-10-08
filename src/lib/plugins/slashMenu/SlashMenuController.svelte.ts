@@ -120,8 +120,12 @@ export class SlashMenuController extends TextTriggerController {
 	/** Matching commands, grouped (groups in first-seen order): the menu's rows and keyboard order. */
 	get commands() {
 		// A `+`'s rows are the commands that can run in the block it adds.
+		const queried = Boolean(this.query.trim());
 		const matching = Array.from(this.edytor.commands.values()).filter(
-			(command) => this.enabled(command) && matchesQuery(command, this.query)
+			(command) =>
+				(queried || !command.searchOnly) &&
+				this.enabled(command) &&
+				matchesQuery(command, this.query)
 		);
 		// Groups in first-seen order, Notion's "Basic blocks" first.
 		const groups = [...new Set(matching.map((command) => command.group ?? ''))].sort(

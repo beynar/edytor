@@ -7,13 +7,18 @@ import {
 import { onPress } from '$lib/events/onFocus.js';
 import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 import BlockMenu from './BlockMenu.svelte';
-import { BlockMenuController, type BlockMenuOptions } from './BlockMenuController.svelte.js';
+import {
+	BlockMenuController,
+	colorCommands,
+	type BlockMenuOptions
+} from './BlockMenuController.svelte.js';
 
 /**
  * Notion's block menu: a handle click (without an `onActivate` of your own)
- * opens it beside the handle — search, Turn into, Duplicate, Move, Delete,
- * and Copy link when `linkTo` is given. Also binds Mod+D (duplicate the
- * selected blocks, or the caret's block).
+ * opens it beside the handle — search, Turn into, Color, Duplicate, Move,
+ * Delete, and Copy link when `linkTo` is given. Also binds Mod+D (duplicate
+ * the selected blocks, or the caret's block), and adds the colours to the
+ * slash menu by name (`/red`: "Red text", "Red background").
  */
 export const createBlockMenuPlugin =
 	(options: BlockMenuOptions = {}): Plugin =>
@@ -83,6 +88,8 @@ export const createBlockMenuPlugin =
 		};
 
 		return {
+			// Colours by name in the slash menu (`/red`), as in Notion.
+			commands: colorCommands(edytor, controller.labels),
 			hotkeys: {
 				'mod+d': ({ prevent }) => {
 					if (edytor.readonly) return;

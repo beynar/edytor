@@ -31,7 +31,7 @@ Copy works in [readonly mode](/docs/editor/readonly) and never creates an undo s
 
 The HTML and plain text come from the definitions, so exporting a kind looks like rendering it:
 
-- A block kind's `html` form: a tag name that wraps the content then the children (the rich text plugin uses `blockquote` for quotes, `li` for list items), or a function of the block and its serialized content and children. The default is `<p>` around the content.
+- A block kind's `html` form: a tag name that wraps the content then the children (the rich text plugin uses `blockquote` for quotes, `li` for list items), or a function of the block and its serialized content and children. The default is `<p>` around the content. A block's [colours](/docs/plugins/block-menu#block-colors) are a class on its element, as in Notion's export: `block-color-red`, `block-color-red_background`.
 - A block kind's `plain` form, a function; the default is the content, then the children, one per line.
 - A mark's `tag` and `attributes`: bold exports `<strong>`, a link `<a href>`, a color `<span style="color: …">`. A mark without a tag exports its text only.
 - An inline block's `plain` function; by default an inline block exports nothing to plain text.

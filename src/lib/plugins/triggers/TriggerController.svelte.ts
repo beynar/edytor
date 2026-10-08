@@ -264,17 +264,17 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 
 	/** The menu's accessible name. */
 	get name() {
-		return this.trigger.name ?? 'Suggestions';
+		return this.trigger.name ?? this.edytor.labels.triggerMenu;
 	}
 
 	/** The text shown when no row matches. */
 	get empty() {
-		return this.trigger.empty ?? 'No results';
+		return this.trigger.empty ?? this.edytor.labels.noResults;
 	}
 
 	/** The text shown while a search is pending and no row is shown. */
 	get searching() {
-		return this.trigger.searching ?? 'Searching…';
+		return this.trigger.searching ?? this.edytor.labels.searching;
 	}
 
 	labelOf = (item: T) => (this.trigger.label ? this.trigger.label(item) : defaultLabel(item));

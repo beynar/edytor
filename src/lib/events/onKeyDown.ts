@@ -234,6 +234,13 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 		return;
 	}
 
+	// A press's caret its `selectionchange` has not brought to the model yet
+	// (`sel.key.before-adoption`): the key reads the DOM first, as that event
+	// would have, so a binding, the fallback and the admission act at it.
+	if (this.projector.unobserved()) {
+		this.selection.onSelectionChange();
+	}
+
 	// A real key past the swallow/island guards is a user gesture —
 	// disarm pending deferred restores (phantom composition keys never
 	// reach this line).

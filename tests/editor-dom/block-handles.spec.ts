@@ -1,6 +1,12 @@
 import { expect, test, type Page } from './editorTest';
 
-import { expectSelection, readJsonByTestId, trackPageIssues, waitForEditorReady } from './helpers';
+import {
+	expectSelection,
+	readJsonByTestId,
+	throttleCpu,
+	trackPageIssues,
+	waitForEditorReady
+} from './helpers';
 
 type SerializedBlock = {
 	children?: SerializedBlock[];
@@ -956,6 +962,29 @@ test.describe('the handle column: a drag straight down or up it reorders (R2)', 
 		await waitForEditorReady(page, { requireRuntime: true });
 		await settleHandles(page);
 	};
+	/**
+	 * Note the drag events the page receives (`dragTo`): in Chromium the
+	 * protocol's drag move is answered before the page handled it, so a read
+	 * right after it can see the previous move's placement on a busy runner.
+	 */
+	const recordDrag = (page: Page) =>
+		page.evaluate(() => {
+			const record = window as unknown as { __dragStarted?: boolean; __dragY?: number };
+			window.addEventListener('dragstart', () => (record.__dragStarted = true), { capture: true });
+			for (const type of ['dragenter', 'dragover'])
+				window.addEventListener(type, (event) => (record.__dragY = (event as DragEvent).clientY), {
+					capture: true
+				});
+		});
+	/** Move the pointer; in Chromium, wait until the page handled the drag event at that height. */
+	const dragTo = async (page: Page, x: number, y: number) => {
+		await page.mouse.move(x, y);
+		if (page.context().browser()?.browserType().name() !== 'chromium') return;
+		await page.waitForFunction((y) => {
+			const record = window as unknown as { __dragStarted?: boolean; __dragY?: number };
+			return !record.__dragStarted || Math.abs((record.__dragY ?? -Infinity) - y) <= 1;
+		}, y);
+	};
 	/** The drop indicator's position, after the drag library and the overlay took the last move. */
 	const shownPosition = async (page: Page) => {
 		await page.evaluate(
@@ -989,41 +1018,51 @@ test.describe('the handle column: a drag straight down or up it reorders (R2)', 
 		const [gx, gy] = [g.x + g.width / 2, g.y + g.height / 2];
 		for (let x = text.x + 16; x > gx; x -= 4) await page.mouse.move(x, gy);
 		await page.mouse.move(gx, gy);
+		await recordDrag(page);
 		await page.mouse.down();
 		return { x: gx, y: gy };
 	};
 	const box = async (page: Page, id: string) =>
 		(await page.locator(`[data-edytor-id="${id}"]`).boundingBox())!;
 
-	test('down the grip column, row by row: before/after bars, never a beside band', async ({
-		page
-	}) => {
-		// Quarantined on CI runners: on a slow runner one sample between rows reads no
-		// placement (a null at the gap); the fix belongs to the sticky placement rule.
-		test.skip(!!process.env.CI, 'a placement gap sampled between rows on slow runners');
-		const issues = trackPageIssues(page);
-		await openParagraphs(page);
-		const at = await pressGrip(page, 'P1');
-		const [p2, p3] = [await box(page, 'P2'), await box(page, 'P3')];
-		const seen: Array<[number, string | null]> = [];
-		for (let y = at.y + 4; y <= p3.y + p3.height - 3; y += 4) {
-			await page.mouse.move(at.x, y);
-			seen.push([Math.round(y), await shownPosition(page)]);
-		}
-		await page.mouse.move(at.x, p3.y + p3.height - 3);
-		// Every row on the way, gaps included, shows a reorder; nothing beside.
-		expect(seen.filter(([, position]) => position === 'left' || position === 'right')).toEqual([]);
-		expect(
-			seen.filter(([y, position]) => y >= p2.y && position !== 'before' && position !== 'after')
-		).toEqual([]);
-		expect(await shownPosition(page)).toBe('after');
-		expect(Math.abs((await barCenter(page)) - (p3.y + p3.height))).toBeLessThanOrEqual(4);
-		await page.mouse.up();
-		await expect
-			.poll(() => readRootTexts(page))
-			.toEqual(['two paragraph', 'three paragraph', 'one paragraph', 'four', 'five']);
-		issues.assertClean();
-	});
+	// The slow row throttles Chromium's main thread, as a loaded CI runner.
+	for (const slow of [false, true])
+		test(`down the grip column, row by row: before/after bars, never a beside band${slow ? ' (slow main thread)' : ''}`, async ({
+			page,
+			browserName
+		}) => {
+			test.skip(slow && browserName !== 'chromium', 'CPU throttling is a Chromium protocol call');
+			const issues = trackPageIssues(page);
+			await openParagraphs(page);
+			const restore = slow ? await throttleCpu(page) : null;
+			const at = await pressGrip(page, 'P1');
+			const [p2, p3] = [await box(page, 'P2'), await box(page, 'P3')];
+			const seen: Array<[number, string | null]> = [];
+			for (let y = at.y + 4; y <= p3.y + p3.height - 3; y += 4) {
+				await dragTo(page, at.x, y);
+				seen.push([y, await shownPosition(page)]);
+			}
+			await dragTo(page, at.x, p3.y + p3.height - 3);
+			// Every row on the way, gaps included, shows a reorder; nothing beside.
+			// A drag event's coordinates are whole pixels: a sample less than one
+			// pixel below P2's top may still be P1's, whose own row offers nothing.
+			expect(seen.filter(([, position]) => position === 'left' || position === 'right')).toEqual(
+				[]
+			);
+			expect(
+				seen.filter(
+					([y, position]) => y >= p2.y + 1 && position !== 'before' && position !== 'after'
+				)
+			).toEqual([]);
+			expect(await shownPosition(page)).toBe('after');
+			expect(Math.abs((await barCenter(page)) - (p3.y + p3.height))).toBeLessThanOrEqual(4);
+			await page.mouse.up();
+			await restore?.();
+			await expect
+				.poll(() => readRootTexts(page))
+				.toEqual(['two paragraph', 'three paragraph', 'one paragraph', 'four', 'five']);
+			issues.assertClean();
+		});
 
 	test('up the grip column to a row’s upper half: before it', async ({ page }) => {
 		const issues = trackPageIssues(page);
@@ -1032,10 +1071,10 @@ test.describe('the handle column: a drag straight down or up it reorders (R2)', 
 		const p2 = await box(page, 'P2');
 		const seen: Array<string | null> = [];
 		for (let y = at.y - 4; y >= p2.y + 3; y -= 4) {
-			await page.mouse.move(at.x, y);
+			await dragTo(page, at.x, y);
 			seen.push(await shownPosition(page));
 		}
-		await page.mouse.move(at.x, p2.y + 3);
+		await dragTo(page, at.x, p2.y + 3);
 		expect(seen.filter((position) => position === 'left' || position === 'right')).toEqual([]);
 		expect(await shownPosition(page)).toBe('before');
 		expect(Math.abs((await barCenter(page)) - p2.y)).toBeLessThanOrEqual(4);

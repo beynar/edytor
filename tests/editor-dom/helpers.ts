@@ -1159,6 +1159,42 @@ export const resetNativeEditingState = async (page: Page) => {
 
 export const modKey = process.platform === 'darwin' ? 'Meta' : 'Control';
 
+/**
+ * Hold back every `selectionchange` from the editor (a capture listener on the
+ * window stops it), as a busy main thread delays the task the browser queued
+ * for it, so the keys after a press run first. Returns the release, which
+ * dispatches one `selectionchange` for what was held.
+ */
+export const holdSelectionChange = async (page: Page) => {
+	await page.evaluate(() => {
+		const stop = (event: Event) => event.stopImmediatePropagation();
+		window.addEventListener('selectionchange', stop, { capture: true });
+		(window as unknown as { __releaseSelectionChange: () => void }).__releaseSelectionChange =
+			() => {
+				window.removeEventListener('selectionchange', stop, { capture: true });
+				document.dispatchEvent(new Event('selectionchange'));
+			};
+	});
+	return () =>
+		page.evaluate(() =>
+			(window as unknown as { __releaseSelectionChange: () => void }).__releaseSelectionChange()
+		);
+};
+
+/**
+ * Slow the page's main thread `rate` times (Chromium only, through the
+ * DevTools protocol), as on a loaded CI runner, where a queued task such as a
+ * press's `selectionchange` can run after the next input event. Returns the undo.
+ */
+export const throttleCpu = async (page: Page, rate = 4) => {
+	const cdp = await page.context().newCDPSession(page);
+	await cdp.send('Emulation.setCPUThrottlingRate', { rate });
+	return async () => {
+		await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+		await cdp.detach();
+	};
+};
+
 export const getWordKey = (page: Page) =>
 	page.evaluate(() => (/Mac|iPod|iPhone|iPad/.test(window.navigator.platform) ? 'Alt' : 'Control'));
 

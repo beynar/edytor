@@ -122,6 +122,8 @@ export class Projector {
 	#held = false;
 	/** The gesture serial at which the browser parked a caret of its own (`parked`). */
 	#parked = -1;
+	/** The gesture serial of the last press inside the host or focus from outside (`pressed`). */
+	#press = -1;
 	/**
 	 * Any DOM caret in the host is the browser's own, not a target (`placed`):
 	 * armed when the browser parks one (`parked`) and when the value becomes
@@ -284,7 +286,15 @@ export class Projector {
 	 */
 	pressed = () => {
 		this.#parking = false;
+		this.#press = this.edytor.intentSerial;
 	};
+
+	/**
+	 * A press placed a DOM caret the model has not observed yet: its
+	 * `selectionchange` is still queued (`sel.key.before-adoption`; Chromium
+	 * runs input ahead of it on a busy main thread). A key reads the DOM first.
+	 */
+	unobserved = () => this.#press > this.#serial;
 
 	/**
 	 * Whether the host holds a DOM caret a gesture may have placed: a range

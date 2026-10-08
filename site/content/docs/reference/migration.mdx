@@ -14,7 +14,9 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+#### Fixed
+
+- **Typing on a very long page does less work.** The block handles found the blocks near the screen by watching every block, which the browser rechecked after each keystroke (about 6 ms a key at 10,000 blocks). They now look up the few blocks near the screen directly.
 
 ### From 0.1.0-next.43
 

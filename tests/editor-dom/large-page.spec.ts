@@ -11,7 +11,9 @@
  * - a text selection across thousands of skipped blocks deletes them;
  * - find-in-page (`window.find`) reaches a skipped block's text;
  * - a far block's handle mounts once it nears the viewport (the handles'
- *   IntersectionObserver), aligned with its block, and drags it;
+ *   near band, one screen above and below, measured on the overlay's
+ *   frames), aligned with its block, and drags it; only the band's blocks
+ *   have one;
  * - a remote caret in a skipped block shows at its text once scrolled to.
  *
  * IME over a skipped block is the cdp lane's (`large-page.cdp.spec.ts`).
@@ -195,6 +197,29 @@ test.describe('P8 — a large page with content-visibility', () => {
 				return ids.slice(ids.indexOf('b3000'), ids.indexOf('b3000') + 4);
 			})
 			.toEqual(['b3000', 'b3002', 'b3003', 'b3001']);
+	});
+
+	test('only the blocks within a screen of the viewport have a handle', async ({ page }) => {
+		await open(page);
+		const handled = () =>
+			page.evaluate(() =>
+				[...document.querySelectorAll<HTMLElement>('[data-testid="block-handle"]')].map(
+					(h) => h.dataset.blockId
+				)
+			);
+		await expect.poll(async () => (await handled()).includes('b1')).toBe(true);
+		const atTop = await handled();
+		// Three screens of blocks at most, of 5,000.
+		expect(atTop.length).toBeLessThan(300);
+		expect(atTop).not.toContain('b2500');
+		await page.evaluate(() => {
+			const far = document.querySelector('main > [data-edytor] [data-edytor-id="b2500"]')!;
+			window.scrollTo(0, far.getBoundingClientRect().top + window.scrollY);
+		});
+		await expect.poll(async () => (await handled()).includes('b2500')).toBe(true);
+		const there = await handled();
+		expect(there).not.toContain('b1');
+		expect(there.length).toBeLessThan(300);
 	});
 
 	test('a remote caret in a skipped block shows at its text once scrolled to', async ({ page }) => {

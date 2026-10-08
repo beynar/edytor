@@ -7,6 +7,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import BlockHandles from './BlockHandles.svelte';
 import { BlockHandleController } from './BlockHandleController.svelte.js';
 import { labelsWith, type PartialLabels } from '$lib/labels.js';
+import { hidden } from '$lib/selection/visibility.js';
 
 export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
 
@@ -44,12 +45,46 @@ const handlePlugins = new WeakSet<Plugin>();
 /** Recognize both the default and configured handle plugins during component composition. */
 export const isBlockHandlesPlugin = (plugin: Plugin) => handlePlugins.has(plugin);
 
-/** A handle for a block within about one screen of the viewport. */
-const NEAR_MARGIN = '100% 0px';
+/**
+ * Where a handle mounts: a block within one screen of the viewport, above or
+ * below. Without layout (no `IntersectionObserver`: a DOM without a
+ * renderer), every block is near.
+ */
+const NEAR_SCREENS = 1;
+
+/**
+ * The top-level blocks near the viewport, by a binary search over their
+ * boxes (document order is vertical order at the top level): reads
+ * O(log n) boxes a frame, where an observer of every block computed them all
+ * after each layout change.
+ */
+const nearTop = (blocks: readonly Block[], screen: number): readonly Block[] => {
+	const top = -NEAR_SCREENS * screen;
+	const bottom = (1 + NEAR_SCREENS) * screen;
+	const box = (block: Block) => block.node?.getBoundingClientRect();
+	let lo = 0;
+	let hi = blocks.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		const at = box(blocks[mid]!);
+		if (!at || at.bottom < top) lo = mid + 1;
+		else hi = mid;
+	}
+	const first = lo;
+	hi = blocks.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		const at = box(blocks[mid]!);
+		if (!at || at.top <= bottom) lo = mid + 1;
+		else hi = mid;
+	}
+	return blocks.slice(first, lo);
+};
 
 /**
  * Block handles in the overlay, created lazily: a handle mounts
- * for a block near the viewport (every block without IntersectionObserver),
+ * for a block near the viewport (`nearTop` and the blocks inside them, not
+ * hidden; every block without layout),
  * under the pointer, selected, focused or dragged; drop targets exist only
  * during our own drag. Hover is one delegated listener on the editor and
  * one on the overlay (a block's handle keeps it hovered).
@@ -65,31 +100,24 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 		const near = new SvelteSet<string>();
 		const hovered = new SvelteSet<string>();
 		const ids = new WeakMap<Element, string>();
-		const observer =
-			typeof IntersectionObserver === 'undefined'
-				? null
-				: new IntersectionObserver(
-						(entries) => {
-							for (const {
-								target,
-								isIntersecting,
-								boundingClientRect: at,
-								rootBounds
-							} of entries) {
-								const id = ids.get(target);
-								if (!id) continue;
-								// Near: intersecting, or its unclipped box in the band (an inner scroll
-								// container may clip a near block). A hidden block (collapsed toggle
-								// child) has an empty box and is not.
-								const inBand =
-									at.height > 0 &&
-									(!rootBounds || (at.bottom >= rootBounds.top && at.top <= rootBounds.bottom));
-								if (isIntersecting || inBand) near.add(id);
-								else near.delete(id);
-							}
-						},
-						{ rootMargin: NEAR_MARGIN }
-					);
+		/** Layout is computed (a browser): the near band is measured, else every block is near. */
+		const measured = typeof IntersectionObserver !== 'undefined';
+		/** The near band, measured on the overlay's frames (a scroll, a resize, a commit). */
+		const measureNear = () => {
+			const view = edytor.node?.ownerDocument.defaultView;
+			const tops = edytor.root?.children;
+			if (!view || !tops) return;
+			const next = new Set<string>();
+			const visit = (block: Block) => {
+				if (blocks.has(block.id) && !hidden(block)) next.add(block.id);
+				for (const child of block.children) visit(child);
+			};
+			for (const block of nearTop(tops, view.innerHeight)) visit(block);
+			return () => {
+				for (const id of near) if (!next.has(id)) near.delete(id);
+				for (const id of next) if (!near.has(id)) near.add(id);
+			};
+		};
 		/**
 		 * The blocks under the pointer that have a handle: the hovered block and
 		 * its handled ancestors (a layout and its columns have none). Over a
@@ -133,6 +161,7 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				node.addEventListener('pointerleave', unhover);
 				layer.addEventListener('pointerover', hoverOverlay);
 				layer.addEventListener('pointerleave', unhover);
+				const offNear = measured ? edytor.overlay.add(measureNear) : undefined;
 				const component = mount(BlockHandles, {
 					target: layer,
 					props: { edytor, controller, blocks, near, hovered, handle: options.handle }
@@ -142,7 +171,7 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 					node.removeEventListener('pointerleave', unhover);
 					layer.removeEventListener('pointerover', hoverOverlay);
 					layer.removeEventListener('pointerleave', unhover);
-					observer?.disconnect();
+					offNear?.();
 					void unmount(component);
 				};
 			},
@@ -156,10 +185,9 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				if (facade.isLayout(block.id) || facade.isLayoutItem(block.id)) return offDropTarget;
 				ids.set(node, block.id);
 				blocks.set(block.id, block);
-				if (observer) observer.observe(node);
+				if (measured) edytor.overlay.invalidate();
 				else near.add(block.id);
 				return () => {
-					observer?.unobserve(node);
 					offDropTarget();
 					if (block.node === node || block.node === undefined) {
 						blocks.delete(block.id);

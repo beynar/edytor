@@ -75,13 +75,26 @@
 		return Array.from({ length: widest }, (_, i) => String(i));
 	};
 
-	/** A cell's column position in its table (reactive through the cells), `-1` when none. */
+	/**
+	 * A cell's column position in its table (reactive through the cells), `-1`
+	 * when none. A cell naming a listed column reads only the table's list:
+	 * a keystroke in another cell re-renders nothing here
+	 * (`table.render.scale`). Only a column the table no longer lists (an
+	 * undo's) scans the rows, as `columnsOfTable` orders those after the
+	 * listed ones.
+	 */
 	const columnIndex = (edytor: Edytor, table: string, row: string, id: string): number => {
-		const columns = columnsOfTable(edytor, table);
-		const listed = Array.isArray(edytor.cells?.get(table)?.data?.columns);
-		if (!listed) return edytor.cells?.get(row)?.childIds.indexOf(id) ?? -1;
+		const listed = edytor.cells?.get(table)?.data?.columns;
+		if (!Array.isArray(listed)) return edytor.cells?.get(row)?.childIds.indexOf(id) ?? -1;
 		const column = edytor.cells?.get(id)?.data?.column;
-		return typeof column === 'string' ? columns.indexOf(column) : -1;
+		if (typeof column !== 'string') return -1;
+		const ids: string[] = [];
+		for (const c of listed) {
+			const at = (c as { id?: unknown } | null)?.id;
+			if (typeof at === 'string' && !ids.includes(at)) ids.push(at);
+		}
+		const index = ids.indexOf(column);
+		return index !== -1 ? index : columnsOfTable(edytor, table).indexOf(column);
 	};
 
 	/**

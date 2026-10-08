@@ -685,3 +685,42 @@ describe('the Table command', () => {
 		expect(caret(edytor).block).toBe(edytor.facade.tableGrid(t)!.rows[0]!.cells[0]);
 	});
 });
+
+describe('table.render.scale — a keystroke in a cell costs the cell, not the table', () => {
+	/** A `size`×`size` table whose cells all name listed columns. */
+	const square = (size: number) => {
+		const columns = Array.from({ length: size }, (_, c) => `c${c}`);
+		const rows = Array.from({ length: size }, (_, r) =>
+			row(`R${r}`, ...columns.map((c, i) => cell(`X${r}_${i}`, c, 'x')))
+		);
+		return [p('P'), table('T', columns, rows), p('Z')];
+	};
+	/** The cells reads one character typed in the first cell costs, through to the render. */
+	const readsPerKeystroke = async (size: number) => {
+		const { edytor } = await render(square(size));
+		await flushDomUpdates();
+		const cells = edytor.cells!;
+		const get = cells.get.bind(cells);
+		let reads = 0;
+		cells.get = ((id: string) => {
+			reads++;
+			return get(id);
+		}) as typeof cells.get;
+		edytor.idToBlock.get('X0_0')!.firstText!.insertAt(1, 'y');
+		await flushDomUpdates();
+		cells.get = get;
+		document.body.innerHTML = '';
+		return reads;
+	};
+
+	// Linear in the table (the chrome's one measure pass over the grid), never
+	// quadratic: a cell's element reads its own column, not every row's cells.
+	// Four times the cells: quadratic work grows about sixteen times (the
+	// per-cell scan grew twelve), linear about four.
+	it('four times the cells: at most six times the reads (no per-cell scan of the table)', async () => {
+		const small = await readsPerKeystroke(6);
+		const large = await readsPerKeystroke(12);
+		expect(small).toBeGreaterThan(0);
+		expect(large).toBeLessThanOrEqual(small * 6);
+	});
+});

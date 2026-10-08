@@ -14,7 +14,9 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+#### Fixed
+
+- **Typing in a table no longer slows down with its size squared.** Each cell worked out its column by reading every cell of the table, so a keystroke re-rendered every cell, each reading every other one. A cell now reads only its table's column list; a keystroke costs the cell and one pass of the table's chrome.
 
 ### From 0.1.0-next.40
 

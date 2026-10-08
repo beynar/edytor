@@ -52,6 +52,9 @@
  * the child lists the commit patched are compared with the published ones,
  * advancing the published tree in place (after a whole rebuild, the
  * reachable tree is compared).
+ *
+ * The index keeps every fact it shares in one state object
+ * (`index/state.ts`); its module-level helpers are `index/shared.ts`.
  */
 import type {
 	EngineApi,
@@ -153,6 +156,35 @@ import {
 	LIVE_WRITERS
 } from '../incarnations.js';
 import { callEach } from '../protocols/observable.js';
+import {
+	indexState,
+	type TextEdit,
+	type TextEdits,
+	type FoldCtx,
+	type Slot,
+	type Placed,
+	type Published,
+	type Tx
+} from './index/state.js';
+import {
+	ENTRY_FACET,
+	CONTENT_ATTR,
+	facetOf,
+	dataOf,
+	typeAttr,
+	runEquals,
+	EMPTY_RUNS,
+	EMPTY_IDS,
+	sameShape,
+	indexChecks,
+	addTo,
+	dropFrom,
+	keyOf,
+	type Facet,
+	type Deps
+} from './index/shared.js';
+
+export { CONTENT_ATTR, ENTRY_FACET, indexChecks } from './index/shared.js';
 
 /**
  * One visible run of a block — the maintained form of `ContentItem`.
@@ -173,70 +205,6 @@ export type ContentRun =
 			type: string;
 			data?: Record<string, unknown>;
 	  };
-
-/**
- * The facet name of a block's registry entry itself (inserted or removed) —
- * every other facet is named by the block attr it entered through.
- */
-export const ENTRY_FACET = '';
-
-/** The facet name of a write to a block's `content` attr itself (a streamless block's own text). */
-export const CONTENT_ATTR = '#content';
-
-/**
- * Facets of a block node that can change derived state: `content` (a
- * sequence edit of the block's own text), `structure` (claims, delete marks,
- * the nonce, the `content` attr, unknown attrs), `at` (placement candidates —
- * placements and order only) and `meta` (type/data — metadata only).
- */
-type Facet = 'content' | 'structure' | 'at' | 'meta' | 'ignore';
-
-const facetOf = (attr: string): Facet => {
-	if (attr === CONTENT) return 'content';
-	if (attr === AT) return 'at';
-	if (attr === ID || attr === TYPE || attr === DATA || attr.startsWith(DATA_LEAF_PREFIX))
-		return 'meta';
-	// U1: the `l` lastChangedBy stamp is attribution bookkeeping only.
-	if (attr === LAST_CHANGED_ATTR) return 'ignore';
-	// `claims`, `n`, `#content`, delete marks and unknown attrs.
-	return 'structure';
-};
-
-/** A record's `data` as the projection publishes it: a total JSON clone, `undefined` when absent. */
-const dataOf = (rec: BlockRec): Record<string, unknown> | undefined =>
-	rec.data == null ? undefined : (cloneJsonSafe(rec.data) as Record<string, unknown>);
-
-/** A block node's stored kind (`'unknown'` when the attr is missing or not a string). */
-const typeAttr = (node: EngineNode): string => {
-	const type = node.getAttr(TYPE);
-	return typeof type === 'string' ? type : 'unknown';
-};
-
-const runEquals = (a: ContentRun, b: ContentRun): boolean => {
-	if (a === b) return true;
-	if (a.kind !== b.kind) return false;
-	if (a.kind === 'text' && b.kind === 'text') {
-		return a.text === b.text && a.marks === b.marks;
-	}
-	if (a.kind === 'inline' && b.kind === 'inline') {
-		return a.id === b.id && a.type === b.type && a.data === b.data;
-	}
-	return false;
-};
-
-/** Shared empty snapshot — returned for absent/hidden blocks. */
-const EMPTY_RUNS = Object.freeze([]) as readonly ContentRun[];
-/** Shared frozen empty child list for a report's emptied-parent `order` entries. */
-const EMPTY_IDS = Object.freeze([]) as readonly BlockId[];
-
-/**
- * What a cached display read: the homes of the texts it walked, and the blocks
- * it walked or whose claim it read (followed or skipped) — any structural
- * change to one of them invalidates the display.
- */
-type Deps = { texts: Set<BlockId>; lists: Set<BlockId> };
-
-type Cached = { runs: readonly ContentRun[]; deps: Deps };
 
 /**
  * One commit's change report — the fold against the last published
@@ -393,40 +361,8 @@ export type DisplayRoles = {
 	layoutKinds: () => Iterable<string>;
 };
 
-/**
- * Whether two kinds shape the display alike — both show children or
- * neither, both seal an island or neither, both hold the same lines, and
- * both are line kinds or neither (a line kind shows as its slot's kind, so
- * the block joins or leaves the ones a retype re-reads — YW-08). A retype
- * between kinds of different shape re-places (and re-kinds) the block and
- * its children.
- */
-const sameShape = (roles: DisplayRoles, a: string, b: string): boolean => {
-	const lines = new Set(roles.lineKinds());
-	const items = new Set([...roles.layoutKinds()].map((type) => roles.layout(type)));
-	return (
-		roles.childless(a) === roles.childless(b) &&
-		roles.island(a) === roles.island(b) &&
-		roles.container(a) === roles.container(b) &&
-		roles.line(a) === roles.line(b) &&
-		lines.has(a) === lines.has(b) &&
-		roles.layout(a) === roles.layout(b) &&
-		items.has(a) === items.has(b)
-	);
-};
-
 /** One index per engine doc, shared by every binding (the doc's lifetime). */
 const indexes = new WeakMap<EngineDoc, RunView>();
-
-/**
- * Test lanes turn this on (`globalThis.__EDYTOR_INDEX_CHECKS__`, set before
- * the index loads): after every fold the index checks each fact it keeps
- * incrementally against a rebuild from the replicated state and throws on
- * the first difference. Off in production.
- */
-export const indexChecks = {
-	on: (globalThis as { __EDYTOR_INDEX_CHECKS__?: unknown }).__EDYTOR_INDEX_CHECKS__ === true
-};
 
 export const bindRuns = (Y: EngineApi) => {
 	const T = bindText(Y);
@@ -439,24 +375,48 @@ export const bindRuns = (Y: EngineApi) => {
 	};
 
 	const buildView = (doc: EngineDoc): RunView => {
-		const registry = doc.get(REGISTRY_KEY);
-		/** The document's own data (`crdt/data.ts`): outside the registry, reported apart. */
-		const dataRoot = doc.get(DOC_DATA_ROOT);
+		// The index's state, one object its parts share (`index/state.ts`).
+		const ix = indexState(Y, T, doc);
+		const {
+			registry,
+			dataRoot,
+			blocks,
+			shells,
+			textConsumers,
+			listConsumers,
+			displaysMap,
+			ownerSeeds,
+			ownerChanged,
+			rows,
+			streamIx,
+			placed,
+			homeOfText,
+			attachOf,
+			foreignOf,
+			anchoredIn,
+			retargets,
+			unresolved,
+			reclaim,
+			placementsMap,
+			regroup,
+			byArgParent,
+			following,
+			dirtyLists,
+			leftLists,
+			placementSeeds,
+			stateSeeds,
+			kindsOf,
+			incarnations,
+			cache,
+			dirty,
+			foldStats,
+			frames,
+			candidates
+		} = ix;
+
 		const docData = (): Record<string, unknown> => cloneJsonSafe(readData(dataRoot) ?? {});
 		let dataChanged = false;
 
-		// ── the edits of one fold (L7 narrowing, P1) ──────────────────
-		//
-		// A keystroke inserts or deletes countable items in one backing text.
-		// The fold records each edited item (the part the fold's id sets
-		// cover) per text; `foldTexts` places it in its row's gap by walking to
-		// the nearest boundary, so the row moves by the edit's units and only
-		// the display owner of that gap's stream recomputes. A boundary item
-		// written or removed makes the row rescan; a format marker (its effect
-		// runs to the next same-key marker) or an unresolvable id makes the
-		// text opaque: every consumer recomputes.
-		type TextEdit = { item: RowItem; len: number; del: boolean };
-		type TextEdits = { edits: TextEdit[]; scan: boolean; opaque: boolean };
 		const NO_EDITS: TextEdits = Object.freeze({
 			edits: [],
 			scan: false,
@@ -499,15 +459,8 @@ export const bindRuns = (Y: EngineApi) => {
 		};
 		type EditLookup = ReturnType<typeof makeEditIndex>;
 
-		// ── the replicated-state index ──────────────────────────────────
-		const blocks = new Map<BlockId, BlockRec>();
-		/** Withdrawn blocks without a delete mark (`hist.undo.withdraw`), see {@link settle}. */
-		const shells = new Set<BlockId>();
 		/** Union-ever claim targets per holder (never shrinks: a dropped claim still invalidates). */
 		const effects = new Map<BlockId, Set<BlockId>>();
-		/** Forward dependencies of cached runs: backing text (by home) / walked block → consumers. */
-		const textConsumers = new Map<BlockId, Set<BlockId>>();
-		const listConsumers = new Map<BlockId, Set<BlockId>>();
 
 		// ── the claim graph (P3: maintained) ─────────────────────────────
 		// `top(m)` is the max-stamp claim on `m` held by a live block; each
@@ -522,23 +475,7 @@ export const bindRuns = (Y: EngineApi) => {
 		const topInv = new Map<BlockId, Set<BlockId>>();
 		/** Claimed block → the blocks whose claims list names it (live or not). */
 		const claimersOf = new Map<BlockId, Set<BlockId>>();
-		/** Owner → the blocks it displays (itself included while it owns itself). */
-		const displaysMap = new Map<BlockId, Set<BlockId>>();
-		/** Blocks whose claims, delete mark or record changed since the last owner pass. */
-		const ownerSeeds = new Set<BlockId>();
-		/** Blocks whose owner changed since the last placement pass. */
-		const ownerChanged = new Set<BlockId>();
 		let ownersBuilt = false;
-		const addTo = <K, V>(index: Map<K, Set<V>>, key: K, value: V): void => {
-			let set = index.get(key);
-			if (set === undefined) index.set(key, (set = new Set()));
-			set.add(value);
-		};
-		const dropFrom = <K, V>(index: Map<K, Set<V>>, key: K, value: V): void => {
-			const set = index.get(key);
-			set?.delete(value);
-			if (set?.size === 0) index.delete(key);
-		};
 		/** The max-stamp claim on `m` held by a live block. */
 		const topClaim = (m: BlockId): { claimer: BlockId; stamp: Stamp } | undefined => {
 			let best: { claimer: BlockId; stamp: Stamp } | undefined;
@@ -666,15 +603,8 @@ export const bindRuns = (Y: EngineApi) => {
 		// (`shiftGap`); a row is rescanned only when its boundary set (or its
 		// text) changed, and only the delimiters of the blocks its boundaries
 		// name are re-decided, so only the rows those delimiters cut re-place.
-		const rows = new Map<BlockId, LiveRow>();
-		let delim = new Map<BlockId, string>();
 		/** Every live boundary naming a block, by block: key → its row and nonce. */
 		const boundsBy = new Map<BlockId, Map<string, { home: BlockId; n: unknown }>>();
-		/** Each block's segment: its row and the cut that opens it (`null`: the row's segment 0). */
-		const streamIx = new Map<BlockId, { home: BlockId; cut: string | null }>();
-		/** Each row's segments at its last placement: segment 0's block, then each cut's key and block. */
-		type Placed = { head: BlockId | null; keys: string[]; blocks: BlockId[] };
-		const placed = new Map<BlockId, Placed>();
 		const streamOf = (b: BlockId): Stream | undefined => {
 			const at = streamIx.get(b);
 			const row = at && rows.get(at.home);
@@ -739,10 +669,10 @@ export const bindRuns = (Y: EngineApi) => {
 				if (blocks.has(s))
 					for (const [key, b] of boundsBy.get(s) ?? [])
 						if (b.n === n && (best === undefined || byId(key, best) < 0)) best = key;
-				const old = delim.get(s);
+				const old = ix.delim.get(s);
 				if (old === best) continue;
-				if (best === undefined) delim.delete(s);
-				else delim.set(s, best);
+				if (best === undefined) ix.delim.delete(s);
+				else ix.delim.set(s, best);
 				const was = old === undefined ? undefined : boundsBy.get(s)?.get(old)?.home;
 				if (was !== undefined) homes.add(was);
 				if (best !== undefined) homes.add(boundsBy.get(s)!.get(best)!.home);
@@ -760,7 +690,7 @@ export const bindRuns = (Y: EngineApi) => {
 			const before = placed.get(home) ?? { head: null, keys: [], blocks: [] };
 			const now: Placed = { head: null, keys: [], blocks: [] };
 			if (row !== undefined) {
-				placeRow(row, delim);
+				placeRow(row, ix.delim);
 				now.head = row.head;
 				for (const j of row.cuts) {
 					now.keys.push(row.bounds[j].key);
@@ -814,35 +744,29 @@ export const bindRuns = (Y: EngineApi) => {
 					if (by === undefined) boundsBy.set(b.s, (by = new Map()));
 					by.set(b.key, { home, n: b.n });
 				}
-			delim = new Map();
+			ix.delim = new Map();
 			const homes = new Set<BlockId>([...rows.keys(), ...placed.keys()]);
 			refreshDelims(boundsBy.keys(), homes);
 			for (const home of homes) placeHome(home, invalidated);
 		};
 
-		/** The role table the display reads; `null` → none. */
-		let roles: DisplayRoles | null = null;
-		/** A stored kind changed since the last report: derived kinds may follow it (XW-08). */
-		let retyped = false;
 		/** `ask` of `b`'s stored kind; `undefined` without roles or a record. */
 		const role = <T>(b: BlockId, ask: (r: DisplayRoles, type: string) => T): T | undefined => {
 			const type = blocks.get(b)?.type;
-			return roles === null || type === undefined ? undefined : ask(roles, type);
+			return ix.roles === null || type === undefined ? undefined : ask(ix.roles, type);
 		};
 		/** The line kind of `b` when it is an island declared `lines`. */
 		const lineKind = (b: BlockId): string | undefined => role(b, (r, type) => r.line(type));
 		/** The item kind of `b` when it is a layout. */
 		const itemKind = (b: BlockId): string | undefined => role(b, (r, type) => r.layout(type));
-		/** The live blocks the layout rules do not display (`layout.*`), per placement build. */
-		let dissolved = new Set<BlockId>();
 		const ownShim: DisplayOwnership = {
 			ownerOf,
-			hidden: (b) => ownerOf(b) !== b || dissolved.has(b),
+			hidden: (b) => ownerOf(b) !== b || ix.dissolved.has(b),
 			childless: (b) => role(b, (r, type) => r.childless(type)) === true,
 			island: (b) => role(b, (r, type) => r.island(type)) === true,
 			container: (b) => role(b, (r, type) => r.container(type)) === true,
 			lined: (b) => lineKind(b) !== undefined,
-			passes: (b) => dissolved.has(b),
+			passes: (b) => ix.dissolved.has(b),
 			sheds: (owner, child) => {
 				const item = itemKind(owner);
 				return item !== undefined && blocks.get(child)?.type !== item;
@@ -875,10 +799,6 @@ export const bindRuns = (Y: EngineApi) => {
 		// (`resolvePlacements` accepts it), so only a cycle through a changed
 		// display edge needs the global resolution, which then runs whole.
 		// The layout rules re-run only on the layouts a change reaches.
-		/** Resolved placements. */
-		const placementsMap = new Map<BlockId, ResolvedPlacement>();
-		/** D-18: the texts whose pieces' order is re-decided at the next pass (`order.split.text`). */
-		const regroup = new Set<BlockId>();
 		/** The blocks of `home`'s text, in text order (segment 0's first). */
 		const rowBlocks = (home: BlockId): BlockId[] => {
 			const at = placed.get(home);
@@ -888,53 +808,22 @@ export const bindRuns = (Y: EngineApi) => {
 		const ranker = textRanker(blocks, placementsMap, (b) => streamIx.get(b)?.home, rowBlocks);
 		/** Resolved parent → the blocks placed under it. */
 		const kidsOf = new Map<BlockId | null, Set<BlockId>>();
-		/** A block's argmax candidate parent → the blocks naming it (its entry decides theirs). */
-		const byArgParent = new Map<BlockId, Set<BlockId>>();
-		/** A slot in a children index: its display parent, rank and the island it displays out of. */
-		type Slot = { parent: BlockId | null; rank: string; reset?: BlockId };
-		/** The children index without the layout rules (what they read), and with them. */
-		let kids0 = new Map<BlockId | null, ChildSlot[]>();
-		let slots0 = new Map<BlockId, Slot>();
-		let kidsMap = kids0;
-		/** Each visible block's slot (display parent, rank, the island it displays out of). */
-		let slots = slots0;
 		/** The document holds a layout or an item kind: `kids0` and `kidsMap` differ. */
 		let layoutMode = false;
 		/** The line kinds the roles declare, and those of the lines islands the document holds. */
 		let lineKinds = new Set<string>();
-		/**
-		 * The blocks whose shown kind follows their slot — displayed out of
-		 * an island, then in a lined island or of a line kind — which the
-		 * report re-reads after a retype.
-		 */
-		const following = new Set<BlockId>();
 		let orderCache: DocOrder | null = null;
-		/** Bumps whenever a child list changes (the report compares it). */
-		let kidsVersion = 0;
-		/** The child lists patched since the last report (`all`: every list was rebuilt). */
-		const dirtyLists = new Set<BlockId | null>();
-		/** The blocks that left every list since the last report. */
-		const leftLists = new Set<BlockId>();
-		let allListsDirty = true;
-		/** The next pass rebuilds everything (first build, roles, an irregular state). */
-		let placementFull = true;
 		/** Some block shows no argmax candidate (a cycle rejected one, or none): passes run whole. */
 		let irregular = false;
-		/** Blocks whose candidates or record changed, whose display state changed. */
-		const placementSeeds = new Set<BlockId>();
-		const stateSeeds = new Set<BlockId>();
-		/** Per block: whether its kind is a layout, an item, a lines island (with its line kind). */
-		const kindsOf = new Map<BlockId, { layout: boolean; item: boolean; line?: string }>();
 		let layoutBlocks = 0;
 		let itemBlocks = 0;
 		const lineCounts = new Map<string, number>();
 		/** The item kinds the roles declare. */
 		const declaredItems = (): Set<string> => {
 			const items = new Set<string>();
-			for (const type of roles?.layoutKinds() ?? []) items.add(roles!.layout(type)!);
+			for (const type of ix.roles?.layoutKinds() ?? []) items.add(ix.roles!.layout(type)!);
 			return items;
 		};
-		let itemKinds = new Set<string>();
 		/** Re-count `id`'s kind facts; a fact the roles never declared forces a full pass. */
 		const noteKind = (id: BlockId): void => {
 			const old = kindsOf.get(id);
@@ -942,7 +831,11 @@ export const bindRuns = (Y: EngineApi) => {
 			const now =
 				type === undefined
 					? undefined
-					: { layout: itemKind(id) !== undefined, item: itemKinds.has(type), line: lineKind(id) };
+					: {
+							layout: itemKind(id) !== undefined,
+							item: ix.itemKinds.has(type),
+							line: lineKind(id)
+						};
 			if (old?.layout) layoutBlocks--;
 			if (old?.item) itemBlocks--;
 			if (old?.line !== undefined) lineCounts.set(old.line, lineCounts.get(old.line)! - 1);
@@ -952,9 +845,9 @@ export const bindRuns = (Y: EngineApi) => {
 			if (now?.item) itemBlocks++;
 			if (now?.line !== undefined) lineCounts.set(now.line, (lineCounts.get(now.line) ?? 0) + 1);
 			const item = itemKind(id);
-			if (item !== undefined && !itemKinds.has(item)) placementFull = true;
-			if (now?.line !== undefined && !lineKinds.has(now.line)) placementFull = true;
-			if (layoutMode !== layoutBlocks + itemBlocks > 0) placementFull = true;
+			if (item !== undefined && !ix.itemKinds.has(item)) ix.placementFull = true;
+			if (now?.line !== undefined && !lineKinds.has(now.line)) ix.placementFull = true;
+			if (layoutMode !== layoutBlocks + itemBlocks > 0) ix.placementFull = true;
 		};
 		/** The argmax candidate's parent (a registry entry or the root), and its index entry. */
 		const argParent = (rec: BlockRec | undefined): BlockId | null | undefined => rec?.cands[0]?.p;
@@ -986,7 +879,7 @@ export const bindRuns = (Y: EngineApi) => {
 			ids: readonly BlockId[],
 			layout: boolean
 		): Shown[] => {
-			const isItem = (b: BlockId) => itemKinds.has(blocks.get(b)?.type ?? '');
+			const isItem = (b: BlockId) => ix.itemKinds.has(blocks.get(b)?.type ?? '');
 			const shown: Shown[] = [];
 			for (const id of ids) {
 				const own = itemKind(id) !== undefined;
@@ -1091,14 +984,14 @@ export const bindRuns = (Y: EngineApi) => {
 					slotMap.set(id, next);
 				} else {
 					slotMap.delete(id);
-					if (kids === kidsMap) leftLists.add(id);
+					if (kids === ix.kidsMap) leftLists.add(id);
 				}
 				changed.set(id, [old?.parent, next?.parent]);
 			}
 			for (const [p, l] of copies) {
 				if (l.length === 0) kids.delete(p);
 				else kids.set(p, l);
-				if (kids === kidsMap) dirtyLists.add(p);
+				if (kids === ix.kidsMap) dirtyLists.add(p);
 			}
 			return changed;
 		};
@@ -1117,7 +1010,7 @@ export const bindRuns = (Y: EngineApi) => {
 		};
 		/** Whether `id` shows as its slot's kind (`following`): read from its slot and kinds. */
 		const noteFollowing = (id: BlockId): void => {
-			const slot = slots.get(id);
+			const slot = ix.slots.get(id);
 			const follows =
 				slot !== undefined &&
 				(slot.reset !== undefined ||
@@ -1159,24 +1052,24 @@ export const bindRuns = (Y: EngineApi) => {
 		};
 		/** Everything rebuilt from the records (the first build, roles, an irregular state). */
 		const rebuildPlacements = (): void => {
-			placementFull = false;
+			ix.placementFull = false;
 			ranker.forget();
 			regroup.clear();
 			placementSeeds.clear();
 			stateSeeds.clear();
 			ownerChanged.clear();
-			itemKinds = declaredItems();
+			ix.itemKinds = declaredItems();
 			for (const b of blocks.keys()) {
 				const item = itemKind(b);
-				if (item !== undefined) itemKinds.add(item);
+				if (item !== undefined) ix.itemKinds.add(item);
 			}
-			lineKinds = new Set(roles?.lineKinds());
+			lineKinds = new Set(ix.roles?.lineKinds());
 			kindsOf.clear();
 			[layoutBlocks, itemBlocks] = [0, 0];
 			lineCounts.clear();
 			for (const b of blocks.keys()) noteKind(b);
 			for (const line of lineCounts.keys()) lineKinds.add(line);
-			placementFull = false;
+			ix.placementFull = false;
 			const resolved = resolvePlacements(blocks, ownerOf);
 			placementsMap.clear();
 			kidsOf.clear();
@@ -1187,7 +1080,7 @@ export const bindRuns = (Y: EngineApi) => {
 				if (!arg || arg.parent !== pl.parent || arg.rank !== pl.rank) irregular = true;
 			}
 			layoutMode = layoutBlocks + itemBlocks > 0;
-			dissolved = new Set();
+			ix.dissolved = new Set();
 			const index = (own: DisplayOwnership, map: Map<BlockId | null, ChildSlot[]>) => {
 				const at = new Map<BlockId, Slot>();
 				for (const [parent, list] of map)
@@ -1196,18 +1089,18 @@ export const bindRuns = (Y: EngineApi) => {
 				void own;
 				return at;
 			};
-			kids0 = childrenIndex(placementsMap, own0);
-			slots0 = index(own0, kids0);
+			ix.kids0 = childrenIndex(placementsMap, own0);
+			ix.slots0 = index(own0, ix.kids0);
 			if (layoutMode) {
-				dissolved = dissolve(kids0);
-				kidsMap = childrenIndex(placementsMap, ownShim);
-				slots = index(ownShim, kidsMap);
-			} else [kidsMap, slots] = [kids0, slots0];
+				ix.dissolved = dissolve(ix.kids0);
+				ix.kidsMap = childrenIndex(placementsMap, ownShim);
+				ix.slots = index(ownShim, ix.kidsMap);
+			} else [ix.kidsMap, ix.slots] = [ix.kids0, ix.slots0];
 			following.clear();
-			for (const id of slots.keys()) noteFollowing(id);
+			for (const id of ix.slots.keys()) noteFollowing(id);
 			orderCache = null;
-			kidsVersion++;
-			allListsDirty = true;
+			ix.kidsVersion++;
+			ix.allListsDirty = true;
 		};
 		/**
 		 * Re-run the layout rules on the layouts `changed` (blocks whose slot
@@ -1227,7 +1120,8 @@ export const bindRuns = (Y: EngineApi) => {
 			const roots = new Set<BlockId>();
 			const climb = (b: BlockId | null | undefined): void => {
 				let top: BlockId | undefined;
-				for (let x = b; typeof x === 'string' && isLayoutish(x); x = slots0.get(x)?.parent) top = x;
+				for (let x = b; typeof x === 'string' && isLayoutish(x); x = ix.slots0.get(x)?.parent)
+					top = x;
 				if (top !== undefined) roots.add(top);
 			};
 			for (const [id, [from, to]] of changed) {
@@ -1238,37 +1132,38 @@ export const bindRuns = (Y: EngineApi) => {
 			for (const id of kinds) {
 				// Its kind decides its own rule, its parent's count and its children's (`layout`).
 				climb(id);
-				climb(slots0.get(id)?.parent);
-				for (const k of kids0.get(id) ?? []) climb(k.id);
+				climb(ix.slots0.get(id)?.parent);
+				for (const k of ix.kids0.get(id) ?? []) climb(k.id);
 				// Only a layout or an item dissolves: a block that left those kinds shows again.
-				if (!isLayoutish(id) && dissolved.delete(id)) flips.add(id);
+				if (!isLayoutish(id) && ix.dissolved.delete(id)) flips.add(id);
 			}
 			for (const root of roots) {
-				if (!slots0.has(root)) continue;
-				const parent = slots0.get(root)!.parent;
+				if (!ix.slots0.has(root)) continue;
+				const parent = ix.slots0.get(root)!.parent;
 				const nodes: BlockId[] = [];
 				const stack = [root];
 				for (let x = stack.pop(); x !== undefined; x = stack.pop()) {
 					nodes.push(x);
-					for (const k of kids0.get(x) ?? []) stack.push(k.id);
+					for (const k of ix.kids0.get(x) ?? []) stack.push(k.id);
 				}
 				const out = new Set<BlockId>();
-				dissolveVisit(kids0, out, [root], parent !== null && itemKind(parent) !== undefined);
+				dissolveVisit(ix.kids0, out, [root], parent !== null && itemKind(parent) !== undefined);
 				for (const x of nodes) {
-					if (out.has(x) === dissolved.has(x)) continue;
-					if (out.has(x)) dissolved.add(x);
-					else dissolved.delete(x);
+					if (out.has(x) === ix.dissolved.has(x)) continue;
+					if (out.has(x)) ix.dissolved.add(x);
+					else ix.dissolved.delete(x);
 					flips.add(x);
 				}
 			}
 			// A block that left the index (hidden, removed) dissolves no more.
-			for (const id of changed.keys()) if (!slots0.has(id) && dissolved.delete(id)) flips.add(id);
+			for (const id of changed.keys())
+				if (!ix.slots0.has(id) && ix.dissolved.delete(id)) flips.add(id);
 			return flips;
 		};
 		const ensurePlacements = (): void => {
 			ensureOwners();
-			if (placementFull || irregular) {
-				if (placementFull || placementSeeds.size + stateSeeds.size + ownerChanged.size > 0)
+			if (ix.placementFull || irregular) {
+				if (ix.placementFull || placementSeeds.size + stateSeeds.size + ownerChanged.size > 0)
 					rebuildPlacements();
 				return;
 			}
@@ -1300,18 +1195,18 @@ export const bindRuns = (Y: EngineApi) => {
 			ownerChanged.clear();
 			const affected = reach(seeds);
 			let touched: Iterable<BlockId> = affected;
-			const changed = patch(kids0, slots0, own0, affected);
+			const changed = patch(ix.kids0, ix.slots0, own0, affected);
 			let any = changed.size > 0;
 			if (layoutMode) {
 				const flips = redissolve(changed, kinds);
 				const again = flips.size > 0 ? reach([...affected, ...flips]) : affected;
-				any = patch(kidsMap, slots, ownShim, again).size > 0 || any;
+				any = patch(ix.kidsMap, ix.slots, ownShim, again).size > 0 || any;
 				touched = again;
 			}
 			for (const id of touched) noteFollowing(id);
 			if (any) {
 				orderCache = null;
-				kidsVersion++;
+				ix.kidsVersion++;
 			}
 		};
 
@@ -1341,54 +1236,47 @@ export const bindRuns = (Y: EngineApi) => {
 		 */
 		const itemOf = (under: BlockId, plain: string): string => {
 			const parent = typeOf(under);
-			if (!roles!.container(parent)) return plain;
-			const item = roles!.defaultChild(parent);
-			return roles!.rendersContent(item) ? item : plain;
+			if (!ix.roles!.container(parent)) return plain;
+			const item = ix.roles!.defaultChild(parent);
+			return ix.roles!.rendersContent(item) ? item : plain;
 		};
 
 		const typeOf = (id: BlockId): string => {
 			const stored = blocks.get(id)?.type ?? 'unknown';
-			const slot = slots.get(id);
-			if (roles === null || slot === undefined) return stored;
+			const slot = ix.slots.get(id);
+			if (ix.roles === null || slot === undefined) return stored;
 			const { parent: under, reset } = slot;
 			const line = under === null || lineKinds.size === 0 ? undefined : lineKind(under);
 			if (line !== undefined) return line;
 			const lined = lineKinds.has(stored);
 			const from = reset === undefined ? undefined : (blocks.get(reset)?.type ?? null);
-			if (!lined && (from === undefined || stored !== roles.defaultChild(from)))
-				return stored === roles.defaultChild(null) && under !== null
+			if (!lined && (from === undefined || stored !== ix.roles.defaultChild(from)))
+				return stored === ix.roles.defaultChild(null) && under !== null
 					? itemOf(under, stored)
 					: stored;
 			// Out of a removed list, inside an outer list of its kind: still an item. A
 			// container whose item is the document's default kind (a column) holds no
 			// items of its own: a paragraph under one is no list's item.
-			if (!lined && typeof from === 'string' && roles.container(from))
-				for (let u = under; u !== null; u = slots.get(u)?.parent ?? null) {
+			if (!lined && typeof from === 'string' && ix.roles.container(from))
+				for (let u = under; u !== null; u = ix.slots.get(u)?.parent ?? null) {
 					const t = typeOf(u);
 					if (
-						roles.container(t) &&
-						roles.defaultChild(t) === stored &&
-						stored !== roles.defaultChild(null)
+						ix.roles.container(t) &&
+						ix.roles.defaultChild(t) === stored &&
+						stored !== ix.roles.defaultChild(null)
 					)
 						return stored;
 				}
-			const kind = roles.defaultChild(under === null ? null : typeOf(under));
-			if (roles.rendersContent(kind) || !roles.rendersContent(stored)) return kind;
+			const kind = ix.roles.defaultChild(under === null ? null : typeOf(under));
+			if (ix.roles.rendersContent(kind) || !ix.roles.rendersContent(stored)) return kind;
 			// Never a line kind outside its island, even where the slot's kind shows nothing (ZW-06).
-			return lined ? roles.defaultChild(null) : stored;
+			return lined ? ix.roles.defaultChild(null) : stored;
 		};
 
 		const rangeStats: RangeReadStats = { items: 0, markers: 0 };
 
 		// ── run cache ────────────────────────────────────────────────────
-		const cache = new Map<BlockId, Cached>();
-		const dirty = new Set<BlockId>();
 		const internMap = new Map<string, unknown>();
-
-		let version = 0;
-
-		/** The fold counters `debug` exposes read-only. */
-		const foldStats = { folds: 0, pairs: 0, structs: 0 };
 		const debug: RunViewDebug = {
 			recomputes: 0,
 			recomputed: new Set<BlockId>(),
@@ -1436,12 +1324,6 @@ export const bindRuns = (Y: EngineApi) => {
 
 		// ── records ──────────────────────────────────────────────────────
 
-		/**
-		 * The losing incarnations each key shows (H13, `id.same.concurrent`):
-		 * blocks of their own under derived ids, claimed by the key's block
-		 * before its own claims (`incarnations.ts`).
-		 */
-		const incarnations = new Map<BlockId, string[]>();
 		/** P14's predicate: the registry values the engine keeps. */
 		const kept = (item: unknown): boolean =>
 			(Y as unknown as { isKeptReplaced(item: unknown): boolean }).isKeptReplaced(item);
@@ -1500,18 +1382,7 @@ export const bindRuns = (Y: EngineApi) => {
 		// ones. Targets change only with a row's cuts: re-decided after each
 		// fold's texts for the holders whose record changed and those anchored
 		// in a re-placed row.
-		/** Each holder's list claims' effective claimers, by list index (absent: all its own). */
-		const attachOf = new Map<BlockId, BlockId[]>();
-		/** An effective claimer → the holders whose claims moved to it. */
-		const foreignOf = new Map<BlockId, Set<BlockId>>();
-		/** A row's home → the holders with an anchored claim in its text, and back. */
-		const anchoredIn = new Map<BlockId, Set<BlockId>>();
 		const anchorHomes = new Map<BlockId, Set<BlockId>>();
-		/** Holders whose targets the next pass re-decides, and blocks whose claims it re-reads. */
-		const retargets = new Set<BlockId>();
-		/** Holders with an anchored claim and no stream yet: any re-placed row may resolve them. */
-		const unresolved = new Set<BlockId>();
-		const reclaim = new Set<BlockId>();
 		const sameClaims = (x: readonly Claim[], y: readonly Claim[]): boolean =>
 			x.length === y.length &&
 			x.every(
@@ -1610,8 +1481,6 @@ export const bindRuns = (Y: EngineApi) => {
 			if (text !== undefined && text !== own) homes.push(text);
 			return homes.length === 0 ? null : homes;
 		};
-		/** Each row's text → its home (rows are keyed by home). */
-		const homeOfText = new WeakMap<object, BlockId>();
 		/**
 		 * The retarget pass: re-decide the targets of the holders queued, move
 		 * their claims between effective claimers, and re-read the claims of
@@ -1715,8 +1584,8 @@ export const bindRuns = (Y: EngineApi) => {
 				if (
 					old === undefined ||
 					rec === undefined ||
-					roles === null ||
-					!sameShape(roles, old.type, rec.type)
+					ix.roles === null ||
+					!sameShape(ix.roles, old.type, rec.type)
 				)
 					stateSeeds.add(id);
 			}
@@ -1757,11 +1626,11 @@ export const bindRuns = (Y: EngineApi) => {
 			},
 			get kids() {
 				ensurePlacements();
-				return kidsMap;
+				return ix.kidsMap;
 			},
 			get order() {
 				ensurePlacements();
-				return (orderCache ??= documentOrder(kidsMap));
+				return (orderCache ??= documentOrder(ix.kidsMap));
 			},
 			// R4: the publication boundary shares THIS interner, so a payload
 			// emitted by `project()`/`contentItems()` is `===` the runs' one.
@@ -1884,21 +1753,6 @@ export const bindRuns = (Y: EngineApi) => {
 		};
 
 		// ── the fold ─────────────────────────────────────────────────────
-
-		/** One fold's effects: invalidated blocks, rescanned texts, rebuilt facets. */
-		type FoldCtx = {
-			invalidated: Set<BlockId>;
-			/** Per home block: its text's edits, whether it rescans, whether every reader re-reads. */
-			texts: Map<
-				BlockId,
-				{ edits: TextEdit[]; scan: boolean; opaque: boolean; seen: Set<TextEdits> }
-			>;
-			/** The blocks whose entry or nonce changed: their delimiters are re-decided. */
-			named: Set<BlockId>;
-			table: boolean;
-			/** The winning parents, before and after, of the blocks the fold touched. */
-			parents: Set<BlockId>;
-		};
 		const parentOf = (id: BlockId): BlockId | null | undefined => blocks.get(id)?.cands[0]?.p;
 		/** A structural change of `id`: its readers, and the blocks it claims, re-read. */
 		const invalidateBlock = (id: BlockId, ctx: FoldCtx, claimsBefore: Claim[] = []): void => {
@@ -1941,7 +1795,7 @@ export const bindRuns = (Y: EngineApi) => {
 				const [claimsBefore, typeBefore] = [blocks.get(id)?.claims, blocks.get(id)?.type];
 				updateBlockRec(id);
 				// A retype that lands with a structure facet is still a retype.
-				if (typeBefore !== undefined && blocks.get(id)?.type !== typeBefore) retyped = true;
+				if (typeBefore !== undefined && blocks.get(id)?.type !== typeBefore) ix.retyped = true;
 				// A new entry, a nonce or an own text can move streams (R2).
 				if (kinds.has('entry') || facets.has(NONCE) || facets.has(CONTENT_ATTR)) {
 					ctx.table = true;
@@ -1970,12 +1824,12 @@ export const bindRuns = (Y: EngineApi) => {
 					rec.type = typeAttr(rec.node);
 					rec.data = readData(rec.node);
 					if (rec.type !== was) {
-						retyped = true;
+						ix.retyped = true;
 						noteKind(id);
 					}
 					// A retype that changes the kind's display shape re-parents
 					// (or re-kinds) its children.
-					if (roles !== null && !sameShape(roles, was, rec.type)) stateSeeds.add(id);
+					if (ix.roles !== null && !sameShape(ix.roles, was, rec.type)) stateSeeds.add(id);
 				}
 			}
 			const parentAfter = parentOf(id);
@@ -2147,11 +2001,6 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 		};
 
-		/** Frames tracking the folds (the write funnel's `track()`), and the report's candidates. */
-		const frames = new Set<Folded>();
-		const candidates = new Set<BlockId>();
-		let reporting = false;
-
 		/** THE fold: one pass over changed `(type, parentSub)` pairs, each block folded once. */
 		const fold = (
 			changed: Map<unknown, Set<string | null>>,
@@ -2198,8 +2047,8 @@ export const bindRuns = (Y: EngineApi) => {
 				);
 			for (const b of ctx.invalidated) dirty.add(b);
 			if (indexChecks.on) check();
-			if (derived) version++;
-			if (reporting) {
+			if (derived) ix.version++;
+			if (ix.reporting) {
 				for (const id of touched.keys()) candidates.add(id);
 				for (const id of ctx.invalidated) candidates.add(id);
 			}
@@ -2231,7 +2080,7 @@ export const bindRuns = (Y: EngineApi) => {
 				if (row === undefined || row.text !== scan.text || !sameRow(row, scan)) fail(`row ${home}`);
 			}
 			const want = delimiters(blocks, scans.values());
-			if (want.size !== delim.size || [...want].some(([b, k]) => delim.get(b) !== k))
+			if (want.size !== ix.delim.size || [...want].some(([b, k]) => ix.delim.get(b) !== k))
 				fail('delimiters');
 			const streamSig = (st: Stream | undefined) =>
 				st && `${st.home}:${st.start}-${st.end}/${st.inert.join(',')}`;
@@ -2297,27 +2146,23 @@ export const bindRuns = (Y: EngineApi) => {
 			// The text orders (D-18) decided afresh: a stale one shows as a slot mismatch.
 			ranker.forget();
 			const k0 = childrenIndex(placementsMap, own0);
-			if (!same(k0, kids0)) fail('children index (before the layout rules)');
+			if (!same(k0, ix.kids0)) fail('children index (before the layout rules)');
 			const out = dissolve(k0);
-			if (out.size !== dissolved.size || [...out].some((b) => !dissolved.has(b))) fail('dissolved');
-			if (!same(childrenIndex(placementsMap, ownShim), kidsMap)) fail('children index');
-			for (const [p, l] of kidsMap)
+			if (out.size !== ix.dissolved.size || [...out].some((b) => !ix.dissolved.has(b)))
+				fail('dissolved');
+			if (!same(childrenIndex(placementsMap, ownShim), ix.kidsMap)) fail('children index');
+			for (const [p, l] of ix.kidsMap)
 				for (const { id, rank, reset } of l) {
-					const slot = slots.get(id);
+					const slot = ix.slots.get(id);
 					if (slot?.parent !== p || slot.rank !== rank || slot.reset !== reset)
 						fail(`slot of ${id}`);
 				}
 			const follow = new Set(following);
-			for (const id of slots.keys()) noteFollowing(id);
+			for (const id of ix.slots.keys()) noteFollowing(id);
 			if (follow.size !== following.size || [...follow].some((b) => !following.has(b)))
 				fail('following');
 		};
 
-		type Tx = {
-			insertSet?: IdSetLike;
-			deleteSet?: IdSetLike;
-			changed?: EngineTransaction['changed'];
-		};
 		/** Each transaction's folded part: copies of its id sets, and their lengths (the watermark). */
 		const cursors = new WeakMap<Tx, { ins: IdSetLike; del: IdSetLike; mark: number }>();
 		/** The transactions whose commit fold ran. */
@@ -2415,28 +2260,12 @@ export const bindRuns = (Y: EngineApi) => {
 				content: itemsOf(id),
 				children: []
 			};
-			for (const k of kidsMap.get(id) ?? []) projected.children.push(projectBlock(k.id));
+			for (const k of ix.kidsMap.get(id) ?? []) projected.children.push(projectBlock(k.id));
 			return projected;
 		};
 
 		// ── the change report: the fold against the last published index ─
 
-		type Published = {
-			nodes: Map<
-				BlockId,
-				{
-					parent: BlockId | null;
-					index: number;
-					type: string;
-					data: unknown;
-					runs: readonly ContentRun[];
-					key?: string;
-				}
-			>;
-			order: Map<BlockId | null, readonly BlockId[]>;
-			/** The children index version it was taken at. */
-			kids: number;
-		};
 		let published: Published | null = null;
 		const reportSubs = new Set<(r: IndexReport, origin: unknown, local: boolean) => void>();
 
@@ -2447,7 +2276,7 @@ export const bindRuns = (Y: EngineApi) => {
 			const order: Published['order'] = new Map();
 			const stack: (BlockId | null)[] = [null];
 			for (let parent = stack.pop(); parent !== undefined; parent = stack.pop()) {
-				const ks = kidsMap.get(parent) ?? [];
+				const ks = ix.kidsMap.get(parent) ?? [];
 				if (ks.length === 0) continue;
 				order.set(parent, Object.freeze(ks.map((k) => k.id)));
 				for (let index = ks.length - 1; index >= 0; index--) stack.push(ks[index].id);
@@ -2462,15 +2291,7 @@ export const bindRuns = (Y: EngineApi) => {
 					);
 				});
 			}
-			return { nodes, order, kids: kidsVersion };
-		};
-
-		const keyOf = (v: unknown): string => {
-			try {
-				return JSON.stringify(v ?? null);
-			} catch {
-				return JSON.stringify(cloneJsonSafe(v ?? null));
-			}
+			return { nodes, order, kids: ix.kidsVersion };
 		};
 
 		/**
@@ -2491,7 +2312,7 @@ export const bindRuns = (Y: EngineApi) => {
 			const { nodes, order } = pub;
 			const shown = (x: BlockId): boolean => {
 				for (let c: BlockId | null = x; c !== null; ) {
-					const slot = slots.get(c);
+					const slot = ix.slots.get(c);
 					if (slot === undefined) return false;
 					c = slot.parent;
 				}
@@ -2518,7 +2339,7 @@ export const bindRuns = (Y: EngineApi) => {
 			const fresh = new Map<BlockId, { parent: BlockId | null; index: number }>();
 			for (const p of lists) {
 				if (p !== null && !shown(p)) continue;
-				const ks = kidsMap.get(p) ?? [];
+				const ks = ix.kidsMap.get(p) ?? [];
 				const prev = order.get(p);
 				if (ks.length === 0) {
 					if (prev !== undefined) {
@@ -2561,9 +2382,9 @@ export const bindRuns = (Y: EngineApi) => {
 			for (const [id, at] of fresh) {
 				let under = false;
 				for (
-					let c = slots.get(id)?.parent ?? null;
+					let c = ix.slots.get(id)?.parent ?? null;
 					c !== null && !under;
-					c = slots.get(c)?.parent ?? null
+					c = ix.slots.get(c)?.parent ?? null
 				)
 					under = fresh.has(c);
 				if (under || covered.has(id)) continue;
@@ -2618,15 +2439,15 @@ export const bindRuns = (Y: EngineApi) => {
 				const key = keyOf(data);
 				if (key !== dataKey) [r.data, dataKey] = [data, key];
 			}
-			if (kidsVersion === before.kids && candidates.size === 0) return r.data ? r : null;
+			if (ix.kidsVersion === before.kids && candidates.size === 0) return r.data ? r : null;
 			// Added subtrees carry their new descendants. A descendant that was
 			// visible before is reported like any visible block (moved, retyped,
 			// edited against its published baseline), so consumers keep it (K7).
 			const covered = new Set<BlockId>();
 			/** Moved to another display parent: only those can show another kind (an index never does). */
 			const reparented = new Set<BlockId>();
-			const lists = kidsVersion !== before.kids && !allListsDirty;
-			const after = kidsVersion === before.kids || lists ? before : reachable(before.nodes);
+			const lists = ix.kidsVersion !== before.kids && !ix.allListsDirty;
+			const after = ix.kidsVersion === before.kids || lists ? before : reachable(before.nodes);
 			if (lists) advance(before, r, covered, reparented);
 			else if (after !== before) {
 				for (const [parent, ids] of after.order) {
@@ -2686,7 +2507,7 @@ export const bindRuns = (Y: EngineApi) => {
 			// changes a shown kind — the retyped block's (a candidate) and the
 			// kinds derived from it: a promoted or stray line shows its display
 			// parent's default child (XW-08).
-			if (after !== before || lists || retyped) {
+			if (after !== before || lists || ix.retyped) {
 				const now = [...following];
 				for (const id of [...reparented, ...now, ...followingBefore]) {
 					const n = after.nodes.get(id);
@@ -2699,18 +2520,18 @@ export const bindRuns = (Y: EngineApi) => {
 			// a block whose shown kind changed re-reads its children's (a worklist:
 			// the map visits the entries added meanwhile).
 			for (const id of r.meta.keys())
-				for (const { id: kid } of kidsMap.get(id) ?? []) {
+				for (const { id: kid } of ix.kidsMap.get(id) ?? []) {
 					const n = after.nodes.get(kid);
 					if (n !== undefined && !covered.has(kid) && !r.meta.has(kid) && typeOf(kid) !== n.type)
 						meta(kid, n);
 				}
-			retyped = false;
+			ix.retyped = false;
 			candidates.clear();
 			published = after;
-			after.kids = kidsVersion;
+			after.kids = ix.kidsVersion;
 			dirtyLists.clear();
 			leftLists.clear();
-			allListsDirty = false;
+			ix.allListsDirty = false;
 			if (indexChecks.on) checkPublished();
 			const empty =
 				r.added.size + r.removed.size + r.moved.size + r.meta.size + r.content.size + r.order.size;
@@ -2759,7 +2580,7 @@ export const bindRuns = (Y: EngineApi) => {
 		const view: RunView = {
 			version: () => {
 				syncAll();
-				return version;
+				return ix.version;
 			},
 			runs,
 			contentItems: (b: BlockId): ContentItem[] => {
@@ -2780,7 +2601,7 @@ export const bindRuns = (Y: EngineApi) => {
 				return ctx;
 			},
 			displayType: (id) => {
-				if (roles === null) return undefined;
+				if (ix.roles === null) return undefined;
 				syncAll();
 				ensurePlacements();
 				const shown = blocks.has(id) ? typeOf(id) : undefined;
@@ -2789,19 +2610,19 @@ export const bindRuns = (Y: EngineApi) => {
 			dissolved: (id) => {
 				syncAll();
 				ensurePlacements();
-				return dissolved.has(id);
+				return ix.dissolved.has(id);
 			},
 			project: (root?: BlockId): ProjectedBlock[] => {
 				syncAll();
 				ensurePlacements();
 				return root === undefined
-					? (kidsMap.get(null) ?? []).map((k) => projectBlock(k.id))
+					? (ix.kidsMap.get(null) ?? []).map((k) => projectBlock(k.id))
 					: [projectBlock(root)];
 			},
 			roles: (next) => {
-				roles = next;
-				placementFull = true;
-				version++;
+				ix.roles = next;
+				ix.placementFull = true;
+				ix.version++;
 				// No commit carries a role change: report it now (not inside a
 				// transaction, whose commit reports it), so every view follows.
 				if (reportSubs.size > 0 && !openTx()) publish(null, false);
@@ -2824,7 +2645,7 @@ export const bindRuns = (Y: EngineApi) => {
 					published = reachable();
 					dataKey = keyOf(docData());
 					candidates.clear();
-					reporting = true;
+					ix.reporting = true;
 					doc.on('update', onUpdate);
 				}
 				reportSubs.add(cb);
@@ -2832,7 +2653,7 @@ export const bindRuns = (Y: EngineApi) => {
 					if (!reportSubs.delete(cb) || reportSubs.size > 0) return;
 					doc.off('update', onUpdate);
 					published = null;
-					reporting = false;
+					ix.reporting = false;
 					candidates.clear();
 				};
 			},

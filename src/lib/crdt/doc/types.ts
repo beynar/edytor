@@ -37,6 +37,14 @@ export type BlockRole = {
 	 */
 	layout?: boolean;
 	/**
+	 * A table: it displays only its rows — its `defaultChild` kind, a
+	 * container whose own `defaultChild` is the cell kind (a text island) —
+	 * and each row only its cells, in the order of the table's
+	 * `data.columns` (`table.*` in the delete contract). Needs a
+	 * `defaultChild`.
+	 */
+	table?: boolean;
+	/**
 	 * Data paths written as one leaf (`data.atomic`): a top-level key, or
 	 * an array of keys for a nested one (`['link', ['media', 'source']]`). An
 	 * assignment there, or anywhere under it, writes the whole value as one

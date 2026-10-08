@@ -88,6 +88,7 @@ import { splitMergeOps } from './doc/split-merge.js';
 import { deleteOps } from './doc/delete.js';
 import { metaOps } from './doc/meta.js';
 import { contentOps } from './doc/content.js';
+import { tableOps } from './doc/table.js';
 // Types the facade's inferred declaration names: imported here so the
 // emitted `bindEdytorDoc` type names them rather than an import path.
 import type { EngineNode } from './engine-api.js';
@@ -197,7 +198,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		// child, as a delete of the island retypes the ones it saw. An island
 		// declared `lines` holds only lines of its `defaultChild` kind
 		// (FW-01, XW-03). A layout displays only its items — its
-		// `defaultChild` kind — and only two or more (`layout.*`).
+		// `defaultChild` kind — and only two or more (`layout.*`). A table
+		// displays only its rows and a row only its cells (`table.*`).
 		const roles: DisplayRoles = {
 			childless: (type) => roleOf(type)?.void === true,
 			island: (type) => roleOf(type)?.island === true,
@@ -212,7 +214,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			lineKinds: () => [...(config.kinds?.() ?? [])].flatMap((type) => roles.line(type) ?? []),
 			layout: (type) => (roleOf(type)?.layout === true ? defaultChildOf(type) : undefined),
 			layoutKinds: () =>
-				[...(config.kinds?.() ?? [])].filter((type) => roles.layout(type) !== undefined)
+				[...(config.kinds?.() ?? [])].filter((type) => roles.layout(type) !== undefined),
+			table: (type) => (roleOf(type)?.table === true ? defaultChildOf(type) : undefined),
+			tableKinds: () =>
+				[...(config.kinds?.() ?? [])].filter((type) => roles.table(type) !== undefined)
 		};
 		if (config.roleOf) runsView.roles(roles);
 
@@ -297,6 +302,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const { dataSteps, replaceData, setBlockType, patchData, setBlock } = metaOps(steps);
 		const { insertText, deleteText, formatRange, clearMarks, insertInline, removeInline } =
 			contentOps(steps);
+		const tables = tableOps({ ...steps, dataSteps });
 
 		/** What range deletion and flow placement read, and the step writers they compose. */
 		const context: FlowContext = {
@@ -338,7 +344,17 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			pieceRanks,
 			redata: (id, data) => dataSteps(id, replaceData(data)) ?? [],
 			deleteBlocks: (ids, filled) => deleteBlocks(ids, false, filled),
-			dissolving: (gone, leaving, writes) => dissolving(new Set(gone), leaving, writes)
+			dissolving: (gone, leaving, writes) => dissolving(new Set(gone), leaving, writes),
+			tableOf: (id) => reads.tableOf(id),
+			isTableCell: (id) => reads.isTableCell(id),
+			tableKind: (kind) =>
+				roles.table(kind) !== undefined
+					? 'table'
+					: reads.isRowKind(kind)
+						? 'row'
+						: reads.isCellKind(kind)
+							? 'cell'
+							: undefined
 		};
 
 		/** Every document op, prepared (R6) — `apply(prepare.op(…))` is the op. */
@@ -388,6 +404,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				patchData({ block: id, atom: inlineId }, [{ path: [], value: data }]),
 			/** Delete a block selection — one plan; only the members leave (`deleteBlocks` above). */
 			deleteBlocks: (ids: readonly BlockId[]): Prepared => deleteBlocks(ids),
+			// Tables (`table.*`): rows are blocks, columns the table's `data.columns`.
+			...tables,
 			...rangeDeleteOps(context),
 			...flowOps(context)
 		};
@@ -525,6 +543,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			/** The block a beside placement at `id` stands beside (`placeBeside`'s resolution). */
 			besideAt: (id: BlockId, kind?: string) => besideAt(id, kind),
 			islandOf: byRef((id: BlockId) => islandOf(id)),
+			/** `id` is a table: its kind's role says `table` (`table.*`). */
+			isTable: byRef(reads.isTable),
+			/** `id` is a table's row: of its table's row kind, directly in it. */
+			isTableRow: byRef(reads.isTableRow),
+			/** `id` is a table's cell: of its row's cell kind, directly in a row of a table. */
+			isTableCell: byRef(reads.isTableCell),
+			/** The table `id` is, or whose row or cell it is; `null` for any other block. */
+			tableOf: byRef(reads.tableOf),
+			/** The columns a table lists (`data.columns`), or `null` when it lists none. */
+			tableColumns: byRef(reads.tableColumns),
+			/**
+			 * A table as a grid: its column ids and each shown row's cells by
+			 * column, `null` where the row shows none (a padded cell, `table.pad`).
+			 */
+			tableGrid: byRef(reads.tableGrid),
 			insideIsland: byRef((id: BlockId) => insideIsland(id)),
 			// structural capability (R5)
 			canPlace: (ids: readonly BlockId[], parent?: BlockId | null) =>

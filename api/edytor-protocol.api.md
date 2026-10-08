@@ -563,6 +563,13 @@ declare const bindCrdt: (Y: EngineApi) => {
                 insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView) => import("./edytor-doc.js").Prepared;
                 deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
                 replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
+                insertTableRow: (table: import("./index.js").BlockId, index: number) => import("./edytor-doc.js").Prepared;
+                deleteTableRows: (rows: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
+                insertTableColumn: (table: import("./index.js").BlockId, index: number, width?: number) => import("./edytor-doc.js").Prepared;
+                deleteTableColumn: (table: import("./index.js").BlockId, column: string | number) => import("./edytor-doc.js").Prepared;
+                moveTableColumn: (table: import("./index.js").BlockId, column: string | number, to: number) => import("./edytor-doc.js").Prepared;
+                moveTableRows: (rows: readonly import("./index.js").BlockId[], to: number) => import("./edytor-doc.js").Prepared;
+                fillTableCell: (row: import("./index.js").BlockId, column: string | number) => import("./edytor-doc.js").Prepared;
                 insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").Prepared;
                 insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec | import("./index.js").JSONBlock) => import("./edytor-doc.js").Prepared;
                 moveBlocks: (ids: readonly import("./index.js").BlockId[], dest: import("./index.js").Destination) => import("./edytor-doc.js").Prepared;
@@ -680,6 +687,13 @@ declare const bindCrdt: (Y: EngineApi) => {
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => import("./edytor-doc.js").OpResult;
             deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
+            insertTableRow: (table: string, index: number) => import("./edytor-doc.js").OpResult;
+            deleteTableRows: (rows: readonly string[]) => import("./edytor-doc.js").OpResult;
+            insertTableColumn: (table: string, index: number, width?: number | undefined) => import("./edytor-doc.js").OpResult;
+            deleteTableColumn: (table: string, column: string | number) => import("./edytor-doc.js").OpResult;
+            moveTableColumn: (table: string, column: string | number, to: number) => import("./edytor-doc.js").OpResult;
+            moveTableRows: (rows: readonly string[], to: number) => import("./edytor-doc.js").OpResult;
+            fillTableCell: (row: string, column: string | number) => import("./edytor-doc.js").OpResult;
             insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").OpResult;
             insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec | import("./index.js").JSONBlock) => import("./edytor-doc.js").OpResult;
             moveBlocks: (ids: readonly string[], dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
@@ -778,6 +792,21 @@ declare const bindCrdt: (Y: EngineApi) => {
             isLayoutItem: (id: string) => boolean;
             besideAt: (id: import("./index.js").BlockId, kind?: string) => string;
             islandOf: (id: string) => string | null;
+            isTable: (id: string) => boolean;
+            isTableRow: (id: string) => boolean;
+            isTableCell: (id: string) => boolean;
+            tableOf: (id: string) => string | null;
+            tableColumns: (id: string) => {
+                id: string;
+                width?: number;
+            }[] | null;
+            tableGrid: (id: string) => {
+                columns: string[];
+                rows: {
+                    id: import("./index.js").BlockId;
+                    cells: (import("./index.js").BlockId | null)[];
+                }[];
+            } | null;
             insideIsland: (id: string) => boolean;
             canPlace: (ids: readonly import("./index.js").BlockId[], parent?: import("./index.js").BlockId | null) => boolean;
             canMerge: (from: import("./index.js").BlockId, into: import("./index.js").BlockId) => boolean;

@@ -367,6 +367,20 @@ export type BlockDefinition = {
 	 */
 	layout?: boolean;
 	/**
+	 * A table (the table plugin's `table`): its `defaultChild` is its row
+	 * kind, a container whose own `defaultChild` is the cell kind (a text
+	 * island). It displays only its rows, a row only its cells, in the order
+	 * of the table's `data.columns` (`table.*` in the delete contract).
+	 * Adopted by the document as a role.
+	 */
+	table?: boolean;
+	/**
+	 * Rows the block menu adds for a block of this kind, when it is opened on
+	 * that block alone (a table's Header row switch), after Turn into and
+	 * Color. A row with `checked` is a switch.
+	 */
+	menu?: (block: Block) => KindMenuAction[];
+	/**
 	 * Data paths written as one value (`data.atomic`): a top-level key, or an
 	 * array of keys for a nested one. Setting `block.data.link`, or a key
 	 * inside it, writes the whole `link` as one property, so two people
@@ -517,6 +531,18 @@ export type MarkDefinition = {
 };
 
 /** A way to create a block kind: one slash command, markdown prefixes, one block-menu row. */
+/** A row a kind adds to the block menu (`BlockDefinition.menu`). */
+export type KindMenuAction = {
+	id: string;
+	label: string;
+	/** An icon id (`iconOf`), else none. */
+	icon?: string;
+	/** A switch's state: the row is a `menuitemcheckbox`. */
+	checked?: boolean;
+	isEnabled?: () => boolean;
+	run: () => unknown;
+};
+
 export type KindPreset = {
 	label: string;
 	icon?: string;

@@ -1,8 +1,10 @@
 /**
- * The layout rules (`layout.*`) over a children index, and the role
- * table's answers for a block's stored kind they read.
+ * The layout rules (`layout.*`) and the table rules (`table.*`) over a
+ * children index, and the role table's answers for a block's stored kind
+ * they read.
  */
 import type { BlockId, ChildSlot } from '../../placement/model.js';
+import { encodeRank, RANK_VMAX } from '../../placement/rank.js';
 import type { DisplayRoles } from '../runs.js';
 import type { IndexState } from './state.js';
 
@@ -25,6 +27,90 @@ export const indexLayout = (ix: IndexState) => {
 		for (const type of ix.roles?.layoutKinds() ?? []) items.add(ix.roles!.layout(type)!);
 		return items;
 	};
+	/** The row kind of `b` when it is a table (`table.*`). */
+	const rowKind = (b: BlockId): string | undefined => role(b, (r, type) => r.table(type));
+	/** `table`'s row kind and that row kind's cell kind, as `[row, cell]`. */
+	const rowOfTable = (table: string): [string, string] | undefined => {
+		const row = ix.roles?.table(table);
+		return row === undefined ? undefined : [row, ix.roles!.defaultChild(row)];
+	};
+	/** The row kinds (with their cell kinds) the roles declare. */
+	const declaredRows = (): Map<string, string> =>
+		new Map(
+			[...(ix.roles?.tableKinds() ?? [])]
+				.flatMap((type) => rowOfTable(type) ?? [])
+				.map(([row, cell]) => [row, cell] as const)
+		);
+	/** The cell kind of `b` when it is a row of a table kind. */
+	const cellKind = (b: BlockId): string | undefined => ix.rowKinds.get(blocks.get(b)?.type ?? '');
+	/**
+	 * The column ids of table `table` in their order, each with its
+	 * position (`data.columns[i].id`), or `null` when it is no table or
+	 * holds no `columns` array: its cells then show in their own order.
+	 * Read from the record's data, memoized per data object.
+	 */
+	const columnsMemo = new WeakMap<object, Map<string, number> | null>();
+	const columnsOf = (table: BlockId): Map<string, number> | null => {
+		if (rowKind(table) === undefined) return null;
+		const data = blocks.get(table)?.data;
+		if (data === null || typeof data !== 'object') return null;
+		let index = columnsMemo.get(data);
+		if (index !== undefined) return index;
+		const columns = (data as { columns?: unknown }).columns;
+		index = null;
+		if (Array.isArray(columns)) {
+			index = new Map();
+			for (const c of columns) {
+				const id = (c as { id?: unknown } | null)?.id;
+				if (typeof id === 'string' && !index.has(id)) index.set(id, index.size);
+			}
+		}
+		columnsMemo.set(data, index);
+		return index;
+	};
+	/** The column a cell names (`data.column`), if any. */
+	const columnOf = (cell: BlockId): string | undefined => {
+		const c = (blocks.get(cell)?.data as { column?: unknown } | null | undefined)?.column;
+		return typeof c === 'string' ? c : undefined;
+	};
+	/**
+	 * What of `b`'s data the table rules read, as one key: a table's column
+	 * ids, a cell's column (`''` for any other block). A change of it
+	 * re-places the table's cells.
+	 */
+	const tableFacts = (b: BlockId, data: unknown): string => {
+		const k = kindsOf.get(b);
+		if (data === null || typeof data !== 'object') return '';
+		if (k?.table) {
+			const columns = (data as { columns?: unknown }).columns;
+			return Array.isArray(columns)
+				? JSON.stringify(columns.map((c) => (c as { id?: unknown } | null)?.id ?? null))
+				: '';
+		}
+		if (k?.cell) {
+			const c = (data as { column?: unknown }).column;
+			return typeof c === 'string' ? c : '';
+		}
+		return '';
+	};
+	/**
+	 * The rank cell `id` displays at in row `row` (`table.columns`): its
+	 * column's position in the table holding the row, so every row shows its
+	 * cells in the table's column order whatever their placements (a rank
+	 * of one segment, the position, ties by block id); a cell of no listed
+	 * column after them (it does not display, `table.cell`).
+	 * `undefined`: no table with columns holds the row — its placement rank.
+	 */
+	const cellRank = (row: BlockId, id: BlockId): string | undefined => {
+		const cell = cellKind(row);
+		if (cell === undefined || blocks.get(id)?.type !== cell) return undefined;
+		const table = ix.placementsMap.get(row)?.parent;
+		const index = typeof table === 'string' ? columnsOf(table) : null;
+		if (index === null) return undefined;
+		const column = columnOf(id);
+		const at = column === undefined ? undefined : index.get(column);
+		return encodeRank([{ v: at ?? RANK_VMAX, t: 0 }]);
+	};
 	/**
 	 * The layout rules over a children index (`layout.*`): the live blocks
 	 * they do not display, found in one post-order pass. A layout shows
@@ -41,15 +127,85 @@ export const indexLayout = (ix: IndexState) => {
 	 * is a layout, so a pass can start at any node (`from`).
 	 */
 	type Shown = { id: BlockId; kids: BlockId[] };
+	/**
+	 * Where a visited node stands for the table rules: directly in a table,
+	 * or directly in a row of one (with the table's columns and the columns
+	 * a cell already took).
+	 */
+	type TableCtx =
+		| { table: BlockId }
+		| { row: BlockId; columns: Map<string, number> | null; seen: Set<string> }
+		| null;
+	/**
+	 * The table rules (`table.*`), in the same pass: a cell displays only in
+	 * a row of a table, and, when the table lists its columns, only for a
+	 * listed column and as the first of the row's cells for it
+	 * (`table.cell`); a row displays only in a table and while it shows a
+	 * cell (`table.row`); a table displays while it shows a row
+	 * (`table.empty`). What does not display hands up nothing a table rule
+	 * shows: a cell's text goes with it.
+	 */
+	const tableVisit = (
+		kids: Map<BlockId | null, ChildSlot[]>,
+		out: Set<BlockId>,
+		id: BlockId,
+		ctx: TableCtx,
+		shown: Shown[]
+	): void => {
+		const k = kindsOf.get(id)!;
+		const childIds = (kids.get(id) ?? []).map((c) => c.id);
+		const pass = (sub: Shown[]) => {
+			out.add(id);
+			shown.push(...sub.filter((x) => !isTableish(x.id)));
+		};
+		if (k.table) {
+			const sub = dissolveVisit(kids, out, childIds, false, { table: id });
+			if (sub.some((x) => kindsOf.get(x.id)?.row)) shown.push({ id, kids: sub.map((x) => x.id) });
+			else pass(sub);
+		} else if (k.row) {
+			const table = ctx !== null && 'table' in ctx ? ctx.table : null;
+			const sub = dissolveVisit(
+				kids,
+				out,
+				childIds,
+				false,
+				table === null ? null : { row: id, columns: columnsOf(table), seen: new Set() }
+			);
+			if (table !== null && sub.some((x) => kindsOf.get(x.id)?.cell))
+				shown.push({ id, kids: sub.map((x) => x.id) });
+			else pass(sub);
+		} else {
+			const sub = dissolveVisit(kids, out, childIds, false, null);
+			const row = ctx !== null && 'row' in ctx ? ctx : null;
+			let shows = row !== null;
+			if (row !== null && row.columns !== null) {
+				const column = columnOf(id);
+				shows = column !== undefined && row.columns.has(column) && !row.seen.has(column);
+				if (shows) row.seen.add(column!);
+			}
+			if (shows) shown.push({ id, kids: sub.map((x) => x.id) });
+			else pass(sub);
+		}
+	};
+	/** `b`'s kind is a table, a table's row or a row's cell. */
+	const isTableish = (b: BlockId): boolean => {
+		const k = kindsOf.get(b);
+		return k !== undefined && (k.table || k.row || k.cell);
+	};
 	const dissolveVisit = (
 		kids: Map<BlockId | null, ChildSlot[]>,
 		out: Set<BlockId>,
 		ids: readonly BlockId[],
-		layout: boolean
+		layout: boolean,
+		ctx: TableCtx = null
 	): Shown[] => {
 		const isItem = (b: BlockId) => ix.itemKinds.has(blocks.get(b)?.type ?? '');
 		const shown: Shown[] = [];
 		for (const id of ids) {
+			if (isTableish(id)) {
+				tableVisit(kids, out, id, ctx, shown);
+				continue;
+			}
 			const own = itemKind(id) !== undefined;
 			const sub = dissolveVisit(
 				kids,
@@ -96,7 +252,7 @@ export const indexLayout = (ix: IndexState) => {
 		const flips = new Set<BlockId>();
 		const isLayoutish = (b: BlockId) => {
 			const k = kindsOf.get(b);
-			return k !== undefined && (k.layout || k.item);
+			return k !== undefined && (k.layout || k.item || k.table || k.row || k.cell);
 		};
 		const roots = new Set<BlockId>();
 		const climb = (b: BlockId | null | undefined): void => {
@@ -115,7 +271,7 @@ export const indexLayout = (ix: IndexState) => {
 			climb(id);
 			climb(ix.slots0.get(id)?.parent);
 			for (const k of ix.kids0.get(id) ?? []) climb(k.id);
-			// Only a layout or an item dissolves: a block that left those kinds shows again.
+			// Only a layout, an item or a table's block dissolves: one that left those kinds shows again.
 			if (!isLayoutish(id) && ix.dissolved.delete(id)) flips.add(id);
 		}
 		for (const root of roots) {
@@ -146,6 +302,12 @@ export const indexLayout = (ix: IndexState) => {
 		role,
 		lineKind,
 		itemKind,
+		rowKind,
+		rowOfTable,
+		declaredRows,
+		cellKind,
+		cellRank,
+		tableFacts,
 		declaredItems,
 		dissolveVisit,
 		dissolve,

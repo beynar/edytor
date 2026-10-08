@@ -125,3 +125,9 @@ export {
 	type TocPluginOptions,
 	type TocHeadingLevel
 } from './toc/TocPlugin.svelte';
+export {
+	tablePlugin,
+	createTablePlugin,
+	isTablePlugin,
+	type TablePluginOptions
+} from './table/TablePlugin.svelte';

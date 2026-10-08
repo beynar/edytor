@@ -61,6 +61,11 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		role,
 		lineKind,
 		itemKind,
+		rowKind,
+		rowOfTable,
+		declaredRows,
+		cellKind,
+		cellRank,
 		declaredItems,
 		dissolve,
 		redissolve
@@ -85,6 +90,8 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	let irregular = false;
 	let layoutBlocks = 0;
 	let itemBlocks = 0;
+	/** Tables, rows and cells (`table.*`): their rules run in the layout pass. */
+	let tableBlocks = 0;
 	const lineCounts = new Map<string, number>();
 	const ownShim: DisplayOwnership = {
 		ownerOf,
@@ -95,9 +102,11 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		lined: (b) => lineKind(b) !== undefined,
 		passes: (b) => ix.dissolved.has(b),
 		sheds: (owner, child) => {
-			const item = itemKind(owner);
-			return item !== undefined && blocks.get(child)?.type !== item;
+			// A layout shows only its items, a table its rows, a row its cells.
+			const only = itemKind(owner) ?? rowKind(owner) ?? cellKind(owner);
+			return only !== undefined && blocks.get(child)?.type !== only;
 		},
+		slotRank: (owner, id) => cellRank(owner, id),
 		top,
 		streamOf,
 		streamsIn,
@@ -112,7 +121,17 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		const now =
 			type === undefined
 				? undefined
-				: { layout: itemKind(id) !== undefined, item: ix.itemKinds.has(type), line: lineKind(id) };
+				: {
+						layout: itemKind(id) !== undefined,
+						item: ix.itemKinds.has(type),
+						line: lineKind(id),
+						table: rowKind(id) !== undefined,
+						row: ix.rowKinds.has(type),
+						cell: ix.cellKinds.has(type)
+					};
+		const tableish = (k: { table: boolean; row: boolean; cell: boolean } | undefined) =>
+			k?.table || k?.row || k?.cell ? 1 : 0;
+		tableBlocks += tableish(now) - tableish(old);
 		if (old?.layout) layoutBlocks--;
 		if (old?.item) itemBlocks--;
 		if (old?.line !== undefined) lineCounts.set(old.line, lineCounts.get(old.line)! - 1);
@@ -124,7 +143,10 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		const item = itemKind(id);
 		if (item !== undefined && !ix.itemKinds.has(item)) ix.placementFull = true;
 		if (now?.line !== undefined && !lineKinds.has(now.line)) ix.placementFull = true;
-		if (layoutMode !== layoutBlocks + itemBlocks > 0) ix.placementFull = true;
+		// A table of a kind whose row the index does not know yet: its rows and cells change kind facts.
+		const rows = type === undefined ? undefined : rowOfTable(type);
+		if (rows !== undefined && ix.rowKinds.get(rows[0]) !== rows[1]) ix.placementFull = true;
+		if (layoutMode !== layoutBlocks + itemBlocks + tableBlocks > 0) ix.placementFull = true;
 	};
 	/** The argmax candidate's parent (a registry entry or the root), and its index entry. */
 	const argParent = (rec: BlockRec | undefined): BlockId | null | undefined => rec?.cands[0]?.p;
@@ -283,8 +305,15 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 			if (item !== undefined) ix.itemKinds.add(item);
 		}
 		lineKinds = new Set(ix.roles?.lineKinds());
+		ix.rowKinds = declaredRows();
+		for (const b of blocks.keys()) {
+			const type = blocks.get(b)?.type;
+			const rows = type === undefined ? undefined : rowOfTable(type);
+			if (rows !== undefined && rowKind(b) !== undefined) ix.rowKinds.set(rows[0], rows[1]);
+		}
+		ix.cellKinds = new Set(ix.rowKinds.values());
 		kindsOf.clear();
-		[layoutBlocks, itemBlocks] = [0, 0];
+		[layoutBlocks, itemBlocks, tableBlocks] = [0, 0, 0];
 		lineCounts.clear();
 		for (const b of blocks.keys()) noteKind(b);
 		for (const line of lineCounts.keys()) lineKinds.add(line);
@@ -298,7 +327,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 			const arg = argmaxOf(id);
 			if (!arg || arg.parent !== pl.parent || arg.rank !== pl.rank) irregular = true;
 		}
-		layoutMode = layoutBlocks + itemBlocks > 0;
+		layoutMode = layoutBlocks + itemBlocks + tableBlocks > 0;
 		ix.dissolved = new Set();
 		const index = (own: DisplayOwnership, map: Map<BlockId | null, ChildSlot[]>) => {
 			const at = new Map<BlockId, Slot>();

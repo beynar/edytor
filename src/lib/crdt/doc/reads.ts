@@ -189,6 +189,102 @@ export const docReads = (c: DocBase) => {
 	const insideItem = (id: BlockId, v?: View): boolean =>
 		[id, ...ancestorsOf(id, v)].some(isLayoutItem);
 
+	// ── tables (`table.*`) ────────────────────────────────────────────
+
+	/** The row kind of `id` when it is a table (its role says `table`): its default child. */
+	const rowKindOf = (id: BlockId): string | undefined => {
+		const type = blockTypeOf(id);
+		return type === undefined ? undefined : roles.table(type);
+	};
+	/** `id` is a table (`table.*`). */
+	const isTable = (id: BlockId): boolean => rowKindOf(id) !== undefined;
+	/** `type` is a row kind of a table kind the roles declare (`tableRow`). */
+	const isRowKind = (type: string | undefined): boolean =>
+		type !== undefined && [...roles.tableKinds()].some((t) => roles.table(t) === type);
+	/** `type` is a cell kind: the default child of a row kind (`tableCell`). */
+	const isCellKind = (type: string | undefined): boolean =>
+		type !== undefined &&
+		[...roles.tableKinds()].some((t) => {
+			const row = roles.table(t);
+			return row !== undefined && roles.defaultChild(row) === type;
+		});
+	/** `id` is a table's row: of its table's row kind, directly in it. */
+	const isTableRow = (id: BlockId): boolean => {
+		const parent = positionOf(id)?.parent;
+		return parent != null && blockTypeOf(id) === rowKindOf(parent);
+	};
+	/** `id` is a table's cell: of its row's cell kind, directly in a row of a table. */
+	const isTableCell = (id: BlockId): boolean => {
+		const row = positionOf(id)?.parent;
+		return (
+			row != null && isTableRow(row) && blockTypeOf(id) === roles.defaultChild(blockTypeOf(row)!)
+		);
+	};
+	/** The table `id` is, or whose row or cell it is; `null` for any other block. */
+	const tableOf = (id: BlockId): BlockId | null => {
+		if (isTable(id)) return id;
+		if (isTableRow(id)) return positionOf(id)!.parent;
+		if (isTableCell(id)) return positionOf(positionOf(id)!.parent!)!.parent;
+		return null;
+	};
+	/**
+	 * The columns `table` lists (`data.columns`: `{ id, width? }` in their
+	 * order, the first entry of an id kept), or `null` when it lists none
+	 * (its cells show in their own order, `table.columns`).
+	 */
+	const tableColumns = (table: BlockId): { id: string; width?: number }[] | null => {
+		const columns = blockDataOf(table)?.columns;
+		if (!Array.isArray(columns)) return null;
+		const seen = new Set<string>();
+		const out: { id: string; width?: number }[] = [];
+		for (const c of columns) {
+			const id = (c as { id?: unknown } | null)?.id;
+			if (typeof id !== 'string' || seen.has(id)) continue;
+			seen.add(id);
+			const width = (c as { width?: unknown }).width;
+			out.push(typeof width === 'number' && Number.isFinite(width) ? { id, width } : { id });
+		}
+		return out;
+	};
+	/**
+	 * `table` as a grid (`table.pad`): its column ids in order and each shown
+	 * row's cells by column, `null` where the row shows none (a padded cell,
+	 * which the first edit in it creates). A table listing no columns has
+	 * as many as its widest row, by position. `null` for a block that is no
+	 * shown table.
+	 */
+	const tableGrid = (
+		table: BlockId
+	): { columns: string[]; rows: { id: BlockId; cells: (BlockId | null)[] }[] } | null => {
+		if (!isTable(table) || !live(table)) return null;
+		const listed = tableColumns(table);
+		const rows = childrenIds(table).filter(isTableRow);
+		if (listed === null) {
+			const cells = rows.map((r) => childrenIds(r));
+			const width = Math.max(0, ...cells.map((c) => c.length));
+			const columns = Array.from({ length: width }, (_, i) => String(i));
+			return {
+				columns,
+				rows: rows.map((id, i) => ({
+					id,
+					cells: columns.map((_, j) => cells[i]![j] ?? null)
+				}))
+			};
+		}
+		const columns = listed.map((c) => c.id);
+		return {
+			columns,
+			rows: rows.map((id) => {
+				const by = new Map<string, BlockId>();
+				for (const cell of childrenIds(id)) {
+					const column = blockDataOf(cell)?.column;
+					if (typeof column === 'string' && !by.has(column)) by.set(column, cell);
+				}
+				return { id, cells: columns.map((c) => by.get(c) ?? null) };
+			})
+		};
+	};
+
 	// ── document order (O7): one pre-order over visible blocks ────────
 
 	/** The document order — `view().order`, shared by every consumer. */
@@ -278,6 +374,15 @@ export const docReads = (c: DocBase) => {
 		isLayoutItem,
 		holdsLayout,
 		insideItem,
+		rowKindOf,
+		isTable,
+		isRowKind,
+		isCellKind,
+		isTableRow,
+		isTableCell,
+		tableOf,
+		tableColumns,
+		tableGrid,
 		order,
 		compare,
 		next,

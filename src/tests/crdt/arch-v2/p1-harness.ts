@@ -335,6 +335,21 @@ const layoutKindsOf = (semantics): Map<string, string> =>
 	);
 
 /**
+ * Table kind → its row and cell kinds, from a semantics table
+ * (`table-shape`): a kind whose role says `table`, its default child and
+ * that one's.
+ */
+const tableKindsOf = (semantics): Map<string, { row: string; cell: string }> =>
+	new Map(
+		Object.entries(semantics?.defaultChild ?? {})
+			.filter(([parent]) => semantics.roles?.[parent]?.table === true)
+			.map(([table, row]) => [
+				table,
+				{ row: row as string, cell: (semantics.defaultChild?.[row as string] ?? '') as string }
+			])
+	);
+
+/**
  * Structural well-formedness, checked test-side on the projection: every
  * block id appears once, every visible character's identity once — plus the
  * named semantic invariants (`harness/assert/well-formed.ts`) over the
@@ -367,7 +382,8 @@ export const wellFormed = (
 		hiddenUnderDeleted:
 			doc && (() => hiddenUnderDeleted(doc, (id: string) => ed.runsView.dissolved(id))),
 		reportedKind: ctx.reported,
-		layouts: layoutKindsOf(ctx.layouts ?? ctx.semantics)
+		layouts: layoutKindsOf(ctx.layouts ?? ctx.semantics),
+		tables: tableKindsOf(ctx.layouts ?? ctx.semantics)
 	});
 	const ids = new Set<string>();
 	const atoms = new Set<string>();

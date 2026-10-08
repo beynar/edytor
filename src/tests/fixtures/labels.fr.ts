@@ -268,6 +268,27 @@ export const fr: Labels = {
 		searching: 'Recherche…',
 		noResults: 'Aucun résultat',
 		untitled: 'Sans titre'
+	},
+	table: {
+		table: 'Tableau',
+		headerRow: 'Ligne d’en-tête',
+		headerColumn: 'Colonne d’en-tête',
+		insertAbove: 'Insérer au-dessus',
+		insertBelow: 'Insérer en dessous',
+		insertLeft: 'Insérer à gauche',
+		insertRight: 'Insérer à droite',
+		moveUp: 'Monter',
+		moveDown: 'Descendre',
+		moveLeft: 'Déplacer à gauche',
+		moveRight: 'Déplacer à droite',
+		deleteRow: 'Supprimer la ligne',
+		deleteColumn: 'Supprimer la colonne',
+		addRow: 'Ajouter une ligne',
+		addColumn: 'Ajouter une colonne',
+		rowMenu: 'Options de la ligne',
+		columnMenu: 'Options de la colonne',
+		resize: 'Redimensionner la colonne',
+		emptyCell: 'Cellule vide'
 	}
 };
 

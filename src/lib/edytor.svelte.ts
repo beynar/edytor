@@ -538,9 +538,9 @@ export class Edytor {
 			const blocks = Array.from(this.blocks);
 			this.document.adoptSemantics({
 				roles: Object.fromEntries(
-					blocks.map(([type, { void: v, island, lines, layout, atomic }]) => [
+					blocks.map(([type, { void: v, island, lines, layout, table, atomic }]) => [
 						type,
-						{ void: v, island, lines, layout, atomic }
+						{ void: v, island, lines, layout, table, atomic }
 					])
 				),
 				rendersContent: Object.fromEntries(

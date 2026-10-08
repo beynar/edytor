@@ -24,6 +24,10 @@
  *   (`flow.place`: an accepted suggestion), all at plain ranks (`insertBlocks`: their order
  *   against a peer's split beside them is not claimed, DR-crdt-1); a void
  *   takes one run (`flow.void`);
+ * - a table's cell is never split: it takes the lines a flow shows, nested
+ *   ones and a pasted table's cells included, as one text joined by line
+ *   breaks; a cell outside a row (cells copied out of a table) is a line of
+ *   text, and a row outside a table its cells (`table.paste`);
  * - a plain line that lands directly in a container takes its item kind
  *   (the document's `fitted`: a pasted paragraph in a list is its item,
  *   ZW-01), and so does a line of the list's flat item kind (the view's
@@ -79,6 +83,8 @@ export type FlowContext = RangeDeleteContext & {
 	};
 	/** `id` is a layout item or sits inside one (D2: no layout lands there). */
 	insideItem: (id: BlockId) => boolean;
+	/** What a kind is to the table rules: a table, a row or a cell kind (`table.*`). */
+	tableKind: (kind: string) => 'table' | 'row' | 'cell' | undefined;
 	tailOf: (id: BlockId) => SplitTail;
 	ranksFor: (parent: BlockId | null, index: number, count: number) => string[];
 	/** `ranksFor` for new blocks: after a block this client ranked, in its run there (H1). */
@@ -122,6 +128,18 @@ export const flowOps = (c: FlowContext) => ({
 			.map((l) => c.sanitize({ ...l, type: l.type ?? '' }))
 			.map((s) => ({ ...s, type: s.type || undefined }));
 		if (lines.length === 0) return c.plan([], []);
+		// A cell outside a row is its text, a row outside a table its cells (`table.paste`).
+		const unbare = (l: FlowLine, holder: 'table' | 'row' | null): FlowLine[] => {
+			const kind = l.type ? c.tableKind(l.type) : undefined;
+			const kids = (next: 'table' | 'row' | null) =>
+				(l.children ?? []).flatMap((kid) => unbare(kid, next));
+			if (kind === 'cell' && holder !== 'row')
+				return [{ id: l.id, content: l.content }, ...kids(null)];
+			if (kind === 'row' && holder !== 'table') return kids(null);
+			if (!l.children) return [l];
+			return [{ ...l, children: kids(kind === 'cell' ? null : (kind ?? null)) as BlockSpec[] }];
+		};
+		lines = lines.flatMap((l) => unbare(l, null));
 		/** A line's kind under `parent`: the list's item for its flat item kind, then `fitted`. */
 		const fit = (parent: BlockId | null, kind: string | undefined) =>
 			c.fitted(
@@ -201,6 +219,9 @@ export const flowOps = (c: FlowContext) => ({
 		// shows, nested ones included, in order; no block lands in the island (`flow.lines`).
 		const inLines = parent !== null && c.isLines(parent);
 		if (inLines) lines = lines.flatMap(plain);
+		// A table's cell is never split: the lines it shows join its text (`table.paste`).
+		const cell = c.isTableCell(B);
+		if (cell) lines = lines.flatMap(plain);
 		// A line that joins no text under `under` (`flow.apart`, GX-01): its kind renders
 		// none of its own (a list, a code block), or is a void or an island.
 		const apart = (l: FlowLine, under: BlockId | null) => {
@@ -220,11 +241,11 @@ export const flowOps = (c: FlowContext) => ({
 			o === len && !inLines && !flow.whole && header === true && !(empty && apart(lines[0]!, B));
 		const home = inside ? B : parent;
 		if (lines.length === 0) return { ...c.plan([B], []), at: { block: B, offset: o } };
-		if (flow.whole && !inLines)
+		if (flow.whole && !inLines && !cell)
 			return atSlot({ parent, index: index + 1 }, empty ? [c.remove(B, [])] : []);
-		// A void is never split: its caption takes the lines as one run.
+		// A void is never split: its caption takes the lines as one run; nor is a cell.
 		const br = { kind: 'text' as const, text: '\n' };
-		if (c.isVoid(B)) {
+		if (c.isVoid(B) || cell) {
 			const content = lines.flatMap((l, i) => [...(i ? [br] : []), ...(l.content ?? [])]);
 			lines = [{ id: lines[0]!.id, content }];
 		}

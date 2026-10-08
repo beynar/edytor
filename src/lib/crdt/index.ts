@@ -90,6 +90,8 @@ export {
 	pageSemantics,
 	tocKinds,
 	tocSemantics,
+	tableKinds,
+	tableSemantics,
 	richTextKinds,
 	codeKinds,
 	imageKinds,
@@ -104,6 +106,8 @@ export {
 	type KindRecord,
 	type MergedSemantics
 } from './semantics.js';
+// A new table as document JSON (`table.*`).
+export { tableBlock, type TableBlockOptions } from './tables.js';
 // H5: paired marks — a mark's edge as document semantics, the record a key names.
 export { markName, type MarkEdge } from './text/marks.js';
 

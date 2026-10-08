@@ -20,6 +20,7 @@
 	import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
+	import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
 	import { clearDocument, createWebsocketSync, type EdytorSync } from '$lib/collaboration/index.js';
 	import {
@@ -379,6 +380,47 @@
 				{ id: 'Z', type: 'paragraph', content: [{ text: 'after' }] }
 			]
 		},
+		// A table between two paragraphs (`table.*` in the delete contract): `P, T{c1, c2}[R1[A, B],
+		// R2[C, D]], Z`; the table plugin and the block menu are listed with it.
+		table: {
+			children: [
+				{ id: 'P', type: 'paragraph', content: [{ text: 'before' }] },
+				{
+					id: 'T',
+					type: 'table',
+					data: { columns: [{ id: 'c1' }, { id: 'c2' }] },
+					children: [
+						{
+							id: 'R1',
+							type: 'tableRow',
+							children: [
+								{
+									id: 'A',
+									type: 'tableCell',
+									data: { column: 'c1' },
+									content: [{ text: 'alpha' }]
+								},
+								{ id: 'B', type: 'tableCell', data: { column: 'c2' }, content: [{ text: 'beta' }] }
+							]
+						},
+						{
+							id: 'R2',
+							type: 'tableRow',
+							children: [
+								{
+									id: 'C',
+									type: 'tableCell',
+									data: { column: 'c1' },
+									content: [{ text: 'gamma' }]
+								},
+								{ id: 'D', type: 'tableCell', data: { column: 'c2' }, content: [{ text: 'delta' }] }
+							]
+						}
+					]
+				},
+				{ id: 'Z', type: 'paragraph', content: [{ text: 'after' }] }
+			]
+		},
 		// Block colours, toggle headings, a page block and a table of contents
 		// (`polish=1` lists the block menu, the page and toc plugins).
 		polish: {
@@ -481,6 +523,7 @@
 
 	const plugins = $derived([
 		...(data.find ? [findPlugin] : []),
+		...(data.scenario === 'table' ? [tablePlugin, ...(data.polish ? [] : [blockMenuPlugin])] : []),
 		...(data.media ? [embedPlugin, bookmarkPlugin] : []),
 		...(data.polish
 			? [

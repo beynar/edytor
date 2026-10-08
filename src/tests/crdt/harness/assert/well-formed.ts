@@ -35,13 +35,23 @@
  *   item displays outside a layout of its kind (`layout.*` in
  *   `docs/editor-delete-contract.md`: the read-time rules own the display,
  *   so this holds after every step, races and undo included).
+ * - `table-shape` — a displayed table holds displayed rows of its row kind
+ *   only (one or more), a displayed row cells of its cell kind only (one
+ *   or more), each of a column the table lists, once, in the table's
+ *   column order; no row displays outside a table of its kind, no cell
+ *   outside a row of one (`table.*`: the read-time rules own the display).
  *
  * The runner (`random/runner.ts`) and the p1 harness (`arch-v2/p1-harness.ts`)
  * both feed {@link wellFormedProblems}; each backend supplies the inputs it
  * can answer, and a check whose input is absent is skipped.
  */
 
-export type WfBlock = { id: string; type?: unknown; children?: readonly WfBlock[] };
+export type WfBlock = {
+	id: string;
+	type?: unknown;
+	data?: unknown;
+	children?: readonly WfBlock[];
+};
 
 /** One applied merge: `from`'s content went to `into`; `kids` were `from`'s children. */
 export type MergeRecord = { from: string; into: string; kids: readonly string[] };
@@ -71,6 +81,8 @@ export type WellFormedInput = {
 	reportedKind?: (id: string) => string | undefined;
 	/** Layout kind → its item kind (`layout-shape`); absent → no layout kinds. */
 	layouts?: ReadonlyMap<string, string>;
+	/** Table kind → its row and cell kinds (`table-shape`); absent → no table kinds. */
+	tables?: ReadonlyMap<string, { row: string; cell: string }>;
 };
 
 type Check = {
@@ -203,6 +215,53 @@ export const WELL_FORMED_CHECKS: Record<string, Check> = {
 				for (const c of kids) visit(c, b);
 			};
 			for (const b of roots) visit(b, null);
+			return out;
+		}
+	},
+	'table-shape': {
+		run: ({ tables, roots }) => {
+			if (!tables?.size) return [];
+			const rows = new Map([...tables].map(([table, k]) => [k.row, table]));
+			const cells = new Map([...tables].map(([, k]) => [k.cell, k.row]));
+			const out: string[] = [];
+			const typeOf = (b: WfBlock | null) => (typeof b?.type === 'string' ? b.type : '');
+			const columnsOf = (b: WfBlock): string[] | null => {
+				const columns = (b.data as { columns?: unknown } | undefined)?.columns;
+				return Array.isArray(columns)
+					? columns.map((c) => String((c as { id?: unknown } | null)?.id))
+					: null;
+			};
+			const visit = (b: WfBlock, parent: WfBlock | null, grand: WfBlock | null) => {
+				const type = typeOf(b);
+				const kids = b.children ?? [];
+				const table = tables.get(type);
+				if (table !== undefined) {
+					if (kids.length === 0) out.push(`table ${b.id} shows no row`);
+					for (const k of kids)
+						if (k.type !== table.row)
+							out.push(`${k.id} shows ${String(k.type)} in the table ${b.id}`);
+				}
+				if (rows.has(type)) {
+					if (typeOf(parent) !== rows.get(type)) out.push(`row ${b.id} shows outside a table`);
+					if (kids.length === 0) out.push(`row ${b.id} shows no cell`);
+					const cell = tables.get(rows.get(type)!)!.cell;
+					for (const k of kids)
+						if (k.type !== cell) out.push(`${k.id} shows ${String(k.type)} in the row ${b.id}`);
+					const listed = parent === null ? null : columnsOf(parent);
+					if (listed !== null) {
+						const at = kids.map((k) =>
+							listed.indexOf(String((k.data as { column?: unknown } | undefined)?.column))
+						);
+						if (at.some((i) => i < 0)) out.push(`row ${b.id} shows a cell of no listed column`);
+						if (at.some((i, j) => j > 0 && i <= at[j - 1]!))
+							out.push(`row ${b.id} shows its cells out of column order or twice`);
+					}
+				}
+				if (cells.has(type) && (typeOf(parent) !== cells.get(type) || !tables.has(typeOf(grand))))
+					out.push(`cell ${b.id} shows outside a table’s row`);
+				for (const c of kids) visit(c, b, parent);
+			};
+			for (const b of roots) visit(b, null, null);
 			return out;
 		}
 	},

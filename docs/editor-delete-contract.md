@@ -1621,6 +1621,192 @@ source, `order-scope.test.ts`).
   peer put in a new column meanwhile keeps it, and that column, alone,
   dissolves into the layout's slot.
 
+## Tables
+
+A **table** is a kind whose role says `table: true` (the bundled `table`,
+`tableKinds` in `crdt/semantics.ts`). Its default child is its **row**
+kind (`tableRow`, a container), whose default child is its **cell** kind
+(`tableCell`, a text island: its text holds its lines as line breaks). The
+columns are data: the table lists them in order in `data.columns`
+(`{ id, width? }`, a fine-grained data array), each cell names its column
+in `data.column`, and the header flags are `data.headerRow` and
+`data.headerColumn`. Rows are blocks, ordered by placement. As for
+layouts, the role is data read from the document's roles (`roles.table`):
+no core code names `table`, `tableRow` or `tableCell`, and the read-time
+rules own the display (the index's layout pass, `crdt/text/index/layout.ts`).
+Pins: `src/tests/crdt/arch-v2/table.test.ts` (each row sequential,
+concurrent with display equality across replicas, and undone), the
+`table-shape` well-formed check (a displayed table holds displayed rows
+only, each displayed row cells only, one per listed column at most, in the
+table's column order; no row or cell displays outside its table), held by
+the p1 harness and the corpus's `tables` lane.
+
+`T` below is `P, T:table{columns: [c1, c2]}[R1:tableRow[A:c1, B:c2],
+R2:tableRow[C:c1, D:c2]], Z` (`A:c1`: a cell whose `data.column` is `c1`).
+
+### `table.fits` — a table holds rows, a row cells (write)
+
+`fits` (`del.merge.container`): a table holds only its rows, a row only
+its cells. A cell never moves as a block (`canPlace` refuses any move of
+one: it moves only with its column, `table.move-column`), and a row moves
+only among its own table's rows (`moveBlocks([R2], {parent: T, index: 0})`
+applies; to the root or another table it is refused). A cell is an island:
+nothing moves into it. A table may sit in a column, a toggle or a callout.
+A block selection never holds a row or a cell: selecting one selects its
+table (`select`), and a block delete of a table or a row takes its rows and
+cells with it (none shows outside them).
+
+### `table.only-rows` — a table displays only its rows, a row only its cells (read)
+
+Any other child of a table (a raw `insertBlocks`, a race) displays in the
+table's parent right after it, as `layout.only-items` does; any other
+child of a row displays right after the row's table.
+
+### `table.columns` — every row shows its cells in the table's column order (read)
+
+A row's cells display in the order of their columns in the table's
+`data.columns`, whatever their placements: a column move writes the
+array only (`table.move-column`), and a row a peer inserts meanwhile shows
+its cells in the new order. A table that lists no columns (JSON written by
+hand) shows each row's cells in their placement order; the first column op
+lists them (by position) and names each cell's column, in its plan.
+
+### `table.cell` — a cell displays in a row of a table, once per listed column (read)
+
+A cell displays only directly in a row of a table, for a column the table
+lists, and as the first of the row's cells for that column (by column
+position, then block id); otherwise it does not display, with its text
+(dissolved, not deleted). So a cell of a deleted column a peer adds to a
+new row (`table.conc.row-insert`), a cell a peer adds to a row another
+peer deletes (promoted out of it, outside any row), and a second cell for
+one column (`table.conc.fill-twice`) do not display.
+
+### `table.row` — no empty row, no row outside a table (read)
+
+A row displays only directly in a table and while it displays a cell. A
+table displays while it displays a row (`table.empty`).
+
+### `table.pad` — a row is padded to the table's columns (view)
+
+A row that displays no cell for a listed column (a peer's row inserted
+while a column was) is shown with an empty placeholder in that column
+(`tableGrid`: `null` there). The placeholder is the view's, never a block:
+the first press or edit in it creates its cell (`fillTableCell(row,
+column)`, one plan) and places the caret there. No replica writes a cell
+for having seen it missing.
+
+### `table.insert-row` — `insertTableRow(table, index)` (write)
+
+A row with one empty cell per listed column at `index` among the table's
+rows, one plan, an insert's rank (`order.insert.run`): `insertTableRow(T, 1)`
+gives `T[R1, NEW[NEW:c1, NEW:c2], R2]`. Undo withdraws it.
+
+### `table.delete-row` — `deleteTableRows(rows)` (write)
+
+The rows and their cells, whole (a subtree delete, never a promotion: a
+cell never shows outside its row); a table left with no row goes too
+(`del.range.empty-container`): `deleteTableRows([R1, R2])` gives `P, Z`.
+
+### `table.insert-column` — `insertTableColumn(table, index, width?)` (write)
+
+A new column id at `index` in `data.columns` and one empty cell for it in
+every row the table displays, one plan: `insertTableColumn(T, 1)` gives
+`R1[A, NEW, B], R2[C, NEW, D]`.
+
+### `table.delete-column` — `deleteTableColumn(table, column)` (write)
+
+The column (by id or position) leaves `data.columns` and every displayed
+cell of it is deleted, one plan; deleting the last column deletes the table
+(`deleteTableColumn(T, 'c2')` gives `R1[A], R2[C]`; then `'c1'` gives `P, Z`).
+
+### `table.move-column` — `moveTableColumn(table, column, to)` (write)
+
+One `order` patch of `data.columns` (`data.*`: the array's own move rule,
+a delete beats a concurrent move); no cell moves: `moveTableColumn(T, 'c1',
+1)` gives `R1[B, A], R2[D, C]`.
+
+### `table.move-row` — `moveTableRows(rows, to)` (write)
+
+A move among the table's rows (plain ranks): `moveTableRows([R2], 0)`
+gives `T[R2, R1]`.
+
+### `table.header`, `table.width` — header flags and column widths (write)
+
+`data.headerRow`/`data.headerColumn` (booleans) and
+`data.columns[i].width` (pixels) are data patches of the table
+(`patchData`): per-leaf last writer wins, a width written into a column a
+peer deletes is dropped with it.
+
+### `table.merge` — nothing merges into or out of a cell (write, keys)
+
+`canMerge` refuses a cell on either side and `splitBlock` refuses a cell
+(`table.split`): a cell's lines are line breaks in its text. So Backspace
+at a cell's start and Delete at its end write nothing and keep the caret
+(no merge, no `del.start.kind` retype); Backspace at the start of the
+block after a table writes nothing and puts the caret at the end of the
+last cell (the line before it in reading order); Enter and Shift+Enter in
+a cell insert a line break (`table.enter`).
+
+### `table.range` — a range keeps the cells it crosses (write)
+
+A text range with an end in a cell, or across a table, deletes the text it
+covers in each cell it crosses and removes no cell or row: nothing merges
+across a cell's edge, and the caret lands at the range's start. Blocks
+outside the table go as `del.range.*` says (the head keeps its prefix, the
+tail its suffix, nothing merges into a cell); a table wholly between the
+range's ends goes whole. Typing over such a range is the same delete, then
+the text at the start (`del.range.replace`).
+
+### `table.paste` — a flow into a cell joins its text (write)
+
+A paste or drop into a cell inserts its lines as one text, joined by line
+breaks (a cell never splits, `table.merge`); blocks that hold no text (an
+image) are dropped there. A table pasted outside a table lands as a table
+(a new one, with its columns and fresh ids); inside a cell, as its text. A
+cell outside a row (cells a text range copied out of a table) is a line of
+text, and a row outside a table its cells: no flow places a cell where it
+would not display.
+
+### `table.keys` — Tab, arrows, Enter in a cell (view)
+
+Tab moves the caret to the end of the next cell in reading order (row by
+row), Shift+Tab to the end of the previous one (in the first cell it stays);
+Tab in the last cell inserts a row after it (Notion) and goes to its first
+cell. ArrowUp on a cell's first line goes to
+the same column's cell in the row above (above the table: the line before
+it), ArrowDown on its last line to the row below (below the table: the
+line after it); Left and Right cross cells in reading order. Nothing nests
+or outdents in a table: Tab never nests a cell.
+
+### `table.conc.row-insert` — a row insert racing a column delete
+
+Ada inserts a row while Bob deletes `c2`: Ada's row holds a cell for
+`c2` that does not display (`table.cell`); every row shows `c1` only.
+
+### `table.conc.column-insert` — a column insert racing a row insert
+
+Ada inserts a column while Bob inserts a row: Bob's row holds no cell for
+the new column and is padded there (`table.pad`); the first edit in that
+placeholder fills it.
+
+### `table.conc.row-delete` — a cell edit racing a row delete
+
+Ada types in `A` while Bob deletes `R1`: the row and its cells are gone
+with Ada's text (`conc.delete-wins-block`); a column Ada inserts meanwhile
+adds a cell to `R1` that, promoted out of the deleted row, does not
+display (`table.cell`).
+
+### `table.conc.column-move` — a column move racing a row insert
+
+Ada moves `c1` after `c2` while Bob inserts a row: every row, Bob's
+included, shows `c2`'s cell then `c1`'s (`table.columns`).
+
+### `table.conc.fill-twice` — two peers fill one padded cell (residual)
+
+Each creates a cell for the same row and column: the first by block id
+displays, the other does not, with any text typed in it before the peers
+synced (the residual: one placeholder, two writers, no merge of cells).
+
 ## Anchor contract
 
 A selection endpoint anchor (`DocAnchor` = `{b, a}`: `b` the home block of

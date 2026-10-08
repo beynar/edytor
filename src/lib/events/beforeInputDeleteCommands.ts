@@ -106,6 +106,14 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 
 	if (resetKindAtStart(edytor, snapshot)) return;
 
+	// A table's cell keeps its caret at its start: nothing merges into or out of
+	// a cell, and it never outdents (`table.merge`).
+	const cell = startText?.parent;
+	if (snapshot.isAtStartOfBlock && cell && edytor.facade.isTableCell(cell.id)) {
+		edytor.selection.setAtTextOffset(startText!, 0);
+		return;
+	}
+
 	if (snapshot.isAtStartOfBlock && snapshot.isFirstChildOfDocument && startText?.parent.isEmpty) {
 		edytor.selection.setAtTextOffset(startText, 0);
 		return;

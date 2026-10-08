@@ -15,6 +15,8 @@
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
+	import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
+	import { tableBlock } from '$lib/crdt/tables.js';
 	import type { Plugin } from '$lib/plugins.js';
 	import { page } from '$app/state';
 	import { createIndexeddbSync } from '$lib/collaboration/providers.js';
@@ -78,6 +80,7 @@
 		columnsPlugin,
 		findPlugin,
 		tocPlugin,
+		tablePlugin,
 		richTextPlugin
 	];
 	const demoValue: JSONDoc = {
@@ -174,6 +177,18 @@
 						]
 					}
 				]
+			},
+			{
+				...tableBlock({
+					cells: [
+						['Block', 'What it holds'],
+						['Table', 'Rows of cells, each a line of text'],
+						['Columns', 'Any blocks, side by side']
+					],
+					headerRow: true,
+					widths: [140, 260]
+				}),
+				id: 'page-table'
 			},
 			{
 				id: 'page-toggle',

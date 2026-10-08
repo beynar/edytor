@@ -166,5 +166,47 @@ export const ROLES_BASE_SEED: SeedUpdate = modelSpecSeed([
 	}
 ]);
 
+const cellSpec = (id: string, column: string, text: string) => ({
+	id,
+	type: 'tableCell',
+	data: { column },
+	content: [{ kind: 'text' as const, text }]
+});
+
+/**
+ * The tables lane's seed (`table.*`): a paragraph, a table `{c1, c2}` of two
+ * rows, a code block and a list, so table ops race generic ones.
+ */
+export const TABLES_BASE_SEED: SeedUpdate = modelSpecSeed([
+	{ id: 'b1', type: 'paragraph', content: [{ kind: 'text', text: 'hello world' }] },
+	{
+		id: 't1',
+		type: 'table',
+		data: { columns: [{ id: 'c1' }, { id: 'c2' }] },
+		content: [],
+		children: [
+			{
+				id: 't1r1',
+				type: 'tableRow',
+				content: [],
+				children: [cellSpec('t1a', 'c1', 'one'), cellSpec('t1b', 'c2', 'two')]
+			},
+			{
+				id: 't1r2',
+				type: 'tableRow',
+				content: [],
+				children: [cellSpec('t1c', 'c1', 'three'), cellSpec('t1d', 'c2', 'four')]
+			}
+		]
+	},
+	{
+		id: 'c1',
+		type: 'code',
+		content: [],
+		children: [{ id: 'c1a', type: 'codeLine', content: [{ kind: 'text', text: 'let a' }] }]
+	},
+	{ id: 'b2', type: 'paragraph', content: [{ kind: 'text', text: 'after the table' }] }
+]);
+
 /** Empty document seed (concurrent-bootstrap scenarios). */
 export const EMPTY_SEED: SeedUpdate = () => {};

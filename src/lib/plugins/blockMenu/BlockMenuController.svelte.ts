@@ -42,6 +42,8 @@ export type BlockMenuAction = {
 	icon: string;
 	hint?: string;
 	danger?: boolean;
+	/** A switch's state (a kind's row, `BlockDefinition.menu`): the row is a `menuitemcheckbox`. */
+	checked?: boolean;
 	/** Opens a flyout instead of running: the kinds (`turn`) or the colours (`color`). */
 	submenu?: 'turn' | 'color';
 	isEnabled?: () => boolean;
@@ -203,6 +205,10 @@ export class BlockMenuController {
 							run: () => this.copyLink()
 						}
 					]
+				: []),
+			// The kind's own rows, on its block alone (a table's header switches).
+			...(blocks.length === 1
+				? (block.definition.menu?.(block) ?? []).map((row) => ({ ...row, icon: row.icon ?? '' }))
 				: []),
 			{
 				id: 'duplicate',

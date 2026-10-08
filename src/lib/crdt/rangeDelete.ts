@@ -33,6 +33,11 @@
  *   closed tail's body takes its place, shown (`del.range.hidden-body`);
  * - a layout the range leaves with one column dissolves, in the same plan
  *   (`layout.dissolving`);
+ * - a range with an end in a table's cell keeps every cell and row: each
+ *   cell it crosses loses the text it covers, nothing merges across a
+ *   cell's edge, the blocks outside the table between the ends go, a
+ *   table wholly between them goes whole, and the caret lands at the start
+ *   (`table.range`);
  * - the plan's `at` is where the caret lands (`del.range.caret`).
  */
 import type { BlockId, Destination } from './placement/model.js';
@@ -76,6 +81,10 @@ export type RangeDeleteContext = {
 		leaving: readonly BlockId[],
 		writes: readonly PlanStep[]
 	) => PlanStep[];
+	/** The table `id` is, or whose row or cell it is; `null` for any other block (`table.*`). */
+	tableOf: (id: BlockId) => BlockId | null;
+	/** `id` is a table's cell. */
+	isTableCell: (id: BlockId) => boolean;
 };
 
 /**
@@ -114,6 +123,7 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 
 			const parent = (id: BlockId) => c.ancestorsOf(id)[0] ?? null;
 			const chain = c.ancestorsOf(E);
+			if (c.isTableCell(S) || c.isTableCell(E)) return inTables(s, e, view);
 			// What the view hides once `removed` go (nothing: as it is now).
 			const hiddenOnce = (removed: readonly BlockId[]) => {
 				const set = new Set(removed);
@@ -210,5 +220,40 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			if (caret === null) return prepare(true, headDies)(from, to, view);
 			return { ...c.plan([caret.block], writes), at: caret };
 		};
+	/**
+	 * `table.range`: a range with an end in a cell. Every cell it crosses
+	 * loses the text it covers and stays, with its row; the ends keep what
+	 * lies outside the range, merging nothing; any other block between the
+	 * ends goes (a table wholly between them whole), but the ancestors of
+	 * the end; the caret lands at the start.
+	 */
+	const inTables = (s: DocPosition, e: DocPosition, view: RangeView): Prepared => {
+		const { ids, at } = c.order();
+		const [S, E] = [s.block, e.block];
+		const kept = new Set([...c.ancestorsOf(E), ...c.ancestorsOf(S)]);
+		const between = ids
+			.slice(at.get(S)! + 1, at.get(E)!)
+			.filter((id) => !view.hidden?.(id) && !kept.has(id));
+		const writes: PlanStep[] = [];
+		const lenS = c.displayLength(S);
+		if (lenS > s.offset)
+			writes.push({ op: 'deleteText', id: S, offset: s.offset, length: lenS - s.offset });
+		const [tableS, tableE] = [c.tableOf(S), c.tableOf(E)];
+		const doomed = new Set<BlockId>();
+		for (const id of between) {
+			const table = c.tableOf(id);
+			if (table !== null && (table === tableS || table === tableE)) {
+				const len = c.isTableCell(id) ? c.displayLength(id) : 0;
+				if (len > 0) writes.push({ op: 'deleteText', id, offset: 0, length: len });
+			} else doomed.add(id);
+		}
+		if (e.offset > 0) writes.push({ op: 'deleteText', id: E, offset: 0, length: e.offset });
+		const parentOf = (id: BlockId) => c.ancestorsOf(id)[0] ?? null;
+		const roots = [...doomed].filter((id) => !doomed.has(parentOf(id)!));
+		for (const id of roots) writes.push(c.remove(id, []));
+		writes.push(...c.dissolving(roots, [], writes));
+		return { ...c.plan([S], writes), at: s };
+	};
+
 	return { deleteRange: prepare(false), replaceRange: prepare(true) };
 };

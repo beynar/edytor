@@ -322,6 +322,15 @@ export interface CrdtOps {
 	 * the target's, or a new layout wrapping it. False when refused.
 	 */
 	placeBeside?(peer: Peer, ids: BlockId[], target: BlockId, side: 'left' | 'right'): boolean;
+	/** Table kind → its row and cell kinds (`wellFormed` `table-shape`). */
+	readonly tables?: ReadonlyMap<string, { row: string; cell: string }>;
+	/** The table `id` is, or holds `id` (its row or cell), with every block stored under it. */
+	tableOf?(peer: Peer, id: BlockId): { table: BlockId; members: BlockId[]; cell: boolean } | null;
+	/**
+	 * One table operation on `table`, chosen by `pick` (`table.*`): a row or a
+	 * column inserted, deleted or moved, or a padded cell filled. False when refused.
+	 */
+	tableOp?(peer: Peer, table: BlockId, pick: number): boolean;
 }
 
 /**
@@ -492,7 +501,9 @@ export type AtomFate =
 			payload?: string;
 	  }
 	| { kind: 'uncovered' }
-	| { kind: 'gone' };
+	| { kind: 'gone' }
+	/** In a live block the table rules hide (`table.cell`: a cell of a deleted column), with it. */
+	| { kind: 'hidden'; owner: BlockId };
 
 /**
  * Schedule-side causal context for {@link CrdtOps.classifyTagAtoms}

@@ -55,6 +55,7 @@ export type NormalizedRole = {
 	island: boolean;
 	lines: boolean;
 	layout?: true;
+	table?: true;
 	atomic?: readonly (readonly string[])[];
 };
 
@@ -75,6 +76,7 @@ export const normalizeRole = (role: BlockRole | undefined): NormalizedRole => {
 		island: role?.island === true,
 		lines: role?.lines === true,
 		...(role?.layout === true && { layout: true as const }),
+		...(role?.table === true && { table: true as const }),
 		...(atomic.length > 0 && { atomic })
 	};
 };
@@ -155,11 +157,25 @@ export const layoutKinds = frozen({
 } satisfies Record<string, KindSemantics>);
 
 /**
+ * The table plugin's structural rows: `table` displays only its
+ * `tableRow`s, a row only its `tableCell`s, in the order of the table's
+ * `data.columns` (`table.*` in the delete contract); a cell is a text
+ * island (its text holds its lines, as soft breaks). In
+ * {@link defaultSemantics}, so every replica of a document holding a table
+ * reads the same rules.
+ */
+export const tableKinds = frozen({
+	table: { table: true, rendersContent: false, defaultChild: 'tableRow' },
+	tableRow: { rendersContent: false, defaultChild: 'tableCell' },
+	tableCell: { island: true }
+} satisfies Record<string, KindSemantics>);
+
+/**
  * Kind tables (`type → row`) as one {@link DocumentSemanticsConfig}, deeply
  * frozen: `semanticsOf({ embed: { void: true, rendersContent: false } })`.
  * A row may be a plugin's kind record (`plugin.blocks`): only its
  * structural fields are read (`void`, `island`, `lines`, `layout`,
- * `atomic`, `rendersContent`, `defaultChild`), and a bare snippet is a
+ * `table`, `atomic`, `rendersContent`, `defaultChild`), and a bare snippet is a
  * plain kind. To add kinds to a bundled config, use {@link mergeSemantics}.
  */
 export const semanticsOf = (...tables: Record<string, KindRecord>[]) => {
@@ -170,9 +186,18 @@ export const semanticsOf = (...tables: Record<string, KindRecord>[]) => {
 	} satisfies DocumentSemanticsConfig;
 	for (const [type, record] of tables.flatMap(Object.entries)) {
 		const row: KindSemantics = typeof record === 'object' && record !== null ? record : {};
-		const { void: isVoid, island, lines, layout, atomic, rendersContent, defaultChild } = row;
+		const {
+			void: isVoid,
+			island,
+			lines,
+			layout,
+			table,
+			atomic,
+			rendersContent,
+			defaultChild
+		} = row;
 		semantics.roles[type] = Object.fromEntries(
-			Object.entries({ void: isVoid, island, lines, layout, atomic }).filter(
+			Object.entries({ void: isVoid, island, lines, layout, table, atomic }).filter(
 				([, fact]) => fact !== undefined
 			)
 		);
@@ -262,6 +287,7 @@ const kindFacts = (config: DocumentSemanticsConfig, kind: string): string => {
 		role.island && 'island',
 		role.lines && 'lines',
 		role.layout && 'layout',
+		role.table && 'table',
 		role.atomic && `atomic=${JSON.stringify(role.atomic)}`,
 		own(config.rendersContent) === false && 'no-content',
 		child !== undefined && `child=${child}`
@@ -314,16 +340,27 @@ export const layoutSemantics = semanticsOf(layoutKinds);
 export const pageSemantics = semanticsOf(pageKinds);
 /** The table of contents plugin's block role. */
 export const tocSemantics = semanticsOf(tocKinds);
+/** The table plugin's block roles (a table of rows of cells). */
+export const tableSemantics = semanticsOf(tableKinds);
 /**
- * The rich-text, code, image, media, columns, page and table of contents
- * plugins' block roles together — what the room and a headless
+ * The rich-text, code, image, media, columns, page, table of contents and
+ * table plugins' block roles together — what the room and a headless
  * `createDocument`/`loadDocument` adopt by default (`semantics: {}` checks
- * none). The media, columns, page and table of contents plugins are not
- * default plugins of `<Edytor>`, but their roles are here so their blocks
- * read the same on every replica.
+ * none). The media, columns, page, table of contents and table plugins are
+ * not default plugins of `<Edytor>`, but their roles are here so their
+ * blocks read the same on every replica.
  */
 export const defaultSemantics = withMarks(
-	semanticsOf(richTextKinds, codeKinds, imageKinds, mediaKinds, layoutKinds, pageKinds, tocKinds),
+	semanticsOf(
+		richTextKinds,
+		codeKinds,
+		imageKinds,
+		mediaKinds,
+		layoutKinds,
+		pageKinds,
+		tocKinds,
+		tableKinds
+	),
 	richTextMarks
 );
 

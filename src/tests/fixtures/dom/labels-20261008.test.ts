@@ -123,11 +123,14 @@ const wordsOf = (labels: Labels) => {
 	visit(labels);
 	return out.filter((word) => /[A-Za-z]{2}/.test(word));
 };
-/** The English words French says otherwise (`Code` and `Image` are both). */
+/**
+ * The English words French says otherwise (`Code` and `Image` are both, and
+ * `Table` is a word of `Table des matières`).
+ */
 const english = () => {
-	const french = new Set(wordsOf(fr));
+	const french = wordsOf(fr);
 	return [...new Set(wordsOf(englishLabels))].filter(
-		(word) => word.length > 2 && !french.has(word)
+		(word) => word.length > 2 && !french.some((said) => says(said, word))
 	);
 };
 

@@ -84,6 +84,8 @@ export type Cached = { runs: readonly ContentRun[]; deps: Deps };
 export const sameShape = (roles: DisplayRoles, a: string, b: string): boolean => {
 	const lines = new Set(roles.lineKinds());
 	const items = new Set([...roles.layoutKinds()].map((type) => roles.layout(type)));
+	const rows = new Set([...roles.tableKinds()].flatMap((type) => roles.table(type) ?? []));
+	const cells = new Set([...rows].map((row) => roles.defaultChild(row)));
 	return (
 		roles.childless(a) === roles.childless(b) &&
 		roles.island(a) === roles.island(b) &&
@@ -91,7 +93,10 @@ export const sameShape = (roles: DisplayRoles, a: string, b: string): boolean =>
 		roles.line(a) === roles.line(b) &&
 		lines.has(a) === lines.has(b) &&
 		roles.layout(a) === roles.layout(b) &&
-		items.has(a) === items.has(b)
+		items.has(a) === items.has(b) &&
+		roles.table(a) === roles.table(b) &&
+		rows.has(a) === rows.has(b) &&
+		cells.has(a) === cells.has(b)
 	);
 };
 

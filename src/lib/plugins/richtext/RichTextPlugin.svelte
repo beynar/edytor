@@ -110,6 +110,8 @@
 				return focused ? placeholders.caption : null;
 			// Code shows nothing in an empty line (Notion).
 			if (type === 'codeLine') return null;
+			// Nor does a table's cell.
+			if (type === 'tableCell') return null;
 			return focused ? placeholders.empty : null;
 		};
 	};

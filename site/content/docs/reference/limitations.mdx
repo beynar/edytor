@@ -15,7 +15,7 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 
 ## Not finished
 
-- **No tables.** No table kind ships, and no plugin edits rows and columns. Columns ([layouts](/docs/plugins/columns)) place blocks side by side; a grid of cells is not built yet.
+- **Simple tables only.** The [table plugin](/docs/plugins/table) is Notion's simple table: cells of text, no merged cells, no cell selection, no sorting, filters or formulas, and no database views. A text range across cells deletes each cell's covered text; copy of a part of a table copies its text.
 - **No comments.** No comment threads, sidebar or resolve flow. A [`comment:<id>` mark](/docs/customization/marks#how-concurrent-marks-merge) per thread can anchor the threads your application stores and shows.
 - **Version history has no UI.** The room keeps [two versions a day](/docs/server/history) and lists, previews and restores them [from code or over HTTP](/docs/server/history#list-preview-restore); the panel that shows them to people is yours to build.
 - **Suggestions stay in one view.** A [suggestion](/docs/editor/suggestions) (text, blocks or a rewrite proposed by your AI) shows only in the view that made it until it is accepted: another tab or a collaborator cannot review it, and a reload loses it.

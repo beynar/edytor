@@ -294,6 +294,36 @@ export type ColumnsLabels = {
 	resize: string;
 };
 
+/** The table block and its controls (`createTablePlugin`). */
+export type TableLabels = {
+	/** The "Table" command, and a table's accessible name. */
+	table: string;
+	/** The block menu's switches. */
+	headerRow: string;
+	headerColumn: string;
+	/** The row and column menus. */
+	insertAbove: string;
+	insertBelow: string;
+	insertLeft: string;
+	insertRight: string;
+	moveUp: string;
+	moveDown: string;
+	moveLeft: string;
+	moveRight: string;
+	deleteRow: string;
+	deleteColumn: string;
+	/** The `+` under the table and beside it. */
+	addRow: string;
+	addColumn: string;
+	/** The grips that open the row and column menus. */
+	rowMenu: string;
+	columnMenu: string;
+	/** A column's resize band. */
+	resize: string;
+	/** A padded cell (a row showing none in a column): its first press creates it. */
+	emptyCell: string;
+};
+
 /** Every section of the dictionary. */
 export type Labels = {
 	editor: EditorLabels;
@@ -311,6 +341,7 @@ export type Labels = {
 	page: PageLabels;
 	toc: TocLabels;
 	pageLink: PageLinkLabels;
+	table: TableLabels;
 };
 
 /**
@@ -602,6 +633,27 @@ export const englishLabels: Labels = frozen({
 		searching: 'Searching…',
 		noResults: 'No results',
 		untitled: 'Untitled'
+	},
+	table: {
+		table: 'Table',
+		headerRow: 'Header row',
+		headerColumn: 'Header column',
+		insertAbove: 'Insert above',
+		insertBelow: 'Insert below',
+		insertLeft: 'Insert left',
+		insertRight: 'Insert right',
+		moveUp: 'Move up',
+		moveDown: 'Move down',
+		moveLeft: 'Move left',
+		moveRight: 'Move right',
+		deleteRow: 'Delete row',
+		deleteColumn: 'Delete column',
+		addRow: 'Add a row',
+		addColumn: 'Add a column',
+		rowMenu: 'Row options',
+		columnMenu: 'Column options',
+		resize: 'Resize column',
+		emptyCell: 'Empty cell'
 	}
 });
 

@@ -239,6 +239,8 @@ export type RunView = {
  * — a block promoted out of one follows like one promoted out of an island. `rendersContent`: no block that renders content ever shows
  * as a kind that does not (its text would vanish). `layout`: a
  * layout kind displays only its items, and only two or more (`layout.*`).
+ * `table`: a table kind displays only its rows, a row only its cells, in
+ * the table's column order (`table.*`).
  */
 export type DisplayRoles = {
 	childless: (type: string) => boolean;
@@ -254,6 +256,10 @@ export type DisplayRoles = {
 	layout: (type: string) => string | undefined;
 	/** Every layout kind the roles declare, present in the document or not. */
 	layoutKinds: () => Iterable<string>;
+	/** The row kind of a table kind (its `defaultChild`), if `type` is one (`table.*`). */
+	table: (type: string) => string | undefined;
+	/** Every table kind the roles declare, present in the document or not. */
+	tableKinds: () => Iterable<string>;
 };
 
 /** One index per engine doc, shared by every binding (the doc's lifetime). */

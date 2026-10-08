@@ -14,6 +14,7 @@ import { slotAt, slotEnd } from '../../src/lib/cloudflare/history.js';
 import demo from '../../site/room/src/worker';
 import { demoRoomAt, isOpenDemoRoom } from '../../site/room/src/rooms';
 import { E, SelfWebSocket, crdt } from './client';
+import { internals } from './internals';
 
 declare global {
 	namespace Cloudflare {
@@ -157,7 +158,7 @@ describe('H11 · the demo room keeps its history in its KV binding', () => {
 		expect(due).toBe(slotEnd(Date.now(), 'UTC'));
 		const listed = await runInDurableObject(stub, async (r: DocumentRoom) => {
 			// The slot's end, now: what the alarm does at UTC noon or midnight.
-			await (r.room as unknown as { closeSlot(): Promise<void> }).closeSlot();
+			await internals(r.room).history.closeSlot();
 			return r.listHistory();
 		});
 		const key = `history/${room}/${date}-${slot}`;

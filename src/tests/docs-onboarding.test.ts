@@ -32,14 +32,16 @@ describe('onboarding truth (WU-18)', () => {
 	it('the room internals page names every alarm task and every storage table (DOC-07)', () => {
 		const room = read('src/lib/cloudflare/DocumentRoom.ts');
 		const tasks = /const TASKS: readonly Task\[\] = \[([^\]]*)\]/
-			.exec(room)![1]!
+			.exec(read('src/lib/cloudflare/room/scheduler.ts'))![1]!
 			.match(/'(\w+)'/g)!
 			.map((task) => task.slice(1, -1));
 		expect(tasks).toEqual(
 			expect.arrayContaining(['save', 'history', 'purge', 'retention', 'forward', 'expiry'])
 		);
 		const tables = [
-			...[...room.matchAll(/Table = `\$\{prefix\}(\w+)`/g)].map(([, table]) => table!),
+			...[
+				...read('src/lib/cloudflare/room/context.ts').matchAll(/^\t+\w+: `\$\{prefix\}(\w+)`/gm)
+			].map(([, table]) => table!),
 			.../`\$\{tablePrefix\}(\w+)`/.exec(read('src/lib/cloudflare/history.ts'))!.slice(1)
 		];
 		expect(tables).toEqual(

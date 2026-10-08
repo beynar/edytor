@@ -27,6 +27,7 @@ import { gunzip } from '../../src/lib/crdt/storage.js';
 import type { JSONDoc } from '../../src/lib/crdt/index.js';
 import { E, RawClient, para } from './client';
 import { FakeKV, FakeR2, setNow, type TimedRoom } from './worker';
+import { internals } from './internals';
 
 declare global {
 	namespace Cloudflare {
@@ -241,8 +242,7 @@ describe('room.history.retention · expiry belongs to the room', () => {
 		await fire(room);
 		await clockTo(room, '2026-11-05T12:00:00Z');
 		await inRoom(room, (r) => {
-			const doc = r.room as unknown as { historyConfig: { store: HistoryStore } };
-			const store = doc.historyConfig.store;
+			const store = internals(r.room).history.config!.store;
 			const remove = store.delete.bind(store);
 			let failures = 1;
 			(store as { delete: HistoryStore['delete'] }).delete = async (key) => {
@@ -305,10 +305,10 @@ describe('room.history.store · size caps', () => {
 		const ada = await writer(room, 'ada', noise(1500));
 		await clockTo(room, '2026-10-06T12:00:00Z');
 		const detail = await inRoom(room, async (r) => {
-			const doc = r.room as unknown as { _history: unknown; options: object };
-			doc._history = undefined;
+			const room = internals(r.room);
+			(room.history as unknown as { _config: unknown })._config = undefined;
 			// The room's options read `history` through a getter: replace it.
-			Object.defineProperty(doc.options, 'history', {
+			Object.defineProperty(room.options, 'history', {
 				value: { store, maxValueBytes: 25 * 1024 * 1024 }
 			});
 			await r.alarm();

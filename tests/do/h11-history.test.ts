@@ -31,6 +31,7 @@ import {
 } from '../../src/lib/cloudflare/history.js';
 import type { JSONDoc } from '../../src/lib/crdt/index.js';
 import { E, ORIGIN, RawClient, crdt, para, readFacade } from './client';
+import { failReads, internals } from './internals';
 import { setNow, type TimedRoom } from './worker';
 
 declare global {
@@ -344,14 +345,8 @@ describe('H11 · two versions a day, only when changed', () => {
 		// The rows cannot be read: the room restarts without its document, and the
 		// alarm's own retry fails too.
 		await inRoom(room, async (r) => {
-			const doc = r.room as unknown as { records: () => unknown; start: () => Promise<void> };
-			const records = doc.records.bind(doc);
-			let failures = 2;
-			doc.records = () => {
-				if (failures-- > 0) throw new Error('injected read failure');
-				return records();
-			};
-			await doc.start();
+			failReads(r.room, 2);
+			await internals(r.room).storage.start();
 			expect(r.doc).toBeNull();
 		});
 		await runDurableObjectAlarm(stub(room));

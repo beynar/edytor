@@ -34,6 +34,7 @@ import {
 	upgrade,
 	storedUpdate
 } from './client';
+import { failReads } from './internals';
 
 declare global {
 	namespace Cloudflare {
@@ -263,13 +264,7 @@ describe('NW-02 · server and storage faults close 1011, never 1008 malformed', 
 				"CREATE TRIGGER fail_append BEFORE INSERT ON rows WHEN NEW.kind = 'update' BEGIN SELECT RAISE(ABORT, 'injected append failure'); END"
 			);
 			// The rebuild's read of the rows fails once (a transient I/O error).
-			const room = r.room as unknown as { records: () => unknown };
-			const records = room.records.bind(room);
-			let failures = 1;
-			room.records = () => {
-				if (failures-- > 0) throw new Error('injected read failure');
-				return records();
-			};
+			failReads(r.room, 1);
 		});
 		document.transact(() => document.facade.insertText('p', 5, '!'));
 		await vi.waitFor(() =>

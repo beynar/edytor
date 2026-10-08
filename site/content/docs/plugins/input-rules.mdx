@@ -37,7 +37,7 @@ export const emojiPlugin: Plugin = () => ({
   }}
 />
 
-A rule runs when text is typed at a collapsed caret: one `insertText` at the caret, which is what a key, an Android keyboard and the browser's own typing produce. An IME's commit is not checked, nor is a paste. Rules do not run in the lines of a code block (a `lines` island).
+A rule runs when text is typed at a collapsed caret: one `insertText` at the caret, which is what a key and the browser's own typing produce. An IME's commit is not checked, nor is a paste or a drop: a URL pasted at the caret completes no rule. An Android keyboard that composes the word being typed commits it as an IME does, so a rule may not run there until the composition ends; the rows are proven in desktop engines and their mobile emulation, not on a device. Rules do not run in the lines of a code block (a `lines` island).
 
 The typed text is not in the document yet when `replace` runs, so it is never written: a string replacement takes the place of the matched text before the caret and of the typed text. `hi :smile` + <kbd>:</kbd> gives `hi 😄`, the caret after the emoji.
 
@@ -59,7 +59,7 @@ A pattern's `^` is the start of the caret's text segment, which starts after an 
 
 ### One command, one undo step
 
-The replacement is a command of its own. With a string, the matched text's removal and the insertion are one plan, so a plugin that refuses either one (in `onBeforeOperation`), a readonly view or the document refusing it writes neither. It is its own undo step, separate from the typing before it: undo after `:smile:` gives back `:smile`, without the colon that was never inserted.
+The replacement is a command of its own. With a string, the matched text's removal and the insertion are one plan, so a plugin that refuses either one (in `onBeforeOperation`), a readonly view or the document refusing it writes neither. It is its own undo step, separate from the typing before it, also when the match is only the typed text (a smart quote replacing a typed `"`): undo after `:smile:` gives back `:smile`, without the colon that was never inserted. A rule that writes its replacement itself gets the same: its first operation starts a step of its own. The typing after a replacement starts another.
 
 When the replacement is refused or every matching rule declines, the typed text is inserted as usual, the caret after it.
 
@@ -123,7 +123,7 @@ export const tagsPlugin: Plugin = () => ({
     items: { type: "(query, ctx) => T[] | Promise<T[]>", required: true, description: "The rows for the text typed after char. A promise is a search: the newest query's answer wins." },
     onPick: { type: "(item, ctx) => unknown", required: true, description: "Write the picked row. Return false, running nothing, to keep the text." },
     label: { type: "(item) => string", description: "A row's label. Default: the item when it is a string, else its label, title or name." },
-    key: { type: "(item) => string", description: "A row's stable key, for its element id. Default: its id, else its label." },
+    key: { type: "(item) => string", description: "A row's key, which keeps its markup across queries. Default: its id, else its label. Two rows may share one: element ids come from the row's position." },
     item: { type: "Snippet<[TriggerItemPayload]>", description: "Replace each row's markup." },
     name: { type: "string", description: "The menu's accessible name. Default Suggestions." },
     empty: { type: "string", description: "The text shown when no row matches. Default No results." },
@@ -134,7 +134,7 @@ export const tagsPlugin: Plugin = () => ({
 ### When the menu opens and closes
 
 - It opens when `char` is typed at a collapsed caret at the start of a text or after whitespace, as in Notion: `a@b.com` opens nothing. An IME that commits the trigger with more text (`@ad`) opens it with that query.
-- Typing at the query's end filters it: `items(query)` is asked again for each query. While a search is pending the menu keeps its rows and reads "Searching…"; an older answer that arrives after a newer one is dropped.
+- Typing at the query's end filters it: `items(query)` is asked again for each query. While a search is pending the menu keeps the previous query's rows (with none, it reads "Searching…"), and <kbd>Enter</kbd> waits for the answer and picks its first row: never a row of an older query. An older answer that arrives after a newer one is dropped.
 - It closes when the caret leaves the query, the selection expands, the trigger is deleted, the query starts with a space, or a query that matches nothing is followed by a space (`@zz ` is prose). A query that matches nothing shows the `empty` text. It does not open in a readonly view, and it closes when the view turns readonly.
 - The query range is anchored in the document, so a collaborator's edits elsewhere in the text do not break it.
 
@@ -145,11 +145,11 @@ While a menu is open its keys are the editor's, through the plugin's `hotkeys` (
 | Keys                       | Action                                         |
 | -------------------------- | ---------------------------------------------- |
 | <kbd>↑</kbd>, <kbd>↓</kbd> | Move the highlight (wraps around)              |
-| <kbd>Enter</kbd>           | Pick the highlighted row (when there is one)   |
+| <kbd>Enter</kbd>           | Pick the highlighted row (when there is one, or a search is pending) |
 | <kbd>Escape</kbd>          | Close the menu and keep the text               |
 | Hover, click               | Highlight, pick                                |
 
-With no row, <kbd>Enter</kbd> and the arrows are the editor's as usual. A press in the menu keeps the editor's focus and the caret at the query.
+With no row and no search pending, <kbd>Enter</kbd> and the arrows are the editor's as usual. A press in the menu keeps the editor's focus and the caret at the query.
 
 ### Picking
 

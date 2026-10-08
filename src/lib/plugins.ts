@@ -227,7 +227,7 @@ export type Trigger<T = any> = {
 	onPick: (item: T, ctx: TriggerContext) => unknown;
 	/** A row's label: default the item itself when it is a string, else its `label`, `title` or `name`. */
 	label?: (item: T) => string;
-	/** A row's stable key (for the row's element id): default its `id`, else its label. */
+	/** A row's key, which keeps its markup across queries: default its `id`, else its label. Two rows may share one. */
 	key?: (item: T) => string;
 	/** Replace each row's markup. */
 	item?: Snippet<[TriggerItemPayload<T>]>;

@@ -39,8 +39,13 @@ export const withRulesAndTriggers = (
 	if (rules.length) {
 		const own = plugin.onBeforeOperation;
 		const run = inputRulesHook(edytor, rules);
-		extended.onBeforeOperation = <C extends ChangePayload>(change: C) =>
-			own?.(change) || run(change);
+		// Both run, whatever the plugin's hook answers (a prevent in it throws and
+		// ends the hook): the rules read the payload it replaced the command's with.
+		extended.onBeforeOperation = <C extends ChangePayload>(change: C) => {
+			const out = own?.(change);
+			run(out && typeof out === 'object' ? { ...change, payload: out } : change);
+			return out;
+		};
 	}
 	if (!triggers.length) return extended;
 
@@ -57,7 +62,9 @@ export const withRulesAndTriggers = (
 		},
 		enter: ({ prevent }) => {
 			const controller = open();
-			if (controller?.items.length) prevent(() => void controller.pickSelected());
+			// A pending search's Enter waits for its rows: never an older query's row.
+			if (controller?.items.length || controller?.loading)
+				prevent(() => void controller.pickSelected());
 		},
 		escape: ({ prevent }) => {
 			const controller = open();

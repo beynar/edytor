@@ -27,6 +27,7 @@ import {
 	type PageLinkItem
 } from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
 import {
+	dispatchClipboardPaste,
 	dispatchComposition,
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -496,5 +497,144 @@ describe('the [[ page link menu', () => {
 		await type(editor, '[r');
 		await flushDomUpdates();
 		expect(document.querySelector('[data-testid="trigger-menu"]')).toBeNull();
+	});
+});
+
+describe('review fixes', () => {
+	it('dispatcher.caret(null, ops) still runs ops, and sets no caret', async () => {
+		const { edytor } = await render([p('a', 'hello')]);
+		const block = edytor.idToBlock.get('a')!;
+		await caretAt(edytor, 'a', 1);
+		const out = edytor.dispatcher.caret(null, () => {
+			block.firstText!.insertText({ value: '!', start: 5, end: 5 });
+			return 'ran';
+		});
+		expect(out).toBe('ran');
+		expect(contentOf(edytor, 'a')).toBe('hello!');
+		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 1 });
+	});
+
+	it('dispatcher.caret({ block, offset }, ops): declared before ops, it follows the edit', async () => {
+		const { edytor } = await render([p('a', 'hello')]);
+		const block = edytor.idToBlock.get('a')!;
+		const out = edytor.dispatcher.caret({ block, offset: 3 }, () => {
+			block.firstText!.insertText({ value: 'XY', start: 0, end: 0 });
+			return true;
+		});
+		expect(out).toBe(true);
+		expect(contentOf(edytor, 'a')).toBe('XYhello');
+		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 5 });
+	});
+
+	it("a plugin's own hook answering a truthy value does not silence its rules", async () => {
+		const seen: string[] = [];
+		const plugin: Plugin = () => ({
+			inputRules: [emoji],
+			// A concise arrow with a side effect: answers the new length (truthy).
+			onBeforeOperation: ({ operation }) =>
+				(operation === 'insertText' && seen.push(operation)) as never
+		});
+		const { edytor, editor } = await render([p('a', 'hi :smile')], [plugin]);
+		await caretAt(edytor, 'a', 9);
+		await type(editor, ':');
+		expect(seen.length).toBeGreaterThan(0);
+		expect(contentOf(edytor, 'a')).toBe('hi 😄');
+	});
+
+	it('a URL pasted at the caret completes no rule', async () => {
+		const asked: string[] = [];
+		const probe: Plugin = () => ({
+			inputRules: [
+				{
+					find: /https:\/\/\S+$/,
+					replace: (match) => {
+						asked.push(match[0]);
+						return 'REPLACED';
+					}
+				}
+			]
+		});
+		const URL = 'https://example.com/a';
+		const { edytor, editor } = await render([p('a', 'Read ')], [probe]);
+		await caretAt(edytor, 'a', 5);
+		await dispatchClipboardPaste(editor, { 'text/plain': URL });
+		expect(asked).toEqual([]);
+		expect(contentOf(edytor, 'a')).toBe(`Read ${URL}`);
+	});
+
+	it('a replacement of the typed text alone is its own undo step; the typing after it another', async () => {
+		const smart: Plugin = () => ({ inputRules: [{ find: /"$/, replace: () => '\u201c' }] });
+		const { edytor, editor } = await render([p('a', '')], [smart]);
+		await caretAt(edytor, 'a', 0);
+		const steps = edytor.undoManager.undoStack.length;
+		await type(editor, 'a');
+		expect(edytor.undoManager.undoStack.length).toBe(steps + 1);
+		await type(editor, '"');
+		expect(contentOf(edytor, 'a')).toBe('a\u201c');
+		expect(edytor.undoManager.undoStack.length).toBe(steps + 2);
+		await type(editor, 'b');
+		expect(contentOf(edytor, 'a')).toBe('a\u201cb');
+		expect(edytor.undoManager.undoStack.length).toBe(steps + 3);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(contentOf(edytor, 'a')).toBe('a\u201c');
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(contentOf(edytor, 'a')).toBe('a');
+	});
+
+	it('rows sharing a key or a label render, each with its own element id', async () => {
+		const tags: Plugin = () => ({
+			triggers: [{ char: '#', items: () => ['tag', 'tag', 'a b', 'a_b'], onPick: () => false }]
+		});
+		const { edytor, editor } = await render([p('a', '')], [tags]);
+		await caretAt(edytor, 'a', 0);
+		await type(editor, '#');
+		expect(rows().map((row) => row.textContent?.trim())).toEqual(['tag', 'tag', 'a b', 'a_b']);
+		const ids = rows().map((row) => row.id);
+		expect(new Set(ids).size).toBe(4);
+		for (const [index, row] of rows().entries()) {
+			expect(named(editor.getAttribute('aria-activedescendant'))).toBe(row);
+			if (index < 3) await dispatchDomKeyDown(document, { key: 'ArrowDown' });
+		}
+	});
+
+	it("Enter during a pending search waits for the query's rows: never an older query's row", async () => {
+		const pending: { query: string; resolve: (rows: MentionItem[]) => void }[] = [];
+		const slow = createMentionPlugin({
+			items: (query) => new Promise<MentionItem[]>((resolve) => pending.push({ query, resolve }))
+		});
+		const { edytor, editor } = await render([p('a', '')], [slow]);
+		await caretAt(edytor, 'a', 0);
+		await type(editor, '@');
+		pending[0]!.resolve(PEOPLE);
+		await flushDomUpdates();
+		expect(labels()).toEqual(['Ada Lovelace', 'Alan Turing', 'Grace Hopper']);
+		await type(editor, 'g');
+		// The rows shown are the previous query's; Enter is claimed and picks none of them.
+		const { defaultPrevented } = await dispatchDomKeyDown(document, { key: 'Enter' });
+		expect(defaultPrevented).toBe(true);
+		expect(contentOf(edytor, 'a')).toBe('@g');
+		pending[1]!.resolve([PEOPLE[2]!]);
+		await flushDomUpdates();
+		expect(contentOf(edytor, 'a')).toBe('[mention:Grace Hopper]');
+		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 1 });
+	});
+
+	it('typing after a pending Enter drops the waiting pick', async () => {
+		const pending: { query: string; resolve: (rows: MentionItem[]) => void }[] = [];
+		const slow = createMentionPlugin({
+			items: (query) => new Promise<MentionItem[]>((resolve) => pending.push({ query, resolve }))
+		});
+		const { edytor, editor } = await render([p('a', '')], [slow]);
+		await caretAt(edytor, 'a', 0);
+		await type(editor, '@g');
+		await dispatchDomKeyDown(document, { key: 'Enter' });
+		await type(editor, 'r');
+		pending[1]!.resolve([PEOPLE[2]!]);
+		pending[2]!.resolve([PEOPLE[2]!]);
+		await flushDomUpdates();
+		expect(contentOf(edytor, 'a')).toBe('@gr');
+		expect(labels()).toEqual(['Grace Hopper']);
 	});
 });

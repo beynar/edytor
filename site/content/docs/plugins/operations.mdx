@@ -112,16 +112,22 @@ A step's veto refuses the command it belongs to, so check the operation name bef
 import type { Plugin } from 'edytor';
 
 export const atMention: Plugin = (edytor) => ({
-	onBeforeOperation: ({ operation, payload, block, prevent }) => {
+	onBeforeOperation: (change) => {
+		if (change.operation !== 'insertText') return;
+		const { payload, block, text, prevent } = change;
+		if (payload.value !== '@') return;
 		// The caret in block offsets: { block, offset }, an inline atom counting 1.
 		const caret = edytor.selection.caret;
-		if (operation === 'insertText' && payload.value === '@' && caret) {
-			prevent(() => {
-				const atom = { type: 'mention', data: {} };
-				const after = block.addInlineBlock({ offset: caret.offset, block: atom });
-				if (after) edytor.selection.setCaret({ block, offset: caret.offset + 1 });
-			});
-		}
+		// Only an `@` typed at the caret: in its block, its text segment, at its offset there.
+		const at = caret?.block.id === block.id ? block.textAtOffset(caret.offset) : null;
+		if (!caret || !at || at.text.id !== text.id) return;
+		if ((payload.start ?? at.offset) !== at.offset || (payload.end ?? at.offset) !== at.offset)
+			return;
+		prevent(() => {
+			const atom = { type: 'mention', data: {} };
+			const after = block.addInlineBlock({ offset: caret.offset, block: atom });
+			if (after) edytor.selection.setCaret({ block, offset: caret.offset + 1 });
+		});
 	}
 });
 ```
@@ -147,14 +153,20 @@ const EMOJI: Record<string, string> = { smile: '😄' };
 
 /** Typing the closing `:` of `:smile:` replaces the whole trigger with its emoji. */
 export const emojiPlugin: Plugin = (edytor) => ({
-	onBeforeOperation: ({ operation, payload, block, prevent }) => {
+	onBeforeOperation: (change) => {
+		if (change.operation !== 'insertText') return;
+		const { payload, block, text, prevent } = change;
 		const caret = edytor.selection.caret;
-		if (operation !== 'insertText' || payload.value !== ':' || !caret) return;
+		if (payload.value !== ':' || !caret) return;
 		// The text segment that shows the caret, and the caret's offset in it.
-		const at = block.textAtOffset(caret.offset);
-		const match = at && /:(\w+)$/.exec(at.text.stringContent.slice(0, at.offset));
+		const at = caret.block.id === block.id ? block.textAtOffset(caret.offset) : null;
+		// Only a `:` typed at the caret: another insertion completes no trigger.
+		if (!at || at.text.id !== text.id) return;
+		if ((payload.start ?? at.offset) !== at.offset || (payload.end ?? at.offset) !== at.offset)
+			return;
+		const match = /:(\w+)$/.exec(at.text.stringContent.slice(0, at.offset));
 		const emoji = match && EMOJI[match[1]!];
-		if (!at || !match || !emoji) return;
+		if (!match || !emoji) return;
 		const from = caret.offset - match[0].length;
 		prevent(() => {
 			const { dispatcher, document } = edytor;

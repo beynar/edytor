@@ -19,8 +19,8 @@
 	let active = $state<string>();
 	$effect(() => {
 		if (!controller.isOpen) return void (active = undefined);
-		const item = items[controller.selectedIndex];
-		const id = item === undefined ? undefined : controller.optionId(item);
+		const index = controller.selectedIndex;
+		const id = items[index] === undefined ? undefined : controller.optionId(index);
 		active = id && list?.ownerDocument.getElementById(id) ? id : undefined;
 	});
 	/** The open menu, published to the view's root (`edytor.popups`): the listbox and its highlighted row. */
@@ -48,12 +48,13 @@
 			aria-busy={controller.loading}
 			bind:this={list}
 		>
-			{#each items as item, index (controller.keyOf(item))}
+			<!-- Keyed by position and key: two rows may share a key (a label without an id). -->
+			{#each items as item, index (`${index}:${controller.keyOf(item)}`)}
 				{#if row}
 					{@render row({
 						item,
 						label: controller.labelOf(item),
-						id: controller.optionId(item),
+						id: controller.optionId(index),
 						selected: index === controller.selectedIndex,
 						pick: () => void controller.pick(item),
 						select: () => (controller.selectedIndex = index)
@@ -62,7 +63,7 @@
 					<button
 						type="button"
 						class="edytor-trigger-item"
-						id={controller.optionId(item)}
+						id={controller.optionId(index)}
 						data-testid="trigger-menu-item"
 						data-selected={index === controller.selectedIndex}
 						role="option"

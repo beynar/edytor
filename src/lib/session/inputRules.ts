@@ -47,6 +47,8 @@ export const inputRulesHook = (
 
 	return (change) => {
 		if (running || change.operation !== 'insertText' || !rules.length) return;
+		// Typed text only: a paste or a drop (a URL pasted at the caret) completes no rule.
+		if (edytor.dispatcher.command?.startsWith('insertFrom')) return;
 		const { payload, block, prevent, text } = change;
 		const caret = edytor.selection.caret;
 		const { startText, yStart } = edytor.selection.state;
@@ -113,7 +115,7 @@ export const inputRulesHook = (
 						start: [text.index, start],
 						end: [text.index, yStart]
 					});
-			} else then?.();
+			} else dispatcher.alone(() => then?.());
 			removed = dispatcher.last !== last && dispatcher.last?.status === 'applied';
 			return removed;
 		};
@@ -127,9 +129,12 @@ export const inputRulesHook = (
 			remove: removeMatch
 		};
 		const last = dispatcher.last;
-		const out = rule.replace(match, ctx);
+		// Whatever the rule writes is a step of its own, even when no removal leads it.
+		const out = dispatcher.alone(() => rule.replace(match, ctx));
 		if (typeof out === 'string') {
-			const written = removeMatch(() => text.insertText({ value: out, start, end: start }));
+			const written = removeMatch(() =>
+				dispatcher.alone(() => text.insertText({ value: out, start, end: start }))
+			);
 			if (written) dispatcher.caret({ block, offset: from + out.length });
 			return written;
 		}

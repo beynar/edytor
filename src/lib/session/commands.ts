@@ -105,8 +105,8 @@ type Policy = 'before' | 'both' | 'continue' | undefined;
  * Anything else — a paste, a structural edit, a data write such as a
  * column resize — ends the step for the typing after it.
  */
-const inserts = (kind: string, lead: Plan | null) =>
-	!lead && (kind.includes('Composition') || INSERTIONS.has(kind) || kindOf(kind) === 'delete');
+const inserts = (kind: string, led: boolean) =>
+	!led && (kind.includes('Composition') || INSERTIONS.has(kind) || kindOf(kind) === 'delete');
 const policyOf = (kind: string): Policy =>
 	CUT[kind] ??
 	(kind.includes('Composition') ? undefined : INSERTIONS.has(kind) ? 'continue' : 'before');
@@ -227,6 +227,8 @@ export class Dispatcher {
 	private draining = false;
 	/** A plan the next dispatched operation composes before its own (`lead`). */
 	private leading: Plan | null = null;
+	/** The next dispatched operation is a step of its own, as a led one is (`alone`). */
+	#alone = false;
 	/** What the last `patchData` set to text: typing on the same paths continues its step (a bound field). */
 	private patched: TextPatch | null = null;
 	/** `outside` is running: its commands cut no step and enter none. */
@@ -369,6 +371,9 @@ export class Dispatcher {
 		if (this.active) return body(payload);
 		const lead = this.leading;
 		this.leading = null;
+		// A led operation, or one `alone` runs: its own step, never an insertion's.
+		const led = !!lead || this.#alone;
+		this.#alone = false;
 		if (!this.permits()) {
 			this.#produced = this.#refused(operation);
 			return undefined;
@@ -444,14 +449,14 @@ export class Dispatcher {
 		const again = continuesTyping(this.patched, patch) && this.last?.operation === operation;
 		// A write outside the history continues nothing and leaves the typing's record.
 		if (!this.untracked) this.patched = patch;
-		const cut = again ? undefined : this.policy(operation, lead);
+		const cut = again ? undefined : this.policy(operation, led);
 		if (cut) this.edytor.undoManager?.stopCapturing();
 		let result: R;
 		try {
 			result = this.edytor.transact(() => {
 				// What the step holds, recorded as the transaction ends: only an
 				// insertion's step may be continued (`history.continues`).
-				this.edytor.history.wrote(inserts(this.kind ?? operation, lead));
+				this.edytor.history.wrote(inserts(this.kind ?? operation, led));
 				this.active = true;
 				try {
 					// An unplanned command runs after its lead, reading the state it leaves.
@@ -518,6 +523,25 @@ export class Dispatcher {
 	};
 
 	/**
+	 * @internal Run `body` with the first operation it dispatches a step of
+	 * its own, as a led one is, even inside a command: an input rule's
+	 * replacement of the typed text alone, which no removal leads.
+	 */
+	alone = <T>(body: () => T): T => {
+		this.#alone = true;
+		try {
+			return body();
+		} finally {
+			this.#alone = false;
+		}
+	};
+
+	/** @internal The running user command's kind (`insertText`, `insertFromPaste`, …), `null` outside one. */
+	get command(): string | null {
+		return this.running ? this.kind : null;
+	}
+
+	/**
 	 * A command's result caret: selected once and recorded on the result;
 	 * the projector displays it after the flush. With `ops`, the
 	 * caret is declared before the command's operations run — minted while its
@@ -533,12 +557,19 @@ export class Dispatcher {
 		target: Text | Caret | null | undefined,
 		...rest: [number, (() => T)?] | [(() => T)?]
 	): T | undefined => {
-		// `{ block, offset }`: block offsets, mapped to the text segment that shows the offset.
-		if (target && 'block' in target) {
-			const at = target.block.textAtOffset(Math.max(0, target.offset));
-			return this.#caret(at?.text, at?.offset ?? 0, rest[0] as (() => T) | undefined);
+		// The form is the arguments', not the target's: a nullish caret still runs its `ops`.
+		if (typeof rest[0] === 'number') {
+			return this.#caret(
+				target as Text | null | undefined,
+				rest[0],
+				rest[1] as (() => T) | undefined
+			);
 		}
-		return this.#caret(target, rest[0] as number, rest[1] as (() => T) | undefined);
+		const ops = rest[0] as (() => T) | undefined;
+		const caret = target as Caret | null | undefined;
+		// `{ block, offset }`: block offsets, mapped to the text segment that shows the offset.
+		const at = caret?.block?.textAtOffset(Math.max(0, caret.offset));
+		return this.#caret(at?.text, at?.offset ?? 0, ops);
 	};
 
 	#caret = <T>(text: Text | null | undefined, offset: number, ops?: () => T): T | undefined => {
@@ -642,9 +673,9 @@ export class Dispatcher {
 	 * conversion: its own step even inside one. None while a composition is
 	 * live (its writes are one group).
 	 */
-	private policy(operation: string, lead: Plan | null) {
+	private policy(operation: string, led: boolean) {
 		if (this.edytor.composition.live || this.untracked) return undefined;
-		if (lead) return 'before';
+		if (led) return 'before';
 		return this.running ? undefined : this.decide(policyOf(operation));
 	}
 

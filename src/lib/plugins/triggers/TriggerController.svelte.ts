@@ -242,6 +242,8 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 	loading = $state(false);
 	/** The newest search: an older one's answer is dropped. */
 	#request = 0;
+	/** Enter came while the query's search was pending: its answer's first row is picked. */
+	#pickOnAnswer = false;
 
 	constructor(
 		edytor: Edytor,
@@ -278,8 +280,11 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 		return typeof id === 'string' || typeof id === 'number' ? String(id) : this.labelOf(item);
 	};
 
-	/** A row's element id (page-unique), for `aria-activedescendant`. */
-	optionId = (item: T) => this.edytor.popups.idOf(`${this.owner}-${this.keyOf(item)}`);
+	/**
+	 * The element id of the row at `index` (page-unique, whatever the rows'
+	 * keys or labels), for `aria-activedescendant`.
+	 */
+	optionId = (index: number) => this.edytor.popups.idOf(`${this.owner}-option-${index}`);
 
 	/** The context `items` and `onPick` read, for the current range. */
 	private context(): TriggerContext | null {
@@ -303,6 +308,8 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 		if (/^\s/.test(query)) return this.close();
 		const ctx = this.context();
 		if (!ctx) return;
+		// A pick waiting on the previous query's search is dropped with it.
+		this.#pickOnAnswer = false;
 		const request = ++this.#request;
 		let rows: readonly T[] | Promise<readonly T[]>;
 		try {
@@ -327,20 +334,32 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 	private answered(rows: readonly T[]) {
 		if (!this.isOpen) return;
 		this.loading = false;
+		const pick = this.#pickOnAnswer;
+		this.#pickOnAnswer = false;
 		this.items = Array.isArray(rows) ? rows : [];
 		if (!this.items.length && /\s$/.test(this.query)) return this.close();
 		this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, this.items.length - 1));
+		if (pick) void this.pickSelected();
 	}
 
 	close() {
 		super.close();
 		this.#request++;
+		this.#pickOnAnswer = false;
 		this.items = [];
 		this.loading = false;
 	}
 
-	/** Pick the keyboard's row. */
+	/**
+	 * Pick the keyboard's row. While the query's search is pending, the rows
+	 * shown are an older query's: the pick waits for the answer and takes its
+	 * highlighted (first) row, if any.
+	 */
 	pickSelected() {
+		if (this.loading) {
+			this.#pickOnAnswer = true;
+			return Promise.resolve(undefined);
+		}
 		const item = this.items[this.selectedIndex];
 		return item === undefined ? Promise.resolve(undefined) : this.pick(item);
 	}

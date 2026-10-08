@@ -54,7 +54,7 @@
  * reachable tree is compared).
  *
  * The index is built from parts under `index/`, each over the shared state
- * (`index/state.ts`) and the parts before it: the claim graph (`claims.ts`), the stream table (`streams.ts`), anchored merge claims (`anchored.ts`), the layout rules (`layout.ts`), placements and the children index (`placement.ts`). The rest is built here.
+ * (`index/state.ts`) and the parts before it: the claim graph (`claims.ts`), the stream table (`streams.ts`), anchored merge claims (`anchored.ts`), the layout rules (`layout.ts`), placements and the children index (`placement.ts`), block records (`records.ts`), the run cache (`cache.ts`). The rest is built here.
  */
 import type {
 	EngineApi,
@@ -170,21 +170,20 @@ import {
 	facetOf,
 	dataOf,
 	typeAttr,
-	runEquals,
 	EMPTY_RUNS,
 	EMPTY_IDS,
 	sameShape,
 	indexChecks,
-	dropFrom,
 	keyOf,
-	type Facet,
-	type Deps
+	type Facet
 } from './index/shared.js';
 import { indexClaims } from './index/claims.js';
 import { indexStreams } from './index/streams.js';
 import { indexAnchored } from './index/anchored.js';
 import { indexLayout } from './index/layout.js';
 import { indexPlacement } from './index/placement.js';
+import { indexRecords } from './index/records.js';
+import { indexCache } from './index/cache.js';
 
 export { CONTENT_ATTR, ENTRY_FACET, indexChecks } from './index/shared.js';
 
@@ -383,27 +382,25 @@ export const bindRuns = (Y: EngineApi) => {
 		const ix2 = Object.assign(ix1, indexStreams(ix1));
 		const ix3 = Object.assign(ix2, indexAnchored(ix2));
 		const ix4 = Object.assign(ix3, indexLayout(ix3));
-		const ix = Object.assign(ix4, indexPlacement(ix4));
+		const ix5 = Object.assign(ix4, indexPlacement(ix4));
+		const ix6 = Object.assign(ix5, indexRecords(ix5));
+		const ix = Object.assign(ix6, indexCache(ix6));
 		const {
 			registry,
 			dataRoot,
 			blocks,
 			shells,
 			textConsumers,
-			listConsumers,
 			displaysMap,
 			ownerSeeds,
 			rows,
 			streamIx,
 			placed,
 			homeOfText,
-			attachOf,
-			foreignOf,
 			retargets,
 			unresolved,
 			reclaim,
 			placementsMap,
-			byArgParent,
 			following,
 			dirtyLists,
 			leftLists,
@@ -418,10 +415,8 @@ export const bindRuns = (Y: EngineApi) => {
 			ownerOf,
 			top,
 			displays,
-			noteClaims,
 			invalidateBlock,
 			sameClaims,
-			effectiveClaims,
 			targetOf,
 			applyRetargets,
 			streamOf,
@@ -441,7 +436,15 @@ export const bindRuns = (Y: EngineApi) => {
 			noteFollowing,
 			ensurePlacements,
 			typeOf,
-			order
+			order,
+			kept,
+			updateBlockRec,
+			ensureRec,
+			syncIncarnations,
+			intern,
+			computeFresh,
+			computeRuns,
+			debug
 		} = ix;
 
 		const docData = (): Record<string, unknown> => cloneJsonSafe(readData(dataRoot) ?? {});
@@ -489,168 +492,6 @@ export const bindRuns = (Y: EngineApi) => {
 		};
 		type EditLookup = ReturnType<typeof makeEditIndex>;
 
-		const rangeStats: RangeReadStats = { items: 0, markers: 0 };
-
-		// ── run cache ────────────────────────────────────────────────────
-		const internMap = new Map<string, unknown>();
-		const debug: RunViewDebug = {
-			recomputes: 0,
-			recomputed: new Set<BlockId>(),
-			get itemsWalked() {
-				return rangeStats.items;
-			},
-			get markersWalked() {
-				return rangeStats.markers;
-			},
-			get frames() {
-				return frames.size;
-			},
-			get folds() {
-				return foldStats.folds;
-			},
-			get foldedPairs() {
-				return foldStats.pairs;
-			},
-			get foldedStructs() {
-				return foldStats.structs;
-			},
-			reset() {
-				debug.recomputes = 0;
-				debug.recomputed.clear();
-				foldStats.folds = 0;
-				foldStats.pairs = 0;
-				foldStats.structs = 0;
-				rangeStats.items = 0;
-				rangeStats.markers = 0;
-			}
-		};
-
-		// ── interning / freezing ─────────────────────────────────────────
-		// `cloneJsonSafe` is total even against hostile replicated payloads,
-		// and interning the normalized form keys it by its own canonical shape.
-		// The shared instance is built FROM that key (sorted keys): it must not
-		// remember the key order its first reader happened to fold, or
-		// `toJSON` would depend on when the view was read.
-		const intern = <T>(v: T): T => {
-			const key = canonKey(cloneJsonSafe(v));
-			let f = internMap.get(key) as T | undefined;
-			if (f === undefined) internMap.set(key, (f = deepFreeze(JSON.parse(key)) as T));
-			return f;
-		};
-
-		// ── records ──────────────────────────────────────────────────────
-
-		/** P14's predicate: the registry values the engine keeps. */
-		const kept = (item: unknown): boolean =>
-			(Y as unknown as { isKeptReplaced(item: unknown): boolean }).isKeptReplaced(item);
-		/** The node of `id`: its registry value, or the losing incarnation a derived id names. */
-		const nodeAt = (id: BlockId): unknown => {
-			const v = registry.getAttr(id);
-			if (isNodeLike(v) || !isIncarnationId(id)) return v;
-			return incarnationNode(registry, id, kept) ?? undefined;
-		};
-
-		const buildRec = (id: BlockId, node: EngineNode): BlockRec => {
-			const list = node.getAttr(CLAIMS);
-			const claimsNode = isNodeLike(list) ? list : undefined;
-			const content = node.getAttr(CONTENT);
-			const own = readClaims(claimsNode);
-			const derived = isIncarnationId(id);
-			// A losing incarnation lives and dies with its key's block: hidden by its
-			// own delete mark or while that block is deleted (a withdrawn one included).
-			const keyDeleted = derived ? (blocks.get(baseIdOf(id))?.deleted ?? true) : false;
-			// The implicit claims stamp below every written one: an explicit claim
-			// (a split moving them to its tail block) outranks them.
-			const implicit: Claim[] = derived
-				? []
-				: incarnationsOf(registry, id, kept).map((x, i) => ({
-						m: x.id,
-						stamp: { c: -1, k: -1 - i },
-						seqIndex: -1
-					}));
-			const listClaims = implicit.length === 0 ? own : [...implicit, ...own];
-			return {
-				id,
-				node,
-				type: typeAttr(node),
-				data: readData(node),
-				n: node.getAttr(NONCE),
-				deleted: hasDeleteMark(node) || keyDeleted,
-				content: isNodeLike(content) ? content : undefined,
-				claimsNode,
-				listClaims,
-				// Until the next retarget pass its own claims stay with it (`merge.claim.anchor`).
-				claims: effectiveClaims(id, listClaims),
-				cands: candidatesOf(node)
-			};
-		};
-
-		/**
-		 * Rebuild (or create, or drop) block `id`'s record, and note what the
-		 * maintained facts must re-decide: its owner and the tops of the
-		 * blocks it claims (P3), its placement — and, when its entry came or
-		 * went, the placements of the blocks whose candidate names it.
-		 */
-		const updateBlockRec = (id: BlockId): void => {
-			const old = blocks.get(id);
-			const node = nodeAt(id);
-			// Its list may change: its claims stay its own until the retarget pass.
-			for (const t of attachOf.get(id) ?? []) {
-				if (t === id) continue;
-				dropFrom(foreignOf, t, id);
-				reclaim.add(t);
-			}
-			attachOf.delete(id);
-			retargets.add(id);
-			if (!isNodeLike(node)) blocks.delete(id);
-			else blocks.set(id, buildRec(id, node));
-			const rec = blocks.get(id);
-			noteShell(id);
-			noteClaims(id, old?.claims ?? [], rec?.claims ?? []);
-			noteCands(id, argParent(old));
-			placementSeeds.add(id);
-			if ((old === undefined) !== (rec === undefined)) {
-				stateSeeds.add(id);
-				for (const c of byArgParent.get(id) ?? []) placementSeeds.add(c);
-			}
-			if (old?.type !== rec?.type) {
-				noteKind(id);
-				if (
-					old === undefined ||
-					rec === undefined ||
-					ix.roles === null ||
-					!sameShape(ix.roles, old.type, rec.type)
-				)
-					stateSeeds.add(id);
-			}
-		};
-		/** A withdrawn block without a delete mark: its `deleted` is settled after each fold. */
-		const noteShell = (id: BlockId): void => {
-			const rec = blocks.get(id);
-			// A losing incarnation is never withdrawn on its own: its key's block decides (H13).
-			if (isIncarnationId(id)) return void shells.delete(id);
-			if (rec !== undefined && !rec.deleted && hasWithdrawMark(rec.node)) shells.add(id);
-			else shells.delete(id);
-		};
-		const ensureRec = (id: BlockId): void => {
-			if (!blocks.has(id)) updateBlockRec(id);
-		};
-		/**
-		 * Re-read the losing incarnations of key `id` (H13) after its record
-		 * changed: each one shown now or before gets its record rebuilt (its
-		 * liveness is the key's); returns them, for the fold to rescan.
-		 */
-		const syncIncarnations = (id: BlockId): string[] => {
-			if (isIncarnationId(id)) return [];
-			const before = incarnations.get(id) ?? [];
-			const now = incarnationsOf(registry, id, kept).map((x) => x.id);
-			if (now.length === 0) incarnations.delete(id);
-			else incarnations.set(id, now);
-			const all = [...new Set([...before, ...now])];
-			for (const v of all) updateBlockRec(v);
-			return all;
-		};
-
 		const ctx: ModelView = {
 			blocks,
 			own: ownShim,
@@ -670,113 +511,6 @@ export const bindRuns = (Y: EngineApi) => {
 			// emitted by `project()`/`contentItems()` is `===` the runs' one.
 			intern,
 			displays
-		};
-
-		// ── dep bookkeeping ──────────────────────────────────────────────
-
-		const drop = (index: Map<BlockId, Set<BlockId>>, keys: Set<BlockId>, b: BlockId) => {
-			for (const k of keys) {
-				const set = index.get(k);
-				set?.delete(b);
-				if (set?.size === 0) index.delete(k);
-			}
-		};
-		const add = (index: Map<BlockId, Set<BlockId>>, keys: Set<BlockId>, b: BlockId) => {
-			for (const k of keys) {
-				let set = index.get(k);
-				if (set === undefined) index.set(k, (set = new Set()));
-				set.add(b);
-			}
-		};
-		const applyDeps = (b: BlockId, deps: Deps): void => {
-			const old = cache.get(b)?.deps;
-			if (old) {
-				drop(textConsumers, old.texts, b);
-				drop(listConsumers, old.lists, b);
-			}
-			add(textConsumers, deps.texts, b);
-			add(listConsumers, deps.lists, b);
-		};
-
-		// ── snapshot construction ────────────────────────────────────────
-
-		const freezeFresh = (r: ContentRun): ContentRun => Object.freeze(r) as ContentRun;
-
-		/** The normalized fresh runs of `b` (interned payloads, equal marks merged) and their deps. */
-		const computeFresh = (b: BlockId): { fresh: ContentRun[]; deps: Deps } => {
-			const deps: Deps = { texts: new Set(), lists: new Set([b]) };
-			const segs =
-				displayOf(b, blocks, ownShim, (x, home) => {
-					deps.lists.add(x);
-					if (home !== undefined) deps.texts.add(home);
-					// Every claim on a walked list is read, followed or not: a claim
-					// skipped for a dead target or a higher claimer becomes effective
-					// when that target revives or its winning claim goes away.
-					for (const c of blocks.get(x)?.claims ?? []) deps.lists.add(c.m);
-				}) ?? [];
-			const fresh: ContentRun[] = [];
-			for (const item of T.readSegs(segs, rangeStats)) {
-				if (item.kind === 'text') {
-					const last = fresh[fresh.length - 1];
-					const marks = item.marks === undefined ? undefined : intern(item.marks);
-					if (last && last.kind === 'text' && last.marks === marks) {
-						(last as { text: string }).text += item.text;
-					} else {
-						fresh.push({
-							kind: 'text',
-							text: item.text,
-							...(marks === undefined ? {} : { marks })
-						} as ContentRun);
-					}
-				} else {
-					fresh.push({
-						kind: 'inline',
-						id: item.id,
-						type: item.type,
-						...(item.data === undefined ? {} : { data: intern(item.data) })
-					} as ContentRun);
-				}
-			}
-			return { fresh, deps };
-		};
-
-		/**
-		 * Structural sharing: reuse unchanged run objects from `old` — maximal
-		 * equal prefix + equal suffix; `old` itself when every run is identical.
-		 */
-		const reconcile = (
-			old: readonly ContentRun[] | undefined,
-			fresh: ContentRun[]
-		): readonly ContentRun[] => {
-			if (!old) return Object.freeze(fresh.map(freezeFresh));
-			let s = 0;
-			const n = Math.min(old.length, fresh.length);
-			while (s < n && runEquals(old[s], fresh[s])) s++;
-			if (s === old.length && s === fresh.length) return old;
-			let eo = old.length - 1;
-			let ef = fresh.length - 1;
-			while (eo >= s && ef >= s && runEquals(old[eo], fresh[ef])) {
-				eo--;
-				ef--;
-			}
-			const out: ContentRun[] = new Array(fresh.length);
-			for (let i = 0; i < s; i++) out[i] = old[i];
-			for (let i = s; i <= ef; i++) out[i] = freezeFresh(fresh[i]);
-			for (let i = eo + 1; i < old.length; i++) out[fresh.length - (old.length - i)] = old[i];
-			return Object.freeze(out);
-		};
-
-		// ── recompute ────────────────────────────────────────────────────
-
-		const computeRuns = (b: BlockId): void => {
-			const old = cache.get(b);
-			const { fresh, deps } = computeFresh(b);
-			const runs = reconcile(old?.runs, fresh);
-			applyDeps(b, deps);
-			cache.set(b, { runs, deps });
-			dirty.delete(b);
-			debug.recomputes++;
-			debug.recomputed.add(b);
 		};
 
 		const runs = (b: BlockId): readonly ContentRun[] => {

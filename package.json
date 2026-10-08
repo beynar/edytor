@@ -1,7 +1,7 @@
 {
 	"name": "edytor",
 	"license": "MIT",
-	"version": "0.1.0-next.35",
+	"version": "0.1.0-next.36",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/beynar/edytor.git"

@@ -11,7 +11,11 @@
  * - a chunked frame announcing more than the frame quota is refused at its
  *   first chunk;
  * - the shipped provider reports the close as a refusal (`onSyncRefused`,
- *   `syncRefusal`, code `4413`) and does not redial.
+ *   `syncRefusal`, code `4413`) and does not redial;
+ * - the document nearing its quota (`room.quota.warning`): one `size` log
+ *   entry when its stored size passes the warning share of the quota
+ *   (80% by default), again only after it fell below; `metrics()` reports
+ *   the quota (`documentLimit`) beside the size.
  */
 import { env } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
@@ -84,6 +88,38 @@ describe('H3 · room quotas', () => {
 		cb.close();
 		a.destroy();
 		b.destroy();
+	});
+
+	it('the document nearing its quota is logged once (`size`), with the quota in `metrics()`', async () => {
+		const room = 'quota-size-warning';
+		const a = E.createDocument({ value: { children: [para('p', '')] }, actor: { id: 'ada' } });
+		const ca = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
+		await vi.waitFor(() => expect(ca.synced).toBe(true));
+		const sizes = () => inRoom(room, (r) => r.logged.filter((entry) => entry.edytor === 'size'));
+		let typed = '';
+		const type = async (chunk: string) => {
+			a.transact(() => a.facade.insertText('p', typed.length, chunk));
+			typed += chunk;
+			await vi.waitFor(async () => expect(await textOf(room)).toBe(typed));
+		};
+		// 12,000 bytes: under 80% of 20,000, nothing logged.
+		for (let i = 0; i < 4; i++) await type(noise(3000, i + 1));
+		expect(await sizes()).toEqual([]);
+		const metrics = await inRoom(room, (r) => r.metrics());
+		expect(metrics.documentLimit).toBe(20_000);
+		expect(metrics.documentBytes).toBeLessThan(16_000);
+		// Past 16,000: one entry, naming the size, the quota and the share.
+		await type(noise(3000, 5));
+		await type(noise(1000, 6));
+		await vi.waitFor(async () => expect(await sizes()).toHaveLength(1));
+		const [entry] = (await sizes()) as Array<{ bytes: number; limit: number; share: number }>;
+		expect(entry).toMatchObject({ edytor: 'size', limit: 20_000, share: 0.8 });
+		expect(entry.bytes).toBeGreaterThanOrEqual(16_000);
+		// More writes under the quota: no second entry.
+		await type(noise(500, 7));
+		expect(await sizes()).toHaveLength(1);
+		ca.close();
+		a.destroy();
 	});
 
 	it('rate: a socket past its burst is refused (4413); what it sent before applied', async () => {

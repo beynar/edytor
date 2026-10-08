@@ -79,6 +79,7 @@ export type RoomLimits = Readonly<{
 	compactAfter: number;
 	saveAfter: number;
 	maxDocumentBytes: number;
+	documentWarning: number;
 	maxInboundFrameBytes: number;
 	maxBufferedBytes: number;
 	maxUpdatesPerSecond: number;

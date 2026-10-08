@@ -3,6 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Suggestion } from '$lib/session/suggestions.svelte.js';
 import SuggestionBars from './SuggestionBars.svelte';
+import { labelsWith, type PartialLabels } from '$lib/labels.js';
 
 /** What a `bar` snippet receives: one block suggestion and its actions. */
 export type SuggestionBarPayload = {
@@ -18,6 +19,8 @@ export type SuggestionBarPayload = {
 export type SuggestionsOptions = {
 	/** Replace the bar under each block suggestion; placement and keys stay the plugin's. */
 	bar?: Snippet<[SuggestionBarPayload]>;
+	/** The words the bar shows, over the English ones. */
+	labels?: PartialLabels<'suggestions'>;
 };
 
 const suggestionPlugins = new WeakSet<Plugin>();
@@ -42,6 +45,7 @@ const endAtCaret = (edytor: Edytor) => {
  * discards; Tab accepts an `end` suggestion at the caret.
  */
 export const createSuggestionsPlugin = (options: SuggestionsOptions = {}): Plugin => {
+	const labels = labelsWith('suggestions', options.labels);
 	const plugin: Plugin = (edytor) => ({
 		hotkeys: {
 			'mod+enter': ({ prevent }) => {
@@ -60,7 +64,7 @@ export const createSuggestionsPlugin = (options: SuggestionsOptions = {}): Plugi
 		onEdytorAttached: () => {
 			const bars = mount(SuggestionBars, {
 				target: edytor.overlay.layer!,
-				props: { edytor, bar: options.bar }
+				props: { edytor, bar: options.bar, labels }
 			});
 			return () => void unmount(bars);
 		}

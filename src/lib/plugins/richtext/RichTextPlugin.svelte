@@ -1,6 +1,8 @@
 <script module lang="ts">
-	import type { Plugin, BlockSnippetPayload, PlaceholderView } from '$lib/plugins.js';
+	import type { Plugin, BlockSnippetPayload, KindPreset, PlaceholderView } from '$lib/plugins.js';
 	import type { Block } from '$lib/block/block.svelte.js';
+	import type { Edytor } from '$lib/edytor.svelte.js';
+	import { presetId } from '$lib/kinds.js';
 	import type { Text } from '$lib/text/text.svelte.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
 	import type { HotKey } from '$lib/session/keymap.js';
@@ -17,6 +19,9 @@
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
 	import { mediaKinds, richTextKinds, richTextMarks } from '$lib/crdt/semantics.js';
+	import { keywordsOf, labelsWith, type PartialLabels, type RichTextLabels } from '$lib/labels.js';
+	import { checkboxLabels } from './labels.js';
+	import TodoCheckbox from './TodoCheckbox.svelte';
 
 	export { richTextOperations };
 
@@ -85,22 +90,45 @@
 			undefined;
 
 	/**
-	 * Notion's placeholders: headings, lists, to-dos, toggles and quotes name
-	 * their kind while empty; a paragraph invites a command only while focused.
+	 * Notion's placeholders in `labels` (English by default): headings,
+	 * lists, to-dos, toggles and quotes name their kind while empty; a
+	 * paragraph invites a command only while focused.
 	 */
-	export const richTextPlaceholder = ({ type, data, focused }: PlaceholderView): string | null => {
-		if (type === 'heading') return `Heading ${headingLevel(data.level).slice(1)}`;
-		if (type === 'bulleted-list-item' || type === 'numbered-list-item') return 'List';
-		if (type === 'todo-item') return 'To-do';
-		if (type === 'toggle') return 'Toggle';
-		if (type === 'quote') return 'Empty quote';
-		if (type === 'callout') return focused ? 'Type something…' : null;
-		if (type === 'image' || Object.hasOwn(mediaKinds, type))
-			return focused ? 'Write a caption…' : null;
-		// Code shows nothing in an empty line (Notion).
-		if (type === 'codeLine') return null;
-		return focused ? "Type '/' for commands" : null;
+	export const createRichTextPlaceholder = (labels?: PartialLabels<'richText'>) => {
+		const { placeholders } = labelsWith('richText', labels);
+		return ({ type, data, focused }: PlaceholderView): string | null => {
+			if (type === 'heading')
+				return placeholders.heading(Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3);
+			if (type === 'bulleted-list-item' || type === 'numbered-list-item') return placeholders.list;
+			if (type === 'todo-item') return placeholders.todo;
+			if (type === 'toggle') return placeholders.toggle;
+			if (type === 'quote') return placeholders.quote;
+			if (type === 'callout') return focused ? placeholders.callout : null;
+			if (type === 'image' || Object.hasOwn(mediaKinds, type))
+				return focused ? placeholders.caption : null;
+			// Code shows nothing in an empty line (Notion).
+			if (type === 'codeLine') return null;
+			return focused ? placeholders.empty : null;
+		};
 	};
+
+	/** Notion's placeholders, in English. */
+	export const richTextPlaceholder = createRichTextPlaceholder();
+
+	export type RichTextPluginOptions = {
+		/** The kinds', marks' and checkbox's words (English by default). */
+		labels?: PartialLabels<'richText'>;
+		/**
+		 * The slash menu's keywords of a kind, by command id (`block.heading1`):
+		 * they replace that preset's own (list the English ones to keep them).
+		 */
+		keywords?: Partial<Record<string, string[]>>;
+	};
+
+	const richTextPlugins = new WeakSet<Plugin>();
+
+	/** Recognize any rich text plugin instance (the component's default yields to yours). */
+	export const isRichTextPlugin = (plugin: Plugin) => richTextPlugins.has(plugin);
 
 	// One key patched: a peer's concurrent edit of another key is kept.
 	const toggleTodo = (block: Block) => (block.data.checked = !block.data.checked);
@@ -118,7 +146,38 @@
 		'mod+alt+8': 'block.code'
 	};
 
-	export const richTextPlugin: Plugin = (edytor) => {
+	/**
+	 * The rich text kinds and marks, with their words in `labels` and their
+	 * slash keywords in `keywords` (English by default).
+	 */
+	export const createRichTextPlugin = (options: RichTextPluginOptions = {}): Plugin => {
+		const labels = labelsWith('richText', options.labels);
+		const plugin: Plugin = (edytor) => {
+			checkboxLabels.claim(edytor, labels);
+			return richText(edytor, labels, options.keywords);
+		};
+		richTextPlugins.add(plugin);
+		return plugin;
+	};
+
+	/** A preset whose slash keywords `keywords` may replace, by its command id. */
+	const preset = (
+		id: string,
+		row: KindPreset,
+		keywords: RichTextPluginOptions['keywords']
+	): KindPreset => {
+		const own = keywordsOf(id, row.keywords, keywords);
+		return own ? { ...row, keywords: own } : row;
+	};
+
+	/** The rich text records of `edytor`, in `labels`, its presets' keywords replaced by `keywords`. */
+	const richText = (
+		edytor: Edytor,
+		{ kinds, marks: words }: RichTextLabels,
+		keywords: RichTextPluginOptions['keywords']
+	): ReturnType<Plugin> => {
+		const presets = (type: string, rows: KindPreset[]) =>
+			rows.map((row, index) => preset(presetId(type, index, rows.length), row, keywords));
 		const operations = richTextOperations(edytor);
 		/** The space an autolink types itself: its own insertion is not looked at again. */
 		let autolinking = false;
@@ -272,25 +331,25 @@
 			marks: {
 				bold: {
 					tag: 'strong',
-					toolbar: { label: 'Bold', icon: 'B' },
+					toolbar: { label: words.bold, icon: 'B' },
 					parse: alias(/^b$/, 'fontWeight', /^(bold|[6-9]00)$/)
 				},
 				italic: {
 					tag: 'em',
-					toolbar: { label: 'Italic', icon: 'I' },
+					toolbar: { label: words.italic, icon: 'I' },
 					parse: alias(/^i$/, 'fontStyle', /italic/)
 				},
 				underline: {
 					tag: 'u',
-					toolbar: { label: 'Underline', icon: 'U' },
+					toolbar: { label: words.underline, icon: 'U' },
 					parse: alias(/^u$/, 'textDecoration', /underline/)
 				},
 				strike: {
 					tag: 's',
-					toolbar: { label: 'Strike', icon: 'S' },
+					toolbar: { label: words.strike, icon: 'S' },
 					parse: alias(/^(strike|del)$/, 'textDecoration', /line-through/)
 				},
-				code: { tag: 'code', toolbar: { label: 'Code', icon: '</>' } },
+				code: { tag: 'code', toolbar: { label: words.code, icon: '</>' } },
 				// FP-8: typing at a link's trailing edge extends it only from inside the anchor.
 				link: {
 					tag: 'a',
@@ -322,34 +381,36 @@
 			blocks: {
 				paragraph: {
 					snippet: paragraph,
-					presets: [{ label: 'Text', icon: 'T', keywords: ['paragraph', 'plain'] }]
+					presets: presets('paragraph', [
+						{ label: kinds.paragraph, icon: 'T', keywords: ['paragraph', 'plain'] }
+					])
 				},
 				heading: {
 					snippet: textThenChildren,
 					contentElement: (data) => headingLevel(data.level),
-					presets: [
+					presets: presets('heading', [
 						{
-							label: 'Heading 1',
+							label: kinds.heading1,
 							icon: 'H₁',
 							keywords: ['h1', 'title'],
 							data: { level: 'h1' },
 							markdown: ['# ']
 						},
 						{
-							label: 'Heading 2',
+							label: kinds.heading2,
 							icon: 'H₂',
 							keywords: ['h2', 'subtitle'],
 							data: { level: 'h2' },
 							markdown: ['## ']
 						},
 						{
-							label: 'Heading 3',
+							label: kinds.heading3,
 							icon: 'H₃',
 							keywords: ['h3'],
 							data: { level: 'h3' },
 							markdown: ['### ']
 						}
-					],
+					]),
 					// HTML import: h1–h3 come from the presets; h4–h6 read as h3.
 					parse: (el) => (/^h[4-6]$/.test(el.localName) ? { level: 'h3' } : undefined),
 					html: (block, content, children) => {
@@ -361,28 +422,28 @@
 					continues: true,
 					snippet: listItem,
 					element: unlisted('li'),
-					presets: [
+					presets: presets('bulleted-list-item', [
 						{
-							label: 'Bulleted list',
+							label: kinds.bulletedList,
 							icon: '•',
 							keywords: ['bullet', 'ul'],
 							markdown: ['- ', '* ', '+ ']
 						}
-					],
+					]),
 					html: 'li'
 				},
 				'numbered-list-item': {
 					continues: true,
 					snippet: listItem,
 					element: unlisted('li'),
-					presets: [
+					presets: presets('numbered-list-item', [
 						{
-							label: 'Numbered list',
+							label: kinds.numberedList,
 							icon: '1.',
 							keywords: ['number', 'ol'],
 							markdown: ['1. ', 'a. ', 'i. ']
 						}
-					],
+					]),
 					html: 'li',
 					// HTML import: an `li` is a bulleted item (the first `li` kind) unless its list is ordered.
 					parse: (el) =>
@@ -391,15 +452,15 @@
 				'todo-item': {
 					continues: true,
 					snippet: todoItem,
-					presets: [
+					presets: presets('todo-item', [
 						{
-							label: 'To-do list',
+							label: kinds.todoList,
 							icon: '☐',
 							keywords: ['task', 'check'],
 							data: { checked: false },
 							markdown: ['[ ] ', '[] ']
 						}
-					],
+					]),
 					html: (block, content, children) =>
 						`<li data-edytor-todo-item="true"><input type="checkbox"${block.data?.checked === true ? ' checked' : ''}>${content}${children}</li>`,
 					plain: (block, content, children) =>
@@ -412,31 +473,36 @@
 					container: true,
 					snippet: details,
 					...disclosure,
-					presets: [
-						{ label: 'Toggle list', icon: '▸', keywords: ['details', 'expand'], markdown: ['> '] }
-					]
+					presets: presets('toggle', [
+						{
+							label: kinds.toggleList,
+							icon: '▸',
+							keywords: ['details', 'expand'],
+							markdown: ['> ']
+						}
+					])
 				},
 				callout: {
 					container: true,
 					snippet: callout,
-					presets: [
-						{ label: 'Callout', icon: '✦', keywords: ['note', 'tip'], data: { icon: '💡' } }
-					]
+					presets: presets('callout', [
+						{ label: kinds.callout, icon: '✦', keywords: ['note', 'tip'], data: { icon: '💡' } }
+					])
 				},
 				quote: {
 					container: true,
 					snippet: textThenChildren,
 					contentElement: 'blockquote',
 					// Notion: `"` + space is a quote; `>` + space is a toggle.
-					presets: [{ label: 'Quote', icon: '❝', markdown: ['" '] }],
+					presets: presets('quote', [{ label: kinds.quote, icon: '❝', markdown: ['" '] }]),
 					html: 'blockquote'
 				},
 				divider: {
 					...richTextKinds.divider,
 					element: 'hr',
-					presets: [
-						{ label: 'Divider', icon: '—', keywords: ['hr', 'separator'], markdown: ['---'] }
-					],
+					presets: presets('divider', [
+						{ label: kinds.divider, icon: '—', keywords: ['hr', 'separator'], markdown: ['---'] }
+					]),
 					empty: { content: [], children: [] },
 					...rule
 				},
@@ -464,6 +530,9 @@
 			}
 		};
 	};
+
+	/** The rich text kinds and marks, in English. */
+	export const richTextPlugin: Plugin = createRichTextPlugin();
 </script>
 
 <!--
@@ -512,23 +581,7 @@
 {/snippet}
 
 {#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}
-	<input
-		type="checkbox"
-		checked={Boolean(block.data.checked)}
-		contenteditable="false"
-		aria-label="Done"
-		data-edytor-todo-checkbox
-		onmousedown={(event) => event.preventDefault()}
-		onclick={(event) => {
-			// Never cancel the click: the browser reverts a canceled checkbox click after
-			// its handlers, over the re-render this write makes, so the box would show the
-			// old state here while peers show the new one. Toggle the document, then show
-			// what it holds (a refused write, readonly or vetoed, shows unchanged).
-			// A suggestion's preview (no handle) writes nothing.
-			if (block.handle) toggleTodo(block.handle);
-			event.currentTarget.checked = Boolean(block.data.checked);
-		}}
-	/>
+	<TodoCheckbox {block} toggle={toggleTodo} />
 	<div>
 		{@render content()}
 	</div>

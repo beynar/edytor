@@ -20,6 +20,7 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { selectedMembers } from '$lib/selection/visibility.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
+import { labelsWith, type BlockMenuLabels, type PartialLabels } from '$lib/labels.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -30,6 +31,8 @@ export type BlockMenuOptions = {
 	 * The controller runs every action; `close()` returns the caret.
 	 */
 	menu?: Snippet<[BlockMenuController]>;
+	/** The words the menu shows (its actions, search field, headings), over the English ones. */
+	labels?: PartialLabels<'blockMenu'>;
 };
 
 export type BlockMenuAction = {
@@ -61,10 +64,15 @@ export class BlockMenuController {
 	/** The keyboard's row in the "Turn into" flyout. */
 	flyoutIndex = $state(0);
 
+	/** The words the menu shows (the plugin's `labels`): read them in a custom `menu`. */
+	readonly labels: BlockMenuLabels;
+
 	constructor(
 		private edytor: Edytor,
 		private options: BlockMenuOptions = {}
-	) {}
+	) {
+		this.labels = labelsWith('blockMenu', options.labels);
+	}
 
 	get isOpen() {
 		return this.block !== null;
@@ -112,11 +120,14 @@ export class BlockMenuController {
 		if (!block) return [];
 		const canMove = (direction: 'up' | 'down') => () =>
 			this.edytor.canMoveBlocks({ blocks: outermost(blocks), direction });
-		const [mod, shift] = this.edytor.keymap.isMac ? ['⌘', '⇧'] : ['Ctrl+', 'Shift+'];
+		const { labels } = this;
+		const [mod, shift] = this.edytor.keymap.isMac
+			? ['⌘', '⇧']
+			: [`${labels.ctrl}+`, `${labels.shift}+`];
 		const all: BlockMenuAction[] = [
 			{
 				id: 'turn',
-				label: 'Turn into',
+				label: labels.turnInto,
 				icon: 'action.turn',
 				submenu: true,
 				isEnabled: () => convertedBlocks(this.members).length > 0
@@ -125,7 +136,7 @@ export class BlockMenuController {
 				? [
 						{
 							id: 'link',
-							label: 'Copy link to block',
+							label: labels.copyLink,
 							icon: 'action.link',
 							run: () => this.copyLink()
 						}
@@ -133,14 +144,14 @@ export class BlockMenuController {
 				: []),
 			{
 				id: 'duplicate',
-				label: 'Duplicate',
+				label: labels.duplicate,
 				icon: 'action.duplicate',
 				hint: `${mod}D`,
 				run: () => (blocks.length > 1 ? this.duplicateAll(blocks) : this.duplicate(block))
 			},
 			{
 				id: 'up',
-				label: 'Move up',
+				label: labels.moveUp,
 				icon: 'action.up',
 				hint: `${mod}${shift}↑`,
 				isEnabled: canMove('up'),
@@ -148,7 +159,7 @@ export class BlockMenuController {
 			},
 			{
 				id: 'down',
-				label: 'Move down',
+				label: labels.moveDown,
 				icon: 'action.down',
 				hint: `${mod}${shift}↓`,
 				isEnabled: canMove('down'),
@@ -156,9 +167,9 @@ export class BlockMenuController {
 			},
 			{
 				id: 'delete',
-				label: 'Delete',
+				label: labels.delete,
 				icon: 'action.delete',
-				hint: 'Del',
+				hint: labels.deleteKey,
 				danger: true,
 				run: () => this.remove()
 			}

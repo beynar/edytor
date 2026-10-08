@@ -14,7 +14,7 @@
 		class="url-paste-menu"
 		data-edytor-url-paste-menu
 		role="listbox"
-		aria-label="Paste as"
+		aria-label={controller.labels.pasteAs}
 		tabindex="-1"
 		onmousedown={(event) => event.preventDefault()}
 	>

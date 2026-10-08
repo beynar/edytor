@@ -26,6 +26,14 @@ The slash menu then lists "Embed" under `Media`, and pasting a link a provider p
       type: "readonly EmbedProvider[]",
       description: "The allowlist. Default EMBED_PROVIDERS. A link none of them plays shows no frame.",
     },
+    labels: {
+      type: "PartialLabels<'media'>",
+      description: "The empty panel's and the paste menu's words (embed, pasteAs, pasteLink), over the English ones. See Localization.",
+    },
+    keywords: {
+      type: "Partial<Record<string, string[]>>",
+      description: "The slash menu's keywords by command id (block.embed); they replace the command's own.",
+    },
   }}
 />
 

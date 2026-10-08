@@ -4,7 +4,8 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EditorCommand } from '$lib/plugins.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 import { project, type SelectionValue } from '$lib/session/selection.js';
-import { matchesQuery } from '$lib/kinds.js';
+import { BASIC_BLOCKS, matchesQuery } from '$lib/kinds.js';
+import { englishLabels, type SlashMenuLabels } from '$lib/labels.js';
 import type { BlockAddition } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
 
@@ -95,7 +96,14 @@ export class SlashMenuController {
 	private activeRange: ActiveSlashRange | null = null;
 	private isExecutingCommand = false;
 
-	constructor(private edytor: Edytor) {}
+	constructor(
+		private edytor: Edytor,
+		/** The words the menu shows (the plugin's `labels`): read them in a custom `menu` or `item`. */
+		readonly labels: SlashMenuLabels = englishLabels.slashMenu
+	) {}
+
+	/** A group's heading: its key in the labels' `groups`, else the key itself. */
+	groupName = (group: string) => this.labels.groups[group] ?? group;
 
 	/** The editor is readonly: the menu closes. */
 	get readonly() {
@@ -121,7 +129,7 @@ export class SlashMenuController {
 		);
 		// Groups in first-seen order, Notion's "Basic blocks" first.
 		const groups = [...new Set(matching.map((command) => command.group ?? ''))].sort(
-			(a, b) => Number(b === 'Basic blocks') - Number(a === 'Basic blocks')
+			(a, b) => Number(b === BASIC_BLOCKS) - Number(a === BASIC_BLOCKS)
 		);
 		return matching.sort((a, b) => groups.indexOf(a.group ?? '') - groups.indexOf(b.group ?? ''));
 	}

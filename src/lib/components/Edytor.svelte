@@ -19,13 +19,14 @@
 	import { createIndexeddbSync, createWebsocketSync } from '$lib/collaboration/providers.js';
 	export { EdytorClass as EdytorContext, useEdytor };
 	import type { Placeholder, Plugin } from '$lib/plugins.js';
+	import type { PartialLabels } from '$lib/labels.js';
 	import {
 		blockHandlesPlugin,
 		createBlockHandlesPlugin,
 		isBlockHandlesPlugin,
 		type BlockHandlesOptions
 	} from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
-	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+	import { isRichTextPlugin, richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { imagePlugin, isImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 	import {
@@ -43,7 +44,7 @@
 		...(plugins.includes(arrowMovePlugin) ? [] : [arrowMovePlugin]),
 		...(plugins.some(isSuggestionsPlugin) ? [] : [suggestionsPlugin]),
 		...(plugins.some(isImagePlugin) ? [] : [imagePlugin]),
-		...(plugins.includes(richTextPlugin) ? [] : [richTextPlugin])
+		...(plugins.some(isRichTextPlugin) ? [] : [richTextPlugin])
 	];
 	/**
 	 * The handles: none with `false`, the configured ones (replacing any
@@ -123,6 +124,12 @@
 		/** The initial content, read once (not bindable): follow edits with `onChange` or `edytor.value`. */
 		value?: JSONDoc;
 		placeholder?: Placeholder;
+		/**
+		 * The words the view says itself, over the English ones: its
+		 * announcements to assistive technology and a suggestion's name. Each
+		 * plugin takes its own `labels`. Read once.
+		 */
+		labels?: PartialLabels<'editor'>;
 		translate?: 'yes' | 'no';
 		spellcheck?: boolean;
 		autocorrect?: 'on' | 'off';
@@ -216,6 +223,7 @@
 		onChange,
 		onSelectionChange,
 		placeholder,
+		labels,
 		translate = 'no',
 		spellcheck = true,
 		autocorrect = 'off',
@@ -243,7 +251,8 @@
 		onChange,
 		sync: !!sync || room !== undefined,
 		value,
-		placeholder
+		placeholder,
+		labels
 	}));
 
 	edytor = new EdytorClass(initialEdytorOptions);
@@ -427,6 +436,7 @@
 			{blockDnd}
 			class={className}
 			{placeholder}
+			{labels}
 			aria-label={ariaLabel}
 			aria-labelledby={ariaLabelledby}
 			aria-describedby={ariaDescribedby}

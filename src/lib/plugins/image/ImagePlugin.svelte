@@ -8,6 +8,7 @@
 		imageAlignOf,
 		imageAltOf,
 		imageWidthOf,
+		imageLabels,
 		imgData,
 		isImageFile,
 		MAX_INLINE_IMAGE_BYTES,
@@ -20,6 +21,7 @@
 	import { ImageControls } from './controls.svelte.js';
 	import { ImageUploads } from './uploads.svelte.js';
 	import { onPress } from '$lib/events/onFocus.js';
+	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
 
 	export {
 		MAX_INLINE_IMAGE_BYTES,
@@ -38,6 +40,13 @@
 		 * answers. Without it only links are embedded.
 		 */
 		upload?: (file: File) => Promise<string>;
+		/** The words the block, its empty panel and its chrome show, over the English ones. */
+		labels?: PartialLabels<'image'>;
+		/**
+		 * The slash menu's keywords of the image command (`block.image`), which
+		 * replace its own.
+		 */
+		keywords?: Partial<Record<string, string[]>>;
 	};
 
 	/** The data an image block reads (all optional). */
@@ -78,10 +87,12 @@
 	 */
 	export const createImagePlugin = (pluginOptions: ImagePluginOptions = {}): Plugin => {
 		const { upload } = pluginOptions;
+		const labels = labelsWith('image', pluginOptions.labels);
 		const plugin: Plugin = (edytor) => {
+			imageLabels.claim(edytor, labels);
 			const own: View = {
 				upload,
-				controls: new ImageControls(edytor),
+				controls: new ImageControls(edytor, labels),
 				uploads: upload ? new ImageUploads(edytor, upload) : undefined
 			};
 			// The records read with no view (`plugin(undefined)`) keep no state.
@@ -134,9 +145,13 @@
 						element: 'figure',
 						presets: [
 							{
-								label: 'Image',
+								label: labels.image,
 								icon: '🖼',
-								keywords: ['picture', 'photo', 'img'],
+								keywords: keywordsOf(
+									'block.image',
+									['picture', 'photo', 'img'],
+									pluginOptions.keywords
+								),
 								group: 'Media'
 							}
 						],
@@ -191,7 +206,9 @@
 	{:else if upload?.status === 'uploading'}
 		<div use:block.void data-edytor-image data-edytor-image-uploading data-align="center">
 			{#if upload.preview}<img src={upload.preview} alt="" draggable="false" />{/if}
-			<span data-edytor-image-progress role="status">Uploading…</span>
+			<span data-edytor-image-progress role="status"
+				>{imageLabels.of(block.handle?.edytor).uploading}</span
+			>
 		</div>
 	{:else}
 		<div use:block.void data-edytor-image-empty>

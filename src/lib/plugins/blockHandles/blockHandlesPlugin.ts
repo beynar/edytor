@@ -6,6 +6,7 @@ import type { Plugin } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import BlockHandles from './BlockHandles.svelte';
 import { BlockHandleController } from './BlockHandleController.svelte.js';
+import { labelsWith, type PartialLabels } from '$lib/labels.js';
 
 export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
 
@@ -34,6 +35,8 @@ export type BlockHandlesOptions = {
 	onActivate?: (activation: BlockHandleActivation) => void;
 	/** Replace the `+` and ⋮⋮ beside each block; placement and hover stay the plugin's. */
 	handle?: Snippet<[BlockHandleSnippetPayload]>;
+	/** The handles' accessible names and tooltips, over the English ones. */
+	labels?: PartialLabels<'blockHandles'>;
 };
 
 const handlePlugins = new WeakSet<Plugin>();
@@ -55,7 +58,8 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 	const plugin: Plugin = (edytor) => {
 		const controller = new BlockHandleController(edytor, {
 			draggable: options.draggable !== false,
-			onActivate: options.onActivate
+			onActivate: options.onActivate,
+			labels: labelsWith('blockHandles', options.labels)
 		});
 		const blocks = new SvelteMap<string, Block>();
 		const near = new SvelteSet<string>();

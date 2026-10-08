@@ -4,10 +4,11 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import MediaEmpty from './MediaEmpty.svelte';
 	import { mediaKinds } from '$lib/crdt/semantics.js';
+	import { keywordsOf, labelsWith } from '$lib/labels.js';
 	import {
 		escapeHtml,
 		fileNameOf,
-		formatBytes,
+		mediaLabels,
 		safeMediaSrc,
 		type MediaPluginOptions
 	} from './media.js';
@@ -32,6 +33,8 @@
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!uploadOf.has(edytor)) uploadOf.set(edytor, options.upload);
+			const labels = labelsWith('media', options.labels);
+			mediaLabels.file.claim(edytor, labels);
 			return {
 				blocks: {
 					file: {
@@ -40,9 +43,13 @@
 						element: 'figure',
 						presets: [
 							{
-								label: 'File',
+								label: labels.file.label,
 								icon: '📎',
-								keywords: ['attachment', 'upload', 'pdf', 'document'],
+								keywords: keywordsOf(
+									'block.file',
+									['attachment', 'upload', 'pdf', 'document'],
+									options.keywords
+								),
 								group: 'Media'
 							}
 						],
@@ -76,7 +83,10 @@
 	{#if src}
 		{@const name =
 			typeof block.data.name === 'string' && block.data.name ? block.data.name : fileNameOf(src)}
-		{@const size = typeof block.data.size === 'number' ? formatBytes(block.data.size) : ''}
+		{@const size =
+			typeof block.data.size === 'number'
+				? mediaLabels.file.of(block.handle?.edytor).fileSize(block.data.size)
+				: ''}
 		<div use:block.void data-edytor-file>
 			<a
 				href={src}
@@ -95,11 +105,8 @@
 		<div use:block.void data-edytor-media-empty>
 			<MediaEmpty
 				block={block.handle}
-				label={upload ? 'Upload or embed a file' : 'Embed a file'}
+				kind="file"
 				icon="📎"
-				placeholder="Paste the file link…"
-				submit="Embed link"
-				invalid="That doesn't look like a file link or upload."
 				{upload}
 				link={(value) => attach(block.handle, value)}
 				file={(picked, src) => attach(block.handle, src, picked.name, picked.size)}

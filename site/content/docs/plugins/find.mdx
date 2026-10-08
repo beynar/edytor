@@ -14,7 +14,7 @@ icon: search
 <Edytor plugins={[findPlugin]} />
 ```
 
-It is opt-in, not a [default plugin](/docs/plugins#default-plugins): without it, <kbd>Mod</kbd> + <kbd>F</kbd> is the browser's own find. `createFindPlugin({ bar })` builds one that renders your markup (see [Custom markup](#custom-markup)).
+It is opt-in, not a [default plugin](/docs/plugins#default-plugins): without it, <kbd>Mod</kbd> + <kbd>F</kbd> is the browser's own find. `createFindPlugin({ bar })` builds one that renders your markup (see [Custom markup](#custom-markup)), and `createFindPlugin({ labels })` one in your language: its words, and the count as a function of the current match and the total (see [Localization](/docs/customization/localization)).
 
 ## Searching
 

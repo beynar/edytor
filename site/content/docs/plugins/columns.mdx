@@ -34,6 +34,14 @@ List it in every view that may open a document holding layouts. A view without i
       default: "0.1",
       description: "The narrowest a column may be resized to, as a fraction of its layout's width. View-only: the document stores weights, never widths.",
     },
+    labels: {
+      type: "PartialLabels<'columns'>",
+      description: "The layout commands' labels (a function of the count) and the resize bands' name, over the English ones. See Localization.",
+    },
+    keywords: {
+      type: "Partial<Record<string, string[]>>",
+      description: "The slash menu's keywords by command id (columns.2 to columns.5); they replace the command's own.",
+    },
   }}
 />
 

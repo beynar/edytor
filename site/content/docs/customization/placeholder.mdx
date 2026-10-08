@@ -82,7 +82,7 @@ The `<Edytor>` prop wins over plugins; among plugins, the first one that declare
 | `image`, `embed`, `bookmark`, `file`, `video`, `audio` (the caption) | "Write a caption…", only while focused |
 | any other kind, such as `paragraph`           | "Type '/' for commands", only while focused   |
 
-To change one case, wrap it: `placeholder={(view) => (view.type === 'quote' ? 'Quote' : richTextPlaceholder(view))}`.
+`createRichTextPlaceholder(labels)` builds the same function in another language, from the rich text labels' `placeholders` (`heading` is a function of the level): `placeholder={createRichTextPlaceholder({ placeholders: { quote: 'Citation vide' } })}`. See [Localization](/docs/customization/localization). To change one case, wrap it: `placeholder={(view) => (view.type === 'quote' ? 'Quote' : richTextPlaceholder(view))}`.
 
 ## When it shows
 

@@ -10,6 +10,7 @@ import {
 import { onPress } from '$lib/events/onFocus.js';
 import SlashMenu from './SlashMenu.svelte';
 import { SlashMenuController, type TextInsertionPayload } from './SlashMenuController.svelte.js';
+import { labelsWith, type PartialLabels } from '$lib/labels.js';
 
 /** One row, for an `item` snippet. */
 export type SlashMenuItem = {
@@ -31,13 +32,15 @@ export type SlashMenuOptions = {
 	menu?: Snippet<[SlashMenuController]>;
 	/** Replace each row of the default menu. */
 	item?: Snippet<[SlashMenuItem]>;
+	/** The words the menu shows (its field, headings, empty state), over the English ones. */
+	labels?: PartialLabels<'slashMenu'>;
 };
 
 /** The slash menu, with your own markup through `menu` or `item` snippets. */
 export const createSlashMenuPlugin =
 	(options: SlashMenuOptions = {}): Plugin =>
 	(edytor) => {
-		const controller = new SlashMenuController(edytor);
+		const controller = new SlashMenuController(edytor, labelsWith('slashMenu', options.labels));
 
 		/**
 		 * Beside the caret (below a `+` it was opened from), kept in the

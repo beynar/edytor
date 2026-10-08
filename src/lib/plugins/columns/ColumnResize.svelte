@@ -28,7 +28,7 @@
 				data-right={strip.right}
 				role="separator"
 				tabindex="0"
-				aria-label="Resize columns"
+				aria-label={resize.labels.resize}
 				aria-orientation="vertical"
 				aria-valuenow={strip.value}
 				aria-valuemin="0"

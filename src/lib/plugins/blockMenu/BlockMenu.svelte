@@ -9,6 +9,7 @@
 		menu
 	}: { controller: BlockMenuController; menu?: Snippet<[BlockMenuController]> } = $props();
 	const rows = $derived(controller.rows);
+	const labels = $derived(controller.labels);
 	// An editor turning readonly closes the menu (its actions would be refused).
 	$effect(() => {
 		if (controller.isOpen && controller.readonly) controller.close(false);
@@ -97,8 +98,8 @@
 		<div class="block-menu" data-testid="block-menu" data-edytor-block-menu tabindex="-1">
 			<div class="block-menu-search">
 				<input
-					placeholder="Search actions…"
-					aria-label="Search actions"
+					placeholder={labels.search}
+					aria-label={labels.searchLabel}
 					aria-controls={controller.flyout ? controller.flyoutId : controller.menuId}
 					aria-activedescendant={active}
 					value={controller.query}
@@ -111,16 +112,16 @@
 					{onkeydown}
 				/>
 			</div>
-			<div class="block-menu-rows" id={controller.menuId} role="menu" aria-label="Block actions">
+			<div class="block-menu-rows" id={controller.menuId} role="menu" aria-label={labels.menu}>
 				{#if !controller.query}
 					<div class="block-menu-heading" role="presentation">
-						{controller.currentKind?.label ?? 'Block'}
+						{controller.currentKind?.label ?? labels.block}
 					</div>
 				{/if}
 				{#each rows as row, index ('value' in row ? `kind:${row.id}` : row.id)}
 					{#if 'value' in row}
 						{#if index === 0 || !('value' in rows[index - 1]!)}
-							<div class="block-menu-heading" role="presentation">Turn into</div>
+							<div class="block-menu-heading" role="presentation">{labels.turnInto}</div>
 						{/if}
 						<button
 							type="button"
@@ -167,7 +168,7 @@
 					{/if}
 				{/each}
 				{#if rows.length === 0}
-					<div class="block-menu-empty" role="presentation">No results</div>
+					<div class="block-menu-empty" role="presentation">{labels.noResults}</div>
 				{/if}
 			</div>
 		</div>
@@ -176,11 +177,11 @@
 				class="block-menu block-menu-flyout"
 				id={controller.flyoutId}
 				role="menu"
-				aria-label="Turn into"
+				aria-label={labels.turnInto}
 				data-edytor-block-menu-flyout
 			>
 				<div class="block-menu-rows" role="presentation">
-					<div class="block-menu-heading" role="presentation">Turn into</div>
+					<div class="block-menu-heading" role="presentation">{labels.turnInto}</div>
 					{#each controller.kinds as kind, index (kind.id)}
 						<button
 							type="button"

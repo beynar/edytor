@@ -4,6 +4,7 @@ import type { Plugin } from '$lib/plugins.js';
 import FindBar from './FindBar.svelte';
 import FindHighlights from './FindHighlights.svelte';
 import { FindController } from './FindController.svelte.js';
+import { labelsWith, type PartialLabels } from '$lib/labels.js';
 
 export type FindPluginOptions = {
 	/**
@@ -13,6 +14,8 @@ export type FindPluginOptions = {
 	 * on your replacement input.
 	 */
 	bar?: Snippet<[FindController]>;
+	/** The words the bar shows, over the English ones. */
+	labels?: PartialLabels<'find'>;
 };
 
 const controllers = new WeakMap<Edytor, FindController>();
@@ -44,7 +47,7 @@ const place = (edytor: Edytor, find: FindController) => (host: HTMLElement) => {
 export const createFindPlugin =
 	(options: FindPluginOptions = {}): Plugin =>
 	(edytor) => {
-		const find = new FindController(edytor);
+		const find = new FindController(edytor, labelsWith('find', options.labels));
 		controllers.set(edytor, find);
 		return {
 			hotkeys: {

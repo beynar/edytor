@@ -74,8 +74,11 @@ export type {
 // ── The bundled plugins ────────────────────────────────────────────────
 export {
 	richTextPlugin,
+	createRichTextPlugin,
 	richTextOperations,
 	richTextPlaceholder,
+	createRichTextPlaceholder,
+	type RichTextPluginOptions,
 	arrowMovePlugin,
 	codePlugin,
 	createCodePlugin,
@@ -155,6 +158,9 @@ export {
 	type FindMatch,
 	type FindOptions
 } from './plugins/index.js';
+
+// ── Localization ───────────────────────────────────────────────────────
+export { englishLabels, type Labels, type PartialLabels } from './labels.js';
 
 // ── The document ───────────────────────────────────────────────────────
 //

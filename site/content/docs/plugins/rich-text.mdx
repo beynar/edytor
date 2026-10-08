@@ -15,7 +15,7 @@ icon: type
 <Edytor />
 ```
 
-It takes no options. List it yourself only to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
+`createRichTextPlugin({ labels, keywords })` builds it in another language: `labels` (a `PartialLabels<'richText'>`) names the presets, the toolbar's mark buttons and the to-do checkbox, and `keywords` replaces a preset's slash keywords by command id (see [Localization](/docs/customization/localization)); `richTextPlugin` is the English one. A listed instance replaces the default. List it yourself to translate it, to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
 
 ## Block kinds
 

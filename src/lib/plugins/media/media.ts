@@ -1,4 +1,20 @@
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
+import { viewLabels, type PartialLabels } from '$lib/labels.js';
+
+/** The media kinds a view shows the labels of. */
+export type MediaKind = 'embed' | 'bookmark' | 'file' | 'video' | 'audio';
+
+/**
+ * Each view's media labels, by kind: the first plugin of a kind listed in a
+ * view claims them, as its kind record (first wins).
+ */
+export const mediaLabels: Record<MediaKind, ReturnType<typeof viewLabels<'media'>>> = {
+	embed: viewLabels('media'),
+	bookmark: viewLabels('media'),
+	file: viewLabels('media'),
+	video: viewLabels('media'),
+	audio: viewLabels('media')
+};
 
 /**
  * A web page's URL a media block may store or render: the link sanitizer's
@@ -33,6 +49,10 @@ export const safeMediaSrc = (value: unknown): string | null => {
 export type MediaPluginOptions = {
 	/** Upload a picked file and answer its URL; without it only links are embedded. */
 	upload?: (file: File) => Promise<string>;
+	/** The words the block shows (its empty panel, its menu row), over the English ones. */
+	labels?: PartialLabels<'media'>;
+	/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
+	keywords?: Partial<Record<string, string[]>>;
 };
 
 /** One allowlisted embed provider: which links it plays, and its player. */
@@ -235,19 +255,6 @@ export const fileNameOf = (src: string): string => {
 	} catch {
 		return src;
 	}
-};
-
-/** A byte count for people: `5 B`, `1.2 KB`, `3.4 MB`. */
-export const formatBytes = (bytes: number): string => {
-	if (!Number.isFinite(bytes) || bytes < 0) return '';
-	const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-	let value = bytes;
-	let unit = 0;
-	while (value >= 1024 && unit < units.length - 1) {
-		value /= 1024;
-		unit++;
-	}
-	return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 };
 
 /**

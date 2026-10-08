@@ -1,6 +1,7 @@
 /**
  * What a view tells assistive technology about a change a screen does not
- * say by itself (WU-27, F7): a block move or a block delete this view made.
+ * say by itself: a block move or a block delete this view made, in the
+ * view's labels (`edytor.labels`).
  * DOM-free: the surface renders `message` in a polite live region beside
  * the host (`components/Announcer.svelte`), a new node per announcement
  * (`serial`), so the same words twice are read twice. Only this view's own
@@ -11,14 +12,14 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { kindLabel } from '$lib/kinds.js';
 import type { BlockMoveRequest } from './moves.js';
 
-/** How a move is said, by direction (`undefined`: a placement, a drop). */
+/** The label saying a move, by direction (`to`: a placement, a drop). */
 const MOVED = {
-	up: (what: string) => `Moved ${what} up`,
-	down: (what: string) => `Moved ${what} down`,
-	in: (what: string) => `Indented ${what}`,
-	out: (what: string) => `Outdented ${what}`,
-	to: (what: string) => `Moved ${what}`
-};
+	up: 'movedUp',
+	down: 'movedDown',
+	in: 'indented',
+	out: 'outdented',
+	to: 'moved'
+} as const;
 
 export class Announcer {
 	/** The last announcement. */
@@ -35,15 +36,20 @@ export class Announcer {
 	};
 
 	/** `blocks` (one or several) as words: a kind's label for one, a count for several. */
-	what = (blocks: readonly Block[]) =>
-		blocks.length === 1 ? `${kindLabel(this.edytor, blocks[0])} block` : `${blocks.length} blocks`;
+	what = (blocks: readonly Block[]) => {
+		const { labels } = this.edytor;
+		return blocks.length === 1
+			? labels.block(kindLabel(this.edytor, blocks[0]))
+			: labels.blocks(blocks.length);
+	};
 
 	/** `request`'s blocks moved (`moveBlocks` answered them). */
 	moved = (request: BlockMoveRequest, moved: readonly Block[]) => {
 		if (!moved.length) return;
-		this.say(MOVED['direction' in request ? request.direction : 'to'](this.what(moved)));
+		const said = MOVED['direction' in request ? request.direction : 'to'];
+		this.say(this.edytor.labels[said](this.what(moved)));
 	};
 
 	/** Blocks were deleted: `what` names them, read before they went. */
-	deleted = (what: string) => this.say(`Deleted ${what}`);
+	deleted = (what: string) => this.say(this.edytor.labels.deleted(what));
 }

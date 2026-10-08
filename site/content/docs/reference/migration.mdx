@@ -131,6 +131,14 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### Unreleased
+
+- **Localization.** Every word the chrome shows or says comes from a labels dictionary, English by default ([Localization](/docs/customization/localization)): `labels` is a new option of `createToolbarPlugin`, `createSlashMenuPlugin`, `createBlockMenuPlugin`, `createBlockHandlesPlugin` (and the `blockHandles` prop), `createImagePlugin`, `createEmbedPlugin`, `createBookmarkPlugin`, `createFilePlugin`, `createVideoPlugin`, `createAudioPlugin`, `createCodePlugin`, `createFindPlugin`, `createSuggestionsPlugin` and `createColumnsPlugin`, and `<Edytor labels>` takes the view's own words (its announcements, a suggestion's accessible name). New exports: `Labels` (the dictionary's type, one section per plugin), `PartialLabels<section>` (an option's type: any entries, nested groups included) and `englishLabels`. The controllers carry them for custom markup (`controller.labels`, `find.labels`). Nothing changes in English.
+- **`createRichTextPlugin({ labels, keywords })`** builds the rich text plugin in another language: `labels` names its presets, mark buttons and to-do checkbox; `keywords` replaces a preset's slash keywords by command id (`block.heading1`). `richTextPlugin` is `createRichTextPlugin()`. Any listed instance replaces the default rich text plugin, as an image or suggestions plugin instance already did. The image, code, media and columns plugins take the same `keywords` option.
+- **`createRichTextPlaceholder(labels)`** builds the Notion placeholders in another language; `richTextPlaceholder` is `createRichTextPlaceholder()`.
+- **Group names and colors are keys.** A preset's `group` (`Basic blocks`, `Media`, `Layout`) is shown through the slash menu's `groups` labels, and a `TOOLBAR_COLORS` name through the toolbar's `colors`; the stored and compared values are unchanged.
+- **Corrections.** [Limitations](/docs/reference/limitations) now lists what is not built (tables, comments, a version history UI) and what localization leaves to you.
+
 ### From 0.1.0-next.32
 
 - **Mount editable editors in the browser.** The [quick start](/docs/getting-started/quick-start#mount-it-in-a-page) and [installation](/docs/getting-started#verify-the-install) pages now mount the editable editor after hydration, or turn SSR off for the route, as [SvelteKit](/docs/getting-started/sveltekit#editable-editors-mount-after-hydration) always advised: server-rendering an editable `<Edytor>` is not tested. If you copied the earlier quick start into a server-rendered route, wrap the editor in the `onMount` guard. Nothing in the package changed.

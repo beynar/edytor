@@ -82,7 +82,7 @@ Changes a screen does not say by itself are announced in a polite live region (`
 | <kbd>Tab</kbd> or <kbd>Shift</kbd>+<kbd>Tab</kbd>, and the handle's <kbd>Alt</kbd>+<kbd>→</kbd>/<kbd>←</kbd> | "Indented To-do list block", "Outdented 2 blocks" |
 | A delete of selected blocks: <kbd>Backspace</kbd>, <kbd>Delete</kbd>, cut, the block menu's Delete | "Deleted 2 blocks", "Deleted Heading 2 block" |
 
-Only this view's own gestures are announced, never a collaborator's, and a refused move says nothing. A plugin can announce its own changes with `edytor.announcer.say(message)`.
+Only this view's own gestures are announced, never a collaborator's, and a refused move says nothing. A plugin can announce its own changes with `edytor.announcer.say(message)`. The words come from `<Edytor labels>` (`movedUp`, `deleted`, `block`, …: functions of what moved, so another language orders them its own way) and the kind's preset label; see [Localization](/docs/customization/localization).
 
 ## Right-to-left text
 

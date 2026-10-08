@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import type { Block } from '$lib/block/block.svelte.js';
+	import type { Edytor } from '$lib/edytor.svelte.js';
+	import { mediaLabels, type MediaKind } from './media.js';
 
 	/**
 	 * A media block's empty state (the image's pattern, Notion): an "Add …"
@@ -12,32 +15,30 @@
 	 */
 	let {
 		block,
-		label,
+		kind,
 		icon,
-		placeholder,
-		submit,
-		invalid,
 		accept,
 		upload,
 		link,
 		file
 	}: {
 		block: Block | undefined;
-		/** The button and placeholder text ("Embed a link"). */
-		label: string;
+		/** Whose words it shows, in the labels of the view rendering it (a suggestion's preview included). */
+		kind: MediaKind;
 		icon: string;
-		/** The link field's placeholder. */
-		placeholder: string;
-		/** The submit button's text. */
-		submit: string;
-		/** The error line under a refused link. */
-		invalid: string;
 		/** The file picker's `accept`. */
 		accept?: string;
 		upload?: (file: File) => Promise<string>;
 		link: (value: string) => boolean;
 		file?: (file: File, src: string) => boolean;
 	} = $props();
+	/** The view rendering it (a suggestion's preview included): whose labels it shows. */
+	const view = getContext<Edytor>('edytor');
+	const labels = $derived(mediaLabels[kind].of(view));
+	const words = $derived(labels[kind]);
+	/** The button and placeholder text ("Embed a link"); the file's names its upload. */
+	const label = $derived(upload && 'addOrUpload' in words ? words.addOrUpload : words.add);
+	const { placeholder, submit, invalid } = $derived(words);
 	let draft = $state('');
 	let open = $state(false);
 	let failed = $state(false);
@@ -72,7 +73,7 @@
 			<button type="button" onclick={() => embed(draft)}>{submit}</button>
 			{#if upload}
 				<label data-edytor-media-upload>
-					Upload
+					{labels.upload}
 					<input
 						type="file"
 						{accept}

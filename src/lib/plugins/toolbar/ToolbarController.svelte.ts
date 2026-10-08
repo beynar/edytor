@@ -19,8 +19,9 @@ import type { Text } from '$lib/text/text.svelte.js';
 import { convertBlocks, convertibleKinds, rowOf, type KindRow } from '$lib/kinds.js';
 import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
+import { englishLabels, type ToolbarLabels } from '$lib/labels.js';
 
-/** Notion's palette: text colors and their backgrounds, by name. */
+/** Notion's palette: text colors and their backgrounds, by name (shown through the labels' `colors`). */
 export const TOOLBAR_COLORS = [
 	{ name: 'Default', text: null, background: null },
 	{ name: 'Gray', text: '#7d7a75', background: '#f0efed' },
@@ -51,7 +52,14 @@ export class ToolbarController {
 	/** The link under the pointer, for the link card (`link.card`). */
 	hovered = $state.raw<HTMLAnchorElement | null>(null);
 
-	constructor(private edytor: Edytor) {}
+	constructor(
+		private edytor: Edytor,
+		/** The words the toolbar shows (the plugin's `labels`): read them in a custom `toolbar`. */
+		readonly labels: ToolbarLabels = englishLabels.toolbar
+	) {}
+
+	/** A palette color's name as shown (`labels.colors`). */
+	colorName = (name: string) => this.labels.colors[name] ?? name;
 
 	get isVisible() {
 		return this.shown && !this.edytor.readonly;

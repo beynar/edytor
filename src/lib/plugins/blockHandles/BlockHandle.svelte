@@ -22,6 +22,7 @@
 	/** The menus this handle's `+` and grip opened, while open: their `aria-expanded`. */
 	const added = $derived(controller.opened(block, 'add'));
 	const gripped = $derived(controller.opened(block, 'grip'));
+	const labels = $derived(controller.labels);
 </script>
 
 {#if handle}
@@ -41,15 +42,11 @@
 		contenteditable="false"
 		hidden={controller.readonly}
 		data-testid="block-add"
-		aria-label={beside
-			? `Add a block below ${label} (Alt: a column to the right)`
-			: `Add a block below ${label} (Alt: above)`}
+		aria-label={beside ? labels.addBeside(label) : labels.add(label)}
 		aria-expanded={added ? 'true' : undefined}
 		aria-controls={added?.id}
 		aria-haspopup={added?.haspopup}
-		title={beside
-			? 'Click to add below\nAlt-click to add a column to the right'
-			: 'Click to add below\nAlt-click to add a block above'}
+		title={beside ? labels.addBesideHint : labels.addHint}
 		onmousedown={(event) => event.preventDefault()}
 		onpointerdown={(event) => event.stopPropagation()}
 		onclick={(event) => {
@@ -75,7 +72,7 @@
 		hidden={controller.readonly}
 		data-testid="block-handle"
 		data-block-id={block.id}
-		aria-label={`${label} block: drag to move, click for actions`}
+		aria-label={labels.grip(label)}
 		aria-expanded={gripped ? 'true' : undefined}
 		aria-controls={gripped?.id}
 		aria-haspopup={gripped?.haspopup}

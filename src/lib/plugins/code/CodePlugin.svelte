@@ -7,6 +7,7 @@
 	import { shown } from '$lib/selection/visibility.js';
 	import { caretBeside } from '$lib/selection/replaceSelection.js';
 	import CodeHeader from './CodeHeader.svelte';
+	import { keywordsOf, labelsWith } from '$lib/labels.js';
 	import {
 		DEFAULT_CODE_SETTINGS,
 		codeSettings,
@@ -37,7 +38,11 @@
 	export const createCodePlugin =
 		(options: CodePluginOptions = {}): Plugin =>
 		(edytor) => {
-			const own: CodeSettings = { ...DEFAULT_CODE_SETTINGS, ...options };
+			const own: CodeSettings = {
+				languages: options.languages ?? DEFAULT_CODE_SETTINGS.languages,
+				defaultLanguage: options.defaultLanguage ?? DEFAULT_CODE_SETTINGS.defaultLanguage,
+				labels: labelsWith('code', options.labels)
+			};
 			codeSettings.set(edytor, own);
 			/** A line's language: its code block's (read through the cell: a pick re-renders it). */
 			const lineLanguage = (id: string) => {
@@ -210,9 +215,9 @@
 						snippet: code,
 						presets: [
 							{
-								label: 'Code',
+								label: own.labels.code,
 								icon: '</>',
-								keywords: ['code block', 'snippet'],
+								keywords: keywordsOf('block.code', ['code block', 'snippet'], options.keywords),
 								markdown: ['```'],
 								group: 'Media'
 							}

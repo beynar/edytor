@@ -3,6 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
 import { bandOf, gapBefore } from './gaps.js';
 import { stacks } from './stacking.js';
+import { englishLabels, type ColumnsLabels } from '$lib/labels.js';
 
 /** The guide line's width (the hover guide's and the drag's). */
 export const GUIDE = 2;
@@ -94,7 +95,9 @@ export class ColumnResize {
 
 	constructor(
 		private edytor: Edytor,
-		private minWidth: number
+		private minWidth: number,
+		/** The words the bands say (the plugin's `labels`). */
+		readonly labels: ColumnsLabels = englishLabels.columns
 	) {}
 
 	/** The view is readonly (reactive). */

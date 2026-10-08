@@ -33,6 +33,7 @@ import { Pin } from './surface/pin.svelte.js';
 import { Overlay } from './surface/overlay.js';
 import { Popups } from './surface/popups.svelte.js';
 import { Announcer as AnnouncerState } from './session/announcer.svelte.js';
+import { englishLabels, labelsWith, type EditorLabels, type PartialLabels } from './labels.js';
 import Announcer from './components/Announcer.svelte';
 import RemoteSelections from './collaboration/RemoteSelections.svelte';
 import SuggestionRanges from './components/SuggestionRanges.svelte';
@@ -153,6 +154,8 @@ export type EdytorOptions = {
 	onChange?: (value: JSONDoc) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: Placeholder;
+	/** The words this view says itself (its announcements, a suggestion's name); English by default. */
+	labels?: PartialLabels<'editor'>;
 };
 
 /**
@@ -262,6 +265,8 @@ export class Edytor {
 	readonly popups = new Popups();
 	/** What this view announces to assistive technology (`session/announcer`): its block moves and deletes. */
 	readonly announcer: AnnouncerState = new AnnouncerState(this);
+	/** The words this view says itself (`<Edytor labels>`): its announcements, a suggestion's name. */
+	readonly labels: EditorLabels = englishLabels.editor;
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONDoc) => void;
 	placeholder?: Placeholder;
@@ -432,8 +437,10 @@ export class Edytor {
 		value,
 		onSelectionChange,
 		placeholder,
+		labels,
 		onChange
 	}: EdytorOptions) {
+		this.labels = labelsWith('editor', labels);
 		if (document !== undefined) {
 			if (
 				doc !== undefined ||

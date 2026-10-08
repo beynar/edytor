@@ -3,8 +3,14 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { Suggestion } from '$lib/session/suggestions.svelte.js';
 	import type { SuggestionBarPayload } from './suggestionsPlugin.js';
+	import type { SuggestionsLabels } from '$lib/labels.js';
 
-	let { edytor, bar }: { edytor: Edytor; bar?: Snippet<[SuggestionBarPayload]> } = $props();
+	let {
+		edytor,
+		bar,
+		labels
+	}: { edytor: Edytor; bar?: Snippet<[SuggestionBarPayload]>; labels: SuggestionsLabels } =
+		$props();
 
 	/** Each bar's place under its preview, layer-relative, measured once per frame (R11). */
 	let places = $state<Record<string, { left: number; top: number; width: number }>>({});
@@ -64,29 +70,30 @@
 		{:else}
 			<span data-edytor-suggestion-label
 				>{suggestion.status === 'streaming'
-					? `${suggestion.label ?? 'AI'} is writing…`
-					: (suggestion.label ?? 'Suggestion')}</span
+					? labels.writing(suggestion.label)
+					: (suggestion.label ?? labels.suggestion)}</span
 			>
 			{#if !actions.readonly}
 				<button
 					type="button"
 					data-edytor-suggestion-accept
 					onmousedown={keep}
-					onclick={actions.accept}>Accept <kbd>{edytor.keymap.isMac ? '⌘↵' : 'Ctrl+↵'}</kbd></button
+					onclick={actions.accept}
+					>{labels.accept} <kbd>{edytor.keymap.isMac ? '⌘↵' : `${labels.ctrl}+↵`}</kbd></button
 				>
 			{/if}
 			<button
 				type="button"
 				data-edytor-suggestion-discard
 				onmousedown={keep}
-				onclick={actions.discard}>Discard <kbd>Esc</kbd></button
+				onclick={actions.discard}>{labels.discard} <kbd>{labels.escape}</kbd></button
 			>
 			{#if actions.retry && !actions.readonly}
 				<button
 					type="button"
 					data-edytor-suggestion-retry
 					onmousedown={keep}
-					onclick={actions.retry}>Try again</button
+					onclick={actions.retry}>{labels.retry}</button
 				>
 			{/if}
 		{/if}

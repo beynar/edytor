@@ -479,3 +479,6 @@ export const planSteps = (c: StepsContext) => {
 };
 
 export type PlanSteps = ReturnType<typeof planSteps>;
+
+/** What every op family is prepared over: the reads, the capability and the step writers. */
+export type OpsContext = StepsContext & PlanSteps;

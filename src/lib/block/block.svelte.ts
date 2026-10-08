@@ -518,6 +518,8 @@ export class Block {
 			if (names.includes(name)) node.setAttribute(name, value);
 		this.node = node;
 		const release = this.edytor.surface.register(node, 'block', this.id);
+		// A block laid out again with no commit moves the chrome beside it (the overlay measures).
+		const unobserve = this.edytor.overlay.observe(node);
 		const onDestroy = this.edytor.plugins.flatMap((plugin) => {
 			const action = plugin.onBlockAttached?.({ node, block: this });
 			return typeof action === 'function' ? [action] : [];
@@ -527,6 +529,7 @@ export class Block {
 				this.#viewState = read(node);
 				if (this.node === node) this.node = undefined;
 				release();
+				unobserve();
 				onDestroy.forEach((destroy) => destroy());
 			}
 		};

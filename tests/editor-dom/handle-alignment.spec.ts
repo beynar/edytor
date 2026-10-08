@@ -122,6 +122,33 @@ test.describe('demo block handle alignment', () => {
 		issues.assertClean();
 	});
 
+	// The blocks laid out again with no commit, no scroll and no resize of the
+	// host (a font, a stylesheet or a kind's markup that loads late, here in a
+	// host whose height the page fixes): the overlay measures again. CI's slower
+	// runner showed every handle 55px off when the demo's KaTeX drew late.
+	test('realigns the handles when the blocks move with no commit and no host resize', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await page.setViewportSize({ width: 1440, height: 1100 });
+		await page.goto('/');
+		await waitForEditorReady(page);
+		const aligned = async () =>
+			(await readBlockAlignment(page)).every(
+				(row) => Math.abs(row.delta) <= ALIGNMENT_TOLERANCE_PX
+			);
+		await expect.poll(aligned).toBe(true);
+		await page.addStyleTag({ content: '.page-editor [data-edytor] { min-height: 3000px }' });
+		await expect.poll(aligned).toBe(true);
+		const hostHeight = () =>
+			page.evaluate(() => document.querySelector('[data-edytor]')!.getBoundingClientRect().height);
+		const height = await hostHeight();
+		await page.addStyleTag({ content: '[data-edytor-id="page-intro"] { font-size: 40px }' });
+		expect(await hostHeight()).toBe(height);
+		await expect.poll(aligned).toBe(true);
+		issues.assertClean();
+	});
+
 	test('keeps the open block menu beside its handle while scrolling', async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await page.setViewportSize({ width: 1440, height: 1100 });

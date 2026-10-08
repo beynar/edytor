@@ -228,7 +228,7 @@ For numbered items, count with CSS counters on the editor root:
 
 ## The overlay
 
-Chrome never lives inside the editable root. The editor adds a sibling right after it, `[data-edytor-overlay]`, an absolutely positioned, zero-size layer. Block handles, the drop indicator, the slash menu, the toolbar, the block menu and collaborators' carets are rendered there and positioned against the blocks once per frame, following scrolls, resizes and edits.
+Chrome never lives inside the editable root. The editor adds a sibling right after it, `[data-edytor-overlay]`, an absolutely positioned, zero-size layer. Block handles, the drop indicator, the slash menu, the toolbar, the block menu and collaborators' carets are rendered there and positioned against the blocks once per frame, following scrolls, resizes (the window's, the editor's and each block's, so a font or an equation that draws late moves them too) and edits.
 
 | Element                                | Selector                                                         |
 | -------------------------------------- | ---------------------------------------------------------------- |

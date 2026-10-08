@@ -5,8 +5,9 @@
  *
  * Chrome registers a measure; the overlay runs every measure once per frame,
  * and only when something moved the host's geometry: a commit, a resize of
- * the host or the window, a scroll of any scroll container, a readonly
- * change or a peer change. Measures read layout first (with the layer's
+ * the host, of a block (`observe`: a layout change no commit made, such as a
+ * font or a kind's markup that loads later) or of the window, a scroll of any
+ * scroll container, a readonly change or a peer change. Measures read layout first (with the layer's
  * origin, so positions are layer-relative and follow the host through page
  * and container scrolls) and return their writes, which run after every read.
  */
@@ -40,6 +41,25 @@ export class Overlay {
 	layer: HTMLElement | null = null;
 	#measures = new Set<Measure>();
 	#frame: number | null = null;
+	/** The block elements whose resizes invalidate (`observe`), the host's own once attached. */
+	#observed = new Set<Element>();
+	#resize: ResizeObserver | null = null;
+
+	/**
+	 * Invalidate whenever `node` (a block's element) changes size: what lays the
+	 * blocks out again with no commit, no scroll and no resize of the host — a
+	 * font or a stylesheet that loads, a kind's markup drawn later (KaTeX, an
+	 * image), a host whose height its page fixes — moves the blocks under the
+	 * chrome. Answers the release.
+	 */
+	observe = (node: Element) => {
+		this.#observed.add(node);
+		this.#resize?.observe(node);
+		return () => {
+			this.#observed.delete(node);
+			this.#resize?.unobserve(node);
+		};
+	};
 
 	/** Run `measure` on every invalidated frame, starting with the next one. */
 	add = (measure: Measure) => {
@@ -93,7 +113,10 @@ export class Overlay {
 		};
 	};
 
-	/** Create the layer after `host`; invalidated by resizes and by scrolls of any container. */
+	/**
+	 * Create the layer after `host`; invalidated by resizes (the host's, its
+	 * blocks', the window's) and by scrolls of any container.
+	 */
 	attach = (host: HTMLElement) => {
 		const document = host.ownerDocument;
 		const view = document.defaultView;
@@ -104,12 +127,15 @@ export class Overlay {
 		this.layer = layer;
 		const resize =
 			typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(this.invalidate);
+		this.#resize = resize;
 		resize?.observe(host);
+		for (const node of this.#observed) resize?.observe(node);
 		document.addEventListener('scroll', this.invalidate, { capture: true, passive: true });
 		view?.addEventListener('resize', this.invalidate);
 		this.invalidate();
 		return () => {
 			resize?.disconnect();
+			if (this.#resize === resize) this.#resize = null;
 			document.removeEventListener('scroll', this.invalidate, { capture: true });
 			view?.removeEventListener('resize', this.invalidate);
 			if (this.#frame) view?.cancelAnimationFrame?.(this.#frame);

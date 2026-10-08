@@ -819,6 +819,8 @@ export class Edytor {
 				if (this.userInputHandlingDepth <= 0) {
 					this.userInputHandlingDepth = 0;
 					this.isHandlingUserInput = false;
+					// A display the window held back gets its pass now.
+					this.projector.inputHandled();
 				}
 			};
 			try {

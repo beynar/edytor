@@ -14,7 +14,9 @@
  *   session's facts): a pass it holds back runs again at the session's end
  *   (`composition.ended`), which catches up (the one write under a session
  *   is its start's `park`, over a selection that shows no DOM range);
- * - no pointer drag is in progress, for a pass the selection did not ask for;
+ * - no pointer drag is in progress and no user-input handler runs
+ *   (`isHandlingUserInput`), for a pass the selection did not ask for: a pass
+ *   the handler's window holds back runs when it closes (`inputHandled`);
  * - the focus verdict is ours (BI-14): focus inside the editor, or orphaned by
  *   our own render, or nothing focused and the pass was asked for — never a
  *   foreign focus, a last gesture that landed outside, or a DOM selection the
@@ -212,6 +214,18 @@ export class Projector {
 			});
 		}
 		return true;
+	};
+
+	/**
+	 * The user-input window closed (`withUserInput`): a pass it held back (a
+	 * render under the handler that asked for no display, such as a mark
+	 * removal re-rendering the text under a range) runs now. The flag is no
+	 * reactive source, so no later flush is owed: without this, the range the
+	 * render moved (Firefox keeps it where the removed element stood) would be
+	 * adopted as the gesture's when its `selectionchange` lands.
+	 */
+	inputHandled = () => {
+		if (this.#pending) this.edytor.surface.update();
 	};
 
 	/** The observer processed DOM records (O55): a display that waits gets a pass. */

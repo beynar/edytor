@@ -9,7 +9,7 @@ import { env } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import type { AttachedDocument, DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
-import type { BlockSpec, EdytorDoc } from '../../src/lib/crdt/index.js';
+import type { BlockSpec, DocumentOperations } from '../../src/lib/crdt/index.js';
 import type { LockedRoom, PlainObject } from './worker';
 import { E, RawClient } from './client';
 
@@ -55,7 +55,7 @@ const blocks: BlockSpec[] = [
 
 /** Seed the fixture, then attempt the three edits, each in its own server transaction. */
 const attempt = (room: Pick<AttachedDocument, 'transact'>) => {
-	const edit = (fn: (facade: EdytorDoc) => { status: string }) => room.transact(fn).status;
+	const edit = (fn: (facade: DocumentOperations) => { status: string }) => room.transact(fn).status;
 	const seeded = edit((facade) => facade.insertBlocks({ parent: null, index: 0 }, blocks));
 	return [
 		seeded,

@@ -9,8 +9,8 @@ import type { Block, EdytorDocument, EdytorInstance, InlineBlock } from 'edytor'
 declare global {
 	/** The editor instance a page bound with `bind:edytor` (`edytor.*` snippets). */
 	const edytor: EdytorInstance;
-	/** A document's facade, `document.facade` or `edytor.facade` (`facade.*` snippets). */
-	const facade: EdytorDocument['facade'];
+	/** A document, `edytor.document` or `createDocument()`'s (`doc.*` snippets: its operations and reads). */
+	const doc: EdytorDocument;
 	/** A block handle, as `edytor.idToBlock.get(id)` returns it (`block.*` snippets). */
 	const block: Block;
 	/** An inline block handle (`atom.*` snippets). */

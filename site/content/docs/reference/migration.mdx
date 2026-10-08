@@ -17,7 +17,12 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 #### Breaking changes
 
 - **`selection.select(value)` takes the value only.** Its second argument named an internal cause (how the projector should treat the change); pass the value alone. The `SelectCause` type is no longer exported.
+- **The document's operations are its own; `document.facade` is deprecated.** Call them on the document: `document.insertBlock(…)`, `document.toJSON()`, `document.prepare.splitBlock(…)`, `document.onChange(…)` (the `DocumentOperations` interface). `document.facade` returns the same operations and goes in the next release. What it held besides them (the index, the engine hooks, the history factory) is internal. `edytor` no longer exports `EdytorDoc` (the full binding, still in `edytor/crdt/edytor`): name `DocumentOperations` instead. A room's `transact` callback, its `facade` and `validate`'s `facade` are typed `DocumentOperations` too.
 - **The dispatcher's plumbing is internal.** `edytor.dispatcher` keeps `last`, `permits()`, `run`, `each`, `dispatch`, `lead`, `caret` and `outside`; its normalization queue (`defer`, `request`, `drain`, `write`), its undo cut (`cut`), its prevention scopes (`scope`, `intercept`), `authoring` and `pendingLead` are no longer in the published types. `permits()` is now documented: whether the view accepts writes.
+
+#### New
+
+- **`DocumentOperations`, and the document's vocabulary exported.** `edytor` exports `DocumentOperations` (with `DocumentWrites` and `DocumentReads`) and the types its operations take and answer: `BlockId`, `BlockSpec`, `ContentItem`, `Destination`, `InlineSpec`, `ProjectedBlock`, `ProjectedDoc`, `SplitTail`, `DocPosition`, `RangeView`, `FlowView`, `ContentRun`, `DataTarget`, `OrderPolicy`, `PlanEffect`, `PlanStep`, `DocBlock`, `NodeRef`, `MarkEdge`, the semantics' (`DocumentSemanticsConfig`, `KindRecord`, `MergedSemantics`, `SchemaProblem`), the awareness's (`Awareness`, `AwarenessStates`, `AwarenessUpdate`, `MetaClientState`) and the chrome's (`Overlay`, `Measure`, `Cells`, `Cell`, `Popups`, `Popup`, `PopupOpener`, `Announcer`, `Handles`). `document.transact(fn, origin?)` takes an origin.
 
 #### Fixed
 
@@ -909,6 +914,7 @@ Every public change since 0.0.11, by area.
 
 ### Editor view, selection and commands
 
+- **The document's own operations.** `EdytorDocument` carries `DocumentOperations` (`document.insertBlock(…)`); `document.facade` is deprecated; the types the operations use are exported from `edytor`.
 - **`selection.select(value)`** takes the value only; the dispatcher publishes `last`, `permits()`, `run`, `each`, `dispatch`, `lead`, `caret` and `outside`, the rest is internal.
 - **`edytor.focus()`** focuses the editor, keeping its selection or putting the caret at the start; `selection.value`, `selectedBlocks`, `focusedBlocks` and `dispatcher.last` are read-only.
 - **Pasted and dropped files.** The video, audio and file plugins with `upload` take their files (`media.files`); `upload(file, report)` reports progress (`Uploader`, `UploadReport`); the media labels gain `uploading` and `uploadFailed`.

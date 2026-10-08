@@ -8,7 +8,7 @@ Every edytor document is a CRDT: edits from any number of views, tabs and people
 
 ## How it fits together
 
-One document is one `EdytorDocument`. It owns the CRDT state, a document API (the facade), one undo history, one awareness instance for presence, and the local author identity. Views render it; providers keep it in sync.
+One document is one `EdytorDocument`. It owns the CRDT state, the document's operations (`document.insertBlock(…)`, `document.toJSON()`…), one undo history, one awareness instance for presence, and the local author identity. Views render it; providers keep it in sync.
 
 ```mermaid
 flowchart LR

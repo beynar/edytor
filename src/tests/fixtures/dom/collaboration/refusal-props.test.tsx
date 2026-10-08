@@ -88,7 +88,7 @@ describe('a view mounted after a refusal (RW-05)', () => {
 		await tick();
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(document.readiness).toBe('pending');
-		expect(document.facade.isInitialized()).toBe(false);
+		expect(document.raw.isInitialized()).toBe(false);
 		expect(view.container.querySelector('[data-edytor]')).toBeNull();
 		view.unmount();
 		document.destroy();

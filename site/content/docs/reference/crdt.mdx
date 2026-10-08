@@ -11,7 +11,7 @@ Most apps never import the CRDT engine: `createDocument`, the sync factories and
 | Import | Contents | Runs in |
 | --- | --- | --- |
 | `edytor` | The `<Edytor>` component, plugins, the document API with its errors and JSON types, and the sync factories. | A Svelte bundler |
-| `edytor/crdt/edytor` | The document API (`createDocument`, `loadDocument`, `attachDocument`), the facade's full vocabulary, `bindCrdt`, attribution and migration. No Svelte. | Browser, Node, SSR, Workers |
+| `edytor/crdt/edytor` | The document API (`createDocument`, `loadDocument`, `attachDocument`), the document's full vocabulary, `bindCrdt`, attribution and migration. No Svelte. | Browser, Node, SSR, Workers |
 | `edytor/protocol` | The wire vocabulary: `bindCrdt`, frames, message types, codecs, generation records, the admission gates, the raw provider classes. No Svelte. | Browser, Node, SSR, Workers |
 | `edytor/crdt` | The CRDT engine itself: edytor's fork of Yjs v14. Import it as a namespace. | Anywhere |
 | `edytor/cloudflare` | `DocumentRoom`, `attachRoom(this, options)` (a document in your own Durable Object) and `routeDocumentSocket`. See [the server](/docs/server/quick-start). | Cloudflare Workers |

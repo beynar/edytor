@@ -184,15 +184,15 @@ On a document whose roles hold a table kind (a view with the plugin, or `default
 ```ts title="table.ts" check
 import { createDocument, tableBlock } from 'edytor';
 
-const { facade } = createDocument({
+const document = createDocument({
 	value: { children: [{ ...tableBlock({ cells: [['a', 'b']] }), id: 't' }] }
 });
 
-facade.insertTableRow('t', 1); // a row of empty cells at the end
-facade.insertTableColumn('t', 0, 200); // a 200px column first, a cell in every row
-facade.moveTableColumn('t', 'c2', 0); // reorder: no cell moves
-facade.deleteTableColumn('t', 'c1');
-facade.tableGrid('t'); // { columns: [...], rows: [{ id, cells: [...] }] }
+document.insertTableRow('t', 1); // a row of empty cells at the end
+document.insertTableColumn('t', 0, 200); // a 200px column first, a cell in every row
+document.moveTableColumn('t', 'c2', 0); // reorder: no cell moves
+document.deleteTableColumn('t', 'c1');
+document.tableGrid('t'); // { columns: [...], rows: [{ id, cells: [...] }] }
 ```
 
 | API | What it does |
@@ -208,7 +208,7 @@ facade.tableGrid('t'); // { columns: [...], rows: [{ id, cells: [...] }] }
 | `tableColumns(table)` | The listed columns (`{ id, width? }[]`), or `null` |
 | `tableGrid(table)` | The column ids and each shown row's cells by column, `null` for a padded cell |
 
-Header flags and widths are data patches: `facade.patchData(table, [{ path: ['headerRow'], value: true }])`, and a width on the column's entry by its item id, `[{ path: ['columns', facade.dataItemIds(table, ['columns'])[i], 'width'], value: 200 }]` (a position works too, but counts every entry the stored array holds). `tableGrid` lists the listed columns, then any column it shows unlisted (an undone insert's, holding someone's text); `deleteTableColumn` and `fillTableCell` take its id or position, `moveTableColumn` refuses it. A cell never moves as a block, nothing merges into or out of one and it never splits (`canPlace`, `canMerge`, `splitBlock` refuse); a row moves only within its table. In a view, the commands run as `insertTableRow`, `deleteTableRows`, `insertTableColumn`, `deleteTableColumn`, `moveTableColumn`, `moveTableRows` and `fillTableCell`, so hooks see and may refuse them.
+Header flags and widths are data patches: `document.patchData(table, [{ path: ['headerRow'], value: true }])`, and a width on the column's entry by its item id, `[{ path: ['columns', document.dataItemIds(table, ['columns'])[i], 'width'], value: 200 }]` (a position works too, but counts every entry the stored array holds). `tableGrid` lists the listed columns, then any column it shows unlisted (an undone insert's, holding someone's text); `deleteTableColumn` and `fillTableCell` take its id or position, `moveTableColumn` refuses it. A cell never moves as a block, nothing merges into or out of one and it never splits (`canPlace`, `canMerge`, `splitBlock` refuse); a row moves only within its table. In a view, the commands run as `insertTableRow`, `deleteTableRows`, `insertTableColumn`, `deleteTableColumn`, `moveTableColumn`, `moveTableRows` and `fillTableCell`, so hooks see and may refuse them.
 
 ## Limitations
 

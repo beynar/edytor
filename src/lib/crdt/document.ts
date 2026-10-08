@@ -145,6 +145,7 @@ import { DEV } from 'esm-env';
 import { Y } from './engine.js';
 import type { EngineApi, YDoc, YUndoManager } from './engine-api.js';
 import { asEngineDoc } from './structs.js';
+import { DOCUMENT_OPERATIONS, type DocumentOperations } from './operations.js';
 import {
 	bindAttribution,
 	type AttributionBinding,
@@ -365,15 +366,32 @@ export type EdytorDocumentInit = {
  * The assembled document — see the module header for the lifecycle,
  * readiness and semantic-config contracts.
  */
+/**
+ * The document's operations and reads are its own members
+ * (`document.insertBlock(…)`, `document.toJSON()`): see `DocumentOperations`.
+ * `transact` is the document's (its local origin by default).
+ */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging, no-redeclare
+export interface EdytorDocument extends Omit<DocumentOperations, 'transact'> {}
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging, no-redeclare
 export class EdytorDocument {
 	/** The underlying engine doc — raw reads/providers borrow it; they never own it. */
 	readonly doc: YDoc;
 	/**
-	 * The shared domain facade (the ONLY structural read/write surface —
-	 * one per document, shared by every view). Attaching it holds the
-	 * document's lease on the maintained runs view.
+	 * The bound facade (one per document, shared by every view): the
+	 * operations below, the index and the engine hooks. Attaching it holds
+	 * the document's lease on the maintained runs view.
+	 * @internal
 	 */
-	readonly facade: EdytorDoc;
+	readonly raw: EdytorDoc;
+	/**
+	 * The document's operations, as before they were the document's own.
+	 * @deprecated Call them on the document (`document.insertBlock(…)`,
+	 * `document.toJSON()`); `facade` goes in the next release.
+	 */
+	get facade(): DocumentOperations {
+		return this.raw;
+	}
 	/** One shared awareness instance for every view/provider of this document. */
 	readonly awareness: Awareness;
 	/** The local actor identity (anonymous opaque id when none was supplied). */
@@ -477,7 +495,7 @@ export class EdytorDocument {
 		this.doc = init.doc;
 		this._ownsDoc = init.ownsDoc;
 		this._defaultType = init.semantics?.defaultType ?? 'paragraph';
-		this.facade = init.binding.create(asEngineDoc(this.doc), {
+		this.raw = init.binding.create(asEngineDoc(this.doc), {
 			roleOf: (type) => this._capability.roles.get(type),
 			kinds: () => this._capability.roles.keys(),
 			defaultType: this._defaultType,
@@ -492,6 +510,12 @@ export class EdytorDocument {
 			// with the `SchemaMismatchError` naming the stamp.
 			assertWritable: () => assertSchema(asEngineDoc(this.doc), 'document')
 		});
+		// The document's own operations (`DocumentOperations`): the bound
+		// facade's, read through so each call reaches the live binding.
+		for (const name of DOCUMENT_OPERATIONS) {
+			if (name === 'transact') continue;
+			Object.defineProperty(this, name, { get: () => this.raw[name], configurable: true });
+		}
 		this.awareness = init.awareness ?? new init.awarenessCtor(this.doc);
 		this._ownsAwareness = init.awareness === undefined;
 		this._historyOptions = init.history;
@@ -715,7 +739,7 @@ export class EdytorDocument {
 				(role) => role?.void || role?.island || role?.layout || role?.table
 			)
 		)
-			this.facade.rolesChanged();
+			this.raw.rolesChanged();
 	};
 
 	/**
@@ -790,7 +814,7 @@ export class EdytorDocument {
 			// Hydrated/loaded doc — asserted above; content is left alone.
 			this._readiness = 'hydrated';
 		} else {
-			this.facade.seed(value.children, value.data);
+			this.raw.seed(value.children, value.data);
 			this._readiness = 'local';
 		}
 		this._attachHistory();
@@ -883,7 +907,7 @@ export class EdytorDocument {
 		//   `applyUpdate` — stamped or originless — can enter the local undo
 		//   stack. This is the actual remote-exclusion contract; untracked
 		//   remote origins are belt-and-suspenders on top of it.
-		this._history = this.facade.createUndoManager({
+		this._history = this.raw.createUndoManager({
 			trackedOrigins: this._trackedOrigins,
 			captureTimeout: this._historyOptions?.captureTimeout,
 			limit: this.historyLimit,
@@ -906,12 +930,16 @@ export class EdytorDocument {
 		this._history?.clear();
 	};
 
-	/** Local document transaction — headless edits, one undo step per call. */
-	transact = <T>(cb: () => T): T => {
+	/**
+	 * Local document transaction — headless edits, one undo step per call
+	 * (`origin`: another origin, which the document's history tracks only
+	 * when it is tracked).
+	 */
+	transact = <T>(cb: () => T, origin: unknown = this.transaction): T => {
 		if (this._destroyed) {
 			throw new DocumentDestroyedError('transact');
 		}
-		return this.facade.transact(cb, this.transaction);
+		return this.raw.transact(cb, origin);
 	};
 
 	/**
@@ -1189,7 +1217,7 @@ export class EdytorDocument {
 		// The facade's doc `update` subscriptions + this document's lease on
 		// the doc-shared run view (the view itself survives while another
 		// facade holds a lease, or until the doc dies).
-		this.facade.dispose();
+		this.raw.dispose();
 
 		// Awareness is document-shared — destroy it only when the document
 		// created it (an injected instance belongs to its caller).

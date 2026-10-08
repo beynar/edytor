@@ -130,8 +130,8 @@ export { toBlockSpec } from '../utils/json.js';
 
 // ── 2 · The document's vocabulary ──────────────────────────────────────
 //
-// Types a consumer meets while driving `document.facade` (the ONLY
-// structural read/write surface) — block specs, destinations, projected
+// Types a consumer meets while driving the document's operations
+// (`DocumentOperations`: `document.insertBlock(…)`, a room's `transact`) — block specs, destinations, projected
 // trees, change notifications — plus the engine-object types the
 // document's own members are typed as (`document.doc: YDoc`,
 // `document.history: YUndoManager`).
@@ -148,6 +148,12 @@ export {
 	type AnchorAffinity,
 	type DataTarget
 } from './edytor-doc.js';
+export {
+	DOCUMENT_OPERATIONS,
+	type DocumentOperations,
+	type DocumentReads,
+	type DocumentWrites
+} from './operations.js';
 export { type DataPatch } from './data.js';
 export { type DocPosition, type RangeView } from './rangeDelete.js';
 export { type FlowView } from './flow.js';

@@ -78,7 +78,7 @@ Because a write is an assignment, Svelte bindings work on properties. A kind who
 
 ## Document properties
 
-The document's own data is `edytor.data` in a view, `facade.docData()` headless, and the optional `data` of a `JSONDoc`:
+The document's own data is `edytor.data` in a view, `document.docData()` headless, and the optional `data` of a `JSONDoc`:
 
 ```ts title="src/lib/notes.ts" check
 import { createDocument } from 'edytor';
@@ -93,9 +93,9 @@ declare module 'edytor' {
 const document = createDocument({
 	value: { data: { title: 'Notes' }, children: [{ type: 'paragraph', content: [{ text: 'Hi' }] }] }
 });
-document.facade.patchData(null, [{ path: ['tags'], value: ['draft'] }]);
-document.facade.docData(); // { title: 'Notes', tags: ['draft'] }
-document.facade.toJSON().data; // the same; `data` is absent when the document has none
+document.patchData(null, [{ path: ['tags'], value: ['draft'] }]);
+document.docData(); // { title: 'Notes', tags: ['draft'] }
+document.toJSON().data; // the same; `data` is absent when the document has none
 ```
 
 - A `value` with `data` seeds it with the content. The same seed on two replicas writes the same properties, whatever order its keys come in (a database may reorder them), like the content (see [Documents](/docs/collaboration/documents)).
@@ -104,7 +104,7 @@ document.facade.toJSON().data; // the same; `data` is absent when the document h
 
 ## Commands, hooks and undo
 
-A property write is the `patchData` operation. Its payload is `{ ops, atom? }`: `ops` is a list of patches, applied in order. `path` is the list of keys from the root, an array item's being its index as a string (`['tasks', '0', 'done']`) or its id (`['tasks', '~k3f9xq2a', 'done']`, what the proxy of an object or array in an item writes; `facade.dataItemIds(target, path)` lists an array's ids in order). An id is `~` and a lowercase letter, so a key that starts with `~` is written with that `~` as `~0`, as in a JSON pointer (`['~0abc']` for the key `~abc`); the proxies do this for you. A patch is one of:
+A property write is the `patchData` operation. Its payload is `{ ops, atom? }`: `ops` is a list of patches, applied in order. `path` is the list of keys from the root, an array item's being its index as a string (`['tasks', '0', 'done']`) or its id (`['tasks', '~k3f9xq2a', 'done']`, what the proxy of an object or array in an item writes; `document.dataItemIds(target, path)` lists an array's ids in order). An id is `~` and a lowercase letter, so a key that starts with `~` is written with that `~` as `~0`, as in a JSON pointer (`['~0abc']` for the key `~abc`); the proxies do this for you. A patch is one of:
 
 - `{ path, value }` sets the value there; without `value` it deletes the property, or removes the item.
 - `{ path, splice: [start, deleteCount, ...items] }` removes and inserts items of the array at `path`, as `Array.prototype.splice` does (`push`, `pop`, `shift`, `unshift`, `splice` and `length` write one).
@@ -162,7 +162,7 @@ For text that several people type into at once, use the block's content, which m
 
 ## Headless
 
-The document API has one operation for data: `facade.patchData(target, ops)`, where `target` is a block id, `{ block, atom }` for an inline block, or `null` for the document. It takes the same patches as the operation (`facade.patchData('a', [{ path: ['tasks'], splice: [0, 1] }])` removes the first task). `setBlockData(id, data)` and `setInlineData(id, atomId, data)` are patches of the root. The change report carries a block's new data in `meta`, an inline block's in the block's `content` runs, and the document's in `data` (see [the document API](/docs/reference/document-api)).
+The document API has one operation for data: `document.patchData(target, ops)`, where `target` is a block id, `{ block, atom }` for an inline block, or `null` for the document. It takes the same patches as the operation (`document.patchData('a', [{ path: ['tasks'], splice: [0, 1] }])` removes the first task). `setBlockData(id, data)` and `setInlineData(id, atomId, data)` are patches of the root. The change report carries a block's new data in `meta`, an inline block's in the block's `content` runs, and the document's in `data` (see [the document API](/docs/reference/document-api)).
 
 ## Storage and upgrading
 

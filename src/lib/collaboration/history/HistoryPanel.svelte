@@ -58,8 +58,8 @@
 			current = null;
 			return;
 		}
-		current = document.facade.toJSON();
-		return document.facade.onChange(() => (current = document.facade.toJSON()));
+		current = document.toJSON();
+		return document.onChange(() => (current = document.toJSON()));
 	});
 
 	const diff = $derived(shown && current ? versionDiff(shown, current) : null);

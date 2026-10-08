@@ -94,7 +94,7 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ params }) => {
 	const bytes: Uint8Array = await readStoredUpdate(params.id); // your storage
 	const document = loadDocument(bytes);
-	const value = document.facade.toJSON();
+	const value = document.toJSON();
 	document.destroy();
 	return json(value);
 };

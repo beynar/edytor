@@ -70,8 +70,8 @@ export declare class AttachedDocument {
     private readonly room;
     constructor(ctx: DurableObjectState, options?: AttachRoomOptions);
     get doc(): YDoc | null;
-    get facade(): EdytorDoc;
-    transact<T>(fn: (facade: EdytorDoc) => T): T;
+    get facade(): DocumentOperations;
+    transact<T>(fn: (facade: DocumentOperations) => T): T;
     read(): JSONDoc;
     alarm(): Promise<void>;
     reset(): Promise<void>;
@@ -494,9 +494,9 @@ export declare class DocumentRoom<Env = DocumentRoomEnv> extends DurableObject<E
         ranges: number;
     };
     reset(): Promise<void>;
-    transact<T>(fn: (facade: EdytorDoc) => T): T;
+    transact<T>(fn: (facade: DocumentOperations) => T): T;
     read(): JSONDoc;
-    get facade(): EdytorDoc;
+    get facade(): DocumentOperations;
     get doc(): YDoc | null;
     get failure(): Error | null;
     get refusals(): Refusal[];
@@ -566,7 +566,7 @@ export type FrameValidation = {
     dataChanged: boolean;
     before: (id: string) => ValidatedBlock | null;
     after: (id: string) => ValidatedBlock | null;
-    facade: EdytorDoc;
+    facade: DocumentOperations;
 };
 ```
 
@@ -1321,16 +1321,6 @@ type RowKind = 'generation' | 'update' | 'snapshot' | 'pending';
 export type Slot = 'am' | 'pm';
 ```
 
-#### crdt/attribution/attribution.d.ts#AttributionActor
-
-```ts
-export type AttributionActor = {
-    id: string;
-    name?: string;
-    color?: string;
-};
-```
-
 #### crdt/attribution/block.d.ts#ActorId
 
 ```ts
@@ -1369,26 +1359,6 @@ export type LeafWrite = readonly [
     key: string,
     value: unknown
 ];
-```
-
-#### crdt/doc/gate.d.ts#SchemaMismatchError
-
-```ts
-export declare class SchemaMismatchError extends Error {
-    readonly docName: string;
-    readonly problem: SchemaProblem;
-    constructor(docName: string, problem: SchemaProblem);
-}
-```
-
-#### crdt/doc/gate.d.ts#SchemaProblem
-
-```ts
-export type SchemaProblem = {
-    kind: 'unversioned' | 'unsupported' | 'foreign';
-    version?: number;
-    schema?: unknown;
-};
 ```
 
 #### crdt/doc/types.d.ts#AnchorAffinity
@@ -1445,22 +1415,6 @@ export type DocChange = {
     content: ReadonlyMap<BlockId, readonly ContentRun[]>;
     order: ReadonlyMap<BlockId | null, readonly BlockId[]>;
     data?: Record<string, unknown>;
-};
-```
-
-#### crdt/doc/types.d.ts#EdytorDocConfig
-
-```ts
-export type EdytorDocConfig = {
-    roleOf?: (type: string) => BlockRole | undefined;
-    defaultType?: string;
-    defaultChildOf?: (parentType: string) => string | undefined;
-    rendersContent?: (type: string) => boolean;
-    markEdge?: (mark: string) => MarkEdge | undefined;
-    kinds?: () => Iterable<string>;
-    actor?: () => AttributionActor | undefined;
-    lineageDepth?: number;
-    assertWritable?: () => void;
 };
 ```
 
@@ -1622,526 +1576,46 @@ export type DocumentSemanticsConfig = {
 };
 ```
 
-#### crdt/edytor-doc.d.ts#EdytorDoc
-
-```ts
-export type EdytorDoc = ReturnType<EdytorDocBinding['create']>;
-```
-
-#### crdt/edytor-doc.d.ts#EdytorDocBinding
-
-```ts
-export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
-```
-
-#### crdt/edytor-doc.d.ts#bindEdytorDoc
-
-```ts
-declare const bindEdytorDoc: (Y: EngineApi) => {
-    SCHEMA: {
-        readonly version: 5;
-        readonly name: "edytor-doc";
-        readonly roots: {
-            readonly registry: "blocks";
-            readonly meta: "meta";
-        };
-        readonly metaAttrs: {
-            readonly version: "v";
-            readonly schema: "schema";
-        };
-    };
-    SCHEMA_VERSION: 5;
-    SCHEMA_NAME: "edytor-doc";
-    META_KEY: "meta";
-    init: (doc: EngineDoc, opts?: {
-        content?: BlockSpec[];
-        defaultType?: string;
-    }) => void;
-    restore: (doc: EngineDoc, content: BlockSpec[]) => void;
-    seed: (doc: EngineDoc, value?: JSONBlock[], defaultType?: string, data?: JsonObj) => void;
-    isInitialized: (doc: EngineDoc) => boolean;
-    schemaVersion: (doc: EngineDoc) => number | undefined;
-    registryEmpty: (doc: EngineDoc) => boolean;
-    checkSchema: (doc: EngineDoc) => import("./edytor-doc.js").SchemaProblem | null;
-    assertSchema: (doc: EngineDoc, docName?: string) => void;
-    SchemaMismatchError: typeof SchemaMismatchError;
-    create: (doc: EngineDoc, config?: EdytorDocConfig) => {
-        prepare: {
-            insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView) => Prepared;
-            deleteRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView) => Prepared;
-            replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView) => Prepared;
-            insertTableRow: (table: BlockId, index: number) => Prepared;
-            deleteTableRows: (rows: readonly BlockId[]) => Prepared;
-            insertTableColumn: (table: BlockId, index: number, width?: number) => Prepared;
-            deleteTableColumn: (table: BlockId, column: string | number) => Prepared;
-            moveTableColumn: (table: BlockId, column: string | number, to: number) => Prepared;
-            moveTableRows: (rows: readonly BlockId[], to: number) => Prepared;
-            fillTableCell: (row: BlockId, column: string | number) => Prepared;
-            insertBlocks: (dest: Destination, specs: readonly (BlockSpec | JSONBlock)[]) => Prepared;
-            insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => Prepared;
-            moveBlocks: (ids: readonly BlockId[], dest: Destination) => Prepared;
-            moveBlock: (id: BlockId, dest: Destination) => Prepared;
-            nestBlock: (id: BlockId, parent: BlockId) => Prepared;
-            unNestBlock: (id: BlockId) => Prepared;
-            unNestBlocks: (ids: readonly BlockId[]) => Prepared;
-            liftOut: (id: BlockId, kind: string, { keep, after }?: {
-                keep?: boolean;
-                after?: readonly BlockSpec[];
-            }) => Prepared;
-            placeBeside: (ids: readonly BlockId[], target: BlockId, side: "left" | "right", kind?: string) => Prepared;
-            wrapInLayout: (ids: readonly BlockId[], kind?: string, columns?: number) => Prepared;
-            splitBlock: (id: BlockId, offset: number, newId: BlockId, tail?: SplitTail) => Prepared;
-            mergeBlocks: (fromId: BlockId, intoId: BlockId) => Prepared;
-            mergeBackward: (id: BlockId) => Prepared;
-            mergeForward: (id: BlockId) => Prepared;
-            deleteBlock: (id: BlockId, opts?: {
-                keepChildren?: boolean;
-            }) => Prepared;
-            setBlock: (id: BlockId, value: {
-                type?: string;
-                data?: Record<string, unknown>;
-                content?: ContentItem[];
-                children?: BlockSpec[];
-            }) => Prepared;
-            setBlockType: (id: BlockId, type: string) => Prepared;
-            patchData: (target: DataTarget, patches: readonly DataPatch[]) => Prepared;
-            setBlockData: (id: BlockId, data: Record<string, unknown>) => Prepared;
-            duplicateBlock: (id: BlockId, freshId: (oldId: string, kind: "block" | "inline") => string) => Prepared;
-            insertText: (id: BlockId, offset: number, text: string, marks?: Record<string, unknown>) => Prepared;
-            deleteText: (id: BlockId, offset: number, length: number) => Prepared;
-            formatRange: (id: BlockId, offset: number, length: number, marks: Record<string, unknown>) => Prepared;
-            setMark: (id: BlockId, offset: number, length: number, name: string, value: unknown) => Prepared;
-            unsetMark: (id: BlockId, offset: number, length: number, name: string) => Prepared;
-            clearMarks: (id: BlockId, offset: number, length: number) => Prepared;
-            insertInline: (id: BlockId, offset: number, atom: InlineSpec) => Prepared;
-            removeInline: (id: BlockId, inlineId: string) => Prepared;
-            setInlineData: (id: BlockId, inlineId: string, data: Record<string, unknown>) => Prepared;
-            deleteBlocks: (ids: readonly BlockId[]) => Prepared;
-        };
-        apply: (p: Prepared) => OpResult;
-        compose: (...parts: Prepared[]) => Prepared;
-        transact: <R>(fn: () => R, origin?: unknown) => R;
-        model: {
-            REGISTRY_KEY: string;
-            registryOf: (doc: EngineDoc) => EngineNode;
-            blockNodeOf: (doc: EngineDoc, id: BlockId) => EngineNode | null;
-            liveNodeOf: (doc: EngineDoc, id: BlockId) => EngineNode | null;
-            isLive: (doc: EngineDoc, id: BlockId) => boolean;
-            candidatesOf: (node: EngineNode) => import("./placement/model.js").PlacementCand[];
-            view: (doc: EngineDoc) => ModelView;
-            resolvePlacements: (blocks: Map<BlockId, import("./placement/model.js").BlockRec>, ownerOf?: (b: BlockId) => import("./text/model.js").Owner) => Map<BlockId, import("./placement/model.js").ResolvedPlacement>;
-            childrenIndex: (placements: Map<BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./placement/model.js").DisplayOwnership) => Map<BlockId | null, import("./placement/model.js").ChildSlot[]>;
-            positionInView: (v: ModelView, id: BlockId) => Destination | null;
-            buildInline: (atom: InlineSpec) => EngineNode;
-            isSelfOrDescendant: (placements: Map<BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./text/model.js").Ownership, id: BlockId, maybeAncestor: BlockId) => boolean;
-            ranksAt: (siblings: readonly {
-                rank: string;
-            }[], index: number, count: number, clientId: number, rand?: () => number, run?: boolean) => string[];
-            writePlacement: (doc: EngineDoc, node: EngineNode, p: BlockId | null, r: string) => void;
-            withdrawOnUndo: (doc: EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
-                inserts: {
-                    hasId(id: unknown): boolean;
-                };
-            }) => boolean;
-            materializeSpec: (doc: EngineDoc, sp: BlockSpec, parent: BlockId | null, rank: string) => void;
-            collides: (doc: EngineDoc, specs: readonly BlockSpec[]) => boolean;
-            writeSplit: (doc: EngineDoc, id: BlockId, offset: number, newId: BlockId, tail: SplitTail, place: import("./placement/model.js").PlacementValue) => void;
-            ownText: (doc: EngineDoc, id: BlockId) => {
-                from: unknown;
-                to: number;
-            };
-            insertBlocks: (doc: EngineDoc, dest: Destination, specs: BlockSpec[]) => boolean;
-            insertBlock: (doc: EngineDoc, dest: Destination, spec: BlockSpec) => boolean;
-            restoreBlocks: (doc: EngineDoc, specs: BlockSpec[]) => void;
-            project: (doc: EngineDoc) => import("./index.js").ProjectedDoc;
-            positionOf: (doc: EngineDoc, id: BlockId) => Destination | null;
-            listBlockIds: (doc: EngineDoc) => BlockId[];
-            blockText: (doc: EngineDoc, id: BlockId) => string | null;
-            crdtId: (doc: EngineDoc, id: BlockId) => string | null;
-            resolveBlock: (doc: EngineDoc, id: BlockId) => EngineNode | null;
-        };
-        text: {
-            newNode: (name: string) => EngineNode;
-            resolveAnchor: (doc: EngineDoc, text: EngineNode, anchor: Anchor) => number | null;
-            anchorAt: (text: EngineNode, index: number, assoc: number) => Anchor;
-            openRangeCursor: (text: EngineNode) => import("./text/model.js").RangeCursor;
-            itemsOfRange: (text: EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
-            readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-            computeOwnership: (doc: EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
-            flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
-            ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
-            contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];
-            blockTextOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => string;
-            insertIntoText: (doc: EngineDoc, blocks: unknown, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, payload: string | EngineNode, marks?: Record<string, unknown>) => void;
-            deleteRange: (doc: EngineDoc, blocks: unknown, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, length: number) => void;
-            formatRangeIn: (doc: EngineDoc, blocks: unknown, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, length: number, formats: Record<string, unknown>) => void;
-            purgeStreams: (streams: readonly import("./text/model.js").Stream[]) => void;
-            findAtom: (own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, inlineId: string) => {
-                text: EngineNode;
-                at: number;
-                node: EngineNode;
-            } | null;
-            splitAt: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => import("./text/model.js").MergeClaim[];
-            claimInto: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
-            ownText: (doc: EngineDoc, rec: import("./text/model.js").TextBlockRec) => {
-                from: unknown;
-                to: number;
-            };
-        };
-        runsView: RunView;
-        version: number;
-        block: (id: BlockId) => DocBlock;
-        insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => OpResult;
-        deleteRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
-        replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
-        insertTableRow: (table: string, index: number) => OpResult;
-        deleteTableRows: (rows: readonly string[]) => OpResult;
-        insertTableColumn: (table: string, index: number, width?: number | undefined) => OpResult;
-        deleteTableColumn: (table: string, column: string | number) => OpResult;
-        moveTableColumn: (table: string, column: string | number, to: number) => OpResult;
-        moveTableRows: (rows: readonly string[], to: number) => OpResult;
-        fillTableCell: (row: string, column: string | number) => OpResult;
-        insertBlocks: (dest: Destination, specs: readonly (JSONBlock | BlockSpec)[]) => OpResult;
-        insertBlock: (dest: Destination, spec: JSONBlock | BlockSpec) => OpResult;
-        moveBlocks: (ids: readonly string[], dest: Destination) => OpResult;
-        moveBlock: (id: string, dest: Destination) => OpResult;
-        nestBlock: (id: string, parent: string) => OpResult;
-        unNestBlock: (id: string) => OpResult;
-        unNestBlocks: (ids: readonly string[]) => OpResult;
-        liftOut: (id: string, kind: string, args_2?: {
-            keep?: boolean;
-            after?: readonly BlockSpec[];
-        } | undefined) => OpResult;
-        placeBeside: (ids: readonly string[], target: string, side: "right" | "left", kind?: string | undefined) => OpResult;
-        wrapInLayout: (ids: readonly string[], kind?: string | undefined, columns?: number | undefined) => OpResult;
-        splitBlock: (id: string, offset: number, newId: string, tail?: SplitTail | undefined) => OpResult;
-        mergeBlocks: (fromId: string, intoId: string) => OpResult;
-        mergeBackward: (id: string) => OpResult;
-        mergeForward: (id: string) => OpResult;
-        deleteBlock: (id: string, opts?: {
-            keepChildren?: boolean;
-        } | undefined) => OpResult;
-        setBlock: (id: string, value: {
-            type?: string;
-            data?: Record<string, unknown>;
-            content?: ContentItem[];
-            children?: BlockSpec[];
-        }) => OpResult;
-        setBlockType: (id: string, type: string) => OpResult;
-        patchData: (target: DataTarget, patches: readonly DataPatch[]) => OpResult;
-        setBlockData: (id: string, data: Record<string, unknown>) => OpResult;
-        duplicateBlock: (id: string, freshId: (oldId: string, kind: "block" | "inline") => string) => OpResult;
-        insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => OpResult;
-        deleteText: (id: string, offset: number, length: number) => OpResult;
-        formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => OpResult;
-        setMark: (id: string, offset: number, length: number, name: string, value: unknown) => OpResult;
-        unsetMark: (id: string, offset: number, length: number, name: string) => OpResult;
-        clearMarks: (id: string, offset: number, length: number) => OpResult;
-        insertInline: (id: string, offset: number, atom: InlineSpec) => OpResult;
-        removeInline: (id: string, inlineId: string) => OpResult;
-        setInlineData: (id: string, inlineId: string, data: Record<string, unknown>) => OpResult;
-        deleteBlocks: (ids: readonly string[]) => OpResult;
-        init: (opts?: Parameters<(doc: EngineDoc, opts?: {
-            content?: BlockSpec[];
-            defaultType?: string;
-        }) => void>[1]) => void;
-        seed: (value: JSONBlock[], data?: JsonObj) => void;
-        isInitialized: () => boolean;
-        schemaVersion: () => number | undefined;
-        checkSchema: () => import("./edytor-doc.js").SchemaProblem | null;
-        assertSchema: () => void;
-        dispose: () => void;
-        createUndoManager: (options?: ConstructorParameters<EngineApi["UndoManager"]>[1] & {
-            limit?: number;
-        }) => YUndoManager;
-        releaseHistory: (um: YUndoManager) => void;
-        project: () => import("./index.js").ProjectedDoc;
-        toJSON: () => JSONDoc;
-        blockJSON: (id: string) => JSONBlock;
-        childrenIds: (id: string | null) => string[];
-        childSlots: (parent: BlockId | null) => import("./placement/model.js").ChildSlot[];
-        slotOf: (id: string) => {
-            parent: BlockId | null;
-            rank: string;
-        } | null;
-        positionOf: (id: string) => Destination | null;
-        pathOf: (id: string) => number[] | null;
-        parentOf: (id: string) => string | null;
-        ancestorsOf: (id: string) => string[];
-        listBlockIds: () => string[];
-        blockText: (id: string) => string | null;
-        blockTypeOf: (id: string) => string | undefined;
-        blockDataOf: (id: string) => Record<string, unknown> | undefined;
-        docData: () => JsonObj;
-        dataItemIds: (target: DataTarget, path: readonly string[]) => string[];
-        blockAttribution: (id: string) => BlockAttribution | undefined;
-        crdtId: (id: string) => string | null;
-        resolveBlock: (id: string) => EngineNode | null;
-        displayLength: (id: string) => number;
-        contentItems: (id: string) => ContentItem[];
-        hasBlock: (id: string) => boolean;
-        isVisibleBlock: (id: string) => boolean;
-        order: () => readonly BlockId[];
-        compare: (a: BlockId, b: BlockId) => number;
-        next: (id: string, policy?: OrderPolicy | undefined) => string | null;
-        previous: (id: string, policy?: OrderPolicy | undefined) => string | null;
-        anchorAt: (id: string, offset: number, affinity?: AnchorAffinity | undefined) => DocAnchor | null;
-        resolveAnchor: (anchor: DocAnchor) => {
-            blockId: BlockId;
-            offset: number;
-        } | null;
-        followUndo: (anchor: DocAnchor) => DocAnchor;
-        rolesChanged: () => void;
-        isVoid: (id: string) => boolean;
-        isIsland: (id: string) => boolean;
-        isLines: (id: string) => boolean;
-        isLayout: (id: string) => boolean;
-        isLayoutItem: (id: string) => boolean;
-        besideAt: (id: BlockId, kind?: string) => string;
-        islandOf: (id: string) => string | null;
-        isTable: (id: string) => boolean;
-        isTableRow: (id: string) => boolean;
-        isTableCell: (id: string) => boolean;
-        tableOf: (id: string) => string | null;
-        tableColumns: (id: string) => {
-            id: string;
-            width?: number;
-        }[] | null;
-        tableGrid: (id: string) => {
-            columns: string[];
-            rows: {
-                id: BlockId;
-                cells: (BlockId | null)[];
-            }[];
-        } | null;
-        insideIsland: (id: string) => boolean;
-        canPlace: (ids: readonly BlockId[], parent?: BlockId | null) => boolean;
-        canMerge: (from: BlockId, into: BlockId) => boolean;
-        fits: (parent: BlockId | null, kind: string) => boolean;
-        nestParent: (ids: readonly BlockId[], parent: BlockId) => string;
-        landingOf: (id: BlockId, kind: string, after?: boolean) => {
-            parent: string | null;
-            levels: string[];
-        };
-        defaultChild: (id: string | null) => string;
-        runs: (id: string) => readonly ContentRun[];
-        contentJSON: (id: string) => ({
-            text: string;
-            marks?: Record<string, unknown>;
-        } | {
-            id?: string;
-            type: string;
-            data?: unknown;
-        })[];
-        onChange: (cb: (change: DocChange) => void) => (() => void);
-    };
-    newDoc: (opts?: ConstructorParameters<EngineApi["Doc"]>[0]) => YDoc;
-    keepCopies: (doc: EngineDoc) => void;
-    purge: (doc: EngineDoc, facade: {
-        model: import("./placement/model.js").PlacementModel;
-        text: import("./text/model.js").TextEngine;
-    }, horizon: import("./purge.js").Horizon) => import("./purge.js").PurgeReport;
-    horizonOf: (doc: EngineDoc) => import("./purge.js").Horizon | null;
-    restoreTo: <Plan>(doc: EngineDoc, facade: import("./restore.js").RestoreFacade<Plan>, json: JSONDoc) => import("./restore.js").RestoreReport;
-    model: {
-        REGISTRY_KEY: string;
-        registryOf: (doc: EngineDoc) => EngineNode;
-        blockNodeOf: (doc: EngineDoc, id: BlockId) => EngineNode | null;
-        liveNodeOf: (doc: EngineDoc, id: BlockId) => EngineNode | null;
-        isLive: (doc: EngineDoc, id: BlockId) => boolean;
-        candidatesOf: (node: EngineNode) => import("./placement/model.js").PlacementCand[];
-        view: (doc: EngineDoc) => ModelView;
-        resolvePlacements: (blocks: Map<BlockId, import("./placement/model.js").BlockRec>, ownerOf?: (b: BlockId) => import("./text/model.js").Owner) => Map<BlockId, import("./placement/model.js").ResolvedPlacement>;
-        childrenIndex: (placements: Map<BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./placement/model.js").DisplayOwnership) => Map<BlockId | null, import("./placement/model.js").ChildSlot[]>;
-        positionInView: (v: ModelView, id: BlockId) => Destination | null;
-        buildInline: (atom: InlineSpec) => EngineNode;
-        isSelfOrDescendant: (placements: Map<BlockId, import("./placement/model.js").ResolvedPlacement>, own: import("./text/model.js").Ownership, id: BlockId, maybeAncestor: BlockId) => boolean;
-        ranksAt: (siblings: readonly {
-            rank: string;
-        }[], index: number, count: number, clientId: number, rand?: () => number, run?: boolean) => string[];
-        writePlacement: (doc: EngineDoc, node: EngineNode, p: BlockId | null, r: string) => void;
-        withdrawOnUndo: (doc: EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
-            inserts: {
-                hasId(id: unknown): boolean;
-            };
-        }) => boolean;
-        materializeSpec: (doc: EngineDoc, sp: BlockSpec, parent: BlockId | null, rank: string) => void;
-        collides: (doc: EngineDoc, specs: readonly BlockSpec[]) => boolean;
-        writeSplit: (doc: EngineDoc, id: BlockId, offset: number, newId: BlockId, tail: SplitTail, place: import("./placement/model.js").PlacementValue) => void;
-        ownText: (doc: EngineDoc, id: BlockId) => {
-            from: unknown;
-            to: number;
-        };
-        insertBlocks: (doc: EngineDoc, dest: Destination, specs: BlockSpec[]) => boolean;
-        insertBlock: (doc: EngineDoc, dest: Destination, spec: BlockSpec) => boolean;
-        restoreBlocks: (doc: EngineDoc, specs: BlockSpec[]) => void;
-        project: (doc: EngineDoc) => import("./index.js").ProjectedDoc;
-        positionOf: (doc: EngineDoc, id: BlockId) => Destination | null;
-        listBlockIds: (doc: EngineDoc) => BlockId[];
-        blockText: (doc: EngineDoc, id: BlockId) => string | null;
-        crdtId: (doc: EngineDoc, id: BlockId) => string | null;
-        resolveBlock: (doc: EngineDoc, id: BlockId) => EngineNode | null;
-    };
-    text: {
-        newNode: (name: string) => EngineNode;
-        resolveAnchor: (doc: EngineDoc, text: EngineNode, anchor: Anchor) => number | null;
-        anchorAt: (text: EngineNode, index: number, assoc: number) => Anchor;
-        openRangeCursor: (text: EngineNode) => import("./text/model.js").RangeCursor;
-        itemsOfRange: (text: EngineNode, i0: number, i1: number) => import("./text/model.js").RangeItem[];
-        readSegs: (segs: readonly import("./text/model.js").Seg[], stats?: import("./text/model.js").RangeReadStats) => import("./text/model.js").RangeItem[];
-        computeOwnership: (doc: EngineDoc, given: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>) => import("./text/model.js").Ownership;
-        flatten: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").Seg[];
-        ownedLength: (segs: readonly import("./text/model.js").Seg[]) => number;
-        contentItemsOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => import("./text/model.js").RangeItem[];
-        blockTextOf: (b: import("./text/model.js").BlockId, blocks: unknown, own: import("./text/model.js").Ownership) => string;
-        insertIntoText: (doc: EngineDoc, blocks: unknown, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, payload: string | EngineNode, marks?: Record<string, unknown>) => void;
-        deleteRange: (doc: EngineDoc, blocks: unknown, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, length: number) => void;
-        formatRangeIn: (doc: EngineDoc, blocks: unknown, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, length: number, formats: Record<string, unknown>) => void;
-        purgeStreams: (streams: readonly import("./text/model.js").Stream[]) => void;
-        findAtom: (own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, inlineId: string) => {
-            text: EngineNode;
-            at: number;
-            node: EngineNode;
-        } | null;
-        splitAt: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: import("./text/model.js").Ownership, b: import("./text/model.js").BlockId, offset: number, newId: import("./text/model.js").BlockId, n: number) => import("./text/model.js").MergeClaim[];
-        claimInto: (blocks: ReadonlyMap<import("./text/model.js").BlockId, import("./text/model.js").TextBlockRec>, own: Pick<import("./text/model.js").Ownership, "streamOf">, from: import("./text/model.js").BlockId, into: import("./text/model.js").BlockId) => void;
-        ownText: (doc: EngineDoc, rec: import("./text/model.js").TextBlockRec) => {
-            from: unknown;
-            to: number;
-        };
-    };
-    runs: {
-        attach: (doc: EngineDoc) => RunView;
-    };
-};
-```
-
-#### crdt/engine-api.d.ts#EngineApi
-
-```ts
-export type EngineApi = typeof Engine;
-```
-
-#### crdt/engine-api.d.ts#EngineDeepEvent
-
-```ts
-export interface EngineDeepEvent {
-    readonly target: unknown;
-    readonly currentTarget: unknown;
-    readonly keysChanged?: ReadonlySet<string>;
-    readonly delta?: {
-        toJSON(): unknown;
-    };
-    readonly deltaDeep?: {
-        toJSON(): unknown;
-    };
-    readonly transaction?: unknown;
-}
-```
-
-#### crdt/engine-api.d.ts#EngineDoc
-
-```ts
-export interface EngineDoc {
-    clientID: number;
-    keepReplaced?: ((item: never) => boolean) | null;
-    get(key?: string): EngineNode;
-    transact<T>(f: (transaction: unknown) => T, origin?: unknown): T;
-    on(name: 'update', f: (update: Uint8Array, origin: unknown, doc: EngineDoc, transaction: unknown) => void): void;
-    off(name: 'update', f: (update: Uint8Array, origin: unknown, doc: EngineDoc, transaction: unknown) => void): void;
-    on(name: 'destroy', f: () => void): void;
-    off(name: 'destroy', f: () => void): void;
-    readonly store?: {
-        pendingStructs: null | {
-            missing: Map<number, number>;
-            update: Uint8Array;
-        };
-        pendingDs: null | Uint8Array;
-        getClock(client: number): number;
-    };
-    readonly _transaction?: EngineTransaction | null;
-}
-```
-
-#### crdt/engine-api.d.ts#EngineItemRef
-
-```ts
-export type EngineItemRef = {
-    id?: {
-        client: number;
-        clock: number;
-    };
-    deleted?: boolean;
-    parent?: unknown;
-    parentSub?: string | null;
-} | null;
-```
-
-#### crdt/engine-api.d.ts#EngineNode
-
-```ts
-export interface EngineNode {
-    readonly name: string;
-    readonly doc: unknown | null;
-    readonly length: number;
-    readonly _item: EngineItemRef;
-    getAttr(key: string): unknown;
-    setAttr(key: string, value: unknown): unknown;
-    deleteAttr(key: string): void;
-    forEachAttr(f: (value: unknown, key: string, node: EngineNode) => void): void;
-    attrKeys(): IterableIterator<string>;
-    insert(index: number, content: unknown, format?: Record<string, unknown>): void;
-    delete(index: number, length?: number): void;
-    format(index: number, length: number, formats: Record<string, unknown>): void;
-    get(index: number): unknown;
-    slice(start?: number, end?: number): unknown[];
-    toArray(): unknown[];
-    readonly delta: {
-        toJSON(): {
-            children?: unknown[];
-        };
-    };
-    toDelta(opts?: {
-        deep?: boolean;
-    }): {
-        toJSON(): unknown;
-    };
-    observeDeep(f: (event: EngineDeepEvent, transaction: unknown) => void): unknown;
-    unobserveDeep(f: (event: EngineDeepEvent, transaction: unknown) => void): void;
-    on(name: 'delta', f: (delta: unknown, origin: unknown) => void): void;
-}
-```
-
-#### crdt/engine-api.d.ts#EngineTransaction
-
-```ts
-export interface EngineTransaction {
-    changed?: Map<unknown, Set<string | null>>;
-}
-```
-
 #### crdt/engine-api.d.ts#YDoc
 
 ```ts
 export type YDoc = InstanceType<typeof Y.Doc>;
 ```
 
-#### crdt/engine-api.d.ts#YUndoManager
+#### crdt/flow.d.ts#Flow
 
 ```ts
-export type YUndoManager = InstanceType<typeof Y.UndoManager>;
+export type Flow = {
+    lines: FlowLine[];
+    whole?: boolean;
+};
 ```
 
-#### crdt/engine.d.ts#EngineSymbol
+#### crdt/flow.d.ts#FlowLine
 
 ```ts
-export type EngineSymbol = 'Doc' | 'Node' | 'UndoManager' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'decodeUpdateV2' | 'UpdateEncoderV1' | 'writeIdSet' | 'mergeUpdates' | 'applyUpdateV2' | 'encodeStateAsUpdateV2' | 'mergeUpdatesV2' | 'convertUpdateFormatV2ToV1' | 'UpdateDecoderV1' | 'UpdateEncoderV2' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'createRelativePositionFromTypeIndex' | 'createRelativePositionFromJSON' | 'createAbsolutePositionFromRelativePosition' | 'relativePositionToJSON' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'createIdMap' | 'insertIntoIdMap' | 'createContentMap' | 'decodeContentMap' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'ContentAny' | 'createID';
+export type FlowLine = Omit<BlockSpec, 'type'> & {
+    type?: string;
+};
 ```
 
-#### crdt/engine.d.ts#Y
+#### crdt/flow.d.ts#FlowTarget
 
 ```ts
-declare const Y: Pick<typeof V, EngineSymbol>;
+export type FlowTarget = DocPosition | {
+    replace: readonly BlockId[];
+} | {
+    slot: Destination;
+};
+```
+
+#### crdt/flow.d.ts#FlowView
+
+```ts
+export type FlowView = RangeView & {
+    itemKind?: (parent: BlockId) => string | undefined;
+    header?: (id: BlockId) => boolean | 'closed';
+};
 ```
 
 #### crdt/nodes.d.ts#DocBlock
@@ -2149,7 +1623,7 @@ declare const Y: Pick<typeof V, EngineSymbol>;
 ```ts
 export type DocBlock = {
     readonly id: BlockId;
-    readonly document: EdytorDoc;
+    readonly document: DocumentOperations;
     readonly attribution: BlockAttribution | undefined;
     readonly items: readonly ContentItem[];
     readonly length: number;
@@ -2180,7 +1654,7 @@ export type DocBlock = {
     }): OpResult;
     setType(type: string): OpResult;
     setData(data: Record<string, unknown>): OpResult;
-    set(value: Parameters<EdytorDoc['setBlock']>[1]): OpResult;
+    set(value: Parameters<DocumentWrites['setBlock']>[1]): OpResult;
     duplicate(freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
 };
 ```
@@ -2191,20 +1665,150 @@ export type DocBlock = {
 export type NodeRef = DocBlock | BlockId | null;
 ```
 
+#### crdt/operations.d.ts#DocumentOperations
+
+```ts
+export interface DocumentOperations extends DocumentWrites, DocumentReads {
+    readonly prepare: {
+        readonly [K in keyof DocumentWrites]: (...args: Parameters<DocumentWrites[K]>) => Prepared;
+    };
+    apply(plan: Prepared): OpResult;
+    compose(...parts: Prepared[]): Prepared;
+    transact<R>(fn: () => R, origin?: unknown): R;
+    block(id: BlockId): DocBlock;
+    onChange(listener: (change: DocChange) => void): () => void;
+    readonly version: number;
+}
+```
+
+#### crdt/operations.d.ts#DocumentReads
+
+```ts
+export interface DocumentReads {
+    toJSON(): JSONDoc;
+    docData(): JsonObj;
+    dataItemIds(target: DataTarget, path: readonly string[]): string[];
+    project(): ProjectedDoc;
+    blockJSON(id: BlockId): JSONBlock;
+    childrenIds(parent: BlockId | null): BlockId[];
+    parentOf(id: BlockId): BlockId | null;
+    ancestorsOf(id: BlockId): BlockId[];
+    positionOf(id: BlockId): Destination | null;
+    pathOf(id: BlockId): number[] | null;
+    blockTypeOf(id: BlockId): string | undefined;
+    blockDataOf(id: BlockId): Record<string, unknown> | undefined;
+    blockText(id: BlockId): string | null;
+    contentItems(id: BlockId): ContentItem[];
+    displayLength(id: BlockId): number;
+    runs(id: BlockId): readonly ContentRun[];
+    hasBlock(id: BlockId): boolean;
+    isVisibleBlock(id: BlockId): boolean;
+    listBlockIds(): BlockId[];
+    blockAttribution(id: BlockId): BlockAttribution | undefined;
+    isVoid(id: BlockId): boolean;
+    isIsland(id: BlockId): boolean;
+    isLines(id: BlockId): boolean;
+    islandOf(id: BlockId): BlockId | null;
+    insideIsland(id: BlockId): boolean;
+    isLayout(id: BlockId): boolean;
+    isLayoutItem(id: BlockId): boolean;
+    besideAt(id: BlockId, kind?: string): BlockId;
+    isTable(id: BlockId): boolean;
+    isTableRow(id: BlockId): boolean;
+    isTableCell(id: BlockId): boolean;
+    tableOf(id: BlockId): BlockId | null;
+    tableColumns(id: BlockId): {
+        id: string;
+        width?: number;
+    }[] | null;
+    tableGrid(id: BlockId): {
+        columns: string[];
+        rows: {
+            id: BlockId;
+            cells: (BlockId | null)[];
+        }[];
+    } | null;
+    order(): readonly BlockId[];
+    compare(a: BlockId, b: BlockId): number;
+    next(id: BlockId, policy?: OrderPolicy): BlockId | null;
+    previous(id: BlockId, policy?: OrderPolicy): BlockId | null;
+    canPlace(ids: readonly BlockId[], parent?: BlockId | null): boolean;
+    canMerge(from: BlockId, into: BlockId): boolean;
+    fits(parent: BlockId | null, kind: string): boolean;
+    nestParent(ids: readonly BlockId[], parent: BlockId): BlockId;
+    landingOf(id: BlockId, kind: string, after?: boolean): {
+        parent: BlockId | null;
+        levels: BlockId[];
+    };
+    anchorAt(id: BlockId, offset: number, affinity?: AnchorAffinity): DocAnchor | null;
+    resolveAnchor(anchor: DocAnchor): {
+        blockId: BlockId;
+        offset: number;
+    } | null;
+}
+```
+
+#### crdt/operations.d.ts#DocumentWrites
+
+```ts
+export interface DocumentWrites {
+    insertBlock(dest: Destination, spec: JSONBlock | BlockSpec): OpResult;
+    insertBlocks(dest: Destination, specs: readonly (JSONBlock | BlockSpec)[]): OpResult;
+    moveBlock(id: BlockId, dest: Destination): OpResult;
+    moveBlocks(ids: readonly BlockId[], dest: Destination): OpResult;
+    nestBlock(id: BlockId, parent: BlockId): OpResult;
+    unNestBlock(id: BlockId): OpResult;
+    unNestBlocks(ids: readonly BlockId[]): OpResult;
+    liftOut(id: BlockId, kind: string, options?: {
+        keep?: boolean;
+        after?: readonly BlockSpec[];
+    }): OpResult;
+    wrapInLayout(ids: readonly BlockId[], kind?: string, columns?: number): OpResult;
+    placeBeside(ids: readonly BlockId[], target: BlockId, side: 'left' | 'right', kind?: string): OpResult;
+    splitBlock(id: BlockId, offset: number, newId: BlockId, tail?: SplitTail): OpResult;
+    mergeBlocks(fromId: BlockId, intoId: BlockId): OpResult;
+    mergeBackward(id: BlockId): OpResult;
+    mergeForward(id: BlockId): OpResult;
+    deleteBlock(id: BlockId, options?: {
+        keepChildren?: boolean;
+    }): OpResult;
+    deleteBlocks(ids: readonly BlockId[]): OpResult;
+    setBlock(id: BlockId, value: {
+        type?: string;
+        data?: Record<string, unknown>;
+        content?: ContentItem[];
+        children?: BlockSpec[];
+    }): OpResult;
+    setBlockType(id: BlockId, type: string): OpResult;
+    patchData(target: DataTarget, patches: readonly DataPatch[]): OpResult;
+    setBlockData(id: BlockId, data: Record<string, unknown>): OpResult;
+    duplicateBlock(id: BlockId, freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
+    insertTableRow(table: BlockId, index: number): OpResult;
+    deleteTableRows(rows: readonly BlockId[]): OpResult;
+    insertTableColumn(table: BlockId, index: number, width?: number): OpResult;
+    deleteTableColumn(table: BlockId, column: string | number): OpResult;
+    moveTableColumn(table: BlockId, column: string | number, to: number): OpResult;
+    moveTableRows(rows: readonly BlockId[], to: number): OpResult;
+    fillTableCell(row: BlockId, column: string | number): OpResult;
+    insertText(id: BlockId, offset: number, text: string, marks?: Record<string, unknown>): OpResult;
+    deleteText(id: BlockId, offset: number, length: number): OpResult;
+    formatRange(id: BlockId, offset: number, length: number, marks: Record<string, unknown>): OpResult;
+    setMark(id: BlockId, offset: number, length: number, name: string, value: unknown): OpResult;
+    unsetMark(id: BlockId, offset: number, length: number, name: string): OpResult;
+    clearMarks(id: BlockId, offset: number, length: number): OpResult;
+    insertInline(id: BlockId, offset: number, atom: InlineSpec): OpResult;
+    removeInline(id: BlockId, inlineId: string): OpResult;
+    setInlineData(id: BlockId, inlineId: string, data: Record<string, unknown>): OpResult;
+    deleteRange(from: DocPosition, to: DocPosition, view?: RangeView): OpResult;
+    replaceRange(from: DocPosition, to: DocPosition, view?: RangeView): OpResult;
+    insertFlow(target: FlowTarget, flow: Flow, view?: FlowView): OpResult;
+}
+```
+
 #### crdt/placement/model.d.ts#BlockId
 
 ```ts
 export type BlockId = string;
-```
-
-#### crdt/placement/model.d.ts#BlockRec
-
-```ts
-export type BlockRec = TextBlockRec & {
-    type: string;
-    data: unknown;
-    cands: PlacementCand[];
-};
 ```
 
 #### crdt/placement/model.d.ts#BlockSpec
@@ -2216,16 +1820,6 @@ export type BlockSpec = {
     data?: Record<string, unknown>;
     content?: ContentItem[];
     children?: BlockSpec[];
-};
-```
-
-#### crdt/placement/model.d.ts#ChildSlot
-
-```ts
-export type ChildSlot = {
-    id: BlockId;
-    rank: string;
-    reset?: BlockId;
 };
 ```
 
@@ -2253,30 +1847,6 @@ export type Destination = {
 };
 ```
 
-#### crdt/placement/model.d.ts#DisplayOwnership
-
-```ts
-export type DisplayOwnership = Ownership & {
-    childless?: (b: BlockId) => boolean;
-    island?: (b: BlockId) => boolean;
-    container?: (b: BlockId) => boolean;
-    lined?: (b: BlockId) => boolean;
-    passes?: (b: BlockId) => boolean;
-    sheds?: (owner: BlockId, child: BlockId) => boolean;
-    textRank?: (id: BlockId, parent: BlockId | null, rank: string) => string;
-    slotRank?: (owner: BlockId, id: BlockId, rank: string) => string | undefined;
-};
-```
-
-#### crdt/placement/model.d.ts#DocOrder
-
-```ts
-export type DocOrder = {
-    ids: readonly BlockId[];
-    at: ReadonlyMap<BlockId, number>;
-};
-```
-
 #### crdt/placement/model.d.ts#InlineSpec
 
 ```ts
@@ -2284,32 +1854,6 @@ export type InlineSpec = {
     id: string;
     type: string;
     data?: Record<string, unknown>;
-};
-```
-
-#### crdt/placement/model.d.ts#ModelView
-
-```ts
-export type ModelView = {
-    blocks: Map<BlockId, BlockRec>;
-    own: DisplayOwnership;
-    placements: Map<BlockId, ResolvedPlacement>;
-    kids: Map<BlockId | null, ChildSlot[]>;
-    order: DocOrder;
-    intern: <T>(value: T) => T;
-    displays: (owner: BlockId) => readonly BlockId[];
-};
-```
-
-#### crdt/placement/model.d.ts#PlacementCand
-
-```ts
-export type PlacementCand = {
-    key: string;
-    seq: number;
-    client: number;
-    p: BlockId | null;
-    r: string;
 };
 ```
 
@@ -2326,12 +1870,11 @@ export type ProjectedBlock = {
 };
 ```
 
-#### crdt/placement/model.d.ts#ResolvedPlacement
+#### crdt/placement/model.d.ts#ProjectedDoc
 
 ```ts
-export type ResolvedPlacement = {
-    parent: BlockId | null;
-    rank: string;
+export type ProjectedDoc = {
+    children: ProjectedBlock[];
 };
 ```
 
@@ -2393,6 +1936,14 @@ export type DocPosition = {
 };
 ```
 
+#### crdt/rangeDelete.d.ts#RangeView
+
+```ts
+export type RangeView = {
+    hidden?: (id: BlockId, removed?: ReadonlySet<BlockId>) => boolean;
+};
+```
+
 #### crdt/text/marks.d.ts#MarkEdge
 
 ```ts
@@ -2411,114 +1962,6 @@ export type Anchor = {
 };
 ```
 
-#### crdt/text/model.d.ts#BlockId
-
-```ts
-export type BlockId = string;
-```
-
-#### crdt/text/model.d.ts#Claim
-
-```ts
-export type Claim = {
-    m: BlockId;
-    stamp: Stamp;
-    seqIndex: number;
-    a?: ItemRef;
-    r?: ItemRef | null;
-    holder?: BlockId;
-};
-```
-
-#### crdt/text/model.d.ts#DEAD
-
-```ts
-declare const DEAD: unique symbol;
-```
-
-#### crdt/text/model.d.ts#ItemRef
-
-```ts
-export type ItemRef = {
-    c: number;
-    k: number;
-};
-```
-
-#### crdt/text/model.d.ts#Owner
-
-```ts
-export type Owner = BlockId | typeof DEAD;
-```
-
-#### crdt/text/model.d.ts#Ownership
-
-```ts
-export type Ownership = {
-    ownerOf: (b: BlockId) => Owner;
-    hidden: (b: BlockId) => boolean;
-    top: (m: BlockId) => BlockId | undefined;
-    streamOf: (b: BlockId) => Stream | undefined;
-    streamsIn: (home: BlockId) => readonly Stream[];
-    streamAt: (home: BlockId, i: number) => Stream | undefined;
-    display: (b: BlockId) => Seg[] | null;
-    claimsOf?: (b: BlockId) => readonly Claim[];
-};
-```
-
-#### crdt/text/model.d.ts#Seg
-
-```ts
-export type Seg = {
-    t: BlockId;
-    text: EngineNode;
-    block: BlockId;
-    i0: number;
-    i1: number;
-    path: {
-        holder: BlockId;
-        entry: number;
-    }[];
-};
-```
-
-#### crdt/text/model.d.ts#Stamp
-
-```ts
-export type Stamp = {
-    c: number;
-    k: number;
-};
-```
-
-#### crdt/text/model.d.ts#Stream
-
-```ts
-export type Stream = {
-    block: BlockId;
-    home: BlockId;
-    text: EngineNode;
-    start: number;
-    end: number;
-    inert: number[];
-};
-```
-
-#### crdt/text/model.d.ts#TextBlockRec
-
-```ts
-export type TextBlockRec = {
-    id: BlockId;
-    node: EngineNode;
-    deleted: boolean;
-    n: unknown;
-    content: EngineNode | undefined;
-    claimsNode: EngineNode | undefined;
-    claims: Claim[];
-    listClaims?: Claim[];
-};
-```
-
 #### crdt/text/runs.d.ts#ContentRun
 
 ```ts
@@ -2531,94 +1974,6 @@ export type ContentRun = {
     id: string;
     type: string;
     data?: Record<string, unknown>;
-};
-```
-
-#### crdt/text/runs.d.ts#DisplayRoles
-
-```ts
-export type DisplayRoles = {
-    childless: (type: string) => boolean;
-    island: (type: string) => boolean;
-    container: (type: string) => boolean;
-    rendersContent: (type: string) => boolean;
-    defaultChild: (parentType: string | null) => string;
-    line: (islandType: string) => string | undefined;
-    lineKinds: () => Iterable<string>;
-    layout: (type: string) => string | undefined;
-    layoutKinds: () => Iterable<string>;
-    table: (type: string) => string | undefined;
-    tableKinds: () => Iterable<string>;
-};
-```
-
-#### crdt/text/runs.d.ts#Folded
-
-```ts
-export type Folded = {
-    touched: Map<BlockId, Set<string>>;
-    wrote: boolean;
-};
-```
-
-#### crdt/text/runs.d.ts#IndexReport
-
-```ts
-export type IndexReport = {
-    added: Map<BlockId, ProjectedBlock>;
-    removed: Set<BlockId>;
-    moved: Set<BlockId>;
-    meta: Map<BlockId, {
-        type: string;
-        data?: Record<string, unknown>;
-    }>;
-    content: Map<BlockId, readonly ContentRun[]>;
-    order: Map<BlockId | null, readonly BlockId[]>;
-    data?: Record<string, unknown>;
-};
-```
-
-#### crdt/text/runs.d.ts#RunView
-
-```ts
-export type RunView = {
-    version: () => number;
-    runs: (id: BlockId) => readonly ContentRun[];
-    contentItems: (id: BlockId) => ContentItem[];
-    contentJSON: (id: BlockId) => ({
-        text: string;
-        marks?: Record<string, unknown>;
-    } | {
-        id?: string;
-        type: string;
-        data?: unknown;
-    })[];
-    view: (transaction?: unknown) => ModelView;
-    project: (root?: BlockId) => ProjectedBlock[];
-    roles: (roles: DisplayRoles) => void;
-    displayType: (id: BlockId) => string | undefined;
-    dissolved: (id: BlockId) => boolean;
-    track: () => {
-        end: () => Folded;
-    };
-    onReport: (cb: (report: IndexReport, origin: unknown, local: boolean) => void) => () => void;
-    debug: RunViewDebug;
-};
-```
-
-#### crdt/text/runs.d.ts#RunViewDebug
-
-```ts
-export type RunViewDebug = {
-    recomputes: number;
-    recomputed: Set<BlockId>;
-    readonly itemsWalked: number;
-    readonly markersWalked: number;
-    readonly frames: number;
-    readonly folds: number;
-    readonly foldedPairs: number;
-    readonly foldedStructs: number;
-    reset: () => void;
 };
 ```
 

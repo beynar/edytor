@@ -1,16 +1,16 @@
 ---
 title: Editing programmatically
-description: Change the document from code with handle commands or facade operations, read their results, group writes with transact, and move blocks.
+description: Change the document from code with handle commands or the document's operations, read their results, group writes with transact, and move blocks.
 icon: terminal
 ---
 
-You can change a document from code in two ways: **handle commands**, which behave like user edits, and **facade operations**, which write the document directly. This page shows both, how to read their results, and how to move blocks.
+You can change a document from code in two ways: **handle commands**, which behave like user edits, and **document operations**, which write the document directly. This page shows both, how to read their results, and how to move blocks.
 
 ## Commands or operations
 
 | | Handle commands | Facade operations |
 | --- | --- | --- |
-| Called on | `Block`, `Text`, the editor | `edytor.document.facade` (or `document.facade` without a view) |
+| Called on | `Block`, `Text`, the editor | `edytor.document` (or `document` without a view) |
 | Addresses | Handles and offsets inside a text segment | Block ids and block offsets |
 | Plugin hooks (`onBeforeOperation`, `onAfterOperation`) | Yes: plugins can refuse or replace them | No |
 | Normalization (`normalizeContent`, `normalizeChildren`) | Yes | No |
@@ -18,7 +18,7 @@ You can change a document from code in two ways: **handle commands**, which beha
 | Result | `edytor.dispatcher.last` (a `CommandResult`), whose `value` is the return value | An `OpResult` |
 | Needs a view | Yes | No, works headlessly |
 
-Use handle commands for anything a user could have done, so your plugins see it. Use facade operations for imports, migrations, server-side edits and code that must bypass plugins.
+Use handle commands for anything a user could have done, so your plugins see it. Use document operations for imports, migrations, server-side edits and code that must bypass plugins.
 
 ## Handle commands
 
@@ -105,7 +105,7 @@ Commands that create blocks also return handles: `insertBlockAfter`, `splitBlock
 
 ## Facade operations
 
-`edytor.document.facade` is the raw path: it writes the document directly, with no plugin hooks, no normalization, no undo policy and no readonly check (a readonly view's app can still write through it). It addresses blocks by id and uses block offsets, where an inline block counts as one character. Every operation returns an `OpResult`:
+`edytor.document` is the raw path: it writes the document directly, with no plugin hooks, no normalization, no undo policy and no readonly check (a readonly view's app can still write through it). It addresses blocks by id and uses block offsets, where an inline block counts as one character. Every operation returns an `OpResult`:
 
 ```ts title="op-result.ts" check
 type OpResult = {
@@ -115,31 +115,31 @@ type OpResult = {
 };
 ```
 
-```ts title="facade-operations.ts" check
-const { facade } = edytor.document;
+```ts title="document-operations.ts" check
+const { document } = edytor;
 const id = 'intro';
 
-facade.insertText(id, 0, 'Hello ', { bold: true });
-facade.deleteText(id, 0, 6);
-facade.formatRange(id, 0, 5, { italic: true, bold: null }); // null removes a mark
-facade.insertBlock(
+document.insertText(id, 0, 'Hello ', { bold: true });
+document.deleteText(id, 0, 6);
+document.formatRange(id, 0, 5, { italic: true, bold: null }); // null removes a mark
+document.insertBlock(
 	{ parent: null, index: 0 }, // null parent = the root
 	{ id: 'title', type: 'heading', data: { level: 'h1' }, content: [{ text: 'Title' }] }
 );
-facade.moveBlock('title', { parent: null, index: 2 });
-facade.setBlockType(id, 'quote');
-facade.deleteBlock(id); // { keepChildren: false } removes the subtree
+document.moveBlock('title', { parent: null, index: 2 });
+document.setBlockType(id, 'quote');
+document.deleteBlock(id); // { keepChildren: false } removes the subtree
 ```
 
-Facade inserts (`insertBlock`, `insertBlocks`) take the `JSONBlock` shape that `edytor.value` and `facade.toJSON()` use, ids kept and minted where you leave them out, or a `BlockSpec` (an `id` on every block, content items with a `kind`: `{ kind: 'text', text, marks? }` or `{ kind: 'inline', id, type, data? }`). To copy a block, mint every id with `toBlockSpec(json, { freshIds: true })`:
+Document inserts (`insertBlock`, `insertBlocks`) take the `JSONBlock` shape that `edytor.value` and `document.toJSON()` use, ids kept and minted where you leave them out, or a `BlockSpec` (an `id` on every block, content items with a `kind`: `{ kind: 'text', text, marks? }` or `{ kind: 'inline', id, type, data? }`). To copy a block, mint every id with `toBlockSpec(json, { freshIds: true })`:
 
 ```ts title="copy-block.ts" check
 import { toBlockSpec } from 'edytor/crdt/edytor';
 
-facade.insertBlock({ parent: null, index: 1 }, toBlockSpec(facade.blockJSON('title'), { freshIds: true }));
+doc.insertBlock({ parent: null, index: 1 }, toBlockSpec(doc.blockJSON('title'), { freshIds: true }));
 ```
 
-`block.model` is a block's node on the facade: `block.model.setData(data)` writes `data` directly, with no plugin hooks and regardless of `readonly`. An empty operation (`insertText(id, 0, '')`) is `noop`; an unknown or deleted target is `refused`.
+`block.model` is a block's node in the document: `block.model.setData(data)` writes `data` directly, with no plugin hooks and regardless of `readonly`. An empty operation (`insertText(id, 0, '')`) is `noop`; an unknown or deleted target is `refused`.
 
 The full list (`splitBlock`, `mergeBlocks`, `deleteBlocks`, `deleteRange`, `insertFlow`, `insertInline`, `duplicateBlock`, the `prepare`/`apply` two-phase form, …) is in [the document API reference](/docs/reference/document-api).
 
@@ -151,7 +151,7 @@ The full list (`splitBlock`, `mergeBlocks`, `deleteBlocks`, `deleteRange`, `inse
 edytor.transact(() => {
 	const heading = edytor.idToBlock.get('title')!;
 	heading.setBlock({ value: { data: { level: 'h2' } } });
-	edytor.document.facade.insertText('intro', 0, 'Updated: ');
+	edytor.document.insertText('intro', 0, 'Updated: ');
 });
 ```
 

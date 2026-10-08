@@ -361,13 +361,13 @@ export class Edytor {
 	private lens?: ViewDoc;
 	/**
 	 * The document as this view reads and writes it (the virtual paragraph's
-	 * lens). The public raw path is `edytor.document.facade`: its writes skip
+	 * lens). The public raw path is the document's own operations (`edytor.document.insertBlock(…)`): its writes skip
 	 * the dispatcher (no hooks, no readonly admission, no undo policy).
 	 * @internal
 	 */
 	get facade(): ViewDoc {
 		return (this.lens ??= virtualLens(
-			this.document.facade,
+			this.document.raw,
 			() => this.document.ready,
 			() => this.document.defaultChild(null),
 			(kind) => ({

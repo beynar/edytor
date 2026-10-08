@@ -230,7 +230,7 @@ A D1 row holds at most 2 MB; use R2 for larger documents.
 
 ## Edit on the server
 
-`transact(fn)` runs `fn` with the document's [facade](/docs/reference/document-api) in one transaction, stores the edit and broadcasts it to every connected socket, like a client's edit. It returns what `fn` returns. `fn` runs synchronously: writes after an `await` in it are not part of the transaction. A `transact` called inside `fn` joins the outer one.
+`transact(fn)` runs `fn` with the document's [operations](/docs/reference/document-api) (`DocumentOperations`, also the room's `facade`) in one transaction, stores the edit and broadcasts it to every connected socket, like a client's edit. It returns what `fn` returns. `fn` runs synchronously: writes after an `await` in it are not part of the transaction. A `transact` called inside `fn` joins the outer one.
 
 **Throws and storage faults.**
 

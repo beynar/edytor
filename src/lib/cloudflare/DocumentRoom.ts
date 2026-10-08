@@ -130,7 +130,7 @@ import type {
 import type { AwarenessEntry } from '../crdt/protocol.js';
 import type {
 	DocumentSemanticsConfig,
-	EdytorDoc,
+	DocumentOperations,
 	JSONBlock,
 	JSONDoc,
 	YDoc
@@ -549,7 +549,7 @@ export type FrameValidation = {
 	/** A block as it is now (`null`: it does not show). */
 	after: (id: string) => ValidatedBlock | null;
 	/** The live document. Read it; never write from `validate` (defer a `transact` instead). */
-	facade: EdytorDoc;
+	facade: DocumentOperations;
 };
 
 /** The room's comment threads (`comments` of {@link AttachRoomOptions}). */
@@ -827,7 +827,7 @@ export class AttachedDocument {
 	 * first drops a direct write whose append failed (`heal`), so the next
 	 * write through it is stored.
 	 */
-	get facade(): EdytorDoc {
+	get facade(): DocumentOperations {
 		return this.room.facade;
 	}
 
@@ -847,7 +847,7 @@ export class AttachedDocument {
 	 * without writing: the engine would queue the write until that one
 	 * ends, so it could not be stored before returning.
 	 */
-	transact<T>(fn: (facade: EdytorDoc) => T): T {
+	transact<T>(fn: (facade: DocumentOperations) => T): T {
 		return this.room.transact(fn);
 	}
 
@@ -1480,14 +1480,14 @@ export class DocumentRoom<
 		return this.room.reset();
 	}
 	/** Server-side edit — see {@link AttachedDocument.transact}. */
-	transact<T>(fn: (facade: EdytorDoc) => T): T {
+	transact<T>(fn: (facade: DocumentOperations) => T): T {
 		return this.room.transact(fn);
 	}
 	/** The document as JSON. */
 	read(): JSONDoc {
 		return this.room.read();
 	}
-	get facade(): EdytorDoc {
+	get facade(): DocumentOperations {
 		return this.room.facade;
 	}
 	get doc(): YDoc | null {

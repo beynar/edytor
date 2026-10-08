@@ -9,7 +9,7 @@ The `edytor` package has five code entry points and one stylesheet. Only the roo
 | Import | Contains | Runs in |
 | --- | --- | --- |
 | `edytor` | The `<Edytor>` component, bundled plugins, handles, the document API, sync factories | A Svelte bundler (SvelteKit, Vite) |
-| `edytor/crdt/edytor` | The document API and the facade's full vocabulary, `bindCrdt`, awareness, attribution, migration | Browser, Node 22+, Workers |
+| `edytor/crdt/edytor` | The document API and its full vocabulary, `bindCrdt`, awareness, attribution, migration | Browser, Node 22+, Workers |
 | `edytor/protocol` | The wire vocabulary: frames, message types, codecs, generation records, the admission gates, the raw provider classes | Browser, Node 22+, Workers |
 | `edytor/crdt` | The vendored CRDT engine itself (Yjs v14 fork) | Browser, Node 22+, Workers |
 | `edytor/cloudflare` | `DocumentRoom` (a Durable Object), `attachRoom` (for your own Durable Object), `routeDocumentSocket` with `requestedReplica`, `routeDocumentHistory` (the [version history](/docs/server/history)), `routeDocumentComments` (the [comment threads](/docs/server/comments)), and `closedSocket` | Cloudflare Workers only |
@@ -39,7 +39,7 @@ import {
 } from 'edytor';
 ```
 
-It also exports what a Svelte app needs of `edytor/crdt/edytor`: the document factories and class, their errors (`SchemaMismatchError`, `SyncRefusedError`, …), `defaultSemantics` and `semanticsOf`, the JSON types (`JSONDoc`, `JSONBlock`, `JSONText`, `JSONInlineBlock`) and the command results (`OpResult`, `Plan`, `Prepared`, `DocChange`). The rest of the facade's vocabulary (`BlockSpec`, `Destination`, `ProjectedDoc`, `DocAnchor`, `toBlockSpec`, …) is imported from `edytor/crdt/edytor`, which a Svelte app can import too.
+It also exports what a Svelte app needs of `edytor/crdt/edytor`: the document factories and class, their errors (`SchemaMismatchError`, `SyncRefusedError`, …), `defaultSemantics` and `semanticsOf`, the JSON types (`JSONDoc`, `JSONBlock`, `JSONText`, `JSONInlineBlock`) and the command results (`OpResult`, `Plan`, `Prepared`, `DocChange`). The rest of the document's vocabulary (`BlockSpec`, `Destination`, `ProjectedDoc`, `DocAnchor`, `toBlockSpec`, …) is imported from `edytor/crdt/edytor`, which a Svelte app can import too.
 
 Because it contains `.svelte` files, the root entry needs a bundler that compiles Svelte. Plain Node cannot import it.
 
@@ -56,18 +56,18 @@ const document = createDocument({
 	actor: { id: 'user-42', name: 'Ada' }
 });
 
-const [block] = document.facade.project().children;
-document.transact(() => document.facade.insertText(block.id, 5, ' world'));
+const [block] = document.project().children;
+document.transact(() => document.insertText(block.id, 5, ' world'));
 
 const saved = document.encode(); // Uint8Array
 const restored = loadDocument(saved);
-console.log(restored.facade.toJSON());
+console.log(restored.toJSON());
 ```
 
 It exports:
 
 - `createDocument`, `loadDocument`, `attachDocument` and the `EdytorDocument` class. See [the document reference](/docs/reference/document-api).
-- The JSON and facade types: `JSONDoc`, `JSONBlock`, `JSONText`, `JSONInlineBlock`, `BlockSpec`, `Destination`, `OpResult`, `DocChange`, `DocAnchor`, `DocPosition`, `RangeView`, `FlowView`, `EdytorDoc`, and `toBlockSpec`.
+- The JSON and document types: `JSONDoc`, `JSONBlock`, `JSONText`, `JSONInlineBlock`, `BlockSpec`, `Destination`, `OpResult`, `DocChange`, `DocAnchor`, `DocPosition`, `RangeView`, `FlowView`, `EdytorDoc`, and `toBlockSpec`.
 - The block roles: `defaultSemantics`, `semanticsOf` and the bundled kinds' tables.
 - `Awareness`, the sync types (`EdytorSync`, `WebsocketSyncOptions`, …), the errors a load or a sync refuses with, attribution types and the v13 migration types.
 - `bindCrdt(Y)`, which binds the providers, migration and sync protocol to an engine you pass in.

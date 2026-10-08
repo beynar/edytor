@@ -23,7 +23,7 @@ There is no separate renderer: readonly is the editable editor with `contentedit
 - **Selecting text** with the mouse. The selection is tracked as in an editable view: `edytor.selection.value` and `onSelectionChange` follow it.
 - **Copying.** <kbd>Mod</kbd>+<kbd>C</kbd> writes the same clipboard formats as an editable view (Edytor's own format, HTML and plain text). See [Clipboard](/docs/editor/clipboard).
 - **Keys the browser handles**: arrows, <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>PageUp</kbd>/<kbd>PageDown</kbd>, <kbd>Escape</kbd>, <kbd>Mod</kbd>+<kbd>A</kbd>, <kbd>Mod</kbd>+<kbd>C</kbd> and <kbd>Mod</kbd>+<kbd>F</kbd> (the browser's find, also with the [find plugin](/docs/plugins/find) listed) keep their native behavior.
-- **Live updates.** The view re-renders when the document changes: collaborators' edits, and facade operations your code runs on the document.
+- **Live updates.** The view re-renders when the document changes: collaborators' edits, and the document operations your code runs.
 - **Controls inside blocks** (links, buttons and inputs a snippet renders) stay interactive.
 
 ## What is turned off

@@ -25,6 +25,7 @@
 import type { BlockId, BlockSpec, ContentItem, InlineSpec, SplitTail } from './placement/model.js';
 import type { ContentRun } from './text/runs.js';
 import type { EdytorDoc, OpResult } from './edytor-doc.js';
+import type { DocumentOperations, DocumentWrites } from './operations.js';
 import type { BlockAttribution } from './attribution/block.js';
 
 /** A node argument: another block handle, a raw block id, or `null` for the root list. */
@@ -46,7 +47,7 @@ export type DocBlock = {
 	/** Stable caller-assigned block id. */
 	readonly id: BlockId;
 	/** The owning document — cross-node and document-level ops live here. */
-	readonly document: EdytorDoc;
+	readonly document: DocumentOperations;
 
 	/**
 	 * Compact per-block attribution (`{createdBy, contributors,
@@ -116,7 +117,7 @@ export type DocBlock = {
 	setType(type: string): OpResult;
 	setData(data: Record<string, unknown>): OpResult;
 	/** Baseline `setBlock` — type/data update in place; content/children replace (all-or-nothing). */
-	set(value: Parameters<EdytorDoc['setBlock']>[1]): OpResult;
+	set(value: Parameters<DocumentWrites['setBlock']>[1]): OpResult;
 	/**
 	 * Fresh-identity copy of this subtree right after it; `freshId` names each
 	 * copied block and inline atom (an unanswered atom id is minted, an

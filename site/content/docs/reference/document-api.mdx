@@ -1,23 +1,23 @@
 ---
 title: Document API
-description: Reference for the document facade, its operations and results, order and capability queries, change events and attribution.
+description: Reference for the document's operations and results, order and capability queries, change events and attribution.
 icon: file-code
 ---
 
-`document.facade` is the one read and write surface of a document: every structural and text edit, and every read of the tree, goes through it. It is the same whether you use it headlessly or from a view. For the document object itself (history, providers, readiness), see [Documents](/docs/collaboration/documents); for the tree model, see [the document model](/docs/concepts/document-model).
+An `EdytorDocument` carries the one read and write surface of a document as its own members (`DocumentOperations`): every structural and text edit, and every read of the tree, goes through them (`document.insertText(…)`, `document.toJSON()`). A room's `transact` callback and its `validate` receive the same operations. `document.facade`, their former home, is deprecated and goes in the next release. The short examples below call the document `doc`. It is the same whether you use it headlessly or from a view. For the document object itself (history, providers, readiness), see [Documents](/docs/collaboration/documents); for the tree model, see [the document model](/docs/concepts/document-model).
 
 ```ts title="results.ts" check
 import { createDocument } from 'edytor';
 
 // The bundled kinds' roles (`defaultSemantics`) by default; views add their plugins' own.
-const { facade } = createDocument({
+const document = createDocument({
   value: { children: [{ type: 'paragraph', id: 'p1', content: [{ text: 'hello' }] }] }
 });
 
-facade.insertText('p1', 5, ' world'); // { status: 'applied', ids: ['p1'] }
-facade.insertText('p1', 0, ''); // { status: 'noop', ids: [] }
-facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' });
-facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' }); // refused: id taken
+document.insertText('p1', 5, ' world'); // { status: 'applied', ids: ['p1'] }
+document.insertText('p1', 0, ''); // { status: 'noop', ids: [] }
+document.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' });
+document.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' }); // refused: id taken
 ```
 
 ## Block roles
@@ -65,7 +65,7 @@ Offsets count what the block displays: one per UTF-16 text unit and one per inli
 ```ts title="copy-block.ts" check
 import { toBlockSpec } from 'edytor/crdt/edytor';
 
-facade.insertBlock({ parent: null, index: 1 }, toBlockSpec(facade.blockJSON('p1'), { freshIds: true }));
+doc.insertBlock({ parent: null, index: 1 }, toBlockSpec(doc.blockJSON('p1'), { freshIds: true }));
 ```
 
 ## Results
@@ -158,20 +158,20 @@ The prepared plan of these operations carries `at`, the `DocPosition` where the 
 
 ## Prepare, apply, compose
 
-Every operation also exists in two phases. `facade.prepare.<op>(…)` checks it and returns a plan without writing; `facade.apply(plan)` writes it in one transaction. Calling `facade.<op>(…)` is `apply(prepare.<op>(…))`.
+Every operation also exists in two phases. `document.prepare.<op>(…)` checks it and returns a plan without writing; `document.apply(plan)` writes it in one transaction. Calling `document.<op>(…)` is `apply(prepare.<op>(…))`.
 
 ```ts title="plans.ts" check
-const plan = facade.prepare.splitBlock('p1', 5, 'p1b');
+const plan = doc.prepare.splitBlock('p1', 5, 'p1b');
 if ('writes' in plan) {
   plan.effect; // { creates: ['p1b'], removes: [], merges: [], moves: [], meta: [], textRanges: [...] }
-  facade.apply(plan); // { status: 'applied', ids: ['p1b'] }
+  doc.apply(plan); // { status: 'applied', ids: ['p1b'] }
 }
 
 // Independent edits as one plan, one transaction, one undo step:
-facade.apply(
-  facade.compose(
-    facade.prepare.setBlockType('p2', 'heading'),
-    facade.prepare.setBlockData('p2', { level: 2 })
+doc.apply(
+  doc.compose(
+    doc.prepare.setBlockType('p2', 'heading'),
+    doc.prepare.setBlockData('p2', { level: 2 })
   )
 );
 ```
@@ -218,10 +218,10 @@ Whether a block type renders its own content is a document-level question: `docu
 
 ## Changes
 
-`facade.onChange(callback)` calls back once per committed transaction that changed the visible document or its data, local or remote, and returns an unsubscribe function. A callback that throws is logged; the other callbacks and the document carry on. Every callback of the document (each view over it, its rendering included) receives the same report object, so its collections are read-only (`ReadonlyMap`, `ReadonlySet`): copy one before you change it.
+`document.onChange(callback)` calls back once per committed transaction that changed the visible document or its data, local or remote, and returns an unsubscribe function. A callback that throws is logged; the other callbacks and the document carry on. Every callback of the document (each view over it, its rendering included) receives the same report object, so its collections are read-only (`ReadonlyMap`, `ReadonlySet`): copy one before you change it.
 
 ```ts title="on-change.ts" check
-const off = facade.onChange((change) => {
+const off = doc.onChange((change) => {
   if (!change.local) console.log('remote edit in', [...change.content.keys()]);
 });
 ```
@@ -242,10 +242,10 @@ const off = facade.onChange((change) => {
 
 ## Block handles
 
-`facade.block(id)` returns a handle over one block, with the same operations bound to that id. Handles are cached per id and safe on missing ids (operations are `refused`).
+`document.block(id)` returns a handle over one block, with the same operations bound to that id. Handles are cached per id and safe on missing ids (operations are `refused`).
 
 ```ts title="block-handle.ts" check
-const block = facade.block('p1');
+const block = doc.block('p1');
 block.insertText(0, '> ');
 block.items; // ContentItem[]
 block.split(2, 'p1-tail');
@@ -264,7 +264,7 @@ import { createDocument } from 'edytor';
 const document = createDocument({ actor: { id: 'user-42', name: 'Ada', color: '#7559ee' } });
 document.attribution.block('p3');
 // { createdBy: 'user-42', contributors: Set { 'user-42' }, lastChangedBy: 'user-42' }
-document.facade.blockAttribution('p3'); // the same record
+document.blockAttribution('p3'); // the same record
 document.attribution.actors.get('user-42'); // { name: 'Ada', color: '#7559ee' }
 ```
 

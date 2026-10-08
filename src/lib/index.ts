@@ -356,7 +356,37 @@ export type { AwarenessLike, PresenceWriter } from './collaboration/awarenessSel
 export type { DataPatch } from './crdt/data.js';
 export type { AnchorAffinity, BlockRole, DocAnchor, TextRange } from './crdt/doc/types.js';
 export type { Flow, FlowLine, FlowTarget } from './crdt/flow.js';
-export type { EdytorDoc } from './crdt/edytor-doc.js';
+export type { DocumentOperations, DocumentReads, DocumentWrites } from './crdt/operations.js';
+export type {
+	BlockId,
+	BlockSpec,
+	ContentItem,
+	Destination,
+	InlineSpec,
+	ProjectedBlock,
+	ProjectedDoc,
+	SplitTail
+} from './crdt/placement/model.js';
+export type { DocPosition, RangeView } from './crdt/rangeDelete.js';
+export type { FlowView } from './crdt/flow.js';
+export type { ContentRun } from './crdt/text/runs.js';
+export type { DataTarget, OrderPolicy, PlanEffect, PlanStep } from './crdt/doc/types.js';
+export type { DocBlock, NodeRef } from './crdt/nodes.js';
+export type { MarkEdge } from './crdt/text/marks.js';
+export type { Cell, Cells } from './surface/cells.js';
+export type { Measure, Overlay } from './surface/overlay.js';
+export type { Popup, PopupOpener, Popups } from './surface/popups.svelte.js';
+export type { Announcer } from './session/announcer.svelte.js';
+export type { Handles } from './session/handles.js';
+export type { DocumentSemanticsConfig } from './crdt/document.js';
+export type { KindRecord, MergedSemantics } from './crdt/semantics.js';
+export type { SchemaProblem } from './crdt/doc/gate.js';
+export type {
+	Awareness,
+	AwarenessStates,
+	AwarenessUpdate,
+	MetaClientState
+} from './crdt/protocols/awareness.js';
 export type { DocumentOptions } from './crdt/document.js';
 export type {
 	ActorProfile,

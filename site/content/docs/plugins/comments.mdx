@@ -75,7 +75,7 @@ A thread's anchor is a mark over its text, `comment:<thread id>`: a key of its o
 - **Deleted text.** A thread whose text is deleted keeps its comments and has no anchor; an undo brings both back together.
 - **Removed threads.** The anchor of a removed thread is the store's to remove: the room removes it as its own edit, so a thread deleted in one tab leaves no highlight in any.
 
-`commentAnchors(facade)` (from `edytor` and `edytor/cloudflare`) reads every thread's runs from a document: `Map<thread id, { block, offset, length }[]>`.
+`commentAnchors(document)` (from `edytor` and `edytor/cloudflare`; a room's `facade` too) reads every thread's runs from a document: `Map<thread id, { block, offset, length }[]>`.
 
 ## Notifications
 

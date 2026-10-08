@@ -138,7 +138,7 @@ Each mark you set is one operation over its range, with a timestamp later than e
 A comment-like mark (one per thread) uses a key of its own per thread: `comment:<id>`. Each is a separate mark, so two overlapping comments never cut each other short, and the key reads the `comment` mark record (its tag, snippet, edge and `copy`). The [comments plugin](/docs/plugins/comments) anchors its threads this way:
 
 ```ts title="comment.ts" check
-edytor.document.facade.setMark(blockId, 4, 9, 'comment:c1', { id: 'c1' });
+edytor.document.setMark(blockId, 4, 9, 'comment:c1', { id: 'c1' });
 ```
 
 ## Toggling marks from code

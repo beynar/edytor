@@ -117,7 +117,7 @@ The block menu's **Turn into** lists them as well (`EditorCommand.turnsInto`):
 - over one block, "2 columns" to "5 columns" make the block column 1 and fill the other columns with an empty paragraph;
 - over a block selection of N sibling blocks (2 to 5), "N columns" puts them one per column, in order.
 
-The blocks stay selected, one undo step. Both run `facade.prepare.wrapInLayout`, and hooks see the operation `wrapBlocks`.
+The blocks stay selected, one undo step. Both run `document.prepare.wrapInLayout`, and hooks see the operation `wrapBlocks`.
 
 ### A column from the `+`
 
@@ -233,7 +233,7 @@ On a document whose roles hold a layout kind (a view with the plugin, or `defaul
 ```ts title="layout.ts" check
 import { createDocument } from 'edytor';
 
-const { facade } = createDocument({
+const document = createDocument({
 	value: {
 		children: [
 			{ id: 'a', type: 'paragraph', content: [{ text: 'left' }] },
@@ -243,11 +243,11 @@ const { facade } = createDocument({
 	}
 });
 
-facade.placeBeside(['b'], 'a', 'right'); // a layout: column [a], column [b]
-facade.wrapInLayout(['c'], undefined, 3); // c in column 1 of 3, two empty columns
-const layout = facade.parentOf(facade.parentOf('a')!)!;
-facade.isLayout(layout); // true
-facade.isLayoutItem(facade.parentOf('a')!); // true
+document.placeBeside(['b'], 'a', 'right'); // a layout: column [a], column [b]
+document.wrapInLayout(['c'], undefined, 3); // c in column 1 of 3, two empty columns
+const layout = document.parentOf(document.parentOf('a')!)!;
+document.isLayout(layout); // true
+document.isLayoutItem(document.parentOf('a')!); // true
 ```
 
 | API | What it does |

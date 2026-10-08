@@ -33,7 +33,7 @@ The value is reactive, so `$derived(edytor.selection.value.kind)` updates with t
 
 ## The caret
 
-`edytor.selection.caret` is the collapsed text caret as `{ block, offset }`: the `Block` handle and the offset in its content, where an inline atom counts as 1. It is `null` when the selection is not a caret (a range, an atom, blocks, none). These block offsets are the ones `edytor.document.facade` takes, an input rule's and a trigger's context reads ([Input rules and triggers](/docs/plugins/input-rules)), `block.addInlineBlock({ offset })` inserts at and `dispatcher.caret` takes.
+`edytor.selection.caret` is the collapsed text caret as `{ block, offset }`: the `Block` handle and the offset in its content, where an inline atom counts as 1. It is `null` when the selection is not a caret (a range, an atom, blocks, none). These block offsets are the ones the document's operations (`edytor.document.insertText(…)`) take, an input rule's and a trigger's context reads ([Input rules and triggers](/docs/plugins/input-rules)), `block.addInlineBlock({ offset })` inserts at and `dispatcher.caret` takes.
 
 ```ts title="caret.ts" check
 const caret = edytor.selection.caret;
@@ -111,11 +111,11 @@ edytor.selection.removeBlockFromSelection(blockA);
 
 No caret or range end rests in a block that shows no content of its own (a divider, a list, a code block): a setter, `select` or a peer's change that would put one there moves it to the nearest shown line. A caret goes to a list's first item, else the next line, else the end of the line before. A range's start goes to the block's first shown line and its end to its last (a list's first and last items); at a divider both pass on as a caret does. With no line anywhere, the selection stays as it was.
 
-`selection.select(value)` sets any value directly. Build text anchors with `edytor.document.facade.anchorAt(blockId, offset, affinity)`. Bind a range start to the `'right'` and its end or a caret to the `'left'`, so text typed at the boundary stays outside the range:
+`selection.select(value)` sets any value directly. Build text anchors with `edytor.document.anchorAt(blockId, offset, affinity)`. Bind a range start to the `'right'` and its end or a caret to the `'left'`, so text typed at the boundary stays outside the range:
 
 ```ts title="select.ts" check
-const anchor = edytor.document.facade.anchorAt(blockId, 0, 'right');
-const focus = edytor.document.facade.anchorAt(blockId, 5, 'left');
+const anchor = edytor.document.anchorAt(blockId, 0, 'right');
+const focus = edytor.document.anchorAt(blockId, 5, 'left');
 if (anchor && focus) edytor.selection.select({ kind: 'text', anchor, focus });
 
 edytor.selection.select({ kind: 'blocks', ids: [blockId] });

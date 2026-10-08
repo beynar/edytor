@@ -9,7 +9,7 @@ A plugin declares two kinds of typing behavior as data:
 - `inputRules` replace text when what you type completes a pattern: `## ` makes a heading, `:smile:` becomes 😄. The [markdown shortcuts](/docs/plugins/markdown-shortcuts) are input rules.
 - `triggers` open a menu at the caret when you type a character, and replace that character and the text typed after it with the row you pick: `@` mentions a person ([Mention](/docs/plugins/mention)), `[[` links a page ([Page link](/docs/plugins/page-link)). The [slash menu](/docs/plugins/slash-menu) is a trigger too.
 
-Both read and write positions as block offsets: an offset in the block's content, where an inline atom counts as 1. These are the offsets `edytor.document.facade` takes and `edytor.selection.caret` reads ([Selection](/docs/editor/selection#the-caret)).
+Both read and write positions as block offsets: an offset in the block's content, where an inline atom counts as 1. These are the offsets `edytor.document` takes and `edytor.selection.caret` reads ([Selection](/docs/editor/selection#the-caret)).
 
 ## Input rules
 

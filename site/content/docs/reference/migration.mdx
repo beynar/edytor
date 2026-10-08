@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.33
+
+- **No package change.** 0.1.0-next.33 was tagged but never published to npm (its CI run failed on the room lane's setup); this release carries the same package. Upgrading from 0.1.0-next.32, read the section below.
+
 ### From 0.1.0-next.32
 
 - **Mount editable editors in the browser.** The [quick start](/docs/getting-started/quick-start#mount-it-in-a-page) and [installation](/docs/getting-started#verify-the-install) pages now mount the editable editor after hydration, or turn SSR off for the route, as [SvelteKit](/docs/getting-started/sveltekit#editable-editors-mount-after-hydration) always advised: server-rendering an editable `<Edytor>` is not tested. If you copied the earlier quick start into a server-rendered route, wrap the editor in the `onMount` guard. Nothing in the package changed.

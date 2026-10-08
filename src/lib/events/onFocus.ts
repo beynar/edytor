@@ -115,7 +115,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 
 	/** A press inside the host (its bubbling phase: an element inside that took it keeps it). */
 	const pressInside = (event: MouseEvent) => {
-		// A pointer gesture abandons a live composition (D-7).
+		// A pointer gesture abandons a live composition.
 		edytor.composition.abandon();
 		lastPointerDownInsideEditorAt = getEventTimeStamp(event);
 		edytor.projector.pressed();

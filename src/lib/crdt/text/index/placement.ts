@@ -1,5 +1,5 @@
 /**
- * Placements and the children index (P3: maintained), the display
+ * Placements and the children index (maintained), the display
  * ownership the display reads (`ownShim`), and THE shown-kind rule
  * (`typeOf`).
  *
@@ -71,7 +71,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		redissolve
 	} = ix;
 
-	// ── placements and the children index (P3: maintained) ────────────
+	// ── placements and the children index (maintained) ────────────
 	/** The blocks of `home`'s text, in text order (segment 0's first). */
 	const rowBlocks = (home: BlockId): BlockId[] => {
 		const at = placed.get(home);
@@ -360,7 +360,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		if (placementSeeds.size + stateSeeds.size + ownerChanged.size + regroup.size === 0) return;
 		const moved = new Set<BlockId>();
 		for (const id of placementSeeds) {
-			// D-18: a candidate change (a move, even to the same slot) re-decides its text's order.
+			// A candidate change (a move, even to the same slot) re-decides its text's order.
 			const home = streamIx.get(id)?.home;
 			if (home !== undefined) regroup.add(home);
 			const next = argmaxOf(id);
@@ -375,7 +375,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 		for (const o of ownerChanged)
 			for (const c of kidsOf.get(o) ?? []) if (cyclic(c)) return rebuildPlacements();
 		const seeds = new Set<BlockId>([...moved, ...stateSeeds, ...ownerChanged]);
-		// D-18: every block of a text whose pieces' order may have changed re-reads its slot.
+		// Every block of a text whose pieces' order may have changed re-reads its slot.
 		for (const home of regroup)
 			for (const b of ranker.regroup(home)) if (placementsMap.has(b)) seeds.add(b);
 		regroup.clear();
@@ -406,14 +406,14 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	 * shows its line kind. A block of a line kind anywhere else shows its
 	 * display parent's default child — an undo can put a line a peer
 	 * retyped back in its island, or leave one a peer moved away outside
-	 * it (FW-01 sweep) — and so does a block displayed out of an island
-	 * or a container (a list, DR-crdt-2) that still has its default child
-	 * kind (RW-01), unless an outer container shows it as one of its
-	 * items (a nested list's item, SW8-roles-4). A block that renders
-	 * content never shows as a kind that does not (DR-crdt-1): a line kind
-	 * then shows the document's default kind (ZW-06). A block stored as the
+	 * it — and so does a block displayed out of an island
+	 * or a container (a list) that still has its default child
+	 * kind, unless an outer container shows it as one of its
+	 * items (a nested list's item). A block that renders
+	 * content never shows as a kind that does not: a line kind
+	 * then shows the document's default kind. A block stored as the
 	 * document's default kind directly in a list shows as its item
-	 * (`itemOf`, AW-04). Any other shows its stored kind (a retype shows). Read from the stored kinds
+	 * (`itemOf`). Any other shows its stored kind (a retype shows). Read from the stored kinds
 	 * at call time: a retype rebuilds no placement.
 	 */
 	/**
@@ -422,7 +422,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 	 * as that item — the read-time side of the facade's `fitted`: a race
 	 * (a peer's lift of an item another peer's outdent moves, a concurrent
 	 * undo of a retype) or an explicit write never shows a bare paragraph
-	 * in a list (AW-04). Anywhere else it shows `plain`.
+	 * in a list. Anywhere else it shows `plain`.
 	 */
 	const itemOf = (under: BlockId, plain: string): string => {
 		const parent = typeOf(under);
@@ -459,7 +459,7 @@ export const indexPlacement = (ix: IndexState & IndexClaims & IndexStreams & Ind
 			}
 		const kind = ix.roles.defaultChild(under === null ? null : typeOf(under));
 		if (ix.roles.rendersContent(kind) || !ix.roles.rendersContent(stored)) return kind;
-		// Never a line kind outside its island, even where the slot's kind shows nothing (ZW-06).
+		// Never a line kind outside its island, even where the slot's kind shows nothing.
 		return lined ? ix.roles.defaultChild(null) : stored;
 	};
 

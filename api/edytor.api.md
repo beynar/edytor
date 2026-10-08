@@ -72,8 +72,6 @@ export declare class Block {
     get depth(): number;
     get path(): number[];
     get isInTree(): boolean;
-    get suggestions(): (JSONText[] | JSONInlineBlock)[] | null;
-    set suggestions(value: (JSONText[] | JSONInlineBlock)[] | null);
     get nextBlock(): Block | null;
     get previousBlock(): Block | null;
     get closestPreviousBlock(): Block | null;
@@ -144,8 +142,6 @@ export declare class Block {
     }) => Text | null | undefined;
     normalizeContent: () => void;
     normalizeChildren: () => void;
-    suggestText: (payload: BlockOperations["suggestText"]) => void;
-    acceptSuggestedText: () => void;
     deleteContentAtRange: (payload: {
         start: [
             number,
@@ -1100,7 +1096,7 @@ export declare class Edytor {
     moveBlocks: (request: BlockMoveRequest) => Block[];
     historyUndo: () => void;
     historyRedo: () => void;
-    constructor({ snippets, readonly, hotkeys, hotKeys, plugins, document, doc, awareness, actor, requireHydration, presence, sync, value, onSelectionChange, placeholder, labels, onChange, onDocChange }: EdytorOptions);
+    constructor({ snippets, readonly, hotkeys, plugins, document, doc, awareness, actor, requireHydration, presence, sync, value, onSelectionChange, placeholder, labels, onChange, onDocChange }: EdytorOptions);
     private unknownKinds;
     definitionOf: (type: string) => BlockDefinition;
     private _valueCache;
@@ -3345,10 +3341,6 @@ export type BlockOperations = {
     };
     normalizeContent: {};
     normalizeChildren: {};
-    suggestText: {
-        value: (JSONText | JSONInlineBlock)[] | string | null;
-    };
-    acceptSuggestedText: {};
     acceptSuggestion: {
         suggestion: {
             id: string;
@@ -3481,7 +3473,6 @@ export type EdytorProps = Snippets & {
     plugins?: Plugin[];
     blockHandles?: boolean | BlockHandlesOptions;
     defaultPlugins?: boolean;
-    blockDnd?: boolean;
     class?: string;
     'aria-label'?: string;
     'aria-labelledby'?: string;
@@ -3495,7 +3486,6 @@ export type EdytorProps = Snippets & {
     presence?: PresenceOptions;
     readonly?: boolean;
     hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
-    hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
     onChange?: (value: JSONDoc) => void;
     onDocChange?: (change: DocChange) => void;
     onSelectionChange?: (selection: EdytorSelection) => void;
@@ -4746,9 +4736,6 @@ export type WebsocketSyncOptions = WebsocketTarget & {
 export type WebsocketTarget = {
     server: string;
     room: string;
-} | {
-    serverUrl: string;
-    roomName: string;
 };
 ```
 
@@ -5243,7 +5230,6 @@ export type EdytorOptions = {
     readonly?: boolean;
     snippets?: Snippets;
     hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
-    hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
     plugins?: Plugin[];
     document?: EdytorDocument;
     doc?: YDoc;

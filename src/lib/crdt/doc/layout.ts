@@ -53,7 +53,7 @@ export const layoutOps = (c: OpsContext) => {
 	 * parent; then the block itself when it sits directly in an item or at
 	 * the root, or where a new layout of `kind` (else the only layout kind)
 	 * fits beside it (a toggle's, a callout's or a nested block's child,
-	 * outside any item and island, D2); else its outermost block below the
+	 * outside any item and island); else its outermost block below the
 	 * root or an item.
 	 */
 	const besideAt = (target: BlockId, kind?: string): BlockId => {
@@ -94,7 +94,7 @@ export const layoutOps = (c: OpsContext) => {
 	 * otherwise the block and a new item holding `ids` are wrapped in a new
 	 * layout of the layout `kind` (else the only one the roles declare) at
 	 * its place. Refused when `ids` holds the target or an ancestor of it,
-	 * an item, a layout or a block holding one (D2), a block that does not
+	 * an item, a layout or a block holding one, a block that does not
 	 * fit an item, a block or a layout inside an island, and, wrapping,
 	 * when there is no layout kind. The sources are cleaned in the same
 	 * plan (`emptying`, `dissolving`); plain ranks (a move). `ids`: the
@@ -166,8 +166,8 @@ export const layoutOps = (c: OpsContext) => {
 	 * empty columns). The layout is of the layout `kind` (else the only one
 	 * the roles declare). Refused for no block, fewer than two items or
 	 * fewer items than blocks, blocks of different parents, an item, a
-	 * layout or a block holding one (D2), where the layout does not fit
-	 * (`fits`: in a list, a code block) or lands inside an item (D2) or an
+	 * layout or a block holding one, where the layout does not fit
+	 * (`fits`: in a list, a code block) or lands inside an item or an
 	 * island, and for a block that does not fit an item. Plain ranks (a
 	 * move). `ids`: the new layout.
 	 */

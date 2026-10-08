@@ -3,7 +3,7 @@
  * blocks with an unlisted sibling between them land together and that
  * sibling ends up before them (document-api.mdx says so). One call per run
  * of adjacent siblings keeps the order, as the editor's `moveBlocks` `out`
- * and Shift+Tab do (src/tests/fixtures/dom/gx-api-20260930.test.tsx).
+ * and Shift+Tab do (src/tests/fixtures/dom/move-runs-and-transact.test.tsx).
  */
 import { describe, expect, it } from 'vitest';
 import { createDocument, defaultSemantics, type JSONBlock } from '$lib/crdt/index.js';

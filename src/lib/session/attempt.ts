@@ -1,5 +1,5 @@
 /**
- * Input attempts (R8, L6, O33, §4.3 `session/attempt`): one per user occurrence.
+ * Input attempts: one per user occurrence.
  *
  * An occurrence — a `beforeinput`, a keydown whose `beforeinput` never comes,
  * a paste, a drop, a line break found in the DOM — becomes one attempt whose
@@ -12,7 +12,7 @@
  * is met, contradicted or out of time; an `input` is attributed to the
  * attempt whose expectation it satisfies.
  *
- * Deadlines are the named, counted browser rules of plan §9.1 rule 5: the
+ * Deadlines are the named, counted browser rules: the
  * model-owned drift deadline (here), the missing-`beforeinput` deadline and
  * the Android no-op-Backspace deadline (`events/onBeforeInput`).
  */
@@ -108,7 +108,7 @@ const facts = (edytor: Edytor) => {
 		texts: state.texts,
 		yStart: state.yStart,
 		yEnd: state.yEnd,
-		/** The admitted mark-edge side of a caret (R4). */
+		/** The admitted mark-edge side of a caret. */
 		edge: state.edge as EdgeSide | undefined,
 		isCollapsed: state.isCollapsed,
 		isTextSpanning: projection.isTextSpanning,

@@ -286,10 +286,13 @@ export const fixtures = defineFixtures([
 						</root>
 					);
 					const block = edytor.root!.children[0];
-					block.suggestText({
-						value: [{ type: 'mention' }, { text: ' world', marks: { bold: true } }]
-					});
-					block.acceptSuggestedText();
+					edytor.suggestions.add({ end: block.id }, [
+						{
+							type: block.type,
+							content: [{ type: 'mention' }, { text: ' world', marks: { bold: true } }]
+						}
+					]);
+					edytor.suggestions.at(block.id).end.at(-1)?.accept();
 					expectSecondPassStable(block);
 				}
 			];

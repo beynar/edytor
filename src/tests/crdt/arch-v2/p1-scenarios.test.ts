@@ -13,7 +13,7 @@
  * (the rows cited per test), never from running arch-v2. Where arch-v2's
  * contract differs from the native probe's expectation, the row pins
  * arch-v2's contract and says so (`DIVERGENCE:` — also recorded in the
- * Phase 2 table of `docs/architecture-v2/execution-ledger.md`):
+ * Phase 2 table of `docs/archive/architecture-v2/execution-ledger.md`):
  *
  * - promote-children (native §9) and move under a concurrently deleted
  *   block (native 6b) agree with native since UW-08: promotion is derived

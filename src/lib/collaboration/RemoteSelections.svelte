@@ -9,7 +9,7 @@
 
 	let { edytor }: { edytor: Edytor } = $props();
 
-	/** The peers' carets and ranges, positioned by the overlay once per frame (R11). */
+	/** The peers' carets and ranges, positioned by the overlay once per frame. */
 	let selections: RenderedRemoteSelection[] = $state([]);
 
 	const rectStyle = (rect: RemoteSelectionRect, color: string) =>

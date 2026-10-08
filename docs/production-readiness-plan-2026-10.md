@@ -112,7 +112,7 @@ fork already supports `keepReplaced` per document. Severities moved both ways:
   surface, events, selection, block, text, clipboard and collaboration, and session calls the
   surface (`session/composition.svelte.ts:63,381,585`, `session/bindings.ts:12`). Only the CRDT
   boundary is lint-enforced.
-- **CC-06: the Yjs fork changes engine semantics.** It carries semantic patches (P11 to P14)
+- **CC-06: the Yjs fork changes engine semantics.** It carries semantic patches (YP11 to YP14)
   over an upstream release candidate, sets a class-wide `Y.Doc.keepReplaced`, and reaches engine
   privates through 85 `as unknown as` and 52 `as never` casts.
 
@@ -390,7 +390,7 @@ record yet. Only a soak test (WU-16) and real users remove that.
   - Replace wall-clock asserts in gate lanes with operation-count budgets (items walked,
     folds, reports), as `range-cursor.test.ts` does. Known files:
     `crdt/arch-v2/d6-range-delete.test.ts:553-574` and
-    `fixtures/dom/arch-v2-r3-ops.test.tsx:163,191`. Grep for `performance.now()` with
+    `fixtures/dom/ops-read-document.test.tsx:163,191`. Grep for `performance.now()` with
     `toBeLessThan`.
   - Move absolute timings to `bench:crdt`.
   - Fix or quarantine the named flakes (seed-73 command-schedules, the R2 format flake) and
@@ -801,7 +801,7 @@ conflict matrix.
   reopen, delete; `onComment(change, { own })`). Rows: `room.comments.*`,
   `comment.anchor`, `comment.copy` (`tests/do/comments.test.ts`,
   `src/tests/collaboration/comments.test.ts`,
-  `src/tests/fixtures/dom/comments-20261008.test.tsx`,
+  `src/tests/fixtures/dom/comments.test.tsx`,
   `tests/editor-dom/comments.spec.ts`). Residuals: plain-text bodies, no
   edit of a posted comment, no "can comment" access, Duplicate copies anchors.
 
@@ -897,6 +897,45 @@ conflict matrix.
     deprecated aliases.
 - Effort: 5 d. Mostly mechanical and can be split per directory, but it touches many files:
   run it last in each area.
+- Status (2026-10-08): done in the tree, with D8 kept as recorded below.
+- Outcome:
+  - Comments: the 793 ticket ids of `src/lib` comments (686 lines) are contract rows or prose.
+    `scripts/ticket-ids.mjs` lists any new one in a `src/lib` comment or in the guide's prose
+    (contract rows and `YPn` allowed), and `src/tests/maintainability/ticket-ids.test.ts`
+    runs it in the unit lane.
+  - Fork patches are `YP1` to `YP14` in `UPSTREAM.md`, the vendored source, the vendored tests,
+    `src/lib`, the guide and the patch tests (`src/tests/crdt/yp*.test.ts`); plan P-numbers
+    left the code.
+  - Tests: 140 checkpoint-named files renamed by behaviour: every one of
+    `src/tests/fixtures/dom` and `tests/do`, the arch-v2 review, re-score and wave files of
+    `src/tests/crdt/arch-v2`, the arch-v2 and wave Playwright specs, and the YP patch tests.
+    References are updated outside the archive.
+  - `docs/archive/` holds the planning history: architecture-v2, reviews, research, baseline,
+    and the earlier plans, handoffs and gate reviews. Links are fixed.
+  - The guide is `AGENTS.md` (the overview: identity, topic guides, contexts, the owners table,
+    where to fix what, lanes, practical rules; 50 KB, most of it the owners table) plus
+    `docs/agents/` (`data-model`, `layouts-and-tables`, `selection-and-input`,
+    `plugins-and-chrome`, `room-and-protocol`, `release`). No prose line is over 1,500
+    characters (the 15,000-character room line is a list).
+    `node scripts/agents-coverage.mjs <old AGENTS.md>` checks every identifier and every rule
+    fragment of the old file against the guide, each kept once. Run on the 9199716 file, it
+    reports 1,584 identifiers and 2,068 fragments with none missing or doubled.
+  - Aliases removed (migration "Unreleased", Breaking changes): `hotKeys`, `blockDnd`,
+    `serverUrl`/`roomName`, the cloudflare `attachDocument`/`AttachDocumentOptions` and
+    `moveBlocks`, a bare KV namespace as `history.store`, the block suggestion wrappers, and
+    the migrator's no-op lease options.
+- D8, kept and why: the next.6 data forms (an array as one leaf, the whole-`data` attribute),
+  next.22 containers (a record without `storage`) and next.23 alarm rows are all schema
+  generation 4 (generation 5 began at next.25). A generation-5 build already meets them only
+  through a one-shot migration, the generation cutover (`room.generation.convert`, the local
+  store's conversion). That cutover reads them with this build's reader: `previousJSON` reads
+  through the current facade, and `isPreviousGenerationRecord` takes a record without
+  `storage`. So the reader is the migration's own code, and dropping it would break loading.
+  A new row in `src/tests/crdt/arch-v2/gen5-cutover.test.ts` proves a generation-4 state with
+  next.6 data converts with its arrays and seeds generation 5 without the old forms. The
+  next.23 alarm rule is one line (an alarm with no due rows is a due save). It is kept because
+  a room last run by next.23 may still hold a due save. Revisit with the next generation
+  bump: generation 6 can drop generation 4's reader and these forms with it.
 
 **WU-45: lint, dependencies, fork hygiene (CC-06, CC-09, CC-10)**
 

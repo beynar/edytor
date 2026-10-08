@@ -1,5 +1,5 @@
 /**
- * Room protocol — the transport-agnostic half of the two providers (S1).
+ * Room protocol — the transport-agnostic half of the two providers.
  *
  * Both providers speak the same enveloped protocol
  * (`protocols/envelope.ts`) — the IndexedDB provider on one
@@ -9,18 +9,18 @@
  * publish/query flow are identical between them — this module is their
  * ONE owner. It owns:
  *
- * - the two schema rules of R13 (D-2) that bytes of a proven generation
+ * - the two schema rules that bytes of a proven generation
  *   still need: the inbound refusal of an update that writes a foreign
  *   schema stamp (reported, never integrated), and the outbound quarantine
  *   of a read-only document (it answers no state request, publishes no
  *   update);
  * - ONE join rule, derived from state vectors, identical on the socket and
- *   the BroadcastChannel and correct behind an opaque relay (O76): joining
+ *   the BroadcastChannel and correct behind an opaque relay: joining
  *   sends a hello (Step1 + presence); a Step1 is answered with a Step2 and,
  *   when the asker holds anything we lack, with our own Step1. Once two
  *   replicas have each received one Step1 from the other, each holds the
  *   other's state — no periodic resync is needed for that;
- * - the provider lifecycle (O74): `hasSynced` (lifetime) apart from a
+ * - the provider lifecycle: `hasSynced` (lifetime) apart from a
  *   transport's `connected`/`synced` (transient), the terminal `failed`
  *   (once, never after `hasSynced`), `whenSynced`, the destroy guard, and
  *   the departure announcement (leaving the page destroys the provider,
@@ -279,11 +279,11 @@ export const markSynced = (host: LifecycleHost): boolean => {
 };
 
 /**
- * Terminal `'failed'` emission (the sync-failure contract — D4): fires at
+ * Terminal `'failed'` emission (the sync-failure contract): fires at
  * most once per provider, only while it has never synced — destroy before
  * sync, a persistence load failure, or a permission-denied auth verdict.
  * A transient disconnect never reaches here, and a provider that synced
- * once never fails (D37: `hasSynced`, not the connection's `synced`).
+ * once never fails (`hasSynced`, not the connection's `synced`).
  */
 export const emitFailed = (host: LifecycleHost, error: unknown): void => {
 	if (host._failedEmitted || host.hasSynced) return;
@@ -472,7 +472,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 				// valid envelope surfaces through 'message-error'.
 				// A pending forged stamp this update would release is discarded
 				// (`discarded`) and reported the same way.
-				// A SyncStep2 is v2 on the wire (P5): converted, then the one inbound path.
+				// A SyncStep2 is v2 on the wire: converted, then the one inbound path.
 				const payload = decoding.readVarUint8Array(decoder);
 				const origin = emitSynced ? provider : (behavior.tabOrigin?.(provider) ?? provider);
 				const onError = (error: Error) => provider.emit?.('message-error', [error, provider]);

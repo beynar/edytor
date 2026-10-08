@@ -2,7 +2,7 @@
  * The history store is pluggable (`room.history.store`,
  * `room.history.retention` in `docs/editor-delete-contract.md`): a
  * `HistoryStore` — `kvHistory`, `r2History`, `roomHistory` or any object
- * with its members — or, deprecated, a bare KV namespace. For each store:
+ * with its members. For each store:
  *
  * - a slot's version is written, listed (with its `expiresAt`), read back as
  *   the document and restored;
@@ -120,7 +120,7 @@ const heldKeys = async (room: string, store: Store): Promise<string[]> => {
 };
 
 type Store = {
-	kind: 'kv' | 'kvstore' | 'r2' | 'sqlite' | 'env-kv' | 'env-r2' | 'env-room';
+	kind: 'kv' | 'r2' | 'sqlite' | 'env-kv' | 'env-r2' | 'env-room';
 	/** The room-name infix that selects it (`storeOf` / `TimedRoom` in worker.ts). */
 	infix: string;
 	/** The store expires versions itself (KV): the room arms no `retention` task. */
@@ -128,13 +128,13 @@ type Store = {
 };
 const STORES: Store[] = [
 	{ kind: 'kv', infix: 'utc', nativeTtl: true },
-	{ kind: 'kvstore', infix: 'kvstore', nativeTtl: true },
 	{ kind: 'r2', infix: 'r2', nativeTtl: false },
 	{ kind: 'sqlite', infix: 'sqlite', nativeTtl: false },
 	{ kind: 'env-kv', infix: 'env-kv', nativeTtl: true },
 	{ kind: 'env-r2', infix: 'env-r2', nativeTtl: false },
 	{ kind: 'env-room', infix: 'env-room', nativeTtl: false }
 ];
+const storeOfKind = (kind: Store['kind']) => STORES.find((store) => store.kind === kind)!;
 const roomFor = (store: Store, what: string) =>
 	store.kind.startsWith('env-') ? `timed-${store.infix}-${what}` : `timed-x-${store.infix}-${what}`;
 
@@ -257,7 +257,7 @@ describe('room.history.retention · expiry belongs to the room', () => {
 		expect((await dues(room))['due.retention']).toBe(at('2026-11-05T13:00:00Z'));
 		await clockTo(room, '2026-11-05T13:00:00Z');
 		await fire(room);
-		expect(await heldKeys(room, STORES[2])).toEqual([]);
+		expect(await heldKeys(room, storeOfKind('r2'))).toEqual([]);
 		ada.done();
 	});
 });
@@ -328,7 +328,7 @@ describe('room.history.store · size caps', () => {
 		await fire(room);
 		const am = `history/${room}/2026-10-06-am`;
 		const pm = `history/${room}/2026-10-06-pm`;
-		expect(await heldKeys(room, STORES[3])).toEqual([am]);
+		expect(await heldKeys(room, storeOfKind('sqlite'))).toEqual([am]);
 		ada.document.transact(() => ada.document.facade.insertText('p2', 0, noise(200, 9)));
 		await vi.waitFor(async () =>
 			expect((await roomJSON(room)).children[1].content[0].text).toContain('two')
@@ -338,7 +338,7 @@ describe('room.history.store · size caps', () => {
 		);
 		await clockTo(room, '2026-10-07T00:00:00Z');
 		await fire(room);
-		expect(await heldKeys(room, STORES[3])).toEqual([pm]);
+		expect(await heldKeys(room, storeOfKind('sqlite'))).toEqual([pm]);
 		const bytes = await inRoom(
 			room,
 			(_r, state) =>

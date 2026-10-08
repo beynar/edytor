@@ -1,11 +1,11 @@
 /**
- * WU9/P4 differential tests — the format-aware search-marker seeding patch.
+ * WU9/YP4 differential tests — the format-aware search-marker seeding patch.
  *
  * The patch lets `YNode#applyDelta` seed its `ItemTextListPosition` cursor
  * from a search marker carrying a `currentFormats` snapshot, accelerates
  * `createRelativePositionFromTypeIndex` / `createAbsolutePositionFromRelativePosition`
  * with marker lookups, and keeps `marker.formats` valid through insert/delete/
- * re-anchor paths (`src/lib/crdt/vendor/yjs/UPSTREAM.md` P4).
+ * re-anchor paths (`src/lib/crdt/vendor/yjs/UPSTREAM.md` YP4).
  *
  * Setting `_searchMarker = null` on a type makes every added path inert —
  * the seed gate, the end-plant, the marker lookups and the format-fold hooks
@@ -68,7 +68,7 @@ const expectIdentical = ({ a, b, ta, tb }) => {
 	expect(updateBytes(a)).toEqual(updateBytes(b));
 };
 
-describe('WU9/P4 marker seeding — differential vs disabled', () => {
+describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 	test('distant pure retains + inserts produce identical state', () => {
 		const ops = [];
 		for (let i = 0; i < 30; i++) {
@@ -176,7 +176,7 @@ describe('WU9/P4 marker seeding — differential vs disabled', () => {
 	});
 
 	test('same-key boundary: an intervening marker shadows later snapshots', () => {
-		// R1 regression (docs/crdt-v14-follow-up-review-2026-09-21.md): a marker
+		// R1 regression (docs/archive/crdt-v14-follow-up-review-2026-09-21.md): a marker
 		// inside the [100,200) bold span keeps {b:true} when a 'Z' insert+negation
 		// pair lands at index 50 — the negation's fold must stop at the span's
 		// live `b` opener. Pre-repair the blind fold overwrote the snapshot with

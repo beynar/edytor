@@ -257,7 +257,7 @@ around it is dropped. `<p>before <img> after</p>` → `["before", image,
 "after"]`; `<p><span><img></span></p>` → `[image]`. Inside the void's own
 element (a `figure`'s `img`) nothing splits: it is the void's media. An
 `<img>` no kind claims (no accepted `src`) is skipped, as before. WU-21.
-Pins: `image-wu21.test.tsx`.
+Pins: `image-files-and-chrome.test.tsx`.
 
 ### `flow.html.glyph` — an inline glyph image is its alt text
 
@@ -270,7 +270,7 @@ Slack, Gmail), or one whose `width`/`height` (attribute or inline style,
 in px) are all 32 or under (an icon, an email's 1×1 tracking pixel). So a
 pasted paragraph with emoji stays one line: `<p>So funny <img alt="😂"> right</p>`
 → `["So funny 😂 right"]`; `<p>x<img alt="A cat" width="33">y</p>` still
-splits (`flow.html.void`). Pins: `image-wu21.test.tsx`.
+splits (`flow.html.void`). Pins: `image-files-and-chrome.test.tsx`.
 
 ### `flow.inline` — one line joins the text
 
@@ -323,7 +323,7 @@ list's last item, a code block's last line), or, when it shows no line or
 is a void (a divider, an image: its caption is not a line the caret enters
 from a paste), the start of the line after it. A divider or an image never
 replaces an empty `B`: the empty line is kept for that caret. Pins:
-`paste-shown-20260930.test.tsx` (every shape on the internal and HTML
+`paste-shown.test.tsx` (every shape on the internal and HTML
 paths, and the no-hidden-content assertion of `fixtures/dom/invariants.ts`).
 
 ### `flow.header` — at the end of a container's header, the body stays
@@ -354,7 +354,7 @@ heading never shows its hidden body under a heading (SW18, DR-crdt-2). Headless 
 `header`), the body moves to the tail as `flow.split` says. The new first
 children take plain ranks, as Enter's (a residual,
 [`order-scope`](../src/tests/crdt/arch-v2/order-scope.test.ts)). HX-10.
-Pins: `d7-flow.test.ts` (`flow.header`), `paste-header-20260930.test.tsx`.
+Pins: `d7-flow.test.ts` (`flow.header`), `paste-header.test.tsx`.
 
 ### `flow.lines` — a code line takes plain lines
 
@@ -400,7 +400,7 @@ island's line) or is not live refuses the op before any write. In an
 emptied document a root slot replaces the virtual paragraph
 (`doc.empty.virtual`). Caret: the end of the last placed block's last
 shown line (`flow.whole`). Pins: `d7-flow.test.ts` (`flow.place`),
-`suggestions-20261002.test.tsx`.
+`suggestions.test.tsx`.
 
 ### `flow.container` — a line placed in a list is its item
 
@@ -458,7 +458,7 @@ Turn into skip a closed toggle's hidden body inside it (FX-07,
 DR-behavior-4); its delete and cut take the body with the list. Turn into
 keeps the converted blocks selected, even once the list that held them is
 gone (DR-behavior-3). Pins: `contracts-block-selection.test.tsx`,
-`contracts-block-selection.spec.ts`, `selection-shown-20260930.test.tsx`.
+`contracts-block-selection.spec.ts`, `selection-shown.test.tsx`.
 
 ### `del.blocks.promote` — only the selected blocks leave
 
@@ -497,7 +497,7 @@ under it. Pins: `contracts-preserve.test.ts` (split of a promoted child
 with its grandchild, typing into the tail, nested promote-deletes, a
 concurrent child, the whole-subtree control), `p1-scenarios.test.ts` §9
 (9a-9d) and 6b, `scenarios/active-model.ts` MV06b,
-`scenarios/active-text.ts` ST02d, `review-20260929-core.test.ts`; the
+`scenarios/active-text.ts` ST02d, `preserve-regressions.test.ts`; the
 corpus and p1 oracle `promotion-hidden` (on by default,
 `DST_PROMOTION_ORACLE=0` turns it off) flags an unmarked block hidden
 under a deleted holder.
@@ -869,14 +869,14 @@ a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
 ul > [c]]` (the split's move of `a` wins over the lift). It keeps its
   kind, data and place in the text, as a heading a merge sheds into a
   list does; the display cannot tell the two apart (pinned in
-  `rescore7-crdt.test.ts`, Turn into ‖ an outdent).
+  `outdent-and-shed-races.test.ts`, Turn into ‖ an outdent).
 
 Headless `mergeForward`/`mergeBackward`, `mergeBlocks`, `unNestBlocks`,
 `deleteRange`/`replaceRange` and room `transact` apply the same rules (the
 view's keys and selections call them): a text range across the same seam
 agrees with the Delete key (`del.range.nested-tail`, DR-crdt-4). Pins:
-`rescore5-crdt.test.ts`, `rescore5-crdt-view.test.tsx`, `rescore6-crdt.test.ts`,
-`rescore7-crdt.test.ts`, `d6-range-delete.test.ts`.
+`containers-merge-split-retype.test.ts`, `lists-keep-items.test.tsx`, `container-fits.test.ts`,
+`outdent-and-shed-races.test.ts`, `d6-range-delete.test.ts`.
 
 ### `del.caret.one-command` — each branch is one prepared command
 
@@ -884,7 +884,7 @@ Every collapsed Backspace/Delete branch (character, atom, unnest, merge,
 word or line unit) issues exactly one command over one prepared plan: a
 merge that unnests children plans the children moves with the merge. A
 veto of any planned step refuses the whole branch before any write (zero
-bytes, no undo step). Pinned in `arch-v2-s2-commands.test.tsx`.
+bytes, no undo step). Pinned in `command-vetoes.test.tsx`.
 
 ## Unit deletion — word and line
 
@@ -1106,7 +1106,7 @@ read as the value's items and written back whole.
 
 A mark write (`formatRange`, `setMark`, `unsetMark`, the marks of an
 insertion or a seed) is one operation per mark: a start and an end format
-item paired by the operation's id (fork patch P13, `vendor/yjs/src/utils/marks.js`),
+item paired by the operation's id (fork patch YP13, `vendor/yjs/src/utils/marks.js`),
 its value (`null`: the mark off over the range) and a Lamport timestamp
 above every mark the writer's document integrated. A character shows, per
 mark, the value of the open operation with the greatest `(timestamp,
@@ -1158,7 +1158,7 @@ together. The anchor is written once the store kept the thread, as one
 command (`addComment`, a `formatRange` per run, one undo step); a
 removed thread's marks are removed by its store (`room.comments.anchor`),
 never by a view. Pins: `src/tests/collaboration/comments.test.ts`,
-`src/tests/fixtures/dom/comments-20261008.test.tsx`.
+`src/tests/fixtures/dom/comments.test.tsx`.
 
 ### `comment.copy` — a comment is not copied (Notion)
 
@@ -1183,7 +1183,7 @@ issuing view selects the step's recorded `before` (undo) or `after` (redo).
 
 ### `hist.delete-marks.fold` — one delete record per step (P4)
 
-A text delete writes the writer's record (P11, `text/deletes.ts`). A delete
+A text delete writes the writer's record (YP11, `text/deletes.ts`). A delete
 made in the step that wrote this replica's last record — the records
 list's tail, written in the same transaction, in the history step still
 capturing, or anywhere when no history records steps on this replica —
@@ -1225,7 +1225,7 @@ subtree's slot (`del.blocks.promote`).
 An undo removes only the undoing writer's own contributions. Undoing a step
 that created a block (insert, paste, Enter at a line's end, a split's new
 block) never deletes the block node: the history's `withdraw` hook (fork
-patch P12, `placement/model.ts` `withdrawOnUndo`) keeps the node, its
+patch YP12, `placement/model.ts` `withdrawOnUndo`) keeps the node, its
 placement and its content and claims nodes, and writes the undoer's
 withdraw mark `wd.<writer>`; what the step wrote inside the content and
 claims nodes (the undoer's text, atoms, boundaries, claims) is deleted as
@@ -1247,7 +1247,7 @@ block stays only while it holds a child. An undone creation keeps its id
 (like a deleted block's): re-creating it is refused. Controls: an explicit
 delete still wins over an unseen insertion (`conc.delete-wins-block`).
 Pins: `contracts-preserve.test.ts`, `contracts-undo-withdraw.test.tsx`,
-`p12-undo-withdraw.test.ts`, `p1-scenarios.test.ts` 5d/5f.
+`yp12-undo-withdraw.test.ts`, `p1-scenarios.test.ts` 5d/5f.
 
 ### `conc.seed.late` — a seed that meets existing content
 
@@ -1274,7 +1274,7 @@ Caller ids are public API, so two live writers (client ids at or above
 2^26) can create block `N` at once (`insertBlock`, a split or a paste with
 the same caller id). The registry's last-writer-wins keeps the larger
 client's node: its type, data, placement and attribution are `N`'s. The
-other node — the LOSING INCARNATION — keeps its subtree (fork patch P14,
+other node — the LOSING INCARNATION — keeps its subtree (fork patch YP14,
 `Doc.keepReplaced`, installed by `bindModel` for the registry: a value a
 concurrent write of the same key replaced is deleted without deleting
 its subtree, what lands in its subtree later integrates live, and it is
@@ -1331,7 +1331,7 @@ without a repair write, and the retype's own moves write the rank the
 read gives (`promotedRank`), so a split tail stays after its head. Undo
 of the retype (A retypes, B nests Q, A undoes) puts Q back under the
 block: its placement never changed. Pins: `p1-scenarios.test.ts`
-("capabilities under concurrency"), `review-20260929-units.test.ts`
+("capabilities under concurrency"), `merge-undo-void.test.ts`
 (UW-21), `p1-fuzz.test.ts` and the `void-children` well-formed check.
 
 ### `conc.island-reset` — no island child kind outside its island
@@ -1402,7 +1402,7 @@ duplicate) of a block whose type a peer's half-delivered retype left
 missing takes its parent's default child, never an empty type (SW7-crdt-1,
 DR-crdt-1), and a retype of an island to
 an ordinary kind retypes its children to that kind's default child. Pins:
-`rescore3-crdt.test.ts` (FW-01, SW-crdt rows), `rescore4-crdt.test.ts`
+`island-lines.test.ts` (FW-01, SW-crdt rows), `line-kinds.test.ts`
 (XW-03, 08, 10, 11, 12, DR-crdt-1, 2), the `island-kind` check, which also flags a child
 under a line and another kind directly in such an island, and the
 `sealed-line` check, which flags a block shown in a `lines` island that is
@@ -1416,7 +1416,7 @@ under `into` through the merge claim. A concurrent delete of `into` voids
 the claim (ST02b), and `from` comes back with its children under it,
 never below them (FW-12; `P > [Q]`, `X > [K]`, A `mergeBlocks(X, P)` ‖ B
 deletes `P` → `Q X > [K]`). Undo restores the pre-merge tree. Pins:
-`review-20260929-units.test.ts` (FW-12) and the `merge-order` well-formed
+`merge-undo-void.test.ts` (FW-12) and the `merge-order` well-formed
 check (corpus seed 11 was its repro).
 
 ### `conc.undo.actor-local` — undo after remote edits
@@ -1944,7 +1944,7 @@ of the own text its first typing creates (`{b: block, a: {i: null}}`).
   arch-v2 V4): `post()` after every flush, and `park`, the one write made
   while a composition is live (the caret a composition over a block or
   atom selection gets before the IME writes). The named exceptions are
-  listed in AGENTS.md (Surface, DOM selection exceptions): a snapshot read
+  listed in `docs/agents/selection-and-input.md` (DOM selection exceptions): a snapshot read
   replaces a multi-range selection (Firefox) with its bounding range
   (`selection/domSelection.ts`), and a few sites clear it
   (`clearDomSelection`). There is no deferred selection write: every writer —
@@ -2092,23 +2092,23 @@ is the only interpreter of DOM changes.
 
 ## Responsibility map
 
-| Concern                           | Owner                                                                                                                                                  |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Anchor mint/resolve               | `facade.anchorAt` / `facade.resolveAnchor` (`src/lib/crdt/edytor-doc.ts`)                                                                              |
-| Engine relative positions         | vendored Yjs v14 (`anchorAt`/`resolveAnchor` in `src/lib/crdt/text/model.ts`)                                                                          |
-| Logical recovery destination      | `selection.restoreDeadSelectionEndpoints` + seam walk (`src/lib/selection/selection.svelte.ts`)                                                        |
-| Editable-destination traversal    | `Block.firstEditableText`/`lastEditableText` (`src/lib/block/block.svelte.ts`)                                                                         |
-| DOM mount readiness → display     | projector pass after the flush that mounts the text; a text mount or the records signal re-runs a waiting pass (`src/lib/surface/projector.svelte.ts`) |
-| DOM-selection write (only writer) | `projector.post()` after every flush, current value; `park` under a live composition; writers `select()` in their own turn; exceptions: AGENTS.md      |
-| Gesture serial (one)              | `Edytor.intentSerial` via `markUserGesture` (not bumped by `input`)                                                                                    |
-| `selectionchange` classification  | projector `classify` (echo / drift / composition / foreign / intent; two named browser rules)                                                          |
-| Unobserved native move            | projector BI-3: mint in `beforeTransaction` of a foreign transaction → `select(…, 'dom')` after commit                                                 |
-| Remote anchor validation          | `isTextAnchor`/`resolvePeerSelection` (`src/lib/collaboration/awarenessSelection.ts`)                                                                  |
-| Presence wire/equality            | `publishPresence` under the view's own `presenceKey` (`jsonValuesEqual` dedupe, `awarenessSelection.ts`)                                               |
-| History selections                | per-view `{before, after}` values in stack-item `meta` (`src/lib/session/history.ts`)                                                                  |
-| DOM change interpretation         | compare-to-truth observer + attribute table (`src/lib/surface/observer.svelte.ts`, `attributes.ts`; D-25)                                              |
-| Independent oracle                | `src/tests/oracles/truth.ts`, `selectionOracle.ts`, `deleteOracle.ts`, dump inventories in `collab-runner.ts`                                          |
-| Settlement checkpoint             | `command-peer-set.ts` `quiesce()`                                                                                                                      |
+| Concern                           | Owner                                                                                                                                                                        |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anchor mint/resolve               | `facade.anchorAt` / `facade.resolveAnchor` (`src/lib/crdt/edytor-doc.ts`)                                                                                                    |
+| Engine relative positions         | vendored Yjs v14 (`anchorAt`/`resolveAnchor` in `src/lib/crdt/text/model.ts`)                                                                                                |
+| Logical recovery destination      | `selection.restoreDeadSelectionEndpoints` + seam walk (`src/lib/selection/selection.svelte.ts`)                                                                              |
+| Editable-destination traversal    | `Block.firstEditableText`/`lastEditableText` (`src/lib/block/block.svelte.ts`)                                                                                               |
+| DOM mount readiness → display     | projector pass after the flush that mounts the text; a text mount or the records signal re-runs a waiting pass (`src/lib/surface/projector.svelte.ts`)                       |
+| DOM-selection write (only writer) | `projector.post()` after every flush, current value; `park` under a live composition; writers `select()` in their own turn; exceptions: `docs/agents/selection-and-input.md` |
+| Gesture serial (one)              | `Edytor.intentSerial` via `markUserGesture` (not bumped by `input`)                                                                                                          |
+| `selectionchange` classification  | projector `classify` (echo / drift / composition / foreign / intent; two named browser rules)                                                                                |
+| Unobserved native move            | projector BI-3: mint in `beforeTransaction` of a foreign transaction → `select(…, 'dom')` after commit                                                                       |
+| Remote anchor validation          | `isTextAnchor`/`resolvePeerSelection` (`src/lib/collaboration/awarenessSelection.ts`)                                                                                        |
+| Presence wire/equality            | `publishPresence` under the view's own `presenceKey` (`jsonValuesEqual` dedupe, `awarenessSelection.ts`)                                                                     |
+| History selections                | per-view `{before, after}` values in stack-item `meta` (`src/lib/session/history.ts`)                                                                                        |
+| DOM change interpretation         | compare-to-truth observer + attribute table (`src/lib/surface/observer.svelte.ts`, `attributes.ts`; D-25)                                                                    |
+| Independent oracle                | `src/tests/oracles/truth.ts`, `selectionOracle.ts`, `deleteOracle.ts`, dump inventories in `collab-runner.ts`                                                                |
+| Settlement checkpoint             | `command-peer-set.ts` `quiesce()`                                                                                                                                            |
 
 ## History
 
@@ -2122,7 +2122,7 @@ grew** — not both. A dead command shows neither and still fails.
 ## The room (server, `edytor/cloudflare`)
 
 Rows of the room's own storage and admission (Phase 2 of the 2026-10 CRDT
-study, `docs/research/crdt-fix-plan-2026-10.md`). Pins live in `tests/do`.
+study, `docs/archive/research/crdt-fix-plan-2026-10.md`). Pins live in `tests/do`.
 
 ### `room.compact.live` — compaction stores the live state (P2)
 
@@ -2134,7 +2134,7 @@ merge of the records, which keeps every keystroke's struct and every
 deleted character (`automerge-paper`: 6.69 MB merged, 1.60 MB live).
 Memory never runs ahead of storage, so the live state is exactly what
 the records hold, collected: a reload holds the same state vector,
-delete set, encoding and JSON (`p2-live-compaction.test.ts`). A load
+delete set, encoding and JSON (`live-compaction.test.ts`). A load
 applies the records in one transaction, never merged first.
 
 ### `room.storage.outage` — an outage rebuilds once (WU-16)
@@ -2152,7 +2152,7 @@ rows hold. A frame that writes nothing (a join's Step2 of nothing new, a
 Step1, presence) is served from memory meanwhile. The outage ends at the
 first probe or append that succeeds, a room-side `transact` included. A
 failure the probe does not see (a larger append failing) faults and
-rebuilds as any failed append (`wu16-room-load.test.ts`).
+rebuilds as any failed append (`room-load.test.ts`).
 
 ### `room.compact.waiting` — what waits stays apart (P2)
 
@@ -2162,7 +2162,7 @@ arrives, they integrate and are stored with it, and a reload holds them.
 Deletes of items the room lacks stay in their own `pending` record,
 compacted to the ones still waiting (site `server/room#storage`).
 
-### `room.compact.copies` — the room keeps what a replica may copy again (P11)
+### `room.compact.copies` — the room keeps what a replica may copy again (YP11)
 
 The room's document applies the text-delete `gcFilter` from its creation
 (`crdt.doc.keepCopies`, before any update applies, on a fresh, restored or
@@ -2185,7 +2185,7 @@ one-character delete). The room compresses a snapshot in place after
 storing it raw (`compressLater`; the store-before-ack path is
 synchronous) and inflates it when it starts (`inflate`), keeping the raw
 bytes for a rebuild. A v1 container loads as it is, takes v1 update
-records, and is rewritten in v2 by its next compaction (`p5-storage-v2`,
+records, and is rewritten in v2 by its next compaction (`storage-v2`,
 `storage-v2.test.ts`). The IndexedDB store writes a snapshot as an
 object row `{ v2 }`, which a build before 0.1.0-next.23 refuses to read
 (its row codec throws) instead of misreading. The wire stays v1.
@@ -2241,7 +2241,7 @@ holds a whole document at it (a client seeding an empty room). A frame past one 
 the document records `syncRefusal`, and nothing redials. Not a drop on a
 live socket (the sender's later frames would wait on the dropped one in
 the room's memory, unacknowledged, for good), not a redial (it resends
-the same frame into the same quota). Pins: `h3-quotas.test.ts`.
+the same frame into the same quota). Pins: `quotas.test.ts`.
 
 ### `room.presence.quota` — presence within a size and a rate (WU-05)
 
@@ -2265,7 +2265,7 @@ would need a timer, which keeps a Durable Object from hibernating). No timer: th
 socket that stops waits for the room's next message (every client renews
 every 15 s). Nothing closes the socket; read-only sockets keep presence
 within the same quotas; a socket's held entry goes when it departs
-(`wu05-presence-quota.test.ts`).
+(`presence-quota.test.ts`).
 
 ### `room.presence.fanout` — presence within a budget of frames (WU-16)
 
@@ -2288,7 +2288,7 @@ goes out at once, never to its sender, so no older entry follows it. A
 closing socket drops what waits for it. Entries held past their socket's
 rate (`room.presence.quota`) enter the same path when released. What
 waits is lost at a wake (a hibernation, an eviction), as the presence
-snapshot is (`wu16-room-load.test.ts`).
+snapshot is (`room-load.test.ts`).
 
 ### `room.access` — revocation and credential expiry (WU-06)
 
@@ -2313,7 +2313,7 @@ past it `4401` (a non-number: `4403`); the room closes the socket `4401`
 the alarm's `expiry` task (`room.alarm.tasks`, armed at the earliest
 expiry of the open sockets, `earlier` at each dial) closes silent ones,
 then re-arms at the next. The provider redials after `4401` with its
-`params` read again (`wu06-revocation.test.ts`).
+`params` read again (`revocation.test.ts`).
 
 ### `room.attribution.trust` — bindings and profiles are the verified user's (WU-07)
 
@@ -2346,7 +2346,7 @@ names the socket's user as its `actor.id` (`verifiedPresence`). Block records' a
 `routeDocumentSocket`/`routeDocumentHistory`'s `allowedOrigins` refuses a
 request with another `Origin` before `authorize` (`4403` `origin not
 allowed`, `403` over HTTP); no `Origin` passes
-(`wu07-attribution-trust.test.ts`).
+(`attribution-trust.test.ts`).
 
 ### `room.marks.writer` — only `n` writes or deletes `del.<n>` / `wd.<n>` (H2)
 
@@ -2361,7 +2361,7 @@ they replace); a delete of a live mark the sender may not delete is
 dropped from the frame's deletes (`forgedDeletes`), unless the mark's
 block node is deleted too. Both are logged `mark`
 (`{ user, writers, ranges }`); the rest of the frame applies and the
-socket stays (`h2-validation.test.ts`). The room's own writes
+socket stays (`validation.test.ts`). The room's own writes
 (`transact`, a compensation) are not checked.
 
 ### `room.validate.inverse` — a denied frame is undone by the room (H2)
@@ -2381,11 +2381,11 @@ origin is the frame's socket, released after each frame by P6's rule,
 `facade.releaseHistory`, so it keeps no deleted content alive): its inserts
 deleted (its creations withdrawn, `hist.undo.withdraw`), its deletes
 restored (text by copy where no other writer's delete mark holds it,
-P11; its block delete marks removed), its moves and attr writes reverted
+YP11; its block delete marks removed), its moves and attr writes reverted
 (`repairAttrs`). Nothing else is between the frame and its inverse, so
 it reverts exactly that frame. The inverse is stored and sent to every
 socket, the sender's included: every replica converges. The frame stays
-stored and acknowledged; the socket stays open (`h2-validation.test.ts`,
+stored and acknowledged; the socket stays open (`validation.test.ts`,
 per-block locks as `LockedRoom`).
 
 ### `room.validate.bootstrap` — a denied first seed is deleted (H2)
@@ -2411,7 +2411,7 @@ a start that would pass it closes its socket `1011` (`room busy`, logged
 room is busy, not the sender at fault, so its provider redials with
 backoff — and the others complete. A socket's buffer is released at its
 sequence's end, at any refusal and when it closes. `metrics().buffered`
-is `{ sequences, bytes }` (`wu04-memory-limits.test.ts`).
+is `{ sequences, bytes }` (`memory-limits.test.ts`).
 
 ### `net.chunk.outbound` — a backlog of any size reaches the room (H6)
 
@@ -2424,7 +2424,7 @@ frame as any other; a part or end with no sequence started (a wake lost
 the buffer) closes the socket `1011` (`chunk sequence lost`) and the
 provider resends at its redial. A 40 MB offline backlog is delivered at
 reconnect and served to a fresh client, in a room whose document and
-frame quotas are raised to 64 MiB (`h6-chunking.test.ts`). The image
+frame quotas are raised to 64 MiB (`chunking.test.ts`). The image
 plugin stores no inline image over `MAX_INLINE_IMAGE_BYTES` (1 MiB of its
 `data:` URL): the link field refuses it and names `upload` (or a hosted
 link), an HTML paste does not import it (`storableImageSrc`); rendering
@@ -2442,7 +2442,7 @@ A document holding content decides as before; an explicit `sync()`
 decides. `prefetch` (sync a local store once, both ways, then close) and
 `lastUpdated` (the room's last stored change, one authorized HTTP probe)
 keep documents fresh before a device goes offline
-(`require-hydration.test.ts`, `h12-offline.test.ts`).
+(`require-hydration.test.ts`, `offline-probe.test.ts`).
 
 ### `room.alarm.tasks` — one alarm, the earliest due task (Phase 3)
 
@@ -2570,7 +2570,7 @@ A client edit concurrent with the restore merges as any concurrent edit
 `undoRestore()` writes the history undo of exactly the last restore's
 transaction, as `room.validate.inverse` does: its inserts deleted (blocks
 it created withdrawn, `hist.undo.withdraw`), its deletes restored (text
-by copy where no other writer's mark holds it, P11; marks it removed
+by copy where no other writer's mark holds it, YP11; marks it removed
 written again), its attr writes reverted (`repairAttrs`). Edits made since
 the restore are kept: it is an undo, not a restore of the earlier state.
 The step's insert and delete sets are stored (table `restore`) and the
@@ -2594,7 +2594,7 @@ after the frame), so children, new children and moves into or out of a
 locked subtree are the owner's; `bypass(user)` admits a user outright. The
 room composes it before `validate` (`locks` option; `DocumentRoom.locks()`,
 default `{ key: EDYTOR_LOCKS }` when that var is set); both must accept.
-Pins: `tests/do/h10-locks.test.ts`, `h2-validation.test.ts` (the plain
+Pins: `tests/do/block-locks.test.ts`, `validation.test.ts` (the plain
 lock, on the helper).
 
 ### `room.comments.rules` — one rule for every comment store (WU-34, D6)
@@ -2683,7 +2683,7 @@ data with what was last sent, and queues one batch (`late` table, `seq` +
    per-stream delete and insert, and data per top-level key (a key the source
    changed and the destination did not). The source watches a move for the
    purge horizon (`purgeAfterDays`, default 30); then its state is `done`.
-   Pins: `tests/do/h10-move.test.ts`.
+   Pins: `tests/do/cross-room-move.test.ts`.
 
 ### `room.purge.timing` — when the room saw a delete (H7)
 
@@ -2759,7 +2759,7 @@ releases, P6) each undo or redo step whose inserts all lie below its
 vector: an undo of a step the room stored before the horizon restores
 nothing (`dispatcher.last` is `noop` when nothing else is left to undo,
 `applied` for a newer step). A purge transaction never triggers a
-pending P11 restoration: `react` skips the marks it releases, and drops
+pending YP11 restoration: `react` skips the marks it releases, and drops
 the pending characters no mark holds any more.
 
 ## Transport / evidence
@@ -2808,8 +2808,8 @@ separate pinned programs.
 | recovery topology × whole-document deletion    | remote whole-doc delete → the kept head is the seam; the caret on dead `beta` lands in it, `insertText("Z")` reaches it (command-simulation.test.tsx F2); a destination that mounts after the flush is the virtual paragraph (contracts-virtual-paragraph.test.tsx) |
 | range recovery × one dead endpoint             | joint-shape oracle: collapse to the resolvable survivor (selectionOracle.ts + browser-state-oracle.spec.ts)                                                                                                                                                         |
 | range recovery × both dead                     | seam walk on the start block's live/dead status → root first-editable fallback                                                                                                                                                                                      |
-| display ownership × newer gesture              | the projector writes the current value after the flush; a later `select()` in the same turn wins (arch-v2-v4-projector F-S1, elegance-selection D7)                                                                                                                 |
-| display ownership × unmounted destination      | the value waits; the pass after the flush that mounts the text displays it (arch-v2-v4-projector F-S9, arch-v2-v3-seam)                                                                                                                                             |
+| display ownership × newer gesture              | the projector writes the current value after the flush; a later `select()` in the same turn wins (projector F-S1, elegance-selection D7)                                                                                                                            |
+| display ownership × unmounted destination      | the value waits; the pass after the flush that mounts the text displays it (projector F-S9, selection-seam)                                                                                                                                                         |
 | affinity × character identity                  | `remote insert AT the caret respects affinity`, `deleted atoms resolve to the gap`                                                                                                                                                                                  |
 | three-peer held release                        | command-simulation.test.tsx three-peer program: B holds selection, A deletes the destination, C edits unrelated content; both legal release orders preserve C's content and B's continuation                                                                        |
 | history independence                           | `a seam caret behaves identically whether its block was split or built directly` — equivalent structures via different histories, explicit identity mapping, sequential edits, semantic comparison                                                                  |

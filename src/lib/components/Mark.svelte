@@ -18,7 +18,7 @@
 	const edytor = getContext<Edytor>('edytor');
 	const mark = $derived(delta.marks[index]);
 	const definition = $derived(edytor.marks.get(mark?.[0]));
-	/** The core mark element is registered (R11); a suggestion's ghost mark has no text and is not. */
+	/** The core mark element is registered; a suggestion's ghost mark has no text and is not. */
 	const register = (node: HTMLElement) => {
 		const release = text && edytor.surface.register(node, 'mark', text.parent.id, mark?.[0]);
 		return { destroy: () => release?.() };
@@ -33,7 +33,7 @@
 	{/if}
 {/snippet}
 
-<!-- One core element per mark (R11): the kind's tag, or a span around a custom snippet. -->
+<!-- One core element per mark: the kind's tag, or a span around a custom snippet. -->
 {#if definition?.snippet || definition?.tag}
 	<svelte:element
 		this={definition.snippet ? 'span' : definition.tag}

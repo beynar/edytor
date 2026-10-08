@@ -31,14 +31,14 @@ export const SOURCE_SIDE = { pieces: 0, after: 1, before: 2 } as const;
 
 /**
  * The rank of a block ranked by where it came from for the gap
- * `(left, right)` right beside its source, not by who moved it (CW-01).
+ * `(left, right)` right beside its source, not by who moved it.
  * Two peers splitting or lifting out of the same block at once rank their
  * blocks in the same gap; ranks drawn at random there (and tied by client
  * id) sorted one peer's blocks before the other's whatever the text order.
  * Here the rank is a base every replica that saw the same gap computes
  * alike (the gap's midpoint, a fixed tie), then the `side` it comes from
  * ({@link SOURCE_SIDE}: blocks from different sources share the gap, and
- * their paths are not comparable, DR-crdt-6), then the ranks down the
+ * their paths are not comparable), then the ranks down the
  * block's `path` in its source (the block it stands at), each closed by
  * the lowest segment (a shorter rank then sorts first, as a prefix does),
  * then its `part` there (the caller's order among what stands at one
@@ -48,8 +48,8 @@ export const SOURCE_SIDE = { pieces: 0, after: 1, before: 2 } as const;
  * segment tied by `clock`, the client's own next clock, follows that first
  * one: one client never mints one rank twice in a gap, even when the block
  * it first minted it for was deleted there and a peer's undo brings it
- * back (DW-05), and what one gesture minted (the lines of one paste)
- * sorts before what its later gestures mint there, never among it (FX-06).
+ * back, and what one gesture minted (the lines of one paste)
+ * sorts before what its later gestures mint there, never among it.
  * `null` on a degenerate gap (`left >= right`): the caller ranks it as any
  * insert.
  */

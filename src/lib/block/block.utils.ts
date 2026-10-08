@@ -1,5 +1,5 @@
 /**
- * View-side command adapter for block operations (U2 delegation contract).
+ * View-side command adapter for block operations: each delegates to one document operation.
  *
  * These functions are the `BlockOperations` layer bound onto `Block` via
  * `batch()`, which dispatches each call as a command (admission, plugin
@@ -8,8 +8,8 @@
  * sibling lookup for `nestBlock`), the plan of an operation
  * that is one document op (`prepare*`) and its normalization requests.
  *
- * OPERATIONS READ AND WRITE ONLY THE DOCUMENT (R3): `Block`/`Text` are id-only
- * handles whose getters read the index (R4), so what a caller needs after the
+ * OPERATIONS READ AND WRITE ONLY THE DOCUMENT: `Block`/`Text` are id-only
+ * handles whose getters read the index, so what a caller needs after the
  * write (the new block, the text after an inserted atom, the caret a range op
  * decided) is the op's document result as a handle (`batch`'s `resolve`) —
  * inside an outer transaction too.
@@ -19,13 +19,13 @@
  * as "refused" — no view-side re-checks of the rules the document already
  * enforces (island sealing, void/island destinations, own-subtree moves,
  * merges across island boundaries; see `edytor-doc.ts` `canPlace` and
- * `canMerge`, R5). Removing a view-side semantic guard must never
+ * `canMerge`). Removing a view-side semantic guard must never
  * change document behavior — if a rule matters here it belongs in the
  * facade, not in this file.
  *
  * Content preparation produces `BlockSpec`/`ContentItem` DIRECTLY from
  * JSON (`jsonBlockToSpec`/`jsonContentToItems` in `utils/json.ts`): specs are
- * data (K5: `new Block({block})` is gone). The live-content invariant
+ * data (`new Block({block})` is gone). The live-content invariant
  * (text-first/text-last, no adjacent same-kind parts) is derived by the
  * document's projection on read, so stored content needs no
  * pre-normalization.
@@ -42,8 +42,7 @@ import {
 	jsonBlockToSpec,
 	jsonContentToItems,
 	type JSONBlock,
-	type JSONInlineBlock,
-	type JSONText
+	type JSONInlineBlock
 } from '$lib/utils/json.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 
@@ -115,12 +114,6 @@ export type BlockOperations = {
 	};
 	normalizeContent: {};
 	normalizeChildren: {};
-	/** @deprecated `edytor.suggestions.add({ end: block.id }, …)`. */
-	suggestText: {
-		value: (JSONText | JSONInlineBlock)[] | string | null;
-	};
-	/** @deprecated `suggestion.accept()`; the command hooks see is `acceptSuggestion`. */
-	acceptSuggestedText: {};
 	/** A suggestion placed in the document (`edytor.suggestions`, `suggestion.accept()`). */
 	acceptSuggestion: {
 		suggestion: { id: string; at: ResolvedAt; content: readonly JSONBlock[] };
@@ -352,7 +345,7 @@ export function duplicateBlock(
 
 export function prepareSplit(this: Block, { index, text }: BlockOperations['splitBlock']) {
 	if (!text || !this.parent || !this.model) return REFUSED;
-	// G5: the sibling takes its parent's default child type and no data — a
+	// The sibling takes its parent's default child type and no data — a
 	// list-like kind (`continues`) keeps its own, with its first preset's data.
 	const { continues, presets } = this.definition;
 	const tail = continues
@@ -471,7 +464,7 @@ export function moveBlock(
 
 /**
  * Grouped move — the operation-layer counterpart of `moveBlock` for
- * drags/multi-moves (D5). `path` is the same view-tree address shape:
+ * drags/multi-moves. `path` is the same view-tree address shape:
  * the prefix resolves the destination PARENT block, the last element is
  * the FINAL index — already discounted for the moved members by the
  * caller (the `facade.moveBlocks` contract, which counts the
@@ -625,7 +618,7 @@ export function addInlineBlock(
 	return atom.id;
 }
 
-/** The text after atom `atom` of this block; the caret's pending marks follow it there (L4). */
+/** The text after atom `atom` of this block; the caret's pending marks follow it there. */
 export function textAfterAtom(this: Block, atom: string | undefined): Text | null | undefined {
 	if (atom === undefined) return undefined;
 	const at = this.content.findIndex((part) => part.id === atom);
@@ -642,7 +635,7 @@ export function textAfterAtom(this: Block, atom: string | undefined): Text | nul
  * Normalization runs at the end of the command's transaction
  * (`Dispatcher.drain`): a normalizer reads handles over the index; when a
  * plugin hook answers work, the work runs in the same transaction and the
- * block is requested again (bounded by the dispatcher's pass limit, D25).
+ * block is requested again (bounded by the dispatcher's pass limit).
  */
 export function normalizeContent(this: Block): void {
 	if (this.edytor.dispatcher.defer(this, normalizeContent)) return;
@@ -664,19 +657,6 @@ export function normalizeChildren(this: Block): void {
 		this.edytor.dispatcher.write(work);
 		this.normalizeChildren();
 	}
-}
-
-/** @deprecated A thin wrapper over an `{ end: block.id }` suggestion (`edytor.suggestions`). */
-export function suggestText(this: Block, { value }: BlockOperations['suggestText']) {
-	this.suggestions =
-		typeof value === 'string'
-			? [[{ text: value }]]
-			: (value?.map((part) => ('type' in part ? part : [part])) ?? null);
-}
-
-/** @deprecated Accepts this block's latest `{ end }` suggestion (`suggestion.accept()`). */
-export function acceptSuggestedText(this: Block) {
-	this.edytor.suggestions.at(this.id).end.at(-1)?.accept();
 }
 
 export function prepareDeleteRange(

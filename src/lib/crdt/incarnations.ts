@@ -1,10 +1,10 @@
 /**
- * Concurrent creations of one block id (H13, `id.same.concurrent` in
- * `docs/editor-delete-contract.md`, plan §2.1 "Identity").
+ * Concurrent creations of one block id (`id.same.concurrent` in
+ * `docs/editor-delete-contract.md`).
  *
  * Caller ids are public API, so two writers may create block `N` at once.
  * The registry is a map: its last-writer-wins keeps the larger client's
- * node, and the engine keeps the other node's subtree (fork patch P14,
+ * node, and the engine keeps the other node's subtree (fork patch YP14,
  * each edytor document's `keepReplaced` = {@link keepRegistryLosers}, set by
  * {@link keepingReplaced} before it integrates anything): deleted as a value
  * of the key, but its text, claims and placement stay live, never collected.
@@ -17,7 +17,7 @@
  * registry keeps the values (the largest client first). Its liveness is
  * `N`'s: deleted when either carries a delete mark. A seed's losing
  * incarnation (a writer below the band) shows nothing: seeds keep one
- * version per id (F-T17).
+ * version per id.
  *
  * Worker-safe: no Svelte, no browser globals.
  */
@@ -30,7 +30,7 @@ export const LIVE_WRITERS = 2 ** 26;
 /** The separator of a derived incarnation id (a character ingress never keeps). */
 const MARK = '\u0000';
 
-/** The engine item of a registry value, as P14 reads it. */
+/** The engine item of a registry value, as fork patch YP14 reads it. */
 type RegistryItem = {
 	id: { client: number; clock: number };
 	deleted: boolean;
@@ -41,7 +41,7 @@ type RegistryItem = {
 	content: { type?: unknown };
 };
 
-/** `doc.keepReplaced` of edytor documents (fork P14): registry values keep their subtree. */
+/** `doc.keepReplaced` of edytor documents (fork patch YP14): registry values keep their subtree. */
 export const keepRegistryLosers = (item: unknown): boolean => {
 	const parent = (item as RegistryItem).parent as {
 		_item: unknown;
@@ -52,7 +52,7 @@ export const keepRegistryLosers = (item: unknown): boolean => {
 
 /**
  * Make `doc` an edytor document for the engine: a registry value a
- * concurrent creation replaced keeps its subtree (fork P14). Every edytor
+ * concurrent creation replaced keeps its subtree (fork patch YP14). Every edytor
  * document gets it before it integrates anything (a facade's `create`,
  * `createDoc`, the scratch documents of admission, seeds and migration);
  * the engine's class default stays upstream's (`null`), so another
@@ -82,7 +82,7 @@ export type Incarnation = { id: string; node: EngineNode };
 
 /**
  * The losing incarnations of `id` the index shows, the largest client first
- * (the registry's own order, right to left): kept by P14, written by a live
+ * (the registry's own order, right to left): kept by fork patch YP14, written by a live
  * writer. None while the key has no live value (a purge removed it).
  */
 export const incarnationsOf = (

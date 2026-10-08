@@ -85,21 +85,21 @@ export const moveOps = (c: OpsContext) => {
 		return plan(moved, emptied(moved, move(moved, parent, dest.index), into));
 	};
 	/**
-	 * Outdent (UW-23): move sibling blocks `ids` (document order) right
+	 * Outdent: move sibling blocks `ids` (document order) right
 	 * after their parent, and hand the siblings that followed the last of
 	 * them to it as its last children — every outliner's Shift+Tab. A last
 	 * block that cannot adopt them (void, island, a container they do not
 	 * fit) leaves them with the parent. The blocks take the kind they show
 	 * in their new slot (`settledKind`: a list's item becomes a paragraph,
 	 * a paragraph outdented into a list its item); refused where one would
-	 * not fit (a paragraph out of a column into its columns layout, ZW-14).
-	 * Items leaving a container never take the items after them (DR-crdt-3):
+	 * not fit (a paragraph out of a column into its columns layout).
+	 * Items leaving a container never take the items after them:
 	 * the list splits around them, Notion's way — outdented first items go
 	 * before it, last ones after it; from the middle, the list keeps the
 	 * items after them and a new list of its kind takes the ones before
 	 * them, so an item a peer appends meanwhile stays with the items it
-	 * follows (ZW-03; `splitOut`, the split Turn into's `liftOut` makes). A
-	 * container left with no child goes (YW-02). One plan; refused as the
+	 * follows (`splitOut`, the split Turn into's `liftOut` makes). A
+	 * container left with no child goes. One plan; refused as the
 	 * move is. `ids`: the moved blocks.
 	 */
 	const unNestBlocks = (ids: readonly BlockId[]): Prepared => {
@@ -130,7 +130,7 @@ export const moveOps = (c: OpsContext) => {
 	 * Where a block of `kind` at `id`'s place lands: `id`'s parent, or the
 	 * first one up that `kind` fits (`fits`: a list holds only its items),
 	 * and the containers it leaves on the way, innermost first (`levels`).
-	 * Its own kind keeps a block where it is (DR-behavior-3), as a reorder
+	 * Its own kind keeps a block where it is, as a reorder
 	 * does (`canPlace`); a block inserted after it (`after`) has no place
 	 * yet.
 	 */
@@ -144,7 +144,7 @@ export const moveOps = (c: OpsContext) => {
 	};
 	/**
 	 * Lift sibling blocks `ids` (document order) out of `levels`, the
-	 * containers around them, innermost first (ZW-03, AW-01): each level
+	 * containers around them, innermost first: each level
 	 * splits around them as an outdent splits one list — the blocks
 	 * before them go to a new container of its kind, which the level above
 	 * holds the same way, and the level keeps the ones after them, so an
@@ -198,7 +198,7 @@ export const moveOps = (c: OpsContext) => {
 			} else before = lead.length > 0 ? { id: level } : null;
 			child = level;
 		}
-		// Ranked by where each comes from in the outermost level (CW-01): the
+		// Ranked by where each comes from in the outermost level: the
 		// head right before the first block (with `keep`, right before it
 		// leaves), the blocks, then `specs` after the last — with `keep`,
 		// right before the block after it, so a peer's head that takes the
@@ -231,7 +231,7 @@ export const moveOps = (c: OpsContext) => {
 		return plan(placed, emptying(levels[0]!, moved, writes, landing(parent)));
 	};
 	/**
-	 * Place `id` where a block of `kind` fits, in one plan (AW-01, AW-03):
+	 * Place `id` where a block of `kind` fits, in one plan:
 	 * out of every container around it that `kind` does not fit
 	 * (`landingOf`: a list, and a list holding that list directly, for a
 	 * heading or a divider), each split around it (`splitOut`). `after`

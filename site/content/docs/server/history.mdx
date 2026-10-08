@@ -109,7 +109,7 @@ Every version gets an `expiresAt`: when it was written plus `retentionDays`. The
 
 ### KV, before `kvHistory`
 
-Earlier releases took the KV namespace itself as the store (`history: { store: env.HISTORY }`). That still works, wrapped in `kvHistory` for you, but is deprecated: write `kvHistory(env.HISTORY)`. `kvHistory` writes exactly what earlier releases wrote (the same keys, values, metadata and `expirationTtl`), so versions they stored list, preview and restore as before.
+Earlier releases took the KV namespace itself as the store (`history: { store: env.HISTORY }`). Write `kvHistory(env.HISTORY)`: the namespace itself is refused. `kvHistory` writes exactly what earlier releases wrote (the same keys, values, metadata and `expirationTtl`), so versions they stored list, preview and restore as before.
 
 ## Two versions a day
 

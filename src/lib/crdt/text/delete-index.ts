@@ -64,7 +64,7 @@ export type State = {
 	doc: EngineDoc & { clientID: number; _transaction: Tr | null };
 	marks: EngineNode;
 	restored: EngineNode;
-	/** The purge horizon's root (H7): a transaction that changes it is a purge. */
+	/** The purge horizon's root: a transaction that changes it is a purge. */
 	horizon: EngineNode;
 	/** Marks by root client: the root spans each holds (and by mark key). */
 	held: Map<number, Map<string, { k: number; n: number; mark: Rec }[]>>;
@@ -75,7 +75,7 @@ export type State = {
 	byOrigin: Map<number, Copy[]>;
 	copyKeys: Set<string>;
 	policies: Set<Policy>;
-	/** P4: this replica's last delete record (its id), the one a delete may fold into. */
+	/** This replica's last delete record (its id), the one a delete may fold into. */
 	lastMark: { c: number; k: number } | null;
 };
 
@@ -87,7 +87,7 @@ export const push = <T>(map: Map<number, T[]>, key: number, v: T): void => {
 	else list.push(v);
 };
 export const keyOf = (r: Rec): string => `${r.client}:${r.clock}`;
-/** P4: the most spans a folded delete record holds (a backspace run merges into one). */
+/** The most spans a folded delete record holds (a backspace run merges into one). */
 export const FOLD_SPANS = 8;
 /** `spans` sorted, with touching and overlapping spans of one client merged. */
 export const mergeSpans = (spans: readonly Span[]): Span[] => {
@@ -338,7 +338,7 @@ export const deleteIndex = (Y: EngineApi) => {
 		}
 		return true;
 	};
-	/** Drop the marks `marks` from the index (by mark: P4 folds drop one per delete); whether any was indexed. */
+	/** Drop the marks `marks` from the index (by mark: folded delete records drop one per delete); whether any was indexed. */
 	const dropMarks = (s: State, marks: readonly Rec[]): boolean => {
 		let any = false;
 		for (const key of marks.map(keyOf)) {
@@ -387,7 +387,7 @@ export const deleteIndex = (Y: EngineApi) => {
 		const dropped: Rec[] = [];
 		walkIdSetStructs(Y, s.doc, tr.deleteSet, (st) => {
 			if (st.parent === s.marks) for (const [r] of recordsIn(st, tr.deleteSet)) dropped.push(r);
-			// A restoration record only the purge deletes (H7): its copies are
+			// A restoration record only the purge deletes: its copies are
 			// forgotten and collected on every replica, as on the room.
 			if (st.parent === s.restored && !tr.insertSet.has(st.id.client, st.id.clock))
 				for (const [r, bytes] of recordsIn(st, null)) {

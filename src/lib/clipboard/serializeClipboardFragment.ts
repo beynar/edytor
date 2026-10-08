@@ -20,7 +20,7 @@ const tag = (name: string, inner: string, attributes: Record<string, string | un
 		.map(([key, value]) => (value === undefined ? '' : ` ${key}="${escapeHtml(value)}"`))
 		.join('')}>${inner}</${name}>`;
 
-/** A mark exports the element it renders (P2.7): its `tag` and `attributes`. */
+/** A mark exports the element it renders: its `tag` and `attributes`. */
 const textHtml = (part: JSONText, kinds: ExportKinds) => {
 	let html = escapeHtml(part.text).replace(/\n/g, '<br>');
 	for (const [name, mark] of kinds.marks) {

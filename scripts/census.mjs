@@ -5,7 +5,7 @@
 // prints
 //   1. xloc per top-level dir under root, and the total — computed by the
 //      FROZEN counter `scripts/xloc.mjs` (spawned, never re-implemented; its
-//      sha256 is recorded in docs/architecture-v2/execution-ledger.md);
+//      sha256 is recorded in docs/archive/architecture-v2/execution-ledger.md);
 //   2. the vendor delta: xloc of root/crdt/vendor counted with `--vendor`,
 //      against the G0 reference value;
 //   3. type-body lines: lines inside multi-line `export type X = {...}`

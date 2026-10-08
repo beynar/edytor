@@ -1,5 +1,5 @@
 /**
- * The IME host pin (plan §2.4 "Segments", §4.4 `surface/pin`, R8; D16, BI-13).
+ * The IME host pin.
  *
  * While a composition session owns a text element, the renderer must never
  * rewrite or remount the node the IME is anchored to. The pin freezes, at the
@@ -101,7 +101,7 @@ export class Pin {
 	};
 
 	/**
-	 * The first write replaced a range across texts (FX-08, GX-04): the host's
+	 * The first write replaced a range across texts: the host's
 	 * cell lost the segments and atoms it covered, and the rest of its end text
 	 * now follows the preview in the host, as its own nodes, so the IME's node
 	 * is never rewritten. Across blocks they follow the frozen render inside the
@@ -149,7 +149,7 @@ export class Pin {
 	/**
 	 * What the IME shows in the pinned element: its text between the frozen
 	 * head and tail. None while the element still shows the start target
-	 * untouched (no preview yet, FX-02): that text is the document's, not the
+	 * untouched (no preview yet): that text is the document's, not the
 	 * IME's.
 	 */
 	imeBuffer = (): string | null => {

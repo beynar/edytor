@@ -1,8 +1,8 @@
 /**
- * Navigation (R9, §4.3 `session/navigation`, L53): one ordered stream of
+ * Navigation: one ordered stream of
  * caret stops and one apply step for every horizontal navigation key.
  *
- * The stream is the document order (D2) of the displayable blocks (§2.4, a
+ * The stream is the document order of the displayable blocks (a
  * Surface fact: a collapsed toggle's body or a phantom content slot holds no
  * stop), each block's content parts in order: offsets inside its texts at
  * grapheme (or word) boundaries, with the inline atoms between them. A key
@@ -15,7 +15,7 @@
  * keeps the anchor; a range that covers exactly one atom is that atom's
  * selection. A grapheme step inside the focus's own text is left to the
  * browser (it moves visually under bidi) unless the selection came from a
- * node-bound native range, whose extension engines disagree on (K10), or the
+ * node-bound native range, whose extension engines disagree on, or the
  * step starts right after a soft break (Firefox moves nothing there).
  * Vertical extension (Shift+ArrowUp/Down) crosses blocks through the same
  * displayable walk; plain vertical motion stays native, unless the browser
@@ -130,7 +130,7 @@ export const move = (
 	if (value.kind === 'none' || !state.startText || !state.endText) return false;
 	if (unit === 'char' && value.kind === 'blocks') return false;
 	// A block selection spans its first shown line's start to its last one's
-	// end (FX-01: a list's items, a code block's lines, never a divider; a
+	// end (a list's items, a code block's lines, never a divider; a
 	// member's own line, never an unselected child's).
 	const blocks = value.kind === 'blocks' && getSelectedBlocksInDocumentOrder(edytor);
 	let first = blocks
@@ -177,7 +177,7 @@ export const move = (
 	// across a line break).
 	const native = unit === 'char' && !nodeBound && to?.text === focus.text && value.kind === 'text';
 	if (native && !(dir > 0 && focus.text.stringContent[focus.offset - 1] === '\n')) return false;
-	// K10: a forward node-bound extension never rests on another block's first
+	// A forward node-bound extension never rests on another block's first
 	// stop (a derive maps that end back onto the previous block's end).
 	while (
 		nodeBound &&
@@ -191,7 +191,7 @@ export const move = (
 		to = step(edytor, to, 1, 'char');
 	if (!to) {
 		if (!nodeBound) return unit !== 'char';
-		// K10: a node-bound focus that cannot move collapses onto itself.
+		// A node-bound focus that cannot move collapses onto itself.
 		to = focus;
 		extend = false;
 	}
@@ -286,7 +286,7 @@ const lineStop = (edytor: Edytor, from: Stop, dir: Dir, goal?: number) => {
 const goals = new WeakMap<Edytor, { column: number; value: SelectionValue }>();
 
 /**
- * Shift+ArrowUp/Down over a text selection (K1, O44). Native vertical
+ * Shift+ArrowUp/Down over a text selection. Native vertical
  * extension is engine-defined (Firefox collapses at the anchor or drops the
  * focus on stray boundary nodes), so the editor owns it with the horizontal
  * keys' rule: the focus moves one line and the anchor stays; consecutive
@@ -307,10 +307,10 @@ export const extendVertically = (edytor: Edytor, dir: Dir): boolean => {
 };
 
 /**
- * A plain vertical key is the browser's: it knows the visual lines (O44). The
+ * A plain vertical key is the browser's: it knows the visual lines. The
  * key's origin is noted until the next gesture (`vertical`); a native move
  * that lands on no caret stop — a foreign or kind line beside the slots
- * (D-25) — is not the key's destination, the key's line stop from its origin
+ * — is not the key's destination, the key's line stop from its origin
  * is (`landed`), so the key is never swallowed and the DOM shows a stop.
  */
 const natives = new WeakMap<Edytor, { serial: number; dir: Dir; value: SelectionValue }>();
@@ -348,7 +348,7 @@ export const landed = (edytor: Edytor): boolean => {
 type Row = readonly [Unit, Dir | 'left' | 'right', ('mac' | 'other')?];
 
 /**
- * The navigation keys (K9). Word motion is Alt+Arrow on Apple and Mod+Arrow
+ * The navigation keys. Word motion is Alt+Arrow on Apple and Mod+Arrow
  * elsewhere; every row but the Emacs ones (Apple only by their chord) also
  * binds its Shift variant, which extends.
  */

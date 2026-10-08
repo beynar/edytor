@@ -36,7 +36,7 @@
  *   rows ≤ `maxRowBytes` (2 MB row cap) in one `transactionSync`, then
  *   broadcast; after `compactAfter` update records the rows are replaced
  *   by one snapshot record of the live document's state (its healed
- *   state, deleted content collected: P2), after the message is
+ *   state, deleted content collected), after the message is
  *   acknowledged — never inside the engine's `update` observer, where one
  *   throw would silence every later emit. Memory never runs ahead of
  *   storage: when an append fails, nothing is relayed or acknowledged, the
@@ -52,7 +52,7 @@
  *   left out of the ack), the rest applied. Compaction reclaims the
  *   waiting deletes of client ids no user registered and no socket holds;
  *   `dropWaitingDeletes()` every one.
- * - storage format (P5): the generation record says `storage: 'v2'` —
+ * - storage format: the generation record says `storage: 'v2'` —
  *   snapshots in the v2 encoding, compressed in place after they are
  *   stored (`compressLater`), inflated at start (`inflate`); update and
  *   pending records stay v1. A container without `storage` (0.1.0-next.22)
@@ -267,7 +267,7 @@ export const ROOM_ORIGIN = Symbol('edytor-room');
 export const RESTORE_ORIGIN = Symbol('edytor-restore');
 /** The transaction origin of the room's purge: tracked by no history. */
 export const PURGE_ORIGIN = Symbol('edytor-purge');
-/** The header `routeDocumentHistory` sets on an authorized history request (H11). */
+/** The header `routeDocumentHistory` sets on an authorized history request. */
 export const HISTORY_HEADER = 'X-Edytor-History';
 /** The version key of a history `read` or `restore` request. */
 export const HISTORY_KEY_HEADER = 'X-Edytor-History-Key';
@@ -509,7 +509,7 @@ export const noTimers = <T>(fn: () => T): T => {
 	}
 };
 
-// ── Validation (H2) ────────────────────────────────────────────────
+// ── Validation ────────────────────────────────────────────────
 
 /** A block as `validate` reads it, before or after a frame. */
 export type ValidatedBlock = {
@@ -899,7 +899,7 @@ export class AttachedDocument {
 		return this.room.storage.lastUpdated();
 	}
 
-	// ── History (H11) ────────────────────────────────────────────────────
+	// ── History ────────────────────────────────────────────────────
 
 	/**
 	 * Resolves once the versions the room is writing are stored (a slot a
@@ -963,7 +963,7 @@ export class AttachedDocument {
 		return this.room.comments.apply(request, actor);
 	}
 
-	// ── Moves (H10, `room.move`) ─────────────────────────────────────────
+	// ── Moves (`room.move`) ─────────────────────────────────────────
 
 	/**
 	 * Export blocks `ids` for a move (`room.move`, step 1): their visible
@@ -1023,7 +1023,7 @@ export class AttachedDocument {
 		return this.room.moves.applyLateEdits(batch);
 	}
 
-	// ── Purge (H7) ───────────────────────────────────────────────────────
+	// ── Purge ───────────────────────────────────────────────────────
 
 	/**
 	 * The purge task, also over RPC (`room.purge.timing`): record an epoch
@@ -1186,16 +1186,6 @@ export const attachRoom = (
 	}
 	return document;
 };
-
-/**
- * @deprecated Use {@link attachRoom} (the client's `attachDocument` attaches
- * a document to an engine doc, a different thing). Removed in the next
- * release.
- */
-export const attachDocument = attachRoom;
-
-/** @deprecated Use {@link AttachRoomOptions}. Removed in the next release. */
-export type AttachDocumentOptions = AttachRoomOptions;
 
 /**
  * The ready-made room: a Durable Object hosting one document, configured

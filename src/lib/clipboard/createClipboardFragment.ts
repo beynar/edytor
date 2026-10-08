@@ -122,7 +122,7 @@ export const createEdytorClipboardFragment = (edytor: Edytor): EdytorClipboardFr
 	withoutUncopied(edytor, fragmentOf(edytor));
 
 const fragmentOf = (edytor: Edytor): EdytorClipboardFragment | null => {
-	// A layout the block selection covers whole is copied as the layout (D3).
+	// A layout the block selection covers whole is copied as the layout.
 	const selectedBlocks = selectedMembers(edytor, liftLayouts(edytor.selection.selectedBlocks));
 	if (selectedBlocks.length > 0) {
 		return {

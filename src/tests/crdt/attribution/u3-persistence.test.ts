@@ -347,16 +347,16 @@ describe('provider sync', () => {
 		const blockId = firstBlock(a).id;
 		a.attachSync(
 			providers.createWebsocketSync({
-				serverUrl: url,
-				roomName: 'room',
+				server: url,
+				room: 'room',
 				WebSocketPolyfill: FakeWebSocket as never
 			})
 		);
 		const b = createDocument({ actor: bob });
 		b.attachSync(
 			providers.createWebsocketSync({
-				serverUrl: url,
-				roomName: 'room',
+				server: url,
+				room: 'room',
 				WebSocketPolyfill: FakeWebSocket as never
 			})
 		);

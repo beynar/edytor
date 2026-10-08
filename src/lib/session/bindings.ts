@@ -1,5 +1,5 @@
 /**
- * The built-in key bindings (R7, §4.3 `session/bindings`), as rows of the
+ * The built-in key bindings, as rows of the
  * keymap: history, the select-all ladder, block-selection keys, Tab and
  * Shift+Tab, selection deletes, and the macOS Emacs table. They come last in
  * the keymap's precedence: the consumer's and every extension's bindings of
@@ -25,7 +25,7 @@ const STRUCTURAL_HOTKEY_DOM_REPAIR_WINDOW_MS = 500;
 const HISTORY_HOTKEY_DOM_REPAIR_WINDOW_MS = 150;
 
 /**
- * Remove the selected inline atom as one command (O40): the caret lands where
+ * Remove the selected inline atom as one command: the caret lands where
  * the atom was; a printable key types `value` there. Answers whether an atom
  * was selected.
  */
@@ -81,7 +81,7 @@ const history =
 		});
 
 /**
- * Block-selection keys walk the document order with the island seal (R5),
+ * Block-selection keys walk the document order with the island seal,
  * past a collapsed toggle's hidden body.
  */
 const SEALED = { sealed: true } as const;
@@ -121,7 +121,7 @@ const arrowDown = vertical(1, moveBlockSelection('blockAfter'));
  * Shift+ArrowUp/Down over a block selection. Its first member is the
  * anchor and its last the focus (insertion order): a key moving the focus
  * back toward the anchor shrinks the selection, otherwise it extends past
- * the selection's edge in document order (K7), one block at a time — a
+ * the selection's edge in document order, one block at a time — a
  * parent and its children are separate members (`sel.blocks.exact`).
  */
 const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void => {
@@ -145,7 +145,7 @@ const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void =>
  * several nesting levels, each group that can move does, a vetoed one too:
  * `dispatcher.each`), as one undo step. A block inside another of them
  * moves with it; `edytor.moveBlocks` moves siblings with an unselected block
- * between them apart, so no key reorders the text (DR-behavior-1). Answers
+ * between them apart, so no key reorders the text. Answers
  * the moved blocks.
  */
 const moveRoots = (edytor: Edytor, blocks: Block[], direction: 'in' | 'out') => {
@@ -185,7 +185,7 @@ const nest =
 			const selectedBlock = selectedBlocks.values().next().value as Block | undefined;
 			const { yStart, startText, startBlock } = edytor.selection.state;
 			const index = startText?.index;
-			// The block's command reveals a closed toggle it lands in or that adopts (ZW-09).
+			// The block's command reveals a closed toggle it lands in or that adopts.
 			const block = (selectedBlock || startBlock)?.[operation]();
 			if (block) edytor.announcer.moved({ blocks: [block], direction }, [block]);
 			if (block && selectedBlock) edytor.selection.selectBlocks(block);
@@ -193,14 +193,14 @@ const nest =
 		});
 
 /**
- * Backspace/Delete over an editor-owned selection: the selected atom (O40), or
+ * Backspace/Delete over an editor-owned selection: the selected atom, or
  * the selected blocks (the caret lands at the end of the block before them).
  */
 const deleteSelection: HotKey = ({ edytor, prevent }) => {
 	if (edytor.selection.selectedInlineBlock.size || edytor.selection.inlineBlockDeletionTarget)
 		return prevent(() => replaceSelectedAtom(edytor));
 	if (!edytor.selection.selectedBlocks.size) return;
-	// The command runs the hooks and authors its caret (FP-7); the projector displays it.
+	// The command runs the hooks and authors its caret; the projector displays it.
 	prevent(() => deleteSelectedBlocks(edytor));
 };
 
@@ -292,7 +292,7 @@ export const builtInBindings: Record<string, HotKey> = {
 		});
 	},
 	...navigationBindings,
-	// Without a block selection the editor owns vertical extension (K1).
+	// Without a block selection the editor owns vertical extension.
 	'shift+arrowup': ({ edytor, prevent }) => {
 		if (edytor.selection.selectedBlocks.size)
 			return prevent(() => extendBlockSelection(edytor, 'up'));

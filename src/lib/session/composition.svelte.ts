@@ -1,5 +1,5 @@
 /**
- * The composition session (R7, R8, L7, O34, D32, D48; §4.3 `session/composition`).
+ * The composition session.
  *
  * One IME composition is one session. Its start target (the selection at
  * `compositionstart`) is replaced at its first write through an ordinary
@@ -7,8 +7,8 @@
  * shows no DOM range, at the start, so the IME writes in its place — and
  * the marks of the composed text are captured once, at the start. Previews are mechanical tracked writes (no
  * hooks) inside one capture group: the group opens with the session's first
- * write and is held open before each later one (`UndoManager.lastChange`,
- * K15), so the session and its ending are one undo step. Like a typed
+ * write and is held open before each later one (`UndoManager.lastChange`),
+ * so the session and its ending are one undo step. Like a typed
  * insertion, its first write coalesces with the step before it within
  * `captureTimeout` when it continues that step (else it cuts), and the next
  * insertion may coalesce with it. The region the
@@ -38,7 +38,7 @@
  * - `abandon()` — focus loss, a non-composing key, a new `compositionstart`,
  *   a pointer gesture: what the host shows is adopted (the browser committed
  *   it). No timer ever ends a session.
- * - D-20 — a commit that re-places the host's block (deleted, merged away,
+ * - re-placement — a commit that re-places the host's block (deleted, merged away,
  *   retyped, re-parented or moved among its siblings, itself or an ancestor
  *   — each re-creates or moves the IME's node) commits what the IME
  *   shows before the change renders; a preview deleted with its block is
@@ -93,7 +93,7 @@ export class Composition {
 	#announced = false;
 	/** The browser itself shows the preview (its update was not prevented): the host's render stays frozen. */
 	native = false;
-	/** The marks of the composed text, captured at the start (O29). */
+	/** The marks of the composed text, captured at the start. */
 	marks: Marks | undefined;
 	/** The selection at `compositionstart`: the start target. */
 	#start: SelectionValue | null = null;
@@ -113,11 +113,11 @@ export class Composition {
 	targetless = false;
 	/**
 	 * The start target is a range across texts: across blocks, or across an inline
-	 * atom inside one block (`block`, GX-04). Its first write merges the rest into
+	 * atom inside one block (`block`). Its first write merges the rest into
 	 * the host text.
 	 */
 	#across: false | 'blocks' | 'block' = false;
-	/** That rest, shown in the host once the IME wrote its first preview (FX-08). */
+	/** That rest, shown in the host once the IME wrote its first preview. */
 	#merged: JSONText[] | null = null;
 	/** A model command moved the caret during the session: the ending keeps it. */
 	#interrupted = false;
@@ -128,10 +128,10 @@ export class Composition {
 	#tail: Text | null = null;
 	#caret: { text: Text; offset: number } | null = null;
 	#waiting: (() => void)[] = [];
-	/** Where the host's block sits (its and its ancestors' ids and types), and their siblings: D-20 compares them. */
+	/** Where the host's block sits (its and its ancestors' ids and types), and their siblings: the re-placement check compares them. */
 	#where = '';
 	#order: { id: string; kids: readonly string[] }[] = [];
-	/** After a D-20 commit, until the IME ends: the text it committed (resumed over), or `lost` (dropped). */
+	/** After a re-placing commit, until the IME ends: the text it committed (resumed over), or `lost` (dropped). */
 	#resume: SelectionValue | 'lost' | null = null;
 	/** Phantom structural keys the tail swallowed (a test oracle). */
 	swallows = 0;
@@ -155,7 +155,7 @@ export class Composition {
 	 * `compositionstart`: the start target is the current selection, after the
 	 * DOM caret the IME found (`read`) is adopted — never over a block or atom
 	 * selection, which shows no DOM range (the caret is the one the browser
-	 * parked for the IME, EW-01), nor with no target at all (`untargeted`:
+	 * parked for the IME), nor with no target at all (`untargeted`:
 	 * that caret is the browser's own; the session refuses).
 	 */
 	start = (read: () => DomSelectionSnapshot | null = () => null) => {
@@ -249,7 +249,7 @@ export class Composition {
 	};
 
 	/**
-	 * A commit (D-20): when it re-placed the host's block, commit what the IME
+	 * A commit: when it re-placed the host's block, commit what the IME
 	 * shows now, before the change renders — nothing when the preview went
 	 * with a deleted block. The commit's own report follows this one.
 	 */
@@ -281,7 +281,7 @@ export class Composition {
 			this.#announced = false;
 			if (shown != null && shown !== this.preview) this.update(shown);
 			// After the IME's own write, which would take nodes rendered into its
-			// range with it: the screen shows what the document holds (FX-08).
+			// range with it: the screen shows what the document holds.
 			const [merged, host] = [this.#merged, this.host];
 			const cell = merged && host && this.edytor.cells?.get(host.parent.id);
 			if (cell) this.edytor.pin.merge(cell, merged, this.#across === 'block');
@@ -337,7 +337,7 @@ export class Composition {
 		const { selection, dispatcher } = edytor;
 		// A declared target range re-states where the composition starts.
 		if (this.#start && !attempt?.declared) selection.select(this.#start);
-		// The first write groups like a typed insertion (O31): it continues the
+		// The first write groups like a typed insertion: it continues the
 		// step before it only from where that step left the selection. Its
 		// operations are the session's command: they cut nothing of their own.
 		dispatcher.cut('insertText');
@@ -359,7 +359,7 @@ export class Composition {
 
 	/**
 	 * A block or atom selection shows no DOM range, so the IME has no caret
-	 * of its own and would write at the editable's start (EW-01). Its start
+	 * of its own and would write at the editable's start. Its start
 	 * target is replaced now (blocks: `flow.slot`, one empty block in their
 	 * place; an atom: removed), the change rendered and the DOM caret parked
 	 * where the preview goes before the IME writes (`projector.park`, the
@@ -515,7 +515,7 @@ export class Composition {
 		);
 	}
 
-	/** Hold the capture group open for the next write (K15). */
+	/** Hold the capture group open for the next write. */
 	#hold() {
 		const um = this.edytor.undoManager;
 		if (um && this.#item && um.undoStack.at(-1) === this.#item) um.lastChange = Date.now();
@@ -586,7 +586,7 @@ export class Composition {
 
 	#release() {
 		this.host = null;
-		// No host, no D-20 baseline: a stale one would end the next session
+		// No host, no re-placement baseline: a stale one would end the next session
 		// when its start target's replacement commits (`#rangeless`).
 		this.#where = '';
 		this.#order = [];

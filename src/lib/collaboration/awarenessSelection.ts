@@ -5,7 +5,7 @@ import type { PresenceSelection } from '$lib/session/selection.js';
 import { isRecord, jsonEquals } from '$lib/utils/json.js';
 
 /**
- * Presence (L10, R1): one entry per view key, `selections[viewKey] =
+ * Presence: one entry per view key, `selections[viewKey] =
  * serialize(value) + t`. The view that minted a key is the only writer of
  * its entry — it publishes on `select()` when the value changed and clears
  * the entry in its own teardown. Peers render one caret per client, the
@@ -19,7 +19,7 @@ export type EdytorAwarenessUser = {
 };
 
 /**
- * A published text selection (L10): anchors only — `start`/`end` in
+ * A published text selection: anchors only — `start`/`end` in
  * document order (`DocAnchor` wire shape), plus collapsed/reversed. The
  * only kind a peer renders as a caret.
  */
@@ -41,7 +41,7 @@ export type EdytorAwarenessViewSelection = PresenceSelection & {
 };
 
 export type EdytorAwarenessState = {
-	/** Durable actor identity — published once by the document (U5/U6 seam). */
+	/** Durable actor identity — published once by the document. */
 	actor?: { id: string; name?: string; color?: string };
 	user?: EdytorAwarenessUser;
 	/**
@@ -70,7 +70,7 @@ let publishSeq = 0;
 
 /**
  * Write the entry under `key` — `payload` null removes it. Called only by
- * the view that minted `key` (R1): other keys are copied untouched. An
+ * the view that minted `key`: other keys are copied untouched. An
  * unchanged payload (`t` aside) is not rebroadcast and keeps its `t`, so a
  * no-op republish cannot steal the freshest slot from a sibling; the field
  * is dropped when no entry is left. Other local-state fields are kept.
@@ -226,7 +226,7 @@ export const freshestPublishedSelection = (
 };
 
 /**
- * Strict wire-shape guard for serialized selection anchors (U09): `{b}`
+ * Strict wire-shape guard for serialized selection anchors: `{b}`
  * is the backing text's home block id and `a` is the engine anchor
  * `{i: {c,k}|null, a: number}` (a < 0 = left affinity). Foreign presence
  * payloads — e.g. v13 `RelativePosition` objects shaped

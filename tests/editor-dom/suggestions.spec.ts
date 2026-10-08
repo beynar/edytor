@@ -6,7 +6,7 @@ import { modKey, waitForEditorReady } from './helpers';
  * Suggestions (AI) in real browsers (site `editor/suggestions`): the preview
  * is shown, inert and non-editable; the default bar and keys accept, discard
  * and retry; a stream leaves the user's typing and caret alone. The jsdom
- * rows are `src/tests/fixtures/dom/suggestions-20261002.test.tsx`.
+ * rows are `src/tests/fixtures/dom/suggestions.test.tsx`.
  */
 
 const children = [

@@ -54,7 +54,7 @@ export const metaOps = (c: OpsContext) => {
 		const [id, inlineId] =
 			typeof target === 'object' && target ? [target.block, target.atom] : [target ?? undefined];
 		const node = dataNode(id, inlineId);
-		// A block kind's atomic paths are written as one leaf each (`data.atomic`, H8).
+		// A block kind's atomic paths are written as one leaf each (`data.atomic`).
 		const type = inlineId === undefined && id !== undefined ? blockTypeOf(id) : undefined;
 		const atomic = (type === undefined ? undefined : roleOf(type)?.atomic) ?? [];
 		const leaves = node
@@ -82,7 +82,7 @@ export const metaOps = (c: OpsContext) => {
 	/** A whole-data replace: a patch of the root. */
 	const replaceData = (data: unknown): DataPatch[] => [{ path: [], value: sanitizeWireJson(data) }];
 	/**
-	 * `data`'s leaves as sets over `current` (`data.retype.keep`, H4): a
+	 * `data`'s leaves as sets over `current` (`data.retype.keep`): a
 	 * plain object's keys, recursively where `current` holds an object
 	 * there too; anything else (an array, a primitive, an empty object, an
 	 * object where `current` holds none) as one value at its path. Nothing
@@ -103,17 +103,17 @@ export const metaOps = (c: OpsContext) => {
 	};
 
 	/**
-	 * The target role decides (UW-21): nothing renders a void's children,
+	 * The target role decides: nothing renders a void's children,
 	 * so a block retyped to a void kind hands them to the slot right after
 	 * it, as the kind they show there (`settledKind`). Each moves to the
 	 * rank the read-time
-	 * shedding gives it (`promotedRank`, UW-21b), so a child a peer adds
+	 * shedding gives it (`promotedRank`), so a child a peer adds
 	 * meanwhile keeps its place in the void's order among them. An island
 	 * declared `lines` retyped to an ordinary kind keeps its lines, each
 	 * retyped to the new kind's default child (the document's where that
 	 * renders no content): no line kind outside its island. Any other
 	 * island's children keep their kinds (a table's rows stay rows), as
-	 * `typeOf` shows a child a peer adds meanwhile (DR-crdt-2).
+	 * `typeOf` shows a child a peer adds meanwhile.
 	 */
 	const retypeSteps = (id: BlockId, type: string): PlanStep[] => {
 		const { kids } = view();
@@ -121,7 +121,7 @@ export const metaOps = (c: OpsContext) => {
 		const steps = attr(id, TYPE, type);
 		const moved = kids.get(id) ?? [];
 		// A code block retyped to an ordinary kind keeps its lines as that kind's children
-		// (`leavingIsland`: never a kind that hides their text, AW-05).
+		// (`leavingIsland`: never a kind that hides their text).
 		const lined = is(id, (t) => roles.line(t) !== undefined);
 		if (lined && !roles.island(type) && !roles.childless(type)) {
 			const to = roles.defaultChild(type);
@@ -193,12 +193,12 @@ export const metaOps = (c: OpsContext) => {
 
 	/**
 	 * Baseline `setBlock`: `type` updates the block in place and `data`
-	 * sets the leaves it names, removing none (`data.retype.keep`, H4: a
+	 * sets the leaves it names, removing none (`data.retype.keep`: a
 	 * retype keeps the block's properties, as Notion's Turn into does;
 	 * `setBlockData` replaces them); `content`/`children` REPLACE
 	 * wholesale — explicit replacement is a
 	 * new-identity operation; a retype to a void kind without `children`
-	 * unnests the current ones (`retypeSteps`). All-or-nothing (D-12): children
+	 * unnests the current ones (`retypeSteps`). All-or-nothing: children
 	 * for a block that is `void` after the write, or a replacement id that
 	 * is already taken (a live or deleted
 	 * block, the replaced children included, or a duplicate inside the

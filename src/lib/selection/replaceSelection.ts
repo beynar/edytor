@@ -32,8 +32,8 @@ export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) =>
  * (Notion: a collapsed toggle's hidden body is not touched, an open
  * toggle's children are) but a container it starts or ends in — a list
  * shows no text of its own, so a range entering it touches the items, never
- * the list (ZW-02, AW-02); a list the range runs through is touched whole,
- * so Tab moves it with the blocks around it, in order (DR-behavior-1); else
+ * the list; a list the range runs through is touched whole,
+ * so Tab moves it with the blocks around it, in order; else
  * the caret's block. Menus, the toolbar, kind commands and Tab read it.
  */
 export const getSelectionBlocks = (edytor: Edytor): Block[] => {
@@ -70,7 +70,7 @@ const isInside = (block: Block, ancestor: Block) => {
 };
 
 /**
- * `blocks` with every layout they cover whole standing for it (D3, as
+ * `blocks` with every layout they cover whole standing for it (as
  * Notion): a set holding every shown block of every column of a layout (each
  * displayed item's children) holds the layout instead of them and their
  * descendants. A layout so lifted may
@@ -112,7 +112,7 @@ export const liftLayouts = (blocks: Iterable<Block>): Block[] => {
  * outside the layout), it selects blocks — every shown block from one to
  * the other in reading order, but the layouts and columns themselves (each
  * block a member as `selectedMembers` reads it), so a sweep over every
- * block of every column lifts to the layout (`liftLayouts`, D3). `null` (a
+ * block of every column lifts to the layout (`liftLayouts`). `null` (a
  * text range) while both ends lie in the same columns (one column, or none:
  * a range that runs over a whole layout from above it to below it stays
  * text). Decided from the roles (`isLayoutItem`).
@@ -140,7 +140,7 @@ export const acrossColumns = (anchor: Block, focus: Block): Block[] | null => {
 	return blocks;
 };
 
-/** Whether a block selection holds `blocks`, a layout it covers whole counting as held (D3). */
+/** Whether a block selection holds `blocks`, a layout it covers whole counting as held. */
 export const holdsBlocks = (selected: Iterable<Block>, blocks: readonly Block[]) => {
 	const as = [...selected];
 	const held = new Set([...as, ...liftLayouts(as)]);
@@ -150,7 +150,7 @@ export const holdsBlocks = (selected: Iterable<Block>, blocks: readonly Block[])
 /**
  * The blocks not inside another of them: a block's descendants among them
  * move with it. A layout they cover whole stands for its blocks
- * (`liftLayouts`, D3): every move (a grip's drag and Alt+arrows,
+ * (`liftLayouts`): every move (a grip's drag and Alt+arrows,
  * Mod+Shift+arrows, the block menu's Move) and Duplicate act on it.
  */
 export const outermost = (blocks: Iterable<Block>): Block[] => {
@@ -188,7 +188,7 @@ export const movable = (blocks: Iterable<Block>): Block[] => {
 export const selectMoved = (edytor: Edytor, moved: Block[], before: Iterable<Block>) => {
 	const held = [...before];
 	const kept = held.filter((block) => moved.some((root) => isInside(block, root)));
-	// A layout moved for the blocks covering it whole stays selected as those blocks (D3).
+	// A layout moved for the blocks covering it whole stays selected as those blocks.
 	const lifted = new Set(liftLayouts(kept));
 	const roots = moved.filter((block) => !lifted.has(block) || held.includes(block));
 	edytor.selection.selectBlocks(...roots, ...kept);
@@ -197,8 +197,8 @@ export const selectMoved = (edytor: Edytor, moved: Block[], before: Iterable<Blo
 /**
  * Run a block move that never hides a block the user saw (Notion): a closed
  * toggle a moved block lands in opens, and so does a closed toggle that
- * adopts blocks (Shift+Tab takes the blocks after it). `open` is view state
- * (R11). Every relative move (`edytor.moveBlocks`) and every block move
+ * adopts blocks (Shift+Tab takes the blocks after it). `open` is view state.
+ * Every relative move (`edytor.moveBlocks`) and every block move
  * command (`revealed`) share it. Answers the moved blocks.
  */
 export const revealing = (blocks: Block[], move: () => Block[]) => {
@@ -211,7 +211,7 @@ export const revealing = (blocks: Block[], move: () => Block[]) => {
 	return moved;
 };
 
-/** Open `block` when it is a closed toggle (`open` is view state, R11). */
+/** Open `block` when it is a closed toggle (`open` is view state). */
 const open = (block: Block) => {
 	if (block.node?.tagName === 'DETAILS') (block.node as HTMLDetailsElement).open = true;
 };
@@ -227,7 +227,7 @@ export const reveal = (block: Block) => {
 /**
  * A block's move command (`nestBlock`, `unNestBlock`, `moveBlock`,
  * `moveBlocks`) that reveals what it moved (`revealing`), as the keys and
- * `edytor.moveBlocks` do (ZW-09). A remote peer's move, an undo or a redo
+ * `edytor.moveBlocks` do. A remote peer's move, an undo or a redo
  * opens nothing: `open` is this view's state, and history restores it as
  * it was.
  */
@@ -298,7 +298,7 @@ export const selectedBlocksLine = (edytor: Edytor): Text | undefined =>
  * (voids, containers) and a closed toggle's hidden body are passed over; a
  * line created in the same change counts (it is displayed once it mounts).
  * The keyboard's and the block menu's block deletes, Escape and the one
- * selection writer (`select`, FX-01) share it.
+ * selection writer (`select`) share it.
  */
 export const caretBeside = (
 	block: Block,
@@ -330,9 +330,9 @@ export const selectedBlocksExit = (edytor: Edytor): SelectionInsertionTarget | n
 /**
  * The caret once `blocks` (document order) are deleted, their unselected
  * children promoted (`del.blocks.promote`): the start of a child that takes
- * their place (FW-05), else the end of the nearest line before them, else the
+ * their place, else the end of the nearest line before them, else the
  * start of the nearest line after. The keyboard's block delete and cut and
- * the block menu's Delete share it (YW-04).
+ * the block menu's Delete share it.
  */
 export const caretAfterBlockDelete = (
 	blocks: readonly Block[]
@@ -371,7 +371,7 @@ export const keepsSelectedBlocks = (edytor: Edytor, blocks: Block[]) => {
  * menu's): the
  * keyboard's block delete, cut and the block menu's Delete share it
  * (`keepsSelectedBlocks` first). The command authors its result selection
- * (FP-7, R9) by `caretAfterBlockDelete`, declared before the delete, so the
+ * by `caretAfterBlockDelete`, declared before the delete, so the
  * seam never runs for it; with no line left, the virtual paragraph's start
  * or the block beside them. The view announces the delete
  * (`announcer.deleted`). Answers the caret's text.

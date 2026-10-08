@@ -29,7 +29,7 @@
  * setTimeout, so full virtualization deadlocks the harness itself).
  *
  * The bounded 32-seed qualification campaign reuses this program via
- * command-campaign.test.ts (env-gated; see docs/crdt-v14-execution-ledger).
+ * command-campaign.test.ts (env-gated; see docs/archive/crdt-v14-execution-ledger.md).
  */
 import { describe, expect, it } from 'vitest';
 import { installTimerAccounting, runCommand } from './command-peer-set.js';

@@ -1,6 +1,6 @@
 /**
  * HARDENING U0 / R3 — undo restores deleted text into the WRONG paragraph
- * (review `docs/crdt-v14-follow-up-review-2026-09-21.md` §R3, P1).
+ * (review `docs/archive/crdt-v14-follow-up-review-2026-09-21.md` §R3, P1).
  *
  * After `b` = "hello world" is split at 6 into `b`="hello " + `tail`="world",
  * deleting `tail`'s five chars and undoing must restore them to `tail`.

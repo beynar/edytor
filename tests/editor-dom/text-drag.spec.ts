@@ -41,7 +41,7 @@ const dragText = async (
  * editor (Notion, every text editor): one command and one undo step; Alt
  * copies. The browser's own drag (no synthetic event): the engines start a
  * drag from a press inside a selection. The model rows are
- * `text-drag-20261008.test.tsx`.
+ * `text-drag.test.tsx`.
  */
 test.describe('dragging selected text', () => {
 	test('moves it to another line; one undo gives both back', async ({ page }) => {

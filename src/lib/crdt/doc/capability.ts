@@ -20,20 +20,20 @@
  *   a block inside an island (`insideIsland`) cannot be moved, nested,
  *   unnested, or merged across the island boundary. Merges INSIDE one
  *   island are allowed; merging an island child into the island itself is
- *   allowed when the island renders its content (XW-12). Moving or merging
+ *   allowed when the island renders its content. Moving or merging
  *   INTO an island subtree is rejected. An island declared `lines` (code)
  *   holds only lines of its `defaultChild` kind, and a line holds no
- *   children (FW-01, XW-03: the display enforces it against undo,
+ *   children (the display enforces it against undo,
  *   `insertBlocks` refuses a line parent); any other island keeps its
  *   structure. `canPlace` and `canMerge` are the one answer, asked in
- *   advance or by the ops (R5).
+ *   advance or by the ops.
  * - Island merge: when an island block itself is merged (backward or
  *   forward), its children are unnested to the vacated sibling slot and
  *   reset to the default child of that slot's parent (`defaultChild`).
  * - Baseline merges NEVER adopt the merged block's children — they unnest
  *   to the vacated slot. The facade exposes both: `mergeBlocks` is the
- *   engine primitive (children adopt into the target — TX09c contract —
- *   by staying under the source, which the target's claim displays, FW-12),
+ *   engine primitive (children adopt into the target
+ *   by staying under the source, which the target's claim displays),
  *   `mergeBackward`/`mergeForward` reproduce the baseline command shape.
  *
  */
@@ -61,7 +61,7 @@ export const docCapability = (c: DocBase & DocReads) => {
 		displayLength
 	} = c;
 
-	// ── structural capability (R5, O8): one answer in advance and at execution ──
+	// ── structural capability: one answer in advance and at execution ──
 
 	/**
 	 * May `ids` be placed under `parent` (`null` = the root)? Every id is
@@ -70,9 +70,9 @@ export const docCapability = (c: DocBase & DocReads) => {
 	 * inside one, and not inside any moved block's own subtree; and every
 	 * block fits it as the kind `kindOf` gives (`fits`; a move keeps its
 	 * kind) or already sits in it (a reorder changes nothing a list holds:
-	 * an image shed into a list still moves among its items, AW-06); and
+	 * an image shed into a list still moves among its items); and
 	 * no layout, nor a block holding one, lands inside a layout item
-	 * (D2, `layout.nest`). A table's cell never moves, and its row only
+	 * (`layout.nest`). A table's cell never moves, and its row only
 	 * within its table (`table.fits`).
 	 * Without a `parent`: may these blocks move at all (the drag
 	 * affordance). The move ops refuse exactly when this answers `false`.
@@ -107,7 +107,7 @@ export const docCapability = (c: DocBase & DocReads) => {
 	 */
 	const isContainer = (id: BlockId): boolean => !rendersContent(id) && !isVoid(id) && !isIsland(id);
 	/**
-	 * THE container rule (ZW-01, ZW-14): may a block of `kind` sit directly
+	 * THE container rule: may a block of `kind` sit directly
 	 * under `parent` (`null` = the root)? A container whose default child is
 	 * a kind of its own — its item (a list's `list-item`, a columns
 	 * layout's `column`) — holds only its items, and containers of them
@@ -122,7 +122,7 @@ export const docCapability = (c: DocBase & DocReads) => {
 	 * writes (`insertBlocks`, a retype) place what they are told (the
 	 * view's Turn into places the kind where it fits first, `liftOut`); a
 	 * plain block stored directly in a list still shows as its item (the
-	 * index's `typeOf`, AW-04), whatever write or race put it there.
+	 * index's `typeOf`), whatever write or race put it there.
 	 */
 	const fits = (parent: BlockId | null, kind: string | undefined): boolean =>
 		parent === null || fitsIn(blockTypeOf(parent) ?? '', kind);
@@ -145,7 +145,7 @@ export const docCapability = (c: DocBase & DocReads) => {
 	 * in a columns layout keeps its kind: its text never vanishes). Any
 	 * other kind keeps its kind and data wherever a merge, a delete or a
 	 * paste sheds it — an image under a bullet stays an image, a heading a
-	 * heading, a to-do keeps its check (DR-crdt-1) — as a peer's
+	 * heading, a to-do keeps its check — as a peer's
 	 * concurrent promotion shows it (`typeOf` resets only the default
 	 * kind); an outdent or a move that would place one directly in a list
 	 * is refused (`fits`).
@@ -163,7 +163,7 @@ export const docCapability = (c: DocBase & DocReads) => {
 	 * and so on down. Tab after a list nests under its last item (Notion);
 	 * a last child that holds no children (an image, a code block) is
 	 * answered as it is, and `canPlace` refuses it, as Tab right under
-	 * that block is refused (AW-07).
+	 * that block is refused.
 	 */
 	const nestParent = (ids: readonly BlockId[], parent: BlockId): BlockId => {
 		let at = parent;
@@ -179,9 +179,9 @@ export const docCapability = (c: DocBase & DocReads) => {
 	 * May `fromId`'s content merge into `intoId`? Both live and distinct,
 	 * neither void, `intoId` renders its content (a list, a table row or a
 	 * code block shows none, so a first item, cell or line never merges
-	 * into it — XW-12, DR-crdt-2), `fromId` renders its own unless it is
+	 * into it), `fromId` renders its own unless it is
 	 * an island (a list or a row never merges as a whole: its items would
-	 * leave it — YW-02), and the merge stays on one side of an island
+	 * leave it, `del.merge.container`), and the merge stays on one side of an island
 	 * boundary (a block may merge into its own island root — that stays
 	 * inside — but nothing from outside merges into an island).
 	 */
@@ -197,7 +197,7 @@ export const docCapability = (c: DocBase & DocReads) => {
 		return islandFrom === islandOf(intoId, v) && !isIsland(intoId);
 	};
 
-	/** `id`'s shown kind renders its content (R5, O22). */
+	/** `id`'s shown kind renders its content. */
 	const rendersContent = (id: BlockId): boolean => rendersContentOf(blockTypeOf(id) ?? '');
 
 	/** The adopted default child type under `parent` (`null` = the root). */
@@ -208,7 +208,7 @@ export const docCapability = (c: DocBase & DocReads) => {
 	 * a duplicate and each of its descendants). A type a peer's retype is
 	 * replacing can be missing while its new value is pending: the copy
 	 * then takes its parent's default child, never a missing type
-	 * (SW7-crdt-1, DR-crdt-1: it showed as `unknown` everywhere, for good).
+	 * (it showed as `unknown` everywhere, for good).
 	 */
 	const kindToCopy = (id: BlockId): string =>
 		blockTypeOf(id) ?? defaultChild(positionOf(id)?.parent ?? null);

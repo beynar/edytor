@@ -3,10 +3,10 @@
  * `y-websocket@3.0.0` `src/y-websocket.js` (MIT © Kevin Jahns — see
  * `src/lib/crdt/vendor/yjs/LICENSE`).
  *
- * Retained surface (D-24 G-e): `status`/`synced`/`connection-*` events,
+ * Retained surface: `status`/`synced`/`connection-*` events,
  * `connect()`/`disconnect()`, awareness injection, auth `params` (read at
  * every dial, so a refreshed token reaches the next connection),
- * `WebSocketPolyfill`, outbound chunking of frames over `maxFrameBytes` (H6),
+ * `WebSocketPolyfill`, outbound chunking of frames over `maxFrameBytes`,
  * exponential-backoff reconnect (`maxBackoffTime`,
  * growing to 30 s for a room that stays unreachable), liveness (a text
  * `ping` after 15 s of silence; a text `pong` counts as heard),
@@ -25,7 +25,7 @@
  * reach the server as soon as any tab of the room is online. A socket the
  * room made read-only gets this document's own edits only.
  *
- * The generation gate (`protocols/envelope.ts`, R13): every websocket
+ * The generation gate (`protocols/envelope.ts`): every websocket
  * frame is tagged `varuint GENERATION | messageType | payload`. Inbound
  * frames of any other generation are dropped before decode and reported
  * via `'protocol-mismatch'`. A v13
@@ -38,7 +38,7 @@
  * The room half — enveloped dispatch, the join rule, the inbound refusal,
  * awareness publish/query, the departure announcement, the outbound
  * quarantine and the provider lifecycle — is shared with the IndexedDB
- * provider in `room.ts` (S1). This file keeps the transport edges: the
+ * provider in `room.ts`. This file keeps the transport edges: the
  * socket lifecycle, reconnect backoff, liveness, the auth reply, and the
  * connection's `synced` (transient: it resets with the socket; `hasSynced`
  * is the lifetime fact). `resyncInterval` is not a correctness dependency:
@@ -208,7 +208,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 
 	/**
 	 * One frame on `ws`: whole, or as a chunk sequence when it is larger
-	 * than `maxFrameBytes` (H6). A text frame (the keepalive) goes as it is.
+	 * than `maxFrameBytes`. A text frame (the keepalive) goes as it is.
 	 */
 	const sendOn = (provider: Provider, ws: WebSocket, buf: Uint8Array | string) => {
 		if (typeof buf === 'string') return ws.send(buf);
@@ -233,7 +233,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	};
 
 	/**
-	 * The shared room protocol (S1). The transport edges stay here:
+	 * The shared room protocol. The transport edges stay here:
 	 * `messageAuth` exists only on a server socket, and `heard` claims the
 	 * connection's `synced`.
 	 */
@@ -250,7 +250,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 					(_ydoc, reason) => {
 						// Observable: a refused write. A read-only socket still syncs:
 						// nothing it writes can be stored, so nothing is tracked. Any
-						// other denial is a terminal sync failure (D4), reported at
+						// other denial is a terminal sync failure, reported at
 						// most once.
 						const readOnly = reason === READ_ONLY_DENIAL;
 						if (readOnly) provider._writes.deny();
@@ -648,7 +648,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		/** This actor's writes pending the room's acknowledgement. */
 		_writes: OwnWrites;
 		messageHandlers: Record<number, RoomMessageHandler<WebsocketProvider>> = room.messageHandlers;
-		// The room lifecycle (O74) — installed by `initLifecycle`.
+		// The room lifecycle — installed by `initLifecycle`.
 		hasSynced!: boolean;
 		whenSynced!: Promise<unknown>;
 		_destroyed!: boolean;
@@ -811,7 +811,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		destroy(): void {
 			// The destroy guard: idempotent, and the terminal failure of a
 			// provider that never synced (a synced one that merely lost its
-			// socket did not fail — `hasSynced`, D37).
+			// socket did not fail — `hasSynced`).
 			if (!beginDestroy(this, `WebsocketProvider "${this.roomname}"`)) return;
 			clearInterval(this._resync);
 			clearInterval(this._checkInterval);

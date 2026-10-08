@@ -1,5 +1,5 @@
 /**
- * Schema names — the one table (O20): every root key, node role and attr name
+ * Schema names — the one table: every root key, node role and attr name
  * a document carries, plus the generation stamp written on `meta`. A
  * dependency-free leaf, so every model layer reads it without importing the
  * facade module.
@@ -16,7 +16,7 @@ export const REGISTRY_KEY = 'blocks';
 export const META_ROOT_KEY = 'meta';
 /** Attribution metadata root (`SCHEMA.roots.attribution`). */
 export const ATTRIBUTION_ROOT = 'attribution';
-/** U1 per-block attribution root — `b/<blockId>` records (`SCHEMA.roots.blockAttribution`). */
+/** The per-block attribution root — `b/<blockId>` records (`SCHEMA.roots.blockAttribution`). */
 export const BLOCK_ATTR_ROOT = 'blockattr';
 /**
  * Per-writer text delete marks (`text/deletes.ts`): one record per text
@@ -38,7 +38,7 @@ export const RESTORED_ROOT = 'restored';
 export const DOC_DATA_ROOT = 'docdata';
 
 /**
- * The purge horizon (H7): attr {@link HORIZON_ATTR} holds `{ at, sv }`, the
+ * The purge horizon: attr {@link HORIZON_ATTR} holds `{ at, sv }`, the
  * time and state vector of the room's epoch before which it purged deleted
  * content. Written only by the room's purge (a client's write is stripped);
  * histories drop the steps below it (`hist.purge.horizon`).
@@ -61,7 +61,7 @@ export const DATA = 'data';
 /** A data leaf: `d/` and its path, RFC 6901 escaped (`crdt/data.ts`). */
 export const DATA_LEAF_PREFIX = 'd/';
 /**
- * Incarnation nonce (O23, §2.1): which creation of a (recyclable) block id a
+ * Incarnation nonce: which creation of a (recyclable) block id a
  * node is — and which stream boundary `{s, n}` starts the block's stream.
  * Written at creation (random from the `rand` seam, derived from the seed
  * hash for seeded blocks) and re-minted, derived from the dead incarnation,
@@ -70,7 +70,7 @@ export const DATA_LEAF_PREFIX = 'd/';
  */
 export const NONCE = 'n';
 /**
- * Per-writer delete marks (R3): `del.<writer>: true`. A block is deleted iff
+ * Per-writer delete marks: `del.<writer>: true`. A block is deleted iff
  * any mark is live, so an undo removes only the undoer's own mark.
  */
 export const DEL_PREFIX = 'del.';
@@ -85,10 +85,10 @@ export const hasDeleteMark = (node: { attrKeys(): IterableIterator<string> }): b
 export const WITHDRAW_PREFIX = 'wd.';
 export const hasWithdrawMark = (node: { attrKeys(): IterableIterator<string> }): boolean =>
 	[...node.attrKeys()].some((key) => key.startsWith(WITHDRAW_PREFIX));
-/** U1 `lastChangedBy` LWW attr (`SCHEMA.blockAttrs.lastChanged`). */
+/** The per-block `lastChangedBy` LWW attr (`SCHEMA.blockAttrs.lastChanged`). */
 export const LAST_CHANGED_ATTR = 'l';
 export const CONTENT = 'content';
-/** Ordered merge claims `{m: blockId}` (R2). */
+/** Ordered merge claims `{m: blockId}`. */
 export const CLAIMS = 'claims';
 export const AT = 'at';
 
@@ -97,8 +97,8 @@ export const REC_PREFIX = 'b/';
 
 /** The schema generation stamped on the `meta` root (`v`) and its manifest name (`schema`). */
 export const SCHEMA = {
-	// 5 (0.1.0-next.25): paired marks (H5), variable-length ranks (P7), v2
-	// SyncStep2 (P5); a generation-4 container converts through its JSON
+	// 5 (0.1.0-next.25): paired marks, variable-length ranks, v2
+	// SyncStep2; a generation-4 container converts through its JSON
 	// (`migration/generation.ts`).
 	version: 5,
 	name: 'edytor-doc',

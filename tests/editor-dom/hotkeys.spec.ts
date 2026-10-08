@@ -1634,8 +1634,10 @@ test.describe('browser hotkey behavior', () => {
 					if (!edytor || !codeLine) {
 						return false;
 					}
-					codeLine.suggestions = [[{ text: ' // done' }]];
-					return codeLine.suggestions !== null;
+					edytor.suggestions.add({ end: codeLine.id }, [
+						{ type: codeLine.type, content: [{ text: ' // done' }] }
+					]);
+					return edytor.suggestions.at(codeLine.id).end.length > 0;
 				})
 			)
 			.toBe(true);
@@ -1657,7 +1659,7 @@ test.describe('browser hotkey behavior', () => {
 				page.evaluate(() => {
 					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 					const codeLine = edytor?.root?.children?.[0]?.children?.[0];
-					return codeLine?.suggestions === null;
+					return !codeLine || edytor.suggestions.at(codeLine.id).end.length === 0;
 				})
 			)
 			.toBe(true);
@@ -1686,8 +1688,10 @@ test.describe('browser hotkey behavior', () => {
 					if (!edytor || !codeLine) {
 						return false;
 					}
-					codeLine.suggestions = [[{ text: "const b = 'world';" }]];
-					return codeLine.suggestions !== null;
+					edytor.suggestions.add({ end: codeLine.id }, [
+						{ type: codeLine.type, content: [{ text: "const b = 'world';" }] }
+					]);
+					return edytor.suggestions.at(codeLine.id).end.length > 0;
 				})
 			)
 			.toBe(true);
@@ -1703,7 +1707,7 @@ test.describe('browser hotkey behavior', () => {
 				page.evaluate(() => {
 					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 					const codeLine = edytor?.root?.children?.[0]?.children?.[0];
-					return codeLine?.suggestions !== null;
+					return !!codeLine && edytor.suggestions.at(codeLine.id).end.length > 0;
 				})
 			)
 			.toBe(true);
@@ -1713,7 +1717,7 @@ test.describe('browser hotkey behavior', () => {
 				page.evaluate(() => {
 					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 					const codeLine = edytor?.root?.children?.[0]?.children?.[0];
-					return codeLine?.suggestions === null;
+					return !codeLine || edytor.suggestions.at(codeLine.id).end.length === 0;
 				})
 			)
 			.toBe(true);

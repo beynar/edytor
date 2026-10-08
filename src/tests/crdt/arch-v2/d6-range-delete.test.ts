@@ -4,7 +4,7 @@
  * (rules R5, R6; §4.1 `doc/rangeDelete`; §5 L40, L41).
  *
  * Rows (doc lane; the dom half of F-D12 lives in
- * `src/tests/fixtures/dom/arch-v2-d6-range-delete.test.tsx`):
+ * `src/tests/fixtures/dom/range-delete-containers.test.tsx`):
  * - every `del.range.*` row of `docs/editor-delete-contract.md`, on the
  *   document (`prepare.deleteRange` → `apply`), with the caret the op
  *   reports (`del.range.caret`);

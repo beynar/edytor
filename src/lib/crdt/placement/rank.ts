@@ -1,5 +1,5 @@
 /**
- * Rank keys for the placement model (U03) — a Logoot-style dense ordering.
+ * Rank keys for the placement model — a Logoot-style dense ordering.
  *
  * A rank is a non-empty sequence of *segments* `(v, t)`:
  *
@@ -9,13 +9,13 @@
  * - `t` — the allocator's `doc.clientID` (uint53), the *tiebreak* that makes
  *   concurrent allocations of the same digit path distinct, or none
  *   (`Infinity`: sorts above every client) on a segment that only leads to
- *   deeper ones. The last segment always carries one (P7, schema
+ *   deeper ones. The last segment always carries one (schema
  *   generation 5): a rank's own client sits on its last segment, and a
  *   copied segment keeps its tie only where the order needs it (between two
  *   keys that differ only by their ties).
  *
  * Encoding is variable-length and order-preserving, so the persisted rank
- * is a plain string and the comparator is `a < b` (P7, CRDT study 2026-10;
+ * is a plain string and the comparator is `a < b` (CRDT study 2026-10;
  * up to generation 4 every segment was 16 characters, 9 of them a tie):
  *
  * - `v` → a length character (`'H'` for zero, `'H' + k` for a positive
@@ -193,8 +193,8 @@ export const rankBetween = (
 	const own = (v: number): string => encodeRank([...path, { v, t: clientId }]);
 	for (let i = 0; ; i++) {
 		const lSeg = above ? undefined : (L[i] as RankSeg | undefined);
-		// Locked: the right bound no longer constrains any deeper level (FX-04:
-		// descending past it grew ranks linearly under concentrated edits).
+		// Locked: the right bound no longer constrains any deeper level
+		// (descending past it grew ranks linearly under concentrated edits).
 		const rSeg = rightOpen || locked ? undefined : (R[i] as RankSeg | undefined);
 		if (lSeg === undefined) {
 			// Left bound exhausted (or passed): extending the prefix keeps the
@@ -233,7 +233,7 @@ export const rankBetween = (
 			// Gap at this level: any v in (lv, rv) is > left and < right.
 			return own(lSeg.v + 1 + Math.floor(rand() * (rSeg.v - lSeg.v - 1)));
 		}
-		// rv - lv ≤ 1. Compact (P7): the left digit with our tie, or the right
+		// rv - lv ≤ 1. Compact: the left digit with our tie, or the right
 		// one, when it sorts between; else the left digit untied when that
 		// already sorts below the right bound. A run's member (`rankAfter`) is
 		// never compact: a peer's rank of the same digit and another tie would
@@ -281,7 +281,7 @@ const inRun = (v: number): boolean => v > RANK_RUN && v < RANK_RUN + RUN_BAND;
 
 /**
  * A rank in `(left, right)` for an insert right after `left` — one rule for
- * array items (`crdt/data.ts`) and inserted blocks (H1, `order.insert.run`).
+ * array items (`crdt/data.ts`) and inserted blocks (`order.insert.run`).
  * When `client` made `left`, the rank is in the client's run after it: `left`
  * itself as the prefix, then one segment of the run band — or, when `left`
  * is already a member of the client's run, that run's prefix and a member
@@ -337,7 +337,7 @@ export const rankAfter = (
 		return own(prefix, left.length > prefix.length ? left.slice(prefix.length) : undefined, false);
 	}
 	// A rank the client made: its run opens right after it. The prefix keeps
-	// `left`'s tie (P7): a peer's rank of the same digit and a greater tie
+	// `left`'s tie: a peer's rank of the same digit and a greater tie
 	// then sorts after the whole run, never between `left` and it.
 	if (last.t === client) return own(left, undefined, true);
 	return plain();

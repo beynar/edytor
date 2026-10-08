@@ -1,8 +1,8 @@
 /**
  * WU-14 (API-11, API-13, API-14): naming and papercuts, on the headless view.
  *
- * - API-13 — the bindings option is `hotkeys`, as a plugin's field is;
- *   `hotKeys` stays a deprecated alias for one release. The `value` the
+ * - API-13 — the bindings option is `hotkeys`, as a plugin's field is
+ *   (`hotKeys`, its alias, is gone: `retired-aliases.test.ts`). The `value` the
  *   view takes and the value `onChange` hands back are one type
  *   (`JSONDoc`), so a saved value goes back in as it is.
  * - API-14 — a snippet override naming no registered kind, mark or inline
@@ -50,13 +50,6 @@ describe('API-13 · hotkeys', () => {
 		expect(edytor.keymap.run('mod+j', event)).toBe(true);
 		expect(calls).toEqual(['app']);
 		expect(prevented()).toBe(true);
-	});
-
-	test('`hotKeys` is a deprecated alias of `hotkeys`', () => {
-		const calls: string[] = [];
-		const edytor = view({ hotKeys: { 'mod+j': ({ prevent }) => prevent(() => void calls.push('alias')) } });
-		expect(edytor.keymap.run('mod+j', key().event)).toBe(true);
-		expect(calls).toEqual(['alias']);
 	});
 });
 

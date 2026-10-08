@@ -99,12 +99,12 @@ const integrateStructs = (transaction, store, clientsStructRefs) => {
    * @type {Array<Item | GC | Skip>}
    */
   const stack = []
-  // P9 begin — the client each stacked struct waits for (parallel to `stack`)
+  // YP9 begin — the client each stacked struct waits for (parallel to `stack`)
   /**
    * @type {Array<number>}
    */
   const stackMissing = []
-  // P9 end
+  // YP9 end
   // sort them so that we take the higher id first, in case of conflicts the lower id will probably not conflict with the id from the higher user.
   let clientsStructRefsIds = array.from(clientsStructRefs.clients.keys()).sort((a, b) => a - b)
   if (clientsStructRefsIds.length === 0) {
@@ -159,14 +159,14 @@ const integrateStructs = (transaction, store, clientsStructRefs) => {
   // })
 
   const addStackToRestSS = () => {
-    // P9 begin — every stacked struct waits for its own dependency, not only
+    // YP9 begin — every stacked struct waits for its own dependency, not only
     // the head's: record them all, so a later update that supplies any of
     // them retries the pending structs.
     for (const client of stackMissing) {
       updateMissingSv(client, store.getClock(client))
     }
     stackMissing.length = 0
-    // P9 end
+    // YP9 end
     for (const item of stack) {
       const client = item.id.client
       const inapplicableItems = clientsStructRefs.clients.get(client)
@@ -195,7 +195,7 @@ const integrateStructs = (transaction, store, clientsStructRefs) => {
       const missing = getMissing(/** @type {any} */ (stackHead), transaction, store)
       if (missing !== null) {
         stack.push(stackHead)
-        stackMissing.push(missing) // P9
+        stackMissing.push(missing) // YP9
         // get the struct reader that has the missing struct
         /**
          * @type {{ refs: Array<GC|Item|Skip>, i: number }}
@@ -223,7 +223,7 @@ const integrateStructs = (transaction, store, clientsStructRefs) => {
     // iterate to next stackHead
     if (stack.length > 0) {
       stackHead = /** @type {GC|Item} */ (stack.pop())
-      stackMissing.pop() // P9
+      stackMissing.pop() // YP9
     } else if (curStructsTarget !== null && curStructsTarget.i < curStructsTarget.refs.length) {
       stackHead = /** @type {GC|Item} */ (curStructsTarget.refs[curStructsTarget.i++])
     } else {

@@ -23,9 +23,9 @@ In your own Durable Object, define `alarm()` only to add work of your own, and c
 
 ## Storage tables
 
-The room's tables live in the object's SQLite storage beside your own. `DocumentRoom` names them without a prefix; `attachDocument` prefixes them with `tablePrefix` (`edytor_` by default). The tables of a feature you do not use are never created.
+The room's tables live in the object's SQLite storage beside your own. `DocumentRoom` names them without a prefix; `attachRoom` prefixes them with `tablePrefix` (`edytor_` by default). The tables of a feature you do not use are never created.
 
-| `DocumentRoom` | `attachDocument` | Holds | Created |
+| `DocumentRoom` | `attachRoom` | Holds | Created |
 | --- | --- | --- | --- |
 | `rows` | `edytor_rows` | The document, as records split into rows under the platform's 2 MB row limit: a generation record, the update records (v1, one per stored frame), at most one snapshot (v2, gzip-compressed, written by [compaction](/docs/server/room#storage)) and `pending` records of the deletes still waiting for their item. | At the first start. |
 | `replicas` | `edytor_replicas` | Which user owns each client id (`replica`, `user`), the [identity registry](/docs/server/authorization#replicas) `onSave` receives as `replicas`. Compaction drops the ids that hold no content and belong to no open socket. | At the first start. |

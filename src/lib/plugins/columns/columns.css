@@ -1,9 +1,9 @@
 /*
- * Columns (docs/columns-plan.md §5): a layout lays its columns out side by
+ * Columns (`docs/columns-plan.md`): a layout lays its columns out side by
  * side in its one children container, each column growing by its weight
  * (`flex: <width> 1 0`, set on the column by the kind's element), with
  * `--edytor-columns-gap` between them. Neither container is a nesting step:
- * their indent is zeroed. Below a 480px wide layout the columns stack (D6).
+ * their indent is zeroed. Below a 480px wide layout the columns stack.
  */
 [data-edytor-block][data-edytor-columns] {
 	container-type: inline-size;
@@ -38,7 +38,7 @@
 }
 
 /*
- * A block selection standing for the whole layout (D3): one highlight over
+ * A block selection standing for the whole layout: one highlight over
  * the layout, none on its blocks.
  */
 [data-edytor-block][data-edytor-columns] > [data-edytor-children][data-edytor-columns-selected] {

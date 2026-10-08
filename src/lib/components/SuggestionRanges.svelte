@@ -8,7 +8,7 @@
 
 	/**
 	 * The text a `replace` suggestion removes when accepted, marked in the
-	 * overlay (R11: never inside the host): its rects, once per frame.
+	 * overlay (never inside the host): its rects, once per frame.
 	 */
 	let rects: RemoteSelectionRect[] = $state([]);
 

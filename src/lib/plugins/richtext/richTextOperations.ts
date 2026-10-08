@@ -286,7 +286,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 		const { isCollapsed, startText, yStart } = edytor.selection.state;
 		if (isCollapsed) {
 			if (startText && !selectsBlocks(edytor)) {
-				// Stage the full set the next insertion carries, values kept (O29).
+				// Stage the full set the next insertion carries, values kept.
 				edytor.dispatcher.run('format', () =>
 					edytor.selection.stage({
 						...marksForInsertion(startText, yStart, { pending: edytor.selection.pending }),

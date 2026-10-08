@@ -776,7 +776,7 @@ export class BlockHandleController {
 	 */
 	private moveAndSelect(request: BlockMoveRequest) {
 		const { selectedBlocks } = this.edytor.selection;
-		// A layout the selection covers whole counts as held (D3): its blocks stay selected.
+		// A layout the selection covers whole counts as held: its blocks stay selected.
 		const holds = holdsBlocks(selectedBlocks, request.blocks);
 		const before = holds ? [...selectedBlocks] : [];
 		const moved = this.edytor.moveBlocks(request);

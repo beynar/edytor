@@ -1,7 +1,7 @@
 /**
  * The version record and the deterministic seed (doc-level, facade-free).
  *
- * ── Deterministic seed (R13, D-3) ───────────────────────────────────────
+ * ── Deterministic seed ───────────────────────────────────────
  *
  *
  * `seed(doc, value)` applies ONE update built in a scratch doc whose writer
@@ -13,7 +13,7 @@
  * values union. A shared id resolves by registry LWW (the larger client id):
  * against a block a live replica (uint53 id) wrote, the seed loses; between
  * two different seeds, the larger hash wins and can replace a block edited
- * since (UW-03 residual — never seed a changing snapshot beside a room).
+ * since (a known residual: never seed a changing snapshot beside a room).
  * An empty value seeds one `defaultType` block. The update is applied
  * with a non-local origin: never an undo step, no attribution stamp.
  * Seeding is explicit: reads never create or normalize state.
@@ -43,7 +43,7 @@ export const SEED_ORIGIN = Symbol('edytor:seed');
 export const bindSeed = (Y: EngineApi, M: PlacementModel, BA: BlockAttributionApi) => {
 	/**
 	 * Stamp the version record, absent only: never downgrade a higher
-	 * version written by a newer peer — U07's gate decides compatibility.
+	 * version written by a newer peer — the version gate decides compatibility.
 	 */
 	const stamp = (doc: EngineDoc): void => {
 		const meta = doc.get(META_KEY);
@@ -53,7 +53,7 @@ export const bindSeed = (Y: EngineApi, M: PlacementModel, BA: BlockAttributionAp
 	};
 
 	/**
-	 * Restore definition (O24, D-22 — migration only): stamp the version
+	 * Restore definition (migration only): stamp the version
 	 * record (absent only) and make `content` the whole document under its
 	 * own ids, rewritten in place where they exist (the model's
 	 * `restoreBlocks`). Writes no attribution.
@@ -82,7 +82,7 @@ export const bindSeed = (Y: EngineApi, M: PlacementModel, BA: BlockAttributionAp
 		doc.transact(() => {
 			stamp(doc);
 			if (specs.length === 0 || !registryEmpty(doc)) return;
-			// Bulk path (U7): one sibling read + a local rank chain for the
+			// Bulk path: one sibling read + a local rank chain for the
 			// whole batch. All-or-nothing: a dup spec id refuses the batch.
 			if (!M.insertBlocks(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, specs)) {
 				// Malformed initial content (e.g. a duplicated id) — fall back
@@ -98,7 +98,7 @@ export const bindSeed = (Y: EngineApi, M: PlacementModel, BA: BlockAttributionAp
 	};
 
 	/**
-	 * The deterministic seed update (R13, D-3) — see the module header.
+	 * The deterministic seed update — see the module header.
 	 * Every seeded block also gets an EMPTY `b/` record (no authorship) so
 	 * later contributor adds land on one shared node.
 	 */
@@ -125,7 +125,7 @@ export const bindSeed = (Y: EngineApi, M: PlacementModel, BA: BlockAttributionAp
 		const hashed = own === undefined ? blocks : { data: own, blocks };
 		// The writer lives in a low band, [1, 2^26): a registry race is won by
 		// the larger client id and live replicas draw uint53 ids, so a seed
-		// sharing a block id with live content loses to it (UW-03) but for a
+		// sharing a block id with live content loses to it but for a
 		// live id below the band (~2^-27). Two different seeds collide on one
 		// writer at ~2^-26. The band moved from the full 32 bits: an id-less
 		// template seeded late into a document seeded by an older build

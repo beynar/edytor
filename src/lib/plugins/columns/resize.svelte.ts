@@ -8,7 +8,7 @@ import { englishLabels, type ColumnsLabels } from '$lib/labels.js';
 /** The guide line's width (the hover guide's and the drag's). */
 export const GUIDE = 2;
 
-/** A column's weight (D5): `data.width`, a positive number, else 1. */
+/** A column's weight: `data.width`, a positive number, else 1. */
 export const weightOf = (data: Record<string, unknown> | undefined) => {
 	const width = data?.width;
 	return typeof width === 'number' && Number.isFinite(width) && width > 0 ? width : 1;
@@ -50,7 +50,7 @@ type Drag = {
 };
 
 /**
- * The column resize (docs/columns-plan.md D5, §5 "Resize"), chrome in the
+ * The column resize (`docs/columns-plan.md`, "Resize"), chrome in the
  * overlay: while the pointer is over a layout (not readonly, not stacked),
  * a band in each gap between two shown columns (`bandOf`: the gap's left
  * `BAND` px, the layout's height), above the block handles, whose `+` and

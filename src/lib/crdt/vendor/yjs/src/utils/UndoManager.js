@@ -88,13 +88,13 @@ const popStackItem = (undoManager, stack, eventType) => {
           // Never redo structs in stackItem.insertions because they were created and deleted in the same capture interval.
           !stackItem.inserts.hasId(struct.id)
         ) {
-          // P11 begin
+          // YP11 begin
           if (!undoManager.restoreFilter(struct, stackItem)) {
             // withheld (its owner restores it, or not): the step still applies
             performedChange = true
             return
           }
-          // P11 end
+          // YP11 end
           itemsToRedo.add(struct)
         }
       })
@@ -105,20 +105,20 @@ const popStackItem = (undoManager, stack, eventType) => {
       // parents, so we have more information available when items are filtered.
       for (let i = itemsToDelete.length - 1; i >= 0; i--) {
         const item = itemsToDelete[i]
-        // P12 begin
+        // YP12 begin
         if (undoManager.withdraw(item, stackItem, transaction)) {
           // kept (the document may have written in its place): the step still applies
           performedChange = true
           continue
         }
-        // P12 end
+        // YP12 end
         if (undoManager.deleteFilter(item)) {
           item.delete(transaction)
           performedChange = true
         }
       }
       undoManager.currStackItem = performedChange ? stackItem : null
-      if (performedChange) undoManager.onApply(transaction, stackItem) // P11
+      if (performedChange) undoManager.onApply(transaction, stackItem) // YP11
     }
     transaction.changed.forEach((subProps, type) => {
       // destroy search marker if necessary
@@ -148,9 +148,9 @@ const popStackItem = (undoManager, stack, eventType) => {
  * @property {Set<any>} [UndoManagerOptions.trackedOrigins=new Set([null])]
  * @property {boolean} [ignoreRemoteAttributeChanges] By default, the UndoManager will never overwrite remote changes. In some cases this might be the expected behavior. This property enables overwriting remote changes on attribute changes. (previously named `ignoreRemoteMapChanges`)
  * @property {Doc} [doc] The document that this UndoManager operates on. Only needed if typeScope is empty.
- * @property {function(Item,StackItem):boolean} [restoreFilter] Whether popping the stack item may re-create the deleted item (default: always). // P11
- * @property {function(Transaction,StackItem):void} [onApply] Called inside the undo/redo transaction once the stack item is applied; its writes join the step. // P11
- * @property {function(Item,StackItem,Transaction):boolean} [withdraw] Asked for every item a popped stack item would delete; `true` keeps it (the hook may write in its place, in the transaction) and counts as a change (default: never). // P12
+ * @property {function(Item,StackItem):boolean} [restoreFilter] Whether popping the stack item may re-create the deleted item (default: always). // YP11
+ * @property {function(Transaction,StackItem):void} [onApply] Called inside the undo/redo transaction once the stack item is applied; its writes join the step. // YP11
+ * @property {function(Item,StackItem,Transaction):boolean} [withdraw] Asked for every item a popped stack item would delete; `true` keeps it (the hook may write in its place, in the transaction) and counts as a change (default: never). // YP12
  */
 
 /**
@@ -181,9 +181,9 @@ export class UndoManager extends ObservableV2 {
     deleteFilter = () => true,
     trackedOrigins = new Set([null]),
     ignoreRemoteAttributeChanges = false,
-    restoreFilter = () => true, // P11
-    onApply = () => {}, // P11
-    withdraw = () => false, // P12
+    restoreFilter = () => true, // YP11
+    onApply = () => {}, // YP11
+    withdraw = () => false, // YP12
     doc = /** @type {Doc} */ (array.isArray(typeScope) ? typeScope[0].doc : typeScope instanceof Doc ? typeScope : typeScope.doc)
   } = {}) {
     super()
@@ -194,9 +194,9 @@ export class UndoManager extends ObservableV2 {
     this.doc = doc
     this.addToScope(typeScope)
     this.deleteFilter = deleteFilter
-    this.restoreFilter = restoreFilter // P11
-    this.onApply = onApply // P11
-    this.withdraw = withdraw // P12
+    this.restoreFilter = restoreFilter // YP11
+    this.onApply = onApply // YP11
+    this.withdraw = withdraw // YP12
     trackedOrigins.add(this)
     this.trackedOrigins = trackedOrigins
     this.captureTransaction = captureTransaction

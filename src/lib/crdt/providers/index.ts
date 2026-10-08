@@ -5,7 +5,7 @@
  * instance: the provider classes plus `EdytorSync`-shaped factories matching
  * the `{ doc, awareness, synced }` contract. THE single implementation —
  * `src/lib/collaboration/providers.ts` re-exports these bound to the
- * vendored engine (U1 consolidation; the contract itself is unchanged).
+ * vendored engine (the contract itself is unchanged).
  */
 import type { EngineApi, YDoc } from '../engine-api.js';
 import type { JSONDoc } from '../../utils/json.js';
@@ -78,19 +78,12 @@ export type IndexeddbSyncOptions = {
  * `protocols` and `resyncInterval` here). Cross-tab sync is on by default.
  */
 /** Where the socket dials: `<server>/<room>`, the names `<Edytor server room>` uses. */
-export type WebsocketTarget =
-	| {
-			/** The sync server's base URL (`wss://…/rooms`). */
-			server: string;
-			/** The room (document) id. */
-			room: string;
-	  }
-	| {
-			/** @deprecated Use `server`. */
-			serverUrl: string;
-			/** @deprecated Use `room`. */
-			roomName: string;
-	  };
+export type WebsocketTarget = {
+	/** The sync server's base URL (`wss://…/rooms`). */
+	server: string;
+	/** The room (document) id. */
+	room: string;
+};
 
 export type WebsocketSyncOptions = WebsocketTarget & {
 	/** Query parameters (auth tokens), read at every dial. */
@@ -188,10 +181,7 @@ export const bindProviders = (Y: EngineApi) => {
 	 * for a dial that gets in.
 	 */
 	const createWebsocketSync = (options: WebsocketSyncOptions): WebsocketSync => {
-		const [server, roomName] =
-			'server' in options ? [options.server, options.room] : [options.serverUrl, options.roomName];
-		assertRoomId(roomName);
-		const serverUrl = server.replace(/\/+$/, '');
+		const [serverUrl, roomName] = targetOf(options);
 		const room = `${serverUrl}/${roomName}`;
 		const persistName =
 			options.persist === false ? undefined : (options.persistName ?? `edytor:${room}`);
@@ -269,16 +259,22 @@ export const bindProviders = (Y: EngineApi) => {
 		return Object.assign(sync, { bound: Infinity, target: `websocket:${room}`, persistName });
 	};
 
-	/** `[serverUrl (no trailing slash), room]` of a target, the room id checked. */
+	/**
+	 * `[serverUrl (no trailing slash), room]` of a target, the room id checked.
+	 * The target is `{ server, room }`; the names before them are refused.
+	 */
 	const targetOf = (options: WebsocketTarget): [string, string] => {
-		const [server, room] =
-			'server' in options ? [options.server, options.room] : [options.serverUrl, options.roomName];
+		const { server, room } = options;
+		if (typeof server !== 'string' || typeof room !== 'string')
+			throw new TypeError(
+				'createWebsocketSync: the target is `server` and `room` (`serverUrl` and `roomName` are gone)'
+			);
 		assertRoomId(room);
 		return [server.replace(/\/+$/, ''), room];
 	};
 
 	/**
-	 * Keep a document fresh without opening it (H12): load its local store
+	 * Keep a document fresh without opening it: load its local store
 	 * (the one `createWebsocketSync` keeps, `edytor:<server>/<room>` unless
 	 * `persistName` names another), dial the room once, take what it lacks
 	 * and hand it what the store holds that the room lacks, wait until the
@@ -339,8 +335,8 @@ export const bindProviders = (Y: EngineApi) => {
 	};
 
 	/**
-	 * When the room last stored a change (ms since the epoch), or `null`
-	 * (H12): one authorized HTTP `GET <server>/<room>?lastUpdated`, which
+	 * When the room last stored a change (ms since the epoch), or `null`:
+	 * one authorized HTTP `GET <server>/<room>?lastUpdated`, which
 	 * `routeDocumentSocket` answers without opening the document. Compare
 	 * it with when a document was last fetched to decide whether to
 	 * `prefetch` it. Throws on an HTTP error (`403` refused, `401` expired).
@@ -360,8 +356,8 @@ export const bindProviders = (Y: EngineApi) => {
 	};
 
 	/**
-	 * The room's document as JSON, or `null` when it stores nothing yet
-	 * (P8): one authorized HTTP `GET <server>/<room>?snapshot`, which
+	 * The room's document as JSON, or `null` when it stores nothing yet:
+	 * one authorized HTTP `GET <server>/<room>?snapshot`, which
 	 * `routeDocumentSocket` answers from the room's live document. Show it
 	 * while a view's own copy hydrates: `<Edytor snapshot>`. Throws on an
 	 * HTTP error (`403` refused, `401` expired).

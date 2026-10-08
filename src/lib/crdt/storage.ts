@@ -1,5 +1,5 @@
 /**
- * The storage codec (P5) — what the room's rows and the IndexedDB store
+ * The storage codec — what the room's rows and the IndexedDB store
  * hold, apart from the wire (which stays v1 until the schema generation
  * that changes it). Snapshots are written in the v2 (columnar) encoding
  * and gzip-compressed where the platform has `CompressionStream`; update

@@ -1,7 +1,7 @@
 /**
  * Documentation drift guard (UW-44). Behavior rules live once, in the site
  * (`customization/hotkeys#enter-and-backspace-by-role`); the README and
- * AGENTS.md link to it. These phrases are the known fan-out misses: each one
+ * the contributor guide (AGENTS.md and `docs/agents/*.md`) link to it. These phrases are the known fan-out misses: each one
  * is a rule or fact that changed while a copy kept the old wording.
  */
 import { execFile } from 'node:child_process';
@@ -36,9 +36,13 @@ const files = (dir: string, extension = /\.mdx?$/): string[] =>
 		return entry.isDirectory() ? files(path, extension) : extension.test(entry.name) ? [path] : [];
 	});
 
+/** The contributor guide: the overview, then its topic files. */
+const guideFiles = [join(root, 'AGENTS.md'), ...files(join(root, 'docs/agents'))];
+const guide = () => guideFiles.map((path) => readFileSync(path, 'utf8')).join('\n\n');
+
 const docs = [
 	join(root, 'README.md'),
-	join(root, 'AGENTS.md'),
+	...guideFiles,
 	...files(join(root, 'site/content/docs')),
 	// The landing page is documentation too: its Copy install button is the
 	// first command a reader runs (XW-05).
@@ -443,7 +447,7 @@ describe('docs drift', () => {
 			expect(listed(text, lead), lead).toEqual(rawMoved.sort());
 	});
 
-	it('the attachDocument pages list every method the document and the room expose (ZW-16)', () => {
+	it('the attachRoom pages list every method the document and the room expose (ZW-16)', () => {
 		const source = readFileSync(join(root, 'src/lib/cloudflare/DocumentRoom.ts'), 'utf8');
 		const methods = (name: string) => {
 			const body = new RegExp(`\\nexport (?:abstract )?class ${name}\\b[\\s\\S]*?\\n\\}\\n`).exec(
@@ -467,7 +471,7 @@ describe('docs drift', () => {
 		for (const method of methods('DocumentRoom').filter((m) => m !== 'records'))
 			expect(own, method).toContain(`\`${method}\``);
 		const migration = pageText(join(root, 'site/content/docs/reference/migration.mdx'));
-		const entry = /`AttachedDocument` \(what `attachDocument` returns[^)]*\)/.exec(migration)![0];
+		const entry = /`AttachedDocument` \(what `attachRoom` returns[^)]*\)/.exec(migration)![0];
 		for (const method of ['transact', 'read', 'compact', 'dropWaitingDeletes', 'reset'])
 			expect(entry, method).toContain(`\`${method}\``);
 	});
@@ -735,8 +739,8 @@ describe('docs drift', () => {
 			expect(exported, name).toMatch(new RegExp(`type ${name}\\b`));
 	});
 
-	it("AGENTS.md names each Playwright config's port variable (SW11-docs-1)", () => {
-		const agents = readFileSync(join(root, 'AGENTS.md'), 'utf8');
+	it("the guide names each Playwright config's port variable (SW11-docs-1)", () => {
+		const agents = guide();
 		for (const config of [
 			'playwright.config.ts',
 			'playwright.arch.config.ts',
@@ -899,7 +903,7 @@ describe('docs drift', () => {
 		);
 		expect(room).toMatch(/resends the edit\. If the append of the room's own edit fails/);
 		expect(room).toContain('nothing resends it');
-		expect(readFileSync(join(root, 'AGENTS.md'), 'utf8')).not.toMatch(/all or nothing: a throw/);
+		expect(guide()).not.toMatch(/all or nothing: a throw/);
 	});
 
 	it('the editor transact normalizes the writes a throw keeps (GX-07)', () => {
@@ -960,7 +964,7 @@ describe('docs drift', () => {
 		);
 	});
 
-	it('AGENTS.md names every file that writes the DOM selection, and the contract names park (GX-10)', () => {
+	it('the guide names every file that writes the DOM selection, and the contract names park (GX-10)', () => {
 		const lib = join(root, 'src/lib');
 		const writers = files(lib, /\.(ts|svelte)$/)
 			.filter((path) => !path.includes('/vendor/'))
@@ -971,7 +975,7 @@ describe('docs drift', () => {
 			)
 			.map((path) => relative(lib, path));
 		expect(writers.length).toBeGreaterThan(1);
-		const agents = readFileSync(join(root, 'AGENTS.md'), 'utf8');
+		const agents = guide();
 		const exceptions = agents.split('**DOM selection exceptions.**')[1]!.split('\n')[0]!;
 		for (const path of writers)
 			if (path !== 'surface/projector.svelte.ts') expect(exceptions, path).toContain(`\`${path}\``);
@@ -1003,7 +1007,7 @@ describe('docs drift', () => {
 		expect(extending).toContain('Only a `transact` called inside `fn` itself joins.');
 		expect(extending).toContain('a `transact` there is a change of its own and is stored');
 		expect(extending).not.toContain('(outside a transaction and its change events)');
-		expect(read('AGENTS.md')).toContain('only a call inside `fn` joins');
+		expect(guide()).toContain('only a call inside `fn` joins');
 		const clipboard = docs('editor/clipboard.mdx');
 		expect(clipboard).not.toContain('since it shows no text line of its own');
 		expect(clipboard).not.toContain('and it replaces an empty block');

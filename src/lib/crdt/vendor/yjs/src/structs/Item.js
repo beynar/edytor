@@ -7,13 +7,13 @@ import { AbstractStruct, addStructToIdSet } from '../structs/AbstractStruct.js'
 
 import { ID, createID, compareIDs, findRootTypeKey } from '../utils/ID.js'
 import { GC } from '../structs/GC.js'
-import { sortsBefore, pairedRole } from '../utils/marks.js' // P13
+import { sortsBefore, pairedRole } from '../utils/marks.js' // YP13
 
 import {
   replaceStruct,
   getItemCleanEnd,
   addChangedTypeToTransaction,
-  isKeptReplaced // P14
+  isKeptReplaced // YP14
 } from '../utils/transaction-helpers.js'
 
 const isDevMode = env.getVariable('node_env') === 'development'
@@ -216,7 +216,7 @@ export class Item extends AbstractStruct {
           conflictingItems.add(o)
           if (compareIDs(this.origin, o.origin)) {
             // case 1
-            if (sortsBefore(o, this)) { // P13: paired marks sort by side, then by client id
+            if (sortsBefore(o, this)) { // YP13: paired marks sort by side, then by client id
               left = o
               conflictingItems.clear()
             } else if (compareIDs(this.rightOrigin, o.rightOrigin)) {
@@ -275,7 +275,7 @@ export class Item extends AbstractStruct {
       // add parent to transaction.changed
       addChangedTypeToTransaction(transaction, /** @type {YNode} */ (this.parent), this.parentSub)
       const parentItem = /** @type {YNode} */ (this.parent)._item
-      // P14: a node a concurrent value replaced keeps its subtree: what lands in it stays
+      // YP14: a node a concurrent value replaced keeps its subtree: what lands in it stays
       if ((parentItem !== null && parentItem.deleted && !isKeptReplaced(parentItem)) || (this.parentSub !== null && this.right !== null)) {
         // delete if parent is deleted or if this is not the current attribute value of parent
         this.delete(transaction)
@@ -389,7 +389,7 @@ export class Item extends AbstractStruct {
       this.markDeleted()
       transaction.deleteSet.add(this.id.client, this.id.clock, this.length)
       addChangedTypeToTransaction(transaction, parent, this.parentSub)
-      // P14: a node a concurrent value replaced keeps its subtree (the document asked)
+      // YP14: a node a concurrent value replaced keeps its subtree (the document asked)
       if (!isKeptReplaced(this)) this.content.delete(transaction)
     }
   }
@@ -406,7 +406,7 @@ export class Item extends AbstractStruct {
     if (parentGCd) {
       replaceStruct(tr, this, new GC(this.id, this.length))
     } else if (!(this.content.constructor === ContentFormat && pairedRole(/** @type {ContentFormat} */ (this.content)) >= 0)) {
-      // P13: a paired mark item keeps its content: its side orders
+      // YP13: a paired mark item keeps its content: its side orders
       // concurrent inserts (`markClass`) on every replica, collected or not.
       this.content = new ContentDeleted(this.length)
     }
@@ -1181,7 +1181,7 @@ export class ContentFormat {
     // an untracked integration.
     const p = /** @type {import('../ynode.js').YNode<any>} */ (item.parent)
     p._hasFormatting = true
-    // P13: a paired mark's start carries its Lamport timestamp; the document
+    // YP13: a paired mark's start carries its Lamport timestamp; the document
     // keeps the greatest it saw, so the next mark it writes wins over it.
     if (pairedRole(this) === 0) {
       const doc = /** @type {any} */ (_transaction.doc)

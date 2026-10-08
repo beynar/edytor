@@ -1,5 +1,5 @@
 /**
- * The display projector (R10, O49–O57, §4.4 `surface/projector`): the only
+ * The display projector: the only
  * writer of the DOM selection. It always writes the CURRENT selection value,
  * after a Svelte flush — from the root component's post-flush `$effect`, which
  * runs after every DOM write of the flush — so an older request can never
@@ -10,30 +10,30 @@
  * when the render epoch moved (a commit this view did not issue, a remount, a
  * cell mounted while a display was pending), deduped on those two epochs, and
  * only when:
- * - no composition session owns a host (BI-2, `edytor.composition`, the
+ * - no composition session owns a host (`edytor.composition`, the
  *   session's facts): a pass it holds back runs again at the session's end
  *   (`composition.ended`), which catches up (the one write under a session
  *   is its start's `park`, over a selection that shows no DOM range);
  * - no pointer drag is in progress and no user-input handler runs
  *   (`isHandlingUserInput`), for a pass the selection did not ask for: a pass
  *   the handler's window holds back runs when it closes (`inputHandled`);
- * - the focus verdict is ours (BI-14): focus inside the editor, or orphaned by
+ * - the focus verdict is ours: focus inside the editor, or orphaned by
  *   our own render, or nothing focused and the pass was asked for — never a
  *   foreign focus, a last gesture that landed outside, or a DOM selection the
  *   user made outside the editor;
  * - the destination is displayable (mounted).
  * The live DOM selection is compared with the value in model coordinates: an
- * equal selection is not rewritten (D5).
+ * equal selection is not rewritten.
  *
  * Before the first transaction after a settled render that this view did not
  * issue, the projector reads the live DOM selection and mints anchors from an
  * unobserved native move; it admits the move through `select()` once that
- * transaction committed, never inside it (BI-3, LH2-5).
+ * transaction committed, never inside it.
  *
  * It classifies every `selectionchange` (`classify`) against its last display,
  * the render epoch and the gesture serial: echo, render drift (displayed
  * again), composition, foreign write or intent (adopted). Two named, counted,
- * time-bounded browser rules (plan §9.1 rule 5) are the only signatures:
+ * time-bounded browser rules are the only signatures:
  * the Android post-delete snap-back and the IME post-commit jump.
  */
 import { untrack } from 'svelte';
@@ -62,16 +62,16 @@ import {
 	isNestedForeignEditableTarget
 } from '../events/nativeInteractiveControl.js';
 
-/** What a `selectionchange` is (R10). Drift is displayed again; foreign writes and intent are adopted. */
+/** What a `selectionchange` is. Drift is displayed again; foreign writes and intent are adopted. */
 export type Observation = 'echo' | 'drift' | 'composition' | 'foreign' | 'intent';
 
 /**
- * Named rule (plan §9.1 rule 5): Android Chrome mutates the DOM after a
+ * Named rule: Android Chrome mutates the DOM after a
  * canceled `deleteContentBackward` and reports the caret one position right
  * of the model's merge point, in the same task or a few frames later.
  */
 const ANDROID_SNAP_BACK_MS = 250;
-/** Named rule (plan §9.1 rule 5): engines move the caret once more right after an IME commit. */
+/** Named rule: engines move the caret once more right after an IME commit. */
 const IME_POST_COMMIT_JUMP_MS = 100;
 
 type Point = [node: Node, offset: number];
@@ -200,7 +200,7 @@ export class Projector {
 	};
 
 	/**
-	 * The composition gate (BI-2): a live session owns its host, whose DOM
+	 * The composition gate: a live session owns its host, whose DOM
 	 * selection is the IME's. A pass it holds back runs once the session ended.
 	 */
 	#composing = () => {
@@ -228,13 +228,13 @@ export class Projector {
 		if (this.#pending) this.edytor.surface.update();
 	};
 
-	/** The observer processed DOM records (O55): a display that waits gets a pass. */
+	/** The observer processed DOM records: a display that waits gets a pass. */
 	recordsChanged = () => {
 		if (this.#pending) this.edytor.surface.update();
 	};
 
 	/**
-	 * Classify a `selectionchange` (R10) by comparing the DOM selection with the
+	 * Classify a `selectionchange` by comparing the DOM selection with the
 	 * last display, the render epoch and the gesture serial:
 	 * - echo: our last display unchanged; a requested display still to land
 	 *   (no gesture since the request); a range that already shows the value;
@@ -245,7 +245,7 @@ export class Projector {
 	 *   or the caret a browser parks for the editor's own focus, a refused key
 	 *   or an atom's press (`parked`);
 	 * - intent: a gesture since the last observation, or a pointer drag;
-	 * - foreign: no gesture and no render (host code, assistive tech, O1).
+	 * - foreign: no gesture and no render (host code, assistive tech).
 	 */
 	classify = (dom: DomSelectionSnapshot | null): Observation => {
 		const { edytor } = this;
@@ -256,7 +256,7 @@ export class Projector {
 		if (!dom || !anchor || !node?.contains(anchor) || isNestedForeignEditableTarget(node, anchor))
 			return 'foreign';
 		if (this.#echoes(dom)) return 'echo';
-		// The one composition branch: a live session's host is the IME's (I3).
+		// The one composition branch: a live session's host is the IME's.
 		if (edytor.composition.live) return this.#observed('composition');
 		if (selection.request !== this.#request && selection.requestSerial === edytor.intentSerial)
 			return 'echo';
@@ -470,7 +470,7 @@ export class Projector {
 		const points: Points = isReversed
 			? { anchor: end, focus: start }
 			: { anchor: start, focus: end };
-		// Already shown (D5): an observation, whoever holds focus.
+		// Already shown: an observation, whoever holds focus.
 		if (!this.#shows(dom, startText, yStart, endText, yEnd, isReversed)) {
 			if (!this.#ours(requested)) return true;
 			const active = getActiveElement(node);
@@ -497,7 +497,7 @@ export class Projector {
 	};
 
 	/**
-	 * The one display under a live composition (EW-01): a composition over a
+	 * The one display under a live composition: a composition over a
 	 * block or atom selection starts with no DOM range, so its session parks
 	 * the DOM caret where the preview goes before the IME writes. Recorded as
 	 * the last display.
@@ -527,7 +527,7 @@ export class Projector {
 			? [[dom.focusNode, dom.focusOffset] as const, [dom.anchorNode, dom.anchorOffset] as const]
 			: [[dom.anchorNode, dom.anchorOffset] as const, [dom.focusNode, dom.focusOffset] as const];
 		// Only points in the texts' own leaves show the value (where a display
-		// writes it): an element boundary (a re-parented block's old parent, R2;
+		// writes it): an element boundary (a re-parented block's old parent;
 		// a caret left after a text; WebKit's point on the text element after a
 		// render removed its node, whose range disagrees) is written again.
 		return (
@@ -563,7 +563,7 @@ export class Projector {
 	};
 
 	/**
-	 * The focus verdict (O53): focus inside the editor (not in a form control or
+	 * The focus verdict: focus inside the editor (not in a form control or
 	 * a foreign editable of a kind's chrome), or orphaned by our own
 	 * render (the element noted before the flush is gone, or the DOM selection
 	 * collapsed onto an ancestor of the editor). Never a foreign focus or a

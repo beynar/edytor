@@ -39,8 +39,6 @@ import {
 	addInlineBlock,
 	textAfterAtom,
 	blockOf,
-	acceptSuggestedText,
-	suggestText,
 	deleteContentAtRange,
 	normalizeChildren,
 	type BlockOperations
@@ -262,28 +260,6 @@ export class Block {
 		return this.edytor.facade.isVisibleBlock(this.id);
 	}
 
-	/**
-	 * @deprecated `edytor.suggestions` with `{ end: block.id }`. The content of
-	 * this block's latest `end` suggestion, as parts (a text's runs, or an
-	 * atom); setting it replaces this block's `end` suggestions, `null` drops them.
-	 */
-	get suggestions(): (JSONText[] | JSONInlineBlock)[] | null {
-		const content = this.edytor.suggestions?.at(this.id).end.at(-1)?.content[0]?.content;
-		if (!content?.length) return null;
-		const parts: (JSONText[] | JSONInlineBlock)[] = [];
-		for (const part of content)
-			if ('type' in part) parts.push(part);
-			else if (Array.isArray(parts.at(-1))) (parts.at(-1) as JSONText[]).push(part);
-			else parts.push([part]);
-		return parts;
-	}
-
-	set suggestions(value: (JSONText[] | JSONInlineBlock)[] | null) {
-		const { suggestions } = this.edytor;
-		for (const suggestion of suggestions.at(this.id).end) suggestion.discard();
-		if (value) suggestions.add({ end: this.id }, [{ type: this.type, content: value.flat() }]);
-	}
-
 	get nextBlock(): Block | null {
 		return this.parent ? this.parent.children[this.index + 1] : null;
 	}
@@ -429,10 +405,6 @@ export class Block {
 	};
 	normalizeContent = batch('normalizeContent', normalizeContent);
 	normalizeChildren = batch('normalizeChildren', normalizeChildren);
-	/** @deprecated `edytor.suggestions.add({ end: block.id }, …)`. */
-	suggestText = (payload: BlockOperations['suggestText']) => suggestText.call(this, payload);
-	/** @deprecated `suggestion.accept()`. */
-	acceptSuggestedText = () => acceptSuggestedText.call(this);
 	deleteContentAtRange = batch('deleteContentAtRange', deleteContentAtRange, prepareDeleteRange);
 
 	/** Mark an element inside the block's markup as non-editable chrome (a header, a caption bar). */
@@ -461,7 +433,7 @@ export class Block {
 		return hit;
 	};
 
-	// ── JSON insertion (K5: specs are data; `new Block({block})` is gone) ──
+	// ── JSON insertion (specs are data; `new Block({block})` is gone) ──
 
 	/**
 	 * Insert children at `index`: a JSON spec is created (its id kept, minted
@@ -505,9 +477,9 @@ export class Block {
 	#viewState: [string, string][] = [];
 
 	/**
-	 * Register the element the core rendered for this block (O45) and run the
+	 * Register the element the core rendered for this block and run the
 	 * attach hooks. A re-rendered block (moved, re-parented) keeps its declared
-	 * view state (R11): an open toggle stays open.
+	 * view state: an open toggle stays open.
 	 * @internal
 	 */
 	attach = (node: HTMLElement) => {

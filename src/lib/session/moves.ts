@@ -57,10 +57,10 @@ const POSITIONS: readonly BlockMovePosition[] = ['before', 'after', 'inside', ..
 
 /**
  * The move op's payload, or `null` when refused: a well-formed request, then
- * the document's one structural answer (`canPlace`, R5 — the predicate the
+ * the document's one structural answer (`canPlace` — the predicate the
  * move op applies at execution; an `out` step asks the outdent plan, which
  * places the blocks as the kind they take there: a paragraph outdented into
- * a list is its item, DR-crdt-2; `left`/`right` ask the beside plan,
+ * a list is its item; `left`/`right` ask the beside plan,
  * `placeBeside`). Extensions may still veto the command.
  */
 const destination = (edytor: Edytor, request: BlockMoveRequest) => {
@@ -76,13 +76,13 @@ const destination = (edytor: Edytor, request: BlockMoveRequest) => {
 	)
 		return null;
 	// Beside: the document resolves the target (its outermost block below the
-	// root or a column) and owns every refusal (D2, fits, its own subtree).
+	// root or a column) and owns every refusal (fits, its own subtree).
 	if (isBeside(position)) {
 		return 'writes' in edytor.facade.prepare.placeBeside(ids, target.id, position)
 			? { blocks, path: target.path, beside: { target, side: position } }
 			: null;
 	}
-	// Inside a container they are no items of: under its last item (Tab after a list, ZW-01).
+	// Inside a container they are no items of: under its last item (Tab after a list).
 	const nest = () => edytor.idToBlock.get(edytor.facade.nestParent(ids, target.id));
 	const parent = position === 'inside' ? (nest() ?? target) : target.parent;
 	const placeable = (to: Block) =>
@@ -98,9 +98,9 @@ const destination = (edytor: Edytor, request: BlockMoveRequest) => {
 };
 
 /**
- * An `in` or `out` step over siblings as its runs of adjacent ones (GX-05):
+ * An `in` or `out` step over siblings as its runs of adjacent ones:
  * siblings with another block between them move apart, as Tab and
- * Shift+Tab do (DR-behavior-1), so the step never reorders the text. Any
+ * Shift+Tab do, so the step never reorders the text. Any
  * other request is one part.
  */
 const parts = (edytor: Edytor, request: BlockMoveRequest): BlockMoveRequest[] => {
@@ -123,7 +123,7 @@ export const canMoveBlocks = (edytor: Edytor, request: BlockMoveRequest): boolea
 /**
  * One move command (`moveBlock` for one block, `moveBlocks` for a group; an
  * `out` step plans the outdent, `unNestBlocks`): identity kept, one undo
- * step (the dispatcher cuts before it, R7); `[]` when refused or vetoed.
+ * step (the dispatcher cuts before it); `[]` when refused or vetoed.
  * Runs (`parts`) move one by one, a run that cannot move staying, as Tab
  * does (`dispatcher.each`). A closed toggle the blocks land in, or that
  * adopts blocks, opens (`revealing`): every caller — keys, drops, menus,

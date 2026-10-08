@@ -148,7 +148,7 @@ end restored null whatever was open, so overlapping concurrent same-key
 writes cleared each other's tails ("tail clearing") and a concurrent insert
 next to a format item landed inside or outside it by client id.
 
-Since generation 5 a mark write is one paired operation (fork patch P13):
+Since generation 5 a mark write is one paired operation (fork patch YP13):
 its start names its value, a Lamport timestamp and its id; its end names
 the start it closes. Per key, a character shows the open operation with
 the greatest `(timestamp, client, clock)`:

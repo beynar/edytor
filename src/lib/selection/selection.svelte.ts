@@ -121,7 +121,7 @@ const EMPTY_STATE: SelectionState = Object.freeze({
 /**
  * Whether a DOM selection runs backward (focus before anchor in document
  * order), comparing boundary points — a focus on an ancestor element of the
- * anchor (`(textElement, childCount)`) is after it (F-S6).
+ * anchor (`(textElement, childCount)`) is after it.
  */
 export const isBackward = (selection: {
 	anchorNode: Node | null;
@@ -219,7 +219,7 @@ type DocumentWithCaretPoint = Document & {
 
 /**
  * Where a range over `block` starts (`first`) or ends (`last`): its first or
- * last shown line (a list's items, a code block's lines, GX-03). A block that
+ * last shown line (a list's items, a code block's lines). A block that
  * shows none (a divider) passes to its neighbours as a caret does, the next
  * line first; to `cover` it, a start passes to the line before it and an end
  * to the line after it, so the range still holds it — when a line lies on
@@ -279,11 +279,11 @@ export class EdytorSelection {
 	epoch = 0;
 	/**
 	 * Advanced by every `select()` that did not come from the DOM: the
-	 * projector displays the current value after the flush (R10).
+	 * projector displays the current value after the flush.
 	 * @internal
 	 */
 	request = $state(0);
-	/** @internal The last display request came from a user-input frame: the display may scroll (O54). */
+	/** @internal The last display request came from a user-input frame: the display may scroll. */
 	scrollOnDisplay = false;
 	/** @internal The intent serial (gestures but `input`) when the last display was requested. */
 	requestSerial = 0;
@@ -398,7 +398,7 @@ export class EdytorSelection {
 		const value = this.value;
 		this.epoch++;
 		// A repair is a background display (it never takes focus); a command,
-		// history or host code asks for one (R10).
+		// history or host code asks for one.
 		if (cause === 'repair') this.edytor.surface.update();
 		else if (cause !== 'dom') this.display();
 		this.cause = cause;
@@ -482,12 +482,12 @@ export class EdytorSelection {
 	};
 
 	/**
-	 * No text endpoint rests in a block that renders no content (FX-01): its
+	 * No text endpoint rests in a block that renders no content: its
 	 * slot never mounts, so typing there is saved and never shown. Such a
 	 * caret moves to the nearest shown line — a container's first item, else
 	 * the next line, else the end of the one before (a line just created is
 	 * displayed once it mounts). A range's start moves to the block's first
-	 * shown line and its end to its last (a list's items, `rangeEdge`, GX-03);
+	 * shown line and its end to its last (a list's items, `rangeEdge`);
 	 * a void's passes on as a caret does. With none, the value stays as it
 	 * was. Every caret write passes here, and so does the repair after a
 	 * change this view did not make. A table's row or cell is never a block
@@ -519,7 +519,7 @@ export class EdytorSelection {
 		return anchor && focus ? textSelection(anchor, focus, next.pending) : this.value;
 	};
 
-	/** A caret that did not move keeps its pending marks (L4); a value that names them wins. */
+	/** A caret that did not move keeps its pending marks; a value that names them wins. */
 	#keepPending = (next: SelectionValue): SelectionValue => {
 		const prev = this.value;
 		if (prev.kind !== 'text' || !prev.pending || next.kind !== 'text' || 'pending' in next)
@@ -574,7 +574,7 @@ export class EdytorSelection {
 	};
 
 	/**
-	 * A write's intent (R4): `textValue` minted from each text's block record,
+	 * A write's intent: `textValue` minted from each text's block record,
 	 * live or not — the atoms of a text that died to a merge live on in the
 	 * block that claimed them, so resolution follows them before any seam.
 	 */
@@ -591,7 +591,7 @@ export class EdytorSelection {
 				: this.edytor.facade.anchorAt(text.blockId, text.segStart + at, side);
 		});
 
-	/** @internal Ask the projector to display the current value after the flush (R10). */
+	/** @internal Ask the projector to display the current value after the flush. */
 	display = () => {
 		this.scrollOnDisplay =
 			this.edytor.isHandlingUserInput && this.edytor.suppressCaretScrollDepth === 0;
@@ -915,7 +915,7 @@ export class EdytorSelection {
 		this.pointerDragStart = null;
 		this.#dropped();
 	};
-	/** A normalization a pointer drag held back (the gesture is the user's, O57). */
+	/** A normalization a pointer drag held back (the gesture is the user's). */
 	#held = false;
 	/** The pointer drag selected blocks across columns (`acrossColumns`), until its release. */
 	#across = false;
@@ -952,7 +952,7 @@ export class EdytorSelection {
 	 * the drag coming back into the anchor's columns is a text range again.
 	 * Its highlight is hidden while the value is a block selection
 	 * (`data-edytor-selection`). The keyboard's ranges stay text ranges in
-	 * document order (D7). Answers whether it selected blocks.
+	 * document order. Answers whether it selected blocks.
 	 */
 	#dragAcross = (dom: DomSelectionSnapshot | null) => {
 		if (!dom?.anchorNode || !dom.focusNode || dom.isCollapsed) return false;
@@ -1088,7 +1088,7 @@ export class EdytorSelection {
 		}
 	};
 	/**
-	 * One classifier (R10, the projector): an echo or a DOM state older than a
+	 * One classifier (the projector): an echo or a DOM state older than a
 	 * display still to land is ignored, and so is a move while a composition
 	 * session is live (the IME's; the session's end displays); drift is
 	 * displayed again; a foreign write or intent is adopted.
@@ -1153,7 +1153,7 @@ export class EdytorSelection {
 
 		const { anchorNode, focusNode, anchorOffset, focusOffset } = selection;
 		const isCollapsed = selection.isCollapsed;
-		// A native vertical move that landed on no caret stop takes the key's line stop (R9).
+		// A native vertical move that landed on no caret stop takes the key's line stop.
 		if (
 			isCollapsed &&
 			!isTextBoundSelectionPoint(anchorNode) &&
@@ -1383,7 +1383,7 @@ export class EdytorSelection {
 
 	/**
 	 * Post-mirror-flush repair of the endpoints this view did not author
-	 * (R9: a command that declared its result selection authors its own), through
+	 * (a command that declared its result selection authors its own), through
 	 * `select()`. Text endpoints follow their anchors by projection; what is
 	 * repaired is a range whose content died (a caret at that point) and a
 	 * value that no longer resolves: a block set keeps its live
@@ -1530,7 +1530,7 @@ export class EdytorSelection {
 
 	/**
 	 * A write's model-side fallback: the value minted when the write was
-	 * requested (R4: anchors are captured at call time, before any await, so
+	 * requested (anchors are captured at call time, before any await, so
 	 * a target merged away meanwhile is followed through its atoms), or the
 	 * seam of `origin`'s block when nothing of it resolves any more.
 	 */
@@ -1608,7 +1608,7 @@ export class EdytorSelection {
 
 	/**
 	 * Anchors from a DOM selection, without selecting them: the projector mints
-	 * an unobserved native move before a transaction it did not issue (BI-3).
+	 * an unobserved native move before a transaction it did not issue.
 	 * @internal
 	 */
 	mint = (snapshot: DomSelectionSnapshot): SelectionValue | null => {

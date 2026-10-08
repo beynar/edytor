@@ -1,5 +1,5 @@
 /**
- * The adoption diff (R8, D57, §5 L32): the change between a text and what the
+ * The adoption diff: the change between a text and what the
  * browser made of it is what lies between their common prefix and suffix —
  * everything else keeps its atoms (anchors, carets, marks, a peer's
  * concurrent insert). When the edge is ambiguous (a doubled letter, a

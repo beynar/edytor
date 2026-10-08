@@ -64,8 +64,8 @@ void sync;
 // the node-safe equivalent of the root-level exports.
 const idbSync: bindings.EdytorSync = crdt.providers.createIndexeddbSync('doc-id');
 const wsSync: bindings.WebsocketSync = crdt.providers.createWebsocketSync({
-	serverUrl: 'wss://example.com',
-	roomName: 'doc-id',
+	server: 'wss://example.com',
+	room: 'doc-id',
 	persist: true,
 	persistName: 'user-1:doc-id'
 });

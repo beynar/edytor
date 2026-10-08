@@ -66,7 +66,7 @@
 		return { style: safe ? `${property}: ${safe};` : undefined };
 	};
 	/**
-	 * HTML import (P4.1): a pasted color, sanitized, unless it is the page's
+	 * HTML import: a pasted color, sanitized, unless it is the page's
 	 * default (Google Docs writes black text and transparent backgrounds on
 	 * every span: they are no mark, and a black mark is unreadable in dark mode).
 	 */
@@ -352,7 +352,7 @@
 					parse: alias(/^(strike|del)$/, 'textDecoration', /line-through/)
 				},
 				code: { tag: 'code', toolbar: { label: words.code, icon: '</>' } },
-				// FP-8: typing at a link's trailing edge extends it only from inside the anchor.
+				// Typing at a link's trailing edge extends it only from inside the anchor.
 				link: {
 					tag: 'a',
 					attributes: linkAttributes,

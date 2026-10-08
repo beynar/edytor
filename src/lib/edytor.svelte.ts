@@ -137,8 +137,6 @@ export type EdytorOptions = {
 	snippets?: Snippets;
 	/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. */
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
-	/** @deprecated Use `hotkeys` (the name a plugin's bindings use). Removed in the next release. */
-	hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
 	plugins?: Plugin[];
 	/**
 	 * The assembled document this view renders — shared facade, history,
@@ -208,7 +206,7 @@ const define = <T extends object>(into: Map<string, T>, definitions: object = {}
 };
 
 /**
- * The mark records (H5): a key `name:<id>` — a comment's, one mark per
+ * The mark records: a key `name:<id>` — a comment's, one mark per
  * comment so two never clip each other — reads the `name` record.
  */
 class MarkRecords extends Map<string, MarkDefinition> {
@@ -249,9 +247,9 @@ export class Edytor {
 	/** `batch` binds operations onto blocks and the view alike: both answer `.edytor`. */
 	readonly edytor = this;
 	selection: EdytorSelection;
-	/** @internal The only writer of the DOM selection (R10, `surface/projector`). */
+	/** @internal The only writer of the DOM selection (`surface/projector`). */
 	readonly projector: Projector = new Projector(this);
-	/** @internal The compare-to-truth observer (R12): registry, the render epoch, the passes, the only adopter (R8, L31). */
+	/** @internal The compare-to-truth observer: registry, the render epoch, the passes, the only adopter. */
 	readonly surface: SurfaceObserver = new SurfaceObserver(this);
 	/**
 	 * @internal What the session asks of the surface and the input commands
@@ -303,7 +301,7 @@ export class Edytor {
 	private onChange?: (value: JSONDoc) => void;
 	private onDocChange?: (change: DocChange) => void;
 	placeholder?: Placeholder;
-	/** @internal The view's composition session (R8, L7, O34): at most one, live then tail. */
+	/** @internal The view's composition session: at most one, live then tail. */
 	readonly composition: Composition = new Composition(this);
 	/** A composition session is live. */
 	get isComposing() {
@@ -328,7 +326,7 @@ export class Edytor {
 	suppressCaretScrollDepth = 0;
 	/** The view's suggestions (`session/suggestions`): proposed content, shown here until accepted. */
 	readonly suggestions: Suggestions = new Suggestions(this);
-	/** @internal The view's input attempts (R8, L6): one per user occurrence. */
+	/** @internal The view's input attempts: one per user occurrence. */
 	readonly attempts = new Attempts(() => this.surface.signal());
 
 	// CRDT (v14) — the document is the composition owner: it holds the ONE
@@ -362,7 +360,7 @@ export class Edytor {
 		));
 	}
 
-	// Document order (O7): the view's walkers and block-selection keys read
+	// Document order: the view's walkers and block-selection keys read
 	// the document's one pre-order; `policy` is its island-sealing policy.
 	blockAfter = (block: Block, policy?: OrderPolicy): Block | null =>
 		this.idToBlock.get(this.facade.next(block.id, policy) ?? '') ?? null;
@@ -437,7 +435,7 @@ export class Edytor {
 	/** Move blocks one relative step, or before, after or inside a live target block. */
 	moveBlocks = (request: BlockMoveRequest): Block[] => moveBlocksRelative(this, request);
 
-	/** @internal This view's history (R7's named exception): bare engine undo/redo, one restorer. */
+	/** @internal This view's history (the named exception to commands through the dispatcher): bare engine undo/redo, one restorer. */
 	readonly history = new History(this);
 
 	/**
@@ -458,7 +456,6 @@ export class Edytor {
 		snippets,
 		readonly,
 		hotkeys,
-		hotKeys,
 		plugins,
 		document,
 		doc,
@@ -507,7 +504,7 @@ export class Edytor {
 		try {
 			// Initialize plugins. Default children are merged across extensions
 			// before definition precedence applies: two extensions declaring
-			// different default children for one parent type is an error (D-13).
+			// different default children for one parent type is an error.
 			const defaultChild: Record<string, string> = {};
 			this.plugins = (plugins || []).map((plugin, at) => {
 				// Its input rules and triggers run through its own hooks, at its place in the list.
@@ -519,7 +516,7 @@ export class Edytor {
 					}
 				}
 
-				// Duplicate definitions: the first extension wins (site docs plugins#plugin-order, D-11).
+				// Duplicate definitions: the first extension wins (site docs plugins#plugin-order).
 				define(this.marks, initializedPlugin.marks);
 				define(this.blocks, initializedPlugin.blocks);
 				define(this.inlineBlocks, initializedPlugin.inlineBlocks);
@@ -563,7 +560,7 @@ export class Edytor {
 			this.placeholder =
 				placeholder || this.plugins.find((plugin) => plugin.placeholder)?.placeholder;
 
-			// Contribute this view's capability (R5) to the document — roles,
+			// Contribute this view's capability to the document — roles,
 			// `rendersContent` and default children outlive any single view.
 			// The first declaration for a type is adopted; a conflicting one is
 			// an error (views cannot silently impose incompatible structural
@@ -581,7 +578,7 @@ export class Edytor {
 					blocks.map(([type, definition]) => [type, definition.rendersContent !== false])
 				),
 				defaultChild,
-				// H5: a mark's edge decides where a concurrent insert at its ends lands.
+				// A mark's edge decides where a concurrent insert at its ends lands.
 				marks: Object.fromEntries(
 					Array.from(this.marks)
 						.filter(([, definition]) => definition.edge !== undefined)
@@ -595,7 +592,7 @@ export class Edytor {
 			// this document's undo manager captures THIS view's edits.
 			this.document.trackOrigin(this.transaction);
 
-			// Readiness (R13): the document decides. A view seeds only the
+			// Readiness: the document decides. A view seeds only the
 			// document it owns, unless its own provider (`sync`) owns the
 			// decision; every other view binds on the one readiness event
 			// (`<Edytor>` decides an injected document at mount, once the
@@ -609,7 +606,7 @@ export class Edytor {
 			}
 
 			this.selection = new EdytorSelection(this, onSelectionChange);
-			this.keymap = new Keymap(this, hotkeys ?? hotKeys, this.plugins);
+			this.keymap = new Keymap(this, hotkeys, this.plugins);
 		} catch (error) {
 			// Constructor failure — release what the partial view claimed:
 			// the history origin (untracked live — already-captured commits
@@ -686,7 +683,7 @@ export class Edytor {
 			return cache.json;
 		}
 		// `facade.toJSON()` is the canonical document export — the one
-		// serializer (S6, L14); the root carries the document's data.
+		// serializer; the root carries the document's data.
 		const { data, children } = root ? this.facade.toJSON() : { children: [] };
 		const json: JSONDoc = { type: 'root', ...(data && { data }), children };
 		this._valueCache = { version, revision, root, json };
@@ -737,7 +734,7 @@ export class Edytor {
 		if (change.data) this.dataRevision++;
 		this.overlay.invalidate();
 		// A commit this view did not issue re-renders under the caret: the
-		// projector displays the current value after that flush (R10).
+		// projector displays the current value after that flush.
 		if (change.origin !== this.transaction) this.surface.update();
 		// Remote/programmatic commits run under the scroll suppressor —
 		// a remote commit landing inside an in-flight `isHandlingUserInput`
@@ -747,7 +744,7 @@ export class Edytor {
 			this.idToBlock.prune(change);
 			// Repair a selection that no longer resolves.
 			this.selection?.restoreDeadSelectionEndpoints();
-			// D-20: a live composition whose block was re-placed commits first.
+			// A live composition whose block was re-placed commits first.
 			this.composition.restructured(change);
 			// A suggestion whose block died is dropped.
 			this.suggestions.prune();
@@ -882,7 +879,7 @@ export class Edytor {
 		return armed;
 	};
 	/**
-	 * The one gesture serial (Surface bookkeeping, L8): pointer, focus, key,
+	 * The one gesture serial (Surface bookkeeping): pointer, focus, key,
 	 * `beforeinput`, cut, paste and drop bump it; an `input` does not (it
 	 * records what the browser did, not where the user wants the selection).
 	 * Attempts are per occurrence (`attempts`), not counted here.
@@ -1108,7 +1105,7 @@ export class Edytor {
 
 	/** @internal */
 	destroyed = false;
-	/** @internal The key of this view's presence entry — minted here, written only by this view (R1). */
+	/** @internal The key of this view's presence entry — minted here, written only by this view. */
 	readonly presenceKey = mintPresenceKey();
 	/** This view's presence writer: what it shares (`share`) and how often (`throttle`, ms); both settable. */
 	presence!: PresenceWriter;
@@ -1130,7 +1127,7 @@ export class Edytor {
 	destroy = () => {
 		if (this.destroyed) return;
 		this.destroyed = true;
-		// This view's presence entry — its own key, cleared by its own teardown (R1).
+		// This view's presence entry — its own key, cleared by its own teardown.
 		this.presence.clear();
 
 		// A pending readiness binding must not resurrect a dead view.

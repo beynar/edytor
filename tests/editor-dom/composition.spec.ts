@@ -103,8 +103,10 @@ const setCodeLineSuggestion = async (page: Page, suggestion: string) =>
 			throw new Error('Missing code line for suggestion setup');
 		}
 
-		codeLine.suggestions = [[{ text: suggestionText }]];
-		return codeLine.suggestions !== null;
+		edytor.suggestions.add({ end: codeLine.id }, [
+			{ type: codeLine.type, content: [{ text: suggestionText }] }
+		]);
+		return edytor.suggestions.at(codeLine.id).end.length > 0;
 	}, suggestion);
 
 const readCodeSuggestionState = async (page: Page) =>
@@ -113,7 +115,7 @@ const readCodeSuggestionState = async (page: Page) =>
 		const codeLine = edytor?.root?.children?.[0]?.children?.[0];
 		const suggestion = document.querySelector<HTMLElement>('[data-edytor-text-suggestion]');
 		return {
-			hasRawSuggestion: codeLine?.suggestions !== null,
+			hasRawSuggestion: !!codeLine && edytor.suggestions.at(codeLine.id).end.length > 0,
 			suggestionText: suggestion?.textContent ?? null,
 			visibleSuggestionCount: document.querySelectorAll('[data-edytor-text-suggestion]').length
 		};

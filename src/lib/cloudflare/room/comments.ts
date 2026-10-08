@@ -1,5 +1,5 @@
 /**
- * The room's comment threads (`room.comments.*`, decision D6): the
+ * The room's comment threads (`room.comments.*`: threads live beside the document, not in it): the
  * `threads` and `comments` tables, the requests `routeDocumentComments`
  * forwards and the RPC methods, the change broadcast to the sockets that
  * subscribed (`messageComments`), the removal of a removed thread's anchor

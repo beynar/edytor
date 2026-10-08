@@ -24,7 +24,7 @@ const controllers = new WeakMap<Edytor, FindController>();
 export const findController = (edytor: Edytor): FindController | undefined =>
 	controllers.get(edytor);
 
-/** At the editor's top right, inside the viewport; measured in the overlay's frame (R11). */
+/** At the editor's top right, inside the viewport; measured in the overlay's frame. */
 const place = (edytor: Edytor, find: FindController) => (host: HTMLElement) => {
 	const editor = edytor.node;
 	const view = editor?.ownerDocument.defaultView;

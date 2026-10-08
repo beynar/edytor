@@ -1,5 +1,5 @@
 /**
- * Anchors (R4, §4.1 `doc/anchors`): the seam of a vanished endpoint.
+ * Anchors: the seam of a vanished endpoint.
  *
  * A deleted block keeps its replicated slot — its winning placement `{p, r}`
  * — so the place it vacated is the same answer on every replica, whatever
@@ -13,11 +13,11 @@
  * (`sel.seam.next-sibling`: "the previous sibling's end"), else its children
  * last first.
  *
- * `displayable` is the Surface's fact (§2.4: the cell is mounted and not
+ * `displayable` is the Surface's fact (the cell is mounted and not
  * hidden by view state — a collapsed toggle, a snippet that did not render
  * `content()`); the document never reads the view. The seam applies only to
  * endpoints the view did not author: a local command authors its own result
- * selection (R9).
+ * selection.
  */
 import type { BlockId } from './index.js';
 

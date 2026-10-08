@@ -1,5 +1,5 @@
 /**
- * The selection value and its projection (R4, R9, L4, §4.3 `session/selection`).
+ * The selection value and its projection.
  *
  * A selection is a value: none, a text range of two anchors (the anchor where
  * it started, the focus that moves) with optional pending marks, one inline
@@ -10,7 +10,7 @@
  * lazily the marks at the caret and the selected string — is `project(value,
  * doc)`, a pure function memoized per (value, index version).
  *
- * V2: the view's `select(value, cause)` is the only writer; its
+ * The view's `select(value, cause)` is the only writer; its
  * `selection.state` is a compatibility getter over the projection, and the
  * presence payload is `serialize(value)`.
  */
@@ -274,7 +274,7 @@ const compute = (doc: ProjectionDoc, value: SelectionValue): SelectionProjection
 		const a = doc.resolveAnchor(value.anchor);
 		const f = value.focus === value.anchor ? a : doc.resolveAnchor(value.focus);
 		// One unresolvable endpoint collapses the range to the survivor (anchor contract rule 5);
-		// neither resolving is the vanished-endpoint seam (V3), not projected here.
+		// neither resolving is the vanished-endpoint seam, not projected here.
 		const anchor = a ?? f;
 		const focus = f ?? a;
 		if (!anchor || !focus) return none();

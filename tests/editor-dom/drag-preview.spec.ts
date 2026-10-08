@@ -8,7 +8,7 @@ import { trackPageIssues, waitForEditorReady } from './helpers';
  * theme and only scaled down (no card, background, shadow, opacity or fade),
  * for one block, one selected block and several. Recorded by a spy on
  * `DataTransfer.setDragImage` while the ghost is mounted for the browser's
- * picture. The jsdom rows are `drag-preview-20260930.test.tsx`.
+ * picture. The jsdom rows are `drag-preview.test.tsx`.
  */
 
 type Recorded = {

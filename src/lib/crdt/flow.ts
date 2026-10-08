@@ -1,5 +1,5 @@
 /**
- * Placement of an admitted flow — one prepared document operation (R6) for
+ * Placement of an admitted flow — one prepared document operation for
  * paste, drop and fragment insertion. The rules are the `flow.*` rows of
  * `docs/editor-delete-contract.md`:
  *
@@ -9,12 +9,12 @@
  *   line's kind (`flow.inline`);
  * - several lines split the block: the first joins the head, the last is the
  *   tail's block and takes the text after the position and the block's
- *   children, the rest go between (`flow.split`, D-4) — children the view
+ *   children, the rest go between (`flow.split`) — children the view
  *   hides (a closed toggle's body) stay with the head, as Enter keeps them;
  * - a line that joins no text (a list, a code block, a divider: it renders
  *   none of its own, or is a void or an island) is placed as a block, never
  *   joined; the text after the position stays in a shown line of the
- *   block's kind (`flow.apart`, GX-01), and the caret ends the last pasted
+ *   block's kind (`flow.apart`), and the caret ends the last pasted
  *   shown line;
  * - in a code line (a `lines` island) the lines, nested ones included, are
  *   placed as plain lines (`flow.lines`);
@@ -22,18 +22,18 @@
  *   it when empty (`flow.whole`); over selected blocks the lines take their
  *   slot (`flow.slot`), and at a slot they are placed with nothing replaced
  *   (`flow.place`: an accepted suggestion), all at plain ranks (`insertBlocks`: their order
- *   against a peer's split beside them is not claimed, DR-crdt-1); a void
+ *   against a peer's split beside them is not claimed); a void
  *   takes one run (`flow.void`);
  * - a table's cell is never split: it takes the lines a flow shows, nested
  *   ones and a pasted table's cells included, as one text joined by line
  *   breaks; a cell outside a row (cells copied out of a table) is a line of
  *   text, and a row outside a table its cells (`table.paste`);
  * - a plain line that lands directly in a container takes its item kind
- *   (the document's `fitted`: a pasted paragraph in a list is its item,
- *   ZW-01), and so does a line of the list's flat item kind (the view's
- *   `itemKind`: a pasted numbered item in an `ordered-list`, AW-08); any
+ *   (the document's `fitted`: a pasted paragraph in a list is its item),
+ *   and so does a line of the list's flat item kind (the view's
+ *   `itemKind`: a pasted numbered item in an `ordered-list`); any
  *   other kind keeps its kind and data (a pasted image stays an image, a
- *   bulleted item in an `ordered-list` a bulleted item, DR-crdt-1).
+ *   bulleted item in an `ordered-list` a bulleted item).
  */
 import type { BlockId, BlockSpec, Destination, SplitTail } from './placement/model.js';
 import type { PlanStep, Prepared } from './edytor-doc.js';
@@ -81,13 +81,13 @@ export type FlowContext = RangeDeleteContext & {
 		rendersContent: boolean;
 		layout?: string;
 	};
-	/** `id` is a layout item or sits inside one (D2: no layout lands there). */
+	/** `id` is a layout item or sits inside one (no layout lands there). */
 	insideItem: (id: BlockId) => boolean;
 	/** What a kind is to the table rules: a table, a row or a cell kind (`table.*`). */
 	tableKind: (kind: string) => 'table' | 'row' | 'cell' | undefined;
 	tailOf: (id: BlockId) => SplitTail;
 	ranksFor: (parent: BlockId | null, index: number, count: number) => string[];
-	/** `ranksFor` for new blocks: after a block this client ranked, in its run there (H1). */
+	/** `ranksFor` for new blocks: after a block this client ranked, in its run there. */
 	insertRanks: (parent: BlockId | null, index: number, count: number) => string[];
 	/** Ranks for the `count` blocks a split of `id` at `at` puts after it, by that offset. */
 	pieceRanks: (id: BlockId, at: number, count: number) => string[];
@@ -123,7 +123,7 @@ export const placedEnd = (roleOf: (kind: string) => { void: boolean; rendersCont
 /** `insertFlow`, prepared. */
 export const flowOps = (c: FlowContext) => ({
 	insertFlow: (target: FlowTarget, flow: Flow, view: FlowView = {}): Prepared => {
-		// Ingress (O1): a run carries a placeholder kind through the spec sanitizer.
+		// Ingress: a run carries a placeholder kind through the spec sanitizer.
 		let lines: FlowLine[] = flow.lines
 			.map((l) => c.sanitize({ ...l, type: l.type ?? '' }))
 			.map((s) => ({ ...s, type: s.type || undefined }));
@@ -159,7 +159,7 @@ export const flowOps = (c: FlowContext) => ({
 		const endOf = placedEnd(c.roleOf);
 		/**
 		 * A layout line, here or nested, as its items' lines in reading order, and
-		 * any other child it holds (`flow.layout`, D2): no layout lands in an item.
+		 * any other child it holds (`flow.layout`): no layout lands in an item.
 		 */
 		const unwrap = (l: FlowLine): FlowLine[] => {
 			const item = l.type ? c.roleOf(l.type).layout : undefined;
@@ -201,7 +201,7 @@ export const flowOps = (c: FlowContext) => ({
 			}
 			intoItem(slot.parent);
 			if (lines.length === 0) return c.plan([], []);
-			// In a code block (selected lines, a slot), the lines are plain lines too (`flow.lines`, HX-06).
+			// In a code block (selected lines, a slot), the lines are plain lines too (`flow.lines`).
 			if (slot.parent !== null && c.isLines(slot.parent)) {
 				const shown = lines.flatMap(plain);
 				lines = shown.length ? shown : [{ id: lines[0]!.id, content: [] }];
@@ -222,7 +222,7 @@ export const flowOps = (c: FlowContext) => ({
 		// A table's cell is never split: the lines it shows join its text (`table.paste`).
 		const cell = c.isTableCell(B);
 		if (cell) lines = lines.flatMap(plain);
-		// A line that joins no text under `under` (`flow.apart`, GX-01): its kind renders
+		// A line that joins no text under `under` (`flow.apart`): its kind renders
 		// none of its own (a list, a code block), or is a void or an island.
 		const apart = (l: FlowLine, under: BlockId | null) => {
 			const kind = l.type && fit(under, l.type);
@@ -231,11 +231,11 @@ export const flowOps = (c: FlowContext) => ({
 		};
 		// At the end of a container's header whose body shows, what follows the caret
 		// leads its children and the body stays, as Enter opens a first child
-		// (`flow.header`, HX-10), unless the first line stands apart and replaces an empty
+		// (`flow.header`), unless the first line stands apart and replaces an empty
 		// one (`flow.apart`); elsewhere it follows `B` among its siblings.
 		const header = view.header?.(B);
 		// A closed header shows no children: a line it takes brings none into its hidden
-		// body; they follow it, shown (`flow.header`, DR-crdt-1).
+		// body; they follow it, shown (`flow.header`).
 		const shut = header === 'closed';
 		const inside =
 			o === len && !inLines && !flow.whole && header === true && !(empty && apart(lines[0]!, B));

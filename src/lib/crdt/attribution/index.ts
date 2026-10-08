@@ -1,8 +1,8 @@
 /**
- * Public surface of the attribution service. `block.ts` is U1 — the
+ * Public surface of the attribution service. `block.ts` holds the
  * compact per-block records (`b/<blockId>` + the block-node `l` attr)
  * written inside the owning facade op's transaction. `attribution.ts`
- * is U2 — the actor dictionary (`u/`/`c/`) plus inert reads over
+ * holds the actor dictionary (`u/`/`c/`) plus inert reads over
  * pre-existing `a/` per-edit records written by retired builds.
  */
 export {

@@ -6,7 +6,7 @@
  * inline atoms) and `children` (child blocks). Moves are expressed as a
  * *placement attribute update* (`placement = {parent, index}`) — the payload
  * is never re-encoded; this is the v14 primitive the plan's move design
- * targets (see docs/crdt-v14-implementation-plan.md §4 "Movement semantics").
+ * targets (see docs/archive/crdt-v14-implementation-plan.md §4 "Movement semantics").
  *
  * v13 (npm yjs@13.6.30): `doc.getArray('content')`; a block is `Y.Map` with
  * `content` `Y.Text` and `children` `Y.Array`. v13 has no placement concept —

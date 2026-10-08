@@ -12,10 +12,10 @@ export { applyUpdate, applyUpdateV2, readUpdateV2, encodeStateAsUpdate, encodeSt
 export { ID, createID, compareIDs, findRootTypeKey } from './utils/ID.js'
 export { isParentOf } from './utils/isParentOf.js'
 export { createRelativePositionFromTypeIndex, createRelativePositionFromJSON, createAbsolutePositionFromRelativePosition, AbsolutePosition, RelativePosition, relativePositionToJSON } from './utils/RelativePosition.js'
-export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from './utils/transaction-helpers.js' // P14: isKeptReplaced
+export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from './utils/transaction-helpers.js' // YP14: isKeptReplaced
 export { Transaction, transact, cleanupYTextFormatting } from './utils/Transaction.js'
 export { UndoManager } from './utils/UndoManager.js'
-export { redoItem } from './utils/UndoManager.js' // P11
+export { redoItem } from './utils/UndoManager.js' // YP11
 export { decodeUpdate, decodeUpdateV2, convertUpdateFormatV2ToV1 } from './utils/updates.js'
 export { YEvent } from './utils/YEvent.js'
 export { AbstractRenderer, $renderer } from './utils/renderer-helpers.js'

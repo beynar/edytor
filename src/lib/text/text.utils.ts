@@ -61,7 +61,7 @@ export function insertText(
 	}: TextOperations['insertText']
 ) {
 	const isCollapsed = start === end || !end;
-	// The caret's pending marks (L4) apply to an insertion at the caret, which consumes them.
+	// The caret's pending marks apply to an insertion at the caret, which consumes them.
 	const { selection } = this.edytor;
 	const { startText, yStart } = selection.state;
 	const pending = startText === this && yStart === start ? selection.pending : undefined;

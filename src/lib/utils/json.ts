@@ -6,7 +6,7 @@
  * anywhere under `src/lib` outside the vendored v14 engine — editor commands
  * speak the typed node surface (`DocBlock` in `src/lib/crdt/nodes.ts`).
  *
- * ## Boundary contract (gate-3 F4)
+ * ## Boundary contract
  *
  * `JSONBlock.data`, `JSONText.marks`, `JSONInlineBlock.data`, format payloads
  * and every other value crossing the replicated boundary are **JSON-typed
@@ -36,7 +36,7 @@
  * pairs pass through untouched — normalization never merges or rewrites
  * well-formed input.
  *
- * ## Spec preparation (U2)
+ * ## Spec preparation
  *
  * {@link jsonContentToItems} / {@link jsonBlockToSpec} are the canonical
  * JSON → facade `ContentItem`/`BlockSpec` converters — the admission shape
@@ -202,8 +202,8 @@ export const cloneJson = <T>(value: T): T => {
 };
 
 /**
- * Total JSON projection — the read-side counterpart of {@link cloneJson}
- * (gate-H R4). `cloneJson` deliberately still throws on `bigint` and
+ * Total JSON projection — the read-side counterpart of {@link cloneJson}.
+ * `cloneJson` deliberately still throws on `bigint` and
  * circular input so WRITE boundaries refuse loudly before mutating;
  * `cloneJsonSafe` NEVER throws — it is for read/intern/publication paths
  * that must stay live even when replicated state holds a hostile value
@@ -348,7 +348,7 @@ export const jsonEquals = (a: unknown, b: unknown): boolean => {
 };
 
 /**
- * Ingress for a `BlockSpec` (F2-M1, O1): every caller-supplied string — ids,
+ * Ingress for a `BlockSpec` (F2-M1): every caller-supplied string — ids,
  * types, `data`, content text/marks, inline atom fields, recursively through
  * `children` — is rewritten to well-formed UTF-16 (the update encoder applies
  * the same mapping on delivery, so a verbatim lone surrogate would decode

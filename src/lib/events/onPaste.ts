@@ -106,7 +106,7 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 			return;
 		}
 
-		// External HTML (P4.1); HTML that carries nothing falls through to text/plain.
+		// External HTML; HTML that carries nothing falls through to text/plain.
 		const flow = flowOfHtml(this, e.clipboardData?.getData('text/html'));
 		if (flow) {
 			e.preventDefault();

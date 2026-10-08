@@ -30,7 +30,7 @@ export const Y = {
 	UpdateEncoderV1: V.UpdateEncoderV1,
 	writeIdSet: V.writeIdSet,
 	mergeUpdates: V.mergeUpdates,
-	// storage in the v2 (columnar) encoding (P5): room rows and the IndexedDB store
+	// storage in the v2 (columnar) encoding: room rows and the IndexedDB store
 	applyUpdateV2: V.applyUpdateV2,
 	encodeStateAsUpdateV2: V.encodeStateAsUpdateV2,
 	mergeUpdatesV2: V.mergeUpdatesV2,
@@ -39,7 +39,7 @@ export const Y = {
 	UpdateEncoderV2: V.UpdateEncoderV2,
 	Skip: V.Skip,
 	findIndexSS: V.findIndexSS,
-	// a concurrent creation of one block id keeps the losing node (fork P14, H13)
+	// a concurrent creation of one block id keeps the losing node (fork patch YP14)
 	isKeptReplaced: V.isKeptReplaced,
 	createRelativePositionFromTypeIndex: V.createRelativePositionFromTypeIndex,
 	createRelativePositionFromJSON: V.createRelativePositionFromJSON,
@@ -52,11 +52,11 @@ export const Y = {
 	insertIntoIdMap: V.insertIntoIdMap,
 	createContentMap: V.createContentMap,
 	decodeContentMap: V.decodeContentMap,
-	// text delete marks (`text/deletes.ts`, fork patch P11)
+	// text delete marks (`text/deletes.ts`, fork patch YP11)
 	iterateStructsByIdSet: V.iterateStructsByIdSet,
 	getItemCleanStart: V.getItemCleanStart,
 	redoItem: V.redoItem,
-	// a folded delete record appended after the one it replaces (P4)
+	// a folded delete record appended after the one it replaces
 	ContentAny: V.ContentAny,
 	createID: V.createID
 };

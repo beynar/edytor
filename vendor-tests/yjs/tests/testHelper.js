@@ -38,10 +38,10 @@ export const encV1 = {
   encodeStateAsUpdate: Y.encodeStateAsUpdate,
   mergeUpdates: Y.mergeUpdates,
   applyUpdate: Y.applyUpdate,
-  logUpdate: () => {}, // P8: the update loggers are pruned
+  logUpdate: () => {}, // YP8: the update loggers are pruned
   updateEventName: /** @type {'update'} */ ('update'),
   /**
-   * P8: the V1 `diffUpdate` wrapper is pruned; the V2 core it wrapped is kept.
+   * YP8: the V1 `diffUpdate` wrapper is pruned; the V2 core it wrapped is kept.
    * @param {Uint8Array} update
    * @param {Uint8Array} sv
    */
@@ -52,7 +52,7 @@ export const encV2 = {
   encodeStateAsUpdate: Y.encodeStateAsUpdateV2,
   mergeUpdates: Y.mergeUpdatesV2,
   applyUpdate: Y.applyUpdateV2,
-  logUpdate: () => {}, // P8: the update loggers are pruned
+  logUpdate: () => {}, // YP8: the update loggers are pruned
   updateEventName: /** @type {'updateV2'} */ ('updateV2'),
   diffUpdate: Y.diffUpdateV2
 }
@@ -496,7 +496,7 @@ export const compare = users => {
     t.compare(Y.encodeStateVector(users[i]), Y.encodeStateVector(users[i + 1]))
     Y.equalIdSets(Y.createDeleteSetFromStructStore(users[i].store), Y.createDeleteSetFromStructStore(users[i + 1].store))
     compareStructStores(users[i].store, users[i + 1].store)
-    // P8: snapshots are pruned — a snapshot is (state vector, delete set); the state vectors are
+    // YP8: snapshots are pruned — a snapshot is (state vector, delete set); the state vectors are
     // compared above, so compare the encoded delete sets.
     t.compare(encodeDeleteSet(users[i].store), encodeDeleteSet(users[i + 1].store))
   }

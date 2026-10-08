@@ -3,7 +3,7 @@
  * owner binding the production engine once and composing the existing
  * domain facade, the default local history, one shared awareness, the
  * document-level semantic configuration (block roles + default type) and
- * the local actor identity (compact per-block attribution, U1+U2).
+ * the local actor identity (compact per-block attribution and the actor dictionary).
  *
  * Used headlessly or shared by any number of `Edytor` views:
  *
@@ -27,7 +27,7 @@
  * `attachDocument` composes the same services around a doc the CALLER
  * owns: `destroy()` releases the document-created services but never
  * `doc.destroy()`s the borrowed doc (borrowing grants no destruction
- * authority — U1 contract). The same rule applies to an injected
+ * authority). The same rule applies to an injected
  * `awareness` (the `_ownsAwareness` convention already used by
  * `IndexeddbPersistence`).
  *
@@ -55,7 +55,7 @@
  * `c/<clientID>`/`u/<actorId>` records on ANY constructed document —
  * identity metadata, not content, and outside every admission gate.)
  *
- * ── Admission boundary (U8) ────────────────────────────────────────────
+ * ── Admission boundary ────────────────────────────────────────────
  *
  * Every content-entry path crosses the one document-level admission gate
  * (`src/lib/crdt/admission.ts` — shared vocabulary with the transport
@@ -86,7 +86,7 @@
  *
  * ── Semantic configuration ─────────────────────────────────────────────
  *
- * The adopted capability (rule R5) is document-level state that outlives
+ * The adopted capability is document-level state that outlives
  * any single view: structural roles (`void`/`island`), whether a kind
  * renders its own content (`rendersContent`), the default child type per
  * parent type (`defaultChild`) and `defaultType`. Views contribute what
@@ -484,7 +484,7 @@ export class EdytorDocument {
 			defaultChildOf: (type) => this._capability.defaultChild.get(type),
 			rendersContent: (type) => this.rendersContent(type),
 			markEdge: (mark) => this._capability.marks.get(mark),
-			// U1: the facade's block-attribution ops read the actor lazily —
+			// The facade's block-attribution ops read the actor lazily —
 			// `this.actor` is assigned below, after facade construction.
 			actor: () => this.actor,
 			lineageDepth: init.lineage?.depth,
@@ -499,7 +499,7 @@ export class EdytorDocument {
 		this.requireHydration = init.requireHydration === true;
 		this.actor = init.actor ?? anonymousActor();
 		// Durable actor identity is separate from the presence profile: the
-		// `actor` field carries the stable id (U5/U6 stub seam), `user`
+		// `actor` field carries the stable id, `user`
 		// carries the display profile remote carets already read.
 		this.awareness.setLocalStateField('actor', this.actor);
 		if (this.actor.name !== undefined || this.actor.color !== undefined) {
@@ -511,7 +511,7 @@ export class EdytorDocument {
 		// Attribution service — attaches after the facade (which gates
 		// foreign docs) and after the actor is fixed. Publishes this
 		// replica's actor dictionary entries (`c/`+`u/`) once; ordinary
-		// edits perform no attribution work (U2) and per-block records are
+		// edits perform no attribution work and per-block records are
 		// written inside the owning op's transaction by the facade.
 		this._attributionCtl = init.attribution.attach(asEngineDoc(this.doc), {
 			actor: this.actor
@@ -706,7 +706,7 @@ export class EdytorDocument {
 		}
 		this._advertise();
 		if (DEV) this._warnLines();
-		// A newly void kind sheds its children at read time (UW-21b); a block
+		// A newly void kind sheds its children at read time; a block
 		// promoted out of a newly island kind displays as a default child; a
 		// newly layout kind displays only its items (`layout.*`), a newly
 		// table kind only its rows (`table.*`).
@@ -978,7 +978,7 @@ export class EdytorDocument {
 	 */
 	private _decide = (value: JSONDoc | undefined, report = false, synced = false): void => {
 		if (this._destroyed || this.ready) return;
-		// H12: an empty document waits for a provider that synced.
+		// An empty document waits for a provider that synced.
 		if (this.requireHydration && !synced && !isInitialized(asEngineDoc(this.doc))) return;
 		const waiting = this._pendingSyncs > 0 || this._refusals.size > 0;
 		if (waiting && !isInitialized(asEngineDoc(this.doc))) return;
@@ -1308,7 +1308,7 @@ export const bindDocument = (Y: EngineApi) => {
 		 * provider `synced` → seed-if-empty).
 		 */
 		createDocument: (options: CreateDocumentOptions = {}): EdytorDocument => {
-			// Every entry path crosses the admission boundary (U8) — a fresh
+			// Every entry path crosses the admission boundary — a fresh
 			// doc is trivially `'fresh'`; the uniform call keeps the gate
 			// structural rather than assumed.
 			const doc = new Y.Doc();
@@ -1338,7 +1338,7 @@ export const bindDocument = (Y: EngineApi) => {
 		/**
 		 * Restore a saved update on a FRESH replica (fresh `clientID` — the
 		 * local replica identity is never restored, only the replicated
-		 * state). Staged admission per the U8 contract: the payload is
+		 * state). Staged admission: the payload is
 		 * decoded+integrated onto a SCRATCH doc and the document admission
 		 * gate runs on the merged result — a corrupt payload
 		 * ({@link UndecodableUpdateError}), a v13-era layout
@@ -1379,7 +1379,7 @@ export const bindDocument = (Y: EngineApi) => {
 		 * borrowed doc. Content state stays `pending` — the caller (view or
 		 * provider path) drives `sync()`.
 		 *
-		 * Admission runs BEFORE any composition touches the doc (U8): a
+		 * Admission runs BEFORE any composition touches the doc: a
 		 * foreign engine object or applied-but-unmigrated v13 state
 		 * refuses with {@link UnsupportedDocError}, an
 		 * unversioned/unsupported/foreign schema claim with

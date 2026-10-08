@@ -1060,8 +1060,8 @@
 	const collabSync: EdytorSync | undefined = untrack(() =>
 		data.wssync === 'factory' && data.collabws && data.wsserver
 			? createWebsocketSync({
-					serverUrl: data.wsserver,
-					roomName: data.collabws,
+					server: data.wsserver,
+					room: data.collabws,
 					maxBackoffTime: data.wsbackoff,
 					persist: data.wspersist !== 'off'
 				})
@@ -1307,7 +1307,7 @@
 			bind:edytor
 			{plugins}
 			defaultPlugins={false}
-			blockDnd={data.handles}
+			blockHandles={data.handles}
 			document={injectedDocument}
 			{value}
 			{readonly}
@@ -1328,7 +1328,7 @@
 				bind:edytor={secondaryEdytor}
 				{plugins}
 				defaultPlugins={false}
-				blockDnd={data.handles}
+				blockHandles={data.handles}
 				value={secondaryValue}
 				{translate}
 				{spellcheck}

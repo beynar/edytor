@@ -120,7 +120,7 @@ export const isKindControl = (
 };
 
 /**
- * The one rule for a kind's markup (DR-props-2): an event with a kind's own
+ * The one rule for a kind's markup: an event with a kind's own
  * control on its composed path is the control's. Its keys, `beforeinput`,
  * paste, copy, cut, drops and selection gestures pass the editor untouched,
  * whatever the control's type and whatever the editor's selection (a block or

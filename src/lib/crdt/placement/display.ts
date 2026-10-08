@@ -18,7 +18,7 @@ import type {
 } from './model.js';
 
 /**
- * D-18 (H9, `order.split.text`): the blocks whose streams lie in one
+ * Split pieces in text order (`order.split.text`): the blocks whose streams lie in one
  * backing text and that still stand where they were made (their winning
  * placement is their first candidate, `1.<client>`: no move, outdent or
  * lift since) under one parent show in their streams' order in that text —
@@ -157,7 +157,7 @@ export const displayIndex = (
 };
 
 /**
- * THE liveness answer (R3, O5): `id` carries no live delete mark, owns
+ * THE liveness answer: `id` carries no live delete mark, owns
  * itself (`own.hidden` covers both: a delete-marked or unknown block owns
  * `DEAD`), and every display ancestor is live — i.e. it renders in
  * `project()`. Every op precondition, read and view consumer asks this.
@@ -183,11 +183,11 @@ export const isLiveIn = (v: Pick<ModelView, 'placements' | 'own'>, id: BlockId):
  * one resolves to its claim owner, the merge destination (B+C merged while
  * A+B merged: C's children land on B, B is claimed by A → they display
  * under A). A delete-marked parent hides no unmarked child — promotion is
- * derived at read time (`del.blocks.promote`, UW-08): the child takes the
+ * derived at read time (`del.blocks.promote`): the child takes the
  * deleted parent's slot, ranked just after it ({@link promotedRank}),
  * recursively. So whatever a peer split off, inserted or moved under a
  * block another writer deleted stays in the document. A childless owner (a
- * void kind, `own.childless`) sheds its children the same way (UW-21b): a
+ * void kind, `own.childless`) sheds its children the same way: a
  * block a peer nests or splits under a block another peer retypes to a void
  * kind takes the void's slot on every replica, and returns under it if the
  * retype is undone. A block that displays out of an island — promoted out
@@ -196,16 +196,16 @@ export const isLiveIn = (v: Pick<ModelView, 'placements' | 'own'>, id: BlockId):
  * kind it displays as its display parent's default child, as a delete or
  * merge of the island retypes the children it saw. A container (a list) is
  * a `reset` too: an item a peer adds to a list another peer's edit removes
- * shows as a paragraph, not as a bare item (DR-crdt-2); a block promoted
+ * shows as a paragraph, not as a bare item; a block promoted
  * INTO a container names the block it is promoted out of, so it shows as
- * the container's item as a delete's write makes it (SW9-containers-3). A code line a peer adds
+ * the container's item as a delete's write makes it. A code line a peer adds
  * under a code block another peer deletes or merges shows as a paragraph,
  * not as a code line outside its code block. A line of an island declared
- * `lines` holds no children (FW-01): they take the island's
+ * `lines` holds no children: they take the island's
  * slot, ranked in the line's order, with the island as `reset` — a block a
  * peer nested under a code line while an undone delete had made it a
  * paragraph shows right after the code block, and stays there when the
- * line is deleted (XW-10). The layout rules pass the same way (`layout.*`):
+ * line is deleted. The layout rules pass the same way (`layout.*`):
  * a layout sheds a child that is no item of it into its own slot, right
  * after it (`own.sheds`, by the stored kind of `id`, the block placed), and
  * a block the layout rules do not display (`own.passes`: an empty or bare
@@ -222,7 +222,7 @@ export const displaySlotOf = (
 	id: BlockId
 ): { parent: Owner | null; rank: string; reset: BlockId | null } => {
 	let { parent, rank } = pl;
-	// D-18: a piece of a text shown under its own placement's parent takes its text-order rank;
+	// A piece of a text shown under its own placement's parent takes its text-order rank;
 	// a table's cell its column's (`table.columns`).
 	const direct = (owner: BlockId | null): string => {
 		if (owner !== pl.parent) return rank;
@@ -243,8 +243,8 @@ export const displaySlotOf = (
 			own.childless?.(owner) !== true &&
 			own.passes?.(owner) !== true &&
 			own.sheds?.(owner, id) !== true;
-		// A line holds no children (FW-01) — a deleted or childless one
-		// neither (XW-10): they take its island's slot, never the island.
+		// A line holds no children — a deleted or childless one
+		// neither: they take its island's slot, never the island.
 		const line =
 			own.lined &&
 			(shows ? lineSlotOf(own, placements, owner) : storedLineSlotOf(own, placements, out));
@@ -257,7 +257,7 @@ export const displaySlotOf = (
 				reset: reset ?? line.parent
 			};
 		}
-		// Promoted into a container: it shows as one of its items (SW9-containers-3).
+		// Promoted into a container: it shows as one of its items.
 		if (shows && reset === null && promoted !== null && own.container?.(owner) === true)
 			reset = promoted;
 		if (shows) return { parent: owner, rank: hops === 0 ? direct(owner) : rank, reset };

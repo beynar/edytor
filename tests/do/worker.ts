@@ -465,8 +465,7 @@ const zoneOf = (name: string): string =>
  * The history store a `timed-*` room's name asks for (`room.history.store`):
  * `-r2-` an R2 bucket ({@link FakeR2} through `r2History`), `-sqlite-` the
  * room's own storage (`roomHistory`; `-sqlite-small-` caps its table at
- * 4,000 bytes), `-kvstore-` `kvHistory` over a {@link FakeKV}; else a bare
- * {@link FakeKV} (the deprecated `KVLike` store, wrapped by the room).
+ * 4,000 bytes); else `kvHistory` over a {@link FakeKV}.
  */
 const storeOf = (name: string, sql: SqlStorage, now: () => number): HistoryOptions['store'] =>
 	name.includes('-r2-')
@@ -475,9 +474,7 @@ const storeOf = (name: string, sql: SqlStorage, now: () => number): HistoryOptio
 			? roomHistory({ maxBytes: 4000 })
 			: name.includes('-sqlite-')
 				? roomHistory()
-				: name.includes('-kvstore-')
-					? kvHistory(new FakeKV(sql, now))
-					: new FakeKV(sql, now);
+				: kvHistory(new FakeKV(sql, now));
 
 /**
  * Rooms with a fake clock (`timed-*`, Phase 3): history in the store their

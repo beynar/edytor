@@ -3,7 +3,7 @@
  * opens with Hebrew or Arabic takes its own direction (`dir` on its block,
  * from its first strong character), so its caret and its selection behave as in a
  * right-to-left page: the arrows move visually (Left = forward, the RTL rows
- * of `arch-v2-v6-navigation.spec.ts`), Shift extends the same way, and an
+ * of `caret-navigation.spec.ts`), Shift extends the same way, and an
  * English word typed or selected inside it lands at its logical offset. A
  * line that opens with English stays left to right; an empty line keeps the
  * page's direction. Expected values come from the Unicode bidi algorithm

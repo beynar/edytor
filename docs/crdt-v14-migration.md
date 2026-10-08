@@ -344,4 +344,4 @@ rolledbackAt?, sourceRows?, sourceBytes?, error?}`); `pending` while a tab
 - `src/tests/crdt/fixtures/legacy-v13/` — durable v13 binary fixtures +
   generator.
 - Two-page browser proof of the provider/generation stack (Chromium, Firefox,
-  WebKit collaboration specs): `docs/crdt-v14-browser-proof.md`.
+  WebKit collaboration specs): `docs/archive/crdt-v14-browser-proof.md`.

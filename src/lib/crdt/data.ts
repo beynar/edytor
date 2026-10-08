@@ -75,7 +75,7 @@ const itemish = (s: string) => /^~[a-z]/.test(s);
 export const keySegment = (k: string) => (k.startsWith('~') ? `~0${k.slice(1)}` : k);
 /** The object key a path segment names (`keySegment`'s inverse). */
 export const segmentKey = (s: string) => (s.startsWith('~0') ? `~${s.slice(2)}` : s);
-/** A rank's characters (`placement/rank.ts`, P7: variable-length digits, `!` before a tie). */
+/** A rank's characters (`placement/rank.ts`: variable-length digits, `!` before a tie). */
 const RANK = /^[-\w?!]+$/;
 const index = (k: string) => (/^(0|[1-9]\d*)$/.test(k) ? Number(k) : -1);
 const rank = (v: unknown) => (typeof v === 'string' && RANK.test(v) ? v : undefined);
@@ -122,12 +122,12 @@ const leavesFrom = (t: Tree, prefix = DATA_LEAF_PREFIX, out = new Map<string, un
 
 /**
  * Past this many candidate pairs (equal elements of the two middles),
- * `common` pairs nothing between the prefix and the suffix (R8).
+ * `common` pairs nothing between the prefix and the suffix.
  */
 const PAIRS_BOUND = 1 << 18;
 /**
  * A common subsequence of `a` and `b`, as index pairs, in time and memory
- * linear in their lengths (R8, WU-17): the common prefix and suffix, then
+ * linear in their lengths: the common prefix and suffix, then
  * between them a longest common subsequence (Hunt–Szymanski: the candidate
  * pairs, each element of `b` against the equal ones of `a`, read as a
  * longest increasing run, `O(r log n)` for `r` pairs), exact while there
@@ -386,7 +386,7 @@ export const leafKey = (path: readonly string[]): string =>
 	DATA_LEAF_PREFIX + path.map((k) => enc(k)).join('/');
 
 /**
- * `leaves` with every atomic path (`data.atomic`, H8: a leaf key a kind
+ * `leaves` with every atomic path (`data.atomic`: a leaf key a kind
  * declares) holding one leaf: the value of everything at and under it.
  */
 const collapse = (leaves: Map<string, unknown>, atomic: readonly string[]) => {
@@ -453,7 +453,7 @@ export const patchWrites = (
 	if (!patches.every((p) => apply(root, p))) return null;
 	const value = valueOf(root);
 	if (jsonEquals(before, value)) return [];
-	// An atomic path is written as one leaf, and every leaf stored under it goes (H8).
+	// An atomic path is written as one leaf, and every leaf stored under it goes.
 	const want = collapse(leavesFrom(root), atomic);
 	const under = (key: string) => atomic.some((a) => key.startsWith(`${a}/`));
 	const diff = (from: Map<string, unknown>): LeafWrite[] =>

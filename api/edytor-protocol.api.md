@@ -1153,10 +1153,7 @@ declare const bindCrdt: (Y: EngineApi) => {
         migrate: (name: string, options?: import("./index.js").MigrateOptions) => Promise<import("./index.js").MigrateResult>;
         rollback: (name: string) => Promise<void>;
         status: (name: string) => Promise<import("./index.js").MigrationRecord>;
-        waitForSettled: (name: string, _options?: {
-            waitMs?: number;
-            pollMs?: number;
-        }) => Promise<import("./index.js").MigrationRecord>;
+        waitForSettled: (name: string) => Promise<import("./index.js").MigrationRecord>;
     };
     generations: {
         isPreviousGenerationRecord: (v: unknown) => v is import("./protocol.js").GenerationRecord;
@@ -1705,9 +1702,6 @@ export type WebsocketSyncOptions = WebsocketTarget & {
 export type WebsocketTarget = {
     server: string;
     room: string;
-} | {
-    serverUrl: string;
-    roomName: string;
 };
 ```
 

@@ -148,7 +148,7 @@ export type DocChange = {
 	data?: Record<string, unknown>;
 };
 
-// ── caret anchors (U09) ────────────────────────────────────────────────
+// ── caret anchors ────────────────────────────────────────────────
 
 /**
  * Selection-endpoint affinity — which side of a position the anchor binds

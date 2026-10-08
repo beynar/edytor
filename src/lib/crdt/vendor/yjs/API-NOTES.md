@@ -56,4 +56,4 @@ Source of truth: `src/index.js` exports + JSDoc in `src/ynode.js`.
 - `import '@y/y'` (npm) and this vendored copy are **different engine
   instances** — the `__ $YJS14$ __` global guard logs an error and `instanceof`
   checks cross-fail. Providers must be built against the vendored entry
-  (`edytor/crdt`), see U07 notes in `docs/baseline/u01-report.md`.
+  (`edytor/crdt`), see U07 notes in `docs/archive/baseline/u01-report.md`.

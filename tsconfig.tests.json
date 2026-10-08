@@ -25,6 +25,7 @@
 		"src/tests/test.utils.ts",
 		// The API rows that run without node types (public-surface.test.ts runs node tooling).
 		"src/tests/api/wu*.ts",
+		"src/tests/api/retired-aliases.test.ts",
 		"src/tests/fixtures/**/*.ts",
 		"src/tests/fixtures/**/*.tsx",
 		"src/tests/jsx/**/*.ts",

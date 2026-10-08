@@ -18,7 +18,7 @@ import type { YDoc } from '../../crdt/index.js';
 import type { Decoded, Item, Struct } from './context.js';
 import { heldClock, storedStruct, structAt } from './updates.js';
 
-// ── Per-writer marks (H2) ──────────────────────────────────────────
+// ── Per-writer marks ──────────────────────────────────────────
 
 /** The writer `n` of a per-writer block mark key (`del.<n>`, `wd.<n>`), or `null`. */
 const markWriter = (key: string | null | undefined): number | null => {
@@ -91,7 +91,7 @@ const isBlockNode = (doc: YDoc, frame: Map<number, Struct[]>, parent: unknown): 
 	return item?.parent === registry && registry !== undefined;
 };
 
-/** Is `parent` (a {@link Place}'s) the purge horizon's root, which only the room writes (H7)? */
+/** Is `parent` (a {@link Place}'s) the purge horizon's root, which only the room writes? */
 const isHorizon = (doc: YDoc, parent: unknown): boolean =>
 	parent === HORIZON_ROOT ||
 	(parent != null && parent === (doc.share.get(HORIZON_ROOT) as unknown));
@@ -99,8 +99,8 @@ const isHorizon = (doc: YDoc, parent: unknown): boolean =>
 /**
  * The clients of a frame (but `skip`) that write a per-writer block mark
  * of another writer: a struct whose key is `del.<n>` or `wd.<n>` on a
- * block node, from a client other than `n` (H2). Only `n` writes its mark.
- * A struct in the purge horizon's root forges the room's (H7).
+ * block node, from a client other than `n`. Only `n` writes its mark.
+ * A struct in the purge horizon's root forges the room's.
  */
 export const forgedWriters = (doc: YDoc, structs: Struct[], skip: Set<number>): Set<number> => {
 	const frame = runsOf(structs);
@@ -124,7 +124,7 @@ export const forgedWriters = (doc: YDoc, structs: Struct[], skip: Set<number>): 
 /**
  * Of a frame's deletes, those of live per-writer block marks whose writer
  * the sender may not delete for (`mayDelete`): only `n`'s replicas delete
- * `del.<n>`/`wd.<n>` (H2). A mark deleted with its block node (deleted, or
+ * `del.<n>`/`wd.<n>`. A mark deleted with its block node (deleted, or
  * deleted by the same frame) is not one.
  */
 export const forgedDeletes = (
@@ -144,7 +144,7 @@ export const forgedDeletes = (
 				const struct = structs[i];
 				if (struct.id.clock >= clock + len) break;
 				if (!(struct instanceof Y.Item) || struct.deleted) continue;
-				// The purge horizon is the room's alone (H7).
+				// The purge horizon is the room's alone.
 				if (!isHorizon(doc, struct.parent)) {
 					const writer = markWriter(struct.parentSub);
 					if (writer === null || mayDelete(writer)) continue;

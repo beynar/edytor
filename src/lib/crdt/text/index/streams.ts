@@ -1,5 +1,5 @@
 /**
- * The stream table (R2, P1): one maintained row per backing text, the
+ * The stream table: one maintained row per backing text, the
  * delimiting boundary of each block, and each block's segment.
  */
 import type { BlockId } from '../../placement/model.js';
@@ -30,7 +30,7 @@ export const indexStreams = (ix: IndexState) => {
 		regroup
 	} = ix;
 
-	// ── the stream table (R2, P1) ────────────────────────────────────
+	// ── the stream table ────────────────────────────────────
 	// One maintained row per backing text (keyed by its home block): its
 	// live boundaries and the units between them (`text/rows.ts`), the
 	// delimiting boundary of each block, and each block's segment. An edit
@@ -78,7 +78,7 @@ export const indexStreams = (ix: IndexState) => {
 			if (row?.keyIndex.has(b.key)) continue;
 			const by = boundsBy.get(b.s);
 			// A text can change homes (a key's node becomes a losing incarnation,
-			// H13): drop the entry only while it is still this row's.
+			// `id.same.concurrent`): drop the entry only while it is still this row's.
 			if (by?.get(b.key)?.home === home) by.delete(b.key);
 			if (by?.size === 0) boundsBy.delete(b.s);
 			named.add(b.s);
@@ -137,7 +137,7 @@ export const indexStreams = (ix: IndexState) => {
 		// Its cuts may move the claims anchored in its text (`merge.claim.anchor`).
 		for (const h of anchoredIn.get(home) ?? []) retargets.add(h);
 		for (const h of unresolved) retargets.add(h);
-		// D-18: a change of the text's segments re-decides its pieces' order.
+		// A change of the text's segments re-decides its pieces' order.
 		if (
 			before.head !== now.head ||
 			before.blocks.length !== now.blocks.length ||

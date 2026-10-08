@@ -22,7 +22,7 @@
  * Tombstoned content never appears — deleted blocks are absent from the
  * children sequence, deleted/format-removed text is absent from the delta —
  * so the materialized JSON is the logical doc exactly as a v13 reader saw
- * it (the same contract the U00 fixtures pin).
+ * it (the same contract the v13 fixtures pin).
  */
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
 import { asEngineDoc } from '../structs.js';

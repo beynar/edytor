@@ -10,7 +10,7 @@
  * names). The replicated half of the contract is the version record: init
  * writes `doc.get('meta').setAttr('v', SCHEMA_VERSION)` (+ `schema` name) so
  * ANY replica — including one that only ever applied updates — can read the
- * schema version before mutating (U07's version gate). `doc.get` on a root
+ * schema version before mutating (the version gate). `doc.get` on a root
  * emits no update, so the read path stays write-free.
  *
  * Replicated layout:
@@ -18,7 +18,7 @@
  * ```
  * doc.get('blocks')                      registry — flat map, blockId → node('block')
  *   └ <blockId>                           id/n/type/data/del + content/claims/at
- *                                         (n: incarnation nonce, O23)
+ *                                         (n: incarnation nonce)
  * doc.get('meta')                        version record root
  *   ├ v : number                          SCHEMA_VERSION (LWW attr — concurrent init converges)
  *   └ schema : 'edytor-doc'               SCHEMA_NAME

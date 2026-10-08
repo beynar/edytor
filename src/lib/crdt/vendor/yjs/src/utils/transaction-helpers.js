@@ -2,8 +2,8 @@ import * as math from 'lib0-v14/math'
 import * as error from 'lib0-v14/error'
 import * as map from 'lib0-v14/map'
 import * as set from 'lib0-v14/set'
-import { foldPaired, pairedRole } from './marks.js' // P13
-import { compareIDs } from './ID.js' // P14
+import { foldPaired, pairedRole } from './marks.js' // YP13
+import { compareIDs } from './ID.js' // YP14
 
 
 /**
@@ -12,7 +12,7 @@ import { compareIDs } from './ID.js' // P14
  */
 
 /**
- * P14: whether `item` is a node value a CONCURRENT write of the same key
+ * YP14: whether `item` is a node value a CONCURRENT write of the same key
  * replaced, and its document keeps such nodes (`Doc#keepReplaced`): it is
  * deleted (the key reads the newer value) without deleting its subtree, its
  * subtree integrates live, and it is never garbage collected. A value the
@@ -272,7 +272,7 @@ export const tryGcDeleteSet = (tr, ds, gcFilter) => {
         if (deleteItem.clock + deleteItem.len <= struct.id.clock) {
           break
         }
-        if (struct.isItem && struct.deleted && !(struct).keep && !isKeptReplaced(/** @type {Item} */ (struct)) && gcFilter(/** @type {Item} */ (struct))) { // P14
+        if (struct.isItem && struct.deleted && !(struct).keep && !isKeptReplaced(/** @type {Item} */ (struct)) && gcFilter(/** @type {Item} */ (struct))) { // YP14
           /** @type {Item} */ (struct).gc(tr, false)
         }
       }
@@ -318,7 +318,7 @@ export const cleanupContextlessFormattingGap = (transaction, item) => {
   const attrs = new Set()
   // iterate back until a content item is found
   while (item && (item.deleted || !item.countable)) {
-    if (!item.deleted && item.content.getRef() === 6 && pairedRole(/** @type {ContentFormat} */ (item.content)) < 0) { // is a ContentFormat (P13: never a paired mark)
+    if (!item.deleted && item.content.getRef() === 6 && pairedRole(/** @type {ContentFormat} */ (item.content)) < 0) { // is a ContentFormat (YP13: never a paired mark)
       const key = /** @type {ContentFormat} */ (item.content).key
       if (attrs.has(key)) {
         item.delete(transaction)
@@ -339,7 +339,7 @@ export const cleanupContextlessFormattingGap = (transaction, item) => {
  * @function
  */
 export const updateCurrentFormats = (currentFormats, format) => {
-  if (foldPaired(currentFormats, format)) return // P13
+  if (foldPaired(currentFormats, format)) return // YP13
   const { key, value } = format
   if (value === null) {
     currentFormats.delete(key)
@@ -387,7 +387,7 @@ export const cleanupFormattingGap = (transaction, start, curr, startFormats, cur
     if (!start.deleted) {
       const content = start.content
       if (content.getRef() === 6 && pairedRole(/** @type {ContentFormat} */ (content)) >= 0) {
-        // P13: a paired mark is never redundant — an end closes only its own start
+        // YP13: a paired mark is never redundant — an end closes only its own start
         if (!reachedCurr) updateCurrentFormats(currFormats, /** @type {ContentFormat} */ (content))
       } else if (content.getRef() === 6) { // is ContentFormat
         const { key, value } = /** @type {ContentFormat} */ (content)

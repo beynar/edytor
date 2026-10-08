@@ -1,6 +1,6 @@
 /**
  * Range deletion between two positions — one prepared document operation
- * (R6) whose merge is the document's `canMerge` (R5). The rules are the
+ * whose merge is the document's `canMerge`. The rules are the
  * `del.range.*` rows of `docs/editor-delete-contract.md`:
  *
  * - the head keeps `[0, start)`, the tail keeps `[end, len)`, and every
@@ -21,7 +21,7 @@
  *   the range starts before it: it keeps what follows the range end, like
  *   the keys (`del.merge.container`); it dies only when it loses every
  *   child and holds no text of its own — the document's `emptiable`, the
- *   keys' rule (`del.range.empty-container`, ZW-05). An island that renders
+ *   keys' rule (`del.range.empty-container`). An island that renders
  *   no content dies when it loses every child too, except a `lines` island
  *   (a code block) the range lies in: its head is then kept, emptied
  *   (`del.range.island-kept`);
@@ -141,7 +141,7 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 
 			// E's ancestors the range starts before die unless the rescue would cross an island.
 			// A container (a list) is not one: it dies only when the range empties it, and
-			// keeps its later items like the keys do (`del.merge.container`, DR-crdt-4).
+			// keeps its later items like the keys do (`del.merge.container`).
 			const partial = chain.filter(
 				(a) => (a === (headDies ? S : null) || between.includes(a)) && !c.isContainer(a)
 			);
@@ -154,7 +154,7 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			if (tailDies) doomed.add(E);
 
 			// Rescue what follows the range end right after the topmost dying container's slot
-			// (after, not at it: a concurrent delete of S revives a merged E above them, UW-20).
+			// (after, not at it: a concurrent delete of S revives a merged E above them).
 			const home = sealed || top === undefined ? (tailGone ? E : undefined) : top;
 			const rescued = home === undefined ? [] : tailGone ? c.childrenIds(E) : [E];
 			for (let cur = E; home !== undefined && cur !== home; cur = parent(cur)!) {

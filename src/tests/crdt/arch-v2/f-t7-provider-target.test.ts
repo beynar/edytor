@@ -68,8 +68,8 @@ class Silent {
 
 const wsSync = (serverUrl, roomName = 'room') =>
 	providers.createWebsocketSync({
-		serverUrl,
-		roomName,
+		server: serverUrl,
+		room: roomName,
 		WebSocketPolyfill: Silent
 	});
 

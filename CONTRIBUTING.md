@@ -3,7 +3,8 @@
 Thank you for helping. Edytor is a block editor engine (a Svelte 5 view on a vendored Yjs v14
 document) with a Cloudflare Durable Object room. Before you change code, read
 [`AGENTS.md`](AGENTS.md): it names the owner of every fact ("one owner per fact"), where to fix
-what, and the contracts the tests cite. Most bugs that look random come from fixing a behaviour
+what, and the contracts the tests cite; the topic file of the area you change, under
+[`docs/agents/`](docs/agents/), has its rules. Most bugs that look random come from fixing a behaviour
 in the wrong layer.
 
 ## Set up
@@ -85,7 +86,7 @@ The gate lanes assert operation counts, never the wall clock (CC-05). A test tha
 (`recomputes`) and the items range reads walked (`itemsWalked`), and the row states a scaling
 contract, for example "ten times the blocks, the same recomputes and at most eleven times the
 fold input" (`src/tests/crdt/arch-v2/d6-range-delete.test.ts`, `p1-scale.test.ts`,
-`src/tests/fixtures/dom/arch-v2-r3-ops.test.tsx`, `src/tests/crdt/range-cursor.test.ts`).
+`src/tests/fixtures/dom/ops-read-document.test.tsx`, `src/tests/crdt/range-cursor.test.ts`).
 Counts are the same on a laptop and on a loaded shared runner.
 
 Absolute timings belong to the benches: `pnpm bench:scale` measures the operations those rows

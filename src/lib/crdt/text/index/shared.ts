@@ -31,7 +31,7 @@ export const facetOf = (attr: string): Facet => {
 	if (attr === AT) return 'at';
 	if (attr === ID || attr === TYPE || attr === DATA || attr.startsWith(DATA_LEAF_PREFIX))
 		return 'meta';
-	// U1: the `l` lastChangedBy stamp is attribution bookkeeping only.
+	// The `l` lastChangedBy stamp is attribution bookkeeping only.
 	if (attr === LAST_CHANGED_ATTR) return 'ignore';
 	// `claims`, `n`, `#content`, delete marks and unknown attrs.
 	return 'structure';
@@ -77,7 +77,7 @@ export type Cached = { runs: readonly ContentRun[]; deps: Deps };
  * Whether two kinds shape the display alike — both show children or
  * neither, both seal an island or neither, both hold the same lines, and
  * both are line kinds or neither (a line kind shows as its slot's kind, so
- * the block joins or leaves the ones a retype re-reads — YW-08). A retype
+ * the block joins or leaves the ones a retype re-reads). A retype
  * between kinds of different shape re-places (and re-kinds) the block and
  * its children.
  */

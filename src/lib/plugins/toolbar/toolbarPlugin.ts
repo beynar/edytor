@@ -34,7 +34,7 @@ export const createToolbarPlugin =
 	(edytor) => {
 		const controller = new ToolbarController(edytor, labelsWith('toolbar', options.labels));
 
-		/** Above the selection, kept in the viewport; measured in the overlay's frame, written after (R11). */
+		/** Above the selection, kept in the viewport; measured in the overlay's frame, written after. */
 		const positionToolbar = (host: HTMLElement) => {
 			const editor = edytor.node;
 			if (!editor || !controller.isVisible) return;

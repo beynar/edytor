@@ -148,7 +148,7 @@ const draft = { children: [{ type: 'paragraph', id: 'd', content: [{ text: 'draf
 const open = (url, value = draft) => {
 	const document = createDocument();
 	document.attachSync(
-		providers.createWebsocketSync({ serverUrl: url, roomName: 'room', WebSocketPolyfill: Socket }),
+		providers.createWebsocketSync({ server: url, room: 'room', WebSocketPolyfill: Socket }),
 		{ value }
 	);
 	return document;
@@ -245,7 +245,7 @@ describe('the refusal belongs to the provider that reported it', () => {
 	const refusing = (url) =>
 		new Room(`${url}/room`, { refuse: { code: 4403, reason: 'document access denied' } });
 	const websocketSync = (url) =>
-		providers.createWebsocketSync({ serverUrl: url, roomName: 'room', WebSocketPolyfill: Socket });
+		providers.createWebsocketSync({ server: url, room: 'room', WebSocketPolyfill: Socket });
 
 	it('refused, released, re-attached to an empty room: local with the draft seeded', async () => {
 		const url = uniqueUrl();
@@ -365,8 +365,8 @@ describe('expired credentials (4401) on a first visit', () => {
 		const document = createDocument();
 		document.attachSync(
 			providers.createWebsocketSync({
-				serverUrl: url,
-				roomName: 'room',
+				server: url,
+				room: 'room',
 				WebSocketPolyfill: Socket,
 				persist: false
 			}),
@@ -391,8 +391,8 @@ describe('expired credentials (4401) on a first visit', () => {
 		const document = createDocument();
 		document.attachSync(
 			providers.createWebsocketSync({
-				serverUrl: url,
-				roomName: 'room',
+				server: url,
+				room: 'room',
 				WebSocketPolyfill: Socket,
 				persist: false,
 				onExpired: (state) => {
@@ -418,8 +418,8 @@ describe('expired credentials (4401) on a first visit', () => {
 		const document = createDocument();
 		document.attachSync(
 			providers.createWebsocketSync({
-				serverUrl: url,
-				roomName: 'room',
+				server: url,
+				room: 'room',
 				WebSocketPolyfill: Socket,
 				persist: false,
 				onExpired: () => {
@@ -477,8 +477,8 @@ describe('a dial that neither opens nor fails', () => {
 		const document = createDocument();
 		document.attachSync(
 			providers.createWebsocketSync({
-				serverUrl: uniqueUrl(),
-				roomName: 'room',
+				server: uniqueUrl(),
+				room: 'room',
 				WebSocketPolyfill: Hanging,
 				persist: false,
 				disableBc: true
@@ -501,8 +501,8 @@ describe('a dial that neither opens nor fails', () => {
 		const document = createDocument();
 		document.attachSync(
 			providers.createWebsocketSync({
-				serverUrl: url,
-				roomName: 'room',
+				server: url,
+				room: 'room',
 				WebSocketPolyfill: Socket,
 				persist: false,
 				disableBc: true,
@@ -525,8 +525,8 @@ describe('a dial that neither opens nor fails', () => {
 		const document = createDocument();
 		document.attachSync(
 			providers.createWebsocketSync({
-				serverUrl: uniqueUrl(),
-				roomName: 'room',
+				server: uniqueUrl(),
+				room: 'room',
 				WebSocketPolyfill: Hanging,
 				persist: false,
 				disableBc: true,

@@ -55,7 +55,7 @@ export const writeFunnel = (c: FunnelContext) => {
 	 * `write`, so gating there covers every facade write + `transact` +
 	 * `init` + `createUndoManager`; reads stay dead-safe on purpose
 	 * (a stale handle remains inspectable while its doc outlives the
-	 * facade — e.g. the document teardown order). D14.
+	 * facade — e.g. the document teardown order).
 	 */
 	let disposed = false;
 
@@ -68,9 +68,9 @@ export const writeFunnel = (c: FunnelContext) => {
 		return fn();
 	};
 
-	// ── the write funnel (R6, O10, O19) ─────────────────────────────
+	// ── the write funnel ─────────────────────────────
 	//
-	// Every document op is a prepared plan (R6, below) written by `apply`:
+	// Every document op is a prepared plan (below) written by `apply`:
 	// one transaction, and a result read from the index's fold of what the
 	// frame wrote — `applied` iff the transaction wrote anything (its
 	// insert or delete set grew); otherwise `noop`. The plan decides what
@@ -79,7 +79,7 @@ export const writeFunnel = (c: FunnelContext) => {
 	//
 	// Each apply opens a frame that tracks the index's folds. When it
 	// closes, ONE pass over the facets the fold saw stamps attribution and
-	// commits lineage (U1): a block whose registry entry was created gets
+	// commits lineage: a block whose registry entry was created gets
 	// its `createdBy` record; a block whose content, claims, type or data
 	// changed gets a contributor stamp; moves and delete marks stamp
 	// nothing. Two intents the effects cannot name are recorded by their
@@ -197,7 +197,7 @@ export const writeFunnel = (c: FunnelContext) => {
 	};
 
 	/**
-	 * Apply a prepared plan (R6): write exactly its steps in one transaction
+	 * Apply a prepared plan: write exactly its steps in one transaction
 	 * and fold the result from what that transaction did. A refusal writes
 	 * nothing. A plan is valid only at the version it was prepared against,
 	 * in the same synchronous turn: applying it anywhere else throws.
@@ -223,7 +223,7 @@ export const writeFunnel = (c: FunnelContext) => {
 					}
 					for (const w of p.writes) writeStep(w, f);
 				} catch (error) {
-					// The frame would otherwise fold every later commit (DR-rest-3).
+					// The frame would otherwise fold every later commit.
 					frame.end();
 					throw error;
 				}

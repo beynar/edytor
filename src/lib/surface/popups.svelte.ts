@@ -1,5 +1,5 @@
 /**
- * The chrome popups open on a view (WU-27, F7): one record per owner (a
+ * The chrome popups open on a view: one record per owner (a
  * menu, the toolbar), published by the component that renders the popup
  * once its markup is in the page (so every IDREF names an element) and
  * withdrawn when it closes. The view's root reads the newest (`current`):

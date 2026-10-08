@@ -12,7 +12,7 @@
 	import { renderSkipped, rendered } from '$lib/surface/overlay.js';
 
 	/**
-	 * The handles, in the overlay (R11): one per registered movable block that
+	 * The handles, in the overlay: one per registered movable block that
 	 * is near the viewport, hovered, selected, focused or dragged, in document
 	 * order, each beside its block's first text row (the header row for an
 	 * island), measured by the overlay once per frame.
@@ -96,7 +96,7 @@
 		}
 		if (!block.definition.void && !block.definition.island) {
 			const text = block.content.find((part): part is Text => part instanceof Text);
-			// A text the browser skips rendering (content-visibility, P8) is not read: the box is.
+			// A text the browser skips rendering (content-visibility) is not read: the box is.
 			const line = text?.node && !renderSkipped(text.node) ? text.node.getClientRects()[0] : null;
 			if (line && line.height > 0) return line.top + line.height / 2;
 		}
@@ -114,7 +114,7 @@
 			const block = blocks.get(id);
 			const node = block?.node;
 			if (!block || !node?.isConnected) return;
-			// What the browser skips rendering (content-visibility, P8) is not read: placed once,
+			// What the browser skips rendering (content-visibility) is not read: placed once,
 			// it keeps its place; else its nearest rendered ancestor's box places it.
 			const skipped = renderSkipped(node);
 			if (at && skipped) return;

@@ -351,7 +351,7 @@ const cleanupTransactions = (transactionCleanups, i) => {
   }
 }
 
-// P10 begin
+// YP10 begin
 /**
  * Origin of the formatting cleanup that follows a remote transaction. The
  * cleanup is a write this document makes on its own (it deletes format items
@@ -361,7 +361,7 @@ const cleanupTransactions = (transactionCleanups, i) => {
  * captures.
  */
 const formattingCleanupOrigin = Symbol('yjs.formatting-cleanup')
-// P10 end
+// YP10 end
 
 /**
  * This will be called by the transaction once the event handlers are called to potentially cleanup
@@ -404,7 +404,7 @@ export const cleanupYTextAfterTransaction = transaction => {
     for (const yText of needFullCleanup) {
       cleanupYTextFormatting(yText)
     }
-  }, formattingCleanupOrigin) // P10
+  }, formattingCleanupOrigin) // YP10
 }
 
 /**

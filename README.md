@@ -108,7 +108,7 @@ The [documentation site](https://edytor.dev/docs) is the single source for the A
 
 ## Contributing
 
-`CONTRIBUTING.md` lists the test lanes, what CI runs, and the pull request checklist; `AGENTS.md` describes the architecture (one owner per fact) and where to fix what. The docs live in `site/content/docs`; a change to public behavior updates them in the same commit.
+`CONTRIBUTING.md` lists the test lanes, what CI runs, and the pull request checklist; `AGENTS.md` describes the architecture (one owner per fact) and where to fix what, and `docs/agents/` holds the rules of each area. The docs live in `site/content/docs`; a change to public behavior updates them in the same commit.
 
 ```bash
 pnpm install

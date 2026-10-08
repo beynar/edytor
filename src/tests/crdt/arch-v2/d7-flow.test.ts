@@ -4,7 +4,7 @@
  * `prepare.insertFlow(target, flow)` (rules R6, R1; §4.1 `doc/flow`; §5 L46).
  *
  * Rows (doc lane; the paste / drop / HTML paths live in
- * `src/tests/fixtures/dom/arch-v2-d7-flow.test.tsx`):
+ * `src/tests/fixtures/dom/paste-shape.test.tsx`):
  * - every `flow.*` row of `docs/editor-delete-contract.md` on the document,
  *   with the caret the op reports;
  * - F-P5 (decision D-4) on the document: `X`, `Y` at `Hello|World` →

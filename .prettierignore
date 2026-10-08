@@ -19,8 +19,8 @@ src/tests/crdt/random/failures
 # the generated API surface report (scripts/api-report.mjs)
 api
 
-# generated architecture planning artifacts
-docs/architecture-v2/
+# planning history, kept as written
+docs/archive/
 
 # the docs site is its own package (Blume)
 site

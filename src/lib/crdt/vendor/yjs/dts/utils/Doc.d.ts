@@ -32,7 +32,7 @@
  */
 export class Doc extends ObservableV2<DocEvents> {
     /**
-     * P14: the default of every document's `keepReplaced` (`null`: no node is
+     * YP14: the default of every document's `keepReplaced` (`null`: no node is
      * kept, upstream's semantics). A binder sets it once for its documents.
      * @type {((item: import('../structs/Item.js').Item) => boolean) | null}
      */
@@ -44,7 +44,7 @@ export class Doc extends ObservableV2<DocEvents> {
     gc: boolean;
     gcFilter: (arg0: Item) => boolean;
     /**
-     * P14: which node values a concurrent write of the same key replaced keep
+     * YP14: which node values a concurrent write of the same key replaced keep
      * their subtree (`isKeptReplaced` in `utils/transaction-helpers.js`);
      * `null`: the class's {@link Doc.keepReplaced}.
      * @type {((item: import('../structs/Item.js').Item) => boolean) | null}
@@ -56,7 +56,7 @@ export class Doc extends ObservableV2<DocEvents> {
     isSuggestionDoc: boolean;
     cleanupFormatting: boolean;
     /**
-     * P13: the greatest Lamport timestamp of a paired mark this document
+     * YP13: the greatest Lamport timestamp of a paired mark this document
      * integrated (see `utils/marks.js`).
      * @type {number}
      */

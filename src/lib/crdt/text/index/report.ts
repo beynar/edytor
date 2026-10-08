@@ -39,7 +39,7 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 
 	// ── projection ───────────────────────────────────────────────────
 
-	/** `id`'s visible content items, canonical and frozen (R4). */
+	/** `id`'s visible content items, canonical and frozen. */
 	const itemsOf = (id: BlockId): ContentItem[] =>
 		protectItems(T.readSegs(ownShim.display(id) ?? []), intern) as ContentItem[];
 
@@ -88,7 +88,7 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 
 	/**
 	 * The report's structural part from the child lists patched since the
-	 * last report (P3), advancing the published tree in place — what
+	 * last report, advancing the published tree in place — what
 	 * `reachable` would give, without walking the lists nothing changed:
 	 * a published block no longer shown leaves (a root when its parent
 	 * stays), its still-shown descendants staying; each patched list's
@@ -196,7 +196,7 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 		// Fold every queued transaction first: a follow-up a cleanup
 		// started (a delete-mark repair) has already written, and the
 		// first content read below would fold it mid-report, after the
-		// child lists were read (H7 fuzz, rich lane, seeds 651 and 1271).
+		// child lists were read (found by the purge fuzz, rich lane, seeds 651 and 1271).
 		syncAll();
 		ensurePlacements();
 		const r: IndexReport = {
@@ -217,7 +217,7 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 		if (ix.kidsVersion === before.kids && candidates.size === 0) return r.data ? r : null;
 		// Added subtrees carry their new descendants. A descendant that was
 		// visible before is reported like any visible block (moved, retyped,
-		// edited against its published baseline), so consumers keep it (K7).
+		// edited against its published baseline), so consumers keep it.
 		const covered = new Set<BlockId>();
 		/** Moved to another display parent: only those can show another kind (an index never does). */
 		const reparented = new Set<BlockId>();
@@ -281,7 +281,7 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 		// its kind is news. Without a placement change, only a retype
 		// changes a shown kind — the retyped block's (a candidate) and the
 		// kinds derived from it: a promoted or stray line shows its display
-		// parent's default child (XW-08).
+		// parent's default child.
 		if (after !== before || lists || ix.retyped) {
 			const now = [...following];
 			for (const id of [...reparented, ...now, ...followingBefore]) {
@@ -291,7 +291,7 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 			}
 			followingBefore = now;
 		}
-		// A plain block directly in a list shows as its item (`itemOf`, AW-04):
+		// A plain block directly in a list shows as its item (`itemOf`):
 		// a block whose shown kind changed re-reads its children's (a worklist:
 		// the map visits the entries added meanwhile).
 		for (const id of r.meta.keys())

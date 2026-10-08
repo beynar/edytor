@@ -1,5 +1,5 @@
 /**
- * View readiness wait (U5/F3).
+ * View readiness wait.
  *
  * A `<Edytor {sync}>` view attaches its provider to the DOCUMENT
  * ({@link EdytorDocument.attachSync}: document lifetime, one provider per

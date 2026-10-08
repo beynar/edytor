@@ -12,7 +12,7 @@
 	}: { edytor: Edytor; bar?: Snippet<[SuggestionBarPayload]>; labels: SuggestionsLabels } =
 		$props();
 
-	/** Each bar's place under its preview, layer-relative, measured once per frame (R11). */
+	/** Each bar's place under its preview, layer-relative, measured once per frame. */
 	let places = $state<Record<string, { left: number; top: number; width: number }>>({});
 
 	onMount(() =>

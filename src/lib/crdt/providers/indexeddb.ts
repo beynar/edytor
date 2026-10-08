@@ -19,7 +19,7 @@
  *   hydration claim), `bcconnected`, `_ownsAwareness`, idempotent
  *   `destroy()`, departure (`pagehide`) + doc-`destroy` cleanup.
  *
- * The generation gate (R13, D-2 — see `protocols/envelope.ts`):
+ * The generation gate (see `protocols/envelope.ts`):
  *
  * - STORAGE: the database name is `edytor-v14-g5:<name>` (`edytor-v14:<name>` up to schema generation 4); legacy v13
  *   databases (`<name>`) are never opened here. A `generation` record
@@ -154,7 +154,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	};
 
 	/**
-	 * The shared room protocol (S1) — dispatch, the join rule, awareness
+	 * The shared room protocol — dispatch, the join rule, awareness
 	 * flow, BC subscriber + join/leave, the lifecycle. This provider keeps
 	 * only its transport edge: room traffic is BC-only, and `synced` is the
 	 * local-hydration claim, not a handshake verdict.
@@ -170,7 +170,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	 * generation record before touching the doc — rows from a foreign (v13 or
 	 * otherwise-mismatched) generation are never applied. The storage
 	 * transaction reads everything it needs first (rows, last key, count):
-	 * a snapshot row inflates asynchronously (P5), after it ends.
+	 * a snapshot row inflates asynchronously, after it ends.
 	 */
 	const fetchUpdates = (
 		idbPersistence: IdbPersistenceLike,
@@ -244,7 +244,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	 * Persist the current state: fetch pending rows, then (when `forceStore`
 	 * or past `PREFERRED_TRIM_SIZE`) append a compacted snapshot and delete
 	 * the rows it subsumes. The snapshot is v2, gzip-compressed where the
-	 * platform can (P5), and the container's generation record is stamped
+	 * platform can, and the container's generation record is stamped
 	 * with its storage format in the same transaction.
 	 *
 	 * Every applied row is represented in the snapshot, so deleting
@@ -319,7 +319,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		_dbsize: number;
 		db: IDBDatabase | null;
 		_db: Promise<IDBDatabase>;
-		// The room lifecycle (O74) — installed by `initLifecycle`.
+		// The room lifecycle — installed by `initLifecycle`.
 		_destroyed!: boolean;
 		hasSynced!: boolean;
 		whenSynced!: Promise<IndexeddbPersistence>;
@@ -373,7 +373,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 
 			// Fail closed: no sync, no BC room join, whenSynced rejects, and
 			// the terminal 'failed' fires — the provider can never reach
-			// synced once loading its persisted state has failed (D4).
+			// synced once loading its persisted state has failed.
 			const onLoadError = (error: unknown) => {
 				this.loadError = error;
 				this.emit('load-error', [error, this]);
@@ -410,7 +410,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 						.then(() => fetchUpdates(this, beforeApplyUpdatesCallback, afterApplyUpdatesCallback))
 						.catch(onLoadError);
 				})
-				// The OPEN itself can fail (D22) — without this catch the
+				// The OPEN itself can fail — without this catch the
 				// rejection was unhandled: fetchUpdates never ran, whenSynced
 				// never settled, and destroy() rejected on the same promise.
 				.catch(onLoadError);
@@ -500,7 +500,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		 */
 		destroy(): Promise<void> {
 			// The destroy guard — a provider that never synced settles its
-			// waiters: `whenSynced` rejects (D22) and 'failed' fires once.
+			// waiters: `whenSynced` rejects and 'failed' fires once.
 			if (!beginDestroy(this, `IndexeddbPersistence "${this.name}"`)) {
 				return Promise.resolve();
 			}

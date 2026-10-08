@@ -47,7 +47,7 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & Inde
 
 	// ── records ──────────────────────────────────────────────────────
 
-	/** P14's predicate: the registry values the engine keeps. */
+	/** Fork patch YP14's predicate: the registry values the engine keeps. */
 	const kept = engineOps(Y).isKeptReplaced;
 	/** The node of `id`: its registry value, or the losing incarnation a derived id names. */
 	const nodeAt = (id: BlockId): unknown => {
@@ -94,7 +94,7 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & Inde
 	/**
 	 * Rebuild (or create, or drop) block `id`'s record, and note what the
 	 * maintained facts must re-decide: its owner and the tops of the
-	 * blocks it claims (P3), its placement — and, when its entry came or
+	 * blocks it claims, its placement — and, when its entry came or
 	 * went, the placements of the blocks whose candidate names it.
 	 */
 	const updateBlockRec = (id: BlockId): void => {
@@ -134,7 +134,7 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & Inde
 	const noteShell = (id: BlockId): void => {
 		const rec = blocks.get(id);
 		const was = shells.has(id);
-		// A losing incarnation is never withdrawn on its own: its key's block decides (H13).
+		// A losing incarnation is never withdrawn on its own: its key's block decides.
 		if (isIncarnationId(id)) shells.delete(id);
 		else if (rec !== undefined && !rec.deleted && hasWithdrawMark(rec.node)) shells.add(id);
 		else shells.delete(id);
@@ -146,7 +146,7 @@ export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & Inde
 		if (!blocks.has(id)) updateBlockRec(id);
 	};
 	/**
-	 * Re-read the losing incarnations of key `id` (H13) after its record
+	 * Re-read the losing incarnations of key `id` after its record
 	 * changed: each one shown now or before gets its record rebuilt (its
 	 * liveness is the key's); returns them, for the fold to rescan.
 	 */

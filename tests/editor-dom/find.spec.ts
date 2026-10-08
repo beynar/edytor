@@ -5,7 +5,7 @@ import { modKey, readJsonByTestId, trackPageIssues, waitForEditorReady } from '.
  * Find and replace (WU-33, site `plugins/find`) in real browsers: Mod+F
  * opens the bar only when the plugin is listed, the highlights sit over the
  * matched text, a match in a closed toggle's body opens it, and Replace all
- * is one undo step. The jsdom rows are `find-20261007.test.tsx`.
+ * is one undo step. The jsdom rows are `find.test.tsx`.
  */
 
 const children = [

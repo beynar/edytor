@@ -13,7 +13,7 @@
 	type Highlight = RemoteSelectionRect & { current: boolean };
 
 	/**
-	 * Each shown match's rects, in the overlay (R11: never inside the host),
+	 * Each shown match's rects, in the overlay (never inside the host),
 	 * measured once per frame. A match in a closed toggle's body shows none
 	 * until it is current, which opens the toggle.
 	 */

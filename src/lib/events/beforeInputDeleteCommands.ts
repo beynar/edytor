@@ -34,7 +34,7 @@ const mergeIntoHeader = (edytor: Edytor, from: Block, into: Block, backward: boo
  * The line a forward merge into a collapsed toggle's header joins: `block`,
  * or for a container (a list) its first item's, descending as the
  * document's `mergeForward` does; the seam range then removes a container
- * left with no item (ZW-08).
+ * left with no item.
  */
 const firstLine = (block: Block): Block => {
 	while (block.isContainer && block.children[0]) block = block.children[0];
@@ -126,8 +126,8 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 	if (snapshot.isAtStartOfBlock) {
 		const { facade } = edytor;
 		const column = startText.parent.parent;
-		// A column's block never outdents (nothing but a column sits in a layout, ZW-14):
-		// it merges, across columns in reading order (`layout.merge`, D4).
+		// A column's block never outdents (nothing but a column sits in a layout):
+		// it merges, across columns in reading order (`layout.merge`).
 		const inColumn = !!column && !column.isRoot && facade.isLayoutItem(column.id);
 		if (snapshot.isNested && snapshot.isLastChild && !snapshot.islandRoot && !inColumn) {
 			const newBlock = startText.parent.unNestBlock();
@@ -152,7 +152,7 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 
 		const block = startText.parent;
 		// A column's first block joins the line before its column (and, in the first,
-		// before its layout), as the document's merge does (`layout.merge`, D4).
+		// before its layout), as the document's merge does (`layout.merge`).
 		const structure = (at: Block | null) =>
 			inColumn &&
 			block.index === 0 &&
@@ -172,7 +172,7 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 		if (previousBlock === closest) block.mergeBlockBackward();
 		else if (previousBlock) mergeIntoHeader(edytor, block, previousBlock, true);
 		if (typeof offset === 'number') caretAt(edytor, previousText, offset);
-		// A list's first item lifts out of it (YW-02): the caret stays at its start.
+		// A list's first item lifts out of it: the caret stays at its start.
 		else if (previousBlock === block.parent) caretAt(edytor, block.firstText, 0);
 		return;
 	}

@@ -1,5 +1,5 @@
 /**
- * Code block languages (WU-26, F9): the languages a code block's header
+ * Code block languages: the languages a code block's header
  * offers, stored in its `data.language`, and their TanStack Highlight
  * grammars, loaded the first time a line of that language renders. JSX
  * (JavaScript, the default) ships with the plugin; every other grammar is

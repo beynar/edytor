@@ -9,7 +9,7 @@
 
 	const reported = new WeakMap<Edytor, Set<string>>();
 
-	/** A snippet's view object (R4): declared values read from the cell and the selection. */
+	/** A snippet's view object: declared values read from the cell and the selection. */
 	const blockViewOf = (edytor: Edytor, id: string): BlockView => {
 		const handle = edytor.idToBlock.block(id);
 		return {
@@ -46,7 +46,7 @@
 	const VOID_TAGS = new Set(['area', 'br', 'col', 'embed', 'hr', 'img', 'input', 'wbr']);
 
 	/**
-	 * The element a kind declares (O45): a tag, or tag and attributes, from the
+	 * The element a kind declares: a tag, or tag and attributes, from the
 	 * block's data and id (a kind's own view state keyed by block, such as a
 	 * column's width while a resize drags; reactive state the function reads
 	 * re-renders the element).
@@ -62,7 +62,7 @@
 	};
 
 	/**
-	 * Dev check of the declared `rendersContent` (O22, F-S14): a kind whose
+	 * Dev check of the declared `rendersContent`: a kind whose
 	 * snippet rendered `content()` against its declaration is reported once
 	 * per editor — an undeclared phantom slot would take carets and endpoints
 	 * the user cannot see.
@@ -96,7 +96,7 @@
 	} = $props();
 
 	const edytor = getContext<Edytor>('edytor');
-	// The structure renders from the cell (R2); the snippet receives a view object (R4).
+	// The structure renders from the cell; the snippet receives a view object.
 	const cell = $derived(preview ?? edytor.cells?.get(id));
 	const block = $derived(preview ? previewViewOf(preview) : blockViewOf(edytor, id));
 	/** The suggestions shown before, after and inside this block (none in a preview). */
@@ -108,7 +108,7 @@
 			: (edytor.cells?.get(id)?.childIds ?? []).map((child) => ({ id: child }))
 	);
 	const definition = $derived(cell && edytor.definitionOf(cell.type));
-	// The core renders the block element from the definition; the snippet renders inside it (R11).
+	// The core renders the block element from the definition; the snippet renders inside it.
 	const element = $derived(definition && elementOf(definition.element ?? 'div', cell?.data, id));
 	// The element around the block's own text (a heading's `h2`): the core's, so an override keeps it.
 	const contentElement = $derived(
@@ -126,7 +126,7 @@
 		write(value);
 		return { update: write };
 	};
-	/** Registers the block element (O45): one element per block, re-registered when the tag changes. */
+	/** Registers the block element: one element per block, re-registered when the tag changes. */
 	const register = (node: HTMLElement) => block.handle?.attach(node);
 	/** The block element's attributes: the kind's, then the core's. */
 	const attributes = $derived(

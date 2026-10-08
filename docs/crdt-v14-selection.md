@@ -6,7 +6,7 @@ anchored to backing-text atoms, how remote carets ride awareness, how
 local undo stays selective under concurrent remote edits, and what the
 browser-input/composition lanes cover. Sections marked **arch-v2**
 describe the mechanisms that replaced U09's (see
-`docs/architecture-v2/execution-ledger.md`).
+`docs/archive/architecture-v2/execution-ledger.md`).
 
 ## Anchor model
 

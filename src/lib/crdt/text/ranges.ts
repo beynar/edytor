@@ -2,7 +2,7 @@
  * Bounded formatted range reads over a backing text, and the publication
  * boundary of what they emit (interned, frozen payloads).
  *
- * Reads go through the vendored `Y.RangeCursor` (P5): it walks the live item
+ * Reads go through the vendored `Y.RangeCursor` (fork patch YP5): it walks the live item
  * list with the same `readItemPieces` dispatch `toDelta` consumes and seeds
  * itself from the engine's search-marker checkpoints, so a read costs the
  * checkpoint gap plus the range. Emitted `marks` ALIAS the cursor's format
@@ -38,7 +38,7 @@ export const deepFreeze = <T>(v: T): T => {
 };
 
 /**
- * Publication boundary for range-read items (R4): a text item's `marks` can
+ * Publication boundary for range-read items: a text item's `marks` can
  * alias the cursor's format state and an inline item's `data` IS the
  * replicated attr object, so each payload is swapped for `intern`'s frozen
  * canonical copy before it leaves the document layer.
@@ -69,7 +69,7 @@ export const inlineItemOf = (entry: unknown): RangeItem => {
 /**
  * Read `[i0, i1)` through the cursor: text pieces as UTF-16 slices under their
  * folded marks (adjacent equal marks merge), inline atoms one item each.
- * Boundary items are skipped — the one read predicate R2 needs.
+ * Boundary items are skipped — the one read predicate stream ownership needs.
  */
 export const readRange = (
 	cur: RangeCursor,

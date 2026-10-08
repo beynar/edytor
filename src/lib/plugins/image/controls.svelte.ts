@@ -40,7 +40,7 @@ const imageOf = (node: Element | null | undefined) =>
 	) ?? null;
 
 /**
- * The image chrome (WU-21, Notion's), in the overlay: on the image under
+ * The image chrome (Notion's), in the overlay: on the image under
  * the pointer of an editable view, a resize handle on each side and a
  * toolbar (alignment, alt text). Dragging a handle resizes the image live
  * and writes nothing: the width is a view-only preview the kind's snippet

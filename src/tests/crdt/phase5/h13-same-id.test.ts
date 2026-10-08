@@ -1,6 +1,6 @@
 /**
  * Phase 5, H13 — a concurrent creation of one caller-chosen id keeps the
- * losing incarnation's text (`docs/research/crdt-fix-plan-2026-10.md`,
+ * losing incarnation's text (`docs/archive/research/crdt-fix-plan-2026-10.md`,
  * contract row `id.same.concurrent` in `docs/editor-delete-contract.md`).
  *
  * Two live writers (client ids above the seed band, 2^26) insert block `N`

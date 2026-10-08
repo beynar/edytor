@@ -150,7 +150,7 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				// A table's rows move by its own row menus, its cells never (`table.fits`).
 				if (!block.movable || edytor.facade.isTableRow(block.id)) return;
 				const offDropTarget = controller.addDropTarget(node, block);
-				// A layout and its columns are drop targets but have no handle (D3, as
+				// A layout and its columns are drop targets but have no handle (as
 				// Notion): a block selection covering a layout stands for it.
 				const { facade } = edytor;
 				if (facade.isLayout(block.id) || facade.isLayoutItem(block.id)) return offDropTarget;

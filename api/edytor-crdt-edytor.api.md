@@ -788,10 +788,6 @@ export type MigrateOptions = {
     force?: boolean;
     wait?: boolean;
     onPhase?: (phase: MigrationPhase) => void | Promise<void>;
-    leaseMs?: number;
-    waitMs?: number;
-    pollMs?: number;
-    owner?: string;
 };
 ```
 
@@ -1649,10 +1645,7 @@ declare const bindCrdt: (Y: EngineApi) => {
         migrate: (name: string, options?: import("./index.js").MigrateOptions) => Promise<import("./index.js").MigrateResult>;
         rollback: (name: string) => Promise<void>;
         status: (name: string) => Promise<import("./index.js").MigrationRecord>;
-        waitForSettled: (name: string, _options?: {
-            waitMs?: number;
-            pollMs?: number;
-        }) => Promise<import("./index.js").MigrationRecord>;
+        waitForSettled: (name: string) => Promise<import("./index.js").MigrationRecord>;
     };
     generations: {
         isPreviousGenerationRecord: (v: unknown) => v is import("./protocol.js").GenerationRecord;
@@ -2652,10 +2645,7 @@ declare const bindMigration: (Y: EngineApi) => {
     migrate: (name: string, options?: MigrateOptions) => Promise<MigrateResult>;
     rollback: (name: string) => Promise<void>;
     status: (name: string) => Promise<MigrationRecord>;
-    waitForSettled: (name: string, _options?: {
-        waitMs?: number;
-        pollMs?: number;
-    }) => Promise<MigrationRecord>;
+    waitForSettled: (name: string) => Promise<MigrationRecord>;
 };
 ```
 
@@ -2785,9 +2775,6 @@ export declare class IsolatedObservable<E extends Events<E>> extends ObservableV
 export type WebsocketTarget = {
     server: string;
     room: string;
-} | {
-    serverUrl: string;
-    roomName: string;
 };
 ```
 

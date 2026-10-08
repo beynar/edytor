@@ -1,9 +1,9 @@
 /**
- * History (R7's named exception, R9, L2, O32, §4.3 `session/history`).
+ * History (the named exception to commands through the dispatcher).
  *
  * Undo and redo are the bare engine calls: never inside a transaction and
- * with no tracked write after them — either would empty the redo stack (F4),
- * so nothing normalizes after a history command (D-23).
+ * with no tracked write after them — either would empty the redo stack,
+ * so nothing normalizes after a history command.
  *
  * Each stack item carries, per view, the selection values around it
  * (`meta: Map<viewKey, {before, after}>`): `before` is this view's value when
@@ -118,7 +118,7 @@ export class History {
 	 * An insertion at `value` continues this view's last step: that step is an
 	 * insertion's (`wrote`: a resize, a deletion, a data write end it) and the
 	 * top undo item's recorded `after` projects where `value` does. Only a
-	 * continuation coalesces within `captureTimeout` (O31): after the
+	 * continuation coalesces within `captureTimeout`: after the
 	 * selection moved, an insertion starts its own step, however soon it
 	 * follows.
 	 */

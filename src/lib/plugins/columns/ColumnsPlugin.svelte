@@ -41,7 +41,7 @@
 
 	/**
 	 * Whether `block` sits in a layout's column, at any depth: no layout goes
-	 * there (D2, `layout.nest`). A `+` menu's stand-in (no id yet) answers by
+	 * there (`layout.nest`). A `+` menu's stand-in (no id yet) answers by
 	 * its parents.
 	 */
 	const inColumn = (block: Block | null | undefined) => {
@@ -82,7 +82,7 @@
 	 * `columns.<n>`: a layout of `n` columns, each holding an empty paragraph,
 	 * the caret in the first; it replaces an empty line (a slash line holding
 	 * only its query) and is inserted after any other (`convertToKind`), one
-	 * undo step. Disabled, and refused, inside a column (D2). Over a block
+	 * undo step. Disabled, and refused, inside a column. Over a block
 	 * selection of `n` sibling blocks (the block menu's Turn into, `turnsInto`)
 	 * it wraps them instead, one per column, and over one block it makes that
 	 * block column 1 of `n`, each other column holding an empty paragraph
@@ -125,7 +125,7 @@
 	};
 
 	/**
-	 * Whether the block selection stands for this layout (D3: it covers every
+	 * Whether the block selection stands for this layout (it covers every
 	 * shown block of every column, or holds the layout): its highlight covers
 	 * the whole layout. Reads the cells, so a peer's change re-renders it.
 	 */
@@ -240,7 +240,7 @@
 <!--
 	The layout's columns, in its one children container (a flex row,
 	`columns.css`); `data-edytor-columns-selected` while a block selection
-	stands for the layout (D3).
+	stands for the layout.
 -->
 {#snippet columns({ block, children }: BlockSnippetPayload)}
 	{#if children}

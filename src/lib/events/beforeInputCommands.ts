@@ -204,8 +204,8 @@ const resolveDropPoint = (edytor: Edytor, snapshot: Attempt) => {
  * fragment round-trips (cross-editor drags), files and html route through the
  * plugin `onPaste` hook (claimed via `prevent`: the recorded veto aborts
  * this function and is caught by the beforeinput caller), `text/uri-list` becomes
- * a link when a `link` mark is registered, unclaimed `text/html` is imported
- * (P4.1), and `text/plain` inserts as text.
+ * a link when a `link` mark is registered, unclaimed `text/html` is imported,
+ * and `text/plain` inserts as text.
  * Unclaimed files insert nothing rather than degrading to file-name text.
  */
 const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
@@ -290,7 +290,7 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	if (!isCollapsed || !startText?.parent.parent) {
 		return;
 	}
-	// The new sibling's actual parent decides its type (G5, O9).
+	// The new sibling's actual parent decides its type.
 	const defaultBlock = edytor.defaultChild(startText.parent.parent);
 	const current = startText.parent;
 	const { continues, presets } = current.definition;
@@ -321,9 +321,9 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	// Enter in an empty list-like block ends the run (Notion): out one level
 	// when nested in another list-like block, else — at the top level or in a
 	// container such as a callout — the parent's default kind, in place. An
-	// empty item of a list leaves it, where Shift+Tab lifts it (SW9-lists-1):
+	// empty item of a list leaves it, where Shift+Tab lifts it:
 	// out of a nested list into the item holding it, then out of that item,
-	// then out of the list (DR-behavior-1).
+	// then out of the list.
 	const item = Boolean(current.list);
 	if ((continues || item) && isAtEndOfBlock && isAtStartOfBlock && !current.hasChildren) {
 		if ((item || current.parent?.definition.continues) && current.unNestBlock())

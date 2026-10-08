@@ -34,7 +34,7 @@
  * generation records, the admission gates, the raw provider classes) is
  * `edytor/protocol` (`./protocol.ts`), not this entry. The `bind*`
  * building blocks, rank/run/placement plumbing and storage constants are
- * internal (pre-1.0 API retirement, D-15).
+ * internal (pre-1.0 API retirement).
  *
  * The raw engine itself is only reachable through
  * `import * as Y from 'edytor/crdt'` — this module never re-exports it,
@@ -111,7 +111,7 @@ export {
 } from './semantics.js';
 // A new table as document JSON (`table.*`).
 export { tableBlock, type TableBlockOptions } from './tables.js';
-// H5: paired marks — a mark's edge as document semantics, the record a key names.
+// Paired marks — a mark's edge as document semantics, the record a key names.
 export { markName, type MarkEdge } from './text/marks.js';
 
 // The canonical document JSON — `createDocument({value})`,
@@ -215,9 +215,9 @@ export { SchemaMismatchError, UndecodableUpdateError, UnsupportedDocError } from
 // ── 5 · Attribution (read surface) ─────────────────────────────────────
 //
 // `document.attribution` hands back a `DocumentAttribution` — compact
-// per-block records (U1), the replicated actor dictionary, and `legacy()`
+// per-block records, the replicated actor dictionary, and `legacy()`
 // over pre-existing per-edit records. The types are the public read
-// vocabulary; ordinary editing writes no per-edit attribution (U2).
+// vocabulary; ordinary editing writes no per-edit attribution.
 
 export {
 	type DocumentAttribution,
@@ -226,7 +226,7 @@ export {
 	type AttributionController
 } from './attribution/index.js';
 
-// U1 — compact per-BLOCK attribution read vocabulary (`b/<blockId>`
+// Compact per-BLOCK attribution read vocabulary (`b/<blockId>`
 // records + the block-node `l` attr — see `attribution/block.ts`).
 // `document.attribution.block(id)` / `facade.blockAttribution(id)` /
 // `DocBlock.attribution` are the read entry points.
@@ -312,7 +312,7 @@ export type {
 	YItem
 } from './engine-api.js';
 
-// The facade's disposal error and the history's default depth (P6) belong
+// The facade's disposal error and the history's default depth belong
 // to the document; the frame contract, message types and codecs are
 // `edytor/protocol`.
 export { EdytorDocDisposedError, DEFAULT_HISTORY_LIMIT } from './edytor-doc.js';

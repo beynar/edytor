@@ -128,7 +128,7 @@ export const rendererContentLength = (renderer, item) =>
  * The `AttributedContent` pieces `item` contributes to a *current-state*
  * render — the single physical-sequence interpretation shared by
  * `YNode#toDelta` (full render, `itemsToRender == null && !retainInserts`)
- * and `RangeCursor`'s bounded reads (UPSTREAM.md P5):
+ * and `RangeCursor`'s bounded reads (UPSTREAM.md YP5):
  *
  * - a renderer-claimed item expands through `renderer.readContent` in mode
  *   `1` — the renderer's own attribution/restore/hide semantics;

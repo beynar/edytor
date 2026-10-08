@@ -123,6 +123,14 @@ describe('entry points', () => {
 	// Prevent, AfterOperationPayload, CommandResult). A plugin's factory,
 	// controller and option types grow with the plugins shipped; each still
 	// lands in the report, where a new name is a decision.
+	test('edytor/cloudflare names the room helpers once: no retired alias', () => {
+		const cloudflare = names('edytor-cloudflare');
+		for (const name of ['attachRoom', 'AttachRoomOptions', 'moveBlocksBetweenRooms', 'kvHistory'])
+			expect(cloudflare, name).toContain(name);
+		for (const name of ['attachDocument', 'AttachDocumentOptions', 'moveBlocks'])
+			expect(cloudflare, name).not.toContain(name);
+	});
+
 	test('the root exports none of it, and about 120 core names', () => {
 		const root = names('edytor');
 		for (const name of WIRE) expect(root, name).not.toContain(name);

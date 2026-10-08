@@ -58,7 +58,7 @@ Majors, by dimension:
   quota, `4413` final, no rebase path); ~~comments unbounded, snapshot amplification~~
   (`next.42`); ~~typing in a table O(cells²)~~ (`next.42`); client typing linear in page size
   (no windowing).
-- **Features**: markdown paste into blocks; file/video/audio claiming dropped and pasted files
+- **Features**: ~~markdown paste into blocks~~ (after `next.43`); file/video/audio claiming dropped and pasted files
   (with upload progress); real-device mobile and touch chrome.
 - **Code**: the view-side classes (`EdytorSelection`, `BlockHandleController`, `Edytor`,
   `EdytorDocument`) not split; the room split is a 16-module cycle; master unprotected and the

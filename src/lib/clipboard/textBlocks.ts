@@ -41,6 +41,13 @@ const runs = (text: string): JSONText[] => {
 	return out;
 };
 
+/** A line that opens block markdown: a heading, a list or to-do item, a quote, a fence, a divider. */
+const BLOCK_LINE = /^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|(?:-{3,}|\*{3,}|_{3,})\s*$)/;
+
+/** Whether `text` holds block markdown (one line of it is enough), as a paste reads it. */
+export const hasBlockMarkdown = (text: string): boolean =>
+	text.split(/\r?\n/).some((line) => BLOCK_LINE.test(line));
+
 /** One line's kind, data and text, or `null` for a paragraph line. */
 const lineKind = (line: string): (Omit<JSONBlock, 'content'> & { text: string }) | null => {
 	let m = /^(#{1,6})\s+(.*)$/.exec(line);

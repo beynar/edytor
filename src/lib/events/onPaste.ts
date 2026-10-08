@@ -1,7 +1,12 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { vetoable } from '$lib/utils.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
-import { flowOfFragment, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
+import {
+	flowOfFragment,
+	flowOfMarkdown,
+	pasteFlow
+} from '$lib/clipboard/insertClipboardFragment.js';
+import { inCodeLines } from '$lib/session/inputRules.js';
 import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
@@ -111,6 +116,18 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 		if (flow) {
 			e.preventDefault();
 			return this.dispatcher.run('insertFromPaste', () => pasteFlow(this, flow));
+		}
+
+		// Markdown text (`paste.markdown`): its blocks, except in a code block's lines.
+		const start = this.selection.projection.start?.block;
+		const at = start ? this.idToBlock.get(start) : undefined;
+		const markdown =
+			at && inCodeLines(this, at)
+				? null
+				: flowOfMarkdown(this, e.clipboardData?.getData('text/plain') ?? '');
+		if (markdown) {
+			e.preventDefault();
+			return this.dispatcher.run('insertFromPaste', () => pasteFlow(this, markdown));
 		}
 	}
 

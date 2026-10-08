@@ -12,11 +12,13 @@ import {
 	cloneJsonSafe,
 	jsonBlockToSpec,
 	jsonContentToItems,
+	type JSONBlock,
 	type JSONText
 } from '$lib/utils/json.js';
 import { id } from '$lib/utils.js';
 import { caretAt } from '$lib/session/attempt.js';
 import { isValidEdytorClipboardFragment } from './fragmentData.js';
+import { hasBlockMarkdown, textToBlocks } from './textBlocks.js';
 import type { EdytorClipboardFragment } from './types.js';
 
 // Admission (`flow.shape`): every id is minted fresh here, once.
@@ -27,6 +29,29 @@ const run = (content: JSONContentPart[]): FlowLine => ({
 export const flowOfText = (text: string, marks?: JSONText['marks']): Flow => ({
 	lines: text.split(/\r\n|\r|\n/).map((line) => run(line ? [{ text: line, marks }] : []))
 });
+/**
+ * A pasted `text/plain` as markdown (`paste.markdown`): `null` unless a line
+ * holds block markdown (`hasBlockMarkdown`), else the blocks it reads as
+ * (`textToBlocks`). A kind the view does not register is a paragraph of its
+ * text, its children after it (a divider is dropped); without a paragraph
+ * kind, nothing converts.
+ */
+export const flowOfMarkdown = (edytor: Pick<Edytor, 'blocks'>, text: string): Flow | null => {
+	if (!edytor.blocks.has('paragraph') || !hasBlockMarkdown(text)) return null;
+	const known = (block: JSONBlock): JSONBlock[] => {
+		const children = (block.children ?? []).flatMap(known);
+		if (edytor.blocks.has(block.type))
+			return [{ ...block, ...(block.children ? { children } : {}) }];
+		const own: JSONBlock[] =
+			block.type === 'divider' || (!block.content?.length && block.children?.length)
+				? []
+				: [{ type: 'paragraph', content: block.content ?? [] }];
+		return [...own, ...children];
+	};
+	const blocks = textToBlocks(text).flatMap(known);
+	return blocks.length ? { lines: blocks.map((block) => jsonBlockToSpec(block, true)) } : null;
+};
+
 export const flowOfFragment = (fragment: EdytorClipboardFragment): Flow =>
 	fragment.kind === 'content'
 		? { lines: [run(fragment.content)] }

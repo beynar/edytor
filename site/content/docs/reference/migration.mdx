@@ -14,7 +14,9 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+#### New
+
+- **Pasting markdown makes blocks.** A plain-text paste (no HTML) with a line of block markdown (a heading, a list or to-do item, a quote, a fence, a divider) becomes the blocks it reads as, with its inline bold, italic, code and links, as one undo step, as in Notion. Text with no block markdown, a paste into a code block and <kbd>Shift</kbd>+paste are unchanged. See [Pasting markdown](/docs/editor/clipboard#pasting-markdown).
 
 ### From 0.1.0-next.42
 
@@ -896,6 +898,7 @@ Every public change since 0.0.11, by area.
 ### Editor view, selection and commands
 
 - **`edytor.focus()`** focuses the editor, keeping its selection or putting the caret at the start; `selection.value`, `selectedBlocks`, `focusedBlocks` and `dispatcher.last` are read-only.
+- **Markdown paste.** A `text/plain` paste holding block markdown is placed as its blocks (`textToBlocks`); see [Pasting markdown](/docs/editor/clipboard#pasting-markdown).
 - **Exported types.** The types the root entry's props, options, members and callbacks use are exported from `edytor` (`EdytorProps`, `EdytorOptions`, the labels types, `Dispatcher`, the selection, hotkey, plugin, document and sync types); see the note of the release that added them.
 - **`value` is not bindable.** `<Edytor value>` is the initial content; `bind:value` fails type-checking. Read edits with `onChange` or `edytor.value`.
 - **Component props.** New: `document` (an `EdytorDocument` to render; several views can share one), `actor` (the local author), `room`, `server` and `params` (the view builds its IndexedDB copy and its websocket sync from them), `onSyncExpired` (the room closed with `4401`; refresh `params` before the redial) and `onSyncRefused` (a refusal standing at mount, then each new one), `blockHandles`, `defaultPlugins`, and the root attributes `translate`, `spellcheck`, `autocorrect`, `autocomplete`, `autocapitalize`, `inputmode` and `enterkeyhint`. `sync` takes an `EdytorSync` (a factory from `createIndexeddbSync`/`createWebsocketSync`, or your own) and overrides `room`/`server`. `hotkeys` is typed (see Keymap below). See [the component](/docs/editor/edytor-component).

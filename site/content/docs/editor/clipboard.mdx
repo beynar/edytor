@@ -46,9 +46,10 @@ A paste is handled by the first rule that applies:
 2. **A plugin's `onPaste` hook**, if one calls `prevent()`.
 3. **Files** (an image from the clipboard, say): ignored unless a plugin's `onPaste` handled them. The [image plugin](/docs/plugins/image#pasting-and-dropping-files) given an `upload` handles image files: each becomes an image block, uploaded.
 4. **External `text/html`**, imported as blocks and marks (below).
-5. **`text/plain`**, one block per line.
+5. **Markdown `text/plain`**, as its blocks ([Pasting markdown](#pasting-markdown)).
+6. **`text/plain`**, one block per line.
 
-<kbd>Shift</kbd>+paste (<kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>) pastes the plain text only and skips rules 1 to 4, plugin hooks included. Plain text takes the marks at the caret.
+<kbd>Shift</kbd>+paste (<kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>) pastes the plain text only and skips rules 1 to 5, plugin hooks included. Plain text takes the marks at the caret.
 
 **Pasting a link over selected text links it**, as in Notion: with [rich text](/docs/plugins/rich-text#pasting-a-link) and a text range selected outside a code block, a paste whose plain text is one URL (`http:`, `https:` or `mailto:`) makes the selected text a link to it and keeps it selected, instead of replacing it. At a caret, a URL is inserted as a link, and undo gives the plain URL back first. This is the rich text plugin's `onPaste` hook (rule 2). Text that is not one URL, a caret inside a link or inline code, and <kbd>Shift</kbd>+paste paste as usual.
 
@@ -69,6 +70,15 @@ The same placement applies to Edytor fragments, HTML and multi-line text:
 - A pasted range replaces the selected text first.
 
 Pasted blocks and inline blocks always get new ids, so pasting twice never creates duplicates. Their marks, data, children and order are kept.
+
+## Pasting markdown
+
+Plain text with no HTML, from a text editor, a terminal or an AI chat, is read as markdown when one of its lines holds block markdown, as in Notion: a heading (`# ` to `###### `, deeper ones as level 3), a bulleted (`- `, `* `, `+ `), numbered (`1. `) or to-do item (`- [ ] `, `- [x] `), a quote (`> `), a fence (` ``` `) or a divider (`---`). The text then becomes the blocks it reads as ([`textToBlocks`](/docs/editor/suggestions#text-to-blocks)): list items nested by their indentation (two spaces a level), the consecutive lines of a paragraph joined by a space, and inline `**bold**`, `*italic*` or `_italic_`, `` `code` `` and `[text](url)` links as marks. It is placed like any pasted lines (above), as one undo step.
+
+- Text with no block markdown pastes as before, each line a block and every character kept: `a *b* c` stays as typed.
+- Inside a code block, the lines are code.
+- A kind the view does not register (a code block without the [code plugin](/docs/plugins/code)) becomes paragraphs of its text; a divider without a divider kind is left out.
+- <kbd>Shift</kbd>+paste keeps the characters.
 
 ## HTML import
 

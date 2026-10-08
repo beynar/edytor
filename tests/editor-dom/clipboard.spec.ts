@@ -586,6 +586,35 @@ test.describe('browser paste payload coverage', () => {
 		issues.assertClean();
 	});
 
+	test('places markdown text as its blocks', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0);
+
+		const prevented = await dispatchRichPaste(page, { text: '# Plan\n- one\n- **two**' });
+
+		expect(prevented).toBe(true);
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{
+						type: string;
+						content?: Array<{ text: string; marks?: unknown }>;
+					}>;
+				}>(page, 'value');
+				return value.children.slice(0, 3).map(({ type, content }) => ({ type, content }));
+			})
+			.toEqual([
+				{ type: 'heading', content: [{ text: 'Plan' }] },
+				{ type: 'bulleted-list-item', content: [{ text: 'one' }] },
+				{ type: 'bulleted-list-item', content: [{ text: 'two', marks: { bold: true } }] }
+			]);
+
+		issues.assertClean();
+	});
+
 	test('defers to the native paste while a composition is in progress', async ({ page }) => {
 		const issues = trackPageIssues(page);
 

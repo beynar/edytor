@@ -18,7 +18,7 @@ import { createRawSnippet } from 'svelte';
 
 import EdytorComponent from '$lib/components/Edytor.svelte';
 import { createDocument } from '$lib/crdt/index.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import {
 	blockHandlesPlugin,
 	createBlockHandlesPlugin,

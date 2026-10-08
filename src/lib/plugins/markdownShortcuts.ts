@@ -1,24 +1,11 @@
-import type { Block } from '$lib/block/block.svelte.js';
 import { convertToKind, type KindRow } from '$lib/kinds.js';
-import type { Plugin } from '$lib/plugins.js';
-import type { Text } from '$lib/text/text.svelte.js';
-import type { TextOperations } from '$lib/text/text.utils.js';
-
-/**
- * Convert `block`, the shortcut's prefix removal leading the conversion: one
- * plan, so a refusal of either refuses both (F-M3). The caret lands at the
- * start of the converted kind's first text. Answers whether it applied.
- */
-const applyShortcut = (block: Block, row: KindRow, prefixLength: number) => {
-	const { edytor } = block;
-	const prefix = edytor.facade.prepare.deleteText(block.id, 0, prefixLength);
-	return edytor.dispatcher.lead(prefix, () => convertToKind(edytor, block, row, true)).out === true;
-};
+import type { InputRule, Plugin } from '$lib/plugins.js';
 
 /**
  * Notion's inline markdown, completed by the typed closing character: the
- * mark, the opening marker's length and the closing marker already typed.
- * `**b**` bold, `*i*`/`_i_` italic, `` `c` `` code, `~s~`/`~~s~~` strike.
+ * mark, the opening marker's start and length, the content's length and
+ * the closing marker already typed. `**b**` bold, `*i*`/`_i_` italic,
+ * `` `c` `` code, `~s~`/`~~s~~` strike.
  */
 const inlineMarkdown = (before: string, typed: string) => {
 	const find = (open: string, closing: string, mark: string) => {
@@ -39,76 +26,100 @@ const inlineMarkdown = (before: string, typed: string) => {
 	return null;
 };
 
+/**
+ * The text that can complete inline markdown: a closing marker after
+ * marked-up text (the rule's filter; `inlineMarkdown` reads the markers).
+ */
+const INLINE = new RegExp(
+	[
+		/(?:^|[^`])`[^`\s](?:[^`]*[^`\s])?`$/,
+		/(?:^|[^*])\*[^*\s](?:[^*]*[^*\s])?\*$/,
+		/\*\*[^*\s](?:(?:[^*]|\*(?!\*))*[^*\s])?\*\*$/,
+		/(?:^|[^_])_[^_\s](?:[^_]*[^_\s])?_$/,
+		/(?:^|[^~])~[^~\s](?:[^~]*[^~\s])?~$/,
+		/~~[^~\s](?:(?:[^~]|~(?!~))*[^~\s])?~~$/
+	]
+		.map((pattern) => pattern.source)
+		.join('|')
+);
+
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /** Markdown prefixes come from the kind catalogue: a row whose shortcut the typed character completes. */
 export const markdownShortcutsPlugin: Plugin = (edytor) => {
-	/** The typed text landing as typed after a refused conversion. */
-	let fallback = false;
-	/** Refused: the character lands as typed, the caret after it. */
-	const typeAsIs = (text: Text, payload: TextOperations['insertText'], at: number) => {
-		fallback = true;
-		try {
-			text.insertText(payload);
-		} finally {
-			fallback = false;
+	/** The catalogue's prefixes as one pattern, from a text's start (built once the catalogue is). */
+	let prefixes: { kinds: readonly KindRow[]; find: RegExp } | null = null;
+	const prefixPattern = () => {
+		if (prefixes?.kinds !== edytor.kinds) {
+			const all = edytor.kinds.flatMap((kind) => kind.markdown ?? []).map(escape);
+			prefixes = {
+				kinds: edytor.kinds,
+				find: all.length ? new RegExp(`^(?:${all.join('|')})$`) : /(?!)/
+			};
 		}
-		edytor.dispatcher.caret(text, at + payload.value.length);
+		return prefixes.find;
 	};
-	return {
-		onBeforeOperation: (change) => {
-			if (fallback || change.operation !== 'insertText') return;
-			const { payload, block, prevent, text } = change;
-			const { startText, yStart, isCollapsed } = edytor.selection.state;
-			// Only what is typed at the caret: an insertion elsewhere completes no shortcut.
-			if (text !== startText || (payload.start ?? yStart) !== yStart) return;
 
-			// Inline: a closing marker typed after marked-up text (not in code lines).
-			const inline =
-				isCollapsed && startText && payload.value.length === 1 && block.type !== 'codeLine'
-					? inlineMarkdown(startText.stringContent.slice(0, yStart), payload.value)
-					: null;
-			if (inline && edytor.marks.has(inline.mark)) {
-				const { id } = block;
-				const at = startText!.segStart + inline.start;
-				const { facade } = edytor;
-				const plan = () =>
-					facade.compose(
-						facade.prepare.setMark(id, at + inline.open, inline.content, inline.mark, true),
-						...(inline.closing
-							? [facade.prepare.deleteText(id, at + inline.open + inline.content, inline.closing)]
-							: []),
-						facade.prepare.deleteText(id, at, inline.open)
-					);
-				prevent(() => {
-					const applied = edytor.dispatcher.dispatch(
-						'inlineMarkdown',
-						payload,
-						{ block, text: startText! },
-						(_p, prepared = plan()) => ('writes' in prepared ? facade.apply(prepared) : null),
-						plan
-					);
-					if (!applied) return typeAsIs(startText!, payload, yStart);
-					// Typing after the shortcut continues without the mark.
-					edytor.selection.stage({});
-					edytor.dispatcher.caret(startText!, inline.start + inline.content);
-				});
-				return;
-			}
+	/** Inline: a closing marker typed after marked-up text (not in code lines). */
+	const inline: InputRule = {
+		find: INLINE,
+		replace: (match, { block, to, typed, caret }) => {
+			const before = match.input.slice(0, match.input.length - typed.length);
+			const found = typed.length === 1 ? inlineMarkdown(before, typed) : null;
+			if (!found || !edytor.marks.has(found.mark)) return false;
+			const text = block.textAtOffset(to)?.text;
+			if (!text) return false;
+			const { id } = block;
+			// The segment's start, in block offsets: the caret, less the text before it.
+			const at = to - before.length + found.start;
+			const { facade, dispatcher } = edytor;
+			const plan = () =>
+				facade.compose(
+					facade.prepare.setMark(id, at + found.open, found.content, found.mark, true),
+					...(found.closing
+						? [facade.prepare.deleteText(id, at + found.open + found.content, found.closing)]
+						: []),
+					facade.prepare.deleteText(id, at, found.open)
+				);
+			const payload = { value: typed, start: before.length, end: before.length };
+			const applied = dispatcher.dispatch(
+				'inlineMarkdown',
+				payload,
+				{ block, text },
+				(_p, prepared = plan()) => ('writes' in prepared ? facade.apply(prepared) : null),
+				plan
+			);
+			if (!applied) return false;
+			// Typing after the shortcut continues without the mark.
+			edytor.selection.stage({});
+			caret(at + found.content);
+			return true;
+		}
+	};
 
-			// A collapsed caret in the block's first text, completing a kind's prefix
-			// typed from the block's start: the text after the caret is kept (Notion).
-			if (!isCollapsed || !startText || startText !== block.firstText) return;
-			if (payload.value.length !== 1 || !block.convertible) return;
-			const prefix = startText.stringContent.slice(0, yStart);
-			const row = edytor.kinds.find((kind) => kind.markdown?.includes(prefix + payload.value));
-			if (!row) return;
+	/**
+	 * A kind's prefix typed from the block's start, at a collapsed caret in
+	 * its first text: the prefix's removal leads the conversion (one plan, so
+	 * a refusal of either refuses both); the text after the caret is kept
+	 * (Notion). The caret lands at the start of the converted kind's first text.
+	 */
+	const prefix: InputRule = {
+		get find() {
+			return prefixPattern();
+		},
+		replace: (match, { block, from, to, typed, remove }) => {
+			if (from !== 0 || typed.length !== 1 || !block.convertible) return false;
+			const row = edytor.kinds.find((kind) => kind.markdown?.includes(match[0]));
+			if (!row) return false;
 			// A replacing kind (divider, code) would erase the rest: only a block holding just the prefix.
-			const alone =
-				yStart === startText.length && startText === block.lastText && !block.hasChildren;
-			if (row.replaces && !alone) return;
-
-			prevent(() => {
-				if (!applyShortcut(block, row, prefix.length)) typeAsIs(startText, payload, yStart);
-			});
+			const text = block.firstText;
+			const alone = text === block.lastText && to === text?.length && !block.hasChildren;
+			if (row.replaces && !alone) return false;
+			let converted = false;
+			remove(() => (converted = convertToKind(edytor, block, row, true) === true));
+			return converted;
 		}
 	};
+
+	return { inputRules: [inline, prefix] };
 };

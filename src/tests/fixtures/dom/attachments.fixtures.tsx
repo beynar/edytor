@@ -1,7 +1,7 @@
 /** @jsxImportSource ../../jsx */
 import { expect } from 'vitest';
 
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { createAttachmentProbe } from '../helpers/attachments.js';
 import { dispatchDomBeforeInput, dispatchDomKeyDown, dragSelection } from '../../dom/test.utils.js';

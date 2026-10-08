@@ -13,7 +13,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 import { HIDDEN } from '$lib/selection/visibility.js';

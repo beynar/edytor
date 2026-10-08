@@ -3,7 +3,7 @@ import { waitFor } from '@testing-library/svelte';
 import { expect } from 'vitest';
 
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import type { JSONBlock } from '$lib/utils/json.js';

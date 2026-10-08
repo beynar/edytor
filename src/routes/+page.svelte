@@ -3,7 +3,8 @@
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import { richTextPlugin, richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+	import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+	import { createPageLinkPlugin } from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
@@ -39,12 +40,34 @@
 			};
 		}
 	});
+	/** The demo's people and pages: what an app's directory and search would answer. */
+	const PEOPLE = [
+		{ id: 'ada', label: 'Ada Lovelace', description: 'Engineering' },
+		{ id: 'alan', label: 'Alan Turing', description: 'Research' },
+		{ id: 'grace', label: 'Grace Hopper', description: 'Compilers' },
+		{ id: 'katherine', label: 'Katherine Johnson', description: 'Flight' }
+	];
+	const PAGES = [
+		{ id: 'roadmap', title: 'Roadmap', icon: '🗺️' },
+		{ id: 'meeting-notes', title: 'Meeting notes', icon: '📝' },
+		{ id: 'design-system', title: 'Design system', icon: '🎨' }
+	];
+	const matching = (query: string, text: string) =>
+		text.toLowerCase().includes(query.trim().toLowerCase());
+	const mentionPlugin = createMentionPlugin({
+		items: (query) => PEOPLE.filter((person) => matching(query, person.label))
+	});
+	const pageLinkPlugin = createPageLinkPlugin({
+		search: (query) => PAGES.filter((page) => matching(query, page.title)),
+		href: (page) => `#${page.id}`
+	});
 	const plugins = [
 		arrowMovePlugin,
 		imagePlugin,
 		codePlugin,
 		markdownShortcutsPlugin,
 		mentionPlugin,
+		pageLinkPlugin,
 		slashMenuPlugin,
 		toolbarPlugin,
 		createBlockMenuPlugin({
@@ -94,6 +117,25 @@
 				id: 'page-section-intro',
 				type: 'paragraph',
 				content: [{ text: 'Start with a thought. Give it structure when you need it.' }]
+			},
+			{
+				id: 'page-mentions',
+				type: 'paragraph',
+				content: [
+					{ text: 'Ask ' },
+					{ type: 'mention', id: 'page-mention-ada', data: { id: 'ada', label: 'Ada Lovelace' } },
+					{ text: ' about the ' },
+					{
+						type: 'pageLink',
+						id: 'page-link-roadmap',
+						data: { id: 'roadmap', title: 'Roadmap', icon: '🗺️', href: '#roadmap' }
+					},
+					{ text: ': type ' },
+					{ text: '@', marks: { code: true } },
+					{ text: ' to mention someone, ' },
+					{ text: '[[', marks: { code: true } },
+					{ text: ' to link a page.' }
+				]
 			},
 			{
 				id: 'page-task-one',

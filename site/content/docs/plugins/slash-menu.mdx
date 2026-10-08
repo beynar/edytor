@@ -14,7 +14,7 @@ icon: square-slash
 <Edytor plugins={[slashMenuPlugin]} />
 ```
 
-`slashMenuPlugin` is the menu with its built-in markup. `createSlashMenuPlugin(options)` builds one that renders your markup (see [Custom markup](#custom-markup)).
+`slashMenuPlugin` is the menu with its built-in markup. The `/` is a trigger, as a plugin's `triggers` are ([Input rules and triggers](/docs/plugins/input-rules#triggers)): the same rules open and close it, track its query and replace it. `createSlashMenuPlugin(options)` builds one that renders your markup (see [Custom markup](#custom-markup)).
 
 ## What it lists
 

@@ -49,85 +49,60 @@ The core wraps the snippet in `<span data-edytor-inline-block="<type>" data-edyt
 
 ## A mention atom
 
-This plugin replaces a typed `@` with a mention atom. It takes a `pick` function as a parameter, so the host app decides how to choose the person:
+For people mentions, use the [mention plugin](/docs/plugins/mention): `@` opens a menu of your app's people and inserts a `mention` atom. Your own atom is a definition and a way to insert it, usually a [trigger](/docs/plugins/input-rules#triggers). This plugin inserts a date chip from a menu that `@` opens:
 
-```svelte title="MentionPlugin.svelte" check
+```svelte title="DatePlugin.svelte" check
 <script module lang="ts">
-	import type { Plugin } from 'edytor';
-	import type { InlineBlockSnippetPayload } from 'edytor';
+	import type { InlineBlockSnippetPayload, Plugin, Trigger } from 'edytor';
 
-	export const createMentionPlugin =
-		(pick: () => string | null): Plugin =>
-		(edytor) => ({
-			inlineBlocks: {
-				mention: {
-					snippet: mention,
-					plain: (data) => `@${data?.label ?? ''}`
-				}
-			},
-			onBeforeOperation: ({ operation, payload, block, prevent }) => {
-				if (operation === 'insertText' && payload.value === '@') {
-					const { startText, yStart } = edytor.selection.state;
-					if (!startText) return;
-					const label = pick();
-					if (!label) return; // Nobody picked: the @ is typed as text.
-					prevent(() => {
-						const after = block.addInlineBlock({
-							index: yStart,
-							text: startText,
-							block: { type: 'mention', data: { label } }
-						});
-						if (after) edytor.selection.setAtTextOffset(after, 0);
-					});
-				}
-			}
-		});
+	const days: Trigger<string> = {
+		char: '@',
+		name: 'Dates',
+		items: (query) => ['today', 'tomorrow'].filter((day) => day.startsWith(query)),
+		// `from` is where the `@` was: the atom goes there, the caret after it.
+		onPick: (day, { block, from, caret }) => {
+			const after = block.addInlineBlock({ offset: from, block: { type: 'date', data: { day } } });
+			if (after) caret(from + 1);
+			return !!after;
+		}
+	};
+
+	export const datePlugin: Plugin = () => ({
+		inlineBlocks: {
+			date: { snippet: date, plain: (data) => `@${data?.day ?? ''}` }
+		},
+		triggers: [days]
+	});
 </script>
 
-{#snippet mention({ block }: InlineBlockSnippetPayload)}
-	<span class="mention" class:selected={block.selected}>@{block.data.label}</span>
+{#snippet date({ block }: InlineBlockSnippetPayload)}
+	<span class="date" class:selected={block.selected}>@{block.data.day}</span>
 {/snippet}
 ```
 
-```svelte title="Editor.svelte" check
-<script lang="ts">
-	import { Edytor } from 'edytor';
-	import { createMentionPlugin } from './MentionPlugin.svelte';
-
-	const plugins = [createMentionPlugin(() => prompt('Mention who?'))];
-</script>
-
-<Edytor {plugins} />
-```
-
-A real app would open a picker instead of `prompt`, then insert the atom when the user chooses.
-
 ```css
-.mention {
+.date {
 	padding: 0 3px;
 	border-radius: 3px;
 	background: #eef3ff;
 	color: #2f5bd3;
 }
-.mention.selected {
+.date.selected {
 	outline: 2px solid #2f5bd3;
 }
 ```
 
 ## Inserting, updating and removing atoms
 
-Insert an atom with `addInlineBlock` on the block, at an offset of one of its text segments:
+Insert an atom with `addInlineBlock` on the block, at an offset of its content (block offsets, an atom counting 1; the caret's):
 
 ```ts title="insertMention.ts" check
-const { startBlock, startText, yStart } = edytor.selection.state;
-if (startBlock && startText) {
-	const after = startBlock.addInlineBlock({
-		index: yStart, // offset inside startText
-		text: startText,
-		block: { type: 'mention', data: { label: 'Ada' } }
-	});
+const caret = edytor.selection.caret; // { block, offset }, or null when the selection is not a caret
+if (caret) {
+	const { block, offset } = caret;
+	const after = block.addInlineBlock({ offset, block: { type: 'mention', data: { label: 'Ada' } } });
 	// after is the text segment right after the atom: put the caret there.
-	if (after) edytor.selection.setAtTextOffset(after, 0);
+	if (after) edytor.selection.setCaret({ block, offset: offset + 1 });
 }
 ```
 

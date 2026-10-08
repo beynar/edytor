@@ -1,16 +1,76 @@
 ---
 title: Mention
-description: The mention plugin in the repository is a reference implementation of an inline atom inserted by an operation hook, not an export of the package.
+description: The mention plugin opens a menu of your app's people when you type @, and inserts the person you pick as an inline mention, as in Notion.
 icon: at-sign
 ---
 
-The repository contains a `mentionPlugin` in `src/lib/plugins/mention/MentionPlugin.svelte` ([GitHub](https://github.com/beynar/edytor)). It is **not exported** from `edytor`, and the package does not expose its file, so you cannot import it. It is demo-grade reference code: read it, then copy what you need into your own plugin.
+`createMentionPlugin` brings Notion's people mentions. Typing `@` opens a menu of the people your app's `items(query)` answers; the text typed after `@` filters it. Picking one replaces `@query` with a `mention` atom and puts the caret after it.
 
-It shows the two halves of an inline atom: a definition and an operation hook that inserts it.
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, createMentionPlugin, type MentionItem } from 'edytor';
 
-- It defines one inline block, `mention`, with a snippet and a `plain` form. `plain` exports the atom as `@` followed by the first of `data.label`, `data.name`, `data.title` or `data.id`, or `@mention` when none is set.
-- Its `onBeforeOperation` refuses an `insertText` of `@` and, in its place, inserts a `mention` atom (with empty data) at the caret and puts the caret right after it.
+	const people: MentionItem[] = [
+		{ id: 'u1', label: 'Ada Lovelace', description: 'Engineering' },
+		{ id: 'u2', label: 'Alan Turing', description: 'Research' }
+	];
 
-The snippet renders placeholder text (`@mention`) and its selected state for debugging. It does not open a picker or store who was mentioned. [Inline blocks](/docs/customization/inline-blocks#a-mention-atom) builds a usable version with a label in its data, and [Operations](/docs/plugins/operations) explains the `prevent(cb)` pattern it uses.
+	const mentions = createMentionPlugin({
+		items: (query) =>
+			people.filter((person) => person.label.toLowerCase().includes(query.toLowerCase()))
+	});
+</script>
 
-For a void block with an editable caption, the other reference shape, see the [image plugin](/docs/plugins/image), which is exported and on by default.
+<Edytor plugins={[mentions]} />
+```
+
+It is not a default plugin: list it in `plugins`, in every view of a document that holds mentions (a view without it renders the atoms as unknown inline blocks).
+
+## Options
+
+<TypeTable
+  type={{
+    items: {
+      type: "(query, ctx) => MentionItem[] | Promise<MentionItem[]>",
+      required: true,
+      description: "The people matching the text typed after @. Return a promise to search your server: the newest query's answer wins.",
+    },
+    char: { type: "string", description: "The character that opens the menu. Default @." },
+    item: { type: "Snippet<[TriggerItemPayload<MentionItem>]>", description: "Replace each row of the menu." },
+  }}
+/>
+
+A `MentionItem` is `{ id, label, description?, avatar? }`: `id` is the person's id in your app, `label` the name shown in the menu and in the mention, `description` a line beside it in the menu (an email, a role), and `avatar` an image URL (`http:`, `https:` or a `data:` image; anything else shows the name's initial).
+
+A search over the network:
+
+```ts title="mentions.ts" check
+import { createMentionPlugin, type MentionItem } from 'edytor';
+
+export const mentions = createMentionPlugin({
+	items: async (query) => {
+		const response = await fetch(`/api/people?q=${encodeURIComponent(query)}`);
+		return (await response.json()) as MentionItem[];
+	}
+});
+```
+
+## The mention atom
+
+A mention is an inline block of type `mention` whose data is `{ id, label }`:
+
+```json
+{ "type": "mention", "data": { "id": "u1", "label": "Ada Lovelace" } }
+```
+
+It renders `<span class="edytor-mention" data-edytor-mention data-mention-id="u1">@Ada Lovelace</span>` and copies as plain text as `@Ada Lovelace`. Like every atom it is selected, copied and deleted as one unit ([Inline blocks](/docs/customization/inline-blocks)). The label is the one stored when it was picked: to show a current name, render your own snippet for it (`mentionInlineBlock`, see [snippet overrides](/docs/customization/inline-blocks)) that looks the person up by `data.id`.
+
+## Behavior
+
+The menu is a [trigger](/docs/plugins/input-rules#triggers): it opens at the start of a text or after whitespace (`ada@example.com` opens nothing), <kbd>↑</kbd>/<kbd>↓</kbd> move the highlight, <kbd>Enter</kbd> or a click picks, <kbd>Escape</kbd> closes it and keeps the text. A query that matches nobody shows "No results", and a space after it closes the menu. It does not open in a code block or a readonly view.
+
+The pick is one undo step, separate from the typing before it: undo gives back `@query`. A plugin that refuses the `addInlineBlock` operation, or the removal of `@query` (a `deleteContentAtRange` step), keeps the text, with the caret after it.
+
+The menu's listbox is named "People"; while it is open the editor's root names it and its highlighted row ([Accessibility](/docs/editor/accessibility#menus-and-popups)). Its rows show an avatar (or an initial), the name and the description; replace them with `item`.
+
+To link pages rather than people, see [Page link](/docs/plugins/page-link).

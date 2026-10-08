@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import { EDYTOR_FRAGMENT_MIME } from '$lib/clipboard/types.js';

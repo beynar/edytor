@@ -28,6 +28,19 @@ export {
 } from './code/CodePlugin.svelte';
 export { markdownShortcutsPlugin } from './markdownShortcuts.js';
 export {
+	createMentionPlugin,
+	type MentionItem,
+	type MentionData,
+	type MentionPluginOptions
+} from './mention/MentionPlugin.svelte';
+export {
+	createPageLinkPlugin,
+	type PageLinkItem,
+	type PageLinkData,
+	type PageLinkPluginOptions
+} from './pageLink/PageLinkPlugin.svelte';
+export type { TriggerMenuController } from './triggers/TriggerController.svelte.js';
+export {
 	slashMenuPlugin,
 	createSlashMenuPlugin,
 	type SlashMenuOptions,

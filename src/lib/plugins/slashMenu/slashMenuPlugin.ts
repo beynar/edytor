@@ -9,6 +9,7 @@ import {
 } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { onPress } from '$lib/events/onFocus.js';
 import SlashMenu from './SlashMenu.svelte';
+import { caretRect, placeBelow } from '../triggers/place.js';
 import { SlashMenuController, type TextInsertionPayload } from './SlashMenuController.svelte.js';
 
 /** One row, for an `item` snippet. */
@@ -45,32 +46,14 @@ export const createSlashMenuPlugin =
 		 * is the close of a `+` menu whose block is gone.
 		 */
 		const positionMenu = (host: HTMLElement) => {
-			const editor = edytor.node;
-			if (!editor || !controller.isOpen) return;
-			const view = editor.ownerDocument.defaultView;
-			if (!view) return;
-			const selection = editor.ownerDocument.getSelection();
+			if (!edytor.node || !controller.isOpen) return;
 			const { addition } = controller;
 			// Its block is gone (a peer's or a command's delete): the `+` menu closes, as the block menu does.
 			if (addition && !addition.block.isInTree) return () => controller.dismiss();
 			const anchor = addition?.anchor?.isConnected ? addition.anchor : addition?.block.node;
-			let rect = anchor?.getBoundingClientRect();
-			if (!rect && selection?.rangeCount && editor.contains(selection.anchorNode)) {
-				const range = selection.getRangeAt(0).cloneRange();
-				range.collapse(false);
-				if (typeof range.getBoundingClientRect === 'function') {
-					rect = range.getBoundingClientRect();
-				}
-			}
-			if (!rect || (!rect.width && !rect.height)) {
-				rect = edytor.selection.state.startText?.node?.getBoundingClientRect();
-			}
-			if (!rect) rect = editor.getBoundingClientRect();
-			const width = host.firstElementChild?.getBoundingClientRect().width || 310;
-			const height = host.firstElementChild?.getBoundingClientRect().height || 350;
-			const left = `${Math.max(8, Math.min(rect.left, view.innerWidth - width - 8))}px`;
-			const top = `${Math.max(8, rect.bottom + height + 8 < view.innerHeight ? rect.bottom + 8 : rect.top - height - 8)}px`;
-			return () => Object.assign(host.style, { left, top });
+			const box = anchor?.getBoundingClientRect();
+			const rect = box && (box.width || box.height) ? box : caretRect(edytor);
+			return rect && placeBelow(host, rect, { width: 310, height: 350 });
 		};
 
 		return {

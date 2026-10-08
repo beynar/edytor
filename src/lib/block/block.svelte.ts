@@ -380,7 +380,21 @@ export class Block {
 	pushContentIntoBlock = batch('pushContentIntoBlock', pushContentIntoBlock);
 	removeInlineBlock = batch('removeInlineBlock', removeInlineBlock, prepareRemoveInline);
 	patchData = batch('patchData', patchData, preparePatch);
-	addInlineBlock = batch('addInlineBlock', addInlineBlock, undefined, textAfterAtom);
+	#addInline = batch('addInlineBlock', addInlineBlock, undefined, textAfterAtom);
+	/**
+	 * Insert an inline atom: at `offset` of the block's content (block
+	 * offsets, an inline atom counting 1; a caret's), or at `index` of the
+	 * text segment `text`. One `addInlineBlock` operation (its payload names
+	 * the segment). Answers the text segment right after the atom, where a
+	 * caret goes (`null` when it was not written, `undefined` when refused).
+	 */
+	addInlineBlock = (
+		payload: BlockOperations['addInlineBlock'] | { offset: number; block: JSONInlineBlock }
+	) => {
+		if (!('offset' in payload)) return this.#addInline(payload);
+		const at = this.textAtOffset(Math.max(0, payload.offset));
+		return at ? this.#addInline({ index: at.offset, text: at.text, block: payload.block }) : null;
+	};
 	normalizeContent = batch('normalizeContent', normalizeContent);
 	normalizeChildren = batch('normalizeChildren', normalizeChildren);
 	/** @deprecated `edytor.suggestions.add({ end: block.id }, …)`. */

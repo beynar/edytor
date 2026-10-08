@@ -4,7 +4,7 @@ import { expect, vi } from 'vitest';
 import { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../../atMention.svelte';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock, JSONInlineBlock, JSONText } from '$lib/utils/json.js';

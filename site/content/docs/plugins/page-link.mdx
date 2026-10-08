@@ -1,0 +1,57 @@
+---
+title: Page link
+description: The page link plugin opens a search of your app's pages when you type [[, and inserts the page you pick as an inline link, as in Notion.
+icon: link
+---
+
+`createPageLinkPlugin` brings Notion's `[[` page links. Typing `[[` opens a menu of the pages your app's `search(query)` answers; the text typed after it filters them. Picking one replaces `[[query` with a `pageLink` atom, a link to the page, and puts the caret after it.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, createPageLinkPlugin, type PageLinkItem } from 'edytor';
+
+	const search = async (query: string) => {
+		const response = await fetch(`/api/pages?q=${encodeURIComponent(query)}`);
+		return (await response.json()) as PageLinkItem[];
+	};
+
+	const pageLinks = createPageLinkPlugin({ search, href: (page) => `/pages/${page.id}` });
+</script>
+
+<Edytor plugins={[pageLinks]} />
+```
+
+It is not a default plugin: list it in `plugins`, in every view of a document that holds page links.
+
+## Options
+
+<TypeTable
+  type={{
+    search: {
+      type: "(query, ctx) => PageLinkItem[] | Promise<PageLinkItem[]>",
+      required: true,
+      description: "The pages matching the text typed after [[. A promise is a search: the newest query's answer wins, and the menu reads Searching… meanwhile.",
+    },
+    href: { type: "(page) => string | undefined", description: "A page's URL when search answers none, such as /pages/<id>." },
+    char: { type: "string", description: "The text that opens the menu. Default [[." },
+    item: { type: "Snippet<[TriggerItemPayload<PageLinkItem>]>", description: "Replace each row of the menu." },
+  }}
+/>
+
+A `PageLinkItem` is `{ id, title, href?, icon? }`: `id` is the page's id in your app, `title` the text shown, `href` where the link goes (absolute, or relative to your app) and `icon` a short icon such as an emoji (default 📄).
+
+## The page link atom
+
+A page link is an inline block of type `pageLink` whose data is `{ id, title, href?, icon? }`:
+
+```json
+{ "type": "pageLink", "data": { "id": "p1", "title": "Roadmap", "href": "/pages/p1", "icon": "🗺️" } }
+```
+
+It renders an `<a class="edytor-page-link" data-edytor-page-link href="…">` holding the icon and the title, and copies as plain text as its title. The `href` goes through the link sanitizer when it is stored and when it is rendered: a `javascript:` or other script URL is dropped, and the atom renders without one. The title is the one stored when it was picked: to show a page's current title, render your own snippet (`pageLinkInlineBlock`) that looks it up by `data.id`.
+
+## Behavior
+
+The menu is a [trigger](/docs/plugins/input-rules#triggers) of two characters: it opens when the second `[` completes `[[` at the start of a text or after whitespace. A single `[` (`[] ` for a to-do with the [markdown shortcuts](/docs/plugins/markdown-shortcuts)) opens nothing. <kbd>↑</kbd>/<kbd>↓</kbd> move the highlight, <kbd>Enter</kbd> or a click picks, <kbd>Escape</kbd> closes it and keeps the text. The pick is one undo step; a refusal keeps `[[query`. The menu's listbox is named "Pages".
+
+For people, see [Mention](/docs/plugins/mention).

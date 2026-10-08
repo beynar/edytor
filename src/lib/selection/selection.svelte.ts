@@ -72,6 +72,14 @@ import {
 export type TextAnchor = { b: string; a: Anchor };
 
 /**
+ * A caret in block offsets: the block and the offset in its content, the
+ * offsets `edytor.document.facade` takes (an inline atom counts 1). The
+ * public form of a collapsed text selection (`selection.caret`), and what
+ * `selection.setCaret` and `dispatcher.caret` take.
+ */
+export type Caret = { block: Block; offset: number };
+
+/**
  * The public read-only view: the projection's endpoints as wrappers
  * (`startText`/`yStart`… offsets inside text segments). Projection facts —
  * `content`, `marks`, the `isAt…`/`is…Spanning` flags, `islandRoot`,
@@ -439,6 +447,28 @@ export class EdytorSelection {
 		this.edytor.plugins.forEach((plugin) => {
 			plugin.onSelectionChange?.(this);
 		});
+	};
+
+	/**
+	 * The collapsed text caret in block offsets (`{ block, offset }`, an
+	 * inline atom counting 1), or `null` when the selection is not a caret
+	 * (a range, an atom, blocks, none). Not reactive: read it when you need it.
+	 */
+	get caret(): Caret | null {
+		const { start, isCollapsed, kind } = this.projection;
+		if (kind !== 'text' || !isCollapsed || !start) return null;
+		const block = this.edytor.idToBlock.get(start.block);
+		return block ? { block, offset: start.offset } : null;
+	}
+
+	/**
+	 * Select a caret at `caret.offset` of `caret.block` (block offsets, an
+	 * inline atom counting 1; clamped to the block's content). A block that
+	 * shows no text (a divider) keeps the current value. Displayed after the flush.
+	 */
+	setCaret = (caret: Caret | null | undefined) => {
+		const at = caret && caret.block.textAtOffset(Math.max(0, caret.offset));
+		if (at) this.setAtTextOffset(at.text, at.offset);
 	};
 
 	/** The marks the next insertion at the caret takes (values kept). */

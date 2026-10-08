@@ -17,7 +17,7 @@ import { createRawSnippet } from 'svelte';
 import { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 

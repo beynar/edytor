@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { selectedTextSpans } from '$lib/selection/visibility.js';
 import {

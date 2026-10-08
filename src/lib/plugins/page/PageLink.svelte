@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import type { Block } from '$lib/block/block.svelte.js';
+	import type { Edytor } from '$lib/edytor.svelte.js';
 	import {
 		pageHref,
 		pageIdOf,
+		pageLabels,
 		pageTitleOf,
 		storePageTitle,
 		type PagePluginOptions
@@ -26,6 +28,8 @@
 		handle: Block | undefined;
 		options: PagePluginOptions;
 	} = $props();
+	/** The view's words (a suggestion's preview, with no handle, speaks them too). */
+	const labels = pageLabels.of(getContext<Edytor>('edytor'));
 
 	const pageId = $derived(pageIdOf(data.pageId));
 	const stored = $derived(pageTitleOf(data.title));
@@ -78,7 +82,7 @@
 {#snippet label()}
 	<span data-edytor-page-icon aria-hidden="true"></span><span
 		data-edytor-page-title
-		data-untitled={title ? undefined : 'true'}>{title ?? 'Untitled'}</span
+		data-untitled={title ? undefined : 'true'}>{title ?? labels.untitled}</span
 	>
 {/snippet}
 

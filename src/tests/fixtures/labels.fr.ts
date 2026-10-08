@@ -35,6 +35,9 @@ export const fr: Labels = {
 			heading1: 'Titre 1',
 			heading2: 'Titre 2',
 			heading3: 'Titre 3',
+			toggleHeading1: 'Titre dépliant 1',
+			toggleHeading2: 'Titre dépliant 2',
+			toggleHeading3: 'Titre dépliant 3',
 			bulletedList: 'Liste à puces',
 			numberedList: 'Liste numérotée',
 			todoList: 'Liste de tâches',
@@ -104,7 +107,12 @@ export const fr: Labels = {
 		noResults: 'Aucun résultat',
 		close: 'Fermer le menu',
 		closeKey: 'échap',
-		groups: { 'Basic blocks': 'Blocs de base', Media: 'Médias', Layout: 'Mise en page' }
+		groups: {
+			'Basic blocks': 'Blocs de base',
+			'Advanced blocks': 'Blocs avancés',
+			Media: 'Médias',
+			Layout: 'Mise en page'
+		}
 	},
 	blockMenu: {
 		search: 'Rechercher une action…',
@@ -112,6 +120,23 @@ export const fr: Labels = {
 		menu: 'Actions du bloc',
 		block: 'Bloc',
 		turnInto: 'Transformer en',
+		color: 'Couleur',
+		textColor: 'Couleur du texte',
+		backgroundColor: 'Couleur de fond',
+		colors: {
+			default: 'Par défaut',
+			gray: 'Gris',
+			brown: 'Marron',
+			orange: 'Orange',
+			yellow: 'Jaune',
+			green: 'Vert',
+			blue: 'Bleu',
+			purple: 'Violet',
+			pink: 'Rose',
+			red: 'Rouge'
+		},
+		colorText: (color) => `Texte ${color.toLowerCase()}`,
+		colorBackground: (color) => `Fond ${color.toLowerCase()}`,
 		copyLink: 'Copier le lien du bloc',
 		duplicate: 'Dupliquer',
 		moveUp: 'Monter',
@@ -228,6 +253,21 @@ export const fr: Labels = {
 	columns: {
 		columns: (count) => `${count} colonnes`,
 		resize: 'Redimensionner les colonnes'
+	},
+	page: {
+		page: 'Page',
+		untitled: 'Sans titre'
+	},
+	toc: {
+		toc: 'Table des matières',
+		untitled: 'Sans titre',
+		empty: 'Ajoutez des titres pour créer une table des matières.'
+	},
+	pageLink: {
+		menu: 'Pages',
+		searching: 'Recherche…',
+		noResults: 'Aucun résultat',
+		untitled: 'Sans titre'
 	}
 };
 
@@ -241,7 +281,12 @@ export const frKeywords: Record<string, string[]> = {
 	'block.numbered-list-item': ['numéro', 'ol'],
 	'block.todo-item': ['tâche', 'case', 'todo'],
 	'block.toggle': ['dépliant', 'details'],
+	'block.toggle-heading1': ['dépliant', 'replier'],
+	'block.toggle-heading2': ['dépliant', 'replier'],
+	'block.toggle-heading3': ['dépliant', 'replier'],
 	'block.callout': ['note', 'astuce'],
 	'block.quote': ['citation', 'quote'],
-	'block.divider': ['séparateur', 'hr']
+	'block.divider': ['séparateur', 'hr'],
+	'block.toc': ['sommaire', 'plan', 'toc'],
+	'page.new': ['sous-page', 'nouvelle page', 'document', 'lien']
 };

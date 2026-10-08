@@ -2,8 +2,14 @@
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { tocKinds } from '$lib/crdt/semantics.js';
+	import { keywordsOf, labelsWith } from '$lib/labels.js';
 	import TableOfContents from './TableOfContents.svelte';
-	import { richTextHeadingLevel, type TocHeadingLevel, type TocPluginOptions } from './toc.js';
+	import {
+		richTextHeadingLevel,
+		tocLabels,
+		type TocHeadingLevel,
+		type TocPluginOptions
+	} from './toc.js';
 
 	export type { TocHeadingLevel, TocPluginOptions };
 
@@ -13,26 +19,33 @@
 	 * Notion's table of contents: a `toc` block lists the document's
 	 * headings, live, indented by level; a click scrolls to one (opening the
 	 * closed toggles it sits in). Void: it holds no text, and its list is
-	 * never stored, only drawn. "Table of contents" in the slash menu turns
-	 * an empty line into one, or inserts it after the line.
+	 * never stored, only drawn. Its preset in the slash menu turns an empty
+	 * line into one, or inserts it after the line; its words are `labels`
+	 * (English by default).
 	 */
 	export const createTocPlugin =
 		(options: TocPluginOptions = {}): Plugin =>
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!levelOf.has(edytor)) levelOf.set(edytor, options.headingLevel ?? richTextHeadingLevel);
+			const labels = labelsWith('toc', options.labels);
+			tocLabels.claim(edytor, labels);
 			return {
 				blocks: {
 					toc: {
 						...tocKinds.toc,
-						element: { tag: 'nav', attributes: { 'aria-label': 'Table of contents' } },
+						element: { tag: 'nav', attributes: { 'aria-label': labels.toc } },
 						snippet: toc,
 						empty: { content: [], children: [] },
 						presets: [
 							{
-								label: 'Table of contents',
+								label: labels.toc,
 								icon: '☰',
-								keywords: ['toc', 'outline', 'headings', 'contents'],
+								keywords: keywordsOf(
+									'block.toc',
+									['toc', 'outline', 'headings', 'contents'],
+									options.keywords
+								),
 								group: 'Advanced blocks'
 							}
 						],

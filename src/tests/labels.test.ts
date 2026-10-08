@@ -74,6 +74,7 @@ describe('labelsWith', () => {
 		const slash = labelsWith('slashMenu', { groups: { Media: 'Médias' } });
 		expect(slash.groups).toEqual({
 			'Basic blocks': 'Basic blocks',
+			'Advanced blocks': 'Advanced blocks',
 			Media: 'Médias',
 			Layout: 'Layout'
 		});

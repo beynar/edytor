@@ -235,6 +235,8 @@ export type Trigger<T = any> = {
 	name?: string;
 	/** The text shown when no row matches (default `No results`). */
 	empty?: string;
+	/** The text shown while a search is pending and no row is shown (default `Searching…`). */
+	searching?: string;
 	/** Whether the menu may open in `block` (default: a block that is not void and not in a code block). */
 	enabled?: (block: Block) => boolean;
 };

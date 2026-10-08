@@ -6,6 +6,7 @@
 		TriggerContext,
 		TriggerItemPayload
 	} from '$lib/plugins.js';
+	import { labelsWith, viewLabels, type PartialLabels } from '$lib/labels.js';
 	import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 
 	/** A page the page-link menu offers: what your app's search answers. */
@@ -35,7 +36,12 @@
 		char?: string;
 		/** Replace each row of the menu. */
 		item?: Snippet<[TriggerItemPayload<PageLinkItem>]>;
+		/** The words the menu and the atom show, over the English ones. */
+		labels?: PartialLabels<'pageLink'>;
 	};
+
+	/** Each view's page link labels: the first page link plugin listed claims them, as its atom. */
+	const pageLinkLabels = viewLabels('pageLink');
 
 	/**
 	 * Links to your app's pages, as Notion's `[[`: it opens a menu of the pages
@@ -45,42 +51,48 @@
 	 */
 	export const createPageLinkPlugin =
 		(options: PageLinkPluginOptions): Plugin =>
-		() => ({
-			inlineBlocks: {
-				pageLink: {
-					snippet: pageLink,
-					plain: (data) => {
-						const title = (data as Partial<PageLinkData> | undefined)?.title;
-						return typeof title === 'string' ? title : '';
+		(edytor) => {
+			const labels = labelsWith('pageLink', options.labels);
+			pageLinkLabels.claim(edytor, labels);
+			return {
+				inlineBlocks: {
+					pageLink: {
+						snippet: pageLink,
+						plain: (data) => {
+							const title = (data as Partial<PageLinkData> | undefined)?.title;
+							return typeof title === 'string' ? title : '';
+						}
 					}
-				}
-			},
-			triggers: [
-				{
-					char: options.char ?? '[[',
-					name: 'Pages',
-					items: (query, ctx) => options.search(query, ctx),
-					label: (page: PageLinkItem) => page.title,
-					key: (page: PageLinkItem) => page.id,
-					item: options.item ?? row,
-					onPick: (page: PageLinkItem, { block, from, caret }) => {
-						const href = sanitizeLinkHref(page.href ?? options.href?.(page)) ?? undefined;
-						const data: PageLinkData = {
-							id: page.id,
-							title: page.title,
-							...(href ? { href } : {}),
-							...(page.icon ? { icon: page.icon } : {})
-						};
-						const after = block.addInlineBlock({
-							offset: from,
-							block: { type: 'pageLink', data }
-						});
-						if (after) caret(from + 1);
-						return !!after;
+				},
+				triggers: [
+					{
+						char: options.char ?? '[[',
+						name: labels.menu,
+						empty: labels.noResults,
+						searching: labels.searching,
+						items: (query, ctx) => options.search(query, ctx),
+						label: (page: PageLinkItem) => page.title,
+						key: (page: PageLinkItem) => page.id,
+						item: options.item ?? row,
+						onPick: (page: PageLinkItem, { block, from, caret }) => {
+							const href = sanitizeLinkHref(page.href ?? options.href?.(page)) ?? undefined;
+							const data: PageLinkData = {
+								id: page.id,
+								title: page.title,
+								...(href ? { href } : {}),
+								...(page.icon ? { icon: page.icon } : {})
+							};
+							const after = block.addInlineBlock({
+								offset: from,
+								block: { type: 'pageLink', data }
+							});
+							if (after) caret(from + 1);
+							return !!after;
+						}
 					}
-				}
-			]
-		});
+				]
+			};
+		};
 </script>
 
 {#snippet pageLink({ block }: InlineBlockSnippetPayload<Partial<PageLinkData>>)}
@@ -91,7 +103,7 @@
 		data-edytor-page-link
 		data-page-id={block.data.id}
 		><span class="icon" aria-hidden="true">{block.data.icon ?? '📄'}</span><span class="title"
-			>{block.data.title ?? 'Untitled'}</span
+			>{block.data.title ?? pageLinkLabels.of(block.handle?.edytor).untitled}</span
 		></a
 	>
 {/snippet}

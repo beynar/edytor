@@ -3,7 +3,7 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { ownText } from '$lib/surface/attributes.js';
 	import { reveal } from '$lib/selection/replaceSelection.js';
-	import type { TocHeadingLevel } from './toc.js';
+	import { tocLabels, type TocHeadingLevel } from './toc.js';
 
 	/**
 	 * The document's headings, live, in reading order (Notion's table of
@@ -13,6 +13,7 @@
 	 */
 	let { level }: { level: TocHeadingLevel } = $props();
 	const edytor = getContext<Edytor>('edytor');
+	const labels = tocLabels.of(edytor);
 
 	type Entry = { id: string; level: number; text: string };
 	const entries = $derived.by(() => {
@@ -50,11 +51,11 @@
 			data-untitled={entry.text ? undefined : 'true'}
 			style:--edytor-toc-depth={entry.level - top}
 			onmousedown={(event) => event.preventDefault()}
-			onclick={() => go(entry.id)}>{entry.text || 'Untitled'}</button
+			onclick={() => go(entry.id)}>{entry.text || labels.untitled}</button
 		>
 	{/each}
 {:else}
-	<p data-edytor-toc-empty>Add headings to create a table of contents.</p>
+	<p data-edytor-toc-empty>{labels.empty}</p>
 {/if}
 
 <style>

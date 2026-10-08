@@ -272,6 +272,11 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 		return this.trigger.empty ?? 'No results';
 	}
 
+	/** The text shown while a search is pending and no row is shown. */
+	get searching() {
+		return this.trigger.searching ?? 'Searching…';
+	}
+
 	labelOf = (item: T) => (this.trigger.label ? this.trigger.label(item) : defaultLabel(item));
 
 	keyOf = (item: T): string => {

@@ -17,6 +17,8 @@
 	import { createFindPlugin } from '$lib/plugins/find/findPlugin.js';
 	import { createSuggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
+	import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import { fr, frKeywords } from '../fixtures/labels.fr.js';
 
@@ -39,6 +41,8 @@
 		createFindPlugin({ labels: fr.find }),
 		createSuggestionsPlugin({ labels: fr.suggestions }),
 		createColumnsPlugin({ labels: fr.columns }),
+		createPagePlugin({ labels: fr.page, keywords: frKeywords, create: () => 'page-1' }),
+		createTocPlugin({ labels: fr.toc, keywords: frKeywords }),
 		createRichTextPlugin({ labels: fr.richText, keywords: frKeywords })
 	];
 </script>

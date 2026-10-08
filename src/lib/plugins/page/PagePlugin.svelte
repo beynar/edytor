@@ -3,8 +3,9 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { pageKinds } from '$lib/crdt/semantics.js';
 	import { convertToKind, type KindRow } from '$lib/kinds.js';
+	import { keywordsOf, labelsWith } from '$lib/labels.js';
 	import PageLink from './PageLink.svelte';
-	import { pageHtml, pageIdOf, pageTitleOf, type PagePluginOptions } from './page.js';
+	import { pageHtml, pageIdOf, pageLabels, pageTitleOf, type PagePluginOptions } from './page.js';
 
 	export type { PagePluginOptions };
 
@@ -34,7 +35,9 @@
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!optionsOf.has(edytor)) optionsOf.set(edytor, options);
+			pageLabels.claim(edytor, labelsWith('page', options.labels));
 			const own = optionsOf.get(edytor)!;
+			const labels = pageLabels.of(edytor);
 			const { create } = own;
 			return {
 				blocks: {
@@ -42,8 +45,8 @@
 						...pageKinds.page,
 						snippet: page,
 						empty: { content: [], children: [] },
-						html: (block) => pageHtml(block.data, own),
-						plain: (block) => pageTitleOf(block.data?.title) ?? 'Untitled',
+						html: (block) => pageHtml(block.data, own, labels.untitled),
+						plain: (block) => pageTitleOf(block.data?.title) ?? labels.untitled,
 						// Its own export: a `p[data-edytor-page]` naming the page.
 						parse: (el) => {
 							const pageId = pageIdOf(el.getAttribute('data-edytor-page'));
@@ -57,9 +60,13 @@
 					? [
 							{
 								id: 'page.new',
-								label: 'Page',
+								label: labels.page,
 								icon: '📄',
-								keywords: ['subpage', 'new page', 'document', 'link'],
+								keywords: keywordsOf(
+									'page.new',
+									['subpage', 'new page', 'document', 'link'],
+									own.keywords
+								),
 								group: 'Basic blocks',
 								// Asked of the view given (a `+`'s menu asks it of the block it adds).
 								isEnabled: (view = edytor) => Boolean(view.selection.state.startBlock?.convertible),
@@ -74,7 +81,7 @@
 									const title = pageTitleOf(named);
 									const row: KindRow = {
 										id: 'page.new',
-										label: 'Page',
+										label: labels.page,
 										value: {
 											type: 'page',
 											data: { pageId, ...(title && { title }) },

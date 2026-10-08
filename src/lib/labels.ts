@@ -8,9 +8,11 @@
  * A label that says something about a value is a function of it, so a
  * language can order and inflect the words: `moved: (what) => …`.
  *
- * Group names (`KindPreset.group`: `Basic blocks`, `Media`, `Layout`) and
- * the toolbar's color names (`TOOLBAR_COLORS`) are keys: the slash menu's
- * `groups` and the toolbar's `colors` map them to what is shown.
+ * Group names (`KindPreset.group`: `Basic blocks`, `Advanced blocks`,
+ * `Media`, `Layout`), the toolbar's color names (`TOOLBAR_COLORS`) and the
+ * block palette's (`BLOCK_COLORS`, and `default`) are keys: the slash menu's
+ * `groups`, the toolbar's `colors` and the block menu's `colors` map them to
+ * what is shown.
  */
 
 /** What the view itself says: its live announcements and a suggestion's default name. */
@@ -38,6 +40,9 @@ export type RichTextLabels = {
 		heading1: string;
 		heading2: string;
 		heading3: string;
+		toggleHeading1: string;
+		toggleHeading2: string;
+		toggleHeading3: string;
 		bulletedList: string;
 		numberedList: string;
 		todoList: string;
@@ -108,7 +113,7 @@ export type SlashMenuLabels = {
 	close: string;
 	/** The key shown beside Close. */
 	closeKey: string;
-	/** A section heading, by its group key (`Basic blocks`, `Media`, `Layout`); others show as they are. */
+	/** A section heading, by its group key (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`); others show as they are. */
 	groups: Record<string, string>;
 };
 
@@ -120,6 +125,17 @@ export type BlockMenuLabels = {
 	/** The heading when the block's kind has no label. */
 	block: string;
 	turnInto: string;
+	/** The Color row, and its flyout's accessible name. */
+	color: string;
+	/** The flyout's sections. */
+	textColor: string;
+	backgroundColor: string;
+	/** A color's name, by its `BLOCK_COLORS` name (`red`), `default` for none. */
+	colors: Record<string, string>;
+	/** A text color row, from the color's name ("Red text"). */
+	colorText: (color: string) => string;
+	/** A background row, from the color's name ("Red background"). */
+	colorBackground: (color: string) => string;
 	copyLink: string;
 	duplicate: string;
 	moveUp: string;
@@ -242,6 +258,35 @@ export type SuggestionsLabels = {
 	escape: string;
 };
 
+/** The page block (`createPagePlugin`). */
+export type PageLabels = {
+	/** The "Page" command. */
+	page: string;
+	/** A page without a title: the block, its plain text and HTML export. */
+	untitled: string;
+};
+
+/** The table of contents block (`createTocPlugin`). */
+export type TocLabels = {
+	/** The preset, and the block's accessible name. */
+	toc: string;
+	/** An entry for an empty heading. */
+	untitled: string;
+	/** The hint shown with no heading. */
+	empty: string;
+};
+
+/** The `[[` page link menu and atom (`createPageLinkPlugin`). */
+export type PageLinkLabels = {
+	/** The menu's accessible name. */
+	menu: string;
+	/** The menu while a search is pending, with no rows. */
+	searching: string;
+	noResults: string;
+	/** An atom whose page has no title. */
+	untitled: string;
+};
+
 export type ColumnsLabels = {
 	/** The `columns.<n>` command. */
 	columns: (count: number) => string;
@@ -263,6 +308,9 @@ export type Labels = {
 	find: FindLabels;
 	suggestions: SuggestionsLabels;
 	columns: ColumnsLabels;
+	page: PageLabels;
+	toc: TocLabels;
+	pageLink: PageLinkLabels;
 };
 
 /**
@@ -321,6 +369,9 @@ export const englishLabels: Labels = frozen({
 			heading1: 'Heading 1',
 			heading2: 'Heading 2',
 			heading3: 'Heading 3',
+			toggleHeading1: 'Toggle heading 1',
+			toggleHeading2: 'Toggle heading 2',
+			toggleHeading3: 'Toggle heading 3',
 			bulletedList: 'Bulleted list',
 			numberedList: 'Numbered list',
 			todoList: 'To-do list',
@@ -390,7 +441,12 @@ export const englishLabels: Labels = frozen({
 		noResults: 'No results',
 		close: 'Close menu',
 		closeKey: 'esc',
-		groups: { 'Basic blocks': 'Basic blocks', Media: 'Media', Layout: 'Layout' }
+		groups: {
+			'Basic blocks': 'Basic blocks',
+			'Advanced blocks': 'Advanced blocks',
+			Media: 'Media',
+			Layout: 'Layout'
+		}
 	},
 	blockMenu: {
 		search: 'Search actions…',
@@ -398,6 +454,23 @@ export const englishLabels: Labels = frozen({
 		menu: 'Block actions',
 		block: 'Block',
 		turnInto: 'Turn into',
+		color: 'Color',
+		textColor: 'Text color',
+		backgroundColor: 'Background color',
+		colors: {
+			default: 'Default',
+			gray: 'Gray',
+			brown: 'Brown',
+			orange: 'Orange',
+			yellow: 'Yellow',
+			green: 'Green',
+			blue: 'Blue',
+			purple: 'Purple',
+			pink: 'Pink',
+			red: 'Red'
+		},
+		colorText: (color) => `${color} text`,
+		colorBackground: (color) => `${color} background`,
 		copyLink: 'Copy link to block',
 		duplicate: 'Duplicate',
 		moveUp: 'Move up',
@@ -514,6 +587,21 @@ export const englishLabels: Labels = frozen({
 	columns: {
 		columns: (count) => `${count} columns`,
 		resize: 'Resize columns'
+	},
+	page: {
+		page: 'Page',
+		untitled: 'Untitled'
+	},
+	toc: {
+		toc: 'Table of contents',
+		untitled: 'Untitled',
+		empty: 'Add headings to create a table of contents.'
+	},
+	pageLink: {
+		menu: 'Pages',
+		searching: 'Searching…',
+		noResults: 'No results',
+		untitled: 'Untitled'
 	}
 });
 

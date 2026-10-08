@@ -127,6 +127,7 @@ export const tagsPlugin: Plugin = () => ({
     item: { type: "Snippet<[TriggerItemPayload]>", description: "Replace each row's markup." },
     name: { type: "string", description: "The menu's accessible name. Default Suggestions." },
     empty: { type: "string", description: "The text shown when no row matches. Default No results." },
+    searching: { type: "string", description: "The text shown while a search is pending and no row is shown. Default Searching…." },
     enabled: { type: "(block) => boolean", description: "Whether the menu may open in block. Default: anywhere but in a code block." },
   }}
 />
@@ -134,7 +135,7 @@ export const tagsPlugin: Plugin = () => ({
 ### When the menu opens and closes
 
 - It opens when `char` is typed at a collapsed caret at the start of a text or after whitespace, as in Notion: `a@b.com` opens nothing. An IME that commits the trigger with more text (`@ad`) opens it with that query.
-- Typing at the query's end filters it: `items(query)` is asked again for each query. While a search is pending the menu keeps the previous query's rows (with none, it reads "Searching…"), and <kbd>Enter</kbd> waits for the answer and picks its first row: never a row of an older query. An older answer that arrives after a newer one is dropped.
+- Typing at the query's end filters it: `items(query)` is asked again for each query. While a search is pending the menu keeps the previous query's rows (with none, it reads the `searching` text, "Searching…"), and <kbd>Enter</kbd> waits for the answer and picks its first row: never a row of an older query. An older answer that arrives after a newer one is dropped.
 - It closes when the caret leaves the query, the selection expands, the trigger is deleted, the query starts with a space, or a query that matches nothing is followed by a space (`@zz ` is prose). A query that matches nothing shows the `empty` text. It does not open in a readonly view, and it closes when the view turns readonly.
 - The query range is anchored in the document, so a collaborator's edits elsewhere in the text do not break it.
 

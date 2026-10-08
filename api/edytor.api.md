@@ -392,6 +392,7 @@ export type BlockMenuColor = {
 ```ts
 // plugins/blockMenu/BlockMenuController.svelte.d.ts
 export declare class BlockMenuController {
+    #private;
     private edytor;
     private options;
     block: Block | null;
@@ -1400,6 +1401,9 @@ export type Labels = {
     find: FindLabels;
     suggestions: SuggestionsLabels;
     columns: ColumnsLabels;
+    page: PageLabels;
+    toc: TocLabels;
+    pageLink: PageLinkLabels;
 };
 ```
 
@@ -1540,6 +1544,7 @@ export type PageLinkPluginOptions = {
     item?: Snippet<[
         TriggerItemPayload<PageLinkItem>
     ]>;
+    labels?: PartialLabels<'pageLink'>;
 };
 ```
 
@@ -1555,6 +1560,8 @@ export type PagePluginOptions = {
         pageId: string;
         title?: string;
     } | null | undefined;
+    labels?: PartialLabels<'page'>;
+    keywords?: Partial<Record<string, string[]>>;
 };
 ```
 
@@ -2056,6 +2063,8 @@ export type TocHeadingLevel = (block: {
 // plugins/toc/toc.d.ts
 export type TocPluginOptions = {
     headingLevel?: TocHeadingLevel;
+    labels?: PartialLabels<'toc'>;
+    keywords?: Partial<Record<string, string[]>>;
 };
 ```
 
@@ -2140,6 +2149,7 @@ export type Trigger<T = any> = {
     ]>;
     name?: string;
     empty?: string;
+    searching?: string;
     enabled?: (block: Block) => boolean;
 };
 ```
@@ -2181,6 +2191,7 @@ export declare class TriggerMenuController<T = unknown> extends TextTriggerContr
     protected admits(block: Block): boolean;
     get name(): string;
     get empty(): string;
+    get searching(): string;
     labelOf: (item: T) => string;
     keyOf: (item: T) => string;
     optionId: (index: number) => string;
@@ -4708,6 +4719,12 @@ export type BlockMenuLabels = {
     menu: string;
     block: string;
     turnInto: string;
+    color: string;
+    textColor: string;
+    backgroundColor: string;
+    colors: Record<string, string>;
+    colorText: (color: string) => string;
+    colorBackground: (color: string) => string;
     copyLink: string;
     duplicate: string;
     moveUp: string;
@@ -4836,6 +4853,26 @@ export type MediaLabels = {
 };
 ```
 
+#### labels.d.ts#PageLabels
+
+```ts
+export type PageLabels = {
+    page: string;
+    untitled: string;
+};
+```
+
+#### labels.d.ts#PageLinkLabels
+
+```ts
+export type PageLinkLabels = {
+    menu: string;
+    searching: string;
+    noResults: string;
+    untitled: string;
+};
+```
+
 #### labels.d.ts#RichTextLabels
 
 ```ts
@@ -4845,6 +4882,9 @@ export type RichTextLabels = {
         heading1: string;
         heading2: string;
         heading3: string;
+        toggleHeading1: string;
+        toggleHeading2: string;
+        toggleHeading3: string;
         bulletedList: string;
         numberedList: string;
         todoList: string;
@@ -4900,6 +4940,16 @@ export type SuggestionsLabels = {
     retry: string;
     ctrl: string;
     escape: string;
+};
+```
+
+#### labels.d.ts#TocLabels
+
+```ts
+export type TocLabels = {
+    toc: string;
+    untitled: string;
+    empty: string;
 };
 ```
 

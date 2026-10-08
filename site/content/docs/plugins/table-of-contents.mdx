@@ -34,6 +34,14 @@ A click scrolls the heading to the top of the view, smoothly, and opens the clos
       type: "(block: { type: string; data: Record<string, unknown> }) => number | null",
       description: "Which blocks the table lists, and how deep (1 the outermost), else `null`. By default the rich text headings and toggle headings by their `data.level`: `h1` 1, `h2` 2, any other 3, as they are drawn.",
     },
+    labels: {
+      type: "PartialLabels<'toc'>",
+      description: "The block's words over the English ones: `toc` (the preset and the `nav`'s accessible name, \"Table of contents\"), `untitled` (an empty heading's entry) and `empty` (the hint with no heading). See [Localization](/docs/customization/localization).",
+    },
+    keywords: {
+      type: "Partial<Record<string, string[]>>",
+      description: "The slash keywords of `block.toc`, which replace its own.",
+    },
   }}
 />
 

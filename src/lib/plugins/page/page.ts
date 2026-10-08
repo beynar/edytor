@@ -1,4 +1,5 @@
 import type { Block } from '$lib/block/block.svelte.js';
+import { viewLabels, type PartialLabels } from '$lib/labels.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 
 /** The page plugin's options: how your app opens, names, links and creates pages. */
@@ -24,7 +25,14 @@ export type PagePluginOptions = {
 	 * it. Without it there is no such command; insert page blocks yourself.
 	 */
 	create?: () => string | { pageId: string; title?: string } | null | undefined;
+	/** The words the block and its command show, over the English ones. */
+	labels?: PartialLabels<'page'>;
+	/** The slash menu's keywords of the "Page" command (`page.new`), which replace its own. */
+	keywords?: Partial<Record<string, string[]>>;
 };
+
+/** Each view's page labels: the first page plugin listed claims them, as its kind. */
+export const pageLabels = viewLabels('page');
 
 /** A stored page id: a non-empty string of at most 256 characters (a room id's bounds), else `null`. */
 export const pageIdOf = (value: unknown): string | null =>
@@ -66,11 +74,18 @@ const escapeHtml = (value: string) =>
 export const pageHref = (options: PagePluginOptions, pageId: string | null) =>
 	(pageId && options.href && sanitizeLinkHref(options.href(pageId))) || undefined;
 
-/** A page block's HTML export: a paragraph naming the page, its title linked by `href`. */
-export const pageHtml = (data: Record<string, unknown> | undefined, options: PagePluginOptions) => {
+/**
+ * A page block's HTML export: a paragraph naming the page, its title linked
+ * by `href`, `untitled` without one.
+ */
+export const pageHtml = (
+	data: Record<string, unknown> | undefined,
+	options: PagePluginOptions,
+	untitled: string
+) => {
 	const pageId = pageIdOf(data?.pageId);
 	if (!pageId) return '';
-	const title = escapeHtml(pageTitleOf(data?.title) ?? 'Untitled');
+	const title = escapeHtml(pageTitleOf(data?.title) ?? untitled);
 	const href = pageHref(options, pageId);
 	const body = href ? `<a href="${escapeHtml(href)}">${title}</a>` : title;
 	return `<p data-edytor-page="${escapeHtml(pageId)}">${body}</p>`;

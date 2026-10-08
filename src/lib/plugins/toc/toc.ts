@@ -1,3 +1,5 @@
+import { viewLabels, type PartialLabels } from '$lib/labels.js';
+
 /**
  * A block's level in the table of contents (1 the outermost), or `null`
  * when it is not a heading: read from its kind and data.
@@ -7,6 +9,9 @@ export type TocHeadingLevel = (block: {
 	data: Readonly<Record<string, unknown>>;
 }) => number | null;
 
+/** Each view's table of contents labels: the first toc plugin listed claims them, as its kind. */
+export const tocLabels = viewLabels('toc');
+
 /** The table of contents plugin's options. */
 export type TocPluginOptions = {
 	/**
@@ -15,6 +20,10 @@ export type TocPluginOptions = {
 	 * any other 3, as they are drawn).
 	 */
 	headingLevel?: TocHeadingLevel;
+	/** The words the block and its preset show, over the English ones. */
+	labels?: PartialLabels<'toc'>;
+	/** The slash menu's keywords of the preset (`block.toc`), which replace its own. */
+	keywords?: Partial<Record<string, string[]>>;
 };
 
 /** The rich text headings' levels (`heading`, `toggle-heading`), as they draw them. */

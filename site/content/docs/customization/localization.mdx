@@ -4,7 +4,7 @@ description: Translate every word the editor's chrome shows or says, from the me
 icon: languages
 ---
 
-Every word the editor shows or says comes from a dictionary of labels: the menus, the toolbar, the handles' names, the empty image and media panels, the code header, the find bar, the suggestion bar, the placeholders and what screen readers hear. English is the default. To show another language, pass each plugin its `labels`, and the view its own:
+Every word the editor shows or says comes from a dictionary of labels: the menus, the toolbar, the handles' names, the empty image and media panels, the code header, the find bar, the suggestion bar, the page, table of contents and page link blocks, the placeholders and what screen readers hear. English is the default. To show another language, pass each plugin its `labels`, and the view its own:
 
 | Words | Where to pass them | Section of `Labels` |
 | --- | --- | --- |
@@ -12,7 +12,7 @@ Every word the editor shows or says comes from a dictionary of labels: the menus
 | Placeholders | `createRichTextPlaceholder(labels)`, as `<Edytor placeholder>` | `richText` (`placeholders`) |
 | The selection toolbar and the link card | `createToolbarPlugin({ labels })` | `toolbar` |
 | The slash and `+` menus, their section headings | `createSlashMenuPlugin({ labels })` | `slashMenu` |
-| The block menu | `createBlockMenuPlugin({ labels })` | `blockMenu` |
+| The block menu, its Turn into and Color flyouts | `createBlockMenuPlugin({ labels })` | `blockMenu` |
 | The `+` and grip of each block | `blockHandles={{ labels }}` or `createBlockHandlesPlugin({ labels })` | `blockHandles` |
 | The image block and its chrome | `createImagePlugin({ labels })` | `image` |
 | The embed, bookmark, file, video and audio blocks, the pasted-link menu | `createEmbedPlugin`, `createBookmarkPlugin`, `createFilePlugin`, `createVideoPlugin`, `createAudioPlugin` (`{ labels }`) | `media` |
@@ -20,9 +20,12 @@ Every word the editor shows or says comes from a dictionary of labels: the menus
 | The find bar | `createFindPlugin({ labels })` | `find` |
 | The suggestion bar | `createSuggestionsPlugin({ labels })` | `suggestions` |
 | The layout commands and the column resize bands | `createColumnsPlugin({ labels })` | `columns` |
+| The page block and its "Page" command | `createPagePlugin({ labels, keywords })` | `page` |
+| The table of contents block and its preset | `createTocPlugin({ labels, keywords })` | `toc` |
+| The `[[` page link menu and atom | `createPageLinkPlugin({ labels })` | `pageLink` |
 | Block move and delete announcements, a suggestion's default name | `<Edytor labels>` | `editor` |
 
-`labels` takes any entries of its section: the ones you leave out stay English, and so does an entry of a nested group (`placeholders`, `groups`, `colors`, a media kind) you leave out. A label that says something about a value is a function of it, so each language orders and inflects its own words: `movedUp: (what) => ...`, `columns: (count) => ...`, `fileSize: (bytes) => ...`.
+`labels` takes any entries of its section: the ones you leave out stay English, and so does an entry of a nested group (`kinds`, `placeholders`, `groups`, `colors`, a media kind) you leave out. A label that says something about a value is a function of it, so each language orders and inflects its own words: `movedUp: (what) => ...`, `columns: (count) => ...`, `fileSize: (bytes) => ...`.
 
 ```ts title="hints.ts" check
 import { createRichTextPlaceholder, createToolbarPlugin } from 'edytor';
@@ -71,6 +74,9 @@ export const fr: Labels = {
 			heading1: 'Titre 1',
 			heading2: 'Titre 2',
 			heading3: 'Titre 3',
+			toggleHeading1: 'Titre dépliant 1',
+			toggleHeading2: 'Titre dépliant 2',
+			toggleHeading3: 'Titre dépliant 3',
 			bulletedList: 'Liste à puces',
 			numberedList: 'Liste numérotée',
 			todoList: 'Liste de tâches',
@@ -140,7 +146,12 @@ export const fr: Labels = {
 		noResults: 'Aucun résultat',
 		close: 'Fermer le menu',
 		closeKey: 'échap',
-		groups: { 'Basic blocks': 'Blocs de base', Media: 'Médias', Layout: 'Mise en page' }
+		groups: {
+			'Basic blocks': 'Blocs de base',
+			'Advanced blocks': 'Blocs avancés',
+			Media: 'Médias',
+			Layout: 'Mise en page'
+		}
 	},
 	blockMenu: {
 		search: 'Rechercher une action…',
@@ -148,6 +159,23 @@ export const fr: Labels = {
 		menu: 'Actions du bloc',
 		block: 'Bloc',
 		turnInto: 'Transformer en',
+		color: 'Couleur',
+		textColor: 'Couleur du texte',
+		backgroundColor: 'Couleur de fond',
+		colors: {
+			default: 'Par défaut',
+			gray: 'Gris',
+			brown: 'Marron',
+			orange: 'Orange',
+			yellow: 'Jaune',
+			green: 'Vert',
+			blue: 'Bleu',
+			purple: 'Violet',
+			pink: 'Rose',
+			red: 'Rouge'
+		},
+		colorText: (color) => `Texte ${color.toLowerCase()}`,
+		colorBackground: (color) => `Fond ${color.toLowerCase()}`,
 		copyLink: 'Copier le lien du bloc',
 		duplicate: 'Dupliquer',
 		moveUp: 'Monter',
@@ -264,6 +292,21 @@ export const fr: Labels = {
 	columns: {
 		columns: (count) => `${count} colonnes`,
 		resize: 'Redimensionner les colonnes'
+	},
+	page: {
+		page: 'Page',
+		untitled: 'Sans titre'
+	},
+	toc: {
+		toc: 'Table des matières',
+		untitled: 'Sans titre',
+		empty: 'Ajoutez des titres pour créer une table des matières.'
+	},
+	pageLink: {
+		menu: 'Pages',
+		searching: 'Recherche…',
+		noResults: 'Aucun résultat',
+		untitled: 'Sans titre'
 	}
 };
 
@@ -277,9 +320,14 @@ export const frKeywords: Record<string, string[]> = {
 	'block.numbered-list-item': ['numéro', 'ol'],
 	'block.todo-item': ['tâche', 'case', 'todo'],
 	'block.toggle': ['dépliant', 'details'],
+	'block.toggle-heading1': ['dépliant', 'replier'],
+	'block.toggle-heading2': ['dépliant', 'replier'],
+	'block.toggle-heading3': ['dépliant', 'replier'],
 	'block.callout': ['note', 'astuce'],
 	'block.quote': ['citation', 'quote'],
-	'block.divider': ['séparateur', 'hr']
+	'block.divider': ['séparateur', 'hr'],
+	'block.toc': ['sommaire', 'plan', 'toc'],
+	'page.new': ['sous-page', 'nouvelle page', 'document', 'lien']
 };
 ```
 
@@ -297,7 +345,9 @@ Then give each plugin its section. Listing `createRichTextPlugin` and `createIma
 		createRichTextPlaceholder,
 		createRichTextPlugin,
 		createSlashMenuPlugin,
+		createPagePlugin,
 		createSuggestionsPlugin,
+		createTocPlugin,
 		createToolbarPlugin,
 		createVideoPlugin
 	} from 'edytor';
@@ -313,7 +363,9 @@ Then give each plugin its section. Listing `createRichTextPlugin` and `createIma
 		createCodePlugin({ labels: fr.code }),
 		createFindPlugin({ labels: fr.find }),
 		createSuggestionsPlugin({ labels: fr.suggestions }),
-		createColumnsPlugin({ labels: fr.columns })
+		createColumnsPlugin({ labels: fr.columns }),
+		createPagePlugin({ labels: fr.page, keywords: frKeywords }),
+		createTocPlugin({ labels: fr.toc, keywords: frKeywords })
 	];
 </script>
 
@@ -330,11 +382,11 @@ The view's own accessible name is yours to give (`aria-label`, `aria-labelledby`
 
 ## Slash keywords
 
-The slash menu finds a kind by its label and by its keywords. A translated label is found as it is: `/titre` finds "Titre 1". The English keywords stay unless you replace them: `keywords` takes, by command id, the keywords that replace a preset's own (list the English ones in it to keep them). The rich text plugin's command ids are `block.paragraph`, `block.heading1` to `block.heading3`, `block.bulleted-list-item`, `block.numbered-list-item`, `block.todo-item`, `block.toggle`, `block.callout`, `block.quote` and `block.divider`. The image, code, media and columns plugins take the same `keywords` option for theirs (`block.image`, `block.code`, `block.embed`, `block.bookmark`, `block.file`, `block.video`, `block.audio`, `columns.2` to `columns.5`).
+The slash menu finds a kind by its label and by its keywords. A translated label is found as it is: `/titre` finds "Titre 1". The English keywords stay unless you replace them: `keywords` takes, by command id, the keywords that replace a preset's own (list the English ones in it to keep them). The rich text plugin's command ids are `block.paragraph`, `block.heading1` to `block.heading3`, `block.toggle-heading1` to `block.toggle-heading3`, `block.bulleted-list-item`, `block.numbered-list-item`, `block.todo-item`, `block.toggle`, `block.callout`, `block.quote` and `block.divider`. The image, code, media, columns, page and table of contents plugins take the same `keywords` option for theirs (`block.image`, `block.code`, `block.embed`, `block.bookmark`, `block.file`, `block.video`, `block.audio`, `columns.2` to `columns.5`, `page.new`, `block.toc`).
 
 ## Section headings and colors
 
-A preset's `group` (`Basic blocks`, `Media`, `Layout`, or one of your own) is a key: the slash menu shows it through its `groups` labels, and a group with no entry as it is written. Write your own groups in your language, or map them in `groups`. The same holds for the toolbar's palette: `TOOLBAR_COLORS` names each color (`Red`), and the toolbar shows it through `colors`.
+A preset's `group` (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`, or one of your own) is a key: the slash menu shows it through its `groups` labels, and a group with no entry as it is written. Write your own groups in your language, or map them in `groups`. The same holds for the palettes: `TOOLBAR_COLORS` names each toolbar color (`Red`), and the toolbar shows it through its `colors`; the block menu's Color flyout names each block color by its `BLOCK_COLORS` name (`red`, and `default` for none) through its own `colors`, each row said by `colorText` or `colorBackground` ("Red text", "Red background").
 
 Code languages are named by the language list (`CODE_LANGUAGES`, or your `languages`); the code labels' `languages` replaces a label by language id (`{ plaintext: 'Texte brut' }`).
 
@@ -345,7 +397,7 @@ A custom `menu`, `item`, `toolbar` or `bar` snippet renders your words, but its 
 ## What is not localized
 
 - **Your document.** Labels translate the chrome, never the content: a document keeps the text people typed.
-- **Your own kinds, marks and commands.** Their `label`, `keywords` and `group` are what you write in their records: write them in your language, or build them from your own dictionary.
+- **Your own kinds, marks and commands.** Their `label`, `keywords` and `group` are what you write in their records: write them in your language, or build them from your own dictionary. So are your own [triggers](/docs/plugins/input-rules#triggers): their `name`, `empty` and `searching` texts.
 - **Key names on a Mac.** The shortcuts the menus show use the Mac's symbols (⌘, ⇧, ↵) there; elsewhere the `ctrl`, `shift` and key-name labels.
 - **Number and date formats** beyond what a label function formats: `fileSize` and the find bar's `count` are functions, so use `Intl.NumberFormat` there if you need it.
 - **Right-to-left chrome.** Blocks take their text's direction, but the menus and toolbars are laid out left to right.

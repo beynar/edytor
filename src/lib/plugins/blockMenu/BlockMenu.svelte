@@ -214,14 +214,14 @@
 				class="block-menu block-menu-flyout"
 				id={controller.flyoutId}
 				role="menu"
-				aria-label="Color"
+				aria-label={labels.color}
 				data-edytor-block-menu-flyout
 			>
 				<div class="block-menu-rows" role="presentation">
 					{#each controller.colors as color, index (color.id)}
 						{#if index === 0 || color.field !== controller.colors[index - 1]!.field}
 							<div class="block-menu-heading" role="presentation">
-								{color.field === 'color' ? 'Text color' : 'Background color'}
+								{color.field === 'color' ? labels.textColor : labels.backgroundColor}
 							</div>
 						{/if}
 						<button

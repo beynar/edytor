@@ -79,7 +79,7 @@
 			{/each}
 			{#if items.length === 0}
 				<div class="edytor-trigger-empty" data-testid="trigger-menu-empty">
-					{controller.loading ? 'Searching…' : controller.empty}
+					{controller.loading ? controller.searching : controller.empty}
 				</div>
 			{/if}
 		</div>

@@ -493,21 +493,23 @@
 					snippet: details,
 					...disclosure,
 					contentElement: (data) => headingLevel(data.level),
-					presets: (['h1', 'h2', 'h3'] as const).map((level) => {
-						const n = level.slice(1);
-						const hashes = '#'.repeat(Number(n));
-						return {
-							label: `Toggle heading ${n}`,
-							icon: `▸H${['₁', '₂', '₃'][Number(n) - 1]}`,
-							keywords: ['toggle', 'heading', 'collapse'],
-							data: { level },
-							markdownFrom: {
-								heading: ['> '],
-								toggle: [`${hashes} `],
-								'toggle-heading': [`${hashes} `]
-							}
-						};
-					}),
+					presets: presets(
+						'toggle-heading',
+						(['h1', 'h2', 'h3'] as const).map((level, index) => {
+							const hashes = '#'.repeat(index + 1);
+							return {
+								label: [kinds.toggleHeading1, kinds.toggleHeading2, kinds.toggleHeading3][index]!,
+								icon: `▸H${['₁', '₂', '₃'][index]}`,
+								keywords: ['toggle', 'heading', 'collapse'],
+								data: { level },
+								markdownFrom: {
+									heading: ['> '],
+									toggle: [`${hashes} `],
+									'toggle-heading': [`${hashes} `]
+								}
+							};
+						})
+					),
 					// HTML import: a `details` whose summary holds an h1–h3 (its own export).
 					parse: (el) => {
 						if (el.localName !== 'details') return;

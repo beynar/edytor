@@ -44,7 +44,7 @@ Each page is a document of its own, one [room](/docs/server/room) per page (see 
     },
     title: {
       type: "(pageId: string) => string | null | undefined | Promise<string | null | undefined>",
-      description: "The page's title now. Read from reactive state, the block follows renames. `null` or `undefined` while unknown: the block shows the title it stores, else \"Untitled\".",
+      description: "The page's title now. Read from reactive state, the block follows renames. `null` or `undefined` while unknown: the block shows the title it stores, else the `untitled` label (\"Untitled\").",
     },
     href: {
       type: "(pageId: string) => string",
@@ -53,6 +53,14 @@ Each page is a document of its own, one [room](/docs/server/room) per page (see 
     create: {
       type: "() => string | { pageId: string; title?: string } | null | undefined",
       description: "Create a page and answer its id (and title). Adds the \"Page\" command; without it there is none.",
+    },
+    labels: {
+      type: "PartialLabels<'page'>",
+      description: "The block's and the command's words over the English ones: `page` (the command, \"Page\") and `untitled` (a page without a title, also its plain text and HTML export, \"Untitled\"). See [Localization](/docs/customization/localization).",
+    },
+    keywords: {
+      type: "Partial<Record<string, string[]>>",
+      description: "The slash keywords of `page.new`, which replace its own.",
     },
   }}
 />

@@ -52,23 +52,25 @@ export type BlockMenuAction = {
 export type BlockMenuColor = {
 	/** `color.<name>` or `background.<name>` (`color.default`, `background.default`). */
 	id: string;
-	/** Notion's label: "Red text", "Red background", "Default text". */
+	/** Its words in the menu's labels (`colorText`, `colorBackground`): "Red text", "Red background", "Default text". */
 	label: string;
 	field: BlockColorField;
 	value: (typeof BLOCK_COLORS)[number] | null;
 };
 
-const capital = (name: string) => name.charAt(0).toUpperCase() + name.slice(1);
-
-/** The Color flyout's rows: the text colours, then the backgrounds, each from the default. */
-const COLOR_ROWS: BlockMenuColor[] = (['color', 'background'] as const).flatMap((field) =>
-	[null, ...BLOCK_COLORS].map((value) => ({
-		id: `${field}.${value ?? 'default'}`,
-		label: `${capital(value ?? 'default')} ${field === 'color' ? 'text' : 'background'}`,
-		field,
-		value
-	}))
-);
+/** The Color flyout's rows in `labels`: the text colours, then the backgrounds, each from the default. */
+const colorRows = (labels: BlockMenuLabels): BlockMenuColor[] =>
+	(['color', 'background'] as const).flatMap((field) =>
+		[null, ...BLOCK_COLORS].map((value) => {
+			const name = labels.colors[value ?? 'default'] ?? value ?? 'default';
+			return {
+				id: `${field}.${value ?? 'default'}`,
+				label: field === 'color' ? labels.colorText(name) : labels.colorBackground(name),
+				field,
+				value
+			};
+		})
+	);
 
 export class BlockMenuController {
 	/** The block whose grip opened the menu. */
@@ -90,12 +92,15 @@ export class BlockMenuController {
 
 	/** The words the menu shows (the plugin's `labels`): read them in a custom `menu`. */
 	readonly labels: BlockMenuLabels;
+	/** The Color flyout's rows, in `labels`. */
+	readonly #colors: BlockMenuColor[];
 
 	constructor(
 		private edytor: Edytor,
 		private options: BlockMenuOptions = {}
 	) {
 		this.labels = labelsWith('blockMenu', options.labels);
+		this.#colors = colorRows(this.labels);
 	}
 
 	get isOpen() {
@@ -141,7 +146,7 @@ export class BlockMenuController {
 
 	/** The Color flyout's rows: Notion's text colours, then its backgrounds. */
 	get colors(): BlockMenuColor[] {
-		return COLOR_ROWS;
+		return this.#colors;
 	}
 
 	/** Whether every block the flyout paints holds `row`'s colour (its ✓). */
@@ -184,7 +189,7 @@ export class BlockMenuController {
 			},
 			{
 				id: 'color',
-				label: 'Color',
+				label: labels.color,
 				icon: 'action.color',
 				submenu: 'color',
 				isEnabled: () => this.colorable.length > 0

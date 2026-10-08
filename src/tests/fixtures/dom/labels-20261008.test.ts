@@ -5,7 +5,8 @@
  *
  * - each chrome (slash menu, toolbar, block menu, handles, image, media,
  *   code header, find bar, suggestion bar, columns, announcements,
- *   placeholders, the to-do checkbox) names itself in its plugin's labels;
+ *   placeholders, the to-do checkbox, the block menu's Color flyout, the
+ *   page and table of contents blocks) names itself in its plugin's labels;
  * - the slash keywords of `createRichTextPlugin({ keywords })` replace the
  *   English ones;
  * - a listed `createRichTextPlugin` replaces the default rich text plugin;
@@ -226,6 +227,45 @@ describe('each chrome in its labels', () => {
 		expect(one('[data-testid="block-menu-delete"]').dataset.hint).toBe(fr.blockMenu.deleteKey);
 	});
 
+	it("the block menu's Color flyout: its name, sections and rows", async () => {
+		const { edytor, editor } = await setup([p('a', 'texte')]);
+		await activate(edytor, editor, 'a');
+		const row = one('[data-testid="block-menu-color"]');
+		expect(row.textContent).toBe(fr.blockMenu.color);
+		row.dispatchEvent(new MouseEvent('mouseenter'));
+		await flushDomUpdates();
+		expect(one('[data-edytor-block-menu-flyout]').getAttribute('aria-label')).toBe(
+			fr.blockMenu.color
+		);
+		expect(texts('[data-edytor-block-menu-flyout] .block-menu-heading')).toEqual([
+			fr.blockMenu.textColor,
+			fr.blockMenu.backgroundColor
+		]);
+		expect(one('[data-testid="block-menu-color.red"]').textContent).toBe(
+			fr.blockMenu.colorText(fr.blockMenu.colors.red!)
+		);
+		expect(one('[data-testid="block-menu-background.default"]').textContent).toBe(
+			fr.blockMenu.colorBackground(fr.blockMenu.colors.default!)
+		);
+	});
+
+	it('the page and table of contents blocks: untitled, the empty hint, their presets', async () => {
+		const { edytor, editor } = await setup([
+			{ id: 'g', type: 'page', data: { pageId: 'p1' } },
+			{ id: 'n', type: 'toc' },
+			p('a')
+		]);
+		expect(one('[data-edytor-page-title]').textContent).toBe(fr.page.untitled);
+		expect(one('[data-edytor-toc-empty]').textContent).toBe(fr.toc.empty);
+		expect(one('[data-edytor-id="n"]').getAttribute('aria-label')).toBe(fr.toc.toc);
+		await caretIn(edytor, 'a');
+		await type(editor, '/');
+		const rows = texts('[data-testid="slash-menu-item"]');
+		expect(rows).toContain(fr.page.page);
+		expect(rows).toContain(fr.toc.toc);
+		expect(texts('.slash-heading')).toContain(fr.slashMenu.groups['Advanced blocks']);
+	});
+
 	it('the handles: named after the kind, in the labels', async () => {
 		await setup([{ id: 'h', type: 'heading', data: { level: 'h1' }, content: [{ text: 'T' }] }]);
 		expect(one('[data-testid="block-handle"][data-block-id="h"]').getAttribute('aria-label')).toBe(
@@ -363,6 +403,8 @@ describe('no English reaches the page', () => {
 				data: { language: 'plaintext' },
 				children: [{ id: 'l', type: 'codeLine', content: [{ text: 'x' }] }]
 			},
+			{ id: 'g', type: 'page', data: { pageId: 'p1' } },
+			{ id: 'n', type: 'toc' },
 			p('z')
 		]);
 		const seen: string[] = [];
@@ -382,6 +424,9 @@ describe('no English reaches the page', () => {
 		await type(editor, 'zzzz');
 		look();
 		await activate(edytor, editor, 'a');
+		look();
+		one('[data-testid="block-menu-color"]').dispatchEvent(new MouseEvent('mouseenter'));
+		await flushDomUpdates();
 		look();
 		findController(edytor)!.open('monde');
 		await flushDomUpdates();

@@ -21,6 +21,7 @@
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindCrdt, createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
+import { hasDeleteMark, hasWithdrawMark } from '../../../lib/crdt/schema.js';
 import { mulberry32 } from '../harness/rng.js';
 import { wellFormedProblems, type MergeRecord } from '../harness/assert/well-formed.js';
 import {
@@ -383,7 +384,13 @@ export const wellFormed = (
 			doc && (() => hiddenUnderDeleted(doc, (id: string) => ed.runsView.dissolved(id))),
 		reportedKind: ctx.reported,
 		layouts: layoutKindsOf(ctx.layouts ?? ctx.semantics),
-		tables: tableKindsOf(ctx.layouts ?? ctx.semantics)
+		tables: tableKindsOf(ctx.layouts ?? ctx.semantics),
+		withdrawn:
+			doc &&
+			((id: string) => {
+				const node = ed.model.blockNodeOf(doc, id);
+				return node != null && hasWithdrawMark(node) && !hasDeleteMark(node);
+			})
 	});
 	const ids = new Set<string>();
 	const atoms = new Set<string>();

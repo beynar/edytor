@@ -21,6 +21,7 @@ import { DEAD, ownedLength, type TextEngine } from '../text/model.js';
 import type { DisplayRoles, RunView } from '../text/runs.js';
 import { holdsPending } from '../structs.js';
 import { itemIds, readData } from '../data.js';
+import { unlistedOrder } from '../tables.js';
 import { cloneJsonSafe, type JSONBlock } from '../../utils/json.js';
 import { ref } from './plan.js';
 import type { BlockRole, DataTarget, JsonObj, OrderPolicy } from './types.js';
@@ -249,9 +250,11 @@ export const docReads = (c: DocBase) => {
 	/**
 	 * `table` as a grid (`table.pad`): its column ids in order and each shown
 	 * row's cells by column, `null` where the row shows none (a padded cell,
-	 * which the first edit in it creates). A table listing no columns has
-	 * as many as its widest row, by position. `null` for a block that is no
-	 * shown table.
+	 * which the first edit in it creates). The listed columns come first,
+	 * then any column a shown cell names that the table no longer lists (a
+	 * withdrawn cell holding another writer's text, `table.cell`). A table
+	 * listing no columns has as many as its widest row, by position. `null`
+	 * for a block that is no shown table.
 	 */
 	const tableGrid = (
 		table: BlockId
@@ -271,17 +274,21 @@ export const docReads = (c: DocBase) => {
 				}))
 			};
 		}
-		const columns = listed.map((c) => c.id);
+		const ids = new Set(listed.map((c) => c.id));
+		const shown = rows.map((id) => {
+			const by = new Map<string, BlockId>();
+			for (const cell of childrenIds(id)) {
+				const column = blockDataOf(cell)?.column;
+				if (typeof column === 'string' && !by.has(column)) by.set(column, cell);
+			}
+			return { id, by };
+		});
+		// A column the table shows but no longer lists (a withdrawn cell's, `table.cell`): after them.
+		const unlisted = shown.flatMap(({ by }) => [...by.keys()].filter((c) => !ids.has(c)));
+		const columns = [...ids, ...unlistedOrder(unlisted)];
 		return {
 			columns,
-			rows: rows.map((id) => {
-				const by = new Map<string, BlockId>();
-				for (const cell of childrenIds(id)) {
-					const column = blockDataOf(cell)?.column;
-					if (typeof column === 'string' && !by.has(column)) by.set(column, cell);
-				}
-				return { id, cells: columns.map((c) => by.get(c) ?? null) };
-			})
+			rows: shown.map(({ id, by }) => ({ id, cells: columns.map((c) => by.get(c) ?? null) }))
 		};
 	};
 

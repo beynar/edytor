@@ -712,6 +712,16 @@ conflict matrix.
   three engines.
 - Effort: 15 to 20 d. The largest single unit; can be split into model (8 d), view and keys
   (5 d), menus and clipboard (3 d), fuzz (2 d).
+- Outcome (deviations, decided): column order is data (`data.columns`, each cell naming its
+  column) rather than column ranks, and padding is the view's (`tableGrid` reads `null`, the
+  first edit fills the cell) rather than the index's. The block menu rows act at the cell the
+  caret was last in (else the last row and column); moving a row or a column stays in the
+  grips' menus. The column resize band is the table plugin's own (`plugins/table/chrome`),
+  not the columns plugin's: a columns band resizes a column block and writes its `width`,
+  while a table column is an entry of the table's `data.columns`, and the columns plugin is
+  optional. Undoing a column insert shows a peer's text in its column after the listed ones
+  (`table.conc.column-undo`); a column delete racing another peer's adoption of an unlisted
+  table is a residual (`table.conc.adopt`).
 
 **WU-31: block colours and toggle headings (F10)**
 

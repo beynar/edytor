@@ -53,12 +53,17 @@ const nativeBlock = (page: Page) =>
 const box = async (page: Page, id: string) =>
 	(await page.locator(`[data-edytor-id="${id}"]`).first().boundingBox())!;
 
-/** Click at the end of a cell's text: the caret lands there. */
+/**
+ * Click at the end of a cell's text: the caret lands there. The click is
+ * adopted before the next key (Chromium may deliver its `selectionchange`
+ * after a key pressed at once, which then acts from the caret before it).
+ */
 const clickEnd = async (page: Page, id: string) => {
 	const text = page.locator(`[data-edytor-id="${id}"] [data-edytor-text]`).first();
 	const rect = (await text.boundingBox())!;
 	await page.mouse.click(rect.x + rect.width - 1, rect.y + rect.height / 2);
 	await expect.poll(() => nativeBlock(page)).toBe(id);
+	await expect.poll(async () => (await caret(page)).block).toBe(id);
 	await page.keyboard.press('End');
 	await expect
 		.poll(() => caret(page))
@@ -140,17 +145,81 @@ test.describe('table: keys in a cell', () => {
 	test('ArrowDown and ArrowUp go down and up the column', async ({ page }) => {
 		await open(page);
 		await clickEnd(page, 'A');
+		await page.keyboard.press('Home');
+		await expect.poll(() => caret(page)).toEqual({ block: 'A', offset: 0 });
 		await page.keyboard.press('ArrowDown');
-		await expect.poll(() => caret(page)).toEqual({ block: 'C', offset: 5 });
+		await expect.poll(() => caret(page)).toEqual({ block: 'C', offset: 0 });
 		await page.keyboard.press('ArrowUp');
-		await expect.poll(() => caret(page)).toEqual({ block: 'A', offset: 5 });
+		await expect.poll(() => caret(page)).toEqual({ block: 'A', offset: 0 });
 		await page.keyboard.type('x');
 		await expect
 			.poll(() => grid(page))
 			.toEqual([
-				['alphax', 'beta'],
+				['xalpha', 'beta'],
 				['gamma', 'delta']
 			]);
+	});
+
+	test('a wrapped cell: the arrows move through its lines, and leave it only from its edge lines', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		await clickEnd(page, 'C');
+		await page.keyboard.type(' and then a long sentence that wraps over several lines here');
+		/** The offsets where `id`'s line boxes start (the first at 0), from its characters' boxes. */
+		const starts = () =>
+			page.evaluate(() => {
+				const text = document.querySelector('[data-edytor-id="C"] [data-edytor-text]')!;
+				const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+				const range = document.createRange();
+				const out: number[] = [];
+				let top = -Infinity;
+				let at = 0;
+				for (let leaf = walker.nextNode(); leaf; leaf = walker.nextNode()) {
+					const length = (leaf as CharacterData).length;
+					for (let i = 0; i < length; i++) {
+						range.setStart(leaf, i);
+						range.setEnd(leaf, i + 1);
+						const rect = range.getClientRects()[0];
+						if (rect && rect.top > top + rect.height / 2) {
+							out.push(at + i);
+							top = rect.top;
+						}
+					}
+					at += length;
+				}
+				return out;
+			});
+		const lines = await starts();
+		expect(lines.length).toBeGreaterThan(2);
+		// ArrowUp from the end: it stays in the cell, line by line, until its first line.
+		let presses = 0;
+		let last = await caret(page);
+		for (; presses < 20; presses++) {
+			await page.keyboard.press('ArrowUp');
+			await expect.poll(() => caret(page)).not.toEqual(last);
+			const now = await caret(page);
+			if (now.block !== 'C') break;
+			expect(now.offset).toBeLessThan(last.offset);
+			last = now;
+		}
+		expect((await caret(page)).block).toBe('A');
+		expect(presses).toBeGreaterThanOrEqual(lines.length - 1);
+		// It left from the first line (an offset at its end is on it too).
+		expect(last.offset).toBeLessThanOrEqual(lines[1]!);
+		// ArrowDown from `A`: the first line of `C`, then the next one, still in `C`.
+		await page.keyboard.press('ArrowDown');
+		await expect.poll(async () => (await caret(page)).block).toBe('C');
+		const first = await caret(page);
+		expect(first.offset).toBeLessThanOrEqual(lines[1]!);
+		await page.keyboard.press('ArrowDown');
+		await expect.poll(async () => (await caret(page)).offset).toBeGreaterThan(first.offset);
+		const second = await caret(page);
+		expect(second.block).toBe('C');
+		expect(second.offset).toBeGreaterThanOrEqual(lines[1]!);
+		expect(second.offset).toBeLessThanOrEqual(lines[2]!);
+		issues.assertClean();
 	});
 });
 

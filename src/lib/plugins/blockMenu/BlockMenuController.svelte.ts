@@ -206,9 +206,22 @@ export class BlockMenuController {
 						}
 					]
 				: []),
-			// The kind's own rows, on its block alone (a table's header switches).
+			// The kind's own rows, on its block alone (a table's rows and switches). A
+			// switch keeps the menu open; any other row closes it, the caret its
+			// action placed kept (else the menu's caret returns).
 			...(blocks.length === 1
-				? (block.definition.menu?.(block) ?? []).map((row) => ({ ...row, icon: row.icon ?? '' }))
+				? (block.definition.menu?.(block) ?? []).map((row) => ({
+						...row,
+						icon: row.icon ?? '',
+						run:
+							row.checked === undefined
+								? () => {
+										const before = this.edytor.selection.value;
+										row.run();
+										this.close(this.edytor.selection.value === before);
+									}
+								: row.run
+					}))
 				: []),
 			{
 				id: 'duplicate',

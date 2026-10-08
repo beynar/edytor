@@ -732,6 +732,7 @@ export class Edytor {
 	/**
 	 * The placeholder block `id` shows: its cell has one empty
 	 * text and no live composition in it; a function answers per block.
+	 * A table's cell (by its role, `table.*`) shows none, as in Notion.
 	 * @internal
 	 */
 	placeholderAt = (id: string): string | null => {
@@ -739,6 +740,7 @@ export class Edytor {
 		const placeholder = this.placeholder;
 		if (!placeholder || !cell || !placeholderOf(cell, this.composition.host?.parent.id === id))
 			return null;
+		if (this.facade.isTableCell(id)) return null;
 		if (typeof placeholder === 'string') return placeholder;
 		const { type, data = {} } = cell;
 		const focused = this.idToBlock.block(id).focused;

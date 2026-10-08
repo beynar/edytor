@@ -110,7 +110,7 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
     },
     menu: {
       type: "(block: Block) => KindMenuAction[]",
-      description: "Rows the block menu adds for a block of this kind opened alone, after Color: `{ id, label, icon?, checked?, isEnabled?, run }`. A row with `checked` is a switch (`menuitemcheckbox`), like a table's Header row; `run` runs it (the menu stays open).",
+      description: "Rows the block menu adds for a block of this kind opened alone, after Color: `{ id, label, icon?, checked?, isEnabled?, run }`. A row with `checked` is a switch (`menuitemcheckbox`), like a table's Header row: `run` runs it and the menu stays open. Any other row closes the menu after `run`: a caret its action placed stays, else the menu gives its caret back (a table's Insert row below).",
     },
     presets: {
       type: "KindPreset[]",

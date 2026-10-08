@@ -1638,7 +1638,8 @@ Pins: `src/tests/crdt/arch-v2/table.test.ts` (each row sequential,
 concurrent with display equality across replicas, and undone), the
 `table-shape` well-formed check (a displayed table holds displayed rows
 only, each displayed row cells only, one per listed column at most, in the
-table's column order; no row or cell displays outside its table), held by
+table's column order, then withdrawn cells of unlisted columns; no row or
+cell displays outside its table), held by
 the p1 harness and the corpus's `tables` lane.
 
 `T` below is `P, T:table{columns: [c1, c2]}[R1:tableRow[A:c1, B:c2],
@@ -1669,7 +1670,9 @@ A row's cells display in the order of their columns in the table's
 array only (`table.move-column`), and a row a peer inserts meanwhile shows
 its cells in the new order. A table that lists no columns (JSON written by
 hand) shows each row's cells in their placement order; the first column op
-lists them (by position) and names each cell's column, in its plan.
+lists them (by position, ids `c1`, `c2`, …, as `tableBlock` names them, so
+two peers' concurrent adoptions write the same array items and cells'
+columns: `table.conc.adopt`) and names each cell's column, in its plan.
 
 ### `table.cell` — a cell displays in a row of a table, once per listed column (read)
 
@@ -1679,7 +1682,14 @@ position, then block id); otherwise it does not display, with its text
 (dissolved, not deleted). So a cell of a deleted column a peer adds to a
 new row (`table.conc.row-insert`), a cell a peer adds to a row another
 peer deletes (promoted out of it, outside any row), and a second cell for
-one column (`table.conc.fill-twice`) do not display.
+one column (`table.conc.fill-twice`) do not display. One exception keeps
+`hist.undo.withdraw`: a cell withdrawn by an undo (the undo of a column
+insert, which also takes the column out of `data.columns`) that holds
+another writer's text displays for its unlisted column, after the listed
+ones (the unlisted columns in one order, a hash of the id then the id:
+`unlistedRank`), first per column; its other rows are padded there
+(`table.pad`), and the column goes once that text does
+(`table.conc.column-undo`).
 
 ### `table.row` — no empty row, no row outside a table (read)
 
@@ -1692,8 +1702,9 @@ A row that displays no cell for a listed column (a peer's row inserted
 while a column was) is shown with an empty placeholder in that column
 (`tableGrid`: `null` there). The placeholder is the view's, never a block:
 the first press or edit in it creates its cell (`fillTableCell(row,
-column)`, one plan) and places the caret there. No replica writes a cell
-for having seen it missing.
+column)`, one plan) and places the caret there; in a column shown unlisted
+(`table.cell`) the same plan lists the column again, last. No replica
+writes a cell for having seen it missing.
 
 ### `table.insert-row` — `insertTableRow(table, index)` (write)
 
@@ -1715,9 +1726,12 @@ every row the table displays, one plan: `insertTableColumn(T, 1)` gives
 
 ### `table.delete-column` — `deleteTableColumn(table, column)` (write)
 
-The column (by id or position) leaves `data.columns` and every displayed
-cell of it is deleted, one plan; deleting the last column deletes the table
+The column (by id or position among the grid's) leaves `data.columns`
+(every stored entry naming it, by item id) and every displayed cell of it
+is deleted, one plan; deleting the last column deletes the table
 (`deleteTableColumn(T, 'c2')` gives `R1[A], R2[C]`; then `'c1'` gives `P, Z`).
+A column shown unlisted (`table.cell`) loses its cells; `moveTableColumn`
+refuses it.
 
 ### `table.move-column` — `moveTableColumn(table, column, to)` (write)
 
@@ -1735,7 +1749,9 @@ gives `T[R2, R1]`.
 `data.headerRow`/`data.headerColumn` (booleans) and
 `data.columns[i].width` (pixels) are data patches of the table
 (`patchData`): per-leaf last writer wins, a width written into a column a
-peer deletes is dropped with it.
+peer deletes is dropped with it. The view writes a width on the column's
+first stored entry by its item id (`~…`), never by a position in the
+deduplicated list, so an extra entry the array holds never takes it.
 
 ### `table.merge` — nothing merges into or out of a cell (write, keys)
 
@@ -1754,7 +1770,11 @@ covers in each cell it crosses and removes no cell or row: nothing merges
 across a cell's edge, and the caret lands at the range's start. Blocks
 outside the table go as `del.range.*` says (the head keeps its prefix, the
 tail its suffix, nothing merges into a cell); a table wholly between the
-range's ends goes whole. Typing over such a range is the same delete, then
+range's ends goes whole. An ancestor of the range's end that comes after
+its start (a toggle or callout header holding the table, or a block whose
+child the range ends in) stays, as a block, and loses its text: the range
+covers it (`P, G"header"[T…]`: `deleteRange(P@0, A@2)` empties `P` and
+`G`; `T, G"header"[K"kid"]`: `deleteRange(D@1, K@1)` gives `G""[K"id"]`). Typing over such a range is the same delete, then
 the text at the start (`del.range.replace`).
 
 ### `table.paste` — a flow into a cell joins its text (write)
@@ -1770,13 +1790,28 @@ would not display.
 ### `table.keys` — Tab, arrows, Enter in a cell (view)
 
 Tab moves the caret to the end of the next cell in reading order (row by
-row), Shift+Tab to the end of the previous one (in the first cell it stays);
-Tab in the last cell inserts a row after it (Notion) and goes to its first
-cell. ArrowUp on a cell's first line goes to
-the same column's cell in the row above (above the table: the line before
+row), Shift+Tab to the end of the previous one (in the first cell the key
+is claimed and the selection stays as it is); Tab in the last cell inserts
+a row after it (Notion) and goes to its first cell. ArrowUp on a cell's
+first line goes to the same column's cell in the row above, on its last
+line nearest the caret's x (above the table: the browser's line before
 it), ArrowDown on its last line to the row below (below the table: the
-line after it); Left and Right cross cells in reading order. Nothing nests
-or outdents in a table: Tab never nests a cell.
+line after it). A line is a line box: in a wrapped cell the browser moves
+the caret through the other lines; an offset where a line wraps counts on
+the line away from the edge, so a doubt leaves the key to the browser
+(without a layout, the lines are the line breaks). Left and Right cross
+cells in reading order. Nothing nests or outdents in a table: Tab never
+nests a cell. An empty cell shows no placeholder (its role, whatever the
+editor's placeholder).
+
+### `table.menu` — the block menu's rows (view)
+
+The table's block menu inserts a row above or below, a column left or
+right, and deletes a row or a column, at the cell the caret was last in
+(the grip that opens the menu keeps it; with no caret in the table, its
+last row and column); an insert puts the caret in the new cell and closes
+the menu. Then the Header row and Header column switches (the menu stays
+open). Each is the table command of the grips' menus, one undo step.
 
 ### `table.conc.row-insert` — a row insert racing a column delete
 
@@ -1800,6 +1835,26 @@ display (`table.cell`).
 
 Ada moves `c1` after `c2` while Bob inserts a row: every row, Bob's
 included, shows `c2`'s cell then `c1`'s (`table.columns`).
+
+### `table.conc.column-undo` — undoing a column insert a peer typed in
+
+Ada inserts a column after `c1`, Bob types `BOB` in its `R1` cell, Ada
+undoes (before or after Bob's text reaches her): the undo withdraws the
+cells it created and takes the column out of `data.columns`; the `R1`
+cell holds Bob's text, so it displays, its column shown last and padded in
+`R2` (`T{c1,c2,NEW}[R1[A,B,NEW"BOB"],R2[C,D,_]]`, `table.cell`). Ada's redo
+lists the column where it was (`R2`'s cell back); Bob deleting his text
+removes the column from the display; filling its padded cell lists it
+again, last; deleting it deletes Bob's cell.
+
+### `table.conc.adopt` — column ops racing on a table listing no columns
+
+Both peers adopt the same columns (`c1`, `c2`, …, the same array items),
+so two concurrent column inserts give one column each beside them. A
+column delete racing another column op of the adopting peer is the
+residual: the other peer's adoption writes the deleted column's entry
+again (a delete never names an item it did not see), so the column stays
+listed, its cells deleted and padded in every row.
 
 ### `table.conc.fill-twice` — two peers fill one padded cell (residual)
 

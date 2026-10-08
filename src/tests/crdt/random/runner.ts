@@ -1050,7 +1050,8 @@ export const runSchedule = (
 					hiddenUnderDeleted(p.doc, ops.dissolved && ((id) => ops.dissolved!(p, id))),
 				reportedKind: ops.reportedKind && ((id) => ops.reportedKind!(p, id)),
 				layouts: ops.layouts,
-				tables: ops.tables
+				tables: ops.tables,
+				withdrawn: ops.withdrawn && ((id) => ops.withdrawn!(p, id))
 			}).map((x) => `${p.name}: ${x}`);
 		});
 	let firstIllFormed: { step: number; problems: string[] } | null = null;

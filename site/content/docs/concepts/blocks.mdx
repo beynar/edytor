@@ -107,7 +107,7 @@ A kind whose record says `table: true` is a **table**, like the table plugin's `
 The document shows a table by its role, on every replica, whatever a race stored:
 
 - a row shows its cells in the table's column order;
-- a cell shows only in a row of a table, for a listed column, once;
+- a cell shows only in a row of a table, for a listed column, once (a cell an undo withdrew while it holds another person's text still shows, its column after the listed ones);
 - a row shows only in a table and while it shows a cell, a table while it shows a row;
 - a row showing no cell for a column is padded there by the view, and the first edit there creates the cell.
 

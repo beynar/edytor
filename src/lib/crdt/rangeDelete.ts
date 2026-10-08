@@ -225,15 +225,14 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 	 * loses the text it covers and stays, with its row; the ends keep what
 	 * lies outside the range, merging nothing; any other block between the
 	 * ends goes (a table wholly between them whole), but the ancestors of
-	 * the end; the caret lands at the start.
+	 * the end, which stay and lose their text (the range covers it: they
+	 * come after the start in reading order); the caret lands at the start.
 	 */
 	const inTables = (s: DocPosition, e: DocPosition, view: RangeView): Prepared => {
 		const { ids, at } = c.order();
 		const [S, E] = [s.block, e.block];
-		const kept = new Set([...c.ancestorsOf(E), ...c.ancestorsOf(S)]);
-		const between = ids
-			.slice(at.get(S)! + 1, at.get(E)!)
-			.filter((id) => !view.hidden?.(id) && !kept.has(id));
+		const kept = new Set(c.ancestorsOf(E));
+		const between = ids.slice(at.get(S)! + 1, at.get(E)!).filter((id) => !view.hidden?.(id));
 		const writes: PlanStep[] = [];
 		const lenS = c.displayLength(S);
 		if (lenS > s.offset)
@@ -242,8 +241,8 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 		const doomed = new Set<BlockId>();
 		for (const id of between) {
 			const table = c.tableOf(id);
-			if (table !== null && (table === tableS || table === tableE)) {
-				const len = c.isTableCell(id) ? c.displayLength(id) : 0;
+			if (kept.has(id) || (table !== null && (table === tableS || table === tableE))) {
+				const len = c.isTableCell(id) || kept.has(id) ? c.displayLength(id) : 0;
 				if (len > 0) writes.push({ op: 'deleteText', id, offset: 0, length: len });
 			} else doomed.add(id);
 		}

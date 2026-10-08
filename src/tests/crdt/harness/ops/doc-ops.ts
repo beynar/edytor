@@ -20,6 +20,7 @@ import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../../lib/crdt/edytor-doc.js';
 import type { Peer } from '../peer-set.js';
 import type { CrdtOps } from './crdt-ops.js';
+import { hasDeleteMark, hasWithdrawMark } from '../../../../lib/crdt/schema.js';
 import {
 	expectedProjectedIds,
 	locateTagAtoms,
@@ -221,6 +222,10 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 			dissolved: (peer, id) => ed(peer).runsView.dissolved(id),
 			...(tables.size > 0 && {
 				tables,
+				withdrawn: (peer, id) => {
+					const node = ed(peer).model.blockNodeOf(peer.doc, id);
+					return node != null && hasWithdrawMark(node) && !hasDeleteMark(node);
+				},
 				tableOf: (peer, id) => {
 					const f = ed(peer);
 					const table = f.tableOf(id);

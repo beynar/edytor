@@ -1,16 +1,24 @@
 <script module lang="ts">
 	import './table.css';
-	import type { BlockSnippetPayload, BlockView, Plugin } from '$lib/plugins.js';
+	import type { BlockSnippetPayload, BlockView, KindMenuAction, Plugin } from '$lib/plugins.js';
+	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { tableKinds } from '$lib/crdt/semantics.js';
-	import { tableBlock } from '$lib/crdt/tables.js';
+	import { tableBlock, unlistedOrder } from '$lib/crdt/tables.js';
 	import { onPress } from '$lib/events/onFocus.js';
 	import { keywordsOf, labelsWith, viewLabels } from '$lib/labels.js';
 	import TableChromeLayer from './TableChrome.svelte';
 	import { TableChrome } from './chrome.svelte.js';
 	import {
 		caretCell,
+		deleteColumn,
+		deleteRows,
 		fillCell,
+		gridOf,
+		insertColumn,
+		insertRow,
+		positionOf,
+		tableOf,
 		tabFrom,
 		toggleHeader,
 		verticalFrom,
@@ -36,15 +44,30 @@
 		return { cell, row, table };
 	};
 
-	/** The column ids `table`'s rows show, read from the cells (reactive): listed, else by position. */
+	/**
+	 * The column ids `table`'s rows show, read from the cells (reactive), as
+	 * the document's grid has them (`facade.tableGrid`): the listed ones
+	 * (the first entry of an id), then any a shown cell names that the
+	 * table no longer lists (`table.cell`); else by position.
+	 */
 	const columnsOfTable = (edytor: Edytor, table: string): string[] => {
 		const cell = edytor.cells?.get(table);
 		const listed = cell?.data?.columns;
-		if (Array.isArray(listed))
-			return listed.flatMap((c) => {
-				const id = (c as { id?: unknown } | null)?.id;
-				return typeof id === 'string' ? [id] : [];
-			});
+		if (Array.isArray(listed)) {
+			const ids = new Set(
+				listed.flatMap((c) => {
+					const id = (c as { id?: unknown } | null)?.id;
+					return typeof id === 'string' ? [id] : [];
+				})
+			);
+			const unlisted = (cell?.childIds ?? []).flatMap((row) =>
+				(edytor.cells?.get(row)?.childIds ?? []).flatMap((id) => {
+					const column = edytor.cells?.get(id)?.data?.column;
+					return typeof column === 'string' && !ids.has(column) ? [column] : [];
+				})
+			);
+			return [...ids, ...unlistedOrder(unlisted)];
+		}
 		const widest = Math.max(
 			0,
 			...(cell?.childIds ?? []).map((row) => edytor.cells?.get(row)?.childIds.length ?? 0)
@@ -109,7 +132,62 @@
 					}
 				};
 			};
+			/**
+			 * The block menu's row and column actions on `table`: at the row and
+			 * column of the cell the caret was last in (`chrome.cell`), else the
+			 * last row and column. An insert puts the caret in the new cells.
+			 */
+			const rowsOf = (table: Block): KindMenuAction[] => {
+				const grid = gridOf(table);
+				if (!grid || grid.rows.length === 0) return [];
+				const cell = chrome.cell ? edytor.idToBlock.get(chrome.cell) : undefined;
+				const at = cell && tableOf(cell)?.id === table.id ? positionOf(cell) : null;
+				const row = at?.row ?? grid.rows.length - 1;
+				const column = at?.column ?? grid.columns.length - 1;
+				const rowBlock = edytor.idToBlock.get(grid.rows[row]!.id);
+				return [
+					{
+						id: 'table.insert-row-above',
+						label: labels.insertRowAbove,
+						icon: 'action.up',
+						run: () => insertRow(table, row, true)
+					},
+					{
+						id: 'table.insert-row-below',
+						label: labels.insertRowBelow,
+						icon: 'action.down',
+						run: () => insertRow(table, row + 1, true)
+					},
+					{
+						id: 'table.insert-column-left',
+						label: labels.insertColumnLeft,
+						icon: 'table.left',
+						run: () => insertColumn(table, column, undefined, row)
+					},
+					{
+						id: 'table.insert-column-right',
+						label: labels.insertColumnRight,
+						icon: 'table.right',
+						run: () => insertColumn(table, column + 1, undefined, row)
+					},
+					{
+						id: 'table.delete-row',
+						label: labels.deleteRow,
+						icon: 'action.delete',
+						run: () => rowBlock && deleteRows(table, [rowBlock])
+					},
+					{
+						id: 'table.delete-column',
+						label: labels.deleteColumn,
+						icon: 'action.delete',
+						run: () => deleteColumn(table, column)
+					}
+				];
+			};
 			return {
+				onSelectionChange: () => {
+					if (chromes.get(edytor) === chrome) chrome.track();
+				},
 				blocks: {
 					table: {
 						...tableKinds.table,
@@ -138,6 +216,7 @@
 							}
 						],
 						menu: (block) => [
+							...rowsOf(block),
 							{
 								id: 'table.header-row',
 								label: labels.headerRow,
@@ -250,14 +329,17 @@
 		const chrome = edytor && chromes.get(edytor);
 		const listed = view.data.columns;
 		const fallback = chrome?.columnWidth ?? 120;
-		if (Array.isArray(listed))
-			return listed
-				.map(
-					(column, i) =>
-						`${chrome ? chrome.width(view.id, i, column) : widthOf(column, fallback)}px`
-				)
+		const columns = edytor ? columnsOfTable(edytor, view.id) : [];
+		if (Array.isArray(listed)) {
+			const entry = (id: string) => listed.find((c) => (c as { id?: unknown } | null)?.id === id);
+			return columns
+				.map((id, i) => {
+					const column = entry(id);
+					return `${chrome ? chrome.width(view.id, i, column) : widthOf(column, fallback)}px`;
+				})
 				.join(' ');
-		const count = edytor ? columnsOfTable(edytor, view.id).length : 0;
+		}
+		const count = columns.length;
 		return Array.from({ length: Math.max(1, count) }, () => `${fallback}px`).join(' ');
 	};
 
@@ -281,8 +363,7 @@
 		const table = view.handle?.parent;
 		if (!edytor || !table?.id || edytor.readonly || event.button !== 0) return;
 		event.preventDefault();
-		const columns = edytor.facade.tableColumns(table.id);
-		fillCell(table, view.id, columns ? columns[column]!.id : column);
+		fillCell(table, view.id, column);
 	};
 
 	/** The table's HTML (`<table>`): its header row's and header column's cells are `th`. */

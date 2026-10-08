@@ -426,9 +426,9 @@ describe('table ops (write)', () => {
 		row(
 			loose,
 			(ed) => ed.insertTableColumn('T', 0),
-			'T{NEW,NEW,NEW}[R1[NEW"",A"a",B"b"],R2[NEW"",C"c",_]]'
+			'T{NEW,c1,c2}[R1[NEW"",A"a",B"b"],R2[NEW"",C"c",_]]'
 		);
-		row(loose, (ed) => ed.fillTableCell('R2', 1), 'T{NEW,NEW}[R1[A"a",B"b"],R2[C"c",NEW""]]');
+		row(loose, (ed) => ed.fillTableCell('R2', 1), 'T{c1,c2}[R1[A"a",B"b"],R2[C"c",NEW""]]');
 	});
 });
 
@@ -484,6 +484,39 @@ describe('table.range: a range keeps the cells it crosses', () => {
 			{ block: 'Z', offset: 1 },
 			'P"para" T{c1,c2}[R1[A"alpha",B"beta"],R2[C"g",D""]] Z"ed"',
 			{ block: 'C', offset: 1 }
+		));
+
+	it('from a line before into a table under a header: the header loses its covered text', () =>
+		row(
+			[
+				para('P', 'para'),
+				para('G', 'header', [
+					table(
+						'T',
+						['c1', 'c2'],
+						trow('R1', cell('A', 'c1', 'alpha'), cell('B', 'c2', 'beta')),
+						trow('R2', cell('C', 'c1', 'gamma'), cell('D', 'c2', 'delta'))
+					)
+				]),
+				para('Z', 'zed')
+			],
+			(ed) => {
+				const p = ed.prepare.deleteRange({ block: 'P', offset: 0 }, { block: 'A', offset: 2 });
+				expect(p.at).toEqual({ block: 'P', offset: 0 });
+				return ed.apply(p);
+			},
+			'P"" G""[T{c1,c2}[R1[A"pha",B"beta"],R2[C"gamma",D"delta"]]] Z"zed"'
+		));
+
+	it('from a cell to a line nested after the table: its parent loses its covered text', () =>
+		row(
+			[...TEXTS.slice(0, 2), para('G', 'header', [para('K', 'kid')]), para('Z', 'zed')],
+			(ed) => {
+				const p = ed.prepare.deleteRange({ block: 'D', offset: 1 }, { block: 'K', offset: 1 });
+				expect(p.at).toEqual({ block: 'D', offset: 1 });
+				return ed.apply(p);
+			},
+			'P"para" T{c1,c2}[R1[A"alpha",B"beta"],R2[C"gamma",D"d"]] G""[K"id"] Z"zed"'
 		));
 
 	it('a table wholly between the ends goes whole', () =>
@@ -709,6 +742,97 @@ describe('table concurrency', () => {
 		}
 	});
 
+	/** Ada inserts a column after `c1`, Bob types in its `R1` cell, Ada undoes (`deliver`: synced first). */
+	const columnUndo = (synced: boolean, after?: (a, b) => void) =>
+		one(
+			converge(
+				SEED,
+				2,
+				([a, b]) => {
+					b.receiveAll(
+						a.capture(() => expect(a.ed.insertTableColumn('T', 1).status).toBe('applied'))
+					);
+					const cell = b.ed.tableGrid('T').rows[0].cells[1];
+					const typed = b.capture(() =>
+						expect(b.ed.insertText(cell, 0, 'BOB').status).toBe('applied')
+					);
+					if (synced) a.receiveAll(typed);
+					b.receiveAll(a.capture(() => a.undo()));
+					if (!synced) a.receiveAll(typed);
+					after?.(a, b);
+				},
+				{ semantics }
+			)
+		);
+
+	it('table.conc.column-undo: undoing a column insert keeps a peer’s text, its column shown last', () => {
+		for (const synced of [true, false])
+			for (const o of columnUndo(synced))
+				expect(show(o.ed)).toBe('P"p" T{c1,c2,NEW}[R1[A"a",B"b",NEW"BOB"],R2[C"c",D"d",_]] Z"z"');
+	});
+
+	it('table.conc.column-undo: the redo lists the column again where it was', () => {
+		for (const o of columnUndo(true, (a, b) => b.receiveAll(a.capture(() => a.redo()))))
+			expect(show(o.ed)).toBe('P"p" T{c1,NEW,c2}[R1[A"a",NEW"BOB",B"b"],R2[C"c",NEW"",D"d"]] Z"z"');
+	});
+
+	it('table.conc.column-undo: the column goes once the peer’s text does', () => {
+		for (const o of columnUndo(true, (a, b) => {
+			const cell = b.ed.tableGrid('T').rows[0].cells[2];
+			a.receiveAll(b.capture(() => b.ed.deleteText(cell, 0, 3)));
+		}))
+			expect(show(o.ed)).toBe(BEFORE);
+	});
+
+	it('table.conc.column-undo: filling the shown column lists it; deleting it deletes its cells', () => {
+		for (const o of columnUndo(true, (a, b) => {
+			const column = b.ed.tableGrid('T').columns[2];
+			expect(b.ed.tableColumns('T').map((c) => c.id)).toEqual(['c1', 'c2']);
+			expect(b.ed.moveTableColumn('T', column, 0).status).toBe('refused');
+			a.receiveAll(b.capture(() => b.ed.fillTableCell('R2', column)));
+			expect(b.ed.tableColumns('T').map((c) => c.id)).toEqual(['c1', 'c2', column]);
+		}))
+			expect(show(o.ed)).toBe('P"p" T{c1,c2,NEW}[R1[A"a",B"b",NEW"BOB"],R2[C"c",D"d",NEW""]] Z"z"');
+		for (const o of columnUndo(true, (a, b) =>
+			a.receiveAll(b.capture(() => expect(b.ed.deleteTableColumn('T', 2).status).toBe('applied')))
+		))
+			expect(show(o.ed)).toBe(BEFORE);
+	});
+
+	it('table.conc.adopt: column ops racing on a table listing no columns list the same ones', () => {
+		const unlisted = [
+			table('T', null, trow('R1', cell('A'), cell('B')), trow('R2', cell('C'), cell('D')))
+		];
+		for (const o of one(
+			converge(
+				unlisted,
+				2,
+				([a, b]) => {
+					expect(a.ed.insertTableColumn('T', 2).status).toBe('applied');
+					expect(b.ed.insertTableColumn('T', 2).status).toBe('applied');
+				},
+				{ semantics }
+			)
+		)) {
+			expect(show(o.ed)).toBe(
+				'T{c1,c2,NEW,NEW}[R1[A"a",B"b",NEW"",NEW""],R2[C"c",D"d",NEW"",NEW""]]'
+			);
+		}
+		for (const o of one(
+			converge(
+				unlisted,
+				2,
+				([a, b]) => {
+					expect(a.ed.insertTableRow('T', 2).status).toBe('applied');
+					expect(b.ed.deleteTableColumn('T', 1).status).toBe('applied');
+				},
+				{ semantics }
+			)
+		))
+			// The residual: the delete of `c2` loses to the adoption writing it again; its cells go.
+			expect(show(o.ed)).toBe('T{c1,c2}[R1[A"a",_],R2[C"c",_],NEW[NEW"",NEW""]]');
+	});
+
 	it('two column deletes and a header toggle converge', () => {
 		for (const o of one(
 			converge(
@@ -755,5 +879,16 @@ describe('table-shape: the well-formed check names a wrong display', () => {
 			'table-shape: cell A shows outside a table’s row'
 		]);
 		expect(check([t('T', [r('R')])])).toEqual(['table-shape: row R shows no cell']);
+		// A withdrawn cell of a column no longer listed shows after the listed ones.
+		const withdrawn = (id) => id === 'W';
+		const checkW = (roots) =>
+			wellFormedProblems({ roots, tables, withdrawn }).filter((p) => p.startsWith('table-shape'));
+		expect(checkW([t('T', [r('R', c('A', 'x'), c('B', 'y'), c('W', 'z'))])])).toEqual([]);
+		expect(checkW([t('T', [r('R', c('W', 'z'), c('A', 'x'))])])).toEqual([
+			'table-shape: row R shows its cells out of column order or twice'
+		]);
+		expect(checkW([t('T', [r('R', c('A', 'x'), c('V', 'z'))])])).toEqual([
+			'table-shape: row R shows a cell of no listed column'
+		]);
 	});
 });

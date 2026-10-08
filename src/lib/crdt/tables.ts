@@ -5,6 +5,22 @@
  * cell naming its column. Worker-safe.
  */
 import type { JSONBlock, JSONText } from '../utils/json.js';
+import { hash32 } from './rand.js';
+
+/**
+ * Where a column a table shows but no longer lists stands among those
+ * (`table.cell`: a withdrawn cell holding another writer's text keeps the
+ * column an undo took out of `data.columns`): after the listed ones, by a
+ * hash of its id, then its id. Every replica, row and reader orders them
+ * the same.
+ */
+export const unlistedRank = (column: string): number => hash32(column);
+
+/** The unlisted columns `ids` in their shown order ({@link unlistedRank}). */
+export const unlistedOrder = (ids: Iterable<string>): string[] =>
+	[...new Set(ids)].sort(
+		(a, b) => unlistedRank(a) - unlistedRank(b) || (a < b ? -1 : a > b ? 1 : 0)
+	);
 
 /** What {@link tableBlock} builds. */
 export type TableBlockOptions = {

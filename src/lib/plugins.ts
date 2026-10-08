@@ -530,19 +530,23 @@ export type MarkDefinition = {
 	toolbar?: { label: string; icon: string };
 };
 
-/** A way to create a block kind: one slash command, markdown prefixes, one block-menu row. */
 /** A row a kind adds to the block menu (`BlockDefinition.menu`). */
 export type KindMenuAction = {
 	id: string;
 	label: string;
 	/** An icon id (`iconOf`), else none. */
 	icon?: string;
-	/** A switch's state: the row is a `menuitemcheckbox`. */
+	/** A switch's state: the row is a `menuitemcheckbox`, and the menu stays open when it runs. */
 	checked?: boolean;
 	isEnabled?: () => boolean;
+	/**
+	 * The row's action. A row that is no switch closes the menu after it
+	 * runs: a caret the action placed stays, else the menu gives its caret back.
+	 */
 	run: () => unknown;
 };
 
+/** A way to create a block kind: one slash command, markdown prefixes, one block-menu row. */
 export type KindPreset = {
 	label: string;
 	icon?: string;

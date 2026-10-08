@@ -20,6 +20,9 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
+import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
+import { insertColumn } from '$lib/plugins/table/table.js';
+import { Y } from '$lib/crdt/engine.js';
 import {
 	dispatchClipboardPaste,
 	dispatchCopy,
@@ -211,9 +214,11 @@ describe('keys in a cell (table.keys, table.merge)', () => {
 		expect(caret(edytor)).toEqual({ block: 'C', offset: 1, isCollapsed: true });
 		await dispatchDomKeyDown(editor, { key: 'Tab', shiftKey: true });
 		expect(caret(edytor)).toEqual({ block: 'B', offset: 1, isCollapsed: true });
-		await caretIn(edytor, 'A', 0);
-		await dispatchDomKeyDown(editor, { key: 'Tab', shiftKey: true });
-		expect(caret(edytor)).toEqual({ block: 'A', offset: 0, isCollapsed: true });
+		// In the first cell: the key is claimed and the caret stays where it is.
+		await caretIn(edytor, 'A', 1);
+		const first = await dispatchDomKeyDown(editor, { key: 'Tab', shiftKey: true });
+		expect(first.defaultPrevented).toBe(true);
+		expect(caret(edytor)).toEqual({ block: 'A', offset: 1, isCollapsed: true });
 		expect(grid(edytor)).toEqual([
 			['a', 'b'],
 			['c', 'd']
@@ -289,18 +294,189 @@ describe('the block menu’s header switches', () => {
 	it('Header row and Header column toggle the table’s flags, one undo step each', async () => {
 		const { edytor } = await render(contract(), [createBlockMenuPlugin()]);
 		const t = edytor.idToBlock.get('T')!;
-		const rows = t.definition.menu!(t);
-		expect(rows.map((r) => [r.id, r.checked])).toEqual([
+		const switches = () => t.definition.menu!(t).filter((r) => r.checked !== undefined);
+		expect(switches().map((r) => [r.id, r.checked])).toEqual([
 			['table.header-row', false],
 			['table.header-column', false]
 		]);
-		rows[0]!.run();
+		switches()[0]!.run();
 		await flushDomUpdates();
 		expect(edytor.facade.blockDataOf('T')!.headerRow).toBe(true);
-		expect(t.definition.menu!(t)[0]!.checked).toBe(true);
+		expect(switches()[0]!.checked).toBe(true);
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(edytor.facade.blockDataOf('T')!.headerRow).toBeUndefined();
+	});
+});
+
+describe('the block menu’s row and column actions', () => {
+	/** Open the block menu on the table as its grip does: the table selected, then activated. */
+	const openMenu = async (edytor: Edytor, editor: HTMLElement) => {
+		const t = edytor.idToBlock.get('T')!;
+		edytor.selection.selectBlocks(t);
+		await flushDomUpdates();
+		editor.dispatchEvent(
+			new CustomEvent(BLOCK_ACTIVATE_EVENT, {
+				bubbles: true,
+				cancelable: true,
+				detail: { block: t, anchor: t.node }
+			})
+		);
+		await flushDomUpdates();
+	};
+	const pick = async (id: string) => {
+		document.querySelector<HTMLButtonElement>(`[data-testid="block-menu-${id}"]`)!.click();
+		await flushDomUpdates();
+	};
+	const menuOpen = () => document.querySelector('[data-edytor-block-menu]') !== null;
+
+	it('the rows: insert a row or a column on either side, delete them, the header switches', async () => {
+		const { edytor } = await render(contract(), [createBlockMenuPlugin()]);
+		const t = edytor.idToBlock.get('T')!;
+		expect(t.definition.menu!(t).map((r) => r.id)).toEqual([
+			'table.insert-row-above',
+			'table.insert-row-below',
+			'table.insert-column-left',
+			'table.insert-column-right',
+			'table.delete-row',
+			'table.delete-column',
+			'table.header-row',
+			'table.header-column'
+		]);
+	});
+
+	it('they act at the caret’s cell (the grip keeps it); an insert puts the caret in the new cell', async () => {
+		const { edytor, editor } = await render(contract(), [createBlockMenuPlugin()]);
+		await caretIn(edytor, 'C', 1);
+		await openMenu(edytor, editor);
+		expect(menuOpen()).toBe(true);
+		await pick('table.insert-row-above');
+		expect(menuOpen()).toBe(false);
+		expect(grid(edytor)).toEqual([
+			['a', 'b'],
+			['', ''],
+			['c', 'd']
+		]);
+		const added = edytor.facade.tableGrid('T')!.rows[1]!.cells[0]!;
+		expect(caret(edytor)).toEqual({ block: added, offset: 0, isCollapsed: true });
+
+		await caretIn(edytor, 'B', 0);
+		await openMenu(edytor, editor);
+		await pick('table.insert-column-left');
+		expect(grid(edytor)).toEqual([
+			['a', '', 'b'],
+			['', '', ''],
+			['c', '', 'd']
+		]);
+		const column = edytor.facade.tableGrid('T')!.rows[0]!.cells[1]!;
+		expect(caret(edytor)).toEqual({ block: column, offset: 0, isCollapsed: true });
+
+		await caretIn(edytor, 'D', 0);
+		await openMenu(edytor, editor);
+		await pick('table.delete-row');
+		await caretIn(edytor, 'B', 0);
+		await openMenu(edytor, editor);
+		await pick('table.delete-column');
+		expect(grid(edytor)).toEqual([
+			['a', ''],
+			['', '']
+		]);
+		expect(menuOpen()).toBe(false);
+	});
+
+	it('with no caret in the table they act at its last row and column', async () => {
+		const { edytor, editor } = await render(contract(), [createBlockMenuPlugin()]);
+		await caretIn(edytor, 'P', 0);
+		await openMenu(edytor, editor);
+		await pick('table.insert-column-right');
+		expect(grid(edytor)).toEqual([
+			['a', 'b', ''],
+			['c', 'd', '']
+		]);
+		const last = edytor.facade.tableGrid('T')!.rows[1]!.cells[2]!;
+		expect(caret(edytor)).toEqual({ block: last, offset: 0, isCollapsed: true });
+	});
+
+	it('a switch keeps the menu open', async () => {
+		const { edytor, editor } = await render(contract(), [createBlockMenuPlugin()]);
+		await openMenu(edytor, editor);
+		await pick('table.header-row');
+		expect(edytor.facade.blockDataOf('T')!.headerRow).toBe(true);
+		expect(menuOpen()).toBe(true);
+	});
+});
+
+describe('the cell placeholder and the columns the view shows', () => {
+	it('an empty cell shows no placeholder (its role, whatever the placeholder)', async () => {
+		const { editor } = await renderDomEdytor(
+			<root>
+				<paragraph>|</paragraph>
+			</root>,
+			{
+				plugins: [tablePlugin, richTextPlugin],
+				value: {
+					children: [p('P', ''), table('T', ['c1'], [row('R1', cell('A', 'c1', ''))])]
+				},
+				placeholder: 'Type something',
+				autoSelectFixture: false
+			}
+		);
+		expect(node(editor, 'P').querySelector('[data-placeholder]')).not.toBeNull();
+		expect(node(editor, 'A').querySelector('[data-placeholder]')).toBeNull();
+	});
+
+	it('the resize writes the width on the column’s entry, whatever the array holds besides', async () => {
+		const { edytor, editor } = await render([
+			table('T', ['c1', 'c1', 'c2'], [row('R1', cell('A', 'c1'), cell('B', 'c2'))])
+		]);
+		const gridNode = node(editor, 'T').querySelector<HTMLElement>('[data-edytor-table-grid]')!;
+		expect(gridNode.style.gridTemplateColumns).toBe('120px 120px');
+		node(editor, 'B').dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+		edytor.overlay.invalidate();
+		await flushDomUpdates();
+		await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+		await flushDomUpdates();
+		const band = document.querySelector<HTMLElement>('[data-edytor-table-resize="1"]')!;
+		band.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+		await flushDomUpdates();
+		const columns = edytor.facade.blockDataOf('T')!.columns as { id: string; width?: number }[];
+		expect(columns).toEqual([{ id: 'c1' }, { id: 'c1' }, { id: 'c2', width: 128 }]);
+		expect(gridNode.style.gridTemplateColumns).toBe('120px 128px');
+	});
+
+	it('a column an undo took out of the list while a peer typed in it shows last (table.cell)', async () => {
+		const a = await render(contract());
+		const doc = new Y.Doc();
+		Y.applyUpdate(doc, Y.encodeStateAsUpdate(a.edytor.doc));
+		const b = await renderDomEdytor(
+			<root>
+				<paragraph>|</paragraph>
+			</root>,
+			{ plugins: [tablePlugin, richTextPlugin], doc, autoSelectFixture: false }
+		);
+		const deliver = async (from: Edytor, to: Edytor) => {
+			Y.applyUpdate(to.doc, Y.encodeStateAsUpdate(from.doc, Y.encodeStateVector(to.doc)));
+			await flushDomUpdates();
+		};
+		expect(insertColumn(a.edytor.idToBlock.get('T')!, 1)).toBe(true);
+		await flushDomUpdates();
+		await deliver(a.edytor, b.edytor);
+		const added = b.edytor.facade.tableGrid('T')!.rows[0]!.cells[1]!;
+		b.edytor.facade.insertText(added, 0, 'bob');
+		await deliver(b.edytor, a.edytor);
+		a.edytor.historyUndo();
+		await flushDomUpdates();
+		expect(grid(a.edytor)).toEqual([
+			['a', 'b', 'bob'],
+			['c', 'd', '_']
+		]);
+		const t = node(a.editor, 'T');
+		expect(
+			t.querySelector<HTMLElement>('[data-edytor-table-grid]')!.style.gridTemplateColumns
+		).toBe('120px 120px 120px');
+		expect(node(a.editor, added).dataset.edytorColumn).toBe('2');
+		const pad = node(a.editor, 'R2').querySelector<HTMLElement>('[data-edytor-table-pad]')!;
+		expect(pad.dataset.edytorColumn).toBe('2');
 	});
 });
 

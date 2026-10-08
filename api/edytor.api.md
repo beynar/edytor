@@ -3587,8 +3587,8 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         moveTableColumn: (table: string, column: string | number, to: number) => OpResult;
         moveTableRows: (rows: readonly string[], to: number) => OpResult;
         fillTableCell: (row: string, column: string | number) => OpResult;
-        insertBlocks: (dest: Destination, specs: readonly (BlockSpec | JSONBlock)[]) => OpResult;
-        insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => OpResult;
+        insertBlocks: (dest: Destination, specs: readonly (JSONBlock | BlockSpec)[]) => OpResult;
+        insertBlock: (dest: Destination, spec: JSONBlock | BlockSpec) => OpResult;
         moveBlocks: (ids: readonly string[], dest: Destination) => OpResult;
         moveBlock: (id: string, dest: Destination) => OpResult;
         nestBlock: (id: string, parent: string) => OpResult;
@@ -5082,6 +5082,10 @@ export type TableLabels = {
     table: string;
     headerRow: string;
     headerColumn: string;
+    insertRowAbove: string;
+    insertRowBelow: string;
+    insertColumnLeft: string;
+    insertColumnRight: string;
     insertAbove: string;
     insertBelow: string;
     insertLeft: string;

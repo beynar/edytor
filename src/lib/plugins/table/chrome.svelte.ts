@@ -3,6 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
 import type { TableLabels } from '$lib/labels.js';
 import {
+	caretCell,
 	deleteColumn,
 	deleteRows,
 	gridOf,
@@ -66,6 +67,12 @@ export class TableChrome {
 	dragging = $state(false);
 	/** The column resize in progress. */
 	drag = $state<Drag | null>(null);
+	/**
+	 * The cell the caret was last in: the row and column the block menu's
+	 * actions on its table act on. A block selection (the grip that opens
+	 * the menu) keeps it; a caret outside every table clears it.
+	 */
+	cell: string | null = null;
 
 	constructor(
 		readonly edytor: Edytor,
@@ -89,6 +96,12 @@ export class TableChrome {
 	get table(): string | null {
 		return this.drag?.table ?? this.menu?.table ?? this.hovered?.table ?? null;
 	}
+
+	/** The selection changed: a caret in a cell is the one the block menu acts on. */
+	track = () => {
+		if (this.edytor.selection.value.kind !== 'text') return;
+		this.cell = caretCell(this.edytor)?.id ?? null;
+	};
 
 	/** Whether the chrome shows. */
 	get shown() {
@@ -422,17 +435,26 @@ export class TableChrome {
 		this.release({ table: layout.table, column, from: 0, at: by, width: col.width });
 	};
 
-	/** The release: column `drag.column`'s width, one command; nothing when it did not change. */
+	/**
+	 * The release: column `drag.column`'s width, one command; nothing when it
+	 * did not change, or when the table does not list the column. The width
+	 * is written on the column's entry by its item id (the first entry
+	 * naming it), never by position: the stored array may hold an entry the
+	 * grid does not show.
+	 */
 	private release(drag: Drag) {
 		const table = this.block(drag.table);
-		const columns = table?.edytor.facade.tableColumns(table.id);
-		const column = columns?.[drag.column];
-		if (!table || !column) return;
+		const id = gridOf(table)?.columns[drag.column];
+		if (!table || id === undefined) return;
+		const { facade } = table.edytor;
+		const stored = facade.blockDataOf(table.id)?.columns;
+		const entries: unknown[] = Array.isArray(stored) ? stored : [];
+		const at = entries.findIndex((c) => (c as { id?: unknown } | null)?.id === id);
+		const item = at < 0 ? undefined : facade.dataItemIds(table.id, ['columns'])[at];
+		if (item === undefined) return;
 		const width = this.dragWidth(drag);
-		if (width === widthOf(column, this.columnWidth)) return;
-		table.patchData({
-			ops: [{ path: ['columns', String(drag.column), 'width'], value: width }]
-		});
+		if (width === widthOf(entries[at], this.columnWidth)) return;
+		table.patchData({ ops: [{ path: ['columns', item, 'width'], value: width }] });
 	}
 }
 

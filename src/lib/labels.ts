@@ -301,6 +301,11 @@ export type TableLabels = {
 	/** The block menu's switches. */
 	headerRow: string;
 	headerColumn: string;
+	/** The block menu's rows: at the row and column of the cell the caret was in (else the last ones). */
+	insertRowAbove: string;
+	insertRowBelow: string;
+	insertColumnLeft: string;
+	insertColumnRight: string;
 	/** The row and column menus. */
 	insertAbove: string;
 	insertBelow: string;
@@ -638,6 +643,10 @@ export const englishLabels: Labels = frozen({
 		table: 'Table',
 		headerRow: 'Header row',
 		headerColumn: 'Header column',
+		insertRowAbove: 'Insert row above',
+		insertRowBelow: 'Insert row below',
+		insertColumnLeft: 'Insert column left',
+		insertColumnRight: 'Insert column right',
 		insertAbove: 'Insert above',
 		insertBelow: 'Insert below',
 		insertLeft: 'Insert left',

@@ -5,6 +5,7 @@
  */
 import type { BlockId, ChildSlot } from '../../placement/model.js';
 import { encodeRank, RANK_VMAX } from '../../placement/rank.js';
+import { unlistedRank } from '../../tables.js';
 import type { DisplayRoles } from '../runs.js';
 import type { IndexState } from './state.js';
 
@@ -97,8 +98,10 @@ export const indexLayout = (ix: IndexState) => {
 	 * The rank cell `id` displays at in row `row` (`table.columns`): its
 	 * column's position in the table holding the row, so every row shows its
 	 * cells in the table's column order whatever their placements (a rank
-	 * of one segment, the position, ties by block id); a cell of no listed
-	 * column after them (it does not display, `table.cell`).
+	 * of one segment, the position, ties by block id); a withdrawn cell of a
+	 * column the table no longer lists after them, its column's place among
+	 * those fixed by its id (`unlistedRank`); any other cell of no listed
+	 * column last (it does not display, `table.cell`).
 	 * `undefined`: no table with columns holds the row — its placement rank.
 	 */
 	const cellRank = (row: BlockId, id: BlockId): string | undefined => {
@@ -109,6 +112,11 @@ export const indexLayout = (ix: IndexState) => {
 		if (index === null) return undefined;
 		const column = columnOf(id);
 		const at = column === undefined ? undefined : index.get(column);
+		if (at === undefined && column !== undefined && ix.shells.has(id))
+			return encodeRank([
+				{ v: RANK_VMAX - 1, t: 0 },
+				{ v: unlistedRank(column), t: 0 }
+			]);
 		return encodeRank([{ v: at ?? RANK_VMAX, t: 0 }]);
 	};
 	/**
@@ -139,7 +147,9 @@ export const indexLayout = (ix: IndexState) => {
 	/**
 	 * The table rules (`table.*`), in the same pass: a cell displays only in
 	 * a row of a table, and, when the table lists its columns, only for a
-	 * listed column and as the first of the row's cells for it
+	 * listed column — or, withdrawn by an undo while it holds another
+	 * writer's text (`hist.undo.withdraw`), for the column the undo took out
+	 * of the list — and as the first of the row's cells for it
 	 * (`table.cell`); a row displays only in a table and while it shows a
 	 * cell (`table.row`); a table displays while it shows a row
 	 * (`table.empty`). What does not display hands up nothing a table rule
@@ -180,7 +190,10 @@ export const indexLayout = (ix: IndexState) => {
 			let shows = row !== null;
 			if (row !== null && row.columns !== null) {
 				const column = columnOf(id);
-				shows = column !== undefined && row.columns.has(column) && !row.seen.has(column);
+				shows =
+					column !== undefined &&
+					(row.columns.has(column) || ix.shells.has(id)) &&
+					!row.seen.has(column);
 				if (shows) row.seen.add(column!);
 			}
 			if (shows) shown.push({ id, kids: sub.map((x) => x.id) });

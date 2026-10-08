@@ -38,13 +38,15 @@
  * - `table-shape` — a displayed table holds displayed rows of its row kind
  *   only (one or more), a displayed row cells of its cell kind only (one
  *   or more), each of a column the table lists, once, in the table's
- *   column order; no row displays outside a table of its kind, no cell
+ *   column order — then withdrawn cells of columns it no longer lists, in
+ *   their one order; no row displays outside a table of its kind, no cell
  *   outside a row of one (`table.*`: the read-time rules own the display).
  *
  * The runner (`random/runner.ts`) and the p1 harness (`arch-v2/p1-harness.ts`)
  * both feed {@link wellFormedProblems}; each backend supplies the inputs it
  * can answer, and a check whose input is absent is skipped.
  */
+import { unlistedOrder } from '../../../../lib/crdt/tables.js';
 
 export type WfBlock = {
 	id: string;
@@ -83,6 +85,8 @@ export type WellFormedInput = {
 	layouts?: ReadonlyMap<string, string>;
 	/** Table kind → its row and cell kinds (`table-shape`); absent → no table kinds. */
 	tables?: ReadonlyMap<string, { row: string; cell: string }>;
+	/** `id` is withdrawn by an undo (`hist.undo.withdraw`) and live; absent → none is. */
+	withdrawn?: (id: string) => boolean;
 };
 
 type Check = {
@@ -219,7 +223,7 @@ export const WELL_FORMED_CHECKS: Record<string, Check> = {
 		}
 	},
 	'table-shape': {
-		run: ({ tables, roots }) => {
+		run: ({ tables, roots, withdrawn }) => {
 			if (!tables?.size) return [];
 			const rows = new Map([...tables].map(([table, k]) => [k.row, table]));
 			const cells = new Map([...tables].map(([, k]) => [k.cell, k.row]));
@@ -249,10 +253,16 @@ export const WELL_FORMED_CHECKS: Record<string, Check> = {
 						if (k.type !== cell) out.push(`${k.id} shows ${String(k.type)} in the row ${b.id}`);
 					const listed = parent === null ? null : columnsOf(parent);
 					if (listed !== null) {
-						const at = kids.map((k) =>
-							listed.indexOf(String((k.data as { column?: unknown } | undefined)?.column))
-						);
-						if (at.some((i) => i < 0)) out.push(`row ${b.id} shows a cell of no listed column`);
+						const columnOf = (k: WfBlock) =>
+							String((k.data as { column?: unknown } | undefined)?.column);
+						// A withdrawn cell of a column no longer listed shows after the listed ones,
+						// those columns in their one order (`table.cell`).
+						const unlisted = kids.filter((k) => !listed.includes(columnOf(k)));
+						const extra = unlistedOrder(unlisted.map(columnOf));
+						const all = [...listed, ...extra];
+						const at = kids.map((k) => all.indexOf(columnOf(k)));
+						if (unlisted.some((k) => !withdrawn?.(k.id)))
+							out.push(`row ${b.id} shows a cell of no listed column`);
 						if (at.some((i, j) => j > 0 && i <= at[j - 1]!))
 							out.push(`row ${b.id} shows its cells out of column order or twice`);
 					}

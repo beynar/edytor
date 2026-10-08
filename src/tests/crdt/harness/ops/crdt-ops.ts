@@ -324,6 +324,8 @@ export interface CrdtOps {
 	placeBeside?(peer: Peer, ids: BlockId[], target: BlockId, side: 'left' | 'right'): boolean;
 	/** Table kind → its row and cell kinds (`wellFormed` `table-shape`). */
 	readonly tables?: ReadonlyMap<string, { row: string; cell: string }>;
+	/** `id` is withdrawn by an undo and live (`hist.undo.withdraw`; `wellFormed` `table-shape`). */
+	withdrawn?(peer: Peer, id: BlockId): boolean;
 	/** The table `id` is, or holds `id` (its row or cell), with every block stored under it. */
 	tableOf?(peer: Peer, id: BlockId): { table: BlockId; members: BlockId[]; cell: boolean } | null;
 	/**

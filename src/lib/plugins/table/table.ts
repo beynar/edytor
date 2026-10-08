@@ -12,6 +12,8 @@ import { dispatchPlan, type BlockOperations } from '$lib/block/block.utils.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Prepared } from '$lib/crdt/index.js';
 import type { PartialLabels } from '$lib/labels.js';
+import type { Text } from '$lib/text/text.svelte.js';
+import { domPointOf } from '$lib/surface/projector.svelte.js';
 
 export type TablePluginOptions = {
 	/** The rows a new table has (default 3). */
@@ -112,11 +114,23 @@ export const deleteRows = (table: Block, rows: readonly Block[]) =>
 		table.edytor.facade.prepare.deleteTableRows(p.rows.map((row) => row.id))
 	) !== null;
 
-/** Insert a column at `index` (`table.insert-column`). */
-export const insertColumn = (table: Block, index: number, width?: number) =>
-	run(table, 'insertTableColumn', { index, width }, (p) =>
-		table.edytor.facade.prepare.insertTableColumn(table.id, p.index, p.width)
-	) !== null;
+/**
+ * Insert a column at `index` (`table.insert-column`); with `caret` (a row's
+ * position), the caret goes to the new column's cell in that row.
+ */
+export const insertColumn = (table: Block, index: number, width?: number, caret?: number) => {
+	const applied =
+		run(table, 'insertTableColumn', { index, width }, (p) =>
+			table.edytor.facade.prepare.insertTableColumn(table.id, p.index, p.width)
+		) !== null;
+	const grid = applied && caret !== undefined ? gridOf(table) : null;
+	if (grid) {
+		const at = Math.max(0, Math.min(Math.trunc(index) || 0, grid.columns.length - 1));
+		const text = cellAt(table, grid, caret!, at)?.firstText;
+		if (text) table.edytor.dispatcher.caret(text, 0);
+	}
+	return applied;
+};
 
 /** Delete a column, by id or position (`table.delete-column`). */
 export const deleteColumn = (table: Block, column: string | number) =>
@@ -168,8 +182,8 @@ export const widthOf = (column: unknown, fallback: number): number => {
  * Tab (`step` 1) or Shift+Tab (`-1`) from `cell` (`table.keys`): the caret
  * goes to the end of the next (previous) shown cell in reading order, row by
  * row; Tab in the last cell inserts a row after it and goes there (Notion).
- * Shift+Tab in the first cell keeps the caret. `false` when `cell` is no
- * shown cell.
+ * Shift+Tab in the first cell leaves the selection as it is (the key is
+ * claimed). `false` when `cell` is no shown cell.
  */
 export const tabFrom = (cell: Block, step: 1 | -1): boolean => {
 	const at = positionOf(cell);
@@ -190,37 +204,98 @@ export const tabFrom = (cell: Block, step: 1 | -1): boolean => {
 		}
 	}
 	if (step > 0) insertRow(table, grid.rows.length, true);
-	else edytor.selection.setAtTextOffset(cell.firstText!, 0);
 	return true;
 };
 
 /**
+ * The box of the caret at `offset` in `text`, read from the character after
+ * it (`after`: its left edge) or the one before it (its right edge), the
+ * other one where there is none; `null` where nothing is laid out (no layout
+ * engine). An offset where a line wraps is on both lines: `after` reads it
+ * on the later one, `before` on the earlier one.
+ */
+const caretBox = (text: Text, offset: number, after: boolean): DOMRect | null => {
+	const element = text.node;
+	if (!element) return null;
+	const range = element.ownerDocument.createRange();
+	const box = (from: number): DOMRect | null => {
+		if (from < 0 || from >= text.stringContent.length) return null;
+		const [startNode, start] = domPointOf(element, from);
+		const [endNode, end] = domPointOf(element, from + 1);
+		range.setStart(startNode, start);
+		range.setEnd(endNode, end);
+		// No layout engine (a server, jsdom) lays nothing out: no box.
+		const list = typeof range.getClientRects === 'function' ? range.getClientRects() : null;
+		return [...(list ?? [])].find((r) => r.width > 0 || r.height > 0) ?? null;
+	};
+	const next = box(offset);
+	const previous = box(offset - 1);
+	const edge = (r: DOMRect, right: boolean) =>
+		new DOMRect(right ? r.right : r.left, r.top, 0, r.height);
+	if (after) return next ? edge(next, false) : previous && edge(previous, true);
+	return previous ? edge(previous, true) : next && edge(next, false);
+};
+
+/** `a` and `b` are on one line box: their vertical middles are within half a line of each other. */
+const sameLine = (a: DOMRect, b: DOMRect) =>
+	Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) < Math.max(a.height, b.height) / 2;
+
+/**
  * ArrowUp (`step` -1) on a cell's first line, ArrowDown (`1`) on its last
  * (`table.keys`): the caret goes to the nearest shown cell above (below) in
- * the same column, at the same offset in its last (first) line. `false`
- * where no row is there: the browser moves out of the table.
+ * the same column, on its last (first) line, at the caret's x. A line is a
+ * line box, so a wrapped cell's other lines are the browser's to move
+ * through (the key is not claimed there); where nothing is laid out, the
+ * lines are the text's line breaks and the column a character count.
+ * `false` where no row is there: the browser moves out of the table.
  */
 export const verticalFrom = (cell: Block, step: 1 | -1): boolean => {
 	const at = positionOf(cell);
 	const { edytor } = cell;
 	const { startText, yStart, isCollapsed } = edytor.selection.state;
 	if (!at || !isCollapsed || !startText) return false;
+	if (step < 0 ? startText !== cell.firstText : startText !== cell.lastText) return false;
 	const value = startText.stringContent;
-	const before = value.lastIndexOf('\n', yStart - 1);
-	// Not on the edge line: the caret moves inside the cell.
-	if (step < 0 ? before >= 0 || startText !== cell.firstText : value.indexOf('\n', yStart) >= 0)
+	// A wrap offset counts on the line away from the edge: then the browser moves the caret.
+	const caret = caretBox(startText, yStart, step < 0);
+	const edge = caret && caretBox(startText, step < 0 ? 0 : value.length, step < 0);
+	if (caret && edge) {
+		// Not on the edge line box: the browser moves the caret inside the cell.
+		if (!sameLine(caret, edge)) return false;
+	} else if (step < 0 ? value.lastIndexOf('\n', yStart - 1) >= 0 : value.indexOf('\n', yStart) >= 0)
 		return false;
-	if (step > 0 && startText !== cell.lastText) return false;
-	const column = yStart - before - 1;
+	const column = yStart - value.lastIndexOf('\n', yStart - 1) - 1;
 	for (let row = at.row + step; row >= 0 && row < at.grid.rows.length; row += step) {
 		const target = cellAt(at.table, at.grid, row, at.column);
 		const text = step < 0 ? target?.lastText : target?.firstText;
 		if (!text) continue;
-		const content = text.stringContent;
-		const start = step < 0 ? content.lastIndexOf('\n') + 1 : 0;
-		const end = step < 0 ? content.length : (content.indexOf('\n') + 1 || content.length + 1) - 1;
-		edytor.selection.setAtTextOffset(text, Math.min(start + column, end));
+		edytor.selection.setAtTextOffset(text, landing(text, step, caret, column));
 		return true;
 	}
 	return false;
+};
+
+/**
+ * Where the caret lands in `text` coming from above (`step` 1: its first
+ * line) or below (`-1`: its last line): the offset on that line box nearest
+ * the caret's x; without a layout, `column` characters into that line.
+ */
+const landing = (text: Text, step: 1 | -1, caret: DOMRect | null, column: number): number => {
+	const content = text.stringContent;
+	const length = content.length;
+	const edge = caret && caretBox(text, step > 0 ? 0 : length, step > 0);
+	if (caret && edge) {
+		let best = step > 0 ? 0 : length;
+		let distance = Infinity;
+		for (let o = step > 0 ? 0 : length; o >= 0 && o <= length; o += step) {
+			const box = caretBox(text, o, step > 0);
+			if (!box || !sameLine(box, edge)) break;
+			const d = Math.abs(box.left - caret.left);
+			if (d < distance) [best, distance] = [o, d];
+		}
+		return best;
+	}
+	const start = step < 0 ? content.lastIndexOf('\n') + 1 : 0;
+	const end = step < 0 ? length : (content.indexOf('\n') + 1 || length + 1) - 1;
+	return Math.min(start + column, end);
 };

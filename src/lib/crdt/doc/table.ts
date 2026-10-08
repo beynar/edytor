@@ -36,6 +36,8 @@ export const tableOps = (
 		rowKindOf,
 		tableColumns,
 		tableGrid,
+		blockDataOf,
+		dataItemIds,
 		REFUSED,
 		plan,
 		ranksFor,
@@ -53,25 +55,39 @@ export const tableOps = (
 		data: { column }
 	});
 
-	/**
-	 * The table's columns and grid. A table listing none gets ids for its
-	 * widest row's columns (by position) and `adopt` names each shown
-	 * cell's column; the op then writes the whole `columns` array
-	 * ({@link columnsSteps}): what every column op starts from.
-	 */
-	const adopted = (
-		table: BlockId
-	): {
+	type Adopted = {
+		/** The columns the table lists (deduplicated), after the adoption. */
 		columns: TableColumn[];
-		listed: boolean;
+		/** The column each entry of the stored `data.columns` names, in order (`null`: none). */
+		raw: (string | null)[];
+		/** The cells' column writes of an adoption. */
 		adopt: PlanStep[];
+		/** The adoption's write of the whole `columns` array (none when the table lists them). */
+		first: DataPatch[];
+		/** The grid: the listed columns, then those it shows unlisted (`table.cell`). */
 		grid: NonNullable<ReturnType<typeof tableGrid>>;
-	} | null => {
+	};
+	/**
+	 * The table's columns and grid. A table listing none gets one column
+	 * per column of its widest row, with ids from their positions (`c1`,
+	 * `c2`, … as `tableBlock`'s), and `adopt` names each shown
+	 * cell's column: two peers adopting one table write the same array
+	 * items and the same cells' columns. The op then writes that array
+	 * first, in its plan ({@link columnsSteps}).
+	 */
+	const adopted = (table: BlockId): Adopted | null => {
 		const grid = tableGrid(table);
 		if (grid === null) return null;
 		const listed = tableColumns(table);
-		if (listed !== null) return { columns: listed, listed: true, adopt: [], grid };
-		const columns = grid.columns.map(() => ({ id: newId('c') }));
+		if (listed !== null) {
+			const stored = blockDataOf(table)?.columns as unknown[];
+			const raw = stored.map((col) => {
+				const id = (col as { id?: unknown } | null)?.id;
+				return typeof id === 'string' ? id : null;
+			});
+			return { columns: listed, raw, adopt: [], first: [], grid };
+		}
+		const columns = grid.columns.map((_, i) => ({ id: `c${i + 1}` }));
 		const adopt: PlanStep[] = [];
 		for (const row of grid.rows)
 			row.cells.forEach((cell, i) => {
@@ -81,26 +97,47 @@ export const tableOps = (
 			});
 		return {
 			columns,
-			listed: false,
+			raw: columns.map((col) => col.id),
 			adopt,
+			first: [{ path: ['columns'], value: columns }],
 			grid: { columns: columns.map((col) => col.id), rows: grid.rows }
 		};
 	};
 
-	/** The table's `data.columns` as `whole`: by `patch` where it lists them, else written whole. */
+	/** The adoption's steps, then `patches` of the table's `data.columns`. */
 	const columnsSteps = (
 		table: BlockId,
-		a: { listed: boolean; adopt: PlanStep[] },
-		whole: TableColumn[],
-		patch?: DataPatch
+		a: Adopted,
+		patches: DataPatch[] = []
 	): PlanStep[] | null => {
-		const steps =
-			a.listed && patch !== undefined
-				? dataSteps(table, [patch])
-				: a.listed
-					? []
-					: dataSteps(table, [{ path: ['columns'], value: whole }]);
+		const all = [...a.first, ...patches];
+		const steps = all.length === 0 ? [] : dataSteps(table, all);
 		return steps === null ? null : [...a.adopt, ...steps];
+	};
+
+	/**
+	 * The position among the grid's columns of `column`: a position, or an
+	 * id (a table listing no columns names them by position until it adopts
+	 * them); `-1` when none.
+	 */
+	const positionIn = (a: Adopted, listed: boolean, column: string | number): number => {
+		const at =
+			typeof column === 'number'
+				? column
+				: listed
+					? a.grid.columns.indexOf(column)
+					: Number(column);
+		return Number.isInteger(at) && at >= 0 && at < a.grid.columns.length ? at : -1;
+	};
+
+	/**
+	 * The stored entry (its index in `data.columns`) the listed column at
+	 * position `at` is: the first naming it; the array's length past them.
+	 */
+	const rawIndex = (a: Adopted, at: number): number => {
+		const id = a.columns[at]?.id;
+		const i = id === undefined ? -1 : a.raw.indexOf(id);
+		return i < 0 ? a.raw.length : i;
 	};
 
 	/**
@@ -122,7 +159,7 @@ export const tableOps = (
 			children: a.columns.map((col) => cellSpec(table, col.id))
 		};
 		const ranks = ranksFor(table, at, 1, [], true);
-		const data = columnsSteps(table, a, a.columns);
+		const data = columnsSteps(table, a);
 		if (data === null) return REFUSED;
 		return plan(
 			[row.id],
@@ -147,7 +184,7 @@ export const tableOps = (
 	};
 
 	/**
-	 * Insert a column at `index` among `table`'s columns
+	 * Insert a column at `index` among `table`'s listed columns
 	 * (`table.insert-column`): a new id in `data.columns` and an empty cell
 	 * for it in every row the table shows, in one plan. `width`: the new
 	 * column's. `ids`: the table.
@@ -162,8 +199,9 @@ export const tableOps = (
 			typeof width === 'number' && Number.isFinite(width) && width > 0
 				? { id: newId('c'), width }
 				: { id: newId('c') };
-		const whole = [...a.columns.slice(0, at), column, ...a.columns.slice(at)];
-		const data = columnsSteps(table, a, whole, { path: ['columns'], splice: [at, 0, column] });
+		const data = columnsSteps(table, a, [
+			{ path: ['columns'], splice: [rawIndex(a, at), 0, column] }
+		]);
 		if (data === null) return REFUSED;
 		const cells: PlanStep[] = a.grid.rows.map((row) => {
 			const kids = childrenIds(row.id);
@@ -179,29 +217,34 @@ export const tableOps = (
 		return plan([table], [...data, ...cells]);
 	};
 
-	/** The index of `column` (an id, or a position) among `columns`; `-1` when none. */
-	const indexOf = (columns: readonly TableColumn[], column: string | number): number =>
-		typeof column === 'number'
-			? Number.isInteger(column) && column >= 0 && column < columns.length
-				? column
-				: -1
-			: columns.findIndex((c) => c.id === column);
-
 	/**
-	 * Delete a column (`table.delete-column`, by id or position): it leaves
-	 * `data.columns` and every shown cell of it is deleted, in one plan; a
-	 * table left with no column goes with it. `ids`: the table.
+	 * Delete a column (`table.delete-column`, by id or position among the
+	 * grid's): it leaves `data.columns` (every entry naming it) and every
+	 * shown cell of it is deleted, in one plan; a table left with no column
+	 * goes with it. A column the table shows but no longer lists
+	 * (`table.cell`) loses its cells. `ids`: the table.
 	 */
 	const deleteTableColumn = (table: BlockId, column: string | number): Prepared => {
 		table = ref(table);
 		if (!isTable(table) || !live(table)) return REFUSED;
+		const listed = tableColumns(table) !== null;
 		const a = adopted(table);
 		if (a === null) return REFUSED;
-		const at = indexOf(a.columns, column);
+		const at = positionIn(a, listed, column);
 		if (at < 0) return REFUSED;
-		if (a.columns.length === 1) return plan([table], [remove(table)]);
-		const whole = a.columns.filter((_, i) => i !== at);
-		const data = columnsSteps(table, a, whole, { path: ['columns'], splice: [at, 1] });
+		if (a.grid.columns.length === 1) return plan([table], [remove(table)]);
+		const id = a.grid.columns[at]!;
+		const items = listed ? dataItemIds(table, ['columns']) : [];
+		const entries = listed
+			? a.raw.flatMap((c, i) => (c === id && items[i] ? [items[i]!] : []))
+			: [];
+		const data = columnsSteps(
+			table,
+			a,
+			listed
+				? entries.map((item) => ({ path: ['columns', item] }))
+				: [{ path: ['columns'], splice: [at, 1] }]
+		);
 		if (data === null) return REFUSED;
 		const gone = a.grid.rows.flatMap((row) => {
 			const cell = row.cells[at];
@@ -211,27 +254,31 @@ export const tableOps = (
 	};
 
 	/**
-	 * Move a column to position `to` (`table.move-column`): one `order`
-	 * patch of `data.columns`; no cell moves, every row shows its cells in
-	 * the new order. `ids`: the table.
+	 * Move a listed column to position `to` among them (`table.move-column`):
+	 * one `order` patch of `data.columns`; no cell moves, every row shows its
+	 * cells in the new order. `ids`: the table.
 	 */
 	const moveTableColumn = (table: BlockId, column: string | number, to: number): Prepared => {
 		table = ref(table);
 		if (!isTable(table) || !live(table)) return REFUSED;
+		const listed = tableColumns(table) !== null;
 		const a = adopted(table);
 		if (a === null) return REFUSED;
-		const from = indexOf(a.columns, column);
+		const from = positionIn(a, listed, column);
 		const dest = Math.trunc(to);
-		if (from < 0 || !(dest >= 0 && dest < a.columns.length)) return REFUSED;
+		if (from < 0 || from >= a.columns.length || !(dest >= 0 && dest < a.columns.length))
+			return REFUSED;
 		if (from === dest) {
-			const same = columnsSteps(table, a, a.columns);
+			const same = columnsSteps(table, a);
 			return same === null ? REFUSED : plan([table], same);
 		}
-		const order = a.columns.map((_, i) => i);
-		order.splice(from, 1);
-		order.splice(dest, 0, from);
-		const whole = order.map((i) => a.columns[i]!);
-		const data = columnsSteps(table, a, whole, { path: ['columns'], order });
+		const moved = a.columns.map((_, i) => i);
+		moved.splice(from, 1);
+		moved.splice(dest, 0, from);
+		// Over the stored entries: the listed ones in their new order, then the rest as they were.
+		const firsts = moved.map((i) => rawIndex(a, i));
+		const rest = a.raw.map((_, i) => i).filter((i) => !firsts.includes(i));
+		const data = columnsSteps(table, a, [{ path: ['columns'], order: [...firsts, ...rest] }]);
 		return data === null ? REFUSED : plan([table], data);
 	};
 
@@ -251,26 +298,29 @@ export const tableOps = (
 
 	/**
 	 * Create the cell `row` shows none of for `column` (an id, or a
-	 * position; `table.pad`: the first edit in a padded cell), empty, in one
-	 * plan. `ids`: the new cell.
+	 * position among the grid's; `table.pad`: the first edit in a padded
+	 * cell), empty, in one plan. A column the table shows but no longer
+	 * lists (`table.cell`) is listed again, last. `ids`: the new cell.
 	 */
 	const fillTableCell = (row: BlockId, column: string | number): Prepared => {
 		row = ref(row);
 		if (!isTableRow(row) || !live(row)) return REFUSED;
 		const table = positionOf(row)!.parent!;
+		const listed = tableColumns(table) !== null;
 		const a = adopted(table);
 		if (a === null) return REFUSED;
-		// A table listing no columns names them by position until it adopts them.
-		const at =
-			typeof column === 'number' || !a.listed
-				? indexOf(a.columns, Number(column))
-				: indexOf(a.columns, column);
+		const at = positionIn(a, listed, column);
 		const shown = a.grid.rows.find((r) => r.id === row);
 		if (at < 0 || shown === undefined || shown.cells[at] !== null) return REFUSED;
 		const kids = childrenIds(row);
 		const slot = Math.min(shown.cells.slice(0, at).filter((x) => x !== null).length, kids.length);
-		const spec = cellSpec(table, a.columns[at]!.id);
-		const data = columnsSteps(table, a, a.columns);
+		const id = a.grid.columns[at]!;
+		const spec = cellSpec(table, id);
+		const data = columnsSteps(
+			table,
+			a,
+			at < a.columns.length ? [] : [{ path: ['columns'], splice: [a.raw.length, 0, { id }] }]
+		);
 		if (data === null) return REFUSED;
 		return plan(
 			[spec.id],

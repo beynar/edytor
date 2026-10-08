@@ -4,7 +4,7 @@ description: The table plugin adds Notion's simple table, a grid of text cells. 
 icon: table
 ---
 
-`tablePlugin` adds Notion's simple table: a grid of **cells**, each holding text (its lines are line breaks), in **rows** and **columns**. You make one with the slash menu or the block menu's Turn into ("Table"), or by pasting an HTML table. Hover it to add a row (the `+` under it) or a column (the `+` beside it), and to reach a row's and a column's grip, whose menus insert, move and delete them. Drag a column's right edge to resize it. The table's block menu has Notion's **Header row** and **Header column** switches.
+`tablePlugin` adds Notion's simple table: a grid of **cells**, each holding text (its lines are line breaks), in **rows** and **columns**. You make one with the slash menu or the block menu's Turn into ("Table"), or by pasting an HTML table. Hover it to add a row (the `+` under it) or a column (the `+` beside it), and to reach a row's and a column's grip, whose menus insert, move and delete them. Drag a column's right edge to resize it. The table's block menu inserts and deletes rows and columns where the caret was, and has Notion's **Header row** and **Header column** switches.
 
 The plugin is not a default plugin: list it in `plugins`.
 
@@ -92,7 +92,7 @@ const document = createDocument({
 });
 ```
 
-A table written without `columns` (by hand) shows each row's cells in their order; the first column operation on it lists its columns and names each cell's column, in its own step.
+A table written without `columns` (by hand) shows each row's cells in their order; the first column operation on it lists its columns (`c1`, `c2`, … by position, as `tableBlock` names them, so two people doing it at once list the same ones) and names each cell's column, in its own step.
 
 ## What shows
 
@@ -100,6 +100,7 @@ The document shows a table by read-time rules, on every replica, whatever the st
 
 - **A row shows its cells in the table's column order**, whatever their stored order.
 - **A cell shows only in a row of a table, for a column the table lists, once.** A cell of a deleted column, a second cell for one column, or a cell left outside a row by a race does not show, with its text.
+- **Undo never hides a collaborator's text.** Undoing a column insert takes the column out of the list, but a cell of it that holds another person's text stays, in a column shown after the listed ones (its other rows padded), until that text is deleted. Typing in one of its padded cells lists the column again, last; deleting the column deletes its cells.
 - **A row shows only in a table, and only while it shows a cell; a table only while it shows a row.**
 - **A row is padded to the table's columns.** A row showing no cell for a column (a collaborator's row inserted while another person added a column) shows an empty placeholder there, the view's alone: the first press in it creates the cell and puts the caret in it.
 - Any other block stored in a table or a row shows right after the table.
@@ -113,8 +114,8 @@ The document shows a table by read-time rules, on every replica, whatever the st
 | <kbd>Backspace</kbd> at a cell's start, <kbd>Delete</kbd> at its end | Nothing: nothing merges into or out of a cell |
 | <kbd>Backspace</kbd> at the start of the block after a table | The caret goes to the end of the last cell |
 | <kbd>Tab</kbd> | The end of the next cell, row by row; in the last cell, a new row after it, the caret in its first cell (Notion) |
-| <kbd>Shift</kbd>+<kbd>Tab</kbd> | The end of the previous cell; in the first, nothing |
-| <kbd>↑</kbd> on a cell's first line, <kbd>↓</kbd> on its last | The cell above or below in the same column, at the same place in its line; out of the table, the browser moves the caret |
+| <kbd>Shift</kbd>+<kbd>Tab</kbd> | The end of the previous cell; in the first, nothing (the caret stays where it is) |
+| <kbd>↑</kbd> on a cell's first line, <kbd>↓</kbd> on its last | The cell above or below in the same column, on its last (first) line, nearest the caret's horizontal position; out of the table, the browser moves the caret. A line is a line as it wraps on screen: in a wrapped cell the arrows move through its lines first |
 | <kbd>←</kbd>, <kbd>→</kbd> | Reading order: from a row's last cell to the next row's first |
 
 A text range across cells deletes the text it covers in each cell and removes no cell or row; with one end outside the table, the blocks between the end and the table go and nothing merges into a cell; a table wholly inside the range goes with it. The slash menu does not open in a cell, and a cell is never turned into another kind. A block selection never holds a row or a cell: selecting one (<kbd>Mod</kbd>+<kbd>A</kbd> twice in a cell) selects the table, so a block action (Delete, Duplicate, a move) acts on the whole table. A paste into a cell joins its lines with line breaks.
@@ -131,7 +132,7 @@ Hover a table:
 
 Deleting a table's last row or last column deletes the table. Every action is one undo step, refused in a readonly view (which shows none of these controls). The table's own block handle drags, duplicates and deletes the whole table; rows and cells have no handle.
 
-The **block menu** of a table adds two switches, **Header row** and **Header column** (`BlockDefinition.menu`, rows of `KindMenuAction`), each one data write and one undo step.
+The **block menu** of a table (`BlockDefinition.menu`, rows of `KindMenuAction`) adds the keyboard's way to the rows and columns: **Insert row above**, **Insert row below**, **Insert column left**, **Insert column right**, **Delete row** and **Delete column**, at the row and column of the cell the caret was last in (the grip that opens the menu keeps it; with no caret in the table, its last row and column). An insert closes the menu and puts the caret in the new cell. Then two switches, **Header row** and **Header column**, each one data write and one undo step; the menu stays open.
 
 ## Clipboard
 
@@ -149,7 +150,9 @@ Every replica applies the read-time rules above, so two people editing a table a
 - One person inserts a column while another inserts a row: the new row is padded in the new column until someone types there.
 - One person types in a cell while another deletes its row: the row goes, with the text.
 - One person moves a column while another inserts a row: the new row shows its cells in the moved order.
+- One person inserts a column, another types in it, and the first undoes the insert: the typed text stays, its column shown last (see What shows).
 - Two people filling the same padded cell at once each create a cell; one shows (the first by block id), and text typed in the other before they synced does not show.
+- On a table written without `columns`, a column deleted while another person runs any other column operation stays listed, emptied: both list the columns at once, and the delete loses to the other's list.
 
 These rules come from the document's roles: list the plugin in every view; a headless document holds them by default (`defaultSemantics`), as the room does. See [concurrent editing](/docs/collaboration/concurrent-editing).
 
@@ -197,15 +200,15 @@ facade.tableGrid('t'); // { columns: [...], rows: [{ id, cells: [...] }] }
 | `insertTableRow(table, index)` | A row with one empty cell per column at `index` among the rows |
 | `deleteTableRows(rows)` | The rows with their cells; a table left with no row goes too |
 | `insertTableColumn(table, index, width?)` | A new column in `data.columns` and an empty cell for it in every row |
-| `deleteTableColumn(table, column)` | The column (by id or position) and its cells; the last column takes the table |
+| `deleteTableColumn(table, column)` | The column (by id or position) and its cells (every entry of `data.columns` naming it); the last column takes the table |
 | `moveTableColumn(table, column, to)` | One reorder of `data.columns` |
 | `moveTableRows(rows, to)` | A move among the table's rows (refused out of it) |
-| `fillTableCell(row, column)` | Creates a padded cell |
+| `fillTableCell(row, column)` | Creates a padded cell (in a column shown unlisted, lists it again, last) |
 | `isTable(id)`, `isTableRow(id)`, `isTableCell(id)`, `tableOf(id)` | Whether a block is a table, its row or its cell, and the table holding it |
 | `tableColumns(table)` | The listed columns (`{ id, width? }[]`), or `null` |
 | `tableGrid(table)` | The column ids and each shown row's cells by column, `null` for a padded cell |
 
-Header flags and widths are data patches: `facade.patchData(table, [{ path: ['headerRow'], value: true }])`, `[{ path: ['columns', '0', 'width'], value: 200 }]`. A cell never moves as a block, nothing merges into or out of one and it never splits (`canPlace`, `canMerge`, `splitBlock` refuse); a row moves only within its table. In a view, the commands run as `insertTableRow`, `deleteTableRows`, `insertTableColumn`, `deleteTableColumn`, `moveTableColumn`, `moveTableRows` and `fillTableCell`, so hooks see and may refuse them.
+Header flags and widths are data patches: `facade.patchData(table, [{ path: ['headerRow'], value: true }])`, and a width on the column's entry by its item id, `[{ path: ['columns', facade.dataItemIds(table, ['columns'])[i], 'width'], value: 200 }]` (a position works too, but counts every entry the stored array holds). `tableGrid` lists the listed columns, then any column it shows unlisted (an undone insert's, holding someone's text); `deleteTableColumn` and `fillTableCell` take its id or position, `moveTableColumn` refuses it. A cell never moves as a block, nothing merges into or out of one and it never splits (`canPlace`, `canMerge`, `splitBlock` refuse); a row moves only within its table. In a view, the commands run as `insertTableRow`, `deleteTableRows`, `insertTableColumn`, `deleteTableColumn`, `moveTableColumn`, `moveTableRows` and `fillTableCell`, so hooks see and may refuse them.
 
 ## Limitations
 

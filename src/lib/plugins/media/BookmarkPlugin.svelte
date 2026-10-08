@@ -5,7 +5,8 @@
 	import MediaEmpty from './MediaEmpty.svelte';
 	import { mediaKinds } from '$lib/crdt/semantics.js';
 	import { urlPaste } from './urlPaste.svelte.js';
-	import { escapeHtml, safeWebUrl } from './media.js';
+	import { escapeHtml, mediaLabels, safeWebUrl } from './media.js';
+	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
 
 	/** What an `unfurl` answers about a page; every field optional. */
 	export type BookmarkPreview = {
@@ -24,6 +25,10 @@
 		 * set from the panel or the paste menu; without it the card shows the URL.
 		 */
 		unfurl?: (url: string) => Promise<BookmarkPreview | null | undefined>;
+		/** The words the block shows (its empty panel, its menu row), over the English ones. */
+		labels?: PartialLabels<'media'>;
+		/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
+		keywords?: Partial<Record<string, string[]>>;
 	};
 
 	const unfurlOf = new WeakMap<Edytor, BookmarkPluginOptions['unfurl']>();
@@ -96,14 +101,20 @@
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!unfurlOf.has(edytor)) unfurlOf.set(edytor, options.unfurl);
+			const labels = labelsWith('media', options.labels);
+			mediaLabels.bookmark.claim(edytor, labels);
 			return {
-				...urlPaste(edytor, {
-					type: 'bookmark',
-					label: 'Bookmark',
-					icon: '🔖',
-					data: (url) => ({ url }),
-					created: (block, url) => void fill(block, url)
-				}),
+				...urlPaste(
+					edytor,
+					{
+						type: 'bookmark',
+						label: labels.bookmark.offer,
+						icon: '🔖',
+						data: (url) => ({ url }),
+						created: (block, url) => void fill(block, url)
+					},
+					labels
+				),
 				blocks: {
 					bookmark: {
 						...mediaKinds.bookmark,
@@ -111,9 +122,13 @@
 						element: 'figure',
 						presets: [
 							{
-								label: 'Web bookmark',
+								label: labels.bookmark.label,
 								icon: '🔖',
-								keywords: ['link', 'url', 'preview', 'unfurl'],
+								keywords: keywordsOf(
+									'block.bookmark',
+									['link', 'url', 'preview', 'unfurl'],
+									options.keywords
+								),
 								group: 'Media'
 							}
 						],
@@ -167,11 +182,8 @@
 		<div use:block.void data-edytor-media-empty>
 			<MediaEmpty
 				block={block.handle}
-				label="Add a web bookmark"
+				kind="bookmark"
 				icon="🔖"
-				placeholder="Paste the link…"
-				submit="Create bookmark"
-				invalid="That doesn't look like a web link."
 				link={(value) => bookmarkLink(block.handle, value)}
 			/>
 		</div>

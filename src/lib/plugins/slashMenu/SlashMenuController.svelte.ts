@@ -2,7 +2,8 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EditorCommand } from '$lib/plugins.js';
 import { project, type SelectionValue } from '$lib/session/selection.js';
-import { matchesQuery } from '$lib/kinds.js';
+import { BASIC_BLOCKS, matchesQuery } from '$lib/kinds.js';
+import { englishLabels, type SlashMenuLabels } from '$lib/labels.js';
 import type { BlockAddition } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { TextTriggerController } from '$lib/plugins/triggers/TriggerController.svelte.js';
 
@@ -82,7 +83,14 @@ export class SlashMenuController extends TextTriggerController {
 	/** The selection when a `+` opened the menu, given back when it closes unpicked. */
 	private held: SelectionValue = { kind: 'none' };
 
-	constructor(edytor: Edytor) {
+	/** A group's heading: its key in the labels' `groups`, else the key itself. */
+	groupName = (group: string) => this.labels.groups[group] ?? group;
+
+	constructor(
+		edytor: Edytor,
+		/** The words the menu shows (the plugin's `labels`): read them in a custom `menu` or `item`. */
+		readonly labels: SlashMenuLabels = englishLabels.slashMenu
+	) {
 		super(edytor, '/', 'slash-menu');
 	}
 
@@ -117,7 +125,7 @@ export class SlashMenuController extends TextTriggerController {
 		);
 		// Groups in first-seen order, Notion's "Basic blocks" first.
 		const groups = [...new Set(matching.map((command) => command.group ?? ''))].sort(
-			(a, b) => Number(b === 'Basic blocks') - Number(a === 'Basic blocks')
+			(a, b) => Number(b === BASIC_BLOCKS) - Number(a === BASIC_BLOCKS)
 		);
 		return matching.sort((a, b) => groups.indexOf(a.group ?? '') - groups.indexOf(b.group ?? ''));
 	}

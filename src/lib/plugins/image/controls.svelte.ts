@@ -1,4 +1,5 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { englishLabels, type ImageLabels } from '$lib/labels.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
 import {
 	imageAlignOf,
@@ -65,7 +66,11 @@ export class ImageControls {
 	/** Ends the drag in progress without a write. */
 	#cancel: (() => void) | null = null;
 
-	constructor(private edytor: Edytor) {}
+	constructor(
+		private edytor: Edytor,
+		/** The words the chrome shows (the plugin's `labels`). */
+		readonly labels: ImageLabels = englishLabels.image
+	) {}
 
 	/** The view is readonly (reactive). */
 	get readonly() {

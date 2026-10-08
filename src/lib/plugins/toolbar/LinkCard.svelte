@@ -2,6 +2,7 @@
 	import { iconOf } from '../icons.js';
 	import type { ToolbarController } from './ToolbarController.svelte.js';
 	let { controller }: { controller: ToolbarController } = $props();
+	const labels = $derived(controller.labels);
 </script>
 
 <!--
@@ -15,7 +16,7 @@
 		data-testid="link-card"
 		data-edytor-link-card
 		role="toolbar"
-		aria-label="Link"
+		aria-label={labels.card}
 	>
 		<span
 			class="link-card-url"
@@ -25,20 +26,20 @@
 		<button
 			type="button"
 			data-testid="link-card-open"
-			title="Open link in a new tab"
-			onclick={() => controller.openHovered()}>Open</button
+			title={labels.openLink}
+			onclick={() => controller.openHovered()}>{labels.open}</button
 		>
 		<button
 			type="button"
 			data-testid="link-card-edit"
-			title="Edit link"
-			onclick={() => controller.editHovered()}>Edit</button
+			title={labels.editLink}
+			onclick={() => controller.editHovered()}>{labels.edit}</button
 		>
 		<button
 			type="button"
 			data-testid="link-card-remove"
-			title="Remove link"
-			onclick={() => controller.removeHovered()}>Remove</button
+			title={labels.removeLink}
+			onclick={() => controller.removeHovered()}>{labels.remove}</button
 		>
 	</div>
 {/if}

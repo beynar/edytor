@@ -254,6 +254,7 @@ export declare class BlockHandleController {
     constructor(edytor: Edytor, options?: BlockHandleControllerOptions);
     get readonly(): boolean;
     get draggable(): boolean;
+    get labels(): BlockHandlesLabels;
     labelOf: (block: Block) => string;
     opened: (block: Block, control: PopupOpener["control"]) => Popup | undefined;
     grip: (block: Block) => (node: HTMLElement) => {
@@ -330,6 +331,7 @@ export type BlockHandlesOptions = {
     handle?: Snippet<[
         BlockHandleSnippetPayload
     ]>;
+    labels?: PartialLabels<'blockHandles'>;
 };
 ```
 
@@ -363,6 +365,7 @@ export declare class BlockMenuController {
     selectedIndex: number;
     flyout: boolean;
     flyoutIndex: number;
+    readonly labels: BlockMenuLabels;
     constructor(edytor: Edytor, options?: BlockMenuOptions);
     get isOpen(): boolean;
     get readonly(): boolean;
@@ -402,6 +405,7 @@ export type BlockMenuOptions = {
     menu?: Snippet<[
         BlockMenuController
     ]>;
+    labels?: PartialLabels<'blockMenu'>;
 };
 ```
 
@@ -450,6 +454,8 @@ export type BlockSnippetPayload<D = Record<string, any>> = {
 // plugins/media/BookmarkPlugin.svelte.d.ts
 export type BookmarkPluginOptions = {
     unfurl?: (url: string) => Promise<BookmarkPreview | null | undefined>;
+    labels?: PartialLabels<'media'>;
+    keywords?: Partial<Record<string, string[]>>;
 };
 ```
 
@@ -523,6 +529,8 @@ export type CodeLanguage = {
 export type CodePluginOptions = {
     languages?: readonly CodeLanguage[];
     defaultLanguage?: string;
+    labels?: PartialLabels<'code'>;
+    keywords?: Partial<Record<string, string[]>>;
 };
 ```
 
@@ -532,6 +540,8 @@ export type CodePluginOptions = {
 // plugins/columns/ColumnsPlugin.svelte.d.ts
 export type ColumnsPluginOptions = {
     minWidth?: number;
+    labels?: PartialLabels<'columns'>;
+    keywords?: Partial<Record<string, string[]>>;
 };
 ```
 
@@ -772,6 +782,7 @@ export declare class Edytor {
     readonly overlay: Overlay;
     readonly popups: Popups;
     readonly announcer: AnnouncerState;
+    readonly labels: EditorLabels;
     private off;
     private onChange?;
     placeholder?: Placeholder;
@@ -791,7 +802,7 @@ export declare class Edytor {
     moveBlocks: (request: BlockMoveRequest) => Block[];
     historyUndo: () => void;
     historyRedo: () => void;
-    constructor({ snippets, readonly, hotkeys, hotKeys, plugins, document, doc, awareness, actor, requireHydration, presence, sync, value, onSelectionChange, placeholder, onChange }: EdytorOptions);
+    constructor({ snippets, readonly, hotkeys, hotKeys, plugins, document, doc, awareness, actor, requireHydration, presence, sync, value, onSelectionChange, placeholder, labels, onChange }: EdytorOptions);
     private unknownKinds;
     definitionOf: (type: string) => BlockDefinition;
     private _valueCache;
@@ -917,6 +928,8 @@ export type EdytorSyncPayload = {
 // plugins/media/EmbedPlugin.svelte.d.ts
 export type EmbedPluginOptions = {
     providers?: readonly EmbedProvider[];
+    labels?: PartialLabels<'media'>;
+    keywords?: Partial<Record<string, string[]>>;
 };
 ```
 
@@ -939,9 +952,10 @@ export type EmbedProvider = {
 export declare class FindController {
     #private;
     private edytor;
+    readonly labels: FindLabels;
     isOpen: boolean;
     replacement: string;
-    constructor(edytor: Edytor);
+    constructor(edytor: Edytor, labels?: FindLabels);
     get query(): string;
     set query(value: string);
     get caseSensitive(): boolean;
@@ -991,6 +1005,7 @@ export type FindPluginOptions = {
     bar?: Snippet<[
         FindController
     ]>;
+    labels?: PartialLabels<'find'>;
 };
 ```
 
@@ -1018,6 +1033,8 @@ export type HotKeyCombination = Key | `${Modifiers}+${Key}`;
 // plugins/image/ImagePlugin.svelte.d.ts
 export type ImagePluginOptions = {
     upload?: (file: File) => Promise<string>;
+    labels?: PartialLabels<'image'>;
+    keywords?: Partial<Record<string, string[]>>;
 };
 ```
 
@@ -1175,6 +1192,26 @@ export type KindSemantics = BlockRole & {
 };
 ```
 
+### Labels
+
+```ts
+// labels.d.ts
+export type Labels = {
+    editor: EditorLabels;
+    richText: RichTextLabels;
+    toolbar: ToolbarLabels;
+    slashMenu: SlashMenuLabels;
+    blockMenu: BlockMenuLabels;
+    blockHandles: BlockHandlesLabels;
+    image: ImageLabels;
+    media: MediaLabels;
+    code: CodeLabels;
+    find: FindLabels;
+    suggestions: SuggestionsLabels;
+    columns: ColumnsLabels;
+};
+```
+
 ### LoadDocumentOptions
 
 ```ts
@@ -1226,6 +1263,8 @@ export type MarkSnippetPayload<D extends SerializableContent = SerializableConte
 // plugins/media/media.d.ts
 export type MediaPluginOptions = {
     upload?: (file: File) => Promise<string>;
+    labels?: PartialLabels<'media'>;
+    keywords?: Partial<Record<string, string[]>>;
 };
 ```
 
@@ -1410,6 +1449,16 @@ export type ResolvedAt = Exclude<SuggestionAt, {
 }>;
 ```
 
+### RichTextPluginOptions
+
+```ts
+// plugins/richtext/RichTextPlugin.svelte.d.ts
+export type RichTextPluginOptions = {
+    labels?: PartialLabels<'richText'>;
+    keywords?: Partial<Record<string, string[]>>;
+};
+```
+
 ### SchemaMismatchError
 
 ```ts
@@ -1481,6 +1530,7 @@ export type SlashMenuOptions = {
     item?: Snippet<[
         SlashMenuItem
     ]>;
+    labels?: PartialLabels<'slashMenu'>;
 };
 ```
 
@@ -1615,6 +1665,7 @@ export type SuggestionsOptions = {
     bar?: Snippet<[
         SuggestionBarPayload
     ]>;
+    labels?: PartialLabels<'suggestions'>;
 };
 ```
 
@@ -1778,6 +1829,7 @@ export type TextToBlocksOptions = {
 // plugins/toolbar/ToolbarController.svelte.d.ts
 export declare class ToolbarController {
     private edytor;
+    readonly labels: ToolbarLabels;
     private shown;
     linkUrl: string;
     panel: "link" | "color" | "turn" | null;
@@ -1785,7 +1837,8 @@ export declare class ToolbarController {
     private isRestoringSelection;
     private focusField;
     hovered: HTMLAnchorElement | null;
-    constructor(edytor: Edytor);
+    constructor(edytor: Edytor, labels?: ToolbarLabels);
+    colorName: (name: string) => string;
     get isVisible(): boolean;
     get barId(): string;
     publish: (popup: Popup | null) => void;
@@ -1832,6 +1885,7 @@ export type ToolbarOptions = {
         ToolbarController
     ]>;
     linkCard?: boolean;
+    labels?: PartialLabels<'toolbar'>;
 };
 ```
 
@@ -2182,6 +2236,13 @@ declare const embedSourceOf: (value: unknown, providers?: readonly EmbedProvider
     src: string;
     provider: EmbedProvider;
 } | null;
+```
+
+### englishLabels
+
+```ts
+// labels.d.ts
+declare const englishLabels: Labels;
 ```
 
 ### filePlugin
@@ -2590,6 +2651,7 @@ export type EdytorProps = Snippets & {
     onSelectionChange?: (selection: EdytorSelection) => void;
     value?: JSONDoc;
     placeholder?: Placeholder;
+    labels?: PartialLabels<'editor'>;
     translate?: 'yes' | 'no';
     spellcheck?: boolean;
     autocorrect?: 'on' | 'off';
@@ -4279,6 +4341,7 @@ export type EdytorOptions = {
     onChange?: (value: JSONDoc) => void;
     onSelectionChange?: (selection: EdytorSelection) => void;
     placeholder?: Placeholder;
+    labels?: PartialLabels<'editor'>;
 };
 ```
 
@@ -4295,6 +4358,249 @@ export type Snippets = {
     ]> : Snippet<[
         MarkSnippetPayload
     ]>;
+};
+```
+
+#### labels.d.ts#BlockHandlesLabels
+
+```ts
+export type BlockHandlesLabels = {
+    add: (kind: string) => string;
+    addBeside: (kind: string) => string;
+    addHint: string;
+    addBesideHint: string;
+    grip: (kind: string) => string;
+};
+```
+
+#### labels.d.ts#BlockMenuLabels
+
+```ts
+export type BlockMenuLabels = {
+    search: string;
+    searchLabel: string;
+    menu: string;
+    block: string;
+    turnInto: string;
+    copyLink: string;
+    duplicate: string;
+    moveUp: string;
+    moveDown: string;
+    delete: string;
+    noResults: string;
+    ctrl: string;
+    shift: string;
+    deleteKey: string;
+};
+```
+
+#### labels.d.ts#CodeLabels
+
+```ts
+export type CodeLabels = {
+    code: string;
+    language: string;
+    copy: string;
+    copied: string;
+    languages: Record<string, string>;
+};
+```
+
+#### labels.d.ts#ColumnsLabels
+
+```ts
+export type ColumnsLabels = {
+    columns: (count: number) => string;
+    resize: string;
+};
+```
+
+#### labels.d.ts#EditorLabels
+
+```ts
+export type EditorLabels = {
+    suggestion: string;
+    block: (kind: string) => string;
+    blocks: (count: number) => string;
+    movedUp: (what: string) => string;
+    movedDown: (what: string) => string;
+    indented: (what: string) => string;
+    outdented: (what: string) => string;
+    moved: (what: string) => string;
+    deleted: (what: string) => string;
+};
+```
+
+#### labels.d.ts#FindLabels
+
+```ts
+export type FindLabels = {
+    bar: string;
+    query: string;
+    queryPlaceholder: string;
+    noResults: string;
+    count: (current: number, total: number) => string;
+    matchCase: string;
+    previous: string;
+    previousHint: string;
+    next: string;
+    nextHint: string;
+    close: string;
+    closeHint: string;
+    replaceWith: string;
+    replace: string;
+    replaceAll: string;
+};
+```
+
+#### labels.d.ts#ImageLabels
+
+```ts
+export type ImageLabels = {
+    image: string;
+    add: string;
+    link: string;
+    linkPlaceholder: string;
+    embed: string;
+    upload: string;
+    uploading: string;
+    tooLarge: (limit: string, upload: boolean) => string;
+    uploadFailed: string;
+    invalid: string;
+    toolbar: string;
+    alignLeft: string;
+    alignCenter: string;
+    alignRight: string;
+    alt: string;
+    altPlaceholder: string;
+};
+```
+
+#### labels.d.ts#MediaKindLabels
+
+```ts
+export type MediaKindLabels = {
+    label: string;
+    add: string;
+    placeholder: string;
+    submit: string;
+    invalid: string;
+};
+```
+
+#### labels.d.ts#MediaLabels
+
+```ts
+export type MediaLabels = {
+    embed: MediaKindLabels & {
+        offer: string;
+    };
+    bookmark: MediaKindLabels & {
+        offer: string;
+    };
+    file: MediaKindLabels & {
+        addOrUpload: string;
+    };
+    video: MediaKindLabels;
+    audio: MediaKindLabels;
+    upload: string;
+    fileSize: (bytes: number) => string;
+    pasteAs: string;
+    pasteLink: string;
+};
+```
+
+#### labels.d.ts#RichTextLabels
+
+```ts
+export type RichTextLabels = {
+    kinds: {
+        paragraph: string;
+        heading1: string;
+        heading2: string;
+        heading3: string;
+        bulletedList: string;
+        numberedList: string;
+        todoList: string;
+        toggleList: string;
+        callout: string;
+        quote: string;
+        divider: string;
+    };
+    marks: {
+        bold: string;
+        italic: string;
+        underline: string;
+        strike: string;
+        code: string;
+    };
+    checkbox: string;
+    placeholders: {
+        heading: (level: 1 | 2 | 3) => string;
+        list: string;
+        todo: string;
+        toggle: string;
+        quote: string;
+        callout: string;
+        caption: string;
+        empty: string;
+    };
+};
+```
+
+#### labels.d.ts#SlashMenuLabels
+
+```ts
+export type SlashMenuLabels = {
+    filter: string;
+    filterLabel: string;
+    list: string;
+    noResults: string;
+    close: string;
+    closeKey: string;
+    groups: Record<string, string>;
+};
+```
+
+#### labels.d.ts#SuggestionsLabels
+
+```ts
+export type SuggestionsLabels = {
+    suggestion: string;
+    writing: (label: string | undefined) => string;
+    accept: string;
+    discard: string;
+    retry: string;
+    ctrl: string;
+    escape: string;
+};
+```
+
+#### labels.d.ts#ToolbarLabels
+
+```ts
+export type ToolbarLabels = {
+    bar: string;
+    text: string;
+    turnInto: string;
+    link: string;
+    linkUrl: string;
+    linkPlaceholder: string;
+    apply: string;
+    applyLink: string;
+    remove: string;
+    removeLink: string;
+    color: string;
+    textColor: string;
+    backgroundColor: string;
+    colors: Record<string, string>;
+    colorText: (color: string) => string;
+    colorBackground: (color: string) => string;
+    card: string;
+    open: string;
+    openLink: string;
+    edit: string;
+    editLink: string;
 };
 ```
 
@@ -4408,6 +4714,7 @@ export type PluginOperations = {
 type BlockHandleControllerOptions = {
     draggable: boolean;
     onActivate?: (activation: BlockActivation) => void;
+    labels?: BlockHandlesLabels;
 };
 ```
 

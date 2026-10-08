@@ -30,6 +30,7 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { kindLabel } from '$lib/kinds.js';
+import { englishLabels, type BlockHandlesLabels } from '$lib/labels.js';
 import type { Popup, PopupOpener } from '$lib/surface/popups.svelte.js';
 import { dragPreview } from './dragPreview.js';
 import { stacks } from '../columns/stacking.js';
@@ -111,6 +112,7 @@ const isBeside = (position: BlockMovePosition): position is 'left' | 'right' =>
 type BlockHandleControllerOptions = {
 	draggable: boolean;
 	onActivate?: (activation: BlockActivation) => void;
+	labels?: BlockHandlesLabels;
 };
 
 const getOwnRowBottom = (node: HTMLElement) => {
@@ -243,6 +245,11 @@ export class BlockHandleController {
 
 	get draggable() {
 		return this.options.draggable;
+	}
+
+	/** The words the handles say (the plugin's `labels`): read them in a custom `handle`. */
+	get labels(): BlockHandlesLabels {
+		return this.options.labels ?? englishLabels.blockHandles;
 	}
 
 	/**

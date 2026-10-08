@@ -16,6 +16,7 @@
 		item?: Snippet<[SlashMenuItem]>;
 	} = $props();
 	const commands = $derived(controller.commands);
+	const labels = $derived(controller.labels);
 	// An editor turning readonly closes the menu (its commands would be refused).
 	$effect(() => {
 		if (controller.isOpen && controller.readonly) controller.dismiss(false);
@@ -141,8 +142,8 @@
 			<input
 				bind:this={field}
 				class="slash-search"
-				placeholder="Type to filter…"
-				aria-label="Filter block commands"
+				placeholder={labels.filter}
+				aria-label={labels.filterLabel}
 				role="combobox"
 				aria-expanded="true"
 				aria-autocomplete="list"
@@ -161,15 +162,17 @@
 			class="slash-items"
 			id={controller.listId}
 			role="listbox"
-			aria-label="Block commands"
+			aria-label={labels.list}
 			bind:this={list}
 		>
 			{#if commands.length === 0}
-				<div class="slash-empty" data-testid="slash-menu-empty">No results</div>
+				<div class="slash-empty" data-testid="slash-menu-empty">{labels.noResults}</div>
 			{/if}
 			{#each groups as group, at (`${at}:${group.name}`)}
-				<div role="group" aria-label={group.name || undefined}>
-					{#if group.name}<div class="slash-heading" aria-hidden="true">{group.name}</div>{/if}
+				<div role="group" aria-label={group.name ? controller.groupName(group.name) : undefined}>
+					{#if group.name}<div class="slash-heading" aria-hidden="true">
+							{controller.groupName(group.name)}
+						</div>{/if}
 					{#each group.rows as { command, index } (command.id)}
 						{#if item}
 							{@render item({
@@ -212,7 +215,8 @@
 			class="slash-footer"
 			tabindex="-1"
 			onmousedown={(event) => event.preventDefault()}
-			onclick={() => controller.dismiss()}><span>Close menu</span><kbd>esc</kbd></button
+			onclick={() => controller.dismiss()}
+			><span>{labels.close}</span><kbd>{labels.closeKey}</kbd></button
 		>
 	</div>
 {/if}

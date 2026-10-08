@@ -1,7 +1,13 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { getContext, untrack } from 'svelte';
+	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { Block } from '$lib/block/block.svelte.js';
-	import { MAX_INLINE_IMAGE_BYTES, oversizedInlineImage, safeImageSrc } from './image.js';
+	import {
+		MAX_INLINE_IMAGE_BYTES,
+		imageLabels,
+		oversizedInlineImage,
+		safeImageSrc
+	} from './image.js';
 	import type { ImageUploads } from './uploads.svelte.js';
 
 	/**
@@ -34,6 +40,8 @@
 			untrack(() => uploads?.fill(id));
 		}
 	});
+	/** The words of the view rendering it (a suggestion's preview included). */
+	const labels = imageLabels.of(getContext<Edytor>('edytor'));
 	let draft = $state('');
 	// The panel opens on a failed upload; the user closes it.
 	let open = $state(untrack(() => error !== null));
@@ -53,19 +61,19 @@
 </script>
 
 {#if !block || block.edytor.readonly}
-	<div data-edytor-image-placeholder><span aria-hidden="true">🖼</span> Image</div>
+	<div data-edytor-image-placeholder><span aria-hidden="true">🖼</span> {labels.image}</div>
 {:else}
 	<button
 		type="button"
 		data-edytor-image-add
 		onmousedown={(event) => event.preventDefault()}
-		onclick={() => (open = !open)}><span aria-hidden="true">🖼</span> Add an image</button
+		onclick={() => (open = !open)}><span aria-hidden="true">🖼</span> {labels.add}</button
 	>
 	{#if open}
 		<div data-edytor-image-form>
 			<input
-				placeholder="Paste the image link…"
-				aria-label="Image link"
+				placeholder={labels.linkPlaceholder}
+				aria-label={labels.link}
 				bind:value={draft}
 				onkeydown={(event) => {
 					if (event.key === 'Enter') {
@@ -74,10 +82,10 @@
 					}
 				}}
 			/>
-			<button type="button" onclick={() => embed(draft)}>Embed image</button>
+			<button type="button" onclick={() => embed(draft)}>{labels.embed}</button>
 			{#if upload}
 				<label data-edytor-image-upload>
-					Upload
+					{labels.upload}
 					<input
 						type="file"
 						accept="image/*"
@@ -96,17 +104,12 @@
 			{/if}
 			{#if failed === 'inline'}
 				<small data-edytor-image-error="inline"
-					>Inline images are limited to {inlineLimit}: {upload
-						? 'upload the file instead'
-						: 'host the image and paste its link'}.</small
+					>{labels.tooLarge(inlineLimit, Boolean(upload))}</small
 				>
 			{:else if failed === 'upload'}
-				<small data-edytor-image-error="upload">The upload failed: try again or paste a link.</small
-				>
+				<small data-edytor-image-error="upload">{labels.uploadFailed}</small>
 			{:else if failed}
-				<small data-edytor-image-error="invalid"
-					>That doesn't look like an image link or upload.</small
-				>
+				<small data-edytor-image-error="invalid">{labels.invalid}</small>
 			{/if}
 		</div>
 	{/if}

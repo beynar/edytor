@@ -5,12 +5,14 @@
 	import MediaEmpty from './MediaEmpty.svelte';
 	import { mediaKinds } from '$lib/crdt/semantics.js';
 	import { urlPaste } from './urlPaste.svelte.js';
+	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
 	import {
 		EMBED_ALLOW,
 		EMBED_PROVIDERS,
 		EMBED_SANDBOX,
 		claimed,
 		embedSourceOf,
+		mediaLabels,
 		escapeHtml,
 		safeWebUrl,
 		type EmbedProvider
@@ -21,6 +23,10 @@
 	export type EmbedPluginOptions = {
 		/** The allowlist (default {@link EMBED_PROVIDERS}); a link none of them plays shows no frame. */
 		providers?: readonly EmbedProvider[];
+		/** The words the block shows (its empty panel, its menu row), over the English ones. */
+		labels?: PartialLabels<'media'>;
+		/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
+		keywords?: Partial<Record<string, string[]>>;
 	};
 
 	const providersOf = new WeakMap<Edytor, readonly EmbedProvider[]>();
@@ -52,13 +58,19 @@
 		(edytor) => {
 			const allowed = options.providers ?? EMBED_PROVIDERS;
 			if (!providersOf.has(edytor)) providersOf.set(edytor, allowed);
+			const labels = labelsWith('media', options.labels);
+			mediaLabels.embed.claim(edytor, labels);
 			return {
-				...urlPaste(edytor, {
-					type: 'embed',
-					label: 'Embed',
-					icon: '⧉',
-					data: (url) => (embedSourceOf(url, allowed) ? { url } : null)
-				}),
+				...urlPaste(
+					edytor,
+					{
+						type: 'embed',
+						label: labels.embed.offer,
+						icon: '⧉',
+						data: (url) => (embedSourceOf(url, allowed) ? { url } : null)
+					},
+					labels
+				),
 				blocks: {
 					embed: {
 						...mediaKinds.embed,
@@ -66,9 +78,13 @@
 						element: 'figure',
 						presets: [
 							{
-								label: 'Embed',
+								label: labels.embed.label,
 								icon: '⧉',
-								keywords: ['iframe', 'youtube', 'vimeo', 'loom', 'figma', 'codepen', 'spotify'],
+								keywords: keywordsOf(
+									'block.embed',
+									['iframe', 'youtube', 'vimeo', 'loom', 'figma', 'codepen', 'spotify'],
+									options.keywords
+								),
 								group: 'Media'
 							}
 						],
@@ -131,11 +147,8 @@
 		<div use:block.void data-edytor-media-empty>
 			<MediaEmpty
 				block={block.handle}
-				label="Embed a link"
+				kind="embed"
 				icon="⧉"
-				placeholder="Paste the link…"
-				submit="Embed link"
-				invalid="No embed provider plays that link."
 				link={(value) => embedLink(block.handle, value)}
 			/>
 		</div>

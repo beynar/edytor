@@ -28,7 +28,7 @@
 	data-edytor-suggestion={suggestion.id}
 	data-status={suggestion.status}
 	contenteditable="false"
-	aria-label={suggestion.label ?? 'Suggestion'}
+	aria-label={suggestion.label ?? edytor.labels.suggestion}
 	role="group"
 	use:edytor.surface.preview={suggestion.id}
 	onmousedown={cancel}

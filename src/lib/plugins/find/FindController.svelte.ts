@@ -7,6 +7,7 @@ import type { CommandResult } from '$lib/session/commands.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
 import { reveal } from '$lib/selection/replaceSelection.js';
 import { findMatches, type FindMatch } from './search.js';
+import { englishLabels, type FindLabels } from '$lib/labels.js';
 
 /** What `replaceMatches` (one command, one undo step) writes: each match replaced by `replacement`. */
 export type ReplaceMatches = BlockOperations['replaceMatches'];
@@ -33,7 +34,11 @@ export class FindController {
 	#off: (() => void) | null = null;
 	#field: HTMLInputElement | null = null;
 
-	constructor(private edytor: Edytor) {}
+	constructor(
+		private edytor: Edytor,
+		/** The words the bar shows (the plugin's `labels`): read them in a custom `bar`. */
+		readonly labels: FindLabels = englishLabels.find
+	) {}
 
 	/** What the bar searches for; setting it shows the current match. */
 	get query() {

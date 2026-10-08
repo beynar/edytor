@@ -37,6 +37,14 @@ An image plugin you list (`imagePlugin` or any `createImagePlugin(...)`) replace
       type: "(file: File) => Promise<string>",
       description: "Upload a file and answer its URL. Adds an Upload button to the empty block, and claims pasted and dropped image files (see below). Without it, images are embedded from links only.",
     },
+    labels: {
+      type: "PartialLabels<'image'>",
+      description: "The empty panel's, the upload's and the chrome's words, over the English ones. See Localization.",
+    },
+    keywords: {
+      type: "Partial<Record<string, string[]>>",
+      description: "The slash menu's keywords by command id (block.image); they replace the command's own.",
+    },
   }}
 />
 

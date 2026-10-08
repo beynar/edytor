@@ -49,6 +49,10 @@ The `blockHandles` prop of `<Edytor>` controls the plugin:
       type: "Snippet<[BlockHandleSnippetPayload]>",
       description: "Replaces the + and the grip with your markup. See Custom handle below.",
     },
+    labels: {
+      type: "PartialLabels<'blockHandles'>",
+      description: "The accessible names and tooltips of the + and the grip, functions of the block's kind label, over the English ones. See Localization.",
+    },
   }}
 />
 

@@ -3,6 +3,7 @@ import type { Plugin } from '$lib/plugins.js';
 import Toolbar from './Toolbar.svelte';
 import LinkCard from './LinkCard.svelte';
 import { ToolbarController } from './ToolbarController.svelte.js';
+import { labelsWith, type PartialLabels } from '$lib/labels.js';
 
 /** A press in a field of the chrome (an input, a select): it takes focus. */
 const isNativeFieldEvent = (event: Event) =>
@@ -23,13 +24,15 @@ export type ToolbarOptions = {
 	 * panel) and Remove (`link.card`). `false` shows none. Default `true`.
 	 */
 	linkCard?: boolean;
+	/** The words the toolbar and the link card show, over the English ones. */
+	labels?: PartialLabels<'toolbar'>;
 };
 
 /** The selection toolbar, with your own markup through a `toolbar` snippet. */
 export const createToolbarPlugin =
 	(options: ToolbarOptions = {}): Plugin =>
 	(edytor) => {
-		const controller = new ToolbarController(edytor);
+		const controller = new ToolbarController(edytor, labelsWith('toolbar', options.labels));
 
 		/** Above the selection, kept in the viewport; measured in the overlay's frame, written after (R11). */
 		const positionToolbar = (host: HTMLElement) => {

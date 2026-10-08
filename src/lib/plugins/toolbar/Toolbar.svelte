@@ -8,6 +8,7 @@
 	}: { controller: ToolbarController; toolbar?: Snippet<[ToolbarController]> } = $props();
 
 	const keep = (event: MouseEvent) => event.preventDefault();
+	const labels = $derived(controller.labels);
 
 	/**
 	 * The bar is one tab stop (WAI-ARIA toolbar): the button it last held
@@ -57,7 +58,7 @@
 			data-edytor-toolbar-bar
 			id={controller.barId}
 			role="toolbar"
-			aria-label="Text formatting"
+			aria-label={labels.bar}
 			tabindex="-1"
 			bind:this={bar}
 			{onkeydown}
@@ -72,7 +73,9 @@
 				aria-expanded={controller.panel === 'turn'}
 				onmousedown={keep}
 				onclick={() => controller.togglePanel('turn')}
-				>{controller.currentKind?.label ?? 'Text'}<span class="toolbar-chevron" aria-hidden="true"
+				>{controller.currentKind?.label ?? labels.text}<span
+					class="toolbar-chevron"
+					aria-hidden="true"
 				></span></button
 			>
 			<span class="toolbar-divider" aria-hidden="true"></span>
@@ -85,7 +88,7 @@
 				aria-expanded={controller.panel === 'link'}
 				style:--toolbar-icon={iconOf('mark.link')}
 				onmousedown={keep}
-				onclick={() => controller.togglePanel('link')}>Link</button
+				onclick={() => controller.togglePanel('link')}>{labels.link}</button
 			>
 			<span class="toolbar-divider" aria-hidden="true"></span>
 			{#each controller.marks as item (item.mark)}
@@ -108,8 +111,8 @@
 				class="toolbar-color"
 				data-stop="color"
 				tabindex={stop === 'color' ? 0 : -1}
-				aria-label="Color"
-				title="Text color"
+				aria-label={labels.color}
+				title={labels.textColor}
 				aria-expanded={controller.panel === 'color'}
 				onmousedown={keep}
 				onclick={() => controller.togglePanel('color')}
@@ -118,8 +121,8 @@
 		</div>
 
 		{#if controller.panel === 'turn'}
-			<div class="toolbar-panel" role="menu" aria-label="Turn into">
-				<div class="toolbar-heading">Turn into</div>
+			<div class="toolbar-panel" role="menu" aria-label={labels.turnInto}>
+				<div class="toolbar-heading">{labels.turnInto}</div>
 				{#each controller.kinds as kind (kind.id)}
 					<button
 						type="button"
@@ -134,11 +137,11 @@
 			</div>
 		{:else if controller.panel === 'link'}
 			<div class="toolbar-panel toolbar-link-panel">
-				<label class="sr-only" for="edytor-toolbar-link">Link URL</label>
+				<label class="sr-only" for="edytor-toolbar-link">{labels.linkUrl}</label>
 				<input
 					id="edytor-toolbar-link"
 					data-testid="toolbar-link-input"
-					placeholder="Paste link"
+					placeholder={labels.linkPlaceholder}
 					value={controller.linkUrl}
 					oninput={(event) => controller.setLinkUrl(event.currentTarget.value)}
 					onkeydown={(event) => {
@@ -159,43 +162,43 @@
 					type="button"
 					class="toolbar-link-action"
 					data-testid="toolbar-link-apply"
-					title="Apply link"
+					title={labels.applyLink}
 					onmousedown={keep}
-					onclick={() => controller.applyLink()}>Apply</button
+					onclick={() => controller.applyLink()}>{labels.apply}</button
 				>
 				<button
 					type="button"
 					class="toolbar-link-action"
 					data-testid="toolbar-link-remove"
-					title="Remove link"
+					title={labels.removeLink}
 					onmousedown={keep}
-					onclick={() => controller.removeLink()}>Remove</button
+					onclick={() => controller.removeLink()}>{labels.remove}</button
 				>
 			</div>
 		{:else if controller.panel === 'color'}
-			<div class="toolbar-panel" role="menu" aria-label="Color">
-				<div class="toolbar-heading">Text color</div>
+			<div class="toolbar-panel" role="menu" aria-label={labels.color}>
+				<div class="toolbar-heading">{labels.textColor}</div>
 				<div class="toolbar-swatches">
 					{#each TOOLBAR_COLORS as color (color.name)}
 						<button
 							type="button"
 							role="menuitem"
 							class="toolbar-swatch"
-							title={`${color.name} text`}
+							title={labels.colorText(controller.colorName(color.name))}
 							style:color={color.text ?? 'inherit'}
 							onmousedown={keep}
 							onclick={() => controller.setColor('color', color.text)}>A</button
 						>
 					{/each}
 				</div>
-				<div class="toolbar-heading">Background color</div>
+				<div class="toolbar-heading">{labels.backgroundColor}</div>
 				<div class="toolbar-swatches">
 					{#each TOOLBAR_COLORS as color (color.name)}
 						<button
 							type="button"
 							role="menuitem"
 							class="toolbar-swatch"
-							title={`${color.name} background`}
+							title={labels.colorBackground(controller.colorName(color.name))}
 							style:background={color.background ?? 'transparent'}
 							onmousedown={keep}
 							onclick={() => controller.setColor('highlight', color.background)}

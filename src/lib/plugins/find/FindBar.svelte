@@ -4,13 +4,14 @@
 
 	let { find, bar }: { find: FindController; bar?: Snippet<[FindController]> } = $props();
 
+	const labels = $derived(find.labels);
 	const count = $derived(
-		find.matches.length ? `${find.current + 1}/${find.matches.length}` : 'No results'
+		find.matches.length ? labels.count(find.current + 1, find.matches.length) : labels.noResults
 	);
 </script>
 
 {#if find.isOpen}
-	<div data-edytor-find role="search" aria-label="Find in page">
+	<div data-edytor-find role="search" aria-label={labels.bar}>
 		{#if bar}
 			{@render bar(find)}
 		{:else}
@@ -18,8 +19,8 @@
 				<input
 					data-edytor-find-query
 					type="text"
-					placeholder="Find in page"
-					aria-label="Find"
+					placeholder={labels.queryPlaceholder}
+					aria-label={labels.query}
 					autocomplete="off"
 					spellcheck="false"
 					value={find.query}
@@ -30,32 +31,32 @@
 				<button
 					type="button"
 					data-edytor-find-case
-					aria-label="Match case"
-					title="Match case"
+					aria-label={labels.matchCase}
+					title={labels.matchCase}
 					aria-pressed={find.caseSensitive}
 					onclick={() => (find.caseSensitive = !find.caseSensitive)}>Aa</button
 				>
 				<button
 					type="button"
 					data-edytor-find-previous
-					aria-label="Previous match"
-					title="Previous match (Shift+Enter)"
+					aria-label={labels.previous}
+					title={labels.previousHint}
 					disabled={!find.matches.length}
 					onclick={find.previous}>↑</button
 				>
 				<button
 					type="button"
 					data-edytor-find-next
-					aria-label="Next match"
-					title="Next match (Enter)"
+					aria-label={labels.next}
+					title={labels.nextHint}
 					disabled={!find.matches.length}
 					onclick={find.next}>↓</button
 				>
 				<button
 					type="button"
 					data-edytor-find-close
-					aria-label="Close"
-					title="Close (Escape)"
+					aria-label={labels.close}
+					title={labels.closeHint}
 					onclick={() => find.close()}>✕</button
 				>
 			</div>
@@ -64,8 +65,8 @@
 					<input
 						data-edytor-find-replacement
 						type="text"
-						placeholder="Replace with"
-						aria-label="Replace with"
+						placeholder={labels.replaceWith}
+						aria-label={labels.replaceWith}
 						autocomplete="off"
 						spellcheck="false"
 						bind:value={find.replacement}
@@ -75,13 +76,13 @@
 						type="button"
 						data-edytor-find-replace
 						disabled={!find.matches.length}
-						onclick={find.replace}>Replace</button
+						onclick={find.replace}>{labels.replace}</button
 					>
 					<button
 						type="button"
 						data-edytor-find-replace-all
 						disabled={!find.matches.length}
-						onclick={find.replaceAll}>Replace all</button
+						onclick={find.replaceAll}>{labels.replaceAll}</button
 					>
 				</div>
 			{/if}

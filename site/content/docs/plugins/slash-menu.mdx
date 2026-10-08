@@ -78,6 +78,10 @@ The rows are a `listbox` of `option`s, each section a `group` named by its headi
       type: "Snippet<[SlashMenuController]>",
       description: "Replaces the whole menu. Rendered while controller.isOpen. Wins over item.",
     },
+    labels: {
+      type: "PartialLabels<'slashMenu'>",
+      description: "The menu's words: its field, list name, empty state, footer, and the section headings by group key (groups), over the English ones. See Localization.",
+    },
   }}
 />
 

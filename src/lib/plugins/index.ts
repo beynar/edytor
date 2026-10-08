@@ -1,7 +1,10 @@
 export {
 	richTextPlugin,
+	createRichTextPlugin,
 	richTextOperations,
-	richTextPlaceholder
+	richTextPlaceholder,
+	createRichTextPlaceholder,
+	type RichTextPluginOptions
 } from './richtext/RichTextPlugin.svelte';
 export { arrowMovePlugin } from './arrowMove/arrowMove.js';
 export {

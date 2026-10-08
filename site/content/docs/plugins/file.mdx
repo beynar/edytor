@@ -35,6 +35,14 @@ The slash menu then lists "File" under `Media`. `filePlugin` is the plugin witho
       type: "(file: File) => Promise<string>",
       description: "Upload a picked file and answer its URL. Adds an Upload button to the empty block. Without it, files are linked only.",
     },
+    labels: {
+      type: "PartialLabels<'media'>",
+      description: "The empty panel's words (file, upload) and the size format (fileSize), over the English ones. See Localization.",
+    },
+    keywords: {
+      type: "Partial<Record<string, string[]>>",
+      description: "The slash menu's keywords by command id (block.file); they replace the command's own.",
+    },
   }}
 />
 

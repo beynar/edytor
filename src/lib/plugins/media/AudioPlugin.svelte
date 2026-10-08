@@ -4,9 +4,11 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import MediaEmpty from './MediaEmpty.svelte';
 	import { mediaKinds } from '$lib/crdt/semantics.js';
+	import { keywordsOf, labelsWith } from '$lib/labels.js';
 	import {
 		claimed,
 		escapeHtml,
+		mediaLabels,
 		mediaSourceOf,
 		safeMediaSrc,
 		type MediaPluginOptions
@@ -31,6 +33,8 @@
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!uploadOf.has(edytor)) uploadOf.set(edytor, options.upload);
+			const labels = labelsWith('media', options.labels);
+			mediaLabels.audio.claim(edytor, labels);
 			return {
 				blocks: {
 					audio: {
@@ -38,7 +42,12 @@
 						snippet: audio,
 						element: 'figure',
 						presets: [
-							{ label: 'Audio', icon: '🎵', keywords: ['sound', 'music', 'mp3'], group: 'Media' }
+							{
+								label: labels.audio.label,
+								icon: '🎵',
+								keywords: keywordsOf('block.audio', ['sound', 'music', 'mp3'], options.keywords),
+								group: 'Media'
+							}
 						],
 						html: (block, caption) => {
 							const src = safeMediaSrc(block.data?.src);
@@ -69,11 +78,8 @@
 		<div use:block.void data-edytor-media-empty>
 			<MediaEmpty
 				block={block.handle}
-				label="Embed audio"
+				kind="audio"
 				icon="🎵"
-				placeholder="Paste the audio link…"
-				submit="Embed audio"
-				invalid="That doesn't look like an audio link or upload."
 				accept="audio/*"
 				upload={block.handle && uploadOf.get(block.handle.edytor)}
 				link={(value) => audioLink(block.handle, value)}

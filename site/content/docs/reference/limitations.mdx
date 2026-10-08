@@ -15,10 +15,21 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 
 ## Not finished
 
+- **No tables.** No table kind ships, and no plugin edits rows and columns. Columns ([layouts](/docs/plugins/columns)) place blocks side by side; a grid of cells is not built yet.
+- **No comments.** No comment threads, sidebar or resolve flow. A [`comment:<id>` mark](/docs/customization/marks#how-concurrent-marks-merge) per thread can anchor the threads your application stores and shows.
+- **Version history has no UI.** The room keeps [two versions a day](/docs/server/history) and lists, previews and restores them [from code or over HTTP](/docs/server/history#list-preview-restore); the panel that shows them to people is yours to build.
 - **Suggestions stay in one view.** A [suggestion](/docs/editor/suggestions) (text, blocks or a rewrite proposed by your AI) shows only in the view that made it until it is accepted: another tab or a collaborator cannot review it, and a reload loses it.
 - **No property schema.** [Properties](/docs/concepts/properties) take any JSON; validate or normalize in `onBeforeOperation`.
 - **Columns: no keyboard resize.** A [columns layout](/docs/plugins/columns#resizing) is resized with the pointer only, and columns have no colours of their own.
 - **Array items that are strings or numbers have no key.** An object item's proxy follows its item, so a keyed `{#each}` row stays on it; a row bound to a string item by index (`bind:value={tags[i]}`) writes whatever item is at that index when a collaborator inserts or removes one above it. Store objects for rows several people edit.
+
+## Localization
+
+The chrome's words (menus, toolbar, handles, panels, placeholders, announcements) come from a [labels dictionary](/docs/customization/localization), English by default: each plugin takes its `labels`, and `<Edytor labels>` the view's own. Edytor ships no translation of its own: write the dictionary for your language, typed as `Labels`, so a release that adds a label fails your build until you translate it.
+
+- **Your own kinds, marks, commands and groups** are named by what you write in their records.
+- **Mac key symbols** (⌘, ⇧, ↵) show on a Mac whatever the labels.
+- **The chrome is placed for a left-to-right page.** Blocks take their own text's direction ([Right-to-left text](/docs/editor/accessibility#right-to-left-text)); the menus, toolbar and handles keep their left-to-right layout and placement in a right-to-left page.
 
 ## Mixed-version peers
 

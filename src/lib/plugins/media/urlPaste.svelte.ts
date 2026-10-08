@@ -9,6 +9,7 @@ import { id } from '$lib/utils.js';
 import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
 import UrlPasteMenu from './UrlPasteMenu.svelte';
+import { englishLabels, type MediaLabels } from '$lib/labels.js';
 
 /** A kind a pasted URL can turn its line into (the embed's, the bookmark's). */
 export type UrlPasteOffer = {
@@ -25,8 +26,6 @@ export type UrlPasteOffer = {
 
 /** One row of the menu: keep the link, or an offer. */
 export type UrlPasteOption = { id: string; label: string; icon: string; offer?: UrlPasteOffer };
-
-const LINK: UrlPasteOption = { id: 'link', label: 'Link', icon: '🔗' };
 
 /**
  * Pasting a bare URL on an empty line (Notion): the URL lands as a link at
@@ -47,7 +46,11 @@ export class UrlPasteController {
 	/** The keyboard's row. */
 	index = $state(0);
 
-	constructor(readonly edytor: Edytor) {}
+	constructor(
+		readonly edytor: Edytor,
+		/** The words the menu shows: the labels of the plugin that made the first offer. */
+		readonly labels: MediaLabels = englishLabels.media
+	) {}
 
 	get readonly() {
 		return this.edytor.readonly;
@@ -55,7 +58,7 @@ export class UrlPasteController {
 
 	/** The rows for `url`: Link, then each offer that takes it. */
 	optionsFor = (url: string): UrlPasteOption[] => [
-		LINK,
+		{ id: 'link', label: this.labels.pasteLink, icon: '🔗' },
 		...this.offers.flatMap((offer) =>
 			offer.data(url) ? [{ id: offer.type, label: offer.label, icon: offer.icon, offer }] : []
 		)
@@ -213,14 +216,15 @@ const controllers = new WeakMap<Edytor, UrlPasteController>();
  */
 export const urlPaste = (
 	edytor: Edytor,
-	offer: UrlPasteOffer
+	offer: UrlPasteOffer,
+	labels?: MediaLabels
 ): PluginOperations & PluginDefinitions => {
 	const known = controllers.get(edytor);
 	if (known) {
 		if (!known.offers.some(({ type }) => type === offer.type)) known.offers.push(offer);
 		return {};
 	}
-	const controller = new UrlPasteController(edytor);
+	const controller = new UrlPasteController(edytor, labels);
 	controllers.set(edytor, controller);
 	controller.offers.push(offer);
 	return controller.hooks();

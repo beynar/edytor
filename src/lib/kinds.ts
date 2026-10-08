@@ -27,11 +27,21 @@ export type KindRow = KindPreset & {
 	command?: EditorCommand;
 };
 
+/**
+ * The group key of the kinds a preset puts in no group: the slash menu
+ * lists it first and shows it in its labels' `groups`.
+ */
+export const BASIC_BLOCKS = 'Basic blocks';
+
+/** The command id of preset `index` of `count` of kind `type`: `block.<type>`, numbered from 1 when it has several. */
+export const presetId = (type: string, index: number, count: number) =>
+	`block.${type}${count > 1 ? index + 1 : ''}`;
+
 export const kindCatalogue = (blocks: Map<string, BlockDefinition>): KindRow[] =>
 	[...blocks].flatMap(([type, { presets = [], empty }]) =>
 		presets.map((preset, index) => ({
 			...preset,
-			id: `block.${type}${presets.length > 1 ? index + 1 : ''}`,
+			id: presetId(type, index, presets.length),
 			value: { type, data: { ...preset.data }, ...empty },
 			replaces: empty !== undefined
 		}))
@@ -333,7 +343,7 @@ export const kindCommand = (edytor: Edytor, row: KindRow): EditorCommand => ({
 	label: row.label,
 	icon: row.icon,
 	keywords: row.keywords,
-	group: row.group ?? 'Basic blocks',
+	group: row.group ?? BASIC_BLOCKS,
 	hint: row.markdown?.[0]?.trim(),
 	// Asked of the view given (a `+`'s menu asks it of the block it adds).
 	isEnabled: (view = edytor) =>

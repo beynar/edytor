@@ -28,6 +28,14 @@ icon: code
       description: "The language of a code block whose data.language is unset.",
       default: "'javascript'",
     },
+    labels: {
+      type: "PartialLabels<'code'>",
+      description: "The preset's label, the header's picker and copy button, and a language's label by id (languages), over the English ones. See Localization.",
+    },
+    keywords: {
+      type: "Partial<Record<string, string[]>>",
+      description: "The slash menu's keywords by command id (block.code); they replace the command's own.",
+    },
   }}
 />
 

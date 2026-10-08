@@ -14,6 +14,7 @@ import { jsx } from '@tanstack/highlight/languages/jsx';
 import { SvelteMap } from 'svelte/reactivity';
 import type { JSONText } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { englishLabels, type CodeLabels, type PartialLabels } from '$lib/labels.js';
 
 /** A language a code block may be in. */
 export type CodeLanguage = {
@@ -218,14 +219,30 @@ export type CodePluginOptions = {
 	languages?: readonly CodeLanguage[];
 	/** The language of a code block whose `data.language` is unset. Default `'javascript'`. */
 	defaultLanguage?: string;
+	/**
+	 * The words the code block shows (its menu row, header, a language's
+	 * label by id), over the English ones.
+	 */
+	labels?: PartialLabels<'code'>;
+	/** The slash menu's keywords of the code command (`block.code`), which replace its own. */
+	keywords?: Partial<Record<string, string[]>>;
 };
 
-export type CodeSettings = Required<CodePluginOptions>;
+export type CodeSettings = {
+	languages: readonly CodeLanguage[];
+	defaultLanguage: string;
+	labels: CodeLabels;
+};
 
 export const DEFAULT_CODE_SETTINGS: CodeSettings = {
 	languages: CODE_LANGUAGES,
-	defaultLanguage: 'javascript'
+	defaultLanguage: 'javascript',
+	labels: englishLabels.code
 };
+
+/** A language's label as shown: the labels' `languages` entry for its id, else its own. */
+export const languageLabel = (language: CodeLanguage, { labels }: CodeSettings) =>
+	labels.languages[language.id] ?? language.label;
 
 /** Each view's code options, for its code blocks' header (which reads them through its view). */
 export const codeSettings = new WeakMap<Edytor, CodeSettings>();

@@ -34,6 +34,14 @@ The slash menu then lists "Web bookmark" under `Media`, and pasting an `http(s)`
       type: "(url: string) => Promise<BookmarkPreview | null | undefined>",
       description: "Read a page's title, description, cover image and icon. Called when a link is set from the panel or the paste menu. Without it, the card shows the URL.",
     },
+    labels: {
+      type: "PartialLabels<'media'>",
+      description: "The empty panel's and the paste menu's words (bookmark, pasteAs, pasteLink), over the English ones. See Localization.",
+    },
+    keywords: {
+      type: "Partial<Record<string, string[]>>",
+      description: "The slash menu's keywords by command id (block.bookmark); they replace the command's own.",
+    },
   }}
 />
 

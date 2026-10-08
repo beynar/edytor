@@ -188,7 +188,7 @@ Render your own bar with `createSuggestionsPlugin({ bar })`. Placement and keys 
 <Edytor plugins={[createSuggestionsPlugin({ bar })]} />
 ```
 
-Prevent the buttons' `mousedown` so the editor keeps its focus and selection. A plugin instance in `plugins` replaces the default one; `defaultPlugins={false}` removes it, and suggestions still show, without a bar or keys.
+Prevent the buttons' `mousedown` so the editor keeps its focus and selection. `createSuggestionsPlugin({ labels })` translates the default bar (Accept, Discard, Try again, the streaming line as a function of the label; see [Localization](/docs/customization/localization)), and `<Edytor labels>` a preview's accessible name when the suggestion has no `label`. A plugin instance in `plugins` replaces the default one; `defaultPlugins={false}` removes it, and suggestions still show, without a bar or keys.
 
 ## Rendering and styling
 

@@ -21,11 +21,12 @@
 		controls.invalidate();
 	});
 
-	const aligns: { align: ImageAlign; label: string }[] = [
-		{ align: 'left', label: 'Align left' },
-		{ align: 'center', label: 'Align center' },
-		{ align: 'right', label: 'Align right' }
-	];
+	const labels = $derived(controls.labels);
+	const aligns: { align: ImageAlign; label: string }[] = $derived([
+		{ align: 'left', label: labels.alignLeft },
+		{ align: 'center', label: labels.alignCenter },
+		{ align: 'right', label: labels.alignRight }
+	]);
 	const keep = (event: MouseEvent) => event.preventDefault();
 	/** The handle's hit box: 16px wide, inside the image's edge. */
 	const HANDLE = 16;
@@ -52,7 +53,7 @@
 			<div
 				data-edytor-image-toolbar
 				role="toolbar"
-				aria-label="Image"
+				aria-label={labels.toolbar}
 				style:left="{box.x + box.width - 6}px"
 				style:top="{box.y + 6}px"
 				data-selecting={controls.selecting ? 'true' : undefined}
@@ -73,8 +74,8 @@
 				<button
 					type="button"
 					data-edytor-image-alt-toggle
-					aria-label="Alt text"
-					title="Alt text"
+					aria-label={labels.alt}
+					title={labels.alt}
 					aria-expanded={controls.editing === box.id}
 					onmousedown={keep}
 					onclick={controls.toggleAlt}
@@ -90,8 +91,8 @@
 					<!-- svelte-ignore a11y_autofocus -->
 					<input
 						data-edytor-image-alt
-						aria-label="Alt text"
-						placeholder="Describe the image…"
+						aria-label={labels.alt}
+						placeholder={labels.altPlaceholder}
 						value={controls.alt}
 						autofocus
 						oninput={(event) => controls.setAlt(event.currentTarget.value)}

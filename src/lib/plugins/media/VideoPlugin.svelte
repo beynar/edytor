@@ -4,9 +4,11 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import MediaEmpty from './MediaEmpty.svelte';
 	import { mediaKinds } from '$lib/crdt/semantics.js';
+	import { keywordsOf, labelsWith } from '$lib/labels.js';
 	import {
 		claimed,
 		escapeHtml,
+		mediaLabels,
 		mediaSourceOf,
 		safeMediaSrc,
 		type MediaPluginOptions
@@ -32,6 +34,8 @@
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!uploadOf.has(edytor)) uploadOf.set(edytor, options.upload);
+			const labels = labelsWith('media', options.labels);
+			mediaLabels.video.claim(edytor, labels);
 			return {
 				blocks: {
 					video: {
@@ -39,7 +43,12 @@
 						snippet: video,
 						element: 'figure',
 						presets: [
-							{ label: 'Video', icon: '🎬', keywords: ['movie', 'mp4', 'clip'], group: 'Media' }
+							{
+								label: labels.video.label,
+								icon: '🎬',
+								keywords: keywordsOf('block.video', ['movie', 'mp4', 'clip'], options.keywords),
+								group: 'Media'
+							}
 						],
 						html: (block, caption) => {
 							const src = safeMediaSrc(block.data?.src);
@@ -78,11 +87,8 @@
 		<div use:block.void data-edytor-media-empty>
 			<MediaEmpty
 				block={block.handle}
-				label="Embed a video"
+				kind="video"
 				icon="🎬"
-				placeholder="Paste the video link…"
-				submit="Embed video"
-				invalid="That doesn't look like a video link or upload."
 				accept="video/*"
 				upload={block.handle && uploadOf.get(block.handle.edytor)}
 				link={(value) => videoLink(block.handle, value)}

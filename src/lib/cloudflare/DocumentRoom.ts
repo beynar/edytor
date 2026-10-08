@@ -99,7 +99,8 @@
  * `replicas.ts`, the forged-write checks `forged.ts` and `validation.ts`),
  * the alarm's scheduler (`scheduler.ts`), the version history
  * (`history.ts`), the purge (`purge.ts`), moves (`moves.ts`), presence
- * (`presence.ts`) and access (`access.ts`). This module keeps the public
+ * (`presence.ts`), access (`access.ts`) and the comment threads
+ * (`comments.ts`). This module keeps the public
  * types and constants, and `AttachedDocument` wires the parts.
  */
 import { DurableObject } from 'cloudflare:workers';
@@ -134,7 +135,15 @@ import type {
 	JSONDoc,
 	YDoc
 } from '../crdt/index.js';
+import type {
+	CommentActor,
+	CommentChange,
+	CommentOutcome,
+	CommentRequest,
+	CommentSnapshot
+} from '../crdt/protocols/comments.js';
 import { RoomAccess } from './room/access.js';
+import { RoomComments } from './room/comments.js';
 import { Admission, PING, PONG } from './room/admission.js';
 import { RoomContext, knob } from './room/context.js';
 import { RoomHistory } from './room/history.js';
@@ -253,6 +262,8 @@ export const PURGE_ORIGIN = Symbol('edytor-purge');
 export const HISTORY_HEADER = 'X-Edytor-History';
 /** The version key of a history `read` or `restore` request. */
 export const HISTORY_KEY_HEADER = 'X-Edytor-History-Key';
+/** The header `routeDocumentComments` sets on an authorized comments request: `list` or `post`. */
+export const COMMENTS_HEADER = 'X-Edytor-Comments';
 
 /**
  * Headers carrying the identity `routeDocumentSocket` verified — never the
@@ -308,6 +319,8 @@ export type DocumentRoomEnv = {
 	 * for the host's `forwardLateEdits`.
 	 */
 	EDYTOR_ROOMS?: MoveNamespace;
+	/** `off`: the room keeps no comment threads (its comments requests answer `404`). */
+	EDYTOR_COMMENTS?: string;
 };
 
 /** What a socket is bound to: its verified user, its replica (Yjs client id), its access. */
@@ -323,8 +336,11 @@ export type SocketIdentity = {
 	expiresAt?: number | null;
 };
 
-/** A socket's attachment (survives hibernation): its identity and its presence clock. */
-export type Attachment = SocketIdentity & { clock: number | null };
+/**
+ * A socket's attachment (survives hibernation): its identity, its presence
+ * clock, and whether it subscribed to the comment changes.
+ */
+export type Attachment = SocketIdentity & { clock: number | null; comments?: boolean };
 
 export type Refusal = {
 	reason:
@@ -423,6 +439,7 @@ export type RoomLogEntry =
 	| { edytor: 'compaction'; ms: number; bytes: number; records: number; rows: number }
 	| { edytor: 'history'; key: string; bytes: number; editors: number }
 	| { edytor: 'restore'; key: string; user: string | null; undo: boolean }
+	| { edytor: 'comment'; type: CommentChange['type']; thread: string; user: string }
 	| ({ edytor: 'purge'; horizon: number; bytes: number } & PurgeReport)
 	| { edytor: 'quota'; user: string; quota: string }
 	| { edytor: 'denied'; user: string; touched: number }
@@ -515,6 +532,19 @@ export type FrameValidation = {
 	after: (id: string) => ValidatedBlock | null;
 	/** The live document. Read it; never write from `validate` (defer a `transact` instead). */
 	facade: EdytorDoc;
+};
+
+/** The room's comment threads (`comments` of {@link AttachRoomOptions}). */
+export type CommentOptions = {
+	/**
+	 * Notifications: called after each change is stored and sent to the
+	 * sockets (a thread added, a reply, a resolve or reopen, a delete),
+	 * awaited before the request is answered. A throw is logged; the change
+	 * stands.
+	 */
+	onComment?: (change: CommentChange) => void | Promise<void>;
+	/** The longest comment body (default and ceiling 10,000 characters). */
+	maxLength?: number;
 };
 
 /** What {@link attachRoom} (and `DocumentRoom`) takes. */
@@ -615,6 +645,13 @@ export type AttachRoomOptions = {
 	purgeAfterDays?: number | false;
 	/** The room's clock, ms since the epoch (default `Date.now`): its slots, epochs and alarm read it. */
 	now?: () => number;
+	/**
+	 * Comment threads (`room.comments`): kept in the room's `threads` and
+	 * `comments` tables, read and written through `routeDocumentComments`
+	 * (or `listComments` and `comment` over RPC), each change sent to the
+	 * sockets that subscribed. On by default; `false` keeps none.
+	 */
+	comments?: CommentOptions | false;
 };
 
 /** `EDYTOR_PURGE_AFTER_DAYS`: `off` (or `false`) never purges; a number of days; anything else the default. */
@@ -718,6 +755,7 @@ export class AttachedDocument {
 		room.moves = new RoomMoves(room);
 		room.presence = new RoomPresence(room);
 		room.access = new RoomAccess(room);
+		room.comments = new RoomComments(room);
 		// The provider pings a silent socket: answer without waking the object.
 		if (ctx.setWebSocketAutoResponse && !ctx.getWebSocketAutoResponse?.()) {
 			ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING, PONG));
@@ -886,6 +924,25 @@ export class AttachedDocument {
 	 */
 	undoRestore(options: { user?: string } = {}): Promise<{ status: 'applied' | 'noop' }> {
 		return this.room.history.undoRestore(options);
+	}
+
+	// ── Comments (`room.comments`) ───────────────────────────────────────
+
+	/** Every comment thread, oldest first, with the last change's sequence number (also over RPC). */
+	listComments(): CommentSnapshot {
+		return this.room.comments.list();
+	}
+
+	/**
+	 * One comments request by `actor` (also over RPC): add a thread, reply,
+	 * resolve, reopen or delete, under the rules every store applies. An
+	 * applied change is stored, sent to every socket that subscribed, and
+	 * passed to `onComment`; a removed thread's anchor marks leave the
+	 * document as one room transaction. A `moderator` may delete anyone's
+	 * comment.
+	 */
+	comment(request: CommentRequest, actor: CommentActor): Promise<CommentOutcome> {
+		return this.room.comments.apply(request, actor);
 	}
 
 	// ── Moves (H10, `room.move`) ─────────────────────────────────────────
@@ -1142,6 +1199,10 @@ export class DocumentRoom<
 		const semantics = () => this.semantics();
 		const history = () => this.history();
 		const locks = () => this.locks();
+		const comments = (): CommentOptions | false =>
+			String(knobs.EDYTOR_COMMENTS ?? '') === 'off'
+				? false
+				: { onComment: (change) => this.onComment(change) };
 		this.room = new AttachedDocument(ctx, {
 			maxRowBytes: Number(knobs.EDYTOR_MAX_ROW_BYTES),
 			maxFrameBytes: Number(knobs.EDYTOR_MAX_FRAME_BYTES),
@@ -1166,6 +1227,9 @@ export class DocumentRoom<
 			get locks() {
 				return locks();
 			},
+			get comments() {
+				return comments();
+			},
 			rooms: () => this.rooms(),
 			onLoad: () => this.onLoad(),
 			onSave: saves ? (document) => this.onSave(document) : undefined,
@@ -1188,6 +1252,12 @@ export class DocumentRoom<
 	 * frame is validated, and no block index is kept.
 	 */
 	protected validate(_frame: FrameValidation): boolean | void {}
+
+	/**
+	 * Notifications — see {@link CommentOptions.onComment}: each comment
+	 * change, once stored. Not overridden: nothing is called.
+	 */
+	protected onComment(_change: CommentChange): void | Promise<void> {}
 
 	/**
 	 * One log entry: `console.log` of it as JSON, unless the
@@ -1324,6 +1394,15 @@ export class DocumentRoom<
 	/** Run the purge task now, also over RPC — see {@link AttachedDocument.purge}. */
 	purge(): (PurgeReport & { horizon: number }) | null {
 		return this.room.purge();
+	}
+
+	/** Every comment thread, also over RPC — see {@link AttachedDocument.listComments}. */
+	listComments(): CommentSnapshot {
+		return this.room.listComments();
+	}
+	/** One comments request, also over RPC — see {@link AttachedDocument.comment}. */
+	comment(request: CommentRequest, actor: CommentActor): Promise<CommentOutcome> {
+		return this.room.comment(request, actor);
 	}
 
 	/** Close every socket of a user, also over RPC — see {@link AttachedDocument.closeUser}. */

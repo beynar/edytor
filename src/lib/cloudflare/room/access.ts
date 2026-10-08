@@ -2,11 +2,12 @@
  * Access (`room.access`): the room's door — the verified identity
  * `routeDocumentSocket` forwards, the upgrade (the replica bound to its
  * user, the socket accepted with its identity in the attachment), the
- * probes and history requests — and the end of a socket's access:
+ * probes, history and comments requests — and the end of a socket's access:
  * revocation, a changed access, an expired credential.
  */
 import { CLOSE } from '../../crdt/providers/room.js';
 import {
+	COMMENTS_HEADER,
 	HISTORY_HEADER,
 	HISTORY_KEY_HEADER,
 	IDENTITY_HEADERS,
@@ -74,6 +75,16 @@ export class RoomAccess {
 			const identity = readIdentity(request.headers);
 			if (identity === null) return new Response('verified identity required', { status: 401 });
 			return room.history.request(op, identity, request.headers.get(HISTORY_KEY_HEADER));
+		}
+		// A comments request (`room.comments`), forwarded by `routeDocumentComments` once authorized.
+		const comments = request.headers.get(COMMENTS_HEADER);
+		if (comments !== null) {
+			const identity = readIdentity(request.headers);
+			if (identity === null) return new Response('verified identity required', { status: 401 });
+			// A removed thread's anchor marks leave the document: it must be loaded.
+			await room.storage.retryStart();
+			const body = comments === 'post' ? await request.text() : '';
+			return room.comments.request(comments, identity, body);
 		}
 		// The probes, forwarded by `routeDocumentSocket` once authorized:
 		// `lastUpdated` (H12) and `snapshot` (P8: the document as JSON).

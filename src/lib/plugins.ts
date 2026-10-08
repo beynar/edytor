@@ -512,8 +512,16 @@ export type MarkDefinition = {
 	void?: boolean;
 	/** Whether typing at the mark's edges extends it (`marksForInsertion`); default `inclusive`. */
 	edge?: MarkEdge;
-	/** A selection-toolbar button toggling the mark. */
-	toolbar?: { label: string; icon: string };
+	/**
+	 * Whether copy and cut carry the mark (default `true`): `false` copies
+	 * the text without it (a comment's anchor: the copy is not commented).
+	 */
+	copy?: boolean;
+	/**
+	 * A selection-toolbar button: it toggles the mark, or runs `run` instead
+	 * (the comments plugin's Comment button opens its composer).
+	 */
+	toolbar?: { label: string; icon: string; run?: (edytor: Edytor) => void };
 };
 
 /** A way to create a block kind: one slash command, markdown prefixes, one block-menu row. */

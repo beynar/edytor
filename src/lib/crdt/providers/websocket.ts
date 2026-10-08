@@ -61,6 +61,12 @@ import {
 } from '../protocols/auth.js';
 import { bindSync, type IdSet, type SyncProtocol } from '../protocols/sync.js';
 import {
+	readCommentsMessage,
+	writeCommentsSubscribe,
+	type CommentMessage
+} from '../protocols/comments.js';
+import { frame } from '../protocols/envelope.js';
+import {
 	assertRoomId,
 	beginDestroy,
 	bindRoomProtocol,
@@ -74,6 +80,7 @@ import {
 	markSynced,
 	messageAuth,
 	messageChunk,
+	messageComments,
 	messageSaved,
 	messageSync,
 	MAX_FRAME_BYTES,
@@ -267,6 +274,50 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			provider.synced = true;
 		}
 	});
+	// A room's comment threads (`watchComments`): the listeners of each room,
+	// by `<serverUrl>/<room>`, and the providers dialing it. A provider asks
+	// the room for them (a subscribe) at every open while a room has a
+	// listener, and hands each message the room sends to every listener.
+	const commentListeners = new Map<string, Set<(message: CommentMessage) => void>>();
+	const providersOf = new Map<string, Set<Provider>>();
+	const subscribeFrame = (on: boolean) =>
+		frame(messageComments, (e) => writeCommentsSubscribe(e, on));
+	room.messageHandlers[messageComments] = (_encoder, decoder, provider) => {
+		const message = readCommentsMessage(decoder);
+		for (const listener of [...(commentListeners.get(provider.bcChannel) ?? [])]) {
+			try {
+				listener(message);
+			} catch (error) {
+				console.error(error);
+			}
+		}
+	};
+	/**
+	 * Hear the comment threads of `room` on `server` (the URL a provider
+	 * dials, `ws:`/`wss:`): every provider of that room subscribes now and
+	 * at each (re)connect, which the room answers with every thread (a
+	 * `snapshot`), then sends each `change`. Answers the unsubscribe; the
+	 * last one leaving tells the room to stop.
+	 */
+	const watchComments = (
+		server: string,
+		roomName: string,
+		listener: (message: CommentMessage) => void
+	): (() => void) => {
+		const key = `${server.replace(/\/+$/, '')}/${roomName}`;
+		const listeners = commentListeners.get(key) ?? new Set();
+		commentListeners.set(key, listeners);
+		const first = listeners.size === 0;
+		listeners.add(listener);
+		if (first)
+			for (const provider of providersOf.get(key) ?? []) send(provider, subscribeFrame(true));
+		return () => {
+			if (!listeners.delete(listener) || listeners.size > 0) return;
+			commentListeners.delete(key);
+			for (const provider of providersOf.get(key) ?? []) send(provider, subscribeFrame(false));
+		};
+	};
+
 	// The room's acknowledgement and its bounded catch-up (a frame too large
 	// for one message arrives as chunks and is read only once complete).
 	room.messageHandlers[messageSaved] = (_encoder, decoder, provider) => {
@@ -554,6 +605,9 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				provider.emit('status', [{ status: 'connected' }]);
 				// The join rule: say hello; the members answer what we lack.
 				for (const buf of room.hello(provider)) sendOn(provider, websocket, buf);
+				// The room's comment threads, while someone listens (`watchComments`).
+				if (commentListeners.get(provider.bcChannel)?.size)
+					sendOn(provider, websocket, subscribeFrame(true));
 			};
 			provider.emit('status', [{ status: 'connecting' }]);
 		}
@@ -653,6 +707,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				this._resync = setInterval(() => send(this, room.step1(this)), resyncInterval);
 			}
 			this._bcSubscriber = room.bcSubscriber(this);
+			const peers = providersOf.get(this.bcChannel) ?? new Set();
+			providersOf.set(this.bcChannel, peers.add(this));
 			// Local doc updates go to the room; another tab's go to the server
 			// only (`broadcastUpdate` quarantines a read-only document). A
 			// socket the room made read-only gets this document's own edits
@@ -756,6 +812,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			if (!beginDestroy(this, `WebsocketProvider "${this.roomname}"`)) return;
 			clearInterval(this._resync);
 			clearInterval(this._checkInterval);
+			const peers = providersOf.get(this.bcChannel);
+			if (peers?.delete(this) && peers.size === 0) providersOf.delete(this.bcChannel);
 			this.disconnect();
 			this.awareness.off('update', this._awarenessUpdateHandler);
 			this.doc.off('update', this._updateHandler);
@@ -778,5 +836,5 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		}
 	}
 
-	return { WebsocketProvider };
+	return { WebsocketProvider, watchComments };
 };

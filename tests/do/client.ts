@@ -12,7 +12,7 @@
 import { SELF } from 'cloudflare:test';
 import * as E from './crdt.js';
 import type { EngineApi, YDoc } from '../../src/lib/crdt/index.js';
-import type { AwarenessEntry } from '../../src/lib/crdt/protocol.js';
+import type { AwarenessEntry, CommentMessage } from '../../src/lib/crdt/protocol.js';
 import { CLOSE } from '../../src/lib/crdt/providers/room.js';
 // @ts-ignore -- untyped JS module; typed through `EngineApi` below
 import * as RawY from '../../src/lib/crdt/vendor/yjs/src/index.js';
@@ -154,6 +154,8 @@ export class RawClient {
 	readonly denied: string[] = [];
 	/** The room said, when this socket joined, that it may read but not write. */
 	readOnly = false;
+	/** The room's comment messages (snapshots and changes), in order. */
+	readonly comments: CommentMessage[] = [];
 	/** Step1 frames the room sent (it asks write sockets only). */
 	step1s = 0;
 	synced = false;
@@ -192,6 +194,11 @@ export class RawClient {
 	send(bytes: Uint8Array) {
 		if (this.closed) return;
 		this.ws.send(bytes);
+	}
+
+	/** Start (or stop) hearing the room's comment changes. */
+	subscribeComments(on = true) {
+		this.send(E.frame(E.messageComments, (e) => E.writeCommentsSubscribe(e, on)));
 	}
 
 	setPresence(clientID: number, clock: number, state: Record<string, unknown> | null) {
@@ -286,6 +293,10 @@ export class RawClient {
 			const { applied, problem } = crdt.sync.applyRemote(this.doc, update, REMOTE);
 			if (!applied || problem !== null) throw new Error('client refused a server update');
 			if (syncType === E.messageYjsSyncStep2) this.synced = true;
+			return;
+		}
+		if (type === E.messageComments) {
+			this.comments.push(E.readCommentsMessage(decoder));
 			return;
 		}
 		if (type === E.messageAwareness) {

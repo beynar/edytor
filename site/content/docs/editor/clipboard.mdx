@@ -23,6 +23,7 @@ What gets copied:
 - A text range inside one block copies that text with its marks and inline blocks.
 - A text range across blocks copies the blocks it touches, cut at the range's ends. A closed toggle's hidden body is copied exactly when deleting the range would delete it: with a toggle the range covers, or starts at the header of. Cut deletes the range as <kbd>Backspace</kbd> does, so a cut, or a copy followed by <kbd>Backspace</kbd>, never loses or duplicates it.
 - A block selection copies exactly the selected blocks, as whole blocks: a selected list or code block with everything in it (`selection.selectedMembers`), a selected parent's unselected children left out ([Block selection](/docs/editor/selection#block-selection)).
+- A mark whose record says `copy: false` is left out, in every format: a [comment](/docs/plugins/comments)'s anchor (`comment:<id>`) is not copied, as in Notion, so pasted text is not commented. Its other marks are kept.
 
 Copy works in [readonly mode](/docs/editor/readonly) and never creates an undo step. Cut is one undo step and is ignored in readonly mode.
 

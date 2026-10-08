@@ -28,6 +28,7 @@ export default defineConfig({
 					LOCKED: { className: 'LockedRoom', useSQLite: true },
 					MOVES: { className: 'MoveRoom', useSQLite: true },
 					TIMED: { className: 'TimedRoom', useSQLite: true },
+					COMMENTS: { className: 'CommentRoom', useSQLite: true },
 					// The site's demo room class (site/room), its history in a real (Miniflare) KV.
 					DEMO: { className: 'DemoRoom', useSQLite: true }
 				},

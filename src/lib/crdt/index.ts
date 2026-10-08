@@ -95,6 +95,7 @@ export {
 	imageKinds,
 	layoutKinds,
 	richTextMarks,
+	commentMarks,
 	facadeConfigOf,
 	semanticsOf,
 	mergeSemantics,

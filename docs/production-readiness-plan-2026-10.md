@@ -744,6 +744,25 @@ conflict matrix.
     as in Notion).
   - Hooks for notifications.
 - Effort: 12 to 15 d (room 4, client 6, concurrency and clipboard rules 2 to 3).
+- Status (2026-10-08): done. One rule decides every request
+  (`crdt/protocols/comments.ts`: `decideComment`, the change and its sequence
+  number, `commentAnchors`, the `messageComments` codec), shared by the room
+  and the clients. Room: `cloudflare/room/comments.ts` (`threads` and
+  `comments` tables, `meta` `comments`), `routeDocumentComments` (GET, POST)
+  authorized like history, RPC `listComments`/`comment` (a `moderator`
+  deletes anyone's), the change sent only to subscribed sockets, a removed
+  thread's anchor marks removed by a room transaction, `onComment`
+  (`EDYTOR_COMMENTS=off` / `comments: false`). Client: `createCommentsClient`
+  (HTTP plus `watchComments` on the page's socket), `createMemoryCommentsClient`
+  (`as(user)`), `createCommentsPlugin` (the `comment` mark, `exclusive`,
+  `copy: false`; toolbar Comment through `toolbar.run`, Mod+Shift+M; the
+  sidebar in the overlay, margin or popover; composer, reply, resolve,
+  reopen, delete; `onComment(change, { own })`). Rows: `room.comments.*`,
+  `comment.anchor`, `comment.copy` (`tests/do/comments.test.ts`,
+  `src/tests/collaboration/comments.test.ts`,
+  `src/tests/fixtures/dom/comments-20261008.test.tsx`,
+  `tests/editor-dom/comments.spec.ts`). Residuals: plain-text bodies, no
+  edit of a posted comment, no "can comment" access, Duplicate copies anchors.
 
 **WU-35: version history UI (F12)**
 

@@ -1,0 +1,170 @@
+---
+title: Comments
+description: Comment threads on text, as in Notion. Select text and press Comment; the thread shows in a sidebar beside the text, with replies, Resolve and Re-open, its anchor kept by the document through edits.
+icon: message-square
+---
+
+`createCommentsPlugin` adds Notion's comments. Select some text and press **Comment** in the toolbar (or <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd>): a card opens beside the text, you write, <kbd>Enter</kbd> posts. The text stays highlighted while the thread is open, its card sits in a sidebar at the text's height, and anyone can reply, resolve it or open it again.
+
+```svelte title="Page.svelte" check
+<script lang="ts">
+	import { Edytor, createCommentsClient, createCommentsPlugin, toolbarPlugin } from 'edytor';
+
+	let { id, token, user }: { id: string; token: string; user: { id: string; name: string } } =
+		$props();
+
+	const comments = createCommentsPlugin({
+		client: createCommentsClient({
+			server: 'https://example.com/comments',
+			socket: 'wss://example.com/rooms',
+			room: id,
+			params: { token }
+		}),
+		user
+	});
+</script>
+
+<Edytor server="wss://example.com/rooms" room={id} params={{ token }} plugins={[comments, toolbarPlugin]} />
+```
+
+It is opt-in, not a [default plugin](/docs/plugins#default-plugins). It needs a **client**, where the threads live, and the current **user**. The threads are kept by the [room](/docs/server/comments) beside the document, never in it: the document holds only each thread's anchor. List the [toolbar](/docs/plugins/toolbar) for its Comment button; without it, <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd> and `commentsController(edytor).start()` start a thread.
+
+## Writing a thread
+
+- **On selected text.** The Comment button (or <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd>) opens a card for the selection, its text highlighted and quoted on the card, and focuses its field. A selection across blocks comments every line it covers. At a caret, the shortcut comments the caret's whole line.
+- **Posting.** <kbd>Enter</kbd> or **Comment** posts it; <kbd>Shift</kbd> + <kbd>Enter</kbd> is a new line; <kbd>Escape</kbd> or **Cancel** gives it up. Once the server keeps the thread, its anchor is written over the text: one command, `addComment`, and one undo step (an undo takes the highlight away; the thread stays on the server with no anchor). Until then, edits move the text it will anchor.
+- **Replies.** The active thread's card has a **Reply…** field: <kbd>Enter</kbd> posts.
+- **Resolve and Re-open.** ✓ resolves a thread: its highlight and its card go. When threads are resolved, a **Resolved (n)** button above the sidebar shows them, each with **Re-open**.
+- **Delete.** × deletes your own comment. On a thread's first comment, it deletes the thread: its replies, and its anchor, which the server removes from the document for everyone.
+- **The active thread.** The caret inside a thread's text makes it the active one: its highlight is stronger and its card sits at its text's height, the others above and below it. A click on a card does the same and scrolls its text into view.
+
+Comments come from everyone in the document live: the client hears each change the room sends, and a reconnect catches up on what it missed. A read-only view (or a read-only identity) shows the threads, without fields or buttons.
+
+## The sidebar
+
+When the viewport has room right of the editor (288 px and a 32 px gap), the cards sit there, Notion's margin, each at its text's height, without overlapping. On a narrow screen only the active thread's card shows, under its text. Open threads whose text was deleted have no place in the margin; they stay in `commentsController(edytor).threads` with no runs.
+
+The sidebar lives in the editor's [overlay](/docs/customization/styling#the-overlay), beside the host, never inside it. The highlight is a stylesheet in the page's `head` (`style[data-edytor-comments-style]`) for each open thread's mark element (`[data-edytor-mark="comment:<id>"]`): nothing is written on the editor's own elements. The text of a thread being written is highlighted in the overlay.
+
+| Attribute | Element |
+| --- | --- |
+| `data-edytor-comments` | The sidebar (`data-mode`: `margin` or `popover`) |
+| `data-edytor-comment-card` | A thread's card (its id; the new thread's is `:draft`), with `data-active`, `data-resolved` |
+| `data-edytor-comment-new` | The card of the thread being written |
+| `data-edytor-comment-quote` | The text the thread was made on |
+| `data-edytor-comment` | One comment, with `data-edytor-comment-author`, `-time`, `-body`, `-delete` inside |
+| `data-edytor-comment-field`, `data-edytor-comment-reply` | The new thread's field, a reply field |
+| `data-edytor-comment-resolve`, `data-edytor-comment-reopen` | The buttons |
+| `data-edytor-comments-toggle` | The **Resolved (n)** button |
+
+| Variable | Default |
+| --- | --- |
+| `--edytor-comment-highlight` | The open threads' text: `rgb(255 212 0 / 0.14)` |
+| `--edytor-comment-underline` | Its underline: `rgb(255 212 0 / 0.8)` |
+| `--edytor-comment-active` | The active thread's text: `rgb(255 212 0 / 0.42)` |
+| `--edytor-comments-background`, `--edytor-comments-color` | The cards |
+
+`card` replaces a thread card's markup (the sidebar still places it): it receives `{ thread, comments, active }`, the controller included for its actions.
+
+## Anchors
+
+A thread's anchor is a mark over its text, `comment:<thread id>`: a key of its own per thread, so overlapping threads never clip each other, reading the plugin's `comment` [mark record](/docs/customization/marks#how-concurrent-marks-merge). The core renders it as `<span data-edytor-mark="comment:<id>" data-edytor-comment>`.
+
+- **Edits.** A split moves the marked text into the new block, a merge back: the thread keeps its text through both (its anchor is then several runs). Text typed inside the marked text joins the thread; text typed right after it does not, here and from a collaborator at the same time (the mark's `edge` is `exclusive`).
+- **Copy and paste.** A copy or cut carries the text without its comments (the record's `copy: false`), as in Notion: a pasted copy is not commented. Other marks are kept.
+- **Deleted text.** A thread whose text is deleted keeps its comments and has no anchor; an undo brings both back together.
+- **Removed threads.** The anchor of a removed thread is the store's to remove: the room removes it as its own edit, so a thread deleted in one tab leaves no highlight in any.
+
+`commentAnchors(facade)` (from `edytor` and `edytor/cloudflare`) reads every thread's runs from a document: `Map<thread id, { block, offset, length }[]>`.
+
+## Notifications
+
+`onComment(change, { own })` hears each change once: a thread added, a reply, a resolve or a reopen, a comment deleted, a thread removed, `own` when the current user made it (in this view or another of theirs). Use it for a toast or an unread count; for emails and push notifications, use the [room's `onComment`](/docs/server/comments#notifications), which runs once per change whoever is online.
+
+```ts title="notify.ts" check
+import { createCommentsClient, createCommentsPlugin } from 'edytor';
+
+export const comments = (room: string, user: string, toast: (text: string) => void) =>
+	createCommentsPlugin({
+		client: createCommentsClient({ server: 'https://example.com/comments', room }),
+		user,
+		onComment: (change, { own }) => {
+			if (!own && change.type === 'replied') toast(`${change.user} replied: ${change.comment?.body}`);
+		}
+	});
+```
+
+## The client
+
+The plugin reads and writes threads through a `CommentsClient`:
+
+| Member | Description |
+| --- | --- |
+| `list()` | Every thread, with the document's last sequence number: `{ seq, threads }` |
+| `send(request)` | One request (`add`, `reply`, `resolve`, `reopen`, `delete`) as the client's user: `{ status: 'applied', change }` or `{ status: 'noop', thread }`; a refusal throws |
+| `subscribe(listener)` | Optional: hear every change (`{ type: 'change', change }`), and every thread at each (re)connect (`{ type: 'snapshot', seq, threads }`); answers the unsubscribe |
+| `attach(document)` | Optional: the plugin gives a client whose store has no document of its own the view's document, to remove a removed thread's anchor |
+
+`createCommentsClient({ server, room, params, fetch, socket })` is the default one: `GET` and `POST <server>/<room>` (the requests [`routeDocumentComments`](/docs/server/comments#over-http) answers), `params` (an object, or a function read at each request) as query parameters, and a refusal thrown as a `CommentRequestError` with its HTTP `status`. Its `subscribe` hears the room on the socket of the page's websocket sync for the same room, `socket` (default: `server` read as `ws:`/`wss:`): set it to the `server` of `<Edytor>` when the two routes differ. While a listener is subscribed, that socket asks the room for the changes, and again at each reconnect. Without a websocket sync, the client lists the threads when the editor mounts and hears no change.
+
+Every request and change carries whole threads:
+
+```ts
+type CommentThread = {
+	id: string;
+	block: string | null; // where it started
+	quote: string; // the text it was made on, as it read then
+	createdBy: string;
+	createdAt: number;
+	resolved: { by: string; at: number } | null;
+	comments: { id: string; author: string; body: string; createdAt: number }[]; // the first starts it
+	rev: number; // the sequence number of its last change
+};
+```
+
+The client merges what it hears by `rev`, so an answer and a change arriving in either order show the newest state.
+
+### A client without a room
+
+`createMemoryCommentsClient({ user })` keeps threads in memory under the room's rules: for tests, demos and a document with no server. `client.as('bob')` is a client of the same threads as another user, whose changes the first hears, as over a network. It removes a removed thread's anchor from the editor the plugin attached.
+
+```svelte title="Demo.svelte" check
+<script lang="ts">
+	import { Edytor, createCommentsPlugin, createMemoryCommentsClient, toolbarPlugin } from 'edytor';
+
+	const comments = createCommentsPlugin({
+		client: createMemoryCommentsClient({ user: 'ada' }),
+		user: { id: 'ada', name: 'Ada Lovelace' }
+	});
+</script>
+
+<Edytor plugins={[comments, toolbarPlugin]} />
+```
+
+## Users
+
+`user` is the current user's id, the identity your server verifies (it decides who may delete a comment), or `{ id, name, avatar, color }`. `users(id)` answers another user's `{ name, avatar, color }`; without one, a comment shows its author's id. Without an avatar, a comment shows its author's initial on a color picked from their id.
+
+## From code
+
+`commentsController(edytor)` returns the plugin's controller, or `undefined` when it is not listed:
+
+| Member | Description |
+| --- | --- |
+| `threads` | Every thread with its anchor's `runs`, in the order of their text (reactive) |
+| `open`, `resolved` | The open threads with an anchor, and the resolved ones (reactive) |
+| `active` | The active thread's id, or `null` (reactive) |
+| `draft` | The thread being written: `{ id, quote, block, spans }`, or `null` (reactive) |
+| `showResolved` | The sidebar also shows the resolved threads |
+| `error` | The last failed request's message, until one succeeds |
+| `canComment` | The view may write: not readonly, the document writable |
+| `start()` | Start a thread on the selection (at a caret, its line); answers whether a draft opened |
+| `submit(body)`, `cancel()` | Post the draft, or give it up |
+| `reply(thread, body)`, `resolve(thread)`, `reopen(thread)`, `remove(thread, comment?)` | A thread's actions; each answers whether it was done |
+| `focus(thread)` | Make a thread the active one and scroll its text into view |
+
+`onBeforeOperation` sees the anchor's command, `addComment`, with the payload `{ thread, runs }`, then a `formatRange` step per run; a hook can refuse it. See [Operations](/docs/plugins/operations).
+
+## Localization
+
+`createCommentsPlugin({ labels })` takes the `comments` section of the [labels](/docs/customization/localization): the toolbar button, the fields, the buttons, `resolvedBy(name)`, `showResolved(count)` and `when(at)`, the time a comment shows.

@@ -118,6 +118,18 @@ export {
 } from './find/findPlugin.js';
 export type { FindController, ReplaceMatches } from './find/FindController.svelte.js';
 export { findMatches, type FindMatch, type FindOptions } from './find/search.js';
+export {
+	createCommentsPlugin,
+	commentsController,
+	type CommentsPluginOptions
+} from './comments/commentsPlugin.js';
+export type {
+	CommentsController,
+	CommentDraft,
+	CommentNotice,
+	CommentUser,
+	PlacedThread
+} from './comments/CommentsController.svelte.js';
 export { pagePlugin, createPagePlugin, type PagePluginOptions } from './page/PagePlugin.svelte';
 export {
 	tocPlugin,

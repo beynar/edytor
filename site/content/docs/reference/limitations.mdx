@@ -16,7 +16,7 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 ## Not finished
 
 - **No tables.** No table kind ships, and no plugin edits rows and columns. Columns ([layouts](/docs/plugins/columns)) place blocks side by side; a grid of cells is not built yet.
-- **No comments.** No comment threads, sidebar or resolve flow. A [`comment:<id>` mark](/docs/customization/marks#how-concurrent-marks-merge) per thread can anchor the threads your application stores and shows.
+- **Comments are plain text.** [Comment](/docs/plugins/comments) bodies have no formatting, mentions or attachments, and a posted comment cannot be edited (delete it and post again). A read-only identity reads the threads and writes none: there is no "can comment" access level. Duplicating a block copies its comment anchors, so the thread is highlighted on both copies.
 - **Version history has no UI.** The room keeps [two versions a day](/docs/server/history) and lists, previews and restores them [from code or over HTTP](/docs/server/history#list-preview-restore); the panel that shows them to people is yours to build.
 - **Suggestions stay in one view.** A [suggestion](/docs/editor/suggestions) (text, blocks or a rewrite proposed by your AI) shows only in the view that made it until it is accepted: another tab or a collaborator cannot review it, and a reload loses it.
 - **No property schema.** [Properties](/docs/concepts/properties) take any JSON; validate or normalize in `onBeforeOperation`.

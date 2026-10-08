@@ -71,6 +71,12 @@ export const messageQueryAwareness = 3;
 export const messageSaved = 4;
 /** Server → client: one piece of a frame too large to send whole (bounded catch-up). */
 export const messageChunk = 5;
+/**
+ * Both ways: a document's comment threads (`protocols/comments.ts`): a
+ * client subscribes, the room answers every thread, then each change. The
+ * room sends it only to a socket that subscribed.
+ */
+export const messageComments = 6;
 
 /** A WebSocket message limit on Cloudflare (32 MiB): a larger frame is sent as chunks. */
 export const MAX_FRAME_BYTES = 32 * 1024 * 1024;

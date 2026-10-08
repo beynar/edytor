@@ -268,6 +268,31 @@ export const fr: Labels = {
 		searching: 'Recherche…',
 		noResults: 'Aucun résultat',
 		untitled: 'Sans titre'
+	},
+	comments: {
+		comment: 'Commenter',
+		sidebar: 'Commentaires',
+		placeholder: 'Ajouter un commentaire…',
+		reply: 'Répondre…',
+		post: 'Envoyer',
+		cancel: 'Annuler',
+		resolve: 'Résoudre',
+		reopen: 'Rouvrir',
+		delete: 'Supprimer',
+		resolvedBy: (name) => `Résolu par ${name}`,
+		showResolved: (count) => `Résolus (${count})`,
+		hideResolved: 'Masquer les résolus',
+		you: 'Vous',
+		when: (at) =>
+			Number.isFinite(at)
+				? new Intl.DateTimeFormat('fr', {
+						day: 'numeric',
+						month: 'short',
+						hour: '2-digit',
+						minute: '2-digit'
+					}).format(at)
+				: '',
+		failed: 'Le commentaire n’a pas pu être enregistré. Réessayez.'
 	}
 };
 

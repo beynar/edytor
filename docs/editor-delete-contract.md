@@ -1143,6 +1143,31 @@ A mark key `name:<id>` is a mark of its own that reads the `name`
 record (`edytor.marks.get('comment:c1')` is the `comment` record, its
 edge too): two comments are two marks and never clip each other.
 
+### `comment.anchor` — a thread is the text its mark covers (WU-34)
+
+A comment thread's anchor is its `comment:<thread>` mark (`mark.key`):
+its runs, in document order, are what `commentAnchors(facade)`
+(`crdt/protocols/comments.ts`) reads, adjacent runs of one block joined.
+A split moves the marked text into the new block and a merge back, never
+copying it, so a thread keeps its text through both (several runs after a
+split); its edge is `exclusive` (`commentMarks` in `defaultSemantics`, the
+plugin's record): text typed inside joins it, text typed at either end,
+here or concurrently, does not. Text whose characters are all deleted
+leaves the thread with no run; an undo brings the text and the mark back
+together. The anchor is written once the store kept the thread, as one
+command (`addComment`, a `formatRange` per run, one undo step); a
+removed thread's marks are removed by its store (`room.comments.anchor`),
+never by a view. Pins: `src/tests/collaboration/comments.test.ts`,
+`src/tests/fixtures/dom/comments-20261008.test.tsx`.
+
+### `comment.copy` — a comment is not copied (Notion)
+
+A mark whose record says `copy: false` (the comment's) is left out of
+the clipboard fragment of a copy or a cut (`createEdytorClipboardFragment`),
+so its HTML and the internal paste carry the text without it; the other
+marks stay. A block's Duplicate copies it (a documented residual: the
+thread is anchored on both copies).
+
 ## History
 
 ### `hist.capture-group` — one undo step per gesture
@@ -2281,6 +2306,49 @@ room composes it before `validate` (`locks` option; `DocumentRoom.locks()`,
 default `{ key: EDYTOR_LOCKS }` when that var is set); both must accept.
 Pins: `tests/do/h10-locks.test.ts`, `h2-validation.test.ts` (the plain
 lock, on the helper).
+
+### `room.comments.rules` — one rule for every comment store (WU-34, D6)
+
+Comment threads live beside the document (`threads`, `comments` tables),
+never in it. `decideComment(request, actor, context)`
+(`crdt/protocols/comments.ts`) decides every request in the room and in
+the memory client: a read-only actor changes nothing (`read-only`); `add`
+takes a thread id no thread holds (`exists`, ids `[A-Za-z0-9_-]{1,64}`),
+`reply` a thread that exists (`missing`); bodies are non-empty after
+trailing white space, at most 10,000 characters (`invalid`); `resolve` and
+`reopen` are anyone's who may write, a repeat a `noop`; `delete` removes a
+comment its author's or a moderator's (`forbidden`), the first comment or
+no `comment` the whole thread (`removed`). Each change takes the
+document's next sequence number (`seq`), never below a stored thread's
+`rev`. Over HTTP (`routeDocumentComments`) a refusal is a status:
+`400`/`403`/`404`/`409`/`413`, authorization as `routeDocumentHistory`.
+Pins: `tests/do/comments.test.ts` (rules, store).
+
+### `room.comments.socket` — changes reach the sockets that asked
+
+A `messageComments` subscribe marks the socket's attachment and is
+answered with every thread (`{ seq, threads }`); each applied change then
+goes to every subscribed socket, and only to them (an unsubscribed or
+older client receives no comment frame). A client merges by `rev`: an
+older thread never replaces a newer one; a snapshot removes the threads
+it lacks unless a change after its `seq` made them (`CommentThreads`).
+The shipped provider subscribes at every open while a listener watches its
+room (`watchComments`). Pins: `tests/do/comments.test.ts` (socket),
+`src/tests/collaboration/comments.test.ts`.
+
+### `room.comments.anchor` — a removed thread takes its anchor
+
+A `removed` change removes the thread's `comment:<id>` marks from the
+document as one room transaction (`ROOM_ORIGIN`), stored and relayed like
+any edit; a resolved thread keeps its marks. The memory client removes them
+from the document the plugin attached, outside the view's history. Pins:
+`tests/do/comments.test.ts` (anchor), the jsdom delete row.
+
+### `room.comments.hook` — notifications
+
+`onComment(change)` runs after the change is stored and sent, awaited
+before the request is answered; a throw is logged (`fault`) and the change
+stands. Pins: `tests/do/comments.test.ts` (hook).
 
 ### `room.move` — moving blocks between documents (H10)
 

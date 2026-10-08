@@ -13,6 +13,7 @@ export {
 	closedSocket,
 	type AttachRoomOptions,
 	type AttachDocumentOptions,
+	type CommentOptions,
 	DEFAULT_COMPACT_AFTER,
 	DEFAULT_MAX_ROW_BYTES,
 	DEFAULT_SAVE_AFTER,
@@ -65,6 +66,23 @@ export {
 	type R2BucketLike
 } from './history.js';
 export { type PurgeReport } from '../crdt/purge.js';
+export {
+	COMMENT_STATUS,
+	MAX_COMMENT_LENGTH,
+	MAX_COMMENTS_PER_THREAD,
+	MAX_THREADS,
+	commentAnchors,
+	decideComment,
+	type ThreadComment,
+	type CommentActor,
+	type CommentChange,
+	type CommentOutcome,
+	type CommentRefusal,
+	type CommentRequest,
+	type CommentRun,
+	type CommentSnapshot,
+	type CommentThread
+} from '../crdt/protocols/comments.js';
 export { lockedBlocks, type LockOptions } from './locks.js';
 export {
 	moveBlocksBetweenRooms,
@@ -85,6 +103,7 @@ export {
 export {
 	routeDocumentSocket,
 	routeDocumentHistory,
+	routeDocumentComments,
 	requestedReplica,
 	type AuthorizeDocumentSocket,
 	type ExpiredCredential,

@@ -174,6 +174,14 @@ export {
 	type ReplaceMatches,
 	type FindMatch,
 	type FindOptions,
+	createCommentsPlugin,
+	commentsController,
+	type CommentsPluginOptions,
+	type CommentsController,
+	type CommentDraft,
+	type CommentNotice,
+	type CommentUser,
+	type PlacedThread,
 	pagePlugin,
 	createPagePlugin,
 	type PagePluginOptions,
@@ -239,6 +247,27 @@ export {
 	type PresenceOptions,
 	type PresenceShare
 } from './collaboration/index.js';
+
+// ── Comment threads ────────────────────────────────────────────────────
+export {
+	createCommentsClient,
+	createMemoryCommentsClient,
+	CommentRequestError,
+	commentAnchors,
+	type CommentDocument,
+	type CommentFeed,
+	type CommentResult,
+	type CommentsClient,
+	type CommentsClientOptions,
+	type MemoryCommentsClient,
+	type MemoryCommentsClientOptions,
+	type CommentChange,
+	type CommentRequest,
+	type CommentRun,
+	type CommentSnapshot,
+	type CommentThread,
+	type ThreadComment
+} from './collaboration/comments/index.js';
 
 // ── Version history ────────────────────────────────────────────────────
 export {

@@ -25,6 +25,7 @@ import {
 } from '../DocumentRoom.js';
 import type { RoomAccess } from './access.js';
 import type { Admission } from './admission.js';
+import type { RoomComments } from './comments.js';
 import type { RoomHistory } from './history.js';
 import type { RoomMoves } from './moves.js';
 import type { RoomPresence } from './presence.js';
@@ -97,6 +98,8 @@ export type RoomTables = {
 	restore: string;
 	moves: string;
 	late: string;
+	threads: string;
+	comments: string;
 };
 
 /** The room's public diagnostics, kept on the `AttachedDocument` itself. */
@@ -159,6 +162,7 @@ export class RoomContext {
 	moves!: RoomMoves;
 	presence!: RoomPresence;
 	access!: RoomAccess;
+	comments!: RoomComments;
 
 	private _facade: EdytorDoc | null = null;
 	private _lookups: ReturnType<typeof lookups> | null = null;
@@ -186,7 +190,9 @@ export class RoomContext {
 			editors: `${prefix}editors`,
 			restore: `${prefix}restore`,
 			moves: `${prefix}moves`,
-			late: `${prefix}late`
+			late: `${prefix}late`,
+			threads: `${prefix}threads`,
+			comments: `${prefix}comments`
 		};
 		this.clock = options.now ?? Date.now;
 	}

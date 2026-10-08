@@ -89,7 +89,39 @@ const extractBlockRange = (edytor: Edytor) => {
 	});
 };
 
-export const createEdytorClipboardFragment = (edytor: Edytor): EdytorClipboardFragment | null => {
+/**
+ * `fragment` without the marks whose record says `copy: false` (a
+ * comment's anchor, `comment:<id>`: Notion copies the text, not the
+ * comment): one rule for copy, cut and the internal paste they feed.
+ */
+const withoutUncopied = (
+	edytor: Edytor,
+	fragment: EdytorClipboardFragment | null
+): EdytorClipboardFragment | null => {
+	if (!fragment) return fragment;
+	const strip = (content: JSONContentPart[] | undefined) => {
+		for (const part of content ?? []) {
+			if (!('text' in part) || !part.marks) continue;
+			for (const key of Object.keys(part.marks))
+				if (edytor.marks.get(key)?.copy === false) delete part.marks[key];
+			if (Object.keys(part.marks).length === 0) delete part.marks;
+		}
+	};
+	const walk = (blocks: JSONBlock[]) => {
+		for (const block of blocks) {
+			strip(block.content as JSONContentPart[] | undefined);
+			if (block.children) walk(block.children);
+		}
+	};
+	if (fragment.kind === 'blocks') walk(fragment.blocks);
+	else strip(fragment.content);
+	return fragment;
+};
+
+export const createEdytorClipboardFragment = (edytor: Edytor): EdytorClipboardFragment | null =>
+	withoutUncopied(edytor, fragmentOf(edytor));
+
+const fragmentOf = (edytor: Edytor): EdytorClipboardFragment | null => {
 	// A layout the block selection covers whole is copied as the layout (D3).
 	const selectedBlocks = selectedMembers(edytor, liftLayouts(edytor.selection.selectedBlocks));
 	if (selectedBlocks.length > 0) {

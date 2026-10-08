@@ -4,7 +4,7 @@
  * Expected words come from that dictionary, never from a run:
  *
  * - each chrome (slash menu, toolbar, block menu, handles, image, media,
- *   code header, find bar, suggestion bar, columns, announcements,
+ *   code header, find bar, suggestion bar, comments sidebar, columns, announcements,
  *   placeholders, the to-do checkbox, the block menu's Color flyout, the
  *   page and table of contents blocks) names itself in its plugin's labels;
  * - the slash keywords of `createRichTextPlugin({ keywords })` replace the
@@ -20,6 +20,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
 import { englishLabels, type Labels } from '$lib/labels.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { findController } from '$lib/plugins/find/findPlugin.js';
+import { commentsController } from '$lib/plugins/comments/commentsPlugin.js';
 import {
 	dispatchClipboardPaste,
 	dispatchDomBeforeInput,
@@ -432,6 +433,18 @@ describe('no English reaches the page', () => {
 		await flushDomUpdates();
 		look();
 		edytor.suggestions.add({ after: 'a' }, [p('s', 'proposé')]);
+		await flushDomUpdates();
+		look();
+		// A comment thread, posted, then a resolved one (the sidebar's toggle).
+		const comments = commentsController(edytor)!;
+		edytor.selection.setAtRange(text, 0, text, 7);
+		comments.start();
+		await flushDomUpdates();
+		look();
+		await comments.submit('Une remarque');
+		await flushDomUpdates();
+		look();
+		await comments.resolve(comments.threads[0]!.id);
 		await flushDomUpdates();
 		look();
 		await click(one('[data-edytor-image-add]'));

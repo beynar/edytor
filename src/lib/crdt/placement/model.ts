@@ -88,6 +88,7 @@ import {
 import { cloneJson } from '../../utils/json.js';
 import { dataLeaves, patchWrites, writeLeaves } from '../data.js';
 import { incarnationNode, isIncarnationId } from '../incarnations.js';
+import { engineOps, newNode as makeNode } from '../structs.js';
 
 /** Logical block identifier — caller-assigned, immutable per block. */
 export type BlockId = string;
@@ -272,7 +273,8 @@ export type DocOrder = { ids: readonly BlockId[]; at: ReadonlyMap<BlockId, numbe
  */
 export const bindModel = (Y: EngineApi) => {
 	/** Construct a detached v14 node, viewed through the structural interface. */
-	const newNode = (name: string): EngineNode => new Y.Node(name) as unknown as EngineNode;
+	const newNode = (name: string): EngineNode => makeNode(Y, name);
+	const { isKeptReplaced } = engineOps(Y);
 
 	/** The text-ownership engine (streams, claims, anchors). */
 	const T = bindText(Y);
@@ -288,9 +290,7 @@ export const bindModel = (Y: EngineApi) => {
 		const v = registry.getAttr(id);
 		if (isNodeLike(v)) return v;
 		// A losing incarnation (H13) under its derived id.
-		return isIncarnationId(id)
-			? incarnationNode(registry, id, (item) => Y.isKeptReplaced(item as never))
-			: null;
+		return isIncarnationId(id) ? incarnationNode(registry, id, isKeptReplaced) : null;
 	};
 
 	/**

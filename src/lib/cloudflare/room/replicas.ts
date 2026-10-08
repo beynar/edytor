@@ -6,6 +6,7 @@
  * attribution entry to its verified user (`room.attribution.trust`).
  */
 import { ATTRIBUTION_ROOT } from '../../crdt/schema.js';
+import { asEngineDoc } from '../../crdt/structs.js';
 import type { YDoc } from '../../crdt/index.js';
 import { ROOM_ORIGIN, type Attachment, type ReplicaOwner } from '../DocumentRoom.js';
 import type { RoomContext } from './context.js';
@@ -145,10 +146,7 @@ export class ReplicaRegistry {
 	 * replaces it on every replica, the sender's included.
 	 */
 	rebind(doc: YDoc, keys: ReadonlySet<string>, user: string) {
-		const root = doc.get(ATTRIBUTION_ROOT) as unknown as {
-			getAttr(key: string): unknown;
-			setAttr(key: string, value: unknown): void;
-		};
+		const root = asEngineDoc(doc).get(ATTRIBUTION_ROOT);
 		const stale = [...keys].filter((key) => root.getAttr(key) !== user);
 		if (stale.length === 0) return;
 		doc.transact(() => {

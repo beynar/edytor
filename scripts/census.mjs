@@ -111,7 +111,10 @@ const mechanisms = [
 	['instanceof PreventionError', /\binstanceof\s+PreventionError\b/g],
 	['ignoreNextSelectionChange writes', /\bignoreNextSelectionChange\s*=(?!=)(?!\s*\$state\()/g],
 	['new MutationObserver', /\bnew\s+MutationObserver\b/g],
-	['flushSync(', /\bflushSync\s*\(/g]
+	['flushSync(', /\bflushSync\s*\(/g],
+	// Casts that step around a type: into the engine's privates, mostly (CC-06).
+	['as unknown as casts', /\bas\s+unknown\s+as\b/g],
+	['as never casts', /\bas\s+never\b/g]
 ];
 const counts = new Map(mechanisms.map(([name]) => [name, 0]));
 const perFile = new Map(mechanisms.map(([name]) => [name, new Map()]));

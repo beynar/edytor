@@ -18,12 +18,13 @@
  * with a non-local origin: never an undo step, no attribution stamp.
  * Seeding is explicit: reads never create or normalize state.
  */
-import type { EngineApi, EngineDoc, YDoc } from '../engine-api.js';
+import type { EngineApi, EngineDoc } from '../engine-api.js';
 import type { PlacementModel, BlockSpec } from '../placement/model.js';
 import type { BlockAttributionApi } from '../attribution/block.js';
 import type { JsonObj } from './types.js';
 import { hash32, setDocRand } from '../rand.js';
 import { keepingReplaced } from '../incarnations.js';
+import { asEngineDoc, asYDoc } from '../structs.js';
 import { DOC_DATA_ROOT, SCHEMA } from '../schema.js';
 import { dataLeaves, isObject, writeLeaves } from '../data.js';
 import {
@@ -136,7 +137,7 @@ export const bindSeed = (Y: EngineApi, M: PlacementModel, BA: BlockAttributionAp
 		const specs = blocks.map((block) => jsonBlockToSpec(block, false, mint));
 		const raw = keepingReplaced(new Y.Doc());
 		raw.clientID = writer;
-		const scratch = raw as unknown as EngineDoc;
+		const scratch = asEngineDoc(raw);
 		let rank = writer; // ranks from the rand seam, seeded by the hash (LCG)
 		setDocRand(scratch, () => (rank = (Math.imul(rank, 1664525) + 1013904223) >>> 0) / 2 ** 32);
 		init(scratch, { content: specs });
@@ -157,8 +158,7 @@ export const bindSeed = (Y: EngineApi, M: PlacementModel, BA: BlockAttributionAp
 		value: JSONBlock[] = [],
 		defaultType?: string,
 		data?: JsonObj
-	): void =>
-		Y.applyUpdate(doc as unknown as YDoc, seedUpdate(value, defaultType, data), SEED_ORIGIN);
+	): void => Y.applyUpdate(asYDoc(doc), seedUpdate(value, defaultType, data), SEED_ORIGIN);
 
 	return { stamp, restore, init, seedUpdate, seed };
 };

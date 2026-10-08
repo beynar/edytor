@@ -3,7 +3,7 @@
  * text delete marks, withdrawn creations, the attr repair, the step limit and
  * the purge horizon, lineage for undo and redo).
  */
-import type { EngineApi, EngineDoc, EngineNode, YNode, YUndoManager } from '../engine-api.js';
+import type { EngineApi, EngineDoc, EngineNode, YUndoManager } from '../engine-api.js';
 import type { BlockId } from '../placement/model.js';
 import type { TextDeletes } from '../text/deletes.js';
 import type { BlockAttributionApi } from '../attribution/block.js';
@@ -21,7 +21,18 @@ import {
 	LAST_CHANGED_ATTR,
 	TYPE
 } from '../schema.js';
-import { walkIdSetStructs, type IdSetLike, type StoreStruct } from '../structs.js';
+import {
+	asYNode,
+	collectable,
+	collectNow,
+	collects,
+	engineOps,
+	onTransaction,
+	stepsOf,
+	walkIdSetStructs,
+	type IdSetLike,
+	type StoreStruct
+} from '../structs.js';
 import { isInitialized } from './gate.js';
 import { EdytorDocDisposedError, type WriteFunnel } from './funnel.js';
 import type { DocBase } from './reads.js';
@@ -58,6 +69,7 @@ export const docHistory = (c: HistoryContext) => {
 		lineageDepth,
 		lineagePending
 	} = c;
+	const ops = engineOps(Y);
 
 	/**
 	 * The supported undo seam (gate-2 finding 10 — the U08 rule):
@@ -111,7 +123,7 @@ export const docHistory = (c: HistoryContext) => {
 			if (typeof key !== 'string') return;
 			if (!key.startsWith(DATA_LEAF_PREFIX) && !REPAIRED[node?.name]?.includes(key)) return;
 			if (step.inserts.has(s.id.client, s.id.clock)) return;
-			const values = (s as unknown as { content: { getContent(): unknown[] } }).content;
+			const values = (s as StoreStruct & { content: { getContent(): unknown[] } }).content;
 			let attrs = lost.get(node);
 			if (attrs === undefined) lost.set(node, (attrs = new Map()));
 			attrs.set(key, values.getContent().at(-1));
@@ -138,7 +150,7 @@ export const docHistory = (c: HistoryContext) => {
 		// An undone creation withdraws the block instead of deleting it (P12).
 		const marks = D.history(doc, () => um);
 		const um: YUndoManager = new Y.UndoManager(
-			[M.registryOf(doc), D.scope(doc), doc.get(DOC_DATA_ROOT)] as unknown as YNode[],
+			[M.registryOf(doc), D.scope(doc), doc.get(DOC_DATA_ROOT)].map(asYNode),
 			{
 				...opts,
 				...marks,
@@ -152,13 +164,12 @@ export const docHistory = (c: HistoryContext) => {
 		// A streamless block's own text (R2) is shared by every replica that
 		// typed into it first: no history step captures it, so undoing the
 		// first typing removes the typing and keeps the text (and nonce).
-		const skipOwnText = ({ stackItem }: { stackItem: { inserts: unknown } }): void => {
+		const skipOwnText = ({ stackItem }: { stackItem: { inserts: IdSetLike } }): void => {
 			const ids = ownTextIds.get(doc);
-			if (ids !== undefined)
-				stackItem.inserts = Y.diffIdSet(stackItem.inserts as never, ids as never);
+			if (ids !== undefined) stackItem.inserts = ops.diff(stackItem.inserts, ids);
 		};
-		um.on('stack-item-added', skipOwnText as never);
-		um.on('stack-item-updated', skipOwnText as never);
+		um.on('stack-item-added', skipOwnText);
+		um.on('stack-item-updated', skipOwnText);
 		// P6: the undo stack keeps its newest `limit` steps. A step that
 		// falls off releases what it kept for its undo (its deleted items),
 		// and the engine collects their content now, as it would have at
@@ -169,7 +180,7 @@ export const docHistory = (c: HistoryContext) => {
 		// split, so the store keeps its merged items. Only the items
 		// themselves are released: a kept container's flag may guard a
 		// newer step's items inside it.
-		const released = Y.createIdSet() as unknown as IdSetLike;
+		const released = ops.idSet();
 		const covered = (st: { id: { client: number; clock: number }; length: number }) => {
 			const end = st.id.clock + st.length;
 			return (released.clients.get(st.id.client)?.getIds() ?? []).some(
@@ -178,29 +189,27 @@ export const docHistory = (c: HistoryContext) => {
 		};
 		const release = (dropped: UndoStep[]): void => {
 			if (dropped.length === 0) return;
-			for (const step of dropped) Y.insertIntoIdSet(released as never, step.deletes as never);
-			const gc = (doc as unknown as { gc: boolean }).gc;
-			const keepIt = (doc as unknown as { gcFilter: (it: unknown) => boolean }).gcFilter;
+			for (const step of dropped) ops.insertInto(released, step.deletes);
+			const gc = collects(doc);
 			doc.transact((tr) => {
 				for (const step of dropped)
 					walkIdSetStructs(Y, doc, step.deletes, (st) => {
 						const it = st as StoreStruct & { content?: unknown };
 						if (it.content === undefined || it.keep !== true || !covered(it)) return;
 						it.keep = false;
-						if (gc && it.deleted && keepIt(it))
-							(it as unknown as { gc(tr: unknown, parentGCd: boolean): void }).gc(tr, false);
+						if (gc && it.deleted && collectable(doc, it)) collectNow(it, tr);
 					});
 			}, HISTORY_TRIM);
 		};
 		const trim = ({ type }: { type: string }): void => {
 			const over = um.undoStack.length - limit;
 			if (type !== 'undo' || !(over > 0)) return;
-			release(um.undoStack.splice(0, over) as unknown as UndoStep[]);
+			release(stepsOf<UndoStep>(um.undoStack.splice(0, over)));
 		};
-		um.on('stack-item-added', trim as never);
+		um.on('stack-item-added', trim);
 		// `releaseHistory(um)`: every step dropped and released by the same rule.
 		releasers.set(um, () =>
-			release([...um.undoStack.splice(0), ...um.redoStack.splice(0)] as unknown as UndoStep[])
+			release(stepsOf<UndoStep>([...um.undoStack.splice(0), ...um.redoStack.splice(0)]))
 		);
 		// H7 (`hist.purge.horizon`): when the room's purge horizon arrives,
 		// every step all of whose inserts the room stored before it is
@@ -221,17 +230,13 @@ export const docHistory = (c: HistoryContext) => {
 			if (horizon === null) return;
 			const sv = Y.decodeStateVector(horizon.sv) as Map<number, number>;
 			const dropped: UndoStep[] = [];
-			for (const stack of [um.undoStack, um.redoStack] as unknown as UndoStep[][]) {
+			for (const stack of [um.undoStack, um.redoStack].map(stepsOf<UndoStep>)) {
 				const kept = stack.filter((step) => !pastHorizon(step, sv) || !dropped.push(step));
 				stack.splice(0, stack.length, ...kept);
 			}
 			release(dropped);
 		};
-		(
-			doc as unknown as {
-				on(e: string, f: (tr: { changed: Map<unknown, unknown> }) => void): void;
-			}
-		).on('afterTransaction', (tr) => {
+		onTransaction<{ changed: Map<unknown, unknown> }>(doc, 'afterTransaction', (tr) => {
 			if (tr.changed.has(horizonRoot)) prune();
 		});
 		// Lineage for undo/redo (O19, F4): the replay displaces the state
@@ -270,10 +275,7 @@ export const docHistory = (c: HistoryContext) => {
 					console.error('[edytor-doc] undo lineage capture failed', err);
 				}
 			};
-			(doc as unknown as { on(e: 'beforeTransaction', f: typeof onBefore): void }).on(
-				'beforeTransaction',
-				onBefore
-			);
+			onTransaction(doc, 'beforeTransaction', onBefore);
 		}
 		return um;
 	};

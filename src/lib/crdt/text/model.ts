@@ -31,7 +31,18 @@
  * the stream table `text/streams.ts` (re-exported here); this module declares
  * the text model's types and binds its reads and writes to an engine.
  */
-import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode } from '../engine-api.js';
+import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
+import {
+	asYDoc,
+	asYNode,
+	attrItems,
+	engineOps,
+	newNode as makeNode,
+	rangeCursorOf,
+	storeOf,
+	withoutRenderer,
+	type IdSetOf
+} from '../structs.js';
 import { CONTENT, CONTENT_NODE, ID, NONCE, SCHEMA } from '../schema.js';
 import { DEV } from 'esm-env';
 import { hash32, hash53 } from '../rand.js';
@@ -314,20 +325,12 @@ export type Ownership = {
 };
 
 /** Every write addresses live-content space: a renderer on a backing text is a read concern. */
-const plain = <T>(text: EngineNode, f: () => T): T => {
-	const t = text as unknown as { _renderer: unknown };
-	const r = t._renderer;
-	t._renderer = null;
-	try {
-		return f();
-	} finally {
-		t._renderer = r;
-	}
-};
+const plain = <T>(text: EngineNode, f: () => T): T => withoutRenderer(text, f);
 
 export const bindText = (Y: EngineApi) => {
 	const D = bindDeletes(Y);
-	const newNode = (name: string): EngineNode => new Y.Node(name) as unknown as EngineNode;
+	const newNode = (name: string): EngineNode => makeNode(Y, name);
+	const ops = engineOps(Y);
 
 	/** Anchor → live index in `text`, or `null` when its item is not integrated here. */
 	const resolveAnchor = (doc: EngineDoc, text: EngineNode, anchor: Anchor): number | null => {
@@ -339,7 +342,7 @@ export const bindText = (Y: EngineApi) => {
 				item: anchor.i === null ? null : { client: anchor.i.c, clock: anchor.i.k },
 				assoc: anchor.a
 			}),
-			doc as unknown as YDoc,
+			asYDoc(doc),
 			false
 		);
 		return abs === null ? null : abs.index;
@@ -352,7 +355,7 @@ export const bindText = (Y: EngineApi) => {
 	 */
 	const anchorAt = (text: EngineNode, index: number, assoc: number): Anchor => {
 		const json = Y.relativePositionToJSON(
-			Y.createRelativePositionFromTypeIndex(text as unknown as YNode, index, assoc)
+			Y.createRelativePositionFromTypeIndex(asYNode(text), index, assoc)
 		) as { item?: { client: number; clock: number } };
 		return {
 			i: json.item ? { c: json.item.client, k: json.item.clock } : null,
@@ -361,8 +364,7 @@ export const bindText = (Y: EngineApi) => {
 	};
 
 	/** A renderer-free bounded read cursor on `text` (live-content space). */
-	const openRangeCursor = (text: EngineNode): RangeCursor =>
-		new Y.RangeCursor(text as unknown as YNode, null) as unknown as RangeCursor;
+	const openRangeCursor = (text: EngineNode): RangeCursor => rangeCursorOf<RangeCursor>(Y, text);
 
 	const itemsOfRange = (text: EngineNode, i0: number, i1: number): RangeItem[] =>
 		readRange(openRangeCursor(text), i0, i1);
@@ -404,7 +406,7 @@ export const bindText = (Y: EngineApi) => {
 					item: { client: ref.c, clock: ref.k },
 					assoc: 0
 				}),
-				doc as unknown as YDoc,
+				asYDoc(doc),
 				false
 			) as { type: unknown; index: number } | null;
 			return abs === null || abs.type !== text ? null : abs.index;
@@ -695,7 +697,7 @@ export const bindText = (Y: EngineApi) => {
 	 * change (the caller moves the block's attribution record with it).
 	 */
 	const ownText = (doc: EngineDoc, rec: TextBlockRec): { from: unknown; to: number } => {
-		const map = (rec.node as unknown as { _map: Map<string, unknown> })._map;
+		const map = attrItems(rec.node);
 		const idOf = (x: unknown) => {
 			const it = (x as { id?: { client: number; clock: number } } | null | undefined)?.id;
 			return it === undefined ? '-' : `${it.client}:${it.clock}`;
@@ -710,7 +712,7 @@ export const bindText = (Y: EngineApi) => {
 		].join('|');
 		const writer = hash53(seed) || 1;
 		const to = hash32(`${seed}|n`);
-		const store = (doc as unknown as { store: { getClock(c: number): number } }).store;
+		const store = storeOf(doc);
 		// The derivation is fresh per incarnation: a writer that already wrote
 		// here is another block's (a hash collision — R13's residual class).
 		if (DEV && store.getClock(writer) !== 0)
@@ -723,10 +725,10 @@ export const bindText = (Y: EngineApi) => {
 		} finally {
 			doc.clientID = local;
 		}
-		const ids = ownTextIds.get(doc) ?? Y.createIdSet();
+		const ids = ownTextIds.get(doc) ?? ops.idSet();
 		ownTextIds.set(doc, ids);
 		const clock = store.getClock(writer);
-		(ids as unknown as { add(c: number, k: number, l: number): void }).add(writer, clock - 2, 2);
+		ids.add(writer, clock - 2, 2);
 		return { from: rec.n, to };
 	};
 
@@ -758,6 +760,6 @@ export const bindText = (Y: EngineApi) => {
  * history step never captures them, so undoing the first typing removes the
  * typing and keeps the text every replica shares.
  */
-export const ownTextIds = new WeakMap<EngineDoc, unknown>();
+export const ownTextIds = new WeakMap<EngineDoc, IdSetOf>();
 
 export type TextEngine = ReturnType<typeof bindText>;

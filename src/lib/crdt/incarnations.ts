@@ -23,6 +23,7 @@
  */
 import type { EngineNode } from './engine-api.js';
 import { REGISTRY_KEY, isNodeLike } from './schema.js';
+import { attrItems, itemOf } from './structs.js';
 
 /** Live writers draw uint53 ids; seeds write below this band (`seedUpdate`). */
 export const LIVE_WRITERS = 2 ** 26;
@@ -89,7 +90,7 @@ export const incarnationsOf = (
 	id: string,
 	isKept: (item: unknown) => boolean
 ): Incarnation[] => {
-	const map = (registry as unknown as { _map: Map<string, RegistryItem> })._map;
+	const map = attrItems<RegistryItem>(registry);
 	const current = map.get(id);
 	if (current === undefined || current.deleted) return [];
 	const out: Incarnation[] = [];
@@ -114,6 +115,6 @@ export const incarnationNode = (
 
 /** The registry item a node is the value of (`null` for a node outside the registry). */
 export const registryItemOf = (node: EngineNode, registry: EngineNode): RegistryItem | null => {
-	const item = node._item as unknown as RegistryItem | null;
+	const item = itemOf<RegistryItem>(node);
 	return item !== null && item.parent === registry ? item : null;
 };

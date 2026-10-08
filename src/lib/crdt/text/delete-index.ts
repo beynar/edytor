@@ -8,10 +8,16 @@ import * as decoding from 'lib0-v14/decoding';
 import * as encoding from 'lib0-v14/encoding';
 import type { EngineApi, EngineDoc, EngineNode, YUndoManager } from '../engine-api.js';
 import {
+	asYDoc,
 	clientsOf,
+	collectable,
+	collectNow,
+	collects,
+	engineOps,
 	structAt,
 	walkIdSetStructs,
 	type IdSetLike,
+	type IdSetOf,
 	type StoreStruct
 } from '../structs.js';
 import type { Span } from './deletes.js';
@@ -32,10 +38,7 @@ export type Unit = StoreStruct & {
 	};
 	delete(tr: unknown): void;
 };
-export type IdSet = IdSetLike & {
-	add(c: number, k: number, n: number): void;
-	intersects(c: number, k: number, n: number): boolean;
-};
+export type IdSet = IdSetOf;
 export type Tr = {
 	local: boolean;
 	insertSet: IdSet;
@@ -124,14 +127,15 @@ export const decode = (bytes: Uint8Array, width: number): number[][] => {
 
 /** The index's reads and writes over a document's `State`. */
 export const deleteIndex = (Y: EngineApi) => {
+	const ops = engineOps(Y);
 	const idSet = (spans: readonly Span[]): IdSet => {
-		const set = Y.createIdSet() as unknown as IdSet;
+		const set = ops.idSet();
 		for (const sp of spans) set.add(sp.c, sp.k, sp.n);
 		return set;
 	};
 	/** Each item of `spans`, split at their edges. */
 	const each = (tr: Tr, spans: readonly Span[], fn: (it: Unit) => void): void =>
-		Y.iterateStructsByIdSet(tr as never, idSet(spans) as never, fn as never);
+		ops.iterate(tr, idSet(spans), fn);
 
 	// ── the index ──────────────────────────────────────────────────────
 
@@ -187,7 +191,7 @@ export const deleteIndex = (Y: EngineApi) => {
 	const indexOf = (s: State, c: number, k: number): number =>
 		Y.createAbsolutePositionFromRelativePosition(
 			Y.createRelativePositionFromJSON({ item: { client: c, clock: k }, assoc: 0 }),
-			s.doc as never,
+			asYDoc(s.doc),
 			false
 		)?.index ?? Infinity;
 
@@ -411,15 +415,20 @@ export const deleteIndex = (Y: EngineApi) => {
 
 	/** Collect the deleted items wholly inside `copies` (none a history keeps). */
 	const collect = (s: State, tr: unknown, copies: readonly Copy[]): void => {
-		const d = s.doc as unknown as { gc: boolean; gcFilter: (it: Unit) => boolean };
-		if (!d.gc || copies.length === 0) return;
+		if (!collects(s.doc) || copies.length === 0) return;
 		walkIdSetStructs(Y, s.doc, idSet(copies), (st) => {
 			const it = st as Unit & { keep?: boolean; content: { constructor: { name: string } } };
 			const inside = copies.some(
 				(e) => e.c === it.id.client && e.k <= it.id.clock && it.id.clock + it.length <= e.k + e.n
 			);
-			if (inside && it.deleted && it.keep !== true && it.parent !== undefined && d.gcFilter(it))
-				(it as unknown as { gc(tr: unknown, parentGCd: boolean): void }).gc(tr, false);
+			if (
+				inside &&
+				it.deleted &&
+				it.keep !== true &&
+				it.parent !== undefined &&
+				collectable(s.doc, it)
+			)
+				collectNow(it, tr);
 		});
 	};
 

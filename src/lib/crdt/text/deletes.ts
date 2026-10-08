@@ -56,9 +56,15 @@ import {
 	TEXT_DELETES_ROOT
 } from '../schema.js';
 import {
+	attrItems,
 	clientsOf,
 	dropSearchMarkers,
+	engineOps,
+	firstItem,
+	keepFromCollection,
 	nextClock,
+	onTransaction,
+	stepsOf,
 	structAt,
 	walkIdSetStructs,
 	type StoreStruct
@@ -111,6 +117,7 @@ export const bindDeletes = (Y: EngineApi) => {
 		forget,
 		collect
 	} = deleteIndex(Y);
+	const ops = engineOps(Y);
 
 	const attach = (doc: EngineDoc): State => {
 		let s = states.get(doc);
@@ -132,31 +139,27 @@ export const bindDeletes = (Y: EngineApi) => {
 		states.set(doc, s);
 		const st = s;
 		const records = (node: EngineNode, fn: (r: Rec, bytes: Uint8Array) => unknown): void => {
-			for (let it = (node as unknown as { _start: Unit | null })._start; it; it = it.right as Unit)
+			for (let it = firstItem<Unit>(node); it; it = it.right as Unit)
 				if (!it.deleted) for (const [r, bytes] of recordsIn(it, null)) fn(r, bytes);
 		};
-		(st.restored as unknown as { _map: Map<string, Unit> })._map.forEach((it) => {
+		attrItems<Unit>(st.restored).forEach((it) => {
 			// A record the purge deleted names nothing any more (H7).
 			if (!it.deleted) for (const [r, bytes] of recordsIn(it, null)) indexRecord(st, r, bytes);
 		});
 		records(st.marks, (r, bytes) => indexMark(st, r, bytes));
 		// A deleted copy may have to be copied again by any replica (holds,
 		// duplicates, pending characters): garbage collection keeps its content.
-		const d = doc as unknown as { gcFilter: (it: Unit) => boolean };
-		const gc = d.gcFilter;
 		const copy = (it: StoreStruct | null | undefined): boolean =>
 			it != null &&
 			(st.copies.get(it.id.client) ?? []).some((e) =>
 				overlaps(e, { k: it.id.clock, n: it.length })
 			);
 		// (an inline atom copy keeps its attributes too)
-		d.gcFilter = (it) =>
-			gc(it) &&
-			!copy(it) &&
-			!copy((it.parent as { _item?: StoreStruct | null } | undefined)?._item);
-		(doc as unknown as { on(e: string, f: (tr: Tr) => void): void }).on('afterTransaction', (tr) =>
-			react(st, tr)
+		keepFromCollection<Unit>(
+			doc,
+			(it) => !copy(it) && !copy((it.parent as { _item?: StoreStruct | null } | undefined)?._item)
 		);
+		onTransaction<Tr>(doc, 'afterTransaction', (tr) => react(st, tr));
 		return st;
 	};
 
@@ -171,7 +174,7 @@ export const bindDeletes = (Y: EngineApi) => {
 			dropSearchMarkers(it.parent);
 			if (keep) (it as { keep?: boolean }).keep = true;
 		});
-		if (into !== undefined) Y.insertIntoIdSet(into.deletes as never, idSet(live) as never);
+		if (into !== undefined) ops.insertInto(into.deletes, idSet(live));
 	};
 
 	/** Restore root span `r` by copying its leaves; writes the restoration record. */
@@ -185,14 +188,7 @@ export const bindDeletes = (Y: EngineApi) => {
 				// A leaf has no copy: a local `redone` link left by an earlier
 				// restoration points at a copy this lineage no longer shows.
 				(it as { redone: unknown }).redone = null;
-				const copy = Y.redoItem(
-					tr as never,
-					it as never,
-					new Set([it]) as never,
-					Y.createIdSet(),
-					false,
-					p.um()
-				) as unknown as Unit | null;
+				const copy = ops.redo(tr, it, new Set([it]), p.um());
 				if (copy === null) continue;
 				dropSearchMarkers(copy.parent);
 				// An inline atom comes back with its attributes: they were deleted with
@@ -200,15 +196,7 @@ export const bindDeletes = (Y: EngineApi) => {
 				const attrs = it.content.type?._map;
 				if (attrs !== undefined) {
 					const kids = [...attrs.values()].filter((c) => c.deleted);
-					for (const kid of kids)
-						Y.redoItem(
-							tr as never,
-							kid as never,
-							new Set(kids) as never,
-							Y.createIdSet(),
-							false,
-							p.um()
-						);
+					for (const kid of kids) ops.redo(tr, kid, new Set(kids), p.um());
 				}
 				const e = {
 					c: copy.id.client,
@@ -263,7 +251,7 @@ export const bindDeletes = (Y: EngineApi) => {
 	/** The undo step of this replica that wrote `mark`. */
 	const stepOf = (s: State, mark: Rec): Step | undefined => {
 		for (const p of s.policies)
-			for (const step of p.um().undoStack as unknown as Step[])
+			for (const step of stepsOf<Step>(p.um().undoStack))
 				if (step.inserts.has(mark.client, mark.clock)) return step;
 		return undefined;
 	};
@@ -382,23 +370,11 @@ export const bindDeletes = (Y: EngineApi) => {
 	 */
 	const replaceLast = (s: State, tr: Tr, bytes: Uint8Array): void => {
 		const at = s.lastMark!;
-		const tail = Y.getItemCleanStart(
-			tr as never,
-			Y.createID(at.c, at.k) as never
-		) as unknown as Unit;
+		const tail = ops.cleanStart<Unit>(tr, at.c, at.k);
 		tail.delete(tr);
 		dropSearchMarkers(s.marks);
-		const item = new Y.Item(
-			Y.createID(s.doc.clientID, nextClock(s.doc, s.doc.clientID)) as never,
-			tail as never,
-			(tail as unknown as { lastId: unknown }).lastId as never,
-			null,
-			null,
-			s.marks as never,
-			null,
-			new Y.ContentAny([bytes]) as never
-		);
-		(item as unknown as { integrate(tr: unknown, offset: number): void }).integrate(tr, 0);
+		const client = s.doc.clientID;
+		ops.appendAfter(tr, tail, s.marks, client, nextClock(s.doc, client), [bytes]);
 	};
 
 	/** The text units `ids` names, as spans. */
@@ -434,14 +410,8 @@ export const bindDeletes = (Y: EngineApi) => {
 			// Text inserted and deleted within one open capture group never comes
 			// back by that step's undo (the engine skips such a step): no mark.
 			const fresh = [...s.policies].flatMap((p) => {
-				const um = p.um() as unknown as {
-					undoStack: Step[];
-					lastChange: number;
-					captureTimeout: number;
-					undoing: boolean;
-					redoing: boolean;
-				};
-				const top = um.undoStack[um.undoStack.length - 1];
+				const um = p.um();
+				const top = stepsOf<Step>(um.undoStack).at(-1);
 				const open =
 					top !== undefined &&
 					!um.undoing &&
@@ -515,11 +485,7 @@ export const bindDeletes = (Y: EngineApi) => {
 			if (tr === null) throw new Error('purge: outside a transaction');
 			const spans: Span[] = [];
 			const dropped: Rec[] = [];
-			for (
-				let it = (s.marks as unknown as { _start: Unit | null })._start;
-				it;
-				it = it.right as Unit
-			)
+			for (let it = firstItem<Unit>(s.marks); it; it = it.right as Unit)
 				if (!it.deleted)
 					for (let j = 0; j < it.length; j++) {
 						const r = { client: it.id.client, clock: it.id.clock + j };
@@ -533,7 +499,7 @@ export const bindDeletes = (Y: EngineApi) => {
 			const marks = dropped.length;
 			remove(tr, spans);
 			const doomed: { key: string; copies: Copy[] }[] = [];
-			(s.restored as unknown as { _map: Map<string, Unit> })._map.forEach((it, key) => {
+			attrItems<Unit>(s.restored).forEach((it, key) => {
 				if (it.deleted || !old(it.id.client, it.id.clock)) return;
 				const [record, bytes] = recordsIn(it, null)[0] ?? [];
 				if (bytes === undefined) return;

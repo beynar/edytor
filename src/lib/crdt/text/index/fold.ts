@@ -11,7 +11,10 @@ import { CONTENT, NONCE, hasDeleteMark, isNodeLike } from '../../schema.js';
 import {
 	type IdSetLike,
 	type StoreStruct,
+	engineOps,
+	itemOf,
 	queuedTransactions,
+	sequenceLength,
 	walkIdSetRanges,
 	walkIdSetStructs
 } from '../../structs.js';
@@ -93,6 +96,7 @@ export const indexFold = (
 		syncIncarnations,
 		computeRuns
 	} = ix;
+	const ops = engineOps(Y);
 
 	const NO_EDITS: TextEdits = Object.freeze({
 		edits: [],
@@ -252,8 +256,7 @@ export const indexFold = (
 					gaps.push(gap);
 				}
 				// The engine's own count of live units: a row that disagrees is stale.
-				if (!fresh && rowLength(row!) !== (text as unknown as { _length: number })._length)
-					fresh = true;
+				if (!fresh && rowLength(row!) !== sequenceLength(text!)) fresh = true;
 			}
 			if (fresh) {
 				const next = scanRow(home);
@@ -350,7 +353,7 @@ export const indexFold = (
 		}
 	};
 
-	const registryNode = registry as unknown as EngineNode;
+	const registryNode: EngineNode = registry;
 
 	/**
 	 * The block a changed `(type, parentSub)` pair belongs to, the facet it
@@ -369,7 +372,7 @@ export const indexFold = (
 				if (typeof id !== 'string') return null;
 				// A losing incarnation's subtree (H13): its derived id; a seed's shows nothing.
 				if (it!.deleted && kept(it)) {
-					const item = it as unknown as { id: { client: number; clock: number } };
+					const item = itemOf(cur)!;
 					if (item.id.client < LIVE_WRITERS) return null;
 					id = incarnationId(id, item);
 				}
@@ -463,13 +466,13 @@ export const indexFold = (
 		if (tr?.insertSet === undefined || tr.deleteSet === undefined) return false;
 		let cursor = cursors.get(tr);
 		if (cursor === undefined)
-			cursors.set(tr, (cursor = { ins: Y.createIdSet(), del: Y.createIdSet(), mark: 0 }));
+			cursors.set(tr, (cursor = { ins: ops.idSet(), del: ops.idSet(), mark: 0 }));
 		const mark = lengthOf(tr.insertSet) + lengthOf(tr.deleteSet);
 		if (mark === cursor.mark) return false;
-		const ins = Y.diffIdSet(tr.insertSet as never, cursor.ins as never) as IdSetLike;
-		const del = Y.diffIdSet(tr.deleteSet as never, cursor.del as never) as IdSetLike;
-		Y.insertIntoIdSet(cursor.ins as never, ins as never);
-		Y.insertIntoIdSet(cursor.del as never, del as never);
+		const ins = ops.diff(tr.insertSet, cursor.ins);
+		const del = ops.diff(tr.deleteSet, cursor.del);
+		ops.insertInto(cursor.ins, ins);
+		ops.insertInto(cursor.del, del);
 		cursor.mark = mark;
 		for (const f of frames) f.wrote = true;
 		const changed = new Map<EngineNode, Set<string | null>>();
@@ -515,8 +518,8 @@ export const indexFold = (
 		// are edits now (the facets fold again, idempotent).
 		const cursor = cursors.get(tr);
 		if (cursor !== undefined && ins !== undefined && del !== undefined) {
-			ins = Y.diffIdSet(ins as never, cursor.ins as never) as IdSetLike;
-			del = Y.diffIdSet(del as never, cursor.del as never) as IdSetLike;
+			ins = ops.diff(ins, cursor.ins);
+			del = ops.diff(del, cursor.del);
 		}
 		cursors.delete(tr);
 		committed.add(tr);

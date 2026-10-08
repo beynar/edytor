@@ -84,6 +84,7 @@ import {
 	type SchemaMismatchDetail
 } from './room.js';
 import type { EngineApi, YDoc } from '../engine-api.js';
+import { asEngineDoc } from '../structs.js';
 import { ATTRIBUTION_ROOT } from '../schema.js';
 import { ATTRIBUTION_ORIGIN } from '../attribution/attribution.js';
 
@@ -335,7 +336,9 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		[...sv].every(([client, clock]) => (acked.get(client) ?? 0) >= clock);
 	/** The actor a replica id is bound to (`c/<client>`, the document's replicated actor dictionary). */
 	const actorOf = (doc: YDoc, client: number): unknown =>
-		doc.share.get(ATTRIBUTION_ROOT)?.getAttr(`c/${client}` as never);
+		doc.share.has(ATTRIBUTION_ROOT)
+			? asEngineDoc(doc).get(ATTRIBUTION_ROOT).getAttr(`c/${client}`)
+			: undefined;
 	/** Deterministic seeds are written under ids below 2^26 (`seedUpdate` in `edytor-doc.ts`). */
 	const seedBand = 2 ** 26;
 	/**

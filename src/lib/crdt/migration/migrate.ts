@@ -30,7 +30,8 @@
  */
 import * as idb from 'lib0-v14/indexeddb';
 import * as f from 'lib0-v14/function';
-import type { EngineApi, EngineDoc, YDoc } from '../engine-api.js';
+import type { EngineApi, YDoc } from '../engine-api.js';
+import { asEngineDoc } from '../structs.js';
 import { bindEdytorDoc } from '../edytor-doc.js';
 import { bindLegacyReader } from './legacy-schema.js';
 import { keepingReplaced } from '../incarnations.js';
@@ -280,7 +281,7 @@ export const bindMigration = (Y: EngineApi) => {
 			}
 			const base = Y.encodeStateVector(doc);
 			edytorDoc.restore(
-				doc as unknown as EngineDoc,
+				asEngineDoc(doc),
 				json.children.map((b) => jsonBlockToSpec(b))
 			);
 			const update = Y.encodeStateAsUpdate(doc);
@@ -288,7 +289,7 @@ export const bindMigration = (Y: EngineApi) => {
 			await onPhase?.('verify');
 			const check = keepingReplaced(new Y.Doc());
 			Y.applyUpdate(check, update);
-			if (!f.equalityDeep(edytorDoc.create(check as unknown as EngineDoc).toJSON(), json)) {
+			if (!f.equalityDeep(edytorDoc.create(asEngineDoc(check)).toJSON(), json)) {
 				return failed(
 					'verification failed: migrated document does not reproduce the legacy logical JSON'
 				);

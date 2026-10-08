@@ -86,6 +86,7 @@ export type RoomLimits = Readonly<{
 	maxUpdatesPerSecond: number;
 	maxPresenceBytes: number;
 	maxPresencePerSecond: number;
+	maxPresenceFanout: number;
 }>;
 
 /** The room's SQL tables, named from its `tablePrefix`. */
@@ -120,7 +121,8 @@ const counters = () => ({
 		marks: 0,
 		records: 0,
 		candidates: 0,
-		claims: 0
+		claims: 0,
+		merged: 0
 	},
 	since: Date.now()
 });

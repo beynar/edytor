@@ -14,7 +14,7 @@
  */
 import type { EngineApi, EngineDoc, EngineNode } from './engine-api.js';
 import type { BlockId, BlockRec, PlacementModel } from './placement/model.js';
-import type { Stream, TextEngine } from './text/model.js';
+import type { Claim, Stream, TextEngine } from './text/model.js';
 import {
 	AT,
 	BLOCK_ATTR_ROOT,
@@ -49,6 +49,12 @@ export type PurgeReport = {
 	candidates: number;
 	/** Claims naming a removed block, deleted from the blocks that hold them. */
 	claims: number;
+	/**
+	 * Attribution records of blocks merged away before the horizon (their
+	 * text shows in the block that claimed them, which unioned their
+	 * contributors at the merge): deleted, their registry entries kept.
+	 */
+	merged: number;
 };
 
 type Item = {
@@ -93,7 +99,8 @@ export const bindPurge = (Y: EngineApi) => {
 			marks: 0,
 			records: 0,
 			candidates: 0,
-			claims: 0
+			claims: 0,
+			merged: 0
 		};
 		const vector = Y.decodeStateVector(horizon.sv) as Map<number, number>;
 		const old = (client: number, clock: number) => clock < (vector.get(client) ?? 0);
@@ -252,6 +259,29 @@ export const bindPurge = (Y: EngineApi) => {
 			if (attribution.getAttr(`${REC_PREFIX}${id}`) !== undefined)
 				attribution.deleteAttr(`${REC_PREFIX}${id}`);
 			report.removed++;
+		}
+		// Blocks merged away before the horizon (`room.purge.merged`): live,
+		// shown by the block that claims them, every claim on them old. Their
+		// own attribution records go (no history reaches a step below the
+		// horizon to split them out again); their registry entries stay.
+		const claimsOn = new Map<BlockId, Claim[]>();
+		for (const [holder, rec] of blocks) {
+			if (rec.deleted) continue;
+			for (const c of own.claimsOf?.(holder) ?? rec.claims) {
+				const list = claimsOn.get(c.m);
+				if (list === undefined) claimsOn.set(c.m, [c]);
+				else list.push(c);
+			}
+		}
+		const claimedOld = (id: BlockId): boolean =>
+			(claimsOn.get(id) ?? []).every((c) => c.seqIndex >= 0 && old(c.stamp.c, c.stamp.k));
+		for (const [id, rec] of blocks) {
+			if (rec.deleted || removable.has(id) || dead.has(id) || isIncarnationId(id)) continue;
+			const owner = own.ownerOf(id);
+			if (owner === id || typeof owner !== 'string' || !claimedOld(id)) continue;
+			if (attribution.getAttr(`${REC_PREFIX}${id}`) === undefined) continue;
+			attribution.deleteAttr(`${REC_PREFIX}${id}`);
+			report.merged++;
 		}
 		// Runner-up candidates of an old winner that stands.
 		for (const [id, rec] of blocks) {

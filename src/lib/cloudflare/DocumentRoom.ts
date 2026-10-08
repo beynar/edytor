@@ -191,6 +191,15 @@ export const DEFAULT_MAX_PRESENCE_BYTES = 16 * 1024;
  * 15 s. Past it, entries are coalesced and queries dropped.
  */
 export const DEFAULT_MAX_PRESENCE_PER_SECOND = 50;
+/**
+ * Presence frames the room sends a second, over all its sockets together
+ * (a one-second burst). Within it each entry goes out at once; past it the
+ * entries wait per recipient, the newest of each replica, and go out
+ * together in one frame per recipient (`room.presence.fanout`). Ten
+ * editors each moving a caret at the client's 20 Hz stay within it; fifty
+ * would send 50,000 frames a second.
+ */
+export const DEFAULT_MAX_PRESENCE_FANOUT = 2000;
 /** Seconds of the update rate a socket may spend at once. */
 /** The ceiling of a quota knob (a host may raise the defaults up to it). */
 const QUOTA_CEILING = 2 ** 40;
@@ -283,6 +292,7 @@ export type DocumentRoomEnv = {
 	EDYTOR_MAX_UPDATES_PER_SECOND?: string | number;
 	EDYTOR_MAX_PRESENCE_BYTES?: string | number;
 	EDYTOR_MAX_PRESENCE_PER_SECOND?: string | number;
+	EDYTOR_MAX_PRESENCE_FANOUT?: string | number;
 	/** `off`: the room logs nothing (default: one JSON line per compaction, quota hit, denial, fault). */
 	EDYTOR_LOG?: string;
 	/**
@@ -562,6 +572,8 @@ export type AttachRoomOptions = {
 	maxPresenceBytes?: number;
 	/** Presence messages per second a socket may send (default {@link DEFAULT_MAX_PRESENCE_PER_SECOND}). */
 	maxPresencePerSecond?: number;
+	/** Presence frames per second the room sends over all its sockets (default {@link DEFAULT_MAX_PRESENCE_FANOUT}). */
+	maxPresenceFanout?: number;
 	/**
 	 * Accept, then compensate: after the room applied and stored a
 	 * client frame that changed blocks, it is asked whether to keep it.
@@ -646,6 +658,7 @@ export class AttachedDocument {
 	readonly maxUpdatesPerSecond: number;
 	readonly maxPresenceBytes: number;
 	readonly maxPresencePerSecond: number;
+	readonly maxPresenceFanout: number;
 	/** Why the stored container was refused (another generation, a torn record, `onLoad`…). */
 	failure: Error | null = null;
 	/** Latest presence entry per replica, for join snapshots (memory: refills after a wake). */
@@ -695,6 +708,11 @@ export class AttachedDocument {
 		this.maxPresencePerSecond = knob(
 			options.maxPresencePerSecond,
 			DEFAULT_MAX_PRESENCE_PER_SECOND,
+			QUOTA_CEILING
+		);
+		this.maxPresenceFanout = knob(
+			options.maxPresenceFanout,
+			DEFAULT_MAX_PRESENCE_FANOUT,
 			QUOTA_CEILING
 		);
 		const room = new RoomContext(ctx, options, this, this);
@@ -1153,6 +1171,7 @@ export class DocumentRoom<
 			maxUpdatesPerSecond: Number(knobs.EDYTOR_MAX_UPDATES_PER_SECOND),
 			maxPresenceBytes: Number(knobs.EDYTOR_MAX_PRESENCE_BYTES),
 			maxPresencePerSecond: Number(knobs.EDYTOR_MAX_PRESENCE_PER_SECOND),
+			maxPresenceFanout: Number(knobs.EDYTOR_MAX_PRESENCE_FANOUT),
 			tablePrefix: '',
 			purgeAfterDays: purgeAfterDays(knobs.EDYTOR_PURGE_AFTER_DAYS),
 			now: () => this.now(),

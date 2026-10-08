@@ -233,6 +233,7 @@ What is purged, once deleted that long ago:
 - **Deleted text.** The record of who deleted which characters (what lets an undo bring them back) is removed, and the deleted characters are collected.
 - **Undone creations.** A block whose creation was undone, and that holds nothing, is removed.
 - **Old placements.** A moved block keeps only the placement it shows at.
+- **Merged blocks' attribution.** A block merged into the one before it (Backspace at its start) keeps its structure, as its text now shows in that block, but its own attribution record (who created it, its contributors, its lineage) is removed once the merge is that old: the block it merged into took its contributors at the merge, and no undo can split it out again. In documents 50 people edited, the purge then gives back 12 to 17 % of the stored size instead of 5 %.
 
 The purge is the room's own edit: one transaction, stored and sent to every client, which apply it and collect the content too; a client that loads the document later never receives it. A purged block leaves its id behind as a tombstone (a few bytes): deleting 1,000 of 1,001 blocks and purging them leaves 5.3 KB of stored state for 366 bytes of visible content, from 28.9 KB before the purge. A line split from a paragraph that is still there (Enter makes most lines so) shares that paragraph's text, so a deleted one keeps its bare structure (about 25 bytes stored) while its text and properties go. On a long editing trace (`automerge-paper`, 259,778 edits), purging its 77,463 text deletes takes the stored state from 224 KB to 85 KB, and a woken room loads it in a tenth of the time.
 
@@ -253,7 +254,7 @@ A Durable Object has one alarm. The room runs its tasks on it: [`onSave`](/docs/
 
 ## Metrics and log
 
-[`metrics()`](/docs/server/room#metrics-and-log) has two more fields: `history` (`{ written, skipped, lastKey }`) and `purge` (`{ runs, horizon, removed, emptied, marks, records, candidates, claims }`: purges run, the last horizon purged, and what they deleted). The room logs one JSON line per version written (`{ "edytor": "history", "key", "bytes", "editors" }`), restore and undo (`{ "edytor": "restore", "key", "user", "undo" }`) and purge (`{ "edytor": "purge", "horizon", "bytes", "removed", … }`).
+[`metrics()`](/docs/server/room#metrics-and-log) has two more fields: `history` (`{ written, skipped, lastKey }`) and `purge` (`{ runs, horizon, removed, emptied, marks, records, candidates, claims, merged }`: purges run, the last horizon purged, and what they deleted; `merged` counts the attribution records of merged blocks). The room logs one JSON line per version written (`{ "edytor": "history", "key", "bytes", "editors" }`), restore and undo (`{ "edytor": "restore", "key", "user", "undo" }`) and purge (`{ "edytor": "purge", "horizon", "bytes", "removed", … }`).
 
 ## Storage
 

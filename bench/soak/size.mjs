@@ -19,7 +19,10 @@
  *   (`crdt.doc.purge`, everything deleted so far past the horizon: the
  *   most a shorter `EDYTOR_PURGE_AFTER_DAYS` could give back);
  * - a census of its structs: items live and deleted, deleted items that
- *   still hold their content, map entries, clients.
+ *   still hold their content, map entries, clients;
+ * - what each kind of struct costs (`bytes`, before and after the purge):
+ *   v1 bytes by where it sits (`blockattr>b/ k/ ContentAny`: the
+ *   contributor entries of attribution records), the most costly first.
  *
  * `run.mjs` runs {@link measure} on every soak's final document too
  * (`report.size`).
@@ -31,6 +34,61 @@ import { Writer, prng, seedValue } from './edits.mjs';
 
 /** The origin of the purge's transaction, tracked by no history (as the room's). */
 const PURGE = Symbol('soak-size-purge');
+
+/** A map key's family: `k/u12` → `k/`, a block id → `<id>`, a rank → `<rank>`. */
+const family = (key) => {
+	if (/^[0-9.]+$/.test(key)) return '<rank>';
+	if (/^[0-9a-z_-]{6,}$/i.test(key) && !key.includes('/')) return '<id>';
+	return /^[^/.#~0-9]*[/.#~]?/.exec(key)[0] || key;
+};
+
+/** Where a type sits: its root and the key families down to it (`blockattr>b/`). */
+const pathOf = (doc, type) => {
+	const parts = [];
+	for (let t = type; t; ) {
+		const item = t._item;
+		if (!item) {
+			for (const [name, root] of doc.share) if (root === t) parts.unshift(name);
+			break;
+		}
+		parts.unshift(item.parentSub == null ? '[]' : family(item.parentSub));
+		t = item.parent;
+	}
+	return parts.join('>');
+};
+
+/**
+ * What each kind of struct costs, in v1 bytes written one struct at a time
+ * (the stored v2 encoding is smaller, about three quarters, in about the
+ * same proportions): by its parent's path, its key family (`[seq]` for a
+ * sequence item) and content kind, deleted apart. The `top` most costly.
+ */
+const structBytes = (Y, doc, top = 15) => {
+	const groups = new Map();
+	let total = 0;
+	for (const structs of doc.store.clients.values()) {
+		for (const struct of structs) {
+			const encoder = new Y.UpdateEncoderV1();
+			struct.write(encoder, 0);
+			const bytes = encoder.toUint8Array().length;
+			total += bytes;
+			const key = !struct.content
+				? 'GC'
+				: `${typeof struct.parent === 'object' && struct.parent?.doc ? pathOf(doc, struct.parent) : '?'} ${struct.parentSub == null ? '[seq]' : family(struct.parentSub)} ${struct.content.constructor.name}${struct.deleted ? ' deleted' : ''}`;
+			const row = groups.get(key) ?? { structs: 0, bytes: 0 };
+			row.structs++;
+			row.bytes += bytes;
+			groups.set(key, row);
+		}
+	}
+	return {
+		total,
+		top: [...groups]
+			.sort((a, b) => b[1].bytes - a[1].bytes)
+			.slice(0, top)
+			.map(([what, row]) => ({ what, ...row, share: Math.round((row.bytes / total) * 1000) / 10 }))
+	};
+};
 
 /** The structs of `doc`, by kind, with their content kinds and lengths. */
 const census = (doc) => {
@@ -102,6 +160,7 @@ export const measure = ({ E, Y, crdt }, update) => {
 		const count = (blocks) => blocks.reduce((n, b) => n + 1 + count(b.children ?? []), 0);
 		const stored = Y.encodeStateAsUpdateV2(doc).length;
 		const before = census(doc);
+		const bytes = structBytes(Y, doc);
 		const fresh = E.createDocument({ value: json, semantics: E.defaultSemantics });
 		const freshBytes = Y.encodeStateAsUpdateV2(fresh.doc).length;
 		fresh.destroy();
@@ -118,11 +177,78 @@ export const measure = ({ E, Y, crdt }, update) => {
 			purged,
 			purge: report,
 			census: before,
-			censusAfterPurge: census(doc)
+			censusAfterPurge: census(doc),
+			bytes,
+			bytesAfterPurge: structBytes(Y, doc)
 		};
 	} finally {
 		loaded.destroy();
 	}
+};
+
+/**
+ * Run `edits` edits of the soak's mix on `replicas` headless documents
+ * seeded with the soak's document, exchanging what they wrote every `sync`
+ * edits. Answers the converged document (`replicas[0]`, the caller
+ * destroys `documents`), whether every replica converged, and the edits.
+ */
+export const generate = (
+	engine,
+	{ replicas: count = 8, edits = 4000, mix = 'soak', without = [], sync: every = 25, seed = 1 } = {}
+) => {
+	const { E, Y } = engine;
+	const REMOTE = Symbol('soak-size-remote');
+	const random = prng(seed);
+	const value = seedValue();
+	const replicas = Array.from({ length: count }, (_, i) => {
+		const document = E.createDocument({
+			value,
+			actor: { id: `u${i}` },
+			semantics: E.defaultSemantics
+		});
+		/** A virtual clock: each of the replica's edits takes the soak's 2.5 s (0.4 a second). */
+		let clock = 0;
+		return {
+			document,
+			tick: () => (clock += 2500),
+			writer: new Writer({
+				now: () => clock,
+				document,
+				random: prng(seed * 1000 + i),
+				user: `u${i}`,
+				mix,
+				without
+			})
+		};
+	});
+	const sync = () => {
+		for (const to of replicas)
+			for (const from of replicas) {
+				if (from === to) continue;
+				const diff = Y.encodeStateAsUpdate(from.document.doc, Y.encodeStateVector(to.document.doc));
+				Y.applyUpdate(to.document.doc, diff, REMOTE);
+			}
+	};
+	const ops = {};
+	let applied = 0;
+	for (let n = 0; n < edits; n++) {
+		const replica = replicas[Math.floor(random() * replicas.length)];
+		replica.tick();
+		const { kind, status } = replica.writer.op();
+		ops[`${kind}:${status}`] = (ops[`${kind}:${status}`] ?? 0) + 1;
+		if (status === 'applied') applied++;
+		if ((n + 1) % every === 0) sync();
+	}
+	sync();
+	const reference = JSON.stringify(replicas[0].document.facade.toJSON());
+	const converged = replicas.every((r) => JSON.stringify(r.document.facade.toJSON()) === reference);
+	return {
+		document: replicas[0].document,
+		documents: replicas.map((r) => r.document),
+		converged,
+		applied,
+		ops
+	};
 };
 
 const main = async () => {
@@ -141,53 +267,8 @@ const main = async () => {
 		seed: option('seed', 1)
 	};
 	const engine = await loadEngine();
-	const { E, Y } = engine;
-	const REMOTE = Symbol('soak-size-remote');
-	const random = prng(config.seed);
-	const value = seedValue();
-	const replicas = Array.from({ length: config.replicas }, (_, i) => {
-		const document = E.createDocument({
-			value,
-			actor: { id: `u${i}` },
-			semantics: E.defaultSemantics
-		});
-		/** A virtual clock: each of the replica's edits takes the soak's 2.5 s (0.4 a second). */
-		let clock = 0;
-		return {
-			document,
-			tick: () => (clock += 2500),
-			writer: new Writer({
-				now: () => clock,
-				document,
-				random: prng(config.seed * 1000 + i),
-				user: `u${i}`,
-				mix: config.mix,
-				without: config.without
-			})
-		};
-	});
-	const sync = () => {
-		for (const to of replicas)
-			for (const from of replicas) {
-				if (from === to) continue;
-				const diff = Y.encodeStateAsUpdate(from.document.doc, Y.encodeStateVector(to.document.doc));
-				Y.applyUpdate(to.document.doc, diff, REMOTE);
-			}
-	};
-	const ops = {};
-	let applied = 0;
-	for (let n = 0; n < config.edits; n++) {
-		const replica = replicas[Math.floor(random() * replicas.length)];
-		replica.tick();
-		const { kind, status } = replica.writer.op();
-		ops[`${kind}:${status}`] = (ops[`${kind}:${status}`] ?? 0) + 1;
-		if (status === 'applied') applied++;
-		if ((n + 1) % config.sync === 0) sync();
-	}
-	sync();
-	const reference = JSON.stringify(replicas[0].document.facade.toJSON());
-	const converged = replicas.every((r) => JSON.stringify(r.document.facade.toJSON()) === reference);
-	const size = measure(engine, replicas[0].document.encode());
+	const { document, documents, converged, applied, ops } = generate(engine, config);
+	const size = measure(engine, document.encode());
 	const result = {
 		config,
 		converged,
@@ -197,7 +278,7 @@ const main = async () => {
 		bytesPerEdit: Math.round(((size.stored - size.fresh) / applied) * 10) / 10,
 		purgedBytesPerEdit: Math.round(((size.purged - size.fresh) / applied) * 10) / 10
 	};
-	for (const r of replicas) r.document.destroy();
+	for (const d of documents) d.destroy();
 	const out = option(
 		'out',
 		fileURLToPath(new URL(`../results/soak-size-${config.mix}.json`, import.meta.url))

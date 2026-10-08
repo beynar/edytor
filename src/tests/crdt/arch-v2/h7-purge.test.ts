@@ -277,6 +277,47 @@ describe('H7: purge what was deleted before the horizon', () => {
 		);
 		room.destroy();
 	});
+
+	it('a block merged away before the horizon loses its own attribution record; the block it merged into keeps the union (room.purge.merged)', () => {
+		const room = open('room', 1);
+		const ada = open('ada', 2);
+		const bob = open('bob', 3);
+		ok(ada.ed.splitBlock('p1', 5, 'p1b')); // 'live ' | 'text'
+		syncAll([room, ada, bob]);
+		ok(bob.ed.setBlockData('p1b', { color: 'blue' }));
+		ok(ada.ed.setBlockData('p1', { color: 'red' }));
+		syncAll([room, ada, bob]);
+		expect(room.ed.blockAttribution('p1b')).toMatchObject({ createdBy: 'ada' });
+		expect([...room.ed.blockAttribution('p1b').contributors]).toEqual(['bob']);
+		ok(ada.ed.mergeBlocks('p1b', 'p1')); // p1 claims p1b: 'live text'
+		syncAll([room, ada, bob]);
+		const horizon = epoch(room);
+		// Merged after the horizon: kept, an undo may still split it again.
+		ok(bob.ed.splitBlock('p4', 2, 'p4b'));
+		ok(bob.ed.mergeBlocks('p4b', 'p4'));
+		syncAll([room, ada, bob]);
+		const before = room.canonical();
+		const record = (r, id) => r.doc.get('blockattr').getAttr(`b/${id}`);
+		expect(record(room, 'p1b')).toBeDefined();
+		const report = purge(room, horizon);
+		expect(report.merged).toBe(1);
+		syncAll([room, ada, bob]);
+		for (const r of [room, ada, bob]) {
+			expect(r.canonical()).toBe(before);
+			expect(record(r, 'p1b')).toBeUndefined();
+			expect(record(r, 'p4b')).toBeDefined();
+			// The registry entry stays: its stream shows in the block it merged into.
+			expect(registryHas(r, 'p1b')).toBe(true);
+			expect(r.ed.blockText('p1')).toBe('live text');
+			expect([...r.ed.blockAttribution('p1').contributors].sort()).toEqual(['ada', 'bob']);
+		}
+		// Bob's history kept the merge after the horizon: undo splits p4 again.
+		bob.undo();
+		syncAll([room, ada, bob]);
+		expect(room.ed.toJSON().children.map((b) => b.id)).toEqual(['p1', 'p2', 'p3', 'p4', 'p4b']);
+		healthy(room, ada, bob);
+		for (const r of [room, ada, bob]) r.destroy();
+	});
 });
 
 describe('H7: the stored size after a purge', () => {

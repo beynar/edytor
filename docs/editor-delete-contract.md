@@ -1863,6 +1863,23 @@ the records hold, collected: a reload holds the same state vector,
 delete set, encoding and JSON (`p2-live-compaction.test.ts`). A load
 applies the records in one transaction, never merged first.
 
+### `room.storage.outage` — an outage rebuilds once (WU-16)
+
+A failed append (`unstored`) faults its sender (`1011`, `storage
+failure`) and rebuilds the live doc from the rows, as before; the
+failure starts an outage (`outage`, kept with the rebuild). Until it
+ends, a frame that would write — structs past the document's state
+vector, deletes of what it holds live, or deletes of what it lacks
+(`writes`) — first asks storage: a probe append of an empty `update`
+row in a transaction rolled back (`answers`). A failed probe closes the
+sender `1011` (`storage failure`, logged `fault` and noted `storage`)
+before anything is applied, with no rebuild: the live doc stays what the
+rows hold. A frame that writes nothing (a join's Step2 of nothing new, a
+Step1, presence) is served from memory meanwhile. The outage ends at the
+first probe or append that succeeds, a room-side `transact` included. A
+failure the probe does not see (a larger append failing) faults and
+rebuilds as any failed append (`wu16-room-load.test.ts`).
+
 ### `room.compact.waiting` — what waits stays apart (P2)
 
 Structs waiting for a dependency are never stored (the engine's
@@ -1967,13 +1984,37 @@ socket's bucket has a token, the entries released together in one frame
 (`{ user, quota: 'rate', limit }`), once per burst: the socket's first
 message past the rate is one entry, its next message within the rate
 ends the burst (`presenceBursts`), and `refusalCounts.presence` counts
-every message past it. An entry within the rate is relayed at once: the
-broadcast is coalesced only past the rate, never once per tick (that
+every message past it. An entry within the rate is relayed at once
+within the room's fan-out budget (`room.presence.fanout`): the broadcast
+is coalesced only past the rate or the budget, never once per tick (that
 would need a timer, which keeps a Durable Object from hibernating). No timer: the last held entry of a
 socket that stops waits for the room's next message (every client renews
 every 15 s). Nothing closes the socket; read-only sockets keep presence
 within the same quotas; a socket's held entry goes when it departs
 (`wu05-presence-quota.test.ts`).
+
+### `room.presence.fanout` — presence within a budget of frames (WU-16)
+
+Relaying one entry costs a frame per socket, so presence fan-out grows
+with the square of the sockets. The room relays within a budget of
+frames, `maxPresenceFanout` a second over all its sockets (2,000, a
+token bucket with a one-second burst, in memory). While no entry waits
+and the budget holds a frame for every open socket, an accepted entry
+goes out at once, one frame to every socket, its sender included (the
+liveness echo of `room.presence.quota`). Otherwise it waits for each
+open socket, by replica (a newer entry of the same replica replaces it,
+encoded once for every recipient), and each recipient's waiting entries
+go out together in one frame when the budget has a frame for it:
+recipients are served in the order they started waiting, at once and at
+the end of every later message the room handles (no timer: the last
+entries wait for the room's next message, and every client renews every
+15 s). A removal (a departure, or a client's own `null` state) never
+waits: it drops the replica's waiting entries from every recipient and
+goes out at once, never to its sender, so no older entry follows it. A
+closing socket drops what waits for it. Entries held past their socket's
+rate (`room.presence.quota`) enter the same path when released. What
+waits is lost at a wake (a hibernation, an eviction), as the presence
+snapshot is (`wu16-room-load.test.ts`).
 
 ### `room.access` — revocation and credential expiry (WU-06)
 
@@ -2364,6 +2405,15 @@ engine collects the content everywhere (`crdt.doc.purge`):
   by no remaining mark is deleted, and those copies collected;
 - a block whose winning placement candidate is older than the horizon
   and accepted drops its other candidates (the runner-up);
+- a block merged away before the horizon (`room.purge.merged`, WU-16:
+  live, shown by a block that claims it, every claim on it old and
+  stored in a list) loses its attribution record (`b/<id>`: `createdBy`,
+  contributors, lineage ring); its registry node stays, as its stream
+  shows in its claimer's text. The claimer unioned its contributors at
+  the merge, and no history reaches a step below the horizon to split it
+  out again. A merged-away block that shows again after the purge (a
+  stale replica's edit, its claimer deleted) has no `createdBy` until its
+  next write records one (`ensureRecord`);
 - the horizon record, root `horizon`, attr `h` = `{ at, sv }`, written
   last.
 

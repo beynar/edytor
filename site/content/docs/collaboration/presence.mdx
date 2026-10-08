@@ -60,7 +60,7 @@ Target these attributes from your stylesheet to restyle them. Positions and colo
 
 ## Sharing less at scale
 
-Every caret move is a presence write, and the room relays each one to every peer: with many people in one document, that traffic grows with the square of the crowd. A view writes its presence at most once every 50 ms by default (`DEFAULT_PRESENCE_THROTTLE`), so an arrow key held down or a drag costs about 20 writes a second instead of one per selection change, and the room, a single Durable Object per document, relays about 20 × (people − 1) writes a second for each person moving. The `presence` prop trims it further per view:
+Every caret move is a presence write, and the room relays each one to every peer: with many people in one document, that traffic grows with the square of the crowd. A view writes its presence at most once every 50 ms by default (`DEFAULT_PRESENCE_THROTTLE`), so an arrow key held down or a drag costs about 20 writes a second instead of one per selection change, and the room, a single Durable Object per document, relays about 20 × (people − 1) writes a second for each person moving. Past a budget of frames (2,000 a second over all its sockets, `EDYTOR_MAX_PRESENCE_FANOUT`), the shipped room sends each peer the writes that waited together, the newest of each person, so a crowded room slows the remote carets down rather than its acknowledgements ([the room's presence](/docs/server/room#identity-and-presence)). The `presence` prop trims it further per view:
 
 ```svelte
 <Edytor {room} {server} presence={{ share: 'block', throttle: 250 }} />

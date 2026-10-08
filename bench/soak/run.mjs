@@ -578,7 +578,11 @@ const report = {
 	},
 	clients: {
 		maxEventLoopP99Ms: Math.max(...samples.map((s) => s.clientLoopP99)),
-		maxHeapMB: Math.max(...samples.map((s) => s.clientHeap)) / 1048576
+		maxHeapMB: Math.max(...samples.map((s) => s.clientHeap)) / 1048576,
+		/** Every client's heap after a full GC (the samples that ran one), and per client at the end. */
+		heapAfterGcMaxMB:
+			Math.max(0, ...samples.filter((s) => s.gc).map((s) => s.clientHeap)) / 1048576,
+		heapAfterGcPerClientMB: samples.findLast((s) => s.gc).clientHeap / 1048576 / config.clients
 	},
 	totals,
 	faults,

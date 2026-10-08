@@ -43,6 +43,9 @@ import {
 type RowKind = StoredRecord['kind'];
 type Row = { kind: RowKind; record: number; part: number; parts: number; bytes: ArrayBuffer };
 
+/** The probe append's rollback (`RoomStorage.answers`): thrown inside its transaction. */
+const PROBED = new Error('storage probe');
+
 /** Longest wait between the save alarms of a room that cannot read its rows. */
 const MAX_SAVE_RETRY = 5 * 60_000;
 
@@ -133,6 +136,12 @@ export class RoomStorage {
 	documentBytes = 0;
 	/** The waiting deletes stored as `pending` records (the engine may hold more, in memory). */
 	storedWaiting: Decoded['ds'] = Y.createIdSet();
+	/**
+	 * The failed append that last rebuilt the live doc (`room.storage.outage`):
+	 * until storage takes an append again ({@link answers}), a frame that
+	 * would write is closed before it is applied, so an outage rebuilds once.
+	 */
+	outage: unknown = null;
 	private nextRecord = 0;
 	/** The snapshot compression in flight (`compressed()`). */
 	private compressing: Promise<unknown> = Promise.resolve();
@@ -677,6 +686,33 @@ export class RoomStorage {
 		}
 	}
 
+	/**
+	 * Whether storage takes an update append (`room.storage.outage`): always
+	 * outside an outage; during one, a probe append of an empty row, rolled
+	 * back, asks it. The outage ends at the first probe or append that
+	 * succeeds.
+	 */
+	answers(): boolean {
+		if (this.outage === null) return true;
+		const { sql, tables } = this.room;
+		try {
+			this.room.ctx.storage.transactionSync(() => {
+				sql.exec(
+					`INSERT INTO ${tables.rows} (kind, record, part, parts, bytes) VALUES ('update', -1, 0, 1, ?)`,
+					new Uint8Array(0)
+				);
+				throw PROBED;
+			});
+		} catch (error) {
+			if (error !== PROBED) {
+				this.outage = error;
+				return false;
+			}
+		}
+		this.outage = null;
+		return true;
+	}
+
 	/** Record now as the last stored change (callers run it in the change's transaction). */
 	touch() {
 		this.room.sql.exec(
@@ -743,6 +779,7 @@ export class RoomStorage {
 	rebuild(waiting = false) {
 		const room = this.room;
 		const stale = room.live;
+		if (room.unstored !== null) this.outage = room.unstored;
 		room.live = null;
 		room.unstored = null;
 		this.load();
@@ -791,6 +828,7 @@ export class RoomStorage {
 					if (editor !== null) room.history.storeEditor(editor);
 				});
 				if (editor !== null) room.history.slotEditors.add(editor);
+				this.outage = null;
 				this.updates++;
 				room.broadcast(updateFrame(update), origin);
 				this.scheduleSave();

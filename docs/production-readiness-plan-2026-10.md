@@ -513,22 +513,43 @@ Run these in order; they touch the same files.
   compactions. Presence is 20 Hz while a client drags (10 % of its time) plus one per edit; all
   clients at 20 Hz was run apart (2 minutes). Heap is read in workerd through its inspector
   (`Runtime.getHeapUsage` after `HeapProfiler.collectGarbage`), which WU-04 could not.
-  - Numbers (`bench/results/soak-wu16-20min.json`): 22,457 edits; ack p50 3.8 ms, p99 329 ms,
-    p99.9 2.9 s, max 36 s (a writer's 1011 backoff after a storage outage); p99 32 ms in the
-    median fault-free 10 s window; 33 offline replays, max 334 ms; compactions p50 16 ms, max
-    34 ms; live heap 34 MB at 1.69 MB stored (18 bytes a byte), 127 MB before collection after
-    an outage's rebuilds; 12 restarts, all injected; converged (50 clients, the room, a joiner,
-    the reloaded room). Near the quota (`soak-wu16-near-quota.json`, 1.93 MB): 33 MB live idle,
-    52 MB while 50 clients caught up after an eviction, under 70 % of 128 MB.
+  - Numbers (`bench/results/soak-wu16-20min.json`, rerun on the final harness): 22,321 edits;
+    ack of edits made while connected p50 5.6 ms, p99 691 ms, p99.9 4.1 s, max 57 s; of the
+    604 edits made while disconnected (churn, a fault's redial and backoff) p50 880 ms, p99
+    4.1 s, max 60 s (the slowest connected one made just after the last reset, acknowledged in
+    the final settle; the report does not say why they waited); p99 64 ms in the median
+    fault-free 10 s window (`faultFreeWindows`); 24 offline replays, max 241 ms; compactions p50 18 ms, max 44 ms; 12 restarts, all
+    injected; converged (50 clients, the room, a joiner, the reloaded room). Sizes in MB of
+    10^6 bytes: live heap after a full GC 36 MB at 1.80 MB stored (about 20 bytes a byte;
+    about 18 in the near-quota run, `soak-wu16-near-quota.json`: 34 MB at 1.93 MB, 54 MB while
+    50 clients caught up after an eviction).
+  - Memory gate: met for the live heap after a full GC only (under 70 % of 128 MB in both
+    runs). Before collection the heap reached 121 MB (190 MB allocated by V8) right after a
+    storage outage, and 92 MB (134 MB allocated) near the quota: past 70 %, and allocated past
+    the limit. Miniflare enforces no memory limit, so whether a deployed room rides out that
+    peak is unverified.
   - No divergence and no crash loop: nothing to fix in an owner. Findings left open: (1) stored
-    size follows edits (70 to 80 bytes an edit; 1.7 MB stored for 20,000 visible characters),
-    so a busy document reaches the 2 MiB default in days: a quota sizing or purge-cadence
-    decision, documented in `server/room.mdx`; (2) presence fan-out is quadratic: 50 clients at
-    20 Hz (35,000 frames a second) saturate the room's core (ack p99 19 s, one eviction under
-    load, still converged; `soak-wu16-presence-worst.json`); (3) during a storage outage every
-    failing frame rebuilds the document from its rows (`fault` → `rebuild`), so an outage costs
-    rows × frames of CPU and garbage, and writers whose redials all failed back off for up to
-    30 s. Candidates for WU-42 (room split) or a later room unit.
+    size follows edits: 1.77 MB stored, about 72 bytes an edit, for 20,778 characters whose
+    JSON seeds fresh in 0.16 MB. Measured (`report.size`, `bench/soak/size.mjs`): no deleted
+    item keeps its content and the purge at a horizon of now gives back 5 %, so the growth is
+    per-edit CRDT structure that lasts for the document's life (1,537 blocks registered for 400
+    shown, 40,000 attribution contributor entries, 15,000 replaced `lastChangedBy` values; in
+    memory, 40 bytes an edit for the mix, 20 without Enter and merges, 3 for typing at a
+    caret). A busy document reaches the 2 MiB default in days; the remedy documented is to
+    raise `EDYTOR_MAX_DOCUMENT_BYTES`, not to shorten the purge. Shrinking the structure
+    (re-seeding a document from its JSON, rebasing the snapshot, dropping merged blocks'
+    registrations or per-writer contributor entries) is a maintainer decision. (2) presence
+    fan-out is quadratic: 50 clients at 20 Hz (35,000 frames a second) saturate the room's core
+    (ack p99 19 s, one eviction under load, still converged; `soak-wu16-presence-worst.json`).
+    (3) during a storage outage every failing frame rebuilds the document from its rows
+    (`fault` → `rebuild`), so an outage costs rows × frames of CPU and garbage, the likely
+    source of the heap peak. Candidates for WU-42 (room split) or a later room unit.
+  - The near-quota and presence reports predate the final harness (one ack figure for edits
+    made while connected, no size measure). The harness forces one offline session and one
+    page load in every run, so `pnpm soak:smoke` replays and reloads.
+  - The staging Worker (`bench/soak/worker.ts`) refuses every route without `SOAK_TOKEN`
+    (`tests/do/soak-worker.test.ts`); operator routes take it as a bearer header, sockets as
+    `?token=` (in request logs: Workers Logs stay off in `wrangler.jsonc`).
 
 **WU-17: client scale profile (R10, R8)**
 

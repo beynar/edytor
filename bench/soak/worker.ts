@@ -6,8 +6,15 @@
  * - `GET /health` → `ready`
  * - `/rooms/<name>` (WebSocket upgrade) → `routeDocumentSocket` to a
  *   {@link SoakRoom}. `authorize` trusts `?user=` (the soak's clients are
- *   synthetic users), and when `SOAK_TOKEN` is set every request must carry
- *   `?token=<SOAK_TOKEN>` (a staging deployment sets it as a secret).
+ *   synthetic users).
+ *
+ * Every route but `/health` needs `SOAK_TOKEN` (a secret the staging
+ * deployment sets): the operator routes as an `Authorization: Bearer`
+ * header, a socket as `?token=` (a WebSocket sets no header; the URL, token
+ * included, shows in the Worker's request logs). Without `SOAK_TOKEN` the
+ * deployed Worker refuses everything; only `local.ts` (Miniflare, never
+ * deployed) opens the routes without one.
+ *
  * - `GET /rooms/<name>/metrics` → `metrics()` and the newest log entries;
  * - `GET /rooms/<name>/json` → the room's document (`read()`);
  * - `POST /rooms/<name>/compact` → a forced compaction (timed inside the
@@ -94,7 +101,12 @@ export class SoakRoom extends DocumentRoom<Env> {
 		return { kind, on };
 	}
 
-	/** Reset the object (`ctx.abort`), over RPC: it answers before it goes. */
+	/**
+	 * Reset the object (`ctx.abort`), over RPC. The abort is queued after
+	 * this call returns, but the reset usually reaches the caller first: the
+	 * call then throws, which the `abort` route reports as
+	 * `{ aborted: true, error }`.
+	 */
 	abort(): { aborted: true } {
 		const ctx = this.ctx as DurableObjectState & { abort?: (reason?: string) => void };
 		setTimeoutless(() => ctx.abort?.('soak: injected abort'));
@@ -139,16 +151,45 @@ const roomOf = (encoded: string): string | null => {
 	}
 };
 
-/** Every route but the eviction (`local.ts`); `null` when the path is not a room's. */
-export const routeSoak = async (request: Request, env: Env): Promise<Response | null> => {
+const digest = async (text: string): Promise<Uint8Array> =>
+	new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+
+/** `given === token`, in time independent of where they differ (their SHA-256 digests compared whole). */
+const sameToken = async (given: string, token: string): Promise<boolean> => {
+	const [a, b] = await Promise.all([digest(given), digest(token)]);
+	let differ = 0;
+	for (let i = 0; i < a.length; i++) differ |= a[i] ^ b[i];
+	return differ === 0;
+};
+
+/** The token a request carries: a bearer header, or `?token=` on a socket's dial. */
+const carried = (request: Request, url: URL, socket: boolean): string | null => {
+	const header = /^Bearer (.+)$/.exec(request.headers.get('authorization') ?? '');
+	if (header) return header[1];
+	return socket ? url.searchParams.get('token') : null;
+};
+
+/**
+ * Every route but the eviction (`local.ts`); `null` when the path is not a
+ * room's. A request without the token is refused; `open` (Miniflare only,
+ * with no `SOAK_TOKEN` set) admits every request.
+ */
+export const routeSoak = async (
+	request: Request,
+	env: Env,
+	{ open = false }: { open?: boolean } = {}
+): Promise<Response | null> => {
 	const url = new URL(request.url);
 	if (url.pathname === '/health') return new Response('ready');
 	const match = ROOM_ROUTE.exec(url.pathname);
 	if (!match) return new Response('not found', { status: 404 });
 	const name = roomOf(match[1]);
 	const action = match[2];
-	if (env.SOAK_TOKEN && url.searchParams.get('token') !== env.SOAK_TOKEN) {
-		return action ? new Response('forbidden', { status: 403 }) : closedSocket(4403, 'forbidden');
+	if (!open) {
+		const given = carried(request, url, !action);
+		if (!env.SOAK_TOKEN || given === null || !(await sameToken(given, env.SOAK_TOKEN))) {
+			return action ? new Response('forbidden', { status: 403 }) : closedSocket(4403, 'forbidden');
+		}
 	}
 	if (name === null) return closedSocket(4400, 'invalid document id');
 	if (!action) return routeDocumentSocket(request, env.ROOM, name, authorize);
@@ -182,6 +223,7 @@ export const routeSoak = async (request: Request, env: Env): Promise<Response | 
 	return new Response('not found', { status: 404 });
 };
 
+/** The deployed Worker: every route needs `SOAK_TOKEN`, and none opens without it. */
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		return (await routeSoak(request, env)) ?? new Response('not found', { status: 404 });

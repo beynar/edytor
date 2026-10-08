@@ -1,0 +1,268 @@
+{
+	"config": {
+		"replicas": 8,
+		"edits": 4000,
+		"mix": "soak",
+		"without": [
+			"split",
+			"merge",
+			"mark",
+			"data",
+			"move"
+		],
+		"sync": 25,
+		"seed": 1
+	},
+	"converged": true,
+	"applied": 3854,
+	"ops": {
+		"type:applied": 3191,
+		"backspace:applied": 512,
+		"jump:applied-local": 145,
+		"cut:applied": 151,
+		"backspace:noop": 1
+	},
+	"blocks": 41,
+	"chars": 5141,
+	"stored": 39273,
+	"fresh": 13237,
+	"purged": 36145,
+	"purge": {
+		"removed": 0,
+		"emptied": 0,
+		"marks": 127,
+		"records": 0,
+		"candidates": 0,
+		"claims": 0
+	},
+	"census": {
+		"clients": 10,
+		"structs": 2271,
+		"gc": 0,
+		"items": {
+			"live": 1437,
+			"deleted": 834,
+			"deletedKeepingContent": 0,
+			"mapEntries": 758,
+			"sequence": 1513
+		},
+		"content": {
+			"ContentAny": {
+				"live": 511,
+				"deleted": 0,
+				"liveLength": 511,
+				"deletedLength": 0
+			},
+			"ContentDeleted": {
+				"live": 0,
+				"deleted": 834,
+				"liveLength": 0,
+				"deletedLength": 3601
+			},
+			"ContentString": {
+				"live": 721,
+				"deleted": 0,
+				"liveLength": 5141,
+				"deletedLength": 0
+			},
+			"ContentType": {
+				"live": 205,
+				"deleted": 0,
+				"liveLength": 205,
+				"deletedLength": 0
+			}
+		},
+		"text": {
+			"items": 721,
+			"chars": 5141
+		},
+		"keys": {
+			"c/": {
+				"live": 9,
+				"deleted": 0
+			},
+			"k/": {
+				"live": 126,
+				"deleted": 0
+			},
+			"l": {
+				"live": 41,
+				"deleted": 169
+			},
+			"v": {
+				"live": 1,
+				"deleted": 0
+			},
+			"schema": {
+				"live": 1,
+				"deleted": 0
+			},
+			"title": {
+				"live": 1,
+				"deleted": 0
+			},
+			"id": {
+				"live": 41,
+				"deleted": 0
+			},
+			"n": {
+				"live": 41,
+				"deleted": 0
+			},
+			"type": {
+				"live": 41,
+				"deleted": 0
+			},
+			"d/": {
+				"live": 1,
+				"deleted": 0
+			},
+			"content": {
+				"live": 41,
+				"deleted": 0
+			},
+			"claims": {
+				"live": 41,
+				"deleted": 0
+			},
+			"at": {
+				"live": 41,
+				"deleted": 0
+			},
+			"1.48595596": {
+				"live": 41,
+				"deleted": 0
+			},
+			"seed-": {
+				"live": 40,
+				"deleted": 0
+			},
+			"b/": {
+				"live": 41,
+				"deleted": 0
+			},
+			"i": {
+				"live": 41,
+				"deleted": 0
+			}
+		}
+	},
+	"censusAfterPurge": {
+		"clients": 10,
+		"structs": 2257,
+		"gc": 0,
+		"items": {
+			"live": 1311,
+			"deleted": 946,
+			"deletedKeepingContent": 0,
+			"mapEntries": 759,
+			"sequence": 1498
+		},
+		"content": {
+			"ContentAny": {
+				"live": 385,
+				"deleted": 0,
+				"liveLength": 385,
+				"deletedLength": 0
+			},
+			"ContentDeleted": {
+				"live": 0,
+				"deleted": 946,
+				"liveLength": 0,
+				"deletedLength": 3728
+			},
+			"ContentString": {
+				"live": 721,
+				"deleted": 0,
+				"liveLength": 5141,
+				"deletedLength": 0
+			},
+			"ContentType": {
+				"live": 205,
+				"deleted": 0,
+				"liveLength": 205,
+				"deletedLength": 0
+			}
+		},
+		"text": {
+			"items": 721,
+			"chars": 5141
+		},
+		"keys": {
+			"c/": {
+				"live": 9,
+				"deleted": 0
+			},
+			"k/": {
+				"live": 126,
+				"deleted": 0
+			},
+			"l": {
+				"live": 41,
+				"deleted": 169
+			},
+			"v": {
+				"live": 1,
+				"deleted": 0
+			},
+			"schema": {
+				"live": 1,
+				"deleted": 0
+			},
+			"title": {
+				"live": 1,
+				"deleted": 0
+			},
+			"id": {
+				"live": 41,
+				"deleted": 0
+			},
+			"n": {
+				"live": 41,
+				"deleted": 0
+			},
+			"type": {
+				"live": 41,
+				"deleted": 0
+			},
+			"d/": {
+				"live": 1,
+				"deleted": 0
+			},
+			"content": {
+				"live": 41,
+				"deleted": 0
+			},
+			"claims": {
+				"live": 41,
+				"deleted": 0
+			},
+			"at": {
+				"live": 41,
+				"deleted": 0
+			},
+			"1.48595596": {
+				"live": 41,
+				"deleted": 0
+			},
+			"seed-": {
+				"live": 40,
+				"deleted": 0
+			},
+			"b/": {
+				"live": 41,
+				"deleted": 0
+			},
+			"i": {
+				"live": 41,
+				"deleted": 0
+			},
+			"h": {
+				"live": 1,
+				"deleted": 0
+			}
+		}
+	},
+	"bytesPerEdit": 6.8,
+	"purgedBytesPerEdit": 5.9
+}

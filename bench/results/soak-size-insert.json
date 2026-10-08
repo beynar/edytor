@@ -1,0 +1,259 @@
+{
+	"config": {
+		"replicas": 8,
+		"edits": 4000,
+		"mix": "insert",
+		"without": [],
+		"sync": 25,
+		"seed": 1
+	},
+	"converged": true,
+	"applied": 3872,
+	"ops": {
+		"type:applied": 3872,
+		"jump:applied-local": 128
+	},
+	"blocks": 41,
+	"chars": 9709,
+	"stored": 29798,
+	"fresh": 17792,
+	"purged": 29923,
+	"purge": {
+		"removed": 0,
+		"emptied": 0,
+		"marks": 0,
+		"records": 0,
+		"candidates": 0,
+		"claims": 0
+	},
+	"census": {
+		"clients": 10,
+		"structs": 1443,
+		"gc": 0,
+		"items": {
+			"live": 1259,
+			"deleted": 184,
+			"deletedKeepingContent": 0,
+			"mapEntries": 756,
+			"sequence": 687
+		},
+		"content": {
+			"ContentAny": {
+				"live": 367,
+				"deleted": 0,
+				"liveLength": 367,
+				"deletedLength": 0
+			},
+			"ContentString": {
+				"live": 687,
+				"deleted": 0,
+				"liveLength": 9709,
+				"deletedLength": 0
+			},
+			"ContentDeleted": {
+				"live": 0,
+				"deleted": 184,
+				"liveLength": 0,
+				"deletedLength": 184
+			},
+			"ContentType": {
+				"live": 205,
+				"deleted": 0,
+				"liveLength": 205,
+				"deletedLength": 0
+			}
+		},
+		"text": {
+			"items": 687,
+			"chars": 9709
+		},
+		"keys": {
+			"c/": {
+				"live": 9,
+				"deleted": 0
+			},
+			"k/": {
+				"live": 109,
+				"deleted": 0
+			},
+			"l": {
+				"live": 41,
+				"deleted": 184
+			},
+			"v": {
+				"live": 1,
+				"deleted": 0
+			},
+			"schema": {
+				"live": 1,
+				"deleted": 0
+			},
+			"title": {
+				"live": 1,
+				"deleted": 0
+			},
+			"id": {
+				"live": 41,
+				"deleted": 0
+			},
+			"n": {
+				"live": 41,
+				"deleted": 0
+			},
+			"type": {
+				"live": 41,
+				"deleted": 0
+			},
+			"d/": {
+				"live": 1,
+				"deleted": 0
+			},
+			"content": {
+				"live": 41,
+				"deleted": 0
+			},
+			"claims": {
+				"live": 41,
+				"deleted": 0
+			},
+			"at": {
+				"live": 41,
+				"deleted": 0
+			},
+			"1.48595596": {
+				"live": 41,
+				"deleted": 0
+			},
+			"seed-": {
+				"live": 40,
+				"deleted": 0
+			},
+			"b/": {
+				"live": 41,
+				"deleted": 0
+			},
+			"i": {
+				"live": 41,
+				"deleted": 0
+			}
+		}
+	},
+	"censusAfterPurge": {
+		"clients": 10,
+		"structs": 1444,
+		"gc": 0,
+		"items": {
+			"live": 1260,
+			"deleted": 184,
+			"deletedKeepingContent": 0,
+			"mapEntries": 757,
+			"sequence": 687
+		},
+		"content": {
+			"ContentAny": {
+				"live": 368,
+				"deleted": 0,
+				"liveLength": 368,
+				"deletedLength": 0
+			},
+			"ContentString": {
+				"live": 687,
+				"deleted": 0,
+				"liveLength": 9709,
+				"deletedLength": 0
+			},
+			"ContentDeleted": {
+				"live": 0,
+				"deleted": 184,
+				"liveLength": 0,
+				"deletedLength": 184
+			},
+			"ContentType": {
+				"live": 205,
+				"deleted": 0,
+				"liveLength": 205,
+				"deletedLength": 0
+			}
+		},
+		"text": {
+			"items": 687,
+			"chars": 9709
+		},
+		"keys": {
+			"c/": {
+				"live": 9,
+				"deleted": 0
+			},
+			"k/": {
+				"live": 109,
+				"deleted": 0
+			},
+			"l": {
+				"live": 41,
+				"deleted": 184
+			},
+			"v": {
+				"live": 1,
+				"deleted": 0
+			},
+			"schema": {
+				"live": 1,
+				"deleted": 0
+			},
+			"title": {
+				"live": 1,
+				"deleted": 0
+			},
+			"id": {
+				"live": 41,
+				"deleted": 0
+			},
+			"n": {
+				"live": 41,
+				"deleted": 0
+			},
+			"type": {
+				"live": 41,
+				"deleted": 0
+			},
+			"d/": {
+				"live": 1,
+				"deleted": 0
+			},
+			"content": {
+				"live": 41,
+				"deleted": 0
+			},
+			"claims": {
+				"live": 41,
+				"deleted": 0
+			},
+			"at": {
+				"live": 41,
+				"deleted": 0
+			},
+			"1.48595596": {
+				"live": 41,
+				"deleted": 0
+			},
+			"seed-": {
+				"live": 40,
+				"deleted": 0
+			},
+			"b/": {
+				"live": 41,
+				"deleted": 0
+			},
+			"i": {
+				"live": 41,
+				"deleted": 0
+			},
+			"h": {
+				"live": 1,
+				"deleted": 0
+			}
+		}
+	},
+	"bytesPerEdit": 3.1,
+	"purgedBytesPerEdit": 3.1
+}

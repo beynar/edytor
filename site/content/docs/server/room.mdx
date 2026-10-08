@@ -93,7 +93,7 @@ Size the document quota for the room's memory. An isolate has 128 MB, and the li
 | 2,000 paragraphs with a bold and an italic run | 1.4 MB | 26 MB | 19 |
 | 5,000 paragraphs of prose (400 characters) | 3.0 MB | 51 MB | 18 |
 
-The default of 2 MiB keeps the worst case, a long list of short blocks, near 100 MB. Workers run V8 with pointer compression and Node does not, so a room needs less than these figures: the [soak](#load) read about 18 bytes of heap per stored byte in workerd, through its inspector, for a document 50 writers typed, split and merged (27 in Node for typed paragraphs). A document of long text can take a higher quota: at 18 bytes a byte, 4 MiB is about 75 MB. Leave room for the rest: a compaction and a catch-up each encode the whole document once more, and chunked frames take up to `EDYTOR_MAX_BUFFERED_BYTES`. A room past its memory is reset by the platform and restarts from its rows, so a quota set too high shows as sockets closing and redialing, not as a refusal. Your own server edits ([`transact`](/docs/server/extending#edit-on-the-server)) are not limited.
+The default of 2 MiB keeps the worst case, a long list of short blocks, near 100 MB. Workers run V8 with pointer compression and Node does not, so a room needs less than these figures: the [soak](#load) read about 20 bytes of heap per stored byte in workerd, through its inspector, for a document 50 writers typed, split and merged (18 in its run near the quota; 27 in Node for typed paragraphs). That is the live heap after a full collection: before one, the soak saw peaks several times higher. A document of long text can take a higher quota: at 20 bytes a byte, 4 MiB is about 84 MB. Leave room for the rest: a compaction and a catch-up each encode the whole document once more, and chunked frames take up to `EDYTOR_MAX_BUFFERED_BYTES`. A room past its memory is reset by the platform and restarts from its rows, so a quota set too high shows as sockets closing and redialing, not as a refusal. Your own server edits ([`transact`](/docs/server/extending#edit-on-the-server)) are not limited.
 
 Inline images count at their size. Without an `upload`, the [image plugin](/docs/plugins/image) (a default plugin) stores each image in the document as a `data:` URL of up to 1 MiB (`MAX_INLINE_IMAGE_BYTES`), so two or three of them reach the default document quota, and the `4413` that follows is final: the provider stops and every later edit stays unsaved. An inline image takes about its own size in memory, not the 18 to 46 times of the table, so for documents that hold images give the image plugin an [`upload`](/docs/plugins/image) that stores the file and answers its URL, or raise `EDYTOR_MAX_DOCUMENT_BYTES` (and the frame quota) by the images' size.
 
@@ -189,7 +189,7 @@ The room also logs one JSON line per compaction (`{ "edytor": "compaction", "ms"
 
 ## Load
 
-The repository's soak harness (`bench/soak/`) runs many real clients against one room and injects faults while they edit. Each client is a headless document (`createDocument`) on the shipped `WebsocketProvider`. It types at its caret, presses Backspace and Enter, merges, moves blocks, sets marks and data, and cuts text. It also publishes presence after each edit, and at 20 Hz while it drags a selection (10 % of its time). Clients drop their socket about once a minute (a tenth of those drops are page loads, with a new replica synced from nothing), and go offline for 10 to 60 seconds about twice an hour, still editing, then replay their edits.
+The repository's soak harness (`bench/soak/`) runs many real clients against one room and injects faults while they edit. Each client is a headless document (`createDocument`) on the shipped `WebsocketProvider`. It types at its caret, presses Backspace and Enter, merges, moves blocks, sets marks and data, and cuts text (the mix is `bench/soak/edits.mjs`). It also publishes presence after each edit, and at 20 Hz while it drags a selection (10 % of its time). Clients drop their socket about once a minute (a tenth of those drops are page loads, with a new replica synced from nothing), and go offline for 10 to 60 seconds about twice an hour, still editing, then replay their edits. Every run also forces one offline session and one page load, so even a short run replays and reloads.
 
 Locally the room is the shipped `DocumentRoom` in Miniflare, with the default quotas, the default compaction threshold and its history in its own storage. Faults run on a schedule:
 
@@ -204,59 +204,68 @@ Locally the room is the shipped `DocumentRoom` in Miniflare, with the default qu
 
 The harness measures:
 
-- the ack latency of every edit made while connected: from the edit to the room's `messageSaved` that covers it, across reconnects;
+- the ack latency of every edit outside an offline session: from the edit to the room's `messageSaved` that covers it, across reconnects. Edits made while the socket was connected and synced are reported apart from those made while it was down or not yet synced (a dropped socket, or a fault's redial and backoff), which wait for the next connection;
 - the replay time of each offline session: from the reconnect to the ack of its last edit;
 - the room's `metrics()`;
-- the isolate's heap, read through workerd's inspector after a full garbage collection, and workerd's resident memory.
+- the isolate's heap, read through workerd's inspector after a full garbage collection (and, every 10 s, without one), and workerd's resident memory;
+- the final document's stored size, against the same JSON seeded fresh and against the document after the room's [purge](/docs/server/history#the-purge) at a horizon of now (`bench/soak/size.mjs`).
 
 At the end every client comes online and settles. Convergence holds when every client's JSON, the room's own `read()` and a fresh joiner's document are equal, and still equal after the room is evicted and loaded from what it stored.
 
 ### Results
 
-Measured with 50 clients for 20 minutes, on an Apple M4 Pro laptop shared with other jobs (load average 7 to 53, median 15). Room and clients ran on the same machine:
+Measured with 50 clients for 20 minutes, on an Apple M4 Pro laptop shared with other jobs (load average 5 to 55, median 24). Room and clients ran on the same machine. Sizes are in MB of 10^6 bytes (the reports store MiB):
 
 | Measure | Result |
 | --- | --- |
-| Edits | 22,457 applied, about 19 a second; 6.5 million frames fanned out (1.2 GB) |
-| Ack latency, every edit | p50 3.8 ms, p90 14 ms, p99 329 ms, p99.9 2.9 s, max 36 s |
-| Ack latency, 10 s windows with no fault | p99 32 ms (median window), 560 ms at worst |
-| Offline replays | 33 sessions (408 edits): p50 43 ms, max 334 ms |
-| Compaction | 49 automatic, p50 16 ms, max 34 ms. 13 forced over RPC, 38 ms p50 and 59 ms max round trip. At 1.7 MB, after a cold load: 355 ms |
-| Room heap, live (after a full GC) | 5.5 MB at the start, 34 MB with a 1.69 MB document: about 18 bytes of heap per stored byte |
-| Room heap, before collection | 127 MB at its peak, right after a storage outage (each failed append rebuilds the document from its rows) |
-| Convergence | 50 of 50 clients, the room, a joiner and the reloaded room equal: 399 blocks, 19,842 characters |
+| Edits | 22,321 applied, about 18 a second; 6.5 million frames fanned out (1.2 GB) |
+| Ack latency, edits made while connected | 21,462 edits: p50 5.6 ms, p90 28 ms, p99 691 ms, p99.9 4.1 s, max 57 s |
+| Ack latency, edits made while disconnected | 604 edits (a dropped socket, a fault's redial and backoff; offline sessions apart): p50 880 ms, p99 4.1 s, max 60 s |
+| Ack latency, 10 s windows with no fault | Edits made while connected, in the 30 windows that no fault started in the last 40 s of (70 s for a failing compaction): p99 64 ms in the median window, 1.3 s at worst |
+| Offline replays | 24 sessions (255 edits): p50 56 ms, max 241 ms |
+| Compaction | 48 automatic, p50 18 ms, max 44 ms. 13 forced over RPC, 45 ms p50 and 90 ms max round trip. At 1.8 MB, after a cold load: 75 ms |
+| Room heap, live (after a full GC) | 5.9 MB at the start; 36 MB with a 1.80 MB document once the clients were idle: about 20 bytes of heap per stored byte |
+| Room heap, before collection | 121 MB at its peak, with 190 MB allocated by V8, right after a storage outage |
+| Stored size | 1.77 MB for 400 blocks and 20,778 characters, 72 bytes an edit; the same JSON seeded fresh: 0.16 MB; purged at a horizon of now: 1.67 MB |
+| Convergence | 50 of 50 clients, the room, a joiner and the reloaded room equal |
 | Restarts | 12 (5 hibernations, 3 evictions, 3 resets, the final eviction), all injected |
 
 Every fault healed without intervention:
 
-- **Hibernation, eviction and reset.** Each one closed or kept the sockets, the providers redialed, and the room loaded again from its rows. The windows after them show p99 20 ms to 1.5 s.
-- **Storage outage.** Each 2 s outage closed every writer `1011`. The providers redialed and resent, and the windows after them show p99 2.4 to 3.3 s. A writer whose redials all met the outage grew its backoff: its edits stayed unsaved for up to 36 s after the outage ended.
+- **Hibernation, eviction and reset.** Each one closed or kept the sockets, the providers redialed, and the room loaded again from its rows. The windows after them show p99 8 ms to 1 s.
+- **Storage outage.** Each 2 s outage closed every writer `1011`. The providers redialed and resent: the window of each outage shows p99 3.0 to 5.5 s, the next one under 400 ms.
 - **Failing compaction.** Edits were stored and acknowledged throughout, and the next compaction after the fault went through.
+
+The slowest edit made while connected (57 s) was made just after the reset at 19 minutes and acknowledged only in the final settle; the slowest made while disconnected took 60 s. The report does not say why they waited (a grown backoff, or a socket the reset left open until the keepalive dropped it), but a writer's edits can stay unsaved for a minute after a fault.
 
 The room did not refuse anything (`quotaHits` 0). Its only refusals were the injected storage faults and one `relayed` note.
 
-A run near the document quota (50 clients at 2 edits a second each for 4.5 minutes, no faults; 25,056 edits) ended at 1.93 MB with 33 MB of live heap once the clients were idle, and 52 MB right after an eviction while all 50 clients caught up again. The heap stayed under 70 % of an isolate's 128 MB. Ack latency was p50 4.2 ms and p99 153 ms, and the run converged.
+A run near the document quota (50 clients at 2 edits a second each for 5 minutes, no faults; 25,056 edits) ended at 1.93 MB with 34 MB of live heap once the clients were idle (about 18 bytes a byte), and 54 MB right after an eviction while all 50 clients caught up again. Ack latency was p50 4.2 ms and p99 153 ms, and the run converged.
 
-Two findings to plan around:
+**Memory.** The live heap stayed under 70 % of an isolate's 128 MB in both runs, but only the heap after a full collection. Before collection it reached 121 MB (190 MB allocated) after a storage outage in the 20-minute run, and 92 MB (134 MB allocated) in the run near the quota: past 70 %, and, allocated, past the limit itself. Miniflare enforces no memory limit, so whether a deployed room rides out such a peak, which V8 would collect first, is not verified. A room the platform resets restarts from its rows, as the injected resets above did.
 
-- **Stored size follows edits, not content.** Both documents above store 70 to 80 bytes for each edit of this mix (Enter and merges, which write block structure, cost the most). The 20-minute document showed 20,000 characters and stored 1.7 MB, because deleted content is kept until the [purge](/docs/server/history#the-purge) after 30 days. A document that many people edit all day can reach the default 2 MiB [quota](#quotas) in days, whatever its visible length. Raise `EDYTOR_MAX_DOCUMENT_BYTES` for such documents (the heap above leaves room) or shorten `EDYTOR_PURGE_AFTER_DAYS`.
+Three findings to plan around:
+
+- **Stored size follows edits, not content.** The 20-minute document stores 1.77 MB, about 72 bytes for each edit, while its JSON seeded fresh takes 0.16 MB. That growth is the CRDT structure each edit leaves, and it stays for the life of the document. It is not deleted content: no deleted item still held its content (the engine keeps only a placeholder), and the room's purge at a horizon of now gave back 5 %, mostly old text delete marks and placement candidates. `bench/soak/size.mjs` replays the mix in memory, 8 replicas and 4,000 edits, and leaves kinds of edit out: about 40 bytes an edit for the whole mix, 20 without Enter and merges, 7 for typing and deleting only, 3 for typing at a caret. In the 20-minute document, of about 103,000 items: each Enter registered a block (its node, incarnation, attribution record and placement candidate) that stays after a merge, as the block it merged into shows its text, so 1,537 blocks are registered for 400 shown, after the purge too; the attribution records list each block's contributors, 40,000 entries; and each edit replaced its block's `lastChangedBy`, leaving the old value's entry, 15,000 of the 21,000 deleted items. The soak's 50 writers and their reloads (148 replica ids) cost about twice the 8 in-memory replicas per edit. A document that many people edit all day can reach the default 2 MiB [quota](#quotas) in days, whatever its visible length. Raise `EDYTOR_MAX_DOCUMENT_BYTES` for such documents: the live heap above leaves room. A shorter `EDYTOR_PURGE_AFTER_DAYS` does not help, as it cuts the history and undo for a few percent.
 - **Presence fan-out is quadratic.** The room relays each presence message to every socket. With 50 clients all at 20 Hz (`--drag 1`), that is 35,000 frames a second. The room's core ran at 100 % for the whole run, ack latency rose to p50 1 s and p99 19 s, and workerd evicted the busy object once (its sockets carried over). The run still converged. The editor publishes presence on selection changes, at most every 50 ms by default: for rooms with many active editors, raise its `throttle` or narrow what it shares (see [sharing less at scale](/docs/collaboration/presence#sharing-less-at-scale)).
+- **A storage outage rebuilds the document per failing frame.** Each frame whose append fails is refused `1011` and the room rebuilds its document from its rows, so an outage costs a rebuild for each writer's frame, the likely source of the heap peak above.
 
 ### Run it
 
 ```sh
-pnpm soak:smoke   # 6 clients, 90 s, every fault on a compressed schedule
+pnpm soak:smoke   # 6 clients, 90 s, every fault on a compressed schedule, one offline session and one page load
 pnpm soak         # 50 clients, 20 minutes, the schedule above
 node bench/soak/run.mjs --clients 100 --minutes 60 --ops 0.4 --drag 0.1 --faults on
+node bench/soak/size.mjs --edits 4000 --without split,merge   # the stored size, in memory
 ```
 
-`run.mjs` starts the room locally unless it gets `--server`. It writes its report to `bench/results/soak-<time>.json`: the settings, the latency percentiles, a sample every 10 s (room heap, CPU, memory, document size, records, sockets, compactions, refusals), the faults and their answers, the room's starts and the convergence. A run that does not converge also writes every client's state vector and the distinct documents next to it, and exits with code `1`. The reports of the runs above are `bench/results/soak-wu16-20min.json`, `soak-wu16-near-quota.json` and `soak-wu16-presence-worst.json`.
+`run.mjs` starts the room locally unless it gets `--server`. It writes its report to `bench/results/soak-<time>.json`: the settings, the latency percentiles, a sample every 10 s (room heap, CPU, memory, document size, records, sockets, compactions, refusals), the faults and their answers, the forced offline session and page load, the room's starts, the stored size and the convergence. A run that does not converge also writes every client's state vector and the distinct documents next to it. It exits with code `1` when it does not converge, or when the forced offline session or page load did not happen. The reports of the runs above are `bench/results/soak-wu16-20min.json`, `soak-wu16-near-quota.json` and `soak-wu16-presence-worst.json`, and `soak-size-*.json` for the in-memory sizes. The near-quota and presence reports come from an earlier version of the harness: they keep every edit's latency in one figure, made while connected, and measure no stored size.
 
 ### A multi-hour soak on staging
 
 A laptop shares its cores with the clients, so run the long soak against a staging deployment:
 
-1. Deploy the soak Worker to a staging account, never to production: `bench/soak/wrangler.jsonc` deploys `bench/soak/worker.ts`, the shipped room as `SoakRoom`, with routes for metrics, its document, compaction, storage faults and `ctx.abort()`. First set a token, which every request must carry:
+1. Deploy the soak Worker to a staging account, never to production: `bench/soak/wrangler.jsonc` deploys `bench/soak/worker.ts`, the shipped room as `SoakRoom`, with routes for metrics, its document, compaction, storage faults and `ctx.abort()`. First set a token. Without it the Worker refuses every request:
    ```sh
    wrangler secret put SOAK_TOKEN -c bench/soak/wrangler.jsonc
    wrangler deploy -c bench/soak/wrangler.jsonc
@@ -266,7 +275,7 @@ A laptop shares its cores with the clients, so run the long soak against a stagi
    node bench/soak/run.mjs --server wss://edytor-soak.<account>.workers.dev/rooms \
      --token <SOAK_TOKEN> --room soak-staging-1 --clients 100 --threads 8 --minutes 360
    ```
-   Against a deployed room, the hibernation and eviction faults are skipped (they need Miniflare); the reset, both storage faults and forced compaction run. The heap is not readable there: read the room's memory and CPU in the Worker's metrics in the dashboard, and its log with `wrangler tail -c bench/soak/wrangler.jsonc`.
+   The operator routes get the token in an `Authorization` header. A socket cannot send one, so its URL carries `?token=`, and the token shows in request logs: `wrangler tail` prints it, and Workers Logs, which the configuration leaves off, would store it. Use a fresh token for each soak. Against a deployed room, the hibernation and eviction faults are skipped (they need Miniflare); the reset, both storage faults and forced compaction run. The heap is not readable there: read the room's memory and CPU in the Worker's metrics in the dashboard, and its log with `wrangler tail -c bench/soak/wrangler.jsonc`.
 3. Compare the report with the results above. Pass when it converges, nothing restarts but the injected faults, `quotaHits` is 0 unless the document reached its quota, and ack p99 outside fault windows stays under a second.
 4. Delete the staging Worker afterwards (`wrangler delete -c bench/soak/wrangler.jsonc`).
 
@@ -294,7 +303,7 @@ await env.ROOMS.getByName(documentId).reset();
 - **Presence** refills over up to 15 seconds after the room wakes.
 - **One document per room.** Rooms do not share state; listing, searching or aggregating documents is up to your application.
 - **No auth rules ship with it.** `authorize` is yours; see [Authorization](/docs/server/authorization).
-- **A busy document grows with its edits.** Deleted content stays stored until the purge, so the document quota counts the editing history: about 75 bytes an edit in the [soak](#load). Size the quota for how much a document is edited, not only how long it is.
+- **A busy document grows with its edits.** Each edit leaves CRDT structure that stays for the life of the document (a block registered for each Enter, attribution, placements, marks, replaced values), so the document quota counts the editing, not only the content: about 72 bytes an edit in the [soak](#load), of which the purge gives back about 5 %. Size the quota for how much a document is edited, not only how long it is.
 - **Deleted content goes after 30 days** (`EDYTOR_PURGE_AFTER_DAYS`), from the room and every client; a version or an undo brings it back within them. See [History and purge](/docs/server/history).
 
 For the frame format, or to write a room of your own, see [the protocol](/docs/server/protocol).

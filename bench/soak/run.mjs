@@ -16,7 +16,11 @@
  * presence after each edit and at `--presence` Hz while dragging a
  * selection (`--drag` of the time; `--drag 1`: every client at that rate), `--churn` dropped sockets a minute each,
  * `--offline` offline sessions (10–60 s, still editing) an hour each, a
- * `--reload` share of the churn as page loads (a new replica).
+ * `--reload` share of the churn as page loads (a new replica). Every run
+ * also forces one offline session (the first client, a quarter into the
+ * run, for up to 20 s) and one reload (the last client, at 40 %), so a
+ * short run replays and reloads too; the run fails when either did not
+ * happen.
  *
  * Faults (`--faults on`), on a fixed schedule: a forced compaction every
  * 90 s (timed), a storage fault (every update append fails) for 2 s every
@@ -25,15 +29,21 @@
  * instance's memory dropped, its sockets kept) every 4 min and an eviction
  * with the sockets closed every 6 min.
  *
- * Measured: the ack latency of every edit made online (edit → the room's
- * `messageSaved` covering it), the replay time of offline sessions, the
+ * Measured: the ack latency of every edit outside an offline session (edit
+ * → the room's `messageSaved` covering it; edits made while the socket was
+ * down or not yet synced are also reported apart), the replay time of
+ * offline sessions, the
  * room's `metrics()` (document and stored bytes, records, sockets,
  * compactions, folds, fan-out, refusals), the isolate heap (locally,
  * through workerd's inspector) and workerd's RSS, the clients' event-loop
  * delay. At the end every client comes online and settles; convergence
  * holds when every client's JSON, the room's own `read()` and a fresh
  * joiner's are equal — then again after the room is evicted (what it
- * stored).
+ * stored). Last, the final document's stored size is measured against a
+ * fresh seed of its JSON and its purge at a horizon of now (`size.mjs`).
+ *
+ * Operator routes carry the token in an `Authorization: Bearer` header;
+ * sockets carry it as `?token=` (a WebSocket sets no header).
  */
 import { Worker } from 'node:worker_threads';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -41,6 +51,8 @@ import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { loadavg } from 'node:os';
 import { loadEngine } from './engine.mjs';
+import { seedValue } from './edits.mjs';
+import { measure } from './size.mjs';
 
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
@@ -88,15 +100,14 @@ const httpBase = local
 			.replace(/\/rooms\/?$/, '');
 const server = `${httpBase.replace(/^http/, 'ws')}/rooms`;
 const routeOf = (action, query = '') => {
-	const search = new URLSearchParams(query);
-	if (token) search.set('token', token);
-	const tail = search.size ? `?${search}` : '';
+	const tail = query ? `?${query}` : '';
 	return `${httpBase}/rooms/${encodeURIComponent(roomName)}/${action}${tail}`;
 };
 const call = async (action, { method = 'GET', query = '' } = {}) => {
 	const started = performance.now();
 	try {
-		const response = await fetch(routeOf(action, query), { method });
+		const headers = token ? { authorization: `Bearer ${token}` } : {};
+		const response = await fetch(routeOf(action, query), { method, headers });
 		const body = response.headers.get('content-type')?.includes('json')
 			? await response.json()
 			: await response.text();
@@ -113,18 +124,8 @@ const wallStart = Date.now();
 log(`room ${roomName} on ${server}`, JSON.stringify(config));
 
 // ── Seed: one writer seeds the document and leaves once the room stored it ──
-const { E, crdt } = await loadEngine();
-const para = (i) => ({
-	id: `seed-${i}`,
-	type: 'paragraph',
-	content: [{ text: `Seed paragraph ${i}: the quick brown fox jumps over the lazy dog.` }]
-});
-const seedValue = {
-	children: [
-		{ id: 'title', type: 'heading', data: { level: 1 }, content: [{ text: 'Soak document' }] },
-		...Array.from({ length: 40 }, (_, i) => para(i))
-	]
-};
+const engine = await loadEngine();
+const { E, crdt } = engine;
 const until = async (check, timeoutMs, what) => {
 	const deadline = performance.now() + timeoutMs;
 	while (!check()) {
@@ -142,7 +143,7 @@ const join = async (user, value) => {
 	await until(() => provider.synced && provider.saved, 60_000, `${user} synced`);
 	return { document, provider, close: () => (provider.destroy(), document.destroy()) };
 };
-(await join('seeder', seedValue)).close();
+(await join('seeder', seedValue())).close();
 log('seeded');
 
 // ── Clients ──
@@ -184,6 +185,7 @@ log(`clients joined (${ready.every((r) => r.ok) ? 'all synced' : 'NOT all synced
 
 // ── Measurement ──
 const acks = [];
+const acksDisconnected = [];
 const replays = [];
 const samples = [];
 const faults = [];
@@ -220,6 +222,7 @@ const sample = async (gc = false) => {
 	let clientHeap = 0;
 	for (const { stats } of window) {
 		for (const ms of stats.acks) windowAcks.push(ms);
+		acksDisconnected.push(...stats.acksDisconnected);
 		replays.push(...stats.replays);
 		errors.push(...stats.errors);
 		add(totals.ops, stats.ops);
@@ -338,11 +341,26 @@ const runFault = async (fault) => {
 	log(`fault ${fault.name}: ${JSON.stringify(entry.result).slice(0, 160)} (${entry.ms} ms)`);
 };
 
+// ── Forced disturbances: one offline session and one reload in every run ──
+const threadOf = (index) => threads[Math.floor(index / per)];
+const forced = [];
+const runMs = config.minutes * 60_000;
+const disturbances = [
+	{ at: runMs / 4, what: 'offline', client: 0, ms: Math.min(20_000, runMs / 6) },
+	{ at: runMs * 0.4, what: 'reload', client: config.clients - 1 }
+];
+const disturb = async ({ what, client, ms }) => {
+	const answer = await threadOf(client).ask({ type: 'disturb', what, client, ms }, 'disturbed');
+	forced.push({ what, client, ms, done: answer.done });
+	log(`forced ${what} of u${client}: ${answer.done ? 'done' : 'NOT done'}`);
+};
+
 // ── The run ──
 await Promise.all(threads.map((t) => t.worker.postMessage({ type: 'start' })));
 const started = performance.now();
-const end = started + config.minutes * 60_000;
+const end = started + runMs;
 const due = schedule.map((f) => ({ fault: f, next: started + f.at * 1000 * config.faultScale }));
+const pendingDisturbances = disturbances.map((d) => ({ ...d, at: started + d.at }));
 let nextSample = started + config.sampleSeconds * 1000;
 let samplesTaken = 0;
 const inFlight = new Set();
@@ -354,6 +372,10 @@ while (performance.now() < end) {
 			const p = runFault(d.fault).finally(() => inFlight.delete(p));
 			inFlight.add(p);
 		}
+	}
+	while (pendingDisturbances.length && now >= pendingDisturbances[0].at) {
+		const p = disturb(pendingDisturbances.shift()).finally(() => inFlight.delete(p));
+		inFlight.add(p);
 	}
 	if (now >= nextSample) {
 		nextSample += config.sampleSeconds * 1000;
@@ -401,6 +423,8 @@ const reference = all[0].json;
 const roomJson = JSON.stringify((await call('json')).body);
 const joiner = await join('joiner');
 const joinerJson = JSON.stringify(joiner.document.facade.toJSON());
+/** What the stored size is made of: a fresh seed of the same JSON, a purge at a horizon of now. */
+const size = measure(engine, joiner.document.encode());
 joiner.close();
 let storedJson = null;
 let coldHeap = null;
@@ -482,13 +506,36 @@ const summed = () => {
 	return total;
 };
 const heapRows = samples.filter((s) => s.heapUsed != null);
+/**
+ * The 10 s windows clear of faults: none started in the window's last 40 s
+ * (70 s for a failing compaction, which lasts 30 s). Their p99s, sorted.
+ */
+const quiet = samples
+	.filter(
+		(s) =>
+			s.acks.count > 0 &&
+			faults.every((f) => !(s.t - (f.fault === 'storage-compaction' ? 70 : 40) < f.t && f.t <= s.t))
+	)
+	.map((s) => s.acks.p99)
+	.sort((a, b) => a - b);
 const report = {
 	at: new Date().toISOString(),
 	roomName,
 	server: local ? 'local (Miniflare, bench/soak/server.mjs)' : server,
 	config,
 	durationMinutes: Math.round(((performance.now() - started) / 60_000) * 10) / 10,
+	/** Edits made connected and synced. */
 	acks: summary(acks),
+	/** Edits made while the socket was down or not yet synced (churn, a fault's redial and backoff), outside offline sessions. */
+	acksDisconnected: summary(acksDisconnected),
+	/** Every edit outside an offline session. */
+	acksOutsideOffline: summary([...acks, ...acksDisconnected]),
+	/** The p99 of edits made while connected in 10 s windows clear of faults: the median window and the worst. */
+	faultFreeWindows: {
+		windows: quiet.length,
+		medianP99: quiet.length ? quiet[Math.floor(quiet.length / 2)] : null,
+		worstP99: quiet.length ? quiet[quiet.length - 1] : null
+	},
 	replays: {
 		...summary(replays.map((r) => r.ms)),
 		sessions: replays.length,
@@ -535,10 +582,19 @@ const report = {
 	},
 	totals,
 	faults,
+	forced,
+	size: {
+		...size,
+		edits: Object.entries(totals.ops)
+			.filter(([key]) => key.endsWith(':applied'))
+			.reduce((n, [, count]) => n + count, 0)
+	},
 	errors: errors.slice(0, 100),
 	convergence,
 	samples
 };
+report.size.bytesPerEdit =
+	Math.round(((size.stored - size.fresh) / Math.max(1, report.size.edits)) * 10) / 10;
 mkdirSync(fileURLToPath(new URL('../results/', import.meta.url)), { recursive: true });
 writeFileSync(out, JSON.stringify(report, null, '\t'));
 log(`report: ${out}`);
@@ -546,10 +602,13 @@ console.log(
 	JSON.stringify(
 		{
 			acks: report.acks,
+			acksDisconnected: report.acksDisconnected,
 			replays: report.replays,
 			room: { ...report.room, metrics: undefined },
 			clients: report.clients,
 			totals,
+			forced,
+			size: { ...report.size, census: undefined, censusAfterPurge: undefined },
 			convergence
 		},
 		null,
@@ -560,4 +619,8 @@ console.log(
 await Promise.all(threads.map((t) => t.ask({ type: 'close' }, 'closed')));
 for (const t of threads) await t.worker.terminate();
 await room?.dispose();
-process.exit(convergence.ok ? (process.exitCode ?? 0) : 1);
+const forcedOk =
+	forced.length === disturbances.length && forced.every((f) => f.done) && replays.length > 0;
+if (!forcedOk)
+	console.error('a forced offline session or reload did not happen (or nothing replayed)');
+process.exit(convergence.ok && forcedOk ? (process.exitCode ?? 0) : 1);

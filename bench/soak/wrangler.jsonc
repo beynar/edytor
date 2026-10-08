@@ -1,8 +1,9 @@
 {
 	// The soak's staging room (WU-16): `worker.ts` — the shipped room as
 	// `SoakRoom` with the soak's operator routes — deployed to a staging
-	// account, never to production. Every request must carry
-	// `?token=<SOAK_TOKEN>`: set it first with
+	// account, never to production. Every request needs the token
+	// (operator routes as `Authorization: Bearer`, sockets as `?token=`;
+	// without the secret the Worker refuses everything): set it first with
 	//   wrangler secret put SOAK_TOKEN -c bench/soak/wrangler.jsonc
 	// then deploy with
 	//   wrangler deploy -c bench/soak/wrangler.jsonc
@@ -20,6 +21,9 @@
 		// The room's history in its own SQLite (the production default of a host with no KV).
 		"EDYTOR_HISTORY": "room"
 	},
-	// The room logs one JSON line per compaction, quota hit, denial or fault: `wrangler tail`.
-	"observability": { "enabled": true }
+	// The room logs one JSON line per compaction, quota hit, denial or fault:
+	// read them live with `wrangler tail`. Workers Logs stay off: a socket's
+	// URL carries the token, and a stored log would keep it. Use a fresh
+	// token per soak and delete the Worker afterwards.
+	"observability": { "enabled": false }
 }

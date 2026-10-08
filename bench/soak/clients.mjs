@@ -10,10 +10,16 @@
  * reloads (a new replica, synced from nothing), and goes offline for tens
  * of seconds while it keeps editing, then replays.
  *
+ * The edits are the mix in `edits.mjs` (`Writer`). `run.mjs` also forces
+ * one offline session and one reload per run (`disturb` messages), so even
+ * a short run replays and reloads.
+ *
  * Measured per client, with no help from the provider: the ack latency of
- * every edit made online — from the edit to the first `messageSaved` frame
- * whose state vector covers it (the room stored it) — read off the socket
- * (`Instrumented`); the replay time of an offline session (reconnect to
+ * every edit outside an offline session — from the edit to the first
+ * `messageSaved` frame whose state vector covers it (the room stored it) —
+ * read off the socket (`Instrumented`), apart for the edits made while the
+ * socket was down or not yet synced (churn, a fault's redial and backoff:
+ * `acksDisconnected`); the replay time of an offline session (reconnect to
  * the ack covering its last edit); closes by code; provider events.
  */
 import { parentPort, workerData } from 'node:worker_threads';
@@ -21,6 +27,7 @@ import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import { loadEngine } from './engine.mjs';
+import { Writer, prng } from './edits.mjs';
 
 // A full GC before a heap reading (a worker thread takes no `--expose-gc`).
 setFlagsFromString('--expose-gc');
@@ -46,18 +53,10 @@ const {
 	seed
 } = workerData;
 
-/** A seeded PRNG (mulberry32): a run's choices replay from its seed. */
-const prng = (s) => () => {
-	s |= 0;
-	s = (s + 0x6d2b79f5) | 0;
-	let t = Math.imul(s ^ (s >>> 15), 1 | s);
-	t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-	return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-};
-
 const stats = {
 	ops: {},
 	acks: [],
+	acksDisconnected: [],
 	replays: [],
 	closes: {},
 	events: {},
@@ -70,19 +69,12 @@ const bump = (bucket, key) => (bucket[key] = (bucket[key] ?? 0) + 1);
 const loop = monitorEventLoopDelay({ resolution: 10 });
 loop.enable();
 
-const WORDS = 'the quick brown fox jumps over a lazy dog while every replica keeps typing'.split(
-	' '
-);
-
 class Client {
 	constructor(index) {
 		this.index = index;
 		this.user = `u${index}`;
 		this.random = prng(seed * 1000 + index);
 		this.seq = 0;
-		this.caret = null;
-		this.blocks = [];
-		this.listedAt = -Infinity;
 		this.pending = [];
 		this.offlineUntil = 0;
 		this.replay = null;
@@ -94,6 +86,13 @@ class Client {
 	/** A fresh replica: a new document and provider (a page load). */
 	open() {
 		this.document = E.createDocument({ actor: { id: this.user }, semantics: E.defaultSemantics });
+		this.writer = new Writer({
+			document: this.document,
+			random: this.random,
+			user: this.user,
+			maxBlocks,
+			maxChars
+		});
 		const received = (data) => this.received(data);
 		const doc = this.document.doc;
 		class Instrumented extends WebSocket {
@@ -154,7 +153,8 @@ class Client {
 			const acked = sv.get(this.document.doc.clientID) ?? 0;
 			const at = performance.now();
 			while (this.pending.length && this.pending[0].clock <= acked) {
-				stats.acks.push(at - this.pending.shift().at);
+				const edit = this.pending.shift();
+				(edit.connected ? stats.acks : stats.acksDisconnected).push(at - edit.at);
 			}
 			if (this.replay && this.replay.reconnected && acked >= this.replay.clock) {
 				stats.replays.push({
@@ -218,144 +218,19 @@ class Client {
 		this.timers.add(timer);
 	}
 
-	/** The top-level blocks and their text lengths, re-read at most every 2 s. */
-	list() {
-		const now = performance.now();
-		if (now - this.listedAt < 2000 && this.blocks.length) return this.blocks;
-		this.listedAt = now;
-		const length = (block) =>
-			(block.content ?? []).reduce((n, piece) => n + ('text' in piece ? piece.text.length : 1), 0);
-		const json = this.document.facade.toJSON();
-		this.blocks = json.children.map((block) => ({
-			id: block.id,
-			type: block.type,
-			length: length(block)
-		}));
-		this.chars = this.blocks.reduce((n, b) => n + b.length, 0);
-		return this.blocks;
-	}
-
-	pick() {
-		const blocks = this.list().filter((b) => b.type === 'paragraph' || b.type === 'heading');
-		return blocks.length ? blocks[Math.floor(this.random() * blocks.length)] : null;
-	}
-
-	/** The caret's block and offset, valid in the document now (else a new one). */
-	at() {
-		const facade = this.document.facade;
-		if (this.caret) {
-			const text = facade.blockText(this.caret.id);
-			if (typeof text === 'string' && this.caret.offset <= text.length)
-				return { ...this.caret, length: text.length };
-		}
-		const block = this.pick();
-		if (!block) return null;
-		const text = facade.blockText(block.id) ?? '';
-		this.caret = { id: block.id, offset: Math.floor(this.random() * (text.length + 1)) };
-		return { ...this.caret, length: text.length };
-	}
-
+	/** One edit of the mix (`edits.mjs`); presence after it when the caret moved. */
 	op() {
-		const blocks = this.list();
-		const crowded = blocks.length > maxBlocks;
-		const long = this.chars > maxChars;
-		const r = this.random();
-		const weights = [
-			['type', long ? 30 : 62],
-			['backspace', long ? 30 : 10],
-			['split', crowded ? 0 : 7],
-			['merge', crowded ? 12 : 4],
-			['move', 4],
-			['mark', 4],
-			['data', 3],
-			['cut', long ? 15 : 3],
-			['jump', 3]
-		];
-		const total = weights.reduce((n, [, w]) => n + w, 0);
-		let roll = r * total;
-		const [kind] = weights.find(([, w]) => (roll -= w) < 0) ?? weights[0];
-		const status = this.perform(kind);
+		const { kind, status } = this.writer.op();
 		bump(stats.ops, `${kind}:${status}`);
 		if (status === 'applied') this.edited();
 		if (status === 'applied' || status === 'applied-local') this.presence();
 	}
 
-	perform(kind) {
-		const { document } = this;
-		const f = document.facade;
-		const run = (fn) => {
-			let result;
-			document.transact(() => (result = fn()));
-			return result?.status ?? 'applied';
-		};
-		if (kind === 'jump') {
-			this.caret = null;
-			return this.at() ? 'applied-local' : 'noop';
-		}
-		const caret = this.at();
-		if (!caret) return 'noop';
-		switch (kind) {
-			case 'type': {
-				const word = WORDS[Math.floor(this.random() * WORDS.length)];
-				const text =
-					this.random() < 0.8 ? word[Math.floor(this.random() * word.length)] : ` ${word}`;
-				const status = run(() => f.insertText(caret.id, caret.offset, text));
-				if (status === 'applied') this.caret.offset += text.length;
-				return status;
-			}
-			case 'backspace': {
-				if (caret.offset === 0) return 'noop';
-				const status = run(() => f.deleteText(caret.id, caret.offset - 1, 1));
-				if (status === 'applied') this.caret.offset -= 1;
-				return status;
-			}
-			case 'split': {
-				const id = `${this.user}-${this.document.doc.clientID}-${++this.seq}`;
-				const status = run(() => f.splitBlock(caret.id, caret.offset, id));
-				if (status === 'applied') {
-					this.caret = { id, offset: 0 };
-					this.listedAt = -Infinity;
-				}
-				return status;
-			}
-			case 'merge': {
-				const status = run(() => f.mergeBackward(caret.id));
-				this.caret = null;
-				this.listedAt = -Infinity;
-				return status;
-			}
-			case 'move': {
-				const block = this.pick();
-				if (!block) return 'noop';
-				const index = Math.floor(this.random() * this.list().length);
-				const status = run(() => f.moveBlock(block.id, { parent: null, index }));
-				this.listedAt = -Infinity;
-				return status;
-			}
-			case 'mark': {
-				if (caret.length < 2) return 'noop';
-				const from = Math.floor(this.random() * (caret.length - 1));
-				const length = 1 + Math.floor(this.random() * Math.min(12, caret.length - from));
-				const mark = ['bold', 'italic', 'code'][Math.floor(this.random() * 3)];
-				return run(() =>
-					f.formatRange(caret.id, from, length, { [mark]: this.random() < 0.7 ? true : null })
-				);
-			}
-			case 'data':
-				return run(() => f.patchData(caret.id, [{ path: ['soak', this.user], value: this.seq++ }]));
-			case 'cut': {
-				if (caret.length < 4) return 'noop';
-				const from = Math.floor(this.random() * (caret.length - 3));
-				const length = Math.min(caret.length - from, 3 + Math.floor(this.random() * 40));
-				const status = run(() => f.deleteText(caret.id, from, length));
-				if (status === 'applied') this.caret.offset = from;
-				return status;
-			}
-		}
-		return 'noop';
-	}
-
-	/** After an applied edit: track its ack (online), or count it into the offline replay. */
+	/**
+	 * After an applied edit: track its ack — made connected and synced, or
+	 * with the socket down (churn, a fault's redial and backoff) — or count
+	 * it into the offline session's replay.
+	 */
 	edited() {
 		const clock = this.clock();
 		if (this.offlineUntil) {
@@ -363,8 +238,8 @@ class Client {
 			this.replay.clock = clock;
 			return;
 		}
-		if (this.provider.wsconnected && this.provider.synced)
-			this.pending.push({ clock, at: performance.now() });
+		const connected = this.provider.wsconnected && this.provider.synced;
+		this.pending.push({ clock, at: performance.now(), connected });
 	}
 
 	/**
@@ -386,11 +261,12 @@ class Client {
 	}
 
 	presence() {
-		if (!this.caret) return;
+		const caret = this.writer.caret;
+		if (!caret) return;
 		this.provider.awareness.setLocalStateField('selections', {
 			soak: {
-				start: { b: this.caret.id, a: { o: this.caret.offset } },
-				end: { b: this.caret.id, a: { o: this.caret.offset } },
+				start: { b: caret.id, a: { o: caret.offset } },
+				end: { b: caret.id, a: { o: caret.offset } },
 				collapsed: true,
 				reversed: false,
 				t: ++this.seq
@@ -410,10 +286,7 @@ class Client {
 			return;
 		}
 		if (this.random() < offlinePerHour / 3600) {
-			bump(stats, 'offline');
-			this.offlineUntil = now + 10_000 + this.random() * 50_000;
-			this.replay = { left: now, edits: 0, clock: this.clock(), reconnected: 0, offlineMs: 0 };
-			this.provider.disconnect();
+			this.goOffline(10_000 + this.random() * 50_000);
 			return;
 		}
 		if (this.random() < churnPerMinute / 60) {
@@ -431,14 +304,39 @@ class Client {
 		}
 	}
 
+	/** Offline for `ms`, still editing; `disturb` reconnects it and the replay is timed. */
+	goOffline(ms) {
+		// Already offline: that session is the one replayed.
+		if (this.offlineUntil) return true;
+		const now = performance.now();
+		bump(stats, 'offline');
+		this.offlineUntil = now + ms;
+		this.replay = { left: now, edits: 0, clock: this.clock(), reconnected: 0, offlineMs: 0 };
+		this.provider.disconnect();
+		return true;
+	}
+
 	reload() {
 		stats.reloads++;
 		this.provider.destroy();
 		this.document.destroy();
 		this.pending.length = 0;
-		this.caret = null;
-		this.listedAt = -Infinity;
 		this.open();
+	}
+
+	/**
+	 * A disturbance `run.mjs` forces: `offline` for `ms`, or a `reload` once
+	 * the client's edits are saved (a page load that loses nothing).
+	 */
+	async force(what, ms) {
+		if (what === 'offline') return this.goOffline(ms);
+		const deadline = performance.now() + 15_000;
+		while (this.offlineUntil || !this.provider.saved) {
+			if (performance.now() > deadline || !this.active) return false;
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+		this.reload();
+		return true;
 	}
 
 	/** Back online for the end: no more edits; resolves once synced and saved. */
@@ -481,6 +379,7 @@ const drain = (gc) => {
 	const out = {
 		...stats,
 		acks: stats.acks.splice(0),
+		acksDisconnected: stats.acksDisconnected.splice(0),
 		replays: stats.replays.splice(0),
 		errors: stats.errors.splice(0),
 		loopP99: loop.percentile(99) / 1e6,
@@ -507,6 +406,12 @@ parentPort.on('message', async (message) => {
 		case 'start':
 			for (const client of clients) client.start();
 			break;
+		case 'disturb': {
+			const client = clients.find((c) => c.index === message.client);
+			const done = client ? await client.force(message.what, message.ms) : false;
+			parentPort.postMessage({ type: 'disturbed', what: message.what, done });
+			break;
+		}
 		case 'stats':
 			parentPort.postMessage({ type: 'stats', stats: drain(message.gc) });
 			break;

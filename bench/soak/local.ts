@@ -5,6 +5,8 @@
  * instance's memory is dropped while its hibernatable sockets stay
  * connected (a hibernation), or with them closed (`sockets=close`, an
  * eviction). Needs the `unsafe_module` compatibility flag; never deployed.
+ * It opens every route when no `SOAK_TOKEN` is set (Miniflare listens on
+ * 127.0.0.1 only); the deployed `worker.ts` refuses them.
  */
 // @ts-ignore -- workerd-internal module, available under the `unsafe_module` flag
 import workerdUnsafe from 'workerd:unsafe';
@@ -14,7 +16,8 @@ export { SoakRoom };
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
-		const routed = await routeSoak(request, env);
+		// Local only: with no `SOAK_TOKEN` the routes are open (127.0.0.1).
+		const routed = await routeSoak(request, env, { open: !env.SOAK_TOKEN });
 		if (routed) return routed;
 		if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
 		const url = new URL(request.url);

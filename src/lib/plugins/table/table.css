@@ -12,6 +12,13 @@
 	--edytor-table-border-color: var(--edytor-table-border, rgb(233, 233, 231));
 }
 [data-edytor-table-scroll] {
+	/*
+	 * The table's place sizes the box, never its columns (`table.overflow`):
+	 * its content gives it no intrinsic width, so a page laying the editor out
+	 * by its content (a grid or flex item, a float) does not grow with a wide
+	 * table; the grid scrolls inside.
+	 */
+	contain: inline-size;
 	overflow-x: auto;
 	overflow-y: hidden;
 	/* Room for the `+` under it (the chrome's), so it never covers the next block. */
@@ -87,6 +94,22 @@
 		0 2px 4px rgba(15, 15, 15, 0.1);
 	color: rgba(55, 53, 47, 0.45);
 	cursor: grab;
+}
+[data-edytor-table-chrome] button[data-edytor-table-grip][data-dragging='true'] {
+	cursor: grabbing;
+}
+/* A grip's drag (`table.drag`): Notion's drop line between two rows or two columns. */
+[data-edytor-table-chrome] [data-edytor-table-drop] {
+	position: absolute;
+	border-radius: 2px;
+	background: var(--edytor-table-drop-color, rgba(35, 131, 226, 0.43));
+	pointer-events: none;
+}
+[data-edytor-table-chrome] [data-edytor-table-drop='row'] {
+	height: 4px;
+}
+[data-edytor-table-chrome] [data-edytor-table-drop='column'] {
+	width: 4px;
 }
 [data-edytor-table-chrome] button[data-edytor-table-grip='column'] {
 	width: 24px;

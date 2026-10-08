@@ -290,7 +290,11 @@
 					const leave = (event: PointerEvent) => chrome.leave(event.relatedTarget);
 					const layer = edytor.overlay.layer;
 					const document = node.ownerDocument;
-					const drag = (event: Event) => (chrome.dragging = event.type === 'dragstart');
+					// Another drag (a block's) hides the chrome; a grip's own drag keeps it (`table.drag`).
+					const drag = (event: Event) =>
+						(chrome.dragging =
+							event.type === 'dragstart' &&
+							!(event.target instanceof Node && layer?.contains(event.target)));
 					node.addEventListener('pointerover', over);
 					node.addEventListener('pointerleave', leave);
 					layer?.addEventListener('pointerleave', leave);

@@ -1778,6 +1778,42 @@ peer deletes is dropped with it. The view writes a width on the column's
 first stored entry by its item id (`~…`), never by a position in the
 deduplicated list, so an extra entry the array holds never takes it.
 
+### `table.width.fit` — a resize keeps the table inside its place (view)
+
+A column's resize (its band's drag, the band's arrow keys) never makes the
+table wider than the room at its place: the width of the table's own box
+(the document's content column; in a layout's column, a toggle or a
+callout, the width there) less the grid's border. The column grows at most
+to what the other columns leave it and never narrows below the minimum
+width; the preview the drag shows and the width the release writes are the
+same clamped value. A table already wider than its place (widths a peer
+wrote on a wider screen, a narrower window) lets a column narrow, and none
+grow. Where nothing is laid out (no layout engine), no room limits it.
+
+### `table.overflow` — a table wider than its place scrolls in its own box (view)
+
+The view never rescales nor rewrites stored widths: a table whose columns
+are wider than its place scrolls sideways inside its own box, which never
+reaches past the place (Notion's simple table). Its chrome shows over the
+visible part only: a column's grip or resize band whose edge is scrolled
+out of the box is not shown, and the `+` beside the table shows only while
+the last column's edge is in view.
+
+### `table.drag` — a row or a column drags by its grip (view)
+
+In an editable view, the grip left of the hovered row and the one above the
+hovered column are drag sources. While one drags, the chrome stays on its
+table and a drop line shows between the two rows (columns) of that table
+the pointer is between, by their middles. The drop is the menu's move: a
+row's `moveTableRows([row], to)` (`table.move-row`), a column's
+`moveTableColumn(table, column, to)` (`table.move-column`, its cells follow
+it), one plan, one undo step; the selection stays (a caret in a moved cell
+moves with its cell) and the keys go to the editor. Nothing is written for a
+drop at the row's (column's) own place (the line before or after it shows
+no line), outside the table (more than 32px past its box), after a cancel
+(Escape), or by a readonly view (which shows no grip). A click with no drag
+opens the grip's menu, whose move rows stay the keyboard's path.
+
 ### `table.merge` — nothing merges into or out of a cell (write, keys)
 
 `canMerge` refuses a cell on either side and `splitBlock` refuses a cell

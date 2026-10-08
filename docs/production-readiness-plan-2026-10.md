@@ -62,7 +62,10 @@ Majors, by dimension:
   quota, `4413` final, no rebase path; a re-seed drops offline clients' unsynced edits: a
   maintainer decision, documented on the Limitations page); ~~comments unbounded, snapshot amplification~~
   (`next.42`); ~~typing in a table O(cells²)~~ (`next.42`); client typing linear in page size
-  (no windowing).
+  (no windowing): most of a keystroke at 10,000 blocks is Chromium's own selection sync over
+  the one editable root (1.8 ms at 1,000 blocks, 23 ms at 10,000); the handles' observer of every
+  block (6 ms) is gone since `1.0.0-rc.1`. Decided 2026-10-08: documented for now; investigate
+  later a chunking strategy like Slate's for large documents.
 - **Features**: ~~markdown paste into blocks~~ (`next.44`); ~~file/video/audio claiming dropped and pasted files
   (with upload progress)~~ (`next.44`); the touch chrome (tested under phone emulation since `1.0.0-rc.1`: handles without hover, grip tap → block menu → Move, `+`, toolbar, all on screen); real devices are the maintainer's.
 - **Code**: the view-side classes (`EdytorSelection`, `BlockHandleController`, `Edytor`,
@@ -74,7 +77,7 @@ Majors, by dimension:
 
 ### What only the maintainer can do
 
-- Apply the `master` branch protection ruleset in CONTRIBUTING.md (a required `CI passed`).
+- ~~Apply the `master` branch protection ruleset in CONTRIBUTING.md~~ (applied 2026-10-08).
 - `npm deprecate edytor@0.0.11 "use edytor"`; after `1.0.0-rc.1` moves `latest`, point `next`
   at it too (`npm dist-tag add edytor@1.0.0-rc.1 next`), which tokenless CI publishing cannot.
 - Enable GitHub's private vulnerability reporting (SECURITY.md sends reports there).

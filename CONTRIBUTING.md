@@ -145,9 +145,9 @@ therefore runs the gate lanes twice per commit (its push run and its pull reques
 pull request run decides the merge. When several runs report the same check name GitHub keeps the
 newest, so the push run must never report the required name.
 
-Branch protection is a repository setting. **It is not applied yet**: until a maintainer creates
-the ruleset below, nothing stops a direct push to `master`, so run the lanes before pushing. The
-ruleset (Settings → Rules → Rulesets → New branch ruleset):
+Branch protection is a repository setting, applied since 2026-10-08: `master` takes changes only
+through a pull request whose `CI passed` check is green, and no one bypasses it. The
+ruleset (Settings → Rules → Rulesets):
 
 - **Name**: `master`; **Enforcement status**: Active.
 - **Target branches**: Include default branch (`master`).

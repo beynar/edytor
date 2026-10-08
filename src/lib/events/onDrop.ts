@@ -20,9 +20,12 @@ import { getDomSelection } from '$lib/selection/domSelection.js';
  */
 const ACCEPTED_FOREIGN_DROP_TYPES = ['Files', 'text/html', 'text/plain', 'text/uri-list'];
 
-// Internal block-move drags (src/lib/plugins/blockHandles/) tag their
-// payload with this private mime type.
-const EDYTOR_BLOCK_DRAG_MIME = 'application/x-edytor-block-id';
+/**
+ * The private MIME an editor's own chrome drag (a block handle's, a table
+ * row's or column's grip) tags its payload with, the dragged block's id
+ * (the table's for a column): no view takes it as a foreign drop.
+ */
+export const EDYTOR_BLOCK_DRAG_MIME = 'application/x-edytor-block-id';
 
 // `dataTransfer.types` cannot distinguish a foreign text drop from an
 // editor-owned text drag (Chrome exposes text/plain + text/html for both).

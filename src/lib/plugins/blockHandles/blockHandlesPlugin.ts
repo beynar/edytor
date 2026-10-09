@@ -116,6 +116,22 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 		const ids = new WeakMap<Element, string>();
 		/** Layout is computed (a browser): the near band is measured, else every block is near. */
 		const measured = typeof IntersectionObserver !== 'undefined';
+		/** The blocks the band gained, mounted after the frame's paint (`afterPaint`). */
+		let gained: Set<string> | null = null;
+		let afterPaint: ReturnType<typeof setTimeout> | undefined;
+		/**
+		 * Browser rule `handles.after-paint` (one named timer): a handle the band
+		 * gains mounts in a task queued from the overlay's frame, so after that
+		 * frame's paint: a key that adds a block (Enter, a paste) paints its text
+		 * first, the new blocks' handles a frame later. A handle the band loses
+		 * goes at once; hovered, selected and focused handles do not wait.
+		 */
+		const mountGained = () => {
+			afterPaint = undefined;
+			const ids = gained;
+			gained = null;
+			if (ids) for (const id of ids) if (blocks.has(id) && !near.has(id)) near.add(id);
+		};
 		/** The near band, measured on the overlay's frames (a scroll, a resize, a commit). */
 		const measureNear = () => {
 			const view = edytor.node?.ownerDocument.defaultView;
@@ -129,7 +145,9 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 			for (const block of nearTop(tops, view.innerHeight)) visit(block);
 			return () => {
 				for (const id of near) if (!next.has(id)) near.delete(id);
-				for (const id of next) if (!near.has(id)) near.add(id);
+				const add = [...next].filter((id) => !near.has(id));
+				gained = add.length ? new Set(add) : null;
+				if (gained) afterPaint ??= setTimeout(mountGained);
 			};
 		};
 		/**
@@ -186,6 +204,9 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 					layer.removeEventListener('pointerover', hoverOverlay);
 					layer.removeEventListener('pointerleave', unhover);
 					offNear?.();
+					clearTimeout(afterPaint);
+					afterPaint = undefined;
+					gained = null;
 					void unmount(component);
 				};
 			},

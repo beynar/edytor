@@ -150,6 +150,48 @@ test.describe('P8 — a large page with content-visibility', () => {
 		await expect.poll(() => inViewport(page, 'b4321')).toBe(true);
 	});
 
+	test('handles.after-paint: an Enter paints its new block before the block’s handle mounts', async ({
+		page
+	}) => {
+		await open(page);
+		await textOf(page, 'b3000').scrollIntoViewIfNeeded();
+		await textOf(page, 'b3000').click();
+		await page.keyboard.press('End');
+		// In the Enter's own frame, after its callbacks and layout and before its paint
+		// (a ResizeObserver callback), the new block shows and its handle does not yet.
+		await page.evaluate(() => {
+			const w = window as unknown as { __paint: { id: string; handle: boolean } | null };
+			w.__paint = null;
+			const root = document.querySelector<HTMLElement>('main > [data-edytor]')!;
+			const tops = () =>
+				[...root.querySelectorAll<HTMLElement>(':scope > [data-edytor-block="true"]')].map(
+					(n) => n.dataset.edytorId!
+				);
+			const before = new Set(tops());
+			const observer = new ResizeObserver(() => {
+				const added = tops().filter((id) => !before.has(id));
+				if (!added.length || w.__paint) return;
+				w.__paint = {
+					id: added[0]!,
+					handle: !!document.querySelector(
+						`[data-edytor-block-handle-host][data-block-id="${added[0]}"]`
+					)
+				};
+				observer.disconnect();
+			});
+			observer.observe(root);
+		});
+		await page.keyboard.press('Enter');
+		const paint = await page
+			.waitForFunction(() => (window as unknown as { __paint: unknown }).__paint)
+			.then((h) => h.jsonValue() as Promise<{ id: string; handle: boolean }>);
+		expect(paint.handle).toBe(false);
+		// The task after that paint mounts it.
+		await expect(
+			page.locator(`[data-edytor-block-handle-host][data-block-id="${paint.id}"]`)
+		).toHaveCount(1);
+	});
+
 	test('a far block’s handle mounts near the viewport, aligned with it, and drags it', async ({
 		page
 	}) => {

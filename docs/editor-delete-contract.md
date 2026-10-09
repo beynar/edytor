@@ -1652,6 +1652,15 @@ Where a block handle's drag drops. The moves themselves are
 `moveBlocks`' (`left`/`right`: `layout.place-beside`); these rows say
 which placement a pointer position offers.
 
+### `handles.after-paint` — a handle the near band gains mounts after the frame's paint (view)
+
+The near band (`nearTop`) is measured on the overlay's frames; a block it
+loses drops its handle at once, a block it gains mounts its handle in one
+task queued from that frame (the one named timer of the handles), so after
+the frame's paint: a key that adds blocks (Enter, a paste) paints the text
+first and the new blocks' handles a frame or two later. Hovered, selected,
+focused and dragged handles do not wait. Pins: `large-page.spec.ts`.
+
 ### `dnd.reach` — a drag outside the content column still drops
 
 While a block drag runs (never readonly: there is none), a pointer within

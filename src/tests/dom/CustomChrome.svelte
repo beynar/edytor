@@ -7,15 +7,25 @@
 	import { createEmbedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
 	import { createImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 	import { createSuggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
+	import { createTablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
+	import { createCodePlugin } from '$lib/plugins/code/CodePlugin.svelte';
+	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import type {
+		BlockHandleSnippetPayload,
 		BlockMenuController,
+		CodeHeader,
+		EquationEditor,
 		ImageControls,
 		ImageEmptyController,
+		LanguageMenu,
 		MediaEmptyController,
 		MentionItem,
 		SlashMenuController,
 		SuggestionBarPayload,
+		TableAddPayload,
+		TableChrome,
+		TableGripPayload,
 		ToolbarController,
 		TriggerMenuController,
 		UrlPasteController
@@ -24,9 +34,11 @@
 	/**
 	 * Every chrome surface drawn by its own snippet, each keeping the built-in
 	 * keyboard and ARIA through the controllers' attachments (`popup`, `keys`,
-	 * `option(index)`, `linkField`, `bar`, `altField`, `field`). Used by the
-	 * jsdom contract rows (`custom-ui.test.ts`) and the browser rows
-	 * (`/test/custom`, `custom-chrome.spec.ts`).
+	 * `option(index)`, `linkField`, `bar`, `altField`, `field`, a table
+	 * grip's `grip`, a code header's `button`) and payloads (a block handle's
+	 * `expanded`, `controls`, `labels`). Used by the jsdom contract rows
+	 * (`custom-ui.test.ts`) and the browser rows (`/test/custom`,
+	 * `custom-chrome.spec.ts`).
 	 */
 	let { edytor = $bindable(), value }: { edytor?: EdytorContext; value: JSONDoc } = $props();
 
@@ -46,9 +58,155 @@
 		}),
 		createEmbedPlugin({ menu: pasteMenu, empty: mediaEmpty }),
 		createImagePlugin({ toolbar: imageToolbar, empty: imageEmpty }),
-		createSuggestionsPlugin({ bar: suggestionBar })
+		createSuggestionsPlugin({ bar: suggestionBar }),
+		createTablePlugin({ grip: tableGrip, menu: tableMenu, add: tableAdd }),
+		createCodePlugin({ header: codeHeader, menu: languageMenu }),
+		createEquationPlugin({ katex: false, panel: equationPanel })
 	];
+	const keep = (event: MouseEvent) => event.preventDefault();
 </script>
+
+{#snippet handle({
+	block,
+	label,
+	grip,
+	add,
+	readonly,
+	expanded,
+	controls,
+	labels
+}: BlockHandleSnippetPayload)}
+	{#if !readonly}
+		<button
+			type="button"
+			class="custom-handle"
+			data-testid="custom-add"
+			data-block-id={block.id}
+			aria-label={labels.add(label)}
+			aria-expanded={expanded.add ? 'true' : undefined}
+			aria-controls={controls.add}
+			onmousedown={keep}
+			onclick={(event) => add(event.altKey, event.currentTarget)}>+</button
+		>
+		<button
+			type="button"
+			class="custom-handle"
+			data-testid="custom-grip"
+			data-block-id={block.id}
+			use:grip
+			aria-label={labels.grip(label)}
+			aria-expanded={expanded.grip ? 'true' : undefined}
+			aria-controls={controls.grip}>⠿</button
+		>
+	{/if}
+{/snippet}
+
+{#snippet tableGrip(payload: TableGripPayload)}
+	<button
+		type="button"
+		class="custom-table-grip"
+		data-testid="custom-table-grip"
+		data-kind={payload.kind}
+		data-index={payload.index}
+		{@attach payload.grip}>{payload.kind === 'row' ? '⋮' : '⋯'}</button
+	>
+{/snippet}
+
+{#snippet tableMenu(chrome: TableChrome)}
+	<div
+		class="custom-table-menu"
+		data-testid="custom-table-menu"
+		{@attach chrome.popup}
+		{@attach chrome.keys}
+	>
+		{#each chrome.items as item (item.item.id)}
+			<button
+				type="button"
+				{...item.option}
+				data-testid="custom-table-row"
+				data-row={item.item.id}
+				onmousemove={item.select}
+				onclick={item.run}>{item.label}</button
+			>
+		{/each}
+	</div>
+{/snippet}
+
+{#snippet tableAdd(payload: TableAddPayload)}
+	<button
+		type="button"
+		class="custom-table-add"
+		data-testid="custom-table-add"
+		data-kind={payload.kind}
+		aria-label={payload.label}
+		onclick={payload.add}>+</button
+	>
+{/snippet}
+
+{#snippet codeHeader(header: CodeHeader)}
+	<div data-testid="custom-code-header">
+		{#if header.editable}
+			<button type="button" data-testid="custom-code-language" {@attach header.button}
+				>{header.label}</button
+			>
+		{:else}
+			<span data-testid="custom-code-language">{header.label}</span>
+		{/if}
+		<button
+			type="button"
+			data-testid="custom-code-copy"
+			onmousedown={keep}
+			onclick={() => void header.copy()}
+			>{header.copied ? header.labels.copied : header.labels.copy}</button
+		>
+	</div>
+{/snippet}
+
+{#snippet languageMenu(menu: LanguageMenu)}
+	<div class="custom-language-menu" data-testid="custom-language-menu">
+		<input
+			data-testid="custom-language-field"
+			placeholder={menu.labels.search}
+			value={menu.query}
+			oninput={(event) => menu.search(event.currentTarget.value)}
+			{@attach menu.keys}
+		/>
+		<ul {@attach menu.popup}>
+			{#each menu.items as item (item.item.id)}
+				<li
+					{...item.option}
+					data-testid="custom-language-row"
+					data-language={item.item.id}
+					data-current={item.current}
+					onmousemove={item.select}
+					onclick={item.run}
+				>
+					{item.label}
+				</li>
+			{/each}
+		</ul>
+	</div>
+{/snippet}
+
+{#snippet equationPanel(editor: EquationEditor)}
+	<div
+		class="custom-equation-panel"
+		data-testid="custom-equation-panel"
+		role="dialog"
+		aria-label={editor.labels.editor}
+	>
+		<input
+			data-testid="custom-equation-field"
+			aria-label={editor.labels.editor}
+			value={editor.expression}
+			oninput={(event) => editor.set(event.currentTarget.value)}
+			{@attach editor.field}
+		/>
+		<button type="button" onmousedown={keep} onclick={() => editor.close()}
+			>{editor.labels.done}</button
+		>
+	</div>
+{/snippet}
 
 {#snippet slashMenu(menu: SlashMenuController)}
 	<div class="custom-slash" data-testid="custom-slash-menu">
@@ -227,4 +385,48 @@
 	</div>
 {/snippet}
 
-<Edytor bind:edytor {plugins} {value} aria-label="Custom chrome" />
+<Edytor bind:edytor {plugins} {value} blockHandles={{ handle }} aria-label="Custom chrome" />
+
+<style>
+	.custom-handle {
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: #73726e;
+		cursor: pointer;
+	}
+	.custom-table-grip {
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		border: 1px solid #73726e;
+		border-radius: 4px;
+		background: #fff;
+		color: #2c2c2b;
+		cursor: grab;
+	}
+	.custom-table-add {
+		width: 100%;
+		height: 100%;
+		min-width: 14px;
+		min-height: 14px;
+		padding: 0;
+		border: 0;
+		background: #f1f1ef;
+		color: #2c2c2b;
+	}
+	.custom-table-menu,
+	.custom-language-menu,
+	.custom-equation-panel {
+		padding: 4px;
+		background: #fff;
+		color: #2c2c2b;
+		box-shadow: 0 0 0 1px #d3d1cb;
+	}
+	.custom-table-menu [data-selected='true'],
+	.custom-language-menu [data-selected='true'] {
+		background: #e3e2e0;
+	}
+</style>

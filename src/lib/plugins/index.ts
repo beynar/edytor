@@ -33,6 +33,8 @@ export {
 	type CodeLanguage,
 	type CodePluginOptions
 } from './code/CodePlugin.svelte';
+export type { CodeHeader } from './code/header.svelte.js';
+export type { LanguageMenu, LanguageMenuItem, LanguageRow } from './code/languageMenu.svelte.js';
 export { markdownShortcutsPlugin } from './markdownShortcuts.js';
 export {
 	createMentionPlugin,
@@ -157,6 +159,14 @@ export {
 	isTablePlugin,
 	type TablePluginOptions
 } from './table/TablePlugin.svelte';
+export type {
+	TableChrome,
+	TableMenu,
+	TableMenuRow,
+	TableMenuItem,
+	TableGripPayload,
+	TableAddPayload
+} from './table/chrome.svelte.js';
 // The table kind's value as JSON (also on `edytor/crdt/edytor`).
 export { tableBlock, type TableBlockOptions } from '../crdt/tables.js';
 export {
@@ -165,6 +175,8 @@ export {
 	KATEX_VERSION,
 	type EquationPluginOptions,
 	type EquationData,
+	type EquationEditor,
+	type EquationTarget,
 	type KatexLike,
 	type KatexLoader
 } from './equation/EquationPlugin.svelte';

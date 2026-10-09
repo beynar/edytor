@@ -597,6 +597,54 @@ describe('the chrome: menus and `+`', () => {
 		]);
 	});
 
+	it('a grip’s menu holds the keys (WAI-ARIA menu): the arrows skip what cannot run, Enter runs, Escape returns', async () => {
+		const { edytor, editor } = await render();
+		await hover(edytor, editor, 'C');
+		const grip = layer().querySelector<HTMLButtonElement>('[data-edytor-table-grip="row"]')!;
+		expect(grip.getAttribute('aria-haspopup')).toBe('menu');
+		expect(grip.getAttribute('aria-expanded')).toBe('false');
+		grip.click();
+		await flushDomUpdates();
+		const menu = layer().querySelector<HTMLElement>('[data-edytor-table-menu="row"]')!;
+		expect(menu.getAttribute('role')).toBe('menu');
+		expect(document.activeElement).toBe(menu);
+		expect(grip.getAttribute('aria-expanded')).toBe('true');
+		expect(grip.getAttribute('aria-controls')).toBe(menu.id);
+		expect(editor.getAttribute('aria-controls')).toBe(menu.id);
+		const active = () => document.getElementById(menu.getAttribute('aria-activedescendant')!);
+		expect(active()?.dataset.testid).toBe('table-menu-insert-above');
+		const press = async (key: string) => {
+			menu.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+			await flushDomUpdates();
+		};
+		await press('End');
+		expect(active()?.dataset.testid).toBe('table-menu-delete-row');
+		// The last row cannot move down: the arrows pass it.
+		await press('ArrowUp');
+		expect(active()?.dataset.testid).toBe('table-menu-move-up');
+		expect(
+			layer().querySelector('[data-testid="table-menu-move-down"]')!.getAttribute('aria-disabled')
+		).toBe('true');
+		await press('Enter');
+		expect(grid(edytor)).toEqual([
+			['c', 'd'],
+			['a', 'b']
+		]);
+		expect(layer().querySelector('[data-edytor-table-menu]')).toBeNull();
+		expect(editor.hasAttribute('aria-controls')).toBe(false);
+
+		await hover(edytor, editor, 'A');
+		layer().querySelector<HTMLButtonElement>('[data-edytor-table-grip="row"]')!.click();
+		await flushDomUpdates();
+		const again = layer().querySelector<HTMLElement>('[data-edytor-table-menu]')!;
+		again.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		await flushDomUpdates();
+		expect(layer().querySelector('[data-edytor-table-menu]')).toBeNull();
+		expect(document.activeElement).toBe(editor);
+	});
+
 	it('a readonly view shows no chrome', async () => {
 		const { edytor, editor } = await render();
 		edytor.readonly = true;

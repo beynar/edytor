@@ -22,12 +22,20 @@
 		parseEquation,
 		type EquationData,
 		type EquationPluginOptions,
+		type EquationTarget,
 		type KatexLike,
 		type KatexLoader
 	} from './equation.svelte.js';
 	import { katexLoaderOf } from './katex.js';
 
-	export type { EquationData, EquationPluginOptions, KatexLike, KatexLoader };
+	export type {
+		EquationData,
+		EquationEditor,
+		EquationPluginOptions,
+		EquationTarget,
+		KatexLike,
+		KatexLoader
+	};
 	export { KATEX_CDN, KATEX_VERSION } from './katex.js';
 
 	/** The inline equation's atom kind. */
@@ -154,7 +162,7 @@
 					const offPress = onPress(edytor, node.ownerDocument, editor.pressed, true);
 					const unmount = edytor.overlay.mount(
 						EquationEditorPanel,
-						{ editor, readonly: () => edytor.readonly },
+						{ editor, readonly: () => edytor.readonly, panel: options.panel },
 						'edytor-equation-editor-host',
 						// Above the block handles (5), as the image chrome.
 						7,

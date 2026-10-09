@@ -161,12 +161,11 @@ describe('custom snippets with the attachments', () => {
 		['aria-controls', 'aria-activedescendant', 'aria-haspopup'].filter((name) =>
 			editor.hasAttribute(name)
 		);
+	/** The fixture's own handle (`handle` snippet): its `+` and grip carry the payload's ARIA. */
 	const plus = (id: string) =>
-		document.querySelector<HTMLElement>(
-			`[data-edytor-block-handle-host][data-block-id="${id}"] [data-testid="block-add"]`
-		)!;
+		document.querySelector<HTMLElement>(`[data-testid="custom-add"][data-block-id="${id}"]`)!;
 	const grip = (id: string) =>
-		document.querySelector<HTMLElement>(`[data-testid="block-handle"][data-block-id="${id}"]`)!;
+		document.querySelector<HTMLElement>(`[data-testid="custom-grip"][data-block-id="${id}"]`)!;
 
 	it('a `/` menu: the root names the listbox and its highlighted option, follows the arrows', async () => {
 		const { edytor, editor } = await chrome([p('a')]);
@@ -452,5 +451,310 @@ describe('custom snippets with the attachments', () => {
 			[{ text: 'a' }],
 			[{ text: 'more' }]
 		]);
+	});
+
+	it('a handle: its `+` and grip name the menu they opened from the payload (`expanded`, `controls`)', async () => {
+		const { editor } = await chrome([p('a'), p('b')]);
+		expect(plus('a').getAttribute('aria-label')).toBe(englishLabels.blockHandles.add('Text'));
+		expect(grip('a').getAttribute('aria-label')).toBe(englishLabels.blockHandles.grip('Text'));
+		expect(plus('a').hasAttribute('aria-controls')).toBe(false);
+		await click(plus('a'));
+		const list = named(plus('a').getAttribute('aria-controls'));
+		expect(list?.getAttribute('role')).toBe('listbox');
+		expect(named(editor.getAttribute('aria-controls'))).toBe(list);
+		await key(one('custom-slash-field')!, { key: 'Escape' });
+		expect(plus('a').hasAttribute('aria-controls')).toBe(false);
+
+		await click(grip('b'));
+		expect(grip('b').getAttribute('aria-expanded')).toBe('true');
+		expect(named(grip('b').getAttribute('aria-controls'))?.getAttribute('role')).toBe('menu');
+		expect(grip('a').hasAttribute('aria-expanded')).toBe(false);
+		await key(one('custom-block-menu-field')!, { key: 'Escape' });
+		expect(grip('b').hasAttribute('aria-controls')).toBe(false);
+	});
+
+	describe('a table’s grips, menu and `+` (`grip`, `menu`, `add`)', () => {
+		const cell = (id: string, column: string): JSONBlock => ({
+			id,
+			type: 'tableCell',
+			data: { column },
+			content: [{ text: id.toLowerCase() }]
+		});
+		const table = (): JSONBlock[] => [
+			p('p'),
+			{
+				id: 'T',
+				type: 'table',
+				data: { columns: [{ id: 'c1' }, { id: 'c2' }] },
+				children: [
+					{ id: 'R1', type: 'tableRow', children: [cell('A', 'c1'), cell('B', 'c2')] },
+					{ id: 'R2', type: 'tableRow', children: [cell('C', 'c1'), cell('D', 'c2')] }
+				]
+			},
+			p('z')
+		];
+		const texts = (edytor: Edytor) =>
+			edytor.facade
+				.tableGrid('T')
+				?.rows.map((r) => r.cells.map((c) => (c === null ? '_' : edytor.facade.blockText(c))));
+		const hover = async (edytor: Edytor, editor: HTMLElement, id: string) => {
+			editor
+				.querySelector(`[data-edytor-id="${id}"]`)!
+				.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+			edytor.overlay.invalidate();
+			await frame();
+		};
+		const tableGrip = (kind: 'row' | 'column') =>
+			document.querySelector<HTMLElement>(`[data-testid="custom-table-grip"][data-kind="${kind}"]`);
+		const rows = () => all('custom-table-row');
+
+		it('a grip: drags, names its menu; its menu holds the keys, walks the rows that run, Escape returns', async () => {
+			const { edytor, editor } = await chrome(table());
+			await hover(edytor, editor, 'A');
+			const grip = tableGrip('row')!;
+			// No built-in grip: the app's, placed in the grip's host.
+			expect(document.querySelector('[data-edytor-table-grip]')).toBeNull();
+			expect(grip.closest('[data-edytor-table-grip-host="row"]')).not.toBeNull();
+			expect(grip.dataset.index).toBe('0');
+			expect(grip.getAttribute('draggable')).toBe('true');
+			expect(grip.getAttribute('aria-label')).toBe(englishLabels.table.rowMenu);
+			expect(grip.getAttribute('aria-haspopup')).toBe('menu');
+			expect(grip.getAttribute('aria-expanded')).toBe('false');
+			expect(tableGrip('column')?.getAttribute('aria-label')).toBe(englishLabels.table.columnMenu);
+
+			await click(grip);
+			const menu = one('custom-table-menu')!;
+			expect(menu.closest('[data-edytor-table-menu-host]')).not.toBeNull();
+			expect(document.activeElement).toBe(menu);
+			expect(menu.getAttribute('role')).toBe('menu');
+			expect(menu.getAttribute('aria-label')).toBe(englishLabels.table.rowMenu);
+			expect(menu.dataset.edytorTableMenu).toBe('row');
+			expect(named(editor.getAttribute('aria-controls'))).toBe(menu);
+			expect(editor.getAttribute('aria-haspopup')).toBe('menu');
+			expect(grip.getAttribute('aria-expanded')).toBe('true');
+			expect(named(grip.getAttribute('aria-controls'))).toBe(menu);
+			expect(rows().map((row) => row.dataset.row)).toEqual([
+				'insert-above',
+				'insert-below',
+				'move-up',
+				'move-down',
+				'delete-row'
+			]);
+			expect(rows().every((row) => row.getAttribute('role') === 'menuitem')).toBe(true);
+			// The first row cannot move up.
+			expect(rows()[2]!.getAttribute('aria-disabled')).toBe('true');
+			expect(named(menu.getAttribute('aria-activedescendant'))).toBe(rows()[0]);
+			expect(rows()[0]!.dataset.selected).toBe('true');
+			await key(menu, { key: 'ArrowDown' });
+			expect(named(menu.getAttribute('aria-activedescendant'))).toBe(rows()[1]);
+			// The arrows skip the row that cannot run.
+			await key(menu, { key: 'ArrowDown' });
+			expect(named(menu.getAttribute('aria-activedescendant'))).toBe(rows()[3]);
+			await key(menu, { key: 'End' });
+			expect(named(menu.getAttribute('aria-activedescendant'))).toBe(rows()[4]);
+			await key(menu, { key: 'ArrowDown' });
+			expect(named(menu.getAttribute('aria-activedescendant'))).toBe(rows()[0]);
+			await key(menu, { key: 'ArrowUp' });
+			expect(named(menu.getAttribute('aria-activedescendant'))).toBe(rows()[4]);
+			await key(menu, { key: 'Home' });
+			expect(named(menu.getAttribute('aria-activedescendant'))).toBe(rows()[0]);
+
+			await key(menu, { key: 'Escape' });
+			expect(one('custom-table-menu')).toBeNull();
+			expect(noPopup(editor)).toEqual([]);
+			expect(tableGrip('row')?.getAttribute('aria-expanded')).toBe('false');
+			expect(document.activeElement).toBe(editor);
+			expect(texts(edytor)).toEqual([
+				['a', 'b'],
+				['c', 'd']
+			]);
+		});
+
+		it('a grip’s menu: Enter runs the keyboard’s row; ArrowDown on a grip opens it', async () => {
+			const { edytor, editor } = await chrome(table());
+			await hover(edytor, editor, 'A');
+			await click(tableGrip('row')!);
+			await key(one('custom-table-menu')!, { key: 'ArrowDown' });
+			await key(one('custom-table-menu')!, { key: 'Enter' });
+			expect(one('custom-table-menu')).toBeNull();
+			expect(texts(edytor)).toEqual([
+				['a', 'b'],
+				['', ''],
+				['c', 'd']
+			]);
+
+			await hover(edytor, editor, 'B');
+			const column = tableGrip('column')!;
+			await key(column, { key: 'ArrowDown' });
+			const menu = one('custom-table-menu')!;
+			expect(menu.dataset.edytorTableMenu).toBe('column');
+			expect(menu.getAttribute('aria-label')).toBe(englishLabels.table.columnMenu);
+			expect(document.activeElement).toBe(menu);
+			// Move left: the second column becomes the first.
+			const at = rows().findIndex((row) => row.dataset.row === 'move-left');
+			for (let step = 0; step < at; step++) await key(menu, { key: 'ArrowDown' });
+			await key(menu, { key: 'Enter' });
+			expect(texts(edytor)).toEqual([
+				['b', 'a'],
+				['', ''],
+				['d', 'c']
+			]);
+		});
+
+		it('a `+` snippet adds a row under the table and a column beside it', async () => {
+			const { edytor, editor } = await chrome(table());
+			await hover(edytor, editor, 'A');
+			const adds = all('custom-table-add');
+			expect(adds.map((add) => add.dataset.kind)).toEqual(['row', 'column']);
+			expect(adds.map((add) => add.getAttribute('aria-label'))).toEqual([
+				englishLabels.table.addRow,
+				englishLabels.table.addColumn
+			]);
+			expect(document.querySelector('[data-edytor-table-add]')).toBeNull();
+			await click(adds[0]!);
+			expect(texts(edytor)).toHaveLength(3);
+			await hover(edytor, editor, 'A');
+			await click(all('custom-table-add')[1]!);
+			expect(texts(edytor)?.[0]).toEqual(['a', 'b', '']);
+		});
+	});
+
+	describe('a code block’s header and language list (`header`, `menu`)', () => {
+		const code = (language = 'sql'): JSONBlock[] => [
+			{
+				id: 'code',
+				type: 'code',
+				data: { language },
+				children: [{ id: 'l0', type: 'codeLine', content: [{ text: 'x' }] }]
+			}
+		];
+		const button = () => one('custom-code-language')!;
+		const rows = () => all('custom-language-row');
+		const highlighted = () => rows().find((row) => row.getAttribute('aria-selected') === 'true');
+
+		it('the header’s button opens the list; its field holds the keys and names the highlighted row', async () => {
+			const { edytor, editor } = await chrome(code());
+			expect(document.querySelector('[data-edytor-code-language]')).toBeNull();
+			expect(button().textContent).toBe('SQL');
+			expect(button().getAttribute('aria-haspopup')).toBe('listbox');
+			expect(button().getAttribute('aria-expanded')).toBe('false');
+			expect(button().getAttribute('aria-label')).toBe(`${englishLabels.code.language}: SQL`);
+
+			await click(button());
+			// Placed under the button in the overlay's next frame.
+			await frame();
+			const field = one('custom-language-field') as HTMLInputElement;
+			expect(document.activeElement).toBe(field);
+			expect(field.getAttribute('role')).toBe('combobox');
+			expect(field.getAttribute('aria-expanded')).toBe('true');
+			const list = named(field.getAttribute('aria-controls'));
+			expect(list?.getAttribute('role')).toBe('listbox');
+			expect(list?.getAttribute('aria-label')).toBe(englishLabels.code.language);
+			expect(named(editor.getAttribute('aria-controls'))).toBe(list);
+			expect(editor.getAttribute('aria-haspopup')).toBe('listbox');
+			expect(button().getAttribute('aria-expanded')).toBe('true');
+			expect(named(button().getAttribute('aria-controls'))).toBe(list);
+			expect(rows().every((row) => row.getAttribute('role') === 'option')).toBe(true);
+			// The block's language is highlighted and marked.
+			expect(highlighted()?.dataset.language).toBe('sql');
+			expect(highlighted()?.dataset.current).toBe('true');
+			expect(named(field.getAttribute('aria-activedescendant'))).toBe(highlighted());
+
+			await fill(field, 'script');
+			expect(rows().map((row) => row.dataset.language)).toEqual(['javascript', 'typescript']);
+			await key(field, { key: 'ArrowDown' });
+			expect(highlighted()?.dataset.language).toBe('typescript');
+			expect(named(field.getAttribute('aria-activedescendant'))).toBe(highlighted());
+			await key(field, { key: 'Enter' });
+			expect(one('custom-language-menu')).toBeNull();
+			expect(edytor.facade.blockDataOf('code')).toEqual({ language: 'typescript' });
+			expect(button().textContent).toBe('TypeScript');
+			expect(button().getAttribute('aria-expanded')).toBe('false');
+			expect(noPopup(editor)).toEqual([]);
+		});
+
+		it('opened by the keys, Escape gives them back to the button and writes nothing', async () => {
+			const { edytor, editor } = await chrome(code());
+			edytor.selection.setAtTextOffset(edytor.idToBlock.get('l0')!.firstText!, 1);
+			await flushDomUpdates();
+			await dispatchDomKeyDown(editor, { key: 'F10', code: 'F10', altKey: true });
+			expect(document.activeElement).toBe(button());
+			await key(button(), { key: 'ArrowDown' });
+			await frame();
+			const field = one('custom-language-field')!;
+			expect(document.activeElement).toBe(field);
+			await key(field, { key: 'ArrowDown' });
+			await key(field, { key: 'Escape' });
+			expect(one('custom-language-menu')).toBeNull();
+			expect(document.activeElement).toBe(button());
+			expect(edytor.facade.blockDataOf('code')).toEqual({ language: 'sql' });
+			// Escape on the button gives the keys back to the editor.
+			await key(button(), { key: 'Escape' });
+			expect(document.activeElement).toBe(editor);
+		});
+
+		it('a readonly view: the header shows the label, nothing opens', async () => {
+			const { edytor } = await chrome(code('python'));
+			edytor.readonly = true;
+			await flushDomUpdates();
+			expect(button().tagName).toBe('SPAN');
+			expect(button().textContent).toBe('Python');
+		});
+	});
+
+	describe('an equation’s editor (`panel`)', () => {
+		const equation = (): JSONBlock[] => [
+			{ id: 'eq', type: 'equation', data: { expression: 'x^2' } },
+			p('b')
+		];
+		const open = async (editor: HTMLElement) => {
+			editor
+				.querySelector<HTMLElement>('[data-edytor-equation]')!
+				.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+			await frame();
+		};
+
+		it('the field takes the focus; typing writes the source; Enter closes, the equation selected', async () => {
+			const { edytor, editor } = await chrome(equation());
+			await open(editor);
+			const panel = one('custom-equation-panel')!;
+			expect(document.querySelector('[data-edytor-equation-editor]')).toBeNull();
+			expect(panel.closest('[data-edytor-equation-panel][data-display="block"]')).not.toBeNull();
+			const field = one('custom-equation-field') as HTMLInputElement;
+			expect(document.activeElement).toBe(field);
+			expect(field.value).toBe('x^2');
+			expect(field.selectionStart).toBe(3);
+			await fill(field, 'x^3');
+			expect(edytor.facade.blockDataOf('eq')).toEqual({ expression: 'x^3' });
+			// Shift+Enter in a block equation is the field's own (a newline in a textarea).
+			await key(field, { key: 'Enter', shiftKey: true });
+			expect(one('custom-equation-panel')).not.toBeNull();
+			await key(field, { key: 'Enter' });
+			expect(one('custom-equation-panel')).toBeNull();
+			expect(edytor.selection.value).toMatchObject({ kind: 'blocks', ids: ['eq'] });
+			expect(document.activeElement).toBe(editor);
+		});
+
+		it('Enter on the selected equation opens it again; Escape closes it', async () => {
+			const { edytor, editor } = await chrome(equation());
+			edytor.selection.selectBlocks(edytor.idToBlock.get('eq')!);
+			await flushDomUpdates();
+			await dispatchDomKeyDown(editor, { key: 'Enter' });
+			await frame();
+			const field = one('custom-equation-field')!;
+			expect(document.activeElement).toBe(field);
+			await key(field, { key: 'Escape' });
+			expect(one('custom-equation-panel')).toBeNull();
+			expect(edytor.facade.blockDataOf('eq')).toEqual({ expression: 'x^2' });
+		});
+
+		it('focus leaving the panel closes it', async () => {
+			const { editor } = await chrome(equation());
+			await open(editor);
+			const field = one('custom-equation-field')!;
+			field.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: editor }));
+			await flushDomUpdates();
+			expect(one('custom-equation-panel')).toBeNull();
+		});
 	});
 });

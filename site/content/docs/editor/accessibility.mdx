@@ -41,6 +41,8 @@ While a menu is open, the element that holds the keyboard names it with `aria-co
 | [Block menu](/docs/plugins/block-menu) | Its search field: `aria-controls` (the `menu`, or the open flyout, Turn into or Color) and `aria-activedescendant` (the highlighted `menuitem`, a colour's `menuitemradio`) | `aria-controls`, `aria-haspopup="menu"` | the grip: `aria-expanded="true"`, `aria-controls`, `aria-haspopup="menu"` |
 | [Selection toolbar](/docs/plugins/toolbar) | The root, until <kbd>Alt</kbd>+<kbd>F10</kbd> | `aria-controls` (the `toolbar`), `aria-keyshortcuts="Alt+F10"` | none |
 | The menu a URL pasted on an empty line opens ([embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark)) | The root | `aria-controls` (the `listbox`), `aria-haspopup="listbox"`, `aria-activedescendant` (the highlighted `option`) | none |
+| A [table](/docs/plugins/table#rows-and-columns) row's or column's grip menu | The `menu` itself, focused, with `aria-activedescendant` (the highlighted `menuitem`; one that cannot run is `aria-disabled` and the arrows pass it) | `aria-controls`, `aria-haspopup="menu"` | the grip: `aria-expanded`, `aria-controls`, `aria-haspopup="menu"` |
+| A [code block](/docs/plugins/code#languages)'s language list | Its search field, a `combobox` with `aria-controls` and `aria-activedescendant` (the highlighted `option`) | `aria-controls`, `aria-haspopup="listbox"` | the language button: `aria-expanded`, `aria-controls`, `aria-haspopup="listbox"` |
 
 The attributes are present only while the popup is open. The root is a textbox, which takes no `aria-expanded` in WAI-ARIA 1.2, so the open state is on the control that opened the popup. Ids are unique per view (`edytor-<n>-…`), so several editors on a page never share one.
 

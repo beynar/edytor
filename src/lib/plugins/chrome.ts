@@ -41,6 +41,8 @@ export type OptionAttributes = {
 	tabindex: 0 | -1;
 	'aria-selected'?: boolean;
 	'aria-checked'?: boolean;
+	/** A row that cannot run now (a table menu's Move up on the first row). */
+	'aria-disabled'?: boolean;
 	'aria-haspopup'?: 'menu';
 	'aria-expanded'?: boolean;
 	'data-selected': boolean;

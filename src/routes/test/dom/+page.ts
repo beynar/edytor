@@ -73,6 +73,8 @@ export const load: PageLoad = ({ url }) => {
 		handles: url.searchParams.get('handles') === 'true',
 		// The opt-in find plugin (`find=true`): Mod+F is the browser's without it.
 		find: url.searchParams.get('find') === 'true',
+		// `marquee=1` lists the marquee plugin, the editor shell (800px wide, 72px side padding) its container.
+		marquee: url.searchParams.get('marquee') === '1',
 		secondary: url.searchParams.get('secondary') === 'true',
 		dir: url.searchParams.get('dir') === 'rtl' ? 'rtl' : 'ltr',
 		translate:

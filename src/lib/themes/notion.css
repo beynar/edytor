@@ -31,6 +31,9 @@
 	--edytor-suggestion-accent: #2383e2;
 	--edytor-suggestion-background: rgba(35, 131, 226, 0.06);
 	--edytor-suggestion-removed: rgba(235, 87, 87, 0.14);
+	/* The marquee plugin's rectangle: the block selection's blue. */
+	--edytor-marquee-background: rgba(35, 131, 226, 0.14);
+	--edytor-marquee-border: 1px solid rgba(35, 131, 226, 0.4);
 	/* Block colours (the block menu's Color): text, then background, by name. */
 	--edytor-color-gray: #7d7a75;
 	--edytor-color-brown: #9f765a;

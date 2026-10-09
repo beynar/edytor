@@ -113,9 +113,14 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 		);
 	};
 
-	/** A press the model places the caret for: below the last block, or on a block's chrome. */
+	/**
+	 * A press the model answers: on the host's own area, the margin gesture's
+	 * (the marquee, `sel.marquee`, which gives a click back); below the last
+	 * block, the trailing paragraph; on a block's chrome, its caret.
+	 */
 	const placingPress = (event: MouseEvent) => {
 		const { pointer } = edytor.selection;
+		if (pointer.marginPress(event)) return;
 		if (!pointer.belowPress(event)) pointer.chromePress(event);
 	};
 
@@ -124,11 +129,14 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 		// A pointer gesture abandons a live composition.
 		edytor.composition.abandon();
 		lastPointerDownInsideEditorAt = getEventTimeStamp(event);
-		edytor.projector.pressed();
 		edytor.selection.clearModelSelectionPreservation();
-		edytor.selection.pointer.capture(event);
+		const { pointer } = edytor.selection;
+		// The margin gesture's press places no caret and starts no text drag.
+		if (pointer.claimed) return;
+		edytor.projector.pressed();
+		pointer.capture(event);
 		edytor.selection.clearInlineBlockSelection();
-		edytor.selection.pointer.collapseBlocksAt(event);
+		pointer.collapseBlocksAt(event);
 	};
 
 	const clearNativeSelectionAfterExternalFocus = () => {
@@ -257,6 +265,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 			'mousedown',
 			(event: MouseEvent) => {
 				if (lone(event)) placingPress(event);
+				else edytor.selection.pointer.marginMouse(event);
 			},
 			{ capture: true }
 		),

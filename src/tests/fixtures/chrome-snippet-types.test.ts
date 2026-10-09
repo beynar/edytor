@@ -42,6 +42,8 @@ import type {
 	ImageControls,
 	ImageEmptyController,
 	ImagePluginOptions,
+	MarqueeBoxPayload,
+	MarqueePluginOptions,
 	MediaEmptyController,
 	MediaPluginOptions,
 	MentionItem,
@@ -106,6 +108,14 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<TableGripPayload['chrome']>().toEqualTypeOf<TableChrome>();
 		expectTypeOf<TableAddPayload['add']>().toEqualTypeOf<() => void>();
 		expectTypeOf<TableAddPayload['labels']>().toEqualTypeOf<TableLabels>();
+	});
+
+	it('the marquee’s box receives its rectangle and what it selects', () => {
+		expectTypeOf<Payload<MarqueePluginOptions['box']>>().toEqualTypeOf<MarqueeBoxPayload>();
+		expectTypeOf<MarqueeBoxPayload['rect']>().toEqualTypeOf<DOMRectReadOnly>();
+		expectTypeOf<MarqueeBoxPayload['count']>().toEqualTypeOf<number>();
+		expectTypeOf<MarqueeBoxPayload['ids']>().toEqualTypeOf<readonly string[]>();
+		expectTypeOf<MarqueeBoxPayload['adding']>().toEqualTypeOf<boolean>();
 	});
 
 	it('a block handle’s payload says what its `+` and grip opened, and takes the `+` as the anchor', () => {
@@ -251,7 +261,9 @@ describe('a snippet typed against another payload, or reading a wrong field, doe
 			const table: TablePluginOptions = { menu: slash };
 			// @ts-expect-error a code block's `menu` takes its LanguageMenu
 			const code: CodePluginOptions = { menu: slash };
-			return [blockMenu, toolbar, mention, table, code];
+			// @ts-expect-error the marquee's `box` takes its MarqueeBoxPayload
+			const marquee: MarqueePluginOptions = { box: slash };
+			return [blockMenu, toolbar, mention, table, code, marquee];
 		};
 		expectTypeOf(options).toBeFunction();
 	});

@@ -108,6 +108,10 @@ A press or a focus outside the editor closes it too. After it closes, a block eq
       type: "Partial<Record<string, string[]>>",
       description: "The slash keywords of `block.equation` and `equation.inline`, which replace their own.",
     },
+    panel: {
+      type: "Snippet<[EquationEditor]>",
+      description: "Replace the editor's panel, under the edited equation; `{@attach editor.field}` on your source field keeps its focus and keys. See [Menus and handles](/docs/customization/menus#equation-editor).",
+    },
   }}
 />
 

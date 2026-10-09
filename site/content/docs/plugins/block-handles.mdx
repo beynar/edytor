@@ -98,10 +98,13 @@ A `handle` snippet replaces the `+` and the grip of every handle. The plugin kee
     block: { type: "Block", description: "The block's handle." },
     label: { type: "string", description: "The block's kind as people read it, from its preset label (\"Heading 1\"): name your buttons with it." },
     grip: { type: "action", description: "use:grip makes an element the grip: dragging (when draggable), a click that selects the block and opens its menu, and the Alt+arrow moves while it has focus." },
-    add: { type: "(alt?: boolean) => void", description: "What + does: the slash menu offers what to add below (with true, Alt+click: above, or for a block directly in a column a new column right of its column); nothing is added until a row is picked." },
+    add: { type: "(alt?: boolean, anchor?: HTMLElement | null) => void", description: "What + does: the slash menu offers what to add below (with true, Alt+click: above, or for a block directly in a column a new column right of its column); nothing is added until a row is picked. The menu opens under anchor (your + button, event.currentTarget), else under the block." },
     addable: { type: "boolean", description: "Whether the block takes a +: always true (a block in a column too, as in Notion)." },
     readonly: { type: "boolean", description: "The editor is readonly: hide your buttons." },
     draggable: { type: "boolean", description: "Pointer dragging is on." },
+    expanded: { type: "{ add: boolean; grip: boolean }", description: "Whether the menu the + or the grip opened is open: their aria-expanded." },
+    controls: { type: "{ add: string | undefined; grip: string | undefined }", description: "The id of the menu the + or the grip opened, while it is open: their aria-controls." },
+    labels: { type: "BlockHandlesLabels", description: "The handles' words: labels.add(label), labels.grip(label), their hints. See Localization." },
   }}
 />
 
@@ -110,21 +113,36 @@ A `handle` snippet replaces the `+` and the grip of every handle. The plugin kee
 	import { Edytor, type BlockHandleSnippetPayload } from 'edytor';
 </script>
 
-{#snippet handle({ label, grip, add, readonly }: BlockHandleSnippetPayload)}
+{#snippet handle({
+	label,
+	grip,
+	add,
+	readonly,
+	expanded,
+	controls,
+	labels
+}: BlockHandleSnippetPayload)}
 	{#if !readonly}
 		<button
-			aria-label={`Add a block below ${label}`}
+			aria-label={labels.add(label)}
+			aria-expanded={expanded.add || undefined}
+			aria-controls={controls.add}
 			onmousedown={(event) => event.preventDefault()}
-			onclick={(event) => add(event.altKey)}>+</button
+			onclick={(event) => add(event.altKey, event.currentTarget)}>+</button
 		>
-		<button use:grip aria-label={`Move ${label} block`}>⠿</button>
+		<button
+			use:grip
+			aria-label={labels.grip(label)}
+			aria-expanded={expanded.grip || undefined}
+			aria-controls={controls.grip}>⠿</button
+		>
 	{/if}
 {/snippet}
 
 <Edytor blockHandles={{ handle }} />
 ```
 
-The same snippet works with `createBlockHandlesPlugin({ handle })` in `plugins`. Your markup renders inside the handle's host, `[data-edytor-block-handle-host]` (a flex row right-aligned to the block's left edge, which carries the hover fade), without the buttons' built-in styles. Keep `preventDefault` on the `+` button's `mousedown`, so the click does not move the caret first.
+The same snippet works with `createBlockHandlesPlugin({ handle })` in `plugins`. Your markup renders inside the handle's host, `[data-edytor-block-handle-host]` (a flex row right-aligned to the block's left edge, which carries the hover fade), without the buttons' built-in styles. Keep `preventDefault` on the `+` button's `mousedown`, so the click does not move the caret first. [Menus and handles](/docs/customization/menus#block-handle) shows it with the other snippets.
 
 ## Drag and drop
 

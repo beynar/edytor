@@ -94,6 +94,8 @@ The keyboard reaches it all:
 
 The search field is a `combobox` naming the highlighted row (`aria-activedescendant`) of a `listbox`; the button carries `aria-haspopup="listbox"` and `aria-expanded`. A list the keys opened gives them back to its button; one a click opened, to the editor, its caret where it was. A press or a focus outside the list closes it, as does the view turning readonly.
 
+The header and the list take your own markup: `createCodePlugin({ header, menu })`, a `Snippet<[CodeHeader]>` and a `Snippet<[LanguageMenu]>`, whose attachments (`header.button`, `menu.keys`, `menu.popup`, `menu.option(index)`) keep these keys and this ARIA. See [Menus and handles](/docs/customization/menus#code-header-and-language-list).
+
 `CODE_LANGUAGES` holds the default list, after Notion's:
 
 | `id`         | Label      | Grammar                                    |

@@ -49,6 +49,18 @@ List it in every view that may open a document holding tables. A view without it
       type: "Partial<Record<string, string[]>>",
       description: "The slash menu's keywords of the Table command (block.table); they replace its own.",
     },
+    grip: {
+      type: "Snippet<[TableGripPayload]>",
+      description: "Replace a row's and a column's grip, centered where the grip stands; {@attach payload.grip} keeps its drag, its menu, its keys and its ARIA. See Menus and handles.",
+    },
+    menu: {
+      type: "Snippet<[TableChrome]>",
+      description: "Replace a grip's menu, under its grip; {@attach chrome.popup} and {@attach chrome.keys} on its element, each row of chrome.items spreads its option. See Menus and handles.",
+    },
+    add: {
+      type: "Snippet<[TableAddPayload]>",
+      description: "Replace the + under the table and beside it, laid along that edge. See Menus and handles.",
+    },
   }}
 />
 
@@ -132,6 +144,8 @@ Hover a table:
 
 While a grip drags, a blue line shows between the two rows (columns) where it would land, and a picture of the row (column) follows the pointer; the table's box scrolls sideways, and the page up and down, when the pointer nears their edges. The drop is the menu's move: one undo step, the caret staying in its cell. A drop at the row's own place, more than 32px outside the table, or after <kbd>Escape</kbd> moves nothing. The menus' Move items stay the keyboard's way.
 
+A grip is a button (`aria-haspopup="menu"`, `aria-expanded`): <kbd>Enter</kbd>, <kbd>Space</kbd> or <kbd>↓</kbd> on it opens its menu, <kbd>Escape</kbd> gives the keys back to the editor. The menu is a `menu` that takes the focus and names its keyboard's row (`aria-activedescendant`): <kbd>↓</kbd> and <kbd>↑</kbd> walk the items that can run (Move up on the first row cannot: `aria-disabled`), <kbd>Home</kbd> and <kbd>End</kbd> reach the ends, <kbd>Enter</kbd> or <kbd>Space</kbd> runs the item, <kbd>Escape</kbd> or <kbd>Tab</kbd> closes the menu and gives the keys back to the editor. The grips, the menus and the `+` bars take your own markup: see [Menus and handles](/docs/customization/menus#table-grips-menu-and-).
+
 A resize never makes the table wider than the room it has: the page's text column, or the column of a layout (or the toggle, the callout) it sits in. The dragged column stops where the others leave no more room, in the preview and in the width written, and never narrows below `minColumnWidth`. A table already wider than its place (widths set on a wider screen, by you or someone else, or a narrower window) keeps its stored widths and scrolls sideways inside its own box, which never reaches past the page; there a column can narrow but none can grow. Only what the box shows has chrome: a column edge or grip scrolled out of view has none, and the `+` beside the table shows once its last column is in view.
 
 Deleting a table's last row or last column deletes the table. Every action is one undo step, refused in a readonly view (which shows none of these controls). The table's own block handle drags, duplicates and deletes the whole table; rows and cells have no handle.
@@ -181,9 +195,10 @@ These rules come from the document's roles: list the plugin in every view; a hea
 | `[data-edytor-table-pad]` | A padded cell's placeholder |
 | `[data-edytor-table-scroll]` | The table's box, which scrolls the grid sideways |
 | `[data-edytor-table-grip]`, `[data-edytor-table-add]`, `[data-edytor-table-resize]` | The chrome, in the overlay (`data-dragging="true"` on a grip while it drags) |
+| `[data-edytor-table-grip-host]`, `[data-edytor-table-add-host]`, `[data-edytor-table-menu-host]` | Where a grip (a point it centers on), a `+` bar and a menu stand: the built-in markup's and your snippets' |
 | `[data-edytor-table-drop]` | The drop line of a grip's drag (`row` or `column`, `data-gap`: its position among the rows or columns) |
 | `[data-edytor-table-drag-preview]` | The picture following the pointer during a grip's drag |
-| `.edytor-table-menu` | A grip's menu |
+| `.edytor-table-menu` | A grip's menu (`[data-edytor-table-menu="row"]` or `"column"`; its keyboard's row `[data-selected="true"]`) |
 
 ## Document API
 

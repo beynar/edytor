@@ -92,8 +92,10 @@ export class MarqueeController {
 		const node = this.edytor.node;
 		const document = node?.ownerDocument;
 		const view = document?.defaultView;
-		if (this.#press || !node || !document || !view || event.button !== 0) return false;
+		if (!node || !document || !view || event.button !== 0) return false;
 		if ((event as PointerEvent).pointerType === 'touch') return false;
+		// A press while one is down: the release of the last one never reached the page.
+		this.#end();
 		const box = node.getBoundingClientRect();
 		const mod = this.edytor.keymap.isMac ? event.metaKey : event.ctrlKey;
 		const adding = event.shiftKey || mod;
@@ -144,6 +146,9 @@ export class MarqueeController {
 	#moved = (event: MouseEvent) => {
 		const press = this.#press;
 		if (!press) return;
+		// A release the page never saw (over a frame of another origin, outside the window):
+		// a mouse move with no button down ends the gesture, as `sel.drag.unseen-release`.
+		if (event.type === 'mousemove' && event.buttons === 0) return this.#end();
 		this.#pointer = { x: event.clientX, y: event.clientY };
 		if (!this.#active) {
 			const { clientX, clientY } = press.point;

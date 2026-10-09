@@ -1716,6 +1716,20 @@ Pins: `keystroke-scale.test.tsx` (jsdom: nodes, attributes, handles,
 layout reads), `large-page-scale.spec.ts` (with layout: layout reads,
 watched blocks, handles, order reads), both at 1,000 and 5,000 blocks.
 
+### `render.markers` — a block's render leaves few markers in the host
+
+The renderer's own nodes in the editing host (the empty comments and empty
+text nodes Svelte anchors its blocks, components and snippets with, and
+whitespace text between tags), which the browser walks when it recomputes
+the host's text after a key, stay at most a ceiling per bundled kind: a
+plain paragraph leaves 8 comments, one empty text node and no whitespace
+(it left 23, 9 and 1), a long page of mixed kinds about 8.4 comments and
+1.4 empty text nodes per block. The text, the elements and their order are
+unchanged; only markers went.
+Pins: `render-markers.test.tsx` (jsdom: each bundled kind's ceiling of
+comments, empty text nodes and whitespace nodes), `render-markers.spec.ts`
+(Chromium: per block on `/test/large` and the demo page).
+
 ## Tables
 
 A **table** is a kind whose role says `table: true` (the bundled `table`,

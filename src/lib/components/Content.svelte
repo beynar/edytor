@@ -87,6 +87,15 @@
 	 */
 	const first = $derived((own[0]?.kind === 'text' ? own[0] : undefined) ?? EMPTY);
 	const firstShown = $derived(preview ? ghost(first) : view(first));
+	/**
+	 * Its handle, looked up again with each segment list the cell renders (a
+	 * keyed entry's is, with its entry): the handle can change while the
+	 * element stays (the virtual paragraph becoming a real block).
+	 */
+	const firstText = $derived.by(() => {
+		void parts;
+		return preview ? undefined : edytor.textAt(id, 0);
+	});
 
 	type Entry =
 		| { key: string; kind: 'text'; part: Segment; ordinal: number }
@@ -141,7 +150,7 @@
 	-->{/each}<!--
 -->{/snippet}<!--
 -->{#key epoch}<RenderText
-		text={preview ? undefined : edytor.textAt(id, 0)}
+		text={firstText}
 		deltas={firstShown.deltas}
 		empty={firstShown.empty}
 		newline={first.text.endsWith('\n')}

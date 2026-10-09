@@ -1825,12 +1825,23 @@ deduplicated list, so an extra entry the array holds never takes it.
 A column's resize (its band's drag, the band's arrow keys) never makes the
 table wider than the room at its place: the width of the table's own box
 (the document's content column; in a layout's column, a toggle or a
-callout, the width there) less the grid's border. The column grows at most
-to what the other columns leave it and never narrows below the minimum
-width; the preview the drag shows and the width the release writes are the
-same clamped value. A table already wider than its place (widths a peer
-wrote on a wider screen, a narrower window) lets a column narrow, and none
-grow. Where nothing is laid out (no layout engine), no room limits it.
+callout, the width there) less the grid's border. The column grows into
+the room the table leaves free, then into its right neighbour
+(`table.width.neighbour`), and never narrows below the minimum width; the
+preview the drag shows and the width the release writes are the same
+clamped value. A table already wider than its place (widths a peer wrote on
+a wider screen, a narrower window) gets no wider: a column grows only by
+what its neighbour gives, the last column only narrows. Where nothing is
+laid out (no layout engine), no room limits it.
+
+### `table.width.neighbour` — a column grows into its right neighbour (view)
+
+Past the free room, what a column's resize gains comes off its right
+neighbour, down to the minimum width (a neighbour already narrower keeps
+its width); both widths are one write, one undo step. A narrowing gives
+nothing back: the neighbour keeps its width and the table leaves the room
+free. The last column has no neighbour: it grows into the free room only.
+Pins: `table-drag.test.tsx`.
 
 ### `table.overflow` — a table wider than its place scrolls in its own box (view)
 

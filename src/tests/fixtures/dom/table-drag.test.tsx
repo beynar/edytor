@@ -125,12 +125,45 @@ describe('table.width.fit — a resize keeps the table inside its place', () => 
 		await key(1, 'ArrowRight', true);
 		expect(widths(edytor)).toEqual([null, 130]);
 		expect(edytor.facade.version).toBe(version);
-		// The first column has no room left: it narrows, it does not grow.
+		// The table fills its place: the first column grows into its right neighbour, one write.
 		await hover(edytor, 'A', 250);
 		await key(0, 'ArrowRight', true);
+		expect(widths(edytor)).toEqual([152, 98]);
+		// Both widths in one undo step.
+		edytor.historyUndo();
+		await flushDomUpdates();
 		expect(widths(edytor)).toEqual([null, 130]);
+		await key(0, 'ArrowRight', true);
+		expect(widths(edytor)).toEqual([152, 98]);
+		// …down to the neighbour's minimum width (48px), no further.
+		await key(0, 'ArrowRight', true);
+		await key(0, 'ArrowRight', true);
+		await key(0, 'ArrowRight', true);
+		expect(widths(edytor)).toEqual([202, 48]);
+		// Narrowing gives nothing back: the neighbour keeps its width.
 		await key(0, 'ArrowLeft');
-		expect(widths(edytor)).toEqual([112, 130]);
+		expect(widths(edytor)).toEqual([194, 48]);
+	});
+
+	it('a band’s drag grows its column into its neighbour, preview and write the same', async () => {
+		const { edytor } = await render();
+		await hover(edytor, 'A', 250);
+		const band = document.querySelector<HTMLElement>('[data-edytor-table-resize="0"]')!;
+		const gridNode = node('T').querySelector<HTMLElement>('[data-edytor-table-grid]')!;
+		band.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 120, button: 0 }));
+		// Into the room first (10px), then into the neighbour.
+		document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 150 }));
+		await flushDomUpdates();
+		expect(gridNode.style.gridTemplateColumns).toBe('150px 100px');
+		document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 900 }));
+		await flushDomUpdates();
+		expect(gridNode.style.gridTemplateColumns).toBe('202px 48px');
+		document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 900 }));
+		await flushDomUpdates();
+		expect(widths(edytor)).toEqual([202, 48]);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(widths(edytor)).toEqual([null, null]);
 	});
 
 	it('a band’s drag previews and writes the same clamped width', async () => {
@@ -158,7 +191,7 @@ describe('table.width.fit — a resize keeps the table inside its place', () => 
 });
 
 describe('table.overflow — a table wider than its place scrolls in its own box', () => {
-	it('a column narrows and none grows; the chrome shows over the visible part only', async () => {
+	it('a column grows only by what its neighbour gives; the chrome shows over the visible part only', async () => {
 		const { edytor } = await render(contract([200, 200]));
 		await hover(edytor, 'A', 250);
 		const shown = () =>
@@ -169,11 +202,16 @@ describe('table.overflow — a table wider than its place scrolls in its own box
 		expect(shown()).toEqual(['0']);
 		expect(layer().querySelector('[data-edytor-table-add="column"]')).toBeNull();
 		expect(layer().querySelector('[data-edytor-table-add="row"]')).not.toBeNull();
-		const version = edytor.facade.version;
+		// No free room: the first column takes from the second, the table gets no wider.
 		await key(0, 'ArrowRight');
-		expect(edytor.facade.version).toBe(version);
+		expect(widths(edytor)).toEqual([208, 192]);
 		await key(0, 'ArrowLeft');
-		expect(widths(edytor)).toEqual([192, 200]);
+		expect(widths(edytor)).toEqual([200, 192]);
+		// The last column has no neighbour: it narrows, it does not grow.
+		await hover(edytor, 'B', 250, 142);
+		const version = edytor.facade.version;
+		await key(1, 'ArrowRight');
+		expect(edytor.facade.version).toBe(version);
 		// Scrolled to its end: the last column's edge is in view, its band and the `+` show.
 		await hover(edytor, 'B', 250, 142);
 		expect(shown()).toEqual(['0', '1']);

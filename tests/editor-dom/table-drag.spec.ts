@@ -140,6 +140,34 @@ test.describe('table.width.fit: a resize stops at the edge of the table’s plac
 		issues.assertClean();
 	});
 
+	test('table.width.neighbour: a full-width table’s first column grows into the second', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		// The second column fills the page: no free room left.
+		await hover(page, 'B');
+		await resizeToEdge(page, 1);
+		await expect.poll(async () => (await storedWidths(page))?.[1]).not.toBeNull();
+		const [, full] = (await storedWidths(page))!;
+		await hover(page, 'A');
+		const band = await box(page, '[data-edytor-table-resize="0"]');
+		const y = band.y + 10;
+		await page.mouse.move(band.x + band.width / 2, y);
+		await page.mouse.down();
+		await page.mouse.move(band.x + band.width / 2 + 100, y, { steps: 6 });
+		await page.mouse.up();
+		await expect.poll(async () => (await storedWidths(page))?.[0]).toBe(220);
+		// The second gave the 100px: the table is no wider, still inside the page.
+		expect((await storedWidths(page))![1]).toBe(full! - 100);
+		const after = await scroller(page);
+		expect(after.scrollWidth).toBeLessThanOrEqual(after.clientWidth);
+		// One undo step puts both widths back.
+		await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+		await expect.poll(() => storedWidths(page)).toEqual([null, full]);
+		issues.assertClean();
+	});
+
 	test('inside a column layout: the column’s edge', async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await open(page, [

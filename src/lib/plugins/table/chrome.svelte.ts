@@ -61,7 +61,9 @@ export type TableLayout = {
 
 /**
  * A column resize in progress: where the pointer went down, where it is, the
- * width it started at, and the widest the room leaves it (`table.width.fit`).
+ * width it started at, and the widest the room leaves it (`table.width.fit`);
+ * the free room it started with and its right neighbour's width (none for
+ * the last column), which give the neighbour's width (`table.width.neighbour`).
  */
 type Drag = {
 	table: string;
@@ -70,6 +72,8 @@ type Drag = {
 	at: number;
 	width: number;
 	max: number;
+	slack: number;
+	next: number | undefined;
 };
 
 /**
@@ -426,12 +430,28 @@ export class TableChrome {
 	width = (table: string, index: number, column: unknown): number => {
 		const drag = this.drag;
 		if (drag && drag.table === table && drag.column === index) return this.dragWidth(drag);
+		if (drag && drag.table === table && drag.column + 1 === index) {
+			const next = this.nextWidth(drag);
+			if (next !== undefined) return next;
+		}
 		return widthOf(column, this.columnWidth);
 	};
 
 	/** The resize's width: the pointer's, between the minimum and the room's (`table.width.fit`). */
 	private dragWidth = (drag: Drag) =>
 		Math.max(this.minColumnWidth, Math.min(drag.max, Math.round(drag.width + drag.at - drag.from)));
+
+	/**
+	 * The right neighbour's width while column `drag.column` is `dragWidth`
+	 * (`table.width.neighbour`): the column grows into the free room first,
+	 * then what it gains past it comes off its neighbour, down to the
+	 * minimum; a narrowing gives nothing back.
+	 */
+	private nextWidth(drag: Drag): number | undefined {
+		if (drag.next === undefined) return undefined;
+		const take = Math.max(0, this.dragWidth(drag) - drag.width - drag.slack);
+		return Math.max(Math.min(drag.next, this.minColumnWidth), drag.next - take);
+	}
 
 	/**
 	 * The widths `table`'s grid shows, by position (its columns' stored
@@ -450,14 +470,27 @@ export class TableChrome {
 	}
 
 	/**
-	 * The widest column `column` of `table` may be (`table.width.fit`): what
-	 * the room leaves after the other columns, never less than its width now
-	 * (a table already wider than its place narrows, nothing grows).
+	 * A resize of column `column` of `table`, pressed at `from` (`table.width.fit`,
+	 * `table.width.neighbour`): the column may grow by the room the table
+	 * leaves free and by what its right neighbour can give (down to the
+	 * minimum), so the table never gets wider; it may always narrow.
 	 */
-	private widest(table: Block, column: number, room: number): number {
+	private resize(
+		table: Block,
+		column: number,
+		room: number,
+		from: number,
+		at: number
+	): Drag | null {
 		const widths = this.widthsOf(table);
-		const others = widths.reduce((sum, w, i) => (i === column ? sum : sum + w), 0);
-		return Math.max(widths[column] ?? this.columnWidth, Math.floor(room - others));
+		const width = widths[column];
+		if (width === undefined) return null;
+		const next = widths[column + 1];
+		const total = widths.reduce((sum, w) => sum + w, 0);
+		const slack = Math.max(0, room - total);
+		const gives = next === undefined ? 0 : next - Math.min(next, this.minColumnWidth);
+		const max = Math.floor(width + slack + gives);
+		return { table: table.id, column, from, at, width, max, slack, next };
 	}
 
 	/**
@@ -924,14 +957,10 @@ export class TableChrome {
 		if (pointer) target?.setPointerCapture?.((event as PointerEvent).pointerId);
 		const table = this.block(layout.table);
 		if (!table) return;
-		this.drag = {
-			table: layout.table,
-			column,
-			from: event.clientX,
-			at: event.clientX,
-			width: col.width,
-			max: this.widest(table, column, layout.room)
-		};
+		const drag = this.resize(table, column, layout.room, event.clientX, event.clientX);
+		if (!drag) return;
+		// The press starts from the width the grid shows.
+		this.drag = { ...drag, width: col.width, max: Math.max(drag.max, col.width) };
 		const document = target?.ownerDocument ?? edytor.node?.ownerDocument;
 		const tracked = pointer ? document : document?.defaultView;
 		const [moves, ups] = pointer ? ['pointermove', 'pointerup'] : ['mousemove', 'mouseup'];
@@ -996,33 +1025,38 @@ export class TableChrome {
 		const layout = this.layout;
 		const table = this.block(layout?.table);
 		if (!layout || !table || this.drag) return;
-		const width = this.widthsOf(table)[column];
-		if (width === undefined) return;
-		const by = step * (event.shiftKey ? 32 : 8);
-		const max = this.widest(table, column, layout.room);
-		this.release({ table: layout.table, column, from: 0, at: by, width, max });
+		const drag = this.resize(table, column, layout.room, 0, step * (event.shiftKey ? 32 : 8));
+		if (drag) this.release(drag);
 	};
 
 	/**
-	 * The release: column `drag.column`'s width, one command; nothing when it
-	 * did not change, or when the table does not list the column. The width
-	 * is written on the column's entry by its item id (the first entry
-	 * naming it), never by position: the stored array may hold an entry the
-	 * grid does not show.
+	 * The release: column `drag.column`'s width, and its right neighbour's
+	 * when the column took from it (`table.width.neighbour`), one command;
+	 * nothing when neither changed, or when the table does not list the
+	 * column. A width is written on its column's entry by its item id (the
+	 * first entry naming it), never by position: the stored array may hold
+	 * an entry the grid does not show.
 	 */
 	private release(drag: Drag) {
 		const table = this.block(drag.table);
-		const id = gridOf(table)?.columns[drag.column];
-		if (!table || id === undefined) return;
+		const columns = gridOf(table)?.columns;
+		if (!table || !columns) return;
 		const { facade } = table.edytor;
 		const stored = facade.blockDataOf(table.id)?.columns;
 		const entries: unknown[] = Array.isArray(stored) ? stored : [];
-		const at = entries.findIndex((c) => (c as { id?: unknown } | null)?.id === id);
-		const item = at < 0 ? undefined : facade.dataItemIds(table.id, ['columns'])[at];
-		if (item === undefined) return;
-		const width = this.dragWidth(drag);
-		if (width === widthOf(entries[at], this.columnWidth)) return;
-		table.patchData({ ops: [{ path: ['columns', item, 'width'], value: width }] });
+		const items = facade.dataItemIds(table.id, ['columns']);
+		const write = (index: number, width: number | undefined) => {
+			const id = columns[index];
+			const at = entries.findIndex((c) => (c as { id?: unknown } | null)?.id === id);
+			const item = at < 0 || id === undefined ? undefined : items[at];
+			if (item === undefined || width === undefined) return [];
+			if (width === widthOf(entries[at], this.columnWidth)) return [];
+			return [{ path: ['columns', item, 'width'], value: width }];
+		};
+		const own = write(drag.column, this.dragWidth(drag));
+		if (!own.length && columns[drag.column] === undefined) return;
+		const ops = [...own, ...write(drag.column + 1, this.nextWidth(drag))];
+		if (ops.length) table.patchData({ ops });
 	}
 
 	/** What the row grip or the column grip stands for now: its table, the row's or column's id, its position. */

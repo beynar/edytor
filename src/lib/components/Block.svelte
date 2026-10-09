@@ -128,20 +128,33 @@
 	};
 	/** Registers the block element: one element per block, re-registered when the tag changes. */
 	const register = (node: HTMLElement) => block.handle?.attach(node);
+	/**
+	 * Whether the selection holds this block, and whether it touches it: one
+	 * boolean each, so a selection change rebuilds the attributes of the
+	 * blocks whose flag flipped only (a set's `has` re-runs the reader of every
+	 * block outside it when its members change: a caret moving to another
+	 * block re-ran every block's attributes).
+	 */
+	const selected = $derived(!!block.handle && edytor.selection.selectedBlocks.has(block.handle));
+	const focused = $derived(!!block.handle && edytor.selection.focusedBlocks.has(block.handle));
+	/**
+	 * Its colour and background by palette name (`block/colors.ts`), from its
+	 * data; written below as two properties (a second spread in the object
+	 * literal takes the engine's slow copy, three times the attributes' cost).
+	 */
+	const colors = $derived(colorAttributes(cell?.data));
 	/** The block element's attributes: the kind's, then the core's. */
 	const attributes = $derived(
 		element && {
 			...element.attributes,
-			// Its colour and background by palette name (`block/colors.ts`).
-			...colorAttributes(cell?.data),
+			'data-edytor-color': colors['data-edytor-color'],
+			'data-edytor-background': colors['data-edytor-background'],
 			'data-edytor-block': 'true',
 			'data-edytor-id': preview ? undefined : id,
 			'data-edytor-type': cell?.type,
 			'data-edytor-void': definition?.void ? 'true' : undefined,
-			'data-edytor-selected':
-				block.handle && edytor.selection.selectedBlocks.has(block.handle) ? 'true' : undefined,
-			'data-edytor-focused':
-				block.handle && edytor.selection.focusedBlocks.has(block.handle) ? 'true' : undefined,
+			'data-edytor-selected': selected ? 'true' : undefined,
+			'data-edytor-focused': focused ? 'true' : undefined,
 			'data-edytor-suggestion-replaced': shown ? (replacedMark(shown) ?? undefined) : undefined,
 			contenteditable: definition?.void ? ('false' as const) : undefined
 		}

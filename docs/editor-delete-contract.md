@@ -2285,7 +2285,109 @@ a scroll). The core gives the host a bottom padding to press in,
 `--edytor-trailing-space` (`2em`, zero specificity).
 
 Rows: `trailing-paragraph.test.tsx` ("a press below the last block") and
-`tests/editor-dom/trailing-paragraph.spec.ts`.
+`tests/editor-dom/trailing-paragraph.spec.ts`. With the marquee plugin
+listed (`sel.marquee`) the press waits for its release: a click (no move
+past the threshold) does exactly this, a drag selects blocks instead and
+writes nothing.
+
+### `sel.marquee` — a rectangle from the editor's empty area selects blocks (Notion's rubber band)
+
+Opt-in (`createMarqueePlugin({ container, threshold, box })`,
+`plugins/marquee/`). The gesture, one owner (`MarqueeController`):
+
+- **Start.** A primary press from a mouse or a pen (never a touch: it
+  scrolls) on the editor's empty area: the host's own area (its padding
+  beside and below the blocks: the press's target is the host itself;
+  classified once, with the chrome press, in `events/onFocus.ts` by
+  `pointer.marginPress`, the claimant the plugin registers with
+  `pointer.claimMargins`), a block handle's own box around its buttons
+  (`[data-edytor-block-handle-host]` itself, never a button), and the
+  app's `container` (the element itself, or a wrapper between it and the
+  editor; its other content keeps its presses), both through `onPress`.
+  A press on a block, its text or its chrome never starts one: a drag
+  from text stays a text selection (`sel.drag.across-columns` unchanged).
+  The press's `mousedown` is cancelled (no native caret, focus or
+  selection: they are its default actions, so the `pointerdown` is left
+  alone), and so are `selectstart` and `dragstart` until the release.
+  A press on the host it takes places no caret (`projector.pressed` is
+  not called) and starts no text drag (`pointer.capture`).
+- **Click.** Released before the pointer moved `threshold` px (4 by
+  default), a host press does what the press does without the plugin
+  (`pointer.marginClick`): below the last block, `nav.trailing.press`;
+  beside the blocks, the caret at the text point of that height nearest
+  the host's edge (where the browser puts it); with a modifier, nothing.
+  A press on the gutter or the container: nothing.
+- **Live.** Past the threshold the editor takes the keys (`takeKeys`), the
+  overlay draws the rectangle (`[data-edytor-marquee-host]`, a `fixed`
+  host placed and sized by the plugin's measure; the default
+  `[data-edytor-marquee]`, or the `box` snippet with
+  `MarqueeBoxPayload { rect, count, ids, adding }`), and every move or
+  scroll selects the blocks it meets (`sel.marquee.blocks`) through the
+  one selection writer (`selection.select`, a block selection; none when
+  it meets nothing), only when the ids change. The press point is kept in
+  the host's frame, so the rectangle extends with any scroll.
+- **Modifiers.** Shift or Mod (Cmd on macOS, else Ctrl) at the press adds:
+  the block selection there was stays, the rectangle's blocks after it.
+  Without one the rectangle replaces the selection.
+- **Escape** (a `keydown` capture on the window while the press is down,
+  stopped there) gives back the value from before the press (a caret, a
+  range, a block selection) and ends the gesture: the rest of the drag
+  does nothing, its release is no click.
+- **Release.** The block selection stays and the editor has the keys:
+  Delete, Backspace, Mod+C, Mod+X, Tab, the arrows and the block menu act
+  on it as on any block selection (`sel.blocks.exact`).
+- **Auto-scroll** (browser rule `marquee.auto-scroll`, one named frame
+  loop): within 48px of the scroller's top or bottom (the editor's
+  nearest scrolling ancestor, else the page; past the edge counts as at
+  it) the scroller moves up to 24px a frame, faster nearer the edge, and
+  the selection follows; it stops when the pointer leaves the band, the
+  scroller is at its end, or the gesture ends.
+- **Readonly.** A readonly view selects too: a block selection is allowed
+  there (copy reads it, as after `sel.drag.across-columns`); a click
+  below the last block writes nothing (`nav.trailing.press`).
+
+Rows: `src/tests/fixtures/dom/marquee.test.tsx` ("the gesture"),
+`tests/editor-dom/marquee.spec.ts` (three engines),
+`tests/editor-dom/mobile-marquee.spec.ts` (touch).
+
+### `sel.marquee.blocks` — which blocks a rectangle selects
+
+`marqueeBlocks(edytor, rect)` (`plugins/marquee/marquee.ts`), from the
+blocks' boxes, each block once, in document order:
+
+- a block whose **own row** (its box down to where its first shown child
+  begins) meets the rectangle is selected **with its whole shown subtree**
+  (Notion: a block carries its children; under `sel.blocks.exact` the
+  children are listed, so Delete takes them and Turn into converts them);
+- a block whose box meets it **only below its own row** is not: its
+  children are read the same way (a rectangle over a child's row selects
+  that child alone);
+- a **void or an island** (an image, a divider, a code block, a table) is
+  one unit: selected when its box meets the rectangle, never its lines,
+  rows or cells (`selectedMembers` reads a code block's lines at action
+  time);
+- a **layout and its columns** are never listed: the columns the
+  rectangle meets are read, so it selects the blocks of the columns it
+  crosses (a layout covered whole stands for them in moves and copy,
+  `liftLayouts`); a **list container** (it shows only its items) is read
+  through its items;
+- a block **hidden by view state** (a closed toggle's body) never: a
+  closed toggle is selected without its body.
+
+Boxes overlap strictly (rows that touch do not meet); the rectangle is at
+least 1px each way. Rows: `marquee.test.tsx` ("which blocks a rectangle
+selects": top-level, nested, the indent alone, closed and open toggle,
+columns, the right margin).
+
+### `sel.marquee.cost` — a move's work does not grow with the page
+
+A pointer move reads a binary search's worth of boxes over the root's
+children (vertical order, as the handles' `nearTop`), then, for the
+blocks at the rectangle's height, their children the same way (a
+layout's few columns one by one): never a walk of the page. Row:
+`marquee.test.tsx` ("a move's work does not grow with the page"): one
+move in the middle of 1,000 and of 5,000 top-level paragraphs reads the
+same boxes and handles within a binary search's difference.
 
 ## Host DOM ownership (D-25)
 

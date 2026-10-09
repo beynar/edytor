@@ -14,6 +14,7 @@
 	import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
+	import { createMarqueePlugin } from '$lib/plugins/marquee/marqueePlugin.js';
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 	import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 	import { tableBlock } from '$lib/crdt/tables.js';
@@ -80,6 +81,8 @@
 		demoPagePlugin,
 		columnsPlugin,
 		findPlugin,
+		// Drag from the page's margins or below the last block to select blocks (Notion).
+		createMarqueePlugin({ container: '.demo-main' }),
 		tocPlugin,
 		tablePlugin,
 		// KaTeX loads from jsDelivr the first time an equation shows.

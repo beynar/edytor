@@ -132,6 +132,12 @@ export {
 	type FindPluginOptions
 } from './find/findPlugin.js';
 export type { FindController, ReplaceMatches } from './find/FindController.svelte.js';
+export {
+	marqueePlugin,
+	createMarqueePlugin,
+	type MarqueePluginOptions
+} from './marquee/marqueePlugin.js';
+export type { MarqueeBoxPayload } from './marquee/MarqueeController.svelte.js';
 export { findMatches, type FindMatch, type FindOptions } from './find/search.js';
 export {
 	createCommentsPlugin,

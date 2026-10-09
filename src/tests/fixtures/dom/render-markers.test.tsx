@@ -166,26 +166,26 @@ const render = async (children: JSONBlock[]) => {
  * node).
  */
 const CEILINGS: Record<keyof typeof CASES, [number, number, number]> = {
-	paragraph: [8, 1, 0],
-	'paragraph, marks': [24, 17, 0],
-	'paragraph, two marks': [13, 8, 0],
-	'paragraph, empty': [8, 1, 0],
-	heading: [10, 3, 0],
-	'bulleted-list-item': [8, 1, 0],
-	'numbered-list-item': [8, 1, 0],
-	'todo-item': [10, 1, 0],
-	'toggle (empty body)': [9, 2, 0],
-	'toggle + 1 child': [18, 3, 0],
-	'callout (empty body)': [12, 3, 0],
-	quote: [10, 3, 0],
-	'paragraph + 1 child': [18, 3, 0],
-	'code block, 1 line': [26, 9, 1],
-	'table 2×2': [50, 10, 0],
-	'columns 2×1': [31, 11, 0],
+	paragraph: [9, 1, 0],
+	'paragraph, marks': [25, 17, 0],
+	'paragraph, two marks': [14, 7, 0],
+	'paragraph, empty': [9, 1, 0],
+	heading: [11, 3, 0],
+	'bulleted-list-item': [9, 1, 0],
+	'numbered-list-item': [9, 1, 0],
+	'todo-item': [11, 1, 0],
+	'toggle (empty body)': [10, 2, 0],
+	'toggle + 1 child': [20, 3, 0],
+	'callout (empty body)': [13, 3, 0],
+	quote: [11, 3, 0],
+	'paragraph + 1 child': [20, 3, 0],
+	'code block, 1 line': [27, 8, 1],
+	'table 2×2': [54, 10, 0],
+	'columns 2×1': [33, 11, 0],
 	equation: [5, 3, 0],
-	image: [9, 1, 0],
+	image: [10, 1, 0],
 	divider: [1, 1, 0],
-	'paragraph, mention': [12, 3, 0]
+	'paragraph, mention': [14, 3, 0]
 };
 
 describe('render markers (render.markers)', () => {

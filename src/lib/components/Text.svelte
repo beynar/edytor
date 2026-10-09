@@ -71,15 +71,18 @@
 	/**
 	 * The first delta's text when it is unmarked: the element's own first
 	 * text node, never re-created while the text starts unmarked (a plain
-	 * text is this node alone: no anchor per delta, `render.markers`).
+	 * text is this node and two anchors: none per delta, `render.markers`).
+	 * A text that starts marked has no such node: an empty text node before
+	 * its first mark would be a caret position of its own, outside the mark
+	 * (a DOM caret there survives a render that re-creates the mark).
 	 */
-	const head = $derived(shown[0] && !shown[0].marks.length ? shown[0].text : '');
+	const head = $derived(shown[0] && !shown[0].marks.length ? shown[0].text : null);
 	/**
 	 * The deltas after it, keyed by position and marks, then the trailing
 	 * newline's marker (`delta: null`): one keyed list.
 	 */
 	const tail = $derived.by(() => {
-		const from = shown[0] && !shown[0].marks.length ? 1 : 0;
+		const from = head === null ? 0 : 1;
 		const items: { key: string; delta: RenderDelta | null }[] = [];
 		for (let index = from; index < shown.length; index++)
 			items.push({ key: getDeltaKey(shown[index]!, index), delta: rendered(shown[index]!) });
@@ -122,7 +125,7 @@
 	data-placeholder={placeholder ?? undefined}
 	data-edytor-composition-rest={rest || undefined}
 	style:white-space="break-spaces"
-	>{head}<!--
+	>{#if head !== null}{head}{/if}<!--
 	-->{#each tail as item (item.key)}<!--
 -->{#if item.delta === null}<!--
 --><span

@@ -67,6 +67,6 @@ test.describe('render markers (render.markers)', () => {
  * whitespace node per block).
  */
 const CEILING = {
-	large: { comments: 8.4, emptyTexts: 1.4 },
-	demo: { comments: 9.3, emptyTexts: 2.7 }
+	large: { comments: 9.4, emptyTexts: 1.4 },
+	demo: { comments: 10.2, emptyTexts: 2.7 }
 };

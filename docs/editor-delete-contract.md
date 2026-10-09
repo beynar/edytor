@@ -1722,8 +1722,8 @@ The renderer's own nodes in the editing host (the empty comments and empty
 text nodes Svelte anchors its blocks, components and snippets with, and
 whitespace text between tags), which the browser walks when it recomputes
 the host's text after a key, stay at most a ceiling per bundled kind: a
-plain paragraph leaves 8 comments, one empty text node and no whitespace
-(it left 23, 9 and 1), a long page of mixed kinds about 8.4 comments and
+plain paragraph leaves 9 comments, one empty text node and no whitespace
+(it left 23, 9 and 1), a long page of mixed kinds about 9.4 comments and
 1.4 empty text nodes per block. The text, the elements and their order are
 unchanged; only markers went.
 Pins: `render-markers.test.tsx` (jsdom: each bundled kind's ceiling of

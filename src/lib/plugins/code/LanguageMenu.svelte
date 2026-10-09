@@ -3,104 +3,55 @@
 
 	/**
 	 * The code language list (`LanguageMenu`), in the overlay under the
-	 * language button of its block: a search field holding the keys (a
-	 * `combobox` naming the highlighted row) over the listbox of languages.
+	 * language button of its block: the plugin's `menu` snippet, else a
+	 * search field holding the keys (a `combobox` naming the highlighted row)
+	 * over the listbox of languages. Both keep the keys and the ARIA through
+	 * the controller's attachments (`keys`, `popup`, `option(index)`).
 	 */
 	let { menu, readonly }: { menu: LanguageMenu; readonly: () => boolean } = $props();
 
-	let field = $state<HTMLInputElement | null>(null);
-	let list = $state<HTMLElement | null>(null);
-	const rows = $derived(menu.rows);
-	const current = $derived(menu.current);
-	const active = $derived(rows[menu.index]);
+	const place = $derived(menu.place);
+	const custom = $derived(menu.settings.menu);
 
 	// The view turning readonly closes it.
 	$effect(() => {
 		if (readonly()) menu.lock();
 	});
-	// Opened: the field takes the keys.
-	$effect(() => {
-		if (menu.open && field) field.focus({ preventScroll: true });
-	});
-	// The highlighted row stays in view.
-	$effect(() => {
-		if (!active || !list) return;
-		list.ownerDocument.getElementById(menu.rowId(active))?.scrollIntoView?.({ block: 'nearest' });
-	});
-	// Published to the view's root once in the page (`edytor.popups`).
-	$effect(() => {
-		const open = Boolean(menu.open && menu.box && list);
-		menu.edytor.popups.set(
-			'code-languages',
-			open ? { id: menu.listId, haspopup: 'listbox' } : null
-		);
-	});
-	$effect(() => () => menu.edytor.popups.set('code-languages', null));
-
-	const keydown = (event: KeyboardEvent) => {
-		if (event.isComposing) return;
-		const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
-		if (step) menu.move(step);
-		else if (event.key === 'Enter') menu.pick();
-		else if (event.key === 'Escape') menu.close(menu.open?.keys ? 'button' : 'editor');
-		else return;
-		event.preventDefault();
-		event.stopPropagation();
-	};
 </script>
 
 <div role="presentation">
-	{#if menu.open && menu.box}
-		{@const box = menu.box}
-		<div
-			data-edytor-code-language-menu
-			style:left="{box.x}px"
-			style:top="{box.y + box.height + 4}px"
-		>
+	{#if place && custom}
+		<div data-edytor-code-language-panel style:left="{place.left}px" style:top="{place.top}px">
+			{@render custom(menu)}
+		</div>
+	{:else if place}
+		<div data-edytor-code-language-menu style:left="{place.left}px" style:top="{place.top}px">
 			<input
-				bind:this={field}
 				type="text"
-				role="combobox"
-				aria-label={menu.labels.language}
-				aria-expanded="true"
-				aria-controls={menu.listId}
-				aria-autocomplete="list"
-				aria-activedescendant={active ? menu.rowId(active) : undefined}
 				placeholder={menu.labels.search}
 				spellcheck="false"
 				autocomplete="off"
 				autocapitalize="off"
 				value={menu.query}
 				oninput={(event) => menu.search(event.currentTarget.value)}
-				onkeydown={keydown}
-				onfocusout={menu.blurred}
+				{@attach menu.keys}
 			/>
-			<div
-				bind:this={list}
-				id={menu.listId}
-				role="listbox"
-				aria-label={menu.labels.language}
-				data-edytor-code-language-list
-			>
-				{#each rows as row, index (row.id)}
+			<div data-edytor-code-language-list {@attach menu.popup}>
+				{#each menu.items as item, index (item.item.id)}
 					<!-- The field keeps the focus: a row is pressed, never focused. -->
 					<div
-						id={menu.rowId(row)}
+						{...menu.option(index)}
+						data-edytor-code-language-option={item.item.id}
+						data-current={item.current ? '' : undefined}
+						onmousemove={item.select}
+						onclick={item.run}
 						role="option"
-						tabindex="-1"
-						aria-selected={index === menu.index}
-						data-edytor-code-language-option={row.id}
-						data-current={row.id === current ? '' : undefined}
-						onmousedown={(event) => event.preventDefault()}
-						onmousemove={() => (menu.index = index)}
-						onclick={() => menu.pick(row)}
-						onkeydown={keydown}
 					>
-						{row.label}
+						{item.label}
 					</div>
 				{/each}
 			</div>
-			{#if rows.length === 0}
+			{#if menu.rows.length === 0}
 				<div data-edytor-code-language-empty role="status">{menu.labels.noResults}</div>
 			{/if}
 		</div>
@@ -108,6 +59,9 @@
 </div>
 
 <style>
+	[data-edytor-code-language-panel] {
+		position: absolute;
+	}
 	[data-edytor-code-language-menu] {
 		position: absolute;
 		box-sizing: border-box;

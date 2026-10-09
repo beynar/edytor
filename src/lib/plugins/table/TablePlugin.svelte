@@ -315,7 +315,7 @@
 					);
 					const unmount = edytor.overlay.mount(
 						TableChromeLayer,
-						{ chrome },
+						{ chrome, grip: options.grip, menu: options.menu, add: options.add },
 						'edytor-table-chrome',
 						6,
 						chrome.measure

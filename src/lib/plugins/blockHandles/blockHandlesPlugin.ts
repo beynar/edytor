@@ -6,7 +6,7 @@ import type { Plugin } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import BlockHandles from './BlockHandles.svelte';
 import { BlockHandleController } from './BlockHandleController.svelte.js';
-import { labelsWith, type PartialLabels } from '$lib/labels.js';
+import { labelsWith, type BlockHandlesLabels, type PartialLabels } from '$lib/labels.js';
 import { hidden } from '$lib/selection/visibility.js';
 
 export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
@@ -21,13 +21,27 @@ export type BlockHandleSnippetPayload = {
 	/**
 	 * The `+`: the slash menu offers what to add below; with `true` (Alt+click)
 	 * above, or, for a block directly in a layout's column, in a new column
-	 * right of its column. Nothing is added until a row is picked.
+	 * right of its column. Nothing is added until a row is picked. The menu
+	 * opens under `anchor` (your `+`: `event.currentTarget`), else under the
+	 * block.
 	 */
-	add: (alt?: boolean) => void;
+	add: (alt?: boolean, anchor?: HTMLElement | null) => void;
 	/** Whether the block takes a `+`: always `true` (a block in a column too, as Notion). */
 	addable: boolean;
 	readonly: boolean;
 	draggable: boolean;
+	/**
+	 * Whether the menu the `+` (`add`) or the grip (`grip`) opened is open
+	 * (reactive): their `aria-expanded`.
+	 */
+	expanded: { add: boolean; grip: boolean };
+	/**
+	 * The id of the menu the `+` or the grip opened, while it is open: their
+	 * `aria-controls`.
+	 */
+	controls: { add: string | undefined; grip: string | undefined };
+	/** The handles' words (`add(label)`, `grip(label)`, their hints). */
+	labels: BlockHandlesLabels;
 };
 
 export type BlockHandlesOptions = {

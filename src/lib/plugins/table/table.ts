@@ -7,8 +7,10 @@
  * readonly view. The grid is the document's (`facade.tableGrid`): a padded
  * cell is `null` there, and the first edit in it creates it.
  */
+import type { Snippet } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan, type BlockOperations } from '$lib/block/block.utils.js';
+import type { TableAddPayload, TableChrome, TableGripPayload } from './chrome.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Prepared } from '$lib/crdt/index.js';
 import type { PartialLabels } from '$lib/labels.js';
@@ -28,6 +30,22 @@ export type TablePluginOptions = {
 	labels?: PartialLabels<'table'>;
 	/** The slash menu's keywords of the table command (`block.table`), which replace its own. */
 	keywords?: Partial<Record<string, string[]>>;
+	/**
+	 * Replace a row's or a column's grip: it renders centered where the
+	 * grip stands (left of the hovered row, above the hovered column). Put
+	 * `{@attach payload.grip}` on its element: the drag, the click that
+	 * opens its menu, its keys and its ARIA.
+	 */
+	grip?: Snippet<[TableGripPayload]>;
+	/**
+	 * Replace a grip's menu: it renders under its grip while
+	 * `chrome.menu` is set. Put `{@attach chrome.popup}` and
+	 * `{@attach chrome.keys}` on its element and spread `item.option` (or
+	 * `chrome.option(index)`) on each row of `chrome.items`.
+	 */
+	menu?: Snippet<[TableChrome]>;
+	/** Replace the `+` under the table (a row) and beside it (a column): it renders along that edge. */
+	add?: Snippet<[TableAddPayload]>;
 };
 
 /** The table commands' operation names, as hooks see them. */

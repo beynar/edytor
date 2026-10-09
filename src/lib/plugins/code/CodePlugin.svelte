@@ -44,7 +44,9 @@
 			const own: CodeSettings = {
 				languages: options.languages ?? DEFAULT_CODE_SETTINGS.languages,
 				defaultLanguage: options.defaultLanguage ?? DEFAULT_CODE_SETTINGS.defaultLanguage,
-				labels: labelsWith('code', options.labels)
+				labels: labelsWith('code', options.labels),
+				header: options.header,
+				menu: options.menu
 			};
 			codeSettings.set(edytor, own);
 			// The view's language list: the first code plugin listed owns it.

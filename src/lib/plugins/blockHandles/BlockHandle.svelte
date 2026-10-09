@@ -30,10 +30,13 @@
 		block,
 		label,
 		grip,
-		add: (above = false) => controller.addBlock(block, above),
+		add: (alt = false, anchor) => controller.addBlock(block, alt, anchor ?? block.node ?? null),
 		addable: true,
 		readonly: controller.readonly,
-		draggable: controller.draggable
+		draggable: controller.draggable,
+		expanded: { add: added !== undefined, grip: gripped !== undefined },
+		controls: { add: added?.id, grip: gripped?.id },
+		labels
 	})}
 {:else}
 	<button

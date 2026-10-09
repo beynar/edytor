@@ -6650,8 +6650,9 @@ export declare class TableChrome {
     constructor(edytor: Edytor, labels: TableLabels, columnWidth: number, minColumnWidth: number);
     get readonly(): boolean;
     private dragWidth;
+    private nextWidth;
     private widthsOf;
-    private widest;
+    private resize;
     private read;
     open: (menu: TableMenu) => void;
     toggle: (kind: TableMenu["kind"]) => void;

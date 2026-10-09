@@ -192,6 +192,8 @@ test.describe('WU-17 — large-page profile', () => {
 				const type = await keys(page, 'x', 10);
 				const enter = await keys(page, 'Enter', 10);
 				await page.keyboard.type('moved');
+				// Each key's time lands a frame later: wait for all five before dropping them.
+				await expect.poll(() => page.evaluate(() => (window as any).__lat.length)).toBe(5);
 				await latencies(page);
 				const move = await keys(
 					page,

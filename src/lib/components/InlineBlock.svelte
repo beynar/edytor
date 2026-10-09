@@ -17,6 +17,8 @@
 
 	const edytor = getContext<Edytor>('edytor');
 	const snippet = $derived(edytor.inlineBlocks.get(part.type)?.snippet);
+	/** A live atom's element registers with its handle; a suggestion's has none. */
+	const attach = (node: HTMLElement) => block?.attach(node);
 	// The snippet's view object: declared values, reactive through the part.
 	const view: InlineBlockView = {
 		get id() {
@@ -37,12 +39,5 @@
 	};
 </script>
 
-{#if snippet}
-	{#if block}
-		<span data-edytor-inline-block use:block.attach>
-			{@render snippet({ block: view })}
-		</span>
-	{:else}
-		<span data-edytor-inline-block>{@render snippet({ block: view })}</span>
-	{/if}
-{/if}
+<!-- `Content` renders only the atoms whose kind has a snippet: the span is the root, no anchor. -->
+<span data-edytor-inline-block use:attach>{@render snippet?.({ block: view })}</span>

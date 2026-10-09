@@ -275,10 +275,11 @@
 	export const codePlugin: Plugin = createCodePlugin();
 </script>
 
-{#snippet code({ block, children }: BlockSnippetPayload<{ language?: string }>)}
-	<CodeHeader {block} />
-	<pre class="th-code"><code>{@render children?.()}</code></pre>
-{/snippet}
+<!-- No whitespace between the header and the code (one node per block less to walk). -->
+<!-- prettier-ignore -->
+{#snippet code({ block, children }: BlockSnippetPayload<{ language?: string }>)}<!--
+--><CodeHeader {block} /><pre class="th-code"><code>{@render children?.()}</code></pre><!--
+-->{/snippet}
 
 {#snippet codeLine({ content }: BlockSnippetPayload)}
 	{@render content()}

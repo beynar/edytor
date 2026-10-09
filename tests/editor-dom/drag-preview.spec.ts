@@ -70,7 +70,13 @@ const open = async (page: Page) => {
 					count: preview.dataset.count,
 					badge: preview.querySelector('[data-edytor-drag-count]')?.textContent ?? null,
 					types: clones.map((clone) => clone.dataset.edytorType),
-					text: preview.textContent?.replace(/[\s\u200B]+/g, ' ').trim(),
+					// Its texts' words (the markup holds no whitespace between blocks).
+					text: [...preview.querySelectorAll('*')]
+						.flatMap((node) => [...node.childNodes])
+						.filter((node) => node.nodeType === Node.TEXT_NODE)
+						.map((node) => node.textContent?.replace(/[\s\u200B]+/g, ' ').trim())
+						.filter(Boolean)
+						.join(' '),
 					live: preview.querySelectorAll(
 						'[contenteditable], [id], [data-edytor-id], [data-edytor-block], [data-edytor-text], [data-edytor-selected]'
 					).length,

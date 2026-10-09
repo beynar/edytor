@@ -418,7 +418,10 @@
 		aria-keyshortcuts={popup?.keys}
 		{translate}
 	>
-		{#each edytor.cells?.rootIds ?? [] as id (id)}<Block {id} />{/each}<span
+		{#each edytor.suggestions.around(edytor.cells?.rootIds ?? []) as kid (kid)}<Block
+				id={typeof kid === 'string' ? kid : undefined}
+				suggestion={typeof kid === 'string' ? undefined : kid}
+			/>{/each}<span
 			data-edytor-render-anchor
 			contenteditable="false"
 			aria-hidden="true"

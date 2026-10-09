@@ -692,88 +692,73 @@
 <!--
 	Every kind that has children renders them in one container marked
 	`data-edytor-children`: the core indents it by one nesting step
-	(`--edytor-nest-indent`), so nesting looks the same under any kind.
+	(`--edytor-nest-indent`), so nesting looks the same under any kind. Each
+	snippet writes the container itself, with no whitespace between its tags
+	(the comments hold the lines; prettier would add whitespace back): a
+	nested snippet or a text node between tags is one more node per block for
+	the browser to walk (`render.markers`).
 -->
-{#snippet nested(children: BlockSnippetPayload['children'])}
-	{#if children}
-		<div data-edytor-children>
-			{@render children()}
-		</div>
-	{/if}
-{/snippet}
-
-{#snippet paragraph({ content, children }: BlockSnippetPayload)}
-	<p>
-		{@render content()}
-	</p>
-	{@render nested(children)}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet paragraph({ content, children }: BlockSnippetPayload)}<!--
+--><p>{@render content()}</p><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
 
 <!--
 	A toggle: its text the `summary`, its children the body; an empty body
 	shows its hint, which the browser hides with the body while closed.
 -->
-{#snippet details({ block, content, children }: BlockSnippetPayload)}
-	<summary>
-		{@render content()}
-	</summary>
-	{#if children}
-		{@render nested(children)}
-	{:else}
-		<EmptyBody {block} kind="toggle" />
-	{/if}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet details({ block, content, children }: BlockSnippetPayload)}<!--
+--><summary>{@render content()}</summary><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{:else}<EmptyBody {block} kind="toggle" />{/if}<!--
+-->{/snippet}
 
 <!--
 	A heading's or quote's text (the core wraps it in the kind's `contentElement`,
 	its `h1`–`h3` or `blockquote`); its children below, outside that tag, so
 	heading styles and the heading's accessible name stop at its own text.
 -->
-{#snippet textThenChildren({ content, children }: BlockSnippetPayload)}
-	{@render content()}
-	{@render nested(children)}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet textThenChildren({ content, children }: BlockSnippetPayload)}<!--
+-->{@render content()}<!--
+-->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
 
 <!--
 	A callout: its icon, its title (its own text), then its content (its
 	children), or the hint of an empty one.
 -->
-{#snippet callout({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}
-	<CalloutIcon {block} />
-	<div data-edytor-callout-title>
-		{@render content()}
-	</div>
-	{#if children}
-		{@render nested(children)}
-	{:else}
-		<EmptyBody {block} kind="callout" />
-	{/if}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet callout({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}<!--
+--><CalloutIcon {block} /><!--
+--><div data-edytor-callout-title>{@render content()}</div><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{:else}<EmptyBody {block} kind="callout" />{/if}<!--
+-->{/snippet}
 
-{#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}
-	<TodoCheckbox {block} toggle={toggleTodo} />
-	<div>
-		{@render content()}
-	</div>
-	{@render nested(children)}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}<!--
+--><TodoCheckbox {block} toggle={toggleTodo} /><!--
+--><div>{@render content()}</div><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
 
-{#snippet listItem({ content, children }: BlockSnippetPayload)}
-	<div>{@render content()}</div>
-	{@render nested(children)}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet listItem({ content, children }: BlockSnippetPayload)}<!--
+--><div>{@render content()}</div><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
 
 <!--
 	A list container (HTML import's `ol`/`ul`) groups its items: they are its
 	rows, not blocks nested under its text, so its wrapper is not indented.
 -->
-{#snippet list({ children }: BlockSnippetPayload)}
-	{#if children}
-		<div>
-			{@render children()}
-		</div>
-	{/if}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet list({ children }: BlockSnippetPayload)}<!--
+-->{#if children}<div>{@render children()}</div>{/if}<!--
+-->{/snippet}
 
 <style>
 	/* A callout's title reads as its heading (Notion); its content below it. */

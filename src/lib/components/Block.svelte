@@ -3,9 +3,9 @@
 	import type { Edytor } from '../edytor.svelte.js';
 	import { UNKNOWN_KIND } from '../kinds.js';
 	import { voidChrome, type Block as BlockHandle } from '../block/block.svelte.js';
-	import type { BlockDefinition, BlockView } from '../plugins.js';
+	import type { BlockDefinition, BlockSnippetPayload, BlockView } from '../plugins.js';
 	import type { PreviewCell } from '../surface/cells.js';
-	import { replacedMark } from '../session/suggestions.svelte.js';
+	import { replacedMark, Suggestion } from '../session/suggestions.svelte.js';
 
 	const reported = new WeakMap<Edytor, Set<string>>();
 
@@ -41,6 +41,16 @@
 		handle: undefined,
 		void: voidChrome
 	});
+
+	/** A child in the flow: a block's id, a block suggestion, or a preview's own block. */
+	type Kid = string | Suggestion | PreviewCell;
+	const kidKey = (kid: Kid) =>
+		typeof kid === 'string' || kid instanceof Suggestion ? kid : kid.id;
+	const idOf = (kid: Kid) =>
+		typeof kid === 'string' ? kid : kid instanceof Suggestion ? undefined : kid.id;
+	const previewOf = (kid: Kid) =>
+		typeof kid === 'string' || kid instanceof Suggestion ? undefined : kid;
+	const suggestionOf = (kid: Kid) => (kid instanceof Suggestion ? kid : undefined);
 
 	/** Tags that take no content: the kind renders the element only. */
 	const VOID_TAGS = new Set(['area', 'br', 'col', 'embed', 'hr', 'img', 'input', 'wbr']);
@@ -82,37 +92,55 @@
 	import { getContext } from 'svelte';
 	import Child from './Block.svelte';
 	import Content from './Content.svelte';
-	import Suggestion from './Suggestion.svelte';
+	import SuggestionPreview from './Suggestion.svelte';
 	import { blockDir, ownText } from '../surface/attributes.js';
 	import { colorAttributes } from '../block/colors.js';
 
 	let {
 		id,
-		preview
+		preview,
+		suggestion
 	}: {
-		id: string;
+		id?: string;
 		/** A suggestion's block: rendered from its preview cell, never registered (`Suggestion`). */
 		preview?: PreviewCell;
+		/** A block suggestion's preview in the flow among its siblings, in place of a block. */
+		suggestion?: Suggestion;
 	} = $props();
 
 	const edytor = getContext<Edytor>('edytor');
 	// The structure renders from the cell; the snippet receives a view object.
-	const cell = $derived(preview ?? edytor.cells?.get(id));
-	const block = $derived(preview ? previewViewOf(preview) : blockViewOf(edytor, id));
-	/** The suggestions shown before, after and inside this block (none in a preview). */
-	const shown = $derived(preview ? null : edytor.suggestions.at(id));
-	/** The children: a preview's own, else the cell's ids. */
+	const cell = $derived(preview ?? (id === undefined ? undefined : edytor.cells?.get(id)));
+	const block = $derived(
+		preview ? previewViewOf(preview) : id === undefined ? undefined : blockViewOf(edytor, id)
+	);
+	/** The suggestions shown at this block (none in a preview). */
+	const shown = $derived(preview || id === undefined ? null : edytor.suggestions.at(id));
+	/**
+	 * The children: a preview's own, else the cell's ids with the suggestions
+	 * shown around them and inside this block (`suggestions.around`).
+	 */
 	const kids = $derived(
 		preview
 			? preview.children
-			: (edytor.cells?.get(id)?.childIds ?? []).map((child) => ({ id: child }))
+			: id === undefined
+				? []
+				: edytor.suggestions.around(edytor.cells?.get(id)?.childIds ?? [], id)
 	);
 	const definition = $derived(cell && edytor.definitionOf(cell.type));
 	// The core renders the block element from the definition; the snippet renders inside it.
-	const element = $derived(definition && elementOf(definition.element ?? 'div', cell?.data, id));
+	const element = $derived(
+		definition && id !== undefined
+			? elementOf(definition.element ?? 'div', cell?.data, id)
+			: undefined
+	);
+	/** The element's tag: none until the block has a cell and a definition. */
+	const tag = $derived((cell && element && element.tag) || undefined);
 	// The element around the block's own text (a heading's `h2`): the core's, so an override keeps it.
 	const contentElement = $derived(
-		definition && elementOf(definition.contentElement, cell?.data, id)
+		definition && id !== undefined
+			? elementOf(definition.contentElement, cell?.data, id)
+			: undefined
 	);
 	/** Its direction from its own text (`blockDir`, bidi): none in a preview. */
 	const dir = $derived(preview ? null : blockDir(ownText(cell?.runs ?? [])));
@@ -127,7 +155,7 @@
 		return { update: write };
 	};
 	/** Registers the block element: one element per block, re-registered when the tag changes. */
-	const register = (node: HTMLElement) => block.handle?.attach(node);
+	const register = (node: HTMLElement) => block?.handle?.attach(node);
 	/**
 	 * Whether the selection holds this block, and whether it touches it: one
 	 * boolean each, read from the block's own membership (`isSelected`,
@@ -135,8 +163,8 @@
 	 * leaves (a set's `has` re-runs the reader of every block outside it when
 	 * its members change: a caret moving to another block re-ran every block's).
 	 */
-	const selected = $derived(!!block.handle && edytor.selection.isSelected(block.handle));
-	const focused = $derived(!!block.handle && edytor.selection.isFocused(block.handle));
+	const selected = $derived(!!block?.handle && edytor.selection.isSelected(block.handle));
+	const focused = $derived(!!block?.handle && edytor.selection.isFocused(block.handle));
 	/**
 	 * Its colour and background by palette name (`block/colors.ts`), from its
 	 * data; written below as two properties (a second spread in the object
@@ -159,94 +187,110 @@
 			contenteditable: definition?.void ? ('false' as const) : undefined
 		}
 	);
+	const userSelect = $derived(definition?.void ? 'none' : undefined);
+	/** What renders inside the element: the kind's snippet, or a kind this view does not register. */
+	const body = $derived(definition?.snippet ?? (definition === UNKNOWN_KIND ? unknown : undefined));
+	/** The kind snippet's payload: its view object, its text, its children (none: `null`). */
+	const payload = $derived({
+		block: block!,
+		content: contentElement ? wrappedContent : content,
+		children: kids.length ? children : null
+	});
 
 	// The kind `content()` last rendered under — read after each render.
 	let contentRenderedFor: string | undefined;
 	$effect(() => {
-		if (DEV && block.handle) checkRendersContent(block.handle, contentRenderedFor === cell?.type);
+		if (DEV && block?.handle) checkRendersContent(block.handle, contentRenderedFor === cell?.type);
 	});
 </script>
 
 <!--
--->{#snippet text()}<!--
---><Content
-		{id}
+	The render places as few anchors as it can (`render.markers`, counted by
+	`render-markers.test.tsx`): Svelte leaves an empty comment or text node for
+	each block, dynamic element, component or snippet it places, except a
+	static component or snippet that is the only thing its fragment renders,
+	and the browser walks them all after each keystroke. So the bundled kinds'
+	block tags are static elements (a dynamic element leaves two markers
+	more), the text is a static component of the `content` snippet, and the
+	children are one `each` of static components (a suggestion in the flow is
+	one of them). The comments between the top-level nodes keep whitespace out
+	of the markup.
+-->
+{#snippet content()}
+	<Content
+		id={id ?? ''}
 		preview={preview?.runs}
 		onrender={DEV ? () => (contentRenderedFor = cell?.type) : undefined}
-	/><!--
--->{/snippet}<!--
--->{#snippet content()}<!--
--->{#if contentElement}<!--
---><svelte:element
-			this={contentElement.tag}
-			{...contentElement.attributes}>{@render text()}</svelte:element
-		><!--
--->{:else}<!--
--->{@render text()}<!--
--->{/if}<!--
--->{/snippet}<!--
--->{#snippet children()}<!--
---->{#each kids as child (child.id)}<!--
---><Child
-			id={child.id}
-			preview={preview && (child as PreviewCell)}
-		/><!--
--->{/each}<!--
--->{#each shown?.inside ?? [] as suggestion (suggestion.id)}<!--
---><Suggestion
-			{suggestion}
-		/><!--
--->{/each}<!--
--->{/snippet}<!--
--->{#each shown?.before ?? [] as suggestion (suggestion.id)}<!--
---><Suggestion
-		{suggestion}
-	/><!--
--->{/each}<!--
--->{#if cell && definition && element}<!--
-	A void tag (a divider's `hr`) takes no body: the element alone.
--->{#if VOID_TAGS.has(element.tag)}<!--
---><svelte:element
-			this={element.tag}
-			{...attributes}
-			style:user-select={definition.void ? 'none' : undefined}
-			use:register
-			use:direction={dir}
-		/><!--
--->{:else}<!--
---><svelte:element
-			this={element.tag}
-			{...attributes}
-			style:user-select={definition.void ? 'none' : undefined}
-			use:register
-			use:direction={dir}
-			><!--
-		-->{#if definition.snippet}<!--
-		-->{@render definition.snippet({
-					block,
-					content,
-					children: kids.length || shown?.inside.length ? children : null
-				})}<!--
-		-->{:else if definition === UNKNOWN_KIND}<!--
-			A kind this view does not register: a plain block, its text and children.
-		-->{@render content()}{#if kids.length || shown?.inside.length}<div
-						data-edytor-children
-					>
-						{@render children()}
-					</div>{/if}<!--
-		-->{/if}<!--
-	--></svelte:element
-		><!--
--->{/if}<!--
--->{/if}<!--
--->{#each shown?.after ?? [] as suggestion (suggestion.id)}<!--
---><Suggestion
-		{suggestion}
-	/><!--
--->{/each}
-
-<!--
--->
+	/>
+{/snippet}<!--
+	The kind's `contentElement` (a heading's `h2`) around the text.
+-->{#snippet wrappedContent()}
+	<svelte:element this={contentElement?.tag} {...contentElement?.attributes}>
+		<Content
+			id={id ?? ''}
+			preview={preview?.runs}
+			onrender={DEV ? () => (contentRenderedFor = cell?.type) : undefined}
+		/>
+	</svelte:element>
+{/snippet}<!--
+-->{#snippet children()}
+	{#each kids as kid (kidKey(kid))}
+		<Child id={idOf(kid)} preview={previewOf(kid)} suggestion={suggestionOf(kid)} />
+	{/each}
+{/snippet}<!--
+	A kind this view does not register: a plain block, its text and children.
+-->{#snippet unknown({
+	content,
+	children
+}: BlockSnippetPayload)}
+	{@render content()}<!--
+	-->{#if children}
+		<div data-edytor-children>
+			{@render children()}
+		</div>
+	{/if}
+{/snippet}<!--
+	The block element: the bundled kinds' tags as static elements, any other
+	through `svelte:element` (a void tag, a divider's `hr`, takes no body).
+-->{#if suggestion}
+	<SuggestionPreview {suggestion} />
+{:else if tag === 'div'}
+	<div {...attributes} style:user-select={userSelect} use:register use:direction={dir}>
+		{@render body?.(payload)}
+	</div>
+{:else if tag === 'li'}
+	<li {...attributes} style:user-select={userSelect} use:register use:direction={dir}>
+		{@render body?.(payload)}
+	</li>
+{:else if tag === 'details'}
+	<details {...attributes} style:user-select={userSelect} use:register use:direction={dir}>
+		{@render body?.(payload)}
+	</details>
+{:else if tag === 'figure'}
+	<figure {...attributes} style:user-select={userSelect} use:register use:direction={dir}>
+		{@render body?.(payload)}
+	</figure>
+{:else if tag === 'hr'}
+	<hr {...attributes} style:user-select={userSelect} use:register use:direction={dir} />
+{:else if tag && VOID_TAGS.has(tag)}
+	<svelte:element
+		this={tag}
+		{...attributes}
+		style:user-select={userSelect}
+		use:register
+		use:direction={dir}
+	/>
+{:else if tag}
+	<svelte:element
+		this={tag}
+		{...attributes}
+		style:user-select={userSelect}
+		use:register
+		use:direction={dir}
+	>
+		{@render body?.(payload)}
+	</svelte:element>
+{/if}
 
 <style>
 	/*

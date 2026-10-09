@@ -206,6 +206,8 @@
 	export const imagePlugin = createImagePlugin();
 </script>
 
+<!-- No whitespace before the caption (one node per block less to walk). -->
+<!-- prettier-ignore -->
 {#snippet image({ block, content }: BlockSnippetPayload<ImageData>)}
 	<!-- A suggestion's preview (no handle) reads only its data. -->
 	{@const view = block.handle ? views.get(block.handle.edytor) : undefined}
@@ -241,10 +243,9 @@
 				empty={view?.empty}
 			/>
 		</div>
-	{/if}
-	<!-- The core renders the kind's <figure> around this markup. -->
-	<!-- svelte-ignore a11y_figcaption_parent -->
-	<figcaption>{@render content()}</figcaption>
+	{/if}<!--
+	The core renders the kind's <figure> around this markup.
+	--><!-- svelte-ignore a11y_figcaption_parent --><figcaption>{@render content()}</figcaption>
 {/snippet}
 
 <style>

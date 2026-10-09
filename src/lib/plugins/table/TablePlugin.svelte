@@ -433,7 +433,7 @@
 			data-edytor-table-grid
 			style:grid-template-columns={templateOf(block)}
 		>
-			{#if children}{@render children()}{/if}
+			{@render children?.()}
 		</div>
 	</div>
 {/snippet}
@@ -442,8 +442,8 @@
 {#snippet row({ block, children }: BlockSnippetPayload)}
 	{@const labels = labelsOf.of(block.handle?.edytor)}
 	<div data-edytor-children data-edytor-table-cells>
-		{#if children}{@render children()}{/if}
-		{#each padsOf(block) as column (column)}
+		{@render children?.()}<!--
+		-->{#each padsOf(block) as column (column)}
 			<!-- A pointer's way to a padded cell: the keyboard fills none (Tab skips it). -->
 			<!-- svelte-ignore a11y_interactive_supports_focus -->
 			<div
@@ -461,7 +461,10 @@
 {/snippet}
 
 <!-- A cell: its text (its lines are line breaks), and any block a race left in it. -->
-{#snippet cell({ content, children }: BlockSnippetPayload)}
-	{@render content()}
-	{#if children}<div data-edytor-children>{@render children()}</div>{/if}
-{/snippet}
+{#snippet cell({
+	content,
+	children
+}: BlockSnippetPayload)}{@render content()}<!--
+-->{#if children}<div data-edytor-children>
+			{@render children()}
+		</div>{/if}{/snippet}

@@ -168,8 +168,11 @@ describe('the drag ghost', () => {
 		const clones = clonesOf(image!);
 		expect(clones.map((clone) => clone.dataset.edytorType)).toEqual(['paragraph']);
 		const [clone] = clones;
-		const text = clone!.textContent?.replace(/[\s\u200B]+/g, ' ').trim();
-		expect(text).toBe('a bold a1 bold');
+		// Its text and its child's (the markup holds no whitespace between blocks).
+		const texts = [...clone!.querySelectorAll('p')].map((text) =>
+			text.textContent?.replace(/[\s\u200B]+/g, ' ').trim()
+		);
+		expect(texts).toEqual(['a bold', 'a1 bold']);
 		expect(clone!.querySelector('strong')?.textContent).toBe('bold');
 		expect(clone!.querySelector('[data-edytor-children] [data-edytor-type="paragraph"]')).not.toBe(
 			null

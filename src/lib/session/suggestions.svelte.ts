@@ -286,6 +286,25 @@ export class Suggestions {
 	at = (id: BlockId): SuggestionsAt => this.#places.get(id) ?? NONE;
 
 	/**
+	 * Sibling blocks `ids` in the flow with the suggestions shown before and
+	 * after each, then those shown inside `parent` (its last children): `ids`
+	 * itself while none is listed, so a children list reads one fact.
+	 * @internal
+	 */
+	around = (ids: readonly BlockId[], parent?: BlockId): readonly (BlockId | Suggestion)[] => {
+		const places = this.#places;
+		if (!places.size) return ids;
+		const flow: (BlockId | Suggestion)[] = [];
+		for (const id of ids) {
+			const place = places.get(id);
+			if (place) flow.push(...place.before, id, ...place.after);
+			else flow.push(id);
+		}
+		if (parent !== undefined) flow.push(...(places.get(parent)?.inside ?? []));
+		return flow;
+	};
+
+	/**
 	 * The one command (`acceptSuggestion`) that writes a suggestion: refused
 	 * by a readonly view or a vetoing hook (the suggestion stays); else the
 	 * content goes in with fresh ids, the suggestion goes, and the caret ends

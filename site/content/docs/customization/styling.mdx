@@ -60,13 +60,19 @@ The theme also sets `--edytor-drop-indicator-color` to Notion's `rgba(35, 131, 2
 
 ### Long pages
 
-`--edytor-block-visibility: auto` on `.edytor-notion` (or any element around the editor) gives each top-level block `content-visibility: auto`: a block off screen skips its style, layout and paint until it nears the viewport, and counts as a 32px row until it was rendered once. Selection, typing, find-in-page, block handles, drag and drop and remote carets keep working over skipped blocks.
+The `edytor-long-page` class on the editor (or any element around it) gives each top-level block `content-visibility: auto` and `contain-intrinsic-block-size: auto 32px`: a block off screen skips its style, layout and paint until it nears the viewport, and counts as a 32px row until it was rendered once, then as its real height. Selection, typing, find-in-page, block handles, drag and drop and remote carets keep working over skipped blocks. It works with any theme; the containment it brings clips what a block paints outside its own box, so check a custom theme's kinds paint inside theirs.
+
+```svelte
+<div class="edytor-notion edytor-long-page">
+	<Edytor {document} />
+</div>
+```
 
 It is off by default because it trades scrolling for loading, and loading barely gains: it shortens the first layout, but mounting the blocks takes most of the load, and each block that scrolls into view is then styled and laid out on that frame, so scrolling slows down (three times at 5,000 blocks). The keys cost more with it, not less: at 5,000 blocks a character and a move about a third more, Enter and a paste more than half. Turn it on for pages that are mostly read top to bottom, or whose blocks are expensive to lay out (large images, embeds, code).
 
 Measured in Chromium at 1280×900 on `/test/large` (top-level blocks of mixed kinds, the Notion theme, the shipped plugins and block handles; `tests/editor-dom/large-page.profile.spec.ts`, the median of three runs), on a laptop shared with other jobs, so the absolute times are high and the ratios are what to read. A key is the time from its `keydown` to the next frame, in a block in the middle of the page.
 
-| Measure                             | 1,000 blocks | 2,000 blocks | 5,000 blocks | 5,000, `auto` |
+| Measure                             | 1,000 blocks | 2,000 blocks | 5,000 blocks | 5,000, `edytor-long-page` |
 | ----------------------------------- | -----------: | -----------: | -----------: | ------------: |
 | First paint                         |       244 ms |       348 ms |       837 ms |        820 ms |
 | of which the view's mount           |       151 ms |       232 ms |       564 ms |        566 ms |
@@ -81,7 +87,7 @@ What grows with the page is the mount (about 0.1 ms a block) and the browser's s
 
 - **The editor's share does not grow.** What the editor's own code does for a key (a character, Enter, a move, a caret moving to another block) is the same work at 5,000 blocks as at 1,000: it re-renders the blocks the key changes and those the selection enters and leaves, checks only the nodes added to the page, and measures only the chrome near the screen. Rows in the test suite count that work at both sizes. At 5,000 blocks it is about a millisecond for a character and a few for Enter.
 - **The browser's share does.** In Chromium, when the caret moves inside an input event after the page changed, the browser recomputes the text of the whole editable root for the input method, a walk of the page (about 2 ms at 1,000 blocks, 11 ms at 5,000), and does it again after the frame when a key added or moved a block; laying out, painting and hit-testing a root of thousands of blocks grows too. Typed natively into a static copy of the same page, with no editor at all, a character and Enter cost about what they cost here. The rendered markup weighs on these walks: each block carries a couple of dozen empty markers of the renderer (comments), which the browser steps over.
-- **The theme's remembered block height.** The Notion theme gives every top-level block `contain-intrinsic-block-size: auto 32px`, for `--edytor-block-visibility: auto`. Chromium then checks the size of every top-level block on each frame, about 2.5 ms at 5,000 blocks, whether the option is on or not. Without the option, `contain-intrinsic-block-size: none` on those blocks saves it.
+- **One switch.** The class sets both properties, and without it neither is set: the remembered height alone makes Chromium check every top-level block's size on each frame (about 2.5 ms at 5,000 blocks).
 - **No windowing.** The editor renders every block, with no windowing: it would break native selection, find-in-page and IME.
 
 ## The rendered DOM

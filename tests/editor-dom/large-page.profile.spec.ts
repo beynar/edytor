@@ -2,7 +2,7 @@
  * WU-17 (R10): the client-scale profile. Loads `/test/large` (N top-level
  * blocks of mixed kinds under the Notion theme, the shipped plugins and
  * block handles) at 5,000 and 10,000 blocks, with and without
- * `--edytor-block-visibility: auto`, and measures in Chromium:
+ * the long-page switch (`edytor-long-page`), and measures in Chromium:
  *
  * - the load: the document seeded and indexed, the view mounted, the first
  *   paint (two frames after the mount), and the layout / style

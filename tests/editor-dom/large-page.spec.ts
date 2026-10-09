@@ -1,6 +1,6 @@
 /**
- * P8 — a 5,000-block page under the Notion theme with its opt-in
- * `--edytor-block-visibility: auto` (`themes/notion.css`): top-level blocks
+ * P8 — a 5,000-block page with the long-page switch, the `edytor-long-page`
+ * class (`components/Edytor.svelte`): top-level blocks
  * carry `content-visibility: auto`, so the browser skips rendering the
  * blocks off screen. What must keep working over skipped
  * blocks, in every engine:
@@ -56,22 +56,21 @@ const inViewport = (page: Page, id: string) =>
 test.describe('P8 — a large page with content-visibility', () => {
 	test.setTimeout(120_000);
 
-	test('top-level blocks skip rendering off screen under the opt-in; the theme’s default keeps them visible', async ({
+	test('the long-page switch: top-level blocks skip rendering off screen and remember their height; without it, neither', async ({
 		page
 	}) => {
 		await open(page);
 		const styleOf = (id: string) =>
-			page.evaluate(
-				(id) =>
-					getComputedStyle(document.querySelector(`[data-edytor-id="${id}"]`)!).contentVisibility,
-				id
-			);
-		expect(await styleOf('b0')).toBe('auto');
-		expect(await styleOf('b4999')).toBe('auto');
+			page.evaluate((id) => {
+				const style = getComputedStyle(document.querySelector(`[data-edytor-id="${id}"]`)!);
+				return [style.contentVisibility, style.containIntrinsicBlockSize];
+			}, id);
+		expect(await styleOf('b0')).toEqual(['auto', 'auto 32px']);
+		expect(await styleOf('b4999')).toEqual(['auto', 'auto 32px']);
 		expect(await page.locator('[data-edytor-block="true"]').count()).toBe(5000);
-		// The theme's default (no opt-in): rendered as usual.
+		// Without the switch: rendered as usual, and no remembered height for the browser to track.
 		await open(page, 'cv=0');
-		expect(await styleOf('b4999')).toBe('visible');
+		expect(await styleOf('b4999')).toEqual(['visible', 'none']);
 	});
 
 	test('the native caret reaches the last block; typing lands there, in view', async ({ page }) => {

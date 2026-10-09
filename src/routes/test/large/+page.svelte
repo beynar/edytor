@@ -84,8 +84,8 @@
 
 <main
 	class="edytor-notion"
+	class:edytor-long-page={cv}
 	style="max-width: 720px; margin: 0 auto; padding: 48px 96px;"
-	style:--edytor-block-visibility={cv ? 'auto' : undefined}
 >
 	<Edytor bind:edytor document={main} {plugins} blockHandles />
 	{#if peer}

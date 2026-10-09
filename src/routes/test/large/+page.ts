@@ -3,9 +3,9 @@ import type { PageLoad } from './$types';
 /**
  * `/test/large` — a large page (P8): `blocks` top-level blocks (default
  * 5,000) under the Notion theme, the shipped plugins and block handles.
- * the theme's opt-in `content-visibility` is on
- * (`--edytor-block-visibility: auto`); `cv=0` leaves it off (the theme's
- * default, the "before" measurement); `peer=1` mounts a second, hidden view on a second document
+ * the long-page switch is on (the `edytor-long-page` class: `content-visibility`
+ * and the remembered height); `cv=0` leaves it off (the default, the "before"
+ * measurement); `peer=1` mounts a second, hidden view on a second document
  * bridged in the page, whose caret shows as a remote caret.
  */
 export const load: PageLoad = ({ url }) => ({

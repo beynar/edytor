@@ -670,7 +670,7 @@ Run these in order; they touch the same files.
 
 - Scope:
   - Profile Chromium at 5k and 10k blocks: mount, Enter, paste, move, scroll.
-  - Decide whether `--edytor-block-visibility: auto` becomes the default, or windowed
+  - Decide whether the long-page switch (`edytor-long-page`, which replaced `--edytor-block-visibility: auto`) becomes the default, or windowed
     rendering of top-level blocks.
   - Make `crdt/data.ts` `common()` linear: trim the common prefix and suffix, then use
     positional pairing or a Myers diff past a bound.

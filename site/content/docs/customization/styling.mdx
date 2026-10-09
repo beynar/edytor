@@ -62,25 +62,26 @@ The theme also sets `--edytor-drop-indicator-color` to Notion's `rgba(35, 131, 2
 
 `--edytor-block-visibility: auto` on `.edytor-notion` (or any element around the editor) gives each top-level block `content-visibility: auto`: a block off screen skips its style, layout and paint until it nears the viewport, and counts as a 32px row until it was rendered once. Selection, typing, find-in-page, block handles, drag and drop and remote carets keep working over skipped blocks.
 
-It is off by default because it trades scrolling for loading, and loading barely gains: it shortens the first layout, but mounting the blocks takes most of the load, and each block that scrolls into view is then styled and laid out on that frame, so scrolling slows down. A character costs the same either way; a key that adds or moves blocks (Enter, a move, a paste) costs about a quarter more. Turn it on for pages that are mostly read top to bottom, or whose blocks are expensive to lay out (large images, embeds, code).
+It is off by default because it trades scrolling for loading, and loading barely gains: it shortens the first layout, but mounting the blocks takes most of the load, and each block that scrolls into view is then styled and laid out on that frame, so scrolling slows down (three times at 5,000 blocks). The keys cost more with it, not less: at 5,000 blocks a character and a move about a third more, Enter and a paste more than half. Turn it on for pages that are mostly read top to bottom, or whose blocks are expensive to lay out (large images, embeds, code).
 
-Measured in Chromium at 1280×900 on `/test/large` (top-level blocks of mixed kinds, the Notion theme, the shipped plugins and block handles; `tests/editor-dom/large-page.profile.spec.ts`, median of three loads), on a laptop shared with other jobs, so the absolute times are high and the ratios are what to read. A key is the time from its `keydown` to the next frame, in a block in the middle of the page.
+Measured in Chromium at 1280×900 on `/test/large` (top-level blocks of mixed kinds, the Notion theme, the shipped plugins and block handles; `tests/editor-dom/large-page.profile.spec.ts`, the median of three runs), on a laptop shared with other jobs, so the absolute times are high and the ratios are what to read. A key is the time from its `keydown` to the next frame, in a block in the middle of the page.
 
-| Measure                             | 5,000 blocks | 5,000, `auto` | 10,000 blocks | 10,000, `auto` |
-| ----------------------------------- | -----------: | ------------: | ------------: | -------------: |
-| First paint | 751 ms | 795 ms | 1,576 ms | 1,406 ms |
-| of which the view's mount | 485 ms | 425 ms | 924 ms | 831 ms |
-| Layout through the load | 29 ms | 9 ms | 56 ms | 20 ms |
-| Scroll frame (80px a frame), median | 8.3 ms | 18 ms | 17 ms | 52 ms |
-| Typing a character | 23 ms | 29 ms | 71 ms | 78 ms |
-| Enter | 91 ms | 111 ms | 253 ms | 277 ms |
-| Moving a block (Mod+Shift+↓) | 55 ms | 64 ms | 148 ms | 176 ms |
-| Pasting 50 lines | 127 ms | 148 ms | 279 ms | 334 ms |
+| Measure                             | 1,000 blocks | 2,000 blocks | 5,000 blocks | 5,000, `auto` |
+| ----------------------------------- | -----------: | -----------: | -----------: | ------------: |
+| First paint                         |       244 ms |       348 ms |       837 ms |        820 ms |
+| of which the view's mount           |       151 ms |       232 ms |       564 ms |        566 ms |
+| Layout through the load             |        15 ms |        12 ms |        31 ms |         11 ms |
+| Scroll frame (80px a frame), median |       8.3 ms |       8.3 ms |       8.3 ms |         25 ms |
+| Typing a character                  |       6.4 ms |       9.7 ms |        24 ms |         31 ms |
+| Enter                               |        13 ms |        22 ms |        54 ms |         86 ms |
+| Moving a block (Mod+Shift+↓)        |       9.9 ms |        18 ms |        47 ms |         64 ms |
+| Pasting 50 lines                    |        26 ms |        34 ms |        60 ms |         92 ms |
 
-What grows with the page is the mount (about 0.13 ms a block) and the keys. At 1,000 blocks a character takes 9 ms and Enter 24 ms; at 2,000, 17 and 50 ms. Keep a document to a couple of thousand top-level blocks for typing within a frame; for longer content, make each page its own document ([A page is a document](/docs/server/moves#a-page-is-a-document)).
+What grows with the page is the mount (about 0.1 ms a block) and the browser's share of each key. Keep a document to a couple of thousand top-level blocks for typing within a frame; for longer content, make each page its own document ([A page is a document](/docs/server/moves#a-page-is-a-document)).
 
-- **The browser's share.** Much of a character's time on a long page is the browser's: in Chromium, moving the DOM caret inside an input event costs time proportional to the page (1.2 ms at 1,000 blocks, 14 ms at 5,000, 30 ms at 10,000, about 58 ms at 20,000; nothing outside the event), and a keystroke moves it twice (patching the text node resets the caret, and the editor puts it back).
-- **Structural keys.** A key that adds, removes or moves a top-level block (Enter, a move, a paste) costs two to three times a character, most of it the editor's own work, also proportional to the number of blocks.
+- **The editor's share does not grow.** What the editor's own code does for a key (a character, Enter, a move, a caret moving to another block) is the same work at 5,000 blocks as at 1,000: it re-renders the blocks the key changes and those the selection enters and leaves, checks only the nodes added to the page, and measures only the chrome near the screen. Rows in the test suite count that work at both sizes. At 5,000 blocks it is about a millisecond for a character and a few for Enter.
+- **The browser's share does.** In Chromium, when the caret moves inside an input event after the page changed, the browser recomputes the text of the whole editable root for the input method, a walk of the page (about 2 ms at 1,000 blocks, 11 ms at 5,000), and does it again after the frame when a key added or moved a block; laying out, painting and hit-testing a root of thousands of blocks grows too. Typed natively into a static copy of the same page, with no editor at all, a character and Enter cost about what they cost here. The rendered markup weighs on these walks: each block carries a couple of dozen empty markers of the renderer (comments), which the browser steps over.
+- **The theme's remembered block height.** The Notion theme gives every top-level block `contain-intrinsic-block-size: auto 32px`, for `--edytor-block-visibility: auto`. Chromium then checks the size of every top-level block on each frame, about 2.5 ms at 5,000 blocks, whether the option is on or not. Without the option, `contain-intrinsic-block-size: none` on those blocks saves it.
 - **No windowing.** The editor renders every block, with no windowing: it would break native selection, find-in-page and IME.
 
 ## The rendered DOM

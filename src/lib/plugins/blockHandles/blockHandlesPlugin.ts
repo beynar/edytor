@@ -72,10 +72,15 @@ const NEAR_SCREENS = 1;
  * O(log n) boxes a frame, where an observer of every block computed them all
  * after each layout change.
  */
-const nearTop = (blocks: readonly Block[], screen: number): readonly Block[] => {
+const nearTop = (
+	blocks: readonly string[],
+	handle: (id: string) => Block,
+	screen: number
+): readonly Block[] => {
 	const top = -NEAR_SCREENS * screen;
 	const bottom = (1 + NEAR_SCREENS) * screen;
-	const box = (block: Block) => block.node?.getBoundingClientRect();
+	// Ids, a handle only for each box read: no handle for every top-level block.
+	const box = (id: string) => handle(id).node?.getBoundingClientRect();
 	let lo = 0;
 	let hi = blocks.length;
 	while (lo < hi) {
@@ -92,7 +97,7 @@ const nearTop = (blocks: readonly Block[], screen: number): readonly Block[] => 
 		if (!at || at.top <= bottom) lo = mid + 1;
 		else hi = mid;
 	}
-	return blocks.slice(first, lo);
+	return blocks.slice(first, lo).map(handle);
 };
 
 /**
@@ -135,14 +140,14 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 		/** The near band, measured on the overlay's frames (a scroll, a resize, a commit). */
 		const measureNear = () => {
 			const view = edytor.node?.ownerDocument.defaultView;
-			const tops = edytor.root?.children;
-			if (!view || !tops) return;
+			if (!view || !edytor.root) return;
+			const tops = edytor.facade.childrenIds(null);
 			const next = new Set<string>();
 			const visit = (block: Block) => {
 				if (blocks.has(block.id) && !hidden(block)) next.add(block.id);
 				for (const child of block.children) visit(child);
 			};
-			for (const block of nearTop(tops, view.innerHeight)) visit(block);
+			for (const block of nearTop(tops, edytor.idToBlock.block, view.innerHeight)) visit(block);
 			return () => {
 				for (const id of near) if (!next.has(id)) near.delete(id);
 				const add = [...next].filter((id) => !near.has(id));

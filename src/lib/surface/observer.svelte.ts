@@ -139,6 +139,12 @@ export class SurfaceObserver {
 	/** Attribute records, kept while their element diverges from the table. */
 	#attributes = new Set<MutationRecord>();
 	#added = new Set<Node>();
+	/**
+	 * Nodes put into the root since its last check (records whose target is the
+	 * root; its children at attach): the strict root checks these, never every
+	 * child — a block added or moved costs the same on a long page.
+	 */
+	#rooted = new Set<Node>();
 	#removed: Removal[] = [];
 	/** A text element the browser replaced with its own nodes: their text is the edit. */
 	#replaced = new Map<Element, Replacement>();
@@ -171,6 +177,7 @@ export class SurfaceObserver {
 			records.forEach(this.#intake);
 			this.signal();
 		}));
+		for (const child of root.childNodes) this.#rooted.add(child);
 		mo.observe(root, {
 			attributes: true,
 			attributeOldValue: true,
@@ -318,7 +325,11 @@ export class SurfaceObserver {
 		if (id) this.#seen(id);
 		if (record.type === 'attributes') this.#attributes.add(record);
 		if (record.type !== 'childList') return;
-		for (const node of record.addedNodes) this.#added.add(node);
+		const rooted = record.target === this.edytor.node;
+		for (const node of record.addedNodes) {
+			this.#added.add(node);
+			if (rooted) this.#rooted.add(node);
+		}
 		const removed = [...record.removedNodes];
 		if (!removed.some((node) => isAnchor(node) || this.#holds(node))) return;
 		const added = [...record.addedNodes];
@@ -732,15 +743,19 @@ export class SurfaceObserver {
 			: { block: null, verdict: 'invert', why: 'root-order' };
 	};
 
-	/** The root is a strict container: a child it does not render is removed. */
+	/**
+	 * The root is a strict container: a child it does not render is removed.
+	 * Only a node a record put there can be one (`#rooted`).
+	 */
 	#strictRoot = () => {
 		const node = this.edytor.node;
 		if (!node) return;
-		for (const child of [...node.childNodes])
-			if (!isAnchor(child) && !this.#registered(child)) {
+		for (const child of this.#rooted)
+			if (child.parentNode === node && !isAnchor(child) && !this.#registered(child)) {
 				node.removeChild(child);
 				this.#wrote = true;
 			}
+		this.#rooted.clear();
 	};
 
 	/**

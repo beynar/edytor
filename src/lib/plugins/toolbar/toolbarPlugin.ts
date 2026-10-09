@@ -14,9 +14,13 @@ const isNativeFieldEvent = (event: Event) =>
 export type ToolbarOptions = {
 	/**
 	 * Replace the toolbar; it renders while `controller.isVisible`, placed
-	 * above the selection (mark your bar `data-edytor-toolbar-bar` if panels
-	 * hang below it). A press on it never takes the editor's focus (its
-	 * fields, an input or a select, take their own).
+	 * above the selection. A press on it never takes the editor's focus (its
+	 * fields, an input or a select, take their own). Keep the built-in
+	 * keyboard and ARIA with its attachments: `{@attach controller.popup}`
+	 * and `{@attach controller.keys}` on the bar (its id, role, placement and
+	 * publication; the shortcut that reaches it, the roving tab stop and
+	 * Escape), `{@attach
+	 * controller.linkField}` on a link field.
 	 */
 	toolbar?: Snippet<[ToolbarController]>;
 	/**
@@ -24,6 +28,13 @@ export type ToolbarOptions = {
 	 * panel) and Remove (`link.card`). `false` shows none. Default `true`.
 	 */
 	linkCard?: boolean;
+	/**
+	 * Replace the link card's markup; it renders while `controller.card`,
+	 * just below the hovered link (`controller.hoveredHref`, and
+	 * `openHovered`, `editHovered`, `removeHovered`). A press on it never
+	 * takes the editor's focus.
+	 */
+	card?: Snippet<[ToolbarController]>;
 	/** The words the toolbar and the link card show, over the English ones. */
 	labels?: PartialLabels<'toolbar'>;
 };
@@ -152,7 +163,7 @@ export const createToolbarPlugin =
 					};
 				const unmountCard = edytor.overlay.mount(
 					LinkCard,
-					{ controller },
+					{ controller, card: options.card },
 					'edytor-link-card-host',
 					61,
 					positionCard

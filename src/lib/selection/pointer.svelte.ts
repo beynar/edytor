@@ -9,6 +9,7 @@
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { Text } from '../text/text.svelte.js';
 import { blockSelection } from '$lib/session/selection.js';
+import { toTrailingParagraph } from '$lib/session/navigation.js';
 import { isNativeInteractiveEvent } from '$lib/events/nativeInteractiveControl.js';
 import { acrossColumns } from './replaceSelection.js';
 import { getDomSelectionSnapshot, type DomSelectionSnapshot } from './domSelection.js';
@@ -28,6 +29,15 @@ type DocumentWithCaretPoint = Document & {
 	caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
 	caretRangeFromPoint?: (x: number, y: number) => Range | null;
 };
+
+/** Where a press was, and its modifiers: what a margin click reads at its release. */
+export type MarginPoint = Pick<
+	MouseEvent,
+	'clientX' | 'clientY' | 'shiftKey' | 'altKey' | 'metaKey' | 'ctrlKey'
+>;
+
+/** A gesture a press in the host's own area starts: answers whether it takes the press. */
+export type MarginClaim = (event: MouseEvent) => boolean;
 
 export class SelectionPointer {
 	/** The press's text point while a primary press (a drag) lasts; `null` after its release. */
@@ -74,6 +84,126 @@ export class SelectionPointer {
 		}
 
 		return block;
+	};
+
+	/**
+	 * A press in the host's own area below its last block (its bottom
+	 * padding, its height past the content; `nav.trailing.press`, Notion):
+	 * the caret goes to the trailing paragraph (`toTrailingParagraph`, a new
+	 * one when the last block is not an empty one). A primary press without
+	 * a modifier, from a mouse or a pen (a touch there may start a scroll:
+	 * the browser's); a view that writes nothing keeps the browser's caret.
+	 * Answers whether it took the press.
+	 * @internal
+	 */
+	belowPress = (event: MouseEvent): boolean => {
+		const { edytor } = this.selection;
+		const host = edytor.node;
+		if (!host || event.target !== host || event.button !== 0) return false;
+		if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return false;
+		if ((event as PointerEvent).pointerType === 'touch' || !edytor.dispatcher.permits())
+			return false;
+		if (!this.#below(event.clientY)) return false;
+		// The model answers this press, as a chrome press: no native caret placement.
+		event.preventDefault();
+		this.#trailing();
+		return true;
+	};
+
+	/** Whether `y` lies below the host's last top-level block (`nav.trailing.press`'s place). */
+	#below = (y: number) => {
+		const last = this.selection.edytor.root?.children.at(-1)?.node;
+		const bottom = last?.getBoundingClientRect().bottom;
+		return bottom !== undefined && y > bottom;
+	};
+
+	#trailing = () => {
+		const { edytor } = this.selection;
+		edytor.expectInternalFocus();
+		edytor.node?.focus({ preventScroll: true });
+		toTrailingParagraph(edytor);
+	};
+
+	/** The gesture a press in the host's own area starts (`claimMargins`): the marquee's. */
+	#margin: MarginClaim | null = null;
+
+	/**
+	 * The host's last press went to the margin gesture (`marginPress`), until
+	 * its release: its compatibility `mousedown` is cancelled (no native
+	 * caret, focus or selection), and it places no caret (`pressed`) and
+	 * starts no text drag (`capture`).
+	 * @internal
+	 */
+	claimed = false;
+
+	/**
+	 * Register the gesture a press in the host's own area starts (one per
+	 * view: the marquee plugin's, `sel.marquee`). Answers the release.
+	 * @internal
+	 */
+	claimMargins = (claim: MarginClaim) => {
+		this.#margin = claim;
+		return () => {
+			if (this.#margin === claim) this.#margin = null;
+		};
+	};
+
+	/**
+	 * A primary press from a mouse or a pen on the host's own area (its
+	 * padding beside and below the blocks: never a block, its text or its
+	 * chrome) while a margin gesture is registered (`sel.marquee`): offered
+	 * to it before the trailing paragraph's press (`belowPress`), whose click
+	 * the gesture gives back (`marginClick`). Classified with the chrome
+	 * press in `events/onFocus.ts`. Answers whether the gesture took it.
+	 * @internal
+	 */
+	marginPress = (event: MouseEvent): boolean => {
+		this.claimed = false;
+		const claim = this.#margin;
+		const host = this.selection.edytor.node;
+		if (!claim || !host || event.target !== host || event.button !== 0) return false;
+		if ((event as PointerEvent).pointerType === 'touch' || !claim(event)) return false;
+		this.claimed = true;
+		// WebKit's lone `mousedown` is the press itself (`isLonePress`).
+		if (event.type === 'mousedown') event.preventDefault();
+		return true;
+	};
+
+	/**
+	 * The compatibility `mousedown` of the press the margin gesture took:
+	 * cancelled, so the browser places no caret, moves no focus and starts no
+	 * native selection (the `mousedown`'s default actions; the `pointerdown` is
+	 * left alone).
+	 * @internal
+	 */
+	marginMouse = (event: MouseEvent) => {
+		if (this.claimed && event.button === 0) event.preventDefault();
+	};
+
+	/**
+	 * A margin press released where it began (a click, no drag): what the
+	 * press does when no gesture takes it. Below the last block, the trailing
+	 * paragraph (`nav.trailing.press`: no modifier, a view that writes);
+	 * beside the blocks, the caret at the text point of that height nearest
+	 * the host's edge, where the browser puts it. A click with a modifier
+	 * keeps the selection.
+	 * @internal
+	 */
+	marginClick = (at: MarginPoint) => {
+		const { edytor } = this.selection;
+		const host = edytor.node;
+		if (!host || at.shiftKey || at.altKey || at.metaKey || at.ctrlKey) return;
+		if (this.#below(at.clientY)) {
+			if (edytor.dispatcher.permits()) this.#trailing();
+			return;
+		}
+		const box = host.getBoundingClientRect();
+		const x = Math.min(Math.max(at.clientX, box.left + 1), box.right - 1);
+		const point = this.pointAt(x, at.clientY);
+		if (!point) return;
+		edytor.expectInternalFocus();
+		host.focus({ preventScroll: true });
+		this.selection.setAtTextOffset(point.text, point.offset);
 	};
 
 	/** @internal */
@@ -198,6 +328,7 @@ export class SelectionPointer {
 
 	/** @internal */
 	release = () => {
+		this.claimed = false;
 		this.dragStart = null;
 		this.#dropped();
 	};

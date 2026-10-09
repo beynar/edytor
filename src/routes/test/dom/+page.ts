@@ -26,12 +26,14 @@ export const load: PageLoad = ({ url }) => {
 		empty: url.searchParams.get('empty'),
 		// `media=1` lists the embed and bookmark plugins (their paste menu).
 		media: url.searchParams.get('media') === '1',
-		// `equation=1` lists the equation plugin (KaTeX loaded lazily).
+		// `equation=1` lists the equation plugin (KaTeX loaded from the CDN at first use).
 		equation: url.searchParams.get('equation') === '1',
 		// `triggers=1` lists the mention and page-link plugins and an emoji input rule.
 		triggers: url.searchParams.get('triggers') === '1',
 		// `polish=1` lists the block menu, the page and the table of contents plugins.
 		polish: url.searchParams.get('polish') === '1',
+		// `columns=0` leaves the columns plugin out: a document with no layout kind (no beside bands).
+		columns: url.searchParams.get('columns') !== '0',
 		collab: url.searchParams.get('collab'),
 		collabws: url.searchParams.get('collabws'),
 		wsserver: url.searchParams.get('wsserver'),
@@ -71,6 +73,8 @@ export const load: PageLoad = ({ url }) => {
 		handles: url.searchParams.get('handles') === 'true',
 		// The opt-in find plugin (`find=true`): Mod+F is the browser's without it.
 		find: url.searchParams.get('find') === 'true',
+		// `marquee=1` lists the marquee plugin, the editor shell (800px wide, 72px side padding) its container.
+		marquee: url.searchParams.get('marquee') === '1',
 		secondary: url.searchParams.get('secondary') === 'true',
 		dir: url.searchParams.get('dir') === 'rtl' ? 'rtl' : 'ltr',
 		translate:

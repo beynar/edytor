@@ -45,6 +45,14 @@ An image plugin you list (`imagePlugin` or any `createImagePlugin(...)`) replace
       type: "Partial<Record<string, string[]>>",
       description: "The slash menu's keywords by command id (block.image); they replace the command's own.",
     },
+    toolbar: {
+      type: "Snippet<[ImageControls]>",
+      description: "Replaces the alignment buttons and the alt field over the hovered image, placed at its top right; the resize handles stay. Keep their behavior with {@attach controls.bar} and {@attach controls.altField}. See Menus and handles.",
+    },
+    empty: {
+      type: "Snippet<[ImageEmptyController]>",
+      description: "Replaces an empty image's markup (Add an image, its link panel, a readonly view's placeholder): open, draft, failed, embed, upload, readonly. See Menus and handles.",
+    },
   }}
 />
 

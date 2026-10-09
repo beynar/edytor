@@ -175,14 +175,14 @@ const run = async (kind: Kind, state: State, key: Key) => {
  * Cells Notion leaves unclear are left out:
  * - Delete in an empty block of a kind other than text (Notion may keep
  *   either kind of the two blocks it joins);
- * - Enter in a callout without children (Notion's callouts take a first
- *   child or a line break depending on its version);
  * - Tab on the block right after a divider or image (whether a void block
  *   takes children);
  * - a code line with children or nested (a line has neither).
  *
  * Rows the docs state as product rules where Notion differs or is unclear
  * keep that rule ([Enter and Backspace by role](hotkeys.mdx)): Enter at the
+ * end of a callout's title goes into its content, children or not
+ * (`body.enter`); Enter at the
  * end of a block with text and children splits it and the new block takes
  * the children; Backspace merging a block with children leaves them in its
  * place; Backspace after a void block selects it.
@@ -422,12 +422,14 @@ const EXPECTED: Record<Kind, Partial<Record<State, Partial<Record<Key, string>>>
 	},
 	callout: {
 		empty: {
+			Enter: 'p:pre co:[p:] p:post | p:@0',
 			'Shift+Enter': 'p:pre co:⏎ p:post | co:⏎@1',
 			Backspace: 'p:pre p: p:post | p:@0',
 			Tab: 'p:pre[co:] p:post | co:@0',
 			'Shift+Tab': 'p:pre co: p:post | co:@0'
 		},
 		text: {
+			Enter: 'p:pre co:x[p:] p:post | p:@0',
 			'Shift+Enter': 'p:pre co:x⏎ p:post | co:x⏎@2',
 			Backspace: 'p:pre p:x p:post | p:x@0',
 			Delete: 'p:pre co:xpost | co:xpost@1',
@@ -443,7 +445,7 @@ const EXPECTED: Record<Kind, Partial<Record<State, Partial<Record<Key, string>>>
 			'Shift+Tab': 'p:pre co:x[p:c] p:post | co:x@0'
 		},
 		nested: {
-			Enter: 'p:pre p:par[p:s co:x p:] p:post | p:@0',
+			Enter: 'p:pre p:par[p:s co:x[p:]] p:post | p:@0',
 			'Shift+Enter': 'p:pre p:par[p:s co:x⏎] p:post | co:x⏎@2',
 			Backspace: 'p:pre p:par[p:s p:x] p:post | p:x@0',
 			Delete: 'p:pre p:par[p:s co:xpost] | co:xpost@1',

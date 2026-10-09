@@ -1,53 +1,51 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { EquationEditor } from './equation.svelte.js';
 
 	/**
 	 * The equation editor (`EquationEditor`), in the overlay under the edited
-	 * equation (Notion's): the TeX source in a field, KaTeX's error under it,
-	 * and Done. The equation itself is the preview: each keystroke writes it.
+	 * equation (Notion's): the plugin's `panel` snippet, else the TeX source
+	 * in a field, KaTeX's error under it, and Done. The equation itself is the
+	 * preview: each keystroke writes it. Both take the field's focus and keys
+	 * through the controller's attachment (`field`).
 	 */
-	let { editor, readonly }: { editor: EquationEditor; readonly: () => boolean } = $props();
+	let {
+		editor,
+		readonly,
+		panel
+	}: { editor: EquationEditor; readonly: () => boolean; panel?: Snippet<[EquationEditor]> } =
+		$props();
 
 	const labels = $derived(editor.labels);
-	let field = $state<HTMLTextAreaElement | null>(null);
+	const place = $derived(editor.place);
 
 	// The view turning readonly closes it.
 	$effect(() => {
 		if (readonly()) editor.lock();
 	});
-	// Opened: the field takes the focus, the caret at the end of the source.
-	$effect(() => {
-		if (!editor.target || !field) return;
-		field.focus({ preventScroll: true });
-		field.setSelectionRange(field.value.length, field.value.length);
-	});
-
-	const keydown = (event: KeyboardEvent) => {
-		if (event.isComposing) return;
-		// Shift+Enter is a newline in a block equation; Enter, or an inline one's, closes it.
-		// The key is the field's: the editor's keys (Enter on the equation it then selects) never see it.
-		if ((event.key === 'Enter' && !(event.shiftKey && editor.display)) || event.key === 'Escape') {
-			event.preventDefault();
-			event.stopPropagation();
-			editor.close();
-		}
-	};
 </script>
 
 <div role="presentation">
-	{#if editor.target && editor.box}
-		{@const box = editor.box}
+	{#if place && panel}
+		<div
+			data-edytor-equation-panel
+			data-display={editor.display ? 'block' : 'inline'}
+			style:left="{place.left}px"
+			style:top="{place.top}px"
+		>
+			{@render panel(editor)}
+		</div>
+	{:else if place}
 		<div
 			data-edytor-equation-editor
 			role="dialog"
 			aria-label={labels.editor}
 			data-display={editor.display ? 'block' : 'inline'}
-			style:left="{editor.display ? box.x + box.width / 2 : box.x}px"
-			style:top="{box.y + box.height + 6}px"
+			style:left="{place.left}px"
+			style:top="{place.top}px"
 		>
 			<div data-edytor-equation-editor-row>
 				<textarea
-					bind:this={field}
 					aria-label={labels.editor}
 					placeholder={labels.placeholder}
 					rows={editor.display ? 3 : 1}
@@ -56,8 +54,7 @@
 					autocapitalize="off"
 					value={editor.expression}
 					oninput={(event) => editor.set(event.currentTarget.value)}
-					onkeydown={keydown}
-					onfocusout={editor.blurred}
+					{@attach editor.field}
 				></textarea>
 				<button
 					type="button"
@@ -89,6 +86,12 @@
 		font-size: 14px;
 	}
 
+	/* An app's panel: placed as the built-in one, centered under a block equation. */
+	[data-edytor-equation-panel] {
+		position: absolute;
+	}
+
+	[data-edytor-equation-panel][data-display='block'],
 	[data-edytor-equation-editor][data-display='block'] {
 		transform: translateX(-50%);
 	}

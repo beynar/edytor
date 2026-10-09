@@ -14,11 +14,11 @@
 	import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
+	import { createMarqueePlugin } from '$lib/plugins/marquee/marqueePlugin.js';
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 	import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 	import { tableBlock } from '$lib/crdt/tables.js';
 	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
-	import 'katex/dist/katex.min.css';
 	import type { Plugin } from '$lib/plugins.js';
 	import { page } from '$app/state';
 	import { createIndexeddbSync } from '$lib/collaboration/providers.js';
@@ -81,10 +81,12 @@
 		demoPagePlugin,
 		columnsPlugin,
 		findPlugin,
+		// Drag from the page's margins or below the last block to select blocks (Notion).
+		createMarqueePlugin({ container: '.demo-main' }),
 		tocPlugin,
 		tablePlugin,
-		// KaTeX loads the first time an equation shows.
-		createEquationPlugin({ katex: () => import('katex') }),
+		// KaTeX loads from jsDelivr the first time an equation shows.
+		createEquationPlugin(),
 		richTextPlugin
 	];
 	const demoValue: JSONDoc = {
@@ -110,10 +112,16 @@
 				id: 'page-callout',
 				type: 'callout',
 				data: { icon: '💡' },
-				content: [
-					{ text: 'Everything here is editable. ' },
-					{ text: 'Grab the six-dot handle', marks: { bold: true } },
-					{ text: ' to move a block, nest it, or open its menu.' }
+				content: [{ text: 'Everything here is editable' }],
+				children: [
+					{
+						id: 'page-callout-body',
+						type: 'paragraph',
+						content: [
+							{ text: 'Grab the six-dot handle', marks: { bold: true } },
+							{ text: ' to move a block, nest it, or open its menu. Click the icon to change it.' }
+						]
+					}
 				]
 			},
 			{

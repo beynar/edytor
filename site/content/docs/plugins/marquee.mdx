@@ -1,0 +1,134 @@
+---
+title: Marquee selection
+description: The marquee plugin selects blocks with a rectangle, as in Notion. Press in the editor's margins or below its last block and drag; the blocks the rectangle touches are selected live.
+icon: mouse-pointer-2
+---
+
+`marqueePlugin` selects blocks with a rectangle, Notion's rubber band. Press in an empty area beside or below the blocks and drag: a rectangle follows the pointer and the blocks it touches are selected while you drag. Release, and the blocks stay selected with the keyboard on them: <kbd>Delete</kbd>, <kbd>Mod</kbd> + <kbd>C</kbd>, <kbd>Mod</kbd> + <kbd>X</kbd>, <kbd>Tab</kbd>, the arrow keys and the [block menu](/docs/plugins/block-menu) act on them as on any block selection.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, marqueePlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[marqueePlugin]} />
+```
+
+It is opt-in, not a [default plugin](/docs/plugins#default-plugins). It adds no dependency: the gesture is the editor's own, about 8 KB minified (3 KB gzipped).
+
+## Where a rectangle starts
+
+A press with the primary button of a mouse or a pen, in an empty area of the editor:
+
+- **The editor's own padding**, beside and below the blocks.
+- **The gutter around the [block handles](/docs/plugins/block-handles)**: the handle's box, not its `+` or grip.
+- **Your page**, with the `container` option: the element around the editor whose margins should start one too. A press on that element itself, or on a wrapper between it and the editor, starts a rectangle; its other content (a title, a button) keeps its presses.
+
+```svelte title="Page.svelte" check
+<script lang="ts">
+	import { Edytor, createMarqueePlugin } from 'edytor';
+
+	// The page's side margins start a rectangle, as in Notion.
+	const marquee = createMarqueePlugin({ container: '.page' });
+</script>
+
+<div class="page">
+	<Edytor plugins={[marquee]} />
+</div>
+
+<style>
+	.page {
+		max-width: 900px;
+		margin: 0 auto;
+		padding: 0 96px;
+	}
+</style>
+```
+
+`container` is a CSS selector matched from the editor with `closest()`, or a function of the editor's element: `container: (editor) => editor.parentElement`.
+
+A press on a block's text never starts one: a drag from text selects text, as without the plugin. A touch never starts one either: a finger in the margins scrolls the page.
+
+## Click or drag
+
+The pointer has to move 4px before the rectangle starts (`threshold`). A shorter press is a click, which does what it does without the plugin: a click below the last block puts the caret in a new empty paragraph at the end (see [Styling](/docs/customization/styling#space-below-the-last-block)), a click in the editor's side padding puts the caret on the line at that height. A click in your container or on the gutter changes nothing.
+
+## Which blocks are selected
+
+The rectangle selects the blocks it touches, live, as it grows and shrinks:
+
+- **Nested blocks.** A block whose own line the rectangle touches is selected with its children, as Notion selects a toggle with its content. A rectangle over a child's line only selects that child.
+- **Columns.** The blocks of the columns the rectangle crosses: a rectangle over the left column selects that column's blocks, one reaching into the right column adds its blocks. The layout and its columns themselves are never selected; a selection that holds every block of every column moves and copies as the whole layout.
+- **Closed toggles.** A closed toggle is selected without its hidden content.
+- **Images, code blocks, tables, dividers.** Each is one block: selected when the rectangle touches it.
+
+A rectangle that touches no block selects nothing.
+
+## Keys and modifiers
+
+- <kbd>Shift</kbd> or <kbd>Mod</kbd> held at the press adds to the blocks that were selected. Without them the rectangle replaces the selection.
+- <kbd>Escape</kbd> while dragging gives back the selection from before the press (a caret, a text selection, selected blocks) and ends the gesture.
+- Near the top or bottom of the scrolling area (the page, or the editor's nearest scrolling container) the page scrolls, faster nearer the edge, and the rectangle grows with it.
+
+A readonly view selects blocks too, so they can be copied.
+
+A click anywhere outside the editor and its menus ends the block selection, as in Notion (see [block selection](/docs/editor/selection#block-selection)).
+
+## Styling
+
+The rectangle mounts in the editor's [overlay](/docs/customization/styling#the-overlay), in a `position: fixed` host with the attribute `data-edytor-marquee-host` and `z-index: 6`, placed and sized to the rectangle; it takes no pointer. The default rectangle is `[data-edytor-marquee]`, with `data-adding` while <kbd>Shift</kbd> or <kbd>Mod</kbd> adds. Its look comes from three CSS variables, set on an element around the editor (the overlay is the root's sibling, so variables set on the root do not reach it); the [Notion theme](/docs/customization/styling#notion-theme) sets the first two:
+
+| Variable | Default |
+| --- | --- |
+| `--edytor-marquee-background` | `rgba(35, 131, 226, 0.14)`, Notion's selection blue |
+| `--edytor-marquee-border` | `1px solid rgba(35, 131, 226, 0.4)` |
+| `--edytor-marquee-radius` | `2px` |
+
+```css title="marquee.css"
+.page {
+	--edytor-marquee-background: rgba(120, 80, 220, 0.12);
+	--edytor-marquee-border: 1px dashed rgba(120, 80, 220, 0.6);
+}
+```
+
+## Custom markup
+
+`createMarqueePlugin` takes a `box` snippet that replaces the rectangle's markup. It renders in the placed host, so fill it (`width: 100%; height: 100%`). It receives a `MarqueeBoxPayload`:
+
+| Field | Description |
+| --- | --- |
+| `rect` | The rectangle, in viewport coordinates (`DOMRectReadOnly`) |
+| `count` | How many blocks are selected, the ones <kbd>Shift</kbd> or <kbd>Mod</kbd> kept included |
+| `ids` | The selected blocks' ids |
+| `adding` | <kbd>Shift</kbd> or <kbd>Mod</kbd> was held at the press |
+
+```svelte title="CustomMarquee.svelte" check
+<script lang="ts">
+	import { Edytor, createMarqueePlugin, type MarqueeBoxPayload } from 'edytor';
+</script>
+
+{#snippet box({ count }: MarqueeBoxPayload)}
+	<div class="rubber-band">
+		{#if count}<span>{count}</span>{/if}
+	</div>
+{/snippet}
+
+<Edytor plugins={[createMarqueePlugin({ box })]} />
+
+<style>
+	.rubber-band {
+		width: 100%;
+		height: 100%;
+		border: 1px solid #2383e2;
+		background: rgba(35, 131, 226, 0.08);
+	}
+</style>
+```
+
+## Options
+
+| Option | Description |
+| --- | --- |
+| `container` | The element around the editor whose empty area starts a rectangle too: a selector matched with `closest()` from the editor, or a function of the editor's element |
+| `threshold` | How far the pointer moves, in px, before the rectangle starts; a shorter press is a click. Default `4` |
+| `box` | A snippet that replaces the rectangle's markup (see [Custom markup](#custom-markup)) |

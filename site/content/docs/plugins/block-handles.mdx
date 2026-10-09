@@ -98,10 +98,13 @@ A `handle` snippet replaces the `+` and the grip of every handle. The plugin kee
     block: { type: "Block", description: "The block's handle." },
     label: { type: "string", description: "The block's kind as people read it, from its preset label (\"Heading 1\"): name your buttons with it." },
     grip: { type: "action", description: "use:grip makes an element the grip: dragging (when draggable), a click that selects the block and opens its menu, and the Alt+arrow moves while it has focus." },
-    add: { type: "(alt?: boolean) => void", description: "What + does: the slash menu offers what to add below (with true, Alt+click: above, or for a block directly in a column a new column right of its column); nothing is added until a row is picked." },
+    add: { type: "(alt?: boolean, anchor?: HTMLElement | null) => void", description: "What + does: the slash menu offers what to add below (with true, Alt+click: above, or for a block directly in a column a new column right of its column); nothing is added until a row is picked. The menu opens under anchor (your + button, event.currentTarget), else under the block." },
     addable: { type: "boolean", description: "Whether the block takes a +: always true (a block in a column too, as in Notion)." },
     readonly: { type: "boolean", description: "The editor is readonly: hide your buttons." },
     draggable: { type: "boolean", description: "Pointer dragging is on." },
+    expanded: { type: "{ add: boolean; grip: boolean }", description: "Whether the menu the + or the grip opened is open: their aria-expanded." },
+    controls: { type: "{ add: string | undefined; grip: string | undefined }", description: "The id of the menu the + or the grip opened, while it is open: their aria-controls." },
+    labels: { type: "BlockHandlesLabels", description: "The handles' words: labels.add(label), labels.grip(label), their hints. See Localization." },
   }}
 />
 
@@ -110,21 +113,36 @@ A `handle` snippet replaces the `+` and the grip of every handle. The plugin kee
 	import { Edytor, type BlockHandleSnippetPayload } from 'edytor';
 </script>
 
-{#snippet handle({ label, grip, add, readonly }: BlockHandleSnippetPayload)}
+{#snippet handle({
+	label,
+	grip,
+	add,
+	readonly,
+	expanded,
+	controls,
+	labels
+}: BlockHandleSnippetPayload)}
 	{#if !readonly}
 		<button
-			aria-label={`Add a block below ${label}`}
+			aria-label={labels.add(label)}
+			aria-expanded={expanded.add || undefined}
+			aria-controls={controls.add}
 			onmousedown={(event) => event.preventDefault()}
-			onclick={(event) => add(event.altKey)}>+</button
+			onclick={(event) => add(event.altKey, event.currentTarget)}>+</button
 		>
-		<button use:grip aria-label={`Move ${label} block`}>⠿</button>
+		<button
+			use:grip
+			aria-label={labels.grip(label)}
+			aria-expanded={expanded.grip || undefined}
+			aria-controls={controls.grip}>⠿</button
+		>
 	{/if}
 {/snippet}
 
 <Edytor blockHandles={{ handle }} />
 ```
 
-The same snippet works with `createBlockHandlesPlugin({ handle })` in `plugins`. Your markup renders inside the handle's host, `[data-edytor-block-handle-host]` (a flex row right-aligned to the block's left edge, which carries the hover fade), without the buttons' built-in styles. Keep `preventDefault` on the `+` button's `mousedown`, so the click does not move the caret first.
+The same snippet works with `createBlockHandlesPlugin({ handle })` in `plugins`. Your markup renders inside the handle's host, `[data-edytor-block-handle-host]` (a flex row right-aligned to the block's left edge, which carries the hover fade), without the buttons' built-in styles. Keep `preventDefault` on the `+` button's `mousedown`, so the click does not move the caret first. [Menus and handles](/docs/customization/menus#block-handle) shows it with the other snippets.
 
 ## Drag and drop
 
@@ -139,6 +157,7 @@ Drag and drop uses Atlassian's [Pragmatic drag and drop](https://atlassian.desig
 | Bottom half of the last block of a nested group, or the gap below it | After the block or one of the ancestors it ends: the level whose text column is nearest the pointer, one level per nesting step to the left, down to the root |
 | Bottom half of a block every shown child of which is dragged, or the rows those children leave under it | The same levels, from the block's own down to the root: dragging a nested block's only child out below its parent works even when the parent is the last block at every level. Never inside the block when only its children are dragged: they would stay put |
 | In the handle column left of the editor's blocks (the drag's handle width), at any row's height | The row there, by its halves as above, the pointer's horizontal position picking the outermost level, but only before or after a block, never inside one; over a list's item where the dragged blocks do not fit (a paragraph over a bulleted list's items), the list is the row: its upper half before it, its lower half after it; between two rows the bar shown stays, so a drag straight down or up the handles reorders row after row. A block reaching into the column (a list item's marker) hands the pointer to this rule, so no placement of a row passed on the way is held |
+| Outside the blocks, left or right, within the editor's height and the [drop reach](#dropping-outside-the-blocks) | The row at that height, as if the pointer were at the nearest edge of the blocks: on the left as in the handle column, on the right as at the row's right edge |
 
 The nest threshold is the block's first text line's start plus one nesting step: `--edytor-nest-indent` in px (see [Nested blocks](/docs/customization/styling#nested-blocks)), else 24px. So in the lower half of a row, move right to nest and back left to drop beside it; below the last child of a nested group, move left to drop it one, two or more levels out. The bar is indented to the chosen level, and the [nest backdrop](#the-nest-backdrop) shows on that level's parent (none at the root).
 
@@ -158,6 +177,24 @@ The placement is sticky, so the indicator does not flicker:
 - Below the document's last block the placement stays however far down you go, as in Notion: move left or right there to pick the level, and let go to drop at the end of the document; leaving the editor's width clears it.
 - Another block's own row never keeps it, so dragging up from a child onto its parent's row targets the parent.
 - A list container has no row of its own, so its padding counts as a gap: overshooting a list's first item keeps "before" that item.
+
+### Dropping outside the blocks
+
+You do not have to aim at the blocks themselves. While a drag is in the editor's height, a pointer left or right of its blocks still drops on the row at that height, so you can move along the margin, or past the end of the text, and still see the bar:
+
+- **Left**: the handle column, then the page margin past it, take the drop before or after the row at that height, as the handle column does (never inside it, at the outermost level that row ends).
+- **Right**: past the blocks' right edge, the drop is the one the row offers at its own right edge: before it in its top half, after it or inside it in its bottom half, exactly as just inside the text, so nothing changes as the pointer leaves the blocks.
+- **Columns**: over a layout, left of it is its first column's row, right of it its last column's row; a drop from outside never lands in another column.
+- **With the columns plugin**, the first 120px of each margin are the [beside bands](#beside-columns) (a new column), and the reorder starts past them. Without a layout kind the whole reach reorders.
+- **The reach** is 240px past the handle column on the left and past the blocks' right edge on the right. Further out nothing shows, and letting go there moves nothing. Set it with `--edytor-drop-reach` (in px) on the editor or any ancestor; a reach under 120px also shortens the beside bands, and `0px` leaves only the handle column:
+
+```css
+[data-edytor] {
+	--edytor-drop-reach: 320px;
+}
+```
+
+A block's own drop target keeps the pointer first: its 20px slop beside the block answers before the margin does. Auto-scroll works there as anywhere during a drag.
 
 ### Dragging several blocks
 
@@ -190,8 +227,8 @@ Style the ghost through `[data-edytor-drag-preview]`, for instance `[data-edytor
 
 When the document has a layout kind (the [columns plugin](/docs/plugins/columns)'s `columns`), a block row also has two beside bands, checked before its halves, while the pointer is within the row's height, as in Notion:
 
-- **Right**: the row's last 15% (at least 32px), the slop past its right edge, and the page margin right of the editor (up to 120px) at the row's height, however the pointer got there. The drop puts the blocks right of the block: in a new column after its column, or, at the root, in a new two-column layout with the block on the left.
-- **Left**: the page margin past the handle column (up to 120px further left) at the row's height, even entered from above or below, and, inside the editor, the 20px slop left of a row in a column (in the gap); only for a block at the root or directly in a column, a list's item standing for its list (a nested block keeps the pointer's horizontal position for its levels). The blocks go first. The handle column itself (as wide as the drag's handle, left of the blocks' text) is never a beside band: there the row at the pointer's height takes the drop before or after it, by its halves, row after row, gaps between rows included, so a drag straight down the handles reorders.
+- **Right**: the row's last 15% (at least 32px), the slop past its right edge, and the page margin right of the blocks (up to 120px, then the [reorder](#dropping-outside-the-blocks)) at the row's height, however the pointer got there. The drop puts the blocks right of the block: in a new column after its column, or, at the root, in a new two-column layout with the block on the left.
+- **Left**: the page margin past the handle column (up to 120px further left, then the [reorder](#dropping-outside-the-blocks)) at the row's height, even entered from above or below, and, inside the editor, the 20px slop left of a row in a column (in the gap); only for a block at the root or directly in a column, a list's item standing for its list (a nested block keeps the pointer's horizontal position for its levels, and its row in the page margin reorders). The blocks go first. The handle column itself (as wide as the drag's handle, left of the blocks' text) is never a beside band: there the row at the pointer's height takes the drop before or after it, by its halves, row after row, gaps between rows included, so a drag straight down the handles reorders.
 - **The gap between two columns**: a new column between them.
 
 Beside a list item or a code line, the layout wraps the whole list or code block. Beside any other block it wraps that block where it is: a toggle's or a callout's child gets its layout inside the toggle or callout (a toggle's child inside a column, where no layout may go, gets a new column beside its column instead). The drop is one `edytor.moveBlocks` call with `position: 'left' | 'right'` (one undo step that restores the selection held before the drag; the moved blocks end selected).

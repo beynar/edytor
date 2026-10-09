@@ -6,6 +6,7 @@
 	import type { Text } from '$lib/text/text.svelte.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
 	import type { HotKey } from '$lib/session/keymap.js';
+	import type { Snippet } from 'svelte';
 	import {
 		openLink,
 		pastedLink,
@@ -20,10 +21,23 @@
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
 	import { mediaKinds, richTextKinds, richTextMarks } from '$lib/crdt/semantics.js';
 	import { keywordsOf, labelsWith, type PartialLabels, type RichTextLabels } from '$lib/labels.js';
-	import { checkboxLabels } from './labels.js';
+	import { richTextLabels } from './labels.js';
+	import { onPress } from '$lib/events/onFocus.js';
 	import TodoCheckbox from './TodoCheckbox.svelte';
+	import EmptyBody from './EmptyBody.svelte';
+	import CalloutIcon from './CalloutIcon.svelte';
+	import CalloutIconMenu from './CalloutIconMenu.svelte';
+	import {
+		CALLOUT_ICONS,
+		CalloutIconPicker,
+		DEFAULT_CALLOUT_ICON,
+		calloutHtml,
+		calloutIconViews,
+		iconOf
+	} from './calloutIcons.svelte.js';
 
-	export { richTextOperations };
+	export { richTextOperations, CALLOUT_ICONS, CalloutIconPicker };
+	export type { CalloutIconOption } from './calloutIcons.svelte.js';
 
 	const nativeFormatMarks = {
 		formatBold: 'bold',
@@ -42,6 +56,8 @@
 	const rule = { html: () => '<hr>', plain: () => '---' };
 	/** A native disclosure: the browser owns `open` (declared view state). */
 	const disclosure = { element: 'details', viewState: ['open'] };
+	/** The kinds drawn as a disclosure: a toggle this view creates opens (`body.open`). */
+	const DISCLOSURES = new Set(['toggle', 'toggle-heading', 'details']);
 	/**
 	 * A list's elements without list semantics (`role="none"`): a list's items
 	 * are sibling blocks, never the only children of one `ul` or `ol`, so an
@@ -105,7 +121,8 @@
 			if (type === 'todo-item') return placeholders.todo;
 			if (type === 'toggle') return placeholders.toggle;
 			if (type === 'quote') return placeholders.quote;
-			if (type === 'callout') return focused ? placeholders.callout : null;
+			// A callout's title, as a toggle's, names itself while empty.
+			if (type === 'callout') return placeholders.callout;
 			if (type === 'image' || Object.hasOwn(mediaKinds, type))
 				return focused ? placeholders.caption : null;
 			// Code shows nothing in an empty line (Notion).
@@ -125,6 +142,23 @@
 		 * they replace that preset's own (list the English ones to keep them).
 		 */
 		keywords?: Partial<Record<string, string[]>>;
+		/** Callouts' icons. */
+		callout?: {
+			/**
+			 * A new callout's icon, and the one a callout whose `data.icon` is
+			 * unset shows (`💡` by default).
+			 */
+			icon?: string;
+			/** The icon picker's choices (`CALLOUT_ICONS` by default). */
+			icons?: readonly string[];
+			/**
+			 * Replace the icon picker's markup: it renders while the picker is
+			 * open, placed under the icon. Put `{@attach picker.keys}` and
+			 * `{@attach picker.popup}` on its element and spread
+			 * `picker.option(i)` on each row (`picker.icons.length`: Remove icon).
+			 */
+			picker?: Snippet<[CalloutIconPicker]>;
+		};
 	};
 
 	const richTextPlugins = new WeakSet<Plugin>();
@@ -155,8 +189,18 @@
 	export const createRichTextPlugin = (options: RichTextPluginOptions = {}): Plugin => {
 		const labels = labelsWith('richText', options.labels);
 		const plugin: Plugin = (edytor) => {
-			checkboxLabels.claim(edytor, labels);
-			return richText(edytor, labels, options.keywords);
+			richTextLabels.claim(edytor, labels);
+			// The view's callout icons: the first rich text plugin listed claims them.
+			const picker = calloutIconViews.has(edytor)
+				? undefined
+				: new CalloutIconPicker(
+						edytor,
+						options.callout?.icon ?? DEFAULT_CALLOUT_ICON,
+						options.callout?.icons ?? CALLOUT_ICONS,
+						labels
+					);
+			if (picker) calloutIconViews.set(edytor, picker);
+			return richText(edytor, labels, options, picker);
 		};
 		richTextPlugins.add(plugin);
 		return plugin;
@@ -175,9 +219,18 @@
 	/** The rich text records of `edytor`, in `labels`, its presets' keywords replaced by `keywords`. */
 	const richText = (
 		edytor: Edytor,
-		{ kinds, marks: words }: RichTextLabels,
-		keywords: RichTextPluginOptions['keywords']
+		labels: RichTextLabels,
+		{ keywords, callout: calloutOptions }: RichTextPluginOptions,
+		/** The view's callout icon picker, when this plugin claimed it (the first listed). */
+		picker: CalloutIconPicker | undefined
 	): ReturnType<Plugin> => {
+		const { kinds, marks: words } = labels;
+		/** A new callout's icon. */
+		const icon = calloutOptions?.icon ?? DEFAULT_CALLOUT_ICON;
+		/** The block this view is retyping into a disclosure (`body.open`), until it applied. */
+		let retyping: string | null = null;
+		/** The disclosures this view created, opened once drawn (`onBlockAttached`). */
+		const opening = new Set<string>();
 		const presets = (type: string, rows: KindPreset[]) =>
 			rows.map((row, index) => preset(presetId(type, index, rows.length), row, keywords));
 		const operations = richTextOperations(edytor);
@@ -264,6 +317,17 @@
 			// a step of its own after the typing: undo gives the plain text back
 			// (`link.autolink.typed`, Notion).
 			onBeforeOperation: (change) => {
+				// A block without children retyped into a disclosure from another kind (the
+				// slash menu, a markdown shortcut, Turn into): the toggle it becomes opens on
+				// its empty body (`body.open`). One with children keeps them out of sight.
+				if (change.operation === 'setBlock') {
+					const type = change.payload.value.type ?? change.block.type;
+					const opens =
+						DISCLOSURES.has(type) &&
+						!DISCLOSURES.has(change.block.type) &&
+						!change.block.hasChildren;
+					retyping = opens ? change.block.id : null;
+				}
 				if (autolinking || change.operation !== 'insertText') return;
 				const { payload, text, prevent } = change;
 				if (payload.value !== ' ' || !linkable()) return;
@@ -287,9 +351,20 @@
 					operations.linkText(text, found.start, end, found.href);
 				});
 			},
+			onAfterOperation: (change) => {
+				if (change.operation !== 'setBlock' || retyping !== change.block.id) return;
+				retyping = null;
+				if (DISCLOSURES.has(change.block.type)) opening.add(change.block.id);
+			},
+			// A disclosure this view created opens as it is drawn (the browser owns `open`
+			// from then on: the user's to close).
+			onBlockAttached: ({ node, block }) => {
+				if (!opening.delete(block.id)) return;
+				if (node instanceof HTMLDetailsElement) node.open = true;
+			},
 			// Mod+click on a link opens it in a new tab (`link.mod-click`): a plain
 			// click places the caret, as in Notion. Mod is read as the keymap reads
-			// it: Meta, or Ctrl off a Mac.
+			// it: Meta, or Ctrl off a Mac. The callout icon picker is in the overlay.
 			onEdytorAttached: ({ node }) => {
 				const click = (event: MouseEvent) => {
 					if (!event.metaKey && !(event.ctrlKey && !edytor.keymap.isMac)) return;
@@ -301,7 +376,24 @@
 					openLink(href, node.ownerDocument.defaultView);
 				};
 				node.addEventListener('click', click);
-				return () => node.removeEventListener('click', click);
+				// A press outside the picker closes it (WebKit's lone `mousedown` too).
+				const offPress = picker && onPress(edytor, node.ownerDocument, picker.pressed, true);
+				const unmount =
+					picker &&
+					edytor.overlay.mount(
+						CalloutIconMenu,
+						{ picker, menu: calloutOptions?.picker },
+						'edytor-callout-icons-host',
+						// With the menus: above the handles and the image chrome.
+						70,
+						picker.measure
+					);
+				return () => {
+					node.removeEventListener('click', click);
+					offPress?.();
+					unmount?.();
+					picker?.close(false);
+				};
 			},
 			onBeforeInput: ({ e, prevent }) => {
 				const { inputType, data } = e;
@@ -521,12 +613,35 @@
 						return `<details><summary><${tag}>${content}</${tag}></summary>${children}</details>`;
 					}
 				},
+				// Notion's callout: an icon (`data.icon`, the picker's), a title (its own
+				// text) and a content (its children, any blocks), which shows even empty
+				// (`body`): Enter at the end of the title goes into it.
 				callout: {
 					container: true,
+					body: true,
 					snippet: callout,
 					presets: presets('callout', [
-						{ label: kinds.callout, icon: '✦', keywords: ['note', 'tip'], data: { icon: '💡' } }
-					])
+						{ label: kinds.callout, icon: '✦', keywords: ['note', 'tip'], data: { icon } }
+					]),
+					// The block menu's Change icon: the keyboard's way to the picker.
+					menu: (block) =>
+						picker
+							? [
+									{
+										id: 'callout.icon',
+										label: labels.calloutIcon.change,
+										icon: 'block.callout',
+										run: () => picker.open(block)
+									}
+								]
+							: [],
+					// HTML import: its own export, the icon in its attribute.
+					parse: (el) => {
+						const own = el.getAttribute('data-edytor-callout');
+						return own === null ? undefined : { icon: own };
+					},
+					html: (block, content, children) =>
+						calloutHtml(iconOf(block.data, icon), content, children)
 				},
 				quote: {
 					container: true,
@@ -577,69 +692,94 @@
 <!--
 	Every kind that has children renders them in one container marked
 	`data-edytor-children`: the core indents it by one nesting step
-	(`--edytor-nest-indent`), so nesting looks the same under any kind.
+	(`--edytor-nest-indent`), so nesting looks the same under any kind. Each
+	snippet writes the container itself, with no whitespace between its tags
+	(the comments hold the lines; prettier would add whitespace back): a
+	nested snippet or a text node between tags is one more node per block for
+	the browser to walk (`render.markers`).
 -->
-{#snippet nested(children: BlockSnippetPayload['children'])}
-	{#if children}
-		<div data-edytor-children>
-			{@render children()}
-		</div>
-	{/if}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet paragraph({ content, children }: BlockSnippetPayload)}<!--
+--><p>{@render content()}</p><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
 
-{#snippet paragraph({ content, children }: BlockSnippetPayload)}
-	<p>
-		{@render content()}
-	</p>
-	{@render nested(children)}
-{/snippet}
-
-{#snippet details({ content, children }: BlockSnippetPayload)}
-	<summary>
-		{@render content()}
-	</summary>
-	{@render nested(children)}
-{/snippet}
+<!--
+	A toggle: its text the `summary`, its children the body; an empty body
+	shows its hint, which the browser hides with the body while closed.
+-->
+<!-- prettier-ignore -->
+{#snippet details({ block, content, children }: BlockSnippetPayload)}<!--
+--><summary>{@render content()}</summary><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{:else}<EmptyBody {block} kind="toggle" />{/if}<!--
+-->{/snippet}
 
 <!--
 	A heading's or quote's text (the core wraps it in the kind's `contentElement`,
 	its `h1`–`h3` or `blockquote`); its children below, outside that tag, so
 	heading styles and the heading's accessible name stop at its own text.
 -->
-{#snippet textThenChildren({ content, children }: BlockSnippetPayload)}
-	{@render content()}
-	{@render nested(children)}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet textThenChildren({ content, children }: BlockSnippetPayload)}<!--
+-->{@render content()}<!--
+-->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
 
-{#snippet callout({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}
-	<span contenteditable="false" data-edytor-callout-icon>{block.data.icon || '💡'}</span>
-	<div>
-		{@render content()}
-	</div>
-	{@render nested(children)}
-{/snippet}
+<!--
+	A callout: its icon, its title (its own text), then its content (its
+	children), or the hint of an empty one.
+-->
+<!-- prettier-ignore -->
+{#snippet callout({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}<!--
+--><CalloutIcon {block} /><!--
+--><div data-edytor-callout-title>{@render content()}</div><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div><!--
+-->{:else}<EmptyBody {block} kind="callout" />{/if}<!--
+-->{/snippet}
 
-{#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}
-	<TodoCheckbox {block} toggle={toggleTodo} />
-	<div>
-		{@render content()}
-	</div>
-	{@render nested(children)}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}<!--
+--><TodoCheckbox {block} toggle={toggleTodo} /><!--
+--><div>{@render content()}</div><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
 
-{#snippet listItem({ content, children }: BlockSnippetPayload)}
-	<div>{@render content()}</div>
-	{@render nested(children)}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet listItem({ content, children }: BlockSnippetPayload)}<!--
+--><div>{@render content()}</div><!--
+-->{#if children}<div data-edytor-children>{@render children()}</div>{/if}<!--
+-->{/snippet}
 
 <!--
 	A list container (HTML import's `ol`/`ul`) groups its items: they are its
 	rows, not blocks nested under its text, so its wrapper is not indented.
 -->
-{#snippet list({ children }: BlockSnippetPayload)}
-	{#if children}
-		<div>
-			{@render children()}
-		</div>
-	{/if}
-{/snippet}
+<!-- prettier-ignore -->
+{#snippet list({ children }: BlockSnippetPayload)}<!--
+-->{#if children}<div>{@render children()}</div>{/if}<!--
+-->{/snippet}
+
+<style>
+	/* A callout's title reads as its heading (Notion); its content below it. */
+	:global([data-edytor-callout-title]) {
+		font-weight: 600;
+	}
+	/* An empty body's hint: chrome, not text (`body.hint`). */
+	:global([data-edytor-empty-body]) {
+		padding: 3px 2px;
+		color: #73726e;
+		cursor: pointer;
+		user-select: none;
+	}
+	/* The icon button reads as the icon. */
+	:global(button[data-edytor-callout-icon]) {
+		padding: 0;
+		border: 0;
+		border-radius: 4px;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+	}
+</style>

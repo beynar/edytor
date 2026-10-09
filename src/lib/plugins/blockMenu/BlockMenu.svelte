@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { iconOf } from '../icons.js';
-	import { keepInView } from '../keepInView.js';
 	import { BLOCK_PALETTE } from '$lib/block/colors.js';
 	import type { BlockMenuColor, BlockMenuController } from './BlockMenuController.svelte.js';
 
@@ -16,112 +15,33 @@
 		if (controller.isOpen && controller.readonly) controller.close(false);
 	});
 
-	/**
-	 * The keyboard's row (the flyout's while it is open), once its element is
-	 * in the page: the search field, which holds the keyboard, names it.
-	 */
-	let frame = $state<HTMLElement>();
-	let active = $state<string>();
-	$effect(() => {
-		if (!controller.isOpen || menu) return void (active = undefined);
-		const row = controller.flyout
-			? controller.flyoutRows[controller.flyoutIndex]
-			: rows[controller.selectedIndex];
-		const id = row && controller.rowId(row, Boolean(controller.flyout));
-		active = id && frame?.ownerDocument.getElementById(id) ? id : undefined;
-	});
-	/**
-	 * The open default menu, published to the view's root (`edytor.popups`),
-	 * the grip that opened it told so. A custom `menu` owns its own ARIA.
-	 */
-	$effect(() => {
-		const { block } = controller;
-		if (!block || menu || !frame) return;
-		controller.publish({
-			id: controller.menuId,
-			haspopup: 'menu',
-			opener: { block: block.id, control: 'grip' }
-		});
-		return () => controller.publish(null);
-	});
-
-	/** The flyout a menu row opens, if it opens one. */
-	const submenuOf = (row: (typeof rows)[number] | undefined) =>
-		row && 'submenu' in row ? row.submenu : undefined;
 	/** A colour row's swatch: its text colour on a white square, or its background. */
 	const swatch = (row: BlockMenuColor) =>
 		row.value === null
 			? undefined
 			: `var(--edytor-${row.field}-${row.value}, ${BLOCK_PALETTE[row.value][row.field]})`;
-
-	const focusOnMount = (node: HTMLInputElement) => {
-		node.focus({ preventScroll: true });
-	};
-
-	const onkeydown = (event: KeyboardEvent) => {
-		const { key } = event;
-		const count = rows.length;
-		const arrow = key === 'ArrowDown' || key === 'ArrowUp';
-		/** One arrow step through `length` rows, wrapping. */
-		const step = (index: number, length: number) =>
-			(index + (key === 'ArrowDown' ? 1 : length - 1)) % length;
-		if (key === 'Escape') {
-			event.preventDefault();
-			if (controller.flyout) controller.flyout = false;
-			else controller.close();
-		} else if (controller.flyout && arrow) {
-			// In a flyout, the arrows walk its rows.
-			event.preventDefault();
-			controller.flyoutIndex = step(controller.flyoutIndex, controller.flyoutRows.length);
-		} else if (controller.flyout && key === 'Enter') {
-			event.preventDefault();
-			controller.runFlyout();
-		} else if (key === 'Delete' && !controller.query) {
-			event.preventDefault();
-			controller.remove();
-		} else if (arrow) {
-			event.preventDefault();
-			if (count) controller.selectedIndex = step(controller.selectedIndex, count);
-			controller.flyout = false;
-		} else if ((key === 'Home' || key === 'End') && count) {
-			event.preventDefault();
-			controller.selectedIndex = key === 'Home' ? 0 : count - 1;
-			controller.flyout = false;
-		} else if (key === 'ArrowRight' && submenuOf(rows[controller.selectedIndex])) {
-			event.preventDefault();
-			controller.openFlyout(submenuOf(rows[controller.selectedIndex]));
-		} else if (key === 'ArrowLeft' && controller.flyout) {
-			event.preventDefault();
-			controller.flyout = false;
-		} else if (key === 'Enter') {
-			event.preventDefault();
-			controller.runSelected();
-		}
-	};
 </script>
 
+<!--
+	The keys, the ids, the roles and the publication to the view's root are
+	the controller's attachments (`keys`, `popup`, `flyoutMenu`, `option`):
+	a custom `menu` that uses them behaves as this one.
+-->
 {#if controller.isOpen && menu}
 	{@render menu(controller)}
 {:else if controller.isOpen}
-	<div class="block-menu-frame" bind:this={frame}>
+	<div class="block-menu-frame">
 		<div class="block-menu" data-testid="block-menu" data-edytor-block-menu tabindex="-1">
 			<div class="block-menu-search">
 				<input
 					placeholder={labels.search}
 					aria-label={labels.searchLabel}
-					aria-controls={controller.flyout ? controller.flyoutId : controller.menuId}
-					aria-activedescendant={active}
 					value={controller.query}
-					use:focusOnMount
-					oninput={(event) => {
-						controller.query = event.currentTarget.value;
-						controller.selectedIndex = 0;
-						controller.flyout = false;
-					}}
-					{onkeydown}
+					{@attach controller.keys}
+					oninput={(event) => controller.search(event.currentTarget.value)}
 				/>
 			</div>
-			<div class="block-menu-rows" id={controller.menuId} role="menu" aria-label={labels.menu}>
+			<div class="block-menu-rows" role="menu" aria-label={labels.menu} {@attach controller.popup}>
 				{#if !controller.query}
 					<div class="block-menu-heading" role="presentation">
 						{controller.currentKind?.label ?? labels.block}
@@ -134,18 +54,12 @@
 						{/if}
 						<button
 							type="button"
-							role="menuitemradio"
-							aria-checked={controller.isCurrentColor(row)}
-							id={controller.rowId(row)}
-							tabindex="-1"
+							{...controller.option(index)}
 							class="block-menu-row block-menu-color"
 							data-field={row.field}
 							data-current={controller.isCurrentColor(row)}
-							data-selected={index === controller.selectedIndex}
 							data-testid={`block-menu-${row.id}`}
-							use:keepInView={index === controller.selectedIndex}
 							style:--block-menu-swatch={swatch(row)}
-							onmousedown={(event) => event.preventDefault()}
 							onmousemove={() => (controller.selectedIndex = index)}
 							onclick={() => controller.paint(row)}>{row.label}</button
 						>
@@ -155,14 +69,9 @@
 						{/if}
 						<button
 							type="button"
-							role="menuitem"
-							id={controller.rowId(row)}
-							tabindex="-1"
+							{...controller.option(index)}
 							class="block-menu-row"
-							data-selected={index === controller.selectedIndex}
-							use:keepInView={index === controller.selectedIndex}
 							style:--block-menu-icon={iconOf(row.id)}
-							onmousedown={(event) => event.preventDefault()}
 							onmousemove={() => (controller.selectedIndex = index)}
 							onclick={() => controller.turnInto(row)}>{row.label}</button
 						>
@@ -173,22 +82,14 @@
 							></div>{/if}
 						<button
 							type="button"
-							role={row.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
-							aria-checked={row.checked}
+							{...controller.option(index)}
 							data-checked={row.checked}
-							id={controller.rowId(row)}
-							tabindex="-1"
 							class="block-menu-row"
 							class:danger={row.danger}
-							data-selected={index === controller.selectedIndex}
-							use:keepInView={index === controller.selectedIndex}
 							data-hint={row.submenu ? undefined : row.hint}
 							data-submenu={row.submenu ? 'true' : undefined}
 							data-testid={`block-menu-${row.id}`}
 							style:--block-menu-icon={iconOf(row.icon)}
-							aria-haspopup={row.submenu ? 'menu' : undefined}
-							aria-expanded={row.submenu ? controller.flyout === row.submenu : undefined}
-							onmousedown={(event) => event.preventDefault()}
 							onmouseenter={() => {
 								controller.selectedIndex = index;
 								if (row.submenu) controller.openFlyout(row.submenu);
@@ -207,26 +108,20 @@
 		{#if controller.flyout === 'turn'}
 			<div
 				class="block-menu block-menu-flyout"
-				id={controller.flyoutId}
 				role="menu"
 				aria-label={labels.turnInto}
-				data-edytor-block-menu-flyout
+				{@attach controller.flyoutMenu}
 			>
 				<div class="block-menu-rows" role="presentation">
 					<div class="block-menu-heading" role="presentation">{labels.turnInto}</div>
 					{#each controller.kinds as kind, index (kind.id)}
 						<button
 							type="button"
-							role="menuitem"
-							id={controller.rowId(kind, true)}
-							tabindex="-1"
+							{...controller.option(index, true)}
 							class="block-menu-row"
 							data-current={kind === controller.currentKind}
-							data-selected={controller.flyoutIndex === index}
-							use:keepInView={controller.flyoutIndex === index}
 							onmousemove={() => (controller.flyoutIndex = index)}
 							style:--block-menu-icon={iconOf(kind.id)}
-							onmousedown={(event) => event.preventDefault()}
 							onclick={() => controller.turnInto(kind)}>{kind.label}</button
 						>
 					{/each}
@@ -235,10 +130,9 @@
 		{:else if controller.flyout === 'color'}
 			<div
 				class="block-menu block-menu-flyout"
-				id={controller.flyoutId}
 				role="menu"
 				aria-label={labels.color}
-				data-edytor-block-menu-flyout
+				{@attach controller.flyoutMenu}
 			>
 				<div class="block-menu-rows" role="presentation">
 					{#each controller.colors as color, index (color.id)}
@@ -249,19 +143,13 @@
 						{/if}
 						<button
 							type="button"
-							role="menuitemradio"
-							aria-checked={controller.isCurrentColor(color)}
-							id={controller.rowId(color, true)}
-							tabindex="-1"
+							{...controller.option(index, true)}
 							class="block-menu-row block-menu-color"
 							data-field={color.field}
 							data-current={controller.isCurrentColor(color)}
-							data-selected={controller.flyoutIndex === index}
 							data-testid={`block-menu-${color.id}`}
-							use:keepInView={controller.flyoutIndex === index}
 							style:--block-menu-swatch={swatch(color)}
 							onmousemove={() => (controller.flyoutIndex = index)}
-							onmousedown={(event) => event.preventDefault()}
 							onclick={() => controller.paint(color)}>{color.label}</button
 						>
 					{/each}

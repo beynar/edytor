@@ -15,11 +15,11 @@
 	import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
+	import { createMarqueePlugin } from '$lib/plugins/marquee/marqueePlugin.js';
 	import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
 	import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
 	import { createFilePlugin } from '$lib/plugins/media/FilePlugin.svelte';
 	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
-	import 'katex/dist/katex.min.css';
 	import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
@@ -554,13 +554,17 @@
 			),
 		href: (page) => `/pages/${page.id}`
 	});
-	const equationPlugin = createEquationPlugin({ katex: () => import('katex') });
+	// KaTeX from the CDN, the default (the Playwright fixture serves it offline).
+	const equationPlugin = createEquationPlugin();
+	// The shell's padding is the page margin a marquee starts in, as the host's own area.
+	const marqueePlugin = createMarqueePlugin({ container: '[data-testid="editor-shell"]' });
 	const emojiRules: Plugin = () => ({
 		inputRules: [{ find: /:smile:$/, replace: () => '😄' }]
 	});
 
 	const plugins = $derived([
 		...(data.find ? [findPlugin] : []),
+		...(data.marquee ? [marqueePlugin] : []),
 		...(data.scenario === 'table' ? [tablePlugin, ...(data.polish ? [] : [blockMenuPlugin])] : []),
 		...(data.media ? [embedPlugin, bookmarkPlugin] : []),
 		...(data.equation ? [equationPlugin] : []),
@@ -589,7 +593,7 @@
 		slashMenuPlugin,
 		toolbarPlugin,
 		suggestionsPlugin,
-		columnsPlugin,
+		...(data.columns ? [columnsPlugin] : []),
 		richTextPlugin,
 		propsPlugin
 	]);
@@ -1316,7 +1320,11 @@
 			{readonly ? 'Set editable' : 'Set readonly'}
 		</button>
 	{/if}
-	<div data-testid="editor-shell" dir={direction}>
+	<div
+		data-testid="editor-shell"
+		dir={direction}
+		style={data.marquee ? 'padding: 0 72px; max-width: 800px' : undefined}
+	>
 		<Edytor
 			bind:edytor
 			{plugins}

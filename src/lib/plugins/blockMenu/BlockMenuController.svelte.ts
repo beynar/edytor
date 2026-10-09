@@ -1,4 +1,5 @@
-import type { Snippet } from 'svelte';
+import { untrack, type Snippet } from 'svelte';
+import type { Attachment } from 'svelte/attachments';
 import type { EditorCommand } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -23,6 +24,15 @@ import { selectedMembers } from '$lib/selection/visibility.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
 import { labelsWith, type BlockMenuLabels, type PartialLabels } from '$lib/labels.js';
 import { BLOCK_COLORS, colorable, setBlockColor, type BlockColorField } from '$lib/block/colors.js';
+import {
+	attribute,
+	identify,
+	inPage,
+	keepFocus,
+	namesRows,
+	optionAttributes,
+	type OptionAttributes
+} from '../chrome.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -30,7 +40,11 @@ export type BlockMenuOptions = {
 	/**
 	 * Replace the menu; it renders while `controller.isOpen`, placed beside
 	 * the handle (mark your panel `data-edytor-block-menu` for placement).
-	 * The controller runs every action; `close()` returns the caret.
+	 * The controller runs every action; `close()` returns the caret. Keep
+	 * the built-in keyboard and ARIA with its attachments: `{@attach
+	 * controller.keys}` on the field that holds the keyboard, `{@attach
+	 * controller.popup}` on the menu, `{...controller.option(index)}` on each
+	 * row, `{@attach controller.flyoutMenu}` on an open flyout.
 	 */
 	menu?: Snippet<[BlockMenuController]>;
 	/** The words the menu shows (its actions, search field, headings), over the English ones. */
@@ -165,6 +179,144 @@ export class BlockMenuController {
 
 	/** Publish the open menu to the view's root (`edytor.popups`), or withdraw it with `null`. */
 	publish = (popup: Popup | null) => this.edytor.popups.set('block-menu', popup);
+
+	/**
+	 * The menu element (`{@attach controller.popup}`, the one with the rows):
+	 * it takes the menu's id, its `menu` role and name unless it has its
+	 * own, keeps the focus where it is on a press (a field takes its own),
+	 * and is published to the view's root (`edytor.popups`) while it is in
+	 * the page, the grip that opened it told so.
+	 */
+	popup: Attachment<HTMLElement> = (node) => {
+		identify(node, this.menuId, 'menu', this.labels.menu);
+		node.addEventListener('mousedown', keepFocus);
+		$effect(() => {
+			const { block } = this;
+			if (!block) return;
+			this.publish({
+				id: this.menuId,
+				haspopup: 'menu',
+				opener: { block: block.id, control: 'grip' }
+			});
+			return () => this.publish(null);
+		});
+		return () => node.removeEventListener('mousedown', keepFocus);
+	};
+
+	/**
+	 * An open flyout (`{@attach controller.flyoutMenu}`): its id, `menu`
+	 * role and name, the overlay's placement beside the menu, and presses
+	 * that keep the focus.
+	 */
+	flyoutMenu: Attachment<HTMLElement> = (node) => {
+		const { color, turnInto } = this.labels;
+		identify(
+			node,
+			this.flyoutId,
+			'menu',
+			untrack(() => this.flyout) === 'color' ? color : turnInto
+		);
+		node.setAttribute('data-edytor-block-menu-flyout', '');
+		node.addEventListener('mousedown', keepFocus);
+		return () => node.removeEventListener('mousedown', keepFocus);
+	};
+
+	/**
+	 * The element that holds the keyboard (`{@attach controller.keys}`: the
+	 * search field): focused when it mounts, it takes every key of the menu
+	 * (the arrows, Home and End walk the rows, → opens a row's flyout and ←
+	 * closes it, Enter runs the row, Delete removes the blocks while the
+	 * query is empty, Escape closes the flyout, then the menu), and names
+	 * the open menu and its highlighted row (`aria-controls`,
+	 * `aria-activedescendant`, once that row is in the page).
+	 */
+	keys: Attachment<HTMLElement> = (node) => {
+		untrack(() => {
+			if (!node.contains(node.ownerDocument.activeElement)) node.focus({ preventScroll: true });
+		});
+		node.addEventListener('keydown', this.#keydown);
+		$effect(() => {
+			const flyout = Boolean(this.flyout);
+			const row = flyout ? this.flyoutRows[this.flyoutIndex] : this.rows[this.selectedIndex];
+			attribute(node, 'aria-controls', flyout ? this.flyoutId : this.menuId);
+			if (!namesRows(node)) return;
+			attribute(node, 'aria-activedescendant', inPage(node, row && this.rowId(row, flyout)));
+		});
+		return () => node.removeEventListener('keydown', this.#keydown);
+	};
+
+	/**
+	 * The attributes of the row at `index` (of the open flyout's rows with
+	 * `flyout`): spread them on its element (`{...controller.option(index)}`).
+	 * Its id, its role (`menuitem`, a switch's `menuitemcheckbox`, a colour's
+	 * `menuitemradio` with its ✓ as `aria-checked`, a flyout's opener with
+	 * `aria-haspopup` and `aria-expanded`), `data-selected` for the keyboard's
+	 * row, which scrolls into view.
+	 */
+	option = (index: number, flyout = false): OptionAttributes => {
+		const row = (flyout ? this.flyoutRows : this.rows)[index];
+		const selected = (flyout ? this.flyoutIndex : this.selectedIndex) === index;
+		const id = row
+			? this.rowId(row, flyout)
+			: this.edytor.popups.idOf(`block-menu-${flyout ? 'flyout-' : ''}${index}`);
+		if (row && 'field' in row)
+			return optionAttributes(id, 'menuitemradio', selected, {
+				'aria-checked': this.isCurrentColor(row)
+			});
+		if (!row || 'value' in row) return optionAttributes(id, 'menuitem', selected);
+		return optionAttributes(
+			id,
+			row.checked === undefined ? 'menuitem' : 'menuitemcheckbox',
+			selected,
+			{
+				...(row.checked === undefined ? {} : { 'aria-checked': row.checked }),
+				...(row.submenu
+					? { 'aria-haspopup': 'menu' as const, 'aria-expanded': this.flyout === row.submenu }
+					: {})
+			}
+		);
+	};
+
+	/** The search field typed in: the rows match `query`, the first one highlighted, no flyout open. */
+	search(query: string) {
+		this.query = query;
+		this.selectedIndex = 0;
+		this.flyout = false;
+	}
+
+	/** The menu's keys, on the element that holds the keyboard (`keys`). */
+	#keydown = (event: KeyboardEvent) => {
+		if (event.defaultPrevented || event.isComposing) return;
+		const { key } = event;
+		const rows = this.rows;
+		const count = rows.length;
+		const arrow = key === 'ArrowDown' || key === 'ArrowUp';
+		/** One arrow step through `length` rows, wrapping. */
+		const step = (index: number, length: number) =>
+			(index + (key === 'ArrowDown' ? 1 : length - 1)) % length;
+		const row = rows[this.selectedIndex];
+		const submenu = row && 'submenu' in row ? row.submenu : undefined;
+		if (key === 'Escape') {
+			if (this.flyout) this.flyout = false;
+			else this.close();
+		} else if (this.flyout && arrow) {
+			// In a flyout, the arrows walk its rows.
+			const length = this.flyoutRows.length;
+			if (length) this.flyoutIndex = step(this.flyoutIndex, length);
+		} else if (this.flyout && key === 'Enter') this.runFlyout();
+		else if (key === 'Delete' && !this.query) this.remove();
+		else if (arrow) {
+			if (count) this.selectedIndex = step(this.selectedIndex, count);
+			this.flyout = false;
+		} else if ((key === 'Home' || key === 'End') && count) {
+			this.selectedIndex = key === 'Home' ? 0 : count - 1;
+			this.flyout = false;
+		} else if (key === 'ArrowRight' && submenu) this.openFlyout(submenu);
+		else if (key === 'ArrowLeft' && this.flyout) this.flyout = false;
+		else if (key === 'Enter') this.runSelected();
+		else return;
+		event.preventDefault();
+	};
 
 	/** What Delete and Turn into act on: `blocks`, a list or a code block with its subtree (`selectedMembers`). */
 	get members(): Block[] {

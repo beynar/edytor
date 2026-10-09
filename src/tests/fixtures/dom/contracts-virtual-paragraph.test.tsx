@@ -119,6 +119,11 @@ describe('doc.empty.virtual — an emptied document shows a virtual paragraph', 
 		expect(updates).toHaveLength(1);
 		assertCanonicalTree(a.edytor, [{ ...p('x'), id: vid }]);
 		expect(caret(a.edytor)).toEqual({ block: vid, offset: 1, collapsed: true });
+		// The real block's text handle holds the element the virtual one showed
+		// (the projector displays the caret through it).
+		await flushDomUpdates();
+		const element = a.editor.querySelector(`[data-edytor-id="${vid}"] [data-edytor-text]`);
+		expect(a.edytor.idToBlock.get(vid)!.firstText!.node).toBe(element);
 		await deliver(a, b);
 		assertCanonicalTree(b.edytor, [{ ...p('x'), id: vid }]);
 		expect(shown(b)).toEqual([[vid, 'x']]);

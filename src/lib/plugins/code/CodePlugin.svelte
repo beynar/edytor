@@ -7,6 +7,9 @@
 	import { shown } from '$lib/selection/visibility.js';
 	import { caretBeside } from '$lib/selection/replaceSelection.js';
 	import CodeHeader from './CodeHeader.svelte';
+	import LanguageMenuPanel from './LanguageMenu.svelte';
+	import { LanguageMenu, languageMenus } from './languageMenu.svelte.js';
+	import { onPress } from '$lib/events/onFocus.js';
 	import { keywordsOf, labelsWith } from '$lib/labels.js';
 	import {
 		DEFAULT_CODE_SETTINGS,
@@ -41,9 +44,18 @@
 			const own: CodeSettings = {
 				languages: options.languages ?? DEFAULT_CODE_SETTINGS.languages,
 				defaultLanguage: options.defaultLanguage ?? DEFAULT_CODE_SETTINGS.defaultLanguage,
-				labels: labelsWith('code', options.labels)
+				labels: labelsWith('code', options.labels),
+				header: options.header,
+				menu: options.menu
 			};
 			codeSettings.set(edytor, own);
+			// The view's language list: the first code plugin listed owns it.
+			if (edytor && !languageMenus.has(edytor))
+				languageMenus.set(edytor, new LanguageMenu(edytor, own));
+			const ownMenu = () => {
+				const menu = languageMenus.get(edytor);
+				return menu?.settings === own ? menu : undefined;
+			};
 			/** A line's language: its code block's (read through the cell: a pick re-renders it). */
 			const lineLanguage = (id: string) => {
 				const language = languageOf(edytor.idToBlock.get(id)?.parent?.data, own);
@@ -99,7 +111,31 @@
 			};
 
 			return {
+				onEdytorAttached: ({ node }) => {
+					const menu = ownMenu();
+					if (!menu) return;
+					const offPress = onPress(edytor, node.ownerDocument, menu.pressed, true);
+					const unmount = edytor.overlay.mount(
+						LanguageMenuPanel,
+						{ menu, readonly: () => edytor.readonly },
+						'edytor-code-language-host',
+						// Above the block handles (5), as the equation editor.
+						7,
+						menu.measure
+					);
+					return () => {
+						offPress();
+						unmount();
+						menu.close();
+					};
+				},
 				hotkeys: {
+					// Alt+F10 at a caret in a code line: the keys go to its language button
+					// (as to a toolbar); Escape there gives them back.
+					'alt+f10': ({ prevent }) => {
+						const button = ownMenu()?.buttonAtCaret();
+						if (button) prevent(() => button.focus({ preventScroll: true }));
+					},
 					'mod+a': ({ prevent }) => {
 						// Select the code block's text; once it is (or when it has none), Select
 						// all takes the next step: the code block.
@@ -134,21 +170,6 @@
 					},
 					'shift+tab': ({ prevent }) => {
 						if (touchedLines()) prevent(() => indent(-1));
-					},
-					arrowdown: ({ prevent }) => {
-						// ArrowDown in a code block's last line (a code line never wraps) with
-						// nothing after the block: a new block after it takes the caret, so the
-						// code is never a dead end. A block after is the browser's move.
-						const { startBlock: line, isCollapsed } = edytor.selection.state;
-						const code = line?.type === 'codeLine' ? line.parent : undefined;
-						if (!isCollapsed || !code?.parent || line !== code.children.at(-1)) return;
-						if (shown(line, 'blockAfter')) return;
-						prevent(() => {
-							const after = code.insertBlockAfter({
-								block: { type: edytor.defaultChild(code.parent!) }
-							});
-							edytor.dispatcher.caret(after?.firstText, 0);
-						});
 					},
 					'shift+enter': ({ prevent }) => {
 						// Always a new line, in the empty last line too (where Enter leaves the block).
@@ -254,10 +275,11 @@
 	export const codePlugin: Plugin = createCodePlugin();
 </script>
 
-{#snippet code({ block, children }: BlockSnippetPayload<{ language?: string }>)}
-	<CodeHeader {block} />
-	<pre class="th-code"><code>{@render children?.()}</code></pre>
-{/snippet}
+<!-- No whitespace between the header and the code (one node per block less to walk). -->
+<!-- prettier-ignore -->
+{#snippet code({ block, children }: BlockSnippetPayload<{ language?: string }>)}<!--
+--><CodeHeader {block} /><pre class="th-code"><code>{@render children?.()}</code></pre><!--
+-->{/snippet}
 
 {#snippet codeLine({ content }: BlockSnippetPayload)}
 	{@render content()}

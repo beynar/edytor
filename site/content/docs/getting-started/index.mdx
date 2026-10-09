@@ -7,7 +7,7 @@ icon: download
 Edytor ships as one npm package, `edytor`. It contains the `<Edytor>` component, the bundled plugins, the collaborative document API and its CRDT engine, and a Cloudflare Durable Object room.
 
 :::warning[Release candidate]
-Edytor `1.0.0-rc.2` is the 1.0 release candidate: its API is frozen, and a change to it before 1.0 is a listed breaking change. It has no production track record yet; read the [limitations](/docs/reference/limitations).
+Edytor `1.0.0-rc.3` is the 1.0 release candidate: its API is frozen, and a change to it before 1.0 is a listed breaking change. It has no production track record yet; read the [limitations](/docs/reference/limitations).
 
 These docs describe that release. `edytor@0.0.11`, which npm installed without a tag before it, predates it and uses a different API; the [changelog](/docs/reference/migration) lists every change.
 :::
@@ -49,13 +49,13 @@ To build the tarball yourself, from a clone of the repository (`master`):
 cd edytor           # your clone
 pnpm install
 pnpm package        # builds dist/
-pnpm pack           # writes edytor-1.0.0-rc.2.tgz
+pnpm pack           # writes edytor-1.0.0-rc.3.tgz
 ```
 
 Then, in your project, install the file:
 
 ```package-install
-pnpm add ../edytor/edytor-1.0.0-rc.2.tgz
+pnpm add ../edytor/edytor-1.0.0-rc.3.tgz
 ```
 
 ## Verify the install

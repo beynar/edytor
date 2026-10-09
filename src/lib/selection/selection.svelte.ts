@@ -221,10 +221,23 @@ const rangeEdge = (
 	);
 };
 
+/** One block's membership of the selected and focused sets, as its own two signals. */
+class Membership {
+	selected = $state(false);
+	focused = $state(false);
+}
+
 export class EdytorSelection {
 	edytor: Edytor;
 	#focused = new SvelteSet<Block>();
 	#selected = new SvelteSet<Block>();
+	/**
+	 * Each rendered block's membership (`keep`), written with the sets: a
+	 * block's attributes follow its own membership, where a `SvelteSet`'s
+	 * `has` of a block it does not hold follows every change of the set — a
+	 * caret moving to the next block would re-run every block's attributes.
+	 */
+	#members = new WeakMap<Block, Membership>();
 	/** The blocks the selection touches (read-only: `select()` keeps it). */
 	get focusedBlocks(): ReadonlySet<Block> {
 		return this.#focused;
@@ -536,12 +549,39 @@ export class EdytorSelection {
 			: next;
 	};
 
+	/**
+	 * Keep `block`'s membership as its own signals (a rendered block's
+	 * attachment): `isSelected` and `isFocused` then follow only its changes.
+	 * Created outside any reactive read — a signal a reaction creates is not
+	 * its dependency — and answered only when there.
+	 * @internal
+	 */
+	keep = (block: Block): Membership | undefined => {
+		let member = this.#members.get(block);
+		if (member || $effect.tracking()) return member;
+		member = new Membership();
+		member.selected = this.#selected.has(block);
+		member.focused = this.#focused.has(block);
+		this.#members.set(block, member);
+		return member;
+	};
+
+	/** Whether `block` is in the selected set (reactive: follows that block's membership). @internal */
+	isSelected = (block: Block): boolean =>
+		this.#members.get(block)?.selected ?? this.#selected.has(block);
+
+	/** Whether `block` is in the focused set (reactive: follows that block's membership). @internal */
+	isFocused = (block: Block): boolean =>
+		this.#members.get(block)?.focused ?? this.#focused.has(block);
+
 	/** Diff one block set against its new members: hooks only for changes (the renderer draws the attributes). */
 	#sync = (set: SvelteSet<Block>, blocks: Block[], kind: 'selected' | 'focused') => {
 		const next = new Set(blocks);
 		for (const block of set) {
 			if (next.has(block)) continue;
 			set.delete(block);
+			const member = this.#members.get(block);
+			if (member) member[kind] = false;
 			// `onDeselect` pairs with `onSelect`; `onBlur` keeps firing on both
 			// (it has historically doubled as the selection-loss hook).
 			if (kind === 'selected') block.definition.onDeselect?.({ block });
@@ -550,6 +590,8 @@ export class EdytorSelection {
 		for (const block of next) {
 			if (set.has(block)) continue;
 			set.add(block);
+			const member = this.#members.get(block);
+			if (member) member[kind] = true;
 			if (kind === 'selected') block.definition.onSelect?.({ block });
 			else block.definition.onFocus?.({ block });
 		}

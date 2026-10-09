@@ -47,20 +47,27 @@
 			if (change.order.size || change.added.size || change.removed.size) structure++;
 		})
 	);
+	/**
+	 * The few blocks that show a handle, sorted into document order: never a
+	 * walk of the whole document (a structural commit on a long page).
+	 */
 	const ids = $derived.by(() => {
 		void structure;
-		const selected = edytor.selection.selectedBlocks;
-		return edytor.facade
-			.order()
-			.filter(
-				(id) =>
-					blocks.has(id) &&
-					(near.has(id) ||
-						hovered.has(id) ||
-						id === focused ||
-						id === controller.dragging ||
-						selected.has(blocks.get(id)!))
-			);
+		const shown = new Set([...near, ...hovered]);
+		for (const block of edytor.selection.selectedBlocks) shown.add(block.id);
+		if (focused !== null) shown.add(focused);
+		if (controller.dragging) shown.add(controller.dragging);
+		// Document order by index paths (O(depth) each): no whole-document order is rebuilt.
+		const paths = new Map<string, number[]>();
+		for (const id of shown) {
+			const path = blocks.has(id) ? edytor.facade.pathOf(id) : null;
+			if (path) paths.set(id, path);
+		}
+		const before = (a: number[], b: number[]) => {
+			for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
+			return a.length - b.length;
+		};
+		return [...paths.keys()].sort((a, b) => before(paths.get(a)!, paths.get(b)!));
 	});
 
 	/** The blocks whose handle sits over a gap between two columns (`overGap`, measured). */

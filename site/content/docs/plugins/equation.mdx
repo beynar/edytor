@@ -1,29 +1,72 @@
 ---
 title: Equation
-description: The equation plugin adds Notion's block and inline equations, TeX drawn by KaTeX loaded on demand, edited in a field under the equation with a live preview.
+description: The equation plugin adds Notion's block and inline equations, TeX drawn by KaTeX loaded from a CDN on demand, edited in a field under the equation with a live preview.
 icon: sigma
 ---
 
-`createEquationPlugin` adds Notion's equations: a block equation (`equation`) and an inline equation in text (`inlineEquation`), each holding its TeX source and drawn by [KaTeX](https://katex.org). It is not a default plugin: list it, and give it KaTeX.
-
-KaTeX is an optional peer dependency of `edytor`: install it in your app, import its stylesheet once, and pass a loader. The plugin calls the loader the first time an equation shows in a browser, so KaTeX is a separate chunk that pages without math never download.
-
-```bash
-pnpm add katex
-```
+`createEquationPlugin` adds Notion's equations: a block equation (`equation`) and an inline equation in text (`inlineEquation`), each holding its TeX source and drawn by [KaTeX](https://katex.org). It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import 'katex/dist/katex.min.css';
 	import { Edytor, createEquationPlugin, slashMenuPlugin } from 'edytor';
 
-	const equations = createEquationPlugin({ katex: () => import('katex') });
+	const equations = createEquationPlugin();
 </script>
 
 <Edytor plugins={[equations, slashMenuPlugin]} />
 ```
 
-Without `katex`, or until it loads (and in a server render), an equation shows its TeX source.
+Your app installs, bundles and imports nothing for KaTeX. The first time an equation is drawn in a browser, the plugin loads KaTeX from [jsDelivr](https://www.jsdelivr.com): its module (`katex.mjs`, about 75 KB compressed) and its stylesheet (`katex.min.css`, added once to the page's head, which loads KaTeX's fonts as a formula needs them). Pages without math download none of it. The version is pinned: `KATEX_VERSION` (the KaTeX `edytor` is tested with), at `KATEX_CDN`, both exported. Every view and every equation plugin on a page share one load.
+
+Until KaTeX loads, in a server render, and when it fails to load (offline, a blocked CDN), an equation shows its TeX source; nothing throws, and the console says why.
+
+## Where KaTeX comes from
+
+The `katex` option picks the source:
+
+| `katex` | KaTeX comes from |
+| --- | --- |
+| absent | jsDelivr: `KATEX_CDN`, the default |
+| a URL | another copy of KaTeX's `dist` folder (your CDN, your own static files): it must hold `katex.mjs`, `katex.min.css` and the `fonts/` the stylesheet names |
+| `() => import('katex')` | your bundle: install `katex` (an optional peer dependency, `>=0.16`) and import its stylesheet, `katex/dist/katex.min.css`, yourself |
+| `false` | nowhere: equations show their TeX source |
+
+```ts title="katex-sources.ts" check
+import { KATEX_VERSION, createEquationPlugin } from 'edytor';
+
+// Your own copy of KaTeX's `dist` folder, the same version.
+export const selfHosted = createEquationPlugin({
+	katex: `https://static.example.com/katex@${KATEX_VERSION}/dist/`
+});
+
+// No equation drawing at all: the TeX source shows.
+export const sourceOnly = createEquationPlugin({ katex: false });
+```
+
+A bundled KaTeX loads as a chunk of your app, the first time an equation shows:
+
+```svelte title="Bundled.svelte" check
+<script lang="ts">
+	import 'katex/dist/katex.min.css';
+	import { Edytor, createEquationPlugin } from 'edytor';
+
+	const equations = createEquationPlugin({ katex: () => import('katex') });
+</script>
+
+<Edytor plugins={[equations]} />
+```
+
+### Content Security Policy
+
+With the default, a page with a Content Security Policy allows jsDelivr for the module, the stylesheet and the fonts:
+
+```text
+script-src 'self' https://cdn.jsdelivr.net;
+style-src 'self' https://cdn.jsdelivr.net;
+font-src 'self' https://cdn.jsdelivr.net;
+```
+
+With a URL, allow its host instead. A policy that allows no other host (or that requires subresource integrity, which a module import cannot carry) bundles KaTeX with `katex: () => import('katex')`.
 
 ## Creating equations
 
@@ -50,8 +93,8 @@ A press or a focus outside the editor closes it too. After it closes, a block eq
 <TypeTable
   type={{
     katex: {
-      type: "() => Promise<KatexLike | { default: KatexLike }>",
-      description: "Loads KaTeX: `() => import('katex')`. Called once, the first time an equation shows in a browser. Without it, equations show their TeX source.",
+      type: "KatexLoader | string | false",
+      description: "Where KaTeX comes from, the first time an equation shows in a browser: absent, jsDelivr (`KATEX_CDN`); a URL, another copy of KaTeX's `dist` folder; a loader, your bundle (`() => import('katex')`, its stylesheet imported by your app); `false`, none (the TeX source shows). See [Where KaTeX comes from](#where-katex-comes-from).",
     },
     macros: {
       type: "Record<string, string>",
@@ -65,6 +108,10 @@ A press or a focus outside the editor closes it too. After it closes, a block eq
       type: "Partial<Record<string, string[]>>",
       description: "The slash keywords of `block.equation` and `equation.inline`, which replace their own.",
     },
+    panel: {
+      type: "Snippet<[EquationEditor]>",
+      description: "Replace the editor's panel, under the edited equation; `{@attach editor.field}` on your source field keeps its focus and keys. See [Menus and handles](/docs/customization/menus#equation-editor).",
+    },
   }}
 />
 
@@ -74,7 +121,6 @@ KaTeX runs untrusted (`trust: false`): `\href`, `\url`, `\includegraphics` and t
 import { createEquationPlugin } from 'edytor';
 
 export const equations = createEquationPlugin({
-	katex: () => import('katex'),
 	macros: { '\\RR': '\\mathbb{R}' },
 	labels: { blockPlaceholder: 'Add a formula' }
 });
@@ -121,4 +167,4 @@ Copying writes each equation as MathML whose `application/x-tex` annotation is i
 | `[data-edytor-equation-source]` | The source shown while KaTeX loads, or without it |
 | `[data-edytor-equation-editor]` | The editor, in the overlay (`data-display="block"` or `"inline"`); `--edytor-equation-editor-background` |
 
-KaTeX's own classes (`.katex`, `.katex-display`) style the drawing; its stylesheet must be loaded.
+KaTeX's own classes (`.katex`, `.katex-display`) style the drawing, from KaTeX's stylesheet: the plugin adds it to the page's head with the CDN default or a URL (`link[data-edytor-katex]`); with your own loader, your app imports it.

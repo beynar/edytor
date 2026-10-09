@@ -329,8 +329,8 @@ paths, and the no-hidden-content assertion of `fixtures/dom/invariants.ts`).
 ### `flow.header` — at the end of a container's header, the body stays
 
 At the end of a container's header whose body shows (an open toggle, a
-callout or quote with nested lines: the view's `header`, where Enter opens
-a first child), `B` keeps its kind, its data and its children, unless it
+callout, a quote with nested lines: the view's `header`, where Enter opens
+a first child, `body.enter`), `B` keeps its kind, its data and its children, unless it
 is empty (no text, no children: an open toggle with no body yet) and the
 first line stands apart: then it is replaced or kept as `flow.apart` says.
 A header with no text takes a joining first line's text only, never its
@@ -1646,6 +1646,90 @@ source, `order-scope.test.ts`).
   peer put in a new column meanwhile keeps it, and that column, alone,
   dissolves into the layout's slot.
 
+## Block drag (the view)
+
+Where a block handle's drag drops. The moves themselves are
+`moveBlocks`' (`left`/`right`: `layout.place-beside`); these rows say
+which placement a pointer position offers.
+
+### `handles.after-paint` — a handle the near band gains mounts after the frame's paint (view)
+
+The near band (`nearTop`) is measured on the overlay's frames; a block it
+loses drops its handle at once, a block it gains mounts its handle in one
+task queued from that frame (the one named timer of the handles), so after
+the frame's paint: a key that adds blocks (Enter, a paste) paints the text
+first and the new blocks' handles a frame or two later. Hovered, selected,
+focused and dragged handles do not wait. Pins: `large-page.spec.ts`.
+
+### `dnd.reach` — a drag outside the content column still drops
+
+While a block drag runs (never readonly: there is none), a pointer within
+the editor's height but outside its content column (the root's content
+box, `start`…`end`) answers for the row the content's near edge shows at
+the pointer's height: a nested block's own row; over a layout, the row of
+its **first** column on the left and of its **last** column on the right,
+never another column. By zone (`marginAt`), measured from the content's
+edges:
+
+1. **Inside the content**, and wherever a block's drop target holds the
+   pointer (its own box, or its sticky slop, 20px beside it): that block
+   answers (its beside bands, then its halves). Nothing below changes this.
+2. **The handle column** (left of `start`, the drag's handle width): the
+   row's reorder, before or after only, never inside, at the outermost
+   level it ends (as `start` gives it); no beside band.
+3. **The beside place**: the first 120px past the handle column (left) and
+   past `end` (right), at most the reach. When the document has a layout
+   kind, the band of that side (`beside`, as at that edge): a new column.
+   A band the document refuses shows nothing; a row offering none (a
+   nested row on the left, a layout that would stack) reorders as in 4.
+4. **The reorder**: the rest of the reach (all of it without a layout
+   kind). Left: as the handle column (2). Right: the placement the row
+   offers at its own right edge (its halves; before, after, or inside as
+   past one nesting step), the same as just inside the content: nothing
+   jumps as the pointer leaves it.
+5. **Past the reach** (`--edytor-drop-reach` on the root or an ancestor,
+   in px, default 240, past the handle column and past `end`), above or
+   below the editor: nothing; released there, nothing moves.
+
+Between two rows where the margin reorders, the reorder shown stays (as a
+block's sticky slop keeps it). Auto-scroll is unchanged.
+Pins: `drop-reach.test.ts` (the zones), `columns-dnd.test.tsx` ("the drop
+reach"), `drop-reach.spec.ts`, and the band rows of `columns-parity.spec.ts`
+and `columns-dnd.spec.ts`.
+
+## View scaling
+
+### `view.scale` — a keystroke's view work does not grow with the page
+
+A key in a block (a character, Enter, a block move, a caret moving to
+another block) costs the view the same counted work on a page of 5,000
+top-level blocks as on one of 1,000, give or take a constant: the DOM
+nodes its code inspects, the block attributes it recomputes (the blocks
+the selection enters and leaves, never the others), the block handles it
+resolves, the reads of the whole document order (none), the layout reads
+of the frame after it (the chrome near the viewport, its band found by
+binary search) and the blocks whose resizes are watched (the top-level
+blocks within a screen of the viewport). The browser's own share (its
+caret and IME bookkeeping over the one editable root, the layout of the
+page) still grows with the page and is not claimed here.
+Pins: `keystroke-scale.test.tsx` (jsdom: nodes, attributes, handles,
+layout reads), `large-page-scale.spec.ts` (with layout: layout reads,
+watched blocks, handles, order reads), both at 1,000 and 5,000 blocks.
+
+### `render.markers` — a block's render leaves few markers in the host
+
+The renderer's own nodes in the editing host (the empty comments and empty
+text nodes Svelte anchors its blocks, components and snippets with, and
+whitespace text between tags), which the browser walks when it recomputes
+the host's text after a key, stay at most a ceiling per bundled kind: a
+plain paragraph leaves 9 comments, one empty text node and no whitespace
+(it left 23, 9 and 1), a long page of mixed kinds about 9.4 comments and
+1.4 empty text nodes per block. The text, the elements and their order are
+unchanged; only markers went.
+Pins: `render-markers.test.tsx` (jsdom: each bundled kind's ceiling of
+comments, empty text nodes and whitespace nodes), `render-markers.spec.ts`
+(Chromium: per block on `/test/large` and the demo page).
+
 ## Tables
 
 A **table** is a kind whose role says `table: true` (the bundled `table`,
@@ -1778,6 +1862,53 @@ peer deletes is dropped with it. The view writes a width on the column's
 first stored entry by its item id (`~…`), never by a position in the
 deduplicated list, so an extra entry the array holds never takes it.
 
+### `table.width.fit` — a resize keeps the table inside its place (view)
+
+A column's resize (its band's drag, the band's arrow keys) never makes the
+table wider than the room at its place: the width of the table's own box
+(the document's content column; in a layout's column, a toggle or a
+callout, the width there) less the grid's border. The column grows into
+the room the table leaves free, then into its right neighbour
+(`table.width.neighbour`), and never narrows below the minimum width; the
+preview the drag shows and the width the release writes are the same
+clamped value. A table already wider than its place (widths a peer wrote on
+a wider screen, a narrower window) gets no wider: a column grows only by
+what its neighbour gives, the last column only narrows. Where nothing is
+laid out (no layout engine), no room limits it.
+
+### `table.width.neighbour` — a column grows into its right neighbour (view)
+
+Past the free room, what a column's resize gains comes off its right
+neighbour, down to the minimum width (a neighbour already narrower keeps
+its width); both widths are one write, one undo step. A narrowing gives
+nothing back: the neighbour keeps its width and the table leaves the room
+free. The last column has no neighbour: it grows into the free room only.
+Pins: `table-drag.test.tsx`.
+
+### `table.overflow` — a table wider than its place scrolls in its own box (view)
+
+The view never rescales nor rewrites stored widths: a table whose columns
+are wider than its place scrolls sideways inside its own box, which never
+reaches past the place (Notion's simple table). Its chrome shows over the
+visible part only: a column's grip or resize band whose edge is scrolled
+out of the box is not shown, and the `+` beside the table shows only while
+the last column's edge is in view.
+
+### `table.drag` — a row or a column drags by its grip (view)
+
+In an editable view, the grip left of the hovered row and the one above the
+hovered column are drag sources. While one drags, the chrome stays on its
+table and a drop line shows between the two rows (columns) of that table
+the pointer is between, by their middles. The drop is the menu's move: a
+row's `moveTableRows([row], to)` (`table.move-row`), a column's
+`moveTableColumn(table, column, to)` (`table.move-column`, its cells follow
+it), one plan, one undo step; the selection stays (a caret in a moved cell
+moves with its cell) and the keys go to the editor. Nothing is written for a
+drop at the row's (column's) own place (the line before or after it shows
+no line), outside the table (more than 32px past its box), after a cancel
+(Escape), or by a readonly view (which shows no grip). A click with no drag
+opens the grip's menu, whose move rows stay the keyboard's path.
+
 ### `table.merge` — nothing merges into or out of a cell (write, keys)
 
 `canMerge` refuses a cell on either side and `splitBlock` refuses a cell
@@ -1890,6 +2021,74 @@ listed, its cells deleted and padded in every row.
 Each creates a cell for the same row and column: the first by block id
 displays, the other does not, with any text typed in it before the peers
 synced (the residual: one placeholder, two writers, no merge of cells).
+
+## Container bodies
+
+A **container** kind (`container: true`: a toggle, a toggle heading, a
+callout, a quote) is a header (its own text) over a body (its children,
+any blocks, nested any way). These rows are the view's: what shows, where
+Enter and a click go. The document holds nothing more than the blocks and
+`data.icon`.
+
+### `body.enter` — Enter at the end of a header whose body shows opens it
+
+A header's body shows when the block has children, is an open `<details>`
+(an open toggle), or its kind's body shows even empty (`body: true`: a
+callout); a closed `<details>` never, whatever it holds (`bodyShows`,
+`selection/visibility.ts`, the one rule Enter and `flow.header` read).
+Enter at the end of such a header creates a first child of the kind's
+default child kind and puts the caret there (`addChildBlock`, one step):
+`callout "note"` + Enter → `callout "note" > [""]`, caret in `""`; mid
+header, the text after the caret becomes that first child (`splitHeader`).
+A quote without children, or a closed toggle, keeps its sibling rule (a
+paragraph or a toggle after it). Pins: `container-bodies.test.tsx`,
+`notion-parity.test.tsx`, `behavior-matrix.test.tsx`,
+`container-bodies.spec.ts`.
+
+### `body.hint` — an empty body shows where its content goes
+
+An open toggle (or toggle heading) and a callout with no children show a
+hint in their body ("Empty toggle. Click or drop blocks inside.", the
+labels' `emptyBody`): a `contenteditable=false` element after the header
+(`data-edytor-empty-body`), no text element, never content (the truth
+oracle compares text elements only), hidden from assistive technology
+(Enter is the keyboard's way in) and with the body by a closed `details`.
+A readonly view and a suggestion's preview show none. Its press puts the
+caret in the header (the core's chrome press); its click runs ONE
+command, `openBody` (`plugins/richtext/body.ts`): a first child of the
+default child kind, the caret in it, one undo step (refused in a view that
+may not write; a body a peer filled meanwhile takes the caret in its first
+child, nothing written). A handle drag released over the hint nests the
+dragged blocks inside the block (`inside` first in either half,
+`overEmptyBody` in the handles' geometry). Pins:
+`container-bodies.test.tsx`, `container-bodies.spec.ts`.
+
+### `body.open` — a toggle this view creates opens
+
+A block without children that this view retypes into a disclosure kind
+(`toggle`, `toggle-heading`, `details`) from another kind — the slash
+menu, a markdown shortcut (`> `), Turn into, `setBlock` — opens as it is
+drawn (`onBlockAttached`), so its empty body and hint show (Notion). The
+browser owns `open` from then on. A block with children keeps them out of
+sight (it stays closed), a toggle retyped into a toggle heading keeps its
+state, a sibling toggle Enter opens after a closed one is closed, and no
+peer's view opens anything. Pins: `container-bodies.test.tsx`.
+
+### `callout.icon` — a callout's icon is its `data.icon`
+
+A callout shows `data.icon`: the view's default (`createRichTextPlugin({
+callout: { icon } })`, `💡`) when it is unset, nothing when it is `''`. A
+new callout takes the view's default. In an editable view the icon is a
+button (a kind's own control) opening the view's one picker in the
+overlay (`CalloutIconPicker`): a choice, or Remove icon (`''`), is one
+`patchData` (one undo step) and gives the keys and the selection back to
+the editor; Escape, Tab, a press outside or focus leaving close it with
+nothing written. The block menu's Change icon row opens it from the
+keyboard. Its HTML is `<div data-edytor-callout="💡"><p>title</p>…</div>`,
+read back by the kind's `parse` hook; HTML import takes one leading
+paragraph of an element, empty or not, as its own text (the title), and
+the paragraphs after it as its children. Pins:
+`container-bodies.test.tsx`, `container-bodies.spec.ts`.
 
 ## Anchor contract
 
@@ -2016,8 +2215,8 @@ the classifier reads their synthetic `selectionchange` as drift.
 
 A press places the DOM caret at once, but the model adopts it only at the
 `selectionchange` the browser queues for it. Keydown handlers read the
-model value: the bindings (`session/bindings.ts`, a kind's `hotkeys`
-such as the code block's ArrowDown, Tab), the structural fallback's
+model value: the bindings (`session/bindings.ts` such as ArrowDown at
+the last stop, `nav.trailing.exit`; a kind's `hotkeys` such as Tab), the structural fallback's
 projection (`getStructuralFallbackInputType`) and the targetless
 admission (`targetless` in `session/attempt.ts`). Chromium runs input
 ahead of ordinary tasks, so a keydown can precede the queued
@@ -2046,6 +2245,163 @@ caret's) in three engines, and the secondary-click row under a 4× CPU
 throttle in Chromium. `endOf` in `tests/editor-dom/code-exit.spec.ts`
 still waits for the click's caret: that row's subject is the code block's
 exit.
+
+## Navigation
+
+### `nav.trailing.exit` — ArrowDown leaves the document's last stop (Notion)
+
+Navigation owns it (`session/navigation.ts`, `leavesLastStop` in the
+built-in ArrowDown, `vertical`), one rule for every kind: no kind keeps a
+rule of its own (the code block's is gone).
+
+- **When.** A collapsed text caret, in a view that writes
+  (`dispatcher.permits()`), on the last line of its block — a line box
+  where the view lays one out (`surface/lines.ts` through
+  `ports.surface.sameLine`; an offset where a line wraps counts on the
+  line it ends, so a doubt leaves the key to the browser), else after the
+  block's last line break — with **no stop below** it, in a block that is
+  **not a top-level block of the root's default kind**.
+- **A stop below** is a displayable block (`selection.displayable`: a
+  mounted text not hidden by view state, so a closed toggle's body holds
+  none, nor does a void) after the caret's block in document order, unless
+  it is beside it: in another column of a layout the block sits in
+  (`isLayoutItem`), or another cell of its table row (`isTableCell`). What
+  follows the last column, or a later row, is below.
+- **What.** The caret goes to the trailing paragraph (`toTrailingParagraph`):
+  an empty block of the root's default kind after the document's last
+  top-level block, inserted by one command (`insertBlockAfter`, its own
+  undo step) and the command's result caret; the undo removes it and
+  restores the caret before the key. An empty top-level paragraph there
+  is a stop below, so the key reaches it as any line (nothing is written).
+- **Not.** Shift+ArrowDown extends (`extendVertically`) and inserts
+  nothing; ArrowDown with a stop below stays the browser's (the table's
+  `verticalFrom` first, inside a table); a range, an atom or a block
+  selection keeps its own rule; a readonly view claims nothing.
+- **Concurrency.** Two peers leaving at once each insert their paragraph
+  (two trailing paragraphs): a plain insert, nothing else to reconcile.
+
+Rows: `src/tests/fixtures/dom/trailing-paragraph.test.tsx` (a toggle's
+child and closed header, a callout, a quote's child, a nested list item, a
+heading, the columns, a table's last row, a code block's last line, and
+the rows where it does not apply), `code-exit.test.tsx`; in browsers,
+`tests/editor-dom/trailing-paragraph.spec.ts` and `code-exit.spec.ts`.
+
+### `nav.trailing.press` — a press below the last block (Notion)
+
+A primary press with no modifier, from a mouse or a pen, on the host
+itself below its last top-level block's box, in a view that writes, is the
+model's (`pointer.belowPress`, classified with the chrome press in
+`events/onFocus.ts`, no listener of its own): the native placement is
+cancelled and the caret goes to the trailing paragraph
+(`toTrailingParagraph`: the last block when it is an empty paragraph, else
+a new one, one undo step). A touch there stays the browser's (it may start
+a scroll). The core gives the host a bottom padding to press in,
+`--edytor-trailing-space` (`2em`, zero specificity).
+
+Rows: `trailing-paragraph.test.tsx` ("a press below the last block") and
+`tests/editor-dom/trailing-paragraph.spec.ts`. With the marquee plugin
+listed (`sel.marquee`) the press waits for its release: a click (no move
+past the threshold) does exactly this, a drag selects blocks instead and
+writes nothing.
+
+### `sel.marquee` — a rectangle from the editor's empty area selects blocks (Notion's rubber band)
+
+Opt-in (`createMarqueePlugin({ container, threshold, box })`,
+`plugins/marquee/`). The gesture, one owner (`MarqueeController`):
+
+- **Start.** A primary press from a mouse or a pen (never a touch: it
+  scrolls) on the editor's empty area: the host's own area (its padding
+  beside and below the blocks: the press's target is the host itself;
+  classified once, with the chrome press, in `events/onFocus.ts` by
+  `pointer.marginPress`, the claimant the plugin registers with
+  `pointer.claimMargins`), a block handle's own box around its buttons
+  (`[data-edytor-block-handle-host]` itself, never a button), and the
+  app's `container` (the element itself, or a wrapper between it and the
+  editor; its other content keeps its presses), both through `onPress`.
+  A press on a block, its text or its chrome never starts one: a drag
+  from text stays a text selection (`sel.drag.across-columns` unchanged).
+  The press's `mousedown` is cancelled (no native caret, focus or
+  selection: they are its default actions, so the `pointerdown` is left
+  alone), and so are `selectstart` and `dragstart` until the release.
+  A press on the host it takes places no caret (`projector.pressed` is
+  not called) and starts no text drag (`pointer.capture`).
+- **Click.** Released before the pointer moved `threshold` px (4 by
+  default), a host press does what the press does without the plugin
+  (`pointer.marginClick`): below the last block, `nav.trailing.press`;
+  beside the blocks, the caret at the text point of that height nearest
+  the host's edge (where the browser puts it); with a modifier, nothing.
+  A press on the gutter or the container: nothing.
+- **Live.** Past the threshold the editor takes the keys (`takeKeys`), the
+  overlay draws the rectangle (`[data-edytor-marquee-host]`, a `fixed`
+  host placed and sized by the plugin's measure; the default
+  `[data-edytor-marquee]`, or the `box` snippet with
+  `MarqueeBoxPayload { rect, count, ids, adding }`), and every move or
+  scroll selects the blocks it meets (`sel.marquee.blocks`) through the
+  one selection writer (`selection.select`, a block selection; none when
+  it meets nothing), only when the ids change. The press point is kept in
+  the host's frame, so the rectangle extends with any scroll.
+- **Modifiers.** Shift or Mod (Cmd on macOS, else Ctrl) at the press adds:
+  the block selection there was stays, the rectangle's blocks after it.
+  Without one the rectangle replaces the selection.
+- **Escape** (a `keydown` capture on the window while the press is down,
+  stopped there) gives back the value from before the press (a caret, a
+  range, a block selection) and ends the gesture: the rest of the drag
+  does nothing, its release is no click.
+- **Release.** The block selection stays and the editor has the keys:
+  Delete, Backspace, Mod+C, Mod+X, Tab, the arrows and the block menu act
+  on it as on any block selection (`sel.blocks.exact`).
+- **Auto-scroll** (browser rule `marquee.auto-scroll`, one named frame
+  loop): within 48px of the scroller's top or bottom (the editor's
+  nearest scrolling ancestor, else the page; past the edge counts as at
+  it) the scroller moves up to 24px a frame, faster nearer the edge, and
+  the selection follows; it stops when the pointer leaves the band, the
+  scroller is at its end, or the gesture ends.
+- **Readonly.** A readonly view selects too: a block selection is allowed
+  there (copy reads it, as after `sel.drag.across-columns`); a click
+  below the last block writes nothing (`nav.trailing.press`).
+
+Rows: `src/tests/fixtures/dom/marquee.test.tsx` ("the gesture"),
+`tests/editor-dom/marquee.spec.ts` (three engines),
+`tests/editor-dom/mobile-marquee.spec.ts` (touch).
+
+### `sel.marquee.blocks` — which blocks a rectangle selects
+
+`marqueeBlocks(edytor, rect)` (`plugins/marquee/marquee.ts`), from the
+blocks' boxes, each block once, in document order:
+
+- a block whose **own row** (its box down to where its first shown child
+  begins) meets the rectangle is selected **with its whole shown subtree**
+  (Notion: a block carries its children; under `sel.blocks.exact` the
+  children are listed, so Delete takes them and Turn into converts them);
+- a block whose box meets it **only below its own row** is not: its
+  children are read the same way (a rectangle over a child's row selects
+  that child alone);
+- a **void or an island** (an image, a divider, a code block, a table) is
+  one unit: selected when its box meets the rectangle, never its lines,
+  rows or cells (`selectedMembers` reads a code block's lines at action
+  time);
+- a **layout and its columns** are never listed: the columns the
+  rectangle meets are read, so it selects the blocks of the columns it
+  crosses (a layout covered whole stands for them in moves and copy,
+  `liftLayouts`); a **list container** (it shows only its items) is read
+  through its items;
+- a block **hidden by view state** (a closed toggle's body) never: a
+  closed toggle is selected without its body.
+
+Boxes overlap strictly (rows that touch do not meet); the rectangle is at
+least 1px each way. Rows: `marquee.test.tsx` ("which blocks a rectangle
+selects": top-level, nested, the indent alone, closed and open toggle,
+columns, the right margin).
+
+### `sel.marquee.cost` — a move's work does not grow with the page
+
+A pointer move reads a binary search's worth of boxes over the root's
+children (vertical order, as the handles' `nearTop`), then, for the
+blocks at the rectangle's height, their children the same way (a
+layout's few columns one by one): never a walk of the page. Row:
+`marquee.test.tsx` ("a move's work does not grow with the page"): one
+move in the middle of 1,000 and of 5,000 top-level paragraphs reads the
+same boxes and handles within a binary search's difference.
 
 ## Host DOM ownership (D-25)
 
@@ -2115,6 +2471,18 @@ is the only interpreter of DOM changes.
 | Settlement checkpoint             | `command-peer-set.ts` `quiesce()`                                                                                                                                            |
 
 ## History
+
+### `sel.blocks.outside` — a press outside the view ends its block selection
+
+A primary press anywhere outside the view's host and its overlay (the
+menus, handles and toolbar) ends a block selection, however it was made
+(the marquee, the handles, Mod+A): the selection is none, nothing is
+written. Shift or Mod held at the press keeps it (a marquee from the page's
+margin adds to it), and so does a press inside an element marked
+`data-edytor-keep-selection` (an app's own toolbar acting on the blocks). A
+text selection is left to the browser. Classified with every press, in the
+document's capture listener (`pressOutside`, `events/onFocus.ts`). Pins:
+`blocks-outside-press.test.tsx`, `marquee.spec.ts`.
 
 ### `hist.dead-pop` — obsolete undo items
 

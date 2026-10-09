@@ -102,6 +102,10 @@ Its markup and styles are built in, after Notion's. The bar has `data-edytor-too
       description: "Show the link card over a hovered link (Open, Edit, Remove).",
       default: "true",
     },
+    card: {
+      type: "Snippet<[ToolbarController]>",
+      description: "Replaces the link card. Rendered while controller.card, just below the hovered link (controller.hoveredHref; openHovered, editHovered, removeHovered).",
+    },
     labels: {
       type: "PartialLabels<'toolbar'>",
       description: "The toolbar's and the link card's words (the color names through colors), over the English ones. See Localization.",
@@ -130,6 +134,10 @@ The snippet receives the `ToolbarController`. Every action keeps and restores th
     "closePanel(focus?)": { type: "(focus?: boolean) => void", description: "Close the open panel; with focus, give the editor its focus and the held selection back." },
     "takeFieldFocus()": { type: "() => boolean", description: "Whether your link field, mounting now, should take the focus (true once per opening)." },
     hovered: { type: "HTMLAnchorElement | null", description: "The link under the pointer, for the link card." },
+    popup: { type: "Attachment<HTMLElement>", description: "On the bar: its id, toolbar role and name, the placement's mark (data-edytor-toolbar-bar), and its publication to the editor's root while it shows (aria-controls, aria-keyshortcuts Alt+F10)." },
+    keys: { type: "Attachment<HTMLElement>", description: "On the bar: one tab stop (the control it last held), the arrows, Home and End walk its controls, Escape gives the focus back to the editor over the held selection; no key in it reaches the editor." },
+    linkField: { type: "Attachment<HTMLInputElement>", description: "On a link field: its id (linkFieldId, unique per editor, for a label), the focus when the link panel was just opened, Enter applies the link and Escape closes the panel, both giving the editor its focus back." },
+    linkFieldId: { type: "string", description: "The link field's id, for a label's for." },
   }}
 />
 
@@ -141,9 +149,11 @@ The snippet receives the `ToolbarController`. Every action keeps and restores th
 </script>
 
 {#snippet toolbar(controller: ToolbarController)}
-	<div class="bar" data-edytor-toolbar-bar>
+	<div class="bar" {@attach controller.popup} {@attach controller.keys}>
 		{#each controller.marks as { mark, label, icon } (mark)}
-			<button title={label} onclick={() => controller.toggleMark(mark)}>{icon}</button>
+			<button aria-label={label} aria-pressed={controller.isActive(mark)} onclick={() => controller.toggleMark(mark)}
+				>{icon}</button
+			>
 		{/each}
 		<button onclick={() => controller.setColor('highlight', '#fbf3db')}>Highlight</button>
 	</div>
@@ -152,4 +162,4 @@ The snippet receives the `ToolbarController`. Every action keeps and restores th
 <Edytor {plugins} />
 ```
 
-The plugin cancels the `mousedown` of every press in its host but in a field (an `input`, a `textarea`, a `select`), so your buttons keep the selection and the editor's focus without a `mousedown` handler of their own. The plugin places the host by the element marked `data-edytor-toolbar-bar` (else your snippet's first element), so a panel that opens below the bar does not push the bar up. `TOOLBAR_COLORS` holds Notion's palette for your own color panel. See [Menus and handles](/docs/customization/menus) for the other menus.
+The plugin cancels the `mousedown` of every press in its host but in a field (an `input`, a `textarea`, a `select`), so your buttons keep the selection and the editor's focus without a `mousedown` handler of their own. The plugin places the host by the element marked `data-edytor-toolbar-bar` (`popup` marks your bar; else your snippet's first element), so a panel that opens below the bar does not push the bar up. `TOOLBAR_COLORS` holds Notion's palette for your own color panel. See [Menus and handles](/docs/customization/menus) for the other menus.

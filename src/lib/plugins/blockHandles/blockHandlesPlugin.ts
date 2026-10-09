@@ -6,7 +6,7 @@ import type { Plugin } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import BlockHandles from './BlockHandles.svelte';
 import { BlockHandleController } from './BlockHandleController.svelte.js';
-import { labelsWith, type PartialLabels } from '$lib/labels.js';
+import { labelsWith, type BlockHandlesLabels, type PartialLabels } from '$lib/labels.js';
 import { hidden } from '$lib/selection/visibility.js';
 
 export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
@@ -21,13 +21,27 @@ export type BlockHandleSnippetPayload = {
 	/**
 	 * The `+`: the slash menu offers what to add below; with `true` (Alt+click)
 	 * above, or, for a block directly in a layout's column, in a new column
-	 * right of its column. Nothing is added until a row is picked.
+	 * right of its column. Nothing is added until a row is picked. The menu
+	 * opens under `anchor` (your `+`: `event.currentTarget`), else under the
+	 * block.
 	 */
-	add: (alt?: boolean) => void;
+	add: (alt?: boolean, anchor?: HTMLElement | null) => void;
 	/** Whether the block takes a `+`: always `true` (a block in a column too, as Notion). */
 	addable: boolean;
 	readonly: boolean;
 	draggable: boolean;
+	/**
+	 * Whether the menu the `+` (`add`) or the grip (`grip`) opened is open
+	 * (reactive): their `aria-expanded`.
+	 */
+	expanded: { add: boolean; grip: boolean };
+	/**
+	 * The id of the menu the `+` or the grip opened, while it is open: their
+	 * `aria-controls`.
+	 */
+	controls: { add: string | undefined; grip: string | undefined };
+	/** The handles' words (`add(label)`, `grip(label)`, their hints). */
+	labels: BlockHandlesLabels;
 };
 
 export type BlockHandlesOptions = {
@@ -58,10 +72,15 @@ const NEAR_SCREENS = 1;
  * O(log n) boxes a frame, where an observer of every block computed them all
  * after each layout change.
  */
-const nearTop = (blocks: readonly Block[], screen: number): readonly Block[] => {
+const nearTop = (
+	blocks: readonly string[],
+	handle: (id: string) => Block,
+	screen: number
+): readonly Block[] => {
 	const top = -NEAR_SCREENS * screen;
 	const bottom = (1 + NEAR_SCREENS) * screen;
-	const box = (block: Block) => block.node?.getBoundingClientRect();
+	// Ids, a handle only for each box read: no handle for every top-level block.
+	const box = (id: string) => handle(id).node?.getBoundingClientRect();
 	let lo = 0;
 	let hi = blocks.length;
 	while (lo < hi) {
@@ -78,7 +97,7 @@ const nearTop = (blocks: readonly Block[], screen: number): readonly Block[] => 
 		if (!at || at.top <= bottom) lo = mid + 1;
 		else hi = mid;
 	}
-	return blocks.slice(first, lo);
+	return blocks.slice(first, lo).map(handle);
 };
 
 /**
@@ -102,20 +121,38 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 		const ids = new WeakMap<Element, string>();
 		/** Layout is computed (a browser): the near band is measured, else every block is near. */
 		const measured = typeof IntersectionObserver !== 'undefined';
+		/** The blocks the band gained, mounted after the frame's paint (`afterPaint`). */
+		let gained: Set<string> | null = null;
+		let afterPaint: ReturnType<typeof setTimeout> | undefined;
+		/**
+		 * Browser rule `handles.after-paint` (one named timer): a handle the band
+		 * gains mounts in a task queued from the overlay's frame, so after that
+		 * frame's paint: a key that adds a block (Enter, a paste) paints its text
+		 * first, the new blocks' handles a frame later. A handle the band loses
+		 * goes at once; hovered, selected and focused handles do not wait.
+		 */
+		const mountGained = () => {
+			afterPaint = undefined;
+			const ids = gained;
+			gained = null;
+			if (ids) for (const id of ids) if (blocks.has(id) && !near.has(id)) near.add(id);
+		};
 		/** The near band, measured on the overlay's frames (a scroll, a resize, a commit). */
 		const measureNear = () => {
 			const view = edytor.node?.ownerDocument.defaultView;
-			const tops = edytor.root?.children;
-			if (!view || !tops) return;
+			if (!view || !edytor.root) return;
+			const tops = edytor.facade.childrenIds(null);
 			const next = new Set<string>();
 			const visit = (block: Block) => {
 				if (blocks.has(block.id) && !hidden(block)) next.add(block.id);
 				for (const child of block.children) visit(child);
 			};
-			for (const block of nearTop(tops, view.innerHeight)) visit(block);
+			for (const block of nearTop(tops, edytor.idToBlock.block, view.innerHeight)) visit(block);
 			return () => {
 				for (const id of near) if (!next.has(id)) near.delete(id);
-				for (const id of next) if (!near.has(id)) near.add(id);
+				const add = [...next].filter((id) => !near.has(id));
+				gained = add.length ? new Set(add) : null;
+				if (gained) afterPaint ??= setTimeout(mountGained);
 			};
 		};
 		/**
@@ -172,6 +209,9 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 					layer.removeEventListener('pointerover', hoverOverlay);
 					layer.removeEventListener('pointerleave', unhover);
 					offNear?.();
+					clearTimeout(afterPaint);
+					afterPaint = undefined;
+					gained = null;
 					void unmount(component);
 				};
 			},

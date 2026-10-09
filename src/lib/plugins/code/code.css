@@ -1,16 +1,23 @@
 /*
  * Code blocks, Notion style: a warm gray panel, the language at the top
- * left, Copy on hover, and Notion's light syntax theme (Prism's palette,
- * each color darkened to a 4.5:1 contrast on the panel, WCAG AA) over
- * TanStack Highlight's `th-*` token classes.
+ * left (a button opening the language list), Copy on hover, and Notion's
+ * light syntax theme (Prism's palette, each color darkened to a 4.5:1
+ * contrast on the panel, WCAG AA) over TanStack Highlight's `th-*` token
+ * classes. The panel's colors are custom properties a theme may set:
+ *
+ * - `--edytor-code-background`, `--edytor-code-color`: the panel and its text;
+ * - `--edytor-code-chrome-color`: the header's language and Copy;
+ * - `--edytor-code-chrome-hover`: their background under the pointer;
+ * - `--edytor-code-accent`: the focus ring of the header's buttons and the
+ *   language list's field.
  */
 [data-edytor-type='code'] {
 	position: relative;
 	margin: 4px 0;
 	padding: 34px 16px 32px 32px;
 	border-radius: 10px;
-	background: #f7f6f3;
-	color: #2c2c2b;
+	background: var(--edytor-code-background, #f7f6f3);
+	color: var(--edytor-code-color, #2c2c2b);
 }
 [data-edytor-code-header] {
 	position: absolute;
@@ -22,28 +29,38 @@
 	justify-content: space-between;
 	font-size: 12px;
 	line-height: 20px;
-	color: #726f6a;
+	color: var(--edytor-code-chrome-color, #726f6a);
 	user-select: none;
 }
-/* The language picker reads as a label until hovered (Notion). */
-select[data-edytor-code-language] {
+/* The language: a button with its chevron, which opens the language list. */
+button[data-edytor-code-language] {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
 	margin: 0;
-	padding: 0 4px;
+	padding: 0 4px 0 6px;
 	border: 0;
 	border-radius: 6px;
 	background: transparent;
 	color: inherit;
 	font: inherit;
 	cursor: pointer;
-	appearance: none;
-	-webkit-appearance: none;
 }
-select[data-edytor-code-language]:hover,
-select[data-edytor-code-language]:focus-visible {
-	background: rgba(33, 27, 23, 0.06);
-	outline: 0;
+button[data-edytor-code-language] svg {
+	opacity: 0.7;
 }
-[data-edytor-code-header] button {
+button[data-edytor-code-language]:hover,
+button[data-edytor-code-language][aria-expanded='true'] {
+	background: var(--edytor-code-chrome-hover, rgba(33, 27, 23, 0.06));
+}
+[data-edytor-code-header] button:focus-visible {
+	outline: 2px solid var(--edytor-code-accent, #2383e2);
+	outline-offset: 1px;
+}
+span[data-edytor-code-language] {
+	padding: 0 6px;
+}
+[data-edytor-code-copy] {
 	padding: 0 6px;
 	border-radius: 6px;
 	color: inherit;
@@ -52,12 +69,12 @@ select[data-edytor-code-language]:focus-visible {
 	opacity: 0;
 	transition: opacity 150ms ease;
 }
-[data-edytor-type='code']:hover [data-edytor-code-header] button,
-[data-edytor-code-header] button:focus-visible {
+[data-edytor-type='code']:hover [data-edytor-code-copy],
+[data-edytor-code-copy]:focus-visible {
 	opacity: 1;
 }
-[data-edytor-code-header] button:hover {
-	background: rgba(33, 27, 23, 0.06);
+[data-edytor-code-copy]:hover {
+	background: var(--edytor-code-chrome-hover, rgba(33, 27, 23, 0.06));
 }
 pre.th-code {
 	margin: 0;

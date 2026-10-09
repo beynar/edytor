@@ -40,6 +40,9 @@ While a menu is open, the element that holds the keyboard names it with `aria-co
 | A plugin's [trigger](/docs/plugins/input-rules#triggers) menu: [mentions](/docs/plugins/mention) (`@`, "People"), [page links](/docs/plugins/page-link) (`[[`, "Pages") | The root | `aria-controls` (the `listbox`, named by the trigger's `name`, `aria-busy` while a search is pending), `aria-haspopup="listbox"`, `aria-activedescendant` (the highlighted `option`) | none |
 | [Block menu](/docs/plugins/block-menu) | Its search field: `aria-controls` (the `menu`, or the open flyout, Turn into or Color) and `aria-activedescendant` (the highlighted `menuitem`, a colour's `menuitemradio`) | `aria-controls`, `aria-haspopup="menu"` | the grip: `aria-expanded="true"`, `aria-controls`, `aria-haspopup="menu"` |
 | [Selection toolbar](/docs/plugins/toolbar) | The root, until <kbd>Alt</kbd>+<kbd>F10</kbd> | `aria-controls` (the `toolbar`), `aria-keyshortcuts="Alt+F10"` | none |
+| The menu a URL pasted on an empty line opens ([embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark)) | The root | `aria-controls` (the `listbox`), `aria-haspopup="listbox"`, `aria-activedescendant` (the highlighted `option`) | none |
+| A [table](/docs/plugins/table#rows-and-columns) row's or column's grip menu | The `menu` itself, focused, with `aria-activedescendant` (the highlighted `menuitem`; one that cannot run is `aria-disabled` and the arrows pass it) | `aria-controls`, `aria-haspopup="menu"` | the grip: `aria-expanded`, `aria-controls`, `aria-haspopup="menu"` |
+| A [code block](/docs/plugins/code#languages)'s language list | Its search field, a `combobox` with `aria-controls` and `aria-activedescendant` (the highlighted `option`) | `aria-controls`, `aria-haspopup="listbox"` | the language button: `aria-expanded`, `aria-controls`, `aria-haspopup="listbox"` |
 
 The attributes are present only while the popup is open. The root is a textbox, which takes no `aria-expanded` in WAI-ARIA 1.2, so the open state is on the control that opened the popup. Ids are unique per view (`edytor-<n>-…`), so several editors on a page never share one.
 
@@ -51,10 +54,14 @@ With a text range selected and the toolbar shown, <kbd>Alt</kbd>+<kbd>F10</kbd> 
 
 ### Custom menus
 
-The ids and the publishing above belong to the built-in markup. A custom snippet keeps them as follows:
+The ids, the keys and the publishing above are the controllers' attachments, which the built-in markup uses too: a custom snippet that uses them gets the same keyboard and the same ARIA. See [Menus and handles](/docs/customization/menus#the-pattern).
 
-- A slash menu `item` snippet receives `id`: set it on the row (`id={item.id}`), and the root or the field names the highlighted row as it does for the built-in rows. A row without it is still listed; only `aria-activedescendant` is left out.
-- A whole custom `menu` (slash menu or block menu) or `toolbar` snippet owns its ARIA. The controllers expose the ids (`listId` and `optionId(command)` on the slash menu's, `menuId`, `flyoutId` and `rowId(row)` on the block menu's, `barId` on the toolbar's) and `publish(popup)`, which writes `{ id, haspopup?, active?, keys?, opener? }` to the root (`publish(null)` withdraws it). Publish from an `$effect` once your markup is in the page, so every id names an element.
+- `{@attach controller.popup}` on the list (or the toolbar) gives it its id, and its role and name unless you set them, and publishes it to the root while it is in the page (`aria-controls`, `aria-haspopup`, and `aria-activedescendant` when the root holds the keyboard), withdrawn when it goes.
+- `{@attach controller.keys}` on the element that holds the keyboard (the block menu's or the `+` menu's field, the toolbar) takes the menu's keys, focuses it when it mounts, and makes a field name the list and its highlighted row; on the toolbar, it is the roving tab stop and <kbd>Escape</kbd>.
+- `{...controller.option(index)}` on each row gives it the id the keyboard's owner names, its role and its `aria-selected` or `aria-checked` (a row payload carries the same as `option`). A row without it is still listed; only `aria-activedescendant` is left out.
+- The block menu's `flyoutMenu`, the toolbar's `linkField` (an id unique per editor, for a `label`), the image toolbar's `bar` and `altField` do the same for those parts.
+
+The controllers still expose the ids (`listId` and `optionId(command)` on the slash menu's, `menuId`, `flyoutId` and `rowId(row)` on the block menu's, `barId` and `linkFieldId` on the toolbar's) and `publish(popup)`, for markup that publishes itself: write `{ id, haspopup?, active?, keys?, opener? }` from an `$effect` once your markup is in the page, `publish(null)` to withdraw it.
 
 ## Block handles
 

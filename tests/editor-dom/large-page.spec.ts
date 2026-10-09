@@ -1,6 +1,6 @@
 /**
- * P8 — a 5,000-block page under the Notion theme with its opt-in
- * `--edytor-block-visibility: auto` (`themes/notion.css`): top-level blocks
+ * P8 — a 5,000-block page with the long-page switch, the `edytor-long-page`
+ * class (`components/Edytor.svelte`): top-level blocks
  * carry `content-visibility: auto`, so the browser skips rendering the
  * blocks off screen. What must keep working over skipped
  * blocks, in every engine:
@@ -56,22 +56,21 @@ const inViewport = (page: Page, id: string) =>
 test.describe('P8 — a large page with content-visibility', () => {
 	test.setTimeout(120_000);
 
-	test('top-level blocks skip rendering off screen under the opt-in; the theme’s default keeps them visible', async ({
+	test('the long-page switch: top-level blocks skip rendering off screen and remember their height; without it, neither', async ({
 		page
 	}) => {
 		await open(page);
 		const styleOf = (id: string) =>
-			page.evaluate(
-				(id) =>
-					getComputedStyle(document.querySelector(`[data-edytor-id="${id}"]`)!).contentVisibility,
-				id
-			);
-		expect(await styleOf('b0')).toBe('auto');
-		expect(await styleOf('b4999')).toBe('auto');
+			page.evaluate((id) => {
+				const style = getComputedStyle(document.querySelector(`[data-edytor-id="${id}"]`)!);
+				return [style.contentVisibility, style.containIntrinsicBlockSize];
+			}, id);
+		expect(await styleOf('b0')).toEqual(['auto', 'auto 32px']);
+		expect(await styleOf('b4999')).toEqual(['auto', 'auto 32px']);
 		expect(await page.locator('[data-edytor-block="true"]').count()).toBe(5000);
-		// The theme's default (no opt-in): rendered as usual.
+		// Without the switch: rendered as usual, and no remembered height for the browser to track.
 		await open(page, 'cv=0');
-		expect(await styleOf('b4999')).toBe('visible');
+		expect(await styleOf('b4999')).toEqual(['visible', 'none']);
 	});
 
 	test('the native caret reaches the last block; typing lands there, in view', async ({ page }) => {
@@ -150,6 +149,48 @@ test.describe('P8 — a large page with content-visibility', () => {
 		await expect.poll(() => inViewport(page, 'b4321')).toBe(true);
 	});
 
+	test('handles.after-paint: an Enter paints its new block before the block’s handle mounts', async ({
+		page
+	}) => {
+		await open(page);
+		await textOf(page, 'b3000').scrollIntoViewIfNeeded();
+		await textOf(page, 'b3000').click();
+		await page.keyboard.press('End');
+		// In the Enter's own frame, after its callbacks and layout and before its paint
+		// (a ResizeObserver callback), the new block shows and its handle does not yet.
+		await page.evaluate(() => {
+			const w = window as unknown as { __paint: { id: string; handle: boolean } | null };
+			w.__paint = null;
+			const root = document.querySelector<HTMLElement>('main > [data-edytor]')!;
+			const tops = () =>
+				[...root.querySelectorAll<HTMLElement>(':scope > [data-edytor-block="true"]')].map(
+					(n) => n.dataset.edytorId!
+				);
+			const before = new Set(tops());
+			const observer = new ResizeObserver(() => {
+				const added = tops().filter((id) => !before.has(id));
+				if (!added.length || w.__paint) return;
+				w.__paint = {
+					id: added[0]!,
+					handle: !!document.querySelector(
+						`[data-edytor-block-handle-host][data-block-id="${added[0]}"]`
+					)
+				};
+				observer.disconnect();
+			});
+			observer.observe(root);
+		});
+		await page.keyboard.press('Enter');
+		const paint = await page
+			.waitForFunction(() => (window as unknown as { __paint: unknown }).__paint)
+			.then((h) => h.jsonValue() as Promise<{ id: string; handle: boolean }>);
+		expect(paint.handle).toBe(false);
+		// The task after that paint mounts it.
+		await expect(
+			page.locator(`[data-edytor-block-handle-host][data-block-id="${paint.id}"]`)
+		).toHaveCount(1);
+	});
+
 	test('a far block’s handle mounts near the viewport, aligned with it, and drags it', async ({
 		page
 	}) => {
@@ -159,21 +200,23 @@ test.describe('P8 — a large page with content-visibility', () => {
 		await page.mouse.move(box.x + 10, box.y + box.height / 2);
 		const handle = page.locator('[data-testid="block-handle"]');
 		await expect.poll(() => handle.count()).toBeGreaterThan(0);
-		// The hovered block's handle sits on its first text row.
-		const aligned = await page.evaluate(() => {
-			const text = document
-				.querySelector('[data-edytor-id="b3001"] [data-edytor-text="true"]')!
-				.getBoundingClientRect();
-			return [...document.querySelectorAll('[data-testid="block-handle"]')].some((h) => {
-				const r = h.getBoundingClientRect();
-				return (
-					r.width > 0 &&
-					Math.abs(r.top + r.height / 2 - (text.top + 12)) <= 6 &&
-					r.right <= text.left
-				);
+		// The hovered block's handle sits on its first text row, once the
+		// overlay's frame placed it (a handle mounts before that frame measures it).
+		const aligned = () =>
+			page.evaluate(() => {
+				const text = document
+					.querySelector('[data-edytor-id="b3001"] [data-edytor-text="true"]')!
+					.getBoundingClientRect();
+				return [...document.querySelectorAll('[data-testid="block-handle"]')].some((h) => {
+					const r = h.getBoundingClientRect();
+					return (
+						r.width > 0 &&
+						Math.abs(r.top + r.height / 2 - (text.top + 12)) <= 6 &&
+						r.right <= text.left
+					);
+				});
 			});
-		});
-		expect(aligned).toBe(true);
+		await expect.poll(aligned).toBe(true);
 		// Drag b3001 below b3003.
 		const grip = await page.evaluate(() => {
 			const text = document

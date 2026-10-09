@@ -3,7 +3,8 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { RenderDelta } from '$lib/surface/cells.js';
 	import { Text } from '../text/text.svelte.js';
-	import Mark from './Mark.svelte';
+	import Mark, { customAt } from './Mark.svelte';
+	import CustomMark from './CustomMark.svelte';
 
 	/**
 	 * One segment of a cell: its render deltas, the empty filler, the
@@ -53,10 +54,41 @@
 		`${index}:${JSON.stringify(delta.marks)}`;
 	/**
 	 * An empty text renders the filler as its first unmarked delta: the same
-	 * keyed item, so the first character typed or composed into an empty
+	 * text node, so the first character typed or composed into an empty
 	 * block lands in the node the browser (and the IME) already holds.
 	 */
 	const FILLER: readonly RenderDelta[] = [{ text: '\u200B', marks: [] }];
+
+	/** A delta's marks this view renders (an unknown mark renders its text only). */
+	const rendered = (delta: RenderDelta): RenderDelta => {
+		const known = delta.marks.filter(([name]) => {
+			const definition = edytor.marks.get(name);
+			return Boolean(definition?.snippet || definition?.tag);
+		});
+		return known.length === delta.marks.length ? delta : { text: delta.text, marks: known };
+	};
+	const shown = $derived(empty ? FILLER : deltas);
+	/**
+	 * The first delta's text when it is unmarked: the element's own first
+	 * text node, never re-created while the text starts unmarked (a plain
+	 * text is this node and two anchors: none per delta, `render.markers`).
+	 * A text that starts marked has no such node: an empty text node before
+	 * its first mark would be a caret position of its own, outside the mark
+	 * (a DOM caret there survives a render that re-creates the mark).
+	 */
+	const head = $derived(shown[0] && !shown[0].marks.length ? shown[0].text : null);
+	/**
+	 * The deltas after it, keyed by position and marks, then the trailing
+	 * newline's marker (`delta: null`): one keyed list.
+	 */
+	const tail = $derived.by(() => {
+		const from = head === null ? 0 : 1;
+		const items: { key: string; delta: RenderDelta | null }[] = [];
+		for (let index = from; index < shown.length; index++)
+			items.push({ key: getDeltaKey(shown[index]!, index), delta: rendered(shown[index]!) });
+		if (newline) items.push({ key: 'newline', delta: null });
+		return items;
+	});
 
 	/** A plain click (no drag, no Shift, a single press) places the caret at the pointer. */
 	const restoreTextSelectionFromClick = (node: HTMLElement) => {
@@ -93,24 +125,29 @@
 	data-placeholder={placeholder ?? undefined}
 	data-edytor-composition-rest={rest || undefined}
 	style:white-space="break-spaces"
-	><!--
-	-->{#each empty ? FILLER : deltas as delta, index (getDeltaKey(delta, index))}<!--
--->{#if delta.marks.length}<!--
+	>{#if head !== null}{head}{/if}<!--
+	-->{#each tail as item (item.key)}<!--
+-->{#if item.delta === null}<!--
+--><span
+				class="newline"
+				data-edytor-trailing-newline>&#8203;</span
+			><!--
+-->{:else if customAt(edytor, item.delta, 0)}<!--
+--><CustomMark
+				delta={item.delta}
+				index={0}
+				{text}
+			/><!--
+-->{:else if item.delta.marks.length}<!--
 --><Mark
-				{delta}
+				delta={item.delta}
 				index={0}
 				{text}
 			/><!--
 -->{:else}<!--
--->{delta.text}<!--
+-->{item.delta.text}<!--
 -->{/if}<!--
 -->{/each}<!--
--->{#if newline}<!--
---><span
-			class="newline"
-			data-edytor-trailing-newline>&#8203;</span
-		><!--
--->{/if}<!--
 --></span
 >
 

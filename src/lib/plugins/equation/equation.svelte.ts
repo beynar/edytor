@@ -1,3 +1,5 @@
+import { untrack, type Snippet } from 'svelte';
+import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
@@ -9,23 +11,40 @@ export type KatexLike = {
 	renderToString: (tex: string, options?: Record<string, unknown>) => string;
 };
 
-/** Loads KaTeX when an equation first shows: `() => import('katex')`. */
+/** Loads KaTeX when an equation first shows: `() => import('katex')` from your bundle. */
 export type KatexLoader = () => Promise<KatexLike | { default: KatexLike }>;
 
 export type EquationPluginOptions = {
 	/**
-	 * Loads KaTeX, lazily, the first time an equation is drawn in a browser:
-	 * `() => import('katex')` (KaTeX is an optional peer dependency; import
-	 * its stylesheet, `katex/dist/katex.min.css`, in your app). Without it,
-	 * an equation shows its TeX source.
+	 * Where KaTeX comes from, loaded the first time an equation is drawn in a
+	 * browser (a server render shows the TeX source and loads nothing):
+	 *
+	 * - absent: jsDelivr (`KATEX_CDN`, KaTeX `KATEX_VERSION`): its module and
+	 *   its stylesheet, added once to the page's head; your app bundles and
+	 *   imports nothing.
+	 * - a URL: another copy of KaTeX's `dist` files (`katex.mjs`,
+	 *   `katex.min.css` and its `fonts/`), as for jsDelivr.
+	 * - a loader, `() => import('katex')`: KaTeX from your bundle (the
+	 *   optional peer dependency); import its stylesheet,
+	 *   `katex/dist/katex.min.css`, in your app.
+	 * - `false`: none; an equation shows its TeX source.
+	 *
+	 * If KaTeX fails to load, equations keep showing their source.
 	 */
-	katex?: KatexLoader;
+	katex?: KatexLoader | string | false;
 	/** TeX macros every equation reads (`{ '\\RR': '\\mathbb{R}' }`). */
 	macros?: Record<string, string>;
 	/** The words the equations and their editor show, over the English ones. */
 	labels?: PartialLabels<'equation'>;
 	/** The slash menu's keywords by command id (`block.equation`, `equation.inline`), which replace its own. */
 	keywords?: Partial<Record<string, string[]>>;
+	/**
+	 * Replace the editor's panel (the source's field, KaTeX's error, Done):
+	 * it renders under the edited equation while `editor.target` is set
+	 * (centered under a block equation). Put `{@attach editor.field}` on the
+	 * source's field.
+	 */
+	panel?: Snippet<[EquationEditor]>;
 };
 
 /** The data of a block equation and of an inline one: its TeX source. */
@@ -163,6 +182,9 @@ export const parseEquation = (element: HTMLElement, display: boolean): EquationD
 /** Each view's equation labels: the first equation plugin listed claims them, as its kinds. */
 export const equationLabels = viewLabels('equation');
 
+/** The overlay host the editor renders in (the overlay's mount names it). */
+const HOST = '[data-edytor-equation-editor-host]';
+
 /** The equation being edited: a block equation, or an inline one (`atom`) in block `block`. */
 export type EquationTarget = { block: string; atom?: string };
 
@@ -179,18 +201,50 @@ export type EquationBox = { x: number; y: number; width: number; height: number 
  * press or a focus outside close it; an inline equation closed empty is
  * removed. The editor then gives the keys back: a block equation stays
  * selected, the caret goes after an inline one.
+ *
+ * What a `panel` snippet receives: the equation being edited (`target`,
+ * `display` for a block one), its source (`expression`, written by
+ * `set`), KaTeX's error (`error`), `close()` and the plugin's `labels`.
+ * Put `{@attach editor.field}` on the source's field: it takes the focus
+ * as the editor opens, Enter (Shift+Enter: a newline in a block equation)
+ * and Escape close the editor, and focus leaving the panel closes it.
  */
 export class EquationEditor {
 	/** The equation being edited (reactive). */
 	target = $state.raw<EquationTarget | null>(null);
-	/** Its box, measured in the overlay's frame. */
+	/**
+	 * Its box, measured in the overlay's frame.
+	 * @internal
+	 */
 	box = $state.raw<EquationBox | null>(null);
 
+	/** @internal */
 	constructor(
 		private edytor: Edytor,
+		/** @internal */
 		readonly renderer: EquationRenderer,
+		/** The plugin's words (`editor`, `placeholder`, `done`, …). */
 		readonly labels: EquationLabels = englishLabels.equation
 	) {}
+
+	/** The view is readonly (reactive): the editor closes. */
+	get readonly(): boolean {
+		return this.edytor.readonly;
+	}
+
+	/**
+	 * Where the panel stands: under the edited equation (a block one's
+	 * middle, an inline one's start), layer-relative.
+	 * @internal
+	 */
+	get place(): { left: number; top: number } | null {
+		const box = this.box;
+		if (!this.target || !box) return null;
+		return {
+			left: this.display ? box.x + box.width / 2 : box.x,
+			top: box.y + box.height + 6
+		};
+	}
 
 	/** A block equation is edited (a field of several lines). */
 	get display() {
@@ -258,29 +312,73 @@ export class EquationEditor {
 		if (keys) takeKeys(this.edytor);
 	};
 
-	/** The view turned readonly: the editor closes, the equation as it is. */
+	/**
+	 * The source's field (`{@attach editor.field}`, a `textarea` or an
+	 * `input`): it takes the focus as the editor opens, the caret at the end
+	 * of the source. Enter closes the editor (Shift+Enter in a block
+	 * equation is a newline), Escape too; the editor's own keys never see
+	 * them. Focus leaving the panel for somewhere else closes it.
+	 */
+	field: Attachment<HTMLTextAreaElement | HTMLInputElement> = (node) =>
+		untrack(() => {
+			const keydown = (event: KeyboardEvent) => {
+				if (event.isComposing) return;
+				const enter = event.key === 'Enter' && !(event.shiftKey && this.display);
+				if (!enter && event.key !== 'Escape') return;
+				event.preventDefault();
+				event.stopPropagation();
+				this.close();
+			};
+			const element: HTMLElement = node;
+			element.addEventListener('keydown', keydown);
+			element.addEventListener('focusout', this.#blurred);
+			// Each equation the editor opens on: the field takes the focus, the caret at the end.
+			$effect(() => {
+				if (!this.target) return;
+				untrack(() => {
+					if (node.ownerDocument.activeElement === node) return;
+					node.focus({ preventScroll: true });
+					node.setSelectionRange(node.value.length, node.value.length);
+				});
+			});
+			return () => {
+				element.removeEventListener('keydown', keydown);
+				element.removeEventListener('focusout', this.#blurred);
+			};
+		});
+
+	/**
+	 * The view turned readonly: the editor closes, the equation as it is.
+	 * @internal
+	 */
 	lock = () => this.close(false);
 
-	/** A press anywhere (capture): one outside the editor and its equation closes it. */
+	/**
+	 * A press anywhere (capture): one outside the editor and its equation closes it.
+	 * @internal
+	 */
 	pressed = (event: MouseEvent) => {
 		const target = this.target;
 		if (!target) return;
 		const at = event.target as Element | null;
-		if (at?.closest?.('[data-edytor-equation-editor]')) return;
+		if (at?.closest?.(HOST)) return;
 		if (at instanceof Node && this.#node(target)?.contains(at)) return;
 		this.close(false);
 	};
 
 	/** Focus left the field for somewhere outside the editor: it closes. */
-	blurred = (event: FocusEvent) => {
+	#blurred = (event: FocusEvent) => {
 		const to = event.relatedTarget;
-		const panel = (event.currentTarget as Element | null)?.closest('[data-edytor-equation-editor]');
+		const panel = (event.currentTarget as Element | null)?.closest(HOST);
 		// No new focus (the window went to the background): it stays.
 		if (!(to instanceof Node) || panel?.contains(to)) return;
 		this.close(false);
 	};
 
-	/** The overlay measure: the edited equation's box; gone, the editor closes. */
+	/**
+	 * The overlay measure: the edited equation's box; gone, the editor closes.
+	 * @internal
+	 */
 	measure = (host: HTMLElement, origin: DOMRect) => {
 		const target = this.target;
 		const node = target ? this.#node(target) : null;

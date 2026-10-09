@@ -31,6 +31,9 @@
 	--edytor-suggestion-accent: #2383e2;
 	--edytor-suggestion-background: rgba(35, 131, 226, 0.06);
 	--edytor-suggestion-removed: rgba(235, 87, 87, 0.14);
+	/* The marquee plugin's rectangle: the block selection's blue. */
+	--edytor-marquee-background: rgba(35, 131, 226, 0.14);
+	--edytor-marquee-border: 1px solid rgba(35, 131, 226, 0.4);
 	/* Block colours (the block menu's Color): text, then background, by name. */
 	--edytor-color-gray: #7d7a75;
 	--edytor-color-brown: #9f765a;
@@ -64,27 +67,6 @@
 }
 [data-edytor]:is(.edytor-notion, .edytor-notion *) ::selection {
 	background: var(--notion-text-selection);
-}
-
-/*
- * Large pages, opt-in: `--edytor-block-visibility: auto` on the editor
- * or an ancestor lets a top-level block off screen skip its rendering
- * (style, layout, paint) until it nears the viewport; the browser keeps its
- * DOM, selection, find-in-page and accessibility. Until it was rendered
- * once, it counts as one 32px row (`auto` remembers its real height after).
- * Only top-level blocks: a nested one is skipped with its ancestor. Off by
- * default: it shortens the first layout of a long page, but each block that
- * scrolls into view is then styled and laid out on that frame, so scrolling
- * costs more (measured in the research doc's "Phase 5 results", again at
- * 5,000 and 10,000 blocks by `tests/editor-dom/large-page.profile.spec.ts`,
- * Scroll frames 2 to 4 times slower, typing unchanged, block
- * keys about a quarter slower). The
- * containment it brings (layout, paint) clips what a block paints outside
- * its own box: this theme's kinds paint none.
- */
-[data-edytor]:is(.edytor-notion, .edytor-notion *) > [data-edytor-block] {
-	content-visibility: var(--edytor-block-visibility, visible);
-	contain-intrinsic-block-size: auto 32px;
 }
 
 /* ── Rhythm: every block is a 2px-gutter row, 1px apart ─────────────── */
@@ -355,6 +337,56 @@
 .edytor-notion [data-edytor-type='callout'] > div {
 	grid-column: 2;
 	min-width: 0;
+}
+/* Its title reads as its heading; its content below it. */
+.edytor-notion [data-edytor-callout-title] {
+	font-weight: 600;
+}
+/* The icon button: a soft hover, as Notion's. */
+.edytor-notion button[data-edytor-callout-icon] {
+	border-radius: 4px;
+	transition: background-color 120ms ease-in;
+}
+.edytor-notion button[data-edytor-callout-icon]:hover,
+.edytor-notion button[data-edytor-callout-icon][aria-expanded='true'] {
+	background-color: var(--notion-hover);
+}
+/* No icon: an editable view keeps the slot, a dim + while the callout is hovered. */
+.edytor-notion button[data-edytor-callout-icon][data-empty]::before {
+	content: '+';
+	color: var(--notion-text-secondary);
+	font-size: 16px;
+	opacity: 0;
+}
+.edytor-notion
+	[data-edytor-type='callout']:hover
+	> button[data-edytor-callout-icon][data-empty]::before,
+.edytor-notion button[data-edytor-callout-icon][data-empty]:focus-visible::before {
+	opacity: 1;
+}
+/* No icon in a readonly view: the text starts at the panel's edge. */
+.edytor-notion [data-edytor-type='callout']:not(:has(> [data-edytor-callout-icon])) {
+	grid-template-columns: minmax(0, 1fr);
+	column-gap: 0;
+}
+.edytor-notion [data-edytor-type='callout']:not(:has(> [data-edytor-callout-icon])) > div {
+	grid-column: 1;
+}
+/* An empty body's hint (an open toggle's, a callout's): chrome, not text. */
+.edytor-notion [data-edytor-empty-body] {
+	padding: 3px 2px;
+	color: var(--notion-text-secondary);
+	font-weight: 400;
+}
+.edytor-notion [data-edytor-empty-body]:hover {
+	border-radius: 4px;
+	background-color: var(--notion-hover);
+}
+/* A toggle's hint is indented as its children are. */
+.edytor-notion
+	:is([data-edytor-type='toggle'], [data-edytor-type='toggle-heading'])
+	> [data-edytor-empty-body] {
+	margin-inline-start: calc(var(--edytor-nest-indent) + 2px);
 }
 .edytor-notion [data-edytor-type='divider'],
 .edytor-notion hr[data-edytor-block] {

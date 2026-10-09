@@ -180,9 +180,13 @@ The menu mounts in the editor's overlay, in a `position: fixed` host with the at
     label: { type: "string", description: "Its label." },
     id: { type: "string", description: "Its element id: set it (id={row.id}) so the editor names the highlighted row." },
     selected: { type: "boolean", description: "It is the keyboard's row." },
-    pick: { type: "() => void", description: "Pick it." },
+    run: { type: "() => void", description: "Pick it." },
+    pick: { type: "() => void", description: "Pick it (the same as run)." },
     select: { type: "() => void", description: "Make it the keyboard's row (hover)." },
+    option: { type: "OptionAttributes", description: "The row's attributes: spread them on its element ({...option}) for its id, role=option, aria-selected, data-selected, and the scroll into view of the keyboard's row." },
   }}
 />
+
+A trigger's `menu` (`Snippet<[TriggerMenuController<T>]>`) replaces the whole menu, rendered while `controller.isOpen`: read `controller.items`, `loading`, `selectedIndex`, `empty` and `searching`, call `controller.pick(item)`. Put `{@attach controller.popup}` on your list and `{...controller.option(index)}` on each row: the list takes its id, role and name, a press in it keeps the caret, and the root names it and its highlighted row as it names the built-in one. Every snippet's shape is on [Menus and handles](/docs/customization/menus#mention-page-link-and-other-trigger-menus).
 
 Keep `preventDefault` on a row's `mousedown` (the default menu does it for you on its own element), so a click does not move the caret out of the query. While the menu is open the editor's root, which holds the keyboard, names the listbox (`aria-controls`, `aria-haspopup="listbox"`) and its highlighted row (`aria-activedescendant`). See [Accessibility](/docs/editor/accessibility#menus-and-popups).

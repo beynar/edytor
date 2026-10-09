@@ -17,6 +17,10 @@
 
 	onMount(() =>
 		edytor.overlay.add((origin) => {
+			// No suggestion listed, no preview: nothing to find in the page (a long
+			// page would be searched every frame) and nothing to place.
+			if (!edytor.suggestions.list.length)
+				return Object.keys(places).length ? () => (places = {}) : undefined;
 			const next: typeof places = {};
 			for (const node of edytor.node?.querySelectorAll<HTMLElement>('[data-edytor-suggestion]') ??
 				[]) {
@@ -49,7 +53,8 @@
 		},
 		discard: suggestion.discard,
 		retry: suggestion.retryable ? suggestion.retry : undefined,
-		readonly: edytor.readonly
+		readonly: edytor.readonly,
+		labels
 	});
 	const keep = (event: MouseEvent) => event.preventDefault();
 </script>

@@ -15,6 +15,9 @@ import { SvelteMap } from 'svelte/reactivity';
 import type { JSONText } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { englishLabels, type CodeLabels, type PartialLabels } from '$lib/labels.js';
+import type { Snippet } from 'svelte';
+import type { CodeHeader } from './header.svelte.js';
+import type { LanguageMenu } from './languageMenu.svelte.js';
 
 /** A language a code block may be in. */
 export type CodeLanguage = {
@@ -226,12 +229,30 @@ export type CodePluginOptions = {
 	labels?: PartialLabels<'code'>;
 	/** The slash menu's keywords of the code command (`block.code`), which replace its own. */
 	keywords?: Partial<Record<string, string[]>>;
+	/**
+	 * Replace a code block's header (the language's button and Copy): it
+	 * renders above the code, in the block's non-editable part. Put
+	 * `{@attach header.button}` on the element that opens the language list.
+	 */
+	header?: Snippet<[CodeHeader]>;
+	/**
+	 * Replace the language list: it renders under the header's button while
+	 * `menu.open` is set. Put `{@attach menu.keys}` on its search field,
+	 * `{@attach menu.popup}` on the list, and spread `item.option` (or
+	 * `menu.option(index)`) on each row of `menu.items`. The first code
+	 * plugin listed in a view owns its list.
+	 */
+	menu?: Snippet<[LanguageMenu]>;
 };
 
 export type CodeSettings = {
 	languages: readonly CodeLanguage[];
 	defaultLanguage: string;
 	labels: CodeLabels;
+	/** The app's header markup, if any. */
+	header?: Snippet<[CodeHeader]>;
+	/** The app's language list markup, if any. */
+	menu?: Snippet<[LanguageMenu]>;
 };
 
 export const DEFAULT_CODE_SETTINGS: CodeSettings = {

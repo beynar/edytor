@@ -8,6 +8,7 @@
  * first operation (one plan, one undo step). The slash menu is one
  * (`SlashMenuController`), a plugin's `triggers` are the others.
  */
+import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -16,6 +17,7 @@ import type { Trigger, TriggerContext } from '$lib/plugins.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { inCodeLines } from '$lib/session/inputRules.js';
+import { identify, inPage, keepFocus, optionAttributes, type OptionAttributes } from '../chrome.js';
 
 export type TextInsertionPayload = {
 	value: string;
@@ -60,6 +62,46 @@ export abstract class TextTriggerController {
 	/** Publish the open menu to the view's root (`edytor.popups`), or withdraw it with `null`. */
 	publish = (popup: Popup | null) => this.edytor.popups.set(this.owner, popup);
 
+	/**
+	 * The listbox (`{@attach controller.popup}`): it takes the menu's id, its
+	 * `listbox` role and name unless it has its own, keeps the focus where it
+	 * is on a press (the editor's caret, or the menu's field), and is
+	 * published to the view's root (`edytor.popups`) while the menu is open,
+	 * with its highlighted row (`option(index)`) once that row is in the page.
+	 */
+	popup: Attachment<HTMLElement> = (node) => {
+		identify(node, this.listId, 'listbox', this.listName);
+		node.addEventListener('mousedown', keepFocus);
+		$effect(() => {
+			if (!this.isOpen) return;
+			this.publish(this.popupOf(inPage(node, this.rowIdAt(this.selectedIndex))));
+			return () => this.publish(null);
+		});
+		return () => node.removeEventListener('mousedown', keepFocus);
+	};
+
+	/**
+	 * The attributes of the row at `index`: spread them on its element
+	 * (`{...controller.option(index)}`): its id (the one the menu's keyboard
+	 * owner names), `role="option"`, `aria-selected` and `data-selected` for
+	 * the keyboard's row, which scrolls into view.
+	 */
+	option = (index: number): OptionAttributes =>
+		optionAttributes(
+			this.rowIdAt(index) ?? this.edytor.popups.idOf(`${this.owner}-option-${index}`),
+			'option',
+			index === this.selectedIndex
+		);
+
+	/** The record `popup` publishes, `active` the highlighted row's id when it is in the page. */
+	protected popupOf(active: string | undefined): Popup {
+		return { id: this.listId, haspopup: 'listbox', active };
+	}
+
+	/** The listbox's accessible name. */
+	protected abstract get listName(): string;
+	/** The element id of the row at `index`, if there is such a row. */
+	protected abstract rowIdAt(index: number): string | undefined;
 	/** The rows the keyboard moves through. */
 	protected abstract get count(): number;
 	/** Whether a trigger typed in `block` opens the menu. */
@@ -265,6 +307,14 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 	/** The menu's accessible name. */
 	get name() {
 		return this.trigger.name ?? this.edytor.labels.triggerMenu;
+	}
+
+	protected get listName() {
+		return this.name;
+	}
+
+	protected rowIdAt(index: number) {
+		return this.items[index] === undefined ? undefined : this.optionId(index);
 	}
 
 	/** The text shown when no row matches. */

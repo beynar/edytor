@@ -22,11 +22,21 @@
 		parseEquation,
 		type EquationData,
 		type EquationPluginOptions,
+		type EquationTarget,
 		type KatexLike,
 		type KatexLoader
 	} from './equation.svelte.js';
+	import { katexLoaderOf } from './katex.js';
 
-	export type { EquationData, EquationPluginOptions, KatexLike, KatexLoader };
+	export type {
+		EquationData,
+		EquationEditor,
+		EquationPluginOptions,
+		EquationTarget,
+		KatexLike,
+		KatexLoader
+	};
+	export { KATEX_CDN, KATEX_VERSION } from './katex.js';
 
 	/** The inline equation's atom kind. */
 	const INLINE = 'inlineEquation';
@@ -122,7 +132,8 @@
 	/**
 	 * Equations (Notion's): a block equation (`equation`, void, its TeX in
 	 * `data.expression`) and an inline equation atom (`inlineEquation`), both
-	 * drawn by KaTeX, which `katex` loads the first time an equation shows. A
+	 * drawn by KaTeX, loaded the first time an equation shows in a browser:
+	 * from jsDelivr by default, or as `katex` says (a URL, your loader). A
 	 * click on one, or Enter on a selected one, opens its TeX source in an
 	 * editor under it; the equation is the live preview. "Block equation"
 	 * and "Inline equation" are slash commands, `$$…$$` typed in text is an
@@ -135,7 +146,7 @@
 		(edytor) => {
 			const labels = labelsWith('equation', options.labels);
 			equationLabels.claim(edytor, labels);
-			const renderer = new EquationRenderer(options.katex, options.macros);
+			const renderer = new EquationRenderer(katexLoaderOf(options.katex), options.macros);
 			// The records read with no view (`plugin(undefined)`) keep no state.
 			if (edytor && !equationViews.has(edytor))
 				equationViews.set(edytor, {
@@ -151,7 +162,7 @@
 					const offPress = onPress(edytor, node.ownerDocument, editor.pressed, true);
 					const unmount = edytor.overlay.mount(
 						EquationEditorPanel,
-						{ editor, readonly: () => edytor.readonly },
+						{ editor, readonly: () => edytor.readonly, panel: options.panel },
 						'edytor-equation-editor-host',
 						// Above the block handles (5), as the image chrome.
 						7,

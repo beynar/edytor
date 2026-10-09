@@ -78,6 +78,11 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
       default: "false",
       description: "A header over its children (a toggle, callout or quote): Enter at the end of one with children, or of an open `<details>` header, opens a first child. See Containers below.",
     },
+    body: {
+      type: "boolean",
+      default: "false",
+      description: "A container whose body shows even while it is empty (a callout): Enter at the end of its header opens its first child, as an open toggle's does, and a paste there leads that body. Needs `container`.",
+    },
     void: {
       type: "boolean",
       default: "false",
@@ -300,7 +305,7 @@ blocks: {
 
 ## Containers
 
-Set `container: true` on a kind whose text is a header over its children, as the rich text plugin does for toggles, callouts and quotes. <kbd>Enter</kbd> at the end of one that has children opens a first child of its `defaultChild` kind, and <kbd>Enter</kbd> in the middle of its header moves the text after the caret into that first child, the children staying with the header. A header rendered as `<details>` does so while open, even without children, and adds a sibling (holding the text after the caret) while closed; the open state is the browser's (`viewState: ['open']`), read from the block element. See [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role).
+Set `container: true` on a kind whose text is a header over its children, as the rich text plugin does for toggles, callouts and quotes. <kbd>Enter</kbd> at the end of one that has children opens a first child of its `defaultChild` kind, and <kbd>Enter</kbd> in the middle of its header moves the text after the caret into that first child, the children staying with the header. A header rendered as `<details>` does so while open, even without children, and adds a sibling (holding the text after the caret) while closed; the open state is the browser's (`viewState: ['open']`), read from the block element. Add `body: true` for a header whose body is always there, as the callout's: <kbd>Enter</kbd> at its end opens a first child even when it has none. See [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role).
 
 ## Backspace at the start
 

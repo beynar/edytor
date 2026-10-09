@@ -5,7 +5,8 @@
 	import { rangeRects } from '$lib/collaboration/remoteSelection.js';
 	import { hidden } from '$lib/selection/visibility.js';
 	import type { CommentRun } from '$lib/crdt/protocols/comments.js';
-	import type { CommentsController, PlacedThread } from './CommentsController.svelte.js';
+	import type { CommentsController } from './CommentsController.svelte.js';
+	import type { CommentCardPayload } from './commentsPlugin.js';
 
 	let {
 		edytor,
@@ -15,7 +16,7 @@
 		edytor: Edytor;
 		comments: CommentsController;
 		/** Replace a thread card's markup (the plugin's `card` option). */
-		card?: Snippet<[{ thread: PlacedThread; comments: CommentsController; active: boolean }]>;
+		card?: Snippet<[CommentCardPayload]>;
 	} = $props();
 
 	const labels = $derived(comments.labels);

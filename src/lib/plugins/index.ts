@@ -4,9 +4,13 @@ export {
 	richTextOperations,
 	richTextPlaceholder,
 	createRichTextPlaceholder,
+	CALLOUT_ICONS,
+	type CalloutIconPicker,
+	type CalloutIconOption,
 	type RichTextPluginOptions
 } from './richtext/RichTextPlugin.svelte';
 export { arrowMovePlugin } from './arrowMove/arrowMove.js';
+export type { MenuItemPayload, OptionAttributes } from './chrome.js';
 export {
 	BLOCK_ACTIVATE_EVENT,
 	BLOCK_ADD_EVENT,
@@ -29,6 +33,8 @@ export {
 	type CodeLanguage,
 	type CodePluginOptions
 } from './code/CodePlugin.svelte';
+export type { CodeHeader } from './code/header.svelte.js';
+export type { LanguageMenu, LanguageMenuItem, LanguageRow } from './code/languageMenu.svelte.js';
 export { markdownShortcutsPlugin } from './markdownShortcuts.js';
 export {
 	createMentionPlugin,
@@ -102,7 +108,16 @@ export {
 export { filePlugin, createFilePlugin } from './media/FilePlugin.svelte';
 export { videoPlugin, createVideoPlugin } from './media/VideoPlugin.svelte';
 export { audioPlugin, createAudioPlugin } from './media/AudioPlugin.svelte';
-export { safeWebUrl, safeMediaSrc, type MediaPluginOptions } from './media/media.js';
+export {
+	safeWebUrl,
+	safeMediaSrc,
+	type MediaKind,
+	type MediaPluginOptions
+} from './media/media.js';
+export type { MediaEmptyController, MediaEmptyFailure } from './media/empty.svelte.js';
+export type { UrlPasteController, UrlPasteOffer, UrlPasteOption } from './media/urlPaste.svelte.js';
+export type { ImageControls, ImageBox } from './image/controls.svelte.js';
+export type { ImageEmptyController, ImageEmptyFailure } from './image/empty.svelte.js';
 export type { BlockHandleController } from './blockHandles/BlockHandleController.svelte.js';
 export {
 	columnsPlugin,
@@ -117,11 +132,18 @@ export {
 	type FindPluginOptions
 } from './find/findPlugin.js';
 export type { FindController, ReplaceMatches } from './find/FindController.svelte.js';
+export {
+	marqueePlugin,
+	createMarqueePlugin,
+	type MarqueePluginOptions
+} from './marquee/marqueePlugin.js';
+export type { MarqueeBoxPayload } from './marquee/MarqueeController.svelte.js';
 export { findMatches, type FindMatch, type FindOptions } from './find/search.js';
 export {
 	createCommentsPlugin,
 	commentsController,
-	type CommentsPluginOptions
+	type CommentsPluginOptions,
+	type CommentCardPayload
 } from './comments/commentsPlugin.js';
 export type {
 	CommentsController,
@@ -143,12 +165,24 @@ export {
 	isTablePlugin,
 	type TablePluginOptions
 } from './table/TablePlugin.svelte';
+export type {
+	TableChrome,
+	TableMenu,
+	TableMenuRow,
+	TableMenuItem,
+	TableGripPayload,
+	TableAddPayload
+} from './table/chrome.svelte.js';
 // The table kind's value as JSON (also on `edytor/crdt/edytor`).
 export { tableBlock, type TableBlockOptions } from '../crdt/tables.js';
 export {
 	createEquationPlugin,
+	KATEX_CDN,
+	KATEX_VERSION,
 	type EquationPluginOptions,
 	type EquationData,
+	type EquationEditor,
+	type EquationTarget,
 	type KatexLike,
 	type KatexLoader
 } from './equation/EquationPlugin.svelte';

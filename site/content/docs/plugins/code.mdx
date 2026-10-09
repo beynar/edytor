@@ -30,7 +30,7 @@ icon: code
     },
     labels: {
       type: "PartialLabels<'code'>",
-      description: "The preset's label, the header's picker and copy button, and a language's label by id (languages), over the English ones. See Localization.",
+      description: "The preset's label, the header's language button (language), the language list's search field and empty state (search, noResults), the copy button, and a language's label by id (languages), over the English ones. See Localization.",
     },
     keywords: {
       type: "Partial<Record<string, string[]>>",
@@ -78,7 +78,23 @@ A stored code block looks like this:
 
 A code block's language is its `data.language`, an id from the plugin's `languages` (`code.language`). A block without one, as every code block stored before the picker was, is in the default language, JavaScript. The header names the language by its label (`code.language.label`): a language the plugin does not list shows its id as stored, and its lines are plain text.
 
-The header's picker, a native `<select data-edytor-code-language>` labeled "Code language", lists the languages by label and sets `data.language` (`code.language.picker`). A pick is one `patchData` command, so it is one undo step, refused in a readonly view, and seen by hooks; a collaborator's concurrent edits of the block's other data are kept. A readonly view and a suggestion's preview show the label only, as a `<span data-edytor-code-language>`.
+The header's language is a button (`button[data-edytor-code-language]`, named "Code language: JavaScript", with a chevron) that opens the language list under it, in the overlay, as in Notion (`code.language.picker`): a search field over the languages by label, the block's own marked with a check and highlighted. Typing filters the rows by label or id (`script` keeps JavaScript and TypeScript, `cpp` keeps C++); a click on a row, or <kbd>Enter</kbd> on the highlighted one, sets `data.language`. A pick is one `patchData` command, so it is one undo step, refused in a readonly view, and seen by hooks; a collaborator's concurrent edits of the block's other data are kept. The block's lines render again in the new language, its grammar loaded if it is the first of its kind. A readonly view and a suggestion's preview show the label only, as a `<span data-edytor-code-language>`.
+
+The keyboard reaches it all:
+
+| Keys | Where | Action |
+| --- | --- | --- |
+| <kbd>Alt</kbd> + <kbd>F10</kbd> | At a caret in a code line | Move the focus to the block's language button (as to a toolbar) |
+| <kbd>Enter</kbd>, <kbd>Space</kbd>, <kbd>ArrowDown</kbd>, <kbd>ArrowUp</kbd> | On the language button | Open the list, its search field focused |
+| <kbd>Escape</kbd> | On the language button | Give the keys back to the code, the caret where it was |
+| Typing | In the search field | Filter the languages; the first one left is highlighted |
+| <kbd>ArrowDown</kbd>, <kbd>ArrowUp</kbd> | In the search field | Move the highlighted row, around the ends |
+| <kbd>Enter</kbd> | In the search field | Pick the highlighted language |
+| <kbd>Escape</kbd> | In the search field | Close the list, the language as it was |
+
+The search field is a `combobox` naming the highlighted row (`aria-activedescendant`) of a `listbox`; the button carries `aria-haspopup="listbox"` and `aria-expanded`. A list the keys opened gives them back to its button; one a click opened, to the editor, its caret where it was. A press or a focus outside the list closes it, as does the view turning readonly.
+
+The header and the list take your own markup: `createCodePlugin({ header, menu })`, a `Snippet<[CodeHeader]>` and a `Snippet<[LanguageMenu]>`, whose attachments (`header.button`, `menu.keys`, `menu.popup`, `menu.option(index)`) keep these keys and this ARIA. See [Menus and handles](/docs/customization/menus#code-header-and-language-list).
 
 `CODE_LANGUAGES` holds the default list, after Notion's:
 
@@ -154,7 +170,7 @@ Inside a code line:
 | Keys                                   | Action                                                                             |
 | -------------------------------------- | ---------------------------------------------------------------------------------- |
 | <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> | Start a new line. <kbd>Enter</kbd> in the empty last line (not the only one) leaves the block: the line is removed and a paragraph after the block takes the caret, one undo step |
-| <kbd>ArrowDown</kbd>                   | In the last line, go below the block; with nothing after it, a new paragraph there takes the caret |
+| <kbd>ArrowDown</kbd>                   | In the last line, go below the block; at the end of the document, to an empty paragraph after its last block, created when needed ([navigation](/docs/customization/hotkeys#navigation)) |
 | <kbd>Tab</kbd>                         | At a caret, insert a tab character, or accept the line's `end` [suggestion](/docs/editor/suggestions). Over a selection, add a tab at the start of every line it touches, as one undo step; the selection keeps its characters |
 | <kbd>Shift</kbd> + <kbd>Tab</kbd>      | Remove one leading tab, or up to two spaces, from the caret's line or every line the selection touches |
 | <kbd>Mod</kbd> + <kbd>A</kbd>            | Select the text of the whole code block; press again to select the code block      |
@@ -175,15 +191,18 @@ A code block is an island: merges never cross its edge, and a block selection wa
 
 ## Styling
 
-The stylesheet draws the block like Notion's: a `#f7f6f3` panel rounded 10px, padded `34px 16px 32px 32px`, with the language at the top left (the picker looks like a label until hovered) and the Copy button at the top right. The code is set in an `SFMono-Regular`, Menlo, Consolas stack at 85%, with a tab size of 2. No utility classes are involved; everything goes through attributes and classes you can override:
+The stylesheet draws the block like Notion's: a `#f7f6f3` panel rounded 10px, padded `34px 16px 32px 32px`, with the language at the top left (a button with a chevron, shaded when hovered or open, ringed when focused from the keyboard) and the Copy button at the top right. The code is set in an `SFMono-Regular`, Menlo, Consolas stack at 85%, with a tab size of 2. No utility classes are involved; everything goes through attributes and classes you can override:
 
 | Selector                        | Element                                        |
 | ------------------------------- | ---------------------------------------------- |
 | `[data-edytor-type='code']`     | The block panel                                |
 | `[data-edytor-code-header]`     | The header, void chrome the caret never enters |
-| `[data-edytor-code-language]`   | The language picker (`select`), or its label (`span`) in a readonly view |
-| `[data-edytor-code-header] button` | The Copy button                             |
+| `[data-edytor-code-language]`   | The language button (`button`, `[aria-expanded='true']` while its list is open), or its label (`span`) in a readonly view |
+| `[data-edytor-code-copy]`       | The Copy button                                |
+| `[data-edytor-code-language-menu]` | The language list, in the overlay: its search field (`input`) and its rows (`[data-edytor-code-language-option]`, the block's own `[data-current]`, the highlighted one `[aria-selected='true']`); `[data-edytor-code-language-empty]` when no language matches |
 | `pre.th-code`                   | The code area                                  |
+
+The panel's colors are custom properties a theme or an app sets on the editor or the block: `--edytor-code-background` and `--edytor-code-color` (the panel and its text), `--edytor-code-chrome-color` (the language and Copy), `--edytor-code-chrome-hover` (their hovered background) and `--edytor-code-accent` (the focus ring and the search field's border).
 
 ```css
 [data-edytor-type='code'] {

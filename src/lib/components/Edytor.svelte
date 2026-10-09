@@ -418,7 +418,10 @@
 		aria-keyshortcuts={popup?.keys}
 		{translate}
 	>
-		{#each edytor.cells?.rootIds ?? [] as id (id)}<Block {id} />{/each}<span
+		{#each edytor.suggestions.around(edytor.cells?.rootIds ?? []) as kid (kid)}<Block
+				id={typeof kid === 'string' ? kid : undefined}
+				suggestion={typeof kid === 'string' ? undefined : kid}
+			/>{/each}<span
 			data-edytor-render-anchor
 			contenteditable="false"
 			aria-hidden="true"
@@ -448,6 +451,31 @@
 {/if}
 
 <style>
+	/*
+	 * Room below the last block, where a press puts the caret in a trailing
+	 * paragraph (`nav.trailing.press`): `--edytor-trailing-space`. No
+	 * specificity, so any rule of the app's sets the padding instead.
+	 */
+	:global(:where([data-edytor])) {
+		padding-block-end: var(--edytor-trailing-space, 2em);
+	}
+	/*
+	 * Long pages, opt-in: the `edytor-long-page` class on the editor or an
+	 * ancestor lets a top-level block off screen skip its rendering (style,
+	 * layout, paint) until it nears the viewport; the browser keeps its DOM,
+	 * selection, find-in-page and accessibility. Until it was rendered once it
+	 * counts as one 32px row (`auto` remembers its real height after). Both
+	 * properties come with the one switch: the remembered height alone makes
+	 * Chromium track every top-level block's size each frame (about 2.5 ms at
+	 * 5,000 blocks), so without the switch neither is set. Only top-level
+	 * blocks: a nested one is skipped with its ancestor. The containment it
+	 * brings (layout, paint) clips what a block paints outside its own box.
+	 * No specificity: an app's own rule wins.
+	 */
+	:global(:where([data-edytor]:is(.edytor-long-page, .edytor-long-page *) > [data-edytor-block])) {
+		content-visibility: auto;
+		contain-intrinsic-block-size: auto 32px;
+	}
 	/*
 	 * A block selection shows as its selected blocks, never as a native range:
 	 * the range a pointer drag across columns still extends under it

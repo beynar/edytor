@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { iconOf } from '../icons.js';
 	import type { ImageAlign } from './image.js';
 	import type { ImageControls } from './controls.svelte.js';
@@ -6,10 +7,14 @@
 	/**
 	 * The image chrome (`ImageControls`), in the overlay: a resize handle on
 	 * each side of the hovered image (Notion's pill, at mid-height), and a
-	 * toolbar at its top right: the three alignments and the alt text field.
-	 * A press on the toolbar keeps the editor's focus; the alt field takes it.
+	 * toolbar at its top right: the three alignments and the alt text field
+	 * (a `toolbar` snippet replaces both, placed there). A press on the
+	 * toolbar keeps the editor's focus; the alt field takes it. The toolbar's
+	 * role and marks (`bar`) and the alt field's keys and focus (`altField`)
+	 * are the controller's attachments, a custom `toolbar`'s too.
 	 */
-	let { controls }: { controls: ImageControls } = $props();
+	let { controls, toolbar }: { controls: ImageControls; toolbar?: Snippet<[ImageControls]> } =
+		$props();
 
 	// The view turning readonly mid-drag drops the preview at once.
 	$effect(() => {
@@ -49,7 +54,16 @@
 				onmousedown={(event) => controls.mousedown(event, side)}
 			></div>
 		{/each}
-		{#if !controls.drag}
+		{#if !controls.drag && toolbar}
+			<div
+				data-edytor-image-toolbar-slot
+				style:left="{box.x + box.width - 6}px"
+				style:top="{box.y + 6}px"
+				data-selecting={controls.selecting ? 'true' : undefined}
+			>
+				{@render toolbar(controls)}
+			</div>
+		{:else if !controls.drag}
 			<div
 				data-edytor-image-toolbar
 				role="toolbar"
@@ -57,6 +71,7 @@
 				style:left="{box.x + box.width - 6}px"
 				style:top="{box.y + 6}px"
 				data-selecting={controls.selecting ? 'true' : undefined}
+				{@attach controls.bar}
 			>
 				{#each aligns as { align, label } (align)}
 					<button
@@ -88,20 +103,13 @@
 					style:left="{box.x + box.width - 6}px"
 					style:top="{box.y + 40}px"
 				>
-					<!-- svelte-ignore a11y_autofocus -->
 					<input
 						data-edytor-image-alt
 						aria-label={labels.alt}
 						placeholder={labels.altPlaceholder}
 						value={controls.alt}
-						autofocus
 						oninput={(event) => controls.setAlt(event.currentTarget.value)}
-						onfocusout={controls.blurred}
-						onkeydown={(event) => {
-							if (event.key !== 'Enter' && event.key !== 'Escape') return;
-							event.preventDefault();
-							controls.closeAlt(true);
-						}}
+						{@attach controls.altField}
 					/>
 				</div>
 			{/if}
@@ -139,6 +147,13 @@
 	[data-edytor-image-resize]:hover::after,
 	[data-edytor-image-resize][data-dragging='true']::after {
 		opacity: 1;
+	}
+
+	/* A custom toolbar's place: the image's top right, sized to its markup. */
+	[data-edytor-image-toolbar-slot] {
+		position: absolute;
+		width: max-content;
+		transform: translateX(-100%);
 	}
 
 	[data-edytor-image-toolbar] {

@@ -1,7 +1,8 @@
-import { autoScrollApi } from '$lib/dnd/pragmatic.js';
+import { autoScrollApi } from './pragmatic.js';
 
 /**
- * Auto-scroll for one block drag (Atlassian's auto-scroll package): the window
+ * Auto-scroll for one drag (a block's, a table row's or column's; Atlassian's
+ * auto-scroll package): the window
  * and every scrolling element from the editor up (the editor included) scroll
  * as the pointer nears their edges, faster the closer and the longer it stays,
  * innermost first. `ours` keeps it to this editor's drags. Registered at the

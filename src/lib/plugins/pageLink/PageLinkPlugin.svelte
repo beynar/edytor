@@ -6,6 +6,7 @@
 		TriggerContext,
 		TriggerItemPayload
 	} from '$lib/plugins.js';
+	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
 	import { labelsWith, viewLabels, type PartialLabels } from '$lib/labels.js';
 	import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 
@@ -36,6 +37,12 @@
 		char?: string;
 		/** Replace each row of the menu. */
 		item?: Snippet<[TriggerItemPayload<PageLinkItem>]>;
+		/**
+		 * Replace the whole menu; it renders while `controller.isOpen`, at the
+		 * caret. Keep its ARIA with `{@attach controller.popup}` on the list and
+		 * `{...controller.option(index)}` on each row.
+		 */
+		menu?: Snippet<[TriggerMenuController<PageLinkItem>]>;
 		/** The words the menu and the atom show, over the English ones. */
 		labels?: PartialLabels<'pageLink'>;
 	};
@@ -74,6 +81,7 @@
 						label: (page: PageLinkItem) => page.title,
 						key: (page: PageLinkItem) => page.id,
 						item: options.item ?? row,
+						menu: options.menu,
 						onPick: (page: PageLinkItem, { block, from, caret }) => {
 							const href = sanitizeLinkHref(page.href ?? options.href?.(page)) ?? undefined;
 							const data: PageLinkData = {
@@ -108,18 +116,14 @@
 	>
 {/snippet}
 
-{#snippet row({ item, id, selected, pick, select }: TriggerItemPayload<PageLinkItem>)}
+{#snippet row({ item, option, run, select }: TriggerItemPayload<PageLinkItem>)}
 	<button
 		type="button"
 		class="edytor-page-link-row"
-		{id}
-		role="option"
-		tabindex="-1"
-		aria-selected={selected}
-		data-selected={selected}
+		{...option}
 		data-testid="trigger-menu-item"
 		onmousemove={select}
-		onclick={pick}
+		onclick={run}
 	>
 		<span class="icon" aria-hidden="true">{item.icon ?? '📄'}</span>
 		<span class="title">{item.title}</span>

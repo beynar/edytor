@@ -13,9 +13,10 @@ const MAX_HEIGHT = 300;
 /** The ghost is the blocks' own look, only smaller. */
 const SCALE = 0.8;
 
-/** View-only nodes a clone drops: render anchors, suggestions, peers' carets, handles and overlay. */
+/** View-only nodes a clone drops: render anchors, empty-body hints, suggestions, peers' carets, handles and overlay. */
 const VIEW_ONLY = [
 	'[data-edytor-render-anchor]',
+	'[data-edytor-empty-body]',
 	'[data-edytor-text-suggestion]',
 	'[data-edytor-suggestion]',
 	'[data-edytor-remote-cursor]',

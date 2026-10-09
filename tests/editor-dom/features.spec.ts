@@ -545,9 +545,10 @@ test.describe('browser feature-route parity', () => {
 		await waitForEditorReady(page);
 		await setSelectionByTextIndex(page, 0, 4);
 
-		const calloutIcon = page.locator('[data-edytor-type="callout"] span[contenteditable="false"]');
-		await expect(calloutIcon).toHaveText('!');
-		await calloutIcon.click();
+		// The callout's empty-body hint: chrome, not text (`body.hint`).
+		const island = page.locator('[data-edytor-type="callout"] [data-edytor-empty-body]');
+		await expect(island).toHaveAttribute('contenteditable', 'false');
+		await island.click();
 		await page.keyboard.press('Backspace');
 		await page.waitForTimeout(80);
 
@@ -561,12 +562,13 @@ test.describe('browser feature-route parity', () => {
 					text: child.content?.map((part) => part.text).join('') ?? ''
 				}));
 			})
-			// The click parks the caret at the callout's start, not at the stale
-			// offset 4: no text is deleted. Backspace at the start of a catalogue
-			// kind that is not its parent's default turns it into that default,
-			// text kept (UW-14, contract row `del.start.kind`).
+			// The press parks the caret at the callout's start, not at the stale
+			// offset 4, and the click starts the callout's content there (`body.hint`):
+			// Backspace at the start of that empty first child moves it out, after
+			// the callout. No text is deleted.
 			.toEqual([
-				{ type: 'paragraph', text: 'task' },
+				{ type: 'callout', text: 'task' },
+				{ type: 'paragraph', text: '' },
 				{ type: 'paragraph', text: 'after callout' }
 			]);
 

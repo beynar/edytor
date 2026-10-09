@@ -14,4 +14,9 @@ export {
 	type HistoryVersion
 } from './client.js';
 export { versionDiff, type VersionChange, type VersionDiff } from './diff.js';
-export { defaultHistoryLabels, type HistoryPanelLabels, type HistoryPanelProps } from './panel.js';
+export {
+	defaultHistoryLabels,
+	type HistoryPanelLabels,
+	type HistoryPanelProps,
+	type HistoryVersionItem
+} from './panel.js';

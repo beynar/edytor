@@ -14,6 +14,7 @@ import {
 	getDomSelectionSnapshot
 } from '../selection/domSelection.js';
 import { getYIndex } from '../selection/selection.utils.js';
+import { noSelection } from '../session/selection.js';
 
 const getEventTimeStamp = (event: Event | undefined) =>
 	event?.timeStamp || (typeof performance === 'undefined' ? Date.now() : performance.now());
@@ -113,16 +114,47 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 		);
 	};
 
+	/**
+	 * A press outside the view and its chrome (the overlay's menus, handles,
+	 * toolbar) ends its block selection (`sel.blocks.outside`, Notion): the
+	 * selection is none. Shift or Mod keeps it (a marquee from the page's
+	 * margin adds to it), and so does an app element marked
+	 * `data-edytor-keep-selection` (its own toolbar acting on the blocks).
+	 */
+	const pressOutside = (event: MouseEvent) => {
+		const { target } = event;
+		if (edytor.selection.value.kind !== 'blocks' || !(target instanceof Node)) return;
+		if (edytor.node?.contains(target) || edytor.overlay.layer?.contains(target)) return;
+		if (event.shiftKey || event.metaKey || event.ctrlKey) return;
+		const element = target instanceof Element ? target : target.parentElement;
+		if (element?.closest('[data-edytor-keep-selection]')) return;
+		edytor.selection.commit(noSelection);
+	};
+
+	/**
+	 * A press the model answers: on the host's own area, the margin gesture's
+	 * (the marquee, `sel.marquee`, which gives a click back); below the last
+	 * block, the trailing paragraph; on a block's chrome, its caret.
+	 */
+	const placingPress = (event: MouseEvent) => {
+		const { pointer } = edytor.selection;
+		if (pointer.marginPress(event)) return;
+		if (!pointer.belowPress(event)) pointer.chromePress(event);
+	};
+
 	/** A press inside the host (its bubbling phase: an element inside that took it keeps it). */
 	const pressInside = (event: MouseEvent) => {
 		// A pointer gesture abandons a live composition.
 		edytor.composition.abandon();
 		lastPointerDownInsideEditorAt = getEventTimeStamp(event);
-		edytor.projector.pressed();
 		edytor.selection.clearModelSelectionPreservation();
-		edytor.selection.pointer.capture(event);
+		const { pointer } = edytor.selection;
+		// The margin gesture's press places no caret and starts no text drag.
+		if (pointer.claimed) return;
+		edytor.projector.pressed();
+		pointer.capture(event);
 		edytor.selection.clearInlineBlockSelection();
-		edytor.selection.pointer.collapseBlocksAt(event);
+		pointer.collapseBlocksAt(event);
 	};
 
 	const clearNativeSelectionAfterExternalFocus = () => {
@@ -226,6 +258,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 				if (event.isPrimary) compat = true;
 				lonePresses.delete(edytor);
 				gesture(event);
+				pressOutside(event);
 			},
 			{ capture: true }
 		),
@@ -238,18 +271,21 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 				if (!press) return void lonePresses.delete(edytor);
 				lonePresses.set(edytor, event);
 				gesture(event);
+				pressOutside(event);
 			},
 			{ capture: true }
 		),
-		// A press on a block's non-editable chrome places the caret in its text.
-		on(node, 'pointerdown', edytor.selection.pointer.chromePress, {
+		// A press below the last block goes to the trailing paragraph; one on a
+		// block's non-editable chrome places the caret in its text.
+		on(node, 'pointerdown', placingPress, {
 			capture: true
 		}),
 		on(
 			node,
 			'mousedown',
 			(event: MouseEvent) => {
-				if (lone(event)) edytor.selection.pointer.chromePress(event);
+				if (lone(event)) placingPress(event);
+				else edytor.selection.pointer.marginMouse(event);
 			},
 			{ capture: true }
 		),

@@ -12,6 +12,13 @@
 	--edytor-table-border-color: var(--edytor-table-border, rgb(233, 233, 231));
 }
 [data-edytor-table-scroll] {
+	/*
+	 * The table's place sizes the box, never its columns (`table.overflow`):
+	 * its content gives it no intrinsic width, so a page laying the editor out
+	 * by its content (a grid or flex item, a float) does not grow with a wide
+	 * table; the grid scrolls inside.
+	 */
+	contain: inline-size;
 	overflow-x: auto;
 	overflow-y: hidden;
 	/* Room for the `+` under it (the chrome's), so it never covers the next block. */
@@ -64,17 +71,43 @@
 }
 
 /* ── The chrome (overlay): grips, `+` bars, resize bands, menus ─────── */
+/* Where a grip stands (a point: its grip, built-in or an app's, centered on it), a `+`, a menu. */
+[data-edytor-table-chrome] [data-edytor-table-grip-host] {
+	position: absolute;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 0;
+	height: 0;
+}
+[data-edytor-table-chrome] [data-edytor-table-add-host],
+[data-edytor-table-chrome] [data-edytor-table-menu-host] {
+	position: absolute;
+}
+[data-edytor-table-chrome] [data-edytor-table-menu-host] {
+	z-index: 1;
+}
+[data-edytor-table-chrome] [data-edytor-table-grip-host] > *,
+[data-edytor-table-chrome] [data-edytor-table-add-host] > * {
+	flex: none;
+	pointer-events: auto;
+	touch-action: none;
+}
 [data-edytor-table-chrome] button[data-edytor-table-grip],
 [data-edytor-table-chrome] button[data-edytor-table-add],
 [data-edytor-table-chrome] [data-edytor-table-resize] {
-	position: absolute;
 	margin: 0;
 	padding: 0;
 	border: none;
 	pointer-events: auto;
 	touch-action: none;
 }
-[data-edytor-table-chrome][data-selecting='true'] > * {
+[data-edytor-table-chrome] [data-edytor-table-resize] {
+	position: absolute;
+}
+[data-edytor-table-chrome][data-selecting='true'] > *,
+[data-edytor-table-chrome][data-selecting='true'] [data-edytor-table-grip-host] > *,
+[data-edytor-table-chrome][data-selecting='true'] [data-edytor-table-add-host] > * {
 	pointer-events: none;
 }
 [data-edytor-table-chrome] button[data-edytor-table-grip] {
@@ -87,6 +120,22 @@
 		0 2px 4px rgba(15, 15, 15, 0.1);
 	color: rgba(55, 53, 47, 0.45);
 	cursor: grab;
+}
+[data-edytor-table-chrome] button[data-edytor-table-grip][data-dragging='true'] {
+	cursor: grabbing;
+}
+/* A grip's drag (`table.drag`): Notion's drop line between two rows or two columns. */
+[data-edytor-table-chrome] [data-edytor-table-drop] {
+	position: absolute;
+	border-radius: 2px;
+	background: var(--edytor-table-drop-color, rgba(35, 131, 226, 0.43));
+	pointer-events: none;
+}
+[data-edytor-table-chrome] [data-edytor-table-drop='row'] {
+	height: 4px;
+}
+[data-edytor-table-chrome] [data-edytor-table-drop='column'] {
+	width: 4px;
 }
 [data-edytor-table-chrome] button[data-edytor-table-grip='column'] {
 	width: 24px;
@@ -105,6 +154,8 @@
 	line-height: 18px;
 }
 [data-edytor-table-chrome] button[data-edytor-table-add] {
+	display: block;
+	width: 100%;
 	height: 16px;
 	border-radius: 3px;
 	background: rgba(55, 53, 47, 0.04);
@@ -115,6 +166,7 @@
 }
 [data-edytor-table-chrome] button[data-edytor-table-add='column'] {
 	width: 16px;
+	height: 100%;
 }
 [data-edytor-table-chrome] button[data-edytor-table-add]::before {
 	content: '+';
@@ -185,7 +237,12 @@
 	-webkit-mask: var(--table-menu-icon) center / 20px no-repeat;
 	mask: var(--table-menu-icon) center / 20px no-repeat;
 }
+/* The menu holds the keys; its keyboard's row shows as hovered. */
+.edytor-table-menu:focus {
+	outline: none;
+}
 .edytor-table-menu-row:hover:not(:disabled),
+.edytor-table-menu-row[data-selected='true']:not(:disabled),
 .edytor-table-menu-row:focus-visible {
 	background: rgba(33, 27, 23, 0.06);
 	outline: none;

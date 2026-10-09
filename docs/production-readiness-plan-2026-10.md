@@ -44,6 +44,7 @@ Both blockers are fixed (the link XSS, the license). Shipped by release:
 | `next.44`    | Features: markdown paste makes blocks; pasted and dropped files become image, video, audio or file blocks with upload progress                                                                                                                                                                                                                                      |
 | `1.0.0-rc.1` | WU-50: the API frozen (`DocumentOperations`: the document's operations are its own, `document.facade` deprecated; `select(value)`; the dispatcher's plumbing internal; the document vocabulary exported, 176 reachable-not-exported types down to 38); typing on long pages (the handles' near band by binary search); the release candidate under `latest`         |
 | `1.0.0-rc.2` | `document.facade` removed (internal); a browsable API reference generated from the published types; the touch chrome tested on both phones; the selection's pointer and the handles' drop indicator split out; the room's import cycle gone; a drag whose release the page never sees ends                                                                          |
+| `1.0.0-rc.3` | Editor polish (table drag and fit, toggle and callout bodies, callout icon picker, trailing ArrowDown, code language list, KaTeX from a CDN); typed snippets for every menu, popup and handle; a key's editor work flat with the page and a third of the renderer's markers; the long-page class; marquee block selection                                           |
 
 The docs site stopped deploying at `next.34` (an invalid front matter in a Wave 2 page); fixed
 on `master` after `next.40`, with a docs-drift row guarding it.
@@ -64,10 +65,18 @@ Majors, by dimension:
   (`documentWarning`, 0.8); stale-block compaction measured at most −27 %, a re-seed −78 %
   (`docs/design/document-reseed.md`, deferred); ~~comments unbounded, snapshot amplification~~
   (`next.42`); ~~typing in a table O(cells²)~~ (`next.42`); client typing linear in page size
-  (no windowing): most of a keystroke at 10,000 blocks is Chromium's own selection sync over
-  the one editable root (1.8 ms at 1,000 blocks, 23 ms at 10,000); the handles' observer of every
-  block (6 ms) is gone since `1.0.0-rc.1`. Decided 2026-10-08: documented for now; investigate
-  later a chunking strategy like Slate's for large documents.
+  (no windowing): the editor's own work per key no longer grows with the page (2026-10-09:
+  the strict root checked every root child, every block's attributes re-ran on a caret move
+  between blocks, the handles walked the document order, a suggestion measure searched the
+  page; counted at 1,000 and 5,000 blocks, `view.scale`); Enter at 5,000 blocks 120 → 54 ms,
+  a move 72 → 47, a paste of 50 lines 137 → 60, a character 34 → 24. What still grows is
+  Chromium's: its text-input sync over the one editable root (2 ms at 1,000 blocks, 11 ms at
+  5,000, again after the commit of a structural key), layout, paint and hit testing of a flat
+  root, and the theme's remembered block height checked each frame (2.5 ms at 5,000); a static
+  copy of the page typed natively costs about the same. The handles' observer of every block
+  (6 ms) is gone since `1.0.0-rc.1`. Decided 2026-10-08: documented for now; investigate later
+  a chunking strategy like Slate's for large documents (fewer renderer comment markers per
+  block would shorten the browser's walks).
 - **Features**: ~~markdown paste into blocks~~ (`next.44`); ~~file/video/audio claiming dropped and pasted files
   (with upload progress)~~ (`next.44`); the touch chrome (tested under phone emulation since `1.0.0-rc.1`: handles without hover, grip tap → block menu → Move, `+`, toolbar, all on screen); real devices are the maintainer's.
 - **Code**: the view-side classes (`EdytorSelection`, `BlockHandleController`, `Edytor`,
@@ -662,7 +671,7 @@ Run these in order; they touch the same files.
 
 - Scope:
   - Profile Chromium at 5k and 10k blocks: mount, Enter, paste, move, scroll.
-  - Decide whether `--edytor-block-visibility: auto` becomes the default, or windowed
+  - Decide whether the long-page switch (`edytor-long-page`, which replaced `--edytor-block-visibility: auto`) becomes the default, or windowed
     rendering of top-level blocks.
   - Make `crdt/data.ts` `common()` linear: trim the common prefix and suffix, then use
     positional pairing or a Myers diff past a bound.

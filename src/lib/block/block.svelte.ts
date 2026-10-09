@@ -176,10 +176,10 @@ export class Block {
 	};
 
 	get selected() {
-		return this.edytor.selection.selectedBlocks.has(this);
+		return this.edytor.selection.isSelected(this);
 	}
 	get focused() {
-		return this.edytor.selection.focusedBlocks.has(this) && !this.selected;
+		return this.edytor.selection.isFocused(this) && !this.selected;
 	}
 
 	/** May this block move at all: `canPlace` without a destination (drag handles). */
@@ -261,11 +261,25 @@ export class Block {
 	}
 
 	get nextBlock(): Block | null {
-		return this.parent ? this.parent.children[this.index + 1] : null;
+		return this.#sibling(1);
 	}
 
 	get previousBlock(): Block | null {
-		return this.parent ? this.parent.children[this.index - 1] : null;
+		return this.#sibling(-1);
+	}
+
+	/**
+	 * The sibling `step` places away (none past either end): one id read, no
+	 * handle for every sibling (a top-level block's are the whole page's).
+	 * Tracks what `parent` and `index` track: this block's cell and its
+	 * parent's child list.
+	 */
+	#sibling(step: 1 | -1): Block | null {
+		const parent = this.parent;
+		if (!parent) return null;
+		const ids = this.edytor.facade.childrenIds(parent.isRoot ? null : parent.id);
+		const id = ids[this.index + step];
+		return id === undefined ? null : this.edytor.idToBlock.block(id);
 	}
 
 	get closestPreviousBlock(): Block | null {
@@ -501,6 +515,8 @@ export class Block {
 			if (names.includes(name)) node.setAttribute(name, value);
 		this.node = node;
 		const release = this.edytor.surface.register(node, 'block', this.id);
+		// Its attributes follow its own selected and focused membership.
+		this.edytor.selection.keep(this);
 		// A block laid out again with no commit moves the chrome beside it (the overlay measures).
 		const unobserve = this.edytor.overlay.observe(node);
 		const onDestroy = this.edytor.plugins.flatMap((plugin) => {

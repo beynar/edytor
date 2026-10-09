@@ -201,21 +201,23 @@ test.describe('P8 — a large page with content-visibility', () => {
 		await page.mouse.move(box.x + 10, box.y + box.height / 2);
 		const handle = page.locator('[data-testid="block-handle"]');
 		await expect.poll(() => handle.count()).toBeGreaterThan(0);
-		// The hovered block's handle sits on its first text row.
-		const aligned = await page.evaluate(() => {
-			const text = document
-				.querySelector('[data-edytor-id="b3001"] [data-edytor-text="true"]')!
-				.getBoundingClientRect();
-			return [...document.querySelectorAll('[data-testid="block-handle"]')].some((h) => {
-				const r = h.getBoundingClientRect();
-				return (
-					r.width > 0 &&
-					Math.abs(r.top + r.height / 2 - (text.top + 12)) <= 6 &&
-					r.right <= text.left
-				);
+		// The hovered block's handle sits on its first text row, once the
+		// overlay's frame placed it (a handle mounts before that frame measures it).
+		const aligned = () =>
+			page.evaluate(() => {
+				const text = document
+					.querySelector('[data-edytor-id="b3001"] [data-edytor-text="true"]')!
+					.getBoundingClientRect();
+				return [...document.querySelectorAll('[data-testid="block-handle"]')].some((h) => {
+					const r = h.getBoundingClientRect();
+					return (
+						r.width > 0 &&
+						Math.abs(r.top + r.height / 2 - (text.top + 12)) <= 6 &&
+						r.right <= text.left
+					);
+				});
 			});
-		});
-		expect(aligned).toBe(true);
+		await expect.poll(aligned).toBe(true);
 		// Drag b3001 below b3003.
 		const grip = await page.evaluate(() => {
 			const text = document

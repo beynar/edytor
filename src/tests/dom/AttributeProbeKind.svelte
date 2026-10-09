@@ -12,11 +12,11 @@
 			blocks: {
 				probe: {
 					snippet: probe,
-					element: (_data: Record<string, unknown>, id: string) => ({
+					element: (_data: Record<string, unknown>, id?: string) => ({
 						tag: 'div',
 						attributes: {
 							get 'data-probe'() {
-								reads.push(id);
+								reads.push(id ?? '');
 								return 'true';
 							}
 						}

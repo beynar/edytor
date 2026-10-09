@@ -24,6 +24,8 @@ import { compareAllCells } from './cellsShadow.js';
 
 export type RenderDomEdytorOptions = {
 	plugins?: Plugin[];
+	/** The view's block handles (on by default, as `<Edytor>`'s). */
+	blockHandles?: boolean;
 	readonly?: boolean;
 	placeholder?: string;
 	translate?: 'yes' | 'no';
@@ -359,6 +361,7 @@ export const renderDomEdytor = async (
 		props: {
 			value,
 			plugins: options.plugins ?? defaultPlugins,
+			blockHandles: options.blockHandles,
 			readonly: options.readonly,
 			placeholder: options.placeholder,
 			translate: options.translate,

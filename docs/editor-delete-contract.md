@@ -1697,6 +1697,25 @@ Pins: `drop-reach.test.ts` (the zones), `columns-dnd.test.tsx` ("the drop
 reach"), `drop-reach.spec.ts`, and the band rows of `columns-parity.spec.ts`
 and `columns-dnd.spec.ts`.
 
+## View scaling
+
+### `view.scale` — a keystroke's view work does not grow with the page
+
+A key in a block (a character, Enter, a block move, a caret moving to
+another block) costs the view the same counted work on a page of 5,000
+top-level blocks as on one of 1,000, give or take a constant: the DOM
+nodes its code inspects, the block attributes it recomputes (the blocks
+the selection enters and leaves, never the others), the block handles it
+resolves, the reads of the whole document order (none), the layout reads
+of the frame after it (the chrome near the viewport, its band found by
+binary search) and the blocks whose resizes are watched (the top-level
+blocks within a screen of the viewport). The browser's own share (its
+caret and IME bookkeeping over the one editable root, the layout of the
+page) still grows with the page and is not claimed here.
+Pins: `keystroke-scale.test.tsx` (jsdom: nodes, attributes, handles,
+layout reads), `large-page-scale.spec.ts` (with layout: layout reads,
+watched blocks, handles, order reads), both at 1,000 and 5,000 blocks.
+
 ## Tables
 
 A **table** is a kind whose role says `table: true` (the bundled `table`,

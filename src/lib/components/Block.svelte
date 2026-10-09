@@ -130,13 +130,13 @@
 	const register = (node: HTMLElement) => block.handle?.attach(node);
 	/**
 	 * Whether the selection holds this block, and whether it touches it: one
-	 * boolean each, so a selection change rebuilds the attributes of the
-	 * blocks whose flag flipped only (a set's `has` re-runs the reader of every
-	 * block outside it when its members change: a caret moving to another
-	 * block re-ran every block's attributes).
+	 * boolean each, read from the block's own membership (`isSelected`,
+	 * `isFocused`), so a selection change re-runs only the blocks it enters and
+	 * leaves (a set's `has` re-runs the reader of every block outside it when
+	 * its members change: a caret moving to another block re-ran every block's).
 	 */
-	const selected = $derived(!!block.handle && edytor.selection.selectedBlocks.has(block.handle));
-	const focused = $derived(!!block.handle && edytor.selection.focusedBlocks.has(block.handle));
+	const selected = $derived(!!block.handle && edytor.selection.isSelected(block.handle));
+	const focused = $derived(!!block.handle && edytor.selection.isFocused(block.handle));
 	/**
 	 * Its colour and background by palette name (`block/colors.ts`), from its
 	 * data; written below as two properties (a second spread in the object

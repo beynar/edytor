@@ -102,6 +102,8 @@ export const untargeted = (edytor: Edytor) =>
 const facts = (edytor: Edytor) => {
 	const { state, projection } = edytor.selection;
 	const { startText } = state;
+	// Its block's place by id: no handle for every sibling (the root's on a long page).
+	const at = startText && edytor.facade.positionOf(startText.parent.id);
 	return {
 		startText,
 		endText: state.endText,
@@ -119,9 +121,9 @@ const facts = (edytor: Edytor) => {
 		isAtEndOfText: projection.isAtEndOfText,
 		islandRoot: edytor.idToBlock.get(projection.islandRoot ?? '') ?? null,
 		isVoidEditableElement: state.isVoidEditableElement,
-		isFirstChildOfDocument: startText?.parent === edytor.root?.children.at(0),
+		isFirstChildOfDocument: Boolean(at && at.parent === null && at.index === 0),
 		isNested: Boolean(startText && startText.parent.parent !== edytor.root),
-		isLastChild: startText?.parent.parent?.children.at(-1) === startText?.parent
+		isLastChild: Boolean(at && at.index === edytor.facade.childrenIds(at.parent).length - 1)
 	};
 };
 

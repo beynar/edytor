@@ -185,6 +185,8 @@ const marksOver = (segment: TextSegment, from: number, to: number): Marks => {
 };
 
 const between = (doc: ProjectionDoc, start: BlockId, end: BlockId): BlockId[] => {
+	// One block (a caret): no walk of the document order.
+	if (start === end) return [start];
 	const ids = doc.order();
 	const from = ids.indexOf(start);
 	if (from < 0) return [start];

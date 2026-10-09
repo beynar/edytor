@@ -64,10 +64,18 @@ Majors, by dimension:
   (`documentWarning`, 0.8); stale-block compaction measured at most −27 %, a re-seed −78 %
   (`docs/design/document-reseed.md`, deferred); ~~comments unbounded, snapshot amplification~~
   (`next.42`); ~~typing in a table O(cells²)~~ (`next.42`); client typing linear in page size
-  (no windowing): most of a keystroke at 10,000 blocks is Chromium's own selection sync over
-  the one editable root (1.8 ms at 1,000 blocks, 23 ms at 10,000); the handles' observer of every
-  block (6 ms) is gone since `1.0.0-rc.1`. Decided 2026-10-08: documented for now; investigate
-  later a chunking strategy like Slate's for large documents.
+  (no windowing): the editor's own work per key no longer grows with the page (2026-10-09:
+  the strict root checked every root child, every block's attributes re-ran on a caret move
+  between blocks, the handles walked the document order, a suggestion measure searched the
+  page; counted at 1,000 and 5,000 blocks, `view.scale`); Enter at 5,000 blocks 120 → 54 ms,
+  a move 72 → 47, a paste of 50 lines 137 → 60, a character 34 → 24. What still grows is
+  Chromium's: its text-input sync over the one editable root (2 ms at 1,000 blocks, 11 ms at
+  5,000, again after the commit of a structural key), layout, paint and hit testing of a flat
+  root, and the theme's remembered block height checked each frame (2.5 ms at 5,000); a static
+  copy of the page typed natively costs about the same. The handles' observer of every block
+  (6 ms) is gone since `1.0.0-rc.1`. Decided 2026-10-08: documented for now; investigate later
+  a chunking strategy like Slate's for large documents (fewer renderer comment markers per
+  block would shorten the browser's walks).
 - **Features**: ~~markdown paste into blocks~~ (`next.44`); ~~file/video/audio claiming dropped and pasted files
   (with upload progress)~~ (`next.44`); the touch chrome (tested under phone emulation since `1.0.0-rc.1`: handles without hover, grip tap → block menu → Move, `+`, toolbar, all on screen); real devices are the maintainer's.
 - **Code**: the view-side classes (`EdytorSelection`, `BlockHandleController`, `Edytor`,

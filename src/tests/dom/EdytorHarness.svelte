@@ -27,6 +27,8 @@
 		onDocChange?: (change: DocChange) => void;
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		onReady?: (edytor: EdytorContext) => void;
+		/** The view's block handles (`<Edytor blockHandles>`, on by default). */
+		blockHandles?: boolean;
 		/** The root textbox's name and id (`aria-label`, `aria-labelledby`, `aria-describedby`, `id`). */
 		label?: {
 			'aria-label'?: string;
@@ -57,6 +59,7 @@
 		onDocChange,
 		onSelectionChange,
 		onReady = () => {},
+		blockHandles,
 		label
 	}: Props = $props();
 
@@ -74,6 +77,7 @@
 	{value}
 	{plugins}
 	defaultPlugins={false}
+	{blockHandles}
 	{readonly}
 	{placeholder}
 	{translate}

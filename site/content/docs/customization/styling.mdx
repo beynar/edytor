@@ -74,19 +74,19 @@ Measured in Chromium at 1280×900 on `/test/large` (top-level blocks of mixed ki
 
 | Measure                             | 1,000 blocks | 2,000 blocks | 5,000 blocks | 5,000, `edytor-long-page` |
 | ----------------------------------- | -----------: | -----------: | -----------: | ------------: |
-| First paint                         |       244 ms |       348 ms |       837 ms |        820 ms |
-| of which the view's mount           |       151 ms |       232 ms |       564 ms |        566 ms |
-| Layout through the load             |        15 ms |        12 ms |        31 ms |         11 ms |
-| Scroll frame (80px a frame), median |       8.3 ms |       8.3 ms |       8.3 ms |         25 ms |
-| Typing a character                  |       6.4 ms |       9.7 ms |        24 ms |         31 ms |
-| Enter                               |        13 ms |        22 ms |        54 ms |         86 ms |
-| Moving a block (Mod+Shift+↓)        |       9.9 ms |        18 ms |        47 ms |         64 ms |
-| Pasting 50 lines                    |        26 ms |        34 ms |        60 ms |         92 ms |
+| First paint                         |       157 ms |       286 ms |       672 ms |        696 ms |
+| of which the view's mount           |        91 ms |       161 ms |       426 ms |        343 ms |
+| Layout through the load             |       6.7 ms |        13 ms |        29 ms |         10 ms |
+| Scroll frame (80px a frame), median |       8.3 ms |       8.3 ms |       8.3 ms |         24 ms |
+| Typing a character                  |       5.1 ms |       7.0 ms |        16 ms |         21 ms |
+| Enter                               |        11 ms |        16 ms |        35 ms |         55 ms |
+| Moving a block (Mod+Shift+↓)        |       7.4 ms |        12 ms |        29 ms |         36 ms |
+| Pasting 50 lines                    |        20 ms |        24 ms |        44 ms |         74 ms |
 
 What grows with the page is the mount (about 0.1 ms a block) and the browser's share of each key. Keep a document to a couple of thousand top-level blocks for typing within a frame; for longer content, make each page its own document ([A page is a document](/docs/server/moves#a-page-is-a-document)).
 
 - **The editor's share does not grow.** What the editor's own code does for a key (a character, Enter, a move, a caret moving to another block) is the same work at 5,000 blocks as at 1,000: it re-renders the blocks the key changes and those the selection enters and leaves, checks only the nodes added to the page, and measures only the chrome near the screen. Rows in the test suite count that work at both sizes. At 5,000 blocks it is about a millisecond for a character and a few for Enter.
-- **The browser's share does.** In Chromium, when the caret moves inside an input event after the page changed, the browser recomputes the text of the whole editable root for the input method, a walk of the page (about 2 ms at 1,000 blocks, 11 ms at 5,000), and does it again after the frame when a key added or moved a block; laying out, painting and hit-testing a root of thousands of blocks grows too. Typed natively into a static copy of the same page, with no editor at all, a character and Enter cost about what they cost here. The rendered markup weighs on these walks: each block carries a couple of dozen empty markers of the renderer (comments), which the browser steps over.
+- **The browser's share does.** In Chromium, when the caret moves inside an input event after the page changed, the browser recomputes the text of the whole editable root for the input method, a walk of the page (about 0.4 ms at 1,000 blocks, 1 ms at 5,000), and does it again after the frame when a key added or moved a block; laying out, painting and hit-testing a root of thousands of blocks grows too. The rendered markup weighs on these walks: each block carries about ten empty markers of the renderer (comments and empty text nodes), which the browser steps over. It carried about 34, and the walk took 1 ms at 1,000 blocks and 9 ms at 5,000; with fewer markers a key at 5,000 blocks takes about half the time it took (a character 37 → 16 ms, Enter 68 → 35 ms, a move 70 → 29 ms, in one interleaved comparison).
 - **One switch.** The class sets both properties, and without it neither is set: the remembered height alone makes Chromium check every top-level block's size on each frame (about 2.5 ms at 5,000 blocks).
 - **No windowing.** The editor renders every block, with no windowing: it would break native selection, find-in-page and IME.
 

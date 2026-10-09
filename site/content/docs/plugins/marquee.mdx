@@ -72,6 +72,8 @@ A rectangle that touches no block selects nothing.
 
 A readonly view selects blocks too, so they can be copied.
 
+A click anywhere outside the editor and its menus ends the block selection, as in Notion (see [block selection](/docs/editor/selection#block-selection)).
+
 ## Styling
 
 The rectangle mounts in the editor's [overlay](/docs/customization/styling#the-overlay), in a `position: fixed` host with the attribute `data-edytor-marquee-host` and `z-index: 6`, placed and sized to the rectangle; it takes no pointer. The default rectangle is `[data-edytor-marquee]`, with `data-adding` while <kbd>Shift</kbd> or <kbd>Mod</kbd> adds. Its look comes from three CSS variables, set on an element around the editor (the overlay is the root's sibling, so variables set on the root do not reach it); the [Notion theme](/docs/customization/styling#notion-theme) sets the first two:

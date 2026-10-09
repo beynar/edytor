@@ -14,6 +14,7 @@ import {
 	getDomSelectionSnapshot
 } from '../selection/domSelection.js';
 import { getYIndex } from '../selection/selection.utils.js';
+import { noSelection } from '../session/selection.js';
 
 const getEventTimeStamp = (event: Event | undefined) =>
 	event?.timeStamp || (typeof performance === 'undefined' ? Date.now() : performance.now());
@@ -111,6 +112,23 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 		edytor.lastUserGestureOutsideEditor = Boolean(
 			event.target instanceof Node && !edytor.node?.contains(event.target)
 		);
+	};
+
+	/**
+	 * A press outside the view and its chrome (the overlay's menus, handles,
+	 * toolbar) ends its block selection (`sel.blocks.outside`, Notion): the
+	 * selection is none. Shift or Mod keeps it (a marquee from the page's
+	 * margin adds to it), and so does an app element marked
+	 * `data-edytor-keep-selection` (its own toolbar acting on the blocks).
+	 */
+	const pressOutside = (event: MouseEvent) => {
+		const { target } = event;
+		if (edytor.selection.value.kind !== 'blocks' || !(target instanceof Node)) return;
+		if (edytor.node?.contains(target) || edytor.overlay.layer?.contains(target)) return;
+		if (event.shiftKey || event.metaKey || event.ctrlKey) return;
+		const element = target instanceof Element ? target : target.parentElement;
+		if (element?.closest('[data-edytor-keep-selection]')) return;
+		edytor.selection.commit(noSelection);
 	};
 
 	/**
@@ -240,6 +258,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 				if (event.isPrimary) compat = true;
 				lonePresses.delete(edytor);
 				gesture(event);
+				pressOutside(event);
 			},
 			{ capture: true }
 		),
@@ -252,6 +271,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 				if (!press) return void lonePresses.delete(edytor);
 				lonePresses.set(edytor, event);
 				gesture(event);
+				pressOutside(event);
 			},
 			{ capture: true }
 		),

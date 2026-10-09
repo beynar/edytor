@@ -2472,6 +2472,18 @@ is the only interpreter of DOM changes.
 
 ## History
 
+### `sel.blocks.outside` — a press outside the view ends its block selection
+
+A primary press anywhere outside the view's host and its overlay (the
+menus, handles and toolbar) ends a block selection, however it was made
+(the marquee, the handles, Mod+A): the selection is none, nothing is
+written. Shift or Mod held at the press keeps it (a marquee from the page's
+margin adds to it), and so does a press inside an element marked
+`data-edytor-keep-selection` (an app's own toolbar acting on the blocks). A
+text selection is left to the browser. Classified with every press, in the
+document's capture listener (`pressOutside`, `events/onFocus.ts`). Pins:
+`blocks-outside-press.test.tsx`, `marquee.spec.ts`.
+
 ### `hist.dead-pop` — obsolete undo items
 
 `UndoManager.popStackItem` may consume a dead/obsolete stack item (entries

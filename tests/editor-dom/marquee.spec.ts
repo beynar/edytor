@@ -206,3 +206,50 @@ test.describe('the marquee (sel.marquee)', () => {
 		expect(chosen.length).toBeGreaterThan(shown);
 	});
 });
+
+test.describe('sel.blocks.outside: a press outside the view ends its block selection', () => {
+	/** Marquee-select A and B. */
+	const selectAB = async (page: Page) => {
+		await drag(page, await at(page, 'A', -40));
+		await to(page, await at(page, 'B', 60));
+		await page.mouse.up();
+		await expect.poll(() => selected(page)).toEqual(['A', 'B']);
+	};
+	/** A point on the page outside the editor and its container: the viewport's right edge. */
+	const outside = async (page: Page) => {
+		const b = await boxOf(page, 'B');
+		return { x: page.viewportSize()!.width - 4, y: b.y + b.height / 2 };
+	};
+
+	test('a click outside clears it; nothing is written', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page, [p('A'), p('B'), p('C')]);
+		await selectAB(page);
+		const point = await outside(page);
+		await page.mouse.click(point.x, point.y);
+		await expect.poll(() => selected(page)).toEqual([]);
+		expect((await value(page))[0]).toBe('none');
+		expect(await ids(page)).toEqual(['A', 'B', 'C']);
+		issues.assertClean();
+	});
+
+	test('Shift, or an app element marked data-edytor-keep-selection, keeps it', async ({ page }) => {
+		await open(page, [p('A'), p('B'), p('C')]);
+		await selectAB(page);
+		const point = await outside(page);
+		await page.keyboard.down('Shift');
+		await page.mouse.click(point.x, point.y);
+		await page.keyboard.up('Shift');
+		await expect.poll(() => selected(page)).toEqual(['A', 'B']);
+		// An app's own toolbar acting on the selected blocks.
+		await page.evaluate(() => {
+			const button = document.createElement('button');
+			button.textContent = 'App action';
+			button.dataset.edytorKeepSelection = '';
+			button.style.cssText = 'position: fixed; right: 0; bottom: 0; z-index: 9999';
+			document.body.append(button);
+		});
+		await page.getByRole('button', { name: 'App action' }).click();
+		await expect.poll(() => selected(page)).toEqual(['A', 'B']);
+	});
+});

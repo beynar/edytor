@@ -1,22 +1,21 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Block } from '$lib/block/block.svelte.js';
-	import type { Edytor } from '$lib/edytor.svelte.js';
 	import MediaEmpty from './MediaEmpty.svelte';
-	import { mediaKinds } from '$lib/crdt/semantics.js';
 	import type { Snippet } from 'svelte';
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
 	import type { MediaEmptyController } from './empty.svelte.js';
-	import { mediaEnglish, keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
+	import type { PartialLabels } from '$lib/labels.js';
 	import {
 		EMBED_ALLOW,
 		EMBED_PROVIDERS,
 		EMBED_SANDBOX,
+		MEDIA_ICONS,
 		claimed,
 		embedSourceOf,
-		mediaLabels,
-		mediaEmpty,
 		escapeHtml,
+		mediaPlugin,
+		mediaView,
 		safeWebUrl,
 		type EmbedProvider
 	} from './media.js';
@@ -47,20 +46,12 @@
 		empty?: Snippet<[MediaEmptyController]>;
 	};
 
-	const providersOf = new WeakMap<Edytor, readonly EmbedProvider[]>();
 	/**
 	 * The view's allowlist: the first embed plugin listed in it (first wins,
 	 * as for the kind). Never a broader list: no entry plays nothing.
 	 */
-	const providers = (block: Block | undefined) => (block && providersOf.get(block.edytor)) ?? [];
-
-	/** Store `value` as the block's link when a provider plays it; answers whether it did. */
-	const embedLink = (block: Block | undefined, value: string) => {
-		const url = safeWebUrl(value);
-		if (!block || !url || !embedSourceOf(url, providers(block))) return false;
-		block.data.url = url;
-		return true;
-	};
+	const providers = (block: Block | undefined) =>
+		mediaView(block?.edytor, 'embed')?.providers ?? [];
 
 	/**
 	 * Notion's embed block: an "Embed a link" panel until it has a link, then
@@ -71,65 +62,56 @@
 	 * text is the caption. Pasting a link a provider plays on an empty line
 	 * offers "Embed".
 	 */
-	export const createEmbedPlugin =
-		(options: EmbedPluginOptions = {}): Plugin =>
-		(edytor) => {
-			const allowed = options.providers ?? EMBED_PROVIDERS;
-			if (!providersOf.has(edytor)) providersOf.set(edytor, allowed);
-			const labels = labelsWith(mediaEnglish, options.labels);
-			mediaLabels.embed.claim(edytor, labels);
-			mediaEmpty.claim(edytor, 'embed', options.empty);
-			return {
-				...urlPaste(
+	export const createEmbedPlugin = (options: EmbedPluginOptions = {}): Plugin => {
+		const allowed = options.providers ?? EMBED_PROVIDERS;
+		return mediaPlugin(
+			'embed',
+			options,
+			['iframe', 'youtube', 'vimeo', 'loom', 'figma', 'codepen', 'spotify'],
+			(labels, edytor) => ({
+				providers: allowed,
+				// The block's link, when a provider plays it.
+				store: (block, value) => {
+					const url = safeWebUrl(value);
+					if (!url || !embedSourceOf(url, allowed)) return false;
+					block.data.url = url;
+					return true;
+				},
+				hooks: urlPaste(
 					edytor,
 					{
 						type: 'embed',
 						label: labels.embed.offer,
-						icon: '⧉',
+						icon: MEDIA_ICONS.embed,
 						data: (url) => (embedSourceOf(url, allowed) ? { url } : null)
 					},
 					labels,
 					options.menu
 				),
-				blocks: {
-					embed: {
-						...mediaKinds.embed,
-						snippet: embed,
-						element: 'figure',
-						presets: [
-							{
-								label: labels.embed.label,
-								icon: '⧉',
-								keywords: keywordsOf(
-									'block.embed',
-									['iframe', 'youtube', 'vimeo', 'loom', 'figma', 'codepen', 'spotify'],
-									options.keywords
-								),
-								group: 'Media'
-							}
-						],
-						html: (block, caption) => {
-							const player = embedSourceOf(block.data?.url, allowed);
-							const url = safeWebUrl(block.data?.url);
-							const media = player
-								? `<iframe src="${escapeHtml(player.src)}" title="${escapeHtml(player.provider.name)}" sandbox="${EMBED_SANDBOX}" allowfullscreen></iframe>`
-								: url
-									? `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`
-									: '';
-							return `<figure>${media}<figcaption>${caption}</figcaption></figure>`;
-						},
-						plain: (block, caption) =>
-							[safeWebUrl(block.data?.url), caption].filter(Boolean).join('\n'),
-						// An allowlisted `iframe` (bare, or in a `figure`): its `src` is the link.
-						parse: (el) => {
-							const src = claimed(el, 'iframe')?.getAttribute('src');
-							const url = embedSourceOf(src, allowed) && safeWebUrl(src);
-							return url ? { url } : undefined;
-						}
+				record: {
+					snippet: embed,
+					html: (block, caption) => {
+						const player = embedSourceOf(block.data?.url, allowed);
+						const url = safeWebUrl(block.data?.url);
+						const media = player
+							? `<iframe src="${escapeHtml(player.src)}" title="${escapeHtml(player.provider.name)}" sandbox="${EMBED_SANDBOX}" allowfullscreen></iframe>`
+							: url
+								? `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`
+								: '';
+						return `<figure>${media}<figcaption>${caption}</figcaption></figure>`;
+					},
+					plain: (block, caption) =>
+						[safeWebUrl(block.data?.url), caption].filter(Boolean).join('\n'),
+					// An allowlisted `iframe` (bare, or in a `figure`): its `src` is the link.
+					parse: (el) => {
+						const src = claimed(el, 'iframe')?.getAttribute('src');
+						const url = embedSourceOf(src, allowed) && safeWebUrl(src);
+						return url ? { url } : undefined;
 					}
 				}
-			};
-		};
+			})
+		);
+	};
 
 	/** The embed block with the default providers. */
 	export const embedPlugin = createEmbedPlugin();
@@ -165,12 +147,7 @@
 		</div>
 	{:else}
 		<div use:block.void data-edytor-media-empty>
-			<MediaEmpty
-				block={block.handle}
-				kind="embed"
-				icon="⧉"
-				link={(value) => embedLink(block.handle, value)}
-			/>
+			<MediaEmpty block={block.handle} kind="embed" />
 		</div>
 	{/if}
 	<!-- The core renders the kind's <figure> around this markup. -->

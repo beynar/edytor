@@ -1,8 +1,7 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
-import { trackDrag } from '$lib/dnd/track.js';
 import { pin } from '$lib/surface/overlay.js';
+import { BandDrag } from '../bands.svelte.js';
 import { bandOf, gapBefore } from './gaps.js';
 import { stacks } from './stacking.js';
 import { columnsEnglish, type ColumnsLabels } from '$lib/labels.js';
@@ -32,15 +31,14 @@ export type Strip = {
 
 /** A strip being dragged: the two columns as the drag found them, in client px. */
 type Drag = {
-	strip: Strip;
 	left: Block;
 	right: Block;
 	/** Where the pointer went down, and where it is. */
 	from: number;
 	at: number;
-	/** The left column's width, the pair's, and the narrowest either may get. */
+	/** The left column's width. */
 	width: number;
-	/** The layout's width. */
+	/** The layout's width, the pair's, and the narrowest either may get. */
 	span: number;
 	sum: number;
 	min: number;
@@ -66,7 +64,7 @@ type Drag = {
  * release writes the two columns' `data.width` weights, keeping their sum,
  * in one `edytor.transact` (two `setData` commands: one undo step), and
  * drops the preview in the same flush; Escape, a cancel or the view turning
- * readonly drops it alone, at once.
+ * readonly drops it alone, at once (`band`).
  * Neither column goes under `minWidth` × the layout's width, in the view
  * only (the document stores weights). Positions are read in the overlay's
  * measure, once per frame.
@@ -85,13 +83,11 @@ export class ColumnResize {
 	/** A block drag is in progress: no strip takes the pointer. */
 	dragging = $state(false);
 	/** The measured strips of the hovered layout. */
-	strips = $state<Strip[]>([]);
-	/** The strip being dragged. */
-	drag = $state<Drag | null>(null);
+	strips = $state.raw<Strip[]>([]);
+	/** The strip's drag in progress (`band.drag`). */
+	band: BandDrag<Drag>;
 	/** The guide's layer-relative box while a strip drags. */
 	guide = $state<{ x: number; top: number; height: number } | null>(null);
-	/** Ends the drag in progress without a write (Escape, a cancel, the view turning readonly). */
-	#cancel: (() => void) | null = null;
 	/** The two dragged columns' weights at the pointer, by id, while a strip drags (view only). */
 	preview = $state.raw<Readonly<Record<string, number>> | null>(null);
 
@@ -100,41 +96,33 @@ export class ColumnResize {
 		private minWidth: number,
 		/** The words the bands say (the plugin's `labels`). */
 		readonly labels: ColumnsLabels = columnsEnglish
-	) {}
+	) {
+		this.band = new BandDrag(edytor);
+	}
 
 	/** The view is readonly (reactive). */
 	get readonly() {
 		return this.edytor.readonly;
 	}
 
-	/** A text selection is in progress (`selection.dragging`): the strips take no pointer. */
-	get selecting() {
-		return this.drag === null && this.edytor.selection.dragging;
-	}
-
 	/**
 	 * The layout whose bands show: the one a strip drags, else the one under
-	 * the pointer, the one a band holds the focus of, the one holding the caret.
+	 * the pointer, the one a band holds the focus of, the innermost one
+	 * holding the selection's start (the keyboard's).
 	 */
-	private get layout(): string | null {
-		return this.drag?.left.parent?.id ?? this.hovered ?? this.focused ?? this.caretLayout;
-	}
-
-	/** The innermost layout holding the selection's start (the keyboard's). */
-	private get caretLayout(): string | null {
-		const { facade, selection } = this.edytor;
-		for (
-			let block: Block | null | undefined = selection.state.startBlock;
-			block && !block.isRoot;
-			block = block.parent
-		)
-			if (block.id && facade.isLayout(block.id)) return block.id;
+	get #layout(): string | null {
+		const { facade, selection, idToBlock } = this.edytor;
+		const layout = this.band.drag?.left.parent?.id ?? this.hovered ?? this.focused;
+		if (layout) return layout;
+		const start = selection.projection.start?.block;
+		for (let at = start && idToBlock.get(start); at && !at.isRoot; at = at.parent)
+			if (at.id && facade.isLayout(at.id)) return at.id;
 		return null;
 	}
 
-	/** Whether the strips show: for a layout of an editable view (`layout`), or while one drags. */
+	/** Whether the strips show: for a layout of an editable view, or while one drags. */
 	get shown() {
-		return this.drag !== null || (!this.edytor.readonly && !this.dragging && !!this.layout);
+		return this.band.drag !== null || (!this.edytor.readonly && !this.dragging && !!this.#layout);
 	}
 
 	/** A column's weight as shown: the drag's preview while a strip drags it, else its stored one. */
@@ -147,14 +135,11 @@ export class ColumnResize {
 		let layout: string | null = null;
 		for (
 			let node = (target as Element | null)?.closest?.<HTMLElement>('[data-edytor-block="true"]');
-			node;
+			node && !layout;
 			node = node.parentElement?.closest<HTMLElement>('[data-edytor-block="true"]')
 		) {
 			const id = node.dataset.edytorId;
-			if (id && facade.isLayout(id)) {
-				layout = id;
-				break;
-			}
+			if (id && facade.isLayout(id)) layout = id;
 		}
 		if (layout === this.hovered) return;
 		this.hovered = layout;
@@ -163,24 +148,28 @@ export class ColumnResize {
 
 	/**
 	 * The pointer left for `to`: the bands stay while it is over the editor
-	 * or its overlay (a band, a column block's handle in the gap).
+	 * or its overlay (a band, a column block's handle in the gap), or a strip drags.
 	 */
 	leave = (to: EventTarget | null) => {
 		const node = to instanceof Node ? to : null;
 		const { edytor } = this;
-		if (node && (edytor.overlay.layer?.contains(node) || edytor.node?.contains(node))) return;
+		if (
+			this.band.drag ||
+			(node && (edytor.overlay.layer?.contains(node) || edytor.node?.contains(node)))
+		)
+			return;
 		this.hovered = null;
 	};
 
 	/** The overlay measure: the hovered layout's gaps, and the guide of a drag. */
 	measure = (host: HTMLElement, origin: DOMRect) => {
-		const strips = this.shown ? this.gaps(origin) : [];
-		const drag = this.drag;
+		const strips = this.shown ? this.#gaps(origin) : [];
+		const drag = this.band.drag;
 		const guide = drag && {
 			// Where the hover guide showed: the band's middle, never the gap's (it would jump onto the `+`).
 			x:
 				drag.start +
-				this.widthAt(drag) +
+				this.#widthAt(drag) +
 				bandOf({ left: 0, right: drag.gap }).width / 2 -
 				GUIDE / 2 -
 				origin.left,
@@ -190,19 +179,17 @@ export class ColumnResize {
 		return () => {
 			// Layer-relative, as the rest of the overlay's chrome.
 			pin(host);
-			if (!sameStrips(strips, this.strips)) this.strips = strips;
+			if (JSON.stringify(strips) !== JSON.stringify(this.strips)) this.strips = strips;
 			this.guide = guide;
 		};
 	};
 
 	/** The bands of the hovered layout (`bandOf` each gap): none when it stacks or shows fewer than two columns. */
-	private gaps(origin: DOMRect): Strip[] {
-		const id = this.layout;
+	#gaps(origin: DOMRect): Strip[] {
+		const id = this.#layout;
 		const layout = id ? this.edytor.idToBlock.get(id) : undefined;
-		const node = layout?.node;
-		if (!layout || !node?.isConnected) return [];
-		const box = node.getBoundingClientRect();
-		if (stacks(box.width)) return [];
+		const box = layout?.node?.isConnected ? layout.node.getBoundingClientRect() : undefined;
+		if (!layout || !box || stacks(box.width)) return [];
 		const shown = layout.children.filter(
 			(item) => (item.node?.getBoundingClientRect().width ?? 0) > 0
 		);
@@ -210,13 +197,12 @@ export class ColumnResize {
 			const gap = gapBefore(item);
 			if (!gap) return [];
 			const band = bandOf(gap);
-			const [left, right] = [shown[index]!, item].map((column) =>
-				this.weight(column.id, column.data)
-			);
+			const before = shown[index]!;
+			const [left, right] = [before, item].map((column) => this.weight(column.id, column.data));
 			return [
 				{
 					layout: layout.id,
-					left: shown[index]!.id,
+					left: before.id,
 					right: item.id,
 					value: Math.round((100 * left!) / (left! + right!)),
 					x: band.left - origin.left,
@@ -229,61 +215,41 @@ export class ColumnResize {
 	}
 
 	/** The left column's width at the drag's pointer, held to the minimum on both sides. */
-	private widthAt({ width, sum, min, from, at }: Drag) {
+	#widthAt({ width, sum, min, from, at }: Drag) {
 		const lo = Math.min(min, width);
 		const hi = Math.max(sum - min, width);
 		return Math.min(hi, Math.max(lo, width + at - from));
 	}
 
 	/**
-	 * A `mousedown` on `strip`: no native selection starts there; the press
-	 * itself when no `pointerdown` came before it (`isLonePress`: WebKit's
-	 * first press after a block drag), which starts the drag as one would.
-	 */
-	mousedown = (event: MouseEvent, strip: Strip) => {
-		event.preventDefault();
-		if (isLonePress(this.edytor, event)) this.start(event, strip);
-	};
-
-	/**
-	 * Press on `strip`: the drag starts (`trackDrag`), nothing is written
-	 * until the release.
+	 * Press on `strip` (`band.press`): the drag starts (`trackDrag`), nothing
+	 * is written until the release.
 	 */
 	start = (event: PointerEvent | MouseEvent, strip: Strip) => {
-		const { edytor } = this;
-		if (event.button !== 0 || edytor.readonly || this.drag) return;
-		const pair = this.pair(strip, event.clientX);
+		const pair = this.band.drag ? null : this.#pair(strip, event.clientX);
 		if (!pair) return;
-		this.drag = pair;
-		this.#cancel = trackDrag(
-			edytor,
+		this.band.start(
 			event,
-			(x) => {
-				if (!this.drag) return;
-				this.drag.at = x;
-				this.preview = this.weights(this.drag);
-			},
-			(x) => {
-				const drag = this.drag;
-				this.drag = null;
+			pair,
+			(drag) => {
 				this.guide = null;
-				this.#cancel = null;
-				if (drag && x !== null) this.release({ ...drag, at: x });
+				if (drag) this.#release(drag);
 				// After the release's write: the stored weights replace the preview in one flush.
 				this.preview = null;
-			}
+			},
+			() => (this.preview = this.#weights(this.band.drag!))
 		);
 	};
 
 	/** `strip`'s two columns as they are now, measured, a drag from `from`; `null` when one is gone. */
-	private pair(strip: Strip, from: number): Drag | null {
+	#pair(strip: Strip, from: number): Drag | null {
 		const left = this.edytor.idToBlock.get(strip.left);
 		const right = this.edytor.idToBlock.get(strip.right);
-		const layout = left?.parent;
-		const [a, b, box] = [left, right, layout].map((block) => block?.node?.getBoundingClientRect());
+		const [a, b, box] = [left, right, left?.parent].map((block) =>
+			block?.node?.getBoundingClientRect()
+		);
 		if (!left || !right || !a || !b || !box) return null;
 		return {
-			strip,
 			left,
 			right,
 			from,
@@ -303,26 +269,21 @@ export class ColumnResize {
 	 * A key on a focused band: ArrowRight/ArrowLeft move the gap by 1% of the
 	 * layout's width (Shift: 10%), Home/End to the narrowest either column
 	 * may get (the drag's minimum); each press writes both weights, keeping
-	 * their sum, as one undo step (`release`). Every key there is the band's,
+	 * their sum, as one undo step (`#release`). Every key there is the band's,
 	 * never the editor's; Escape gives the keys back to the editor.
 	 */
 	key = (event: KeyboardEvent, strip: Strip) => {
-		const { edytor } = this;
-		event.stopPropagation();
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			return takeKeys(edytor);
-		}
-		const step = ({ ArrowLeft: -1, ArrowRight: 1 } as Record<string, number>)[event.key];
-		const edge = ({ Home: -Infinity, End: Infinity } as Record<string, number>)[event.key];
-		if (step === undefined && edge === undefined) return;
-		event.preventDefault();
-		if (this.drag || !edytor.dispatcher.permits()) return;
-		const pair = this.pair(strip, 0);
+		const step = this.band.key(event, {
+			ArrowLeft: -1,
+			ArrowRight: 1,
+			Home: -Infinity,
+			End: Infinity
+		});
+		const pair = step && this.#pair(strip, 0);
 		if (!pair) return;
-		pair.at = edge ?? step! * (event.shiftKey ? 0.1 : 0.01) * pair.span;
-		this.release(pair);
-		edytor.overlay.invalidate();
+		pair.at = Number.isFinite(step) ? step! * (event.shiftKey ? 0.1 : 0.01) * pair.span : step!;
+		this.#release(pair);
+		this.edytor.overlay.invalidate();
 	};
 
 	/** A band took (`true`) or lost the focus: its layout's bands stay while it holds it. */
@@ -331,18 +292,9 @@ export class ColumnResize {
 		this.edytor.overlay.invalidate();
 	};
 
-	/**
-	 * The view turned readonly (or the document read-only): a drag in progress
-	 * ends at once, its preview dropped, nothing written (its release would be
-	 * refused anyway). Called by the strips' component when `readonly` flips.
-	 */
-	lock = () => {
-		if (this.drag && !this.edytor.dispatcher.permits()) this.#cancel?.();
-	};
-
 	/** The two columns' weights at the drag's pointer, keeping their stored sum; `null` before it moved. */
-	private weights(drag: Drag): Record<string, number> | null {
-		const width = this.widthAt(drag);
+	#weights(drag: Drag): Record<string, number> | null {
+		const width = this.#widthAt(drag);
 		const { left, right, sum } = drag;
 		if (Math.abs(width - drag.width) < 0.5 || sum <= 0) return null;
 		const pair = weightOf(left.data) + weightOf(right.data);
@@ -351,27 +303,13 @@ export class ColumnResize {
 	}
 
 	/** The release: both weights, keeping their sum, one undo step; nothing when nothing moved. */
-	private release(drag: Drag) {
-		const weights = this.weights(drag);
+	#release(drag: Drag) {
+		const weights = this.#weights(drag);
 		const { left, right } = drag;
 		if (!weights || !left.isInTree || !right.isInTree) return;
 		this.edytor.transact(() => {
-			left.setData({ ...left.data, width: weights[left.id]! });
-			right.setData({ ...right.data, width: weights[right.id]! });
+			for (const column of [left, right])
+				column.setData({ ...column.data, width: weights[column.id]! });
 		});
 	}
 }
-
-const sameStrips = (a: Strip[], b: Strip[]) =>
-	a.length === b.length &&
-	a.every(
-		(strip, index) =>
-			strip.layout === b[index]!.layout &&
-			strip.value === b[index]!.value &&
-			strip.left === b[index]!.left &&
-			strip.right === b[index]!.right &&
-			strip.x === b[index]!.x &&
-			strip.top === b[index]!.top &&
-			strip.width === b[index]!.width &&
-			strip.height === b[index]!.height
-	);

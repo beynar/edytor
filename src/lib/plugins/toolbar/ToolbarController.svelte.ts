@@ -255,11 +255,15 @@ export class ToolbarController {
 			if (!run) return false;
 			selection.setAtRange(startText, run.start, startText, run.end);
 		}
+		return this.#linkPanel();
+	}
+
+	/** The link panel over the selection, its field focused when it mounts; whether it opened. */
+	#linkPanel() {
 		this.updateFromSelection();
 		if (!this.isVisible) return false;
 		this.panel = 'link';
-		this.focusField = true;
-		return true;
+		return (this.focusField = true);
 	}
 
 	/**
@@ -304,10 +308,7 @@ export class ToolbarController {
 		this.hover(null);
 		if (!link) return;
 		this.edytor.selection.setAtRange(link.text, link.start, link.text, link.end);
-		this.updateFromSelection();
-		if (!this.isVisible) return;
-		this.panel = 'link';
-		this.focusField = true;
+		this.#linkPanel();
 	}
 
 	/** The card's Remove: unlink the whole hovered link (one undo step); the selection stays. */

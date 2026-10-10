@@ -691,20 +691,26 @@ Oracle: `src/tests/crdt/placement/same-id-concurrent.test.ts` (the losing text s
 on every replica and after a reload; two fuzzes), the upstream suite
 unchanged.
 
-### YP15 — no lib0 `logging` nor `environment` in the engine (`src/utils/UndoManager.js`, `src/ynode.js`, `src/utils/Transaction.js`, `src/structs/Item.js`)
+### YP15 — no lib0 `logging` nor `environment` in the engine, no development freeze (`src/utils/UndoManager.js`, `src/ynode.js`, `src/utils/Transaction.js`, `src/structs/Item.js`)
 
 Reason: the engine's three messages printed through `lib0/logging` and its
-dev check read `lib0/environment` (`getVariable('node_env')`), which brought
-both modules (their colour, parameter and storage readers) into every app
-that ships edytor, for three lines of output and one boolean.
+development check read `lib0/environment` (`getVariable('node_env')`),
+which brought both modules (their colour, parameter and storage readers)
+into every app that ships edytor, for three lines of output and one
+boolean, and that boolean's freeze cannot hold edytor's values.
 
 Patch (lines marked `// YP15`): the "Not same Y.Doc" and "Invalid access"
 warnings are `console.warn`, the client-id change notice `console.log`
-(unstyled); `isDevMode` (the deep freeze of a `ContentAny`'s values) is
-`DEV` from `esm-env`, the dev condition every other edytor module reads,
-instead of a `node_env` variable.
+(unstyled). `ContentAny` no longer deep-freezes its values in development
+mode (`isDevMode`, the `node_env` variable, and the `lib0/object` import
+go): edytor stores `Uint8Array` records (text delete marks, restorations)
+there, and `Object.freeze` refuses a typed array with elements, so a
+development process (`NODE_ENV=development`) threw on the first text
+delete.
 
-Oracle: the upstream suite unchanged; `pnpm test:crdt`.
+Oracle: the upstream suite unchanged; `pnpm test:crdt` (with the freeze
+on, every text delete in the unit lane throws `Cannot freeze array buffer
+views with elements`).
 
 ## Generated declarations (`dts/`)
 

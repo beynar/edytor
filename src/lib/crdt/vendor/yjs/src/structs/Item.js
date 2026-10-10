@@ -1,7 +1,5 @@
 import * as error from 'lib0-v14/error'
 import * as binary from 'lib0-v14/binary'
-import { DEV } from 'esm-env' // YP15
-import * as object from 'lib0-v14/object'
 
 import { AbstractStruct, addStructToIdSet } from '../structs/AbstractStruct.js'
 
@@ -15,8 +13,6 @@ import {
   addChangedTypeToTransaction,
   isKeptReplaced // YP14
 } from '../utils/transaction-helpers.js'
-
-const isDevMode = DEV // YP15
 
 /**
  * @todo This should return several items
@@ -628,7 +624,7 @@ export class ContentAny {
      * @type {Array<any>}
      */
     this.arr = arr
-    isDevMode && object.deepFreeze(arr)
+    // YP15: no development-mode deep freeze (a Uint8Array value cannot be frozen)
   }
 
   /**

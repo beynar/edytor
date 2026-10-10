@@ -99,8 +99,8 @@ describe('the generation-4 reader', () => {
 
 describe('pre-release data formats reach generation 5 through the cutover', () => {
 	// 0.1.0-next.6 stored an array as one leaf (`d/<path>` holding the whole
-	// array), and documents before it the whole `data` attribute. Both are
-	// generation 4 (generation 5 began at 0.1.0-next.25), so a build of
+	// array); documents before it held the whole `data` attribute, which is
+	// no longer read. Both are generation 4 (generation 5 began at 0.1.0-next.25), so a build of
 	// generation 5 meets them only in the cutover, which reads them with this
 	// build's reader and seeds what it reads: generation 5 then holds items,
 	// never the old forms.
@@ -118,11 +118,11 @@ describe('pre-release data formats reach generation 5 through the cutover', () =
 		return update;
 	};
 
-	it('a next.6 array leaf and a whole-data attribute read as their arrays, and seed as items', () => {
+	it('a next.6 array leaf reads as its array and seeds as items; a whole-data attribute is not read', () => {
 		const value = crdt.generations.previousJSONWith([withPreReleaseData()], defaultSemantics);
 		const byId = (json, id) => json.children.find((block) => block.id === id);
 		expect(byId(value, 'n').data).toEqual({ labels: ['x', 'y'] });
-		expect(byId(value, 'p').data).toEqual({ tags: ['p', 'q'], k: 1 });
+		expect(byId(value, 'p').data).toEqual({});
 		// Seeded as generation 5: the same data, and no leaf or attribute of the old forms.
 		const document = loadDocument(crdt.generations.seedOf(value, defaultSemantics), {
 			semantics: defaultSemantics

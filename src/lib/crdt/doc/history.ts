@@ -9,7 +9,6 @@ import { ownTextIds } from '../text/model.js';
 import { readHorizon } from '../purge.js';
 import {
 	BLOCK_NODE,
-	DATA,
 	DATA_LEAF_PREFIX,
 	DOC_DATA_ROOT,
 	HORIZON_ROOT,
@@ -82,8 +81,8 @@ export const docHistory = (c: HistoryContext) => {
 	type UndoStep = { inserts: IdSetLike; deletes: IdSetLike };
 	/** The single-value attrs a history step must never leave undefined. */
 	const REPAIRED: Record<string, readonly string[]> = {
-		[BLOCK_NODE]: [TYPE, DATA, LAST_CHANGED_ATTR],
-		[INLINE_NODE]: [TYPE, DATA]
+		[BLOCK_NODE]: [TYPE, LAST_CHANGED_ATTR],
+		[INLINE_NODE]: [TYPE]
 	};
 	/**
 	 * Undo repair, inside the history transaction. A popped step

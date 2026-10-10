@@ -334,25 +334,38 @@ export function prepareInsertBefore(this: Block, { block }: BlockOperations['ins
 	return prepareSibling(this, block, false);
 }
 
-/** Write `plan` under `this`'s parent; the id it answers first (inserted or surviving). */
-export function firstId(this: Block, plan: Prepared): string | null {
-	return applyPlan(this, plan, [this.parent])?.ids[0] ?? null;
+/** The blocks whose child lists an op's write normalizes. */
+type Touched = (Block | null | undefined)[];
+
+/**
+ * An op's write: apply its plan, normalizing the child lists of the blocks
+ * `touched` names (read before the write; default: the block's parent), then
+ * answer what `answer` reads of the applied plan (`null`: refused).
+ */
+const writes = <X, P = unknown>(
+	answer: (this: Block, plan: Plan | null, payload: P) => X,
+	touched: (block: Block, payload: P) => Touched = (block) => [block.parent]
+) =>
+	function (this: Block, plan: Prepared, payload: P): X {
+		return answer.call(this, applyPlan(this, plan, touched(this, payload)), payload);
+	};
+const none = (): Touched => [];
+/** The handle itself once the plan applied. */
+function self(this: Block, plan: Plan | null): Block | null {
+	return plan ? this : null;
 }
 
-/** Write `plan` under `this`'s parent; the block it created (a split's tail). */
-export function createdId(this: Block, plan: Prepared): string | null {
-	return applyPlan(this, plan, [this.parent])?.effect.creates[0] ?? null;
-}
-
-/** Write `plan` under `this`'s parent. */
-export function written(this: Block, plan: Prepared): void {
-	applyPlan(this, plan, [this.parent]);
-}
-
-/** Write `plan`, normalizing no child list; the block's content once written. */
-export function contentWritten(this: Block, plan: Prepared): void {
-	if (applyPlan(this, plan, [])) this.normalizeContent();
-}
+/** The id the plan answers first (inserted or surviving). */
+export const firstId = writes((plan) => plan?.ids[0] ?? null);
+/** The block the plan created (a split's tail). */
+export const createdId = writes((plan) => plan?.effect.creates[0] ?? null);
+export const written = writes(() => {});
+/** Normalizing no child list; the block's content once written. */
+export const contentWritten = writes(function (plan) {
+	if (plan) this.normalizeContent();
+}, none);
+/** A data patch: nothing normalized. */
+export const patched = writes(() => {}, none);
 
 export function prepareDuplicate(this: Block, _: BlockOperations['duplicateBlock'] = {}) {
 	return this.edytor.facade.prepare.duplicateBlock(this.id, (_, kind) =>
@@ -445,13 +458,13 @@ export function prepareMove(this: Block, { path }: BlockOperations['moveBlock'])
 	return this.edytor.facade.prepare.moveBlock(this.id, { parent: ref(parent), index });
 }
 
-export function moveBlock(
-	this: Block,
-	plan: Prepared,
-	{ path }: BlockOperations['moveBlock']
-): Block | null {
-	return applyPlan(this, plan, [this.parent, parentAt(this.edytor, path)[0]]) ? this : null;
-}
+export const moveBlock = writes(
+	self,
+	(block, { path }: BlockOperations['moveBlock']): Touched => [
+		block.parent,
+		parentAt(block.edytor, path)[0]
+	]
+);
 
 /**
  * Grouped move — the operation-layer counterpart of `moveBlock` for
@@ -472,14 +485,12 @@ export function prepareMoves(this: Block, { blocks, path }: BlockOperations['mov
 	);
 }
 
-export function moveBlocks(
-	this: Block,
-	plan: Prepared,
-	{ blocks, path }: BlockOperations['moveBlocks']
-): Block[] {
-	const parents = new Set([...blocks.map((block) => block.parent), parentAt(this.edytor, path)[0]]);
-	return applyPlan(this, plan, [...parents]) ? blocks : [];
-}
+export const moveBlocks = writes(
+	(plan, { blocks }: BlockOperations['moveBlocks']): Block[] => (plan ? blocks : []),
+	(block, { blocks, path }): Touched => [
+		...new Set([...blocks.map((block) => block.parent), parentAt(block.edytor, path)[0]])
+	]
+);
 
 /**
  * The facade owns the refusal rules (`unNestBlock`: a block shown nowhere,
@@ -489,9 +500,10 @@ export function prepareUnNest(this: Block, _: BlockOperations['unNestBlock'] = {
 	return this.edytor.facade.prepare.unNestBlock(this.id);
 }
 
-export function unNestBlock(this: Block, plan: Prepared): Block | null {
-	return applyPlan(this, plan, [this.parent, this.parent?.parent, this]) ? this : null;
-}
+export const unNestBlock = writes(
+	self,
+	(block): Touched => [block.parent, block.parent?.parent, block]
+);
 
 /**
  * Admission resolves the nest target — the previous sibling — and the
@@ -503,9 +515,7 @@ export function prepareNest(this: Block, _: BlockOperations['nestBlock'] = {}) {
 	return target != null ? this.edytor.facade.prepare.nestBlock(this.id, target) : REFUSED;
 }
 
-export function nestBlock(this: Block, plan: Prepared): Block | null {
-	return applyPlan(this, plan, [this.parent, this.previousBlock]) ? this : null;
-}
+export const nestBlock = writes(self, (block): Touched => [block.parent, block.previousBlock]);
 
 /** The document refuses the root and a dead block (`setBlock`: not live). */
 export function prepareSet(this: Block, { value }: BlockOperations['setBlock']) {
@@ -522,9 +532,12 @@ export function prepareSet(this: Block, { value }: BlockOperations['setBlock']) 
 	});
 }
 
-export function setBlock(this: Block, plan: Prepared): void {
-	if (applyPlan(this, plan, [this])) this.normalizeContent();
-}
+export const setBlock = writes(
+	function (plan) {
+		if (plan) this.normalizeContent();
+	},
+	(block): Touched => [block]
+);
 
 export function pushContentIntoBlock(
 	this: Block,
@@ -554,11 +567,6 @@ export function prepareRemoveInline(this: Block, { index }: BlockOperations['rem
 export function preparePatch(this: Block, { ops, atom }: BlockOperations['patchData']) {
 	const target = this.isRoot ? null : atom === undefined ? this.id : { block: this.id, atom };
 	return this.edytor.facade.prepare.patchData(target, ops);
-}
-
-/** Write `plan`, normalizing nothing (a data patch). */
-export function patched(this: Block, plan: Prepared): void {
-	applyPlan(this, plan, []);
 }
 
 /**

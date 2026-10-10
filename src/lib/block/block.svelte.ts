@@ -458,18 +458,6 @@ export class Block {
 		});
 	};
 
-	/**
-	 * Delete `length` visible children from `index`, each with its subtree (a
-	 * document delete). Raw, as `insertChildren`.
-	 * @internal
-	 */
-	deleteChildren = (index: number, length = 1): void => {
-		if (!this.edytor.dispatcher.permits()) return;
-		const ids = this.edytor.facade.childrenIds(this.isRoot ? null : this.id);
-		for (const id of ids.slice(index, index + length).reverse())
-			this.edytor.facade.block(id).delete({ keepChildren: false });
-	};
-
 	/** The declared view state (`open` on a `details`) the block's last element held. */
 	#viewState: [string, string][] = [];
 

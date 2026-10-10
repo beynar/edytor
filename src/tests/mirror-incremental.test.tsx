@@ -4,9 +4,8 @@ import { Y } from '$lib/crdt/engine.js';
 import { createOperationEdytor } from './test.utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { contentParts } from '$lib/session/handles.js';
-import { deltaToJson, runsToDeltas } from '$lib/text/deltas.js';
 import type { ProjectedBlock } from '$lib/crdt/index.js';
-import type { JSONBlock } from '$lib/utils/json.js';
+import type { JSONBlock, JSONText } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 
 /**
@@ -19,7 +18,15 @@ const projectedToValue = (node: ProjectedBlock): JSONBlock => {
 	const children = node.children.map(projectedToValue);
 	const content = contentParts(node.content).flatMap((part) => {
 		if (part.kind === 'text') {
-			return deltaToJson(runsToDeltas(part.items)[0]);
+			// A segment's runs: empty ones dropped, neighbours with the same marks joined.
+			const runs: JSONText[] = [];
+			for (const { text, marks = {} } of part.items) {
+				const last = runs.at(-1);
+				if (!text) continue;
+				if (last && JSON.stringify(last.marks ?? {}) === JSON.stringify(marks)) last.text += text;
+				else runs.push(Object.keys(marks).length ? { text, marks: { ...marks } } : { text });
+			}
+			return runs;
 		}
 		return [{ id: part.item.id, type: part.item.type, data: part.item.data ?? {} }];
 	});

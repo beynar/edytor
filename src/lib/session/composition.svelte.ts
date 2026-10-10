@@ -72,6 +72,7 @@ import { insertionMarks } from './editing/text.js';
 
 export type Phase = 'live' | 'tail' | 'gone';
 type Marks = Record<string, unknown>;
+type Place = { id: string; type?: string; kids: readonly string[] }[];
 
 /** How long the tail owns late signals of an engine that sends no next occurrence (compared at use). */
 const TAIL_MS = 500;
@@ -128,9 +129,8 @@ export class Composition {
 	#tail: Text | null = null;
 	#caret: { text: Text; offset: number } | null = null;
 	#waiting: (() => void)[] = [];
-	/** Where the host's block sits (its and its ancestors' ids and types), and their siblings: the re-placement check compares them. */
-	#where = '';
-	#order: { id: string; kids: readonly string[] }[] = [];
+	/** Where the host's block sits (`#place`): the re-placement check compares it. */
+	#where: Place = [];
 	/** After a re-placing commit, until the IME ends: the text it committed (resumed over), or `lost` (dropped). */
 	#resume: SelectionValue | 'lost' | null = null;
 	/** Phantom structural keys the tail swallowed (a test oracle). */
@@ -200,7 +200,6 @@ export class Composition {
 		if (at) this.#pin(at.text, at.from, at.to);
 		this.host = at?.text ?? null;
 		this.#where = this.#place();
-		this.#order = this.#siblings();
 	};
 
 	/** A composition update: the model holds `value` (mechanical, in the capture group). */
@@ -255,7 +254,7 @@ export class Composition {
 	 */
 	restructured = (change: DocChange) => {
 		if (!this.live || !(change.removed.size || change.moved.size || change.meta.size)) return;
-		if (this.#place() === this.#where && !this.#reordered()) return;
+		if (!this.#replaced()) return;
 		const shown = this.edytor.pin.imeBuffer() ?? this.preview;
 		const at = this.#kept();
 		const lost = !at && this.preview ? 'lost' : null;
@@ -388,38 +387,43 @@ export class Composition {
 		return at && { text: at.text, from: at.offset, to: at.offset };
 	}
 
-	/** The host's block and its ancestors (none once it is not visible). */
-	#chain() {
+	/**
+	 * Where the host's block sits: it and its ancestors (none once it is not
+	 * visible), each with its type and its parent's child ids.
+	 */
+	#place(): Place {
 		const { facade } = this.edytor;
 		const id = this.host?.parent.id;
-		return id && facade.isVisibleBlock(id) ? [id, ...facade.ancestorsOf(id)] : [];
+		const chain = id && facade.isVisibleBlock(id) ? [id, ...facade.ancestorsOf(id)] : [];
+		return chain.map((id) => ({
+			id,
+			type: facade.blockTypeOf(id),
+			kids: facade.childrenIds(facade.parentOf(id))
+		}));
 	}
 
-	/** The chain with its types. */
-	#place() {
-		const { facade } = this.edytor;
-		return this.#chain()
-			.map((id) => `${id}:${facade.blockTypeOf(id)}`)
-			.join('/');
-	}
-
-	/** Each chain member with its parent's child ids. */
-	#siblings() {
-		const { facade } = this.edytor;
-		return this.#chain().map((id) => ({ id, kids: facade.childrenIds(facade.parentOf(id)) }));
-	}
-
-	/** A chain member moved among the siblings it had and still has (a same-parent move). */
-	#reordered() {
-		const [before, after] = [this.#order, (this.#order = this.#siblings())];
+	/**
+	 * The host's block was re-placed since the last look: a chain member is
+	 * another block or kind, or moved among the siblings it had and still
+	 * has (a same-parent move).
+	 */
+	#replaced() {
+		const [before, after] = [this.#where, (this.#where = this.#place())];
 		const rank = (id: string, kids: readonly string[], other: readonly string[]) => {
 			const kept = new Set(other);
 			return kids.filter((kid) => kept.has(kid)).indexOf(id);
 		};
-		return before.some(({ id, kids }, i) => {
-			const now = after[i]?.kids ?? [];
-			return rank(id, kids, now) !== rank(id, now, kids);
-		});
+		return (
+			before.length !== after.length ||
+			before.some(({ id, type, kids }, i) => {
+				const now = after[i]!;
+				return (
+					now.id !== id ||
+					now.type !== type ||
+					rank(id, kids, now.kids) !== rank(id, now.kids, kids)
+				);
+			})
+		);
 	}
 
 	/** The preview's position while it is live and whole in one visible block (not deleted with it). */
@@ -588,8 +592,7 @@ export class Composition {
 		this.host = null;
 		// No host, no re-placement baseline: a stale one would end the next session
 		// when its start target's replacement commits (`#rangeless`).
-		this.#where = '';
-		this.#order = [];
+		this.#where = [];
 		this.#region = this.#merged = null;
 		this.#own.clear();
 		this.edytor.pin.release();

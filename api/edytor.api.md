@@ -1534,7 +1534,6 @@ export declare class Dispatcher {
     };
     private policy;
     private decide;
-    private refuse;
     private settle;
     private replace;
     private steps;

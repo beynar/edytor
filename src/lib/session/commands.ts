@@ -10,7 +10,6 @@
  * is caught here, once (`prevented`).
  */
 import type { Block } from '$lib/block/block.svelte.js';
-import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import type { BlockId, BlockSpec } from '$lib/crdt/index.js';
 import type { Plan, PlanStep, Prepared } from '$lib/crdt/edytor-doc.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -117,24 +116,6 @@ const policyOf = (kind: string): Policy =>
 const prevented = (error: unknown): PreventionError => {
 	if (error instanceof PreventionError) return error;
 	throw error;
-};
-
-type Part = Text | InlineBlock;
-const isText = (part: Part): part is Text => 'insertAt' in part;
-
-/** The text part showing display offset `offset` of `block`: its index and local offset. */
-const partAt = (block: Block, offset: number) => {
-	let at = 0;
-	const parts = block.content as Part[];
-	for (let index = 0; index < parts.length; index++) {
-		const part = parts[index]!;
-		if (isText(part) && offset <= at + part.length) return { index, offset: offset - at, part };
-		at += isText(part) ? part.length : 1;
-	}
-	// Past the end (a later step of the plan writes there): its last text's end.
-	const index = parts.findLastIndex(isText);
-	const part = parts[index] as Text | undefined;
-	return part ? { index, offset: part.length, part } : null;
 };
 
 /** A text `patchData`: its target and paths (`key`) and the strings it sets. */
@@ -353,7 +334,7 @@ export class Dispatcher {
 	 */
 	run = <T>(kind: string, body: () => T): T | undefined => {
 		if (this.running) return body();
-		if (!this.permits()) return this.refuse(kind);
+		if (!this.permits()) return void this.#refused(kind);
 		this.cut(kind);
 		this.applied = null;
 		const out = this.scope(() => {
@@ -723,11 +704,6 @@ export class Dispatcher {
 		return history.continues(selection.value) ? undefined : 'before';
 	}
 
-	private refuse(operation: string): undefined {
-		this.#refused(operation);
-		return undefined;
-	}
-
 	/** Record `operation` as refused; answers that result. */
 	#refused(operation: string): CommandResult {
 		return (this.#last = { operation, status: 'refused' });
@@ -795,7 +771,10 @@ export class Dispatcher {
 							: w.parent;
 			const b = block(target);
 			if ((target !== null && created.has(target)) || !b) continue;
-			const at = (offset: number) => partAt(b, offset) ?? { index: 0, offset: 0, part: undefined };
+			const at = (offset: number) => {
+				const hit = b.textAtOffset(offset);
+				return { index: hit?.text.index ?? 0, offset: hit?.offset ?? 0, part: hit?.text };
+			};
 			// A text step shows on a text: a block without one shows none.
 			const t = 'offset' in w && w.offset !== undefined ? at(w.offset) : undefined;
 			const text = t?.part as Text;

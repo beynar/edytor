@@ -75,112 +75,53 @@ export function insertText(
 }
 
 export function getMarksAtRange(this: Text, yStart: number, yEnd: number) {
+	// The MODEL runs (`this.value`), never the rendered ones: a kind's
+	// `transformText` decorations (code tokens) are no marks of the text.
 	const result: JSONText[] = [];
 	let offset = 0;
-	let entered = false;
-
-	// Iterate the MODEL runs (`this.value`), never `this.children` — the
-	// children getter applies the block's `transformText` (e.g. code
-	// tokens), whose marks are local decorations. Reading them here leaked
-	// `codeToken` into persisted marks: typed/composed text inside a code
-	// line inherited the decoration, splitting the serialized content.
-	const parts = this.value;
-	for (let i = 0; i < parts.length; i++) {
-		const { text, marks } = parts[i];
-		const length = text.length;
-		const end = offset + length;
-
-		if (yStart >= offset && yStart < end) {
-			// Found start of range
-			entered = true;
-			const startOffset = yStart - offset;
-			const endOffset = Math.min(length, yEnd - offset);
+	for (const { text, marks } of this.value) {
+		const end = offset + text.length;
+		// From the run holding `yStart`, every run starting before `yEnd`.
+		if (result.length ? offset < yEnd : yStart >= offset && yStart < end)
 			result.push({
-				text: text.slice(startOffset, endOffset),
-				marks: { ...(marks ?? {}) }
+				text: text.slice(Math.max(0, yStart - offset), yEnd - offset),
+				marks: { ...marks }
 			});
-		} else if (entered && end <= yEnd) {
-			// Middle of range
-			result.push({
-				text,
-				marks: { ...(marks ?? {}) }
-			});
-		} else if (entered && offset < yEnd && yEnd <= end) {
-			// End of range
-			const endOffset = yEnd - offset;
-			result.push({
-				text: text.slice(0, endOffset),
-				marks: { ...(marks ?? {}) }
-			});
-			break;
-		}
-
-		offset += length;
+		offset = end;
 	}
-
 	return result;
 }
 
-type GraphemeSegment = {
-	index: number;
-	segment: string;
-};
-
-type GraphemeSegmenter = {
-	segment(value: string): Iterable<GraphemeSegment>;
-};
-
-type GraphemeSegmenterConstructor = new (
-	locale?: string | string[],
+type Segmenter = new (
+	locale?: string,
 	options?: { granularity: 'grapheme' }
-) => GraphemeSegmenter;
+) => { segment(value: string): Iterable<{ index: number }> };
 
-const getGraphemeBoundaries = (value: string) => {
-	const Segmenter = (Intl as typeof Intl & { Segmenter?: GraphemeSegmenterConstructor }).Segmenter;
-	if (Segmenter) {
-		return Array.from(new Segmenter(undefined, { granularity: 'grapheme' }).segment(value)).map(
-			({ index, segment }) => ({
-				start: index,
-				end: index + segment.length
-			})
-		);
-	}
-
-	let index = 0;
-	return Array.from(value).map((segment) => {
-		const start = index;
-		index += segment.length;
-		return {
-			start,
-			end: index
-		};
-	});
+/** The offsets where `value`'s graphemes start, then its length (code points without `Intl.Segmenter`). */
+const graphemeEdges = (value: string): number[] => {
+	const Segmenter = (Intl as { Segmenter?: Segmenter }).Segmenter;
+	const starts = Segmenter
+		? Array.from(
+				new Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
+				(s) => s.index
+			)
+		: [];
+	if (!Segmenter)
+		for (let at = 0; at < value.length; at += value.codePointAt(at)! > 0xffff ? 2 : 1)
+			starts.push(at);
+	return [...starts, value.length];
 };
 
-export const getPreviousGraphemeStart = (value: string, offset: number) => {
-	const clampedOffset = Math.min(Math.max(offset, 0), value.length);
-	let previousStart = 0;
+const clamp = (value: string, offset: number) => Math.min(Math.max(offset, 0), value.length);
 
-	for (const boundary of getGraphemeBoundaries(value)) {
-		if (boundary.end >= clampedOffset) {
-			return boundary.start < clampedOffset ? boundary.start : previousStart;
-		}
-		previousStart = boundary.start;
-	}
+/** The start of the grapheme before `offset` (0 at the start). */
+export const getPreviousGraphemeStart = (value: string, offset: number) =>
+	graphemeEdges(value).findLast((edge) => edge < clamp(value, offset)) ?? 0;
 
-	return previousStart;
-};
-
+/** The end of the grapheme after `offset` (`offset`, clamped, at the end). */
 export const getNextGraphemeEnd = (value: string, offset: number) => {
-	const clampedOffset = Math.min(Math.max(offset, 0), value.length);
-
-	for (const boundary of getGraphemeBoundaries(value)) {
-		if (boundary.end > clampedOffset) {
-			return boundary.end;
-		}
-	}
-
-	return clampedOffset;
+	const at = clamp(value, offset);
+	return graphemeEdges(value).find((edge) => edge > at) ?? at;
 };
 
 export function deleteText(this: Text, { direction, length = 1 }: TextOperations['deleteText']) {

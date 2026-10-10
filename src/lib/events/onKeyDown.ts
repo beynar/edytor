@@ -79,7 +79,7 @@ const shouldPreventReadonlyMutationKey = (event: KeyboardEvent) =>
  * its block or text (or right after a trailing soft break, for Backspace,
  * which the model deletes). With a
  * command modifier, a word or line chord at the block's edge deletes the
- * neighbour like a character (`deleteCollapsedUnit`); WebKit announces no
+ * neighbour like a character (a unit delete, `runBeforeInputDeleteCommand`); WebKit announces no
  * `beforeinput` for it at the document's first text.
  */
 const getStructuralFallbackInputType = (edytor: Edytor, event: KeyboardEvent) => {

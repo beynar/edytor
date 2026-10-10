@@ -148,42 +148,27 @@ type CaretPointDocument = Document & {
 	caretRangeFromPoint?: (x: number, y: number) => Range | null;
 };
 
-// `caretPositionFromPoint` is the spec API (Firefox, Chromium ≥128);
-// `caretRangeFromPoint` is the legacy WebKit/Chromium API. Support both.
-const caretRangeFromPoint = (doc: CaretPointDocument, x: number, y: number) => {
-	const position = doc.caretPositionFromPoint?.(x, y);
-	if (position?.offsetNode) {
-		return { container: position.offsetNode, offset: position.offset };
-	}
-	const range = doc.caretRangeFromPoint?.(x, y);
-	if (range) {
-		return { container: range.startContainer, offset: range.startOffset };
-	}
-	return null;
-};
-
 // Preventing the drop suppresses the browser's own `insertFromDrop`
 // beforeinput, so the accepted payload is the occurrence itself — the same
-// routing as `insertFromPaste`, with the resolved drop point as its declared
-// target range.
+// routing as `insertFromPaste`, with the drop point as its declared target
+// range: `caretPositionFromPoint` (the spec API: Firefox, Chromium ≥128),
+// else `caretRangeFromPoint` (the legacy WebKit/Chromium one).
 const insertFromDrop = (edytor: Edytor, root: Element, event: DragEvent) => {
-	const caret = caretRangeFromPoint(
-		root.ownerDocument as CaretPointDocument,
-		event.clientX,
-		event.clientY
-	);
+	const doc = root.ownerDocument as CaretPointDocument;
+	const { clientX: x, clientY: y } = event;
+	const at = doc.caretPositionFromPoint?.(x, y);
+	const point = at?.offsetNode
+		? new StaticRange({
+				startContainer: at.offsetNode,
+				startOffset: at.offset,
+				endContainer: at.offsetNode,
+				endOffset: at.offset
+			})
+		: doc.caretRangeFromPoint?.(x, y);
 	return runOccurrence(edytor, {
 		inputType: 'insertFromDrop',
 		dataTransfer: event.dataTransfer,
-		declared:
-			caret && root.contains(caret.container)
-				? new StaticRange({
-						startContainer: caret.container,
-						startOffset: caret.offset,
-						endContainer: caret.container,
-						endOffset: caret.offset
-					})
-				: null,
+		declared: point && root.contains(point.startContainer) ? point : null,
 		cancelable: true
 	});
 };

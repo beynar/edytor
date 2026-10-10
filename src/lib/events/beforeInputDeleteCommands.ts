@@ -28,7 +28,7 @@ const mergeIntoHeader = (edytor: Edytor, from: Block, into: Block, backward: boo
  * Delete at the caret's text edge, one character inside it: the inline
  * atom beside the edge, else the character, the caret staying at its side.
  */
-const deleteInText = (
+export const deleteInText = (
 	edytor: Edytor,
 	text: Text,
 	yStart: number,

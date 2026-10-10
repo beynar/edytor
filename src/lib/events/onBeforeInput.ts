@@ -27,6 +27,7 @@ import {
 	ownsEvent
 } from './nativeInteractiveControl.js';
 import { runBeforeInputCommand } from './beforeInputCommands.js';
+import { deleteInText } from './beforeInputDeleteCommands.js';
 import { readDomText } from './onInput.js';
 
 /** The Android no-op-Backspace and model-owned drift deadlines (named, counted browser rules). */
@@ -231,8 +232,7 @@ const androidNoOpBackspaceDeadline = (edytor: Edytor, attempt: Attempt) => {
 			return;
 		attempt.phase = 'applied';
 		edytor.attempts.drift(attempt, 'refresh', 0);
-		const deletion = text.deleteText({ direction: 'BACKWARD', length: 1 });
-		edytor.selection.setAtTextOffset(text, deletion?.start ?? attempt.yStart - 1);
+		deleteInText(edytor, text, attempt.yStart, true, false);
 	}, NATIVE_INPUT_REPAIR_WINDOW_MS);
 };
 

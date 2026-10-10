@@ -12,7 +12,6 @@ edytor imports from this directory. Do not edit these files by hand: re-sync
 | Package                                         | Version | npm integrity (`pnpm-lock.yaml` before the fork)                                                          | License                           |
 | ----------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------- | --------------------------------- |
 | `@atlaskit/pragmatic-drag-and-drop`             | 4.0.0   | `sha512-pyDo2B5NiaExoKGmgeXKGNUL4aR4UzzSZm8QWWjYTEyBLVqSqKyKUwtVxMw2YEkakagOGFONUdHM32LAH2nPug==` | Apache-2.0, `…/LICENSE.md`        |
-| `@atlaskit/pragmatic-drag-and-drop-hitbox`      | 3.0.0   | `sha512-AGLp1ewjm07eRN2NL62awllSM19FrWVZMQYfZA/jugQlpaeoTr5ah2DE7zfiEt7yrg34htoKQVM+y6SGIQYs2A==` | Apache-2.0, `…/LICENSE.md`        |
 | `@atlaskit/pragmatic-drag-and-drop-auto-scroll` | 3.2.1   | `sha512-2fhWAG48EjPoKhoHLG6RcT3/VaCzYEbRb6BtA/Vcfx4FrL0P1KrEgBJ6OAwB0X8MOV6UH22YgjFFHjv8fQD9rA==` | Apache-2.0, `…/LICENSE.md`        |
 | `bind-event-listener` (core's dependency)       | 3.0.0   | `sha512-PJvH288AWQhKs2v9zyfYdPzlPqf5bXbGMmhmUIY9x4dAUGIWgomO771oBQNwJnMQSnUIXhKu6sgzpBRXTlvb8Q==` | MIT © Alexander Reardon, `LICENSE` |
 | `raf-schd` (core's dependency)                  | 4.0.3   | `sha512-tQkJl2GRWh83ui2DiPTJz9wEiMN20syf+5oKfB03yYP7ioZcJwsIK8FjrtLwH1m7C7e+Tt2yYBlrOpdT+dyeIQ==` | MIT © Alex Reardon, `LICENSE`     |
@@ -25,7 +24,6 @@ destructuring and `for…of` are native there), not its `dist/esm` build.
 
 ```text
 pragmatic-drag-and-drop/              dist/es2019/<path>.js and dist/types/<path>.d.ts of the core
-pragmatic-drag-and-drop-hitbox/       the same, of the hitbox package
 pragmatic-drag-and-drop-auto-scroll/  the same, of the auto-scroll package
 bind-event-listener/                  index.js, bind.js, bind-all.js: its src/*.ts with the types removed
 raf-schd/                             dist/raf-schd.esm.js, verbatim
@@ -36,7 +34,7 @@ against `dist/es2019/<same path>` (or `dist/types/<same path>` for a `.d.ts`).
 
 ## What was kept
 
-The module closure of the four entry points `pragmatic.ts` imports, nothing
+The module closure of the three entry points `pragmatic.ts` imports, nothing
 else:
 
 - core `entry-point/element/adapter` (`draggable`, `dropTargetForElements`,
@@ -44,15 +42,14 @@ else:
   and monitors, the honey pot fix, the window-leaving and broken-drag
   detection;
 - core `entry-point/element/set-custom-native-drag-preview`;
-- hitbox `list-item` (`attachInstruction`, `extractInstruction`);
 - auto-scroll `entry-point/element` (`autoScrollForElements`,
   `autoScrollWindowForElements`, the over-element API and its scheduler).
 
-The `.d.ts` files are the declarations those entry points' types reach (12
+The `.d.ts` files are the declarations those entry points' types reach (9
 files); a `.js` without one is reached only from other vendored `.js`.
 Everything else the packages publish (the external and text-selection
-adapters, the other utilities, the closest-edge and tree-item hitboxes, the
-unsafe-overflow auto-scroll, CommonJS and `dist/esm` builds) is left out.
+adapters, the other utilities, the hitbox package (the block handles split a
+row into its halves themselves), the unsafe-overflow auto-scroll, CommonJS and `dist/esm` builds) is left out.
 
 ## Local changes (the only ones)
 
@@ -86,16 +83,16 @@ its upstream file, and compare: they are equal.
   (`scripts/xloc.mjs`, `scripts/bundle-size.mjs`) skip it as vendored code.
 - `package.json#sideEffects` lists the core's directory: upstream declares the
   core with side effects (`count-events-for-safari.js` binds its WebKit
-  listeners at import), the hitbox and auto-scroll without.
+  listeners at import), the auto-scroll without.
 - Nothing runs against the DOM at import (the core guards `typeof window`):
   server rendering imports it as before.
 
 ## Re-syncing with upstream
 
-1. Install the new versions of the three packages (and of `bind-event-listener`,
+1. Install the new versions of the two packages (and of `bind-event-listener`,
    `raf-schd`) somewhere outside the package's dependencies.
 2. From each package's `module:es2019` entry (`element/adapter`,
-   `element/set-custom-native-drag-preview`, hitbox `list-item`, auto-scroll
+   `element/set-custom-native-drag-preview`, auto-scroll
    `element`), follow every import; copy each reached `dist/es2019` file and,
    from each entry's `types` field, each reached `dist/types` declaration to
    the same path here, rewriting specifiers as in change 1.

@@ -56,40 +56,22 @@ export const isNativeTextControlEvent = (event: Event) =>
 const EDITABLE_TARGET_SELECTOR = '[contenteditable]:not([contenteditable="false" i])';
 
 /**
- * The event target sits inside a nested `contenteditable` island that is
- * neither the editor root nor a managed text element (text elements
- * carry their own `contentEditable="true"`). Such islands — a plugin
- * chrome editor, an embedded code field — own their input/composition
- * lifecycle; the outer editor must not snapshot them against the model
- * selection or commit their composition text.
- */
-const isNestedForeignEditableTarget = (
-	editorRoot: Element | null | undefined,
-	target: EventTarget | null
-) => {
-	const editable = findClosestElement(target, EDITABLE_TARGET_SELECTOR);
-	if (!editable || editable === editorRoot) {
-		return false;
-	}
-	return !editable.hasAttribute('data-edytor-text');
-};
-
-/**
  * A kind's own control: a form control (`input` of any type, `textarea`,
- * `select`, `button`) or a nested editable island inside the host, never the
- * root nor the editor's own text elements. It owns its focus, selection and
- * events; the projector never writes the editor's caret over it.
+ * `select`, `button`) or a nested editable island inside the host (a plugin
+ * chrome editor, an embedded code field: it owns its input and composition
+ * lifecycle), never the root nor the editor's own text elements (they carry
+ * their own `contentEditable="true"`). It owns its focus, selection and
+ * events; the projector never writes the editor's caret over it, and the
+ * editor never snapshots it nor commits its composition text.
  */
 export const isKindControl = (
 	editorRoot: Element | null | undefined,
 	target: EventTarget | null
 ) => {
-	const element = getElementFromTarget(target);
+	const editable = findClosestElement(target, EDITABLE_TARGET_SELECTOR);
 	const control =
-		findClosestElement(element, NATIVE_ACTIVE_ELEMENT_SELECTOR) ??
-		(isNestedForeignEditableTarget(editorRoot, element)
-			? findClosestElement(element, EDITABLE_TARGET_SELECTOR)
-			: null);
+		findClosestElement(target, NATIVE_ACTIVE_ELEMENT_SELECTOR) ??
+		(editable?.hasAttribute('data-edytor-text') ? null : editable);
 	return Boolean(control && editorRoot && control !== editorRoot && editorRoot.contains(control));
 };
 

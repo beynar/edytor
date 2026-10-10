@@ -14,7 +14,7 @@ export type ImportKinds = Pick<Edytor, 'blocks' | 'marks'> &
 type Values = Record<string, SerializableContent>;
 type Line = { type?: string; data?: Values; content: JSONContentPart[]; children?: Line[] };
 /** A kind claiming an element; `lines`: a container whose default child takes each text line. */
-type Claim = { type: string; data: Values; lines?: string };
+type Claim = { type: string; kind: BlockDefinition; data: Values; lines?: string };
 /**
  * Where inline content goes: the line being read, and how a void kind's
  * element met inside it (an `<img>`, at any depth of inline markup) ends it
@@ -104,19 +104,19 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		if (!kind.presets?.length || (kind.void && kind.parse)) continue;
 		for (const { data = {} } of kind.presets) {
 			const tag = tagOf(type, kind, data);
-			if (tag && !byTag.has(tag)) byTag.set(tag, { type, data });
+			if (tag && !byTag.has(tag)) byTag.set(tag, { type, kind, data });
 		}
 		const child = kind.rendersContent === false ? kind.defaultChild : undefined;
 		const tag = child && blocks.has(child) ? tagOf(child, blocks.get(child)!, {}) : undefined;
 		if (tag && !byTag.has(tag))
-			byTag.set(tag, { type, data: kind.presets[0]!.data ?? {}, lines: child });
+			byTag.set(tag, { type, kind, data: kind.presets[0]!.data ?? {}, lines: child });
 	}
 	const kindOf = (element: HTMLElement): Claim | undefined => {
 		// A glyph is text: no kind claims it.
 		if (isGlyph(element)) return undefined;
 		for (const [type, kind] of blocks) {
 			const data = kind.parse?.(element);
-			if (data) return { type, data };
+			if (data) return { type, kind, data };
 		}
 		return byTag.get(element.localName);
 	};
@@ -145,7 +145,7 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 	/** A void kind's element (an image): it shows no text, so a line it is met in ends there. */
 	const isVoid = (node: Node): node is HTMLElement => {
 		const claim = node instanceof Element ? kindOf(node as HTMLElement) : undefined;
-		return claim !== undefined && blocks.get(claim.type)?.void === true;
+		return claim?.kind.void === true;
 	};
 
 	const text = (line: Line, value: string, marks: Values, pre: boolean) => {
@@ -217,7 +217,7 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		}
 		// A void's only text is its caption: an `iframe`'s fallback, a `video`'s source list or
 		// a bookmark's link text is never content.
-		if (claim && blocks.get(claim.type)?.void) {
+		if (claim?.kind.void) {
 			const line: Line = { type: claim.type, data: claim.data, content: [] };
 			const caption = [...element.children].find((child) => child.localName === 'figcaption');
 			// A caption is one line: an element that would end it (an image) adds nothing.
@@ -227,7 +227,7 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 		}
 		// A kind that shows no text of its own (a list, a layout, a column) takes none: its
 		// inline runs and a leading paragraph are lines of its default child, never hidden text.
-		if (claim && blocks.get(claim.type)?.rendersContent === false) {
+		if (claim?.kind.rendersContent === false) {
 			const children = linesOf(element, kinds.document.defaultChild(claim.type));
 			return [
 				{ type: claim.type, data: claim.data, content: [], ...(children.length && { children }) }
@@ -251,7 +251,7 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 			line: () => current,
 			apart: (inner) => {
 				// A void's own media (a figure's `img`) is part of it.
-				if (claim && blocks.get(claim.type)?.void) return;
+				if (claim?.kind.void) return;
 				parts.push(...blockOf(inner, type));
 				current = { type: line.type, data: line.data, content: [] };
 				parts.push(current);

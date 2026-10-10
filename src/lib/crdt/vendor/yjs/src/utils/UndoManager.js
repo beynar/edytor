@@ -1,6 +1,5 @@
 import * as time from 'lib0-v14/time'
 import * as array from 'lib0-v14/array'
-import * as logging from 'lib0-v14/logging'
 import { ObservableV2 } from 'lib0-v14/observable'
 
 import { mergeIdSets, iterateStructsByIdSet } from './ids.js'
@@ -293,7 +292,7 @@ export class UndoManager extends ObservableV2 {
     ynodes.forEach(ynode => {
       if (!tmpSet.has(ynode)) {
         tmpSet.add(ynode)
-        if (ynode instanceof YNode ? ynode.doc !== this.doc : ynode !== this.doc) logging.warn('[yjs#509] Not same Y.Doc') // use MultiDocUndoManager instead. also see https://github.com/yjs/yjs/issues/509
+        if (ynode instanceof YNode ? ynode.doc !== this.doc : ynode !== this.doc) console.warn('[yjs#509] Not same Y.Doc') // YP15. use MultiDocUndoManager instead. also see https://github.com/yjs/yjs/issues/509
         this.scope.push(ynode)
       }
     })

@@ -3,7 +3,7 @@
  * (`del.range.whole-doc`, `layout.single`, `room.quota`, …) or plain
  * prose, never a plan, review or checkpoint id a reader who was not there
  * cannot look up (`scripts/ticket-ids.mjs`). The vendored fork's patches
- * are named `YP1` … `YP14` (UPSTREAM.md), apart from any plan number.
+ * are named `YP1` … `YP15` (UPSTREAM.md), apart from any plan number.
  */
 import { describe, expect, test } from 'vitest';
 import { findTicketIds, guides, ticketIdsIn } from '../../../scripts/ticket-ids.mjs';

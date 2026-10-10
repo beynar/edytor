@@ -44,7 +44,6 @@
 import * as bc from 'lib0-v14/broadcastchannel';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
-import * as env from 'lib0-v14/environment';
 import * as promise from 'lib0-v14/promise';
 import {
 	applyAwarenessUpdate,
@@ -264,7 +263,7 @@ export const initLifecycle = (
 		};
 	} else {
 		const leave = () => void destroy();
-		const proc = (env.isNode ? (globalThis as { process?: Listeners }).process : undefined) ?? {};
+		const proc = (globalThis as { process?: Listeners }).process ?? {};
 		proc.on?.('exit', leave);
 		host._leave = () => proc.off?.('exit', leave);
 	}

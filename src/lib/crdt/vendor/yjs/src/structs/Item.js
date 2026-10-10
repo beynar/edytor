@@ -1,6 +1,6 @@
 import * as error from 'lib0-v14/error'
 import * as binary from 'lib0-v14/binary'
-import * as env from 'lib0-v14/environment'
+import { DEV } from 'esm-env' // YP15
 import * as object from 'lib0-v14/object'
 
 import { AbstractStruct, addStructToIdSet } from '../structs/AbstractStruct.js'
@@ -16,7 +16,7 @@ import {
   isKeptReplaced // YP14
 } from '../utils/transaction-helpers.js'
 
-const isDevMode = env.getVariable('node_env') === 'development'
+const isDevMode = DEV // YP15
 
 /**
  * @todo This should return several items

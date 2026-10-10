@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning) and YP9–YP14
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning) and YP9–YP15
 global.d.ts upstream global.d.ts, plus patches YP1 and YP8
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -691,6 +691,21 @@ Oracle: `src/tests/crdt/placement/same-id-concurrent.test.ts` (the losing text s
 on every replica and after a reload; two fuzzes), the upstream suite
 unchanged.
 
+### YP15 — no lib0 `logging` nor `environment` in the engine (`src/utils/UndoManager.js`, `src/ynode.js`, `src/utils/Transaction.js`, `src/structs/Item.js`)
+
+Reason: the engine's three messages printed through `lib0/logging` and its
+dev check read `lib0/environment` (`getVariable('node_env')`), which brought
+both modules (their colour, parameter and storage readers) into every app
+that ships edytor, for three lines of output and one boolean.
+
+Patch (lines marked `// YP15`): the "Not same Y.Doc" and "Invalid access"
+warnings are `console.warn`, the client-id change notice `console.log`
+(unstyled); `isDevMode` (the deep freeze of a `ContentAny`'s values) is
+`DEV` from `esm-env`, the dev condition every other edytor module reads,
+instead of a `node_env` variable.
+
+Oracle: the upstream suite unchanged; `pnpm test:crdt`.
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so
@@ -719,7 +734,7 @@ shasum -a 256 /tmp/yjs.tgz   # expect 4b5ad410…8d7b85
 tar -xzf /tmp/yjs.tgz -C /tmp
 UP=/tmp/yjs-96c96e1fcb1ef6ce866d5264b3f97f7f77b11f64
 
-# engine source: normalize YP1 away, then diff — prints exactly the YP4–YP14 hunks
+# engine source: normalize YP1 away, then diff — prints exactly the YP4–YP15 hunks
 # (the pinned tarball's src/ equals node_modules/@y/y@14.0.0-rc.26/src)
 mkdir -p /tmp/yjs-normalized && cp -R src/lib/crdt/vendor/yjs/src /tmp/yjs-normalized/
 find /tmp/yjs-normalized -name '*.js' -exec sed -i '' 's|lib0-v14|lib0|g' {} +

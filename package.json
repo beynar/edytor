@@ -49,6 +49,7 @@
 		"soak:smoke": "node bench/soak/run.mjs --clients 6 --threads 2 --minutes 1.5 --ops 2 --fault-scale 0.15",
 		"bench:browser": "node bench/browser.js",
 		"bench:runs": "BENCH_RUNS=1 vitest --config ./vitest.crdt.config.ts --run src/tests/crdt/runs/runs.bench.test.ts",
+		"size": "node scripts/bundle-size.mjs --by dir",
 		"census": "node scripts/census.mjs"
 	},
 	"exports": {

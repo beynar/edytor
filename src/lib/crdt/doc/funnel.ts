@@ -2,7 +2,7 @@
  * The write funnel: every facade write goes through `write` (disposal and the
  * document's writable guard), and every prepared plan through `apply` — one
  * transaction, its result read from what the transaction wrote, and the
- * frame's one attribution and lineage pass.
+ * frame's one attribution pass.
  */
 import type { BlockId } from '../placement/model.js';
 import type { BlockAttributionApi } from '../attribution/block.js';
@@ -10,7 +10,6 @@ import type { AttributionActor } from '../attribution/index.js';
 import { ENTRY_FACET, type Folded } from '../text/runs.js';
 import { AT, DEL_PREFIX, ID, LAST_CHANGED_ATTR, TYPE } from '../schema.js';
 import { writeLeaves } from '../data.js';
-import type { JSONBlock } from '../../utils/json.js';
 import { NOOP } from './plan.js';
 import type { EdytorDocConfig, OpResult, PlanStep, Prepared } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
@@ -29,26 +28,13 @@ export class EdytorDocDisposedError extends Error {
 	}
 }
 
-/**
- * The lineage ring depth, validated — `NaN`/`Infinity`/fractional/negative
- * values would silently disable the ring's trim bound. The one check every
- * entry path (facade creation, document attach and reattach) runs.
- */
-export const lineageDepthOf = (depth: number | undefined): number => {
-	const d = depth ?? 0;
-	if (!Number.isInteger(d) || d < 0) {
-		throw new RangeError(`lineage.depth must be a non-negative integer, got ${JSON.stringify(d)}`);
-	}
-	return d;
-};
-
 /** What the write funnel writes with: the reads, the attribution writer and the facade's configuration. */
 export type FunnelContext = DocBase &
 	DocReads & { BA: BlockAttributionApi; config: EdytorDocConfig };
 
 /** The write funnel of one facade. */
 export const writeFunnel = (c: FunnelContext) => {
-	const { doc, M, T, runsView, dataNode, blockJSON, BA, config } = c;
+	const { doc, M, T, runsView, dataNode, BA, config } = c;
 
 	/**
 	 * Terminal flag — set by `dispose()`. Mutating ops funnel through
@@ -78,45 +64,18 @@ export const writeFunnel = (c: FunnelContext) => {
 	// is observed, never predicted.
 	//
 	// Each apply opens a frame that tracks the index's folds. When it
-	// closes, ONE pass over the facets the fold saw stamps attribution and
-	// commits lineage: a block whose registry entry was created gets
-	// its `createdBy` record; a block whose content, claims, type or data
+	// closes, ONE pass over the facets the fold saw stamps attribution: a
+	// block whose registry entry was created gets its `createdBy` record; a block whose content, claims, type or data
 	// changed gets a contributor stamp; moves and delete marks stamp
 	// nothing. Two intents the effects cannot name are recorded by their
 	// steps: a split-born block inherits its source's contributors, and a
-	// merge survivor unions the absorbed block's. Lineage is captured
-	// before the first write for each target a step names, and committed
-	// only for targets the effects show changed, deleted or absorbed. With
-	// no configured `actor` the funnel writes no attribution at all.
+	// merge survivor unions the absorbed block's. With no configured
+	// `actor` the funnel writes no attribution at all.
 
 	const actorOf = (): AttributionActor | undefined => config.actor?.();
-	const lineageDepth = lineageDepthOf(config.lineageDepth);
-
-	/** A pre-write capture awaiting its frame's commit. */
-	type PendingLineage = { a?: string; by: string; t: number; j: JSONBlock };
 	type Frame = {
-		lineage: Map<BlockId, PendingLineage>;
 		inherit: Map<BlockId, BlockId>;
 		unions: [into: BlockId, from: BlockId][];
-	};
-
-	/**
-	 * Capture `id`'s displaced state when the current actor is NOT the `l`
-	 * winner (`force`: destructive paths, where the state is lost whoever
-	 * owns `l`). First capture in a frame wins — it is the pre-frame state.
-	 */
-	const lineagePending = (id: BlockId, force = false): PendingLineage | undefined => {
-		const actor = actorOf();
-		const node = M.blockNodeOf(doc, id);
-		if (lineageDepth <= 0 || actor === undefined || node === null) return undefined;
-		const l = node.getAttr(LAST_CHANGED_ATTR);
-		if (!force && l === actor.id) return undefined;
-		const j = blockJSON(id);
-		return { ...(typeof l === 'string' ? { a: l } : {}), by: actor.id, t: Date.now(), j };
-	};
-	const capture = (f: Frame, id: BlockId, force = false): void => {
-		const pending = f.lineage.has(id) ? undefined : lineagePending(id, force);
-		if (pending !== undefined) f.lineage.set(id, pending);
 	};
 
 	/** The frame's one attribution pass over the facets the fold saw it write. */
@@ -125,14 +84,15 @@ export const writeFunnel = (c: FunnelContext) => {
 		if (actor === undefined || !folded.wrote) return;
 		const created = new Set<BlockId>();
 		const changed = new Set<BlockId>();
-		const gone = new Set<BlockId>(f.unions.map(([, from]) => from));
 		for (const [id, facets] of folded.touched) {
 			if (facets.has(ENTRY_FACET) && M.blockNodeOf(doc, id) !== null) created.add(id);
 			else
-				for (const facet of facets) {
-					if (facet.startsWith(DEL_PREFIX)) gone.add(id);
-					else if (![ENTRY_FACET, AT, ID, LAST_CHANGED_ATTR].includes(facet)) changed.add(id);
-				}
+				for (const facet of facets)
+					if (
+						!facet.startsWith(DEL_PREFIX) &&
+						![ENTRY_FACET, AT, ID, LAST_CHANGED_ATTR].includes(facet)
+					)
+						changed.add(id);
 		}
 		for (const id of created) {
 			const node = M.blockNodeOf(doc, id);
@@ -143,9 +103,6 @@ export const writeFunnel = (c: FunnelContext) => {
 			if (node !== null) BA.stampChange(doc, node, id, actor.id);
 		}
 		for (const [into, from] of f.unions) BA.unionContributors(doc, into, from);
-		for (const [id, pending] of f.lineage) {
-			if (changed.has(id) || gone.has(id)) BA.appendLineage(doc, id, pending, lineageDepth);
-		}
 	};
 
 	/**
@@ -210,17 +167,8 @@ export const writeFunnel = (c: FunnelContext) => {
 		return write(() =>
 			doc.transact(() => {
 				const frame = runsView.track();
-				const f: Frame = { lineage: new Map(), inherit: new Map(), unions: [] };
+				const f: Frame = { inherit: new Map(), unions: [] };
 				try {
-					// Lineage captures every target's pre-write state before the
-					// first write; destructive steps capture whoever owns `l`.
-					for (const w of p.writes) {
-						if (w.op === 'deleteBlock') capture(f, w.id, true);
-						else if (w.op === 'mergeBlocks') {
-							capture(f, w.from, true);
-							capture(f, w.into);
-						} else if ('id' in w && w.id !== undefined) capture(f, w.id);
-					}
 					for (const w of p.writes) writeStep(w, f);
 				} catch (error) {
 					// The frame would otherwise fold every later commit.
@@ -237,9 +185,6 @@ export const writeFunnel = (c: FunnelContext) => {
 	return {
 		write,
 		apply,
-		actorOf,
-		lineageDepth,
-		lineagePending,
 		/** Disposal is terminal for writes. */
 		dispose: (): void => {
 			disposed = true;

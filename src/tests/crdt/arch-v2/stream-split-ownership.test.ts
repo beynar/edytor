@@ -15,8 +15,6 @@
  * - F-D21 (D-21, pinned): a split re-inserts the merge claims that follow it
  *   on the new block, so a concurrent undo of that merge leaves the claimed
  *   block merged into the new block.
- * - F-U3 (lineage half): with lineage on, one wire update per undo, and a
- *   receiver applying it never shows `hello world` in the head.
  * - F-D19 (late redo, orchestrator requirement 3): after the paste's undo and
  *   B's typing into the emptied split-born block, A's late redo shows
  *   `HelloQ world` in P while `u` keeps `z` — nothing lost or doubled. Since
@@ -256,39 +254,6 @@ describe('F-D21 (D-21) — M merges c into b then undoes ‖ S splits b before c
 				}
 			});
 		}
-	}
-});
-
-// ── F-U3 (lineage half) ──────────────────────────────────────────────────
-
-describe('F-U3 — lineage on: one wire update per undo; the receiver never shows hello world in the head', () => {
-	const base = seeded([para('b', 'hello world')]);
-	for (const ids of CLIENT_IDS) {
-		red(`A=${ids.a} B=${ids.b}`, () => {
-			const A = replica(base, ids.a, { actor: () => alice, lineageDepth: 5 });
-			const B = replica(base, ids.b, { actor: () => bob, lineageDepth: 5 });
-			const um = A.ed.createUndoManager({ captureTimeout: 0 });
-			expect(A.ed.splitBlock('b', 6, 't').status).toBe('applied');
-			expect(A.ed.deleteText('t', 0, 5).status).toBe('applied');
-			deliver(B, send(A));
-			expect(shape(B.ed)).toEqual([
-				['b', 'hello '],
-				['t', '']
-			]);
-			const undo = step(A.doc, () => expect(um.undo()).not.toBe(null));
-			expect(undo.updates).toBe(1);
-			A.sent = Y.encodeStateVector(A.doc);
-			for (const frame of undo.frames) {
-				deliver(B, frame);
-				expect(B.ed.blockText('b')).toBe('hello ');
-			}
-			for (const ed of [A.ed, B.ed, reload(B.doc, 901)]) {
-				expect(shape(ed)).toEqual([
-					['b', 'hello '],
-					['t', 'world']
-				]);
-			}
-		});
 	}
 });
 

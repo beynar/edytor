@@ -3,7 +3,6 @@
 	"seed": 18,
 	"shape": "list-containers",
 	"peerCount": 3,
-	"lineageDepth": 5,
 	"document": {
 		"children": [
 			{

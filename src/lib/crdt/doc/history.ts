@@ -1,12 +1,10 @@
 /**
  * The document's history: the undo manager every view's history is (scope,
  * text delete marks, withdrawn creations, the attr repair, the step limit and
- * the purge horizon, lineage for undo and redo).
+ * and the purge horizon).
  */
 import type { EngineApi, EngineDoc, EngineNode, YUndoManager } from '../engine-api.js';
-import type { BlockId } from '../placement/model.js';
 import type { TextDeletes } from '../text/deletes.js';
-import type { BlockAttributionApi } from '../attribution/block.js';
 import { ownTextIds } from '../text/model.js';
 import { readHorizon } from '../purge.js';
 import {
@@ -15,9 +13,7 @@ import {
 	DATA_LEAF_PREFIX,
 	DOC_DATA_ROOT,
 	HORIZON_ROOT,
-	ID,
 	INLINE_NODE,
-	isNodeLike,
 	LAST_CHANGED_ATTR,
 	TYPE
 } from '../schema.js';
@@ -44,9 +40,8 @@ const HISTORY_TRIM = Symbol('edytor.history.trim');
 
 /** What a facade's history is made over: its doc, the write funnel and the bound engine layers. */
 export type HistoryContext = DocBase &
-	Pick<WriteFunnel, 'write' | 'disposed' | 'actorOf' | 'lineageDepth' | 'lineagePending'> & {
+	Pick<WriteFunnel, 'write' | 'disposed'> & {
 		D: TextDeletes;
-		BA: BlockAttributionApi;
 		/** Each history's release of all its steps (`releaseHistory`). */
 		releasers: WeakMap<YUndoManager, () => void>;
 		/** Stamp the version record before the history attaches. */
@@ -55,20 +50,7 @@ export type HistoryContext = DocBase &
 
 /** The history factory of one facade. */
 export const docHistory = (c: HistoryContext) => {
-	const {
-		Y,
-		doc,
-		M,
-		D,
-		BA,
-		releasers,
-		init,
-		write,
-		disposed,
-		actorOf,
-		lineageDepth,
-		lineagePending
-	} = c;
+	const { Y, doc, M, D, releasers, init, write, disposed } = c;
 	const ops = engineOps(Y);
 
 	/**
@@ -239,44 +221,6 @@ export const docHistory = (c: HistoryContext) => {
 		onTransaction<{ changed: Map<unknown, unknown> }>(doc, 'afterTransaction', (tr) => {
 			if (tr.changed.has(horizonRoot)) prune();
 		});
-		// Lineage for undo/redo: the replay displaces the state
-		// every block the popped stack item touches, so each one's subtree
-		// is captured (`force`: lost whoever owns `l`) from the history
-		// transaction's own `beforeTransaction`, before the replay writes.
-		// The ring writes join that transaction — one update per undo —
-		// and sit outside the manager's scope, so the replay never undoes
-		// or re-captures them. Nothing else is stamped for undo/redo: the
-		// engine's replay restores `l`, and `contributors` are add-only.
-		// An undo run inside an enclosing transaction gets no lineage (it
-		// is a defect of its own: it empties the redo stack).
-		if (lineageDepth > 0) {
-			const onBefore = (tr: { origin: unknown }): void => {
-				const stack = um.undoing ? um.undoStack : um.redoing ? um.redoStack : [];
-				const item = stack[stack.length - 1] as { inserts?: unknown; deletes?: unknown };
-				if (tr.origin !== um || item === undefined || actorOf() === undefined) return;
-				try {
-					const touched = new Set<BlockId>();
-					for (const idSet of [item.inserts, item.deletes]) {
-						walkIdSetStructs(Y, doc, idSet as IdSetLike, (s) => {
-							let n: unknown = s.parent;
-							while (isNodeLike(n)) {
-								const bid = n.name === BLOCK_NODE ? n.getAttr(ID) : undefined;
-								if (typeof bid === 'string') return void touched.add(bid);
-								n = n._item?.parent;
-							}
-						});
-					}
-					for (const bid of touched) {
-						const pending = lineagePending(bid, true);
-						if (pending !== undefined) BA.appendLineage(doc, bid, pending, lineageDepth);
-					}
-				} catch (err) {
-					// Throwing here would leave the engine's transaction open.
-					console.error('[edytor-doc] undo lineage capture failed', err);
-				}
-			};
-			onTransaction(doc, 'beforeTransaction', onBefore);
-		}
 		return um;
 	};
 

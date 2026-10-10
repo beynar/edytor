@@ -275,4 +275,4 @@ document.attribution.actors.get('user-42'); // { name: 'Ada', color: '#7559ee' }
 | `lastChangedBy` | The actor of the block's last content change. Deletes and moves do not change it. |
 | `contributors` | Every actor who edited this block id, including through splits and merges. It describes the block's history, not who wrote the text visible now: do not present it as "written by". |
 
-`attribution.actorOf(clientID)` maps a CRDT client id to its actor, `attribution.setProfile({ name, color })` republishes the local actor's profile, and `attribution.history(id)` returns earlier versions of a block when the document was created with `lineage: { depth }`.
+`attribution.actorOf(clientID)` maps a CRDT client id to its actor, and `attribution.setProfile({ name, color })` republishes the local actor's profile.

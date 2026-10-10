@@ -439,7 +439,6 @@ export type DocumentAttribution = {
     setProfile(profile: ActorProfile): void;
     legacy(): Engine.ContentMap | null;
     block(blockId: string): BlockAttribution | undefined;
-    history(blockId: string): BlockLineageEntry[] | undefined;
 };
 ```
 
@@ -489,9 +488,6 @@ export type DocumentOptions = {
     history?: {
         captureTimeout?: number;
         limit?: number;
-    };
-    lineage?: {
-        depth?: number;
     };
     requireHydration?: boolean;
 };
@@ -679,7 +675,6 @@ export declare class EdytorDocument {
     private readonly _capability;
     private _defaultType;
     private readonly _historyOptions;
-    private readonly _lineageDepth;
     readonly requireHydration: boolean;
     private _providers;
     private _pendingSyncs;
@@ -2300,18 +2295,6 @@ export declare class TRANSACTION {
 }
 ```
 
-#### crdt/attribution/attribution.d.ts#BlockLineageEntry
-
-```ts
-export type BlockLineageEntry = {
-    actor?: string;
-    by: string;
-    seq: number;
-    time?: number;
-    block: JSONBlock;
-};
-```
-
 #### crdt/data.d.ts#LeafWrite
 
 ```ts
@@ -2342,7 +2325,6 @@ export type EdytorDocConfig = {
     markEdge?: (mark: string) => MarkEdge | undefined;
     kinds?: () => Iterable<string>;
     actor?: () => AttributionActor | undefined;
-    lineageDepth?: number;
     assertWritable?: () => void;
 };
 ```

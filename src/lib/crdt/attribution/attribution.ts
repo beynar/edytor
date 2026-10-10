@@ -41,13 +41,7 @@
 import type { EngineApi, EngineDoc } from '../engine-api.js';
 import type * as Engine from '../vendor/yjs/dts/index.js';
 import { ATTRIBUTION_ROOT } from '../schema.js';
-import { cloneJson, type JSONBlock } from '../../utils/json.js';
-import {
-	blockAttributionOf,
-	lineageOf,
-	lineageWatermarkOf,
-	type BlockAttribution
-} from './block.js';
+import { blockAttributionOf, type BlockAttribution } from './block.js';
 
 /** Reserved replicated root for all attribution metadata (`SCHEMA.roots.attribution`). */
 export { ATTRIBUTION_ROOT };
@@ -117,49 +111,6 @@ export type DocumentAttribution = {
 	 * present it as "written by" for visible text.
 	 */
 	block(blockId: string): BlockAttribution | undefined;
-	/**
-	 * Opt-in bounded lineage ring for `blockId` — the block's subtree
-	 * snapshots captured just BEFORE displacing events: another actor's
-	 * first write (an `l` handoff), a delete, or an undo/redo touching the
-	 * block. Oldest → newest, capped at the document's configured
-	 * `lineage.depth`; `undefined` when the block carries no record (and
-	 * empty when the feature is off or nothing has been displaced yet).
-	 *
-	 * The cap is enforced HERE, at read: concurrent appends under
-	 * partition can transiently store `depth + n` entries (the
-	 * append-side trim only sees the writer's own ring) until the
-	 * replicated watermark trim converges the stored ring — this view
-	 * never returns more than `depth`. A replica configured `depth: 0`
-	 * (writes off) instead sees the ring's own retention bound — the
-	 * deepest depth any surviving entry's writer used.
-	 *
-	 * Each entry's `block` is a deep-copied `JSONBlock` — restoring an
-	 * entry is an ordinary `setBlock`-class edit (which itself lands a
-	 * new entry, displacing the state it overwrote). Entries on a dead
-	 * block stay readable here — the record survives deletion — but a
-	 * reincarnated block id starts a FRESH ring: old history never
-	 * contaminates the new incarnation.
-	 */
-	history(blockId: string): BlockLineageEntry[] | undefined;
-};
-
-/** A public lineage entry — the expanded form of the compact wire record. */
-export type BlockLineageEntry = {
-	/** The displaced owner (absent when the block was unattributed at capture). */
-	actor?: string;
-	/** The actor whose edit displaced the state (or whose undo/redo touched the block). */
-	by: string;
-	/**
-	 * Ring position at append — a display aid only. It can REPEAT (a trim
-	 * rewinds the position counter, and concurrent replicas assign the
-	 * same position independently): never an entry id — array order is
-	 * the truth.
-	 */
-	seq: number;
-	/** Wall-clock capture time — display only, never ordering. */
-	time?: number;
-	/** The displaced subtree snapshot (deep-copied — safe to keep/mutate). */
-	block: JSONBlock;
 };
 
 export type AttributionController = {
@@ -260,29 +211,7 @@ export const bindAttribution = (Y: EngineApi) => {
 			},
 			// `b/<id>` records live on the `blockattr` root and `l` on
 			// the block node — plain replicated reads, no observer needed.
-			block: (blockId) => blockAttributionOf(doc, blockId),
-			// Opt-in ring (`lineage.depth`): read the record's list items
-			// capped at the ring's watermark — the max depth of surviving
-			// entries, identical to the bound appends and the receive-side
-			// trim enforce, so every replica reads the SAME ring for the
-			// same stored state regardless of its own `lineage.depth`.
-			// (Concurrent appends can store a transient excess until the
-			// trim converges it.) Deep-copy each entry — the stored `j`
-			// snapshot is shared replicated state and must not be mutable
-			// through this view.
-			history: (blockId) => {
-				const entries = lineageOf(doc, blockId);
-				if (entries === undefined) return undefined;
-				const cap = lineageWatermarkOf(entries);
-				const visible = entries.length > cap ? entries.slice(entries.length - cap) : entries;
-				return visible.map((e) => ({
-					...(e.a !== undefined ? { actor: e.a } : {}),
-					by: e.by,
-					seq: e.s,
-					...(e.t !== undefined ? { time: e.t } : {}),
-					block: cloneJson(e.j) as JSONBlock
-				}));
-			}
+			block: (blockId) => blockAttributionOf(doc, blockId)
 		};
 
 		return {

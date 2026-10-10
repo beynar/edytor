@@ -53,7 +53,7 @@ const roles = (t: string) =>
 const make = (content: unknown[], clientID = 7) => {
 	const doc = new Y.Doc();
 	doc.clientID = clientID;
-	const ed = E.create(doc, { actor: () => ({ id: 'alice' }), lineageDepth: 3, roleOf: roles });
+	const ed = E.create(doc, { actor: () => ({ id: 'alice' }), roleOf: roles });
 	ed.init({ content });
 	return { doc, ed };
 };

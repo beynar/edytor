@@ -99,16 +99,6 @@ export type EdytorDocConfig = {
 	 */
 	actor?: () => AttributionActor | undefined;
 	/**
-	 * Opt-in per-block lineage depth (`attribution.history`). `> 0` captures
-	 * a subtree checkpoint just before a write displaces the block's current
-	 * `lastChangedBy` owner — handoffs, deletes, and undo/redo touches —
-	 * ring-trimmed to this many entries on the block's `b/<id>` record.
-	 * `0`/absent disables the feature entirely: no captures, no list items,
-	 * byte-identical writes. Requires `actor` — unattributed facades never
-	 * capture.
-	 */
-	lineageDepth?: number;
-	/**
 	 * The document's `writable` guard — called at the write funnel;
 	 * throws while the document is read-only, so an edit is refused rather
 	 * than accepted and then dropped by the quarantined transport.

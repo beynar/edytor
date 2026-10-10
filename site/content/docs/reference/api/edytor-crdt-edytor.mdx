@@ -1230,7 +1230,6 @@ export type DocumentAttribution = {
     setProfile(profile: ActorProfile): void;
     legacy(): Engine.ContentMap | null;
     block(blockId: string): BlockAttribution | undefined;
-    history(blockId: string): BlockLineageEntry[] | undefined;
 };
 ```
 
@@ -1239,7 +1238,6 @@ export type DocumentAttribution = {
 - `setProfile`: Re-publish the local actor's profile record (`u/<actorId>` — LWW).
 - `legacy`: Merged read over the pre-existing `a/` records written by the retired per-edit capture pipeline: `{inserts, deletes}` IdMaps in the native ContentMap shape, decoded fresh per call.
 - `block`: Compact per-block attribution for `blockId` (`{createdBy, contributors, lastChangedBy}` — durable actor ids, never replica clientIDs), or `undefined` for system/foreign blocks that carry no record.
-- `history`: Opt-in bounded lineage ring for `blockId` — the block's subtree snapshots captured just BEFORE displacing events: another actor's first write (an `l` handoff), a delete, or an undo/redo touching the block.
 
 ## DocumentDestroyedError
 
@@ -1304,9 +1302,6 @@ export type DocumentOptions = {
         captureTimeout?: number;
         limit?: number;
     };
-    lineage?: {
-        depth?: number;
-    };
     requireHydration?: boolean;
 };
 ```
@@ -1315,7 +1310,6 @@ export type DocumentOptions = {
 - `semantics`: Up-front semantic configuration (views may also seed via `adoptSemantics`).
 - `awareness`: Borrow an existing awareness instance instead of creating one — `destroy()` will NOT destroy it (same owned/borrowed rule as the doc).
 - `history`: History tuning — applied when the document's undo manager attaches.
-- `lineage`: Opt-in per-block lineage ring — `depth > 0` captures a subtree snapshot just before an edit displaces a block's current `lastChangedBy` owner (handoffs, deletes, undo/redo touches), ring-trimmed to this many entries per block.
 - `requireHydration`: Decide an EMPTY document only from a provider that synced: the room answered, or a local store hydrated.
 
 ## DocumentReadiness
@@ -1536,7 +1530,6 @@ export declare class EdytorDocument {
     private readonly _capability;
     private _defaultType;
     private readonly _historyOptions;
-    private readonly _lineageDepth;
     readonly requireHydration: boolean;
     private _providers;
     private _pendingSyncs;

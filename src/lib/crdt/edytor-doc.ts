@@ -23,8 +23,8 @@
  *   roles) — the reads, roles and document order; `doc/capability.ts` —
  *   structural capability (`canPlace`, `fits`, `canMerge`, the island and
  *   void rules).
- * - `doc/funnel.ts` — the write funnel (`write`, `apply`, attribution and
- *   lineage); `doc/events.ts` — `onChange`; `doc/history.ts` —
+ * - `doc/funnel.ts` — the write funnel (`write`, `apply`, attribution);
+ *   `doc/events.ts` — `onChange`; `doc/history.ts` —
  *   `createUndoManager`; `doc/anchors.ts` — caret anchors.
  * - `doc/steps.ts` — the step writers every op composes (ranks, settle,
  *   emptying, dissolving); the prepared op families over them
@@ -134,7 +134,7 @@ export {
 };
 export { UnsupportedDocError, type SchemaProblem } from './doc/gate.js';
 export { SEED_ORIGIN } from './doc/seed.js';
-export { EdytorDocDisposedError, lineageDepthOf } from './doc/funnel.js';
+export { EdytorDocDisposedError } from './doc/funnel.js';
 export { DEFAULT_HISTORY_LIMIT } from './doc/history.js';
 export type {
 	AnchorAffinity,
@@ -273,12 +273,6 @@ export const bindDocModel = (Y: EngineApi) => {
 			kindToCopy
 		} = shape;
 
-		// Lineage ring watermark repair — concurrent partition appends can
-		// merge a ring past every writer's `depth`; this converges the
-		// stored ring back to the entries' own watermark after remote
-		// applies. Once per doc, doc-lifetime, no-op when nothing is over.
-		BA.attachRingTrim(doc);
-
 		const funnel = writeFunnel({ ...reads, BA, config });
 		const { write, apply } = funnel;
 		const events = docEvents({ runsView });
@@ -287,7 +281,7 @@ export const bindDocModel = (Y: EngineApi) => {
 			funnel.dispose();
 			events.close();
 		};
-		const { createUndoManager } = docHistory({ ...base, ...funnel, D, BA, releasers, init });
+		const { createUndoManager } = docHistory({ ...base, ...funnel, D, releasers, init });
 		const { anchorAt, followUndo, resolveAnchor } = docAnchors(reads);
 		const steps = { ...shape, ...planSteps(shape) };
 		const { REFUSED, plan, ranksFor, move, pieceRanks, attr, settle, dissolving, remove } = steps;

@@ -433,7 +433,6 @@ export type { DocumentOptions } from './crdt/document.js';
 export type {
 	ActorProfile,
 	AttributionActor,
-	BlockLineageEntry,
 	DocumentAttribution
 } from './crdt/attribution/attribution.js';
 export type { ActorId, BlockAttribution } from './crdt/attribution/block.js';

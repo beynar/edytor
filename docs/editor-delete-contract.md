@@ -3135,7 +3135,7 @@ engine collects the content everywhere (`crdt.doc.purge`):
 - a block merged away before the horizon (`room.purge.merged`, WU-16:
   live, shown by a block that claims it, every claim on it old and
   stored in a list) loses its attribution record (`b/<id>`: `createdBy`,
-  contributors, lineage ring); its registry node stays, as its stream
+  contributors); its registry node stays, as its stream
   shows in its claimer's text. The claimer unioned its contributors at
   the merge, and no history reaches a step below the horizon to split it
   out again. A merged-away block that shows again after the purge (a

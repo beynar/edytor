@@ -100,7 +100,7 @@
 		document?: EdytorDocument;
 		doc?: YDoc;
 		awareness?: Awareness;
-		/** The local author (id, name, color) of the document this view owns: history lineage and presence. */
+		/** The local author (id, name, color) of the document this view owns: attribution and presence. */
 		actor?: DocumentActor;
 		/**
 		 * What this view shares of its selection with peers (`share`: `'caret'`,

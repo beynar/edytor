@@ -59,7 +59,7 @@ import {
  *   disconnected peer provably received nothing);
  * - connected peers — converge to the acting peer's canonical state;
  * - `healBarrier` — every connected peer's `facade.toJSON()` +
- *   attribution records + lineage rings are identical AND equal the
+ *   attribution records are identical AND equal the
  *   reference document's projection.
  */
 
@@ -130,7 +130,6 @@ type PeerRuntime = {
 export type DocumentDump = {
 	value: { children: JSONBlock[] };
 	blocks: Record<string, unknown>;
-	lineage: Record<string, unknown>;
 	actor: string;
 	/**
 	 * The dumping peer's own model-side selection. Deliberately EXCLUDED
@@ -228,7 +227,6 @@ const collabRoute = (
 		collabws: room,
 		wsserver: relayUrl,
 		actor: actorId,
-		lineagedepth: String(schedule.lineageDepth),
 		wsresync: '200',
 		wsbackoff: '400',
 		spellcheck: 'false',
@@ -456,7 +454,7 @@ const assertPeerClean = async (peer: PeerRuntime) => {
 /**
  * Canonical stringify: object keys sorted recursively, array order
  * preserved (array order is semantic — children/entry order matters).
- * `blocks`/`lineage` enumeration order follows registry iteration, which is
+ * `blocks` enumeration order follows registry iteration, which is
  * replication-order-dependent across peers; a naive stringify signature
  * never converges on identical data emitted in a different key order.
  */
@@ -471,7 +469,7 @@ const stableStringify = (v: unknown): string => {
 };
 
 const dumpSignature = (dump: DocumentDump): string =>
-	stableStringify({ value: dump.value, blocks: dump.blocks, lineage: dump.lineage });
+	stableStringify({ value: dump.value, blocks: dump.blocks });
 
 /**
  * Remote-application probe: `doc.on('update')` origins equal to the
@@ -883,11 +881,7 @@ const assertRemoteOverlaysLive = async (targets: PeerRuntime[]) => {
  * intent-ledger check. An update every replica lost still lives in the
  * reference doc, so this is the "equality can't hide a lost edit" gate.
  */
-const healBarrier = async (
-	peers: PeerRuntime[],
-	reference: EdytorDocument,
-	lineageDepth: number
-) => {
+const healBarrier = async (peers: PeerRuntime[], reference: EdytorDocument) => {
 	const targets = peers.filter((peer) => peer.connected);
 	const dumps = await expectConverged(peers, targets, 25_000);
 	const referenceDump = dumpReference(reference);
@@ -907,7 +901,7 @@ const healBarrier = async (
 			throw new CollabRunError(
 				'reference-mismatch',
 				`peer ${peer.actorId} converged away from the captured-update reference ` +
-					`(depth=${lineageDepth}) — a delivered-everywhere edit is missing or an ` +
+					`— a delivered-everywhere edit is missing or an ` +
 					`undelivered one leaked`,
 				// `updateLogs` must live INSIDE `dumps` — `CollabRunError` only
 				// forwards the dumps/referenceDump fields; a sibling key would
@@ -927,7 +921,6 @@ const healBarrier = async (
 const dumpReference = (document: EdytorDocument): DocumentDump => {
 	const value = document.facade.toJSON();
 	const blocks: Record<string, unknown> = {};
-	const lineage: Record<string, unknown> = {};
 	const live = new Set<string>();
 	const walk = (children: JSONBlock[]) => {
 		for (const child of children) {
@@ -941,15 +934,14 @@ const dumpReference = (document: EdytorDocument): DocumentDump => {
 							lastChangedBy: attribution.lastChangedBy
 						}
 					: null;
-				lineage[child.id] = document.attribution.history(child.id) ?? null;
 			}
 			if (child.children) walk(child.children);
 		}
 	};
 	walk(value.children);
 	// Mirror of the page dump: deleted blocks' records are readable by
-	// design — enumerate them so a lost recovery snapshot or diverging
-	// stamp on a tombstoned block fails the barrier.
+	// design — enumerate them so a diverging stamp on a tombstoned block
+	// fails the barrier.
 	for (const rec of blockRecordsOf(
 		document.doc as unknown as Parameters<typeof blockRecordsOf>[0]
 	)) {
@@ -962,9 +954,8 @@ const dumpReference = (document: EdytorDocument): DocumentDump => {
 			contributors: attribution ? [...attribution.contributors].sort() : [],
 			lastChangedBy: attribution?.lastChangedBy
 		};
-		lineage[rec.id] = rec.lineage ?? null;
 	}
-	return { value, blocks, lineage, blockTexts: {}, actor: document.actor.id, selection: null };
+	return { value, blocks, blockTexts: {}, actor: document.actor.id, selection: null };
 };
 
 /**
@@ -1547,10 +1538,10 @@ const parseSemanticSignature = (value: unknown): unknown => {
 	}
 };
 
-/** The `{value, blocks, lineage}` triple `dumpSignature` compares. */
+/** The `{value, blocks}` pair `dumpSignature` compares. */
 const dumpProjection = (dump: unknown) => {
 	const d = dump as DocumentDump | null | undefined;
-	return { value: d?.value, blocks: d?.blocks, lineage: d?.lineage };
+	return { value: d?.value, blocks: d?.blocks };
 };
 
 const isDocumentDump = (dump: unknown): dump is DocumentDump =>
@@ -1630,7 +1621,7 @@ const collabFailureSubtype = (
 	}
 	if (failure.code === 'peers-diverged' && failure.dumps) {
 		// First pair of peers whose canonical dump differs — the path
-		// inside `{value, blocks, lineage}` where they split.
+		// inside `{value, blocks}` where they split.
 		const dumps = Object.values(failure.dumps).filter(isDocumentDump);
 		const reference = dumps[0];
 		const divergent = dumps.find((dump) => dumpSignature(dump) !== dumpSignature(reference));
@@ -1732,9 +1723,7 @@ export const runCollabSchedule = async (
 			peer.sv = unb64(svB64);
 			peer.ownClock = ownClock;
 		}
-		reference = attachDocument(referenceDoc, {
-			lineage: { depth: schedule.lineageDepth }
-		});
+		reference = attachDocument(referenceDoc);
 		// Seeds dedupe to one shared document — prove it before the schedule.
 		const initial = await expectConverged(peers, peers, 20_000);
 		for (const peer of peers) {
@@ -1866,7 +1855,7 @@ export const runCollabSchedule = async (
 						// skip it while the relay holds (nothing can flow) or while a
 						// peer is intentionally still partitioned.
 						if (!held) {
-							await healBarrier(peers, reference!, schedule.lineageDepth);
+							await healBarrier(peers, reference!);
 						}
 						break;
 				}

@@ -6,6 +6,14 @@
  * element given its id, role and name).
  */
 import { createAttachmentKey, type Attachment } from 'svelte/attachments';
+import type { Edytor } from '$lib/edytor.svelte.js';
+import { onPress } from '$lib/events/onFocus.js';
+import {
+	BLOCK_ACTIVATE_EVENT,
+	BLOCK_ADD_EVENT,
+	type BlockActivation,
+	type BlockAddition
+} from './blockHandles/BlockHandleController.svelte.js';
 
 /**
  * One row of a chrome list, for an `item` snippet: the same shape in every
@@ -115,3 +123,37 @@ export const namesRows = (node: HTMLElement) => isField(node) || node.hasAttribu
 /** `id` when an element of `node`'s page has it, else `undefined`. */
 export const inPage = (node: Node, id: string | undefined) =>
 	id && node.ownerDocument?.getElementById(id) ? id : undefined;
+
+/**
+ * A handle menu's events on the editor `node` (the block menu, the `+`'s
+ * menu): a grip's activation (`BLOCK_ACTIVATE_EVENT`), a `+`'s offer
+ * (`BLOCK_ADD_EVENT`), and every press outside the elements `inside`
+ * matches (WebKit's lone `mousedown` after a drag too, `onPress`). Answers
+ * the teardown.
+ */
+export const handleMenuEvents = (
+	edytor: Edytor,
+	node: HTMLElement,
+	activate: (event: CustomEvent<BlockActivation>) => void,
+	add: (event: CustomEvent<BlockAddition>) => void,
+	inside: string,
+	outside: () => void
+) => {
+	const on = [
+		[BLOCK_ACTIVATE_EVENT, activate],
+		[BLOCK_ADD_EVENT, add]
+	] as [string, EventListener][];
+	for (const [name, listener] of on) node.addEventListener(name, listener);
+	const off = onPress(
+		edytor,
+		node.ownerDocument,
+		(event) => {
+			if (!(event.target as Element | null)?.closest?.(inside)) outside();
+		},
+		true
+	);
+	return () => {
+		for (const [name, listener] of on) node.removeEventListener(name, listener);
+		off();
+	};
+};

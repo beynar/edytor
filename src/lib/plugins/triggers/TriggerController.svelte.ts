@@ -33,6 +33,25 @@ export type TriggerRange = { text: Text; triggerStart: number; queryEnd: number 
 const startsTrigger = (text: Text, offset: number) =>
 	offset === 0 || /\s/.test(text.stringContent[offset - 1] ?? '');
 
+/** What `items` and `onPick` read: the trigger's block, its range in block offsets, the query. */
+const contextOf = (
+	edytor: Edytor,
+	text: Text,
+	start: number,
+	end: number,
+	query: string
+): TriggerContext => {
+	const block = text.parent;
+	return {
+		edytor,
+		block,
+		from: text.segStart + start,
+		to: text.segStart + end,
+		query,
+		caret: (offset) => void edytor.dispatcher.caret({ block, offset })
+	};
+};
+
 export abstract class TextTriggerController {
 	isOpen = $state(false);
 	query = $state('');
@@ -208,19 +227,11 @@ export abstract class TextTriggerController {
 			const { selection, dispatcher } = edytor;
 			const { text, triggerStart, queryEnd } = range;
 			const end = Math.min(queryEnd, text.length);
-			const block = text.parent;
-			const [from, to] = [text.segStart + triggerStart, text.segStart + end];
+			const ctx = contextOf(edytor, text, triggerStart, end, query);
+			const { block, from, to } = ctx;
 			this.close();
 			selection.setAtTextOffset(text, triggerStart);
 			const held = selection.value;
-			const ctx: TriggerContext = {
-				edytor,
-				block,
-				from,
-				to,
-				query,
-				caret: (offset) => void dispatcher.caret({ block, offset })
-			};
 			const removal = edytor.facade.prepare.deleteText(block.id, from, to - from);
 			const run = dispatcher.lead(removal, () => body(ctx));
 			const index = text.index;
@@ -341,28 +352,12 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 	 */
 	optionId = (index: number) => this.edytor.popups.idOf(`${this.owner}-option-${index}`);
 
-	/** The context `items` and `onPick` read, for the current range. */
-	private context(): TriggerContext | null {
-		const range = this.range;
-		if (!range) return null;
-		const { text, triggerStart, queryEnd } = range;
-		const block = text.parent;
-		const { edytor, query } = this;
-		return {
-			edytor,
-			block,
-			from: text.segStart + triggerStart,
-			to: text.segStart + queryEnd,
-			query,
-			caret: (offset) => void edytor.dispatcher.caret({ block, offset })
-		};
-	}
-
 	protected queried(query: string) {
 		// A query that opens with whitespace is prose (`a @ b`): the menu closes.
 		if (/^\s/.test(query)) return this.close();
-		const ctx = this.context();
-		if (!ctx) return;
+		const range = this.range;
+		if (!range) return;
+		const ctx = contextOf(this.edytor, range.text, range.triggerStart, range.queryEnd, query);
 		// A pick waiting on the previous query's search is dropped with it.
 		this.#pickOnAnswer = false;
 		const request = ++this.#request;

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { iconOf } from '../icons.js';
+	import { keepFocus } from '../chrome.js';
 	import type { Snippet } from 'svelte';
 	import type { SlashMenuController } from './SlashMenuController.svelte.js';
 	import type { SlashMenuItem } from './slashMenuPlugin.js';
@@ -21,10 +22,6 @@
 		if (controller.isOpen && controller.readonly) controller.dismiss(false);
 	});
 
-	/** A press in the menu keeps the focus where it is (its field, or the editor's caret). */
-	const keepFocus = (event: MouseEvent) => {
-		if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
-	};
 	/** The rows by group, in order (Notion's headings): a `group` per run of one group's rows. */
 	const groups = $derived.by(() => {
 		const runs: { name: string; rows: { command: EditorCommand; index: number }[] }[] = [];
@@ -68,6 +65,7 @@
 {:else if controller.isOpen && menu}
 	{@render menu(controller)}
 {:else if controller.isOpen}
+	<!-- A press in the menu keeps the focus where it is (its field, or the editor's caret). -->
 	<div
 		class="slash-menu"
 		data-testid="slash-menu"
@@ -126,12 +124,7 @@
 				</div>
 			{/each}
 		</div>
-		<button
-			type="button"
-			class="slash-footer"
-			tabindex="-1"
-			onmousedown={(event) => event.preventDefault()}
-			onclick={() => controller.dismiss()}
+		<button type="button" class="slash-footer" tabindex="-1" onclick={() => controller.dismiss()}
 			><span>{labels.close}</span><kbd>{labels.closeKey}</kbd></button
 		>
 	</div>

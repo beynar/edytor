@@ -1,10 +1,5 @@
 import type { Plugin } from '$lib/plugins.js';
-import {
-	BLOCK_ACTIVATE_EVENT,
-	BLOCK_ADD_EVENT,
-	type BlockActivation
-} from '../blockHandles/BlockHandleController.svelte.js';
-import { onPress } from '$lib/events/onFocus.js';
+import { handleMenuEvents } from '../chrome.js';
 import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 import BlockMenu from './BlockMenu.svelte';
 import {
@@ -100,27 +95,20 @@ export const createBlockMenuPlugin =
 				}
 			},
 			onEdytorAttached: ({ node }) => {
-				const activate = (event: Event) => {
-					// The menu takes the keyboard (its search field).
-					event.preventDefault();
-					const { block, anchor } = (event as CustomEvent<BlockActivation>).detail;
-					controller.open(block, anchor);
-					edytor.overlay.invalidate();
-				};
-				const outside = (event: MouseEvent) => {
-					const target = event.target as Element | null;
-					if (
-						controller.isOpen &&
-						!target?.closest?.('[data-edytor-block-menu-host], [data-edytor-block-handle-host]')
-					)
-						controller.close(false);
-				};
-				// A `+` opens its own menu: this one closes.
-				const add = () => controller.close(false);
-				node.addEventListener(BLOCK_ACTIVATE_EVENT, activate);
-				node.addEventListener(BLOCK_ADD_EVENT, add);
-				// Every press, WebKit's lone `mousedown` after a drag too (`onPress`).
-				const offPress = onPress(edytor, node.ownerDocument, outside, true);
+				const off = handleMenuEvents(
+					edytor,
+					node,
+					(event) => {
+						// The menu takes the keyboard (its search field).
+						event.preventDefault();
+						controller.open(event.detail.block, event.detail.anchor);
+						edytor.overlay.invalidate();
+					},
+					// A `+` opens its own menu: this one closes.
+					close,
+					'[data-edytor-block-menu-host], [data-edytor-block-handle-host]',
+					() => controller.isOpen && close()
+				);
 				const unmount = edytor.overlay.mount(
 					BlockMenu,
 					{ controller, menu: options.menu },
@@ -129,9 +117,7 @@ export const createBlockMenuPlugin =
 					place
 				);
 				return () => {
-					node.removeEventListener(BLOCK_ACTIVATE_EVENT, activate);
-					node.removeEventListener(BLOCK_ADD_EVENT, add);
-					offPress();
+					off();
 					unmount();
 				};
 			}

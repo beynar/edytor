@@ -16,6 +16,28 @@ import { hash32 } from './rand.js';
  */
 export const unlistedRank = (column: string): number => hash32(column);
 
+/**
+ * The column each entry of a table's `data.columns` names (`null`: none),
+ * or `null` when the table lists no columns: its cells then show in their
+ * own order (`table.columns`). A column is its first entry
+ * ({@link listedColumns}).
+ */
+export const columnIds = (data: unknown): (string | null)[] | null => {
+	const columns = (data as { columns?: unknown } | null | undefined)?.columns;
+	return Array.isArray(columns)
+		? columns.map((c) => {
+				const id = (c as { id?: unknown } | null)?.id;
+				return typeof id === 'string' ? id : null;
+			})
+		: null;
+};
+
+/** The columns a table lists, in order, each once ({@link columnIds}); `null` when none. */
+export const listedColumns = (data: unknown): string[] | null => {
+	const ids = columnIds(data);
+	return ids && [...new Set(ids)].filter((id): id is string => id !== null);
+};
+
 /** The unlisted columns `ids` in their shown order ({@link unlistedRank}). */
 export const unlistedOrder = (ids: Iterable<string>): string[] =>
 	[...new Set(ids)].sort(

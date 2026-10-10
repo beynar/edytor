@@ -13,6 +13,7 @@
 import { id as newId } from '../../utils.js';
 import type { BlockId, BlockSpec } from '../placement/model.js';
 import type { DataPatch } from '../data.js';
+import { columnIds } from '../tables.js';
 import { ref } from './plan.js';
 import type { DataTarget, PlanStep, Prepared } from './types.js';
 import type { OpsContext } from './steps.js';
@@ -80,12 +81,7 @@ export const tableOps = (
 		if (grid === null) return null;
 		const listed = tableColumns(table);
 		if (listed !== null) {
-			const stored = blockDataOf(table)?.columns as unknown[];
-			const raw = stored.map((col) => {
-				const id = (col as { id?: unknown } | null)?.id;
-				return typeof id === 'string' ? id : null;
-			});
-			return { columns: listed, raw, adopt: [], first: [], grid };
+			return { columns: listed, raw: columnIds(blockDataOf(table))!, adopt: [], first: [], grid };
 		}
 		const columns = grid.columns.map((_, i) => ({ id: `c${i + 1}` }));
 		const adopt: PlanStep[] = [];

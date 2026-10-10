@@ -21,7 +21,7 @@ import { DEAD, ownedLength, type TextEngine } from '../text/model.js';
 import type { DisplayRoles, RunView } from '../text/runs.js';
 import { holdsPending } from '../structs.js';
 import { itemIds, readData } from '../data.js';
-import { unlistedOrder } from '../tables.js';
+import { columnIds, listedColumns, unlistedOrder } from '../tables.js';
 import { cloneJsonSafe, type JSONBlock } from '../../utils/json.js';
 import { ref } from './plan.js';
 import type { BlockRole, DataTarget, JsonObj, OrderPolicy } from './types.js';
@@ -234,18 +234,15 @@ export const docReads = (c: DocBase) => {
 	 * (its cells show in their own order, `table.columns`).
 	 */
 	const tableColumns = (table: BlockId): { id: string; width?: number }[] | null => {
-		const columns = blockDataOf(table)?.columns;
-		if (!Array.isArray(columns)) return null;
-		const seen = new Set<string>();
-		const out: { id: string; width?: number }[] = [];
-		for (const c of columns) {
-			const id = (c as { id?: unknown } | null)?.id;
-			if (typeof id !== 'string' || seen.has(id)) continue;
-			seen.add(id);
-			const width = (c as { width?: unknown }).width;
-			out.push(typeof width === 'number' && Number.isFinite(width) ? { id, width } : { id });
-		}
-		return out;
+		const data = blockDataOf(table);
+		const ids = columnIds(data);
+		return (
+			ids &&
+			listedColumns(data)!.map((id) => {
+				const width = (data!.columns as { width?: unknown }[])[ids.indexOf(id)].width;
+				return typeof width === 'number' && Number.isFinite(width) ? { id, width } : { id };
+			})
+		);
 	};
 	/**
 	 * `table` as a grid (`table.pad`): its column ids in order and each shown

@@ -19,6 +19,7 @@
  * IME over a skipped block is the cdp lane's (`large-page.cdp.spec.ts`).
  */
 import { expect, test, type Page } from './editorTest';
+import { dragTo, recordDrag } from './helpers';
 
 const open = async (page: Page, query = '') => {
 	await page.goto(`/test/large?${query}`);
@@ -229,10 +230,19 @@ test.describe('P8 — a large page with content-visibility', () => {
 			return { x: r.right - 8, y: r.top + r.height / 2 };
 		});
 		const below = (await block(page, 'b3003').boundingBox())!;
+		await recordDrag(page);
 		await page.mouse.move(grip.x, grip.y);
 		await page.mouse.down();
-		await page.mouse.move(below.x + 40, below.y + below.height * 0.8, { steps: 12 });
-		await page.mouse.move(below.x + 44, below.y + below.height * 0.8, { steps: 4 });
+		// Each move waits for the page to handle it (Chromium answers a drag move first):
+		// a release right after the last move would drop at an earlier placement.
+		const to = { x: below.x + 40, y: below.y + below.height * 0.8 };
+		for (let step = 1; step <= 12; step++)
+			await dragTo(
+				page,
+				grip.x + ((to.x - grip.x) * step) / 12,
+				grip.y + ((to.y - grip.y) * step) / 12
+			);
+		await dragTo(page, to.x + 4, to.y);
 		await page.mouse.up();
 		await expect
 			.poll(async () => {

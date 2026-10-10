@@ -1,6 +1,8 @@
 import { expect, test, type Page } from './editorTest';
 
 import {
+	dragTo,
+	recordDrag,
 	expectSelection,
 	readJsonByTestId,
 	throttleCpu,
@@ -972,29 +974,6 @@ test.describe('the handle column: a drag straight down or up it reorders (R2)', 
 		);
 		await waitForEditorReady(page, { requireRuntime: true });
 		await settleHandles(page);
-	};
-	/**
-	 * Note the drag events the page receives (`dragTo`): in Chromium the
-	 * protocol's drag move is answered before the page handled it, so a read
-	 * right after it can see the previous move's placement on a busy runner.
-	 */
-	const recordDrag = (page: Page) =>
-		page.evaluate(() => {
-			const record = window as unknown as { __dragStarted?: boolean; __dragY?: number };
-			window.addEventListener('dragstart', () => (record.__dragStarted = true), { capture: true });
-			for (const type of ['dragenter', 'dragover'])
-				window.addEventListener(type, (event) => (record.__dragY = (event as DragEvent).clientY), {
-					capture: true
-				});
-		});
-	/** Move the pointer; in Chromium, wait until the page handled the drag event at that height. */
-	const dragTo = async (page: Page, x: number, y: number) => {
-		await page.mouse.move(x, y);
-		if (page.context().browser()?.browserType().name() !== 'chromium') return;
-		await page.waitForFunction((y) => {
-			const record = window as unknown as { __dragStarted?: boolean; __dragY?: number };
-			return !record.__dragStarted || Math.abs((record.__dragY ?? -Infinity) - y) <= 1;
-		}, y);
 	};
 	/** The drop indicator's position, after the drag library and the overlay took the last move. */
 	const shownPosition = async (page: Page) => {

@@ -74,6 +74,11 @@ export class RankSpaceExhausted extends Error {
 	}
 }
 
+/** A rank this module cannot encode, a malformed rank, or bounds out of order (a caller's error). */
+const bad = (what: string): never => {
+	throw new Error(`rank: ${what}`);
+};
+
 /** `n` (≥ 0) as exactly `width` base-64 places. */
 const places = (n: number, width: number): string => {
 	let out = '';
@@ -81,7 +86,7 @@ const places = (n: number, width: number): string => {
 		out = ALPHABET[n % BASE] + out;
 		n = Math.floor(n / BASE);
 	}
-	if (n > 0) throw new Error(`rank encode overflow: value exceeds ${width} places`);
+	if (n > 0) bad('overflow');
 	return out;
 };
 /** How many base-64 places `m` (≥ 1) takes. */
@@ -93,11 +98,11 @@ const width = (m: number): number => {
 
 /** A signed integer as a self-delimiting, order-preserving string. */
 const encInt = (v: number): string => {
-	if (!Number.isSafeInteger(v)) throw new Error(`rank encode: bad digit ${v}`);
+	if (!Number.isSafeInteger(v)) bad('digit');
 	if (v === 0) return 'H';
 	const m = Math.abs(v);
 	const k = width(m);
-	if (k > MAX_PLACES) throw new Error(`rank encode overflow: ${v}`);
+	if (k > MAX_PLACES) bad('overflow');
 	if (v > 0) return String.fromCharCode(ZERO + k) + places(m, k);
 	// Complemented: a greater magnitude sorts first.
 	return String.fromCharCode(ZERO - k) + places(BASE ** k - 1 - m, k);
@@ -106,14 +111,12 @@ const encInt = (v: number): string => {
 /** The integer at `s[i]`, and where it ends. */
 const decInt = (s: string, i: number): [number, number] => {
 	const k = s.charCodeAt(i) - ZERO;
-	if (Number.isNaN(k) || Math.abs(k) > MAX_PLACES)
-		throw new Error(`rank decode: bad length at ${i}`);
 	const n = Math.abs(k);
-	if (i + 1 + n > s.length) throw new Error(`rank decode: truncated at ${i}`);
+	if (Number.isNaN(k) || n > MAX_PLACES || i + 1 + n > s.length) bad('malformed');
 	let x = 0;
 	for (let j = i + 1; j <= i + n; j++) {
 		const d = ALPHABET.indexOf(s[j]);
-		if (d < 0) throw new Error(`rank decode: bad char ${s[j]}`);
+		if (d < 0) bad('malformed');
 		x = x * BASE + d;
 	}
 	const v = k === 0 ? 0 : k > 0 ? x : -(BASE ** n - 1 - x);
@@ -122,7 +125,7 @@ const decInt = (s: string, i: number): [number, number] => {
 
 /** Decode a rank string into its segment array (`t: Infinity` where a segment has no tie). */
 export const decodeRank = (rank: string): RankSeg[] => {
-	if (rank.length === 0) throw new Error('rank decode: empty');
+	if (rank.length === 0) bad('malformed');
 	const segs: RankSeg[] = [];
 	for (let i = 0; i < rank.length; ) {
 		const [v, j] = decInt(rank, i);
@@ -131,7 +134,7 @@ export const decodeRank = (rank: string): RankSeg[] => {
 		if (rank[i] === TIE) [t, i] = decInt(rank, i + 1);
 		segs.push({ v, t });
 	}
-	if (segs[segs.length - 1].t === Infinity) throw new Error('rank decode: untied last segment');
+	if (segs[segs.length - 1].t === Infinity) bad('malformed');
 	return segs;
 };
 
@@ -139,7 +142,7 @@ export const decodeRank = (rank: string): RankSeg[] => {
 export const encodeRank = (segs: readonly RankSeg[]): string => {
 	let out = '';
 	for (const { v, t } of segs) {
-		if (v < RANK_VMIN || v > RANK_VMAX) throw new Error(`rank encode overflow: digit ${v}`);
+		if (v < RANK_VMIN || v > RANK_VMAX) bad('overflow');
 		out += encInt(v);
 		if (t !== Infinity) out += TIE + encInt(t);
 	}
@@ -178,9 +181,7 @@ export const rankBetween = (
 ): string => {
 	const L = left === undefined ? [] : decodeRank(left);
 	const R = right === undefined ? [] : decodeRank(right);
-	if (left !== undefined && right !== undefined && left >= right) {
-		throw new Error(`rankBetween: left >= right (${left} !< ${right})`);
-	}
+	if (left !== undefined && right !== undefined && left >= right) bad('left >= right');
 	const rightOpen = right === undefined;
 	const path: RankSeg[] = [];
 	// `locked`: the emitted prefix already sorts below the right bound.
@@ -216,9 +217,7 @@ export const rankBetween = (
 			// Right bound ended while left continues: valid only when `locked`
 			// already holds (an earlier copied segment was < the right's). If not,
 			// right is a proper prefix of left — i.e. right < left, caller error.
-			if (!rightOpen && !locked) {
-				throw new Error(`rankBetween: right bound is a prefix of left (right < left)`);
-			}
+			if (!rightOpen && !locked) bad('left >= right');
 			// No right bound at this level (open, or `locked` below it): emit
 			// within the bounded append window — dense growth, and one more
 			// level per exhausted gap, not one per insert (SW12-crdt-2).
@@ -257,7 +256,7 @@ export const rankBetween = (
 		else if (c > 0 && !locked) {
 			// Never locked and left's segment exceeds right's at the first
 			// differing level → left > right (invalid bounds — caller error).
-			throw new Error(`rankBetween: left >= right at level ${i}`);
+			bad('left >= right');
 		}
 		path.push(lSeg);
 	}

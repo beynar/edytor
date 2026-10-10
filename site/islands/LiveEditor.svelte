@@ -9,9 +9,12 @@
 		blockMenuPlugin,
 		codePlugin,
 		columnsPlugin,
+		createMarqueePlugin,
 		markdownShortcutsPlugin,
 		richTextPlaceholder,
 		slashMenuPlugin,
+		tableBlock,
+		tablePlugin,
 		toolbarPlugin,
 		type EdytorInstance,
 		type JSONDoc
@@ -57,10 +60,17 @@
 				id: 'tip',
 				type: 'callout',
 				data: { icon: '💡' },
-				content: [
-					{ text: 'Type ' },
-					{ text: '/', marks: { code: true } },
-					{ text: ' for blocks, select text to format it, and drag the six-dot handle to move or nest a block.' }
+				content: [{ text: 'Try it' }],
+				children: [
+					{
+						id: 'tip-body',
+						type: 'paragraph',
+						content: [
+							{ text: 'Type ' },
+							{ text: '/', marks: { code: true } },
+							{ text: ' for blocks, select text to format it, and drag the six-dot handle to move or nest a block. Drag from the margin to select several blocks at once.' }
+						]
+					}
 				]
 			},
 			{ id: 'todo-1', type: 'todo-item', data: { checked: true }, content: [{ text: 'Collaborative by default' }] },
@@ -81,6 +91,18 @@
 						children: [{ id: 'column-right-text', type: 'paragraph', content: [{ text: 'Drag the gap between two columns to resize them.' }] }]
 					}
 				]
+			},
+			{
+				...tableBlock({
+					cells: [
+						['Block', 'What it holds'],
+						['Table', 'Rows of cells: drag a grip to move a row or a column'],
+						['Columns', 'Any blocks, side by side']
+					],
+					headerRow: true,
+					widths: [140, 320]
+				}),
+				id: 'table'
 			},
 			{
 				id: 'code',
@@ -112,12 +134,15 @@
 		return () => awareness.off('change', read);
 	});
 
-	// Rich text, images, block moves and the suggestion bar are defaults; columns are opt-in.
+	// Rich text, images, block moves and the suggestion bar are defaults; columns, tables
+	// and the marquee are opt-in. A drag from the frame's margin selects blocks.
 	const plugins = [
 		aiDemoPlugin,
 		blockMenuPlugin,
 		codePlugin,
 		columnsPlugin,
+		tablePlugin,
+		createMarqueePlugin({ container: '.live-editor' }),
 		markdownShortcutsPlugin,
 		slashMenuPlugin,
 		toolbarPlugin
@@ -225,8 +250,9 @@
 	.live-ai:hover {
 		background: rgba(35, 131, 226, 0.16);
 	}
+	/* The page grows with its content, up to twice the viewport's height, then scrolls. */
 	.live-editor {
-		max-height: 36rem;
+		max-height: 200vh;
 		overflow-y: auto;
 		padding: 36px 56px 40px 72px;
 	}

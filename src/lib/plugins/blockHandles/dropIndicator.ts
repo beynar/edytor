@@ -16,11 +16,35 @@ import {
 	type DropPlacement
 } from './geometry.js';
 
-/** Notion's drop bar: 4px of translucent blue. */
-const DROP_INDICATOR_COLOR = 'rgba(35, 131, 226, 0.43)';
-/** The nest backdrop's theming variable (its defaults are in `BlockHandle.svelte`). */
-const BACKDROP_COLOR = '--edytor-drop-backdrop-color';
+/** Notion's drop bar: 4px (its colour's default is in `BlockHandle.svelte`). */
 const BAR = 4;
+
+/** A box in client px; without a height, the CSS's (the bar's 4px). */
+type Box = { left: number; top: number; width: number; height?: number };
+
+/** Place `element` at `box`, relative to the layer (`origin`). */
+const place = (element: HTMLElement, box: Box, origin: DOMRect) =>
+	Object.assign(element.style, {
+		left: `${box.left - origin.left}px`,
+		top: `${box.top - origin.top}px`,
+		width: `${box.width}px`,
+		...(box.height === undefined ? {} : { height: `${box.height}px` })
+	});
+
+/**
+ * The theme variable `name` as `from` (a block) inherits it, read now, and
+ * its write on an element of the overlay (which is not inside the editor):
+ * unset there without one.
+ */
+const themed = (from: HTMLElement, name: string) => {
+	const value = from.ownerDocument.defaultView
+		?.getComputedStyle(from)
+		.getPropertyValue(name)
+		.trim();
+	return (element: HTMLElement) =>
+		value ? element.style.setProperty(name, value) : element.style.removeProperty(name);
+};
+
 /**
  * Notion's nest backdrop: a soft rounded tint over the future parent's own
  * row, drawn by the overlay layer under the drop line — never a style on the
@@ -104,17 +128,17 @@ export class DropIndicator {
 		const count = this.ctx.group().length;
 		// How many blocks move, as data only: the bar shows no badge.
 		if (count > 1) overlay.dataset.count = String(count);
-		const color = document.defaultView
-			?.getComputedStyle(placement.node)
-			.getPropertyValue('--edytor-drop-indicator-color')
-			.trim();
-		overlay.style.setProperty('--edytor-drop-indicator-color', color || DROP_INDICATOR_COLOR);
+		themed(placement.node, '--edytor-drop-indicator-color')(overlay);
 		const layer = this.edytor.overlay.layer;
 		layer?.append(overlay);
 		this.#overlay = overlay;
 		const measure = (origin: DOMRect) => {
-			const writes = [this.#position(origin), this.#positionBackdrop(placement, origin)];
-			return () => writes.forEach((write) => write?.());
+			const bar = this.#bar(placement);
+			const backdrop = this.#positionBackdrop(placement);
+			return () => {
+				if (bar) place(overlay, bar, origin);
+				backdrop?.(origin);
+			};
 		};
 		// Placed at once (it must not show at the layer's origin for a frame), then per frame.
 		if (layer) measure(layer.getBoundingClientRect())();
@@ -144,52 +168,39 @@ export class DropIndicator {
 	}
 
 	/**
-	 * Layer-relative geometry of the nest backdrop (`backdrop`): the future
-	 * parent's box (`nestParent`, read per frame: a peer's change may change
-	 * it), down to where its first child begins; hidden when the placement
-	 * does not nest.
+	 * The nest backdrop's write (`backdrop`): over the future parent's box
+	 * (`nestParent`, read per frame: a peer's change may change it), down to
+	 * where its first child begins; hidden when the placement does not nest.
 	 */
-	#positionBackdrop(placement: DropPlacement, origin: DOMRect) {
+	#positionBackdrop(placement: DropPlacement) {
 		const backdrop = this.#backdrop;
 		if (!backdrop) return;
 		const parent = this.#nestParent(placement);
 		const node = parent?.node;
 		if (!parent || !node?.isConnected) return () => delete backdrop.dataset.shown;
 		const rect = ownRow(node);
-		const color = node.ownerDocument.defaultView
-			?.getComputedStyle(node)
-			.getPropertyValue(BACKDROP_COLOR)
-			.trim();
-		return () => {
+		const color = themed(node, '--edytor-drop-backdrop-color');
+		return (origin: DOMRect) => {
 			backdrop.dataset.blockId = parent.id;
-			if (color) backdrop.style.setProperty(BACKDROP_COLOR, color);
-			else backdrop.style.removeProperty(BACKDROP_COLOR);
-			Object.assign(backdrop.style, {
-				left: `${rect.left - origin.left}px`,
-				top: `${rect.top - origin.top}px`,
-				width: `${rect.width}px`,
-				height: `${rect.height}px`
-			});
+			color(backdrop);
+			place(backdrop, rect, origin);
 			backdrop.dataset.shown = 'true';
 		};
 	}
 
 	/**
-	 * Layer-relative geometry of Notion's plain bar: centered between the
-	 * two siblings of the slot, or — inside the target — where the child lands,
-	 * indented to the child's column.
+	 * Notion's plain bar: centered between the two siblings of the slot, or
+	 * — inside the target — where the child lands, indented to the child's
+	 * column; beside a block or a column, vertical (`#beside`).
 	 */
-	#position(origin: DOMRect) {
-		const placement = this.placement;
-		const overlay = this.#overlay;
-		if (!placement || !overlay) return;
-		if (isBeside(placement.position)) return this.#positionBeside(placement, origin);
+	#bar(placement: DropPlacement): Box | undefined {
+		if (isBeside(placement.position)) return this.#beside(placement);
 		const rect = placement.node.getBoundingClientRect();
-		const place = (left: number, width: number, center: number) => () => {
-			overlay.style.left = `${left - origin.left}px`;
-			overlay.style.width = `${width}px`;
-			overlay.style.top = `${center - BAR / 2 - origin.top}px`;
-		};
+		const at = (left: number, width: number, center: number) => ({
+			left,
+			width,
+			top: center - BAR / 2
+		});
 		if (placement.position === 'inside') {
 			// Where the child lands (the gap after the last visible child, else after
 			// the target's own row), from the child's indent to the target's right edge.
@@ -203,9 +214,8 @@ export class DropIndicator {
 			const land = next && next.top >= end ? (end + next.top) / 2 : end + 4;
 			const left =
 				shown && lastNode ? ownTextRow(lastNode).left : row.left + nestIndent(placement.node);
-			return place(left, Math.max(16, rect.right - left), land);
+			return at(left, Math.max(16, rect.right - left), land);
 		}
-
 		const siblings = placement.target.parent?.children;
 		const index = placement.target.index + (placement.position === 'after' ? 1 : 0);
 		const previous = siblings?.[index - 1]?.node?.getBoundingClientRect();
@@ -213,10 +223,9 @@ export class DropIndicator {
 		if (previous && next && previous.bottom <= next.top) {
 			const left = Math.min(previous.left, next.left);
 			const width = Math.max(previous.right, next.right) - left;
-			return place(left, width, (previous.bottom + next.top) / 2);
+			return at(left, width, (previous.bottom + next.top) / 2);
 		}
-		const edge = placement.position === 'before' ? rect.top : rect.bottom;
-		return place(rect.left, rect.width, edge);
+		return at(rect.left, rect.width, placement.position === 'before' ? rect.top : rect.bottom);
 	}
 
 	/**
@@ -225,10 +234,9 @@ export class DropIndicator {
 	 * when it adds a column to a layout, the layout's height, in the middle
 	 * of the gap to the neighbouring column, else at the layout's edge.
 	 */
-	#positionBeside(placement: DropPlacement, origin: DOMRect) {
-		const overlay = this.#overlay;
+	#beside(placement: DropPlacement): Box | undefined {
 		const outer = this.ctx.besideOf(placement.target);
-		if (!overlay || !outer.node) return;
+		if (!outer.node) return;
 		const right = placement.position === 'right';
 		const at = this.ctx.layoutOf(outer);
 		let edge: number;
@@ -245,14 +253,7 @@ export class DropIndicator {
 			box = outer.node.getBoundingClientRect();
 			edge = right ? box.right : box.left;
 		}
-		return () => {
-			Object.assign(overlay.style, {
-				left: `${edge - BAR / 2 - origin.left}px`,
-				top: `${box.top - origin.top}px`,
-				width: `${BAR}px`,
-				height: `${box.height}px`
-			});
-		};
+		return { left: edge - BAR / 2, top: box.top, width: BAR, height: box.height };
 	}
 
 	/** Hide the bar (the backdrop fades out where it was) and forget the placement. */

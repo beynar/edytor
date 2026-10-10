@@ -538,22 +538,20 @@ export declare class BlockHandleController {
     registerHandle(element: HTMLElement, block: Block): () => void;
     addDropTarget(node: HTMLElement, target: Block): () => void;
     private registerDropTarget;
-    private registerMarginTarget;
     private gutter;
     private inHandleColumn;
     private margin;
-    private atRightEdge;
+    private halves;
+    private pick;
     private reorder;
     handleKeyDown(event: KeyboardEvent, block: Block): void;
     private moveAndSelect;
-    private canDrop;
     private moving;
     private covered;
     private inRange;
     dragBlocks(source: Block): Block[];
     private select;
     private fits;
-    private operations;
     private rowAt;
     private get layouts();
     private besideOf;
@@ -565,6 +563,7 @@ export declare class BlockHandleController {
     private emptied;
     private zones;
     private placement;
+    private carrier;
     private getDragSource;
     private showIndicator;
 }
@@ -1999,8 +1998,8 @@ declare const createAudioPlugin: (options?: MediaPluginOptions) => Plugin;
 ## createBlockHandlesPlugin
 
 Block handles in the overlay, created lazily: a handle mounts
-for a block near the viewport (`nearTop` and the blocks inside them, not
-hidden; every block without layout),
+for a block near the viewport (the overlay's `near` top-level blocks and
+the blocks inside them, not hidden; every block without layout),
 under the pointer, selected, focused or dragged; drop targets exist only
 during our own drag. Hover is one delegated listener on the editor and
 one on the overlay (a block's handle keeps it hovered).

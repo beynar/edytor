@@ -412,22 +412,20 @@ export declare class BlockHandleController {
     registerHandle(element: HTMLElement, block: Block): () => void;
     addDropTarget(node: HTMLElement, target: Block): () => void;
     private registerDropTarget;
-    private registerMarginTarget;
     private gutter;
     private inHandleColumn;
     private margin;
-    private atRightEdge;
+    private halves;
+    private pick;
     private reorder;
     handleKeyDown(event: KeyboardEvent, block: Block): void;
     private moveAndSelect;
-    private canDrop;
     private moving;
     private covered;
     private inRange;
     dragBlocks(source: Block): Block[];
     private select;
     private fits;
-    private operations;
     private rowAt;
     private get layouts();
     private besideOf;
@@ -439,6 +437,7 @@ export declare class BlockHandleController {
     private emptied;
     private zones;
     private placement;
+    private carrier;
     private getDragSource;
     private showIndicator;
 }

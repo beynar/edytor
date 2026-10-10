@@ -127,8 +127,8 @@ export const placeNear = (
 	return () => Object.assign(host.style, { left, top: `${y}px` });
 };
 
-/** The band around the viewport whose blocks' resizes are watched, in screens above and below. */
-const WATCHED_SCREENS = 1;
+/** The band around the viewport (`near`) whose blocks' resizes are watched, in screens above and below. */
+const NEAR_SCREENS = 1;
 
 export class Overlay {
 	/** The layer: absolutely positioned at its static place right after the host. */
@@ -148,7 +148,7 @@ export class Overlay {
 	 * font or a stylesheet that loads, a kind's markup drawn later (KaTeX, an
 	 * image), a host whose height its page fixes — moves the blocks under the
 	 * chrome. Watched while it is a top-level block near the viewport
-	 * (`#watch`): a nested block's resize resizes its top-level block, and a
+	 * (`near`): a nested block's resize resizes its top-level block, and a
 	 * block farther away moves no chrome in view (one above it scrolls the
 	 * page, by scroll anchoring, or resizes the host). Answers the release.
 	 */
@@ -162,8 +162,16 @@ export class Overlay {
 	};
 
 	/**
-	 * Watch the observed top-level blocks within `WATCHED_SCREENS` of the
-	 * viewport: a binary search over the host's children (vertical order),
+	 * The host's children within `NEAR_SCREENS` of the viewport, above or
+	 * below, as this frame measured them (before any measure runs): the
+	 * chrome that lives only near the viewport reads it (the block handles).
+	 * @internal
+	 */
+	near: readonly Element[] = [];
+
+	/**
+	 * Measure the near band (`near`) and watch the observed top-level blocks
+	 * in it: a binary search over the host's children (vertical order),
 	 * O(log n) boxes a frame where watching every block made each frame's
 	 * resize check cost the whole page.
 	 */
@@ -171,17 +179,18 @@ export class Overlay {
 		const host = this.#host;
 		const resize = this.#resize;
 		const view = host?.ownerDocument.defaultView;
-		if (!host || !resize || !view) return;
+		if (!host || !view) return;
 		const kids = host.children;
 		const screen = view.innerHeight;
 		const [first, last] = bandRun(
 			kids.length,
 			(index) => kids[index]!.getBoundingClientRect(),
-			-WATCHED_SCREENS * screen,
-			(1 + WATCHED_SCREENS) * screen
+			-NEAR_SCREENS * screen,
+			(1 + NEAR_SCREENS) * screen
 		);
-		const next = new Set<Element>();
-		for (let i = first; i < last; i++) if (this.#observed.has(kids[i]!)) next.add(kids[i]!);
+		this.near = Array.from({ length: last - first }, (_, index) => kids[first + index]!);
+		if (!resize) return;
+		const next = new Set(this.near.filter((node) => this.#observed.has(node)));
 		for (const node of this.#watched)
 			if (!next.has(node)) {
 				this.#watched.delete(node);
@@ -270,6 +279,7 @@ export class Overlay {
 		return () => {
 			resize?.disconnect();
 			this.#watched.clear();
+			this.near = [];
 			if (this.#resize === resize) this.#resize = null;
 			if (this.#host === host) this.#host = null;
 			document.removeEventListener('scroll', this.invalidate, { capture: true });

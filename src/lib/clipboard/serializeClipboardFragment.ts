@@ -56,28 +56,26 @@ const withClasses = (html: string, classes: string) =>
 			})
 		: html;
 
-const blockHtml = (block: JSONBlock, kinds: ExportKinds): string => {
-	const content = contentOf(block.content, kinds, true);
-	const children = block.children?.map((child) => blockHtml(child, kinds)).join('') ?? '';
-	const form = kinds.blocks.get(block.type)?.html;
-	const html = !form
+/** A block and its subtree as HTML (its colours as Notion's classes), or as plain text. */
+const blockOf = (block: JSONBlock, kinds: ExportKinds, html: boolean): string => {
+	const content = contentOf(block.content, kinds, html);
+	const kids = block.children?.map((child) => blockOf(child, kinds, html)) ?? [];
+	const kind = kinds.blocks.get(block.type);
+	if (!html) {
+		const children = kids.filter(Boolean).join('\n');
+		return kind?.plain
+			? kind.plain(block, content, children)
+			: [content, children].filter(Boolean).join('\n');
+	}
+	const children = kids.join('');
+	const form = kind?.html;
+	const out = !form
 		? `<p>${content}</p>${children}`
 		: typeof form === 'string'
 			? tag(form, content + children)
 			: form(block, content, children);
 	// A block's colours as Notion's export names them (`block-color-red`).
-	return withClasses(html, colorClasses(block.data));
-};
-
-const blockPlain = (block: JSONBlock, kinds: ExportKinds): string => {
-	const content = contentOf(block.content, kinds, false);
-	const children =
-		block.children
-			?.map((child) => blockPlain(child, kinds))
-			.filter(Boolean)
-			.join('\n') ?? '';
-	const form = kinds.blocks.get(block.type)?.plain;
-	return form ? form(block, content, children) : [content, children].filter(Boolean).join('\n');
+	return withClasses(out, colorClasses(block.data));
 };
 
 export const serializeClipboardFragmentToPlainText = (
@@ -85,7 +83,7 @@ export const serializeClipboardFragmentToPlainText = (
 	kinds: ExportKinds
 ) =>
 	fragment.kind === 'blocks'
-		? fragment.blocks.map((block) => blockPlain(block, kinds)).join('\n')
+		? fragment.blocks.map((block) => blockOf(block, kinds, false)).join('\n')
 		: contentOf(fragment.content, kinds, false);
 
 export const serializeClipboardFragmentToHtml = (
@@ -95,7 +93,7 @@ export const serializeClipboardFragmentToHtml = (
 	const encoded = encodeClipboardJson(fragment);
 	const html =
 		fragment.kind === 'blocks'
-			? fragment.blocks.map((block) => blockHtml(block, kinds)).join('')
+			? fragment.blocks.map((block) => blockOf(block, kinds, true)).join('')
 			: `<p>${contentOf(fragment.content, kinds, true)}</p>`;
 	return `<meta charset="utf-8"><span ${EDYTOR_FRAGMENT_ATTRIBUTE}="${encoded}" hidden></span>${html}`;
 };

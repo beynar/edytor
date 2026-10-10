@@ -350,21 +350,20 @@ export class Suggestions {
 	/** The flow target of a block position (at an `end`, the first block's content joins the text). */
 	#target = (at: ResolvedAt, flow: Flow): FlowTarget => {
 		const { facade } = this.edytor;
-		if ('end' in at) {
+		const [side, id] = sideOf(at) ?? [];
+		if (side === 'end') {
 			const [first, ...rest] = flow.lines;
 			if (first)
 				flow.lines = [
 					{ id: first.id, content: first.content, children: first.children } as FlowLine,
 					...rest
 				];
-			return { block: at.end, offset: facade.displayLength(at.end) };
+			return { block: id!, offset: facade.displayLength(id!) };
 		}
-		if ('replace' in at) return { replace: at.replace as readonly BlockId[] };
-		if ('inside' in at)
-			return { slot: { parent: at.inside, index: facade.childrenIds(at.inside).length } };
-		const id = 'after' in at ? at.after : at.before;
+		if (!id) return { replace: (at as { replace: readonly BlockId[] }).replace };
+		if (side === 'inside') return { slot: { parent: id, index: facade.childrenIds(id).length } };
 		const { parent, index } = facade.positionOf(id) ?? { parent: null, index: 0 };
-		return { slot: { parent, index: index + ('after' in at ? 1 : 0) } };
+		return { slot: { parent, index: index + (side === 'after' ? 1 : 0) } };
 	};
 
 	/** A range's endpoints in document order, or null when one no longer resolves. */

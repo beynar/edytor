@@ -114,7 +114,13 @@ export const turnCommands = (edytor: Edytor, blocks: Block[]): KindRow[] =>
  * block, at least two).
  */
 export const wrappable = (edytor: Edytor, blocks: Block[], kind?: string, columns?: number) =>
-	'writes' in
+	'writes' in wrapPlan(edytor, { blocks, kind, columns });
+
+/** The document's wrap of `blocks` in a new layout (`layout.wrap`). */
+const wrapPlan = (
+	edytor: Edytor,
+	{ blocks, kind, columns }: { blocks: Block[]; kind?: string; columns?: number }
+) =>
 	edytor.facade.prepare.wrapInLayout(
 		blocks.map((block) => block.id),
 		kind,
@@ -135,12 +141,7 @@ export const wrapBlocks = (edytor: Edytor, blocks: Block[], kind?: string, colum
 		first,
 		'wrapBlocks',
 		{ blocks, kind, columns },
-		(p) =>
-			edytor.facade.prepare.wrapInLayout(
-				p.blocks.map((block) => block.id),
-				p.kind,
-				p.columns
-			),
+		(p) => wrapPlan(edytor, p),
 		lineage(first.parent)
 	);
 	if (!applied) return false;

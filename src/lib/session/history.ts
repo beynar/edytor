@@ -141,10 +141,6 @@ export class History {
 	 */
 	replay = (command: 'undo' | 'redo'): 'refused' | 'noop' | 'applied' =>
 		!this.edytor.dispatcher.permits() ? 'refused' : this.#run(command) ? 'applied' : 'noop';
-	/** Replay the top undo item; answers whether one was replayed. */
-	undo = () => this.replay('undo') === 'applied';
-	/** Replay the top redo item; answers whether one was replayed. */
-	redo = () => this.replay('redo') === 'applied';
 
 	#run(command: 'undo' | 'redo'): boolean {
 		const { undoManager: um, transaction: key, selection, facade } = this.edytor;

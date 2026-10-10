@@ -54,7 +54,7 @@ export const getCollapsedDomTextSelection = (edytor: Edytor) => {
 
 	// No model rule here: the DOM caret is read BEFORE the reconcile writes
 	// the model, so a native insertion legitimately sits past `text.length`
-	// (`setAtTextOffset` clamps the final write).
+	// (`selectText` clamps the final write).
 	return { text, offset: domOffsetIn(text, selection.anchorNode, selection.anchorOffset) };
 };
 

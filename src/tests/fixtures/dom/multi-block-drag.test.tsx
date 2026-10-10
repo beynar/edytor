@@ -158,7 +158,7 @@ describe('dragging a block selection by one of its handles', () => {
 		expect(shown.image?.textContent).toContain('c');
 		expect(edytor.undoManager!.undoStack.length).toBe(1);
 
-		edytor.history.undo();
+		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(tree(edytor)).toEqual(['a', 'b', 'c', 'd', 'e']);
 	});
@@ -244,7 +244,7 @@ describe('dragging a text range across blocks by one of their handles', () => {
 		expect(selected(edytor)).toEqual(['a', 'b', 'c']);
 		expect(shown.indicator?.dataset.count).toBe('3');
 
-		edytor.history.undo();
+		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(tree(edytor)).toEqual(['a', 'b', 'c', 'd', 'e']);
 	});

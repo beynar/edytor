@@ -20,11 +20,9 @@
  * `copyWithin` writes of the items they change.
  * `JSON.stringify` and `$state.snapshot` read plain JSON through it.
  */
-import { keySegment, segmentKey, type DataPatch } from '../crdt/data.js';
+import { isObject, keySegment, segmentKey, type DataPatch } from '../crdt/data.js';
 
 type Json = Record<string, unknown>;
-const isObject = (v: unknown): v is Json =>
-	v !== null && typeof v === 'object' && !Array.isArray(v);
 /** A plain JSON copy (proxies included), or `undefined`. */
 const plain = (v: unknown) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
 

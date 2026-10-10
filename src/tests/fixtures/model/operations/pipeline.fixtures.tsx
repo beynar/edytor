@@ -313,7 +313,8 @@ export const fixtures = defineFixtures([
 
 			// The empty-root bootstrap in `normalizeChildren` reseeds the
 			// semantic default rather than a hardcoded paragraph.
-			edytor.root!.deleteChildren(0, edytor.root!.children.length);
+			for (const id of edytor.facade.childrenIds(null))
+				edytor.facade.block(id).delete({ keepChildren: false });
 			edytor.root!.normalizeChildren();
 			expect(edytor.root!.children[0].type).toBe('heading');
 			expectBlockInvariantSnapshot(edytor);

@@ -56,10 +56,11 @@ describe('WU-13 · a readonly view cannot rewind', () => {
 		await dispatchDomBeforeInput(editor, { inputType: 'historyUndo' });
 		await dispatchDomBeforeInput(editor, { inputType: 'historyRedo' });
 
-		// The view's own history (internal) admits nothing either.
-		const internal = edytor as unknown as { history: { undo(): boolean; redo(): boolean } };
-		expect(internal.history.undo()).toBe(false);
-		expect(internal.history.redo()).toBe(false);
+		// The view's own history entry points admit nothing either.
+		edytor.historyUndo();
+		expect(edytor.dispatcher.last?.status).toBe('refused');
+		edytor.historyRedo();
+		expect(edytor.dispatcher.last?.status).toBe('refused');
 
 		edytor.clear();
 		await flushDomUpdates();

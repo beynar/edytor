@@ -27,8 +27,15 @@ export type IntentRow = {
 	key?: string;
 	/** A delete whose extent the model computes; a declared range only locates the caret edge. */
 	dir?: 'back' | 'fwd';
+	/** A delete's unit at a collapsed caret (none: a cut, drag or composition fragment, which deletes nothing there). */
+	unit?: 'char' | 'word' | 'soft' | 'hard' | 'line';
 };
-const row = (kind: Kind, key?: string, dir?: IntentRow['dir']): IntentRow => ({ kind, key, dir });
+const row = (
+	kind: Kind,
+	key?: string,
+	dir?: IntentRow['dir'],
+	unit?: IntentRow['unit']
+): IntentRow => ({ kind, key, dir, unit });
 
 /** The one inputType → intent table; everything downstream switches on its rows. */
 export const INTENTS: Record<string, IntentRow | undefined> = {
@@ -44,19 +51,19 @@ export const INTENTS: Record<string, IntentRow | undefined> = {
 	insertFromDrop: row('payload'),
 	insertParagraph: row('break', 'enter'),
 	insertLineBreak: row('break', 'shift+enter'),
-	deleteContentBackward: row('delete', 'backspace', 'back'),
-	deleteContentForward: row('delete', 'delete', 'fwd'),
-	deleteWordBackward: row('delete', undefined, 'back'),
-	deleteSoftLineBackward: row('delete', undefined, 'back'),
-	deleteHardLineBackward: row('delete', undefined, 'back'),
-	deleteWordForward: row('delete', undefined, 'fwd'),
-	deleteSoftLineForward: row('delete', undefined, 'fwd'),
-	deleteHardLineForward: row('delete', undefined, 'fwd'),
+	deleteContentBackward: row('delete', 'backspace', 'back', 'char'),
+	deleteContentForward: row('delete', 'delete', 'fwd', 'char'),
+	deleteWordBackward: row('delete', undefined, 'back', 'word'),
+	deleteSoftLineBackward: row('delete', undefined, 'back', 'soft'),
+	deleteHardLineBackward: row('delete', undefined, 'back', 'hard'),
+	deleteWordForward: row('delete', undefined, 'fwd', 'word'),
+	deleteSoftLineForward: row('delete', undefined, 'fwd', 'soft'),
+	deleteHardLineForward: row('delete', undefined, 'fwd', 'hard'),
 	deleteByCut: row('delete'),
 	deleteByDrag: row('delete'),
 	deleteByComposition: row('delete'),
-	deleteContent: row('delete'),
-	deleteEntireSoftLine: row('delete'),
+	deleteContent: row('delete', undefined, undefined, 'char'),
+	deleteEntireSoftLine: row('delete', undefined, undefined, 'line'),
 	historyUndo: row('history'),
 	historyRedo: row('history')
 };
@@ -109,8 +116,6 @@ export const untargeted = (edytor: Edytor) =>
 const facts = (edytor: Edytor) => {
 	const { state, projection } = edytor.selection;
 	const { startText } = state;
-	// Its block's place by id: no handle for every sibling (the root's on a long page).
-	const at = startText && edytor.facade.positionOf(startText.parent.id);
 	return {
 		/** The anchored target, fixed at admission. */
 		target: edytor.selection.value,
@@ -128,11 +133,7 @@ const facts = (edytor: Edytor) => {
 		isAtEndOfBlock: projection.isAtEndOfBlock,
 		isAtStartOfText: projection.isAtStartOfText,
 		isAtEndOfText: projection.isAtEndOfText,
-		islandRoot: edytor.idToBlock.get(projection.islandRoot ?? '') ?? null,
-		isVoidEditableElement: state.isVoidEditableElement,
-		isFirstChildOfDocument: Boolean(at && at.parent === null && at.index === 0),
-		isNested: Boolean(startText && startText.parent.parent !== edytor.root),
-		isLastChild: Boolean(at && at.index === edytor.facade.childrenIds(at.parent).length - 1)
+		isVoidEditableElement: state.isVoidEditableElement
 	};
 };
 

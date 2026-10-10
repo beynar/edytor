@@ -137,8 +137,12 @@ const facts = (edytor: Edytor) => {
 	};
 };
 
-/** How DOM drift around a model-owned attempt is handled: re-render, restore the caret, or also discard structure. */
-export type Drift = 'refresh' | 'restore' | 'discard';
+/**
+ * How DOM drift around a model-owned attempt is repaired: the observer
+ * inverts it (`refresh`), and its `input` also shows the caret again and
+ * re-renders the text it landed in (`restore`).
+ */
+export type Drift = 'refresh' | 'restore';
 export type TextPoint = { text: Text; offset: number };
 export type Expect =
 	/** The model performs the attempt; DOM changes before its deadline are drift. */

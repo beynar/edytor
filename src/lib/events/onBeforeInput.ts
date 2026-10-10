@@ -120,18 +120,15 @@ const isForeignHistory = (edytor: Edytor) => {
 	const node = edytor.node;
 	if (!node) return true;
 	const active = getActiveElement(node);
-	if (active && (active === node || node.contains(active))) return false;
-	const root = node.getRootNode();
+	if (active && node.contains(active)) return false;
 	const { body, documentElement } = node.ownerDocument;
-	if (
-		active &&
-		active !== (root instanceof ShadowRoot ? root.host : null) &&
-		active !== body &&
-		active !== documentElement
-	)
-		return true;
 	const anchor = getDomSelection(node)?.anchorNode;
-	return !anchor || !node.contains(anchor);
+	return (
+		(!!active &&
+			![body, documentElement, (node.getRootNode() as ShadowRoot).host].includes(active)) ||
+		!anchor ||
+		!node.contains(anchor)
+	);
 };
 
 /**
@@ -154,10 +151,10 @@ const isBrowserOwnedNativeInput = (edytor: Edytor, event: InputEvent) =>
  * no data the model could insert), a character delete inside the text (not a
  * trailing soft break's, whose `<br>` it mishandles) — and the attempt
  * expects that change on its host (`deleteCompositionText`: none to check).
- * The model performs everything else; the answer is then how long it owns
- * the DOM drift around it and how it repairs it: a browser write it could
- * not prevent is discarded (text, payloads, breaks) or restored around (a
- * delete).
+ * The model performs everything else; the answer is then how it repairs
+ * the DOM drift around it and for how long: a browser write it could not
+ * prevent (text, payloads, breaks) is inverted for the window, a delete's
+ * also has its caret restored.
  */
 const nativeOf = (edytor: Edytor, a: Attempt): Expect | null | [Drift, number] => {
 	const { inputType: type, startText: text, cancelable, isCollapsed } = a;
@@ -201,9 +198,12 @@ const nativeOf = (edytor: Edytor, a: Attempt): Expect | null | [Drift, number] =
 	if (type === 'deleteCompositionText') return null;
 	if (cancelable) return ['refresh', 0];
 	if (kind === 'delete') return ['restore', NATIVE_INPUT_REPAIR_WINDOW_MS];
-	return kind === 'break' || kind === 'payload' || /^insert(Text|ReplacementText)$/.test(type)
-		? ['discard', NATIVE_INPUT_REPAIR_WINDOW_MS]
-		: ['refresh', 0];
+	return [
+		'refresh',
+		kind === 'break' || kind === 'payload' || /^insert(Text|ReplacementText)$/.test(type)
+			? NATIVE_INPUT_REPAIR_WINDOW_MS
+			: 0
+	];
 };
 
 /**
@@ -281,7 +281,7 @@ const perform = (
 			attempt.phase = 'failed';
 			throw error;
 		}
-		if (mode !== 'refresh') edytor.attempts.arm(attempt, window);
+		if (window) edytor.attempts.arm(attempt, window);
 		// The command selected its caret; a paste re-renders the text it landed in.
 		const text = edytor.selection.state.startText;
 		if (inputType === 'insertFromPaste' && text?.node?.isConnected) text.refreshFromModel();
@@ -319,7 +319,7 @@ const occur = (
 		if (kindOf(occurrence.inputType) === 'composition') return;
 		const attempt = edytor.attempts.admit(attemptOf(edytor, occurrence, key?.inputType), 'model');
 		attempt.phase = 'failed';
-		return edytor.attempts.drift(attempt, 'discard', NATIVE_INPUT_REPAIR_WINDOW_MS);
+		return edytor.attempts.drift(attempt, 'refresh', NATIVE_INPUT_REPAIR_WINDOW_MS);
 	}
 	const attempt = reuse ? reproject(edytor, reuse) : attemptOf(edytor, occurrence, key?.inputType);
 	if (!reuse && declared && declares(edytor, attempt, declared))

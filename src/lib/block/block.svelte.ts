@@ -1,6 +1,6 @@
 import { Text } from '../text/text.svelte.js';
 import type { Edytor } from '../edytor.svelte.js';
-import type { JSONBlock, JSONText, JSONInlineBlock } from '$lib/utils/json.js';
+import type { JSONBlock, JSONInlineBlock } from '$lib/utils/json.js';
 import {
 	batch,
 	planned,
@@ -39,7 +39,7 @@ import {
 	prepareDeleteRange,
 	type BlockOperations
 } from './block.utils.js';
-import { jsonBlockToSpec, jsonContentToItems } from '$lib/utils/json.js';
+import { jsonBlockToSpec } from '$lib/utils/json.js';
 import type { BlockDefinition } from '$lib/plugins.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 import type { DocBlock } from '$lib/crdt/index.js';
@@ -467,26 +467,6 @@ export class Block {
 		const ids = this.edytor.facade.childrenIds(this.isRoot ? null : this.id);
 		for (const id of ids.slice(index, index + length).reverse())
 			this.edytor.facade.block(id).delete({ keepChildren: false });
-	};
-
-	/**
-	 * Insert content before part `index` (a text segment or an inline atom):
-	 * each entry is a text's runs or an atom, as JSON. Raw, as `insertChildren`.
-	 * @internal
-	 */
-	insertParts = (index: number, parts: (JSONText[] | JSONInlineBlock)[]): void => {
-		if (!this.edytor.dispatcher.permits()) return;
-		const model = this.model;
-		if (!model) return;
-		const all = this.edytor.idToBlock.parts(this.id);
-		let at = all[index]?.start ?? model.length;
-		for (const item of jsonContentToItems(parts.flat())) {
-			if (item.kind === 'inline') model.insertInline(at++, item);
-			else if (item.text) {
-				model.insertText(at, item.text, item.marks);
-				at += item.text.length;
-			}
-		}
 	};
 
 	/** The declared view state (`open` on a `details`) the block's last element held. */

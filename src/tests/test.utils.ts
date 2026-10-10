@@ -11,6 +11,7 @@ import type { RenderedNode } from './jsx/types.js';
 import { Edytor } from '../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
+import { jsonContentToItems } from '$lib/utils/json.js';
 import { expect } from 'vitest';
 import { Block } from '$lib/block/block.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
@@ -95,6 +96,28 @@ const getAncestorBlockByDefinition = (
 	}
 
 	return null;
+};
+
+/**
+ * Insert content before part `index` of `block` (a text segment or an inline
+ * atom): each entry is a text's runs or an atom, as JSON. A raw document
+ * write, for fixtures.
+ */
+export const insertParts = (
+	block: Block,
+	index: number,
+	parts: (JSONText[] | JSONInlineBlock)[]
+): void => {
+	const model = block.model;
+	if (!model) return;
+	let at = block.edytor.idToBlock.parts(block.id)[index]?.start ?? model.length;
+	for (const item of jsonContentToItems(parts.flat())) {
+		if (item.kind === 'inline') model.insertInline(at++, item);
+		else if (item.text) {
+			model.insertText(at, item.text, item.marks);
+			at += item.text.length;
+		}
+	}
 };
 
 export const findCursorPosition = (doc: JSONDoc) => {

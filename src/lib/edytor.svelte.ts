@@ -330,7 +330,9 @@ export class Edytor {
 	 * API-driven selection changes must never move the page).
 	 * @internal
 	 */
-	isHandlingUserInput = false;
+	get isHandlingUserInput(): boolean {
+		return this.userInputHandlingDepth > 0;
+	}
 	/**
 	 * Depth counter suppressing caret scroll during programmatic DOM
 	 * writes — remote mirror flushes and mutation-observer repairs can
@@ -817,30 +819,24 @@ export class Edytor {
 	 * affordances long after the gesture ended.
 	 */
 	private userInputHandlingDepth = 0;
-	private withUserInput = <E extends Event>(
-		handler: (event: E) => unknown,
+	private withUserInput = <A extends unknown[]>(
+		handler: (...args: A) => unknown,
 		opts: { bumpSerial?: boolean } = {}
 	) => {
-		return (event: E): unknown => {
-			// Depth-counted, not boolean: a synchronous wrapped listener
-			// landing inside an awaited handler's hold window must not
-			// clear the flag the outer handler still needs.
+		return (...args: A): unknown => {
+			// Depth-counted: a synchronous wrapped listener landing inside an
+			// awaited handler's hold window must not end the window the outer
+			// handler still needs.
 			this.userInputHandlingDepth++;
-			this.isHandlingUserInput = true;
 			if (opts.bumpSerial !== false) {
 				this.markUserGesture();
 			}
 			const clear = () => {
-				this.userInputHandlingDepth--;
-				if (this.userInputHandlingDepth <= 0) {
-					this.userInputHandlingDepth = 0;
-					this.isHandlingUserInput = false;
-					// A display the window held back gets its pass now.
-					this.projector.inputHandled();
-				}
+				// A display the window held back gets its pass now.
+				if (--this.userInputHandlingDepth === 0) this.projector.inputHandled();
 			};
 			try {
-				const result = handler(event);
+				const result = handler(...args);
 				// Async handlers keep the flag until they settle — the
 				// awaited model ops + selection writes are still "the
 				// user's input". Timer/rAF-deferred restores run after
@@ -917,8 +913,7 @@ export class Edytor {
 	 */
 	lastUserGestureOutsideEditor = false;
 	/** @internal Run `body` as part of the user's input (deferred work of an occurrence). */
-	userInput = <T>(body: () => T) =>
-		this.withUserInput(body, { bumpSerial: false })(new Event('input'));
+	userInput = <T>(body: () => T) => this.withUserInput(body, { bumpSerial: false })();
 	/**
 	 * A commit's caret: select it (the projector displays it once the pin's
 	 * render lands) and arm the IME post-commit jump rule — a move right after

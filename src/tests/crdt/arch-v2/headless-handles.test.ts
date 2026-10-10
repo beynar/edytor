@@ -24,6 +24,7 @@ import { attachDocument } from '../../../lib/crdt/document.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
+import { insertParts } from '../../test.utils.js';
 
 /** Red on the reference (`arch-v2/ref-r4`); green since R4. */
 const row = test;
@@ -179,12 +180,12 @@ describe('handles read the index', () => {
 	});
 
 	/** Green since R4a. */
-	test('insertChildren and insertParts take JSON specs', () => {
+	test('insertChildren takes JSON specs, beside raw JSON parts', () => {
 		const { edytor } = view();
 		const root = edytor.root!;
 		root.insertChildren(1, [{ id: 'j', type: 'paragraph', content: [{ text: 'json' }] }]);
 		const j = edytor.idToBlock.get('j')!;
-		j.insertParts(1, [{ type: 'mention', id: 'm', data: {} }, [{ text: '!' }]]);
+		insertParts(j, 1, [{ type: 'mention', id: 'm', data: {} }, [{ text: '!' }]]);
 		expect(texts(edytor)).toEqual([
 			['paragraph', 'aa'],
 			['paragraph', 'json@!'],

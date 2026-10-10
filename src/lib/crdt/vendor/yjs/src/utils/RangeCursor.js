@@ -7,9 +7,9 @@
  * search-marker checkpoints (the `formats` snapshots YP4 added for
  * `applyDelta`'s mutation-cursor seeding are exactly the checkpoints a
  * format-aware range read needs) and emits one {@link RangePiece} per
- * visible piece overlapping the range — the SAME physical-sequence
- * interpretation `YNode#toDelta` renders with (`readItemPieces`), folded
- * by `updateCurrentFormats`, measured by `rendererContentLength`.
+ * visible piece overlapping the range — the live content, folded by
+ * `updateCurrentFormats`, measured by `liveLength` (the same interpretation
+ * the write cursor, `ItemTextListPosition`, walks with).
  *
  * Cold reads leave sparse format-aware checkpoints behind their walk at
  * `READ_PLANT_GAP`-item cadence (`plantSearchMarker`) — `findMarker`'s
@@ -19,7 +19,7 @@
  *
  * Reads are pure with respect to replicated state: they never open a
  * transaction — no updates are produced, no items are split, no undo
- * state changes, no renderer is installed or mutated. The only writes
+ * state changes. The only writes
  * are to the node's local `_searchMarker` pool — the same adaptive
  * checkpoint maintenance upstream's own read-path lookups perform via
  * `findMarker` (`typeListGet`, position resolution) — non-replicated,
@@ -32,8 +32,7 @@ import { ContentFormat } from '../structs/Item.js'
 import { plantSearchMarker } from '../ynode.js'
 
 import { createID } from './ID.js'
-import { rendererContentLength, readItemPieces } from './renderer-helpers.js'
-import { updateCurrentFormats } from './transaction-helpers.js'
+import { updateCurrentFormats, liveLength } from './transaction-helpers.js'
 import { formatValue } from './marks.js' // YP13
 
 /**
@@ -46,29 +45,25 @@ const READ_PLANT_GAP = 64
 
 /**
  * One element of the bounded read stream produced by {@link RangeCursor#read}
- * — the read-side analogue of a delta op's content payload, carrying the same
- * attribution inputs `YNode#toDelta` consumes (mode `1` semantics).
+ * — one live piece of content overlapping the range, with the formats folded
+ * at it.
  *
  * @typedef {Object} RangePiece
  * @property {AbstractContent} content - the piece's content object. BORROWED
- *   from the item (never mutated, never copied) or produced by the renderer.
+ *   from the item (never mutated, never copied).
  *   Emit `[offset, offset + len)` of it: slice `content.str` for
- *   `ContentString` (UTF-16 units — identical to clipping a `toDelta` insert
- *   op's string) and index `content.getContent()` for element content.
+ *   `ContentString` (UTF-16 units) and index `content.getContent()` for
+ *   element content.
  * @property {ID} id - replicated id of the first emitted element.
  * @property {number} index - rendered position the emitted range starts at.
  * @property {number} offset - start of the emitted range inside `content`.
- * @property {number} len - rendered length of the emitted range. `0` for
- *   `ContentFormat` markers and for pieces occupying no rendered position
- *   (renderer-hidden or unattributed tombstones).
- * @property {boolean} deleted - effective tombstone flag (renderer-aware: a
- *   restored piece clears it, an attributed tombstone keeps it).
- * @property {Array<ContentAttribute<any>>?} attrs - native attribution
- *   inputs (`createAttributionFromAttributionItems` computes the delta-level
- *   `Attribution` from them); `null` when unattributed.
+ * @property {number} len - rendered length of the emitted range (`0` for a
+ *   live piece occupying no position).
+ * @property {boolean} deleted - always `false`: a read emits live content only.
+ * @property {null} attrs - always `null` (no attribution layer).
  * @property {Object<string,any>|undefined} formats - folded format state at
- *   the piece (the `toDelta` `format` object equivalent). SHARED between
- *   adjacent pieces of one fold state — treat as read-only.
+ *   the piece. SHARED between adjacent pieces of one fold state — treat as
+ *   read-only.
  */
 
 /**
@@ -79,20 +74,13 @@ const READ_PLANT_GAP = 64
  */
 export class RangeCursor {
   /**
-   * @param {YNode<any>} parent - the list node to read.
-   * @param {AbstractRenderer?} [renderer] - defaults to the node's active
-   *   renderer (`this._renderer`), the `toDelta`/`applyDelta` convention.
-   *   Pass `null` to force the generic interpretation.
+   * @param {YNode} parent - the list node to read.
    */
-  constructor (parent, renderer = parent._renderer) {
+  constructor (parent) {
     /**
-     * @type {YNode<any>}
+     * @type {YNode}
      */
     this.parent = parent
-    /**
-     * @type {AbstractRenderer?}
-     */
-    this.renderer = renderer
     /**
      * The next unprocessed sequence item — a parked cursor keeps `index` at
      * its left edge.
@@ -102,7 +90,7 @@ export class RangeCursor {
     /**
      * Rendered units strictly before `p` — the
      * `ItemTextListPosition#index`/`ArraySearchMarker#index` space
-     * (countable, non-deleted units while `renderer === null`).
+     * (countable, non-deleted units).
      * @type {number}
      */
     this.index = 0
@@ -136,23 +124,19 @@ export class RangeCursor {
    * from the best engine-owned checkpoint — an `ArraySearchMarker`
    * carrying a `formats` snapshot.
    *
-   * Read-seed eligibility is deliberately WEAKER than `applyDelta`'s
-   * mutation seed (UPSTREAM.md YP5): a read may resume on ANY item at-or-left
+   * Read-seed eligibility is deliberately WEAKER than the write cursor's
+   * seed (UPSTREAM.md YP5): a read may resume on ANY item at-or-left
    * of the target — the forward fold reproduces format state from the
    * snapshot — while the mutation cursor must anchor on the FIRST item at
    * the index (its `p.left` must be countable-or-null). Both consume the
    * same marker records and snapshots.
-   *
-   * Restricted to `renderer === null` for the same reason the mutation seed
-   * is: `marker.index` records the raw countable space, which a renderer's
-   * `contentLength` can reinterpret.
    *
    * @param {number} index
    */
   seek (index) {
     const parent = this.parent
     const ms = parent._searchMarker
-    if (ms === null || this.renderer !== null) return
+    if (ms === null) return
     /**
      * @type {import('../structs/Item.js').Item?}
      */
@@ -202,18 +186,16 @@ export class RangeCursor {
   }
 
   /**
-   * Fold one `ContentFormat` piece into the cursor's format state — the
-   * `!deleted` gate mirrors `ItemTextListPosition#forward`/`toDelta`: a
-   * tombstoned marker (or a piece the renderer renders as deleted) applies
-   * nothing.
+   * Fold one `ContentFormat` item into the cursor's format state — the
+   * `!deleted` gate mirrors `ItemTextListPosition#forward`: a tombstoned
+   * marker applies nothing.
    *
-   * @param {AttributedContent<any>} c
+   * @param {import('../structs/Item.js').Item} item
    * @param {{ markers: number }?} stats
    */
-  _foldPiece (c, stats) {
-    if (c.content.constructor !== ContentFormat) return
-    if (!c.deleted) {
-      updateCurrentFormats(this.currentFormats, /** @type {ContentFormat} */ (c.content))
+  _foldItem (item, stats) {
+    if (!item.deleted) {
+      updateCurrentFormats(this.currentFormats, /** @type {ContentFormat} */ (item.content))
       this._formatsObj = null
     }
     if (stats !== null) stats.markers++
@@ -242,9 +224,8 @@ export class RangeCursor {
 
   /**
    * Emit the {@link RangePiece}s of `[i0, i1)` — a bounded, read-only walk
-   * of the item list producing the same pieces `toDelta`'s current-state
-   * render consumes (`readItemPieces`), clipped to the range and carrying
-   * folded format state + native attribution inputs.
+   * of the item list producing its live content, clipped to the range and
+   * carrying the folded format state.
    *
    * The cursor is left positioned to serve the NEXT forward read cheaply:
    * items fully consumed advance `p`/`index`; a range ending inside an
@@ -272,30 +253,19 @@ export class RangeCursor {
     if (i0 > this.index) {
       this.seek(i0)
     }
-    /**
-     * Per-item attributed pieces buffer (reused across items), plus the
-     * trivial-piece scratch `readItemPieces` reuses — `cs` is drained
-     * before the next item, so one allocation serves the whole read.
-     * @type {Array<AttributedContent<any>>}
-     */
-    const cs = []
-    /**
-     * @type {AttributedContent<any>?}
-     */
-    let csScratch = null
     // Items stepped since the cursor passed the last checkpoint — a sparse
     // marker is recorded at every `READ_PLANT_GAP` boundary during a cold
     // walk (the checkpoint pool only fills where work actually happens —
     // `findMarker`'s merge-left rule cannot anchor mid-run in
     // same-client-contiguous lists, so read-driven planting is what makes
-    // read-only workloads bounded). Index space is the raw countable one,
-    // hence the `renderer === null` gate — same space markers record.
+    // read-only workloads bounded). Index space is the raw countable one —
+    // the same space markers record.
     let stepsSincePlant = 0
-    const planting = this.renderer === null && parent._searchMarker !== null
+    const planting = parent._searchMarker !== null
     while (this.p !== null) {
       const item = this.p
       const start = this.index
-      const end = start + rendererContentLength(this.renderer, item)
+      const end = start + liveLength(item)
       if (stats !== null) stats.items++
       if (end <= i0) {
         // Boundary checkpoint — BEFORE folding the item (the snapshot is
@@ -304,16 +274,9 @@ export class RangeCursor {
           plantSearchMarker(parent, item, start, this.currentFormats)
           stepsSincePlant = 0
         }
-        // Prefix item — only format state can matter. `readItemPieces`
-        // gives marker pieces their effective `deleted` flag (renderer-
-        // aware), identical to `toDelta`'s fold.
+        // Prefix item — only format state can matter.
         if (item.content.constructor === ContentFormat) {
-          cs.length = 0
-          readItemPieces(cs, this.renderer, item, csScratch)
-          if (csScratch === null) csScratch = cs[0] ?? null
-          for (let k = 0; k < cs.length; k++) {
-            this._foldPiece(cs[k], stats)
-          }
+          this._foldItem(item, stats)
         }
         this.index = end
         this.p = item.right
@@ -325,72 +288,42 @@ export class RangeCursor {
         plantSearchMarker(parent, item, start, this.currentFormats)
         stepsSincePlant = 0
       }
-      // Overlapping item — produce its attributed pieces (the shared
-      // physical-sequence interpretation).
-      cs.length = 0
-      readItemPieces(cs, this.renderer, item, csScratch)
-      if (csScratch === null) csScratch = cs[0] ?? null
-      /**
-       * Rendered position of the piece currently being processed.
-       * @type {number}
-       */
-      let pix = start
-      for (let k = 0; k < cs.length; k++) {
-        const c = cs[k]
-        const content = c.content
-        if (content.constructor === ContentFormat) {
-          this._foldPiece(c, stats)
-          // Marker pieces reach the stream only when attributed — they
-          // occupy no rendered position.
-          if (c.attrs != null) {
-            out.push({
-              content,
-              id: createID(item.id.client, c.clock),
-              index: pix,
-              offset: 0,
-              len: 0,
-              deleted: c.deleted,
-              attrs: c.attrs,
-              formats: this._emitFormats()
-            })
-          }
-          continue
-        }
-        // Rendered length of this piece: `render` is the mode-1 flag
-        // (`!deleted || attrs != null`) — deleted unattributed pieces
-        // occupy no rendered position, attributed tombstones do (they
-        // render as deletes).
-        const plen = c.render && content.isCountable() ? content.getLength() : 0
+      // Overlapping item: a format marker folds (it occupies no position),
+      // a tombstone shows nothing, live content emits its part of the range.
+      const content = item.content
+      if (content.constructor === ContentFormat) {
+        this._foldItem(item, stats)
+      } else if (!item.deleted) {
+        const plen = content.isCountable() ? content.getLength() : 0
         if (plen === 0) {
-          if (pix >= i0 && pix < i1) {
+          if (start >= i0 && start < i1) {
             out.push({
               content,
-              id: createID(item.id.client, c.clock),
-              index: pix,
+              id: item.id,
+              index: start,
               offset: 0,
               len: 0,
-              deleted: c.deleted,
-              attrs: c.attrs,
+              deleted: false,
+              attrs: null,
               formats: this._emitFormats()
             })
           }
-          continue
+        } else {
+          const lo = math.max(i0, start)
+          const hi = math.min(i1, start + plen)
+          if (lo < hi) {
+            out.push({
+              content,
+              id: createID(item.id.client, item.id.clock + (lo - start)),
+              index: lo,
+              offset: lo - start,
+              len: hi - lo,
+              deleted: false,
+              attrs: null,
+              formats: this._emitFormats()
+            })
+          }
         }
-        const lo = math.max(i0, pix)
-        const hi = math.min(i1, pix + plen)
-        if (lo < hi) {
-          out.push({
-            content,
-            id: createID(item.id.client, c.clock + (lo - pix)),
-            index: lo,
-            offset: lo - pix,
-            len: hi - lo,
-            deleted: c.deleted,
-            attrs: c.attrs,
-            formats: this._emitFormats()
-          })
-        }
-        pix += plen
       }
       if (end > i1) return out // range ends inside this item — stay parked at its left edge
       // Item fully consumed — the boundary at `end` is the next item's left

@@ -69,9 +69,9 @@ export class Transaction {
     /**
      * Stores the events for the types that observe also child elements.
      * It is mainly used by `observeDeep`.
-     * @type {Map<YNode,Array<YEvent<any>>>}
+     * @type {Map<YNode,Array<YEvent>>}
      */
-    changedParentTypes: Map<YNode, Array<YEvent<any>>>;
+    changedParentTypes: Map<YNode, Array<YEvent>>;
     /**
      * @type {Array<AbstractStruct>}
      */

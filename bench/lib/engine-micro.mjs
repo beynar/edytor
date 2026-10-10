@@ -1,5 +1,7 @@
 // WU9 engine micro-benchmark: the two named vendored hot paths.
-//   1. YNode.applyDelta() on a fragmented long paragraph at distant positions —
+//   1. a delta applied to a fragmented long paragraph at distant positions (the
+//      engine's own `applyDelta` for a baseline that still ships it, else the
+//      test port over the fork's write cursor, UPSTREAM.md YP16) —
 //      the cursor starts at _start every call, so each op costs O(position).
 //   2. createAbsolutePositionFromRelativePosition() — resolves an anchor by
 //      walking left from the bound item, summing visible length.
@@ -14,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 const ENGINE_DIR = process.env.ENGINE_DIR ?? '../../src/lib/crdt/vendor/yjs/src';
 const Y = await import(fileURLToPath(new URL(`${ENGINE_DIR}/index.js`, import.meta.url)));
 const delta = await import('lib0-v14/delta');
+const { applyDelta } = await import('../../src/tests/crdt/harness/delta.js');
 console.log(`engine: ${ENGINE_DIR}`);
 
 const QUICK = process.argv.includes('quick');
@@ -30,7 +33,7 @@ const buildFragmentedText = (n) => {
 		for (let i = 0; i < n; i++) {
 			d.insert('x', i % 2 === 0 ? { b: true } : { i: true });
 		}
-		text.applyDelta(d);
+		applyDelta(text, d);
 	});
 	return { doc, text };
 };
@@ -62,11 +65,11 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 		`applyDelta retain(${pos})+insert (distant)`,
 		() => {
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).insert('y'));
+				applyDelta(text, delta.create().retain(pos).insert('y'));
 			});
 			// undo the insert by deleting it again so the doc stays ~constant
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).delete(1));
+				applyDelta(text, delta.create().retain(pos).delete(1));
 			});
 		},
 		QUICK ? 300 : 1000
@@ -79,10 +82,10 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 		`applyDelta retain(${pos})+insert (mid)`,
 		() => {
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).insert('y'));
+				applyDelta(text, delta.create().retain(pos).insert('y'));
 			});
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).delete(1));
+				applyDelta(text, delta.create().retain(pos).delete(1));
 			});
 		},
 		QUICK ? 300 : 1000
@@ -96,14 +99,15 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 		'applyDelta sequential append (typing)',
 		() => {
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(text.length).insert('y'));
+				applyDelta(text, delta.create().retain(text.length).insert('y'));
 			});
 		},
 		QUICK ? 300 : 1000
 	);
 	// undo the appended run (warmup + iters) so later lanes see the same shape
 	doc.transact(() => {
-		text.applyDelta(
+		applyDelta(
+			text,
 			delta
 				.create()
 				.retain(beforeLen)
@@ -124,10 +128,10 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 		() => {
 			const pos = Math.floor(rand() * (text.length - 2)) + 1;
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).insert('y'));
+				applyDelta(text, delta.create().retain(pos).insert('y'));
 			});
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).delete(1));
+				applyDelta(text, delta.create().retain(pos).delete(1));
 			});
 		},
 		QUICK ? 300 : 1000
@@ -140,10 +144,10 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 		`applyDelta retain(${pos})+insert (near)`,
 		() => {
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).insert('y'));
+				applyDelta(text, delta.create().retain(pos).insert('y'));
 			});
 			doc.transact(() => {
-				text.applyDelta(delta.create().retain(pos).delete(1));
+				applyDelta(text, delta.create().retain(pos).delete(1));
 			});
 		},
 		QUICK ? 300 : 1000

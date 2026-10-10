@@ -1,16 +1,14 @@
 /// <reference path="./global.d.ts" />
 export { Doc } from "./utils/Doc.js";
-export { $doc } from "./utils/schemas.js";
 export { isParentOf } from "./utils/isParentOf.js";
 export { YEvent } from "./utils/YEvent.js";
 export { RangeCursor } from "./utils/RangeCursor.js";
+export { YNode as Node } from "./ynode.js";
 export { AbstractStruct } from "./structs/AbstractStruct.js";
 export { GC } from "./structs/GC.js";
 export { Skip } from "./structs/Skip.js";
-export * from "./utils/meta.js";
 export type ContentIds = import("./utils/ids.js").ContentIds;
-export type ContentMap = import("./utils/ids.js").ContentMap;
-export { IdSet, equalIdSets, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, IdMap, createIdMap, createContentAttribute, ContentAttribute, encodeIdMap, insertIntoIdMap, readIdMap, writeIdMap, decodeIdMap, intersectSets, $idSet, $idMapAny } from "./utils/ids.js";
+export { IdSet, equalIdSets, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, intersectSets } from "./utils/ids.js";
 export { UpdateDecoderV1, UpdateDecoderV2 } from "./utils/UpdateDecoder.js";
 export { UpdateEncoderV1, UpdateEncoderV2 } from "./utils/UpdateEncoder.js";
 export { applyUpdate, applyUpdateV2, readUpdateV2, encodeStateAsUpdate, encodeStateAsUpdateV2, encodeStateVector, decodeStateVector, diffUpdateV2, mergeUpdates, mergeUpdatesV2 } from "./utils/encoding.js";
@@ -20,6 +18,4 @@ export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from 
 export { Transaction, transact, cleanupYTextFormatting } from "./utils/Transaction.js";
 export { UndoManager, redoItem } from "./utils/UndoManager.js";
 export { decodeUpdate, decodeUpdateV2, convertUpdateFormatV2ToV1 } from "./utils/updates.js";
-export { AbstractRenderer, $renderer } from "./utils/renderer-helpers.js";
-export { YNode as Node, $nodeAny } from "./ynode.js";
 export { Item, ContentBinary, ContentDeleted, ContentDoc, ContentEmbed, ContentFormat, ContentJSON, ContentAny, ContentString, ContentType } from "./structs/Item.js";

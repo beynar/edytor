@@ -5,6 +5,7 @@ import * as prng from 'lib0-v14/prng'
 import * as math from 'lib0-v14/math'
 import * as env from 'lib0-v14/environment'
 import * as delta from 'lib0-v14/delta'
+import { toDelta, eventDelta, fromDelta } from '../../../src/tests/crdt/harness/delta.js'
 
 const isDevMode = env.getVariable('node_env') === 'development'
 
@@ -63,7 +64,7 @@ export const testSlice = _tc => {
 export const testArrayFrom = _tc => {
   const doc1 = new Y.Doc()
   const db1 = doc1.get('root')
-  const nestedArray1 = Y.Node.from(delta.create().insert([0, 1, 2]))
+  const nestedArray1 = fromDelta(delta.create().insert([0, 1, 2]))
   db1.setAttr('array', nestedArray1)
   t.compare(nestedArray1.toArray(), [0, 1, 2])
 }
@@ -162,9 +163,9 @@ export const testDeleteInsert = tc => {
 export const testInsertThreeElementsTryRegetProperty = tc => {
   const { testConnector, users, array0, array1 } = init(tc, { users: 2 })
   array0.insert(0, [1, true, false])
-  t.compare(array0.toDelta(), delta.create().insert([1, true, false]).done(), 'content works')
+  t.compare(toDelta(array0), delta.create().insert([1, true, false]).done(), 'content works')
   testConnector.flushAllMessages()
-  t.compare(array1.toDelta(), delta.create().insert([1, true, false]).done(), 'comparison works after sync')
+  t.compare(toDelta(array1), delta.create().insert([1, true, false]).done(), 'comparison works after sync')
   compare(users)
 }
 
@@ -337,7 +338,7 @@ export const testChangeEvent = tc => {
    */
   let d = delta.create()
   array0.observe(e => {
-    d = e.delta
+    d = eventDelta(e)
   })
   const newArr = new Y.Node()
   array0.insert(0, [newArr, 4, 'dtrn'])

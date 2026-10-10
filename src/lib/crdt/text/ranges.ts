@@ -3,7 +3,7 @@
  * boundary of what they emit (interned, frozen payloads).
  *
  * Reads go through the vendored `Y.RangeCursor` (fork patch YP5): it walks the live item
- * list with the same `readItemPieces` dispatch `toDelta` consumes and seeds
+ * list, folding format items as the write cursor does, and seeds
  * itself from the engine's search-marker checkpoints, so a read costs the
  * checkpoint gap plus the range. Emitted `marks` ALIAS the cursor's format
  * state: consumers treat them as read-only (the index interns them).

@@ -40,7 +40,6 @@ import {
 	newNode as makeNode,
 	rangeCursorOf,
 	storeOf,
-	withoutRenderer,
 	type IdSetOf
 } from '../structs.js';
 import { CONTENT, CONTENT_NODE, ID, NONCE, SCHEMA } from '../schema.js';
@@ -324,9 +323,6 @@ export type Ownership = {
 	claimsOf?: (b: BlockId) => readonly Claim[];
 };
 
-/** Every write addresses live-content space: a renderer on a backing text is a read concern. */
-const plain = <T>(text: EngineNode, f: () => T): T => withoutRenderer(text, f);
-
 export const bindText = (Y: EngineApi) => {
 	const D = bindDeletes(Y);
 	const newNode = (name: string): EngineNode => makeNode(Y, name);
@@ -363,7 +359,7 @@ export const bindText = (Y: EngineApi) => {
 		};
 	};
 
-	/** A renderer-free bounded read cursor on `text` (live-content space). */
+	/** A bounded read cursor on `text` (live-content space). */
 	const openRangeCursor = (text: EngineNode): RangeCursor => rangeCursorOf<RangeCursor>(Y, text);
 
 	const itemsOfRange = (text: EngineNode, i0: number, i1: number): RangeItem[] =>
@@ -543,13 +539,11 @@ export const bindText = (Y: EngineApi) => {
 		const text = hit.seg.text as EngineNode & {
 			insertInGap(index: number, content: string | unknown[]): void;
 		};
-		plain(text, () => {
-			if (typeof payload !== 'string') return text.insertInGap(hit.idx, [payload]);
-			text.insertInGap(hit.idx, payload);
-			const at = openRangeCursor(text).read(hit.idx, hit.idx + payload.length);
-			const have = at.find((p) => !p.deleted && p.len > 0)?.formats;
-			fitMarks(doc, text, hit.idx, payload.length, have, marks);
-		});
+		if (typeof payload !== 'string') return text.insertInGap(hit.idx, [payload]);
+		text.insertInGap(hit.idx, payload);
+		const at = openRangeCursor(text).read(hit.idx, hit.idx + payload.length);
+		const have = at.find((p) => !p.deleted && p.len > 0)?.formats;
+		fitMarks(doc, text, hit.idx, payload.length, have, marks);
 	};
 
 	/** The per-stream delete: each range lies inside one stream's pieces, so no boundary is ever removed. */
@@ -566,7 +560,7 @@ export const bindText = (Y: EngineApi) => {
 			for (const p of openRangeCursor(r.text).read(r.a, r.b))
 				if (!p.deleted && p.len > 0 && (p.content.str !== undefined || 'type' in p.content))
 					spans.push({ c: p.id.client, k: p.id.clock, n: p.len });
-			plain(r.text, () => r.text.delete(r.a, r.b - r.a));
+			r.text.delete(r.a, r.b - r.a);
 		}
 		D.markDeleted(doc, spans);
 	};
@@ -581,13 +575,13 @@ export const bindText = (Y: EngineApi) => {
 		formats: Record<string, unknown>
 	): void => {
 		for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length))
-			plain(r.text, () => writeMarks(doc, r.text, r.a, r.b - r.a, formats));
+			writeMarks(doc, r.text, r.a, r.b - r.a, formats);
 	};
 
 	/**
 	 * Delete the content of streams `streams` (the room's purge of a
 	 * block deleted past the horizon): every piece, so no boundary goes and
-	 * each stream still delimits, renderer-free, writing no delete mark.
+	 * each stream still delimits, writing no delete mark.
 	 * Streams of one text are deleted from its end, so the indices the
 	 * caller read stay valid.
 	 */
@@ -597,7 +591,7 @@ export const bindText = (Y: EngineApi) => {
 			const parts = pieces(s).filter(([a, b]) => b > a);
 			for (let i = parts.length - 1; i >= 0; i--) {
 				const [a, b] = parts[i];
-				plain(s.text, () => s.text.delete(a, b - a));
+				s.text.delete(a, b - a);
 			}
 		}
 	};
@@ -646,7 +640,7 @@ export const bindText = (Y: EngineApi) => {
 		after(seg.block, 0);
 		for (let i = seg.path.length - 1; i >= 0; i--) after(seg.path[i].holder, seg.path[i].entry + 1);
 		const text = seg.text as EngineNode & { insertAtGapEnd(i: number, c: unknown[]): void };
-		plain(text, () => text.insertAtGapEnd(idx, [{ s: newId, n } satisfies Boundary]));
+		text.insertAtGapEnd(idx, [{ s: newId, n } satisfies Boundary]);
 		const byHolder = new Map<BlockId, number[]>();
 		// An implicit claim (a losing incarnation) has no list entry: it is
 		// only written, explicitly, on the new block, whose claim outranks it.

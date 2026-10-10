@@ -17,4 +17,4 @@ export class ID {
 }
 export function compareIDs(a: ID | null, b: ID | null): boolean;
 export function createID(client: number, clock: number): ID;
-export function findRootTypeKey(type: YNode<any>): string;
+export function findRootTypeKey(type: YNode): string;

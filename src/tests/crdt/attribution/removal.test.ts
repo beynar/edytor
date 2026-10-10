@@ -62,7 +62,6 @@ describe('U2 — ordinary editing writes no attribution', () => {
 		// contributor write ride inside it; no attribution follow-up update.
 		expect(updates).toBe(typed.length);
 		expect(recordKeys(d)).toHaveLength(0);
-		expect(d.attribution.legacy()).toBeNull();
 		expect(d.facade.blockText(block.id)).toBe('hello world');
 		d.destroy();
 	});
@@ -147,7 +146,6 @@ describe('U2 — ordinary editing writes no attribution', () => {
 		d.transact(() => d.facade.insertText(block.id, 2, '!'));
 		const restored = loadDocument(d.encode(), { actor: bob });
 		expect(recordKeys(restored)).toHaveLength(0);
-		expect(restored.attribution.legacy()).toBeNull();
 		restored.destroy();
 		d.destroy();
 	});

@@ -1,27 +1,21 @@
-import * as map from 'lib0-v14/map'
-import * as set from 'lib0-v14/set'
-
-import { diffIdSet, intersectSets, mergeIdSets } from './ids.js'
-
 /**
- * @template {DeltaConf} DConf
  * YEvent describes the changes on a YNode.
  */
 export class YEvent {
   /**
-   * @param {YNode<DConf>} target The changed type.
+   * @param {YNode} target The changed type.
    * @param {import('./Transaction.js').Transaction} transaction
    * @param {Set<any>?} subs The keys that changed
    */
   constructor (target, transaction, subs) {
     /**
      * The type on which this event was created on.
-     * @type {import('../ynode.js').YNode<DConf>}
+     * @type {import('../ynode.js').YNode}
      */
     this.target = target
     /**
      * The current target on which the observe callback is called.
-     * @type {YNode<any>}
+     * @type {YNode}
      */
     this.currentTarget = target
     /**
@@ -29,14 +23,6 @@ export class YEvent {
      * @type {import('./Transaction.js').Transaction}
      */
     this.transaction = transaction
-    /**
-     * @type {Delta<import('../ynode.js').DeltaConfDeltaToYNode<DConf>>|null}
-     */
-    this._delta = null
-    /**
-     * @type {Delta<DConf>|null}
-     */
-    this._deltaDeep = null
     /**
      * Whether the children changed.
      * @type {Boolean}
@@ -80,79 +66,4 @@ export class YEvent {
   adds (struct) {
     return this.transaction.insertSet.hasId(struct.id)
   }
-
-  /**
-   * @template {boolean} [Deep=false]
-   * @param {object} [opts]
-   * @param {AbstractRenderer?} [opts.renderer] - renders the content (with attributions); defaults to the target type's active renderer (see {@link YNode#useRenderer}), i.e. `null` (render as-is) unless changed
-   * @param {Deep} [opts.deep]
-   * @return {Deep extends true ? Delta<DConf> : Delta<import('../ynode.js').DeltaConfDeltaToYNode<DConf>>} The Delta representation of this type.
-   *
-   * @public
-   */
-  getDelta ({ renderer = this.target._renderer, deep } = {}) {
-    const insertSet = this.transaction.insertSet
-    const deleteSet = this.transaction.deleteSet
-    // content that was both inserted AND deleted by this transaction is normally invisible — but a
-    // renderer may still render it (e.g. remote content integrated under a suggestion-deleted
-    // parent is auto-deleted yet rendered with a delete attribution). Render
-    // `(I ∪ D) − ((I ∩ D) − renderer.attributed)`: the symmetric difference plus the attributed
-    // part of the intersection.
-    const both = intersectSets(insertSet, deleteSet)
-    const itemsToRender = mergeIdSets(
-      (both.isEmpty() || renderer === null)
-        ? [diffIdSet(insertSet, deleteSet), diffIdSet(deleteSet, insertSet)]
-        : [diffIdSet(insertSet, deleteSet), diffIdSet(deleteSet, insertSet), intersectSets(both, renderer.attributed)]
-    )
-    /**
-     * @todo this should be done only one in the transaction step
-     *
-     * @type {Map<YNode,Set<string|null>>|null}
-     */
-    let modified = this.transaction.changed
-    if (deep) {
-      // need to add deep changes to copy of modified
-      const dchanged = new Map()
-      modified.forEach((attrs, type) => {
-        dchanged.set(type, new Set(attrs))
-      })
-      for (let m of modified.keys()) {
-        while (m._item != null) {
-          const item = m._item
-          const ms = map.setIfUndefined(dchanged, item?.parent, set.create)
-          if (item && !ms.has(item.parentSub)) {
-            ms.add(item.parentSub)
-            m = /** @type {any} */ (item.parent)
-          } else {
-            break
-          }
-        }
-      }
-      modified = dchanged
-    }
-    return /** @type {any} */ (this.target.toDelta({ renderer, itemsToRender, retainDeletes: true, insertedItems: insertSet, deep: !!deep, modified }))
-  }
-
-  /**
-   * Compute the changes in the delta format.
-   * A {@link https://quilljs.com/docs/delta/|Quill Delta}) that represents the changes on the document.
-   *
-   * @type {Delta<import('../ynode.js').DeltaConfDeltaToYNode<DConf>>} The Delta representation of this type.
-   * @public
-   */
-  get delta () {
-    return /** @type {any} */ (this._delta ?? (this._delta = this.getDelta().done()))
-  }
-
-  /**
-   * Compute the changes in the delta format.
-   * A {@link https://quilljs.com/docs/delta/|Quill Delta}) that represents the changes on the document.
-   *
-   * @type {Delta<DConf>} The Delta representation of this type.
-   * @public
-   */
-  get deltaDeep () {
-    return /** @type {any} */ (this._deltaDeep ?? (this._deltaDeep = /** @type {any} */ (this.getDelta({ deep: true }))))
-  }
 }
-

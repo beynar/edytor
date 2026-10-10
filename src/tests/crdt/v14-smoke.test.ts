@@ -10,6 +10,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
+import { toDelta, eventDelta, eventDeltaDeep } from './harness/delta.js';
 
 describe('v14 smoke: document & unified node', () => {
 	test('create Y.Doc and obtain a root Y.Node via doc.get', () => {
@@ -53,24 +54,24 @@ describe('v14 smoke: document & unified node', () => {
 		expect(child.slice(0, 5).join('')).toBe('hello');
 	});
 
-	test('formatting attributes: bold range visible in maintained delta', () => {
+	test('formatting attributes: bold range visible in the delta read', () => {
 		const doc = new Y.Doc();
 		const node = new Y.Node('paragraph');
 		doc.get('content').insert(0, [node]);
 		node.insert(0, 'hello world');
 		node.format(6, 5, { bold: true });
-		const d = node.delta.toJSON();
+		const d = toDelta(node).toJSON();
 		expect(d.children).toEqual([
 			{ type: 'insert', insert: 'hello ' },
 			{ type: 'insert', insert: 'world', format: { bold: true } }
 		]);
 		// inserting with format directly works too — but note: reads on a
 		// detached (not-yet-integrated) node warn "Invalid access" and render
-		// empty, so integrate before reading `.delta`.
+		// empty, so integrate before reading it.
 		const n2 = new Y.Node('paragraph');
 		n2.insert(0, 'italic!', { italic: true });
 		doc.get('content').insert(1, [n2]);
-		const d2 = n2.delta.toJSON();
+		const d2 = toDelta(n2).toJSON();
 		expect(d2.children).toEqual([{ type: 'insert', insert: 'italic!', format: { italic: true } }]);
 	});
 });
@@ -88,7 +89,7 @@ describe('v14 smoke: observers', () => {
 		expect(events).toHaveLength(1);
 		expect(events[0].target).toBe(node);
 		expect(events[0].childListChanged).toBe(true);
-		expect(events[0].delta.toJSON().children).toEqual([{ type: 'insert', insert: 'abc' }]);
+		expect(eventDelta(events[0]).toJSON().children).toEqual([{ type: 'insert', insert: 'abc' }]);
 		doc.transact(() => node.setAttr('data', 1));
 		expect([...events[1].keysChanged]).toEqual(['data']);
 	});
@@ -111,21 +112,7 @@ describe('v14 smoke: observers', () => {
 		expect(deepEvents.length).toBeGreaterThanOrEqual(1);
 		const deep = deepEvents[0];
 		expect(deep.target).toBe(root);
-		expect(deep.deltaDeep.toJSON()).toBeTruthy();
-	});
-
-	test("RDT 'delta' event channel emits change + origin", () => {
-		const doc = new Y.Doc();
-		const node = doc.get('content');
-		/** @type {any[]} */
-		const deltas = [];
-		node.on('delta', (/** @type {any} */ d, /** @type {any} */ origin) =>
-			deltas.push({ d: d.toJSON(), origin })
-		);
-		doc.transact(() => node.insert(0, 'xy'), 'test-origin');
-		expect(deltas).toHaveLength(1);
-		expect(deltas[0].origin).toBe('test-origin');
-		expect(deltas[0].d.children).toEqual([{ type: 'insert', insert: 'xy' }]);
+		expect(eventDeltaDeep(deep).toJSON()).toBeTruthy();
 	});
 });
 
@@ -185,7 +172,7 @@ describe('v14 smoke: update encoding roundtrip', () => {
 		expect(child2.toString()).toBe('<paragraph id="b1">synced</paragraph>');
 		expect(child2.toArray()).toEqual(['synced']);
 		expect(child2.getAttr('id')).toBe('b1');
-		expect(child2.delta.toJSON().children).toEqual([
+		expect(toDelta(child2).toJSON().children).toEqual([
 			{ type: 'insert', insert: 'synced', format: { bold: true } }
 		]);
 		// state vectors agree

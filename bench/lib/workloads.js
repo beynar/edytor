@@ -231,10 +231,8 @@ const materialize14 = (doc) => {
 			blocks++;
 			const content = child.getAttr('content');
 			if (content instanceof Y14.Node) {
-				for (const op of content.delta.toJSON().children ?? []) {
-					if (op.type === 'insert' && typeof op.insert === 'string') {
-						chars += op.insert.length;
-					}
+				for (const run of content.toArray()) {
+					if (typeof run === 'string') chars += run.length;
 				}
 			}
 			const children = child.getAttr('children');
@@ -327,13 +325,18 @@ const buildDense13 = () => {
 export const delta = () => {
 	const content14 = buildDense14();
 	const text13 = buildDense13();
-	const v14 = measure(() => content14.toDelta(), { warmup: WARMUP, samples: SAMPLES });
+	// v14 ships no delta read (UPSTREAM.md YP16): its formatted read is the
+	// bounded `RangeCursor` edytor reads text through, over the whole paragraph.
+	const v14 = measure(() => new Y14.RangeCursor(content14).read(0, content14.length), {
+		warmup: WARMUP,
+		samples: SAMPLES
+	});
 	const v13 = measure(() => text13.toDelta(), { warmup: WARMUP, samples: SAMPLES });
 	return {
 		runs: RUNS,
 		v14,
 		v13,
-		unit: 'ms per toDelta() of a 128-format-run paragraph'
+		unit: 'ms per formatted read of a 128-format-run paragraph (v14 RangeCursor, v13 toDelta())'
 	};
 };
 

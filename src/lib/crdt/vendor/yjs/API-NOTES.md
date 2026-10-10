@@ -15,8 +15,19 @@ Source of truth: `src/index.js` exports + JSDoc in `src/ynode.js`.
 > `intersectUpdateWithContentIds[V2]`, `convertUpdateFormatV1ToV2`, the id-map
 > algebra (`mergeIdMaps`, `diffIdMap`, `intersectMaps`, `filterIdMap`, …), the
 > content-id helpers, `$node`, `getNodeChildren`, `getPathTo`, `tryGc`,
-> `undoContentIds` and `logNode`. The table below is the rc.26 probe record;
-> read it against that list.
+> `undoContentIds` and `logNode`.
+>
+> **Since patch YP16 it ships no delta layer either:** no `toDelta`/
+> `toDeltaDeep`/`applyDelta`, no maintained `node.delta` (`clearCache`), no
+> `node.change`, no `'delta'` event, no `YNode.from`, no delta inserted as
+> content, no `YEvent#delta`/`deltaDeep`/`getDelta`, no renderer
+> (`AbstractRenderer`, `$renderer`, `useRenderer`, the `renderer` arguments of
+> `RangeCursor` and the relative positions), no schemas (`$doc`, `$nodeAny`,
+> `$idSet`, `$idMapAny`, `$contentIds`, `$contentMap`) and no id/content maps
+> (`IdMap`, `ContentAttribute`, `ContentMap` and their codecs). Text reads:
+> `toArray()` (a run of text under one set of formats is one string),
+> `toJSON()`, `RangeCursor#read`. The table below is the rc.26 probe record;
+> read it against these lists.
 
 ## v13 → v14 name map (what's gone, what's renamed)
 
@@ -35,16 +46,12 @@ Source of truth: `src/index.js` exports + JSDoc in `src/ynode.js`.
 
 ## Behavioral caveats measured
 
-- **Detached reads are empty.** Reading `delta`/`toString`/`slice` on a node
+- **Detached reads are empty.** Reading `toString`/`slice` on a node
   before it is integrated into a `Doc` logs `Invalid access: Add Yjs type to a
   document before reading data.` and renders empty. Writes pre-integration
   persist and appear after `insert` into an integrated parent.
-- **`node.delta` is a live cache** — do not mutate it (`applyDelta` is the write
-  path); `clone()` for a snapshot. Integration after a detached `.delta` read
-  does not retroactively refresh the cached delta — read `.delta` only once
-  integrated.
 - `toString()` is the element renderer (`<p id="b1">hi</p>`), not raw text —
-  use `toArray()`/`delta` for text content.
+  use `toArray()` for text content.
 - `doc.get(key)` is memoized; the root node's `name` is `null` even though the
   key exists (keys live in `tname` of relative positions, not `node.name`).
 

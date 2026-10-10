@@ -2,6 +2,7 @@ import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 import { init, compare } from './testHelper.js'
 import * as t from 'lib0-v14/testing'
 import * as delta from 'lib0-v14/delta'
+import { toDelta, applyDelta, eventDelta } from '../../../src/tests/crdt/harness/delta.js'
 
 export const testCustomTypings = () => {
   const ydoc = new Y.Doc()
@@ -65,7 +66,7 @@ export const testYtextAttributes = _tc => {
   const ydoc = new Y.Doc()
   const ytext = ydoc.get('')
   ytext.observe(event => {
-    t.assert(event.delta.attrs.test?.type === 'insert')
+    t.assert(eventDelta(event).attrs.test?.type === 'insert')
   })
   ytext.setAttr('test', 42)
   t.compare(ytext.getAttr('test'), 42)
@@ -112,8 +113,8 @@ export const testFormattingBug = _tc => {
     .insert('A', { em: {}, strong: {} })
     .insert('B', { em: {} })
     .insert('C', { em: {}, strong: {} })
-  yxml.applyDelta(q)
-  t.compare(yxml.toDelta(), q)
+  applyDelta(yxml, q)
+  t.compare(toDelta(yxml), q)
 }
 
 /**

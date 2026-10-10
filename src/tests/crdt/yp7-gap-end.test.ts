@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
+import { toDelta } from './harness/delta.js';
 
 /** Red on the reference (no YP7): `it.fails` in the tests-first commit. */
 const row = it;
@@ -124,7 +125,7 @@ describe('YP7 insertAtGapEnd — semantics', () => {
 				if (c.value == null) delete fold[c.key];
 				else fold[c.key] = c.value;
 			}
-			const ops = t.toDelta().toJSON().children;
+			const ops = toDelta(t).toJSON().children;
 			const op = ops.find((o) => Array.isArray(o.insert));
 			expect(op.format ?? {}).toEqual(fold);
 		}
@@ -137,21 +138,21 @@ describe('YP7 insertAtGapEnd — semantics', () => {
 			const t = doc.get('t');
 			t.insert(0, 'abcdef', { i: true });
 			t.insertAtGapEnd(3, [B]);
-			expect(t.toDelta().toJSON().children).toEqual([
+			expect(toDelta(t).toJSON().children).toEqual([
 				{ type: 'insert', insert: 'abc', format: { i: true } },
 				{ type: 'insert', insert: [B], format: { i: true } },
 				{ type: 'insert', insert: 'def', format: { i: true } }
 			]);
 			t.insertAtGapEnd(0, [{ s: 'v', n: 2 }]);
 			// index 0 sits after the opening format item (the end of the gap)
-			expect(t.toDelta().toJSON().children[0]).toEqual({
+			expect(toDelta(t).toJSON().children[0]).toEqual({
 				type: 'insert',
 				insert: [{ s: 'v', n: 2 }],
 				format: { i: true }
 			});
 			t.insertAtGapEnd(t.length, [{ s: 'w', n: 3 }]);
 			// the closing format item precedes the end of the gap → unformatted
-			expect(t.toDelta().toJSON().children.at(-1)).toEqual({
+			expect(toDelta(t).toJSON().children.at(-1)).toEqual({
 				type: 'insert',
 				insert: [{ s: 'w', n: 3 }]
 			});
@@ -175,7 +176,7 @@ describe('YP7 insertAtGapEnd — semantics', () => {
 				a.get('t').insertAtGapEnd(3, [{ s: 'x', n: 1 }]);
 				b.get('t').insertAtGapEnd(3, [{ s: 'y', n: 1 }]);
 				sync(a, b);
-				expect(a.get('t').toDelta().toJSON()).toEqual(b.get('t').toDelta().toJSON());
+				expect(toDelta(a.get('t')).toJSON()).toEqual(toDelta(b.get('t')).toJSON());
 				expect(Y.encodeStateVector(a)).toEqual(Y.encodeStateVector(b));
 				// both boundaries sit after the tombstones, before 'lo… '→' world' content
 				expect(
@@ -247,7 +248,7 @@ const program = (E, seed, steps) => {
 		snaps.push([
 			Buffer.from(E.encodeStateAsUpdate(a)).toString('base64'),
 			Buffer.from(E.encodeStateAsUpdate(b)).toString('base64'),
-			JSON.stringify(a.get('t').toDelta().toJSON())
+			JSON.stringify(toDelta(a.get('t')).toJSON())
 		]);
 	}
 	return snaps;

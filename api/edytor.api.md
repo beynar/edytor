@@ -1657,7 +1657,6 @@ export type DocumentAttribution = {
     readonly actors: ReadonlyMap<string, ActorProfile>;
     actorOf(client: number): string | undefined;
     setProfile(profile: ActorProfile): void;
-    legacy(): Engine.ContentMap | null;
     block(blockId: string): BlockAttribution | undefined;
     history(blockId: string): BlockLineageEntry[] | undefined;
 };
@@ -5919,7 +5918,7 @@ export type YUndoManager = InstanceType<typeof Y.UndoManager>;
 #### crdt/engine.d.ts#EngineSymbol
 
 ```ts
-export type EngineSymbol = 'Doc' | 'Node' | 'UndoManager' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'decodeUpdateV2' | 'UpdateEncoderV1' | 'writeIdSet' | 'mergeUpdates' | 'applyUpdateV2' | 'encodeStateAsUpdateV2' | 'mergeUpdatesV2' | 'convertUpdateFormatV2ToV1' | 'UpdateDecoderV1' | 'UpdateEncoderV2' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'createRelativePositionFromTypeIndex' | 'createRelativePositionFromJSON' | 'createAbsolutePositionFromRelativePosition' | 'relativePositionToJSON' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'createIdMap' | 'insertIntoIdMap' | 'createContentMap' | 'decodeContentMap' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'ContentAny' | 'createID';
+export type EngineSymbol = 'Doc' | 'Node' | 'UndoManager' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'decodeUpdateV2' | 'UpdateEncoderV1' | 'writeIdSet' | 'mergeUpdates' | 'applyUpdateV2' | 'encodeStateAsUpdateV2' | 'convertUpdateFormatV2ToV1' | 'UpdateDecoderV1' | 'UpdateEncoderV2' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'createRelativePositionFromTypeIndex' | 'createRelativePositionFromJSON' | 'createAbsolutePositionFromRelativePosition' | 'relativePositionToJSON' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'ContentAny' | 'createID';
 ```
 
 #### crdt/engine.d.ts#Y

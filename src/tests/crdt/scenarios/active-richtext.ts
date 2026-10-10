@@ -25,6 +25,7 @@ import { assertConverged, assertAllStructurallyValid } from '../harness/assert/c
 import { MODEL_BASE_SEED, modelSpecSeed } from './seeds.js';
 import type { Scenario } from './registry.js';
 import { bindModel } from '../../oracles/model-ops.js';
+import { toDelta } from '../harness/delta.js';
 
 const ops = createModelOps();
 const R = bindRuns(Y);
@@ -207,17 +208,19 @@ export const richtextScenarios: Scenario[] = [
 	{
 		id: 'AN04',
 		requirement: 'AN04',
-		title: 'live cache vs fresh vs maintained view vs readonly export — all agree',
+		title: 'delta read vs fresh vs maintained view vs readonly export — all agree',
 		run: () => {
 			const set = createPeerPair(MARK_SEED);
 			const vA = R.attach(set.A.doc);
 			const vB = R.attach(set.B.doc);
-			// Local edit on A — maintained view, fresh recompute, and the raw
-			// live delta cache all describe the same content.
+			// Local edit on A — maintained view, fresh recompute, and the
+			// delta read all describe the same content.
 			set.A.transact(() => ops.setMark(set.A, 'a', 0, 5, 'bold', true));
 			expect(vA.runs('a')).toEqual([...O.computeAllRuns(set.A.doc).get('a')!]);
-			const liveDelta = set.A.doc.get('blocks').getAttr('a').getAttr('content').delta.toJSON();
-			// The live cache agrees with the export (bold on 'hello').
+			const liveDelta = toDelta(set.A.doc.get('blocks').getAttr('a').getAttr('content'), {
+				deep: true
+			}).toJSON();
+			// The delta read agrees with the export (bold on 'hello').
 			expect(JSON.stringify(liveDelta)).toContain('bold');
 			settled(set, 'AN04');
 			// After remote application the maintained view still equals fresh.

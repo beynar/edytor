@@ -195,7 +195,6 @@ document.attribution.block(blockId);
 document.attribution.actorOf(document.clientID); // 'user-42' (this replica's actor)
 document.attribution.actors.get('user-42'); // { name: 'Ada', color: '#7559ee' }
 document.attribution.setProfile({ name: 'Ada L.' }); // republish the u/<actor> profile
-document.attribution.legacy(); // merged ContentMap over pre-existing a/ records, or null
 ```
 
 Ordinary editing writes **no per-edit attribution** (U2): a keystroke is
@@ -206,10 +205,9 @@ scope), `lastChangedBy` (LWW on the block node, inside undo scope). The
 replicated `u/`/`c/` actor dictionary travels inside `encode()` output.
 
 Documents saved by pre-U2 builds keep their `a/` per-edit records
-verbatim — preserved through `encode()`/sync and decoded on demand by
-`attribution.legacy()` (a `ContentMap`; for a rendered history view pass
-your own `AbstractRenderer` over it to `toDelta({renderer})` — the fork
-ships no concrete renderer since UPSTREAM.md YP8). This build never appends `a/` records; old
+verbatim — preserved through `encode()`/sync; nothing reads them (the
+`attribution.legacy()` decoder went with the engine's delta layer and
+content-map codec, UPSTREAM.md YP16). This build never appends `a/` records; old
 replicas that still do merge cleanly. Full contract:
 `src/lib/crdt/attribution/attribution.ts` + the U2 ledger entry.
 

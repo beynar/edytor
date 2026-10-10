@@ -35,16 +35,11 @@ const SYMBOLS = {
 	createIdSet: 1,
 	diffIdSet: 1,
 	insertIntoIdSet: 1,
-	createIdMap: 1,
-	insertIntoIdMap: 1,
-	createContentMap: 1,
-	decodeContentMap: 1,
 	// used by the Durable Object room (P5): compaction and struct checks
 	mergeUpdates: 1,
 	// storage in the v2 encoding (Phase 2 P5)
 	applyUpdateV2: 1,
 	encodeStateAsUpdateV2: 1,
-	mergeUpdatesV2: 1,
 	convertUpdateFormatV2ToV1: 1,
 	UpdateDecoderV1: 1,
 	UpdateEncoderV2: 1,

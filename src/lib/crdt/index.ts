@@ -221,9 +221,9 @@ export { SchemaMismatchError, UndecodableUpdateError, UnsupportedDocError } from
 // ── 5 · Attribution (read surface) ─────────────────────────────────────
 //
 // `document.attribution` hands back a `DocumentAttribution` — compact
-// per-block records, the replicated actor dictionary, and `legacy()`
-// over pre-existing per-edit records. The types are the public read
-// vocabulary; ordinary editing writes no per-edit attribution.
+// per-block records and the replicated actor dictionary. The types are
+// the public read vocabulary; ordinary editing writes no per-edit
+// attribution.
 
 export {
 	type DocumentAttribution,
@@ -300,7 +300,7 @@ export const bindCrdt = (Y: EngineApi) => {
 		sync: bindSync(Y),
 		/** The document-admission boundary (`admitUpdate` staged restore + the shared gate vocabulary). */
 		admission: bindAdmission(Y),
-		/** Bind the attribution service to this engine — actor dictionary + legacy `a/` reads + block attribution (documents attach it automatically). */
+		/** Bind the attribution service to this engine — actor dictionary + block attribution (documents attach it automatically). */
 		attribution: bindAttribution(Y)
 	};
 };

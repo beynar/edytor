@@ -4,7 +4,7 @@
  *
  * 1. `edytor/crdt` (the vendored `src/index.js`) exports exactly `KEPT`: a
  *    removed export cannot come back unnoticed, a kept one cannot vanish.
- * 2. Closure: bundling the engine object (`crdt/engine.js`) plus the codec
+ * 2. Closure: bundling the engine object (`crdt/engine.js`) plus the
  *    keep list with rolldown (as `scripts/check-worker-bundle.mjs` does)
  *    keeps every top-level declaration of every vendored module, except the
  *    documented allowlist. After an upstream re-sync, this test's failure
@@ -23,21 +23,16 @@ const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const SRC = join(ROOT, 'src/lib/crdt/vendor/yjs/src');
 
 // prettier-ignore
-const KEPT = ['$contentIds', '$contentMap', '$doc', '$idMapAny', '$idSet', '$nodeAny', '$renderer', 'AbsolutePosition', 'AbstractRenderer', 'AbstractStruct', 'ContentAny', 'ContentAttribute', 'ContentBinary', 'ContentDeleted', 'ContentDoc', 'ContentEmbed', 'ContentFormat', 'ContentJSON', 'ContentString', 'ContentType', 'Doc', 'GC', 'ID', 'IdMap', 'IdSet', 'Item', 'Node', 'RangeCursor', 'RelativePosition', 'Skip', 'Transaction', 'UndoManager', 'UpdateDecoderV1', 'UpdateDecoderV2', 'UpdateEncoderV1', 'UpdateEncoderV2', 'YEvent', 'applyUpdate', 'applyUpdateV2', 'cleanupYTextFormatting', 'compareIDs', 'convertUpdateFormatV2ToV1', 'createAbsolutePositionFromRelativePosition', 'createContentAttribute', 'createContentMap', 'createDeleteSetFromStructStore', 'createID', 'createIdMap', 'createIdSet', 'createRelativePositionFromJSON', 'createRelativePositionFromTypeIndex', 'decodeContentMap', 'decodeIdMap', 'decodeStateVector', 'decodeUpdate', 'decodeUpdateV2', 'diffIdSet', 'diffUpdateV2', 'encodeContentMap', 'encodeIdMap', 'encodeStateAsUpdate', 'encodeStateAsUpdateV2', 'encodeStateVector', 'equalIdSets', 'findIndexSS', 'findRootTypeKey', 'getItemCleanEnd', 'getItemCleanStart', 'insertIntoIdMap', 'insertIntoIdSet', 'intersectSets', 'isKeptReplaced', 'isParentOf', 'iterateStructsByIdSet', 'mergeIdSets', 'mergeUpdates', 'mergeUpdatesV2', 'readContentMap', 'readIdMap', 'readIdSet', 'readUpdateV2', 'redoItem', 'relativePositionToJSON', 'transact', 'writeContentMap', 'writeIdMap', 'writeIdSet'];
+const KEPT = ['AbsolutePosition', 'AbstractStruct', 'ContentAny', 'ContentBinary', 'ContentDeleted', 'ContentDoc', 'ContentEmbed', 'ContentFormat', 'ContentJSON', 'ContentString', 'ContentType', 'Doc', 'GC', 'ID', 'IdSet', 'Item', 'Node', 'RangeCursor', 'RelativePosition', 'Skip', 'Transaction', 'UndoManager', 'UpdateDecoderV1', 'UpdateDecoderV2', 'UpdateEncoderV1', 'UpdateEncoderV2', 'YEvent', 'applyUpdate', 'applyUpdateV2', 'cleanupYTextFormatting', 'compareIDs', 'convertUpdateFormatV2ToV1', 'createAbsolutePositionFromRelativePosition', 'createDeleteSetFromStructStore', 'createID', 'createIdSet', 'createRelativePositionFromJSON', 'createRelativePositionFromTypeIndex', 'decodeStateVector', 'decodeUpdate', 'decodeUpdateV2', 'diffIdSet', 'diffUpdateV2', 'encodeStateAsUpdate', 'encodeStateAsUpdateV2', 'encodeStateVector', 'equalIdSets', 'findIndexSS', 'findRootTypeKey', 'getItemCleanEnd', 'getItemCleanStart', 'insertIntoIdSet', 'intersectSets', 'isKeptReplaced', 'isParentOf', 'iterateStructsByIdSet', 'mergeIdSets', 'mergeUpdates', 'mergeUpdatesV2', 'readIdSet', 'readUpdateV2', 'redoItem', 'relativePositionToJSON', 'transact', 'writeIdSet'];
 
 /**
  * Reached beyond the engine object: `mergeUpdates` (server coordinators
- * compact with it), the IdMap/ContentMap codec pair (the inverse of the
- * `readIdMap` that decodes legacy attribution records) and the attribute
- * constructor those maps hold.
+ * compact with it) and `intersectSets` (the IdSet algebra's intersection,
+ * public; its engine caller, `YEvent#getDelta`, went with YP16, which also
+ * removed the IdMap/ContentMap codec pair with `attribution.legacy()`, its
+ * only reader).
  */
-const EXTRA = [
-	'mergeUpdates',
-	'encodeContentMap',
-	'encodeIdMap',
-	'decodeIdMap',
-	'createContentAttribute'
-];
+const EXTRA = ['mergeUpdates', 'intersectSets'];
 
 /** Unreachable by design: the duplicate-import guard (side effect), the content interface, wire type refs. */
 const ALLOW = new Set([

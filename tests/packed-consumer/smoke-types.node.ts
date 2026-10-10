@@ -15,7 +15,7 @@ node.setAttr('type', 'root');
 const child = new Y.Node('paragraph');
 node.insert(0, [child]);
 child.insert(0, 'typed');
-const d = child.delta.toJSON();
+const d: unknown[] = child.toArray();
 const update: Uint8Array = Y.encodeStateAsUpdate(doc);
 const doc2: Y.Doc = new Y.Doc();
 Y.applyUpdate(doc2, update);
@@ -120,10 +120,8 @@ const docErrors: (
 	bindings.SemanticConflictError
 ];
 // ── U2 attribution surface — compact per-block records + actor
-// dictionary + the `legacy()` read over pre-existing `a/` records;
-// `ContentRun` carries no per-item authorship.
+// dictionary; `ContentRun` carries no per-item authorship.
 const contentRun: bindings.ContentRun = { kind: 'text', text: 'x' };
-const legacyMap: ReturnType<bindings.DocumentAttribution['legacy']> = attribution.legacy();
 const blockAttr: bindings.BlockAttribution | undefined = attribution.block(firstProjected!.id);
 const actorsMap: ReadonlyMap<string, bindings.ActorProfile> = attribution.actors;
 // The server-coordinator frame contract (`edytor/protocol`; site server/protocol).
@@ -132,7 +130,6 @@ const coordinatorFrame: Uint8Array = protocol.frame(protocol.messageSync, (e: pr
 );
 type _engineTx = bindings.EngineTransaction;
 void contentRun;
-void legacyMap;
 void blockAttr;
 void actorsMap;
 void coordinatorFrame;

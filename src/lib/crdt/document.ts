@@ -395,10 +395,9 @@ export class EdytorDocument {
 	/** The local actor identity (anonymous opaque id when none was supplied). */
 	readonly actor: DocumentActor;
 	/**
-	 * The attribution surface — compact per-block records, the
-	 * replicated actor dictionary (`u/` profiles, `c/` replica bindings),
-	 * and a `legacy()` read over any pre-existing `a/` per-edit records
-	 * written by earlier builds. Ordinary edits perform no attribution
+	 * The attribution surface — compact per-block records and the
+	 * replicated actor dictionary (`u/` profiles, `c/` replica bindings).
+	 * Ordinary edits perform no attribution
 	 * writes — authorship lands inside the owning op's transaction as the
 	 * block-level `b/<id>` record/`l` stamp. See
 	 * `src/lib/crdt/attribution/attribution.ts` for the full contract.
@@ -406,7 +405,7 @@ export class EdytorDocument {
 	 * lifecycle contract as {@link history}.
 	 *
 	 * Reads are pull-model: record arrivals emit no attribution-specific
-	 * change event — every fresh `block()`/`actors`/`legacy()` call reads
+	 * change event — every fresh `block()`/`actors` call reads
 	 * current replicated state.
 	 */
 	get attribution(): DocumentAttribution {

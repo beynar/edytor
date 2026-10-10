@@ -2658,7 +2658,7 @@ export type DocumentActor = {
 
 ## DocumentAttribution
 
-The document-level attribution surface. `actors`/`actorOf`/`legacy`
+The document-level attribution surface. `actors`/`actorOf`/`block`
 read replicated doc state directly — they resolve remote-applied
 records identically and stay correct as old replicas append records.
 
@@ -2667,7 +2667,6 @@ export type DocumentAttribution = {
     readonly actors: ReadonlyMap<string, ActorProfile>;
     actorOf(client: number): string | undefined;
     setProfile(profile: ActorProfile): void;
-    legacy(): Engine.ContentMap | null;
     block(blockId: string): BlockAttribution | undefined;
     history(blockId: string): BlockLineageEntry[] | undefined;
 };
@@ -2676,7 +2675,6 @@ export type DocumentAttribution = {
 - `actors`: actorId → profile — the replicated actor dictionary (`u/` records).
 - `actorOf`: Resolve an item's inserting replica (clientID) to an actor id (`c/` records).
 - `setProfile`: Re-publish the local actor's profile record (`u/<actorId>` — LWW).
-- `legacy`: Merged read over the pre-existing `a/` records written by the retired per-edit capture pipeline: `{inserts, deletes}` IdMaps in the native ContentMap shape, decoded fresh per call.
 - `block`: Compact per-block attribution for `blockId` (`{createdBy, contributors, lastChangedBy}` — durable actor ids, never replica clientIDs), or `undefined` for system/foreign blocks that carry no record.
 - `history`: Opt-in bounded lineage ring for `blockId` — the block's subtree snapshots captured just BEFORE displacing events: another actor's first write (an `l` handoff), a delete, or an undo/redo touching the block.
 
@@ -3089,7 +3087,7 @@ export declare class EdytorDocument {
 - `doc`: The underlying engine doc — raw reads/providers borrow it; they never own it.
 - `awareness`: One shared awareness instance for every view/provider of this document.
 - `actor`: The local actor identity (anonymous opaque id when none was supplied).
-- `attribution`: The attribution surface — compact per-block records, the replicated actor dictionary (`u/` profiles, `c/` replica bindings), and a `legacy()` read over any pre-existing `a/` per-edit records written by earlier builds.
+- `attribution`: The attribution surface — compact per-block records and the replicated actor dictionary (`u/` profiles, `c/` replica bindings).
 - `transaction`: The document's own local-edit transaction origin — headless edits via `transact` carry it so history capture attributes them.
 - `requireHydration`: `DocumentOptions.requireHydration`: an empty document waits for a provider's `synced`.
 - `clientID`: The replica id (`doc.clientID`) — identifies the replica, not the actor.

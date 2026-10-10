@@ -7,7 +7,7 @@ import type { EngineNode } from '../engine-api.js';
 import { isBoundary, nodeStart } from './items.js';
 import type { BlockId, Bound, Ownership, Seg, Stream, TextBlockRec, TextRow } from './model.js';
 
-/** Scan `text` (live space, renderer-free) for its boundary items. */
+/** Scan `text` (live space) for its boundary items. */
 export const scanText = (home: BlockId, text: EngineNode): TextRow => {
 	const bounds: Bound[] = [];
 	let at = 0;

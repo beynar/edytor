@@ -19,6 +19,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
+import { toDelta, applyDelta } from './harness/delta.js';
 
 /** Build a fragmented formatted text: n single-char items separated by format markers. */
 const buildFragmented = (doc, name, n) => {
@@ -28,7 +29,7 @@ const buildFragmented = (doc, name, n) => {
 		for (let i = 0; i < n; i++) {
 			d.insert('x', i % 2 === 0 ? { b: true } : { i: true });
 		}
-		text.applyDelta(d);
+		applyDelta(text, d);
 	});
 	return text;
 };
@@ -37,7 +38,7 @@ const buildFragmented = (doc, name, n) => {
  * Serialized delta JSON — YNode#toJSON normalizes embedded type references,
  * so two structurally-identical texts stringify identically.
  */
-const deltaJSON = (text) => JSON.stringify(text.toDelta().toJSON());
+const deltaJSON = (text) => JSON.stringify(toDelta(text).toJSON());
 const updateBytes = (doc) => Y.encodeStateAsUpdate(doc);
 
 const newDoc = () => {
@@ -74,9 +75,9 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 		for (let i = 0; i < 30; i++) {
 			const pos = (i * 37) % 190;
 			ops.push((t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(pos).insert(`y${i}`)))
+				doc.transact(() => applyDelta(t, delta.create().retain(pos).insert(`y${i}`)))
 			);
-			ops.push((t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(pos).delete(2))));
+			ops.push((t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(pos).delete(2))));
 		}
 		expectIdentical(replayPair(ops));
 	});
@@ -84,16 +85,16 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 	test('retains carrying formats over seeded regions apply identically', () => {
 		const ops = [
 			(t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(60).retain(20, { b: null }))),
+				doc.transact(() => applyDelta(t, delta.create().retain(60).retain(20, { b: null }))),
 			(t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(30).retain(40, { u: true }))),
+				doc.transact(() => applyDelta(t, delta.create().retain(30).retain(40, { u: true }))),
 			(t, doc) =>
 				doc.transact(() =>
-					t.applyDelta(delta.create().retain(100).retain(10, { i: null, u: null }))
+					applyDelta(t, delta.create().retain(100).retain(10, { i: null, u: null }))
 				),
 			// same-position repeats exercise the seeded path for the second apply
 			(t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(60).retain(20, { b: true })))
+				doc.transact(() => applyDelta(t, delta.create().retain(60).retain(20, { b: true })))
 		];
 		expectIdentical(replayPair(ops));
 	});
@@ -101,11 +102,11 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 	test('insert-with-format inside formatted regions produces identical markers', () => {
 		const ops = [
 			(t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(50).insert('AB', { b: true }))),
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(51).insert('C'))),
+				doc.transact(() => applyDelta(t, delta.create().retain(50).insert('AB', { b: true }))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(51).insert('C'))),
 			(t, doc) =>
 				doc.transact(() =>
-					t.applyDelta(delta.create().retain(150).insert('D', { i: true, u: true }))
+					applyDelta(t, delta.create().retain(150).insert('D', { i: true, u: true }))
 				)
 		];
 		expectIdentical(replayPair(ops));
@@ -113,11 +114,11 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 
 	test('delete sweeps + reinserts over seeded regions stay identical', () => {
 		const ops = [
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(40).delete(60))),
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(40).insert('reinserted'))),
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(0).delete(10))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(40).delete(60))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(40).insert('reinserted'))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(0).delete(10))),
 			(t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(20).retain(30, { i: true })))
+				doc.transact(() => applyDelta(t, delta.create().retain(20).retain(30, { i: true })))
 		];
 		expectIdentical(replayPair(ops));
 	});
@@ -128,8 +129,8 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 			const t = buildFragmented(doc, 't', 120);
 			if (!withMarkers) t._searchMarker = null;
 			const um = new Y.UndoManager(t);
-			doc.transact(() => t.applyDelta(delta.create().retain(50).insert('ZZ', { b: true })));
-			doc.transact(() => t.applyDelta(delta.create().retain(30).delete(20)));
+			doc.transact(() => applyDelta(t, delta.create().retain(50).insert('ZZ', { b: true })));
+			doc.transact(() => applyDelta(t, delta.create().retain(30).delete(20)));
 			um.undo();
 			um.undo();
 			um.redo();
@@ -143,8 +144,8 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 
 	test('relative positions resolve identically under marker acceleration', () => {
 		const { a, b, ta, tb } = replayPair([
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(80).insert('mid'))),
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(10).delete(5)))
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(80).insert('mid'))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(10).delete(5)))
 		]);
 		for (const pos of [0, 1, 40, 90, 150, ta.length - 1]) {
 			const ra = Y.createRelativePositionFromTypeIndex(ta, pos, 0);
@@ -162,7 +163,9 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 		const src = newDoc();
 		src.clientID = 99; // a distinct remote peer — no id collision on applyUpdate
 		buildFragmented(src, 't', 120);
-		src.transact(() => src.get('t').applyDelta(delta.create().retain(50).insert('S', { u: true })));
+		src.transact(() =>
+			applyDelta(src.get('t'), delta.create().retain(50).insert('S', { u: true }))
+		);
 		const update = Y.encodeStateAsUpdate(src);
 		const a = newDoc();
 		const b = newDoc();
@@ -183,20 +186,20 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 		// {} and the seeded 'Q' insert dropped bold from the span tail.
 		const ops = [
 			(t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(150).insert('P', { b: true }))),
+				doc.transact(() => applyDelta(t, delta.create().retain(150).insert('P', { b: true }))),
 			(t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(50).insert('Z', { b: true }))),
+				doc.transact(() => applyDelta(t, delta.create().retain(50).insert('Z', { b: true }))),
 			(t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(152).insert('Q', { b: true })))
+				doc.transact(() => applyDelta(t, delta.create().retain(152).insert('Q', { b: true })))
 		];
 		const a = newDoc();
 		const b = newDoc();
 		const ta = a.get('t');
 		const tb = b.get('t');
-		a.transact(() => ta.applyDelta(delta.create().insert('x'.repeat(300))));
-		b.transact(() => tb.applyDelta(delta.create().insert('x'.repeat(300))));
-		a.transact(() => ta.applyDelta(delta.create().retain(100).retain(100, { b: true })));
-		b.transact(() => tb.applyDelta(delta.create().retain(100).retain(100, { b: true })));
+		a.transact(() => applyDelta(ta, delta.create().insert('x'.repeat(300))));
+		b.transact(() => applyDelta(tb, delta.create().insert('x'.repeat(300))));
+		a.transact(() => applyDelta(ta, delta.create().retain(100).retain(100, { b: true })));
+		b.transact(() => applyDelta(tb, delta.create().retain(100).retain(100, { b: true })));
 		tb._searchMarker = null;
 		for (const op of ops) {
 			op(ta, a);
@@ -227,14 +230,14 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 		// would resurrect the deleted formats.
 		const ops = [
 			// plant a marker at index 120 carrying the {b|i} format state
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(120).insert('P'))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(120).insert('P'))),
 			// delete a range containing format markers left of the planted marker
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(20).delete(60))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(20).delete(60))),
 			// seeded op at the planted position — must not resurrect deleted formats
 			(t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(80).insert('Q', { u: true }))),
+				doc.transact(() => applyDelta(t, delta.create().retain(80).insert('Q', { u: true }))),
 			(t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(90).retain(10, { b: null })))
+				doc.transact(() => applyDelta(t, delta.create().retain(90).retain(10, { b: null })))
 		];
 		expectIdentical(replayPair(ops));
 	});
@@ -242,20 +245,21 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 	test('item merge after split keeps marker snapshots honest', () => {
 		const ops = [
 			// plant a marker, then same-position ops that split + merge items
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(100).insert('SPLIT'))),
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(100).delete(2))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(100).insert('SPLIT'))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(100).delete(2))),
 			(t, doc) =>
-				doc.transact(() => t.applyDelta(delta.create().retain(98).retain(20, { hl: true }))),
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(103).insert('X')))
+				doc.transact(() => applyDelta(t, delta.create().retain(98).retain(20, { hl: true }))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(103).insert('X')))
 		];
 		expectIdentical(replayPair(ops));
 	});
 
 	test('GC after deletes leaves identical state (linkage-verified anchors)', () => {
 		const ops = [
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(20).delete(100))),
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(10).insert('tail'))),
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(15).retain(5, { b: null })))
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(20).delete(100))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(10).insert('tail'))),
+			(t, doc) =>
+				doc.transact(() => applyDelta(t, delta.create().retain(15).retain(5, { b: null })))
 		];
 		const r = replayPair(ops);
 		// force GC pass on both docs identically
@@ -269,14 +273,14 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 			(t, doc) =>
 				doc.transact(() => {
 					const sub = new Y.Node('inline');
-					sub.applyDelta(delta.create().insert('deep'));
-					t.applyDelta(delta.create().retain(60).insert([sub]));
+					applyDelta(sub, delta.create().insert('deep'));
+					applyDelta(t, delta.create().retain(60).insert([sub]));
 				}),
 			(t, doc) =>
 				doc.transact(() => {
 					// modify op into the embedded child
 					const d = delta.create().retain(60).modify(delta.create().insert('!'));
-					t.applyDelta(d);
+					applyDelta(t, d);
 				})
 		];
 		expectIdentical(replayPair(ops));

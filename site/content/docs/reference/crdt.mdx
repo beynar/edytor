@@ -43,10 +43,25 @@ export function catchUp(stored: Uint8Array<ArrayBuffer>, updates: Uint8Array<Arr
 - documents (`Doc`), nodes, transactions and `UndoManager`;
 - the V1 and V2 update codecs: `applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`, `decodeUpdate`, `diffUpdateV2`, `encodeStateVector`, `decodeStateVector` and their V2 forms;
 - relative positions in JSON form (`createRelativePositionFromTypeIndex`, `relativePositionToJSON`, `createRelativePositionFromJSON`, `createAbsolutePositionFromRelativePosition`);
-- id sets and id maps with their codecs, and `RangeCursor`;
-- the renderer interface (`AbstractRenderer`, `$renderer`) for a renderer you write yourself.
+- id sets with their codec, and `RangeCursor`.
 
-**What was pruned:** the concrete renderers, snapshots, the update logging, diffing and obfuscation helpers, the binary relative-position codec, id-set algebra beyond the basics, and the content-id helpers. Edytor never used them. A document built from an update is a new document followed by `Y.applyUpdate(doc, update)`: `bindCrdt(Y).createDoc()` when the update holds edytor content (see the keep-replaced rule below), `new Y.Doc()` only for a document that never holds any.
+A node's writes are its methods (`insert`, `delete`, `format`, `setAttr`, `deleteAttr`); its content reads as `toArray()` (each element, and each run of text under one set of formats as one string), `toJSON()`, or `new Y.RangeCursor(node).read(from, to)`, the formatted pieces of a range with their formats:
+
+```ts title="src/lib/read.ts" check
+import * as Y from 'edytor/crdt';
+
+export function boldText(node: Y.Node): string[] {
+  const out: string[] = [];
+  for (const piece of new Y.RangeCursor(node).read(0, node.length)) {
+    if (piece.formats?.bold === true && piece.content instanceof Y.ContentString) {
+      out.push(piece.content.str.slice(piece.offset, piece.offset + piece.len));
+    }
+  }
+  return out;
+}
+```
+
+**What was pruned:** the delta layer (`toDelta`, `applyDelta`, `node.delta`, a node's `'delta'` event, `event.delta`, `Node.from`), the renderers, the schemas (`$doc`, `$nodeAny`, `$idSet`), id maps and content maps, snapshots, the update logging, diffing and obfuscation helpers, the binary relative-position codec, id-set algebra beyond the basics, and the content-id helpers. Edytor never used them at run time; without the delta layer every app ships about 54 KB less JavaScript. A document built from an update is a new document followed by `Y.applyUpdate(doc, update)`: `bindCrdt(Y).createDoc()` when the update holds edytor content (see the keep-replaced rule below), `new Y.Doc()` only for a document that never holds any.
 
 **What was added:** undo hooks that let the document decide how deleted text comes back and keep a block a peer wrote into when its creation is undone. They are what make [concurrent undo](/docs/collaboration/concurrent-editing) behave; an `UndoManager` you create yourself over a document does not follow those rules, so use `document.history`.
 

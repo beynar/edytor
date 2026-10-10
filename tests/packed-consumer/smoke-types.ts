@@ -43,7 +43,7 @@ node.setAttr('type', 'root');
 const child = new Y.Node('paragraph');
 node.insert(0, [child]);
 child.insert(0, 'typed');
-const d = child.delta.toJSON();
+const d: unknown[] = child.toArray();
 const update: Uint8Array = Y.encodeStateAsUpdate(doc);
 const doc2: Y.Doc = new Y.Doc();
 Y.applyUpdate(doc2, update);
@@ -158,12 +158,10 @@ const rootAttached: EdytorDocument = attachDocument(doc);
 
 // U2: the run vocabulary carries no per-item attribution — `ContentRun`
 // stays nameable; `document.attribution` exposes block records + the
-// actor dictionary + the `legacy()` read over pre-existing `a/` records.
+// actor dictionary.
 const rootContentRun: ContentRun = { kind: 'text', text: 'x' };
-const rootLegacy = rootAttribution.legacy();
 const rootBlockAttr = rootAttribution.block(rootProjected.children[0]!.id);
 void rootContentRun;
-void rootLegacy;
 void rootBlockAttr;
 void rootReadiness;
 void rootAttribution;

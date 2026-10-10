@@ -35,6 +35,7 @@ import type {
 	ProjectedBlock,
 	ProjectedDoc
 } from './crdt-ops.js';
+import { toDelta } from '../delta.js';
 
 const ROOT_KEY = 'content';
 const CONTENT_ATTR = 'content';
@@ -139,7 +140,7 @@ const specOf = (block: YNode): BlockSpec => {
 /** Serialize one content node's sequence into {@link ContentItem} runs. */
 const contentSpecOf = (content: YNode): ContentItem[] => {
 	const items: ContentItem[] = [];
-	for (const op of content.delta.toJSON().children ?? []) {
+	for (const op of toDelta(content, { deep: true }).toJSON().children ?? []) {
 		if (op.type !== 'insert') continue;
 		if (typeof op.insert === 'string') {
 			items.push({ kind: 'text', text: op.insert, marks: op.format });
@@ -162,12 +163,12 @@ const contentSpecOf = (content: YNode): ContentItem[] => {
 /**
  * Slice the formatted content items of `content` from `offset` to the end.
  * Text runs straddling the offset are cut; inline atoms count as 1 position.
- * Operates on the delta view so mark fidelity is preserved in the copy.
+ * Operates on the delta read so mark fidelity is preserved in the copy.
  */
 const contentTail = (content: YNode, offset: number): ContentItem[] => {
 	const items: ContentItem[] = [];
 	let pos = 0;
-	for (const op of content.delta.toJSON().children ?? []) {
+	for (const op of toDelta(content, { deep: true }).toJSON().children ?? []) {
 		if (op.type !== 'insert') continue;
 		if (typeof op.insert === 'string') {
 			const start = pos;

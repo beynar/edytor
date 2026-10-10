@@ -11,6 +11,7 @@ dist-ssr
 test-results
 # vendored upstream source + tests are not held to repo formatting
 src/lib/crdt/vendor
+src/lib/dnd/vendor
 vendor-tests
 # generated bench output + persisted corpus repro artifacts
 bench/results

@@ -28,8 +28,8 @@ import { CONTEXTS, FORBIDDEN, LIB, ROOT, contextOf, relOf, resolveModule } from 
 
 export { CONTEXTS, FORBIDDEN, LIB, ROOT, contextOf };
 
-/** Never a node: the vendored engine (its own upstream graph). */
-const EXCLUDED = [/^crdt\/vendor\//];
+/** Never a node: the vendored engine and drag and drop (their own upstream graphs). */
+const EXCLUDED = [/^crdt\/vendor\//, /^dnd\/vendor\//];
 
 const SOURCE = /\.(ts|js|svelte)$/;
 const isSource = (rel) =>

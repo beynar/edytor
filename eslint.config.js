@@ -231,6 +231,8 @@ const repoConfig = [
 			'pnpm-lock.yaml',
 			'test-results/**',
 			'yarn.lock',
+			// the forked drag and drop is upstream's code as written (UPSTREAM.md)
+			'src/lib/dnd/vendor/**',
 			// the vendored upstream test suite is not held to repo lint rules
 			// (the vendored SOURCE is linted by the Worker-safe block only)
 			'vendor-tests/**',

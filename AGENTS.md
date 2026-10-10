@@ -22,7 +22,7 @@ The normative contract rows (`del.range.*`, `layout.*`, `table.*`, `room.*`, …
 ## Project identity
 
 - Name `edytor`, version `1.0.0-rc.3` (the 1.0 release candidate, `latest` on npm: the API report is frozen), in hardening.
-- Stack: Svelte 5, SvelteKit, TypeScript, **vendored Yjs v14** (`@y/y@14.0.0-rc.26`, an owned fork under `src/lib/crdt/vendor/yjs/`, patches listed in `UPSTREAM.md`; the `yjs` npm package is a dev dependency for migration tests only), Vitest, Playwright.
+- Stack: Svelte 5, SvelteKit, TypeScript, **vendored Yjs v14** (`@y/y@14.0.0-rc.26`, an owned fork under `src/lib/crdt/vendor/yjs/`, patches listed in `UPSTREAM.md`; the `yjs` npm package is a dev dependency for migration tests only), **vendored Pragmatic drag and drop** (the parts the drags use, under `src/lib/dnd/vendor/pragmatic/`, changes listed in its `UPSTREAM.md`), Vitest, Playwright.
 - The architecture below is the result of the arch-v2 plan (`docs/archive/architecture-v2/plan.md`); `docs/archive/architecture-v2/execution-ledger.md` records every checkpoint, the lane results and the measured numbers.
 - Docs, install, the packed tarball and the release process: [`docs/agents/release.md`](docs/agents/release.md).
 

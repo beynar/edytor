@@ -133,7 +133,8 @@
 	"types": "./dist/index.d.ts",
 	"type": "module",
 	"sideEffects": [
-		"**/*.css"
+		"**/*.css",
+		"./dist/dnd/vendor/pragmatic/pragmatic-drag-and-drop/**"
 	],
 	"pnpm": {
 		"peerDependencyRules": {
@@ -146,9 +147,6 @@
 		}
 	},
 	"dependencies": {
-		"@atlaskit/pragmatic-drag-and-drop": "4.0.0",
-		"@atlaskit/pragmatic-drag-and-drop-auto-scroll": "3.2.1",
-		"@atlaskit/pragmatic-drag-and-drop-hitbox": "3.0.0",
 		"@tanstack/highlight": "^0.1.0",
 		"esm-env": "^1.2.2",
 		"lib0-v14": "npm:lib0@1.0.0-rc.32"

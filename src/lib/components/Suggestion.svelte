@@ -33,7 +33,7 @@
 	use:edytor.surface.preview={suggestion.id}
 	onmousedown={cancel}
 >
-	{#each cells as cell (cell.id)}<Block id={cell.id} preview={cell} />{/each}
+	{#each cells as cell (cell.id)}<Block kid={cell} />{/each}
 </div>
 
 <style>

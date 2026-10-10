@@ -354,25 +354,13 @@
 	$effect(edytor.surface.post);
 	$effect(edytor.projector.post);
 
-	const browserMutationGuardAttributes = $derived({
-		spellcheck,
-		autocorrect,
-		autocomplete,
-		autocapitalize,
-		inputmode,
-		enterkeyhint
-	});
-
 	/**
-	 * The root's browser attributes. Optional hints (`inputmode`,
-	 * `enterkeyhint`) stay absent when unset — emitting a guessed default
-	 * would override the browser/UA's own choice.
+	 * The root's browser hints, several of them unknown to Svelte's element
+	 * types; one left unset is absent (a guessed default would override the
+	 * browser's own choice).
 	 */
-	const editableRootBrowserAttributes = (
-		node: HTMLElement,
-		attributes: typeof browserMutationGuardAttributes
-	) => {
-		const apply = (next: typeof attributes) => {
+	const browserAttributes = (node: HTMLElement, attributes: Record<string, unknown>) => {
+		const apply = (next: Record<string, unknown>) => {
 			for (const [name, value] of Object.entries(next))
 				if (value === undefined) node.removeAttribute(name);
 				else node.setAttribute(name, String(value));
@@ -380,28 +368,25 @@
 		apply(attributes);
 		return { update: apply };
 	};
-
-	const nonNativeEditableBlockChromeSelection = (node: HTMLElement) => {
-		const { selection } = edytor;
-		// `selectstart` is the only event fired before a drag-selection
-		// begins — the guard keeps one from starting on non-editable
-		// chrome (markers, void/island chrome, plugin UI). A press on that
-		// chrome is the press's (`events/onFocus.ts`).
-		node.addEventListener('selectstart', selection.pointer.onSelectStart);
-		return {
-			destroy: () => node.removeEventListener('selectstart', selection.pointer.onSelectStart)
-		};
-	};
 </script>
 
 {#if edytor.synced}
 	<!-- The editing host is focusable (contenteditable): no tabindex of its own. -->
 	<!-- svelte-ignore a11y_aria_activedescendant_has_tabindex -->
+	<!-- `selectstart`, fired before a drag-selection begins, keeps one from starting on
+	non-editable chrome (a press there is the press's: `events/onFocus.ts`). -->
 	<div
 		class={className}
 		use:edytor.attach
-		use:editableRootBrowserAttributes={browserMutationGuardAttributes}
-		use:nonNativeEditableBlockChromeSelection
+		onselectstart={edytor.selection.pointer.onSelectStart}
+		use:browserAttributes={{
+			spellcheck,
+			autocorrect,
+			autocomplete,
+			autocapitalize,
+			inputmode,
+			enterkeyhint
+		}}
 		data-edytor
 		data-edytor-selection={edytor.selection.value.kind === 'blocks' ? 'blocks' : undefined}
 		contenteditable={!readonly}
@@ -419,8 +404,7 @@
 		{translate}
 	>
 		{#each edytor.suggestions.around(edytor.cells?.rootIds ?? []) as kid (kid)}<Block
-				id={typeof kid === 'string' ? kid : undefined}
-				suggestion={typeof kid === 'string' ? undefined : kid}
+				{kid}
 			/>{/each}<span
 			data-edytor-render-anchor
 			contenteditable="false"

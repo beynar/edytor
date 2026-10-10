@@ -10,7 +10,6 @@
 import {
 	candidatesOf,
 	childrenIndex,
-	displayIndex,
 	documentOrder,
 	resolvePlacements,
 	textRanker,
@@ -18,6 +17,7 @@ import {
 	type BlockRec,
 	type ModelView
 } from '../../lib/crdt/placement/model.js';
+import { displayIndex } from './index-checks.js';
 import {
 	bindText,
 	deepFreeze,

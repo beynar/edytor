@@ -1,7 +1,6 @@
 import * as error from 'lib0-v14/error'
 import * as map from 'lib0-v14/map'
 import * as math from 'lib0-v14/math'
-import * as logging from 'lib0-v14/logging'
 import { callAll } from 'lib0-v14/function'
 
 import { ContentFormat } from '../structs/Item.js'
@@ -308,7 +307,7 @@ const cleanupTransactions = (transactionCleanups, i) => {
         }
       }
       if (!transaction.local && transaction.insertSet.clients.has(doc.clientID)) {
-        logging.print(logging.ORANGE, logging.BOLD, '[yjs] ', logging.UNBOLD, logging.RED, 'Changed the client-id because another client seems to be using it.')
+        console.log('[yjs] Changed the client-id because another client seems to be using it.') // YP15
         doc.clientID = generateNewClientId()
       }
       // @todo Merge all the transactions into one and provide send the data as a single update message

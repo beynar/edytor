@@ -110,12 +110,8 @@ export const bindDeletes = (Y: EngineApi) => {
 		addCopies,
 		indexRecord,
 		indexMark,
-		dropMarks,
 		recordsIn,
-		sync,
-		copiesOf,
-		forget,
-		collect
+		sync
 	} = deleteIndex(Y);
 	const ops = engineOps(Y);
 
@@ -453,71 +449,9 @@ export const bindDeletes = (Y: EngineApi) => {
 				);
 		},
 
-		/**
-		 * Whether every live mark holding a character of `spans` was written
-		 * where `old` says (a withdrawn block's content was deleted
-		 * before the horizon). Characters no mark holds count as old.
-		 */
-		heldBefore: (
-			doc: EngineDoc,
-			spans: readonly Span[],
-			old: (client: number, clock: number) => boolean
-		): boolean => {
-			const s = attach(doc);
-			return spans
-				.flatMap((sp) => rootSpans(s, sp))
-				.every((r) => holders(s, r).every((mark) => old(mark.client, mark.clock)));
-		},
-
-		/**
-		 * The purge's part (`room.purge.what`), inside the purge
-		 * transaction: delete every text delete mark record `old` names, and
-		 * every restoration record `old` names whose copies are all deleted
-		 * and that no remaining mark holds; its copies are forgotten (the
-		 * `gcFilter` no longer keeps them) and collected. Writes no mark.
-		 */
-		purge: (
-			doc: EngineDoc,
-			old: (client: number, clock: number) => boolean
-		): { marks: number; records: number } => {
-			const s = attach(doc);
-			const tr = s.doc._transaction;
-			if (tr === null) throw new Error('purge: outside a transaction');
-			const spans: Span[] = [];
-			const dropped: Rec[] = [];
-			for (let it = firstItem<Unit>(s.marks); it; it = it.right as Unit)
-				if (!it.deleted)
-					for (let j = 0; j < it.length; j++) {
-						const r = { client: it.id.client, clock: it.id.clock + j };
-						if (!old(r.client, r.clock)) continue;
-						dropped.push(r);
-						const last = spans[spans.length - 1];
-						if (last !== undefined && last.c === r.client && last.k + last.n === r.clock) last.n++;
-						else spans.push({ c: r.client, k: r.clock, n: 1 });
-					}
-			dropMarks(s, dropped);
-			const marks = dropped.length;
-			remove(tr, spans);
-			const doomed: { key: string; copies: Copy[] }[] = [];
-			attrItems<Unit>(s.restored).forEach((it, key) => {
-				if (it.deleted || !old(it.id.client, it.id.clock)) return;
-				const [record, bytes] = recordsIn(it, null)[0] ?? [];
-				if (bytes === undefined) return;
-				const copies = copiesOf(record, bytes);
-				const dead = copies.every(
-					(e) =>
-						liveRoots(s, { c: e.c, k: e.k, n: e.n, rk: e.k }).length === 0 &&
-						holders(s, { c: e.rc, k: e.rk, n: e.n }).length === 0
-				);
-				if (dead) doomed.push({ key, copies });
-			});
-			for (const { key, copies } of doomed) {
-				s.restored.deleteAttr(key);
-				forget(s, copies);
-				collect(s, tr, copies);
-			}
-			return { marks, records: doomed.length };
-		},
+		/** A doc's index of marks and copies, and the delete the purge writes (`purge.ts`). */
+		state: attach,
+		remove,
 
 		/** The `restoreFilter` and `onApply` options of a history on `doc` (fork patch YP11). */
 		history: (doc: EngineDoc, um: () => YUndoManager) => {

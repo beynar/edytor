@@ -40,6 +40,7 @@ import {
 	ENTRY_FACET,
 	type Facet,
 	facetOf,
+	checksOf,
 	indexChecks,
 	sameShape,
 	typeAttr
@@ -434,7 +435,7 @@ export const indexFold = (
 		if (shells.size > 0)
 			settle(ctx.table ? shells : [...touched.keys(), ...ctx.parents, ...editedStreams(ctx)], ctx);
 		for (const b of ctx.invalidated) dirty.add(b);
-		if (indexChecks.on) ix.checks!.check();
+		if (indexChecks.on) checksOf(ix).check();
 		if (derived) ix.version++;
 		if (ix.reporting) {
 			for (const id of touched.keys()) candidates.add(id);

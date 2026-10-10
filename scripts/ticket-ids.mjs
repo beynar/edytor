@@ -15,7 +15,7 @@
  * `AGENTS.md` and `docs/agents/*.md` (inline code and code blocks aside,
  * where a test's or a function's name may carry one; `guides()`).
  *
- * Allowed: the vendored fork's patch names (`YP1` … `YP14`, see
+ * Allowed: the vendored fork's patch names (`YP1` … `YP15`, see
  * `src/lib/crdt/vendor/yjs/UPSTREAM.md`), the upstream engine's own source
  * (`src/lib/crdt/vendor/`), and the names a comment uses for what they are
  * (`UTF-16`, `ES2022`, `R2 bucket`, `D1 database`, `C0` controls, …:

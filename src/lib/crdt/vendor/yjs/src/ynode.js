@@ -3,7 +3,6 @@ import * as array from 'lib0-v14/array'
 import * as delta from 'lib0-v14/delta'
 import * as error from 'lib0-v14/error'
 import * as iterator from 'lib0-v14/iterator'
-import * as log from 'lib0-v14/logging'
 import * as map from 'lib0-v14/map'
 import * as set from 'lib0-v14/set'
 import * as math from 'lib0-v14/math'
@@ -44,7 +43,7 @@ import { foldPaired, formatValue, pairedRole, markClass, MARK_START, MARK_END, S
 /**
  * https://docs.yjs.dev/getting-started/working-with-shared-types#caveats
  */
-export const warnPrematureAccess = () => { log.warn('Invalid access: Add Yjs type to a document before reading data.') }
+export const warnPrematureAccess = () => { console.warn('Invalid access: Add Yjs type to a document before reading data.') } // YP15
 
 const maxSearchMarker = 80
 

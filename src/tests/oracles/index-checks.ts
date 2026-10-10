@@ -1,20 +1,21 @@
 /**
- * The index's self-checks (`indexChecks`, on in the test lanes): after every
- * fold each fact the index maintains incrementally equals its rebuild from
- * the replicated state, and after every report the published tree equals a
- * fresh walk; the first difference throws.
+ * The index's self-checks (`indexChecks`, installed by the test lanes'
+ * setup, `src/tests/setup/index-checks.ts`): after every fold each fact the
+ * index maintains incrementally equals its rebuild from the replicated
+ * state, and after every report the published tree equals a fresh walk; the
+ * first difference throws.
  */
-import { sameIds } from '../../../utils/json.js';
+import { sameIds } from '../../lib/utils/json.js';
 import {
 	type BlockId,
 	type ChildSlot,
 	childrenIndex,
-	displayIndex,
 	resolvePlacements
-} from '../../placement/model.js';
+} from '../../lib/crdt/placement/model.js';
 import {
 	type Claim,
 	DEAD,
+	type Owner,
 	type Stream,
 	type TextRow,
 	claimGraph,
@@ -22,18 +23,43 @@ import {
 	delimiters,
 	placeText,
 	scanText
-} from '../model.js';
-import { sameRow } from '../rows.js';
-import type { IndexAnchored } from './anchored.js';
-import type { IndexCache } from './cache.js';
-import type { IndexClaims } from './claims.js';
-import type { IndexFold } from './fold.js';
-import type { IndexLayout } from './layout.js';
-import type { IndexPlacement } from './placement.js';
-import type { IndexReporter } from './report.js';
-import { keyOf } from './shared.js';
-import type { IndexState, Published } from './state.js';
-import type { IndexStreams } from './streams.js';
+} from '../../lib/crdt/text/model.js';
+import { boundAt, rowLength, type LiveRow } from '../../lib/crdt/text/rows.js';
+import type { IndexAnchored } from '../../lib/crdt/text/index/anchored.js';
+import type { IndexCache } from '../../lib/crdt/text/index/cache.js';
+import type { IndexClaims } from '../../lib/crdt/text/index/claims.js';
+import type { IndexFold } from '../../lib/crdt/text/index/fold.js';
+import type { IndexLayout } from '../../lib/crdt/text/index/layout.js';
+import type { IndexPlacement } from '../../lib/crdt/text/index/placement.js';
+import type { IndexReporter } from '../../lib/crdt/text/index/report.js';
+import { keyOf } from '../../lib/crdt/text/index/shared.js';
+import type { IndexState, Published } from '../../lib/crdt/text/index/state.js';
+import type { IndexStreams } from '../../lib/crdt/text/index/streams.js';
+
+/** The inverse of `ownerOf` over `blocks`: each live owner → the blocks it displays. */
+export const displayIndex = (
+	blocks: ReadonlyMap<BlockId, unknown>,
+	ownerOf: (b: BlockId) => Owner
+): Map<BlockId, BlockId[]> => {
+	const by = new Map<BlockId, BlockId[]>();
+	for (const b of blocks.keys()) {
+		const owner = ownerOf(b);
+		if (typeof owner !== 'string') continue;
+		const list = by.get(owner);
+		if (list === undefined) by.set(owner, [b]);
+		else list.push(b);
+	}
+	return by;
+};
+
+/** The row agrees with a fresh scan of its text (the index's self-check). */
+export const sameRow = (row: LiveRow, scan: TextRow): boolean => {
+	if (row.key !== scan.key || row.bounds.length !== scan.bounds.length) return false;
+	if (rowLength(row) !== scan.len) return false;
+	for (let j = 0; j < scan.bounds.length; j++)
+		if (boundAt(row, j) !== scan.bounds[j].at) return false;
+	return true;
+};
 
 /** The self-checks of one doc's index, over every part they compare. */
 export const indexSelfChecks = (

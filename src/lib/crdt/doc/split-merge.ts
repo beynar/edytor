@@ -213,7 +213,6 @@ export const splitMergeOps = (c: OpsContext) => {
 	return {
 		splitBlock,
 		mergeBlocks,
-		mergeUnnesting,
 		gone,
 		mergeBackward,
 		mergeForward

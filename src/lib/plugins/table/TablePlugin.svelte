@@ -4,7 +4,7 @@
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { tableKinds } from '$lib/crdt/semantics.js';
-	import { tableBlock, unlistedOrder } from '$lib/crdt/tables.js';
+	import { listedColumns, tableBlock, unlistedOrder } from '$lib/crdt/tables.js';
 	import { onPress } from '$lib/events/onFocus.js';
 	import { keywordsOf, labelsWith, viewLabels } from '$lib/labels.js';
 	import TableChromeLayer from './TableChrome.svelte';
@@ -52,14 +52,9 @@
 	 */
 	const columnsOfTable = (edytor: Edytor, table: string): string[] => {
 		const cell = edytor.cells?.get(table);
-		const listed = cell?.data?.columns;
-		if (Array.isArray(listed)) {
-			const ids = new Set(
-				listed.flatMap((c) => {
-					const id = (c as { id?: unknown } | null)?.id;
-					return typeof id === 'string' ? [id] : [];
-				})
-			);
+		const listed = listedColumns(cell?.data);
+		if (listed !== null) {
+			const ids = new Set(listed);
 			const unlisted = (cell?.childIds ?? []).flatMap((row) =>
 				(edytor.cells?.get(row)?.childIds ?? []).flatMap((id) => {
 					const column = edytor.cells?.get(id)?.data?.column;
@@ -84,15 +79,10 @@
 	 * listed ones.
 	 */
 	const columnIndex = (edytor: Edytor, table: string, row: string, id: string): number => {
-		const listed = edytor.cells?.get(table)?.data?.columns;
-		if (!Array.isArray(listed)) return edytor.cells?.get(row)?.childIds.indexOf(id) ?? -1;
+		const ids = listedColumns(edytor.cells?.get(table)?.data);
+		if (ids === null) return edytor.cells?.get(row)?.childIds.indexOf(id) ?? -1;
 		const column = edytor.cells?.get(id)?.data?.column;
 		if (typeof column !== 'string') return -1;
-		const ids: string[] = [];
-		for (const c of listed) {
-			const at = (c as { id?: unknown } | null)?.id;
-			if (typeof at === 'string' && !ids.includes(at)) ids.push(at);
-		}
 		const index = ids.indexOf(column);
 		return index !== -1 ? index : columnsOfTable(edytor, table).indexOf(column);
 	};

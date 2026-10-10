@@ -14,7 +14,9 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+- **A smaller bundle.** An app with `<Edytor />` ships about 19 KB less minified JavaScript: the room's purge and version restore, the document index's self-checks (now only in the test suite) and the engine's logging and environment helpers no longer come with the editor. Nothing to change.
+- **A semantics conflict names the declarations as given.** A `SemanticConflictError` from `adoptSemantics` (a view's plugin, or a reattach, disagreeing with the document) now carries the two declarations in `existing` and `incoming` as they were written, as `mergeSemantics` reports them, instead of their normalized form. Its `subject` and its class are unchanged.
+- **Fixed: a text delete threw in a Node process run with `NODE_ENV=development`**: the engine froze the values it stored in that mode, and the editor's delete records cannot be frozen. The engine no longer freezes them.
 
 ### From 1.0.0-rc.2
 
@@ -928,6 +930,7 @@ Every public change since 0.0.11, by area.
 - **Block roles as data.** `createDocument({ semantics })` takes block roles, content-less kinds and default children; views still adopt roles from their plugins. See [the document API](/docs/reference/document-api).
   - `defaultSemantics`, `richTextSemantics`, `codeSemantics`, `imageSemantics` and `layoutSemantics` hold the bundled plugins' rows (`defaultSemantics` the other four: the columns plugin's layout rows too, though it is not a default plugin; `layoutKinds` is the columns plugin's kind table) and are deeply frozen.
   - `semanticsOf(...tables)` (with the `KindSemantics` row type) builds a config from kind rows. To extend a bundled config, merge `roles`, `rendersContent` and `defaultChild` field by field, since a top-level spread drops the bundled rows.
+  - A document adopts roles as `mergeSemantics` merges them: a view's or a reattach's declaration that disagrees with the document's is a `SemanticConflictError` whose `existing` and `incoming` are the two declarations as written.
 - **Properties.** One data operation, `patchData(target, ops)`, which only writes the properties and array items it changes; `setBlockData` and `setInlineData` are patches of the root. See [Properties](/docs/concepts/properties).
   - `target` is a block id, `{ block, atom }`, or `null` for the document; `ops` are `{ path, value? }`, `{ path, splice }` and `{ path, order }`, a path naming array items by index or id and a key that starts with `~` as `~0…`; `facade.dataItemIds` lists the ids.
   - `facade.docData()` reads the document's own data, `JSONDoc.data` holds it (seeded, exported by `toJSON` only when present), and `SerializableContent` includes arrays.

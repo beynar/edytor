@@ -59,7 +59,7 @@
  * (`anchored.ts`), the layout rules (`layout.ts`), placements and the
  * children index (`placement.ts`), block records (`records.ts`), the run
  * cache (`cache.ts`), the fold (`fold.ts`), the change report
- * (`report.ts`) and the self-checks (`checks.ts`). This module declares the
+ * (`report.ts`); the self-checks a test lane installs are `indexChecks`. This module declares the
  * index's types and wires the parts into the doc's one index.
  */
 import type { EngineApi, EngineDeepEvent, EngineDoc } from '../engine-api.js';
@@ -77,7 +77,6 @@ import { indexRecords } from './index/records.js';
 import { indexCache } from './index/cache.js';
 import { indexFold } from './index/fold.js';
 import { indexReporter } from './index/report.js';
-import { indexSelfChecks } from './index/checks.js';
 
 export { CONTENT_ATTR, ENTRY_FACET, indexChecks } from './index/shared.js';
 
@@ -287,7 +286,6 @@ export const bindRuns = (Y: EngineApi) => {
 		const ix7 = Object.assign(ix6, indexCache(ix6));
 		const ix8 = Object.assign(ix7, indexFold(ix7));
 		const ix = Object.assign(ix8, indexReporter(ix8));
-		ix.checks = indexSelfChecks(ix);
 		const {
 			registry,
 			blocks,

@@ -300,7 +300,6 @@ export const moveOps = (c: OpsContext) => {
 		unNestBlocks,
 		unNestBlock,
 		landingOf,
-		splitOut,
 		liftOut,
 		duplicateBlock
 	};

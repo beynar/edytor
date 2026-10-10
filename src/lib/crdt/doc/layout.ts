@@ -217,7 +217,6 @@ export const layoutOps = (c: OpsContext) => {
 	};
 
 	return {
-		layoutKind,
 		besideAt,
 		placeBeside,
 		wrapInLayout

@@ -51,10 +51,8 @@ import { markName } from '$lib/crdt/text/marks.js';
 import { callEach } from '$lib/crdt/protocols/observable.js';
 import {
 	attachDocument,
-	bindCrdt,
 	SemanticConflictError,
 	type Awareness,
-	type Crdt,
 	type DocChange,
 	type DocumentActor,
 	type EdytorDocument,
@@ -202,19 +200,6 @@ export type RootBlock = Block & {
 	readonly id: 'root';
 	readonly depth: 0;
 };
-
-/**
- * One `bindCrdt` binding shared by every `Edytor` — the binding exists for
- * legacy consumers only (peer-facade helpers in tests, migration, provider
- * plumbing), so paying a second binding per view buys nothing.
- *
- * CONTRACT: `crdt.doc.create` on a raw doc already wrapped by an
- * `EdytorDocument` would fork a SECOND maintained run view for that doc —
- * the document's `facade` is the only structural surface and the fork is
- * forbidden. `create` on an UNWRAPPED doc (a remote peer's replica in
- * tests) stays legitimate.
- */
-const sharedCrdt = bindCrdt(Y);
 
 /** Register definitions a first extension has not: a bare snippet is `{ snippet }`. */
 const define = <T extends object>(into: Map<string, T>, definitions: object = {}) => {
@@ -388,17 +373,6 @@ export class Edytor {
 	compareBlocks = (a: Block, b: Block): number => this.facade.compare(a.id, b.id);
 	get awareness(): Awareness {
 		return this.document.awareness;
-	}
-	/**
-	 * Legacy accessor — the view no longer binds the engine (the document
-	 * shares the production binding). Returns the module-level singleton:
-	 * one binding per runtime, not one per view. Do NOT `crdt.doc.create`
-	 * on this view's `doc` — the document's facade is the only maintained
-	 * surface for it (see `sharedCrdt`'s contract note).
-	 * @internal
-	 */
-	get crdt(): Crdt {
-		return sharedCrdt;
 	}
 	/**
 	 * The document's shared undo manager — assigned at the end of `sync()`,

@@ -89,7 +89,6 @@ import { splitMergeOps } from './doc/split-merge.js';
 import { deleteOps } from './doc/delete.js';
 import { metaOps } from './doc/meta.js';
 import { contentOps } from './doc/content.js';
-import { tableOps } from './doc/table.js';
 // Types the facade's inferred declaration names: imported here so the
 // emitted `bindEdytorDoc` type names them rather than an import path
 // (`api/` reports the difference), so no value of the module reads them.
@@ -308,7 +307,6 @@ export const bindDocModel = (Y: EngineApi) => {
 		const { dataSteps, replaceData, setBlockType, patchData, setBlock } = metaOps(steps);
 		const { insertText, deleteText, formatRange, clearMarks, insertInline, removeInline } =
 			contentOps(steps);
-		const tables = tableOps({ ...steps, dataSteps });
 
 		/** What range deletion and flow placement read, and the step writers they compose. */
 		const context: FlowContext = {
@@ -410,8 +408,6 @@ export const bindDocModel = (Y: EngineApi) => {
 				patchData({ block: id, atom: inlineId }, [{ path: [], value: data }]),
 			/** Delete a block selection — one plan; only the members leave (`deleteBlocks` above). */
 			deleteBlocks: (ids: readonly BlockId[]): Prepared => deleteBlocks(ids),
-			// Tables (`table.*`): rows are blocks, columns the table's `data.columns`.
-			...tables,
 			...rangeDeleteOps(context),
 			...flowOps(context)
 		};

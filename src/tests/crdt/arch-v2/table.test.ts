@@ -16,6 +16,7 @@ import { converge } from './replica-harness.js';
 import * as crdt from '../../../lib/crdt/index.js';
 import { createDocument, tableBlock } from '../../../lib/crdt/index.js';
 import { defaultSemantics, semanticsOf, tableKinds } from '../../../lib/crdt/semantics.js';
+import { tables } from '../harness/table-ops.js';
 
 const semantics = defaultSemantics;
 
@@ -311,17 +312,22 @@ describe('table ops (write)', () => {
 	it('table.insert-row', () =>
 		row(
 			SEED,
-			(ed) => ed.insertTableRow('T', 1),
+			(ed) => tables(ed).insertTableRow('T', 1),
 			'P"p" T{c1,c2}[R1[A"a",B"b"],NEW[NEW"",NEW""],R2[C"c",D"d"]] Z"z"'
 		));
 
 	it('table.delete-row: the rows go with their cells, the last one with the table', () => {
-		row(SEED, (ed) => ed.deleteTableRows(['R1']), 'P"p" T{c1,c2}[R2[C"c",D"d"]] Z"z"');
-		row(SEED, (ed) => ed.deleteTableRows(['R1', 'R2']), 'P"p" Z"z"');
+		row(SEED, (ed) => tables(ed).deleteTableRows(['R1']), 'P"p" T{c1,c2}[R2[C"c",D"d"]] Z"z"');
+		row(SEED, (ed) => tables(ed).deleteTableRows(['R1', 'R2']), 'P"p" Z"z"');
 		for (const o of one(
-			converge(SEED, 1, ([a]) => expect(a.ed.deleteTableRows(['A']).status).toBe('refused'), {
-				semantics
-			})
+			converge(
+				SEED,
+				1,
+				([a]) => expect(tables(a.ed).deleteTableRows(['A']).status).toBe('refused'),
+				{
+					semantics
+				}
+			)
 		))
 			expect(show(o.ed)).toBe(BEFORE);
 	});
@@ -335,7 +341,7 @@ describe('table ops (write)', () => {
 	it('table.insert-column', () =>
 		row(
 			SEED,
-			(ed) => ed.insertTableColumn('T', 1),
+			(ed) => tables(ed).insertTableColumn('T', 1),
 			'P"p" T{c1,NEW,c2}[R1[A"a",NEW"",B"b"],R2[C"c",NEW"",D"d"]] Z"z"'
 		));
 
@@ -344,7 +350,7 @@ describe('table ops (write)', () => {
 			converge(
 				SEED,
 				1,
-				([a]) => expect(a.ed.insertTableColumn('T', 2, 180).status).toBe('applied'),
+				([a]) => expect(tables(a.ed).insertTableColumn('T', 2, 180).status).toBe('applied'),
 				{
 					semantics
 				}
@@ -354,23 +360,27 @@ describe('table ops (write)', () => {
 	});
 
 	it('table.delete-column: by id or position; the last column takes the table', () => {
-		row(SEED, (ed) => ed.deleteTableColumn('T', 'c2'), 'P"p" T{c1}[R1[A"a"],R2[C"c"]] Z"z"');
-		row(SEED, (ed) => ed.deleteTableColumn('T', 0), 'P"p" T{c2}[R1[B"b"],R2[D"d"]] Z"z"');
+		row(
+			SEED,
+			(ed) => tables(ed).deleteTableColumn('T', 'c2'),
+			'P"p" T{c1}[R1[A"a"],R2[C"c"]] Z"z"'
+		);
+		row(SEED, (ed) => tables(ed).deleteTableColumn('T', 0), 'P"p" T{c2}[R1[B"b"],R2[D"d"]] Z"z"');
 		const single = [para('P'), table('T', ['c1'], trow('R1', cell('A', 'c1'))), para('Z')];
-		row(single, (ed) => ed.deleteTableColumn('T', 'c1'), 'P"p" Z"z"');
+		row(single, (ed) => tables(ed).deleteTableColumn('T', 'c1'), 'P"p" Z"z"');
 	});
 
 	it('table.move-column: one order patch, no cell moves', () =>
 		row(
 			SEED,
-			(ed) => ed.moveTableColumn('T', 'c1', 1),
+			(ed) => tables(ed).moveTableColumn('T', 'c1', 1),
 			'P"p" T{c2,c1}[R1[B"b",A"a"],R2[D"d",C"c"]] Z"z"'
 		));
 
 	it('table.move-row', () =>
 		row(
 			SEED,
-			(ed) => ed.moveTableRows(['R2'], 0),
+			(ed) => tables(ed).moveTableRows(['R2'], 0),
 			'P"p" T{c1,c2}[R2[C"c",D"d"],R1[A"a",B"b"]] Z"z"'
 		));
 
@@ -410,13 +420,18 @@ describe('table ops (write)', () => {
 		shows(padded, 'P"p" T{c1,c2}[R1[A"a",B"b"],R2[_,D"d"]] Z"z"');
 		row(
 			padded,
-			(ed) => ed.fillTableCell('R2', 'c1'),
+			(ed) => tables(ed).fillTableCell('R2', 'c1'),
 			'P"p" T{c1,c2}[R1[A"a",B"b"],R2[NEW"",D"d"]] Z"z"'
 		);
 		for (const o of one(
-			converge(SEED, 1, ([a]) => expect(a.ed.fillTableCell('R1', 'c1').status).toBe('refused'), {
-				semantics
-			})
+			converge(
+				SEED,
+				1,
+				([a]) => expect(tables(a.ed).fillTableCell('R1', 'c1').status).toBe('refused'),
+				{
+					semantics
+				}
+			)
 		))
 			expect(show(o.ed)).toBe(BEFORE);
 	});
@@ -425,10 +440,10 @@ describe('table ops (write)', () => {
 		const loose = [table('T', null, trow('R1', cell('A'), cell('B')), trow('R2', cell('C')))];
 		row(
 			loose,
-			(ed) => ed.insertTableColumn('T', 0),
+			(ed) => tables(ed).insertTableColumn('T', 0),
 			'T{NEW,c1,c2}[R1[NEW"",A"a",B"b"],R2[NEW"",C"c",_]]'
 		);
-		row(loose, (ed) => ed.fillTableCell('R2', 1), 'T{c1,c2}[R1[A"a",B"b"],R2[C"c",NEW""]]');
+		row(loose, (ed) => tables(ed).fillTableCell('R2', 1), 'T{c1,c2}[R1[A"a",B"b"],R2[C"c",NEW""]]');
 	});
 });
 
@@ -649,8 +664,8 @@ describe('table concurrency', () => {
 				SEED,
 				2,
 				([a, b]) => {
-					expect(a.ed.insertTableRow('T', 2).status).toBe('applied');
-					expect(b.ed.deleteTableColumn('T', 'c2').status).toBe('applied');
+					expect(tables(a.ed).insertTableRow('T', 2).status).toBe('applied');
+					expect(tables(b.ed).deleteTableColumn('T', 'c2').status).toBe('applied');
 				},
 				{ semantics }
 			)
@@ -664,8 +679,8 @@ describe('table concurrency', () => {
 				SEED,
 				2,
 				([a, b]) => {
-					expect(a.ed.insertTableColumn('T', 2).status).toBe('applied');
-					expect(b.ed.insertTableRow('T', 2).status).toBe('applied');
+					expect(tables(a.ed).insertTableColumn('T', 2).status).toBe('applied');
+					expect(tables(b.ed).insertTableRow('T', 2).status).toBe('applied');
 				},
 				{ semantics }
 			)
@@ -682,7 +697,7 @@ describe('table concurrency', () => {
 				2,
 				([a, b]) => {
 					expect(a.ed.insertText('A', 1, '!').status).toBe('applied');
-					expect(b.ed.deleteTableRows(['R1']).status).toBe('applied');
+					expect(tables(b.ed).deleteTableRows(['R1']).status).toBe('applied');
 				},
 				{ semantics }
 			)
@@ -696,8 +711,8 @@ describe('table concurrency', () => {
 				SEED,
 				2,
 				([a, b]) => {
-					expect(a.ed.insertTableColumn('T', 2).status).toBe('applied');
-					expect(b.ed.deleteTableRows(['R1']).status).toBe('applied');
+					expect(tables(a.ed).insertTableColumn('T', 2).status).toBe('applied');
+					expect(tables(b.ed).deleteTableRows(['R1']).status).toBe('applied');
 				},
 				{ semantics }
 			)
@@ -711,8 +726,8 @@ describe('table concurrency', () => {
 				SEED,
 				2,
 				([a, b]) => {
-					expect(a.ed.moveTableColumn('T', 'c1', 1).status).toBe('applied');
-					expect(b.ed.insertTableRow('T', 0).status).toBe('applied');
+					expect(tables(a.ed).moveTableColumn('T', 'c1', 1).status).toBe('applied');
+					expect(tables(b.ed).insertTableRow('T', 0).status).toBe('applied');
 					expect(b.ed.insertText(b.ed.tableGrid('T').rows[0].cells[0], 0, 'x').status).toBe(
 						'applied'
 					);
@@ -730,8 +745,8 @@ describe('table concurrency', () => {
 				padded,
 				2,
 				([a, b]) => {
-					expect(a.ed.fillTableCell('R1', 'c2').status).toBe('applied');
-					expect(b.ed.fillTableCell('R1', 'c2').status).toBe('applied');
+					expect(tables(a.ed).fillTableCell('R1', 'c2').status).toBe('applied');
+					expect(tables(b.ed).fillTableCell('R1', 'c2').status).toBe('applied');
 				},
 				{ semantics }
 			)
@@ -750,7 +765,7 @@ describe('table concurrency', () => {
 				2,
 				([a, b]) => {
 					b.receiveAll(
-						a.capture(() => expect(a.ed.insertTableColumn('T', 1).status).toBe('applied'))
+						a.capture(() => expect(tables(a.ed).insertTableColumn('T', 1).status).toBe('applied'))
 					);
 					const cell = b.ed.tableGrid('T').rows[0].cells[1];
 					const typed = b.capture(() =>
@@ -788,13 +803,15 @@ describe('table concurrency', () => {
 		for (const o of columnUndo(true, (a, b) => {
 			const column = b.ed.tableGrid('T').columns[2];
 			expect(b.ed.tableColumns('T').map((c) => c.id)).toEqual(['c1', 'c2']);
-			expect(b.ed.moveTableColumn('T', column, 0).status).toBe('refused');
-			a.receiveAll(b.capture(() => b.ed.fillTableCell('R2', column)));
+			expect(tables(b.ed).moveTableColumn('T', column, 0).status).toBe('refused');
+			a.receiveAll(b.capture(() => tables(b.ed).fillTableCell('R2', column)));
 			expect(b.ed.tableColumns('T').map((c) => c.id)).toEqual(['c1', 'c2', column]);
 		}))
 			expect(show(o.ed)).toBe('P"p" T{c1,c2,NEW}[R1[A"a",B"b",NEW"BOB"],R2[C"c",D"d",NEW""]] Z"z"');
 		for (const o of columnUndo(true, (a, b) =>
-			a.receiveAll(b.capture(() => expect(b.ed.deleteTableColumn('T', 2).status).toBe('applied')))
+			a.receiveAll(
+				b.capture(() => expect(tables(b.ed).deleteTableColumn('T', 2).status).toBe('applied'))
+			)
 		))
 			expect(show(o.ed)).toBe(BEFORE);
 	});
@@ -808,8 +825,8 @@ describe('table concurrency', () => {
 				unlisted,
 				2,
 				([a, b]) => {
-					expect(a.ed.insertTableColumn('T', 2).status).toBe('applied');
-					expect(b.ed.insertTableColumn('T', 2).status).toBe('applied');
+					expect(tables(a.ed).insertTableColumn('T', 2).status).toBe('applied');
+					expect(tables(b.ed).insertTableColumn('T', 2).status).toBe('applied');
 				},
 				{ semantics }
 			)
@@ -823,8 +840,8 @@ describe('table concurrency', () => {
 				unlisted,
 				2,
 				([a, b]) => {
-					expect(a.ed.insertTableRow('T', 2).status).toBe('applied');
-					expect(b.ed.deleteTableColumn('T', 1).status).toBe('applied');
+					expect(tables(a.ed).insertTableRow('T', 2).status).toBe('applied');
+					expect(tables(b.ed).deleteTableColumn('T', 1).status).toBe('applied');
 				},
 				{ semantics }
 			)
@@ -839,8 +856,8 @@ describe('table concurrency', () => {
 				SEED,
 				3,
 				([a, b, c]) => {
-					expect(a.ed.deleteTableColumn('T', 'c1').status).toBe('applied');
-					expect(b.ed.deleteTableColumn('T', 'c2').status).toBe('applied');
+					expect(tables(a.ed).deleteTableColumn('T', 'c1').status).toBe('applied');
+					expect(tables(b.ed).deleteTableColumn('T', 'c2').status).toBe('applied');
 					expect(c.ed.patchData('T', [{ path: ['headerRow'], value: true }]).status).toBe(
 						'applied'
 					);

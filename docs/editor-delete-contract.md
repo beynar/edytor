@@ -1743,6 +1743,9 @@ in `data.column`, and the header flags are `data.headerRow` and
 layouts, the role is data read from the document's roles (`roles.table`):
 no core code names `table`, `tableRow` or `tableCell`, and the read-time
 rules own the display (the index's layout pass, `crdt/text/index/layout.ts`).
+The write rows below are the table plugin's ops (`plugins/table/ops.ts`,
+each taking the document first), plans composed of the document's
+`patchData`, `insertBlocks`, `deleteBlocks` and `moveBlocks`.
 Pins: `src/tests/crdt/arch-v2/table.test.ts` (each row sequential,
 concurrent with display equality across replicas, and undone), the
 `table-shape` well-formed check (a displayed table holds displayed rows
@@ -1837,7 +1840,8 @@ every row the table displays, one plan: `insertTableColumn(T, 1)` gives
 
 The column (by id or position among the grid's) leaves `data.columns`
 (every stored entry naming it, by item id) and every displayed cell of it
-is deleted, one plan; deleting the last column deletes the table
+is deleted, one plan; deleting the last column deletes the table, with
+a container it leaves empty (`del.range.empty-container`)
 (`deleteTableColumn(T, 'c2')` gives `R1[A], R2[C]`; then `'c1'` gives `P, Z`).
 A column shown unlisted (`table.cell`) loses its cells; `moveTableColumn`
 refuses it.

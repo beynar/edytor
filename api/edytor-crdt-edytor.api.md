@@ -232,13 +232,6 @@ declare const DOCUMENT_OPERATIONS: readonly [
     "patchData",
     "setBlockData",
     "duplicateBlock",
-    "insertTableRow",
-    "deleteTableRows",
-    "insertTableColumn",
-    "deleteTableColumn",
-    "moveTableColumn",
-    "moveTableRows",
-    "fillTableCell",
     "insertText",
     "deleteText",
     "formatRange",
@@ -630,13 +623,6 @@ export interface DocumentWrites {
     patchData(target: DataTarget, patches: readonly DataPatch[]): OpResult;
     setBlockData(id: BlockId, data: Record<string, unknown>): OpResult;
     duplicateBlock(id: BlockId, freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
-    insertTableRow(table: BlockId, index: number): OpResult;
-    deleteTableRows(rows: readonly BlockId[]): OpResult;
-    insertTableColumn(table: BlockId, index: number, width?: number): OpResult;
-    deleteTableColumn(table: BlockId, column: string | number): OpResult;
-    moveTableColumn(table: BlockId, column: string | number, to: number): OpResult;
-    moveTableRows(rows: readonly BlockId[], to: number): OpResult;
-    fillTableCell(row: BlockId, column: string | number): OpResult;
     insertText(id: BlockId, offset: number, text: string, marks?: Record<string, unknown>): OpResult;
     deleteText(id: BlockId, offset: number, length: number): OpResult;
     formatRange(id: BlockId, offset: number, length: number, marks: Record<string, unknown>): OpResult;
@@ -1371,13 +1357,6 @@ declare const bindCrdt: (Y: EngineApi) => {
                 insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView) => import("./edytor-doc.js").Prepared;
                 deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
                 replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
-                insertTableRow: (table: import("./index.js").BlockId, index: number) => import("./edytor-doc.js").Prepared;
-                deleteTableRows: (rows: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
-                insertTableColumn: (table: import("./index.js").BlockId, index: number, width?: number) => import("./edytor-doc.js").Prepared;
-                deleteTableColumn: (table: import("./index.js").BlockId, column: string | number) => import("./edytor-doc.js").Prepared;
-                moveTableColumn: (table: import("./index.js").BlockId, column: string | number, to: number) => import("./edytor-doc.js").Prepared;
-                moveTableRows: (rows: readonly import("./index.js").BlockId[], to: number) => import("./edytor-doc.js").Prepared;
-                fillTableCell: (row: import("./index.js").BlockId, column: string | number) => import("./edytor-doc.js").Prepared;
                 insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").Prepared;
                 insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec | import("./index.js").JSONBlock) => import("./edytor-doc.js").Prepared;
                 moveBlocks: (ids: readonly import("./index.js").BlockId[], dest: import("./index.js").Destination) => import("./edytor-doc.js").Prepared;
@@ -1495,13 +1474,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => import("./edytor-doc.js").OpResult;
             deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
-            insertTableRow: (table: string, index: number) => import("./edytor-doc.js").OpResult;
-            deleteTableRows: (rows: readonly string[]) => import("./edytor-doc.js").OpResult;
-            insertTableColumn: (table: string, index: number, width?: number | undefined) => import("./edytor-doc.js").OpResult;
-            deleteTableColumn: (table: string, column: string | number) => import("./edytor-doc.js").OpResult;
-            moveTableColumn: (table: string, column: string | number, to: number) => import("./edytor-doc.js").OpResult;
-            moveTableRows: (rows: readonly string[], to: number) => import("./edytor-doc.js").OpResult;
-            fillTableCell: (row: string, column: string | number) => import("./edytor-doc.js").OpResult;
             insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").JSONBlock | import("./index.js").BlockSpec)[]) => import("./edytor-doc.js").OpResult;
             insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").JSONBlock | import("./index.js").BlockSpec) => import("./edytor-doc.js").OpResult;
             moveBlocks: (ids: readonly string[], dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
@@ -2525,13 +2497,6 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView) => Prepared;
             deleteRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView) => Prepared;
             replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView) => Prepared;
-            insertTableRow: (table: BlockId, index: number) => Prepared;
-            deleteTableRows: (rows: readonly BlockId[]) => Prepared;
-            insertTableColumn: (table: BlockId, index: number, width?: number) => Prepared;
-            deleteTableColumn: (table: BlockId, column: string | number) => Prepared;
-            moveTableColumn: (table: BlockId, column: string | number, to: number) => Prepared;
-            moveTableRows: (rows: readonly BlockId[], to: number) => Prepared;
-            fillTableCell: (row: BlockId, column: string | number) => Prepared;
             insertBlocks: (dest: Destination, specs: readonly (BlockSpec | JSONBlock)[]) => Prepared;
             insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => Prepared;
             moveBlocks: (ids: readonly BlockId[], dest: Destination) => Prepared;
@@ -2649,13 +2614,6 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => OpResult;
         deleteRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
         replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
-        insertTableRow: (table: string, index: number) => OpResult;
-        deleteTableRows: (rows: readonly string[]) => OpResult;
-        insertTableColumn: (table: string, index: number, width?: number | undefined) => OpResult;
-        deleteTableColumn: (table: string, column: string | number) => OpResult;
-        moveTableColumn: (table: string, column: string | number, to: number) => OpResult;
-        moveTableRows: (rows: readonly string[], to: number) => OpResult;
-        fillTableCell: (row: string, column: string | number) => OpResult;
         insertBlocks: (dest: Destination, specs: readonly (JSONBlock | BlockSpec)[]) => OpResult;
         insertBlock: (dest: Destination, spec: JSONBlock | BlockSpec) => OpResult;
         moveBlocks: (ids: readonly string[], dest: Destination) => OpResult;

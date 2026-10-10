@@ -334,7 +334,7 @@ export class Dispatcher {
 	 */
 	run = <T>(kind: string, body: () => T): T | undefined => {
 		if (this.running) return body();
-		if (!this.permits()) return this.refuse(kind);
+		if (!this.permits()) return void this.#refused(kind);
 		this.cut(kind);
 		this.applied = null;
 		const out = this.scope(() => {
@@ -702,11 +702,6 @@ export class Dispatcher {
 		if (policy !== 'continue') return policy;
 		const { history, selection } = this.edytor;
 		return history.continues(selection.value) ? undefined : 'before';
-	}
-
-	private refuse(operation: string): undefined {
-		this.#refused(operation);
-		return undefined;
 	}
 
 	/** Record `operation` as refused; answers that result. */

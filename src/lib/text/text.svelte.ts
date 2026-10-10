@@ -1,6 +1,6 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { type JSONText } from '$lib/utils/json.js';
-import { Block } from '../block/block.svelte.js';
+import type { Block } from '../block/block.svelte.js';
 import {
 	batch,
 	deleteText,
@@ -147,21 +147,13 @@ export class Text {
 		node.setAttribute('data-edytor-id', `${this.id}`);
 		node.setAttribute('data-edytor-text', `true`);
 
-		let pluginDestroy = this.edytor.plugins.reduce(
-			(acc, plugin) => {
-				const action = plugin.onTextAttached?.({ node, text: this });
-				if (typeof action === 'function') acc.push(action);
-				return acc;
-			},
-			[] as (() => void)[]
-		);
-		let insideVoid = this.parent.definition.void;
-		for (let block: unknown = this.parent; block instanceof Block; block = block.parent) {
-			if (block.definition.void) {
-				insideVoid = true;
-				break;
-			}
-		}
+		const pluginDestroy = this.edytor.plugins.flatMap((plugin) => {
+			const action = plugin.onTextAttached?.({ node, text: this });
+			return typeof action === 'function' ? [action] : [];
+		});
+		let insideVoid = false;
+		for (let block: Block | undefined = this.parent; block && !insideVoid; block = block.parent)
+			insideVoid = !!block.definition.void;
 
 		if (insideVoid) {
 			node.setAttribute('contenteditable', 'true');

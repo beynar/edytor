@@ -997,8 +997,7 @@ export class Edytor {
 		if (!newBlock) return false;
 		this.dispatcher.record({ operation: 'clear', status: 'applied' });
 		this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
-		this.expectInternalFocus();
-		this.node?.focus({ preventScroll: true });
+		this.focus();
 		return true;
 	};
 

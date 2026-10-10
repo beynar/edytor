@@ -43,7 +43,7 @@
 
 	/** The block that holds the caret or a text range in one block, when an atom may go there. */
 	const textBlock = (edytor: Edytor) => {
-		const { startText, endText } = edytor.selection.state;
+		const { startText, endText } = edytor.selection.textRange();
 		const block = startText?.parent;
 		if (!block || endText?.parent !== block || edytor.selection.value.kind !== 'text') return null;
 		// Not in a code line (an island of lines holds text only).
@@ -60,7 +60,8 @@
 		const block = textBlock(edytor);
 		const view = equationViews.get(edytor);
 		if (!block || !view || !edytor.dispatcher.permits()) return false;
-		const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
+		const { startText, endText, yStart, yEnd } = edytor.selection.textRange();
+		const { isCollapsed } = edytor.selection.projection;
 		const from = startText!.segStart + yStart;
 		const atom = id('i');
 		if (isCollapsed) {

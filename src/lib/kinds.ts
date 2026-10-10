@@ -1,4 +1,5 @@
 import type { Block } from './block/block.svelte.js';
+import { blockSelection } from '$lib/session/selection.js';
 import type { Edytor } from './edytor.svelte.js';
 import type { BlockDefinition, EditorCommand, KindPreset } from './plugins.js';
 import { jsonBlockToSpec, jsonEquals, type JSONBlock } from './utils/json.js';
@@ -145,7 +146,7 @@ export const wrapBlocks = (edytor: Edytor, blocks: Block[], kind?: string, colum
 	);
 	if (!applied) return false;
 	const live = blocks.flatMap((block) => edytor.idToBlock.get(block.id) ?? []);
-	edytor.selection.selectBlocks(...live.sort(edytor.compareBlocks));
+	edytor.selection.select(blockSelection(live.sort(edytor.compareBlocks).map((block) => block.id)));
 	return true;
 };
 
@@ -331,7 +332,9 @@ export const convertBlocks = (edytor: Edytor, blocks: Iterable<Block>, row: Kind
 	if (selection.kind === 'blocks') {
 		const ids = new Set([...selection.ids, ...converted.map((block) => block.id)]);
 		const live = [...ids].flatMap((id) => edytor.idToBlock.get(id) ?? []);
-		edytor.selection.selectBlocks(...live.sort(edytor.compareBlocks));
+		edytor.selection.select(
+			blockSelection(live.sort(edytor.compareBlocks).map((block) => block.id))
+		);
 	} else edytor.selection.select(selection);
 	return applied.some(Boolean);
 };
@@ -351,12 +354,12 @@ export const kindCommand = (edytor: Edytor, row: KindRow): EditorCommand => ({
 	// Asked of the view given (a `+`'s menu asks it of the block it adds).
 	isEnabled: (view = edytor) =>
 		row.replaces
-			? Boolean(view.selection.state.startBlock?.convertible)
+			? Boolean(view.selection.textRange().startText?.parent.convertible)
 			: convertedBlocks(getSelectionBlocks(view)).length > 0,
 	run: () => {
 		const blocks = row.replaces ? [] : getSelectionBlocks(edytor);
 		return blocks.length > 1 || (blocks[0] && !blocks[0].convertible)
 			? convertBlocks(edytor, blocks, row)
-			: convertToKind(edytor, edytor.selection.state.startBlock, row);
+			: convertToKind(edytor, edytor.selection.textRange().startText?.parent, row);
 	}
 });

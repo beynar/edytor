@@ -9,6 +9,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -41,7 +42,7 @@ describe('sel.blocks.outside — a press outside the view ends its block selecti
 	it('a press on the page outside the editor: the selection is none', async () => {
 		const { edytor } = await render();
 		const [a, b] = edytor.root!.children;
-		edytor.selection.selectBlocks(a!, b!);
+		selectBlocks(edytor, a!, b!);
 		await flushDomUpdates();
 		expect(edytor.selection.selectedBlocks.size).toBe(2);
 		await press(outsideButton());
@@ -52,7 +53,7 @@ describe('sel.blocks.outside — a press outside the view ends its block selecti
 	it('Shift, Mod, a keep-selection element and the overlay keep it', async () => {
 		const { edytor } = await render();
 		const [a, b] = edytor.root!.children;
-		edytor.selection.selectBlocks(a!, b!);
+		selectBlocks(edytor, a!, b!);
 		await flushDomUpdates();
 		await press(outsideButton(), { shiftKey: true });
 		await press(outsideButton(), { metaKey: true });

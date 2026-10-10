@@ -72,7 +72,7 @@ const type = async (editor: HTMLElement, value: string) => {
 	for (const data of value) await dispatchDomBeforeInput(editor, { inputType: 'insertText', data });
 };
 const caretIn = async (edytor: Edytor, id: string, offset = 0) => {
-	edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+	edytor.selection.selectText(edytor.idToBlock.get(id)!.firstText!, offset);
 	await flushDomUpdates();
 };
 const activate = async (edytor: Edytor, editor: HTMLElement, id: string) => {
@@ -210,7 +210,7 @@ describe('each chrome in its labels', () => {
 	it('the toolbar: the bar, the kind, the marks, the color panel', async () => {
 		const { edytor } = await setup([p('a', 'bonjour')]);
 		const text = edytor.idToBlock.get('a')!.firstText!;
-		edytor.selection.setAtRange(text, 0, text, 7);
+		edytor.selection.selectText(text, 0, text, 7);
 		await flushDomUpdates();
 		const bar = one('[data-testid="selection-toolbar"]');
 		expect(bar.getAttribute('aria-label')).toBe(fr.toolbar.bar);
@@ -469,7 +469,7 @@ describe('no English reaches the page', () => {
 		const look = () => seen.push(pageWords());
 		look();
 		const text = edytor.idToBlock.get('a')!.firstText!;
-		edytor.selection.setAtRange(text, 0, text, 7);
+		edytor.selection.selectText(text, 0, text, 7);
 		await flushDomUpdates();
 		look();
 		await click(one('.toolbar-color'));
@@ -494,7 +494,7 @@ describe('no English reaches the page', () => {
 		look();
 		// A comment thread, posted, then a resolved one (the sidebar's toggle).
 		const comments = commentsController(edytor)!;
-		edytor.selection.setAtRange(text, 0, text, 7);
+		edytor.selection.selectText(text, 0, text, 7);
 		comments.start();
 		await flushDomUpdates();
 		look();

@@ -36,6 +36,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 /** Red on the reference; green since S3. */
 const row = it;
@@ -134,7 +135,7 @@ describe('F-P15 — the link trailing edge reads the admitted side (FP-8)', () =
 		const inside = leafAt(text, 4);
 		expect(inside.node.data).toBe('Link');
 		await placeDomCaret(edytor, inside.node, inside.offset);
-		expect(edytor.selection.state.yStart).toBe(4);
+		expect(selectionState(edytor).yStart).toBe(4);
 		const result = await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '!' });
 		expect(result.defaultPrevented).toBe(true);
 		expect(runs(edytor)).toEqual([{ text: 'Link!', marks: { link: LINK } }, { text: ' tail' }]);
@@ -145,7 +146,7 @@ describe('F-P15 — the link trailing edge reads the admitted side (FP-8)', () =
 		const after = leafAt(text, 5);
 		expect(after.node.data).toBe(' tail');
 		await placeDomCaret(edytor, after.node, 0);
-		expect(edytor.selection.state.yStart).toBe(4);
+		expect(selectionState(edytor).yStart).toBe(4);
 		const result = await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '!' });
 		expect(result.defaultPrevented).toBe(true);
 		expect(runs(edytor)).toEqual([{ text: 'Link', marks: { link: LINK } }, { text: '! tail' }]);
@@ -159,7 +160,7 @@ describe('F-P15 — the link trailing edge reads the admitted side (FP-8)', () =
 		const markElement = text.node!.querySelector('[data-edytor-mark="link"]')!;
 		const host = markElement.parentNode!;
 		await placeDomCaret(edytor, host, Array.from(host.childNodes).indexOf(markElement) + 1);
-		expect(edytor.selection.state.yStart).toBe(4);
+		expect(selectionState(edytor).yStart).toBe(4);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '!' });
 		expect(runs(edytor)).toEqual([{ text: 'Link', marks: { link: LINK } }, { text: '!' }]);
 	});

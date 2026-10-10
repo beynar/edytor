@@ -10,8 +10,7 @@
  * lazily the marks at the caret and the selected string — is `project(value,
  * doc)`, a pure function memoized per (value, index version).
  *
- * The view's `commit(value, cause)` (public: `select(value)`) is the only writer; its
- * `selection.state` is a compatibility getter over the projection, and the
+ * The view's `commit(value, cause)` (public: `select(value)`) is the only writer; the
  * presence payload is `serialize(value)`.
  */
 import type { BlockId, ContentItem } from '$lib/crdt/index.js';

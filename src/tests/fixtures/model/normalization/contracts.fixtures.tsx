@@ -16,6 +16,7 @@ import {
 } from '../../../test.utils.js';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
+import { selectionState } from '../../../selection.js';
 
 const serializeChildren = (children: JSONBlock[]) =>
 	removeIds(JSON.parse(JSON.stringify(children)) as JSONBlock[]);
@@ -245,9 +246,9 @@ export const fixtures = defineFixtures([
 						</root>
 					);
 					const block = edytor.root!.children[0];
-					const text = edytor.selection.state.startText!;
+					const text = selectionState(edytor).startText!;
 					block.addInlineBlock({
-						index: edytor.selection.state.yStart,
+						index: selectionState(edytor).yStart,
 						block: { type: 'mention' },
 						text
 					});
@@ -265,8 +266,8 @@ export const fixtures = defineFixtures([
 					);
 					const block = edytor.root!.children[0];
 					block.splitBlock({
-						index: edytor.selection.state.yStart,
-						text: edytor.selection.state.startText!
+						index: selectionState(edytor).yStart,
+						text: selectionState(edytor).startText!
 					});
 					expectSecondPassStable(edytor.root!.children[0]);
 					expectSecondPassStable(edytor.root!.children[1]);

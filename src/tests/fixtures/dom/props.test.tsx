@@ -26,6 +26,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 const value = {
 	children: [
@@ -300,7 +301,7 @@ describe('creations carry their properties in addChildBlocks (DR-props-4)', () =
 		});
 		edytor.idToBlock.block('c').duplicateBlock();
 		expect(seen).toEqual([{ title: 'One', tags: ['a'] }]);
-		edytor.selection.selectBlocks(edytor.idToBlock.block('c'));
+		selectBlocks(edytor, edytor.idToBlock.block('c'));
 		await flushDomUpdates();
 		const copied = await dispatchCopy(editor);
 		seen.length = 0;
@@ -384,7 +385,7 @@ describe('a field in a kind owns its clipboard and drops (DR-props-2)', () => {
 
 	it('over a block selection, the field’s keys and paste never act on the selected blocks', async () => {
 		const { edytor, editor } = await renderDomEdytor(<root />, { value, plugins });
-		edytor.selection.selectBlocks(edytor.idToBlock.block('p'));
+		selectBlocks(edytor, edytor.idToBlock.block('p'));
 		await flushDomUpdates();
 		const title = q(editor, '[data-card-title]');
 		title.focus();
@@ -450,7 +451,7 @@ describe('any control of a kind owns its events, whatever its type (DR-props-2)'
 		'%s over a block selection: its keys and paste never act on the selected blocks',
 		async (selector) => {
 			const { edytor, editor } = await renderDomEdytor(<root />, { value, plugins });
-			edytor.selection.selectBlocks(edytor.idToBlock.block('p'));
+			selectBlocks(edytor, edytor.idToBlock.block('p'));
 			await flushDomUpdates();
 			const control = editor.querySelector<HTMLElement>(selector)!;
 			control.focus();
@@ -472,7 +473,7 @@ describe('any control of a kind owns its events, whatever its type (DR-props-2)'
 
 	it('the date field takes Backspace and Delete over a block selection as its own keys', async () => {
 		const { edytor, editor } = await renderDomEdytor(<root />, { value, plugins });
-		edytor.selection.selectBlocks(edytor.idToBlock.block('p'));
+		selectBlocks(edytor, edytor.idToBlock.block('p'));
 		await flushDomUpdates();
 		const due = q(editor, '[data-card-due]');
 		due.focus();

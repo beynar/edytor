@@ -25,6 +25,7 @@ import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -37,9 +38,9 @@ const todoCommandsPlugin: Plugin = () => ({
 			id: 'todo.toggle',
 			label: 'Toggle to-do',
 			keywords: ['check', 'done'],
-			isEnabled: (edytor) => edytor.selection.state.startBlock?.type === 'todo-item',
+			isEnabled: (edytor) => selectionState(edytor).startBlock?.type === 'todo-item',
 			run: (edytor) => {
-				const block = edytor.selection.state.startBlock;
+				const block = selectionState(edytor).startBlock;
 				block?.setBlock({ value: { data: { ...block.data, checked: !block.data.checked } } });
 			}
 		}
@@ -59,7 +60,7 @@ const outline = (b: JSONBlock) => {
 };
 const doc = (edytor: Edytor) => (edytor.value.children ?? []).map(outline);
 const caret = (edytor: Edytor) => {
-	const { startText, yStart } = edytor.selection.state;
+	const { startText, yStart } = selectionState(edytor);
 	return `${startText?.parent.id}@${yStart}`;
 };
 const menu = () => document.querySelector('[data-testid="slash-menu"]');
@@ -172,7 +173,7 @@ describe('DR-behavior-3: one menu at a time, the grip after the +', () => {
 		const a = edytor.idToBlock.get(edytor.value.children![0]!.id!)!;
 		await plus();
 		expect(menu()).not.toBeNull();
-		edytor.selection.selectBlocks(a);
+		selectBlocks(edytor, a);
 		editor.dispatchEvent(
 			new CustomEvent(BLOCK_ACTIVATE_EVENT, { detail: { block: a, anchor: a.node } })
 		);
@@ -180,32 +181,5 @@ describe('DR-behavior-3: one menu at a time, the grip after the +', () => {
 		expect(menu()).toBeNull();
 		expect(document.querySelector('[data-testid="block-menu"]')).not.toBeNull();
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'paragraph "b"']);
-	});
-});
-
-describe('DR-behavior-4: an edge divider with only dividers beyond it is left out', () => {
-	it('[x, divider, divider] selected, then left: the range spans x', async () => {
-		const { edytor } = await renderDomEdytor(
-			<root>
-				<paragraph>|</paragraph>
-			</root>,
-			{
-				plugins: [richTextPlugin, mentionPlugin],
-				value: {
-					children: [
-						{ id: 'x', type: 'paragraph', content: [{ text: 'x' }] },
-						{ id: 'd1', type: 'divider' },
-						{ id: 'd2', type: 'divider' }
-					]
-				}
-			}
-		);
-		const [x, d1, d2] = ['x', 'd1', 'd2'].map((id) => edytor.idToBlock.get(id)!);
-		edytor.selection.selectBlocks(x!, d1!, d2!);
-		await flushDomUpdates();
-		edytor.selection.selectBlocks();
-		await flushDomUpdates();
-		const { startText, endText, yStart, yEnd } = edytor.selection.state;
-		expect(`${startText?.parent.id}@${yStart}…${endText?.parent.id}@${yEnd}`).toBe('x@0…x@1');
 	});
 });

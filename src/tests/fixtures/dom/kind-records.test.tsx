@@ -44,6 +44,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 /** Red on the reference; green since S6. */
 const row = it;
@@ -75,7 +76,7 @@ const items = () =>
 /** Copy every top-level block as a block selection; the written flavours. */
 const copyAll = async (edytor: Edytor, editor: HTMLElement) => {
 	// Every block, nested ones included (select-all; a block selection is exactly its members).
-	edytor.selection.selectBlocks(...edytor.facade.order().map((id) => edytor.idToBlock.get(id)!));
+	selectBlocks(edytor, ...edytor.facade.order().map((id) => edytor.idToBlock.get(id)!));
 	await flushDomUpdates();
 	const { clipboardData } = await dispatchCopy(editor);
 	const html = clipboardData['text/html'] ?? '';
@@ -99,7 +100,7 @@ describe('extension cost: a new kind and a new mark are one record each (§10 (a
 		const { edytor, editor } = await render([markdownShortcutsPlugin, bannerPlugin]);
 		await type(editor, '!! ');
 		expect(canonicalTree(edytor)).toEqual([{ type: 'banner', data: { tone: 'info' } }]);
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(selectionState(edytor).yStart).toBe(0);
 	});
 
 	row('catalogue: block menus read the kind row from edytor.kinds', async () => {
@@ -190,7 +191,7 @@ describe('slash menu: generated from kind records', () => {
 		expect(items()).toEqual(['block.code </> Code']);
 		await enter();
 		expect(canonicalTree(edytor)).toEqual([{ type: 'code', children: [{ type: 'codeLine' }] }]);
-		expect(edytor.selection.state.startBlock?.type).toBe('codeLine');
+		expect(selectionState(edytor).startBlock?.type).toBe('codeLine');
 	});
 
 	pin('a preset converts with its data (callout icon, todo checked)', async () => {
@@ -237,7 +238,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 			await type(editor, typed);
 			if (typed.startsWith('/')) await enter();
 			expect(canonicalTree(edytor)).toEqual([{ type: 'divider' }, { type: 'paragraph' }]);
-			expect(edytor.selection.state.startBlock?.type).toBe('paragraph');
+			expect(selectionState(edytor).startBlock?.type).toBe('paragraph');
 			await type(editor, 'x');
 			expect(canonicalTree(edytor)).toEqual([
 				{ type: 'divider' },
@@ -270,7 +271,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 				children && { children }
 			);
 			if (children) {
-				edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 0);
+				edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 0);
 				await flushDomUpdates();
 			}
 			await type(editor, typed);
@@ -280,7 +281,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 					? [{ type: 'divider' }, { type: 'paragraph' }]
 					: [{ type: 'code', children: [{ type: 'codeLine' }] }];
 			expect(canonicalTree(edytor)).toEqual([block, ...inserted]);
-			const caret = edytor.selection.state.startBlock!;
+			const caret = selectionState(edytor).startBlock!;
 			expect(caret.type).toBe(kind === 'divider' ? 'paragraph' : 'codeLine');
 			expect(caret.parent?.isRoot ? caret.index : caret.parent?.index).toBe(
 				1 + Number(kind === 'divider')

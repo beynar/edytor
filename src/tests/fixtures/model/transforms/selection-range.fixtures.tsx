@@ -5,6 +5,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { deleteBlockRangeAtSelection } from '../../helpers/model.js';
+import { selectionState } from '../../../selection.js';
 
 export const fixtures = defineFixtures([
 	defineModelTransformFixture({
@@ -16,7 +17,7 @@ export const fixtures = defineFixtures([
 		),
 		run: () => null,
 		assert: ({ edytor }) => {
-			expect(edytor.selection.state.isCollapsed).toBe(false);
+			expect(selectionState(edytor).isCollapsed).toBe(false);
 			expect(edytor.selection.projection.isTextSpanning).toBe(false);
 			expect(edytor.selection.projection.isBlockSpanning).toBe(false);
 			expect(edytor.selection.projection.content.length).toBe(5);

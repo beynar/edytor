@@ -28,6 +28,7 @@ import {
 	expectBlockInvariantSnapshot,
 	insertParts
 } from '../../../test.utils.js';
+import { selectBlocks } from '../../../selection.js';
 
 type RecordedCall = {
 	phase: 'before' | 'after';
@@ -297,9 +298,9 @@ export const fixtures = defineFixtures([
 				value: { children: [] }
 			});
 			const edytor = new Edytor({ document, plugins: [richTextPlugin] });
-			// `clear()` tails into `setAtTextOffset` on a tick — the DOM walk
+			// `clear()` tails into `selectText` on a tick — the DOM walk
 			// never resolves headless, so pin the model-level setter.
-			edytor.selection.setAtTextOffset = async () => {};
+			edytor.selection.selectText = () => {};
 
 			// The facade bootstrap block took the document default already.
 			expect(edytor.root!.children[0].type).toBe('heading');
@@ -378,18 +379,18 @@ export const fixtures = defineFixtures([
 			});
 			const block = edytor.root!.children[0];
 
-			edytor.selection.selectBlocks(block);
+			selectBlocks(edytor, block);
 			expect(onSelect).toHaveBeenCalledWith({ block });
 			expect(onDeselect).not.toHaveBeenCalled();
 
 			// Both removal paths fire it — wholesale reselection…
-			edytor.selection.selectBlocks();
+			edytor.selection.select({ kind: 'none' });
 			expect(onDeselect).toHaveBeenCalledTimes(1);
 			expect(onDeselect).toHaveBeenCalledWith({ block });
 
 			// …and the targeted removal path.
-			edytor.selection.selectBlocks(block);
-			edytor.selection.removeBlockFromSelection(block);
+			selectBlocks(edytor, block);
+			selectBlocks(edytor);
 			expect(onDeselect).toHaveBeenCalledTimes(2);
 		}
 	})

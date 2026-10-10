@@ -133,7 +133,7 @@ const selectRootBlocks = async (page: Page, indexes: number[]) => {
 	await page.evaluate((selectedIndexes) => {
 		const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 		const blocks = selectedIndexes.map((index) => edytor.root.children[index]);
-		edytor.selection.selectBlocks(...blocks);
+		edytor.selection.select({ kind: 'blocks', ids: [...blocks].map((block) => block.id) });
 	}, indexes);
 };
 
@@ -842,7 +842,7 @@ test.describe('browser block handles and DnD', () => {
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			const [start, parent] = edytor.root.children;
-			edytor.selection.setAtRange(start.firstText, 1, parent.children[0].firstText, 3);
+			edytor.selection.selectText(start.firstText, 1, parent.children[0].firstText, 3);
 		});
 		const source = await page.getByTestId('block-handle').first().boundingBox();
 		const target = await page.locator('[data-edytor-block="true"]').last().boundingBox();

@@ -119,10 +119,11 @@ export class UrlPasteController {
 	paste: NonNullable<PluginOperations['onPaste']> = ({ e, prevent }) => {
 		const { edytor } = this;
 		const { selection } = edytor;
-		if (selection.value.kind !== 'text' || !selection.state.isCollapsed) return;
+		if (selection.value.kind !== 'text' || !selection.projection.isCollapsed) return;
 		const { projection } = selection;
 		if (projection.islandRoot !== null || projection.voidRoot !== null) return;
-		const { startBlock: block, startText: text } = selection.state;
+		const { startText: text } = selection.textRange();
+		const block = text?.parent;
 		if (!block?.convertible || !text || !holdsNothing(edytor, block)) return;
 		const url = safeWebUrl(pastedLink(e.clipboardData?.getData('text/plain')));
 		const options = url ? this.optionsFor(url) : [];
@@ -158,13 +159,13 @@ export class UrlPasteController {
 	/** The caret still rests at the end of the pasted URL, in its line. @internal */
 	stays = () => {
 		const { open, edytor } = this;
-		const { value, state } = edytor.selection;
+		const { value, projection } = edytor.selection;
 		return Boolean(
 			open &&
 			value.kind === 'text' &&
-			state.isCollapsed &&
-			state.startBlock?.id === open.block &&
-			(state.startText?.segStart ?? 0) + state.yStart === open.url.length
+			projection.isCollapsed &&
+			projection.start?.block === open.block &&
+			projection.start.offset === open.url.length
 		);
 	};
 

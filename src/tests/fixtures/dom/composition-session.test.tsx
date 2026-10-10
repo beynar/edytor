@@ -45,6 +45,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 /** Red on the reference; green since I3. */
 const row = it;
@@ -89,7 +90,7 @@ const textNodes = (element: Node) => {
 	return out.filter((node) => node.data.length > 0);
 };
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	const block = edytor.root!.children.findIndex((b) => b === startText?.parent);
 	return { block, offset: yStart, isCollapsed };
 };
@@ -262,7 +263,7 @@ describe('F-I16 — a session and its commit are one undo step', () => {
 
 			await undo(editor);
 			expect(texts(edytor)).toEqual(['say hello now']);
-			const { yStart, yEnd } = edytor.selection.state;
+			const { yStart, yEnd } = selectionState(edytor);
 			expect([yStart, yEnd]).toEqual([4, 9]);
 		}
 	);

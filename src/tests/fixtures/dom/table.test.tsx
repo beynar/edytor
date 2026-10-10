@@ -31,6 +31,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -92,11 +93,11 @@ const grid = (edytor: Edytor, id = 'T') =>
 		?.rows.map((r) => r.cells.map((c) => (c === null ? '_' : edytor.facade.blockText(c))));
 
 const caretIn = async (edytor: Edytor, id: string, offset: number) => {
-	edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+	edytor.selection.selectText(edytor.idToBlock.get(id)!.firstText!, offset);
 	await flushDomUpdates();
 };
 const caret = (edytor: Edytor) => {
-	const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+	const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 	return { block: startBlock?.id, offset: yStart, isCollapsed };
 };
 const node = (editor: HTMLElement, id: string) =>
@@ -282,7 +283,7 @@ describe('keys in a cell (table.keys, table.merge)', () => {
 describe('a block selection never holds a row or a cell', () => {
 	it('selecting a cell or a row selects its table; Backspace then deletes the table', async () => {
 		const { edytor, editor } = await render();
-		edytor.selection.selectBlocks(edytor.idToBlock.get('B')!, edytor.idToBlock.get('R2')!);
+		selectBlocks(edytor, edytor.idToBlock.get('B')!, edytor.idToBlock.get('R2')!);
 		await flushDomUpdates();
 		expect([...edytor.selection.selectedBlocks].map((b) => b.id)).toEqual(['T']);
 		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
@@ -313,7 +314,7 @@ describe('the block menu’s row and column actions', () => {
 	/** Open the block menu on the table as its grip does: the table selected, then activated. */
 	const openMenu = async (edytor: Edytor, editor: HTMLElement) => {
 		const t = edytor.idToBlock.get('T')!;
-		edytor.selection.selectBlocks(t);
+		selectBlocks(edytor, t);
 		await flushDomUpdates();
 		editor.dispatchEvent(
 			new CustomEvent(BLOCK_ACTIVATE_EVENT, {
@@ -680,7 +681,7 @@ describe('the clipboard: HTML import and export', () => {
 		const { edytor, editor } = await render();
 		const a = edytor.idToBlock.get('A')!.firstText!;
 		const b = edytor.idToBlock.get('B')!.firstText!;
-		edytor.selection.setAtRange(a, 0, b, 1);
+		edytor.selection.selectText(a, 0, b, 1);
 		await flushDomUpdates();
 		const { clipboardData } = await dispatchCopy(editor);
 		await caretIn(edytor, 'Z', 1);
@@ -707,7 +708,7 @@ describe('the clipboard: HTML import and export', () => {
 				}
 			)
 		]);
-		edytor.selection.selectBlocks(edytor.idToBlock.get('T')!);
+		selectBlocks(edytor, edytor.idToBlock.get('T')!);
 		await flushDomUpdates();
 		const { clipboardData } = await dispatchCopy(editor);
 		const html = clipboardData['text/html'] ?? '';

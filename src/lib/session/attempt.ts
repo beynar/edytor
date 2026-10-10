@@ -18,7 +18,6 @@
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
-import type { EdgeSide } from './editing/text.js';
 import type { SelectionValue } from './selection.js';
 
 type Kind = 'text' | 'composition' | 'payload' | 'break' | 'delete' | 'history';
@@ -106,32 +105,22 @@ export const targetless = (edytor: Edytor, intent: string) => {
 export const untargeted = (edytor: Edytor) =>
 	edytor.selection.value.kind === 'none' && !edytor.ports.surface.placed();
 
-/** The target's facts a command reads, projected when the attempt runs. */
+/**
+ * The target as a command reads it when the attempt runs: its projection
+ * (edges, spans, island and void roots) and its endpoints lowered to text
+ * segments (`selection.textRange`), with the mark-edge side the DOM showed a
+ * caret with and whether focus is in a void's own field.
+ */
 const facts = (edytor: Edytor) => {
-	const { state, projection } = edytor.selection;
-	const { startText } = state;
-	// Its block's place by id: no handle for every sibling (the root's on a long page).
-	const at = startText && edytor.facade.positionOf(startText.parent.id);
+	const { selection } = edytor;
+	const projection = selection.projection;
 	return {
-		startText,
-		endText: state.endText,
-		texts: state.texts,
-		yStart: state.yStart,
-		yEnd: state.yEnd,
+		...selection.textRange(projection),
+		projection,
+		isCollapsed: projection.isCollapsed,
 		/** The admitted mark-edge side of a caret. */
-		edge: state.edge as EdgeSide | undefined,
-		isCollapsed: state.isCollapsed,
-		isTextSpanning: projection.isTextSpanning,
-		isBlockSpanning: projection.isBlockSpanning,
-		isAtStartOfBlock: projection.isAtStartOfBlock,
-		isAtEndOfBlock: projection.isAtEndOfBlock,
-		isAtStartOfText: projection.isAtStartOfText,
-		isAtEndOfText: projection.isAtEndOfText,
-		islandRoot: edytor.idToBlock.get(projection.islandRoot ?? '') ?? null,
-		isVoidEditableElement: state.isVoidEditableElement,
-		isFirstChildOfDocument: Boolean(at && at.parent === null && at.index === 0),
-		isNested: Boolean(startText && startText.parent.parent !== edytor.root),
-		isLastChild: Boolean(at && at.index === edytor.facade.childrenIds(at.parent).length - 1)
+		edge: selection.edge,
+		isVoidEditableElement: selection.voidField
 	};
 };
 
@@ -213,7 +202,7 @@ export const intentSnapshot = (edytor: Edytor, inputType: string) =>
 export const caretAt = (edytor: Edytor, text: Text | null | undefined, offset: number) => {
 	if (!text) return;
 	edytor.attempts.caret(text, offset);
-	edytor.selection.setAtTextOffset(text, offset);
+	edytor.selection.selectText(text, offset);
 };
 
 /** Re-project an attempt's anchored target when it runs later than its admission. */

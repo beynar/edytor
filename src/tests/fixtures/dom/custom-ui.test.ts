@@ -17,6 +17,7 @@ import {
 	flushDomUpdates,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 const setup = async (children = [{ id: 'a', type: 'paragraph', content: [{ text: 'hello' }] }]) => {
 	let edytor: Edytor | undefined;
@@ -56,7 +57,7 @@ describe('UI snippets', () => {
 		const { edytor, editor } = await setup([
 			{ id: 'a', type: 'paragraph', content: [{ text: '' }] }
 		]);
-		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 0);
+		edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 0);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '/' });
 		const rows = all('custom-slash');
 		expect(rows.map((r) => r.textContent)).toContain('Heading 1');
@@ -68,7 +69,7 @@ describe('UI snippets', () => {
 	it('a toolbar snippet shows over a selection and formats it', async () => {
 		const { edytor } = await setup();
 		const text = edytor.root!.children[0]!.firstText!;
-		edytor.selection.setAtRange(text, 0, text, 5);
+		edytor.selection.selectText(text, 0, text, 5);
 		await flushDomUpdates();
 		await click(all('custom-toolbar')[0]!.querySelector('button')!);
 		expect(edytor.value.children?.[0]?.content).toEqual([{ text: 'hello', marks: { bold: true } }]);
@@ -143,7 +144,7 @@ describe('custom snippets with the attachments', () => {
 			await dispatchDomBeforeInput(editor, { inputType: 'insertText', data });
 	};
 	const caretIn = async (edytor: Edytor, id: string, offset: number) => {
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+		edytor.selection.selectText(edytor.idToBlock.get(id)!.firstText!, offset);
 		await flushDomUpdates();
 	};
 	/** The overlay measures in its next frame. */
@@ -277,7 +278,7 @@ describe('custom snippets with the attachments', () => {
 	it('the toolbar: named by the root, reached with Alt+F10, one tab stop, Escape returns', async () => {
 		const { edytor, editor } = await chrome([p('a', 'hello')]);
 		const a = edytor.idToBlock.get('a')!;
-		edytor.selection.setAtRange(a.firstText!, 0, a.firstText!, 5);
+		edytor.selection.selectText(a.firstText!, 0, a.firstText!, 5);
 		await flushDomUpdates();
 		const toolbar = named(editor.getAttribute('aria-controls'));
 		expect(toolbar).toBe(one('custom-toolbar'));
@@ -305,7 +306,7 @@ describe('custom snippets with the attachments', () => {
 	it('the toolbar: the link field takes the focus when opened, Enter links the selection', async () => {
 		const { edytor, editor } = await chrome([p('a', 'hello')]);
 		const a = edytor.idToBlock.get('a')!;
-		edytor.selection.setAtRange(a.firstText!, 0, a.firstText!, 5);
+		edytor.selection.selectText(a.firstText!, 0, a.firstText!, 5);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(editor, {
 			key: 'k',
@@ -675,7 +676,7 @@ describe('custom snippets with the attachments', () => {
 
 		it('opened by the keys, Escape gives them back to the button and writes nothing', async () => {
 			const { edytor, editor } = await chrome(code());
-			edytor.selection.setAtTextOffset(edytor.idToBlock.get('l0')!.firstText!, 1);
+			edytor.selection.selectText(edytor.idToBlock.get('l0')!.firstText!, 1);
 			await flushDomUpdates();
 			await dispatchDomKeyDown(editor, { key: 'F10', code: 'F10', altKey: true });
 			expect(document.activeElement).toBe(button());
@@ -737,7 +738,7 @@ describe('custom snippets with the attachments', () => {
 
 		it('Enter on the selected equation opens it again; Escape closes it', async () => {
 			const { edytor, editor } = await chrome(equation());
-			edytor.selection.selectBlocks(edytor.idToBlock.get('eq')!);
+			selectBlocks(edytor, edytor.idToBlock.get('eq')!);
 			await flushDomUpdates();
 			await dispatchDomKeyDown(editor, { key: 'Enter' });
 			await frame();

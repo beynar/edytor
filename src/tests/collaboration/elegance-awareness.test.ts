@@ -31,7 +31,7 @@ const makeView = (document: EdytorDocument) => new Edytor({ document, plugins: [
 
 /** Write the view's caret (which publishes) and run the one write once more with the same payload. */
 const publishSelection = (view: Edytor, offset = 0) => {
-	view.selection.setAtTextOffset(view.root!.children[0]!.firstText!, offset);
+	view.selection.selectText(view.root!.children[0]!.firstText!, offset);
 	publishPresence(
 		view.awareness,
 		view.presenceKey,

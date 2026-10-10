@@ -449,7 +449,7 @@ describe('resizing from the keyboard', () => {
 
 	it('the layout holding the caret shows its bands; a focused band stays when the pointer leaves', async () => {
 		const { edytor, editor } = await render(contractDoc());
-		edytor.selection.setAtTextOffset(block(edytor, 'B').firstText!, 0);
+		edytor.selection.selectText(block(edytor, 'B').firstText!, 0);
 		await flushDomUpdates();
 		layout(edytor);
 		edytor.overlay.invalidate();
@@ -457,7 +457,7 @@ describe('resizing from the keyboard', () => {
 		await flushDomUpdates();
 		expect(strips()).toHaveLength(1);
 
-		edytor.selection.setAtTextOffset(block(edytor, 'P').firstText!, 0);
+		edytor.selection.selectText(block(edytor, 'P').firstText!, 0);
 		await hover(edytor, 'A');
 		strips()[0]!.focus();
 		await flushDomUpdates();

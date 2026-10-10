@@ -21,6 +21,7 @@ import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { HIDDEN } from '$lib/selection/visibility.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -143,7 +144,7 @@ const block = (edytor: Edytor, id: string) => edytor.idToBlock.get(id)!;
 describe('dragging a block selection by one of its handles', () => {
 	it('moves the three selected blocks together, shows the count, one undo step', async () => {
 		const { edytor } = await render([p('a'), p('b'), p('c'), p('d'), p('e')]);
-		edytor.selection.selectBlocks(block(edytor, 'a'), block(edytor, 'b'), block(edytor, 'c'));
+		selectBlocks(edytor, block(edytor, 'a'), block(edytor, 'b'), block(edytor, 'c'));
 		const shown = await drag(edytor, 'b', 'e', 0.95);
 
 		expect(tree(edytor)).toEqual(['d', 'e', 'a', 'b', 'c']);
@@ -164,7 +165,7 @@ describe('dragging a block selection by one of its handles', () => {
 
 	it('a handle outside the selection drags its block alone and selects it', async () => {
 		const { edytor } = await render([p('a'), p('b'), p('c'), p('d'), p('e')]);
-		edytor.selection.selectBlocks(block(edytor, 'a'), block(edytor, 'b'));
+		selectBlocks(edytor, block(edytor, 'a'), block(edytor, 'b'));
 		const shown = await drag(edytor, 'd', 'a', 0.05);
 
 		expect(tree(edytor)).toEqual(['d', 'a', 'b', 'c', 'e']);
@@ -186,7 +187,7 @@ describe('dragging a block selection by one of its handles', () => {
 		]);
 		await flushDomUpdates();
 		(block(edytor, 't').node as HTMLDetailsElement).open = false;
-		edytor.selection.selectBlocks(block(edytor, 'a'), block(edytor, 't'));
+		selectBlocks(edytor, block(edytor, 'a'), block(edytor, 't'));
 		await drag(edytor, 't', 'd', 0.95);
 
 		expect(tree(edytor)).toEqual(['c', 'd', ['a', ['a1']], ['t', ['t1']]]);
@@ -200,7 +201,7 @@ describe('dragging a block selection by one of its handles', () => {
 			}
 		});
 		const { edytor } = await render([p('a'), p('b'), p('c'), p('d')], [veto]);
-		edytor.selection.selectBlocks(block(edytor, 'a'), block(edytor, 'b'));
+		selectBlocks(edytor, block(edytor, 'a'), block(edytor, 'b'));
 		await drag(edytor, 'a', 'd', 0.95);
 
 		expect(tree(edytor)).toEqual(['a', 'b', 'c', 'd']);
@@ -236,7 +237,7 @@ describe('dragging a block selection by one of its handles', () => {
 describe('dragging a text range across blocks by one of their handles', () => {
 	it('moves the three blocks the range covers and block-selects them', async () => {
 		const { edytor } = await render([p('a'), p('b'), p('c'), p('d'), p('e')]);
-		edytor.selection.setAtRange(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
+		edytor.selection.selectText(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
 		const shown = await drag(edytor, 'a', 'e', 0.95);
 
 		expect(tree(edytor)).toEqual(['d', 'e', 'a', 'b', 'c']);
@@ -250,7 +251,7 @@ describe('dragging a text range across blocks by one of their handles', () => {
 
 	it('moves blocks from different levels together, in document order', async () => {
 		const { edytor } = await render([p('a', [p('a1')]), p('b'), p('c')]);
-		edytor.selection.setAtRange(
+		edytor.selection.selectText(
 			block(edytor, 'a1').firstText!,
 			0,
 			block(edytor, 'b').firstText!,
@@ -278,7 +279,7 @@ describe('dragging a text range across blocks by one of their handles', () => {
 			],
 			[codePlugin]
 		);
-		edytor.selection.setAtRange(
+		edytor.selection.selectText(
 			block(edytor, 'l2').firstText!,
 			1,
 			block(edytor, 'y').firstText!,
@@ -292,7 +293,7 @@ describe('dragging a text range across blocks by one of their handles', () => {
 
 	it('a handle outside the range drags its block alone', async () => {
 		const { edytor } = await render([p('a'), p('b'), p('c'), p('d')]);
-		edytor.selection.setAtRange(block(edytor, 'a').firstText!, 0, block(edytor, 'b').firstText!, 1);
+		edytor.selection.selectText(block(edytor, 'a').firstText!, 0, block(edytor, 'b').firstText!, 1);
 		await drag(edytor, 'd', 'a', 0.05);
 
 		expect(tree(edytor)).toEqual(['d', 'a', 'b', 'c']);
@@ -303,7 +304,7 @@ describe('dragging a text range across blocks by one of their handles', () => {
 describe('the handle keyboard moves the same group', () => {
 	it('Alt+ArrowDown on a selected block moves the whole selection', async () => {
 		const { edytor } = await render([p('a'), p('b'), p('c'), p('d')]);
-		edytor.selection.selectBlocks(block(edytor, 'a'), block(edytor, 'b'));
+		selectBlocks(edytor, block(edytor, 'a'), block(edytor, 'b'));
 		await flushDomUpdates();
 		const handle = document.querySelector<HTMLElement>(
 			'[data-testid="block-handle"][data-block-id="b"]'
@@ -325,7 +326,7 @@ describe('the handle keyboard moves the same group', () => {
 describe('the other gestures over a text range across blocks take the same blocks', () => {
 	it('a grip click on a child the range covers selects every block it covers, the child too', async () => {
 		const { edytor } = await render([p('a', [p('a1')]), p('b'), p('c')], [blockMenuPlugin]);
-		edytor.selection.setAtRange(block(edytor, 'a').firstText!, 0, block(edytor, 'b').firstText!, 1);
+		edytor.selection.selectText(block(edytor, 'a').firstText!, 0, block(edytor, 'b').firstText!, 1);
 		await flushDomUpdates();
 		const grip = document.querySelector<HTMLElement>(
 			'[data-testid="block-handle"][data-block-id="a1"]'
@@ -339,18 +340,18 @@ describe('the other gestures over a text range across blocks take the same block
 
 	it('Mod+Shift+ArrowDown moves the blocks the range covers, the range kept', async () => {
 		const { edytor } = await render([p('a'), p('b'), p('c'), p('d')], [arrowMovePlugin]);
-		edytor.selection.setAtRange(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
+		edytor.selection.selectText(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'ArrowDown', ctrlKey: true, shiftKey: true });
 
 		expect(tree(edytor)).toEqual(['d', 'a', 'b', 'c']);
-		const { startText, yStart, endText, yEnd } = edytor.selection.state;
+		const { startText, yStart, endText, yEnd } = selectionState(edytor);
 		expect([startText?.parent.id, yStart, endText?.parent.id, yEnd]).toEqual(['a', 1, 'c', 1]);
 	});
 
 	it("a grip click block-selects the range's blocks for its menu", async () => {
 		const { edytor } = await render([p('a'), p('b'), p('c'), p('d')], [blockMenuPlugin]);
-		edytor.selection.setAtRange(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
+		edytor.selection.selectText(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
 		await flushDomUpdates();
 		const grip = document.querySelector<HTMLElement>(
 			'[data-testid="block-handle"][data-block-id="b"]'
@@ -376,12 +377,12 @@ describe('Mod+Shift+arrows in a code block', () => {
 			],
 			[codePlugin, arrowMovePlugin]
 		);
-		edytor.selection.setAtTextOffset(block(edytor, 'l1').firstText!, 2);
+		edytor.selection.selectText(block(edytor, 'l1').firstText!, 2);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'ArrowUp', ctrlKey: true, shiftKey: true });
 
 		expect(tree(edytor)).toEqual([['k', ['l1']], 'x']);
-		const { startText, yStart } = edytor.selection.state;
+		const { startText, yStart } = selectionState(edytor);
 		expect([startText?.parent.id, yStart]).toEqual(['l1', 2]);
 	});
 });
@@ -409,7 +410,7 @@ describe('a selected list: its items are not selected (DR-handles)', () => {
 
 	it("dragging an item's handle reorders the item inside the list", async () => {
 		const { edytor } = await render(list());
-		edytor.selection.selectBlocks(block(edytor, 'L'));
+		selectBlocks(edytor, block(edytor, 'L'));
 		const shown = await drag(edytor, 'three', 'one', 0.05);
 
 		expect(tree(edytor)).toEqual(['x', ['L', ['three', 'one', 'two']], 'y']);
@@ -419,7 +420,7 @@ describe('a selected list: its items are not selected (DR-handles)', () => {
 
 	it("dragging an item's handle past the list moves the item alone", async () => {
 		const { edytor } = await render(list());
-		edytor.selection.selectBlocks(block(edytor, 'L'));
+		selectBlocks(edytor, block(edytor, 'L'));
 		await drag(edytor, 'three', 'y', 0.95);
 
 		expect(tree(edytor)).toEqual(['x', ['L', ['one', 'two']], 'y', 'three']);
@@ -427,7 +428,7 @@ describe('a selected list: its items are not selected (DR-handles)', () => {
 
 	it("Alt+ArrowUp on an item's handle moves the item", async () => {
 		const { edytor } = await render(list());
-		edytor.selection.selectBlocks(block(edytor, 'L'));
+		selectBlocks(edytor, block(edytor, 'L'));
 		await flushDomUpdates();
 		altKey('three', 'ArrowUp');
 		await flushDomUpdates();
@@ -438,7 +439,7 @@ describe('a selected list: its items are not selected (DR-handles)', () => {
 
 	it("the list's own handle still drags the whole list", async () => {
 		const { edytor } = await render(list());
-		edytor.selection.selectBlocks(block(edytor, 'L'));
+		selectBlocks(edytor, block(edytor, 'L'));
 		await drag(edytor, 'L', 'x', 0.05);
 
 		expect(tree(edytor)).toEqual([['L', ['one', 'two', 'three']], 'x', 'y']);
@@ -452,7 +453,7 @@ describe('Mod+Shift+arrows on the block selection a grip click makes (DR-handles
 			[p('a', [p('a1')]), p('b'), p('c')],
 			[arrowMovePlugin, blockMenuPlugin]
 		);
-		edytor.selection.setAtRange(block(edytor, 'a').firstText!, 0, block(edytor, 'b').firstText!, 1);
+		edytor.selection.selectText(block(edytor, 'a').firstText!, 0, block(edytor, 'b').firstText!, 1);
 		await flushDomUpdates();
 		document
 			.querySelector<HTMLElement>('[data-testid="block-handle"][data-block-id="a"]')!
@@ -496,13 +497,13 @@ describe('a handle gesture over a text range, and its undo (wave-18 lows)', () =
 				new KeyboardEvent('keydown', { key, altKey: true, bubbles: true, cancelable: true })
 			);
 	const range = (edytor: Edytor) => {
-		const { startText, yStart, endText, yEnd, isCollapsed } = edytor.selection.state;
+		const { startText, yStart, endText, yEnd, isCollapsed } = selectionState(edytor);
 		return [startText?.parent.id, yStart, endText?.parent.id, yEnd, isCollapsed];
 	};
 
 	it('undo after a text-range drag restores the range the user had; redo its blocks', async () => {
 		const { edytor } = await render([p('a'), p('b'), p('c'), p('d'), p('e')]);
-		edytor.selection.setAtRange(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
+		edytor.selection.selectText(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
 		await drag(edytor, 'a', 'e', 0.95);
 		expect(selected(edytor)).toEqual(['a', 'b', 'c']);
 
@@ -520,7 +521,7 @@ describe('a handle gesture over a text range, and its undo (wave-18 lows)', () =
 
 	it("undo after a drag outside the selection restores the caret the user had, as Alt+arrow's does", async () => {
 		const { edytor } = await render([p('a'), p('b'), p('c')]);
-		edytor.selection.setAtTextOffset(block(edytor, 'a').firstText!, 1);
+		edytor.selection.selectText(block(edytor, 'a').firstText!, 1);
 		await drag(edytor, 'c', 'a', 0.05);
 		expect(selected(edytor)).toEqual(['c']);
 
@@ -532,7 +533,7 @@ describe('a handle gesture over a text range, and its undo (wave-18 lows)', () =
 
 	it('Alt+arrow over a text range keeps the range, as Mod+Shift+arrow does', async () => {
 		const { edytor } = await render([p('a'), p('b'), p('c'), p('d')], [arrowMovePlugin]);
-		edytor.selection.setAtRange(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
+		edytor.selection.selectText(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
 		await flushDomUpdates();
 		altKey('b', 'ArrowDown');
 		await flushDomUpdates();
@@ -555,14 +556,14 @@ describe('a handle gesture over a text range, and its undo (wave-18 lows)', () =
 
 	it("Alt+arrow on a parent's handle while only its child is selected selects the parent alone, as a drag does", async () => {
 		const { edytor } = await render([p('a', [p('a1')]), p('b'), p('c')]);
-		edytor.selection.selectBlocks(block(edytor, 'a1'));
+		selectBlocks(edytor, block(edytor, 'a1'));
 		await flushDomUpdates();
 		altKey('a', 'ArrowDown');
 		await flushDomUpdates();
 		expect(tree(edytor)).toEqual(['b', ['a', ['a1']], 'c']);
 		expect(selected(edytor)).toEqual(['a']);
 
-		edytor.selection.selectBlocks(block(edytor, 'a1'));
+		selectBlocks(edytor, block(edytor, 'a1'));
 		await drag(edytor, 'a', 'c', 0.95);
 		expect(tree(edytor)).toEqual(['b', 'c', ['a', ['a1']]]);
 		expect(selected(edytor)).toEqual(['a']);

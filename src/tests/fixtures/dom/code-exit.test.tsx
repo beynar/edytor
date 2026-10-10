@@ -25,6 +25,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -63,12 +64,12 @@ const shape = (edytor: Edytor) =>
 	);
 
 const caretIn = async (edytor: Edytor, id: string, offset: number) => {
-	edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+	edytor.selection.selectText(edytor.idToBlock.get(id)!.firstText!, offset);
 	await flushDomUpdates();
 };
 
 const caret = (edytor: Edytor) => {
-	const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+	const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 	return { block: startBlock?.type, offset: yStart, isCollapsed };
 };
 
@@ -86,7 +87,7 @@ describe('Enter in a code block', () => {
 		await flushDomUpdates();
 		expect(shape(edytor)).toEqual(['code[let a]', 'paragraph:', 'paragraph:after']);
 		expect(caret(edytor)).toEqual({ block: 'paragraph', offset: 0, isCollapsed: true });
-		expect(edytor.selection.state.startBlock?.index).toBe(1);
+		expect(selectionState(edytor).startBlock?.index).toBe(1);
 
 		// One undo step gives the empty line back.
 		edytor.historyUndo();

@@ -59,10 +59,11 @@ const nestMembers = (blocks: Block[], valueOf: (block: Block) => JSONBlock): JSO
 };
 
 const extractBlockRange = (edytor: Edytor) => {
-	const { blocks, startBlock, endBlock, startText, endText, yStart, yEnd } = edytor.selection.state;
-	if (!startBlock || !endBlock || !startText || !endText || blocks.length === 0) {
-		return null;
-	}
+	const { startText, endText, yStart, yEnd } = edytor.selection.textRange();
+	const blocks = edytor.selection.projection.blocks.flatMap((id) => edytor.idToBlock.get(id) ?? []);
+	if (!startText || !endText || blocks.length === 0) return null;
+	const [startBlock, endBlock] = [startText.parent, endText.parent];
+
 	// A hidden block (a closed toggle's body) is copied exactly when the range's
 	// delete removes it, so a cut, or a copy then Backspace, never loses or
 	// duplicates it (`del.range.hidden-body`).
@@ -136,8 +137,11 @@ const fragmentOf = (edytor: Edytor): EdytorClipboardFragment | null => {
 		};
 	}
 
-	const { startBlock, startText, endText, yStart, yEnd, isCollapsed, isBlockSpanning } =
-		edytor.selection.state;
+	const { startText, endText, yStart, yEnd } = edytor.selection.textRange();
+
+	const { isCollapsed, isBlockSpanning } = edytor.selection.projection;
+
+	const startBlock = startText?.parent;
 	if (!startBlock || !startText || !endText || isCollapsed) {
 		return null;
 	}

@@ -905,12 +905,12 @@ export class Edytor {
 			(active &&
 				!ours(active) &&
 				!ours(selection?.anchorNode) &&
-				!ours(this.selection.state.startText?.node)) ||
+				!ours(this.selection.textRange().startText?.node)) ||
 			isKindControl(this.node, active)
 		)
 			return;
 		this.projector.committed();
-		this.selection.setAtTextOffset(text, Math.min(offset, text.length));
+		this.selection.selectText(text, Math.min(offset, text.length));
 	};
 	/** An event of this view's own composition (not a native control's, not a nested island's). */
 	private ownComposition = (event?: Event) => !event || !isControlEvent(this.node, event);
@@ -972,7 +972,7 @@ export class Edytor {
 	focus = (): void => {
 		if (this.selection.value.kind === 'none') {
 			const text = this.root?.firstText;
-			if (text) this.selection.setAtTextOffset(text, 0);
+			if (text) this.selection.selectText(text, 0);
 		}
 		this.expectInternalFocus();
 		this.node?.focus({ preventScroll: true });
@@ -995,7 +995,7 @@ export class Edytor {
 		);
 		if (!newBlock) return false;
 		this.dispatcher.record({ operation: 'clear', status: 'applied' });
-		this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
+		this.selection.selectText(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
 		this.expectInternalFocus();
 		this.node?.focus({ preventScroll: true });
 		return true;

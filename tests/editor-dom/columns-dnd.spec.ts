@@ -21,9 +21,10 @@ type Edytor = {
 	value: { children: Block[] };
 	idToBlock: Map<string, { data: { width?: number } }>;
 	selection: {
-		state: { startBlock?: { id: string }; yStart: number; isCollapsed: boolean };
+		textRange: () => { startText: { parent: { id: string } } | null; yStart: number };
+		projection: { isCollapsed: boolean };
 		selectedBlocks: Set<{ id: string }>;
-		selectBlocks: (...blocks: unknown[]) => void;
+		select: (value: { kind: 'blocks'; ids: string[] }) => void;
 	};
 };
 
@@ -73,7 +74,12 @@ const selectedIds = (page: Page) =>
 
 const caret = (page: Page) =>
 	page.evaluate(() => {
-		const { state } = (window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__.selection;
+		const view = (window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__.selection;
+		const state = {
+			...view.textRange(),
+			startBlock: view.textRange().startText?.parent,
+			isCollapsed: view.projection.isCollapsed
+		};
 		return {
 			block: state.startBlock?.id ?? null,
 			offset: state.yStart,
@@ -320,7 +326,7 @@ test.describe('columns by drag and drop', () => {
 			const edytor = (
 				window as unknown as { __EDYTOR__: Edytor & { idToBlock: Map<string, unknown> } }
 			).__EDYTOR__;
-			edytor.selection.selectBlocks(...['A', 'A2', 'B'].map((id) => edytor.idToBlock.get(id)));
+			edytor.selection.select({ kind: 'blocks', ids: ['A', 'A2', 'B'] });
 		});
 		const z = await box(page, 'Z');
 		await dragTo(page, 'B', { x: z.x + 16, y: z.y + z.height * 0.75 });

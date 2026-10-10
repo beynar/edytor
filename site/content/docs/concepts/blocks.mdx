@@ -166,7 +166,7 @@ Convert a block with `convertToKind`, or run the row's command by id:
 import { convertToKind } from 'edytor';
 
 const row = edytor.kinds.find((kind) => kind.id === 'block.quote');
-const block = edytor.selection.state.startBlock;
+const block = edytor.selection.caret?.block;
 if (row) convertToKind(edytor, block, row); // true when it applied
 
 await edytor.runCommand('block.heading2'); // converts the caret's block, or every selected or touched block

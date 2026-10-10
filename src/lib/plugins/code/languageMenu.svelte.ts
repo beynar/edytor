@@ -302,7 +302,9 @@ export class LanguageMenu {
 	 * @internal
 	 */
 	buttonAtCaret = (): HTMLElement | null => {
-		const { startBlock, isCollapsed } = this.edytor.selection.state;
+		const { startText } = this.edytor.selection.textRange();
+		const { isCollapsed } = this.edytor.selection.projection;
+		const startBlock = startText?.parent;
 		const code = startBlock?.type === 'codeLine' ? startBlock.parent : null;
 		if (!isCollapsed || !code || this.edytor.readonly) return null;
 		return this.#button(code.id);

@@ -10,6 +10,7 @@ import {
 	dragSelection
 } from '../../dom/test.utils.js';
 import { defineDomFixture, defineFixtures } from '../types.js';
+import { selectionState } from '../../selection.js';
 
 const createCallbackRecorder = () => {
 	const changes: unknown[] = [];
@@ -25,9 +26,9 @@ const createCallbackRecorder = () => {
 		},
 		onSelectionChange(selection: EdytorSelection) {
 			selections.push({
-				startBlockPath: selection.state.startBlock?.path ?? null,
-				endBlockPath: selection.state.endBlock?.path ?? null,
-				isCollapsed: selection.state.isCollapsed
+				startBlockPath: selectionState(selection.edytor).startBlock?.path ?? null,
+				endBlockPath: selectionState(selection.edytor).endBlock?.path ?? null,
+				isCollapsed: selection.projection.isCollapsed
 			});
 		},
 		clear() {

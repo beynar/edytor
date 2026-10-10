@@ -8,7 +8,12 @@ import type {
 } from '$lib/session/moves.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { CommandResult } from '$lib/session/commands.js';
-import { noSelection, project, type SelectionValue } from '$lib/session/selection.js';
+import {
+	blockSelection,
+	noSelection,
+	project,
+	type SelectionValue
+} from '$lib/session/selection.js';
 import {
 	attachInstruction,
 	draggable,
@@ -768,18 +773,18 @@ export class BlockHandleController {
 	 * (`movable`) — when `source` is one of them; else `source` alone.
 	 */
 	private covered(source: Block) {
-		const { selectedBlocks, state } = this.edytor.selection;
-		if (!selectedBlocks.size && state.isCollapsed) return [source];
+		const { selectedBlocks, projection } = this.edytor.selection;
+		if (!selectedBlocks.size && projection.isCollapsed) return [source];
 		const covered = movable(selectedBlocks.size ? selectedBlocks : getSelectionBlocks(this.edytor));
 		return covered.includes(source) ? covered : [source];
 	}
 
 	/** Whether a text range (no block selection) covers `source` (`covered`). */
 	private inRange(source: Block) {
-		const { selectedBlocks, state } = this.edytor.selection;
+		const { selectedBlocks, projection } = this.edytor.selection;
 		return (
 			!selectedBlocks.size &&
-			!state.isCollapsed &&
+			!projection.isCollapsed &&
 			movable(getSelectionBlocks(this.edytor)).includes(source)
 		);
 	}
@@ -801,7 +806,8 @@ export class BlockHandleController {
 	 */
 	private select(source: Block) {
 		const { selection } = this.edytor;
-		selection.selectBlocks(...(selection.selectedBlocks.size ? [source] : this.covered(source)));
+		const blocks = selection.selectedBlocks.size ? [source] : this.covered(source);
+		selection.select(blockSelection(blocks.map((block) => block.id)));
 	}
 
 	/** Whether the drag of `source` may land at a placement. */

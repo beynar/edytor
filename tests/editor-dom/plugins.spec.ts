@@ -239,7 +239,10 @@ test.describe('browser plugin semantics', () => {
 					throw new Error('Missing editor block for arrow-move test');
 				}
 
-				edytor.selection.selectBlocks(edytor.root.children[0]);
+				edytor.selection.select({
+					kind: 'blocks',
+					ids: [edytor.root.children[0]].map((block) => block.id)
+				});
 			});
 		const readRootTexts = async () => {
 			const value = await readJsonByTestId<{

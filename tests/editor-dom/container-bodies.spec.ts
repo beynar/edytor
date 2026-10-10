@@ -30,7 +30,13 @@ const outline = (page: Page) =>
 
 const caret = (page: Page) =>
 	page.evaluate(() => {
-		const state = (window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection.state;
+		const state = ((s) =>
+			s && {
+				...s.textRange(),
+				startBlock: s.textRange().startText?.parent,
+				isCollapsed: s.projection.isCollapsed,
+				isReversed: s.projection.isReversed
+			})((window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection);
 		return [state.startBlock?.parent?.id ?? null, state.startBlock?.index, state.yStart];
 	});
 

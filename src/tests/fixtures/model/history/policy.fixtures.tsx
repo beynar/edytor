@@ -5,6 +5,7 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../../atMention.svelte';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { canonicalValue, runBeforeInput, runHotkey } from '../../../test.utils.js';
+import { selectionState } from '../../../selection.js';
 
 const getHistoryState = (edytor: {
 	undoManager: { undoStack: unknown[]; redoStack: unknown[] };
@@ -29,9 +30,9 @@ export const fixtures = defineFixtures([
 			const afterUndo = {
 				value: canonicalValue(edytor.value),
 				selection: {
-					start: edytor.selection.state.yStart,
-					end: edytor.selection.state.yEnd,
-					isCollapsed: edytor.selection.state.isCollapsed
+					start: selectionState(edytor).yStart,
+					end: selectionState(edytor).yEnd,
+					isCollapsed: selectionState(edytor).isCollapsed
 				}
 			};
 			await runHotkey(edytor, 'mod+shift+z');
@@ -68,7 +69,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ edytor }) => {
-			const startText = edytor.selection.state.startText;
+			const startText = selectionState(edytor).startText;
 			if (!startText) {
 				throw new Error('Missing startText for marked typing history test');
 			}
@@ -76,8 +77,8 @@ export const fixtures = defineFixtures([
 			startText.markText({
 				mark: 'bold',
 				toggle: true,
-				start: edytor.selection.state.yStart,
-				end: edytor.selection.state.yStart
+				start: selectionState(edytor).yStart,
+				end: selectionState(edytor).yStart
 			});
 			await runBeforeInput(edytor, { inputType: 'insertText', data: 'a' });
 			await runBeforeInput(edytor, { inputType: 'insertText', data: 'b' });
@@ -109,8 +110,8 @@ export const fixtures = defineFixtures([
 			const afterUndo = {
 				value: canonicalValue(edytor.value),
 				selection: {
-					startBlockPath: edytor.selection.state.startBlock?.path ?? null,
-					yStart: edytor.selection.state.yStart
+					startBlockPath: selectionState(edytor).startBlock?.path ?? null,
+					yStart: selectionState(edytor).yStart
 				}
 			};
 			return { afterSplit, afterUndo };
@@ -171,11 +172,11 @@ export const fixtures = defineFixtures([
 			const afterUndo = {
 				value: canonicalValue(edytor.value),
 				selection: {
-					startBlockPath: edytor.selection.state.startBlock?.path ?? null,
-					endBlockPath: edytor.selection.state.endBlock?.path ?? null,
-					yStart: edytor.selection.state.yStart,
-					yEnd: edytor.selection.state.yEnd,
-					isCollapsed: edytor.selection.state.isCollapsed
+					startBlockPath: selectionState(edytor).startBlock?.path ?? null,
+					endBlockPath: selectionState(edytor).endBlock?.path ?? null,
+					yStart: selectionState(edytor).yStart,
+					yEnd: selectionState(edytor).yEnd,
+					isCollapsed: selectionState(edytor).isCollapsed
 				}
 			};
 			await runHotkey(edytor, 'mod+shift+z');

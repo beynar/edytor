@@ -9,6 +9,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { richTextPlaceholder, richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { dispatchCopy, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 const children: JSONBlock[] = [
 	{ type: 'heading', data: { level: 'h5' }, content: [{ text: 'five' }] },
@@ -17,7 +18,7 @@ const children: JSONBlock[] = [
 ];
 
 const copyHtml = async (edytor: Edytor, editor: HTMLElement) => {
-	edytor.selection.selectBlocks(...edytor.facade.order().map((id) => edytor.idToBlock.get(id)!));
+	selectBlocks(edytor, ...edytor.facade.order().map((id) => edytor.idToBlock.get(id)!));
 	await flushDomUpdates();
 	const html = (await dispatchCopy(editor)).clipboardData['text/html'] ?? '';
 	return html.slice(html.indexOf('</span>') + '</span>'.length);

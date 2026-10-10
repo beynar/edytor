@@ -305,21 +305,26 @@ export const installEventRecorder = (page: Page) =>
 						}
 						return container === element ? childTextLength(element, offset) : -1;
 					};
-					const selection = (
+					const view = (
 						window as Window & {
 							__EDYTOR__?: {
 								selection?: {
-									state?: {
+									textRange: () => {
 										yStart: number;
 										yEnd: number;
-										isCollapsed: boolean;
-										startText?: { id: string };
-										endText?: { id: string };
+										startText: { id: string } | null;
+										endText: { id: string } | null;
 									};
+									projection: { isCollapsed: boolean };
 								};
 							};
 						}
-					).__EDYTOR__?.selection?.state;
+					).__EDYTOR__?.selection;
+					const selection = view && {
+						...view.textRange(),
+						isCollapsed: view.projection.isCollapsed
+					};
+
 					target.__EDYTOR_DST_EVENTS__?.push({
 						type: event.type,
 						isTrusted: event.isTrusted,
@@ -440,8 +445,9 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 			children: BrowserBlock[];
 		};
 		type BrowserSelectionState = {
-			startText?: BrowserText;
-			endText?: BrowserText;
+			startText?: BrowserText | null;
+			endText?: BrowserText | null;
+
 			yStart: number;
 			yEnd: number;
 			isCollapsed: boolean;
@@ -468,7 +474,8 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 				canRedo?: () => boolean;
 			};
 			selection: {
-				state: BrowserSelectionState;
+				textRange: () => Omit<BrowserSelectionState, 'isCollapsed' | 'isReversed'>;
+				projection: Pick<BrowserSelectionState, 'isCollapsed' | 'isReversed'>;
 				selectedInlineBlock?: Iterable<{ id: string }>;
 				selectedBlocks?: Iterable<{ id: string }>;
 			};
@@ -593,7 +600,12 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 			)} next=${describeNode(node.childNodes[offset])}`;
 		};
 
-		const selection = edytor.selection.state;
+		const selection = ((s) =>
+			s && {
+				...s.textRange(),
+				isCollapsed: s.projection.isCollapsed,
+				isReversed: s.projection.isReversed
+			})(edytor.selection);
 		const startTextIndex = selection.startText?.node
 			? textElements.indexOf(selection.startText.node)
 			: -1;

@@ -273,7 +273,9 @@ export class CommentsController {
 		const { edytor } = this;
 		if (!this.canComment) return false;
 		const { facade, selection } = edytor;
-		const { isCollapsed, startBlock } = selection.state;
+		const { startText } = selection.textRange();
+		const { isCollapsed } = selection.projection;
+		const startBlock = startText?.parent;
 		const spans = isCollapsed
 			? (startBlock?.content ?? []).flatMap((part) =>
 					part instanceof Text && part.length > 0

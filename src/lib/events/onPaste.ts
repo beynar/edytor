@@ -61,11 +61,11 @@ const syncCollapsedDomCaretForPaste = (edytor: Edytor) => {
 	if (!dom || !node || !edytor.node?.contains(node)) return;
 	const text = edytor.selection.getTextOfNode(node, dom.anchorOffset);
 	for (let block = text?.parent; block; block = block.parent) if (selectedBlocks.has(block)) return;
-	if (text) edytor.selection.setAtTextOffset(text, getYIndex(text, node, dom.anchorOffset));
+	if (text) edytor.selection.selectText(text, getYIndex(text, node, dom.anchorOffset));
 };
 
 export async function onPaste(this: Edytor, e: ClipboardEvent) {
-	if (this.readonly || this.selection.state.isVoidEditableElement) {
+	if (this.readonly || this.selection.voidField) {
 		return;
 	}
 

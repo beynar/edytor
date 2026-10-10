@@ -124,7 +124,7 @@ export class ColumnResize {
 	private get caretLayout(): string | null {
 		const { facade, selection } = this.edytor;
 		for (
-			let block: Block | null | undefined = selection.state.startBlock;
+			let block: Block | null | undefined = selection.textRange().startText?.parent;
 			block && !block.isRoot;
 			block = block.parent
 		)

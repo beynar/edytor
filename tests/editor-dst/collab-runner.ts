@@ -573,14 +573,18 @@ const resolvePeerCaretBlock = async (
 				const w = window as Window & {
 					__EDYTOR__?: {
 						selection?: {
-							state?: {
-								startBlock?: { id?: string } | null;
-								startText?: { parent?: { id?: string } | null } | null;
-							};
+							textRange: () => { startText: { parent?: { id?: string } | null } | null };
+							projection: { isCollapsed: boolean; isReversed: boolean };
 						};
 					};
 				};
-				const state = w.__EDYTOR__?.selection?.state;
+				const state = ((s) =>
+					s && {
+						...s.textRange(),
+						startBlock: s.textRange().startText?.parent,
+						isCollapsed: s.projection.isCollapsed,
+						isReversed: s.projection.isReversed
+					})(w.__EDYTOR__?.selection);
 				return state?.startText?.parent?.id ?? state?.startBlock?.id ?? null;
 			})
 			.catch(() => null);

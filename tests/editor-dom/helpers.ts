@@ -186,18 +186,18 @@ export const readSelection = (page: Page) =>
 		};
 
 		return {
-			startBlockPath: edytor.selection.state.startBlock?.path ?? null,
-			endBlockPath: edytor.selection.state.endBlock?.path ?? null,
-			startTextPath: edytor.selection.state.startText
-				? getPartPath(edytor.selection.state.startText)
+			startBlockPath: edytor.selection.textRange().startText?.parent?.path ?? null,
+			endBlockPath: edytor.selection.textRange().endText?.parent.path ?? null,
+			startTextPath: edytor.selection.textRange().startText
+				? getPartPath(edytor.selection.textRange().startText)
 				: null,
-			endTextPath: edytor.selection.state.endText
-				? getPartPath(edytor.selection.state.endText)
+			endTextPath: edytor.selection.textRange().endText
+				? getPartPath(edytor.selection.textRange().endText)
 				: null,
-			yStart: edytor.selection.state.yStart,
-			yEnd: edytor.selection.state.yEnd,
-			isCollapsed: edytor.selection.state.isCollapsed,
-			isReversed: edytor.selection.state.isReversed,
+			yStart: edytor.selection.textRange().yStart,
+			yEnd: edytor.selection.textRange().yEnd,
+			isCollapsed: edytor.selection.projection.isCollapsed,
+			isReversed: edytor.selection.projection.isReversed,
 			selectedBlockPaths: Array.from(edytor.selection.selectedBlocks).map(
 				(block: any) => block.path
 			),
@@ -961,7 +961,7 @@ export const dispatchPasteAtCaret = async (
 				`content[${contentIndex}] of block ${blockIndex} is not a Text (got ${part?.constructor?.name})`
 			);
 		}
-		edytor.selection.setAtTextOffset(part, yStart);
+		edytor.selection.selectText(part, yStart);
 
 		const event = new Event('paste', {
 			bubbles: true,

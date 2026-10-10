@@ -204,7 +204,7 @@ To override a default, bind the same chord in the `hotkeys` prop or in a plugin,
 		tab: ({ prevent }) => prevent(),
 		// Mod+B does nothing in headings; elsewhere the rich text binding runs.
 		'mod+b': ({ edytor, prevent }) => {
-			if (edytor.selection.state.startBlock?.type === 'heading') prevent();
+			if (edytor.selection.caret?.block.type === 'heading') prevent();
 		}
 	}}
 />

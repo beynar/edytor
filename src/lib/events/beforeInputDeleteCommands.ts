@@ -1,4 +1,5 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { blockSelection } from '$lib/session/selection.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
@@ -48,20 +49,20 @@ const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 	}
 
 	if (isForwardDeleteInsideActiveComposition(edytor, snapshot)) {
-		edytor.selection.setAtTextOffset(startText, yStart);
+		edytor.selection.selectText(startText, yStart);
 		return;
 	}
 
-	if (snapshot.isAtEndOfBlock) {
+	if (snapshot.projection.isAtEndOfBlock) {
 		const currentBlock = startText.parent;
 		if (currentBlock.definition.void) {
-			edytor.selection.setAtTextOffset(startText, yStart);
+			edytor.selection.selectText(startText, yStart);
 			return;
 		}
 
 		const nextBlock = shown(currentBlock, 'blockAfter');
 		if (nextBlock?.definition.void) {
-			edytor.selection.selectBlocks(nextBlock);
+			edytor.selection.select(blockSelection([nextBlock.id]));
 			return;
 		}
 
@@ -71,15 +72,15 @@ const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 		return;
 	}
 
-	if (snapshot.isAtEndOfText) {
+	if (snapshot.projection.isAtEndOfText) {
 		const index = startText.parent.content.indexOf(startText) + 1;
 		startText.parent.removeInlineBlock({ index });
-		edytor.selection.setAtTextOffset(startText, yStart);
+		edytor.selection.selectText(startText, yStart);
 		return;
 	}
 
 	startText.deleteText({ direction: 'FORWARD', length: 1 });
-	edytor.selection.setAtTextOffset(startText, yStart);
+	edytor.selection.selectText(startText, yStart);
 };
 
 /**
@@ -91,7 +92,7 @@ const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
  */
 const resetKindAtStart = (edytor: Edytor, snapshot: Attempt) => {
 	const block = snapshot.startText?.parent;
-	if (!snapshot.isAtStartOfBlock || !block?.convertible || !block.parent) return false;
+	if (!snapshot.projection.isAtStartOfBlock || !block?.convertible || !block.parent) return false;
 	const type = edytor.defaultChild(block.parent);
 	if (block.type === type || !edytor.kinds.some((row) => row.value.type === block.type)) {
 		return false;
@@ -103,19 +104,22 @@ const resetKindAtStart = (edytor: Edytor, snapshot: Attempt) => {
 
 const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, yStart } = snapshot;
+	const island = edytor.idToBlock.get(snapshot.projection.islandRoot ?? '');
 
 	if (resetKindAtStart(edytor, snapshot)) return;
 
 	// A table's cell keeps its caret at its start: nothing merges into or out of
 	// a cell, and it never outdents (`table.merge`).
 	const cell = startText?.parent;
-	if (snapshot.isAtStartOfBlock && cell && edytor.facade.isTableCell(cell.id)) {
-		edytor.selection.setAtTextOffset(startText!, 0);
+	if (snapshot.projection.isAtStartOfBlock && cell && edytor.facade.isTableCell(cell.id)) {
+		edytor.selection.selectText(startText!, 0);
 		return;
 	}
 
-	if (snapshot.isAtStartOfBlock && snapshot.isFirstChildOfDocument && startText?.parent.isEmpty) {
-		edytor.selection.setAtTextOffset(startText, 0);
+	const place = startText && edytor.facade.positionOf(startText.parent.id);
+	const first = place?.parent === null && place.index === 0;
+	if (snapshot.projection.isAtStartOfBlock && first && startText?.parent.isEmpty) {
+		edytor.selection.selectText(startText, 0);
 		return;
 	}
 
@@ -123,30 +127,29 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 		return;
 	}
 
-	if (snapshot.isAtStartOfBlock) {
+	if (snapshot.projection.isAtStartOfBlock) {
 		const { facade } = edytor;
 		const column = startText.parent.parent;
 		// A column's block never outdents (nothing but a column sits in a layout):
 		// it merges, across columns in reading order (`layout.merge`).
 		const inColumn = !!column && !column.isRoot && facade.isLayoutItem(column.id);
-		if (snapshot.isNested && snapshot.isLastChild && !snapshot.islandRoot && !inColumn) {
+		// Its place by id: no handle for every sibling (the root's on a long page).
+		const at = facade.positionOf(startText.parent.id);
+		const last = !!at && at.index === facade.childrenIds(at.parent).length - 1;
+		if (column !== edytor.root && last && !island && !inColumn) {
 			const newBlock = startText.parent.unNestBlock();
 			if (newBlock) {
-				edytor.selection.setAtTextOffset(newBlock.firstText, 0);
+				edytor.selection.selectText(newBlock.firstText, 0);
 			}
 			return;
 		}
 
-		if (snapshot.islandRoot && snapshot.islandRoot.children.length === 1) {
-			edytor.selection.selectBlocks(snapshot.islandRoot);
+		if (island && island.children.length === 1) {
+			edytor.selection.select(blockSelection([island.id]));
 			return;
 		}
 
-		if (
-			snapshot.islandRoot &&
-			snapshot.islandRoot.children.length > 1 &&
-			startText.parent.index === 0
-		) {
+		if (island && island.children.length > 1 && startText.parent.index === 0) {
 			return;
 		}
 
@@ -163,7 +166,7 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 		while (structure(previousBlock)) previousBlock = shown(previousBlock!, 'blockBefore');
 		while (structure(closest)) closest = closest!.closestPreviousBlock;
 		if (previousBlock?.definition.void) {
-			edytor.selection.selectBlocks(previousBlock);
+			edytor.selection.select(blockSelection([previousBlock.id]));
 			return;
 		}
 
@@ -177,20 +180,20 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 		return;
 	}
 
-	if (snapshot.isAtStartOfText) {
+	if (snapshot.projection.isAtStartOfText) {
 		const index = startText.parent.content.indexOf(startText) - 1;
 		const previousText = startText.parent.content.at(index - 1);
 		const hasPreviousText = previousText && previousText instanceof Text;
 		const offset = hasPreviousText ? previousText.length : 0;
 		startText.parent.removeInlineBlock({ index });
 		if (hasPreviousText) {
-			edytor.selection.setAtTextOffset(previousText, offset);
+			edytor.selection.selectText(previousText, offset);
 		}
 		return;
 	}
 
 	const deletion = startText.deleteText({ direction: 'BACKWARD', length: 1 });
-	edytor.selection.setAtTextOffset(startText, deletion?.start ?? yStart - 1);
+	edytor.selection.selectText(startText, deletion?.start ?? yStart - 1);
 };
 
 /**
@@ -253,7 +256,7 @@ const deleteCollapsedUnit = (edytor: Edytor, snapshot: Attempt) => {
 			: deleteContentForward(edytor, snapshot);
 	}
 	text.parent.deleteContentAtRange({ start: [from[0].index, from[1]], end: [to[0].index, to[1]] });
-	edytor.selection.setAtTextOffset(...from);
+	edytor.selection.selectText(...from);
 };
 
 export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: Attempt) => {

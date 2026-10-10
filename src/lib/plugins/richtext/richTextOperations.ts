@@ -149,7 +149,8 @@ const formatSelectedTextRange = (
 	value: SerializableContent | null | undefined,
 	toggle: boolean
 ) => {
-	const { yStart, yEnd, startText, endText, isCollapsed, isReversed } = edytor.selection.state;
+	const { yStart, yEnd, startText, endText } = edytor.selection.textRange();
+	const { isCollapsed, isReversed } = edytor.selection.projection;
 	if (isCollapsed || !startText || !endText) return;
 	const spans = selectedTextSpans(edytor).filter(({ start, end }) => end > start);
 	// One decision for the whole range (Notion): a toggle removes the mark only
@@ -165,7 +166,7 @@ const formatSelectedTextRange = (
 	);
 	// Selected blocks stay selected (Notion; a divider's phantom text is no range).
 	if (!selectsBlocks(edytor))
-		edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
+		edytor.selection.selectText(startText, yStart, endText, yEnd, isReversed);
 };
 
 /**
@@ -187,7 +188,9 @@ export const richTextOperations = (edytor: Edytor) => ({
 	 * whole.
 	 */
 	insertDividerAtSelection: () => {
-		const { startBlock: block, startText, yStart, isCollapsed } = edytor.selection.state;
+		const { startText, yStart } = edytor.selection.textRange();
+		const { isCollapsed } = edytor.selection.projection;
+		const block = startText?.parent;
 		if (!block?.convertible || !block.parent || !block.model || !isCollapsed) return null;
 		const { facade, dispatcher } = edytor;
 		const [self, parent] = [block.model.id, block.parent.isRoot ? null : block.parent.id];
@@ -222,11 +225,12 @@ export const richTextOperations = (edytor: Edytor) => ({
 		return block;
 	},
 	removeAllMarksAtRange: () => {
-		const { yStart, startText, isCollapsed } = edytor.selection.state;
+		const { yStart, startText } = edytor.selection.textRange();
+		const { isCollapsed } = edytor.selection.projection;
 		if (isCollapsed) {
 			if (startText && !selectsBlocks(edytor)) {
 				edytor.selection.stage({});
-				edytor.selection.setAtTextOffset(startText, yStart);
+				edytor.selection.selectText(startText, yStart);
 			}
 			return;
 		}
@@ -268,7 +272,8 @@ export const richTextOperations = (edytor: Edytor) => ({
 	},
 	/** Remove one mark (a color, a highlight…) from the selected range. */
 	removeMarkAtRange: (mark: RichTextMark) => {
-		if (!edytor.selection.state.isCollapsed) formatSelectedTextRange(edytor, mark, null, false);
+		if (!edytor.selection.projection.isCollapsed)
+			formatSelectedTextRange(edytor, mark, null, false);
 	},
 	/**
 	 * Non-toggle valued-mark write — native `formatFontColor`/
@@ -283,7 +288,8 @@ export const richTextOperations = (edytor: Edytor) => ({
 		const safeValue =
 			mark === 'color' || mark === 'highlight' ? sanitizeCssColorValue(value) : value;
 		if (safeValue === null) return;
-		const { isCollapsed, startText, yStart } = edytor.selection.state;
+		const { startText, yStart } = edytor.selection.textRange();
+		const { isCollapsed } = edytor.selection.projection;
 		if (isCollapsed) {
 			if (startText && !selectsBlocks(edytor)) {
 				// Stage the full set the next insertion carries, values kept.
@@ -293,7 +299,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 						[mark]: safeValue
 					})
 				);
-				edytor.selection.setAtTextOffset(startText, yStart);
+				edytor.selection.selectText(startText, yStart);
 			}
 			return;
 		}
@@ -305,7 +311,8 @@ export const richTextOperations = (edytor: Edytor) => ({
 	 * stage it for the next character typed.
 	 */
 	setMarkAtRange: (mark: RichTextMark | (string & {}), value?: SerializableContent) => {
-		const { yStart, yEnd, startText, endText, isCollapsed } = edytor.selection.state;
+		const { yStart, yEnd, startText, endText } = edytor.selection.textRange();
+		const { isCollapsed } = edytor.selection.projection;
 		if (isCollapsed) {
 			if (startText && !selectsBlocks(edytor)) {
 				edytor.dispatcher.run('format', () =>
@@ -317,7 +324,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 						end: yEnd
 					})
 				);
-				edytor.selection.setAtRange(startText, yStart, endText, yEnd);
+				edytor.selection.selectText(startText, yStart, endText, yEnd);
 			}
 			return;
 		}

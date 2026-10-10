@@ -50,6 +50,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 /** Red on the reference (HTML import retired); green since P4.1. */
 const row = it;
@@ -62,9 +63,9 @@ const texts = (edytor: Edytor) =>
 	);
 
 const caret = (edytor: Edytor) => ({
-	block: edytor.selection.state.startBlock?.path,
-	at: edytor.selection.state.yStart,
-	collapsed: edytor.selection.state.isCollapsed
+	block: selectionState(edytor).startBlock?.path,
+	at: selectionState(edytor).yStart,
+	collapsed: selectionState(edytor).isCollapsed
 });
 
 const blockText = (edytor: Edytor, index: number) => edytor.root!.children[index]!.firstText;
@@ -506,7 +507,7 @@ describe('paste order and history', () => {
 			</root>,
 			{ autoSelectFixture: false }
 		);
-		source.edytor.selection.selectBlocks(source.edytor.root!.children[0]!);
+		selectBlocks(source.edytor, source.edytor.root!.children[0]!);
 		await flushDomUpdates();
 		const copied = (await dispatchCopy(source.editor)).clipboardData;
 		const html = copied['text/html']!.replace('<p>', '<p><b>Body</b>');
@@ -604,7 +605,7 @@ describe('round trip: export then import reads one record', () => {
 			</root>,
 			{ value: doc, autoSelectFixture: false }
 		);
-		source.edytor.selection.selectBlocks(...source.edytor.root!.children);
+		selectBlocks(source.edytor, ...source.edytor.root!.children);
 		await flushDomUpdates();
 		const html = (await dispatchCopy(source.editor)).clipboardData['text/html']!;
 		source.unmount();

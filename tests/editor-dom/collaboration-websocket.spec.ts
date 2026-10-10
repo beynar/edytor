@@ -790,7 +790,13 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 
 			const probeCaret = () =>
 				pageA.evaluate(() => {
-					const state = (window as Window & { __EDYTOR__?: any }).__EDYTOR__?.selection?.state;
+					const state = ((s) =>
+						s && {
+							...s.textRange(),
+							startBlock: s.textRange().startText?.parent,
+							isCollapsed: s.projection.isCollapsed,
+							isReversed: s.projection.isReversed
+						})((window as Window & { __EDYTOR__?: any }).__EDYTOR__?.selection);
 					return {
 						blockId: state?.startText?.parent?.id ?? state?.startBlock?.id ?? null,
 						textLive: state?.startText?.isInDocument ?? null,
@@ -804,7 +810,7 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 			expect((await probeCaret()).blockId).toBe('collab-b2');
 			await pageA.evaluate(() => {
 				const w = window as Window & { __EDYTOR__?: any; __DEAD__?: unknown };
-				w.__DEAD__ = w.__EDYTOR__?.selection?.state?.startText ?? null;
+				w.__DEAD__ = w.__EDYTOR__?.selection?.textRange()?.startText ?? null;
 			});
 
 			// B merges b2 into b1 — A's caret block dies remotely.
@@ -824,8 +830,14 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 				if (!deadText || deadText.isInDocument) {
 					return { error: 'captured text was not killed by the merge' };
 				}
-				await edytor.selection.setAtTextOffset(deadText, 2);
-				const state = edytor.selection.state;
+				await edytor.selection.selectText(deadText, 2);
+				const state = ((s) =>
+					s && {
+						...s.textRange(),
+						startBlock: s.textRange().startText?.parent,
+						isCollapsed: s.projection.isCollapsed,
+						isReversed: s.projection.isReversed
+					})(edytor.selection);
 				return {
 					wroteDead: state.startText?.isInDocument === false,
 					blockId: state.startText?.parent?.id ?? state.startBlock?.id ?? null

@@ -30,6 +30,7 @@ import {
 } from '../../dom/test.utils.js';
 import { expectNoHiddenContent } from './invariants.js';
 import { hidden } from '$lib/selection/visibility.js';
+import { selectionState } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -43,7 +44,7 @@ const outline = (block: JSONBlock): Outline => {
 };
 const doc = (edytor: Edytor) => (edytor.value.children ?? []).map(outline);
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	const text = (startText?.parent.value.content ?? []).map((p) => ('text' in p ? p.text : '@'));
 	return `${text.join('')}@${yStart}${isCollapsed ? '' : ' (range)'}`;
 };
@@ -404,7 +405,7 @@ describe('HX-09: the clipboard page, probed', () => {
 	it('an image into an empty line: the line stays after it for the caret', async () => {
 		const edytor = await paragraph('', 0, image);
 		expect(doc(edytor)).toEqual(['paragraph "before"', 'image "cap"', 'paragraph']);
-		expect(edytor.selection.state.startText?.parent.id).toBe('host');
+		expect(selectionState(edytor).startText?.parent.id).toBe('host');
 		expect(caret(edytor)).toBe('@0');
 	});
 });

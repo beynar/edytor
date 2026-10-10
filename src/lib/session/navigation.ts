@@ -96,7 +96,7 @@ const compare = (a: Stop, b: Stop, edytor: Edytor) =>
 /** Select `anchor` → `focus`: a caret, the one atom the range covers, or the range. */
 const select = (edytor: Edytor, anchor: Stop, focus: Stop) => {
 	const order = compare(anchor, focus, edytor);
-	if (order === 0) return edytor.selection.setAtTextOffset(focus.text, focus.offset);
+	if (order === 0) return edytor.selection.selectText(focus.text, focus.offset);
 	const [start, end] = order < 0 ? [anchor, focus] : [focus, anchor];
 	const { content } = start.text.parent;
 	const index = content.indexOf(start.text);
@@ -108,9 +108,7 @@ const select = (edytor: Edytor, anchor: Stop, focus: Stop) => {
 		end.offset === 0
 	)
 		return edytor.selection.selectInlineBlock(atom, order > 0 ? 'after' : 'before');
-	edytor.selection.setAtRange(start.text, start.offset, end.text, end.offset, {
-		isReversed: order > 0
-	});
+	edytor.selection.selectText(start.text, start.offset, end.text, end.offset, order > 0);
 };
 
 /**
@@ -126,7 +124,8 @@ export const move = (
 	extend: boolean
 ): boolean => {
 	const { selection } = edytor;
-	const { value, state } = selection;
+	const { value, projection } = selection;
+	const state = selection.textRange(projection);
 	if (value.kind === 'none' || !state.startText || !state.endText) return false;
 	if (unit === 'char' && value.kind === 'blocks') return false;
 	// A block selection spans its first shown line's start to its last one's
@@ -148,15 +147,15 @@ export const move = (
 	}
 	const start = { text: first, offset: blocks ? 0 : state.yStart };
 	const end = { text: last, offset: blocks ? last.length : state.yEnd };
-	const rtl = selection.rtl(state.isReversed ? start.text : end.text);
+	const rtl = selection.rtl(projection.isReversed ? start.text : end.text);
 	const dir: Dir = typeof key === 'number' ? key : (key === 'right') !== rtl ? 1 : -1;
 	// The focus moves; an atom is the range anchored on the side it came from,
 	// a block selection on the side away from the key.
 	const reversed =
-		value.kind === 'atom' ? value.from === 'after' : blocks ? dir < 0 : state.isReversed;
+		value.kind === 'atom' ? value.from === 'after' : blocks ? dir < 0 : projection.isReversed;
 	const [anchor, focus] = reversed ? [end, start] : [start, end];
 	const nodeBound = unit === 'char' && value.kind === 'text' && selection.hasNativeNodeSelection();
-	if (!extend && (blocks || !state.isCollapsed) && unit !== 'line' && unit !== 'doc') {
+	if (!extend && (blocks || !projection.isCollapsed) && unit !== 'line' && unit !== 'doc') {
 		if (unit === 'char' && value.kind === 'text' && !nodeBound) return false;
 		const to = dir > 0 ? end : start;
 		select(edytor, to, to);
@@ -293,11 +292,12 @@ const goals = new WeakMap<Edytor, { column: number; value: SelectionValue }>();
  * moves keep the goal column. Answers whether a text selection moved.
  */
 export const extendVertically = (edytor: Edytor, dir: Dir): boolean => {
-	const { value, state } = edytor.selection;
+	const { value, projection } = edytor.selection;
+	const state = edytor.selection.textRange(projection);
 	if (value.kind !== 'text' || !state.startText || !state.endText) return false;
 	const start = { text: state.startText, offset: state.yStart };
 	const end = { text: state.endText, offset: state.yEnd };
-	const [anchor, focus] = state.isReversed ? [end, start] : [start, end];
+	const [anchor, focus] = projection.isReversed ? [end, start] : [start, end];
 	const kept = goals.get(edytor);
 	const to = lineStop(edytor, focus, dir, kept?.value === value ? kept.column : undefined);
 	if (!to) return false;
@@ -351,8 +351,9 @@ const stopBelow = (edytor: Edytor, block: Block): boolean => {
  */
 const leavesLastStop = (edytor: Edytor): boolean => {
 	const { selection, root } = edytor;
-	const { value, state } = selection;
-	if (value.kind !== 'text' || !state.isCollapsed || !state.startText || !root) return false;
+	const { value, projection } = selection;
+	const state = selection.textRange(projection);
+	if (value.kind !== 'text' || !projection.isCollapsed || !state.startText || !root) return false;
 	if (!edytor.dispatcher.permits()) return false;
 	const at = { text: state.startText, offset: state.yStart };
 	const block = at.text.parent;
@@ -379,7 +380,7 @@ export const toTrailingParagraph = (edytor: Edytor): boolean => {
 	if (!root || !last) return false;
 	const kind = edytor.defaultChild(root);
 	if (last.type === kind && last.isEmpty && last.firstText) {
-		edytor.selection.setAtTextOffset(last.firstText, 0);
+		edytor.selection.selectText(last.firstText, 0);
 		return true;
 	}
 	const after = last.insertBlockAfter({ block: { type: kind } });
@@ -415,7 +416,8 @@ export const landed = (edytor: Edytor): boolean => {
 	if (!native || native.serial !== edytor.intentSerial || native.value !== selection.value)
 		return false;
 	natives.delete(edytor);
-	const { startText, endText, yStart, yEnd, isReversed } = selection.state;
+	const { startText, endText, yStart, yEnd } = selection.textRange();
+	const { isReversed } = selection.projection;
 	if (!startText || !endText) return false;
 	const focus = isReversed ? { text: startText, offset: yStart } : { text: endText, offset: yEnd };
 	const to = lineStop(edytor, focus, native.dir) ?? focus;

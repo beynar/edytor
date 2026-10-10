@@ -22,6 +22,7 @@ import {
 	dragSelection,
 	expectNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 const selectionSpies = () => {
 	const selection = document.getSelection() ?? window.getSelection();
@@ -45,11 +46,11 @@ describe('U8a — native selection write dedupe', () => {
 		const text = edytor.root!.children[0]!.firstText!;
 		const spies = selectionSpies();
 		try {
-			await edytor.selection.setAtTextOffset(text, 3);
+			await edytor.selection.selectText(text, 3);
 			await flushDomUpdates();
 			expect(spies.addRange).toHaveBeenCalled();
-			expect(edytor.selection.state.yStart).toBe(3);
-			expect(edytor.selection.state.isCollapsed).toBe(true);
+			expect(selectionState(edytor).yStart).toBe(3);
+			expect(selectionState(edytor).isCollapsed).toBe(true);
 
 			spies.addRange.mockClear();
 			spies.removeAllRanges.mockClear();
@@ -57,18 +58,18 @@ describe('U8a — native selection write dedupe', () => {
 
 			// Same caret again — the live selection already matches, so no
 			// native mutation may run; the model re-derive still lands.
-			await edytor.selection.setAtTextOffset(text, 3);
+			await edytor.selection.selectText(text, 3);
 			await flushDomUpdates();
 			expect(spies.addRange).not.toHaveBeenCalled();
 			expect(spies.removeAllRanges).not.toHaveBeenCalled();
 			expect(spies.setBaseAndExtent).not.toHaveBeenCalled();
-			expect(edytor.selection.state.yStart).toBe(3);
+			expect(selectionState(edytor).yStart).toBe(3);
 
 			// A different offset still writes natively.
-			await edytor.selection.setAtTextOffset(text, 5);
+			await edytor.selection.selectText(text, 5);
 			await flushDomUpdates();
 			expect(spies.addRange).toHaveBeenCalled();
-			expect(edytor.selection.state.yStart).toBe(5);
+			expect(selectionState(edytor).yStart).toBe(5);
 			expectNativeSelection({ collapsed: true, anchorOffset: 5 });
 		} finally {
 			spies.addRange.mockRestore();
@@ -89,14 +90,14 @@ describe('U8a — native selection write dedupe', () => {
 		await setNativeSelection(edytor, text, 2, text, 7);
 		const spies = selectionSpies();
 		try {
-			await edytor.selection.setAtRange(text, 2, text, 7);
+			await edytor.selection.selectText(text, 2, text, 7);
 			await flushDomUpdates();
 			expect(spies.addRange).not.toHaveBeenCalled();
 			expect(spies.removeAllRanges).not.toHaveBeenCalled();
 			expect(spies.setBaseAndExtent).not.toHaveBeenCalled();
-			expect(edytor.selection.state.yStart).toBe(2);
-			expect(edytor.selection.state.yEnd).toBe(7);
-			expect(edytor.selection.state.isCollapsed).toBe(false);
+			expect(selectionState(edytor).yStart).toBe(2);
+			expect(selectionState(edytor).yEnd).toBe(7);
+			expect(selectionState(edytor).isCollapsed).toBe(false);
 		} finally {
 			spies.addRange.mockRestore();
 			spies.removeAllRanges.mockRestore();
@@ -120,12 +121,12 @@ describe('U8a — native selection write dedupe', () => {
 			// REVERSED must not be deduped against the forward live
 			// selection (a plain boundary match would silently drop the
 			// direction change).
-			await edytor.selection.setAtRange(text, 2, text, 7, { isReversed: true });
+			await edytor.selection.selectText(text, 2, text, 7, true);
 			await flushDomUpdates();
 			const nativeWrites =
 				spies.addRange.mock.calls.length + spies.setBaseAndExtent.mock.calls.length;
 			expect(nativeWrites).toBeGreaterThan(0);
-			expect(edytor.selection.state.isReversed).toBe(true);
+			expect(selectionState(edytor).isReversed).toBe(true);
 		} finally {
 			spies.addRange.mockRestore();
 			spies.removeAllRanges.mockRestore();
@@ -149,15 +150,15 @@ describe('U8a — native selection write dedupe', () => {
 		);
 		const { edytor } = rendered;
 		const text = edytor.root!.children[0]!.firstText!;
-		await edytor.selection.setAtTextOffset(text, 2);
+		await edytor.selection.selectText(text, 2);
 		await flushDomUpdates();
 
 		// The programmatic write was deduped → no echo arrived; the user's
 		// real selectionchange is a gesture, adopted (no ignore flag, V5).
 		await setNativeSelection(edytor, text, 8);
 
-		expect(edytor.selection.state.yStart).toBe(8);
-		expect(edytor.selection.state.isCollapsed).toBe(true);
+		expect(selectionState(edytor).yStart).toBe(8);
+		expect(selectionState(edytor).isCollapsed).toBe(true);
 	});
 
 	test('a real inline-atom selectionchange selects the atom', async () => {
@@ -194,7 +195,7 @@ describe('U8a — native selection write dedupe', () => {
 		expect(afterFirst).toBeGreaterThan(0);
 
 		// Re-derive the identical selection — no new notify.
-		await edytor.selection.setAtTextOffset(text, 3);
+		await edytor.selection.selectText(text, 3);
 		await flushDomUpdates();
 		expect(onSelectionChange.mock.calls.length).toBe(afterFirst);
 

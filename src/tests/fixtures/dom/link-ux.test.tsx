@@ -34,6 +34,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 const URL = 'https://edytor.dev/docs';
 const link = (href = URL) => ({ link: { href } });
@@ -71,7 +72,7 @@ const content = (edytor: Edytor, id: string) => edytor.idToBlock.get(id)!.value.
 const textOf = (edytor: Edytor, id: string) => edytor.idToBlock.get(id)!.firstText!;
 
 const caret = async (edytor: Edytor, id: string, offset: number) => {
-	edytor.selection.setAtTextOffset(textOf(edytor, id), offset);
+	edytor.selection.selectText(textOf(edytor, id), offset);
 	await flushDomUpdates();
 };
 
@@ -115,7 +116,7 @@ describe('link.autolink.typed: a URL typed before a space becomes a link', () =>
 			{ text: URL, marks: link() },
 			{ text: ' ' }
 		]);
-		const { state } = edytor.selection;
+		const state = selectionState(edytor);
 		expect([state.isCollapsed, state.yStart]).toEqual([true, 4 + URL.length + 1]);
 	});
 
@@ -207,7 +208,7 @@ describe('link.autolink.pasted: a URL pasted at a caret is inserted as a link', 
 			{ text: URL, marks: link() },
 			{ text: 'now' }
 		]);
-		const { state } = edytor.selection;
+		const state = selectionState(edytor);
 		expect([state.isCollapsed, state.yStart]).toEqual([true, 5 + URL.length]);
 	});
 
@@ -264,7 +265,7 @@ describe('link.mod-k: Mod+K opens the link panel', () => {
 		expect(content(edytor, 'a')).toEqual([{ text: 'Read the ' }, { text: 'docs', marks: link() }]);
 		expect(linkInput()).toBeNull();
 		expect(editor.contains(document.activeElement)).toBe(true);
-		const { state } = edytor.selection;
+		const state = selectionState(edytor);
 		expect([state.isCollapsed, state.yStart, state.yEnd]).toEqual([false, 9, 13]);
 	});
 
@@ -277,7 +278,7 @@ describe('link.mod-k: Mod+K opens the link panel', () => {
 		expect(linkInput()).toBeNull();
 		expect(editor.contains(document.activeElement)).toBe(true);
 		expect(content(edytor, 'a')).toEqual([{ text: 'Read the docs' }]);
-		const { state } = edytor.selection;
+		const state = selectionState(edytor);
 		expect([state.isCollapsed, state.yStart, state.yEnd]).toEqual([false, 9, 13]);
 	});
 
@@ -287,7 +288,7 @@ describe('link.mod-k: Mod+K opens the link panel', () => {
 		]);
 		await caret(edytor, 'a', 11);
 		await dispatchDomKeyDown(document, { key: 'k', ctrlKey: true });
-		const { state } = edytor.selection;
+		const state = selectionState(edytor);
 		expect([state.isCollapsed, state.yStart, state.yEnd]).toEqual([false, 9, 13]);
 		expect(linkInput()?.value).toBe(URL);
 	});
@@ -334,7 +335,7 @@ describe('link.card: hovering a link shows its card', () => {
 		const { edytor, editor } = await render(linked());
 		await hover(anchorIn(editor));
 		await press(card()!.querySelector('[data-testid="link-card-edit"]')!);
-		const { state } = edytor.selection;
+		const state = selectionState(edytor);
 		expect([state.isCollapsed, state.yStart, state.yEnd]).toEqual([false, 9, 13]);
 		expect(linkInput()?.value).toBe(URL);
 		expect(card()).toBeNull();

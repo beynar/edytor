@@ -22,7 +22,9 @@ const open = async (page: Page, children: unknown[]) => {
 /** The type of the block holding the model caret. */
 const caretKind = (page: Page) =>
 	page.evaluate(
-		() => (window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection.state.startBlock?.type
+		() =>
+			(window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection.textRange().startText?.parent
+				?.type
 	);
 
 const shape = (page: Page) =>
@@ -49,7 +51,13 @@ const endOf = async (page: Page, id: string) => {
 	await expect
 		.poll(() =>
 			page.evaluate(() => {
-				const state = (window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection.state;
+				const state = ((s) =>
+					s && {
+						...s.textRange(),
+						startBlock: s.textRange().startText?.parent,
+						isCollapsed: s.projection.isCollapsed,
+						isReversed: s.projection.isReversed
+					})((window as unknown as { __EDYTOR__: any }).__EDYTOR__.selection);
 				return [state.startBlock?.id, state.yStart, state.isCollapsed];
 			})
 		)

@@ -40,7 +40,9 @@ export const isSuggestionsPlugin = (plugin: Plugin) => suggestionPlugins.has(plu
  * block, unless that block indents with Tab (a list-like kind or a list's item).
  */
 const endAtCaret = (edytor: Edytor) => {
-	const { startBlock, isCollapsed } = edytor.selection.state;
+	const { startText } = edytor.selection.textRange();
+	const { isCollapsed } = edytor.selection.projection;
+	const startBlock = startText?.parent;
 	if (!startBlock || !isCollapsed || startBlock.definition.continues || startBlock.list) return;
 	return edytor.suggestions.at(startBlock.id).end.at(-1);
 };

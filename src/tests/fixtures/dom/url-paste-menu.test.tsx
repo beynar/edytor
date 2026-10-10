@@ -27,6 +27,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -80,7 +81,7 @@ describe('pasting a URL on an empty line offers Link / Embed / Bookmark (Notion)
 			['embed', 'false'],
 			['bookmark', 'false']
 		]);
-		const { state } = view.edytor.selection;
+		const state = selectionState(view.edytor);
 		expect([state.isCollapsed, state.yStart]).toEqual([true, YOUTUBE.length]);
 	});
 

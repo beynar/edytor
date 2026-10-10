@@ -16,7 +16,8 @@ import { trackPageIssues, waitForEditorReady } from './helpers';
 type Edytor = {
 	value: { children: Array<{ id: string; type: string; children?: unknown[] }> };
 	selection: {
-		state: { startBlock?: { id: string }; yStart: number; isCollapsed: boolean };
+		textRange: () => { startText: { parent: { id: string } } | null; yStart: number };
+		projection: { isCollapsed: boolean };
 		selectedBlocks: Set<{ id: string }>;
 	};
 };
@@ -56,8 +57,8 @@ const selected = (page: Page) =>
 const caretBlock = (page: Page) =>
 	page.evaluate(
 		() =>
-			(window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__.selection.state.startBlock?.id ??
-			null
+			(window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__.selection.textRange().startText
+				?.parent?.id ?? null
 	);
 
 const textOf = (page: Page, id: string) =>

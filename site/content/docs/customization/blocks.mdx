@@ -265,7 +265,7 @@ Convert a block from code with `convertToKind`, or run the row's command:
 import { convertToKind } from 'edytor';
 
 const row = edytor.kinds.find((kind) => kind.id === 'block.heading2');
-const block = edytor.selection.state.startBlock;
+const block = edytor.selection.caret?.block;
 if (row && convertToKind(edytor, block, row)) {
 	// converted
 }

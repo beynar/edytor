@@ -18,6 +18,7 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 import { HIDDEN } from '$lib/selection/visibility.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	// A drag a failed test left open would swallow the next test's.
@@ -566,7 +567,7 @@ describe('a block whose shown children are all dragged', () => {
 	it('a group dragging every child of the last block moves out after it', async () => {
 		const { edytor } = await render([p('z'), p('a', [p('a1'), p('a2')])]);
 		const block = (id: string) => edytor.idToBlock.get(id)!;
-		edytor.selection.selectBlocks(block('a1'), block('a2'));
+		selectBlocks(edytor, block('a1'), block('a2'));
 		const drag = await startDrag(edytor, 'a1');
 		for (const [target, at, x] of [
 			['a', 0.75, NEAR_LEFT],

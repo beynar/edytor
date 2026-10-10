@@ -7,6 +7,7 @@ import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { dispatchDomKeyDown, flushDomUpdates } from '../../dom/test.utils.js';
 import { defineDomFixture, defineFixtures } from '../types.js';
+import { selectBlocks } from '../../selection.js';
 
 const blockHandlePlugins = [richTextPlugin, mentionPlugin, blockHandlesPlugin];
 const preventMovePlugin: Plugin = () => ({
@@ -129,7 +130,7 @@ export const fixtures = defineFixtures([
 			const [lead, note, tail] = edytor.root!.children;
 			const leadCrdtId = edytor.facade!.crdtId(lead.id);
 			const noteCrdtId = edytor.facade!.crdtId(note.id);
-			edytor.selection.selectBlocks(lead, note);
+			selectBlocks(edytor, lead, note);
 			const moved = edytor.moveBlocks({ blocks: [lead, note], target: tail, position: 'after' });
 			await flushDomUpdates();
 			return { moved, lead, note, leadCrdtId, noteCrdtId };
@@ -167,7 +168,7 @@ export const fixtures = defineFixtures([
 		),
 		run: async ({ edytor }) => {
 			const [parent, lead, note] = edytor.root!.children;
-			edytor.selection.selectBlocks(lead, note);
+			selectBlocks(edytor, lead, note);
 			edytor.moveBlocks({ blocks: [lead, note], target: parent, position: 'inside' });
 			await flushDomUpdates();
 		},

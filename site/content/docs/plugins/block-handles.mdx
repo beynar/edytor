@@ -334,12 +334,13 @@ const onActivate = async ({ block, anchor }: BlockHandleActivation) => {
 
 The same `edytor.moveBlocks` and `edytor.canMoveBlocks` calls move blocks from anywhere, with `direction` (`up`, `down`, `in`, `out`) or with a `target` and `position` (`before`, `after`, `inside`). Like the handles, `moveBlocks` opens a closed toggle the blocks land in, or that takes blocks as children, so a moved block is never hidden. See [Commands](/docs/editor/commands).
 
-A click leaves a block selection behind, and a DOM range alone does not replace it. To put the caret back in the block after a menu action, call `setAtTextOffset` once — it replaces the block selection and the projector draws it after the flush — then focus the editor. A kind whose own content is not displayed (a list container) takes the caret in its first child:
+A click leaves a block selection behind, and a DOM range alone does not replace it. To put the caret back in the block after a menu action, call `selection.setCaret({ block, offset: 0 })` once — it replaces the block selection and the projector draws it after the flush — then focus the editor. A kind whose own content is not displayed (a list container) takes the caret in its first child:
 
 ```ts title="caret.ts" check
-const text = block.firstText ?? block.children[0]?.firstText;
-if (text) {
-	edytor.selection.setAtTextOffset(text, 0);
+const target = block.firstText ? block : block.children[0];
+if (target) {
+	edytor.selection.setCaret({ block: target, offset: 0 });
 	edytor.node?.focus({ preventScroll: true });
 }
+
 ```

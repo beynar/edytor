@@ -5,6 +5,7 @@ import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { runBeforeInput } from '../../../test.utils.js';
+import { selectionState } from '../../../selection.js';
 
 export const fixtures = defineFixtures([
 	defineModelOperationFixture({
@@ -127,7 +128,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ edytor }) => {
-			edytor.selection.state.startText?.markText({ mark: 'bold', toggle: true });
+			selectionState(edytor).startText?.markText({ mark: 'bold', toggle: true });
 			await runBeforeInput(edytor, { inputType: 'insertText', data: '@' });
 			return runBeforeInput(edytor, { inputType: 'insertText', data: 'x' });
 		},

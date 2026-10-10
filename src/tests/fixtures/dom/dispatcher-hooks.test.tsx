@@ -42,6 +42,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 /** Red on the reference; green since S1. */
 const row = it;
@@ -274,7 +275,7 @@ describe('F-O3 — hooks see the prepared command and each planned step before a
 			autoSelectFixture: false
 		});
 		await setNativeSelection(edytor, textOf(edytor, 0), 0);
-		edytor.selection.selectBlocks(edytor.root!.children[1]!, edytor.root!.children[2]!);
+		selectBlocks(edytor, edytor.root!.children[1]!, edytor.root!.children[2]!);
 		await flushDomUpdates();
 		calls.length = 0;
 		track(edytor, calls);
@@ -345,7 +346,7 @@ describe('gap list — a veto on a planned step refuses the whole command', () =
 			autoSelectFixture: false
 		});
 		await setNativeSelection(edytor, textOf(edytor, 0), 0);
-		edytor.selection.selectBlocks(edytor.root!.children[1]!, edytor.root!.children[2]!);
+		selectBlocks(edytor, edytor.root!.children[1]!, edytor.root!.children[2]!);
 		await flushDomUpdates();
 		const { bytes } = track(edytor);
 		await dispatchDomKeyDown(editor, { key: 'Backspace' });
@@ -455,7 +456,7 @@ describe('F-P19 (hook half) — documented hook surfaces', () => {
 			autoSelectFixture: false
 		});
 		await setNativeSelection(edytor, textOf(edytor, 0), 0);
-		edytor.selection.selectBlocks(edytor.root!.children[1]!);
+		selectBlocks(edytor, edytor.root!.children[1]!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(editor, { key: 'Backspace' });
 		expect(texts(edytor)).toEqual(['aa', 'bb', 'cc']);

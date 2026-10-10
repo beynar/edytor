@@ -8,7 +8,7 @@ import {
 	getDomSelection
 } from '$lib/selection/domSelection.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
-import { sameValue } from '$lib/session/selection.js';
+import { blockSelection, sameValue } from '$lib/session/selection.js';
 import {
 	INTENTS,
 	attemptOf,
@@ -99,14 +99,7 @@ const shouldSyncBeforeInputTargetRange = (
 		return false;
 	}
 
-	const { isCollapsed } = edytor.selection.state;
-	if (
-		isTextInsertionInput(intent) &&
-		edytor.selection.consumeModelSelectionPreservationForTextInsertion()
-	) {
-		return false;
-	}
-
+	const { isCollapsed } = edytor.selection.projection;
 	if (isTextInsertionInput(intent) && intent !== 'insertReplacementText' && !isCollapsed) {
 		return false;
 	}
@@ -115,7 +108,7 @@ const shouldSyncBeforeInputTargetRange = (
 	}
 
 	const targetTextRange = getBeforeInputTextTargetRange(edytor, targetRange);
-	const { startText, yStart } = edytor.selection.state;
+	const { startText, yStart } = edytor.selection.textRange();
 	if (
 		isTextInsertionInput(intent) &&
 		isCollapsed &&
@@ -151,7 +144,7 @@ const syncSelectionFromDeclaredRange = (edytor: Edytor, occurrence: Occurrence, 
 	// selection is not a transport (a delete's caret edge for a collapsed caret).
 	const range = createDomRange(targetRange.startContainer);
 	const dir = deleteDir(reported);
-	if (dir && edytor.selection.state.isCollapsed) {
+	if (dir && edytor.selection.projection.isCollapsed) {
 		const [container, offset] =
 			dir === 'back'
 				? [targetRange.endContainer, targetRange.endOffset]
@@ -235,8 +228,8 @@ const isTextLocal = (edytor: Edytor, attempt: Attempt) =>
 	edytor.selection.selectedBlocks.size === 0 &&
 	Boolean(attempt.startText) &&
 	attempt.startText === attempt.endText &&
-	!attempt.isTextSpanning &&
-	!attempt.isBlockSpanning;
+	!attempt.projection.isTextSpanning &&
+	!attempt.projection.isBlockSpanning;
 
 const isTextLocalDeletion = (edytor: Edytor, attempt: Attempt) => {
 	if (
@@ -255,8 +248,8 @@ const isTextLocalDeletion = (edytor: Edytor, attempt: Attempt) => {
 	}
 
 	return attempt.inputType === 'deleteContentBackward'
-		? !attempt.isAtStartOfText
-		: !attempt.isAtEndOfText;
+		? !attempt.projection.isAtStartOfText
+		: !attempt.projection.isAtEndOfText;
 };
 
 const isTextLocalReplacement = (edytor: Edytor, attempt: Attempt) =>
@@ -344,9 +337,9 @@ const androidNoOpBackspaceDeadline = (edytor: Edytor, attempt: Attempt) => {
 		attempt.inputType !== 'deleteContentBackward' ||
 		!text ||
 		!attempt.isCollapsed ||
-		attempt.isAtStartOfText ||
-		attempt.isTextSpanning ||
-		attempt.isBlockSpanning
+		attempt.projection.isAtStartOfText ||
+		attempt.projection.isTextSpanning ||
+		attempt.projection.isBlockSpanning
 	) {
 		return;
 	}
@@ -365,7 +358,7 @@ const androidNoOpBackspaceDeadline = (edytor: Edytor, attempt: Attempt) => {
 		attempt.phase = 'applied';
 		edytor.attempts.drift(attempt, 'refresh', 0);
 		const deletion = text.deleteText({ direction: 'BACKWARD', length: 1 });
-		edytor.selection.setAtTextOffset(text, deletion?.start ?? attempt.yStart - 1);
+		edytor.selection.selectText(text, deletion?.start ?? attempt.yStart - 1);
 	}, NATIVE_INPUT_REPAIR_WINDOW_MS);
 };
 
@@ -425,7 +418,7 @@ const perform = (edytor: Edytor, attempt: Attempt, offered: string | null) =>
 		}
 		if (mode !== 'refresh') edytor.attempts.arm(attempt, window);
 		// The command selected its caret; a paste re-renders the text it landed in.
-		const text = edytor.selection.state.startText;
+		const text = edytor.selection.textRange().startText;
 		if (attempt.inputType === 'insertFromPaste' && text?.node?.isConnected) text.refreshFromModel();
 		if (kind !== 'composition') edytor.composition.interrupt();
 	});
@@ -527,12 +520,13 @@ const runKeyAttempt = async (edytor: Edytor, attempt: Attempt) => {
 	// The browser may have moved the selection since the keydown: the key
 	// acts on its anchored target, which followed any concurrent edit.
 	edytor.selection.commit(attempt.target, 'repair');
-	const { state, selectedBlocks } = edytor.selection;
+	const { projection, selectedBlocks } = edytor.selection;
+	const { startText, yStart, endText, yEnd } = edytor.selection.textRange();
 	if (selectedBlocks.size > 0) {
-		edytor.selection.selectBlocks(...selectedBlocks);
-	} else if (state.startText && state.endText) {
-		if (state.isCollapsed) edytor.selection.setAtTextOffset(state.startText, state.yStart);
-		else edytor.selection.setAtRange(state.startText, state.yStart, state.endText, state.yEnd);
+		edytor.selection.select(blockSelection([...selectedBlocks].map((block) => block.id)));
+	} else if (startText && endText) {
+		if (projection.isCollapsed) edytor.selection.selectText(startText, yStart);
+		else edytor.selection.selectText(startText, yStart, endText, yEnd, projection.isReversed);
 	} else {
 		// Its target is gone (a remote delete): a named no-op.
 		edytor.attempts.close(attempt);

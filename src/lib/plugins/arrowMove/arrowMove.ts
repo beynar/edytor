@@ -19,7 +19,9 @@ const move =
 	(direction: BlockMoveDirection, caret = false): HotKey =>
 	({ edytor, prevent }) => {
 		const selected = [...edytor.selection.selectedBlocks];
-		const { startBlock: at, isCollapsed } = edytor.selection.state;
+		const { startText } = edytor.selection.textRange();
+		const { isCollapsed } = edytor.selection.projection;
+		const at = startText?.parent;
 		// A code line moves as its code block (`movable`).
 		const spanned = () =>
 			outermost(movable(isCollapsed ? (at ? [at] : []) : getSelectionBlocks(edytor)));

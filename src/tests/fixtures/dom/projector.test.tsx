@@ -46,6 +46,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 /** Red on the reference; green since V4. */
 const row = it;
@@ -153,8 +154,8 @@ describe('F-S1 — the later of two requested writes wins (W1)', () => {
 			</root>
 		);
 		const text = edytor.root!.children[0]!.firstText!;
-		void edytor.selection.setAtTextOffset(text, 4);
-		void edytor.selection.setAtRange(text, 2, text, 6);
+		void edytor.selection.selectText(text, 4);
+		void edytor.selection.selectText(text, 2, text, 6);
 		await flushDomUpdates();
 		expect(range(edytor)).toMatchObject({ start: 2, end: 6, isCollapsed: false });
 		expect(domRange(text.node!)).toEqual({ anchor: 2, focus: 6, anchorIsText: true });
@@ -167,8 +168,8 @@ describe('F-S1 — the later of two requested writes wins (W1)', () => {
 			</root>
 		);
 		const text = edytor.root!.children[0]!.firstText!;
-		void edytor.selection.setAtRange(text, 2, text, 6);
-		void edytor.selection.setAtTextOffset(text, 4);
+		void edytor.selection.selectText(text, 2, text, 6);
+		void edytor.selection.selectText(text, 4);
 		await flushDomUpdates();
 		expect(range(edytor)).toMatchObject({ start: 4, end: 4, isCollapsed: true });
 		expect(domRange(text.node!)).toEqual({ anchor: 4, focus: 4, anchorIsText: true });
@@ -574,7 +575,7 @@ describe('F-O1 (timer half) — no selection-display timer is left once a progra
 	const programs: [string, (edytor: Edytor, editor: HTMLElement) => unknown][] = [
 		[
 			'a caret write',
-			(edytor) => edytor.selection.setAtTextOffset(edytor.root!.children[1]!.firstText!, 2)
+			(edytor) => edytor.selection.selectText(edytor.root!.children[1]!.firstText!, 2)
 		],
 		[
 			'typing',
@@ -585,7 +586,7 @@ describe('F-O1 (timer half) — no selection-display timer is left once a progra
 		[
 			'a block-set delete',
 			async (edytor, editor) => {
-				edytor.selection.selectBlocks(edytor.root!.children[1]!);
+				selectBlocks(edytor, edytor.root!.children[1]!);
 				await flushDomUpdates();
 				return dispatchDomKeyDown(editor, { key: 'Backspace', code: 'Backspace' });
 			}

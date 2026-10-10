@@ -111,9 +111,9 @@ export abstract class TextTriggerController {
 
 	/** After an `insertText`: the trigger opens, the query grows, or the menu closes. */
 	handleTextInsertion(text: Text, block: Block, payload: TextInsertionPayload) {
-		const { state } = this.edytor.selection;
-		const start = payload.start ?? state.yStart;
-		const end = payload.end ?? state.yEnd;
+		const range = this.edytor.selection.textRange();
+		const start = payload.start ?? range.yStart;
+		const end = payload.end ?? range.yEnd;
 		if (this.edytor.readonly) return this.close();
 		// A trigger typed alone, or committed by an IME with its query (`/h`).
 		const at =
@@ -147,7 +147,8 @@ export abstract class TextTriggerController {
 	reconcileSelection() {
 		if (!this.activeRange || this.picking) return;
 		const range = this.range;
-		const { startText, yStart, isCollapsed } = this.edytor.selection.state;
+		const { startText, yStart } = this.edytor.selection.textRange();
+		const { isCollapsed } = this.edytor.selection.projection;
 		if (
 			range &&
 			isCollapsed &&
@@ -211,7 +212,7 @@ export abstract class TextTriggerController {
 			const block = text.parent;
 			const [from, to] = [text.segStart + triggerStart, text.segStart + end];
 			this.close();
-			selection.setAtTextOffset(text, triggerStart);
+			selection.selectText(text, triggerStart);
 			const held = selection.value;
 			const ctx: TriggerContext = {
 				edytor,

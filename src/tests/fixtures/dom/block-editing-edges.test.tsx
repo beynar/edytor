@@ -21,6 +21,7 @@ import {
 	renderDomEdytor,
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -52,7 +53,7 @@ describe('Tab over a text range spanning blocks moves every block it touches', (
 	it('Tab nests them into the block before; Shift+Tab moves them back out', async () => {
 		const { edytor } = await render([], [p('zero'), p('one'), p('two', [p('sub')]), p('three')]);
 		const [one, three] = [edytor.idToBlock.get('one')!, edytor.idToBlock.get('three')!];
-		edytor.selection.setAtRange(one.firstText!, 1, three.firstText!, 2);
+		edytor.selection.selectText(one.firstText!, 1, three.firstText!, 2);
 		await flushDomUpdates();
 
 		await dispatchDomKeyDown(document, { key: 'Tab' });
@@ -67,7 +68,7 @@ describe('Tab over a text range spanning blocks moves every block it touches', (
 			]
 		]);
 		// The text range stays.
-		const { startText, endText, yStart, yEnd } = edytor.selection.state;
+		const { startText, endText, yStart, yEnd } = selectionState(edytor);
 		expect([startText?.parent.id, yStart, endText?.parent.id, yEnd]).toEqual([
 			'one',
 			1,
@@ -89,7 +90,7 @@ describe('Tab over a text range spanning blocks moves every block it touches', (
 		const rendered = await render([], [p('a'), p('b', [p('b1'), p('b2')]), p('c')]);
 		const { edytor } = rendered;
 		const [b2, c] = [edytor.idToBlock.get('b2')!, edytor.idToBlock.get('c')!];
-		edytor.selection.setAtRange(b2.firstText!, 1, c.firstText!, 1);
+		edytor.selection.selectText(b2.firstText!, 1, c.firstText!, 1);
 		await flushDomUpdates();
 		edytor.undoManager.stopCapturing();
 		return rendered;
@@ -119,7 +120,7 @@ describe('Tab over a text range spanning blocks moves every block it touches', (
 				]
 			]
 		]);
-		const { startText, endText, yStart, yEnd } = edytor.selection.state;
+		const { startText, endText, yStart, yEnd } = selectionState(edytor);
 		expect([startText?.parent.id, yStart, endText?.parent.id, yEnd]).toEqual(['b2', 1, 'c', 1]);
 		await dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
 		expect(canonicalTree(edytor).map(shape)).toEqual(original);
@@ -170,7 +171,7 @@ describe('the block menu caret after Delete', () => {
 		await flushDomUpdates();
 	};
 	const caret = (edytor: Awaited<ReturnType<typeof render>>['edytor']) => {
-		const { startBlock, yStart } = edytor.selection.state;
+		const { startBlock, yStart } = selectionState(edytor);
 		return [startBlock?.id, yStart];
 	};
 
@@ -224,7 +225,7 @@ describe('the block menu caret after Delete', () => {
 describe('Mod+D over a block selection', () => {
 	it('duplicates every selected block, each after itself, as one undo step', async () => {
 		const { edytor } = await render([blockMenuPlugin], [p('a'), p('b'), p('c')]);
-		edytor.selection.selectBlocks(edytor.idToBlock.get('a')!, edytor.idToBlock.get('b')!);
+		selectBlocks(edytor, edytor.idToBlock.get('a')!, edytor.idToBlock.get('b')!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'd', ctrlKey: true });
 		const texts = () => canonicalTree(edytor).map((b) => shape(b)[0]);
@@ -240,7 +241,7 @@ describe('Mod+D over a block selection', () => {
 
 describe('Tab over a block selection holding a parent and its child (FW-06)', () => {
 	const selectDown = async (edytor: Awaited<ReturnType<typeof render>>['edytor']) => {
-		edytor.selection.selectBlocks(edytor.idToBlock.get('b')!);
+		selectBlocks(edytor, edytor.idToBlock.get('b')!);
 		await flushDomUpdates();
 		edytor.undoManager.stopCapturing();
 		for (const _ of [1, 2])

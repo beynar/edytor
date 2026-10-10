@@ -47,9 +47,10 @@ const commonMarks = (parts: JSONText[]): Marks => {
 
 /** The side the selection admitted for a caret at `text`/`offset`, if it sits there. */
 export const admittedSide = (text: Text, offset: number): EdgeSide | undefined => {
-	const state = text.edytor.selection.state;
-	return state.isCollapsed && state.startText === text && state.yStart === offset
-		? state.edge
+	const { selection } = text.edytor;
+	const { startText, yStart } = selection.textRange();
+	return selection.projection.isCollapsed && startText === text && yStart === offset
+		? selection.edge
 		: undefined;
 };
 

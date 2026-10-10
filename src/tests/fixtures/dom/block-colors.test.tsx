@@ -21,6 +21,7 @@ import { BLOCK_COLORS, colorable, setBlockColor } from '$lib/block/colors.js';
 import { ownedOf } from '$lib/surface/attributes.js';
 import { convertToKind } from '$lib/kinds.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -235,7 +236,7 @@ describe('The block menu’s Color flyout (Notion)', () => {
 			],
 			[blockMenuPlugin]
 		);
-		view.edytor.selection.selectBlocks(get(view, 'a'), get(view, 'u'));
+		selectBlocks(view.edytor, get(view, 'a'), get(view, 'u'));
 		await flushDomUpdates();
 		await openMenu(view, 'a');
 		await openColors();

@@ -6,6 +6,7 @@
  * a chord run first.
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { blockSelection } from './selection.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { extendVertically, navigationBindings, stayWithoutTarget, vertical } from './navigation.js';
@@ -48,7 +49,8 @@ export const replaceSelectedAtom = (edytor: Edytor, value = '') => {
 };
 
 const selectNextVoidBlockFromCaret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart } = edytor.selection.textRange();
+	const { isCollapsed } = edytor.selection.projection;
 	if (!startText || !isCollapsed || yStart !== startText.length) {
 		return false;
 	}
@@ -58,7 +60,7 @@ const selectNextVoidBlockFromCaret = (edytor: Edytor) => {
 		return false;
 	}
 
-	edytor.selection.selectBlocks(nextBlock);
+	edytor.selection.select(blockSelection([nextBlock.id]));
 	return true;
 };
 
@@ -109,7 +111,7 @@ const moveBlockSelection =
 			prevent(() => {
 				const target = stepOnto(selectedBlocks.values().next().value as Block, step);
 				if (target) {
-					edytor.selection.selectBlocks(target);
+					edytor.selection.select(blockSelection([target.id]));
 				}
 			});
 		}
@@ -126,10 +128,12 @@ const arrowDown = vertical(1, moveBlockSelection('blockAfter'));
  */
 const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void => {
 	const members = Array.from(edytor.selection.selectedBlocks);
+	const { value } = edytor.selection;
+	const ids = value.kind === 'blocks' ? value.ids : [];
 	const focus = members.at(-1)!;
 	const sign = Math.sign(edytor.compareBlocks(focus, members[0]!));
 	if (sign === (direction === 'up' ? 1 : -1)) {
-		edytor.selection.removeBlockFromSelection(focus);
+		edytor.selection.select(blockSelection(ids.filter((id) => id !== focus.id)));
 		return;
 	}
 	const sorted = members.toSorted(edytor.compareBlocks);
@@ -137,7 +141,7 @@ const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void =>
 		direction === 'up'
 			? stepOnto(sorted[0]!, 'blockBefore')
 			: stepOnto(sorted.at(-1)!, 'blockAfter');
-	if (next) edytor.selection.addBlockToSelection(next);
+	if (next && !ids.includes(next.id)) edytor.selection.select(blockSelection([...ids, next.id]));
 };
 
 /**
@@ -175,20 +179,23 @@ const nest =
 			const blocks = getSelectionBlocks(edytor);
 			if (blocks.length > 1) {
 				const members = [...selectedBlocks];
-				const { startText, endText, yStart, yEnd, isReversed } = edytor.selection.state;
+				const { startText, endText, yStart, yEnd } = edytor.selection.textRange();
+				const { isReversed } = edytor.selection.projection;
 				if (!moveRoots(edytor, blocks, direction).length) return;
-				if (members.length) edytor.selection.selectBlocks(...members);
+				if (members.length)
+					edytor.selection.select(blockSelection(members.map((block) => block.id)));
 				else if (startText && endText)
-					edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
+					edytor.selection.selectText(startText, yStart, endText, yEnd, isReversed);
 				return;
 			}
 			const selectedBlock = selectedBlocks.values().next().value as Block | undefined;
-			const { yStart, startText, startBlock } = edytor.selection.state;
+			const { yStart, startText } = edytor.selection.textRange();
+			const startBlock = startText?.parent;
 			const index = startText?.index;
 			// The block's command reveals a closed toggle it lands in or that adopts.
 			const block = (selectedBlock || startBlock)?.[operation]();
 			if (block) edytor.announcer.moved({ blocks: [block], direction }, [block]);
-			if (block && selectedBlock) edytor.selection.selectBlocks(block);
+			if (block && selectedBlock) edytor.selection.select(blockSelection([block.id]));
 			else if (block && index !== undefined) caretAt(edytor, block.content[index] as Text, yStart);
 		});
 
@@ -210,8 +217,9 @@ const kill =
 	(payload) => {
 		const { edytor, prevent } = payload;
 		if (ownsDeleteSelection(edytor)) return deleteSelection(payload);
-		const { state, projection } = edytor.selection;
-		if (state.startText) prevent(() => edytor.ports.input.runIntent(inputType(projection)));
+		const { projection } = edytor.selection;
+		if (edytor.selection.textRange(projection).startText)
+			prevent(() => edytor.ports.input.runIntent(inputType(projection)));
 	};
 
 /**
@@ -246,7 +254,7 @@ const emacs: Record<string, HotKey> = {
 	),
 	// Open-line: a soft break with the caret kept before it.
 	'ctrl+o': ({ edytor, prevent }) => {
-		if (ownsDeleteSelection(edytor) || !edytor.selection.state.startText) return;
+		if (ownsDeleteSelection(edytor) || !edytor.selection.textRange().startText) return;
 		prevent(() =>
 			edytor.dispatcher.run('insertBlock', () =>
 				edytor.ports.input.insertLineBreak(intentSnapshot(edytor, 'insertLineBreak'), 'before')
@@ -271,12 +279,12 @@ export const builtInBindings: Record<string, HotKey> = {
 	// (at once with no selection at all, as Notion).
 	'mod+a': ({ edytor, prevent }) => {
 		prevent(() => {
-			const { startText, startBlock } = edytor.selection.state;
+			const { startText } = edytor.selection.textRange();
 			const { islandRoot, isAtStartOfBlock, isAtEndOfBlock } = edytor.selection.projection;
 			// Every block, nested ones included: a block selection is exactly its members.
 			const every = () =>
-				edytor.selection.selectBlocks(
-					...edytor.facade.order().flatMap((id) => edytor.idToBlock.get(id) ?? [])
+				edytor.selection.select(
+					blockSelection(edytor.facade.order().filter((id) => edytor.idToBlock.has(id)))
 				);
 			if (!startText) {
 				if (edytor.selection.value.kind === 'none') every();
@@ -285,9 +293,10 @@ export const builtInBindings: Record<string, HotKey> = {
 			if (edytor.selection.selectedBlocks.size) {
 				every();
 			} else if (isAtStartOfBlock && isAtEndOfBlock) {
-				edytor.selection.selectBlocks(edytor.idToBlock.get(islandRoot ?? '') ?? startText.parent);
+				const block = edytor.idToBlock.get(islandRoot ?? '') ?? startText.parent;
+				edytor.selection.select(blockSelection([block.id]));
 			} else {
-				edytor.selection.setAtBlockRange(startBlock);
+				edytor.selection.selectLines(startText.parent);
 			}
 		});
 	},
@@ -315,7 +324,7 @@ export const builtInBindings: Record<string, HotKey> = {
 		if (!edytor.selection.selectedBlocks.size) return;
 		prevent(() => {
 			const at = selectedBlocksExit(edytor);
-			if (at) edytor.selection.setAtTextOffset(at.text, at.offset);
+			if (at) edytor.selection.selectText(at.text, at.offset);
 		});
 	},
 	backspace: deleteSelection,

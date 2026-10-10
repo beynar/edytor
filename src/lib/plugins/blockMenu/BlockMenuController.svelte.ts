@@ -1,4 +1,5 @@
 import { untrack, type Snippet } from 'svelte';
+import { blockSelection } from '$lib/session/selection.js';
 import type { Attachment } from 'svelte/attachments';
 import type { EditorCommand } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
@@ -115,11 +116,11 @@ export const colorCommands = (edytor: Edytor, labels: BlockMenuLabels): EditorCo
 		group: 'Color',
 		searchOnly: true,
 		isEnabled: (view = edytor) => {
-			const block = view.selection.state.startBlock;
+			const block = view.selection.textRange().startText?.parent;
 			return Boolean(block && colorable(block));
 		},
 		run: () => {
-			const block = edytor.selection.state.startBlock;
+			const block = edytor.selection.textRange().startText?.parent;
 			if (!block || !colorable(block)) return false;
 			if (setBlockColor(edytor, [block], row.field, row.value)) return true;
 			// Already that colour: nothing to write, the typed query still goes.
@@ -516,7 +517,7 @@ export class BlockMenuController {
 		this.close(false);
 		setBlockColor(this.edytor, painted, row.field, row.value);
 		const live = blocks.flatMap((block) => this.edytor.idToBlock.get(block.id) ?? []);
-		if (live.length) this.edytor.selection.selectBlocks(...live);
+		if (live.length) this.edytor.selection.select(blockSelection(live.map((block) => block.id)));
 		this.focus();
 	}
 
@@ -536,7 +537,8 @@ export class BlockMenuController {
 			.each('insertBlock', outermost(blocks), (block) => block.duplicateBlock())
 			.filter((copy) => copy != null);
 		this.close(false);
-		if (copies.length) this.edytor.selection.selectBlocks(...copies);
+		if (copies.length)
+			this.edytor.selection.select(blockSelection(copies.map((block) => block.id)));
 	}
 
 	/**
@@ -604,7 +606,7 @@ export class BlockMenuController {
 	private restore(blocks: Block[]) {
 		const live = blocks.flatMap((block) => this.edytor.idToBlock.get(block.id) ?? []);
 		if (live.length > 1) {
-			this.edytor.selection.selectBlocks(...live);
+			this.edytor.selection.select(blockSelection(live.map((block) => block.id)));
 			this.focus();
 		} else if (live[0]?.node?.isConnected) this.caret(live[0]);
 	}
@@ -618,7 +620,7 @@ export class BlockMenuController {
 	private caret(block: Block | null | undefined) {
 		const text = block && shownText(block, 'first');
 		if (text || !block?.isInTree) this.edytor.dispatcher.caret(text, 0);
-		else this.edytor.selection.selectBlocks(block);
+		else this.edytor.selection.select(blockSelection([block.id]));
 		this.focus();
 	}
 

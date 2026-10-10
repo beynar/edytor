@@ -3,6 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { RangeEndpoints } from '$lib/edytor.utils.js';
 import { id, vetoable } from '$lib/utils.js';
+import { blockSelection, noSelection } from '$lib/session/selection.js';
 import { hidden, selectedMembers, shown } from './visibility.js';
 
 export type SelectionInsertionTarget = {
@@ -10,12 +11,8 @@ export type SelectionInsertionTarget = {
 	offset: number;
 };
 
+/** A range to replace (an attempt's target); none: the live selection. */
 export type SelectionReplacementState = RangeEndpoints & { isCollapsed: boolean };
-
-export const getSelectionReplacementState = (edytor: Edytor): SelectionReplacementState => {
-	const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
-	return { startText, endText, yStart, yEnd, isCollapsed };
-};
 
 /**
  * The selected blocks as clicked, in document order: a grip-selected list is
@@ -37,13 +34,18 @@ export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) =>
  * the caret's block. Menus, the toolbar, kind commands and Tab read it.
  */
 export const getSelectionBlocks = (edytor: Edytor): Block[] => {
-	const { selectedBlocks, state } = edytor.selection;
+	const { selectedBlocks, projection } = edytor.selection;
 	if (selectedBlocks.size) return selectedMembers(edytor);
-	if (state.isCollapsed) return state.startBlock ? [state.startBlock] : [];
-	const edges = [state.startBlock, state.endBlock];
+	const { startText, endText } = edytor.selection.textRange(projection);
+	const [start, end] = [startText?.parent, endText?.parent];
+
+	if (projection.isCollapsed) return start ? [start] : [];
 	const enters = (block: Block) =>
-		block.isContainer && edges.some((edge) => edge && isInside(edge, block));
-	return state.blocks.filter((block) => !hidden(block) && !enters(block));
+		block.isContainer && [start, end].some((edge) => edge && isInside(edge, block));
+	return projection.blocks.flatMap((id) => {
+		const block = edytor.idToBlock.get(id);
+		return block && !hidden(block) && !enters(block) ? [block] : [];
+	});
 };
 
 /**
@@ -191,7 +193,7 @@ export const selectMoved = (edytor: Edytor, moved: Block[], before: Iterable<Blo
 	// A layout moved for the blocks covering it whole stays selected as those blocks.
 	const lifted = new Set(liftLayouts(kept));
 	const roots = moved.filter((block) => !lifted.has(block) || held.includes(block));
-	edytor.selection.selectBlocks(...roots, ...kept);
+	edytor.selection.select(blockSelection([...roots, ...kept].map((block) => block.id)));
 };
 
 /**
@@ -243,14 +245,14 @@ export const revealed = <A extends unknown[], R extends Block | Block[] | null |
 
 export const replaceSelectionWithCollapsedTarget = (
 	edytor: Edytor,
-	state: SelectionReplacementState = getSelectionReplacementState(edytor)
+	range?: SelectionReplacementState
 ): SelectionInsertionTarget | null => {
-	const { startText, yStart } = state;
-	if (!startText || state.isCollapsed) {
+	const { startText, yStart } = range ?? edytor.selection.textRange();
+	if (!startText || (range ?? edytor.selection.projection).isCollapsed) {
 		return startText && { text: startText, offset: yStart };
 	}
 	const [text, offset] =
-		edytor.deleteContentWithinSelection({ replace: true, selection: state }) ?? [];
+		edytor.deleteContentWithinSelection({ replace: true, selection: range }) ?? [];
 	return text ? { text, offset: offset! } : null;
 };
 
@@ -262,7 +264,7 @@ export const replaceSelectionWithCollapsedTarget = (
  * document order); none for a void that shows nothing (a divider) or a
  * closed toggle's hidden body. A line created in the same change counts (it
  * is displayed once it mounts), as for `caretBeside`. Ranges over blocks
- * (`setAtBlockRange`, leaving a block selection), the block-selection keys
+ * (`selectLines`: Mod+A, a triple click), the block-selection keys
  * and Escape read it.
  */
 export const shownText = (
@@ -403,7 +405,7 @@ export const deleteSelectedBlocks = (
 	const text = virtual ? edytor.idToBlock.get(virtual)?.firstText : undefined;
 	const survivor = besides.find((block) => block.isInTree);
 	if (text) edytor.dispatcher.caret(text, 0);
-	else if (survivor) edytor.selection.selectBlocks(survivor);
+	else if (survivor) edytor.selection.select(blockSelection([survivor.id]));
 	return text ?? null;
 };
 
@@ -429,7 +431,7 @@ export const deleteSelectedRange = (
 	payload: { selection?: RangeEndpoints } = {}
 ) => {
 	const [text, offset] = edytor.deleteContentWithinSelection(payload) ?? [];
-	if (text) edytor.selection.setAtTextOffset(text, offset!);
+	if (text) edytor.selection.selectText(text, offset!);
 };
 
 /**
@@ -447,7 +449,7 @@ const replaceSelectedBlocksWithEmptyBlock = (edytor: Edytor): SelectionInsertion
 		target: { replace: selected.map((block) => block.id) }
 	});
 	if (!text) return null;
-	edytor.selection.selectBlocks();
+	edytor.selection.select(noSelection);
 	return { text, offset };
 };
 

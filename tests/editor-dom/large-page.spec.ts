@@ -280,7 +280,7 @@ test.describe('P8 — a large page with content-visibility', () => {
 		await page.evaluate(() => {
 			const peer = (window as unknown as { __peer: any }).__peer;
 			const text = peer.idToBlock.block('b4000').firstText;
-			peer.selection.setAtTextOffset(text, 6);
+			peer.selection.selectText(text, 6);
 		});
 		const cursor = page.locator('[data-edytor-remote-cursor]');
 		await expect.poll(() => cursor.count()).toBeGreaterThan(0);

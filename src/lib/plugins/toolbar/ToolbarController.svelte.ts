@@ -194,7 +194,7 @@ export class ToolbarController {
 		}
 
 		this.shown = true;
-		if (!this.isRestoringSelection) this.linkUrl = this.getSelectedLinkUrl(selection);
+		if (!this.isRestoringSelection) this.linkUrl = this.getSelectedLinkUrl();
 		this.selectionSnapshot = selection.value.kind === 'text' ? selection.value : null;
 	}
 
@@ -224,7 +224,7 @@ export class ToolbarController {
 
 	/** The row naming the selection's block, for the kind button's label. */
 	get currentKind(): KindRow | undefined {
-		return rowOf(this.edytor, this.edytor.selection.state.startBlock);
+		return rowOf(this.edytor, this.edytor.selection.textRange().startText?.parent);
 	}
 
 	togglePanel(panel: 'turn' | 'link' | 'color') {
@@ -246,14 +246,15 @@ export class ToolbarController {
 	 */
 	openLinkPanel() {
 		const { selection } = this.edytor;
-		const { isCollapsed, startText, yStart } = selection.state;
+		const { startText, yStart } = selection.textRange();
+		const { isCollapsed } = selection.projection;
 		if (selection.value.kind !== 'text' || !startText) return false;
 		const { voidRoot, islandRoot } = selection.projection;
 		if (voidRoot !== null || islandRoot !== null) return false;
 		if (isCollapsed) {
 			const run = linkAt(startText, yStart - 1) ?? linkAt(startText, yStart);
 			if (!run) return false;
-			selection.setAtRange(startText, run.start, startText, run.end);
+			selection.selectText(startText, run.start, startText, run.end);
 		}
 		this.updateFromSelection();
 		if (!this.isVisible) return false;
@@ -303,7 +304,7 @@ export class ToolbarController {
 		const link = this.hoveredLink();
 		this.hover(null);
 		if (!link) return;
-		this.edytor.selection.setAtRange(link.text, link.start, link.text, link.end);
+		this.edytor.selection.selectText(link.text, link.start, link.text, link.end);
 		this.updateFromSelection();
 		if (!this.isVisible) return;
 		this.panel = 'link';
@@ -371,12 +372,12 @@ export class ToolbarController {
 	}
 
 	private canShowForSelection(selection: EdytorSelection) {
-		const { state } = selection;
+		const range = selection.textRange();
 		return (
-			!state.isCollapsed &&
-			Boolean(state.startText) &&
-			Boolean(state.endText) &&
-			state.texts.length > 0 &&
+			!selection.projection.isCollapsed &&
+			Boolean(range.startText) &&
+			Boolean(range.endText) &&
+			range.texts.length > 0 &&
 			selection.selectedBlocks.size === 0 &&
 			selection.selectedInlineBlock.size === 0 &&
 			selection.projection.voidRoot === null &&
@@ -384,8 +385,8 @@ export class ToolbarController {
 		);
 	}
 
-	private getSelectedLinkUrl(selection: EdytorSelection) {
-		for (const { text, start, end } of selectedTextSpans(this.edytor, selection.state)) {
+	private getSelectedLinkUrl() {
+		for (const { text, start, end } of selectedTextSpans(this.edytor)) {
 			for (const segment of text.getMarksAtRange(start, end)) {
 				const href = getLinkHref(segment.marks?.link);
 				if (href) return href;

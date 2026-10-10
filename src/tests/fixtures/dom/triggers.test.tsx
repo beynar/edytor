@@ -35,6 +35,7 @@ import {
 	renderDomEdytor,
 	type RenderDomEdytorOptions
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -95,9 +96,9 @@ describe('the caret in block offsets', () => {
 		await caretAt(edytor, 'a', 6);
 		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 6 });
 		// The text after the atom: offset 6 is 2 into "there".
-		expect(edytor.selection.state.startText?.stringContent).toBe('there');
-		expect(edytor.selection.state.yStart).toBe(2);
-		edytor.selection.setAtRange(
+		expect(selectionState(edytor).startText?.stringContent).toBe('there');
+		expect(selectionState(edytor).yStart).toBe(2);
+		edytor.selection.selectText(
 			edytor.idToBlock.get('a')!.firstText,
 			0,
 			edytor.idToBlock.get('a')!.firstText,

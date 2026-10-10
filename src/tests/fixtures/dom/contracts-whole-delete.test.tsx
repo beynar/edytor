@@ -23,6 +23,7 @@ import {
 	setNativeSelection,
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 type Peer = Awaited<ReturnType<typeof renderDomEdytor>>;
 
@@ -59,11 +60,11 @@ const selectAllText = async (edytor: Edytor, reversed = false) => {
 	const first = edytor.root!.firstEditableText!;
 	const last = edytor.root!.lastEditableText!;
 	await setNativeSelection(edytor, first, 0, last, last.stringContent.length, { reversed });
-	expect(edytor.selection.state.isCollapsed).toBe(false);
+	expect(selectionState(edytor).isCollapsed).toBe(false);
 };
 
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	return { block: startText?.parent.id, offset: yStart, collapsed: isCollapsed };
 };
 

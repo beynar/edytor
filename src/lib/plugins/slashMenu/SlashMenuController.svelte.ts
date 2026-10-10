@@ -1,9 +1,10 @@
 import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
+import type { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EditorCommand } from '$lib/plugins.js';
-import { project, type SelectionValue } from '$lib/session/selection.js';
+import { noSelection, project, type SelectionValue } from '$lib/session/selection.js';
 import { BASIC_BLOCKS, matchesQuery } from '$lib/kinds.js';
 import { slashMenuEnglish, type SlashMenuLabels } from '$lib/labels.js';
 import type { BlockAddition } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
@@ -50,24 +51,16 @@ const additionView = (edytor: Edytor, { block }: BlockAddition): Edytor => {
 			}
 		});
 	const added = reused ? block : through(block, stand);
-	const text = added.firstText ?? null;
-	const state: Edytor['selection']['state'] = {
-		yStart: 0,
-		yEnd: 0,
-		isCollapsed: true,
-		isReversed: false,
-		isBlockSpanning: false,
-		isVoidEditableElement: false,
-		startText: text,
-		endText: text,
-		startBlock: added,
-		endBlock: added,
-		texts: text ? [text] : [],
-		blocks: [added]
-	};
+	// A caret at the added block's start (a stand-in text when it is not made yet).
+	const text = added.firstText ?? ({ parent: added } as Text);
+	const range = { startText: text, endText: text, yStart: 0, yEnd: 0, texts: [text] };
 	const selection = through(edytor.selection, {
-		state,
-		value: { kind: 'none' },
+		textRange: () => range,
+		caret: { block: added, offset: 0 },
+		voidField: false,
+		value: noSelection,
+		projection: project(noSelection, edytor.facade),
+
 		selectedBlocks: new Set(),
 		selectedInlineBlock: new Set()
 	});
@@ -292,7 +285,7 @@ export class SlashMenuController extends TextTriggerController {
 		// block (Code, a divider) keep their own.
 		const ran = await this.replaceTrigger(
 			() => this.edytor.runCommand(command.id),
-			(text) => this.edytor.selection.state.startText === text
+			(text) => this.edytor.selection.textRange().startText === text
 		);
 		return ran ?? false;
 	}

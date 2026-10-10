@@ -25,6 +25,7 @@ import {
 	setNativeSelection,
 	textNodeOf
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -122,7 +123,7 @@ const texts = (edytor: Edytor) =>
 		(block.content ?? []).map((part) => ('text' in part ? part.text : `[${part.type}]`)).join('')
 	);
 const selected = (edytor: Edytor) => {
-	const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
+	const { startText, endText, yStart, yEnd, isCollapsed } = selectionState(edytor);
 	if (!startText || !endText || isCollapsed) return null;
 	return [
 		{ block: startText.parent.id, offset: startText.segStart + yStart },

@@ -14,6 +14,7 @@ import {
 	setNativeSelection,
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 /**
  * U6 golden command programs — exact, hand-authored deletion contracts run
@@ -56,8 +57,8 @@ const p = (text: string, extra: Partial<CanonicalBlock> = {}): CanonicalBlock =>
 });
 
 const caret = (edytor: Edytor) => ({
-	text: edytor.selection.state.startText?.stringContent,
-	at: edytor.selection.state.yStart
+	text: selectionState(edytor).startText?.stringContent,
+	at: selectionState(edytor).yStart
 });
 
 /** delete → assert canonical doc+caret → type `follow` at the caret → assert. */
@@ -168,8 +169,8 @@ describe('golden command programs — flat range deletion (del.range.flat)', () 
 		// Anchor at bb@2, focus at aa@1 — the logical range is aa[1..]→bb[..2]
 		// with direction reversed (sel.dir.reversed).
 		await setNativeSelection(edytor, at(edytor, 0), 1, at(edytor, 1), 2, { reversed: true });
-		expect(edytor.selection.state.isReversed).toBe(true);
-		expect(edytor.selection.state.isCollapsed).toBe(false);
+		expect(selectionState(edytor).isReversed).toBe(true);
+		expect(selectionState(edytor).isCollapsed).toBe(false);
 		await runCommand(edytor, 'deleteContentBackward');
 		await flushDomUpdates();
 		assertCanonicalTree(edytor, [p('a'), p('cc')]);
@@ -540,7 +541,7 @@ describe('golden command programs — typing over a block selection (flow.slot)'
 			</root>,
 			{ autoSelectFixture: false }
 		);
-		edytor.selection.selectBlocks(...edytor.root!.children);
+		selectBlocks(edytor, ...edytor.root!.children);
 		await flushDomUpdates();
 		await runCommand(edytor, 'insertText', 'Z');
 		await flushDomUpdates();

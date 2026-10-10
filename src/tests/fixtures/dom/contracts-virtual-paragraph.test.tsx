@@ -24,6 +24,7 @@ import {
 	renderDomEdytor,
 	type CanonicalBlock
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 type Peer = Awaited<ReturnType<typeof renderDomEdytor>>;
 
@@ -84,7 +85,7 @@ const shown = (peer: Peer) =>
 const registrySize = (peer: Peer) => [...peer.edytor.doc.get('blocks').attrKeys()].length;
 
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	return { block: startText?.parent.id, offset: yStart, collapsed: isCollapsed };
 };
 

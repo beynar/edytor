@@ -188,7 +188,7 @@ const resolveDropPoint = (edytor: Edytor, snapshot: Attempt) => {
 	const { selection } = edytor;
 	if (selection.selectedBlocks.size === 0 && selection.selectedInlineBlock.size === 0) return;
 	const at = dropPoint(edytor, snapshot);
-	if (at) selection.setAtTextOffset(at.text, at.offset);
+	if (at) selection.selectText(at.text, at.offset);
 	return at;
 };
 
@@ -274,9 +274,11 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	if (!target) {
 		return;
 	}
-	edytor.selection.setAtTextOffset(target.text, target.offset);
+	edytor.selection.selectText(target.text, target.offset);
 
-	const { startText, isCollapsed, yStart } = edytor.selection.state;
+	const { startText, yStart } = edytor.selection.textRange();
+
+	const { isCollapsed } = edytor.selection.projection;
 	const { isAtEndOfBlock, isAtStartOfBlock } = edytor.selection.projection;
 
 	if (!isCollapsed || !startText?.parent.parent) {

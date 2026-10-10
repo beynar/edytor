@@ -45,15 +45,15 @@ export function insertText(
 	{
 		value,
 		isAutoDot,
-		start = this.edytor.selection.state.yStart,
-		end = this.edytor.selection.state.yEnd,
+		start = this.edytor.selection.textRange().yStart,
+		end = this.edytor.selection.textRange().yEnd,
 		marks
 	}: TextOperations['insertText']
 ) {
 	const isCollapsed = start === end || !end;
 	// The caret's pending marks apply to an insertion at the caret, which consumes them.
 	const { selection } = this.edytor;
-	const { startText, yStart } = selection.state;
+	const { startText, yStart } = selection.textRange();
 	const pending = startText === this && yStart === start ? selection.pending : undefined;
 	marks ??= marksForInsertion(this, start, {
 		replaced: isCollapsed ? undefined : this.getMarksAtRange(start, end),
@@ -184,7 +184,8 @@ export const getNextGraphemeEnd = (value: string, offset: number) => {
 };
 
 export function deleteText(this: Text, { direction, length = 1 }: TextOperations['deleteText']) {
-	const { yStart, isCollapsed } = this.edytor.selection.state;
+	const { yStart } = this.edytor.selection.textRange();
+	const { isCollapsed } = this.edytor.selection.projection;
 	const requestedLength = Math.max(0, length);
 	const textLength = this.length;
 
@@ -218,8 +219,8 @@ export function deleteText(this: Text, { direction, length = 1 }: TextOperations
 export function removeMarksFromText(
 	this: Text,
 	{
-		start = this.edytor.selection.state.yStart || 0,
-		end = this.edytor.selection.state.yEnd || this.length
+		start = this.edytor.selection.textRange().yStart || 0,
+		end = this.edytor.selection.textRange().yEnd || this.length
 	}: TextOperations['removeMarksFromText']
 ) {
 	// Persisted mark changes delegate to the document: `clearMarks` discovers
@@ -234,8 +235,8 @@ export function markText(
 		mark,
 		value = true,
 		toggle = false,
-		start = this.edytor.selection.state.yStart,
-		end = this.edytor.selection.state.yEnd
+		start = this.edytor.selection.textRange().yStart,
+		end = this.edytor.selection.textRange().yEnd
 	}: TextOperations['markText']
 ) {
 	if (start === end) {
@@ -257,7 +258,7 @@ export function markText(
 // This function split a Y.Text at an index, delete what is after the index and returns the deleted content as a JSONText[]
 export function splitText(
 	this: Text,
-	{ index = this.edytor.selection.state.yStart }: TextOperations['splitText']
+	{ index = this.edytor.selection.textRange().yStart }: TextOperations['splitText']
 ) {
 	let offset = 0;
 	let content: JSONText[] = [];

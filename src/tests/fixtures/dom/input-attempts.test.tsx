@@ -30,6 +30,7 @@ import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor, setNativeSelection } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 /** Red on the reference; green since I1. */
 const row = it;
@@ -269,7 +270,7 @@ describe('F-I4 — a hook that throws fails the attempt', () => {
 
 				// The next keystroke works.
 				const before = firstText(edytor).stringContent;
-				const { yStart } = edytor.selection.state;
+				const { yStart } = selectionState(edytor);
 				beforeinput(firstText(edytor).node ?? editor, 'insertText', { data: 'y' });
 				await flushDomUpdates();
 				expect(firstText(edytor).stringContent).toBe(

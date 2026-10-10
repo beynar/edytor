@@ -169,7 +169,7 @@ export class Composition {
 		const resume = this.#resume;
 		this.#resume = null;
 		if (resume && resume !== 'lost') selection.select(resume);
-		const { startText, endText, yStart, yEnd } = selection.state;
+		const { startText, endText, yStart, yEnd } = selection.textRange();
 		this.phase = 'live';
 		this.#tail = this.#caret = this.#region = null;
 		this.#own.clear();
@@ -308,11 +308,11 @@ export class Composition {
 		}
 		const tail = this.tail();
 		this.occurred();
-		const { state, selectedBlocks, selectedInlineBlock } = this.edytor.selection;
+		const { projection, selectedBlocks, selectedInlineBlock } = this.edytor.selection;
 		const phantom =
 			tail &&
 			(event.key === 'Enter' || (event.key === 'Backspace' && isAppleWebKit())) &&
-			state.isCollapsed &&
+			projection.isCollapsed &&
 			!selectedBlocks.size &&
 			!selectedInlineBlock.size;
 		if (!phantom) return false;
@@ -369,10 +369,11 @@ export class Composition {
 	 */
 	#rangeless() {
 		const { edytor } = this;
-		const { selectedBlocks, state } = edytor.selection;
+		const { selectedBlocks, projection } = edytor.selection;
 		const exit = selectedBlocks.size
 			? selectedBlocksExit(edytor)
-			: state.startText && { text: state.startText, offset: state.yStart };
+			: edytor.selection.textAt(projection.start);
+
 		const at = this.#open() ? this.#at() : exit;
 		if (!at) return null;
 		flushSync();
@@ -549,7 +550,7 @@ export class Composition {
 		const { edytor } = this;
 		const { dispatcher, selection } = edytor;
 		// A command that moved the caret out of the region keeps it there.
-		const { startText: moved, yStart: movedAt } = selection.state;
+		const { startText: moved, yStart: movedAt } = selection.textRange();
 		const keep = this.#interrupted && moved && !this.covers(moved, movedAt);
 		this.#tail = this.host;
 		this.#ended = now();
@@ -575,7 +576,7 @@ export class Composition {
 			const typed = dispatcher.last?.status === 'applied' ? value.length : 0;
 			if (text) this.#caret = { text, offset: Math.min(at.offset + typed, text.length) };
 		}
-		const { startText, yStart } = selection.state;
+		const { startText, yStart } = selection.textRange();
 		const caret = keep && startText ? { text: startText, offset: yStart } : this.#caret;
 		this.#release();
 		if (caret) void edytor.stabilizeCompositionSelection(caret.text, caret.offset);

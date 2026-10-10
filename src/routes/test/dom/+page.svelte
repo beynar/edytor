@@ -696,7 +696,9 @@
 			// with in-range offsets. Text lengths ride along so the check
 			// needs no model access.
 			const owner = edytor?.document === document ? edytor : undefined;
-			const selectionState = owner?.selection?.state ?? null;
+			const selectionState = owner
+				? { ...owner.selection.textRange(), isCollapsed: owner.selection.projection.isCollapsed }
+				: null;
 			const selectionValue = owner?.selection.value;
 			// The endpoints' relative anchors in document order (`end` only for a range).
 			const [startAnchor, endAnchor] =
@@ -708,9 +710,7 @@
 				: [];
 			const hasSelection =
 				selectionState !== null &&
-				(selectionState.startText !== null ||
-					selectionState.startBlock !== null ||
-					selectedBlockIds.length > 0);
+				(selectionState.startText !== null || selectedBlockIds.length > 0);
 			// Per-block first/last EDITABLE text identity.
 			// `firstEditableText`/`lastEditableText` descend past noneditable
 			// children and skip container phantom slots — the returned text
@@ -848,9 +848,8 @@
 				selection: hasSelection
 					? {
 							kind: selectedBlockIds.length > 0 ? ('block' as const) : ('text' as const),
-							startBlockId:
-								selectionState.startText?.parent?.id ?? selectionState.startBlock?.id ?? null,
-							endBlockId: selectionState.endText?.parent?.id ?? selectionState.endBlock?.id ?? null,
+							startBlockId: selectionState.startText?.parent?.id ?? null,
+							endBlockId: selectionState.endText?.parent?.id ?? null,
 							startTextId: selectionState.startText?.id ?? null,
 							endTextId: selectionState.endText?.id ?? null,
 							// The endpoint's relative anchor — re-resolving it on the
@@ -1134,18 +1133,15 @@
 			};
 		}
 
+		const range = instance.selection.textRange();
 		return {
-			startBlockPath: instance.selection.state.startBlock?.path ?? null,
-			endBlockPath: instance.selection.state.endBlock?.path ?? null,
-			startTextPath: instance.selection.state.startText
-				? getPartPath(instance.selection.state.startText)
-				: null,
-			endTextPath: instance.selection.state.endText
-				? getPartPath(instance.selection.state.endText)
-				: null,
-			yStart: instance.selection.state.yStart,
-			yEnd: instance.selection.state.yEnd,
-			isCollapsed: instance.selection.state.isCollapsed,
+			startBlockPath: range.startText?.parent.path ?? null,
+			endBlockPath: range.endText?.parent.path ?? null,
+			startTextPath: range.startText ? getPartPath(range.startText) : null,
+			endTextPath: range.endText ? getPartPath(range.endText) : null,
+			yStart: range.yStart,
+			yEnd: range.yEnd,
+			isCollapsed: instance.selection.projection.isCollapsed,
 			selectedBlockPaths: Array.from(instance.selection.selectedBlocks).map((block) => block.path),
 			focusedBlockPaths: Array.from(instance.selection.focusedBlocks).map((block) => block.path)
 		};
@@ -1206,14 +1202,13 @@
 		const routeHotKeys: Record<string, HotKey> = {};
 
 		const insertProbeText = (edytor: EdytorContext, value: string) => {
-			const text = edytor.selection.state.startText;
-			const offset = edytor.selection.state.yStart;
+			const { startText: text, yStart: offset } = edytor.selection.textRange();
 			if (!text) {
 				return;
 			}
 
 			text.insertText({ value, start: offset, end: offset });
-			edytor.selection.setAtTextOffset(text, offset + value.length);
+			edytor.selection.selectText(text, offset + value.length);
 		};
 
 		if (data.enterHotkey) {

@@ -28,6 +28,7 @@ import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 /** Red on the reference (flipped to `it` by I2). */
 const row = it;
@@ -211,7 +212,7 @@ describe('F-I20 — the adoption diff prefers the attempt target (BI-8)', () => 
 					</root>
 				);
 				const block = firstBlock(edytor);
-				expect(edytor.selection.state.yStart).toBe(3);
+				expect(selectionState(edytor).yStart).toBe(3);
 				const remote = peer(edytor);
 				// A remote caret right after the bold l: it follows that atom.
 				const remoteCaret = remote.facade.anchorAt(block.id, 3)!;
@@ -248,7 +249,7 @@ describe('F-I20 — the adoption diff prefers the attempt target (BI-8)', () => 
 					</root>
 				);
 				const block = firstBlock(edytor);
-				expect([edytor.selection.state.yStart, edytor.selection.state.yEnd]).toEqual([0, 4]);
+				expect([selectionState(edytor).yStart, selectionState(edytor).yEnd]).toEqual([0, 4]);
 				const remote = peer(edytor);
 				// A remote caret inside the second word: `foo f|oo`.
 				const remoteCaret = remote.facade.anchorAt(block.id, 5)!;

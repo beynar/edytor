@@ -96,7 +96,10 @@ const getEventTextRepairTarget = (edytor: Edytor, event: Event) => {
 
 	return {
 		text,
-		offset: edytor.selection.state.startText === text ? edytor.selection.state.yStart : text.length
+		offset:
+			edytor.selection.textRange().startText === text
+				? edytor.selection.textRange().yStart
+				: text.length
 	};
 };
 
@@ -118,7 +121,7 @@ const driftRepairTarget = (
 	repair: boolean,
 	caret: TextPoint | null
 ) => {
-	const { startText, yStart } = edytor.selection.state;
+	const { startText, yStart } = edytor.selection.textRange();
 	const model = startText ? { text: startText, offset: yStart } : null;
 	const preferModel = repair || kindOf(getInputType(event)) === 'break';
 	return (
@@ -149,7 +152,7 @@ export const handleNativeLineBreakTextValue = async (edytor: Edytor, text: Text,
 			? 'insertLineBreak'
 			: 'insertParagraph';
 	text.refreshFromModel();
-	edytor.selection.setAtTextOffset(text, insertionIndex);
+	edytor.selection.selectText(text, insertionIndex);
 	await runOccurrence(edytor, { inputType, cancelable: false });
 	return true;
 };
@@ -169,7 +172,7 @@ const getExpandedSelectionInputText = (edytor: Edytor, event: Event) =>
 	!edytor.readonly &&
 	!edytor.isComposing &&
 	isTextInsertionInput(event) &&
-	!edytor.selection.state.isCollapsed &&
+	!edytor.selection.projection.isCollapsed &&
 	edytor.selection.selectedBlocks.size === 0
 		? event.data
 		: null;
@@ -179,7 +182,7 @@ const replaceExpandedSelectionFromInputOnlyText = (edytor: Edytor, value: string
 	if (!target) {
 		return false;
 	}
-	edytor.selection.setAtTextOffset(target.text, target.offset);
+	edytor.selection.selectText(target.text, target.offset);
 
 	target.text.insertText({
 		value,
@@ -187,7 +190,7 @@ const replaceExpandedSelectionFromInputOnlyText = (edytor: Edytor, value: string
 		end: target.offset
 	});
 	target.text.refreshFromModel();
-	edytor.selection.setAtTextOffset(target.text, target.offset + value.length);
+	edytor.selection.selectText(target.text, target.offset + value.length);
 	return true;
 };
 
@@ -221,7 +224,7 @@ const repairDrift = async (
 	// The attempt decided the caret; `select()` it — the projector displays it —
 	// unless a gesture came during the wait: the selection is then the user's.
 	if (edytor.intentSerial !== serial) return;
-	edytor.selection.setAtTextOffset(target.text, Math.min(target.offset, target.text.length));
+	edytor.selection.selectText(target.text, Math.min(target.offset, target.text.length));
 };
 
 /**

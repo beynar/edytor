@@ -147,7 +147,6 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 		// A pointer gesture abandons a live composition.
 		edytor.composition.abandon();
 		lastPointerDownInsideEditorAt = getEventTimeStamp(event);
-		edytor.selection.clearModelSelectionPreservation();
 		const { pointer } = edytor.selection;
 		// The margin gesture's press places no caret and starts no text drag.
 		if (pointer.claimed) return;
@@ -180,12 +179,11 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 			return;
 		}
 
-		const text = edytor.selection.state.startText;
+		const { startText: text, yStart: offset } = edytor.selection.textRange();
 		if (!text) {
 			return;
 		}
 
-		const offset = edytor.selection.state.yStart;
 		const applyMeaningfulDomSelection = () => {
 			const selection = getDomSelectionSnapshot(node);
 			if (!selection?.anchorNode || !selection.focusNode) {
@@ -222,14 +220,14 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 				return;
 			}
 
-			const s = edytor.selection.state;
+			const s = edytor.selection.textRange();
 			// A remote delivery or command may have legitimately moved the
 			// selection since the focus-time capture — the CURRENT state
 			// owns the caret then; writing the cached point would yank it
 			// back to a pre-update position. The cache only wins while the
 			// state still equals it, or when the browser collapsed the
 			// caret to its focus-reset spot (first editable text at 0).
-			if (!s.isCollapsed || !s.startText) {
+			if (!edytor.selection.projection.isCollapsed || !s.startText) {
 				return;
 			}
 			const focusReset = s.startText === edytor.root?.firstEditableText && s.yStart === 0;
@@ -238,7 +236,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 				return;
 			}
 
-			edytor.selection.setAtTextOffset(targetText, Math.min(targetOffset, targetText.length));
+			edytor.selection.selectText(targetText, Math.min(targetOffset, targetText.length));
 		};
 
 		queueMicrotask(restore);

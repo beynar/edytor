@@ -40,6 +40,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 /** Red on the reference; green since V3. */
 const row = it;
@@ -138,7 +139,7 @@ describe('F-S13 — a block-set delete authors its result selection (FP-7)', () 
 				record.bind(edytor);
 				const [first, middle] = edytor.root!.children;
 				await setNativeSelection(edytor, first!.firstText!, 2);
-				edytor.selection.selectBlocks(edytor.root!.children[selected]!);
+				selectBlocks(edytor, edytor.root!.children[selected]!);
 				await flushDomUpdates();
 				// FP-7: the end of the previous block's line; with the first block
 				// selected, the start of the next block's (YW-04).
@@ -181,7 +182,7 @@ describe('F-S13 — a block-set delete authors its result selection (FP-7)', () 
 		});
 		const middle = edytor.root!.children[1]!;
 		await setNativeSelection(edytor, middle.firstText!, 2);
-		edytor.selection.selectBlocks(middle);
+		selectBlocks(edytor, middle);
 		await flushDomUpdates();
 		fire(editor, keydown('Backspace'));
 		await flushDomUpdates();
@@ -198,7 +199,7 @@ describe('F-S13 — a block-set delete authors its result selection (FP-7)', () 
 			});
 			const [first, middle] = edytor.root!.children;
 			await setNativeSelection(edytor, middle!.firstText!, 2);
-			edytor.selection.selectBlocks(middle!);
+			selectBlocks(edytor, middle!);
 			await flushDomUpdates();
 			const cut = await dispatchCut(editor);
 			expect(cut.defaultPrevented).toBe(true);
@@ -422,7 +423,7 @@ describe('writes capture anchors at call time (L21 writeCollapsed…)', () => {
 			await setNativeSelection(edytor, aa!.firstText!, 0);
 			const remote = peer(edytor);
 			remote.facade.mergeBackward(bb!.id);
-			const write = edytor.selection.setAtTextOffset(bb!.firstText!, 1);
+			const write = edytor.selection.selectText(bb!.firstText!, 1);
 			remote.deliver();
 			await write;
 			await flushDomUpdates();
@@ -447,13 +448,13 @@ describe('writes capture anchors at call time (L21 writeCollapsed…)', () => {
 		remote.facade.mergeBackward(beta!.id);
 		await remote.push();
 		expect(dead.isInDocument).toBe(false);
-		await edytor.selection.setAtTextOffset(dead, 2);
+		await edytor.selection.selectText(dead, 2);
 		await flushDomUpdates();
 		expect(texts(edytor)).toEqual(['alphabeta', 'gamma']);
 		// The merged-into block (anchor contract: a dead text's atoms are
 		// followed through its record), never the seam's next sibling `gamma`.
 		expect(caret(edytor)).toMatchObject({ block: alpha!.id, isCollapsed: true });
-		expect(edytor.selection.state.startText?.isInDocument).toBe(true);
+		expect(selectionState(edytor).startText?.isInDocument).toBe(true);
 	});
 
 	pin('a range write whose blocks die while it waits lands at the seam', async () => {
@@ -469,7 +470,7 @@ describe('writes capture anchors at call time (L21 writeCollapsed…)', () => {
 		await setNativeSelection(edytor, cc!.firstText!, 0);
 		const remote = peer(edytor);
 		remote.facade.deleteBlock(bb!.id);
-		const write = edytor.selection.setAtRange(bb!.firstText!, 0, bb!.firstText!, 2);
+		const write = edytor.selection.selectText(bb!.firstText!, 0, bb!.firstText!, 2);
 		remote.deliver();
 		await write;
 		await flushDomUpdates();

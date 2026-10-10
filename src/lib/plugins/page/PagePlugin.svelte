@@ -84,9 +84,10 @@
 								),
 								group: 'Basic blocks',
 								// Asked of the view given (a `+`'s menu asks it of the block it adds).
-								isEnabled: (view = edytor) => Boolean(view.selection.state.startBlock?.convertible),
+								isEnabled: (view = edytor) =>
+									Boolean(view.selection.textRange().startText?.parent.convertible),
 								run: () => {
-									const block = edytor.selection.state.startBlock;
+									const block = edytor.selection.textRange().startText?.parent;
 									if (!block?.convertible || !edytor.dispatcher.permits()) return false;
 									const made = create();
 									const { pageId: raw, title: named } =

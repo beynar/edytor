@@ -15,7 +15,7 @@ export const caretRect = (edytor: Edytor): DOMRect | undefined => {
 		if (typeof range.getBoundingClientRect === 'function') rect = range.getBoundingClientRect();
 	}
 	if (!rect || (!rect.width && !rect.height)) {
-		rect = edytor.selection.state.startText?.node?.getBoundingClientRect();
+		rect = edytor.selection.textRange().startText?.node?.getBoundingClientRect();
 	}
 	return rect ?? editor.getBoundingClientRect();
 };

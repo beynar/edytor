@@ -61,6 +61,7 @@ import { suggestEnd } from '../../test.utils.js';
 import { fold, foldPlugin } from '../../dom/R6FoldKind.svelte';
 import { effectDispatcher } from '../../dom/r6Effects.svelte.js';
 import { truthOf } from '../../oracles/truth.js';
+import { selectionState } from '../../selection.js';
 
 /** Rows; those red on the reference (`arch-v2/ref-r7`) were `it.fails` in the tests-first commit. */
 const row = it;
@@ -693,7 +694,7 @@ describe('answers (b)–(f): what the observer does with each divergence', () =>
 			remote.deliver();
 			await flushDomUpdates();
 			expect(edytor.surface.epoch).toBeGreaterThan(epoch);
-			expect(edytor.selection.state.yStart).toBe(6);
+			expect(selectionState(edytor).yStart).toBe(6);
 		}
 	);
 });
@@ -796,7 +797,7 @@ describe('F-I22 — Android types natively into an empty block', () => {
 			expect(modelText(edytor, 0)).toBe('ab');
 			expect(await settled(edytor)).toEqual([]);
 			expect(domText(edytor, 0)).toBe('ab');
-			expect(edytor.selection.state.yStart).toBe(2);
+			expect(selectionState(edytor).yStart).toBe(2);
 		} finally {
 			restore();
 		}

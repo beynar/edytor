@@ -73,7 +73,10 @@ test.describe('bound inputs edit block properties', () => {
 		// The paragraph is selected as a block while the date field holds focus.
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.selection.selectBlocks(edytor.root.children[0]);
+			edytor.selection.select({
+				kind: 'blocks',
+				ids: [edytor.root.children[0]].map((block) => block.id)
+			});
 		});
 		// Day and month alike, so the segment order of the locale does not matter.
 		await page.keyboard.type('01012026', { delay: 20 });

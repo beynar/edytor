@@ -3,10 +3,9 @@
  * (`dragStart`, the drag's release, a normalization it held back), a press
  * on a block's non-editable chrome, a triple click, a drag across columns
  * (`acrossColumns`), a drag over inline atoms and `selectstart` on chrome.
- * It writes the selection only through the selection's own setters; the
+ * It writes the selection only through the selection's own writers; the
  * selection's DOM adoption reads `dragging` and `across` and asks `hold()`.
  */
-import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { Text } from '../text/text.svelte.js';
 import { blockSelection } from '$lib/session/selection.js';
 import { toTrailingParagraph } from '$lib/session/navigation.js';
@@ -203,7 +202,7 @@ export class SelectionPointer {
 		if (!point) return;
 		edytor.expectInternalFocus();
 		host.focus({ preventScroll: true });
-		this.selection.setAtTextOffset(point.text, point.offset);
+		this.selection.selectText(point.text, point.offset);
 	};
 
 	/** @internal */
@@ -221,7 +220,7 @@ export class SelectionPointer {
 		event.preventDefault();
 		this.selection.edytor.expectInternalFocus();
 		this.selection.edytor.node?.focus({ preventScroll: true });
-		this.selection.setAtTextOffset(targetText, 0);
+		this.selection.selectText(targetText, 0);
 	};
 
 	/**
@@ -236,18 +235,15 @@ export class SelectionPointer {
 		const clickedBlock = this.selection.getBlockOfNode(targetNode);
 		if (clickedBlock?.definition.void && !this.insideText(targetNode)) {
 			e.preventDefault();
-			this.selection.selectBlocks(clickedBlock);
+			this.selection.select(blockSelection([clickedBlock.id]));
 			return;
 		}
-
-		const targetBlock =
-			targetNode instanceof Node
-				? (this.selection.getTextOfNode(targetNode)?.parent ??
-					this.selection.getBlockOfNode(targetNode))
-				: this.selection.state.startText?.parent;
-		if (targetBlock) {
-			this.selection.preserveBlockRange(targetBlock);
-		}
+		const { selection } = this;
+		selection.selectLines(
+			targetNode
+				? (selection.getTextOfNode(targetNode)?.parent ?? selection.getBlockOfNode(targetNode))
+				: selection.textAt(selection.projection.start)?.text.parent
+		);
 	};
 
 	/** @internal */
@@ -311,7 +307,7 @@ export class SelectionPointer {
 
 	/** @internal */
 	placeAt = (text: Text, clientX: number, clientY: number) => {
-		this.selection.setAtTextOffset(text, this.offsetAt(text, clientX, clientY));
+		this.selection.selectText(text, this.offsetAt(text, clientX, clientY));
 	};
 
 	/** @internal */
@@ -402,7 +398,7 @@ export class SelectionPointer {
 			return;
 		}
 
-		this.selection.setAtTextOffset(point.text, point.offset);
+		this.selection.selectText(point.text, point.offset);
 	};
 
 	/** @internal */
@@ -428,38 +424,15 @@ export class SelectionPointer {
 			return;
 		}
 
+		// Two texts of one block hold an inline atom between them (a block's
+		// content alternates texts and atoms): the range is the drag's.
 		window.setTimeout(() => {
-			if (dragStart.text.parent !== dragEnd.text.parent) {
-				return;
-			}
-
 			const content = dragStart.text.parent.content;
-			const startIndex = content.indexOf(dragStart.text);
-			const endIndex = content.indexOf(dragEnd.text);
-			const firstTextIndex = Math.min(startIndex, endIndex);
-			const lastTextIndex = Math.max(startIndex, endIndex);
-			const hasInlineAtomBetweenTextPoints = content.some(
-				(part, index) =>
-					part instanceof InlineBlock && index > firstTextIndex && index < lastTextIndex
-			);
-			if (startIndex === -1 || endIndex === -1 || !hasInlineAtomBetweenTextPoints) {
+			const [from, to] = [content.indexOf(dragStart.text), content.indexOf(dragEnd.text)];
+			if (dragStart.text.parent !== dragEnd.text.parent || from < 0 || to < 0 || from === to)
 				return;
-			}
-
-			const isReversed = startIndex > endIndex;
-			const rangeStart = isReversed ? dragEnd : dragStart;
-			const rangeEnd = isReversed ? dragStart : dragEnd;
-			this.selection.clearInlineBlockSelection();
-			this.selection.setAtRange(
-				rangeStart.text,
-				rangeStart.offset,
-				rangeEnd.text,
-				rangeEnd.offset,
-				{
-					isReversed
-				}
-			);
-			this.selection.clearInlineBlockSelection();
+			const [start, end] = from < to ? [dragStart, dragEnd] : [dragEnd, dragStart];
+			this.selection.selectText(start.text, start.offset, end.text, end.offset, from > to);
 		});
 	};
 

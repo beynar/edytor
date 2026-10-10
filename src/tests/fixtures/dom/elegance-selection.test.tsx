@@ -8,7 +8,7 @@
  *    convention the model writers use (char before the caret for a
  *    collapsed caret, the start edge of the range otherwise). A caret
  *    inside a plain run after marked text reported the mark.
- *  - D7: `setAtBlockRange` had no staleness guard — a foreign selection
+ *  - D7: the block-range write had no staleness guard — a foreign selection
  *    landing mid-await got stomped by the stale write. Since V4 no writer
  *    waits: each request is selected in its turn and the projector displays
  *    the current value, so a newer move wins by construction.
@@ -25,6 +25,7 @@ import {
 	setNativeSelection,
 	dragSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 describe('D3 — caret-local currentMarks on native derives', () => {
 	test('a caret inside a plain run after marked text does not report the mark', async () => {
@@ -44,7 +45,7 @@ describe('D3 — caret-local currentMarks on native derives', () => {
 		// (unmarked), so currentMarks must not carry `bold`. The D3 bound
 		// (getMarksAtRange(0, yEnd)) unioned the whole prefix → {bold}.
 		await setNativeSelection(edytor, text, 3);
-		expect(edytor.selection.state.isCollapsed).toBe(true);
+		expect(selectionState(edytor).isCollapsed).toBe(true);
 		expect(edytor.selection.projection.marks.bold).toBeUndefined();
 
 		await setNativeSelection(edytor, text, 4);
@@ -76,7 +77,7 @@ describe('D3 — caret-local currentMarks on native derives', () => {
 		// Range starting inside the plain run — marks of the start edge
 		// ('c'), not the union of the range.
 		await setNativeSelection(edytor, text, 2, text, 4);
-		expect(edytor.selection.state.isCollapsed).toBe(false);
+		expect(selectionState(edytor).isCollapsed).toBe(false);
 		expect(edytor.selection.projection.marks.bold).toBeUndefined();
 
 		// Range starting inside the bold run reports bold.
@@ -115,7 +116,7 @@ describe('D8 — inline-block selection and deletion target cannot diverge', () 
 });
 
 describe('D7 — aligned guards on the DOM writers', () => {
-	test('a stale setAtBlockRange write cannot stomp a caret that landed mid-await', async () => {
+	test('a stale block-range write cannot stomp a caret that landed mid-await', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>hello world</paragraph>
@@ -125,21 +126,21 @@ describe('D7 — aligned guards on the DOM writers', () => {
 		const { edytor } = rendered;
 		const text = edytor.root!.children[0]!.firstText!;
 
-		await edytor.selection.setAtTextOffset(text, 1);
-		expect(edytor.selection.state.yStart).toBe(1);
+		await edytor.selection.selectText(text, 1);
+		expect(selectionState(edytor).yStart).toBe(1);
 
 		// Start the block-range write — its getTextNode lookups await at
 		// least one tick, so a fresher caret lands before the DOM write.
-		const pending = edytor.selection.setAtBlockRange(edytor.root!.children[0]!);
-		await edytor.selection.setAtTextOffset(text, 4);
+		const pending = edytor.selection.selectLines(edytor.root!.children[0]!);
+		await edytor.selection.selectText(text, 4);
 		await pending;
 		await flushDomUpdates();
 
 		// The caret that arrived mid-flight wins — before the guard the
 		// stale write re-derived the whole-block range over it.
-		expect(edytor.selection.state.isCollapsed).toBe(true);
-		expect(edytor.selection.state.startText).toBe(text);
-		expect(edytor.selection.state.yStart).toBe(4);
+		expect(selectionState(edytor).isCollapsed).toBe(true);
+		expect(selectionState(edytor).startText).toBe(text);
+		expect(selectionState(edytor).yStart).toBe(4);
 	});
 
 	// V4: there is no deferred write any more — a request is selected in its
@@ -147,9 +148,9 @@ describe('D7 — aligned guards on the DOM writers', () => {
 	// newer user move always wins (W1), whatever form the older request took.
 	// (The string-id form went with R2; R4's text handles read their id's block.)
 	for (const [name, request] of [
-		['a caret write', (e: Edytor, t: Text) => e.selection.setAtTextOffset(t, 4)],
-		['a range write', (e: Edytor, t: Text) => e.selection.setAtRange(t, 2, t, 6)],
-		['a block-range write', (e: Edytor, t: Text) => e.selection.setAtBlockRange(t.parent, 0, 4)]
+		['a caret write', (e: Edytor, t: Text) => e.selection.selectText(t, 4)],
+		['a range write', (e: Edytor, t: Text) => e.selection.selectText(t, 2, t, 6)],
+		['a block-range write', (e: Edytor, t: Text) => e.selection.selectLines(t.parent)]
 	] as const) {
 		test(`a user move after ${name} in the same turn wins, in the model and the DOM`, async () => {
 			const rendered = await renderDomEdytor(
@@ -160,20 +161,20 @@ describe('D7 — aligned guards on the DOM writers', () => {
 			);
 			const { edytor } = rendered;
 			const text = edytor.root!.children[0]!.firstText!;
-			await edytor.selection.setAtTextOffset(text, 0);
+			await edytor.selection.selectText(text, 0);
 			const pending = request(edytor, text);
 			await setNativeSelection(edytor, text, 1);
 			await pending;
 			await flushDomUpdates();
 
-			expect(edytor.selection.state.isCollapsed).toBe(true);
-			expect(edytor.selection.state.startText).toBe(text);
-			expect(edytor.selection.state.yStart).toBe(1);
+			expect(selectionState(edytor).isCollapsed).toBe(true);
+			expect(selectionState(edytor).startText).toBe(text);
+			expect(selectionState(edytor).yStart).toBe(1);
 			expect(window.getSelection()?.anchorOffset).toBe(1);
 		});
 	}
 
-	test('setAtRange writes the model in its turn', async () => {
+	test('a range write writes the model in its turn', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>hello world</paragraph>
@@ -184,8 +185,8 @@ describe('D7 — aligned guards on the DOM writers', () => {
 		const text = edytor.root!.children[0]!.firstText!;
 
 		// The model write lands in the request's turn, displayed or not.
-		void edytor.selection.setAtRange(text, 1, text, 4);
-		const state = edytor.selection.state;
+		void edytor.selection.selectText(text, 1, text, 4);
+		const state = selectionState(edytor);
 		expect(state.isCollapsed).toBe(false);
 		expect(state.startText).toBe(text);
 		expect(state.endText).toBe(text);
@@ -194,7 +195,7 @@ describe('D7 — aligned guards on the DOM writers', () => {
 		expect(edytor.selection.projection.content).toBe('ell');
 	});
 
-	test('setAtBlockRange writes the model in its turn', async () => {
+	test('a block-range write writes the model in its turn', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>hello world</paragraph>
@@ -204,8 +205,8 @@ describe('D7 — aligned guards on the DOM writers', () => {
 		const { edytor } = rendered;
 		const block = edytor.root!.children[0]!;
 
-		void edytor.selection.setAtBlockRange(block);
-		const state = edytor.selection.state;
+		void edytor.selection.selectLines(block);
+		const state = selectionState(edytor);
 		expect(state.isCollapsed).toBe(false);
 		expect(state.startText).toBe(block.firstText!);
 		expect(state.endText).toBe(block.lastText!);

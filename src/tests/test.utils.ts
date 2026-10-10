@@ -22,6 +22,7 @@ import type { SerializableContent } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import type { Awareness, YDoc } from '$lib/crdt/index.js';
 import { blocksBetween } from './order.helpers.js';
+import { selectionState } from './selection.js';
 
 type CursorPosition = {
 	path: number[];
@@ -402,7 +403,7 @@ export const createTestEdytor = (
 		const { path: endPath, offset: endOffset } = end ?? { path: startPath, offset: startOffset };
 		const { text: startText } = findBlockAndTextAtFixturePath(edytor, value, startPath);
 		const { text: endText } = findBlockAndTextAtFixturePath(edytor, value, endPath);
-		edytor.selection.setAtRange(startText, startOffset, endText, endOffset);
+		edytor.selection.selectText(startText, startOffset, endText, endOffset);
 	}
 
 	return { edytor, expect: expectEdytorValue(edytor) };
@@ -556,7 +557,7 @@ export const findBlockAndTextAtPath =
 	};
 
 export const expectSelection = (edytor: Edytor, expected: SelectionExpectation) => {
-	const { state } = edytor.selection;
+	const state = selectionState(edytor);
 
 	if (expected.startBlockPath) {
 		expect(state.startBlock?.path).toEqual(expected.startBlockPath);

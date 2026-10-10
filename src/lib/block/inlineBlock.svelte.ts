@@ -109,9 +109,9 @@ export class InlineBlock {
 			const [before, after] = [content[index - 1], content[index + 1]];
 			const { selection } = this.edytor;
 			if (event.clientX <= rect.left + INLINE_EDGE_CARET_THRESHOLD_PX && isTextPart(before))
-				return selection.setAtTextOffset(before, before.length);
+				return selection.selectText(before, before.length);
 			if (event.clientX >= rect.right - INLINE_EDGE_CARET_THRESHOLD_PX && isTextPart(after))
-				return selection.setAtTextOffset(after, 0);
+				return selection.selectText(after, 0);
 			selection.selectInlineBlock(this);
 			this.edytor.ports.surface.clear();
 			// The atom took the press: the caret the browser still leaves for it

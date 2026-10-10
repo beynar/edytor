@@ -1,6 +1,6 @@
 import type { EdytorSelection } from './selection.svelte.js';
 import type { Text } from '../text/text.svelte.js';
-import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
+import type { Edytor } from '$lib/edytor.svelte.js';
 import type { DomSelectionSnapshot } from './domSelection.js';
 import type { EdgeSide } from '$lib/session/editing/text.js';
 import { getTextContentOffsetAtPoint } from '$lib/events/domTextOffset.js';
@@ -241,76 +241,32 @@ export function getTextOfNode(this: EdytorSelection, node: Node | null, offset?:
 	return text ?? textOf(getStrayBoundaryTextElement(node, this.edytor.node));
 }
 
-export function getInlineBlockOfNode(this: EdytorSelection, node: Node | null) {
-	if (!node) return null;
-
+/** The inline atom at `node`: around it, or the first one inside it. */
+export const getInlineBlockOfNode = (edytor: Edytor, node: Node | null) => {
 	const element = getElementFromNode(node);
-	const inlineElement = element?.closest('[data-edytor-inline-block]');
-	if (inlineElement instanceof Element && this.edytor.node?.contains(inlineElement)) {
-		return this.edytor.nodeToInlineBlock.get(inlineElement) || null;
-	}
+	const around = element?.closest('[data-edytor-inline-block]');
+	const inline =
+		around && edytor.node?.contains(around)
+			? around
+			: element?.querySelector('[data-edytor-inline-block]');
+	return (inline && edytor.nodeToInlineBlock.get(inline)) || null;
+};
 
-	if (element instanceof Element) {
-		const nestedInlineElement = element.querySelector('[data-edytor-inline-block]');
-		if (nestedInlineElement instanceof Element) {
-			return this.edytor.nodeToInlineBlock.get(nestedInlineElement) || null;
-		}
-	}
-
-	return null;
-}
-
-export function getInlineBlockInSelectedRange(this: EdytorSelection, range: Range | undefined) {
-	if (!range || range.collapsed) {
-		return null;
-	}
-
-	const root =
-		range.commonAncestorContainer instanceof Element
-			? range.commonAncestorContainer
-			: range.commonAncestorContainer.parentElement;
-	if (!root) {
-		return null;
-	}
-
-	const inlineElements = [
-		...(root.matches('[data-edytor-inline-block]') ? [root] : []),
-		...Array.from(root.querySelectorAll('[data-edytor-inline-block]'))
-	].filter((element) => range.intersectsNode(element));
-	const inlineBlocks = new Set(
-		inlineElements
-			.map((element) => this.edytor.nodeToInlineBlock.get(element))
-			.filter((inlineBlock): inlineBlock is InlineBlock => Boolean(inlineBlock))
+/** The one inline atom a non-collapsed range covers, touching no text. */
+export const getInlineBlockInSelectedRange = (edytor: Edytor, range: Range | undefined) => {
+	const root = range && !range.collapsed ? getElementFromNode(range.commonAncestorContainer) : null;
+	if (!root) return null;
+	const inside = (selector: string) =>
+		[...(root.matches(selector) ? [root] : []), ...root.querySelectorAll(selector)].filter(
+			(element) => range!.intersectsNode(element)
+		);
+	const atoms = new Set(
+		inside('[data-edytor-inline-block]').flatMap(
+			(element) => edytor.nodeToInlineBlock.get(element) ?? []
+		)
 	);
-
-	if (inlineBlocks.size !== 1) {
-		return null;
-	}
-
-	const intersectsText = Array.from(root.querySelectorAll('[data-edytor-text]')).some((element) =>
-		range.intersectsNode(element)
-	);
-	if (intersectsText) {
-		return null;
-	}
-
-	return inlineBlocks.values().next().value ?? null;
-}
-
-export function getTextsInSelection(
-	this: EdytorSelection,
-	startNode: Node | null,
-	endNode: Node | null,
-	startOffset = 0,
-	endOffset = startOffset
-): { startText: Text | null; endText: Text | null; inlineBlock: InlineBlock | null } {
-	const startText = this.getTextOfNode(startNode, startOffset);
-	return {
-		startText,
-		endText: startText ? this.getTextOfNode(endNode, endOffset) : null,
-		inlineBlock: this.getInlineBlockOfNode(startNode)
-	};
-}
+	return atoms.size === 1 && !inside('[data-edytor-text]').length ? [...atoms][0] : null;
+};
 
 /**
  * The edge side of a collapsed DOM point at `offset` of `text`: inside
@@ -412,19 +368,4 @@ export const normalizeUtf16Boundary = (
 	}
 
 	return direction === 'backward' ? clamped - 1 : clamped + 1;
-};
-
-export const getRangesFromSelection = (
-	selection: Pick<Selection, 'getRangeAt' | 'rangeCount'> | DomSelectionSnapshot
-): Range[] => {
-	return Array.from({ length: selection.rangeCount }, (_, i) => selection.getRangeAt(i));
-};
-
-export const climbDom = (node: Node | undefined | null, cb: (node: Node) => void | true) => {
-	if (!node) return;
-	let parent: Node | HTMLElement | null = node;
-	while (parent) {
-		if (cb(parent)) break;
-		parent = parent.parentElement;
-	}
 };

@@ -315,11 +315,11 @@ describe('R5 — pending marks live in the selection value (L4)', () => {
 		);
 		const text = edytor.root!.children[0]!.firstText!;
 		await dispatchDomKeyDown(document, { key: 'b', code: 'KeyB', metaKey: true });
-		await edytor.selection.setAtTextOffset(text, 5);
+		await edytor.selection.selectText(text, 5);
 		const kept = edytor.selection.value;
 		expect(kept.kind === 'text' ? kept.pending : undefined).toEqual({ bold: true });
 
-		await edytor.selection.setAtTextOffset(text, 2);
+		await edytor.selection.selectText(text, 2);
 		const moved = edytor.selection.value;
 		expect(moved.kind === 'text' ? moved.pending : 'none').toBeUndefined();
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'x' });

@@ -99,7 +99,7 @@ export const cellAt = (table: Block, grid: TableGrid, row: number, column: numbe
 
 /** The cell holding the caret (or the selection's start), if it is a table's cell. */
 export const caretCell = (edytor: Edytor): Block | null => {
-	const block = edytor.selection.state.startBlock;
+	const block = edytor.selection.textRange().startText?.parent;
 	return block?.id && edytor.facade.isTableCell(block.id) ? block : null;
 };
 
@@ -213,7 +213,7 @@ export const tabFrom = (cell: Block, step: 1 | -1): boolean => {
 		const next = cellAt(table, grid, Math.floor(i / width), i % width);
 		const text = next?.lastText;
 		if (text) {
-			edytor.selection.setAtTextOffset(text, text.length);
+			edytor.selection.selectText(text, text.length);
 			return true;
 		}
 	}
@@ -234,7 +234,8 @@ export const tabFrom = (cell: Block, step: 1 | -1): boolean => {
 export const verticalFrom = (cell: Block, step: 1 | -1): boolean => {
 	const at = positionOf(cell);
 	const { edytor } = cell;
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart } = edytor.selection.textRange();
+	const { isCollapsed } = edytor.selection.projection;
 	if (!at || !isCollapsed || !startText) return false;
 	if (step < 0 ? startText !== cell.firstText : startText !== cell.lastText) return false;
 	const value = startText.stringContent;
@@ -251,10 +252,7 @@ export const verticalFrom = (cell: Block, step: 1 | -1): boolean => {
 			// line, at its x on the other line, as the browser moves it from there.
 			const other = caretBox(startText, yStart, step > 0);
 			if (!other || !sameLine(other, edge)) return false;
-			edytor.selection.setAtTextOffset(
-				startText,
-				landing(startText, -step as 1 | -1, caret, column)
-			);
+			edytor.selection.selectText(startText, landing(startText, -step as 1 | -1, caret, column));
 			return true;
 		}
 	} else if (step < 0 ? value.lastIndexOf('\n', yStart - 1) >= 0 : value.indexOf('\n', yStart) >= 0)
@@ -263,7 +261,7 @@ export const verticalFrom = (cell: Block, step: 1 | -1): boolean => {
 		const target = cellAt(at.table, at.grid, row, at.column);
 		const text = step < 0 ? target?.lastText : target?.firstText;
 		if (!text) continue;
-		edytor.selection.setAtTextOffset(text, landing(text, step, caret, column));
+		edytor.selection.selectText(text, landing(text, step, caret, column));
 		return true;
 	}
 	return false;

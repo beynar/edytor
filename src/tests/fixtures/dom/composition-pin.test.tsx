@@ -36,6 +36,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 /** Red on the reference (`arch-v2/ref-i4`): expected-fail until I4 flips it. */
 const row = it;
@@ -98,7 +99,7 @@ const textElements = (element: Element) =>
 const placeholders = (editor: HTMLElement) =>
 	editor.querySelectorAll('[data-edytor-text="true"][data-placeholder]').length;
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	return { block: startText?.parent.id, offset: yStart, isCollapsed };
 };
 

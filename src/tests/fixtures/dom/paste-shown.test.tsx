@@ -35,6 +35,7 @@ import {
 } from '../../dom/test.utils.js';
 import { hidden } from '$lib/selection/visibility.js';
 import { expectNoHiddenContent } from './invariants.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -51,7 +52,7 @@ const doc = (edytor: Edytor) => (edytor.value.children ?? []).map(outline);
 
 /** The caret as `text@offset`, collapsed. */
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	const text = (startText?.parent.value.content ?? []).map((p) => ('text' in p ? p.text : '@'));
 	return `${text.join('')}@${yStart}${isCollapsed ? '' : ' (range)'}`;
 };
@@ -298,7 +299,7 @@ describe('GX-01: the reported shapes on the real copy, drop and range paths', ()
 		expectNoHiddenContent(edytor);
 		expect(caret(edytor)).toBe('two@3');
 		const pasted = edytor.value.children![3]!.children!.at(-1)!.id;
-		expect(edytor.selection.state.startText?.parent.id).toBe(pasted);
+		expect(selectionState(edytor).startText?.parent.id).toBe(pasted);
 	});
 
 	it('a drop of x + a divider at hello| world', async () => {
@@ -423,7 +424,7 @@ describe('SW16-paste-2: a paste into an emptied document ends the caret after it
 					value: { children: [{ id: 'a', type: 'paragraph', content: [{ text: 'a' }] }] }
 				}
 			);
-			edytor.selection.selectBlocks(edytor.idToBlock.get('a')!);
+			selectBlocks(edytor, edytor.idToBlock.get('a')!);
 			await flushDomUpdates();
 			await dispatchDomKeyDown(document, { key: 'Backspace' });
 			await flushDomUpdates();
@@ -456,7 +457,7 @@ describe('DR-behavior-1: a paste into an emptied document ends on a shown line',
 				value: { children: [{ id: 'a', type: 'paragraph', content: [{ text: 'a' }] }] }
 			}
 		);
-		rendered.edytor.selection.selectBlocks(rendered.edytor.idToBlock.get('a')!);
+		selectBlocks(rendered.edytor, rendered.edytor.idToBlock.get('a')!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Backspace' });
 		await flushDomUpdates();
@@ -489,7 +490,7 @@ describe('DR-behavior-1: a paste into an emptied document ends on a shown line',
 			await flushDomUpdates();
 			expectNoHiddenContent(edytor);
 			expect(caret(edytor)).toBe(end);
-			expect(hidden(edytor.selection.state.startBlock!)).toBe(false);
+			expect(hidden(selectionState(edytor).startBlock!)).toBe(false);
 		});
 });
 
@@ -513,7 +514,7 @@ describe('SW16-behavior-1: a divider pasted into an emptied document leaves a li
 					value: { children: [{ id: 'a', type: 'paragraph', content: [{ text: 'a' }] }] }
 				}
 			);
-			edytor.selection.selectBlocks(edytor.idToBlock.get('a')!);
+			selectBlocks(edytor, edytor.idToBlock.get('a')!);
 			await flushDomUpdates();
 			await dispatchDomKeyDown(document, { key: 'Backspace' });
 			await flushDomUpdates();
@@ -522,6 +523,6 @@ describe('SW16-behavior-1: a divider pasted into an emptied document leaves a li
 			await flushDomUpdates();
 			expect(doc(edytor)).toEqual(placed);
 			expect(caret(edytor)).toBe('@0');
-			expect(edytor.selection.state.startBlock?.index).toBe(placed.length - 1);
+			expect(selectionState(edytor).startBlock?.index).toBe(placed.length - 1);
 		});
 });

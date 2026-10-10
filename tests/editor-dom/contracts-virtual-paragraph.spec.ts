@@ -80,7 +80,10 @@ test.describe('doc.empty.virtual', () => {
 			] as const) {
 				await page.evaluate((target) => {
 					const edytor = (window as EdytorWindow).__EDYTOR__;
-					edytor.selection.selectBlocks(edytor.idToBlock.get(target));
+					edytor.selection.select({
+						kind: 'blocks',
+						ids: [edytor.idToBlock.get(target)].map((block) => block.id)
+					});
 				}, id);
 				await page.locator('[data-edytor]').press('Backspace');
 			}

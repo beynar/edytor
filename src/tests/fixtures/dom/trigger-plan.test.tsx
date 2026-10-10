@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import type { Plugin, Prepared } from '$lib/index.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { dispatchDomBeforeInput, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 const EMOJI: Record<string, string> = { smile: '😄' };
 
@@ -16,7 +17,7 @@ const EMOJI: Record<string, string> = { smile: '😄' };
 const emojiPlugin: Plugin = (edytor) => ({
 	onBeforeOperation: ({ operation, payload, block, prevent }) => {
 		if (operation !== 'insertText' || payload.value !== ':') return;
-		const { startText: text, yStart } = edytor.selection.state;
+		const { startText: text, yStart } = selectionState(edytor);
 		if (!text) return;
 		const match = /:(\w+)$/.exec(text.stringContent.slice(0, yStart));
 		const emoji = match && EMOJI[match[1]!];
@@ -53,7 +54,7 @@ describe('a trigger as one plan', () => {
 		const steps = edytor.undoManager.undoStack.length;
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: ':' });
 		expect(textOf(edytor)).toBe('hi 😄');
-		expect(edytor.selection.state.yStart).toBe(5);
+		expect(selectionState(edytor).yStart).toBe(5);
 		expect(edytor.undoManager.undoStack.length).toBe(steps + 1);
 		edytor.historyUndo();
 		await flushDomUpdates();

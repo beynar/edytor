@@ -56,6 +56,8 @@ import {
 } from '../selection/selection.utils.js';
 import { project, type SelectionValue } from '../session/selection.js';
 import type { Attempt } from '../session/attempt.js';
+import type { RangeEndpoints } from '../edytor.utils.js';
+
 import { isAndroidChromeBrowser } from '../events/events.utils.js';
 import { isKindControl, isOwnPoint } from '../events/nativeInteractiveControl.js';
 
@@ -164,14 +166,8 @@ export class Projector {
 		// have mounted in this flush); otherwise an answered key displays nothing.
 		if (key === this.#done && (selection.value.kind === 'none' || selection.projection.start)) {
 			// Nothing to display; a DOM that still shows the value is observed.
-			const { startText, yStart, endText, yEnd, isReversed } = selection.state;
 			const dom = edytor.node && getDomSelection(edytor.node);
-			if (
-				dom &&
-				startText &&
-				endText &&
-				this.#shows(dom, startText, yStart, endText, yEnd, isReversed)
-			)
+			if (dom && this.#shows(dom, selection.textRange(), selection.projection.isReversed))
 				this.#seen = this.#flushes;
 			return;
 		}
@@ -190,7 +186,7 @@ export class Projector {
 	 */
 	mounted = (text: Text) => {
 		const { selection } = this.edytor;
-		const { startText, endText } = selection.state;
+		const { startText, endText } = selection.textRange();
 		const dead = selection.value.kind !== 'none' && !selection.projection.start;
 		if (this.#pending || dead || text === startText || text === endText)
 			this.edytor.surface.update();
@@ -336,14 +332,12 @@ export class Projector {
 			samePoint(displayed.focus, dom.focusNode, dom.focusOffset)
 		)
 			return true;
-		const { startText, yStart, endText, yEnd, isReversed, isCollapsed } = selection.state;
-		return Boolean(
+		const { isReversed, isCollapsed } = selection.projection;
+		return (
 			!isCollapsed &&
-			startText &&
-			endText &&
 			isTextBoundSelectionPoint(dom.anchorNode) &&
 			isTextBoundSelectionPoint(dom.focusNode) &&
-			this.#shows(dom, startText, yStart, endText, yEnd, isReversed)
+			this.#shows(dom, selection.textRange(), isReversed)
 		);
 	};
 
@@ -375,11 +369,11 @@ export class Projector {
 		)
 			return false;
 		const { attempt } = deleted;
-		const { startText, yStart, isCollapsed } = edytor.selection.state;
+		const { startText, yStart } = edytor.selection.textRange();
 		return Boolean(
 			attempt.isCollapsed &&
 			attempt.yStart === 0 &&
-			isCollapsed &&
+			edytor.selection.projection.isCollapsed &&
 			startText &&
 			startText !== attempt.startText &&
 			edytor.selection.getTextOfNode(dom.anchorNode) === startText &&
@@ -459,7 +453,9 @@ export class Projector {
 			}
 			return true;
 		}
-		const { startText, yStart, endText, yEnd, isCollapsed, isReversed } = selection.state;
+		const range = selection.textRange();
+		const { startText, yStart, endText, yEnd } = range;
+		const { isCollapsed, isReversed } = selection.projection;
 		if (!startText?.node?.isConnected || !endText?.node?.isConnected) return false;
 		const start = domPointOf(startText.node, yStart);
 		const end = isCollapsed ? start : domPointOf(endText.node, yEnd);
@@ -467,7 +463,7 @@ export class Projector {
 			? { anchor: end, focus: start }
 			: { anchor: start, focus: end };
 		// Already shown: an observation, whoever holds focus.
-		if (!this.#shows(dom, startText, yStart, endText, yEnd, isReversed)) {
+		if (!this.#shows(dom, range, isReversed)) {
 			if (!this.#ours(requested)) return true;
 			const active = getActiveElement(node);
 			if (!(active && node.contains(active))) {
@@ -511,13 +507,11 @@ export class Projector {
 	/** The live DOM selection already shows these endpoints (model coordinates, direction). */
 	#shows = (
 		dom: DomSelectionSnapshot | Selection,
-		startText: Text,
-		yStart: number,
-		endText: Text,
-		yEnd: number,
+		{ startText, yStart, endText, yEnd }: RangeEndpoints,
 		isReversed: boolean
 	) => {
-		if (!dom.anchorNode || !dom.focusNode || dom.rangeCount > 1) return false;
+		if (!startText || !endText || !dom.anchorNode || !dom.focusNode || dom.rangeCount > 1)
+			return false;
 		const collapsed = startText === endText && yStart === yEnd;
 		const [first, last] = isReversed
 			? [[dom.focusNode, dom.focusOffset] as const, [dom.anchorNode, dom.anchorOffset] as const]

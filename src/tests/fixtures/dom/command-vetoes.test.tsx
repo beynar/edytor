@@ -36,6 +36,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 /** Red on the reference; green since S2. */
 const row = it;
@@ -193,7 +194,7 @@ describe('F-M3 — a veto inside a composite', () => {
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: ' ' });
 		await flushDomUpdates();
 		expect(shape(edytor)).toEqual(['heading:']);
-		const { startText, yStart, isCollapsed } = edytor.selection.state;
+		const { startText, yStart, isCollapsed } = selectionState(edytor);
 		expect(startText).toBe(textOf(edytor, [0]));
 		expect([yStart, isCollapsed]).toEqual([0, true]);
 	});
@@ -242,7 +243,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
 		expect(shape(edytor)).toEqual(['paragraph:ab', 'paragraph:', '>paragraph:child']);
-		expect(edytor.selection.state.startText).toBe(textOf(edytor, [1]));
+		expect(selectionState(edytor).startText).toBe(textOf(edytor, [1]));
 	});
 
 	row('divider inside text: refusing the divider insertion refuses the split', async () => {
@@ -266,7 +267,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertHorizontalRule' });
 		expect(shape(edytor)).toEqual(['paragraph:ab', 'divider:', 'paragraph:cd']);
-		expect(edytor.selection.state.startText).toBe(textOf(edytor, [2]));
+		expect(selectionState(edytor).startText).toBe(textOf(edytor, [2]));
 	});
 
 	pin('divider in an empty block converts it, a fresh paragraph after', async () => {
@@ -278,7 +279,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertHorizontalRule' });
 		expect(shape(edytor)).toEqual(['divider:', 'paragraph:']);
-		expect(edytor.selection.state.startText).toBe(textOf(edytor, [1]));
+		expect(selectionState(edytor).startText).toBe(textOf(edytor, [1]));
 	});
 
 	pin('divider at a block start goes before it, the caret stays', async () => {
@@ -290,8 +291,8 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertHorizontalRule' });
 		expect(shape(edytor)).toEqual(['divider:', 'paragraph:ab']);
-		expect(edytor.selection.state.startText).toBe(textOf(edytor, [1]));
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(selectionState(edytor).startText).toBe(textOf(edytor, [1]));
+		expect(selectionState(edytor).yStart).toBe(0);
 	});
 
 	row('Backspace merge unnesting children: refusing the children move', async () => {

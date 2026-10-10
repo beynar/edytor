@@ -4,6 +4,7 @@ import { expect } from 'vitest';
 import { expectBlockInvariantSnapshot } from '../../../test.utils.js';
 import { addMentionAtSelection } from '../../helpers/model.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
+import { selectionState } from '../../../selection.js';
 
 export const fixtures = defineFixtures([
 	defineModelTransformFixture({
@@ -122,7 +123,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.removeInlineBlock({ index: 1 }),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 1 }),
 		output: (
 			<root>
 				<paragraph>Hello world!</paragraph>
@@ -138,7 +139,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.removeInlineBlock({ index: 1 }),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 1 }),
 		output: (
 			<root>
 				<paragraph>world</paragraph>
@@ -154,7 +155,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.removeInlineBlock({ index: 1 }),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 1 }),
 		output: (
 			<root>
 				<paragraph>Hello</paragraph>
@@ -170,7 +171,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.removeInlineBlock({ index: 1 }),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 1 }),
 		output: (
 			<root>
 				<paragraph></paragraph>
@@ -188,7 +189,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.removeInlineBlock({ index: 1 }),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 1 }),
 		output: (
 			<root>
 				<paragraph>
@@ -204,7 +205,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Hello| world</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.removeInlineBlock({ index: 0 }),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 0 }),
 		output: (
 			<root>
 				<paragraph>Hello world</paragraph>
@@ -220,7 +221,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.removeInlineBlock({ index: 99 }),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 99 }),
 		output: (
 			<root>
 				<paragraph>
@@ -244,7 +245,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) => {
-			const targetBlock = edytor.selection.state.startBlock;
+			const targetBlock = selectionState(edytor).startBlock;
 			const sourceBlock = edytor.root?.children[1];
 			if (!targetBlock || !sourceBlock) {
 				throw new Error('Missing block fixtures for pushContentIntoBlock');
@@ -274,7 +275,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) => {
-			const block = edytor.selection.state.startBlock;
+			const block = selectionState(edytor).startBlock;
 			if (!block) {
 				throw new Error('Missing block fixture for the text suggestion');
 			}
@@ -305,7 +306,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) => {
-			const block = edytor.selection.state.startBlock;
+			const block = selectionState(edytor).startBlock;
 			if (!block) {
 				throw new Error('Missing block fixture for grouped suggestion test');
 			}
@@ -347,7 +348,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) => {
-			const block = edytor.selection.state.startBlock;
+			const block = selectionState(edytor).startBlock;
 			if (!block) {
 				throw new Error('Missing block fixture for suggestion reset test');
 			}

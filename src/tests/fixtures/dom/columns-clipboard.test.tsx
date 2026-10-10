@@ -28,6 +28,7 @@ import {
 	p,
 	renderColumns
 } from './columns.helpers.js';
+import { selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -58,7 +59,7 @@ const doc = () => [
 ];
 
 const copyBlocks = async (edytor: Edytor, editor: HTMLElement, ...ids: string[]) => {
-	edytor.selection.selectBlocks(...ids.map((id) => block(edytor, id)));
+	selectBlocks(edytor, ...ids.map((id) => block(edytor, id)));
 	await flushDomUpdates();
 	return (await dispatchCopy(editor)).clipboardData;
 };

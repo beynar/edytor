@@ -303,7 +303,8 @@
 				if (!linkable()) return;
 				const href = pastedLink(e.clipboardData?.getData('text/plain'));
 				if (!href) return;
-				const { isCollapsed, startText: text, yStart } = edytor.selection.state;
+				const { startText: text, yStart } = edytor.selection.textRange();
+				const { isCollapsed } = edytor.selection.projection;
 				if (!isCollapsed)
 					return prevent(() =>
 						edytor.dispatcher.run('insertFromPaste', () => operations.setLinkAtRange({ href }))
@@ -337,7 +338,8 @@
 				if (autolinking || change.operation !== 'insertText') return;
 				const { payload, text, prevent } = change;
 				if (payload.value !== ' ' || !linkable()) return;
-				const { startText, yStart, isCollapsed } = edytor.selection.state;
+				const { startText, yStart } = edytor.selection.textRange();
+				const { isCollapsed } = edytor.selection.projection;
 				if (!isCollapsed || text !== startText || (payload.start ?? yStart) !== yStart) return;
 				const found = typedLink(text.stringContent.slice(0, yStart));
 				const end = found && found.start + found.href.length;

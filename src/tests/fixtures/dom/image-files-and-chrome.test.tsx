@@ -39,6 +39,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -348,7 +349,7 @@ describe('a dropped image file goes through `upload` (WU-21)', () => {
 		const { upload } = deferred();
 		const { edytor } = await mount(upload);
 		const [hello, after] = edytor.root!.children;
-		edytor.selection.selectBlocks(hello!);
+		selectBlocks(edytor, hello!);
 		await flushDomUpdates();
 		// Dropped inside `after`, after `af`.
 		const element = after!.firstText!.node!;
@@ -532,7 +533,7 @@ describe('alt, width and alignment (WU-21)', () => {
 
 	it('a copied image carries its alt in the HTML flavour', async () => {
 		const { edytor } = await withImage({ alt: 'Barn' });
-		edytor.selection.selectBlocks(edytor.idToBlock.get('img')!);
+		selectBlocks(edytor, edytor.idToBlock.get('img')!);
 		await flushDomUpdates();
 		const { clipboardData } = await dispatchCopy(edytor.node!);
 		expect(clipboardData['text/html']).toContain('alt="Barn"');
@@ -679,12 +680,12 @@ describe('the image chrome in the overlay (WU-21)', () => {
 	it('a selected image shows its toolbar without the pointer (keyboard)', async () => {
 		const { edytor } = await twoImages();
 		expect(chrome()).toBeNull();
-		edytor.selection.selectBlocks(edytor.idToBlock.get('b')!);
+		selectBlocks(edytor, edytor.idToBlock.get('b')!);
 		await settle();
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		await flushDomUpdates();
 		expect(pressedAlign()).toEqual(['left']);
-		edytor.selection.selectBlocks(edytor.idToBlock.get('p')!);
+		selectBlocks(edytor, edytor.idToBlock.get('p')!);
 		await settle();
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		await flushDomUpdates();

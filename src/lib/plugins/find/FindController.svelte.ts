@@ -92,7 +92,7 @@ export class FindController {
 	 */
 	open = (query?: string) => {
 		if (!this.isOpen || query !== undefined) {
-			const { startText, yStart } = this.edytor.selection.state;
+			const { startText, yStart } = this.edytor.selection.textRange();
 			this.#at = startText?.isInDocument
 				? this.edytor.facade.anchorAt(startText.blockId, startText.segStart + yStart, 'right')
 				: null;
@@ -121,7 +121,7 @@ export class FindController {
 		const start = block?.textAtOffset(match!.offset);
 		const end = block?.textAtOffset(match!.offset + match!.length);
 		if (start && end)
-			this.edytor.selection.setAtRange(start.text, start.offset, end.text, end.offset);
+			this.edytor.selection.selectText(start.text, start.offset, end.text, end.offset);
 		this.edytor.expectInternalFocus();
 		this.edytor.node?.focus({ preventScroll: true });
 	};

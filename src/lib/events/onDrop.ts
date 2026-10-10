@@ -124,7 +124,7 @@ export const onTextDragStart = (edytor: Edytor, event: DragEvent) => {
 	const root = edytor.node;
 	const value = edytor.selection.value;
 	if (!root || ownsEvent(root, event) || value.kind !== 'text') return;
-	if (edytor.selection.state.isCollapsed || edytor.isComposing) return;
+	if (edytor.selection.projection.isCollapsed || edytor.isComposing) return;
 	// Only a drag of the selection itself: another draggable in the host drags its own thing.
 	if (!startsInSelection(root, event.target)) return;
 	const fragment = createEdytorClipboardFragment(edytor);

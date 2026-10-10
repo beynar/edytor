@@ -39,6 +39,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 /** Red on the reference (`arch-v2/ref-r3`); green since R3. */
 const row = it;
@@ -175,8 +176,8 @@ describe('F-O5 (end to end) — 1,000 paragraphs through the mounted editor', ()
 		await flushDomUpdates();
 
 		expect(texts(edytor)).toEqual([`paragraph ${n - 1}`]);
-		expect(edytor.selection.state.startText?.stringContent).toBe(`paragraph ${n - 1}`);
-		expect(edytor.selection.state.yStart).toBe(1);
+		expect(selectionState(edytor).startText?.stringContent).toBe(`paragraph ${n - 1}`);
+		expect(selectionState(edytor).yStart).toBe(1);
 		if (!keep) unmount();
 		return m;
 	};
@@ -197,7 +198,7 @@ describe('F-O5 (end to end) — 1,000 paragraphs through the mounted editor', ()
 
 	const blockDelete = async (n: number, keep = false) => {
 		const { edytor, unmount } = await many(n);
-		edytor.selection.selectBlocks(...edytor.root!.children.slice(1));
+		selectBlocks(edytor, ...edytor.root!.children.slice(1));
 		await flushDomUpdates();
 		const m = meter(edytor);
 		const key = new KeyboardEvent('keydown', {
@@ -303,8 +304,8 @@ describe('operations never read the mirror mid-transaction', () => {
 		expect(texts(edytor)).toEqual(['alpha', 'be', 'ta', 'gamma']);
 		expect(m.reports).toHaveLength(1);
 		expect(m.projections).toBe(0);
-		expect(edytor.selection.state.startText?.stringContent).toBe('ta');
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(selectionState(edytor).startText?.stringContent).toBe('ta');
+		expect(selectionState(edytor).yStart).toBe(0);
 	});
 
 	row('Backspace at a block start (merge): one report, no projection', async () => {
@@ -317,8 +318,8 @@ describe('operations never read the mirror mid-transaction', () => {
 		expect(texts(edytor)).toEqual(['alphabeta', 'gamma']);
 		expect(m.reports).toHaveLength(1);
 		expect(m.projections).toBe(0);
-		expect(edytor.selection.state.startText?.stringContent).toBe('alphabeta');
-		expect(edytor.selection.state.yStart).toBe(5);
+		expect(selectionState(edytor).startText?.stringContent).toBe('alphabeta');
+		expect(selectionState(edytor).yStart).toBe(5);
 	});
 
 	row('a multi-line paste: one report, no projection, caret after the pasted text', async () => {
@@ -333,8 +334,8 @@ describe('operations never read the mirror mid-transaction', () => {
 		expect(texts(edytor)).toEqual(['alpha', 'beone', 'two', 'threeta', 'gamma']);
 		expect(m.reports).toHaveLength(1);
 		expect(m.projections).toBe(0);
-		expect(edytor.selection.state.startText?.stringContent).toBe('threeta');
-		expect(edytor.selection.state.yStart).toBe(5);
+		expect(selectionState(edytor).startText?.stringContent).toBe('threeta');
+		expect(selectionState(edytor).yStart).toBe(5);
 	});
 
 	row('Tab (nest): one report, no projection', async () => {
@@ -395,7 +396,7 @@ describe('sel.ride.* with the mirror patched at the commit', () => {
 		});
 		m.stop();
 
-		const { startText, yStart, isCollapsed } = edytor.selection.state;
+		const { startText, yStart, isCollapsed } = selectionState(edytor);
 		expect(texts(edytor)).toEqual(['BCAHello world']);
 		expect(startText).toBe(edytor.root!.children[0]!.firstText);
 		expect(startText?.stringContent).toBe('BCAHello world');
@@ -420,12 +421,12 @@ describe('sel.ride.* with the mirror patched at the commit', () => {
 			remote.facade.insertText(block.id, 9, 'X');
 			remote.push();
 
-			const { startText, yStart } = edytor.selection.state;
+			const { startText, yStart } = selectionState(edytor);
 			expect(texts(edytor)).toEqual(['Say HelloX world']);
 			expect(startText).toBe(edytor.root!.children[0]!.firstText);
 			expect(yStart).toBe(9);
 			await flushDomUpdates();
-			expect(edytor.selection.state.yStart).toBe(9);
+			expect(selectionState(edytor).yStart).toBe(9);
 		}
 	);
 
@@ -443,13 +444,13 @@ describe('sel.ride.* with the mirror patched at the commit', () => {
 		remote.facade.mergeBackward(beta!.id);
 		remote.push();
 
-		const { startText, yStart } = edytor.selection.state;
+		const { startText, yStart } = selectionState(edytor);
 		expect(texts(edytor)).toEqual(['alphabeta']);
 		expect(startText).toBe(alpha!.firstText);
 		expect(yStart).toBe(7);
 		await flushDomUpdates();
-		expect(edytor.selection.state.startText?.stringContent).toBe('alphabeta');
-		expect(edytor.selection.state.yStart).toBe(7);
+		expect(selectionState(edytor).startText?.stringContent).toBe('alphabeta');
+		expect(selectionState(edytor).yStart).toBe(7);
 	});
 
 	row(
@@ -471,7 +472,7 @@ describe('sel.ride.* with the mirror patched at the commit', () => {
 			});
 			m.stop();
 
-			const { startText, yStart } = edytor.selection.state;
+			const { startText, yStart } = selectionState(edytor);
 			expect(texts(edytor)).toEqual(['>alphabeta']);
 			expect(startText).toBe(edytor.root!.children[0]!.firstText);
 			expect(yStart).toBe(8);

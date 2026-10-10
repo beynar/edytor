@@ -181,7 +181,7 @@ export const statsPlugin: Plugin = () => ({
 
 - `onChange(value)` runs after every commit that changed the visible document: local edits, remote edits and undo or redo. `value` is the full JSON export, computed only when an `onChange` consumer exists. It is the same value the `<Edytor onChange>` prop receives.
 - `onDocChange(change)` runs after the same commits with the change report (`DocChange`: the blocks added, removed, moved, retyped or edited) and exports nothing, so a plugin that reacts to some blocks pays for those only. The report is shared with every other consumer and view, so it is read-only. A hook that throws is logged and the other consumers still run, as for `onChange`.
-- `onSelectionChange(selection)` runs after the selection value changed. A remote edit that only shifts where the selection is drawn does not trigger it. `selection` is the editor's `EdytorSelection`: `selection.value` is the value, `selection.state` the resolved texts and offsets.
+- `onSelectionChange(selection)` runs after the selection value changed. A remote edit that only shifts where the selection is drawn does not trigger it. `selection` is the editor's `EdytorSelection`: `selection.value` is the value, `selection.projection` its blocks and offsets, `selection.caret` the caret as `{ block, offset }`.
 
 ## Input and clipboard hooks
 
@@ -230,9 +230,9 @@ export const todoCommandsPlugin: Plugin = () => ({
 			label: 'Toggle to-do',
 			icon: '☑',
 			keywords: ['check', 'done'],
-			isEnabled: (edytor) => edytor.selection.state.startBlock?.type === 'todo-item',
+			isEnabled: (edytor) => edytor.selection.caret?.block.type === 'todo-item',
 			run: (edytor) => {
-				const block = edytor.selection.state.startBlock;
+				const block = edytor.selection.caret?.block;
 				block?.setBlock({ value: { data: { ...block.data, checked: !block.data.checked } } });
 			}
 		}
@@ -253,7 +253,7 @@ export const todoCommandsPlugin: Plugin = () => ({
   }}
 />
 
-`isEnabled` hides the command wherever it answers `false`: the slash menu does not list it and `edytor.runCommand(id)` answers `false` without running it. Read the selection from the `edytor` it receives, not from an editor your plugin captured: the menu the block handle's `+` opens asks it of the block being added, through an `edytor` whose `selection.state` is a caret at the start of that block, an empty block of the parent's default kind (a stand-in with that `type` and the real `parent`, since the block does not exist yet). So `todo.toggle` above is not listed in a `+` menu: the block a `+` adds beside a to-do is a paragraph. A command that checks the parent (`startBlock?.parent?.type === 'callout'`) is listed beside a callout's children. See [From the block handle](/docs/plugins/slash-menu#from-the-block-handle).
+`isEnabled` hides the command wherever it answers `false`: the slash menu does not list it and `edytor.runCommand(id)` answers `false` without running it. Read the selection from the `edytor` it receives, not from an editor your plugin captured: the menu the block handle's `+` opens asks it of the block being added, through an `edytor` whose `selection.caret` is at the start of that block, an empty block of the parent's default kind (a stand-in with that `type` and the real `parent`, since the block does not exist yet). So `todo.toggle` above is not listed in a `+` menu: the block a `+` adds beside a to-do is a paragraph. A command that checks the parent (`caret?.block.parent?.type === 'callout'`) is listed beside a callout's children. See [From the block handle](/docs/plugins/slash-menu#from-the-block-handle).
 
 Run a command by id with `edytor.runCommand(id)`. Block kinds with presets generate commands too, see [Blocks](/docs/customization/blocks#presets). See also [Commands](/docs/editor/commands).
 

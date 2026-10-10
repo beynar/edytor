@@ -22,6 +22,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -61,11 +62,11 @@ const shape = ({ edytor }: View) => {
 };
 const get = ({ edytor }: View, id: string) => edytor.idToBlock.get(id)!;
 const caret = ({ edytor }: View) => {
-	const { startBlock, yStart } = edytor.selection.state;
+	const { startBlock, yStart } = selectionState(edytor);
 	return [startBlock?.id, yStart];
 };
 const at = async (view: View, id: string, offset: number) => {
-	view.edytor.selection.setAtTextOffset(get(view, id).firstText!, offset);
+	view.edytor.selection.selectText(get(view, id).firstText!, offset);
 	await flushDomUpdates();
 };
 const enter = (view: View) => dispatchDomBeforeInput(view.editor, { inputType: 'insertParagraph' });
@@ -264,7 +265,7 @@ describe('Turn into the kind an item already shows as (DR-behavior-3)', () => {
 		);
 		expect(rowOf(view.edytor, get(view, 'b'))?.label).toBe('Bulleted list');
 		expect(rowOf(view.edytor, get(view, 'n'))?.label).toBe('Numbered list');
-		view.edytor.selection.setAtRange(get(view, 'b').firstText!, 0, get(view, 'b').firstText!, 1);
+		view.edytor.selection.selectText(get(view, 'b').firstText!, 0, get(view, 'b').firstText!, 1);
 		await flushDomUpdates();
 		expect(document.querySelector('.toolbar-type')?.textContent).toBe('Bulleted list');
 	});

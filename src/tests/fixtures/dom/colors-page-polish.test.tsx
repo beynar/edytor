@@ -34,6 +34,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -292,12 +293,12 @@ describe('Opening a page block', () => {
 	it('Enter over the page block selected alone opens it; over several, nothing opens', async () => {
 		const open = vi.fn();
 		const view = await render([page('g', 'p-1'), p('z')], [createPagePlugin({ open })]);
-		view.edytor.selection.selectBlocks(get(view, 'g'));
+		selectBlocks(view.edytor, get(view, 'g'));
 		await flushDomUpdates();
 		await dispatchDomKeyDown(view.editor, { key: 'Enter' });
 		expect(open).toHaveBeenCalledWith('p-1', { newTab: false });
 		open.mockClear();
-		view.edytor.selection.selectBlocks(get(view, 'g'), get(view, 'z'));
+		selectBlocks(view.edytor, get(view, 'g'), get(view, 'z'));
 		await flushDomUpdates();
 		await dispatchDomKeyDown(view.editor, { key: 'Enter' });
 		expect(open).not.toHaveBeenCalled();

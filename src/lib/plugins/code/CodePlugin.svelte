@@ -67,7 +67,8 @@
 			 * as code editors do.
 			 */
 			const touchedLines = () => {
-				const { startText, endText, yEnd, isCollapsed } = edytor.selection.state;
+				const { startText, endText, yEnd } = edytor.selection.textRange();
+				const { isCollapsed } = edytor.selection.projection;
 				const [from, to] = [startText?.parent, endText?.parent];
 				if (from?.type !== 'codeLine' || to?.type !== 'codeLine' || from.parent !== to.parent)
 					return null;
@@ -83,7 +84,8 @@
 			 * move. The selection keeps its characters.
 			 */
 			const indent = (step: 1 | -1) => {
-				const { startText, endText, yStart, yEnd, isReversed } = edytor.selection.state;
+				const { startText, endText, yStart, yEnd } = edytor.selection.textRange();
+				const { isReversed } = edytor.selection.projection;
 				const shifts = new Map<Text, number>();
 				const kind = step > 0 ? 'indentLines' : 'dedentLines';
 				edytor.dispatcher.each(kind, touchedLines() ?? [], (line) => {
@@ -101,12 +103,12 @@
 				const moved = (text: Text | null, offset: number) =>
 					Math.max(0, offset + (text ? (shifts.get(text) ?? 0) : 0));
 				if (startText && endText)
-					edytor.selection.setAtRange(
+					edytor.selection.selectText(
 						startText,
 						moved(startText, yStart),
 						endText,
 						moved(endText, yEnd),
-						{ isReversed }
+						isReversed
 					);
 			};
 
@@ -139,23 +141,27 @@
 					'mod+a': ({ prevent }) => {
 						// Select the code block's text; once it is (or when it has none), Select
 						// all takes the next step: the code block.
-						const { startBlock, startText, endText, yStart, yEnd } = edytor.selection.state;
+						const { startText, endText, yStart, yEnd } = edytor.selection.textRange();
+						const startBlock = startText?.parent;
 						if (startBlock?.type !== 'codeLine' || edytor.selection.selectedBlocks.size) return;
 						const code = edytor.idToBlock.get(edytor.selection.projection.islandRoot ?? '');
 						const [first, last] = [code?.firstEditableText, code?.lastEditableText];
 						if (!first || !last) return;
 						const whole =
 							startText === first && yStart === 0 && endText === last && yEnd === last.length;
-						if (!whole) prevent(() => edytor.selection.setAtTextsRange(first, last));
+						if (!whole) prevent(() => edytor.selection.selectText(first, 0, last, last.length));
 					},
 					escape: () => {
 						// A completion (`end` suggestion) in a code line goes; the key goes on.
-						const { startBlock } = edytor.selection.state;
+						const { startText } = edytor.selection.textRange();
+						const startBlock = startText?.parent;
 						if (startBlock?.type === 'codeLine')
 							for (const ghost of edytor.suggestions.at(startBlock.id).end) ghost.discard();
 					},
 					tab: ({ prevent }) => {
-						const { startText, yStart, startBlock, isCollapsed } = edytor.selection.state;
+						const { startText, yStart } = edytor.selection.textRange();
+						const { isCollapsed } = edytor.selection.projection;
+						const startBlock = startText?.parent;
 						if (startText?.parent.type !== 'codeLine') return;
 						// Tab accepts a completion in a code line (its caret ends it), else indents.
 						const ghost = startBlock && edytor.suggestions.at(startBlock.id).end.at(-1);
@@ -163,7 +169,7 @@
 						if (isCollapsed) {
 							return prevent(() => {
 								startText.insertText({ value: '\t', start: yStart, end: yStart });
-								edytor.selection.setAtTextOffset(startText, yStart + 1);
+								edytor.selection.selectText(startText, yStart + 1);
 							});
 						}
 						if (touchedLines()) prevent(() => indent(1));
@@ -173,7 +179,9 @@
 					},
 					'shift+enter': ({ prevent }) => {
 						// Always a new line, in the empty last line too (where Enter leaves the block).
-						const { startBlock: line, isCollapsed } = edytor.selection.state;
+						const { startText } = edytor.selection.textRange();
+						const { isCollapsed } = edytor.selection.projection;
+						const line = startText?.parent;
 						if (line?.type !== 'codeLine') return;
 						if (isCollapsed && line.isEmpty) {
 							const next = () => line.insertBlockAfter({ block: { type: 'codeLine' } });
@@ -209,7 +217,8 @@
 						});
 					}
 					if (block.type !== 'codeLine') return;
-					const { startText, yStart, isCollapsed } = edytor.selection.state;
+					const { startText, yStart } = edytor.selection.textRange();
+					const { isCollapsed } = edytor.selection.projection;
 					if (operation === 'insertText' && isCollapsed && startText) {
 						const { value } = payload;
 						const [at, line] = [payload.start ?? yStart, startText.stringContent];

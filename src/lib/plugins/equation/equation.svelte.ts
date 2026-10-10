@@ -1,4 +1,5 @@
 import { untrack, type Snippet } from 'svelte';
+import { blockSelection } from '$lib/session/selection.js';
 import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
@@ -312,7 +313,7 @@ export class EquationEditor {
 				block.removeInlineBlock({ index: atom.index });
 				if (keys) selection.setCaret({ block, offset });
 			} else if (keys) selection.setCaret({ block, offset: offset + 1 });
-		} else if (keys) selection.selectBlocks(block);
+		} else if (keys) selection.select(blockSelection([block.id]));
 		if (keys) takeKeys(this.edytor);
 	};
 

@@ -51,7 +51,7 @@ export const inputRulesHook = (
 		if (edytor.dispatcher.command?.startsWith('insertFrom')) return;
 		const { payload, block, prevent, text } = change;
 		const caret = edytor.selection.caret;
-		const { startText, yStart } = edytor.selection.state;
+		const { startText, yStart } = edytor.selection.textRange();
 		// Only text typed at the caret: an insertion elsewhere completes no rule.
 		if (!caret || !startText || text !== startText || caret.block.id !== block.id) return;
 		if ((payload.start ?? yStart) !== yStart || (payload.end ?? yStart) !== yStart) return;

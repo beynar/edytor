@@ -20,6 +20,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import type { EngineDoc, EngineNode } from '$lib/crdt/engine-api.js';
+import { selectionState } from '../../selection.js';
 
 const empty = (
 	<root>
@@ -46,7 +47,7 @@ const shape = (edytor: Mounted['edytor']) => {
 	return (edytor.value.children ?? []).map(show);
 };
 const caret = (edytor: Mounted['edytor']) => {
-	const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+	const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 	return [startBlock?.type, startBlock?.firstText?.stringContent, yStart, isCollapsed];
 };
 
@@ -54,7 +55,7 @@ const at = async (edytor: Mounted['edytor'], path: number[], end: boolean) => {
 	let block = edytor.root!;
 	for (const index of path) block = block.children[index]!;
 	const t = end ? block.lastText! : block.firstText!;
-	edytor.selection.setAtTextOffset(t, end ? t.length : 0);
+	edytor.selection.selectText(t, end ? t.length : 0);
 	await flushDomUpdates();
 };
 
@@ -196,7 +197,7 @@ describe('YW-07: Enter at the end of a typeless block with children', () => {
 		nodeOf('A').deleteAttr('type');
 		await flushDomUpdates();
 		const a = edytor.idToBlock.get('A')!;
-		edytor.selection.setAtTextOffset(a.lastText!, 5);
+		edytor.selection.selectText(a.lastText!, 5);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
 		const born = edytor.facade.order().filter((id) => !['Q', 'A', 'A1'].includes(id));
@@ -327,7 +328,7 @@ describe('ZW-01: the keys never leave a non-item directly in a list', () => {
 	it('Tab over two paragraphs after a list → both nest under the last item', async () => {
 		const { edytor } = await render([p('p'), ul(li('a'), li('b')), p('q'), p('r')]);
 		const [q, r] = edytor.root!.children.slice(2);
-		edytor.selection.setAtRange(q!.firstText!, 0, r!.firstText!, 1);
+		edytor.selection.selectText(q!.firstText!, 0, r!.firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab' });
 		expect(shape(edytor)).toEqual([
@@ -364,7 +365,7 @@ describe('DR-crdt-1/2: outdent and shed blocks next to a list, on every path', (
 	it('Shift+Tab over two paragraphs under an item → both are items of the list', async () => {
 		const { edytor } = await render([p('p'), ul(li('a', [p('x'), p('y')]))]);
 		const [x, y] = edytor.root!.children[1]!.children[0]!.children;
-		edytor.selection.setAtRange(x!.firstText!, 0, y!.firstText!, 1);
+		edytor.selection.selectText(x!.firstText!, 0, y!.firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab', shiftKey: true });
 		expect(shape(edytor)).toEqual(outdented);

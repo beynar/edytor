@@ -974,7 +974,7 @@ describe('docs drift', () => {
 		);
 	});
 
-	it('a selected list stands for its subtree through selectedMembers; an edge divider is left out (HX-02, HX-07, HX-08)', () => {
+	it('a selected list stands for its subtree through selectedMembers (HX-02, HX-07)', () => {
 		const read = (path: string) => readFileSync(join(root, `site/content/docs/${path}`), 'utf8');
 		const members = 'a selected list or code block with';
 		expect(read('editor/commands.mdx')).toContain(
@@ -994,9 +994,6 @@ describe('docs drift', () => {
 		);
 		expect(read('plugins/block-menu.mdx')).toContain(
 			'A list or a code block is one block to the menu'
-		);
-		expect(read('editor/selection.mdx')).toContain(
-			'A divider that starts or ends the document has no line beyond it, so it is left out'
 		);
 	});
 

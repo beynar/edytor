@@ -23,6 +23,7 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONText, SerializableContent } from '$lib/utils/json.js';
 import { truthOf } from '../../oracles/truth.js';
 import { dispatchCopy, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 /** Red on the reference; green since P2.7. */
 const row = it;
@@ -67,7 +68,7 @@ const rendered = (editor: HTMLElement) => {
 
 /** The readable HTML flavour of a copy of the whole first block. */
 const exported = async (edytor: Edytor, editor: HTMLElement) => {
-	edytor.selection.selectBlocks(edytor.root!.children[0]!);
+	selectBlocks(edytor, edytor.root!.children[0]!);
 	await flushDomUpdates();
 	const html = (await dispatchCopy(editor)).clipboardData['text/html'] ?? '';
 	return html.slice(html.indexOf('</span>') + '</span>'.length);

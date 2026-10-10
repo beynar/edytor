@@ -41,6 +41,7 @@ import {
 	at,
 	type CommandPeer
 } from './command-peer-set.js';
+import { selectionState } from '../../selection.js';
 
 export const COMMAND_SEED: JSONDoc = {
 	children: [
@@ -70,7 +71,7 @@ export const signatureOf = (peer: CommandPeer): PeerSignature => ({
 });
 
 const selectionOf = (peer: CommandPeer) => {
-	const s = peer.edytor.selection.state;
+	const s = selectionState(peer.edytor);
 	return {
 		text: s.startText?.stringContent,
 		yStart: s.yStart,
@@ -132,7 +133,7 @@ export const runCommandScenario = async (): Promise<
 		set.deliver('A', 'B');
 		await flushDomUpdates();
 		await quiesce();
-		if (!B.edytor.selection.state.startText?.isInDocument) {
+		if (!selectionState(B.edytor).startText?.isInDocument) {
 			throw new Error('B caret did not recover to live text');
 		}
 		// The recovered seam position — captured BEFORE the follow-up insert

@@ -9,7 +9,7 @@
 	export const mentionPlugin: Plugin = (edytor) => ({
 		onBeforeOperation: ({ operation, payload, block, prevent }) => {
 			if (operation !== 'insertText' || payload.value !== '@') return;
-			const { yStart, startText } = edytor.selection.state;
+			const { yStart, startText } = edytor.selection.textRange();
 			if (!startText) return;
 			// The atom replaces the typed `@`; the caret lands after it.
 			prevent(() => {

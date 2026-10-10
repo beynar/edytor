@@ -16,7 +16,7 @@ export const copySelection = (edytor: Edytor, e: ClipboardEvent, hook: 'onCopy' 
 	// A copy or cut in a kind's own control (a bound field, a nested
 	// editable island) is the control's: overriding it would put the model
 	// selection's fragment on the clipboard, and a cut would delete it (`ownsEvent`).
-	if (edytor.selection.state.isVoidEditableElement || ownsEvent(edytor.node, e)) return false;
+	if (edytor.selection.voidField || ownsEvent(edytor.node, e)) return false;
 
 	observeInternalDragSources(edytor.node?.getRootNode());
 	observeShiftPasteModifier(edytor.node?.getRootNode());

@@ -40,6 +40,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 /**
  * Rows still red (expected-fail). Red on the reference (arch-v2/ref-s7): F-U1
@@ -96,7 +97,7 @@ const peer = (edytor: Edytor) => {
 
 /** The caret as (block id, display offset): the plan's coordinates. */
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	return {
 		block: startText?.parent.id ?? null,
 		offset: startText ? startText.segStart + yStart : null,
@@ -184,7 +185,7 @@ describe('S7 — history restores the issuing view’s recorded selection', () =
 				const first = list.children[0]!;
 				editor.focus();
 				await setNativeSelection(edytor, first.firstText!, 1);
-				edytor.selection.selectBlocks(first);
+				selectBlocks(edytor, first);
 				await flushDomUpdates();
 				edytor.undoManager.stopCapturing();
 				await dispatchDomKeyDown(editor, { key: 'Backspace', code: 'Backspace' });
@@ -223,7 +224,7 @@ describe('S7 — history restores the issuing view’s recorded selection', () =
 				});
 				const block1 = v1.edytor.root!.children[0]!;
 				const block2 = v2.edytor.root!.children[0]!;
-				v2.edytor.selection.setAtTextOffset(block2.firstText!, 11);
+				v2.edytor.selection.selectText(block2.firstText!, 11);
 				// The user then clicks into V1: its host takes focus (jsdom does not
 				// move focus with a selection; since V4 V2's caret is displayed).
 				await flushDomUpdates();

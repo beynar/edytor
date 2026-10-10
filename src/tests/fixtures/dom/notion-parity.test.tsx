@@ -24,6 +24,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 /** The text a block's content opens with (it may open with an atom: undefined). */
 const firstTextOf = (block: { content?: unknown[] }) =>
@@ -48,7 +49,7 @@ const type = async (editor: HTMLElement, value: string) => {
 /** A caret at the start of the `index`th top-level block (a `value` carries no cursor). */
 const caretIn = async (edytor: Awaited<ReturnType<typeof render>>['edytor'], index = 0) => {
 	const text = edytor.root!.children[index]!.firstText!;
-	edytor.selection.setAtTextOffset(text, 0);
+	edytor.selection.selectText(text, 0);
 	await flushDomUpdates();
 };
 
@@ -167,8 +168,8 @@ describe('lists on Enter', () => {
 		block: { firstText: unknown },
 		where: 'start' | 'end'
 	) => {
-		const text = block.firstText as Parameters<typeof edytor.selection.setAtTextOffset>[0];
-		edytor.selection.setAtTextOffset(text, where === 'end' ? text!.length : 0);
+		const text = block.firstText as Parameters<typeof edytor.selection.selectText>[0];
+		edytor.selection.selectText(text, where === 'end' ? text!.length : 0);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
 	};
@@ -217,7 +218,7 @@ describe('lists on Enter', () => {
 				children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
 			}
 		]);
-		expect(edytor.selection.state.startBlock?.index).toBe(1);
+		expect(selectionState(edytor).startBlock?.index).toBe(1);
 	});
 
 	it('Enter at the end of a heading with children lifts it: the new heading keeps the level', async () => {
@@ -246,7 +247,7 @@ describe('lists on Enter', () => {
 		const { edytor, editor } = await render([], {
 			children: [{ type: 'todo-item', data: { checked: true }, content: [{ text: 'onetwo' }] }]
 		});
-		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 3);
+		edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 3);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
 		expect(canonicalTree(edytor)).toMatchObject([
@@ -278,7 +279,7 @@ describe('lists on Enter', () => {
 			['bulleted-list-item', 'one'],
 			['paragraph', '']
 		]);
-		expect(edytor.selection.state.startBlock?.type).toBe('paragraph');
+		expect(selectionState(edytor).startBlock?.type).toBe('paragraph');
 	});
 
 	it('Enter in an empty nested list item outdents it', async () => {
@@ -317,7 +318,7 @@ describe('lists on Enter', () => {
 			['one', [['a', []]]],
 			['', [['c', []]]]
 		]);
-		expect(edytor.selection.state.startBlock?.index).toBe(1);
+		expect(selectionState(edytor).startBlock?.index).toBe(1);
 	});
 
 	it('Enter in an empty to-do inside a callout makes it text in the callout', async () => {
@@ -338,7 +339,7 @@ describe('lists on Enter', () => {
 		const tree = canonicalTree(edytor);
 		expect(tree.map((b) => b.type)).toEqual(['callout', 'bulleted-list-item']);
 		expect(tree[0]!.children?.map((b) => b.type)).toEqual(['todo-item', 'paragraph']);
-		expect(edytor.selection.state.startBlock?.type).toBe('paragraph');
+		expect(selectionState(edytor).startBlock?.type).toBe('paragraph');
 	});
 
 	it('Enter at the end of a heading still starts a paragraph', async () => {
@@ -368,7 +369,7 @@ describe('containers on Enter', () => {
 		editor: HTMLElement
 	) => {
 		const text = edytor.root!.children[0]!.firstText!;
-		edytor.selection.setAtTextOffset(text, text.length);
+		edytor.selection.selectText(text, text.length);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
 	};
@@ -398,7 +399,7 @@ describe('containers on Enter', () => {
 					]
 				]
 			]);
-			const caret = edytor.selection.state.startBlock!;
+			const caret = selectionState(edytor).startBlock!;
 			expect([caret.type, caret.parent?.type, caret.index]).toEqual(['paragraph', type, 0]);
 		}
 	);
@@ -417,7 +418,7 @@ describe('containers on Enter', () => {
 				]
 			]
 		]);
-		expect(edytor.selection.state.startBlock?.parent?.type).toBe('toggle');
+		expect(selectionState(edytor).startBlock?.parent?.type).toBe('toggle');
 	});
 
 	it('Enter at the end of an open toggle without children opens a first child', async () => {
@@ -427,7 +428,7 @@ describe('containers on Enter', () => {
 		(edytor.root!.children[0]!.node as HTMLDetailsElement).open = true;
 		await enterAtEnd(edytor, editor);
 		expect(shape(edytor)).toEqual([['toggle', 'title', [['paragraph', '']]]]);
-		const caret = edytor.selection.state.startBlock!;
+		const caret = selectionState(edytor).startBlock!;
 		expect([caret.type, caret.parent?.type, caret.index]).toEqual(['paragraph', 'toggle', 0]);
 	});
 
@@ -441,7 +442,7 @@ describe('containers on Enter', () => {
 			['toggle', 'title', []],
 			['toggle', '', []]
 		]);
-		const caret = edytor.selection.state.startBlock!;
+		const caret = selectionState(edytor).startBlock!;
 		expect([caret.type, caret.parent?.isRoot, caret.index]).toEqual(['toggle', true, 1]);
 	});
 
@@ -453,7 +454,7 @@ describe('containers on Enter', () => {
 			['toggle', 'title', [['paragraph', 'body']]],
 			['toggle', '', []]
 		]);
-		const caret = edytor.selection.state.startBlock!;
+		const caret = selectionState(edytor).startBlock!;
 		expect([caret.type, caret.parent?.isRoot, caret.index]).toEqual(['toggle', true, 1]);
 	});
 
@@ -462,7 +463,7 @@ describe('containers on Enter', () => {
 		edytor: Awaited<ReturnType<typeof render>>['edytor'],
 		editor: HTMLElement
 	) => {
-		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 2);
+		edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 2);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
 	};
@@ -485,7 +486,7 @@ describe('containers on Enter', () => {
 					]
 				]
 			]);
-			const caret = edytor.selection.state;
+			const caret = selectionState(edytor);
 			expect([caret.startBlock?.parent?.type, caret.startBlock?.index, caret.yStart]).toEqual([
 				type,
 				0,
@@ -504,7 +505,7 @@ describe('containers on Enter', () => {
 			['toggle', 'ti', [['paragraph', 'body']]],
 			['toggle', 'tle', []]
 		]);
-		const caret = edytor.selection.state;
+		const caret = selectionState(edytor);
 		expect([caret.startBlock?.parent?.isRoot, caret.startBlock?.index, caret.yStart]).toEqual([
 			true,
 			1,
@@ -520,7 +521,7 @@ describe('containers on Enter', () => {
 		});
 		await enterAtEnd(edytor, editor);
 		expect(shape(edytor)).toEqual([['callout', 'note', [['paragraph', '']]]]);
-		const caret = edytor.selection.state.startBlock!;
+		const caret = selectionState(edytor).startBlock!;
 		expect([caret.type, caret.parent?.type, caret.index]).toEqual(['paragraph', 'callout', 0]);
 	});
 });
@@ -533,12 +534,12 @@ describe('lists on Backspace', () => {
 	) => {
 		let block = edytor.root!;
 		for (const index of path) block = block.children[index]!;
-		edytor.selection.setAtTextOffset(block.firstText!, 0);
+		edytor.selection.selectText(block.firstText!, 0);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
 	};
 	const caret = (edytor: Awaited<ReturnType<typeof render>>['edytor']) => {
-		const { startBlock, yStart } = edytor.selection.state;
+		const { startBlock, yStart } = selectionState(edytor);
 		return [startBlock?.type, startBlock?.firstText?.stringContent, yStart];
 	};
 
@@ -697,10 +698,10 @@ describe('code auto-pairs', () => {
 		edytor.root!.children[0]!.children[0]!.firstText!;
 	const typeInCode = async (typed: string) => {
 		const { edytor, editor } = await inCode();
-		edytor.selection.setAtTextOffset(line(edytor), 0);
+		edytor.selection.selectText(line(edytor), 0);
 		await flushDomUpdates();
 		await type(editor, typed);
-		return [line(edytor).stringContent, edytor.selection.state.yStart];
+		return [line(edytor).stringContent, selectionState(edytor).yStart];
 	};
 
 	it.each([
@@ -873,7 +874,7 @@ describe('menus', () => {
 		expect(document.querySelector('[data-testid="block-menu"]')).toBeNull();
 		// The caret returns to the converted block (the block selection is gone).
 		expect(edytor.selection.selectedBlocks.size).toBe(0);
-		expect(edytor.selection.state.startBlock?.id).toBe('one');
+		expect(selectionState(edytor).startBlock?.id).toBe('one');
 
 		await open('two');
 		await click(document.querySelector('[data-testid="block-menu-delete"]')!);
@@ -881,8 +882,8 @@ describe('menus', () => {
 		// The caret lands at the end of the block before the deleted one, as
 		// the keyboard's block delete does (DR-behavior-1).
 		expect(edytor.selection.selectedBlocks.size).toBe(0);
-		expect(edytor.selection.state.startBlock?.id).toBe('one');
-		expect(edytor.selection.state.yStart).toBe(3);
+		expect(selectionState(edytor).startBlock?.id).toBe('one');
+		expect(selectionState(edytor).yStart).toBe(3);
 	});
 
 	it('the keyboard reaches the Turn into flyout, and Delete removes the block', async () => {
@@ -916,7 +917,7 @@ describe('menus', () => {
 			children: [{ type: 'paragraph', content: [{ text: 'hello' }] }]
 		});
 		const text = edytor.root!.children[0]!.firstText!;
-		edytor.selection.setAtRange(text, 0, text, 5);
+		edytor.selection.selectText(text, 0, text, 5);
 		await flushDomUpdates();
 		await click(document.querySelector('.toolbar-color')!);
 		await click(document.querySelector('[title="Red text"]')!);
@@ -976,11 +977,11 @@ describe('next to a collapsed toggle (FW-02)', () => {
 		offset: 'start' | 'end'
 	) => {
 		const text = edytor.idToBlock.get(id)!.firstText!;
-		edytor.selection.setAtTextOffset(text, offset === 'start' ? 0 : text.length);
+		edytor.selection.selectText(text, offset === 'start' ? 0 : text.length);
 		await flushDomUpdates();
 	};
 	const caret = (edytor: Awaited<ReturnType<typeof render>>['edytor']) => {
-		const { startBlock, yStart } = edytor.selection.state;
+		const { startBlock, yStart } = selectionState(edytor);
 		return [startBlock?.id, yStart];
 	};
 	const undo = () => dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
@@ -1071,7 +1072,7 @@ describe('next to a collapsed toggle (FW-02)', () => {
 	it('Delete at the end of the header of the last block does nothing', async () => {
 		const { edytor, editor } = await render([], { children: [before[0]!] });
 		const toggle = edytor.root!.children[0]!;
-		edytor.selection.setAtTextOffset(toggle.firstText!, 5);
+		edytor.selection.selectText(toggle.firstText!, 5);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentForward' });
 		expect(canonicalTree(edytor)).toEqual([before[0]]);
@@ -1097,7 +1098,7 @@ describe('next to a collapsed toggle (FW-02)', () => {
 
 	it('Tab on a selected block after it opens the toggle too', async () => {
 		const { edytor } = await collapsed();
-		edytor.selection.selectBlocks(edytor.idToBlock.get('after')!);
+		selectBlocks(edytor, edytor.idToBlock.get('after')!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Tab' });
 		expect(edytor.idToBlock.get('after')!.parent?.id).toBe('toggle');
@@ -1109,7 +1110,7 @@ describe('next to a collapsed toggle (FW-02)', () => {
 
 	it('↓ and ↑ over a selected block skip its hidden body (SW-behaviors-2)', async () => {
 		const { edytor } = await collapsed();
-		edytor.selection.selectBlocks(edytor.idToBlock.get('toggle')!);
+		selectBlocks(edytor, edytor.idToBlock.get('toggle')!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'ArrowDown' });
 		expect(selected(edytor)).toEqual(['after']);
@@ -1119,11 +1120,11 @@ describe('next to a collapsed toggle (FW-02)', () => {
 
 	it('Shift+↓ and Shift+↑ extend past its hidden body (SW-behaviors-2)', async () => {
 		const { edytor } = await collapsed();
-		edytor.selection.selectBlocks(edytor.idToBlock.get('toggle')!);
+		selectBlocks(edytor, edytor.idToBlock.get('toggle')!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'ArrowDown', shiftKey: true });
 		expect(selected(edytor)).toEqual(['toggle', 'after']);
-		edytor.selection.selectBlocks(edytor.idToBlock.get('after')!);
+		selectBlocks(edytor, edytor.idToBlock.get('after')!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'ArrowUp', shiftKey: true });
 		expect(selected(edytor)).toEqual(['after', 'toggle']);
@@ -1148,7 +1149,7 @@ describe('next to a collapsed toggle (FW-02)', () => {
 
 	it('deleting the selected block after it puts the caret at the end of the header (SW-behaviors-6)', async () => {
 		const { edytor } = await collapsed();
-		edytor.selection.selectBlocks(edytor.idToBlock.get('after')!);
+		selectBlocks(edytor, edytor.idToBlock.get('after')!);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'Backspace' });
 		expect(canonicalTree(edytor)).toEqual([before[0]]);
@@ -1224,7 +1225,7 @@ describe('next to a collapsed toggle (FW-02)', () => {
 			{ text: 'title' },
 			{ text: 'z' }
 		]);
-		expect(edytor.selection.state.startBlock?.type).toBe('toggle');
+		expect(selectionState(edytor).startBlock?.type).toBe('toggle');
 	});
 
 	it('an open toggle keeps the document-order rules (Backspace merges into its last child)', async () => {
@@ -1260,12 +1261,12 @@ describe('a text range from a collapsed toggle header (XW-01)', () => {
 		});
 	const text = ({ edytor }: Rendered, id: string) => edytor.idToBlock.get(id)!.firstText!;
 	const select = async (r: Rendered, [a, x]: [string, number], [b, y]: [string, number]) => {
-		r.edytor.selection.setAtRange(text(r, a), x, text(r, b), y);
+		r.edytor.selection.selectText(text(r, a), x, text(r, b), y);
 		await flushDomUpdates();
 		r.edytor.undoManager.stopCapturing();
 	};
 	const caret = ({ edytor }: Rendered) => {
-		const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+		const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 		return [startBlock?.id, yStart, isCollapsed];
 	};
 	const undo = () => dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
@@ -1285,7 +1286,7 @@ describe('a text range from a collapsed toggle header (XW-01)', () => {
 		const r = await collapsed();
 		await select(r, ['toggle', 5], ['toggle', 5]);
 		await dispatchDomKeyDown(document, { key: 'ArrowRight', shiftKey: true });
-		const { startBlock, endBlock, yStart, yEnd } = r.edytor.selection.state;
+		const { startBlock, endBlock, yStart, yEnd } = selectionState(r.edytor);
 		expect([startBlock?.id, yStart, endBlock?.id, yEnd]).toEqual(['toggle', 5, 'after', 0]);
 	});
 
@@ -1509,7 +1510,7 @@ describe('merging next to a collapsed toggle is one command (XW-09)', () => {
 	])('%s: a vetoed merge leaves the tree unchanged', async (_, id, offset, inputType) => {
 		const { edytor, editor } = await locked();
 		const before = canonicalTree(edytor);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+		edytor.selection.selectText(edytor.idToBlock.get(id)!.firstText!, offset);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType });
 		expect(canonicalTree(edytor)).toEqual(before);
@@ -1533,7 +1534,7 @@ describe('code keys (FW-04, FW-19)', () => {
 	const lines = ({ edytor }: Rendered) =>
 		edytor.root!.children[0]!.children.map((l) => l.firstText!.stringContent);
 	const select = async (rendered: Rendered, from: [number, number], to = from) => {
-		rendered.edytor.selection.setAtRange(
+		rendered.edytor.selection.selectText(
 			line(rendered, from[0]),
 			from[1],
 			line(rendered, to[0]),
@@ -1544,7 +1545,7 @@ describe('code keys (FW-04, FW-19)', () => {
 	};
 	/** The selection as `[startLine, startOffset, endLine, endOffset]`. */
 	const range = ({ edytor }: Rendered) => {
-		const { startBlock, endBlock, yStart, yEnd } = edytor.selection.state;
+		const { startBlock, endBlock, yStart, yEnd } = selectionState(edytor);
 		return [startBlock?.index, yStart, endBlock?.index, yEnd];
 	};
 	const tab = (shiftKey = false) => dispatchDomKeyDown(document, { key: 'Tab', shiftKey });
@@ -1619,13 +1620,13 @@ describe('code keys (FW-04, FW-19)', () => {
 	it('Backspace in an empty block right after a code block removes it; the caret ends the code', async () => {
 		const rendered = await inCode(['a', 'last'], [{ type: 'paragraph' }]);
 		const { edytor, editor } = rendered;
-		edytor.selection.setAtTextOffset(edytor.root!.children[1]!.firstText!, 0);
+		edytor.selection.selectText(edytor.root!.children[1]!.firstText!, 0);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
 		expect(canonicalTree(edytor).map((b) => b.type)).toEqual(['code']);
 		expect(lines(rendered)).toEqual(['a', 'last']);
 		expect(range(rendered)).toEqual([1, 4, 1, 4]);
-		expect(edytor.selection.state.startBlock?.type).toBe('codeLine');
+		expect(selectionState(edytor).startBlock?.type).toBe('codeLine');
 	});
 
 	it('Delete in an empty first block before a code block removes it; the caret starts the code (SW-behaviors-4)', async () => {
@@ -1635,24 +1636,24 @@ describe('code keys (FW-04, FW-19)', () => {
 				{ type: 'code', children: [{ type: 'codeLine', content: [{ text: 'a' }] }] }
 			]
 		});
-		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 0);
+		edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 0);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentForward' });
 		expect(canonicalTree(edytor).map((b) => b.type)).toEqual(['code']);
-		const { startBlock, yStart } = edytor.selection.state;
+		const { startBlock, yStart } = selectionState(edytor);
 		expect([startBlock?.type, yStart]).toEqual(['codeLine', 0]);
 	});
 
 	it('Backspace at the start of a block with text after a code block leaves it in place', async () => {
 		const rendered = await inCode(['a'], [{ type: 'paragraph', content: [{ text: 'p' }] }]);
 		const { edytor, editor } = rendered;
-		edytor.selection.setAtTextOffset(edytor.root!.children[1]!.firstText!, 0);
+		edytor.selection.selectText(edytor.root!.children[1]!.firstText!, 0);
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
 		expect(canonicalTree(edytor).map((b) => b.type)).toEqual(['code', 'paragraph']);
 		// The caret moves to the end of the code.
 		expect(range(rendered)).toEqual([0, 1, 0, 1]);
-		expect(edytor.selection.state.startBlock?.type).toBe('codeLine');
+		expect(selectionState(edytor).startBlock?.type).toBe('codeLine');
 	});
 });
 
@@ -1677,7 +1678,7 @@ describe('Mod+A in a code block (YW-03)', () => {
 		);
 	const selectAll = () => dispatchDomKeyDown(document, { key: 'a', ctrlKey: true });
 	const caretInLine = async ({ edytor }: Rendered, index: number, offset: number) => {
-		edytor.selection.setAtTextOffset(edytor.root!.children[1]!.children[index]!.firstText!, offset);
+		edytor.selection.selectText(edytor.root!.children[1]!.children[index]!.firstText!, offset);
 		await flushDomUpdates();
 	};
 
@@ -1686,7 +1687,7 @@ describe('Mod+A in a code block (YW-03)', () => {
 		const { edytor } = rendered;
 		await caretInLine(rendered, 1, 1);
 		await selectAll();
-		const { startBlock, endBlock, yStart, yEnd, isCollapsed } = edytor.selection.state;
+		const { startBlock, endBlock, yStart, yEnd, isCollapsed } = selectionState(edytor);
 		expect([
 			startBlock?.firstText?.stringContent,
 			yStart,
@@ -1723,7 +1724,7 @@ describe('Mod+A in a code block (YW-03)', () => {
 				['code', ['']],
 				['paragraph', 'z']
 			]);
-			const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+			const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 			expect([startBlock?.type, yStart, isCollapsed]).toEqual(['codeLine', 0, true]);
 			await dispatchDomBeforeInput(rendered.editor, { inputType: 'insertText', data: 'q' });
 			expect(shape(rendered)).toEqual([
@@ -1745,10 +1746,10 @@ describe('Mod+A in a code block (YW-03)', () => {
 		});
 		const { edytor } = rendered;
 		const [x, empty] = edytor.root!.children[0]!.children;
-		edytor.selection.setAtTextOffset(empty!.firstText!, 0);
+		edytor.selection.selectText(empty!.firstText!, 0);
 		await flushDomUpdates();
 		await selectAll();
-		const { startBlock, endBlock, yStart, yEnd } = edytor.selection.state;
+		const { startBlock, endBlock, yStart, yEnd } = selectionState(edytor);
 		expect([startBlock?.id, yStart, endBlock?.id, yEnd]).toEqual([x!.id, 0, empty!.id, 0]);
 		expect(edytor.selection.selectedBlocks.size).toBe(0);
 		await selectAll();
@@ -1760,7 +1761,7 @@ describe('Mod+A in a code block (YW-03)', () => {
 			children: [{ type: 'code', children: [{ type: 'codeLine', content: [{ text: '' }] }] }]
 		});
 		const { edytor } = rendered;
-		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.children[0]!.firstText!, 0);
+		edytor.selection.selectText(edytor.root!.children[0]!.children[0]!.firstText!, 0);
 		await flushDomUpdates();
 		await selectAll();
 		expect([...edytor.selection.selectedBlocks].map((block) => block.type)).toEqual(['code']);
@@ -1778,7 +1779,7 @@ describe('Mod+A in a code block (YW-03)', () => {
 			['code', ['x', 'y']],
 			['paragraph', 'z']
 		]);
-		const { startBlock, endBlock, yStart, yEnd } = edytor.selection.state;
+		const { startBlock, endBlock, yStart, yEnd } = selectionState(edytor);
 		expect([
 			startBlock?.firstText?.stringContent,
 			yStart,

@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createOperationEdytor, runBeforeInput, runHotkey } from './test.utils.js';
+import { selectionState } from './selection.js';
 
 // D18 — one word-boundary rule (`text/wordBoundary.ts`) shared by
 // caret word jumps and `deleteWord*`: a word is a run of Unicode
@@ -19,7 +20,7 @@ describe('shared word boundaries', () => {
 		await runBeforeInput(edytor, { inputType: 'deleteWordBackward' });
 
 		expect(edytor.root!.children[0].firstText.stringContent).toBe('foo,');
-		expect(edytor.selection.state.yStart).toBe(4);
+		expect(selectionState(edytor).yStart).toBe(4);
 	});
 
 	it('deleteWordForward stops at punctuation', async () => {
@@ -32,7 +33,7 @@ describe('shared word boundaries', () => {
 		await runBeforeInput(edytor, { inputType: 'deleteWordForward' });
 
 		expect(edytor.root!.children[0].firstText.stringContent).toBe('foo,baz');
-		expect(edytor.selection.state.yStart).toBe(3);
+		expect(selectionState(edytor).yStart).toBe(3);
 	});
 
 	it('deleteWordBackward skips whitespace then deletes the word run', async () => {
@@ -45,7 +46,7 @@ describe('shared word boundaries', () => {
 		await runBeforeInput(edytor, { inputType: 'deleteWordBackward' });
 
 		expect(edytor.root!.children[0].firstText.stringContent).toBe('foo ');
-		expect(edytor.selection.state.yStart).toBe(4);
+		expect(selectionState(edytor).yStart).toBe(4);
 	});
 
 	it('word jumps land on word edges across punctuation', async () => {
@@ -55,7 +56,7 @@ describe('shared word boundaries', () => {
 			</root>
 		);
 		await runHotkey(forward, 'mod+arrowright');
-		expect(forward.selection.state.yStart).toBe(7);
+		expect(selectionState(forward).yStart).toBe(7);
 
 		const { edytor: backward } = createOperationEdytor(
 			<root>
@@ -63,7 +64,7 @@ describe('shared word boundaries', () => {
 			</root>
 		);
 		await runHotkey(backward, 'mod+arrowleft');
-		expect(backward.selection.state.yStart).toBe(4);
+		expect(selectionState(backward).yStart).toBe(4);
 	});
 });
 
@@ -78,16 +79,14 @@ describe('moveByWord reversed selection', () => {
 				<paragraph>|foo bar| baz</paragraph>
 			</root>
 		);
-		const { startText, yStart, endText, yEnd } = edytor.selection.state;
-		edytor.selection.setAtRange(startText!, yStart, endText!, yEnd, {
-			isReversed: true
-		});
+		const { startText, yStart, endText, yEnd } = selectionState(edytor);
+		edytor.selection.selectText(startText!, yStart, endText!, yEnd, true);
 
 		await runHotkey(edytor, 'mod+shift+arrowright');
 
-		expect(edytor.selection.state.yStart).toBe(3);
-		expect(edytor.selection.state.yEnd).toBe(7);
-		expect(edytor.selection.state.isReversed).toBe(true);
+		expect(selectionState(edytor).yStart).toBe(3);
+		expect(selectionState(edytor).yEnd).toBe(7);
+		expect(selectionState(edytor).isReversed).toBe(true);
 	});
 
 	it('extends the focus (document start) backward on a reversed selection', async () => {
@@ -96,16 +95,14 @@ describe('moveByWord reversed selection', () => {
 				<paragraph>foo b|ar baz|</paragraph>
 			</root>
 		);
-		const { startText, yStart, endText, yEnd } = edytor.selection.state;
-		edytor.selection.setAtRange(startText!, yStart, endText!, yEnd, {
-			isReversed: true
-		});
+		const { startText, yStart, endText, yEnd } = selectionState(edytor);
+		edytor.selection.selectText(startText!, yStart, endText!, yEnd, true);
 
 		await runHotkey(edytor, 'mod+shift+arrowleft');
 
-		expect(edytor.selection.state.yStart).toBe(4);
-		expect(edytor.selection.state.yEnd).toBe(11);
-		expect(edytor.selection.state.isReversed).toBe(true);
+		expect(selectionState(edytor).yStart).toBe(4);
+		expect(selectionState(edytor).yEnd).toBe(11);
+		expect(selectionState(edytor).isReversed).toBe(true);
 	});
 
 	it('keeps the anchor when extending a forward selection forward', async () => {
@@ -117,9 +114,9 @@ describe('moveByWord reversed selection', () => {
 
 		await runHotkey(edytor, 'mod+shift+arrowright');
 
-		expect(edytor.selection.state.yStart).toBe(4);
-		expect(edytor.selection.state.yEnd).toBe(11);
-		expect(edytor.selection.state.isReversed).toBe(false);
+		expect(selectionState(edytor).yStart).toBe(4);
+		expect(selectionState(edytor).yEnd).toBe(11);
+		expect(selectionState(edytor).isReversed).toBe(false);
 	});
 
 	it('collapses onto the anchor when the focus crosses it', async () => {
@@ -131,7 +128,7 @@ describe('moveByWord reversed selection', () => {
 
 		await runHotkey(edytor, 'mod+shift+arrowleft');
 
-		expect(edytor.selection.state.isCollapsed).toBe(true);
-		expect(edytor.selection.state.yStart).toBe(4);
+		expect(selectionState(edytor).isCollapsed).toBe(true);
+		expect(selectionState(edytor).yStart).toBe(4);
 	});
 });

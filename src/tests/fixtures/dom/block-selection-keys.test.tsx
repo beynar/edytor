@@ -20,6 +20,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -56,12 +57,12 @@ const get = ({ edytor }: View, id: string) => edytor.idToBlock.get(id)!;
 /** The document with ids, as JSON: every row compares it before and after. */
 const doc = ({ edytor }: View) => JSON.stringify(edytor.value.children);
 const caret = ({ edytor }: View) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	return [startText?.parent.id, yStart, isCollapsed];
 };
 const caretIn = async (view: View, id: string, offset?: number) => {
 	const text = get(view, id).firstText!;
-	view.edytor.selection.setAtTextOffset(text, offset ?? text.length);
+	view.edytor.selection.selectText(text, offset ?? text.length);
 	await flushDomUpdates();
 };
 const modEnter = () => dispatchDomKeyDown(document, { key: 'Enter', ctrlKey: true });
@@ -119,7 +120,7 @@ describe('Mod+Enter modifies the block it is in and never splits (DW-03)', () =>
 			content: [{ text: id }]
 		});
 		const view = await render([todo('t1', false), todo('t2', true), p('z')]);
-		view.edytor.selection.selectBlocks(get(view, 't1'), get(view, 't2'));
+		selectBlocks(view.edytor, get(view, 't1'), get(view, 't2'));
 		await flushDomUpdates();
 		await modEnter();
 		expect(get(view, 't1').data).toMatchObject({ checked: true });
@@ -138,7 +139,7 @@ describe('Mod+Enter modifies the block it is in and never splits (DW-03)', () =>
 			p('z')
 		]);
 		const node = get(view, 'G').node as HTMLDetailsElement;
-		view.edytor.selection.selectBlocks(get(view, 'G'));
+		selectBlocks(view.edytor, get(view, 'G'));
 		await flushDomUpdates();
 		const before = doc(view);
 		await modEnter();
@@ -151,7 +152,7 @@ describe('Mod+Enter modifies the block it is in and never splits (DW-03)', () =>
 
 describe('Enter over a block selection leaves it for the caret; nothing is removed (DW-04)', () => {
 	const enterOver = async (view: View, ...ids: string[]) => {
-		view.edytor.selection.selectBlocks(...ids.map((id) => get(view, id)));
+		selectBlocks(view.edytor, ...ids.map((id) => get(view, id)));
 		await flushDomUpdates();
 		const before = doc(view);
 		await dispatchDomBeforeInput(view.editor, { inputType: 'insertParagraph' });
@@ -231,7 +232,7 @@ describe('Enter over a block selection leaves it for the caret; nothing is remov
 
 	it('the Enter key with no beforeinput (its keydown deadline) does the same', async () => {
 		const view = await render([p('a'), p('b'), p('z')]);
-		view.edytor.selection.selectBlocks(get(view, 'a'), get(view, 'b'));
+		selectBlocks(view.edytor, get(view, 'a'), get(view, 'b'));
 		await flushDomUpdates();
 		const before = doc(view);
 		await dispatchDomKeyDown(document, { key: 'Enter' });
@@ -244,7 +245,7 @@ describe('Enter over a block selection leaves it for the caret; nothing is remov
 
 	it('a selected divider alone: a line after it, nothing removed', async () => {
 		const view = await render([p('a'), { id: 'd', type: 'divider' }, p('z')]);
-		view.edytor.selection.selectBlocks(get(view, 'd'));
+		selectBlocks(view.edytor, get(view, 'd'));
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(view.editor, { inputType: 'insertParagraph' });
 		expect(hookCalls).toEqual([]);
@@ -255,7 +256,7 @@ describe('Enter over a block selection leaves it for the caret; nothing is remov
 			'paragraph',
 			'z'
 		]);
-		expect(view.edytor.selection.state.startText?.parent.id).toBe(children[2]!.id);
+		expect(selectionState(view.edytor).startText?.parent.id).toBe(children[2]!.id);
 	});
 });
 
@@ -266,7 +267,7 @@ describe('Shift+Enter over a block selection edits the text as Enter does (SW13-
 			p('b'),
 			p('z')
 		]);
-		view.edytor.selection.selectBlocks(get(view, 'T'), get(view, 'b'));
+		selectBlocks(view.edytor, get(view, 'T'), get(view, 'b'));
 		await flushDomUpdates();
 		const before = doc(view);
 		await dispatchDomBeforeInput(view.editor, { inputType: 'insertLineBreak' });
@@ -278,7 +279,7 @@ describe('Shift+Enter over a block selection edits the text as Enter does (SW13-
 
 	it('the Shift+Enter key with no beforeinput does the same', async () => {
 		const view = await render([p('a'), p('z')]);
-		view.edytor.selection.selectBlocks(get(view, 'a'));
+		selectBlocks(view.edytor, get(view, 'a'));
 		await flushDomUpdates();
 		const before = doc(view);
 		await dispatchDomKeyDown(document, { key: 'Enter', shiftKey: true });
@@ -309,7 +310,7 @@ describe('Deleting the blocks beside a divider leaves it selected (SW13-keys-2)'
 		'%s: the divider is selected, and typing replaces it',
 		async (how) => {
 			const view = await render([{ id: 'd', type: 'divider' }, p('s'), p('t')]);
-			view.edytor.selection.selectBlocks(get(view, 's'), get(view, 't'));
+			selectBlocks(view.edytor, get(view, 's'), get(view, 't'));
 			await flushDomUpdates();
 			if (how === 'cut') await dispatchCut(view.editor);
 			else await dispatchDomKeyDown(document, { key: 'Backspace' });
@@ -339,7 +340,7 @@ describe('Deleting the only items of a list beside a divider selects the divider
 		'%s, %s: the emptied list goes, the divider is selected, typing replaces it',
 		async (how, _, children) => {
 			const view = await render([...children]);
-			view.edytor.selection.selectBlocks(get(view, 'i'));
+			selectBlocks(view.edytor, get(view, 'i'));
 			await flushDomUpdates();
 			if (how === 'cut') await dispatchCut(view.editor);
 			else await dispatchDomKeyDown(document, { key: 'Backspace' });
@@ -369,7 +370,7 @@ describe('Mod+Enter acts on each shown selected block (DR-behavior-2)', () => {
 			p('z')
 		]);
 		const node = get(view, 'G').node as HTMLDetailsElement;
-		view.edytor.selection.selectBlocks(get(view, 'G'), get(view, 't'));
+		selectBlocks(view.edytor, get(view, 'G'), get(view, 't'));
 		await flushDomUpdates();
 		const { defaultPrevented } = await modEnter();
 		expect(defaultPrevented).toBe(true);

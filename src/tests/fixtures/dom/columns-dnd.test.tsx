@@ -42,6 +42,7 @@ import {
 	renderColumns,
 	selected
 } from './columns.helpers.js';
+import { selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	// A drag a failed test left open would swallow the next test's.
@@ -764,7 +765,7 @@ describe('the beside bands', () => {
 
 	it('a refused band shows nothing: a whole layout dragged beside a root block (D2)', async () => {
 		const { edytor } = await render(withX());
-		edytor.selection.selectBlocks(block(edytor, 'A'), block(edytor, 'A2'), block(edytor, 'B'));
+		selectBlocks(edytor, block(edytor, 'A'), block(edytor, 'A2'), block(edytor, 'B'));
 		const drag = await startDrag(edytor, 'B');
 		await drag.over('X', 0.25, 300);
 		expect([position(), indicated()]).toEqual(['before', 'X']);

@@ -12,6 +12,7 @@ import {
 	dispatchDomKeyDown,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 const emptyFixture = <root></root>;
 
@@ -44,7 +45,7 @@ export const fixtures = defineFixtures([
 			if (!text) {
 				throw new Error('Missing text for link-boundary plugin fixture');
 			}
-			await edytor.selection.setAtTextOffset(text, 4);
+			await edytor.selection.selectText(text, 4);
 			return dispatchDomBeforeInput(editor, {
 				inputType: 'insertText',
 				data: '!'
@@ -180,7 +181,7 @@ export const fixtures = defineFixtures([
 			]
 		},
 		run: async ({ edytor }) => {
-			const startBlock = edytor.selection.state.startBlock;
+			const startBlock = selectionState(edytor).startBlock;
 			if (!startBlock) {
 				throw new Error('Missing startBlock for mounted code suggestion test');
 			}

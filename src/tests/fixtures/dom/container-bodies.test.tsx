@@ -31,6 +31,7 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 import { customPicker } from '../../dom/CustomCalloutPicker.svelte';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -56,7 +57,7 @@ const outline = (block: JSONBlock): Outline => {
 };
 const doc = (edytor: Edytor) => (edytor.value.children ?? []).map(outline);
 const caret = (edytor: Edytor) => {
-	const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+	const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 	return [startBlock?.parent?.id ?? null, startBlock?.index, yStart, isCollapsed];
 };
 const typeText = async (editor: HTMLElement, value: string) => {
@@ -78,7 +79,7 @@ const press = async (element: Element) => {
 };
 const atEnd = async (edytor: Edytor, id: string) => {
 	const text = edytor.idToBlock.get(id)!.firstText!;
-	edytor.selection.setAtTextOffset(text, text.length);
+	edytor.selection.selectText(text, text.length);
 	await flushDomUpdates();
 };
 const enter = (editor: HTMLElement) =>
@@ -172,7 +173,7 @@ describe('body.open: a toggle this view creates opens', () => {
 			[{ id: 'a', type: 'paragraph', content: [] }],
 			[markdownShortcutsPlugin, richTextPlugin]
 		);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText!, 0);
+		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 0);
 		await flushDomUpdates();
 		await typeText(editor, '> ');
 		expect(doc(edytor)).toEqual(['toggle']);
@@ -186,7 +187,7 @@ describe('body.open: a toggle this view creates opens', () => {
 
 	it('the toggle command (slash menu, Turn into) opens the toggle it makes', async () => {
 		const { edytor } = await render([{ id: 'a', type: 'paragraph', content: [{ text: 'title' }] }]);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText!, 2);
+		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 2);
 		await flushDomUpdates();
 		await edytor.runCommand('block.toggle');
 		await flushDomUpdates();
@@ -204,7 +205,7 @@ describe('body.open: a toggle this view creates opens', () => {
 			}
 		]);
 		expect((nodeOf(edytor, 't') as HTMLDetailsElement).open).toBe(false);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('t')!.firstText!, 0);
+		edytor.selection.selectText(edytor.idToBlock.get('t')!.firstText!, 0);
 		await flushDomUpdates();
 		await edytor.runCommand('block.toggle-heading2');
 		await flushDomUpdates();
@@ -266,7 +267,7 @@ describe('callout: an icon, a title and a content', () => {
 
 	it('Enter in the middle of its title moves the rest into its content', async () => {
 		const { edytor, editor } = await render(callout());
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('c')!.firstText!, 2);
+		edytor.selection.selectText(edytor.idToBlock.get('c')!.firstText!, 2);
 		await flushDomUpdates();
 		await enter(editor);
 		expect(doc(edytor)).toEqual([['callout "no"', ['paragraph "te"']], 'paragraph "after"']);
@@ -299,7 +300,7 @@ describe('callout: an icon, a title and a content', () => {
 		]);
 		// A block selection is exactly its members (`sel.blocks.exact`): the callout and its content.
 		const c = edytor.idToBlock.get('c')!;
-		edytor.selection.selectBlocks(c, c.children[0]!);
+		selectBlocks(edytor, c, c.children[0]!);
 		await flushDomUpdates();
 		const { clipboardData } = await dispatchCopy(editor);
 		const html = clipboardData['text/html']!;
@@ -319,7 +320,7 @@ describe('callout: an icon, a title and a content', () => {
 
 	it('a pasted callout with an empty title keeps its first paragraph as content', async () => {
 		const { edytor, editor } = await render([{ id: 'p', type: 'paragraph', content: [] }]);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('p')!.firstText!, 0);
+		edytor.selection.selectText(edytor.idToBlock.get('p')!.firstText!, 0);
 		await flushDomUpdates();
 		await dispatchClipboardPaste(editor, {
 			'text/html': '<div data-edytor-callout="💡"><p></p><p>body</p></div>',
@@ -422,7 +423,7 @@ describe('callout.icon: the icon picker', () => {
 		expect(choices().map((choice) => choice.textContent?.trim())).toEqual(['📌', '✅', '❗']);
 		await dispatchDomKeyDown(menu()!, { key: 'Escape' });
 		// A new callout takes the default icon.
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('p')!.firstText!, 0);
+		edytor.selection.selectText(edytor.idToBlock.get('p')!.firstText!, 0);
 		await flushDomUpdates();
 		await edytor.runCommand('block.callout');
 		await flushDomUpdates();
@@ -433,7 +434,7 @@ describe('callout.icon: the icon picker', () => {
 	it('the block menu of a callout opens the picker (the keyboard way)', async () => {
 		const { edytor, editor } = await render(callout(), [blockMenuPlugin, richTextPlugin]);
 		const block = edytor.idToBlock.get('c')!;
-		edytor.selection.selectBlocks(block);
+		selectBlocks(edytor, block);
 		editor.dispatchEvent(
 			new CustomEvent(BLOCK_ACTIVATE_EVENT, { detail: { block, anchor: block.node } })
 		);

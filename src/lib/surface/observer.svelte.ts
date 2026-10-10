@@ -936,7 +936,7 @@ export const adopt = async (
 	const value = drifted ? after : dom;
 	const caret = drifted ? undefined : domCaret;
 	if (attempt) edytor.selection.select(attempt.target);
-	const { startText, yStart } = edytor.selection.state;
+	const { startText, yStart } = edytor.selection.textRange();
 	const grow = value.length - text.length;
 	const back = attempt?.isCollapsed && INTENTS[attempt.inputType]?.dir === 'back';
 	const change = diffText(
@@ -978,10 +978,14 @@ export const adopt = async (
 	await tick();
 	if (edytor.intentSerial !== serial) return true;
 	const end = caret ?? (attempt ? at + insert.length : undefined);
-	if (adopted && end !== undefined)
-		edytor.selection.setAtTextOffset(text, Math.min(end, text.length));
+	if (adopted && end !== undefined) edytor.selection.selectText(text, Math.min(end, text.length));
 	// A deletion of uniformly marked text keeps its marks pending at the caret.
-	if (adopted && same && Object.keys(marks).length > 0 && edytor.selection.state.startText === text)
+	if (
+		adopted &&
+		same &&
+		Object.keys(marks).length > 0 &&
+		edytor.selection.textRange().startText === text
+	)
 		edytor.selection.stage(marks);
 	return true;
 };

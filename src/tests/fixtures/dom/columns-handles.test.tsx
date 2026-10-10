@@ -35,6 +35,7 @@ import {
 	selected,
 	tree
 } from './columns.helpers.js';
+import { selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -117,7 +118,7 @@ const render = (children = contractDoc()) =>
 	renderColumns(children, [blockHandlesPlugin, menu, arrowMovePlugin]);
 
 const selectAll = async (edytor: Edytor, ...ids: string[]) => {
-	edytor.selection.selectBlocks(...ids.map((id) => block(edytor, id)));
+	selectBlocks(edytor, ...ids.map((id) => block(edytor, id)));
 	await flushDomUpdates();
 };
 

@@ -19,6 +19,7 @@ import { handleNativeLineBreakTextValue } from '$lib/events/onInput.js';
 import { attemptOf } from '$lib/session/attempt.js';
 import { adopt } from '$lib/surface/observer.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { selectionState } from '../../selection.js';
 
 const beforeInput = (target: HTMLElement, inputType: string, data: string | null = null) => {
 	const event = new Event('beforeinput', { bubbles: true, cancelable: true }) as InputEvent;
@@ -37,7 +38,7 @@ const command = (edytor: Edytor, inputType: string, data: string | null = null) 
 	);
 
 const caret = (edytor: Edytor) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	return { text: startText?.stringContent, offset: yStart, isCollapsed };
 };
 
@@ -53,7 +54,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 	test('onBeforeInput: Backspace over a trailing soft break', async () => {
 		const { edytor, editor } = await one('ab\n');
 		const text = edytor.root!.children[0]!.firstText!;
-		edytor.selection.setAtTextOffset(text, 3);
+		edytor.selection.selectText(text, 3);
 		await flushDomUpdates();
 		beforeInput(editor, 'deleteContentBackward');
 		expect(caret(edytor)).toEqual({ text: 'ab', offset: 2, isCollapsed: true });
@@ -61,7 +62,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 
 	test('beforeInputDeleteCommands: a character Backspace', async () => {
 		const { edytor } = await one('hello');
-		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 3);
+		edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 3);
 		const result = command(edytor, 'deleteContentBackward');
 		expect(result).not.toBeInstanceOf(Promise);
 		expect(caret(edytor)).toEqual({ text: 'helo', offset: 2, isCollapsed: true });
@@ -69,7 +70,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 
 	test('beforeInputDeleteCommands: a character Delete', async () => {
 		const { edytor } = await one('hello');
-		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 3);
+		edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 3);
 		const result = command(edytor, 'deleteContentForward');
 		expect(result).not.toBeInstanceOf(Promise);
 		expect(caret(edytor)).toEqual({ text: 'helo', offset: 3, isCollapsed: true });
@@ -77,7 +78,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 
 	test('beforeInputCommands: typing finishes in the turn it selects', async () => {
 		const { edytor } = await one('hello');
-		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 5);
+		edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 5);
 		const result = command(edytor, 'insertText', 'x');
 		expect(result).not.toBeInstanceOf(Promise);
 		expect(caret(edytor)).toEqual({ text: 'hellox', offset: 6, isCollapsed: true });
@@ -85,7 +86,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 
 	test('beforeInputCommands: the auto-dot finishes in the turn it selects', async () => {
 		const { edytor } = await one('end ');
-		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 4);
+		edytor.selection.selectText(edytor.root!.children[0]!.firstText!, 4);
 		const result = command(edytor, 'insertText', '. ');
 		expect(result).not.toBeInstanceOf(Promise);
 		expect(caret(edytor).offset).toBe(5);
@@ -94,7 +95,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 	test('onBeforeInput: a model-owned command is not re-selected after the render', async () => {
 		const { edytor, editor } = await one('hello');
 		const text = edytor.root!.children[0]!.firstText!;
-		edytor.selection.setAtTextOffset(text, 5);
+		edytor.selection.selectText(text, 5);
 		await flushDomUpdates();
 		const writes: number[] = [];
 		const select = edytor.selection.select;
@@ -128,7 +129,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 	test('onInput: an input-only insertion over a range replaces it and selects after', async () => {
 		const { edytor, editor } = await one('hello world');
 		const text = edytor.root!.children[0]!.firstText!;
-		edytor.selection.setAtRange(text, 0, text, 5);
+		edytor.selection.selectText(text, 0, text, 5);
 		await flushDomUpdates();
 		editor.dispatchEvent(
 			new InputEvent('input', { bubbles: true, inputType: 'insertText', data: 'X' })
@@ -146,7 +147,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 		async () => {
 			const { edytor } = await one('hello');
 			const text = edytor.root!.children[0]!.firstText!;
-			edytor.selection.setAtTextOffset(text, 5);
+			edytor.selection.selectText(text, 5);
 			await flushDomUpdates();
 			void adopt(edytor, text, 'hexllo', 3);
 			expect(caret(edytor)).toEqual({ text: 'hexllo', offset: 3, isCollapsed: true });

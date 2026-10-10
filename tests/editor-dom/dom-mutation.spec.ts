@@ -1326,7 +1326,7 @@ test.describe('browser DOM mutation reconciliation', () => {
 					const domOffset = measure.cloneContents().textContent?.length ?? -1;
 					return {
 						domOffset,
-						yStart: edytor.selection.state.yStart,
+						yStart: edytor.selection.textRange().yStart,
 						isCollapsed: selection.isCollapsed
 					};
 				})
@@ -1348,7 +1348,7 @@ test.describe('browser DOM mutation reconciliation', () => {
 			measure.setEnd(range.startContainer, range.startOffset);
 			return {
 				domOffset: measure.cloneContents().textContent?.length ?? -1,
-				yStart: edytor.selection.state.yStart
+				yStart: edytor.selection.textRange().yStart
 			};
 		});
 		expect(caret.domOffset).toBe(caret.yStart);

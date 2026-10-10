@@ -76,12 +76,12 @@ const mount = async (
 const select = async (edytor: Edytor, id: string, from: number, to: number) => {
 	const block = edytor.idToBlock.get(id)!;
 	const [start, end] = [block.textAtOffset(from)!, block.textAtOffset(to)!];
-	edytor.selection.setAtRange(start.text, start.offset, end.text, end.offset);
+	edytor.selection.selectText(start.text, start.offset, end.text, end.offset);
 	await flushDomUpdates();
 };
 
 const caretIn = async (edytor: Edytor, id: string, offset: number) => {
-	edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+	edytor.selection.selectText(edytor.idToBlock.get(id)!.firstText!, offset);
 	await flushDomUpdates();
 };
 
@@ -206,7 +206,7 @@ describe('comment.start — a thread on selected text', () => {
 		expect(anchored(setup.edytor, thread)).toEqual(['brown fox']);
 		const end = setup.edytor.idToBlock.get('b')!.textAtOffset(5)!;
 		const start = setup.edytor.idToBlock.get('a')!.textAtOffset(16)!;
-		setup.edytor.selection.setAtRange(start.text, start.offset, end.text, end.offset);
+		setup.edytor.selection.selectText(start.text, start.offset, end.text, end.offset);
 		await flushDomUpdates();
 		expect(setup.comments.start()).toBe(true);
 		await flushDomUpdates();

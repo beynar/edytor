@@ -20,6 +20,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -60,7 +61,7 @@ describe('the current kind is the closest preset', () => {
 		const { edytor } = await render([toolbarPlugin], blocks);
 		const labelOf = async (id: string) => {
 			const text = edytor.idToBlock.get(id)!.firstText!;
-			edytor.selection.setAtRange(text, 0, text, text.length);
+			edytor.selection.selectText(text, 0, text, text.length);
 			await flushDomUpdates();
 			return document.querySelector('.toolbar-type')?.firstChild?.textContent;
 		};
@@ -128,13 +129,13 @@ describe('duplicate', () => {
 
 	it('Mod+D duplicates the caret block and keeps the caret in the copy', async () => {
 		const { edytor } = await render([blockMenuPlugin], source);
-		edytor.selection.setAtTextOffset(edytor.idToBlock.get('src')!.firstText!, 0);
+		edytor.selection.selectText(edytor.idToBlock.get('src')!.firstText!, 0);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'd', ctrlKey: true });
 		const ids = canonicalTree(edytor, true).map((b) => b.id);
 		expect(ids).toHaveLength(2);
 		expect(ids[0]).toBe('src');
-		expect(edytor.selection.state.startBlock?.id).toBe(ids[1]);
+		expect(selectionState(edytor).startBlock?.id).toBe(ids[1]);
 	});
 });
 

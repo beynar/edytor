@@ -33,6 +33,7 @@ import { Edytor } from '../../../lib/edytor.svelte.js';
 import { project, type SelectionValue } from '$lib/session/selection.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONDoc } from '../../../lib/utils/json.js';
+import { selectionState } from '../../selection.js';
 
 const syncProtocol = bindSync(Y);
 
@@ -293,8 +294,8 @@ describe('multi-view shared history — per-view selection values', () => {
 		const text = v1.root!.children[0]!.firstText!;
 
 		// Each view parks its caret at a different offset, then edits.
-		v1.selection.setAtTextOffset(text, 1);
-		v2.selection.setAtTextOffset(text, 2);
+		v1.selection.selectText(text, 1);
+		v2.selection.selectText(text, 2);
 		document.transact(() => document.facade.insertText(v1.root!.children[0]!.id, 2, 'X'));
 
 		const stackItem = document.history.undoStack.at(-1)!;
@@ -316,12 +317,12 @@ describe('multi-view shared history — per-view selection values', () => {
 		// the edit left each view.
 		v1.markUserGesture();
 		v2.markUserGesture();
-		v1.selection.setAtTextOffset(text, 0);
-		v2.selection.setAtTextOffset(text, 0);
+		v1.selection.selectText(text, 0);
+		v2.selection.selectText(text, 0);
 		v1.historyUndo();
 		await flush();
-		expect(v1.selection.state.yStart).toBe(1); // issuer restores its snapshot
-		expect(v2.selection.state.yStart).toBe(0); // sibling untouched — not pulled back to 2
+		expect(selectionState(v1).yStart).toBe(1); // issuer restores its snapshot
+		expect(selectionState(v2).yStart).toBe(0); // sibling untouched — not pulled back to 2
 
 		// The redo side carries both views' entries, still keyed per view:
 		// `after` is where the step's transaction left each caret.
@@ -343,17 +344,17 @@ describe('multi-view shared history — per-view selection values', () => {
 		v2.selection.init();
 		const text = v1.root!.children[0]!.firstText!;
 
-		v1.selection.setAtTextOffset(text, 1);
-		v2.selection.setAtTextOffset(text, 2);
+		v1.selection.selectText(text, 1);
+		v2.selection.selectText(text, 2);
 		document.transact(() => document.facade.insertText(v1.root!.children[0]!.id, 2, 'X'));
 
 		// No view issued the command — the pop restores nobody; both
 		// carets stay where the views parked them.
-		v1.selection.setAtTextOffset(text, 0);
+		v1.selection.selectText(text, 0);
 		document.history.undo();
 		await flush();
-		expect(v1.selection.state.yStart).toBe(0);
-		expect(v2.selection.state.yStart).toBe(2);
+		expect(selectionState(v1).yStart).toBe(0);
+		expect(selectionState(v2).yStart).toBe(2);
 
 		v1.selection.destroy();
 		v2.selection.destroy();

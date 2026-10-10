@@ -617,7 +617,6 @@ export class Dispatcher {
 			if (!out) return out;
 		}
 		if (!text || !value || value.kind === 'none') return out;
-		selection.clearModelSelectionPreservation();
 		selection.select(value);
 		// Declared before its operations: gone with them after all, the seam.
 		if (!selection.projection.start) selection.restoreDeadSelectionEndpoints();

@@ -21,6 +21,7 @@ import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { createMarqueePlugin, marqueePlugin } from '$lib/plugins/marquee/marqueePlugin.js';
 import type { MarqueeBoxPayload } from '$lib/plugins/marquee/MarqueeController.svelte.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -248,7 +249,7 @@ describe('which blocks a rectangle selects (sel.marquee.blocks)', () => {
 describe('the gesture (sel.marquee)', () => {
 	it('Shift or Mod at the press adds to the block selection there was', async () => {
 		const { edytor } = await render([p('A'), p('B'), p('C'), p('D')], [marqueePlugin]);
-		edytor.selection.selectBlocks(edytor.idToBlock.get('A')!);
+		selectBlocks(edytor, edytor.idToBlock.get('A')!);
 		press(edytor, 40, row(2), { shiftKey: true });
 		await move(150, row(3));
 		expect(selected(edytor)).toEqual(['A', 'C', 'D']);
@@ -263,7 +264,7 @@ describe('the gesture (sel.marquee)', () => {
 
 	it('without a modifier the rectangle replaces the selection', async () => {
 		const { edytor } = await render([p('A'), p('B'), p('C')], [marqueePlugin]);
-		edytor.selection.selectBlocks(edytor.idToBlock.get('A')!);
+		selectBlocks(edytor, edytor.idToBlock.get('A')!);
 		press(edytor, 40, row(2));
 		await move(150, row(2) + 5);
 		expect(selected(edytor)).toEqual(['C']);

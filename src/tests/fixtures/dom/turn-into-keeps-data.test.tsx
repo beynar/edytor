@@ -53,7 +53,7 @@ describe('H4: a retype keeps the block’s properties', () => {
 
 	it('Backspace at the start of a to-do turns it into a paragraph with its properties', async () => {
 		const view = await render();
-		view.edytor.selection.setAtTextOffset(get(view, 't').firstText!, 0);
+		view.edytor.selection.selectText(get(view, 't').firstText!, 0);
 		await flushDomUpdates();
 		dispatchDomBeforeInput(view.editor, { inputType: 'deleteContentBackward' });
 		await flushDomUpdates();

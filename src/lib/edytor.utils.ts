@@ -44,7 +44,7 @@ type RangeDelete = { replace?: boolean; selection?: RangeEndpoints };
  * (`del.range.*`; `replace`: the deletion half of a replacement).
  */
 export function prepareDeleteContent(this: Edytor, { replace = false, selection }: RangeDelete) {
-	const { startText, endText, yStart, yEnd } = selection ?? this.selection.state;
+	const { startText, endText, yStart, yEnd } = selection ?? this.selection.textRange();
 	if (!startText || !endText) return REFUSED;
 	const at = (text: Text, offset: number) => ({
 		block: text.parent.id,
@@ -62,7 +62,7 @@ export function caretWritten(this: Edytor, plan: Prepared): At | null {
 /** The range deletion's caret; refused at preparation: the range's start; vetoed: none. */
 export function rangeCaret(this: Edytor, at: At | null | undefined, payload: RangeDelete) {
 	if (at === undefined) return undefined;
-	const { startText, yStart } = payload.selection ?? this.selection.state;
+	const { startText, yStart } = payload.selection ?? this.selection.textRange();
 	return at ? caretOf.call(this, at) : ([startText, yStart] as const);
 }
 

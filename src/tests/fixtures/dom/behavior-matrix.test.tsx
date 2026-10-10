@@ -13,6 +13,7 @@ import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { selectionState } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -113,7 +114,7 @@ const tree = (blocks: Block[]): string =>
 const caret = (edytor: Edytor) => {
 	const blocks = [...edytor.selection.selectedBlocks];
 	if (blocks.length) return `{${blocks.map(label).join(' ')}}`;
-	const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+	const { startBlock, yStart, isCollapsed } = selectionState(edytor);
 	return startBlock ? `${label(startBlock)}@${yStart}${isCollapsed ? '' : '…'}` : 'none';
 };
 
@@ -157,7 +158,7 @@ const run = async (kind: Kind, state: State, key: Key) => {
 	if (kind === 'toggle open') (x.node as HTMLDetailsElement).open = true;
 	const { at, inputType, ...keydown } = KEYS[key];
 	const text = at === 'start' ? x.firstText! : x.lastText!;
-	edytor.selection.setAtTextOffset(text, at === 'start' ? 0 : text.length);
+	edytor.selection.selectText(text, at === 'start' ? 0 : text.length);
 	await flushDomUpdates();
 	await press(editor, keydown, inputType);
 	return `${tree(edytor.root!.children)} | ${caret(edytor)}`;

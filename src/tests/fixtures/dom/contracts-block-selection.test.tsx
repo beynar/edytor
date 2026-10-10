@@ -18,6 +18,7 @@ import {
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/fragmentData.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 const own = (block: { content: unknown[] }) =>
 	(block.content[0] as Text | undefined)?.stringContent;
@@ -76,7 +77,7 @@ describe('sel.blocks.exact — a block selection is exactly its members', () => 
 		const [only, ...rest] = edytor.root!.children;
 		expect(rest).toEqual([]);
 		expect(edytor.facade.virtual()).toBe(only!.id);
-		expect(edytor.selection.state.startText?.parent.id).toBe(only!.id);
+		expect(selectionState(edytor).startText?.parent.id).toBe(only!.id);
 	});
 
 	test('Shift+Down from a parent adds its first child, then the next', async () => {
@@ -141,8 +142,8 @@ describe('del.blocks.promote — deleting a selected parent keeps its unselected
 			p('B')
 		]);
 		// Caret: nothing unselected before the set → the start of the next line (FP-7, YW-04).
-		expect(edytor.selection.state.startText?.parent.id).toBe(kids[0]);
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(selectionState(edytor).startText?.parent.id).toBe(kids[0]);
+		expect(selectionState(edytor).yStart).toBe(0);
 
 		await mod('z');
 		expect(edytor.value).toEqual(before);
@@ -178,7 +179,7 @@ describe('del.blocks.promote — deleting a selected parent keeps its unselected
 		);
 		const [g] = edytor.root!.children;
 		const c = g!.children[0]!;
-		edytor.selection.selectBlocks(g!, c.children[0]!);
+		selectBlocks(edytor, g!, c.children[0]!);
 		await key('Backspace');
 		assertCanonicalTree(edytor, [p('C', [p('L')])]);
 	});

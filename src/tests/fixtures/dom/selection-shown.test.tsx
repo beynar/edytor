@@ -3,10 +3,8 @@
  * Re-score 13, selection units. Expected states are hand-authored from the
  * contract rows (`sel.blocks.exact`, `sel.shown`) and Notion.
  *
- * - GX-03: `setAtBlockRange()` over a list or a code block selects across its
- *   items or lines, and leaving a block selection (`selectBlocks()`) spans
- *   what it showed: a list's items, and a leading divider (the range starts
- *   at the end of the line before it, so it still covers it).
+ * - GX-03: a block's lines (`selectLines`: Mod+A, a triple click) over a list
+ *   or a code block span its items or lines.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -23,6 +21,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { expectNoHiddenContent } from './invariants.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -64,66 +63,39 @@ const render = () =>
 const shape = (edytor: Edytor) => {
 	const { value } = edytor.selection;
 	if (value.kind === 'blocks') return `blocks:${value.ids.join(',')}`;
-	const { startText, endText, yStart, yEnd } = edytor.selection.state;
+	const { startText, endText, yStart, yEnd } = selectionState(edytor);
 	return `${startText?.parent.id}@${yStart}…${endText?.parent.id}@${yEnd}`;
 };
 const block = (edytor: Edytor, id: string) => edytor.idToBlock.get(id)!;
 
 describe('GX-03: block-range setters span what the blocks show', () => {
-	it('setAtBlockRange over a list selects across its items', async () => {
+	it('selectLines over a list selects across its items', async () => {
 		const { edytor } = await render();
-		edytor.selection.setAtBlockRange(block(edytor, 'L'));
+		edytor.selection.selectLines(block(edytor, 'L'));
 		await flushDomUpdates();
 		expect(shape(edytor)).toBe('one@0…two@3');
 	});
 
-	it('setAtBlockRange over a code block selects across its lines', async () => {
+	it('selectLines over a code block selects across its lines', async () => {
 		const { edytor } = await render();
-		edytor.selection.setAtBlockRange(block(edytor, 'C'));
+		edytor.selection.selectLines(block(edytor, 'C'));
 		await flushDomUpdates();
 		expect(shape(edytor)).toBe('l1@0…l2@6');
 	});
 
-	it('setAtBlockRange over a divider keeps the current value (it shows no line)', async () => {
+	it('selectLines over a divider keeps the current value (it shows no line)', async () => {
 		const { edytor } = await render();
-		edytor.selection.setAtBlockRange(block(edytor, 'x'));
+		edytor.selection.selectLines(block(edytor, 'x'));
 		await flushDomUpdates();
-		edytor.selection.setAtBlockRange(block(edytor, 'd'));
+		edytor.selection.selectLines(block(edytor, 'd'));
 		await flushDomUpdates();
 		expect(shape(edytor)).toBe('x@0…x@1');
-	});
-
-	it('leaving a block selection of [a, list] spans the list items', async () => {
-		const { edytor } = await render();
-		edytor.selection.selectBlocks(block(edytor, 'a'), block(edytor, 'L'));
-		await flushDomUpdates();
-		edytor.selection.selectBlocks();
-		await flushDomUpdates();
-		expect(shape(edytor)).toBe('a@0…two@3');
-	});
-
-	it('leaving a block selection of [divider, after] still covers the divider', async () => {
-		const { edytor } = await render();
-		edytor.selection.selectBlocks(block(edytor, 'd'), block(edytor, 'after'));
-		await flushDomUpdates();
-		edytor.selection.selectBlocks();
-		await flushDomUpdates();
-		expect(shape(edytor)).toBe('x@1…after@5');
-		await dispatchDomKeyDown(document, { key: 'Backspace' });
-		await flushDomUpdates();
-		expect(edytor.value.children!.map((b) => b.type)).toEqual([
-			'paragraph',
-			'unordered-list',
-			'code',
-			'paragraph'
-		]);
-		expectNoHiddenContent(edytor);
 	});
 
 	it('a range set with an end in a list container ends at its last item', async () => {
 		const { edytor } = await render();
 		const list = block(edytor, 'L');
-		edytor.selection.setAtRange(block(edytor, 'a').firstText, 0, list.content[0] as never, 0);
+		edytor.selection.selectText(block(edytor, 'a').firstText, 0, list.content[0] as never, 0);
 		await flushDomUpdates();
 		expect(shape(edytor)).toBe('a@0…two@3');
 	});
@@ -166,7 +138,7 @@ describe('GX-02: a grip-selected list acts on its items', () => {
 	const grip = async (edytor: Edytor, id = 'L') => {
 		// What the list's handle does (`BlockHandleController.selectBlock`).
 		expect(block(edytor, id).movable).toBe(true);
-		edytor.selection.selectBlocks(block(edytor, id));
+		selectBlocks(edytor, block(edytor, id));
 		await flushDomUpdates();
 	};
 
@@ -351,7 +323,7 @@ describe('GX-02: a grip-selected list acts on its items', () => {
 
 	it('Shift+↑ from the first item adds the list: Backspace removes all of it', async () => {
 		const { edytor } = await renderList();
-		edytor.selection.selectBlocks(block(edytor, 'one'));
+		selectBlocks(edytor, block(edytor, 'one'));
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'ArrowUp', shiftKey: true });
 		await flushDomUpdates();

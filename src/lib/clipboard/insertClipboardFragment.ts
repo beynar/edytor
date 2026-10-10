@@ -16,6 +16,7 @@ import {
 	type JSONText
 } from '$lib/utils/json.js';
 import { id } from '$lib/utils.js';
+import { noSelection } from '$lib/session/selection.js';
 import { caretAt } from '$lib/session/attempt.js';
 import { isValidEdytorClipboardFragment } from './fragmentData.js';
 import { hasBlockMarkdown, textToBlocks } from './textBlocks.js';
@@ -79,7 +80,7 @@ export const pasteFlow = (
 	if (!replace.length && !block) return;
 	const target = block ? { block: block.id, offset: p!.text.segStart + p!.offset } : { replace };
 	const [text, offset] = edytor.insertFlow({ flow, target });
-	if (replace.length) edytor.selection.selectBlocks();
+	if (replace.length) edytor.selection.select(noSelection);
 	caretAt(edytor, text, offset);
 };
 

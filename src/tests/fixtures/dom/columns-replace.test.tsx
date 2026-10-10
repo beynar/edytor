@@ -26,6 +26,7 @@ import {
 	text,
 	tree
 } from './columns.helpers.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -50,7 +51,7 @@ const shown = (ids: unknown[], known: Set<string>): unknown[] =>
 const KNOWN = new Set(['P', 'C', 'K1', 'K2', 'A', 'A2', 'B', 'Z']);
 
 const selectB = async (edytor: Awaited<ReturnType<typeof renderColumns>>['edytor']) => {
-	edytor.selection.selectBlocks(block(edytor, 'B'));
+	selectBlocks(edytor, block(edytor, 'B'));
 	await flushDomUpdates();
 	expect([...edytor.selection.selectedBlocks].map((b) => b.id)).toEqual(['B']);
 };
@@ -72,7 +73,7 @@ describe('a block selection in a column replaced in place (layout.flow-slot)', (
 			],
 			'Z'
 		]);
-		const fresh = edytor.selection.state.startBlock!;
+		const fresh = selectionState(edytor).startBlock!;
 		expect(text(edytor, fresh.id)).toBe('x');
 		expect(caret(edytor)).toEqual({ block: fresh.id, offset: 1, isCollapsed: true });
 		expect(edytor.undoManager!.undoStack.length).toBe(steps + 1);
@@ -103,7 +104,7 @@ describe('a block selection in a column replaced in place (layout.flow-slot)', (
 
 	it('typing over both blocks of column 1: one block takes their place', async () => {
 		const { edytor, editor } = await renderColumns(contractDoc());
-		edytor.selection.selectBlocks(block(edytor, 'A'), block(edytor, 'A2'));
+		selectBlocks(edytor, block(edytor, 'A'), block(edytor, 'A2'));
 		await flushDomUpdates();
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'y' });
 		expect(shown(tree(edytor), KNOWN)).toEqual([

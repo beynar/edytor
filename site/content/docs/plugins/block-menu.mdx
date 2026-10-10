@@ -121,7 +121,7 @@ import { setBlockColor, type EdytorInstance } from 'edytor';
 
 // The caret's block on a yellow background, as one undo step.
 export const highlightBlock = (edytor: EdytorInstance) => {
-	const block = edytor.selection.state.startBlock;
+	const block = edytor.selection.caret?.block;
 	if (block) setBlockColor(edytor, [block], 'background', 'yellow');
 };
 ```

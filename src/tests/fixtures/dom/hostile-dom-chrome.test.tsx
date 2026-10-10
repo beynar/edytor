@@ -33,6 +33,7 @@ import {
 } from '$lib/plugins/richtext/richTextOperations.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
+import { selectionState } from '../../selection.js';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const gestureSerial = (edytor: Edytor) => edytor.intentSerial;
@@ -292,7 +293,7 @@ describe('nested editable detection edge cases', () => {
 		const island = mountNestedEditable(editor);
 		const islandText = island.firstChild!.firstChild!;
 
-		const yBefore = edytor.selection.state.yStart;
+		const yBefore = selectionState(edytor).yStart;
 		const range = document.createRange();
 		range.setStart(islandText, 2);
 		range.collapse(true);
@@ -302,8 +303,8 @@ describe('nested editable detection edge cases', () => {
 		document.dispatchEvent(new Event('selectionchange'));
 		await flushDomUpdates();
 
-		expect(edytor.selection.state.yStart).toBe(yBefore);
-		expect(edytor.selection.state.isCollapsed).toBe(true);
+		expect(selectionState(edytor).yStart).toBe(yBefore);
+		expect(selectionState(edytor).isCollapsed).toBe(true);
 	});
 });
 
@@ -570,8 +571,8 @@ describe('insertHorizontalRule', () => {
 			(block) => block.content?.map((part) => ('text' in part ? part.text : '')).join('') ?? ''
 		);
 		expect(texts).toEqual(['He', '', 'llo']);
-		expect(edytor.selection.state.startText?.stringContent).toBe('llo');
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(selectionState(edytor).startText?.stringContent).toBe('llo');
+		expect(selectionState(edytor).yStart).toBe(0);
 	});
 
 	test('caret at block start: inserts a divider before, content intact', async () => {

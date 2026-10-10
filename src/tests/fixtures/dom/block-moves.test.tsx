@@ -33,6 +33,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectBlocks } from '../../selection.js';
 
 /** Red on the reference; green since S5. */
 const row = it;
@@ -78,7 +79,7 @@ const ARROWS = { up: 'ArrowUp', down: 'ArrowDown', in: 'ArrowRight', out: 'Arrow
 const move = async (edytor: Edytor, path: Path, direction: Direction, ...texts: string[]) => {
 	const blocks = texts.map((text) => find(edytor, text));
 	if (path === 'arrow-move') {
-		edytor.selection.selectBlocks(...blocks);
+		selectBlocks(edytor, ...blocks);
 		const key = ARROWS[direction];
 		await dispatchDomKeyDown(document, { key, code: key, metaKey: true });
 	} else if (path === 'handle') {

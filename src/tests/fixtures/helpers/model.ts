@@ -1,10 +1,11 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { RenderedNode } from '../../jsx/types.js';
+import { selectionState } from '../../selection.js';
 
 export const emptyFixture = { value: { children: [] } } as unknown as RenderedNode;
 
 export const addMentionAtSelection = (edytor: Edytor) => {
-	const { startBlock, startText, yStart } = edytor.selection.state;
+	const { startBlock, startText, yStart } = selectionState(edytor);
 	if (!startBlock || !startText) {
 		throw new Error('Missing selection state for inline-block insertion');
 	}
@@ -17,7 +18,7 @@ export const addMentionAtSelection = (edytor: Edytor) => {
 };
 
 export const splitAtSelection = (edytor: Edytor) => {
-	const { startBlock, startText, yStart } = edytor.selection.state;
+	const { startBlock, startText, yStart } = selectionState(edytor);
 	if (!startBlock || !startText) {
 		throw new Error('Missing selection state for splitBlock');
 	}
@@ -29,7 +30,7 @@ export const splitAtSelection = (edytor: Edytor) => {
 };
 
 export const deleteBlockRangeAtSelection = (edytor: Edytor) => {
-	const { startBlock, startText, endText, yStart, yEnd } = edytor.selection.state;
+	const { startBlock, startText, endText, yStart, yEnd } = selectionState(edytor);
 	if (!startBlock || !startText || !endText) {
 		throw new Error('Missing selection state for deleteContentAtRange');
 	}

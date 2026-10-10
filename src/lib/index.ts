@@ -377,7 +377,7 @@ export type {
 	SelectionSegment,
 	SelectionValue
 } from './session/selection.js';
-export type { SelectionState, TextAnchor } from './selection/selection.svelte.js';
+export type { TextAnchor } from './selection/selection.svelte.js';
 export type { Key, Modifier, Modifiers } from './session/keymap.js';
 export type { TextOperations } from './text/text.utils.js';
 export type { BlockBeside, BlockOperations } from './block/block.utils.js';

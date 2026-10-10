@@ -210,7 +210,7 @@ const actions: [string, (edytor: Edytor, editor: HTMLElement) => Promise<void>, 
 		'Turn into (toolbar)',
 		async (edytor) => {
 			const text = edytor.root!.children[0]!.firstText!;
-			edytor.selection.setAtRange(text, 0, text, 6);
+			edytor.selection.selectText(text, 0, text, 6);
 			await flushDomUpdates();
 			await press(document.querySelector('.toolbar-type')!);
 			await press(turnInto('Quote'));

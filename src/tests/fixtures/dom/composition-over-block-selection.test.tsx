@@ -28,6 +28,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -85,12 +86,12 @@ const lines = ({ edytor }: View) =>
 			`${block.type}:${(block.content ?? []).map((part) => ('text' in part ? part.text : '@')).join('')}`
 	);
 const caret = ({ edytor }: View) => {
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	const { startText, yStart, isCollapsed } = selectionState(edytor);
 	return [startText?.parent.id, yStart, isCollapsed];
 };
 const caretIn = async (view: View, id: string, offset?: number) => {
 	const text = get(view, id).firstText!;
-	view.edytor.selection.setAtTextOffset(text, offset ?? text.length);
+	view.edytor.selection.selectText(text, offset ?? text.length);
 	await flushDomUpdates();
 };
 const key = (key: string, extra: Record<string, boolean> = {}) =>
@@ -212,7 +213,7 @@ describe('EW-01 — a composition over a block selection replaces it and writes 
 
 	it('over two selected paragraphs: one paragraph holds the composed text', async () => {
 		const view = await render(seed());
-		view.edytor.selection.selectBlocks(get(view, 'first'), get(view, 'before'));
+		selectBlocks(view.edytor, get(view, 'first'), get(view, 'before'));
 		await flushDomUpdates();
 		await compose(view, ['か'], '日');
 		expect(lines(view)).toEqual(['paragraph:日', 'divider:', 'paragraph:after']);
@@ -322,7 +323,7 @@ describe('DR-behavior-1 — a composition over a block selection after an earlie
 	it('over two selected paragraphs: one paragraph holds the commit; one undo restores them', async () => {
 		const view = await render(seed());
 		await composeEarlier(view);
-		view.edytor.selection.selectBlocks(get(view, 'first'), get(view, 'before'));
+		selectBlocks(view.edytor, get(view, 'first'), get(view, 'before'));
 		await flushDomUpdates();
 		await dispatchComposition(view.editor, [{ type: 'compositionstart' }]);
 		expect(view.edytor.composition.phase).toBe('live');
@@ -355,7 +356,7 @@ describe('DR-behavior-1 — a composition over a block selection after an earlie
 			}
 		]);
 		await composeEarlier(view);
-		view.edytor.selection.selectBlocks(get(view, 'i1'), get(view, 'i2'));
+		selectBlocks(view.edytor, get(view, 'i1'), get(view, 'i2'));
 		await flushDomUpdates();
 		await compose(view, ['か'], '日');
 		const list = view.edytor.value.children![1];
@@ -418,7 +419,7 @@ describe('EW-06 — Escape over a lone selected divider leaves for a shown line'
 
 	it('a divider that ends the document: the caret goes to the end of the line before it', async () => {
 		const view = await render([p('first'), p('before'), divider('d')]);
-		view.edytor.selection.selectBlocks(get(view, 'd'));
+		selectBlocks(view.edytor, get(view, 'd'));
 		await flushDomUpdates();
 		await key('Escape');
 		expect(caret(view)).toEqual(['before', 6, true]);
@@ -438,7 +439,7 @@ describe('EW-08 — onDeleteSelectedBlocks names the selected blocks, never an e
 			},
 			p('z')
 		]);
-		view.edytor.selection.selectBlocks(get(view, 'i'));
+		selectBlocks(view.edytor, get(view, 'i'));
 		await flushDomUpdates();
 		await key('Backspace');
 		expect(hooked).toEqual([['i']]);
@@ -459,7 +460,7 @@ describe('EW-08 — onDeleteSelectedBlocks names the selected blocks, never an e
 			},
 			p('z')
 		]);
-		view.edytor.selection.selectBlocks(get(view, 'l1'), get(view, 'l2'));
+		selectBlocks(view.edytor, get(view, 'l1'), get(view, 'l2'));
 		await flushDomUpdates();
 		await key('Backspace');
 		expect(hooked).toEqual([['l1', 'l2']]);
@@ -477,7 +478,7 @@ describe('EW-09 — Enter over a selected image puts the caret at the end of its
 
 	it('typing right after Enter goes into the caption; a second Enter adds the line', async () => {
 		const view = await render([p('a'), image, p('z')]);
-		view.edytor.selection.selectBlocks(get(view, 'img'));
+		selectBlocks(view.edytor, get(view, 'img'));
 		await flushDomUpdates();
 		await key('Enter');
 		expect(caret(view)).toEqual(['img', 3, true]);
@@ -490,7 +491,7 @@ describe('EW-09 — Enter over a selected image puts the caret at the end of its
 
 	it('Escape over a selected image leaves for the end of its caption too', async () => {
 		const view = await render([p('a'), image, p('z')]);
-		view.edytor.selection.selectBlocks(get(view, 'img'));
+		selectBlocks(view.edytor, get(view, 'img'));
 		await flushDomUpdates();
 		await key('Escape');
 		expect(caret(view)).toEqual(['img', 3, true]);
@@ -622,21 +623,21 @@ describe('SW14-keys-1 — no key puts the caret in a lone selected divider’s p
 		'paragraph, divider': {
 			seed: seed,
 			select: async (view: View) => {
-				view.edytor.selection.selectBlocks(get(view, 'before'), get(view, 'd'));
+				selectBlocks(view.edytor, get(view, 'before'), get(view, 'd'));
 				await flushDomUpdates();
 			}
 		},
 		list: {
 			seed: () => [p('a'), list(), p('z')],
 			select: async (view: View) => {
-				view.edytor.selection.selectBlocks(get(view, 'L'));
+				selectBlocks(view.edytor, get(view, 'L'));
 				await flushDomUpdates();
 			}
 		},
 		code: {
 			seed: () => [p('a'), code(), p('z')],
 			select: async (view: View) => {
-				view.edytor.selection.selectBlocks(get(view, 'C'));
+				selectBlocks(view.edytor, get(view, 'C'));
 				await flushDomUpdates();
 			}
 		}
@@ -704,17 +705,17 @@ describe('SW14-keys-1 — no key puts the caret in a lone selected divider’s p
 		const { selection, dispatcher } = view.edytor;
 		const slot = (id: string) => get(view, id).content[0] as Text;
 		const at = () => {
-			const { startText, yStart, endText, yEnd } = selection.state;
+			const { startText, yStart, endText, yEnd } = selection.textRange();
 			return [startText?.parent.id, yStart, endText?.parent.id, yEnd];
 		};
 		// A void's slot: the next shown line; a container's: its first item.
-		selection.setAtTextOffset(slot('d'), 0);
+		selection.selectText(slot('d'), 0);
 		expect(at()).toEqual(['i1', 0, 'i1', 0]);
-		selection.setAtTextOffset(slot('L'), 0);
+		selection.selectText(slot('L'), 0);
 		expect(at()).toEqual(['i1', 0, 'i1', 0]);
-		selection.setAtBlockRange(get(view, 'd'));
+		selection.selectLines(get(view, 'd'));
 		expect(at()).toEqual(['i1', 0, 'i1', 0]);
-		selection.setAtRange(get(view, 'a').firstText!, 0, slot('d'), 0);
+		selection.selectText(get(view, 'a').firstText!, 0, slot('d'), 0);
 		expect(at()).toEqual(['a', 0, 'i1', 0]);
 		dispatcher.caret(slot('d'), 0);
 		expect(at()).toEqual(['i1', 0, 'i1', 0]);
@@ -733,14 +734,14 @@ describe('SW14-keys-1 — no key puts the caret in a lone selected divider’s p
 	it('the one writer: with no shown line at all, the selection stays', async () => {
 		const view = await render([divider('d')]);
 		const { selection } = view.edytor;
-		selection.selectBlocks(get(view, 'd'));
-		selection.setAtTextOffset(get(view, 'd').content[0] as Text, 0);
+		selection.select({ kind: 'blocks', ids: ['d'] });
+		selection.selectText(get(view, 'd').content[0] as Text, 0);
 		expect([...selection.selectedBlocks].map((b) => b.id)).toEqual(['d']);
 	});
 
 	it('Mod+B over selected paragraphs bolds them and keeps them selected', async () => {
 		const view = await render(seed());
-		view.edytor.selection.selectBlocks(get(view, 'first'), get(view, 'before'));
+		selectBlocks(view.edytor, get(view, 'first'), get(view, 'before'));
 		await flushDomUpdates();
 		await key('b', { ctrlKey: true });
 		expect(view.edytor.value.children?.slice(0, 2).map((block) => block.content)).toEqual([
@@ -823,7 +824,7 @@ describe('SW15-selection-1 — a peer’s change never leaves this view’s care
 				</root>,
 				{ document, plugins }
 			);
-			ada.edytor.selection.setAtTextOffset(get(ada, 'e').firstText, 0);
+			ada.edytor.selection.selectText(get(ada, 'e').firstText, 0);
 			await flushDomUpdates();
 			const row = kindCatalogue(bob.edytor.blocks).find((row) => row.value.type === kind)!;
 			convertBlocks(bob.edytor, [get(bob, 'e')], row);
@@ -886,7 +887,7 @@ describe('DR-behavior-1 — the navigation keys over a selected parent read its 
 		if (platform === 'mac')
 			vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel');
 		const view = await render(parent());
-		view.edytor.selection.selectBlocks(get(view, 'P'));
+		selectBlocks(view.edytor, get(view, 'P'));
 		await flushDomUpdates();
 		await key(name, mods);
 		await type(view.editor, 'Z');
@@ -896,10 +897,10 @@ describe('DR-behavior-1 — the navigation keys over a selected parent read its 
 
 	it('Shift+Mod+→ extends from the parent’s own line end, not past its children', async () => {
 		const view = await render(parent());
-		view.edytor.selection.selectBlocks(get(view, 'P'));
+		selectBlocks(view.edytor, get(view, 'P'));
 		await flushDomUpdates();
 		await key('ArrowRight', { shiftKey: true, ctrlKey: true });
-		const { startText, yStart } = view.edytor.selection.state;
+		const { startText, yStart } = selectionState(view.edytor);
 		// The anchor is the parent's own line start; the focus leaves its line end.
 		expect([startText?.parent.id, yStart]).toEqual(['P', 0]);
 		await type(view.editor, 'Z');
@@ -909,7 +910,7 @@ describe('DR-behavior-1 — the navigation keys over a selected parent read its 
 
 	it('with its children selected too, End goes to the last child’s end', async () => {
 		const view = await render(parent());
-		view.edytor.selection.selectBlocks(get(view, 'P'), get(view, 'c2'));
+		selectBlocks(view.edytor, get(view, 'P'), get(view, 'c2'));
 		await flushDomUpdates();
 		await key('End');
 		expect(caret(view)).toEqual(['c2', 7, true]);
@@ -925,7 +926,7 @@ describe('DR-behavior-1 — the navigation keys over a selected parent read its 
 			},
 			p('z', 'zed')
 		]);
-		view.edytor.selection.selectBlocks(get(view, 'body'), get(view, 'z'));
+		selectBlocks(view.edytor, get(view, 'body'), get(view, 'z'));
 		await flushDomUpdates();
 		await key('Escape');
 		expect(caret(view)).toEqual(['z', 3, true]);

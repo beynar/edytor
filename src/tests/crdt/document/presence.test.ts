@@ -54,7 +54,7 @@ const freshestOffset = (document: EdytorDocument, view: Edytor) => {
 
 /** Write the view's caret: `select()` publishes it. */
 const publishSelection = (view: Edytor, offset = 0) => {
-	view.selection.setAtTextOffset(view.root!.children[0]!.firstText!, offset);
+	view.selection.selectText(view.root!.children[0]!.firstText!, offset);
 };
 
 describe('shared awareness identity', () => {

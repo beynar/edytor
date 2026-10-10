@@ -101,7 +101,7 @@
 			keywords,
 			// Asked of the view given (a `+`'s menu asks it of the block it adds).
 			isEnabled: (view = edytor) => {
-				const block = view.selection.state.startBlock;
+				const block = view.selection.textRange().startText?.parent;
 				return Boolean(block?.convertible) && !inColumn(block);
 			},
 			// Turn into: one block, or `n` sibling blocks, in `n` columns (`layout.wrap`, Notion).
@@ -114,7 +114,7 @@
 					(selected.length === 1 || selected.length === n)
 				)
 					return wrapBlocks(edytor, selected, 'columns', n);
-				const block = edytor.selection.state.startBlock;
+				const block = edytor.selection.textRange().startText?.parent;
 				if (inColumn(block)) {
 					edytor.dispatcher.record({ operation: 'setBlock', status: 'refused' });
 					return false;

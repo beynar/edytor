@@ -112,7 +112,7 @@ const answer = () => ANSWERS[next++ % ANSWERS.length]!;
 
 /** The block a command acts on: the caret's, else the document's last. */
 const blockOf = (edytor: EdytorInstance) =>
-	edytor.selection.state.startBlock ?? edytor.root?.children.at(-1);
+	edytor.idToBlock.get(edytor.selection.projection.start?.block ?? '') ?? edytor.root?.children.at(-1);
 
 /**
  * Ask the "AI": its answer streams after the caret's block, or in place of

@@ -2,6 +2,7 @@
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { splitAtSelection } from '../../helpers/model.js';
 import { findBlockAndTextAtPath } from '../../../test.utils.js';
+import { selectionState } from '../../../selection.js';
 
 export const fixtures = defineFixtures([
 	defineModelTransformFixture({
@@ -269,7 +270,7 @@ export const fixtures = defineFixtures([
 				<paragraph>|Hello</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.mergeBlockBackward() ?? null,
+		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward() ?? null,
 		result: { kind: 'null' },
 		output: (
 			<root>
@@ -285,7 +286,7 @@ export const fixtures = defineFixtures([
 				<paragraph>World</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.mergeBlockBackward() ?? null,
+		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward() ?? null,
 		result: { kind: 'block', path: [0], type: 'paragraph' },
 		output: (
 			<root>
@@ -301,7 +302,7 @@ export const fixtures = defineFixtures([
 				<paragraph>|world!</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.mergeBlockBackward(),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward(),
 		output: (
 			<root>
 				<paragraph>Helloworld!</paragraph>
@@ -321,7 +322,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Last</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.mergeBlockBackward() ?? null,
+		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward() ?? null,
 		result: { kind: 'block', path: [0], type: 'paragraph' },
 		output: (
 			<root>
@@ -344,7 +345,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.mergeBlockBackward(),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward(),
 		output: (
 			<root>
 				<paragraph>
@@ -363,7 +364,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.mergeBlockBackward(),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward(),
 		output: (
 			<root>
 				<paragraph>
@@ -380,7 +381,7 @@ export const fixtures = defineFixtures([
 				<paragraph>|World</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.mergeBlockBackward(),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward(),
 		output: (
 			<root>
 				<paragraph>World</paragraph>
@@ -395,7 +396,7 @@ export const fixtures = defineFixtures([
 				<paragraph>world!</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.mergeBlockForward() ?? null,
+		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockForward() ?? null,
 		result: { kind: 'block', path: [0], type: 'paragraph' },
 		output: (
 			<root>
@@ -410,7 +411,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Hello|</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.mergeBlockForward() ?? null,
+		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockForward() ?? null,
 		result: { kind: 'null' },
 		output: (
 			<root>
@@ -426,7 +427,7 @@ export const fixtures = defineFixtures([
 				<paragraph>World</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.mergeBlockForward() ?? null,
+		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockForward() ?? null,
 		result: { kind: 'block', path: [0], type: 'paragraph' },
 		output: (
 			<root>
@@ -447,7 +448,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Last</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => edytor.selection.state.startBlock?.mergeBlockForward(),
+		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockForward(),
 		output: (
 			<root>
 				<paragraph>Helloworld</paragraph>
@@ -464,7 +465,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.setBlock({
+			selectionState(edytor).startBlock?.setBlock({
 				value: { type: 'list-item', content: [{ text: 'Hello world!' }] }
 			}),
 		output: (
@@ -481,7 +482,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.setBlock({ value: { type: 'list-item' } }),
+			selectionState(edytor).startBlock?.setBlock({ value: { type: 'list-item' } }),
 		output: (
 			<root>
 				<list-item>Hello world!</list-item>
@@ -496,7 +497,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.setBlock({
+			selectionState(edytor).startBlock?.setBlock({
 				value: { type: 'paragraph', content: [{ text: 'Updated content' }] }
 			}),
 		output: (
@@ -516,7 +517,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.setBlock({
+			selectionState(edytor).startBlock?.setBlock({
 				value: {
 					type: 'paragraph',
 					children: [{ type: 'paragraph', content: [{ text: 'New child' }] }]
@@ -539,7 +540,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.setBlock({
+			selectionState(edytor).startBlock?.setBlock({
 				value: { type: 'paragraph', content: [] }
 			}),
 		output: (
@@ -559,7 +560,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.setBlock({
+			selectionState(edytor).startBlock?.setBlock({
 				value: { type: 'paragraph', children: [] }
 			}),
 		output: (
@@ -576,7 +577,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.setBlock({
+			selectionState(edytor).startBlock?.setBlock({
 				value: { type: 'paragraph', data: { align: 'center' } }
 			}),
 		output: (
@@ -593,7 +594,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			edytor.selection.state.startBlock?.setBlock({
+			selectionState(edytor).startBlock?.setBlock({
 				value: {
 					type: 'paragraph',
 					content: [{ type: 'mention' }, { text: 'center' }, { type: 'mention' }]

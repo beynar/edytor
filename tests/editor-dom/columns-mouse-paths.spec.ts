@@ -15,7 +15,10 @@ import { trackPageIssues, waitForEditorReady } from './helpers';
 
 type Edytor = {
 	value: { children: Node[] };
-	selection: { selectedBlocks: Set<{ id: string }>; selectBlocks: (...blocks: unknown[]) => void };
+	selection: {
+		selectedBlocks: Set<{ id: string }>;
+		select: (value: { kind: 'blocks'; ids: string[] }) => void;
+	};
 	idToBlock: Map<string, unknown>;
 };
 type Node = { id: string; type: string; children?: Node[] };
@@ -231,7 +234,7 @@ test.describe('columns: a handle is reached by a person’s mouse path (R1)', ()
 		await open(page);
 		await page.evaluate(() => {
 			const edytor = (window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__;
-			edytor.selection.selectBlocks(...['A', 'A2', 'B'].map((id) => edytor.idToBlock.get(id)));
+			edytor.selection.select({ kind: 'blocks', ids: ['A', 'A2', 'B'] });
 		});
 		await reachGrip(page, 'B', 3);
 		await page.mouse.down();

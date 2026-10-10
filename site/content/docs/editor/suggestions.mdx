@@ -13,7 +13,7 @@ A suggestion is content a view proposes at a position: an AI draft, a completion
 	let edytor = $state<EdytorInstance>();
 
 	const propose = () => {
-		const block = edytor?.selection.state.startBlock;
+		const block = edytor?.selection.caret?.block;
 		if (!edytor || !block) return;
 		edytor.suggestions.add({ after: block.id }, [
 			{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Next steps' }] },
@@ -87,7 +87,7 @@ const stream = async (suggestion: Suggestion, prompt: string) => {
 
 /** Ask for a draft after the caret's block. */
 export const draft = (edytor: EdytorInstance, prompt: string) => {
-	const block = edytor.selection.state.startBlock;
+	const block = edytor.selection.caret?.block;
 	if (!block) return;
 	const suggestion = edytor.suggestions.add({ after: block.id }, undefined, {
 		label: 'AI',
@@ -243,7 +243,7 @@ const stream = (suggestion: Suggestion, blocks: JSONBlock[]) => {
 };
 
 export const askAI = (edytor: EdytorInstance) => {
-	const block = edytor.selection.state.startBlock;
+	const block = edytor.selection.caret?.block;
 	if (!block) return;
 	// An empty line is replaced, as in Notion; else the answer goes after the block.
 	const at = block.isEmpty && block.convertible ? { replace: [block.id] } : { after: block.id };

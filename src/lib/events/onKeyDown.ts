@@ -25,7 +25,7 @@ const isEventFromEditor = (edytor: Edytor, event: KeyboardEvent) => {
 		focused &&
 		(selection.selectedBlocks.size > 0 ||
 			selection.selectedInlineBlock.size > 0 ||
-			((event.metaKey || event.ctrlKey) && selection.state.startText?.node))
+			((event.metaKey || event.ctrlKey) && selection.textRange().startText?.node))
 	)
 		return true;
 	if (event.composedPath().includes(node)) return true;
@@ -50,7 +50,7 @@ const modifierKeys = new Set(['Alt', 'Control', 'Meta', 'Shift']);
 const shouldRefreshSelectionBeforeKeyDown = (edytor: Edytor, event: KeyboardEvent) =>
 	!modifierKeys.has(event.key) &&
 	hasCommandModifier(event) &&
-	edytor.selection.state.isCollapsed &&
+	edytor.selection.projection.isCollapsed &&
 	edytor.selection.selectedBlocks.size === 0 &&
 	edytor.selection.selectedInlineBlock.size === 0 &&
 	!isNativeInteractiveEvent(event);
@@ -106,7 +106,8 @@ const shouldPreventReadonlyMutationKey = (event: KeyboardEvent) => {
 };
 
 const isBackspaceFromTrailingNewlineMarker = (edytor: Edytor) => {
-	const { isCollapsed, startText, yStart } = edytor.selection.state;
+	const { startText, yStart } = edytor.selection.textRange();
+	const { isCollapsed } = edytor.selection.projection;
 	if (
 		!isCollapsed ||
 		!startText?.node ||
@@ -174,7 +175,7 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 		return;
 	}
 
-	if (this.selection.state.isVoidEditableElement) {
+	if (this.selection.voidField) {
 		return;
 	}
 

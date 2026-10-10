@@ -110,7 +110,7 @@ export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): bo
 	};
 	const [startText, startOffset] = caretOf.call(edytor, point(placed.from));
 	const [endText, endOffset] = caretOf.call(edytor, point(placed.to));
-	if (startText && endText) edytor.selection.setAtRange(startText, startOffset, endText, endOffset);
-	else if (endText) edytor.selection.setAtTextOffset(endText, endOffset);
+	if (startText && endText) edytor.selection.selectText(startText, startOffset, endText, endOffset);
+	else if (endText) edytor.selection.selectText(endText, endOffset);
 	return true;
 };

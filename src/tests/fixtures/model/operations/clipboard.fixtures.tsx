@@ -10,6 +10,7 @@ import {
 	writeEdytorClipboardData
 } from '$lib/clipboard/clipboard.js';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
+import { selectBlocks } from '../../../selection.js';
 
 const createClipboardData = () => {
 	const data = new Map<string, string>();
@@ -111,7 +112,7 @@ export const fixtures = defineFixtures([
 			if (!fragment) {
 				throw new Error('Expected a clipboard fragment');
 			}
-			await edytor.selection.setAtTextOffset(edytor.root!.children[1].firstText, 0);
+			await edytor.selection.selectText(edytor.root!.children[1].firstText, 0);
 			await insertEdytorClipboardFragment(edytor, fragment);
 		},
 		expectSelection: {
@@ -145,13 +146,13 @@ export const fixtures = defineFixtures([
 		run: async ({ edytor }) => {
 			const source = edytor.root!.children[0];
 			// A block selection is exactly its members: the nested block is selected too.
-			edytor.selection.selectBlocks(source, source.children[0]);
+			selectBlocks(edytor, source, source.children[0]);
 			const originalIds = [source.id, source.children[0].id];
 			const fragment = createEdytorClipboardFragment(edytor);
 			if (!fragment) {
 				throw new Error('Expected a block fragment');
 			}
-			await edytor.selection.setAtTextOffset(edytor.root!.children[1].firstText, 6);
+			await edytor.selection.selectText(edytor.root!.children[1].firstText, 6);
 			await insertEdytorClipboardFragment(edytor, fragment);
 			return originalIds;
 		},
@@ -285,7 +286,7 @@ export const fixtures = defineFixtures([
 			if (!fragment || fragment.kind !== 'content') {
 				throw new Error('Expected a content fragment');
 			}
-			edytor.selection.selectBlocks(edytor.root!.children[1]);
+			selectBlocks(edytor, edytor.root!.children[1]);
 			await insertEdytorClipboardFragment(edytor, fragment);
 		},
 		output: (
@@ -316,7 +317,7 @@ export const fixtures = defineFixtures([
 		run: async ({ edytor }) => {
 			const parent = edytor.root!.children[0];
 			const child = parent.children[0];
-			await edytor.selection.setAtRange(parent.firstText, 2, child.firstText, 3);
+			await edytor.selection.selectText(parent.firstText, 2, child.firstText, 3);
 			return createEdytorClipboardFragment(edytor);
 		},
 		assert: ({ result }) => {
@@ -346,7 +347,7 @@ export const fixtures = defineFixtures([
 		run: async ({ edytor }) => {
 			const child = edytor.root!.children[0].children[0];
 			const tail = edytor.root!.children[1];
-			await edytor.selection.setAtRange(child.firstText, 2, tail.firstText, 2);
+			await edytor.selection.selectText(child.firstText, 2, tail.firstText, 2);
 			return createEdytorClipboardFragment(edytor);
 		},
 		assert: ({ result }) => {

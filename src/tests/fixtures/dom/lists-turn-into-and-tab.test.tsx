@@ -31,6 +31,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { selectionState, selectBlocks as selectBlockSet } from '../../selection.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -74,19 +75,19 @@ const shape = ({ edytor }: View) => {
 const get = ({ edytor }: View, id: string) => edytor.idToBlock.get(id)!;
 /** The caret's block kind and text, and its offset. */
 const caret = ({ edytor }: View) => {
-	const { startBlock, yStart } = edytor.selection.state;
+	const { startBlock, yStart } = selectionState(edytor);
 	return [startBlock?.type, startBlock?.firstText?.stringContent, yStart];
 };
 const at = async (view: View, id: string, offset: number) => {
-	view.edytor.selection.setAtTextOffset(get(view, id).firstText!, offset);
+	view.edytor.selection.selectText(get(view, id).firstText!, offset);
 	await flushDomUpdates();
 };
 const range = async (view: View, from: string, to: string) => {
-	view.edytor.selection.setAtRange(get(view, from).firstText!, 0, get(view, to).firstText!, 1);
+	view.edytor.selection.selectText(get(view, from).firstText!, 0, get(view, to).firstText!, 1);
 	await flushDomUpdates();
 };
 const selectBlocks = async (view: View, ...ids: string[]) => {
-	view.edytor.selection.selectBlocks(...ids.map((id) => get(view, id)));
+	selectBlockSet(view.edytor, ...ids.map((id) => get(view, id)));
 	await flushDomUpdates();
 };
 const type = async (view: View, value: string) => {
@@ -291,7 +292,7 @@ describe('Tab and Shift+Tab over a text range entering a list (AW-02)', () => {
 		const view = await render([], [p('a', [p('m')]), ul('u', [li('c'), li('d')])]);
 		await range(view, 'm', 'c');
 		await tab(true);
-		const { startBlock, endBlock } = view.edytor.selection.state;
+		const { startBlock, endBlock } = selectionState(view.edytor);
 		expect([startBlock?.id, endBlock?.id]).toEqual(['m', 'c']);
 	});
 });
@@ -513,7 +514,7 @@ describe('Sweep: Turn into in an emptied document (SW10-lists-3)', () => {
 		const view = await emptied();
 		const [line] = view.edytor.root!.children;
 		expect(line?.convertible).toBe(true);
-		view.edytor.selection.setAtTextOffset(line!.firstText!, 0);
+		view.edytor.selection.selectText(line!.firstText!, 0);
 		await flushDomUpdates();
 		await turnInto('1');
 		expect(shape(view)).toEqual(['heading ""']);
@@ -522,7 +523,7 @@ describe('Sweep: Turn into in an emptied document (SW10-lists-3)', () => {
 
 	it('Mod+Alt+8 turns it into a code block', async () => {
 		const view = await emptied();
-		view.edytor.selection.setAtTextOffset(view.edytor.root!.children[0]!.firstText!, 0);
+		view.edytor.selection.selectText(view.edytor.root!.children[0]!.firstText!, 0);
 		await flushDomUpdates();
 		await turnInto('8');
 		expect(shape(view)).toEqual([['code ""', ['codeLine ""']]]);
@@ -537,7 +538,7 @@ describe('Tab and Shift+Tab over a text range that runs through a list (DR-behav
 		expect(shape(view)).toEqual([
 			['paragraph "z"', ['paragraph "a"', [U, ['list-item "c"', 'list-item "d"']], 'paragraph "e"']]
 		]);
-		const { startBlock, endBlock } = view.edytor.selection.state;
+		const { startBlock, endBlock } = selectionState(view.edytor);
 		expect([startBlock?.id, endBlock?.id]).toEqual(['a', 'e']);
 	});
 
@@ -569,7 +570,7 @@ describe('A divider in an emptied document (DR-behavior-2)', () => {
 		const view = await render(plugins, [p('x')]);
 		get(view, 'x').removeBlock();
 		await flushDomUpdates();
-		view.edytor.selection.setAtTextOffset(view.edytor.root!.children[0]!.firstText!, 0);
+		view.edytor.selection.selectText(view.edytor.root!.children[0]!.firstText!, 0);
 		await flushDomUpdates();
 		return view;
 	};

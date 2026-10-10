@@ -53,7 +53,8 @@ export const createFindPlugin =
 			hotkeys: {
 				// Over a text range in one line, search for it.
 				'mod+f': ({ prevent }) => {
-					const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
+					const { startText, endText, yStart, yEnd } = edytor.selection.textRange();
+					const { isCollapsed } = edytor.selection.projection;
 					const selected =
 						!isCollapsed && startText && startText === endText
 							? startText.stringContent.slice(yStart, yEnd)

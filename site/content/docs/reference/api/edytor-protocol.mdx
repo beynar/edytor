@@ -655,10 +655,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             toJSON(): import("./index.js").JSONDoc;
             dispose(): void;
         }) => import("./index.js").JSONDoc;
-        seedOf: (value: import("./index.js").JSONDoc, semantics?: import("./document.js").DocumentSemanticsConfig) => Uint8Array;
-        previousJSONWith: (updates: ReadonlyArray<Uint8Array | {
-            v2: Uint8Array;
-        }>, semantics?: import("./document.js").DocumentSemanticsConfig) => import("./index.js").JSONDoc;
     };
     sync: {
         messageYjsSyncStep1: number;
@@ -1119,12 +1115,10 @@ export type IndexeddbPersistenceApi = InstanceType<IndexeddbProvider['IndexeddbP
 export type IndexeddbPersistenceOptions = {
     awareness?: Awareness;
     disableBc?: boolean;
-    convertPrevious?: boolean;
 };
 ```
 
 - `disableBc`: Stay off the BroadcastChannel room (no cross-tab sync): storage only.
-- `convertPrevious`: Convert the generation-4 store of the same name (`edytor-v14:<name>`) into this one when this one is empty (the generation cutover): its visible document is read as JSON and seeded as this generation's.
 
 ## inspectAdmission
 

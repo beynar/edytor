@@ -1867,10 +1867,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             toJSON(): import("./index.js").JSONDoc;
             dispose(): void;
         }) => import("./index.js").JSONDoc;
-        seedOf: (value: import("./index.js").JSONDoc, semantics?: import("./document.js").DocumentSemanticsConfig) => Uint8Array;
-        previousJSONWith: (updates: ReadonlyArray<Uint8Array | {
-            v2: Uint8Array;
-        }>, semantics?: import("./document.js").DocumentSemanticsConfig) => import("./index.js").JSONDoc;
     };
     sync: {
         messageYjsSyncStep1: number;

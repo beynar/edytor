@@ -44,15 +44,12 @@ import { bindSync, type SyncProtocol } from '../protocols/sync.js';
 import {
 	GENERATION_KEY,
 	generationDbName,
-	PREVIOUS_GENERATION_PREFIX,
 	STORED_GENERATION_RECORD
 } from '../protocols/envelope.js';
-import { bindGenerations } from '../migration/generation.js';
 import {
 	CUSTOM as customStoreName,
 	encodeRow,
 	openContainer,
-	openIfExists,
 	readRow,
 	snapshotRow,
 	type SnapshotRow,
@@ -90,16 +87,6 @@ export type IndexeddbPersistenceOptions = {
 	awareness?: Awareness;
 	/** Stay off the BroadcastChannel room (no cross-tab sync): storage only. */
 	disableBc?: boolean;
-	/**
-	 * Convert the generation-4 store of the same name (`edytor-v14:<name>`)
-	 * into this one when this one is empty (the generation cutover): its
-	 * visible document is read as JSON and seeded as this generation's.
-	 * For a document stored only here; a document a room keeps takes its
-	 * state from the room instead (two replicas seeding different
-	 * conversions of one document would collide). Default `false`;
-	 * `createIndexeddbSync` sets it.
-	 */
-	convertPrevious?: boolean;
 };
 
 export type IndexeddbProvider = ReturnType<typeof bindIndexeddbProvider>;
@@ -112,46 +99,6 @@ export type IndexeddbPersistenceApi = InstanceType<IndexeddbProvider['IndexeddbP
  */
 export const bindIndexeddbProvider = (Y: EngineApi) => {
 	const syncProtocol: SyncProtocol = bindSync(Y);
-	const generations = bindGenerations(Y);
-
-	/**
-	 * The generation cutover of a local store (`IndexeddbPersistenceOptions.convertPrevious`):
-	 * when `db` is empty and the generation-4 store of `name` exists, its
-	 * visible document is read as JSON and this generation's seed of it is
-	 * written as `db`'s first row, with the generation record, in one
-	 * transaction. The generation-4 store is left as it was.
-	 */
-	const convertPrevious = async (name: string, db: IDBDatabase): Promise<void> => {
-		const [updates, custom] = idb.transact(db, [updatesStoreName, customStoreName], 'readonly');
-		// Both requests before either settles: one transaction.
-		const reads = [idb.get(custom, GENERATION_KEY), idb.count(updates)] as const;
-		const found = await reads[0];
-		if (found !== undefined || (await reads[1]) > 0) return;
-		const old = await openIfExists(PREVIOUS_GENERATION_PREFIX + name);
-		if (old === null) return;
-		try {
-			if (!old.objectStoreNames.contains(customStoreName)) return;
-			const [oldUpdates, oldCustom] = idb.transact(
-				old,
-				[updatesStoreName, customStoreName],
-				'readonly'
-			);
-			const reads = [idb.get(oldCustom, GENERATION_KEY), idb.getAll(oldUpdates)] as const;
-			const record = await reads[0];
-			const stored = await reads[1];
-			if (!generations.isPreviousGenerationRecord(record)) return;
-			const rows = await promise.all(stored.map(readRow));
-			if (rows.length === 0) return;
-			const seed = generations.seedOf(generations.previousJSONWith(rows));
-			const [newUpdates, newCustom] = idb.transact(db, [updatesStoreName, customStoreName]);
-			await promise.all([
-				idb.rtop(newCustom.put({ ...STORED_GENERATION_RECORD }, GENERATION_KEY)),
-				idb.addAutoKey(newUpdates, encodeRow(seed))
-			]);
-		} finally {
-			old.close();
-		}
-	};
 
 	/**
 	 * The shared room protocol — dispatch, the join rule, awareness
@@ -353,17 +300,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			this._ownsAwareness = !options.awareness;
 			this.disableBc = options.disableBc === true;
 
-			this._db = openContainer(this.dbName).then((db) =>
-				options.convertPrevious === true
-					? convertPrevious(name, db).then(
-							() => db,
-							(error) => {
-								db.close();
-								throw error;
-							}
-						)
-					: db
-			);
+			this._db = openContainer(this.dbName);
 
 			this.destroy = this.destroy.bind(this);
 			initLifecycle(this, this.destroy, () => room.depart(this));

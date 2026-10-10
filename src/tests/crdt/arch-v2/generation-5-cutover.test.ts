@@ -26,6 +26,7 @@ import {
 	bindCrdt,
 	createDocument,
 	defaultSemantics,
+	facadeConfigOf,
 	loadDocument
 } from '../../../lib/crdt/index.js';
 import {
@@ -39,7 +40,6 @@ import {
 	GENERATION_KEY,
 	generationDbName,
 	isGenerationRecord,
-	PREVIOUS_GENERATION_PREFIX,
 	readProtocolVersion
 } from '../../../lib/crdt/protocols/envelope.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
@@ -51,6 +51,20 @@ const fixture = (name: string) =>
 const V1 = fixture('state.v1.bin');
 const V2 = fixture('state.v2.bin');
 const VALUE = JSON.parse(new TextDecoder().decode(fixture('value.json')));
+/** The IndexedDB database of a generation-4 store (generations 1 to 4). */
+const PREVIOUS_GENERATION_PREFIX = 'edytor-v14:';
+/** A facade of this build reading with the bundled semantics, as the room's. */
+const facadeOf = (doc) => crdt.doc.create(doc, facadeConfigOf(defaultSemantics));
+/** A state of generation 4 as JSON (`generations.previousJSON`, as the room reads its container). */
+const previousJSON = (updates) => crdt.generations.previousJSON(updates, facadeOf);
+/** This generation's seed of `value`, as the room's conversion writes it. */
+const seedOf = (value) => {
+	const doc = crdt.createDoc();
+	const facade = facadeOf(doc);
+	facade.seed(value.children, value.data);
+	facade.dispose();
+	return Y.encodeStateAsUpdate(doc);
+};
 
 describe('generation 5', () => {
 	it('is schema 5, wire word 14005; generation 4 is the one this build converts', () => {
@@ -79,13 +93,13 @@ describe('generation 5', () => {
 
 describe('the generation-4 reader', () => {
 	it('reads the fixture as the JSON 0.1.0-next.24 gave, from v1 and from v2', () => {
-		expect(crdt.generations.previousJSONWith([V1], defaultSemantics)).toEqual(VALUE);
-		expect(crdt.generations.previousJSONWith([{ v2: V2 }], defaultSemantics)).toEqual(VALUE);
+		expect(previousJSON([V1])).toEqual(VALUE);
+		expect(previousJSON([{ v2: V2 }])).toEqual(VALUE);
 	});
 
 	it('seeds it deterministically; the seed reads back as it', () => {
-		const a = crdt.generations.seedOf(VALUE, defaultSemantics);
-		const b = crdt.generations.seedOf(VALUE, defaultSemantics);
+		const a = seedOf(VALUE);
+		const b = seedOf(VALUE);
 		expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true);
 		const document = loadDocument(a, { semantics: defaultSemantics });
 		expect(document.facade.toJSON()).toEqual(VALUE);
@@ -119,12 +133,12 @@ describe('pre-release data formats reach generation 5 through the cutover', () =
 	};
 
 	it('a next.6 array leaf reads as its array and seeds as items; a whole-data attribute is not read', () => {
-		const value = crdt.generations.previousJSONWith([withPreReleaseData()], defaultSemantics);
+		const value = previousJSON([withPreReleaseData()]);
 		const byId = (json, id) => json.children.find((block) => block.id === id);
 		expect(byId(value, 'n').data).toEqual({ labels: ['x', 'y'] });
 		expect(byId(value, 'p').data).toEqual({});
 		// Seeded as generation 5: the same data, and no leaf or attribute of the old forms.
-		const document = loadDocument(crdt.generations.seedOf(value, defaultSemantics), {
+		const document = loadDocument(seedOf(value), {
 			semantics: defaultSemantics
 		});
 		expect(document.facade.toJSON()).toEqual(value);
@@ -163,28 +177,7 @@ describe('IndexedDB stores of generation 4', () => {
 		return rows.length;
 	};
 
-	it('a local store converts into its successor; the old one is left as it was', async () => {
-		const logical = name();
-		await writeGeneration4(logical);
-		const doc = new Y.Doc();
-		const provider = new providers.IndexeddbPersistence(logical, doc, {
-			disableBc: true,
-			convertPrevious: true
-		});
-		await provider.whenSynced;
-		const facade = crdt.doc.create(doc, {
-			roleOf: (t) => defaultSemantics.roles[t],
-			defaultChildOf: (t) => defaultSemantics.defaultChild[t],
-			rendersContent: (t) => defaultSemantics.rendersContent[t] ?? true
-		});
-		expect(facade.toJSON()).toEqual(VALUE);
-		facade.dispose();
-		provider.destroy();
-		expect(await rowsOf(PREVIOUS_GENERATION_PREFIX + logical)).toBe(1);
-		expect(await rowsOf(generationDbName(logical))).toBeGreaterThan(0);
-	});
-
-	it('a store a room keeps does not convert: it starts empty and takes the room’s state', async () => {
+	it('is not converted: the new store starts empty and the old one is left as it was', async () => {
 		const logical = name();
 		await writeGeneration4(logical);
 		const doc = new Y.Doc();
@@ -192,25 +185,7 @@ describe('IndexedDB stores of generation 4', () => {
 		await provider.whenSynced;
 		expect(doc.get('blocks')._map.size).toBe(0);
 		provider.destroy();
-	});
-
-	it('createIndexeddbSync converts (a document stored only here)', async () => {
-		const logical = name();
-		await writeGeneration4(logical);
-		const { createIndexeddbSync } = crdt.providers;
-		const doc = new Y.Doc();
-		let synced = null;
-		const cleanup = createIndexeddbSync(logical)({
-			doc,
-			awareness: new crdt.Awareness(doc),
-			synced: (p) => (synced = p)
-		});
-		await new Promise<void>((resolve) => {
-			const tick = () => (synced ? resolve() : setTimeout(tick, 5));
-			tick();
-		});
-		expect(doc.get('blocks')._map.size).toBeGreaterThan(0);
-		cleanup();
+		expect(await rowsOf(PREVIOUS_GENERATION_PREFIX + logical)).toBe(1);
 	});
 });
 

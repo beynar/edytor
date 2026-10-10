@@ -42,9 +42,10 @@ const deleteInText = (
 	}
 	const index = content.indexOf(text) + (back ? -1 : 1);
 	const before = back ? content.at(index - 1) : text;
+	// Read before the removal joins the texts beside the atom.
+	const offset = back && before instanceof Text ? before.length : yStart;
 	text.parent.removeInlineBlock({ index });
-	if (before instanceof Text)
-		edytor.selection.setAtTextOffset(before, back ? before.length : yStart);
+	if (before instanceof Text) edytor.selection.setAtTextOffset(before, offset);
 };
 
 const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {

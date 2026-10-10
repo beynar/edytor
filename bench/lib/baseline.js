@@ -987,7 +987,7 @@ const rangeReads = () => {
 			searchMarkers += text._searchMarker?.length ?? 0;
 			// Pre-WU8 reference: each of those reads materialized the whole
 			// 100k backing text through toDelta().toJSON() — once per slice
-			// (the engine's delta read went with YP15: the test port renders it).
+			// (the engine's delta read went with YP16: the test port renders it).
 			const d0 = performance.now();
 			toDelta(text).toJSON();
 			toDeltaRefMs.push(performance.now() - d0);

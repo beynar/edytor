@@ -16,7 +16,7 @@
  * 4. GC'D/DELETED ANCHOR: the marker's anchor item is deleted inside a
  *    range then GC'd — the linkage check must reject the stale record.
  * 5. SEED GATES: a FORMATTED op0 retain must not seed — verified by
- *    differential. (The renderer gate went with the engine's renderer, YP15.)
+ *    differential. (The renderer gate went with the engine's renderer, YP16.)
  * 6. WIRE INTEROP: v14-encoded updates (with markers active) decode under
  *    real `yjs@13.6.30`; and v13-encoded updates decode under v14.
  */

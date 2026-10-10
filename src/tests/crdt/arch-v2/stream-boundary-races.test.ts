@@ -6,7 +6,7 @@
  * Rows (expected results from the plan's contracts, never from running code):
  * F-D13 (R2 property corpus, 4 replicas, concurrent-format generator, property
  * (e)), F-D14, F-D19, F-U3, F-U4a–e (the U-3 configuration with an attribution
- * renderer went with the engine's renderer, YP15), F-I7 (doc half), and the re-pins D-1/D-17 name
+ * renderer went with the engine's renderer, YP16), F-I7 (doc half), and the re-pins D-1/D-17 name
  * (TX06a = F-D14, TX09a, TX04a under three client assignments).
  *
  * Every multi-replica row runs both delivery orders, duplicate delivery, a

@@ -352,7 +352,7 @@ version, CPU brand, engine labels, warmup/sample counts, p50/p95.
 | `typing` | local single-char insert latency + remote `applyUpdate` latency on a synced replica                          |
 | `move`   | encoded update bytes for a 100k-char block move: v13 copy vs v14 placement attribute; timed 500-char variant |
 | `load`   | 1,000-block doc: update bytes, `applyUpdate` load ms, materialization ms                                     |
-| `delta`  | 128-format-run paragraph formatted read p50/p95 (v14 `RangeCursor` since YP15, v13 `toDelta()`)              |
+| `delta`  | 128-format-run paragraph formatted read p50/p95 (v14 `RangeCursor` since YP16, v13 `toDelta()`)              |
 
 ### First baseline (2026-09-19, node v24.21.0, Apple M4 Pro)
 

@@ -153,7 +153,6 @@ export class IdSet implements traits.EqualityTrait {
 export function equalIdSets(ds1: IdSet, ds2: IdSet): boolean;
 export function _deleteRangeFromIdSet(set: IdSet, client: number, clock: number, len: number): void;
 export function iterateStructsByIdSet(transaction: Transaction, ds: IdSet, f: (arg0: GC | Item) => void): void;
-export function iterateStructsByIdSetWithoutSplits(store: StructStore, ds: IdSet, f: (struct: GC | Item | Skip, offset: number, len: number) => void): void;
 export function findIndexInIdRanges(dis: Array<IdRange>, clock: number): number | null;
 export function findRangeStartInIdRanges(dis: Array<IdRange>, clock: number): number | null;
 export function mergeIdSets(idSets: Array<IdSet>): IdSet;

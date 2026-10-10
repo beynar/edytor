@@ -28,7 +28,7 @@ const KEPT = ['AbsolutePosition', 'AbstractStruct', 'ContentAny', 'ContentBinary
 /**
  * Reached beyond the engine object: `mergeUpdates` (server coordinators
  * compact with it) and `intersectSets` (the IdSet algebra's intersection,
- * public; its engine caller, `YEvent#getDelta`, went with YP15, which also
+ * public; its engine caller, `YEvent#getDelta`, went with YP16, which also
  * removed the IdMap/ContentMap codec pair with `attribution.legacy()`, its
  * only reader).
  */

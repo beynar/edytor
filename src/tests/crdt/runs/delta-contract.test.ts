@@ -6,7 +6,7 @@
  * {content|slices|del|at: …}}}}`.
  *
  * The pins of the maintained `Node.delta` cache went with the cache itself:
- * YP15 removed the engine's delta layer (UPSTREAM.md).
+ * YP16 removed the engine's delta layer (UPSTREAM.md).
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';

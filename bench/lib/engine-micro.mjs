@@ -1,7 +1,7 @@
 // WU9 engine micro-benchmark: the two named vendored hot paths.
 //   1. a delta applied to a fragmented long paragraph at distant positions (the
 //      engine's own `applyDelta` for a baseline that still ships it, else the
-//      test port over the fork's write cursor, UPSTREAM.md YP15) —
+//      test port over the fork's write cursor, UPSTREAM.md YP16) —
 //      the cursor starts at _start every call, so each op costs O(position).
 //   2. createAbsolutePositionFromRelativePosition() — resolves an anchor by
 //      walking left from the bound item, summing visible length.

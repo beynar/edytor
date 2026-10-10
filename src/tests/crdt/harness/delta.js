@@ -1,12 +1,12 @@
 /**
- * Test-only delta reader and writer over the vendored engine (UPSTREAM.md YP15).
+ * Test-only delta reader and writer over the vendored engine (UPSTREAM.md YP16).
  *
  * The fork ships no delta layer: `toDelta`, `applyDelta`, `YEvent#delta`/`getDelta`,
  * `YNode.from` and the maintained `node.delta` are gone from `edytor/crdt`. The
  * tests that compare the engine's state or changes as lib0 deltas (the upstream
  * suite, the marker differentials, the range-cursor oracle) read and write through
  * these ports instead — the engine's own code, renderer-free, as it stood before
- * YP15, built on the engine's internal helpers. Never imported by `src/lib`.
+ * YP16, built on the engine's internal helpers. Never imported by `src/lib`.
  */
 import * as delta from 'lib0-v14/delta';
 import * as map from 'lib0-v14/map';
@@ -53,7 +53,7 @@ const REF_TYPE = 7;
 const isNode = (v) => v != null && typeof v === 'object' && v._map instanceof Map && '_start' in v;
 
 /**
- * Every struct `ids` mentions, without splitting any (the engine's helper went with YP15).
+ * Every struct `ids` mentions, without splitting any (the engine's helper went with YP16).
  *
  * @param {any} store
  * @param {any} ids
@@ -139,7 +139,7 @@ const nodeMapGetDelta = (d, parent, attrsToRender, deep, modified, itemsToRender
 
 /**
  * The node's content (or a change of it) as a lib0 delta — the engine's `toDelta` as it stood
- * before YP15, without the renderer.
+ * before YP16, without the renderer.
  *
  * @param {YNode} node
  * @param {{ itemsToRender?: any, retainInserts?: boolean, retainDeletes?: boolean, insertedItems?: any, modified?: Map<YNode,Set<string|null>>|null, deep?: boolean }} [opts]
@@ -364,7 +364,7 @@ export const toDeltaDeep = (node, opts = {}) => toDelta(node, { ...opts, deep: t
 const eventDeltas = new WeakMap();
 
 /**
- * What a `YEvent` changed, as a lib0 delta (the engine's `YEvent#getDelta` before YP15).
+ * What a `YEvent` changed, as a lib0 delta (the engine's `YEvent#getDelta` before YP16).
  *
  * @param {any} event
  * @param {{ deep?: boolean }} [opts]
@@ -408,7 +408,7 @@ export const getDelta = (event, { deep = false } = {}) => {
 };
 
 /**
- * `event.delta` before YP15 (computed once per event).
+ * `event.delta` before YP16 (computed once per event).
  *
  * @param {any} event
  */
@@ -418,7 +418,7 @@ export const eventDelta = (event) => {
 };
 
 /**
- * `event.deltaDeep` before YP15 (computed once per event).
+ * `event.deltaDeep` before YP16 (computed once per event).
  *
  * @param {any} event
  */
@@ -428,7 +428,7 @@ export const eventDeltaDeep = (event) => {
 };
 
 /**
- * Elements of an insert: a delta becomes a node (`YNode.from` before YP15).
+ * Elements of an insert: a delta becomes a node (`YNode.from` before YP16).
  *
  * @param {Array<any>} insert
  */
@@ -436,7 +436,7 @@ const nodesOf = (insert) =>
 	insert.map((ins) => (delta.$deltaAny.check(ins) ? fromDelta(ins) : ins));
 
 /**
- * A detached node holding `d` (`YNode.from` before YP15).
+ * A detached node holding `d` (`YNode.from` before YP16).
  *
  * @param {any} d
  * @return {YNode}
@@ -448,7 +448,7 @@ export const fromDelta = (d) => {
 };
 
 /**
- * Apply a lib0 delta to `node` — the engine's `applyDelta` as it stood before YP15, without the
+ * Apply a lib0 delta to `node` — the engine's `applyDelta` as it stood before YP16, without the
  * renderer: one cursor walks the ops (a leading plain retain seeds it from a search marker); the
  * attrs follow. A detached node takes the delta through its own writes (it composes them the way
  * the pre-integration delta did).

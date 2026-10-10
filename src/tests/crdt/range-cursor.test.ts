@@ -9,7 +9,7 @@
  *   inherited from format markers BEFORE the range, `{mark:null}` clears,
  *   boundary clips, surrogates, live inline atoms, tombstoned content and
  *   tombstoned format markers — the reference is the engine's `toDelta` as it
- *   stood before YP15 (the test port `harness/delta.js`). YP15 removed the
+ *   stood before YP16 (the test port `harness/delta.js`). YP16 removed the
  *   renderer, and with it the attribution rows of this file.
  * - READ PURITY: reads produce no updates, split no items and change no undo
  *   state. The only writes are adaptive

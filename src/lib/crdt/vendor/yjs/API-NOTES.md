@@ -17,7 +17,7 @@ Source of truth: `src/index.js` exports + JSDoc in `src/ynode.js`.
 > content-id helpers, `$node`, `getNodeChildren`, `getPathTo`, `tryGc`,
 > `undoContentIds` and `logNode`.
 >
-> **Since patch YP15 it ships no delta layer either:** no `toDelta`/
+> **Since patch YP16 it ships no delta layer either:** no `toDelta`/
 > `toDeltaDeep`/`applyDelta`, no maintained `node.delta` (`clearCache`), no
 > `node.change`, no `'delta'` event, no `YNode.from`, no delta inserted as
 > content, no `YEvent#delta`/`deltaDeep`/`getDelta`, no renderer

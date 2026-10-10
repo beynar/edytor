@@ -207,7 +207,7 @@ replicated `u/`/`c/` actor dictionary travels inside `encode()` output.
 Documents saved by pre-U2 builds keep their `a/` per-edit records
 verbatim — preserved through `encode()`/sync; nothing reads them (the
 `attribution.legacy()` decoder went with the engine's delta layer and
-content-map codec, UPSTREAM.md YP15). This build never appends `a/` records; old
+content-map codec, UPSTREAM.md YP16). This build never appends `a/` records; old
 replicas that still do merge cleanly. Full contract:
 `src/lib/crdt/attribution/attribution.ts` + the U2 ledger entry.
 

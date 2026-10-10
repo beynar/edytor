@@ -271,5 +271,5 @@ export class Doc extends ObservableV2 {
   }
 }
 
-/** The tag `isDoc` (`./schemas.js`) reads (YP15). @type {boolean} */
+/** The tag `isDoc` (`./schemas.js`) reads (YP16). @type {boolean} */
 Doc.prototype._isDoc = true

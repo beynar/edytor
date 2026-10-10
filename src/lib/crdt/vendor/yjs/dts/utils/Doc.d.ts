@@ -156,7 +156,7 @@ export class Doc extends ObservableV2<DocEvents> {
     toJSON(): {
         [x: string]: any;
     };
-    /** The tag `isDoc` (`./schemas.js`) reads (YP15). @type {boolean} */
+    /** The tag `isDoc` (`./schemas.js`) reads (YP16). @type {boolean} */
     _isDoc: boolean;
 }
 export type DocOpts = {

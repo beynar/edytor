@@ -1985,7 +1985,7 @@ const qChanges = [
     if (prng.bool(gen)) {
       ytext.insert(insertPos, [{ image: 'https://user-images.githubusercontent.com/5553757/48975307-61efb100-f06d-11e8-9177-ee895e5916e5.png' }])
     } else {
-      ytext.insert(insertPos, [fromDelta(delta.create().insert([prng.word(gen), prng.word(gen)]))]) // YP15: a delta inserts as a node through the test port
+      ytext.insert(insertPos, [fromDelta(delta.create().insert([prng.word(gen), prng.word(gen)]))]) // YP16: a delta inserts as a node through the test port
     }
   },
   /**

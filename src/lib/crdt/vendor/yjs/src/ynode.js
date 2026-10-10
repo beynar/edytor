@@ -959,7 +959,7 @@ export const callTypeObservers = (type, transaction, event) => {
   }
 }
 
-// YP15 begin (edytor fork: writes without the delta layer — see UPSTREAM.md YP15)
+// YP16 begin (edytor fork: writes without the delta layer — see UPSTREAM.md YP16)
 /**
  * One run of a node's current content: a string (text) or the elements of an array insert, under
  * the formats in effect there (`null`: none) — the shape a current-state `toDelta` op had.
@@ -1224,7 +1224,7 @@ const writePrelim = (transaction, node, prelim) => {
     }
   }
 }
-// YP15 end
+// YP16 end
 
 /**
  * The engine's node: a sequence (text, elements, nested nodes) and a map of attributes.
@@ -1279,7 +1279,7 @@ export class YNode extends ObservableV2 {
      */
     this._hasFormatting = false
     /**
-     * The writes made while this node is detached, replayed when it integrates (YP15).
+     * The writes made while this node is detached, replayed when it integrates (YP16).
      * @type {Prelim|null}
      */
     this._prelim = null

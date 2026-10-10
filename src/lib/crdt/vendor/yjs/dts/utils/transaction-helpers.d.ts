@@ -5,7 +5,6 @@ export function getItemCleanStart(transaction: Transaction, id: ID): Item;
 export function getItemCleanEnd(transaction: Transaction, store: StructStore, id: ID): Item;
 export function replaceStruct(tr: Transaction, struct: GC | Item, newStruct: GC | Item): void;
 export function iterateStructs(transaction: Transaction, structs: Array<Item | GC>, clockStart: number, len: number, f: (arg0: GC | Item) => void): void;
-export function iterateStructsWithoutSplits(structs: Array<Item | GC>, clockStart: number, len: number, f: (struct: GC | Item | Skip, offset: number, len: number) => void): void;
 export function splitStruct(transaction: Transaction | null, leftStruct: Item | GC | Skip, diff: number): GC | Item | Skip;
 export function addChangedTypeToTransaction(transaction: Transaction, type: YNode, parentSub: string | null): void;
 export function tryToMergeWithLefts(structs: Array<GC | Item | Skip>, pos: number): number;

@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP14 and YP15 (no delta layer)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP14 and YP16 (no delta layer)
 global.d.ts upstream global.d.ts, plus patches YP1 and YP8
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -691,7 +691,7 @@ Oracle: `src/tests/crdt/placement/same-id-concurrent.test.ts` (the losing text s
 on every replica and after a reload; two fuzzes), the upstream suite
 unchanged.
 
-### YP15 — no delta layer: the writes call the cursor helpers, the reads walk the items (`src/ynode.js`, `src/utils/*`, `src/index.js`)
+### YP16 — no delta layer: the writes call the cursor helpers, the reads walk the items (`src/ynode.js`, `src/utils/*`, `src/index.js`)
 
 Reason: every app shipped lib0's `delta` (28 KB minified) and `schema`
 (5.4 KB, with `logging` → `dom`) because every engine write went through
@@ -704,7 +704,7 @@ src/lib/crdt/vendor --vendor`) 5,969 → 5,029, 29 → 27 files. Approved
 removal of public raw-engine API (`edytor/crdt`), listed in the site's
 migration page.
 
-Patch (the new code is delimited by `// YP15 begin` / `// YP15 end` in
+Patch (the new code is delimited by `// YP16 begin` / `// YP16 end` in
 `ynode.js`):
 
 - `YNode#insert`/`delete`/`format`/`setAttr`/`deleteAttr`/`clearAttrs` call
@@ -751,7 +751,7 @@ Patch (the new code is delimited by `// YP15 begin` / `// YP15 end` in
 
 Test side: `src/tests/crdt/harness/delta.js` is the engine's `toDelta`,
 `applyDelta`, `YEvent#getDelta`/`delta`/`deltaDeep` and `YNode.from` as they
-stood before YP15, renderer-free, over the engine's internal helpers (it
+stood before YP16, renderer-free, over the engine's internal helpers (it
 dispatches to a baseline engine's own methods); the vendored upstream suite,
 the YP4/YP5/YP7/YP11 differentials, `bench/lib/interop.mjs` and
 `bench/lib/engine-micro.mjs` read and write deltas through it. Removed with
@@ -761,16 +761,16 @@ fingerprint memos), the renderer rows of `range-cursor`,
 `search-marker-anchors` and `stream-boundary-races`, and the `Node.delta`
 pins of `runs/delta-contract`.
 
-Oracle: `src/tests/crdt/yp15-writes.test.ts` — 40 seeded programs × 120
+Oracle: `src/tests/crdt/yp16-writes.test.ts` — 40 seeded programs × 120
 operations over every public write (text and array inserts with formats,
 deletes, formats with `null`/`{}` updates, attrs, `clearAttrs`,
 `push`/`unshift`, writes to detached nodes nested two deep, undo/redo,
 writes to a deleted node), gc on and off, byte-identical
 `encodeStateAsUpdate` and equal deep content after EVERY operation against
 (1) the pristine upstream engine (local writes; the fork's search markers
-off, see below) and (2) the fork as it stood before YP15 (`git archive`,
+off, see below) and (2) the fork as it stood before YP16 (`git archive`,
 every operation, remote exchange included). Two pre-existing differences
-from upstream, unchanged by YP15 and pinned by (2): remote integration, and
+from upstream, unchanged by YP16 and pinned by (2): remote integration, and
 the YP4 seeded cursor, which in one seed (an array insert with formats at a
 seeded position) places an item differently from upstream's walk (equal
 content, different bytes).
@@ -803,7 +803,7 @@ shasum -a 256 /tmp/yjs.tgz   # expect 4b5ad410…8d7b85
 tar -xzf /tmp/yjs.tgz -C /tmp
 UP=/tmp/yjs-96c96e1fcb1ef6ce866d5264b3f97f7f77b11f64
 
-# engine source: normalize YP1 away, then diff — prints exactly the YP4–YP15 hunks
+# engine source: normalize YP1 away, then diff — prints exactly the YP4–YP16 hunks
 # (the pinned tarball's src/ equals node_modules/@y/y@14.0.0-rc.26/src)
 mkdir -p /tmp/yjs-normalized && cp -R src/lib/crdt/vendor/yjs/src /tmp/yjs-normalized/
 find /tmp/yjs-normalized -name '*.js' -exec sed -i '' 's|lib0-v14|lib0|g' {} +
@@ -826,14 +826,14 @@ diff -r "$UP/tests" /tmp/yjs-tests-normalized
 Runner: `vendor-tests/yjs/upstream.test.js` registers every `testXxx(tc)`
 export as a vitest test with a real `lib0-v14/testing` `TestCase`.
 
-- `pnpm test:crdt` — **196 pass / 6 skipped / 0 failed** since YP15 (216/6
+- `pnpm test:crdt` — **196 pass / 6 skipped / 0 failed** since YP16 (216/6
   since YP8, 325/6
   before; upstream standard tier; the 6 skips are upstream's own
   `t.skip(!t.production)` extensive-tier gates: 3× y-array, 3× y-map random
   stress tests).
 - `pnpm test:crdt:extensive` (`PRODUCTION=1`) — 331 pass before YP8 (~200 s;
   includes the 30 000-op randomized stress test); 222 tests since YP8, 202
-  since YP15 (`IdMap.tests.js`, `schema.tests.js` and the RDT tests of
+  since YP16 (`IdMap.tests.js`, `schema.tests.js` and the RDT tests of
   `attribution.tests.js` went with their subject).
 - Reproduce a seed: `YJS_TEST_SEED=<n> pnpm test:crdt`.
 - Vitest runs each test once; upstream's `runTests` repeats `testRepeat*`

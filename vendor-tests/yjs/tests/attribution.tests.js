@@ -4,7 +4,7 @@
  *
  * The v1 documents were generated with Yjs v13.2.0 based on the randomisized tests.
  *
- * YP15: the fork ships no delta layer, so the RDT tests of upstream (`bind`, the `'delta'`
+ * YP16: the fork ships no delta layer, so the RDT tests of upstream (`bind`, the `'delta'`
  * channel, the maintained `node.delta` cache and its fingerprint memos, `$rdt`) are removed with
  * their subject; the tests of kept behaviour (the `'destroy'` event, writes to a deleted node,
  * observers through a deleted parent, undo scope) stay, reading and writing deltas through the

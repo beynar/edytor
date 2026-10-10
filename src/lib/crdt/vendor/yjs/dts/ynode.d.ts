@@ -71,10 +71,12 @@ export class ArraySearchMarker {
     formats: Map<string, any> | null;
     timestamp: number;
 }
+export function plantMarker(parent: YNode, currPos: ItemTextListPosition): void;
 export function plantSearchMarker(parent: YNode, p: Item, index: number, formats: Map<string, any>): void;
 export function findMarker(yarray: YNode, index: number): ArraySearchMarker | null;
 export function updateMarkerChanges(searchMarker: Array<ArraySearchMarker>, index: number, len: number): void;
 export function callTypeObservers(type: YNode, transaction: Transaction, event: YEvent): void;
+export function cursorAt(transaction: Transaction, node: YNode, index: number): ItemTextListPosition;
 /**
  * The engine's node: a sequence (text, elements, nested nodes) and a map of attributes.
  *
@@ -129,7 +131,7 @@ export class YNode extends ObservableV2<{
      */
     _hasFormatting: boolean;
     /**
-     * The writes made while this node is detached, replayed when it integrates (YP15).
+     * The writes made while this node is detached, replayed when it integrates (YP16).
      * @type {Prelim|null}
      */
     _prelim: Prelim | null;

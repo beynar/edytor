@@ -325,7 +325,7 @@ const buildDense13 = () => {
 export const delta = () => {
 	const content14 = buildDense14();
 	const text13 = buildDense13();
-	// v14 ships no delta read (UPSTREAM.md YP15): its formatted read is the
+	// v14 ships no delta read (UPSTREAM.md YP16): its formatted read is the
 	// bounded `RangeCursor` edytor reads text through, over the whole paragraph.
 	const v14 = measure(() => new Y14.RangeCursor(content14).read(0, content14.length), {
 		warmup: WARMUP,

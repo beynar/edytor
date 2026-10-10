@@ -1,5 +1,5 @@
 /**
- * YP15 (UPSTREAM.md) — the fork's writes without the delta layer store exactly
+ * YP16 (UPSTREAM.md) — the fork's writes without the delta layer store exactly
  * what upstream's delta-driven writes stored.
  *
  * Differential: seeded programs over every public write of a node — `insert`
@@ -16,12 +16,12 @@
  * - the pristine upstream engine (`@y/y@14.0.0-rc.26`, the `@y/protocols`
  *   peer): local writes and undo/redo, the fork running without its search
  *   markers (the cursor walks from the start, as upstream does). Remote
- *   integration already stored differently from upstream before YP15 (the fork's
+ *   integration already stored differently from upstream before YP16 (the fork's
  *   patches), so exchange is left out; and the YP4 seeded cursor can place an item
  *   differently from upstream's walk (bytes differ, content equal: seed 18 of
- *   this program, an array insert with formats) — a pre-YP15 behaviour the
+ *   this program, an array insert with formats) — a pre-YP16 behaviour the
  *   second baseline keeps pinned;
- * - the fork as it stood before YP15 (`git archive` of {@link BEFORE}, when the
+ * - the fork as it stood before YP16 (`git archive` of {@link BEFORE}, when the
  *   commit is in the clone): every operation, exchange included.
  */
 // @ts-nocheck -- drives two engines' plain JS directly.
@@ -41,7 +41,7 @@ const upstream = async () => {
 	return import(/* @vite-ignore */ pathToFileURL(r.resolve('@y/y')).href);
 };
 
-/** The last commit before YP15 (the engine still wrote through `applyDelta`). */
+/** The last commit before YP16 (the engine still wrote through `applyDelta`). */
 const BEFORE = '30f50824';
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const git = (...args) => execFileSync('git', args, { cwd: ROOT });
@@ -53,8 +53,8 @@ const hasBefore = (() => {
 		return false;
 	}
 })();
-const beforeYP15 = async () => {
-	const dir = join(ROOT, 'node_modules/.cache/edytor-yp15-baseline');
+const beforeYP16 = async () => {
+	const dir = join(ROOT, 'node_modules/.cache/edytor-yp16-baseline');
 	rmSync(dir, { recursive: true, force: true });
 	mkdirSync(dir, { recursive: true });
 	execFileSync('tar', ['-x', '-C', dir], {
@@ -193,7 +193,7 @@ const differential = (B, gc, exchange, markers) => {
 	}
 };
 
-describe('YP15 — writes without the delta layer store what the delta layer stored', () => {
+describe('YP16 — writes without the delta layer store what the delta layer stored', () => {
 	for (const gc of [true, false]) {
 		it(`vs pristine upstream: 40 programs × 120 local operations, gc ${gc ? 'on' : 'off'}`, async () => {
 			const U = await upstream();
@@ -203,9 +203,9 @@ describe('YP15 — writes without the delta layer store what the delta layer sto
 		});
 
 		it.runIf(hasBefore)(
-			`vs the fork before YP15: 40 programs × 120 operations with exchange, gc ${gc ? 'on' : 'off'}`,
+			`vs the fork before YP16: 40 programs × 120 operations with exchange, gc ${gc ? 'on' : 'off'}`,
 			async () => {
-				const B = await beforeYP15();
+				const B = await beforeYP16();
 				expect(typeof B.Node.prototype.applyDelta).toBe('function');
 				differential(B, gc, true, true);
 			}

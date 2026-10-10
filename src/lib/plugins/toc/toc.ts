@@ -1,4 +1,4 @@
-import { viewLabels, type PartialLabels } from '$lib/labels.js';
+import { tocEnglish, viewLabels, type PartialLabels } from '$lib/labels.js';
 
 /**
  * A block's level in the table of contents (1 the outermost), or `null`
@@ -10,7 +10,7 @@ export type TocHeadingLevel = (block: {
 }) => number | null;
 
 /** Each view's table of contents labels: the first toc plugin listed claims them, as its kind. */
-export const tocLabels = viewLabels('toc');
+export const tocLabels = viewLabels(tocEnglish);
 
 /** The table of contents plugin's options. */
 export type TocPluginOptions = {

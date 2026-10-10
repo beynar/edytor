@@ -1,12 +1,17 @@
 import type { Snippet } from 'svelte';
 import { mount, unmount } from 'svelte';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-
+import { bandRun } from '$lib/surface/overlay.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import BlockHandles from './BlockHandles.svelte';
 import { BlockHandleController } from './BlockHandleController.svelte.js';
-import { labelsWith, type BlockHandlesLabels, type PartialLabels } from '$lib/labels.js';
+import {
+	blockHandlesEnglish,
+	labelsWith,
+	type BlockHandlesLabels,
+	type PartialLabels
+} from '$lib/labels.js';
 import { hidden } from '$lib/selection/visibility.js';
 
 export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
@@ -77,27 +82,14 @@ const nearTop = (
 	handle: (id: string) => Block,
 	screen: number
 ): readonly Block[] => {
-	const top = -NEAR_SCREENS * screen;
-	const bottom = (1 + NEAR_SCREENS) * screen;
 	// Ids, a handle only for each box read: no handle for every top-level block.
-	const box = (id: string) => handle(id).node?.getBoundingClientRect();
-	let lo = 0;
-	let hi = blocks.length;
-	while (lo < hi) {
-		const mid = (lo + hi) >> 1;
-		const at = box(blocks[mid]!);
-		if (!at || at.bottom < top) lo = mid + 1;
-		else hi = mid;
-	}
-	const first = lo;
-	hi = blocks.length;
-	while (lo < hi) {
-		const mid = (lo + hi) >> 1;
-		const at = box(blocks[mid]!);
-		if (!at || at.top <= bottom) lo = mid + 1;
-		else hi = mid;
-	}
-	return blocks.slice(first, lo).map(handle);
+	const [first, end] = bandRun(
+		blocks.length,
+		(index) => handle(blocks[index]!).node?.getBoundingClientRect(),
+		-NEAR_SCREENS * screen,
+		(1 + NEAR_SCREENS) * screen
+	);
+	return blocks.slice(first, end).map(handle);
 };
 
 /**
@@ -113,7 +105,7 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 		const controller = new BlockHandleController(edytor, {
 			draggable: options.draggable !== false,
 			onActivate: options.onActivate,
-			labels: labelsWith('blockHandles', options.labels)
+			labels: labelsWith(blockHandlesEnglish, options.labels)
 		});
 		const blocks = new SvelteMap<string, Block>();
 		const near = new SvelteSet<string>();

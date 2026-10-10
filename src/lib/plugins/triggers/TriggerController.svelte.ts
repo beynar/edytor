@@ -17,7 +17,8 @@ import type { Trigger, TriggerContext } from '$lib/plugins.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { inCodeLines } from '$lib/session/inputRules.js';
-import { identify, inPage, keepFocus, optionAttributes, type OptionAttributes } from '../chrome.js';
+import { inPage, optionAttributes, type OptionAttributes } from '../chrome.js';
+import { listPopup } from '../list.svelte.js';
 
 export type TextInsertionPayload = {
 	value: string;
@@ -47,7 +48,15 @@ export abstract class TextTriggerController {
 		readonly char: string,
 		/** The popup's owner name (`edytor.popups`), unique per view. */
 		protected owner: string
-	) {}
+	) {
+		this.popup = listPopup(
+			edytor,
+			owner,
+			'listbox',
+			() => this.listName,
+			(node) => this.isOpen && this.popupOf(inPage(node, this.rowIdAt(this.selectedIndex)))
+		);
+	}
 
 	/** The editor is readonly: the menu closes. */
 	get readonly() {
@@ -69,16 +78,7 @@ export abstract class TextTriggerController {
 	 * published to the view's root (`edytor.popups`) while the menu is open,
 	 * with its highlighted row (`option(index)`) once that row is in the page.
 	 */
-	popup: Attachment<HTMLElement> = (node) => {
-		identify(node, this.listId, 'listbox', this.listName);
-		node.addEventListener('mousedown', keepFocus);
-		$effect(() => {
-			if (!this.isOpen) return;
-			this.publish(this.popupOf(inPage(node, this.rowIdAt(this.selectedIndex))));
-			return () => this.publish(null);
-		});
-		return () => node.removeEventListener('mousedown', keepFocus);
-	};
+	popup: Attachment<HTMLElement>;
 
 	/**
 	 * The attributes of the row at `index`: spread them on its element

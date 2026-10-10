@@ -21,7 +21,7 @@ import type {
 	CommentResult,
 	CommentsClient
 } from '$lib/collaboration/comments/client.js';
-import { englishLabels, type CommentsLabels } from '$lib/labels.js';
+import { commentsEnglish, type CommentsLabels } from '$lib/labels.js';
 
 /** Who a comment's author is, as the sidebar shows them. */
 export type CommentUser = {
@@ -96,7 +96,7 @@ export class CommentsController {
 	) {
 		this.client = options.client;
 		this.user = options.user;
-		this.labels = options.labels ?? englishLabels.comments;
+		this.labels = options.labels ?? commentsEnglish;
 	}
 
 	/**

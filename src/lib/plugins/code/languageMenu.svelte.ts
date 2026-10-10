@@ -2,15 +2,15 @@ import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
+import { layerBox, pin, sameValues, type LayerBox } from '$lib/surface/overlay.js';
 import type { CodeLabels } from '$lib/labels.js';
 import {
 	attribute,
-	inPage,
-	keepFocus,
 	optionAttributes,
 	type MenuItemPayload,
 	type OptionAttributes
 } from '../chrome.js';
+import { holdKeys, listPopup } from '../list.svelte.js';
 import { languageLabel, languageOf, type CodeSettings } from './languages.js';
 
 /** A row of the language list: a language id and its label as shown. */
@@ -25,9 +25,6 @@ export type LanguageMenuItem = MenuItemPayload<LanguageRow> & {
 	/** It is the block's language. */
 	current: boolean;
 };
-
-/** The list's box: its button's, layer-relative. */
-type Box = { x: number; y: number; width: number; height: number };
 
 /** The overlay host the list renders in (the overlay's mount names it). */
 const HOST = '[data-edytor-code-language-host]';
@@ -59,7 +56,7 @@ export class LanguageMenu {
 	 * The button's box, measured in the overlay's frame.
 	 * @internal
 	 */
-	box = $state.raw<Box | null>(null);
+	box = $state.raw<LayerBox | null>(null);
 
 	/** @internal */
 	constructor(
@@ -67,7 +64,9 @@ export class LanguageMenu {
 		readonly edytor: Edytor,
 		/** @internal */
 		readonly settings: CodeSettings
-	) {}
+	) {
+		this.popup = listPopup(edytor, 'code-languages', 'listbox', () => this.labels.language);
+	}
 
 	/** The plugin's words (`language`, `search`, `noResults`, …). */
 	get labels(): CodeLabels {
@@ -223,15 +222,13 @@ export class LanguageMenu {
 			attribute(node, 'aria-controls', this.listId);
 			if (!node.hasAttribute('aria-label') && !node.hasAttribute('aria-labelledby'))
 				node.setAttribute('aria-label', this.labels.language);
-			node.addEventListener('keydown', this.#keydown);
 			node.addEventListener('focusout', this.#blurred);
-			node.focus({ preventScroll: true });
-			$effect(() => {
+			const off = holdKeys(node, this.#keydown, () => {
 				const row = this.rows[this.index];
-				attribute(node, 'aria-activedescendant', inPage(node, row && this.rowId(row)));
+				return row && this.rowId(row);
 			});
 			return () => {
-				node.removeEventListener('keydown', this.#keydown);
+				off();
 				node.removeEventListener('focusout', this.#blurred);
 			};
 		});
@@ -253,19 +250,7 @@ export class LanguageMenu {
 	 * unless it has its own, presses that keep the field's focus, and its
 	 * publication to the view's root (`edytor.popups`) while it is in the page.
 	 */
-	popup: Attachment<HTMLElement> = (node) =>
-		untrack(() => {
-			node.id = this.listId;
-			if (!node.hasAttribute('role')) node.setAttribute('role', 'listbox');
-			if (!node.hasAttribute('aria-label') && !node.hasAttribute('aria-labelledby'))
-				node.setAttribute('aria-label', this.labels.language);
-			node.addEventListener('mousedown', keepFocus);
-			this.edytor.popups.set('code-languages', { id: this.listId, haspopup: 'listbox' });
-			return () => {
-				node.removeEventListener('mousedown', keepFocus);
-				this.edytor.popups.set('code-languages', null);
-			};
-		});
+	popup: Attachment<HTMLElement>;
 
 	/**
 	 * The keys back to the editor from a language button (its Escape): the
@@ -330,28 +315,11 @@ export class LanguageMenu {
 	measure = (host: HTMLElement, origin: DOMRect) => {
 		const open = this.open;
 		const button = open ? this.#button(open.block) : null;
-		const rect = button?.isConnected ? button.getBoundingClientRect() : null;
-		const box = rect
-			? {
-					x: rect.left - origin.left,
-					y: rect.top - origin.top,
-					width: rect.width,
-					height: rect.height
-				}
-			: null;
+		const box = layerBox(button, origin);
 		return () => {
-			Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
+			pin(host);
 			if (open && !button) return this.close();
-			const known = this.box;
-			if (
-				!known ||
-				!box ||
-				known.x !== box.x ||
-				known.y !== box.y ||
-				known.width !== box.width ||
-				known.height !== box.height
-			)
-				this.box = box;
+			if (!sameValues(box, this.box)) this.box = box;
 		};
 	};
 

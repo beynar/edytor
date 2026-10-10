@@ -4,7 +4,7 @@ import type { Plugin } from '$lib/plugins.js';
 import FindBar from './FindBar.svelte';
 import FindHighlights from './FindHighlights.svelte';
 import { FindController } from './FindController.svelte.js';
-import { labelsWith, type PartialLabels } from '$lib/labels.js';
+import { findEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
 
 export type FindPluginOptions = {
 	/**
@@ -47,7 +47,7 @@ const place = (edytor: Edytor, find: FindController) => (host: HTMLElement) => {
 export const createFindPlugin =
 	(options: FindPluginOptions = {}): Plugin =>
 	(edytor) => {
-		const find = new FindController(edytor, labelsWith('find', options.labels));
+		const find = new FindController(edytor, labelsWith(findEnglish, options.labels));
 		controllers.set(edytor, find);
 		return {
 			hotkeys: {

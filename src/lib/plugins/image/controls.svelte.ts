@@ -1,7 +1,9 @@
 import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { englishLabels, type ImageLabels } from '$lib/labels.js';
+import { imageEnglish, type ImageLabels } from '$lib/labels.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
+import { trackDrag } from '$lib/dnd/track.js';
+import { layerBox, pin, sameValues } from '$lib/surface/overlay.js';
 import {
 	imageAlignOf,
 	imageAltOf,
@@ -75,7 +77,7 @@ export class ImageControls {
 	constructor(
 		private edytor: Edytor,
 		/** The words the chrome shows (the plugin's `labels`). */
-		readonly labels: ImageLabels = englishLabels.image
+		readonly labels: ImageLabels = imageEnglish
 	) {}
 
 	/** The view is readonly (reactive). */
@@ -137,23 +139,13 @@ export class ImageControls {
 	measure = (host: HTMLElement, origin: DOMRect) => {
 		const id = this.target;
 		const block = id ? this.edytor.idToBlock.get(id) : undefined;
-		const img = imageOf(block?.node);
-		const rect = img?.isConnected ? img.getBoundingClientRect() : null;
+		const rect = layerBox(imageOf(block?.node), origin);
 		const box: ImageBox | null =
-			id && block && rect
-				? {
-						id,
-						x: rect.left - origin.left,
-						y: rect.top - origin.top,
-						width: rect.width,
-						height: rect.height,
-						align: imageAlignOf(block.data)
-					}
-				: null;
+			id && block && rect ? { id, ...rect, align: imageAlignOf(block.data) } : null;
 		return () => {
 			// Layer-relative, as the rest of the overlay's chrome.
-			Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
-			if (!sameBox(box, this.box)) this.box = box;
+			pin(host);
+			if (!sameValues(box, this.box)) this.box = box;
 			if (!box && this.editing === id) this.editing = null;
 		};
 	};
@@ -271,9 +263,8 @@ export class ImageControls {
 	};
 
 	/**
-	 * Press on a handle: the drag starts, nothing is written until the
-	 * release. A `pointerdown` tracks its pointer (captured, on the document);
-	 * a lone `mousedown` tracks the mouse on the window.
+	 * Press on a handle: the drag starts (`trackDrag`), nothing is written
+	 * until the release.
 	 * @internal
 	 */
 	start = (event: PointerEvent | MouseEvent, side: Drag['side']) => {
@@ -283,11 +274,6 @@ export class ImageControls {
 		const img = imageOf(edytor.idToBlock.get(box.id)?.node);
 		const frame = img?.parentElement;
 		if (!img || !frame) return;
-		event.preventDefault();
-		event.stopPropagation();
-		const target = event.currentTarget as HTMLElement | null;
-		const pointer = event.type === 'pointerdown';
-		if (pointer) target?.setPointerCapture?.((event as PointerEvent).pointerId);
 		this.drag = {
 			id: box.id,
 			side,
@@ -297,47 +283,24 @@ export class ImageControls {
 			max: frame.getBoundingClientRect().width,
 			factor: box.align === 'center' ? 2 : 1
 		};
-		const document = target?.ownerDocument ?? edytor.node?.ownerDocument;
-		const tracked = pointer ? document : document?.defaultView;
-		const [moves, ups] = pointer ? ['pointermove', 'pointerup'] : ['mousemove', 'mouseup'];
-		const move = (moved: MouseEvent) => {
-			const drag = this.drag;
-			if (!drag) return;
-			if (!edytor.dispatcher.permits()) return end(moved);
-			drag.at = moved.clientX;
-			this.preview = { id: drag.id, width: widthAt(drag) };
-			edytor.overlay.invalidate();
-		};
-		const end = (ended: Event) => {
-			tracked?.removeEventListener(moves, move as EventListener);
-			tracked?.removeEventListener(ups, end);
-			tracked?.removeEventListener('pointercancel', end);
-			document?.removeEventListener('keydown', escape, true);
-			const drag = this.drag;
-			this.drag = null;
-			this.#cancel = null;
-			edytor.overlay.invalidate();
-			if (drag && ended.type === ups) {
-				drag.at = (ended as MouseEvent).clientX;
-				this.#release(drag);
-				// The editor holds the keys after the release (Notion: Mod+Z right after).
-				takeKeys(edytor);
+		this.#cancel = trackDrag(
+			edytor,
+			event,
+			(x) => {
+				const drag = this.drag;
+				if (!drag) return;
+				drag.at = x;
+				this.preview = { id: drag.id, width: widthAt(drag) };
+			},
+			(x) => {
+				const drag = this.drag;
+				this.drag = null;
+				this.#cancel = null;
+				if (drag && x !== null) this.#release({ ...drag, at: x });
+				// After the release's write: the stored width replaces the preview in one flush.
+				this.preview = null;
 			}
-			// After the release's write: the stored width replaces the preview in one flush.
-			this.preview = null;
-		};
-		const escape = (key: KeyboardEvent) => {
-			if (key.key !== 'Escape') return;
-			key.preventDefault();
-			key.stopPropagation();
-			end(key);
-		};
-		this.#cancel = () => end(new Event('cancel'));
-		tracked?.addEventListener(moves, move as EventListener);
-		tracked?.addEventListener(ups, end);
-		if (pointer) tracked?.addEventListener('pointercancel', end);
-		document?.addEventListener('keydown', escape, true);
-		edytor.overlay.invalidate();
+		);
 	};
 
 	/** The view turned readonly: a drag in progress ends at once, nothing written. @internal */
@@ -361,14 +324,3 @@ const widthAt = ({ side, from, at, width, max, factor }: Drag) => {
 	const hi = Math.max(max, width);
 	return Math.min(hi, Math.max(lo, width + (side === 'right' ? 1 : -1) * factor * (at - from)));
 };
-
-const sameBox = (a: ImageBox | null, b: ImageBox | null) =>
-	a === b ||
-	(a !== null &&
-		b !== null &&
-		a.id === b.id &&
-		a.x === b.x &&
-		a.y === b.y &&
-		a.width === b.width &&
-		a.height === b.height &&
-		a.align === b.align);

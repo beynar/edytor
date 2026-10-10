@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { iconOf } from '../icons.js';
+	import { alignIcons, altIcon } from '../icons.js';
 	import type { ImageAlign } from './image.js';
 	import type { ImageControls } from './controls.svelte.js';
 
@@ -82,8 +82,7 @@
 						aria-pressed={box.align === align}
 						onmousedown={keep}
 						onclick={() => controls.align(align)}
-						><span aria-hidden="true" style:mask-image={iconOf(`image.align-${align}`)}
-						></span></button
+						><span aria-hidden="true" style:mask-image={alignIcons[align]}></span></button
 					>
 				{/each}
 				<button
@@ -94,7 +93,7 @@
 					aria-expanded={controls.editing === box.id}
 					onmousedown={keep}
 					onclick={controls.toggleAlt}
-					><span aria-hidden="true" style:mask-image={iconOf('image.alt')}></span></button
+					><span aria-hidden="true" style:mask-image={altIcon}></span></button
 				>
 			</div>
 			{#if controls.editing === box.id}

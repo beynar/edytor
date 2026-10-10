@@ -18,8 +18,8 @@ export type DropPlacement = {
 export const isBeside = (position: BlockMovePosition): position is 'left' | 'right' =>
 	position === 'left' || position === 'right';
 
-export const getOwnRowBottom = (node: HTMLElement) => {
-	const rect = node.getBoundingClientRect();
+/** Where a block's own row ends: where its first shown child begins, else its box's (`rect`) bottom. */
+export const getOwnRowBottom = (node: HTMLElement, rect = node.getBoundingClientRect()) => {
 	// Block nodes wrap their children in the DOM; the parent's placement
 	// bands belong to its own row, ending where the first child begins.
 	const firstChild = node.querySelector<HTMLElement>('[data-edytor-block="true"]');

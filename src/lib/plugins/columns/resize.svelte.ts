@@ -1,9 +1,11 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
+import { trackDrag } from '$lib/dnd/track.js';
+import { pin } from '$lib/surface/overlay.js';
 import { bandOf, gapBefore } from './gaps.js';
 import { stacks } from './stacking.js';
-import { englishLabels, type ColumnsLabels } from '$lib/labels.js';
+import { columnsEnglish, type ColumnsLabels } from '$lib/labels.js';
 
 /** The guide line's width (the hover guide's and the drag's). */
 export const GUIDE = 2;
@@ -97,7 +99,7 @@ export class ColumnResize {
 		private edytor: Edytor,
 		private minWidth: number,
 		/** The words the bands say (the plugin's `labels`). */
-		readonly labels: ColumnsLabels = englishLabels.columns
+		readonly labels: ColumnsLabels = columnsEnglish
 	) {}
 
 	/** The view is readonly (reactive). */
@@ -187,7 +189,7 @@ export class ColumnResize {
 		};
 		return () => {
 			// Layer-relative, as the rest of the overlay's chrome.
-			Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
+			pin(host);
 			if (!sameStrips(strips, this.strips)) this.strips = strips;
 			this.guide = guide;
 		};
@@ -244,64 +246,33 @@ export class ColumnResize {
 	};
 
 	/**
-	 * Press on `strip`: the drag starts, nothing is written until the release.
-	 * A `pointerdown` tracks its pointer (captured, on the document); a lone
-	 * `mousedown` (`mousedown`) tracks the mouse on the window, its
-	 * `mousemove`s and its `mouseup`, with the same preview, minimum, Escape
-	 * and release.
+	 * Press on `strip`: the drag starts (`trackDrag`), nothing is written
+	 * until the release.
 	 */
 	start = (event: PointerEvent | MouseEvent, strip: Strip) => {
 		const { edytor } = this;
 		if (event.button !== 0 || edytor.readonly || this.drag) return;
 		const pair = this.pair(strip, event.clientX);
 		if (!pair) return;
-		event.preventDefault();
-		event.stopPropagation();
-		const target = event.currentTarget as HTMLElement | null;
-		const pointer = event.type === 'pointerdown';
-		if (pointer) target?.setPointerCapture?.((event as PointerEvent).pointerId);
 		this.drag = pair;
-		const document = target?.ownerDocument ?? edytor.node?.ownerDocument;
-		const tracked = pointer ? document : document?.defaultView;
-		const [moves, ups] = pointer ? ['pointermove', 'pointerup'] : ['mousemove', 'mouseup'];
-		const move = (moved: MouseEvent) => {
-			if (!this.drag) return;
-			if (!edytor.dispatcher.permits()) return end(moved);
-			this.drag.at = moved.clientX;
-			this.preview = this.weights(this.drag);
-			edytor.overlay.invalidate();
-		};
-		const end = (ended: Event) => {
-			tracked?.removeEventListener(moves, move as EventListener);
-			tracked?.removeEventListener(ups, end);
-			tracked?.removeEventListener('pointercancel', end);
-			document?.removeEventListener('keydown', escape, true);
-			const drag = this.drag;
-			this.drag = null;
-			this.guide = null;
-			this.#cancel = null;
-			edytor.overlay.invalidate();
-			if (drag && ended.type === ups) {
-				drag.at = (ended as MouseEvent).clientX;
-				this.release(drag);
-				// The editor holds the keys after the release (Notion: Mod+Z right after).
-				takeKeys(edytor);
+		this.#cancel = trackDrag(
+			edytor,
+			event,
+			(x) => {
+				if (!this.drag) return;
+				this.drag.at = x;
+				this.preview = this.weights(this.drag);
+			},
+			(x) => {
+				const drag = this.drag;
+				this.drag = null;
+				this.guide = null;
+				this.#cancel = null;
+				if (drag && x !== null) this.release({ ...drag, at: x });
+				// After the release's write: the stored weights replace the preview in one flush.
+				this.preview = null;
 			}
-			// After the release's write: the stored weights replace the preview in one flush.
-			this.preview = null;
-		};
-		const escape = (key: KeyboardEvent) => {
-			if (key.key !== 'Escape') return;
-			key.preventDefault();
-			key.stopPropagation();
-			end(key);
-		};
-		this.#cancel = () => end(new Event('cancel'));
-		tracked?.addEventListener(moves, move as EventListener);
-		tracked?.addEventListener(ups, end);
-		if (pointer) tracked?.addEventListener('pointercancel', end);
-		document?.addEventListener('keydown', escape, true);
-		edytor.overlay.invalidate();
+		);
 	};
 
 	/** `strip`'s two columns as they are now, measured, a drag from `from`; `null` when one is gone. */

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { iconOf } from '../icons.js';
+	import { linkIcon } from '../icons.js';
 	import type { ToolbarController } from './ToolbarController.svelte.js';
 	let { controller, card }: { controller: ToolbarController; card?: Snippet<[ToolbarController]> } =
 		$props();
@@ -22,10 +22,8 @@
 		role="toolbar"
 		aria-label={labels.card}
 	>
-		<span
-			class="link-card-url"
-			style:--link-card-icon={iconOf('mark.link')}
-			title={controller.hoveredHref}>{controller.hoveredHref}</span
+		<span class="link-card-url" style:--link-card-icon={linkIcon} title={controller.hoveredHref}
+			>{controller.hoveredHref}</span
 		>
 		<button
 			type="button"

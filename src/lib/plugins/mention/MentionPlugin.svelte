@@ -7,7 +7,7 @@
 		TriggerItemPayload
 	} from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
-	import { labelsWith, type PartialLabels } from '$lib/labels.js';
+	import { mentionEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
 
 	/** A person the mention menu offers: what your app's directory answers. */
 	export type MentionItem = {
@@ -54,7 +54,7 @@
 	 * atom (`{ id, label }`) and puts the caret after it, in one undo step.
 	 */
 	export const createMentionPlugin = (options: MentionPluginOptions): Plugin => {
-		const labels = labelsWith('mention', options.labels);
+		const labels = labelsWith(mentionEnglish, options.labels);
 		return () => ({
 			inlineBlocks: {
 				mention: {

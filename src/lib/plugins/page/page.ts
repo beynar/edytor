@@ -1,6 +1,7 @@
 import type { Block } from '$lib/block/block.svelte.js';
-import { viewLabels, type PartialLabels } from '$lib/labels.js';
+import { pageEnglish, viewLabels, type PartialLabels } from '$lib/labels.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
+import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
 /** The page plugin's options: how your app opens, names, links and creates pages. */
 export type PagePluginOptions = {
@@ -34,7 +35,7 @@ export type PagePluginOptions = {
 };
 
 /** Each view's page labels: the first page plugin listed claims them, as its kind. */
-export const pageLabels = viewLabels('page');
+export const pageLabels = viewLabels(pageEnglish);
 
 /** A stored page id: a non-empty string of at most 256 characters (a room id's bounds), else `null`. */
 export const pageIdOf = (value: unknown): string | null =>
@@ -65,12 +66,6 @@ export const storePageTitle = (block: Block, pageId: string, title: string) => {
 		TITLE_ORIGIN
 	);
 };
-
-const escapeHtml = (value: string) =>
-	value.replace(
-		/[&<>"']/g,
-		(c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!
-	);
 
 /** `options.href`'s URL for `pageId`, through the link sanitizer (no script URL), else `undefined`. */
 export const pageHref = (options: PagePluginOptions, pageId: string | null) =>

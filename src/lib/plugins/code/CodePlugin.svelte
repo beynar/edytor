@@ -10,7 +10,7 @@
 	import LanguageMenuPanel from './LanguageMenu.svelte';
 	import { LanguageMenu, languageMenus } from './languageMenu.svelte.js';
 	import { onPress } from '$lib/events/onFocus.js';
-	import { keywordsOf, labelsWith } from '$lib/labels.js';
+	import { codeEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
 	import {
 		DEFAULT_CODE_SETTINGS,
 		codeSettings,
@@ -44,7 +44,7 @@
 			const own: CodeSettings = {
 				languages: options.languages ?? DEFAULT_CODE_SETTINGS.languages,
 				defaultLanguage: options.defaultLanguage ?? DEFAULT_CODE_SETTINGS.defaultLanguage,
-				labels: labelsWith('code', options.labels),
+				labels: labelsWith(codeEnglish, options.labels),
 				header: options.header,
 				menu: options.menu
 			};

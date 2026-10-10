@@ -8,7 +8,7 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 	import { equationKinds } from '$lib/crdt/semantics.js';
-	import { keywordsOf, labelsWith } from '$lib/labels.js';
+	import { equationEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
 	import { onPress } from '$lib/events/onFocus.js';
 	import { id } from '$lib/utils.js';
 	import EquationView from './EquationView.svelte';
@@ -144,7 +144,7 @@
 	export const createEquationPlugin =
 		(options: EquationPluginOptions = {}): Plugin =>
 		(edytor) => {
-			const labels = labelsWith('equation', options.labels);
+			const labels = labelsWith(equationEnglish, options.labels);
 			equationLabels.claim(edytor, labels);
 			const renderer = new EquationRenderer(katexLoaderOf(options.katex), options.macros);
 			// The records read with no view (`plugin(undefined)`) keep no state.

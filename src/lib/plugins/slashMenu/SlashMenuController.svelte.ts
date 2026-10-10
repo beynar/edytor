@@ -5,11 +5,12 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EditorCommand } from '$lib/plugins.js';
 import { project, type SelectionValue } from '$lib/session/selection.js';
 import { BASIC_BLOCKS, matchesQuery } from '$lib/kinds.js';
-import { englishLabels, type SlashMenuLabels } from '$lib/labels.js';
+import { slashMenuEnglish, type SlashMenuLabels } from '$lib/labels.js';
 import type { BlockAddition } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { TextTriggerController } from '$lib/plugins/triggers/TriggerController.svelte.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
-import { attribute, inPage, isField, keepFocus, namesRows } from '../chrome.js';
+import { attribute, isField, keepFocus } from '../chrome.js';
+import { holdKeys } from '../list.svelte.js';
 
 export type { TextInsertionPayload } from '$lib/plugins/triggers/TriggerController.svelte.js';
 
@@ -93,7 +94,7 @@ export class SlashMenuController extends TextTriggerController {
 	constructor(
 		edytor: Edytor,
 		/** The words the menu shows (the plugin's `labels`): read them in a custom `menu` or `item`. */
-		readonly labels: SlashMenuLabels = englishLabels.slashMenu
+		readonly labels: SlashMenuLabels = slashMenuEnglish
 	) {
 		super(edytor, '/', 'slash-menu');
 	}
@@ -138,18 +139,14 @@ export class SlashMenuController extends TextTriggerController {
 		if (!untrack(() => this.addition)) return;
 		const menu = node.closest<HTMLElement>('[data-edytor-slash-menu-host]') ?? node;
 		const field = isField(node);
-		untrack(() => {
-			if (!node.contains(node.ownerDocument.activeElement)) node.focus({ preventScroll: true });
-		});
 		const keydown = (event: KeyboardEvent) => {
 			// A key that ends an IME composition (Enter commits it, Escape cancels it) is the IME's.
 			if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
 			const { key, ctrlKey, metaKey } = event;
 			const move = { ArrowDown: 1, ArrowUp: -1 }[key];
-			if (!field && event.target === node && key === 'Backspace')
-				this.search(this.query.slice(0, -1));
-			else if (!field && event.target === node && key.length === 1 && !ctrlKey && !metaKey)
-				this.search(this.query + key);
+			const typed = !field && event.target === node;
+			if (typed && key === 'Backspace') this.search(this.query.slice(0, -1));
+			else if (typed && key.length === 1 && !ctrlKey && !metaKey) this.search(this.query + key);
 			else if (move) this.moveSelection(move);
 			else if (key === 'Enter') void this.runSelected();
 			else if (key === 'Escape') this.dismiss();
@@ -169,20 +166,19 @@ export class SlashMenuController extends TextTriggerController {
 			const to = event.relatedTarget;
 			if (this.addition && to instanceof Node && !menu.contains(to)) this.dismiss(false);
 		};
-		// A field takes the keys of the whole menu (a row a screen reader focused); a wrapper, its own.
-		const keyed = field ? menu : node;
-		keyed.addEventListener('keydown', keydown);
 		menu.addEventListener('focusin', focusin);
 		menu.addEventListener('focusout', focusout);
 		menu.addEventListener('mousedown', keepFocus);
-		$effect(() => {
-			if (!field) return;
-			attribute(node, 'aria-controls', this.listId);
-			if (namesRows(node))
-				attribute(node, 'aria-activedescendant', inPage(node, this.rowIdAt(this.selectedIndex)));
-		});
+		if (field) attribute(node, 'aria-controls', this.listId);
+		// A field takes the keys of the whole menu (a row a screen reader focused); a wrapper, its own.
+		const off = holdKeys(
+			node,
+			keydown,
+			() => (field ? this.rowIdAt(this.selectedIndex) : undefined),
+			field ? menu : node
+		);
 		return () => {
-			keyed.removeEventListener('keydown', keydown);
+			off();
 			menu.removeEventListener('focusin', focusin);
 			menu.removeEventListener('focusout', focusout);
 			menu.removeEventListener('mousedown', keepFocus);

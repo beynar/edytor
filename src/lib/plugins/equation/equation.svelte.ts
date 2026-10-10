@@ -4,7 +4,14 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
-import { englishLabels, viewLabels, type EquationLabels, type PartialLabels } from '$lib/labels.js';
+import {
+	equationEnglish,
+	viewLabels,
+	type EquationLabels,
+	type PartialLabels
+} from '$lib/labels.js';
+import { layerBox, pin, sameValues } from '$lib/surface/overlay.js';
+import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
 /** The part of KaTeX the plugin uses: `katex.renderToString`. */
 export type KatexLike = {
@@ -61,9 +68,6 @@ export const expressionOf = (data: unknown): string => {
 	const value = (data as EquationData | undefined)?.expression;
 	return typeof value === 'string' ? value : '';
 };
-
-const escape = (value: string) =>
-	value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** The cap of the drawings each renderer keeps. */
 const CACHE = 256;
@@ -125,7 +129,7 @@ export class EquationRenderer {
 				// TeX KaTeX cannot read: the source as text, below.
 			}
 		}
-		const source = escape(tex);
+		const source = escapeHtml(tex);
 		return (
 			`<span class="katex"><math xmlns="http://www.w3.org/1998/Math/MathML"${display ? ' display="block"' : ''}>` +
 			`<semantics><mrow><mtext>${source}</mtext></mrow><annotation encoding="${TEX}">${source}</annotation></semantics></math></span>`
@@ -180,7 +184,7 @@ export const parseEquation = (element: HTMLElement, display: boolean): EquationD
 };
 
 /** Each view's equation labels: the first equation plugin listed claims them, as its kinds. */
-export const equationLabels = viewLabels('equation');
+export const equationLabels = viewLabels(equationEnglish);
 
 /** The overlay host the editor renders in (the overlay's mount names it). */
 const HOST = '[data-edytor-equation-editor-host]';
@@ -224,7 +228,7 @@ export class EquationEditor {
 		/** @internal */
 		readonly renderer: EquationRenderer,
 		/** The plugin's words (`editor`, `placeholder`, `done`, …). */
-		readonly labels: EquationLabels = englishLabels.equation
+		readonly labels: EquationLabels = equationEnglish
 	) {}
 
 	/** The view is readonly (reactive): the editor closes. */
@@ -382,19 +386,11 @@ export class EquationEditor {
 	measure = (host: HTMLElement, origin: DOMRect) => {
 		const target = this.target;
 		const node = target ? this.#node(target) : null;
-		const rect = node?.isConnected ? node.getBoundingClientRect() : null;
-		const box = rect
-			? {
-					x: rect.left - origin.left,
-					y: rect.top - origin.top,
-					width: rect.width,
-					height: rect.height
-				}
-			: null;
+		const box = layerBox(node, origin);
 		return () => {
-			Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
+			pin(host);
 			if (target && !node) return this.close(false);
-			if (!sameBox(box, this.box)) this.box = box;
+			if (!sameValues(box, this.box)) this.box = box;
 		};
 	};
 
@@ -432,12 +428,3 @@ export type EquationView = { renderer: EquationRenderer; editor: EquationEditor 
 
 /** By view. */
 export const equationViews = new WeakMap<Edytor, EquationView>();
-
-const sameBox = (a: EquationBox | null, b: EquationBox | null) =>
-	a === b ||
-	(a !== null &&
-		b !== null &&
-		a.x === b.x &&
-		a.y === b.y &&
-		a.width === b.width &&
-		a.height === b.height);

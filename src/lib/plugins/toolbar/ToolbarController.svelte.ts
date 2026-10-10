@@ -20,7 +20,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 import { convertBlocks, convertibleKinds, rowOf, type KindRow } from '$lib/kinds.js';
 import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
-import { englishLabels, type ToolbarLabels } from '$lib/labels.js';
+import { toolbarEnglish, type ToolbarLabels } from '$lib/labels.js';
 import { identify } from '../chrome.js';
 
 /** The bar's controls the arrows walk (a disabled one is skipped). */
@@ -60,7 +60,7 @@ export class ToolbarController {
 	constructor(
 		private edytor: Edytor,
 		/** The words the toolbar shows (the plugin's `labels`): read them in a custom `toolbar`. */
-		readonly labels: ToolbarLabels = englishLabels.toolbar
+		readonly labels: ToolbarLabels = toolbarEnglish
 	) {}
 
 	/** A palette color's name as shown (`labels.colors`). */

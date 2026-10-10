@@ -5,14 +5,16 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { PluginDefinitions, PluginOperations } from '$lib/plugins.js';
 import type { SerializableContent } from '$lib/utils/json.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
+import { placeNear } from '$lib/surface/overlay.js';
 import { onPress } from '$lib/events/onFocus.js';
 import { holdsNothing, lineage, placing } from '$lib/kinds.js';
 import { id } from '$lib/utils.js';
 import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
 import UrlPasteMenu from './UrlPasteMenu.svelte';
-import { englishLabels, type MediaLabels } from '$lib/labels.js';
-import { identify, inPage, keepFocus, optionAttributes, type OptionAttributes } from '../chrome.js';
+import { mediaEnglish, type MediaLabels } from '$lib/labels.js';
+import { inPage, optionAttributes, type OptionAttributes } from '../chrome.js';
+import { listHotkeys, listPopup } from '../list.svelte.js';
 
 /** A kind a pasted URL can turn its line into (the embed's, the bookmark's). */
 export type UrlPasteOffer = {
@@ -52,8 +54,16 @@ export class UrlPasteController {
 	constructor(
 		readonly edytor: Edytor,
 		/** The words the menu shows: the labels of the plugin that made the first offer. */
-		readonly labels: MediaLabels = englishLabels.media
-	) {}
+		readonly labels: MediaLabels = mediaEnglish
+	) {
+		this.popup = listPopup(
+			edytor,
+			'url-paste',
+			'listbox',
+			() => labels.pasteAs,
+			(node) => this.open && { active: inPage(node, this.optionId(this.index)) }
+		);
+	}
 
 	get readonly() {
 		return this.edytor.readonly;
@@ -90,17 +100,7 @@ export class UrlPasteController {
 	 * its highlighted row while the menu is open: the editor keeps the
 	 * keyboard (its keys move and pick).
 	 */
-	popup: Attachment<HTMLElement> = (node) => {
-		identify(node, this.listId, 'listbox', this.labels.pasteAs);
-		node.addEventListener('mousedown', keepFocus);
-		$effect(() => {
-			if (!this.open) return;
-			const active = inPage(node, this.optionId(this.index));
-			this.edytor.popups.set('url-paste', { id: this.listId, haspopup: 'listbox', active });
-			return () => this.edytor.popups.set('url-paste', null);
-		});
-		return () => node.removeEventListener('mousedown', keepFocus);
-	};
+	popup: Attachment<HTMLElement>;
 
 	/** The rows for `url`: Link, then each offer that takes it. @internal */
 	optionsFor = (url: string): UrlPasteOption[] => [
@@ -195,20 +195,9 @@ export class UrlPasteController {
 	/** The hooks of the plugin carrying the menu. @internal */
 	hooks = (): PluginOperations & PluginDefinitions => ({
 		onPaste: this.paste,
-		hotkeys: {
-			arrowdown: ({ prevent }) => {
-				if (this.move(1)) prevent();
-			},
-			arrowup: ({ prevent }) => {
-				if (this.move(-1)) prevent();
-			},
-			enter: ({ prevent }) => {
-				if (this.open) prevent(() => this.pick());
-			},
-			escape: ({ prevent }) => {
-				if (this.open) prevent(() => this.close());
-			}
-		},
+		hotkeys: listHotkeys(
+			() => this.open !== null && { move: this.move, pick: () => this.pick(), close: this.close }
+		),
 		onAfterOperation: () => this.close(),
 		onSelectionChange: () => {
 			if (this.open && !this.stays()) this.close();
@@ -240,15 +229,8 @@ export class UrlPasteController {
 		if (!open) return;
 		const block = edytor.idToBlock.get(open.block);
 		if (!block?.isInTree) return () => this.close();
-		const view = host.ownerDocument.defaultView;
 		const rect = (block.firstText?.node ?? block.node)?.getBoundingClientRect();
-		if (!view || !rect) return;
-		const width = host.firstElementChild?.getBoundingClientRect().width || 220;
-		const height = host.firstElementChild?.getBoundingClientRect().height || 120;
-		const left = `${Math.max(8, Math.min(rect.left, view.innerWidth - width - 8))}px`;
-		const below = rect.bottom + height + 8 < view.innerHeight;
-		const top = `${Math.max(8, below ? rect.bottom + 4 : rect.top - height - 4)}px`;
-		return () => Object.assign(host.style, { left, top });
+		return rect && placeNear(host, rect, [220, 120], { gap: 4 });
 	};
 }
 

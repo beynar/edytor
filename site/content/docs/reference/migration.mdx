@@ -27,6 +27,9 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
   - Id maps and content maps are gone: `IdMap`, `createIdMap`, `insertIntoIdMap`, `readIdMap`, `writeIdMap`, `encodeIdMap`, `decodeIdMap`, `ContentAttribute`, `createContentAttribute`, the `ContentMap` type, `createContentMap`, `readContentMap`, `writeContentMap`, `encodeContentMap`, `decodeContentMap`.
   - A write past the end of a node that is not in a document yet now throws when you make it (it threw when the node was inserted).
 - **`document.attribution.legacy()` is gone.** It decoded the per-edit `a/` records of early builds into a content map for a renderer you supplied, and the engine has neither any more. The records stay in the document and travel with it byte for byte: read their bytes from the `attribution` root (`doc.get('attribution').getAttr(key)` for each key starting with `a/`) if you keep a decoder of your own.
+- **The callout icon picker's `popup` keeps a custom picker's own role and name**, as every other menu's `popup` does, and a press on the picker keeps the focus where it is.
+- **Smaller bundles.** An app ships only the English words and the line icons of the plugins it lists (`englishLabels` is still the whole dictionary), and the bundled menus, resize drags and media plugins share their code: about 10 KB less minified for `<Edytor />` with its default plugins, about 7 KB less with every plugin.
+- A kind's HTML export escapes its attributes and text as the rest of the copied HTML does (`&amp;`, `&quot;`): the image, callout, embed, bookmark, file, video and audio exports wrote numeric references (`&#38;`), which read back the same.
 
 ### From 1.0.0-rc.2
 

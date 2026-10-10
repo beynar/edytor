@@ -37,6 +37,96 @@ export const rendered = (node: Element): Element => {
 /** Reads layout with the layer's origin; returns the writes to apply after every read. */
 export type Measure = (origin: DOMRect) => (() => void) | void;
 
+/**
+ * The run of `count` items in vertical order (a parent's children, the
+ * top-level blocks) whose boxes (`boxAt`, client px) meet the band from
+ * `top` to `bottom`, edges included unless `strict`: two binary searches,
+ * O(log n) boxes read, an item without a box counted as above the band.
+ * Answers its first index and the index after its last.
+ */
+export const bandRun = (
+	count: number,
+	boxAt: (index: number) => DOMRect | undefined,
+	top: number,
+	bottom: number,
+	strict = false
+): [number, number] => {
+	const search = (past: (box: DOMRect) => boolean, lo = 0) => {
+		let hi = count;
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			const box = boxAt(mid);
+			if (!box || past(box)) lo = mid + 1;
+			else hi = mid;
+		}
+		return lo;
+	};
+	const first = search((box) => (strict ? box.bottom <= top : box.bottom < top));
+	return [first, search((box) => (strict ? box.top < bottom : box.top <= bottom), first)];
+};
+
+/** A box relative to the layer. */
+export type LayerBox = { x: number; y: number; width: number; height: number };
+
+/** `element`'s box relative to the layer (`origin`), `null` when it is not in the page. */
+export const layerBox = (element: Element | null | undefined, origin: DOMRect): LayerBox | null => {
+	const rect = element?.isConnected ? element.getBoundingClientRect() : null;
+	return (
+		rect && {
+			x: rect.left - origin.left,
+			y: rect.top - origin.top,
+			width: rect.width,
+			height: rect.height
+		}
+	);
+};
+
+/** Whether two measures hold the same values (`a`'s): a state is written only when one moved. */
+export const sameValues = <T extends object>(a: T | null, b: T | null) =>
+	a === b ||
+	(a !== null &&
+		b !== null &&
+		Object.keys(a).every((key) => a[key as keyof T] === b[key as keyof T]));
+
+/** A mounted host whose chrome places itself layer-relative: pinned at the layer's origin. */
+export const pin = (host: HTMLElement) =>
+	Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
+
+/**
+ * A popup's place near `rect` (client px), 8px inside the viewport: `gap`
+ * below it, above it when there is no room below (`above`: above first,
+ * below when there is no room above), its left edge at `rect`'s or
+ * centered on it (`center`). Measured now from `box` (the host's first
+ * element by default; `fallback` before it has a size), written by the
+ * answer (the overlay's read-then-write pass).
+ */
+export const placeNear = (
+	host: HTMLElement,
+	rect: DOMRect,
+	fallback: readonly [width: number, height: number],
+	{
+		gap = 8,
+		above = false,
+		center = false,
+		box = host.firstElementChild
+	}: { gap?: number; above?: boolean; center?: boolean; box?: Element | null } = {}
+): (() => void) | void => {
+	const view = host.ownerDocument.defaultView;
+	if (!view) return;
+	const size = box?.getBoundingClientRect();
+	const width = size?.width || fallback[0];
+	const height = size?.height || fallback[1];
+	const x = center ? rect.left + rect.width / 2 - width / 2 : rect.left;
+	const [below, up] = [rect.bottom + gap, rect.top - gap - height];
+	const y = above
+		? up >= 8
+			? up
+			: below
+		: Math.max(8, below + height < view.innerHeight ? below : up);
+	const left = `${Math.max(8, Math.min(x, view.innerWidth - width - 8))}px`;
+	return () => Object.assign(host.style, { left, top: `${y}px` });
+};
+
 /** The band around the viewport whose blocks' resizes are watched, in screens above and below. */
 const WATCHED_SCREENS = 1;
 
@@ -84,17 +174,12 @@ export class Overlay {
 		if (!host || !resize || !view) return;
 		const kids = host.children;
 		const screen = view.innerHeight;
-		const search = (past: (rect: DOMRect) => boolean) => {
-			let [lo, hi] = [0, kids.length];
-			while (lo < hi) {
-				const mid = (lo + hi) >> 1;
-				if (past(kids[mid]!.getBoundingClientRect())) lo = mid + 1;
-				else hi = mid;
-			}
-			return lo;
-		};
-		const first = search((rect) => rect.bottom < -WATCHED_SCREENS * screen);
-		const last = search((rect) => rect.top <= (1 + WATCHED_SCREENS) * screen);
+		const [first, last] = bandRun(
+			kids.length,
+			(index) => kids[index]!.getBoundingClientRect(),
+			-WATCHED_SCREENS * screen,
+			(1 + WATCHED_SCREENS) * screen
+		);
 		const next = new Set<Element>();
 		for (let i = first; i < last; i++) if (this.#observed.has(kids[i]!)) next.add(kids[i]!);
 		for (const node of this.#watched)

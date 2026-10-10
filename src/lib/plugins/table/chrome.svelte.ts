@@ -10,16 +10,17 @@ import {
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
+import { trackDrag } from '$lib/dnd/track.js';
+import { pin } from '$lib/surface/overlay.js';
 import type { TableLabels } from '$lib/labels.js';
 import { iconOf } from '../icons.js';
 import {
 	attribute,
-	inPage,
-	keepFocus,
 	optionAttributes,
 	type MenuItemPayload,
 	type OptionAttributes
 } from '../chrome.js';
+import { holdKeys, listPopup, menuKey } from '../list.svelte.js';
 import { tablePreview } from './dragPreview.js';
 import {
 	caretCell,
@@ -261,7 +262,20 @@ export class TableChrome {
 		readonly columnWidth: number,
 		/** @internal */
 		readonly minColumnWidth: number
-	) {}
+	) {
+		this.popup = listPopup(
+			edytor,
+			'table-menu',
+			'menu',
+			() => (this.menu?.kind === 'row' ? labels.rowMenu : labels.columnMenu),
+			(node) => {
+				const kind = this.menu?.kind;
+				if (!kind) return null;
+				node.setAttribute('data-edytor-table-menu', kind);
+				return {};
+			}
+		);
+	}
 
 	/** The view is readonly (reactive): the chrome shows nothing. */
 	get readonly() {
@@ -539,7 +553,7 @@ export class TableChrome {
 	measure = (host: HTMLElement, origin: DOMRect) => {
 		const layout = this.shown ? this.read(origin) : null;
 		return () => {
-			Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
+			pin(host);
 			if (!sameLayout(layout, this.layout)) this.layout = layout;
 		};
 	};
@@ -594,7 +608,11 @@ export class TableChrome {
 				? (this.menu as { row: string }).row === menu.row
 				: (this.menu as { column: number }).column === menu.column);
 		this.menu = same ? null : menu;
-		if (!same) this.index = Math.max(0, this.#enabled()[0] ?? 0);
+		if (!same)
+			this.index = Math.max(
+				0,
+				this.rows.findIndex((row) => row.isEnabled())
+			);
 		this.edytor.overlay.invalidate();
 	};
 
@@ -627,9 +645,6 @@ export class TableChrome {
 
 	/** A row's element id (page-unique), for `aria-activedescendant`. */
 	rowId = (row: TableMenuRow) => this.edytor.popups.idOf(`table-menu-${row.id}`);
-
-	/** The positions in `rows` of the rows that can run now. */
-	#enabled = () => this.rows.flatMap((row, index) => (row.isEnabled() ? [index] : []));
 
 	/**
 	 * The open menu's rows for a custom `menu`: each the row shape every menu
@@ -681,27 +696,7 @@ export class TableChrome {
 	 * (`edytor.popups`: `aria-controls`, `aria-haspopup`) while it is in
 	 * the page; `data-edytor-table-menu` names the kind it is open on.
 	 */
-	popup: Attachment<HTMLElement> = (node) =>
-		untrack(() => {
-			node.id = this.menuId;
-			if (!node.hasAttribute('role')) node.setAttribute('role', 'menu');
-			const named = node.hasAttribute('aria-label') || node.hasAttribute('aria-labelledby');
-			node.addEventListener('mousedown', keepFocus);
-			$effect(() => {
-				const kind = this.menu?.kind;
-				if (!kind) return;
-				node.setAttribute('data-edytor-table-menu', kind);
-				if (!named)
-					attribute(
-						node,
-						'aria-label',
-						kind === 'row' ? this.labels.rowMenu : this.labels.columnMenu
-					);
-				this.edytor.popups.set('table-menu', { id: this.menuId, haspopup: 'menu' });
-				return () => this.edytor.popups.set('table-menu', null);
-			});
-			return () => node.removeEventListener('mousedown', keepFocus);
-		});
+	popup: Attachment<HTMLElement>;
 
 	/**
 	 * The element that holds the menu's keyboard (`{@attach chrome.keys}`,
@@ -714,35 +709,26 @@ export class TableChrome {
 	keys: Attachment<HTMLElement> = (node) =>
 		untrack(() => {
 			if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
-			if (!node.contains(node.ownerDocument.activeElement)) node.focus({ preventScroll: true });
-			node.addEventListener('keydown', this.#keydown);
-			$effect(() => {
+			return holdKeys(node, this.#keydown, () => {
 				const row = this.rows[this.index];
-				attribute(node, 'aria-activedescendant', inPage(node, row && this.rowId(row)));
+				return row && this.rowId(row);
 			});
-			return () => node.removeEventListener('keydown', this.#keydown);
 		});
 
 	/** The menu's keys (`keys`). */
 	#keydown = (event: KeyboardEvent) => {
 		if (event.defaultPrevented || event.isComposing) return;
-		const enabled = this.#enabled();
-		const at = enabled.indexOf(this.index);
-		const { key } = event;
-		if (key === 'ArrowDown' || key === 'ArrowUp') {
-			const step = key === 'ArrowDown' ? 1 : -1;
-			const count = enabled.length;
-			if (count) this.index = enabled[(at + step + count) % count]!;
-		} else if (key === 'Home' || key === 'End') {
-			const index = key === 'Home' ? enabled[0] : enabled.at(-1);
-			if (index !== undefined) this.index = index;
-		} else if (key === 'Enter' || key === ' ') {
-			const row = this.rows[this.index];
-			if (row) this.runRow(row);
-		} else if (key === 'Escape' || key === 'Tab') this.close();
-		else return;
-		event.preventDefault();
-		event.stopPropagation();
+		const rows = this.rows;
+		const row = rows[this.index];
+		const menu = {
+			at: this.index,
+			count: rows.length,
+			to: (index: number) => (this.index = index),
+			pick: () => row && this.runRow(row),
+			close: this.close
+		};
+		if (menuKey(event, menu, { usable: (index) => rows[index]!.isEnabled() }))
+			event.stopPropagation();
 	};
 
 	/**
@@ -950,52 +936,24 @@ export class TableChrome {
 		if (event.button !== 0 || edytor.readonly || this.drag || !layout) return;
 		const col = layout.columns[column];
 		if (!col) return;
-		event.preventDefault();
-		event.stopPropagation();
-		const target = event.currentTarget as HTMLElement | null;
-		const pointer = event.type === 'pointerdown';
-		if (pointer) target?.setPointerCapture?.((event as PointerEvent).pointerId);
 		const table = this.block(layout.table);
 		if (!table) return;
 		const drag = this.resize(table, column, layout.room, event.clientX, event.clientX);
 		if (!drag) return;
 		// The press starts from the width the grid shows.
 		this.drag = { ...drag, width: col.width, max: Math.max(drag.max, col.width) };
-		const document = target?.ownerDocument ?? edytor.node?.ownerDocument;
-		const tracked = pointer ? document : document?.defaultView;
-		const [moves, ups] = pointer ? ['pointermove', 'pointerup'] : ['mousemove', 'mouseup'];
-		const move = (moved: MouseEvent) => {
-			if (!this.drag) return;
-			if (!edytor.dispatcher.permits()) return end(moved);
-			this.drag.at = moved.clientX;
-			edytor.overlay.invalidate();
-		};
-		const end = (ended: Event) => {
-			tracked?.removeEventListener(moves, move as EventListener);
-			tracked?.removeEventListener(ups, end);
-			tracked?.removeEventListener('pointercancel', end);
-			document?.removeEventListener('keydown', escape, true);
-			const drag = this.drag;
-			if (drag && ended.type === ups) {
-				drag.at = (ended as MouseEvent).clientX;
-				this.release(drag);
-				takeKeys(edytor);
+		this.#cancel = trackDrag(
+			edytor,
+			event,
+			(x) => {
+				if (this.drag) this.drag.at = x;
+			},
+			(x) => {
+				const drag = this.drag;
+				if (drag && x !== null) this.release({ ...drag, at: x });
+				this.drag = null;
 			}
-			this.drag = null;
-			edytor.overlay.invalidate();
-		};
-		const escape = (key: KeyboardEvent) => {
-			if (key.key !== 'Escape') return;
-			key.preventDefault();
-			key.stopPropagation();
-			end(key);
-		};
-		this.#cancel = () => end(new Event('cancel'));
-		tracked?.addEventListener(moves, move as EventListener);
-		tracked?.addEventListener(ups, end);
-		if (pointer) tracked?.addEventListener('pointercancel', end);
-		document?.addEventListener('keydown', escape, true);
-		edytor.overlay.invalidate();
+		);
 	};
 	#cancel: (() => void) | null = null;
 

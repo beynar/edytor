@@ -14,7 +14,7 @@ import { jsx } from '@tanstack/highlight/languages/jsx';
 import { SvelteMap } from 'svelte/reactivity';
 import type { JSONText } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { englishLabels, type CodeLabels, type PartialLabels } from '$lib/labels.js';
+import { codeEnglish, type CodeLabels, type PartialLabels } from '$lib/labels.js';
 import type { Snippet } from 'svelte';
 import type { CodeHeader } from './header.svelte.js';
 import type { LanguageMenu } from './languageMenu.svelte.js';
@@ -258,7 +258,7 @@ export type CodeSettings = {
 export const DEFAULT_CODE_SETTINGS: CodeSettings = {
 	languages: CODE_LANGUAGES,
 	defaultLanguage: 'javascript',
-	labels: englishLabels.code
+	labels: codeEnglish
 };
 
 /** A language's label as shown: the labels' `languages` entry for its id, else its own. */

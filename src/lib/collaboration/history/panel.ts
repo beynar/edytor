@@ -10,13 +10,13 @@ import type {
 	HistoryUndoResult,
 	HistoryVersion
 } from './client.js';
-import { englishLabels, type HistoryPanelLabels, type PartialLabels } from '$lib/labels.js';
+import { historyEnglish, type HistoryPanelLabels, type PartialLabels } from '$lib/labels.js';
 import type { MenuItemPayload } from '$lib/plugins/chrome.js';
 
 export type { HistoryPanelLabels };
 
 /** The panel's English words: the label dictionary's `history` section (`englishLabels.history`). */
-export const defaultHistoryLabels: HistoryPanelLabels = englishLabels.history;
+export const defaultHistoryLabels: HistoryPanelLabels = historyEnglish;
 
 /**
  * One row of the versions list, for an `item` snippet: the row shape every

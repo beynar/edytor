@@ -3,7 +3,7 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { pageKinds } from '$lib/crdt/semantics.js';
 	import { convertToKind, type KindRow } from '$lib/kinds.js';
-	import { keywordsOf, labelsWith } from '$lib/labels.js';
+	import { pageEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
 	import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 	import PageLink from './PageLink.svelte';
 	import { pageHtml, pageIdOf, pageLabels, pageTitleOf, type PagePluginOptions } from './page.js';
@@ -37,7 +37,7 @@
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!optionsOf.has(edytor)) optionsOf.set(edytor, options);
-			pageLabels.claim(edytor, labelsWith('page', options.labels));
+			pageLabels.claim(edytor, labelsWith(pageEnglish, options.labels));
 			const own = optionsOf.get(edytor)!;
 			const labels = pageLabels.of(edytor);
 			const { create } = own;

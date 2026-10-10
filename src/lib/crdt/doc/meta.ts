@@ -259,8 +259,6 @@ export const metaOps = (c: OpsContext) => {
 	return {
 		dataSteps,
 		replaceData,
-		leafSets,
-		retypeSteps,
 		setBlockType,
 		patchData,
 		setBlock

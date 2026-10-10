@@ -310,7 +310,6 @@ export const indexLayout = (ix: IndexState) => {
 		cellRank,
 		tableFacts,
 		declaredItems,
-		dissolveVisit,
 		dissolve,
 		redissolve
 	};

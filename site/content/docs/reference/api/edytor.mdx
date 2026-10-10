@@ -6706,11 +6706,6 @@ export declare class TableChrome {
     index: number;
     constructor(edytor: Edytor, labels: TableLabels, columnWidth: number, minColumnWidth: number);
     get readonly(): boolean;
-    private dragWidth;
-    private nextWidth;
-    private widthsOf;
-    private resize;
-    private read;
     open: (menu: TableMenu) => void;
     toggle: (kind: TableMenu["kind"]) => void;
     get isOpen(): boolean;
@@ -6726,14 +6721,6 @@ export declare class TableChrome {
     runRow: (row: TableMenuRow) => void;
     addRow: () => void;
     addColumn: () => void;
-    private release;
-    private source;
-    private begin;
-    private preview;
-    private landing;
-    private aim;
-    private drop;
-    private finish;
 }
 ```
 
@@ -6752,7 +6739,7 @@ export declare class TableChrome {
 - `popup`: The menu's element (`{@attach chrome.popup}`): its id, `menu` role and name (Row options, Column options) unless it has its own, presses that keep the focus, and its publication to the view's root (`edytor.popups`: `aria-controls`, `aria-haspopup`) while it is in the page; `data-edytor-table-menu` names the kind it is open on.
 - `keys`: The element that holds the menu's keyboard (`{@attach chrome.keys}`, the menu's own): it takes the focus when it mounts and names the keyboard's row (`aria-activedescendant`); ArrowDown and ArrowUp walk the rows that can run (around the ends), Home and End reach the first and last, Enter or Space runs the row, Escape and Tab close the menu and give the keys back to the editor.
 - `gripOf`: The `kind` grip's attachment (`{@attach}` it on a grip's element; a `grip` snippet's payload carries it): in an editable view, dragging it moves its row or column within its table (`table.drag`); a click with no drag opens or closes its menu; ArrowDown opens the menu, Escape closes it and gives the keys back to the editor.
-- `rows`: The rows of the open menu.
+- `rows`: The rows of the open menu: insert before and after, move back and forth, delete.
 - `runRow`: Run a menu row, then close the menu.
 - `addRow`: The `+` under the table: a row at its end, the caret in its first cell.
 - `addColumn`: The `+` beside the table: a column at its end.

@@ -45,14 +45,6 @@
 	/** Recognize any table plugin instance. */
 	export const isTablePlugin = (plugin: Plugin) => tablePlugins.has(plugin);
 
-	/** The ids of a row's cell, its row and its table, from the handle (stable while it shows). */
-	const parentsOf = (edytor: Edytor, id: string | undefined) => {
-		const cell = id ? edytor.idToBlock.get(id) : undefined;
-		const row = cell?.parent;
-		const table = row?.parent;
-		return { cell, row, table };
-	};
-
 	/**
 	 * The column ids `table`'s rows show, read from the cells (reactive), as
 	 * the document's grid has them (`facade.tableGrid`): the listed ones
@@ -123,17 +115,16 @@
 				chromes.get(edytor) ?? new TableChrome(edytor, labels, columnWidth, minColumnWidth);
 			chromes.set(edytor, chrome);
 			/** A cell's element: its role, its column, and whether a header row or column holds it. */
-			const cellElement = (data: Record<string, unknown>, id?: string) => {
-				const { row, table } = parentsOf(edytor, id);
-				const tableId = table?.id;
-				if (!id || !row?.id || !tableId)
+			const cellElement = (_: unknown, id?: string) => {
+				// The ids of its row and its table, from the handle (stable while it shows).
+				const row = id ? edytor.idToBlock.get(id)?.parent : undefined;
+				const table = row?.parent?.id;
+				if (!id || !row?.id || !table)
 					return { tag: 'div', attributes: { 'data-edytor-table-cell': '' } };
-				const tableData = edytor.cells?.get(tableId)?.data;
-				const rowIndex = edytor.cells?.get(tableId)?.childIds.indexOf(row.id) ?? -1;
-				const column = columnIndex(edytor, tableId, row.id, id);
-				const headerRow = tableData?.headerRow === true && rowIndex === 0;
-				const headerColumn = tableData?.headerColumn === true && column === 0;
-				void data;
+				const cell = edytor.cells?.get(table);
+				const column = columnIndex(edytor, table, row.id, id);
+				const headerRow = cell?.data?.headerRow === true && cell.childIds.indexOf(row.id) === 0;
+				const headerColumn = cell?.data?.headerColumn === true && column === 0;
 				return {
 					tag: 'div',
 					attributes: {

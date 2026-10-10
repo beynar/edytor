@@ -44,7 +44,8 @@ type Press = {
 	before: SelectionValue;
 	/** The block ids Shift or Mod keeps. */
 	base: readonly string[];
-	off: (() => void)[];
+	/** Ends the gesture's listeners. */
+	listening: AbortController;
 };
 
 const sameIds = (a: readonly string[], b: readonly string[]) =>
@@ -107,15 +108,23 @@ export class MarqueeController {
 		const compat = (event: MouseEvent) => {
 			if (event.button === 0) event.preventDefault();
 		};
-		const listen = <E extends Event>(
-			target: EventTarget,
-			type: string,
-			listener: (event: E) => void,
-			options: AddEventListenerOptions = {}
-		) => {
-			target.addEventListener(type, listener as EventListener, options);
-			return () => target.removeEventListener(type, listener as EventListener, options);
-		};
+		const listening = new AbortController();
+		const on = (target: EventTarget, type: string, listener: (event: never) => void) =>
+			target.addEventListener(type, listener as EventListener, {
+				capture: true,
+				passive: type === 'scroll',
+				signal: listening.signal
+			});
+		// WebKit after a native drag sends a lone `mousedown` and may skip the
+		// pointer events of the press: its mouse events end it too.
+		for (const type of ['pointermove', 'mousemove']) on(document, type, this.#moved);
+		for (const type of ['pointerup', 'mouseup']) on(document, type, this.#released);
+		on(document, 'pointercancel', this.cancel);
+		on(document, 'mousedown', compat);
+		on(document, 'selectstart', cancel);
+		on(document, 'dragstart', cancel);
+		on(document, 'scroll', this.#scrolled);
+		on(view, 'keydown', this.#key);
 		this.#press = {
 			x: clientX - box.left,
 			y: clientY - box.top,
@@ -123,20 +132,7 @@ export class MarqueeController {
 			host,
 			before,
 			base: adding && before.kind === 'blocks' ? before.ids : [],
-			// WebKit after a native drag sends a lone `mousedown` and may skip the
-			// pointer events of the press: its mouse events end it too.
-			off: [
-				listen(document, 'pointermove', this.#moved, { capture: true }),
-				listen(document, 'mousemove', this.#moved, { capture: true }),
-				listen(document, 'pointerup', this.#released, { capture: true }),
-				listen(document, 'mouseup', this.#released, { capture: true }),
-				listen(document, 'pointercancel', this.cancel, { capture: true }),
-				listen(document, 'mousedown', compat, { capture: true }),
-				listen(document, 'selectstart', cancel, { capture: true }),
-				listen(document, 'dragstart', cancel, { capture: true }),
-				listen(document, 'scroll', this.#scrolled, { capture: true, passive: true }),
-				listen(view, 'keydown', this.#key, { capture: true })
-			]
+			listening
 		};
 		this.#pointer = { x: clientX, y: clientY };
 		this.adding = adding;
@@ -271,7 +267,7 @@ export class MarqueeController {
 		const press = this.#press;
 		this.#press = null;
 		this.#active = false;
-		press?.off.forEach((off) => off());
+		press?.listening.abort();
 		if (this.#frame !== null)
 			this.edytor.node?.ownerDocument.defaultView?.cancelAnimationFrame(this.#frame);
 		this.#frame = null;

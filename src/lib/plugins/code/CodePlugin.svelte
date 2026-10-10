@@ -9,7 +9,6 @@
 	import CodeHeader from './CodeHeader.svelte';
 	import LanguageMenuPanel from './LanguageMenu.svelte';
 	import { LanguageMenu, languageMenus } from './languageMenu.svelte.js';
-	import { onPress } from '$lib/events/onFocus.js';
 	import { codeEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
 	import {
 		DEFAULT_CODE_SETTINGS,
@@ -113,21 +112,7 @@
 			return {
 				onEdytorAttached: ({ node }) => {
 					const menu = ownMenu();
-					if (!menu) return;
-					const offPress = onPress(edytor, node.ownerDocument, menu.pressed, true);
-					const unmount = edytor.overlay.mount(
-						LanguageMenuPanel,
-						{ menu, readonly: () => edytor.readonly },
-						'edytor-code-language-host',
-						// Above the block handles (5), as the equation editor.
-						7,
-						menu.measure
-					);
-					return () => {
-						offPress();
-						unmount();
-						menu.close();
-					};
+					return menu?.panel.mount(node, LanguageMenuPanel, { menu });
 				},
 				hotkeys: {
 					// Alt+F10 at a caret in a code line: the keys go to its language button

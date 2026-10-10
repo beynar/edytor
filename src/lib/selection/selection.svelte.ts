@@ -295,9 +295,12 @@ export class EdytorSelection {
 	requestSerial = 0;
 	/** @internal Why the last `select()` ran. */
 	cause: SelectCause = 'model';
-	/** DOM fields (Surface) observed with the value they describe. */
-	/** The mark-edge side a display or a DOM derive observed the value with. */
-	#surface: { value: SelectionValue; edge?: EdgeSide } | null = null;
+	/**
+	 * DOM fields (Surface) observed with the value they describe: the
+	 * mark-edge side a display or a DOM derive observed it with, and whether
+	 * a DOM derive read it from a node-bound native range.
+	 */
+	#surface: { value: SelectionValue; edge?: EdgeSide; nodeBound?: boolean } | null = null;
 	#compat = new WeakMap<SelectionProjection, { surface: unknown; state: SelectionState }>();
 
 	constructor(
@@ -405,7 +408,11 @@ export class EdytorSelection {
 	 * `surface` carries the mark-edge side the value was observed with.
 	 * @internal
 	 */
-	commit = (next: SelectionValue, cause: SelectCause = 'model', surface?: { edge?: EdgeSide }) => {
+	commit = (
+		next: SelectionValue,
+		cause: SelectCause = 'model',
+		surface?: { edge?: EdgeSide; nodeBound?: boolean }
+	) => {
 		next = this.#keepPending(this.#shown(next));
 		const changed = !sameValue(this.value, next);
 		if (changed) this.#value = next;
@@ -644,7 +651,7 @@ export class EdytorSelection {
 
 	/** @internal The mark-edge side a display showed the current value with. */
 	observed = (surface: { edge?: EdgeSide }) => {
-		this.#surface = { value: this.value, ...surface };
+		this.#surface = { value: this.value, nodeBound: this.hasNativeNodeSelection(), ...surface };
 	};
 
 	/**
@@ -975,8 +982,19 @@ export class EdytorSelection {
 			return;
 		}
 
-		this.commit(this.textValue(startText, yStart, endText ?? startText, yEnd, isReversed), 'dom', {
-			edge: isCollapsed ? getMarkEdgeSide(startText, startNode, yStart) : undefined
+		const value = this.textValue(startText, yStart, endText ?? startText, yEnd, isReversed);
+		// A node-bound native range (endpoints outside text elements: a block
+		// node selection, a stray boundary node) is the shape engines extend
+		// their own way. They normalize it into text points asynchronously,
+		// so a keydown may find the DOM no longer node-bound: the same value
+		// derived again keeps the fact, any other derive clears it.
+		const nodeBound =
+			!isTextBoundSelectionPoint(anchorNode) ||
+			!isTextBoundSelectionPoint(focusNode) ||
+			(this.hasNativeNodeSelection() && sameValue(this.value, value));
+		this.commit(value, 'dom', {
+			edge: isCollapsed ? getMarkEdgeSide(startText, startNode, yStart) : undefined,
+			nodeBound
 		});
 		this.edytor.projector.observe();
 		if (shouldRestoreNormalizedDomRange && options.restoreNormalizedDomRange !== false && endText) {
@@ -984,27 +1002,7 @@ export class EdytorSelection {
 			if (this.dragging) this.pointer.hold();
 			else this.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 		}
-
-		// Remember when the derived selection came from a node-bound
-		// native range (endpoints outside text elements — e.g. a block
-		// node selection or a stray boundary node). Engines asynchronously
-		// normalize such DOM selections into text points, so by the time a
-		// keydown arrives the live DOM selection may no longer look
-		// node-bound — the signature pins the flag to the derived
-		// selection it describes and any differently-shaped derive clears
-		// it.
-		const derivedKey = `${startText.id}:${yStart}:${endText?.id}:${yEnd}:${isReversed ? 1 : 0}`;
-		if (
-			!isTextBoundSelectionPoint(selection.anchorNode) ||
-			!isTextBoundSelectionPoint(selection.focusNode)
-		) {
-			this.#nodeBoundSelectionKey = derivedKey;
-		} else if (this.#nodeBoundSelectionKey !== derivedKey) {
-			this.#nodeBoundSelectionKey = null;
-		}
 	};
-
-	#nodeBoundSelectionKey: string | null = null;
 
 	/**
 	 * Whether the live model selection was derived from a node-bound
@@ -1012,16 +1010,8 @@ export class EdytorSelection {
 	 * engine-defined and therefore intercepted by the hotkey layer.
 	 * @internal
 	 */
-	hasNativeNodeSelection = () => {
-		const { startText, endText, yStart, yEnd, isReversed } = this.state;
-		if (!startText || !endText) {
-			return false;
-		}
-		return (
-			this.#nodeBoundSelectionKey ===
-			`${startText.id}:${yStart}:${endText.id}:${yEnd}:${isReversed ? 1 : 0}`
-		);
-	};
+	hasNativeNodeSelection = () =>
+		this.#surface?.value === this.value && this.#surface.nodeBound === true;
 
 	/**
 	 * Anchor a text position into the BACKING text that owns the atom at

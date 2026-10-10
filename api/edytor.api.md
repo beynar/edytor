@@ -4574,11 +4574,6 @@ export declare class TableChrome {
     index: number;
     constructor(edytor: Edytor, labels: TableLabels, columnWidth: number, minColumnWidth: number);
     get readonly(): boolean;
-    private dragWidth;
-    private nextWidth;
-    private widthsOf;
-    private resize;
-    private read;
     open: (menu: TableMenu) => void;
     toggle: (kind: TableMenu["kind"]) => void;
     get isOpen(): boolean;
@@ -4594,14 +4589,6 @@ export declare class TableChrome {
     runRow: (row: TableMenuRow) => void;
     addRow: () => void;
     addColumn: () => void;
-    private release;
-    private source;
-    private begin;
-    private preview;
-    private landing;
-    private aim;
-    private drop;
-    private finish;
 }
 ```
 

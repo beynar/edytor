@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { GUIDE, type ColumnResize } from './resize.svelte.js';
+	import type { ColumnResize } from './resize.svelte.js';
 
 	/**
 	 * The resize bands of the hovered layout and the guide of a drag
@@ -13,7 +13,7 @@
 
 	// The view turning readonly mid-drag drops the preview at once (round 4).
 	$effect(() => {
-		if (resize.readonly) resize.lock();
+		if (resize.readonly) resize.band.lock();
 	});
 </script>
 
@@ -39,11 +39,9 @@
 				style:width="{strip.width}px"
 				style:height="{strip.height}px"
 				style:cursor="col-resize"
-				style:--edytor-column-resize-guide-width="{GUIDE}px"
-				data-dragging={resize.drag ? 'true' : undefined}
-				data-selecting={resize.selecting ? 'true' : undefined}
-				onpointerdown={(event) => resize.start(event, strip)}
-				onmousedown={(event) => resize.mousedown(event, strip)}
+				data-dragging={resize.band.drag ? 'true' : undefined}
+				data-selecting={resize.band.selecting ? 'true' : undefined}
+				{@attach resize.band.press((event) => resize.start(event, strip))}
 				onkeydown={(event) => resize.key(event, strip)}
 				onfocus={() => resize.focus(strip, true)}
 				onblur={() => resize.focus(strip, false)}
@@ -78,8 +76,8 @@
 		position: absolute;
 		top: 0;
 		bottom: 0;
-		left: calc(50% - var(--edytor-column-resize-guide-width) / 2);
-		width: var(--edytor-column-resize-guide-width);
+		left: calc(50% - 1px);
+		width: 2px;
 		background: var(--edytor-columns-resize-color, rgba(55, 53, 47, 0.16));
 		opacity: 0;
 		pointer-events: none;

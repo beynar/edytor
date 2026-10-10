@@ -186,6 +186,9 @@ export const toggleHeader = (table: Block, flag: 'headerRow' | 'headerColumn') =
 	(table.data as Record<string, unknown>)[flag] = table.data[flag] !== true;
 };
 
+/** A label key as a row id: `insertRowAbove` → `insert-row-above`. */
+export const kebab = (key: string) => key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+
 /** A cell's width as set, else `fallback`: `data.columns[i].width`. */
 export const widthOf = (column: unknown, fallback: number): number => {
 	const width = (column as { width?: unknown } | null)?.width;

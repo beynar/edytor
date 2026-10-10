@@ -17,9 +17,6 @@ import { getYIndex } from '../selection/selection.utils.js';
 import { noSelection } from '../session/selection.js';
 import { observeInternalDragSources } from './onDrop.js';
 
-const getEventTimeStamp = (event: Event | undefined) =>
-	event?.timeStamp || (typeof performance === 'undefined' ? Date.now() : performance.now());
-
 /** The DOM selection has an endpoint inside `node`. */
 export const selectionIsInside = (node: HTMLElement) => {
 	const selection = getDomSelection(node);
@@ -149,7 +146,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 	const pressInside = (event: MouseEvent) => {
 		// A pointer gesture abandons a live composition.
 		edytor.composition.abandon();
-		lastPointerDownInsideEditorAt = getEventTimeStamp(event);
+		lastPointerDownInsideEditorAt = event.timeStamp;
 		edytor.selection.clearModelSelectionPreservation();
 		const { pointer } = edytor.selection;
 		// The margin gesture's press places no caret and starts no text drag.
@@ -179,7 +176,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 	const restoreAfterKeyboardFocus = (event: FocusEvent) => {
 		if (edytor.readonly || event.target !== node) return;
 		if (event.relatedTarget instanceof Node && node.contains(event.relatedTarget)) return;
-		if (getEventTimeStamp(event) - lastPointerDownInsideEditorAt < 250) return;
+		if (event.timeStamp - lastPointerDownInsideEditorAt < 250) return;
 		if (!edytor.selection.projection.start) return;
 		queueMicrotask(() => {
 			if (getActiveElement(node) !== node) return;

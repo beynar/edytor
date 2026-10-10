@@ -282,9 +282,6 @@ const perform = (
 			throw error;
 		}
 		if (window) edytor.attempts.arm(attempt, window);
-		// The command selected its caret; a paste re-renders the text it landed in.
-		const text = edytor.selection.state.startText;
-		if (inputType === 'insertFromPaste' && text?.node?.isConnected) text.refreshFromModel();
 		if (kind !== 'composition') edytor.composition.interrupt();
 	});
 

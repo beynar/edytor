@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { iconOf } from '../icons.js';
+	import { iconOf, linkIcon } from '../icons.js';
 	import { TOOLBAR_COLORS, type ToolbarController } from './ToolbarController.svelte.js';
 	import type { Snippet } from 'svelte';
 	let {
@@ -50,7 +50,7 @@
 				data-stop="link"
 				data-testid="toolbar-link"
 				aria-expanded={controller.panel === 'link'}
-				style:--toolbar-icon={iconOf('mark.link')}
+				style:--toolbar-icon={linkIcon}
 				onmousedown={keep}
 				onclick={() => controller.togglePanel('link')}>{labels.link}</button
 			>

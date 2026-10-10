@@ -1,22 +1,30 @@
 /**
- * Line icons for the built-in kinds (20×20, drawn in `currentColor` through
- * a CSS mask), keyed by command id. Menus fall back to a command's text icon.
+ * Line icons for the built-in kinds and the chrome (20×20, drawn in
+ * `currentColor` through a CSS mask): the chrome's own by name (`linkIcon`,
+ * `alignIcons`, `altIcon`), so a view ships only those it shows, and the
+ * menus' by command or row id (`iconOf`). Menus fall back to a command's
+ * text icon.
  */
+/** An icon from its SVG body (pure: an unused icon is dropped). */
+/* @__NO_SIDE_EFFECTS__ */
 const svg = (body: string) =>
 	`url("data:image/svg+xml,${encodeURIComponent(
 		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="black" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`
 	)}")`;
+/* @__NO_SIDE_EFFECTS__ */
 const heading = (n: number) =>
 	svg(
 		`<path d="M3.5 5v10M10 5v10M3.5 10H10"/><text x="12" y="15.5" font-size="8" font-family="Arial" font-weight="700" fill="black" stroke="none">${n}</text>`
 	);
 /** A toggle heading: the toggle's triangle, then the heading's level. */
+/* @__NO_SIDE_EFFECTS__ */
 const toggleHeading = (n: number) =>
 	svg(
 		`<path d="M3 7l4 3-4 3z" fill="black"/><path d="M9 5v10M14 5v10M9 10h5"/><text x="15.5" y="16" font-size="6" font-family="Arial" font-weight="700" fill="black" stroke="none">${n}</text>`
 	);
 
 /** A layout of `n` columns: `n` rounded panels side by side. */
+/* @__NO_SIDE_EFFECTS__ */
 const columns = (n: number) => {
 	const [gap, width] = [1.5, (15 - 1.5 * (n - 1)) / n];
 	const panels = Array.from(
@@ -26,6 +34,24 @@ const columns = (n: number) => {
 	return svg(panels.join(''));
 };
 
+/** A link: the toolbar's Link button, the link card, the block menu's Copy link. */
+export const linkIcon = svg(
+	'<path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>'
+);
+
+/** The image toolbar's alignments, by `data.align`. */
+export const alignIcons = {
+	left: svg('<path d="M3.5 5h13M3.5 8.3h8M3.5 11.7h13M3.5 15h8"/>'),
+	center: svg('<path d="M3.5 5h13M6 8.3h8M3.5 11.7h13M6 15h8"/>'),
+	right: svg('<path d="M3.5 5h13M8.5 8.3h8M3.5 11.7h13M8.5 15h8"/>')
+};
+
+/** The image toolbar's alt text button. */
+export const altIcon = svg(
+	'<rect x="2.5" y="4.5" width="15" height="11" rx="2"/><path d="M5.5 12.5l1.8-5 1.8 5M6 11h2.6M11 7.5v5h2.5M14.5 7.5v5"/>'
+);
+
+/** The icons menus find by id: a command's, a block menu or table menu row's (`icon`). */
 const ICONS: Record<string, string> = {
 	'block.paragraph': svg('<path d="M4.5 5.5h11M10 5.5v10"/>'),
 	'block.heading1': heading(1),
@@ -82,34 +108,21 @@ const ICONS: Record<string, string> = {
 	),
 	'table.left': svg('<path d="M16 10H4.5M9 5.5L4.5 10 9 14.5"/>'),
 	'table.right': svg('<path d="M4 10h11.5M11 5.5l4.5 4.5-4.5 4.5"/>'),
-	'table.insert': svg('<path d="M10 4.5v11M4.5 10h11"/>'),
 	'columns.2': columns(2),
 	'columns.3': columns(3),
 	'columns.4': columns(4),
 	'columns.5': columns(5),
-	'mark.link': svg(
-		'<path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>'
-	),
 	'action.duplicate': svg(
 		'<rect x="6.5" y="6.5" width="10" height="10" rx="2"/><path d="M13.5 4.5v-.5a1.5 1.5 0 0 0-1.5-1.5H5A2.5 2.5 0 0 0 2.5 5v7A1.5 1.5 0 0 0 4 13.5h.5"/>'
 	),
 	'action.delete': svg(
 		'<path d="M4 6h12M8 6V4.5h4V6M5.5 6l.8 9.2a1.5 1.5 0 0 0 1.5 1.3h4.4a1.5 1.5 0 0 0 1.5-1.3L14.5 6"/>'
 	),
-	'action.link': svg(
-		'<path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>'
-	),
 	'action.turn': svg('<path d="M4 7.5h10.5l-3-3M16 12.5H5.5l3 3"/>'),
 	'action.color': svg('<path d="M6 15.5L10 4.5l4 11M7.4 11.7h5.2"/>'),
 	'action.up': svg('<path d="M10 16V4.5M5.5 9L10 4.5 14.5 9"/>'),
 	'action.down': svg('<path d="M10 4v11.5M5.5 11l4.5 4.5 4.5-4.5"/>'),
-	'action.chevron': svg('<path d="M8 5.5l4.5 4.5L8 14.5"/>'),
-	'image.align-left': svg('<path d="M3.5 5h13M3.5 8.3h8M3.5 11.7h13M3.5 15h8"/>'),
-	'image.align-center': svg('<path d="M3.5 5h13M6 8.3h8M3.5 11.7h13M6 15h8"/>'),
-	'image.align-right': svg('<path d="M3.5 5h13M8.5 8.3h8M3.5 11.7h13M8.5 15h8"/>'),
-	'image.alt': svg(
-		'<rect x="2.5" y="4.5" width="15" height="11" rx="2"/><path d="M5.5 12.5l1.8-5 1.8 5M6 11h2.6M11 7.5v5h2.5M14.5 7.5v5"/>'
-	)
+	'action.link': linkIcon
 };
 
 /** The icon's CSS `mask-image` value for `id`, if the id has one. */

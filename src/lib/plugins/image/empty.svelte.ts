@@ -4,6 +4,19 @@ import type { ImageLabels } from '$lib/labels.js';
 import { MAX_INLINE_IMAGE_BYTES, oversizedInlineImage, safeImageSrc } from './image.js';
 import type { FileUploads, Uploader } from '../uploads.svelte.js';
 
+/** An empty block's link field (an image's, a media block's): Enter runs `embed`. */
+export const linkField =
+	(embed: () => void): Attachment<HTMLInputElement> =>
+	(node) => {
+		const keydown = (event: KeyboardEvent) => {
+			if (event.key !== 'Enter' || event.isComposing) return;
+			event.preventDefault();
+			embed();
+		};
+		node.addEventListener('keydown', keydown);
+		return () => node.removeEventListener('keydown', keydown);
+	};
+
 /** Why the last link or upload was not embedded. */
 export type ImageEmptyFailure = 'invalid' | 'inline' | 'upload';
 
@@ -83,13 +96,5 @@ export class ImageEmptyController {
 	};
 
 	/** The link field (`{@attach empty.field}`): Enter embeds its `draft`. */
-	field: Attachment<HTMLInputElement> = (node) => {
-		const keydown = (event: KeyboardEvent) => {
-			if (event.key !== 'Enter' || event.isComposing) return;
-			event.preventDefault();
-			this.embed();
-		};
-		node.addEventListener('keydown', keydown);
-		return () => node.removeEventListener('keydown', keydown);
-	};
+	field: Attachment<HTMLInputElement> = linkField(() => this.embed());
 }

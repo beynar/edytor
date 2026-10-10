@@ -360,16 +360,26 @@ export function prepareDuplicate(this: Block, _: BlockOperations['duplicateBlock
 	);
 }
 
+/** A kind's fresh data: its first preset's (a new to-do is unchecked). */
+export const freshData = (block: Block): NonNullable<JSONBlock['data']> => ({
+	...(block.definition.presets?.[0]?.data ?? {})
+});
+
+/**
+ * The line Enter starts after `block` (a split's tail, a new sibling): a
+ * list-like kind (`continues`) itself, with fresh data; any other, its
+ * parent's default child.
+ */
+export const nextLine = (block: Block): JSONBlock =>
+	block.definition.continues
+		? { type: block.type, data: freshData(block) }
+		: { type: block.edytor.defaultChild(block.parent!) };
+
 export function prepareSplit(this: Block, { index, text }: BlockOperations['splitBlock']) {
 	if (!text || !this.parent) return REFUSED;
-	// The sibling takes its parent's default child type and no data — a
-	// list-like kind (`continues`) keeps its own, with its first preset's data.
-	const { continues, presets } = this.definition;
-	const tail = continues
-		? { type: this.type, data: { ...(presets?.[0]?.data ?? {}) } }
-		: { type: this.edytor.defaultChild(this.parent), data: {} };
+	const { type, data = {} } = nextLine(this);
 	const offset = text.segStart + index;
-	return this.edytor.facade.prepare.splitBlock(this.id, offset, id('b'), tail);
+	return this.edytor.facade.prepare.splitBlock(this.id, offset, id('b'), { type, data });
 }
 
 /**

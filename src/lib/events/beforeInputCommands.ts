@@ -14,7 +14,12 @@ import { cloneJson, type JSONText } from '$lib/utils/json.js';
 import { insertionMarks } from '$lib/session/editing/text.js';
 import { id, vetoable } from '$lib/utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import { dispatchPlan, prepareSplitKeepingChildren } from '$lib/block/block.utils.js';
+import {
+	dispatchPlan,
+	freshData,
+	nextLine,
+	prepareSplitKeepingChildren
+} from '$lib/block/block.utils.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
 import { bodyShows } from '$lib/selection/visibility.js';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
@@ -245,8 +250,7 @@ const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
  * to-do is unchecked), any other's with the block's (a heading's level).
  */
 const liftContent = (block: Block, text: Text): Block | null => {
-	const { continues, presets } = block.definition;
-	const data = continues ? { ...(presets?.[0]?.data ?? {}) } : cloneJson(block.data);
+	const data = block.definition.continues ? freshData(block) : cloneJson(block.data);
 	const plan = dispatchPlan(block, 'splitBlock', { index: text.length, text }, ({ index, text }) =>
 		block.edytor.facade.prepare.splitBlock(block.id, text.segStart + index, id('b'), {
 			type: block.type,
@@ -263,11 +267,10 @@ const liftContent = (block: Block, text: Text): Block | null => {
  */
 const splitHeader = (block: Block, text: Text, index: number, open: boolean | undefined) => {
 	const edytor = block.edytor;
-	const { presets } = block.definition;
 	const inside = open !== false;
 	const tail = inside
 		? { type: edytor.defaultChild(block), data: {} }
-		: { type: block.type, data: { ...(presets?.[0]?.data ?? {}) } };
+		: { type: block.type, data: freshData(block) };
 	const plan = dispatchPlan(block, 'splitBlock', { index, text }, (payload) =>
 		prepareSplitKeepingChildren.call(block, payload, tail, inside)
 	);
@@ -294,11 +297,8 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	// The new sibling's actual parent decides its type.
 	const defaultBlock = edytor.defaultChild(startText.parent.parent);
 	const current = startText.parent;
-	const { continues, presets } = current.definition;
-	/** A list-like kind continues itself (a fresh to-do is unchecked); others start the default. */
-	const sibling = continues
-		? { type: current.type, data: { ...(presets?.[0]?.data ?? {}) } }
-		: { type: defaultBlock };
+	const { continues } = current.definition;
+	const sibling = nextLine(current);
 
 	// Enter in the empty last line of a lines island (a code block) holding
 	// other lines leaves it: the line goes, and the parent's default kind

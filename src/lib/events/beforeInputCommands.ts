@@ -169,7 +169,7 @@ const runDataTransferPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer)
 	}
 };
 
-/** The drop point the browser reported, in block offsets (`null`: not in a text). */
+/** The drop point the browser reported: its text and offset (`null`: not in a text). */
 const dropPoint = (edytor: Edytor, snapshot: Attempt) => {
 	const range = snapshot.declared;
 	const text =
@@ -181,7 +181,7 @@ const dropPoint = (edytor: Edytor, snapshot: Attempt) => {
 		0,
 		Math.min(getYIndex(text, range!.startContainer, range!.startOffset), text.length)
 	);
-	return { block: text.parent.id, offset: text.segStart + offset };
+	return { text, offset };
 };
 
 // A drop reported while whole blocks are selected must insert at the drop
@@ -189,20 +189,11 @@ const dropPoint = (edytor: Edytor, snapshot: Attempt) => {
 // skipped for block selections (the DOM caret sits inside a selected block),
 // so resolve the reported range directly. `undefined`: no such selection.
 const resolveDropPoint = (edytor: Edytor, snapshot: Attempt) => {
-	const { selection, node } = edytor;
+	const { selection } = edytor;
 	if (selection.selectedBlocks.size === 0 && selection.selectedInlineBlock.size === 0) return;
-	const range = snapshot.declared;
-	const text =
-		range && node?.contains(range.startContainer)
-			? selection.getTextOfNode(range.startContainer, range.startOffset)
-			: null;
-	if (!text) return null;
-	const offset = Math.max(
-		0,
-		Math.min(getYIndex(text, range!.startContainer, range!.startOffset), text.length)
-	);
-	selection.setAtTextOffset(text, offset);
-	return { text, offset };
+	const at = dropPoint(edytor, snapshot);
+	if (at) selection.setAtTextOffset(at.text, at.offset);
+	return at;
 };
 
 /**
@@ -220,7 +211,8 @@ const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
 	if (drag?.dropping && snapshot.inputType === 'insertFromDrop') {
 		drag.dropping = false;
 		const to = dropPoint(edytor, snapshot);
-		if (to) dropText(edytor, drag, to);
+		if (to)
+			dropText(edytor, drag, { block: to.text.parent.id, offset: to.text.segStart + to.offset });
 		return;
 	}
 	const dataTransfer = snapshot.dataTransfer ?? null;

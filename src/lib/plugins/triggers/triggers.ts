@@ -14,6 +14,7 @@ import { inputRulesHook } from '$lib/session/inputRules.js';
 import { TriggerMenuController, type TextInsertionPayload } from './TriggerController.svelte.js';
 import TriggerMenu from './TriggerMenu.svelte';
 import { caretRect, placeBelow } from './place.js';
+import { listHotkeys } from '../list.svelte.js';
 
 type Keys = Partial<Record<HotKeyCombination, HotKey>>;
 
@@ -52,25 +53,20 @@ export const withRulesAndTriggers = (
 	const controllers = triggers.map(
 		(trigger, index) => new TriggerMenuController(edytor, trigger, `trigger-${at}-${index}`)
 	);
-	const open = () => controllers.find((controller) => controller.isOpen);
-	const keys: Keys = {
-		arrowdown: ({ prevent }) => {
-			if (open()?.moveSelection(1)) prevent();
-		},
-		arrowup: ({ prevent }) => {
-			if (open()?.moveSelection(-1)) prevent();
-		},
-		enter: ({ prevent }) => {
-			const controller = open();
-			// A pending search's Enter waits for its rows: never an older query's row.
-			if (controller?.items.length || controller?.loading)
-				prevent(() => void controller.pickSelected());
-		},
-		escape: ({ prevent }) => {
-			const controller = open();
-			if (controller) prevent(() => controller.close());
-		}
-	};
+	const keys = listHotkeys(() => {
+		const controller = controllers.find(({ isOpen }) => isOpen);
+		return (
+			controller && {
+				move: (step) => controller.moveSelection(step),
+				// A pending search's Enter waits for its rows: never an older query's row.
+				pick:
+					controller.items.length || controller.loading
+						? () => void controller.pickSelected()
+						: undefined,
+				close: () => controller.close()
+			}
+		);
+	});
 	const hotkeys: Keys = { ...plugin.hotkeys };
 	for (const [chord, binding] of Object.entries(keys) as [HotKeyCombination, HotKey][])
 		hotkeys[chord] = both(binding, plugin.hotkeys?.[chord]);

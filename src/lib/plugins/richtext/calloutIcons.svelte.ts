@@ -16,6 +16,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { englishLabels, type RichTextLabels } from '$lib/labels.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
+import { holdKeys, listPopup, menuKey } from '../list.svelte.js';
 
 /** A new callout's icon unless `createRichTextPlugin({ callout: { icon } })` names another. */
 export const DEFAULT_CALLOUT_ICON = '💡';
@@ -121,6 +122,7 @@ export class CalloutIconPicker {
 		labels: RichTextLabels = englishLabels.richText
 	) {
 		this.#words = labels;
+		this.popup = listPopup(edytor, 'callout-icons', 'menu', () => this.labels.picker);
 	}
 
 	/** The picker's words: Change icon, Add icon, its name, Remove icon. */
@@ -234,34 +236,21 @@ export class CalloutIconPicker {
 	keys: Attachment<HTMLElement> = (node) => untrack(() => this.#keys(node));
 
 	#keys = (node: HTMLElement) => {
-		const steps: Record<string, number> = {
-			ArrowRight: 1,
-			ArrowLeft: -1,
-			ArrowDown: ICON_COLUMNS,
-			ArrowUp: -ICON_COLUMNS
-		};
 		const keydown = (event: KeyboardEvent) => {
-			const count = this.icons.length + 1;
-			const at = this.index;
-			const step = steps[event.key];
-			if (event.key === 'Escape' || event.key === 'Tab') {
-				event.preventDefault();
-				this.close();
-			} else if (step !== undefined) {
-				event.preventDefault();
-				// Left and right wrap; up and down stop at the first and last rows.
-				this.index =
-					Math.abs(step) === 1
-						? (at + step + count) % count
-						: Math.min(count - 1, Math.max(0, at + step));
-			} else if (event.key === 'Home' || event.key === 'End') {
-				event.preventDefault();
-				this.index = event.key === 'Home' ? 0 : count - 1;
-			} else if (event.key === 'Enter' || event.key === ' ') {
-				event.preventDefault();
-				this.option(at).onclick();
-			}
 			event.stopPropagation();
+			const at = this.index;
+			menuKey(
+				event,
+				{
+					at,
+					count: this.icons.length + 1,
+					to: (index) => (this.index = index),
+					pick: () => this.option(at).onclick(),
+					close: this.close
+				},
+				// Left and right wrap; up and down stop at the first and last rows.
+				{ columns: ICON_COLUMNS }
+			);
 		};
 		// Focus leaving for somewhere else closes it (the window going to the background does not).
 		const focusout = (event: FocusEvent) => {
@@ -269,32 +258,23 @@ export class CalloutIconPicker {
 			if (to instanceof Node && !node.contains(to)) this.close(false);
 		};
 		node.tabIndex = -1;
-		node.addEventListener('keydown', keydown);
 		node.addEventListener('focusout', focusout);
 		// It gives back the editor's selection as it is now: a block menu that
 		// opened it gave its caret back first.
 		this.#before ??= this.edytor.selection.value;
-		node.focus({ preventScroll: true });
-		$effect(() => node.setAttribute('aria-activedescendant', this.optionId(this.index)));
+		const off = holdKeys(node, keydown, () => this.optionId(this.index));
 		return () => {
-			node.removeEventListener('keydown', keydown);
+			off();
 			node.removeEventListener('focusout', focusout);
 		};
 	};
 
 	/**
-	 * The picker's element (`{@attach picker.popup}`): its id, role and name,
-	 * published to the view's root (`edytor.popups`) while it is in the page.
+	 * The picker's element (`{@attach picker.popup}`): its id, `menu` role and
+	 * name unless it has its own, presses that keep the focus, and its
+	 * publication to the view's root (`edytor.popups`) while it is in the page.
 	 */
-	popup: Attachment<HTMLElement> = (node) => untrack(() => this.#popup(node));
-
-	#popup = (node: HTMLElement) => {
-		node.id = this.id;
-		node.setAttribute('role', 'menu');
-		node.setAttribute('aria-label', this.labels.picker);
-		this.edytor.popups.set('callout-icons', { id: this.id, haspopup: 'menu' });
-		return () => this.edytor.popups.set('callout-icons', null);
-	};
+	popup: Attachment<HTMLElement>;
 
 	/**
 	 * A press anywhere (`onPress`): one outside the picker and the target's icon closes it.

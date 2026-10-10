@@ -13,6 +13,7 @@ import { caretRect, placeBelow } from '../triggers/place.js';
 import { SlashMenuController, type TextInsertionPayload } from './SlashMenuController.svelte.js';
 import { labelsWith, type PartialLabels } from '$lib/labels.js';
 import type { MenuItemPayload } from '../chrome.js';
+import { listHotkeys } from '../list.svelte.js';
 
 /**
  * One row, for an `item` snippet: the row shape every menu shares (`item`
@@ -64,21 +65,14 @@ export const createSlashMenuPlugin =
 		};
 
 		return {
-			hotkeys: {
-				arrowdown: ({ prevent }) => {
-					if (controller.moveSelection(1)) prevent();
-				},
-				arrowup: ({ prevent }) => {
-					if (controller.moveSelection(-1)) prevent();
-				},
-				enter: ({ prevent }) => {
-					if (controller.isOpen && controller.commands.length)
-						prevent(() => void controller.runSelected());
-				},
-				escape: ({ prevent }) => {
-					if (controller.isOpen) prevent(() => controller.dismiss());
-				}
-			},
+			hotkeys: listHotkeys(
+				() =>
+					controller.isOpen && {
+						move: (step) => controller.moveSelection(step),
+						pick: controller.commands.length ? () => void controller.runSelected() : undefined,
+						close: () => controller.dismiss()
+					}
+			),
 			onAfterOperation: (change) => {
 				if (change.operation !== 'insertText' || !('text' in change)) return;
 				controller.handleTextInsertion(

@@ -12,7 +12,8 @@ import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
 import UrlPasteMenu from './UrlPasteMenu.svelte';
 import { englishLabels, type MediaLabels } from '$lib/labels.js';
-import { identify, inPage, keepFocus, optionAttributes, type OptionAttributes } from '../chrome.js';
+import { inPage, optionAttributes, type OptionAttributes } from '../chrome.js';
+import { listHotkeys, listPopup } from '../list.svelte.js';
 
 /** A kind a pasted URL can turn its line into (the embed's, the bookmark's). */
 export type UrlPasteOffer = {
@@ -53,7 +54,15 @@ export class UrlPasteController {
 		readonly edytor: Edytor,
 		/** The words the menu shows: the labels of the plugin that made the first offer. */
 		readonly labels: MediaLabels = englishLabels.media
-	) {}
+	) {
+		this.popup = listPopup(
+			edytor,
+			'url-paste',
+			'listbox',
+			() => labels.pasteAs,
+			(node) => this.open && { active: inPage(node, this.optionId(this.index)) }
+		);
+	}
 
 	get readonly() {
 		return this.edytor.readonly;
@@ -90,17 +99,7 @@ export class UrlPasteController {
 	 * its highlighted row while the menu is open: the editor keeps the
 	 * keyboard (its keys move and pick).
 	 */
-	popup: Attachment<HTMLElement> = (node) => {
-		identify(node, this.listId, 'listbox', this.labels.pasteAs);
-		node.addEventListener('mousedown', keepFocus);
-		$effect(() => {
-			if (!this.open) return;
-			const active = inPage(node, this.optionId(this.index));
-			this.edytor.popups.set('url-paste', { id: this.listId, haspopup: 'listbox', active });
-			return () => this.edytor.popups.set('url-paste', null);
-		});
-		return () => node.removeEventListener('mousedown', keepFocus);
-	};
+	popup: Attachment<HTMLElement>;
 
 	/** The rows for `url`: Link, then each offer that takes it. @internal */
 	optionsFor = (url: string): UrlPasteOption[] => [
@@ -195,20 +194,9 @@ export class UrlPasteController {
 	/** The hooks of the plugin carrying the menu. @internal */
 	hooks = (): PluginOperations & PluginDefinitions => ({
 		onPaste: this.paste,
-		hotkeys: {
-			arrowdown: ({ prevent }) => {
-				if (this.move(1)) prevent();
-			},
-			arrowup: ({ prevent }) => {
-				if (this.move(-1)) prevent();
-			},
-			enter: ({ prevent }) => {
-				if (this.open) prevent(() => this.pick());
-			},
-			escape: ({ prevent }) => {
-				if (this.open) prevent(() => this.close());
-			}
-		},
+		hotkeys: listHotkeys(
+			() => this.open !== null && { move: this.move, pick: () => this.pick(), close: this.close }
+		),
 		onAfterOperation: () => this.close(),
 		onSelectionChange: () => {
 			if (this.open && !this.stays()) this.close();

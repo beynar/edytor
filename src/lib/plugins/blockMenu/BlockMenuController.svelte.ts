@@ -27,12 +27,11 @@ import { BLOCK_COLORS, colorable, setBlockColor, type BlockColorField } from '$l
 import {
 	attribute,
 	identify,
-	inPage,
 	keepFocus,
-	namesRows,
 	optionAttributes,
 	type OptionAttributes
 } from '../chrome.js';
+import { holdKeys, listPopup, stepRow } from '../list.svelte.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -152,6 +151,16 @@ export class BlockMenuController {
 	) {
 		this.labels = labelsWith('blockMenu', options.labels);
 		this.#colors = colorRows(this.labels);
+		this.popup = listPopup(
+			edytor,
+			'block-menu',
+			'menu',
+			() => this.labels.menu,
+			() => {
+				const { block } = this;
+				return block && { opener: { block: block.id, control: 'grip' } };
+			}
+		);
 	}
 
 	get isOpen() {
@@ -187,21 +196,7 @@ export class BlockMenuController {
 	 * and is published to the view's root (`edytor.popups`) while it is in
 	 * the page, the grip that opened it told so.
 	 */
-	popup: Attachment<HTMLElement> = (node) => {
-		identify(node, this.menuId, 'menu', this.labels.menu);
-		node.addEventListener('mousedown', keepFocus);
-		$effect(() => {
-			const { block } = this;
-			if (!block) return;
-			this.publish({
-				id: this.menuId,
-				haspopup: 'menu',
-				opener: { block: block.id, control: 'grip' }
-			});
-			return () => this.publish(null);
-		});
-		return () => node.removeEventListener('mousedown', keepFocus);
-	};
+	popup: Attachment<HTMLElement>;
 
 	/**
 	 * An open flyout (`{@attach controller.flyoutMenu}`): its id, `menu`
@@ -231,18 +226,12 @@ export class BlockMenuController {
 	 * `aria-activedescendant`, once that row is in the page).
 	 */
 	keys: Attachment<HTMLElement> = (node) => {
-		untrack(() => {
-			if (!node.contains(node.ownerDocument.activeElement)) node.focus({ preventScroll: true });
-		});
-		node.addEventListener('keydown', this.#keydown);
-		$effect(() => {
+		$effect(() => attribute(node, 'aria-controls', this.flyout ? this.flyoutId : this.menuId));
+		return holdKeys(node, this.#keydown, () => {
 			const flyout = Boolean(this.flyout);
 			const row = flyout ? this.flyoutRows[this.flyoutIndex] : this.rows[this.selectedIndex];
-			attribute(node, 'aria-controls', flyout ? this.flyoutId : this.menuId);
-			if (!namesRows(node)) return;
-			attribute(node, 'aria-activedescendant', inPage(node, row && this.rowId(row, flyout)));
+			return row && this.rowId(row, flyout);
 		});
-		return () => node.removeEventListener('keydown', this.#keydown);
 	};
 
 	/**
@@ -288,31 +277,23 @@ export class BlockMenuController {
 	#keydown = (event: KeyboardEvent) => {
 		if (event.defaultPrevented || event.isComposing) return;
 		const { key } = event;
-		const rows = this.rows;
-		const count = rows.length;
-		const arrow = key === 'ArrowDown' || key === 'ArrowUp';
-		/** One arrow step through `length` rows, wrapping. */
-		const step = (index: number, length: number) =>
-			(index + (key === 'ArrowDown' ? 1 : length - 1)) % length;
+		const { flyout, rows } = this;
 		const row = rows[this.selectedIndex];
 		const submenu = row && 'submenu' in row ? row.submenu : undefined;
+		const to = stepRow(key, this.selectedIndex, rows.length, { ends: true });
 		if (key === 'Escape') {
-			if (this.flyout) this.flyout = false;
+			if (flyout) this.flyout = false;
 			else this.close();
-		} else if (this.flyout && arrow) {
+		} else if (flyout && (key === 'ArrowDown' || key === 'ArrowUp'))
 			// In a flyout, the arrows walk its rows.
-			const length = this.flyoutRows.length;
-			if (length) this.flyoutIndex = step(this.flyoutIndex, length);
-		} else if (this.flyout && key === 'Enter') this.runFlyout();
+			this.flyoutIndex = stepRow(key, this.flyoutIndex, this.flyoutRows.length)!;
+		else if (flyout && key === 'Enter') this.runFlyout();
 		else if (key === 'Delete' && !this.query) this.remove();
-		else if (arrow) {
-			if (count) this.selectedIndex = step(this.selectedIndex, count);
-			this.flyout = false;
-		} else if ((key === 'Home' || key === 'End') && count) {
-			this.selectedIndex = key === 'Home' ? 0 : count - 1;
+		else if (to !== undefined) {
+			this.selectedIndex = to;
 			this.flyout = false;
 		} else if (key === 'ArrowRight' && submenu) this.openFlyout(submenu);
-		else if (key === 'ArrowLeft' && this.flyout) this.flyout = false;
+		else if (key === 'ArrowLeft' && flyout) this.flyout = false;
 		else if (key === 'Enter') this.runSelected();
 		else return;
 		event.preventDefault();

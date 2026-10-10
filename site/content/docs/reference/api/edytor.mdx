@@ -1280,7 +1280,7 @@ export declare class CalloutIconPicker {
 - `optionId`: Row `index`'s element id.
 - `option`: What row `index` spreads (`icons.length`: Remove icon): its id, role, state and handlers.
 - `keys`: The picker's element (`{@attach picker.keys}`): it takes the focus as it opens and names the keyboard's row (`aria-activedescendant`).
-- `popup`: The picker's element (`{@attach picker.popup}`): its id, role and name, published to the view's root (`edytor.popups`) while it is in the page.
+- `popup`: The picker's element (`{@attach picker.popup}`): its id, `menu` role and name unless it has its own, presses that keep the focus, and its publication to the view's root (`edytor.popups`) while it is in the page.
 
 ## Caret
 

@@ -5,12 +5,11 @@ import { takeKeys } from '$lib/events/onFocus.js';
 import type { CodeLabels } from '$lib/labels.js';
 import {
 	attribute,
-	inPage,
-	keepFocus,
 	optionAttributes,
 	type MenuItemPayload,
 	type OptionAttributes
 } from '../chrome.js';
+import { holdKeys, listPopup } from '../list.svelte.js';
 import { languageLabel, languageOf, type CodeSettings } from './languages.js';
 
 /** A row of the language list: a language id and its label as shown. */
@@ -67,7 +66,9 @@ export class LanguageMenu {
 		readonly edytor: Edytor,
 		/** @internal */
 		readonly settings: CodeSettings
-	) {}
+	) {
+		this.popup = listPopup(edytor, 'code-languages', 'listbox', () => this.labels.language);
+	}
 
 	/** The plugin's words (`language`, `search`, `noResults`, …). */
 	get labels(): CodeLabels {
@@ -223,15 +224,13 @@ export class LanguageMenu {
 			attribute(node, 'aria-controls', this.listId);
 			if (!node.hasAttribute('aria-label') && !node.hasAttribute('aria-labelledby'))
 				node.setAttribute('aria-label', this.labels.language);
-			node.addEventListener('keydown', this.#keydown);
 			node.addEventListener('focusout', this.#blurred);
-			node.focus({ preventScroll: true });
-			$effect(() => {
+			const off = holdKeys(node, this.#keydown, () => {
 				const row = this.rows[this.index];
-				attribute(node, 'aria-activedescendant', inPage(node, row && this.rowId(row)));
+				return row && this.rowId(row);
 			});
 			return () => {
-				node.removeEventListener('keydown', this.#keydown);
+				off();
 				node.removeEventListener('focusout', this.#blurred);
 			};
 		});
@@ -253,19 +252,7 @@ export class LanguageMenu {
 	 * unless it has its own, presses that keep the field's focus, and its
 	 * publication to the view's root (`edytor.popups`) while it is in the page.
 	 */
-	popup: Attachment<HTMLElement> = (node) =>
-		untrack(() => {
-			node.id = this.listId;
-			if (!node.hasAttribute('role')) node.setAttribute('role', 'listbox');
-			if (!node.hasAttribute('aria-label') && !node.hasAttribute('aria-labelledby'))
-				node.setAttribute('aria-label', this.labels.language);
-			node.addEventListener('mousedown', keepFocus);
-			this.edytor.popups.set('code-languages', { id: this.listId, haspopup: 'listbox' });
-			return () => {
-				node.removeEventListener('mousedown', keepFocus);
-				this.edytor.popups.set('code-languages', null);
-			};
-		});
+	popup: Attachment<HTMLElement>;
 
 	/**
 	 * The keys back to the editor from a language button (its Escape): the

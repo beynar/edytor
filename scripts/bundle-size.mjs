@@ -17,6 +17,8 @@ import { createRequire } from 'node:module';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
+import { existsSync } from 'node:fs';
+import { countFile } from './xloc.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const require = createRequire(join(root, 'package.json'));
@@ -151,6 +153,18 @@ for (const [app, svelteSource] of Object.entries(APPS)) {
 			sources[name] = (sources[name] ?? 0) + Math.max(0, length);
 		}
 	}
+	// The source lines behind the shipped edytor modules (xloc: no blanks, comments or types).
+	const loc = { edytor: 0, vendor: 0, files: 0 };
+	for (const name of Object.keys(sources)) {
+		if (!name.startsWith('edytor/')) continue;
+		const rel = name.slice('edytor/'.length);
+		const base = join(root, 'src/lib', rel.replace(/\.js$/, ''));
+		const file = [`${base}.ts`, `${base}.js`, join(root, 'src/lib', rel)].find(existsSync);
+		if (!file) continue;
+		loc[rel.startsWith('crdt/vendor/') ? 'vendor' : 'edytor'] += countFile(file);
+		loc.files++;
+	}
+	totals.loc = loc;
 	const groups = {};
 	for (const [name, bytes] of Object.entries(sources)) {
 		const group = groupOf(name);
@@ -159,7 +173,7 @@ for (const [app, svelteSource] of Object.entries(APPS)) {
 	report[app] = { totals, groups };
 
 	console.log(
-		`\n${app}: ${kb(totals.min)} min (${kb(totals.entry)} entry, ${kb(totals.lazy)} lazy in ${totals.chunks - 1} chunks), ${kb(totals.gzip)} gzip, ${kb(totals.brotli)} brotli`
+		`\n${app}: ${kb(totals.min)} min (${kb(totals.entry)} entry, ${kb(totals.lazy)} lazy in ${totals.chunks - 1} chunks), ${kb(totals.gzip)} gzip, ${kb(totals.brotli)} brotli; source lines shipped: ${loc.edytor} edytor + ${loc.vendor} vendored engine (${loc.files} files)`
 	);
 	for (const [group, bytes] of Object.entries(groups)
 		.sort((a, b) => b[1] - a[1])

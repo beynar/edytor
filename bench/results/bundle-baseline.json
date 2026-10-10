@@ -6,7 +6,12 @@
 			"brotli": 213061,
 			"entry": 767666,
 			"lazy": 0,
-			"chunks": 1
+			"chunks": 1,
+			"loc": {
+				"edytor": 33991,
+				"vendor": 5959,
+				"files": 227
+			}
 		},
 		"groups": {
 			"svelte (runtime)": 49304,
@@ -81,7 +86,12 @@
 			"brotli": 269037,
 			"entry": 963493,
 			"lazy": 19112,
-			"chunks": 22
+			"chunks": 22,
+			"loc": {
+				"edytor": 44088,
+				"vendor": 5959,
+				"files": 289
+			}
 		},
 		"groups": {
 			"@tanstack/highlight": 27752,

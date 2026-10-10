@@ -11,7 +11,7 @@ function stripComments(src) {
 	src = src.replace(/<!--[\s\S]*?-->/g, '');
 	return src;
 }
-function countFile(file) {
+export function countFile(file) {
 	let src = stripComments(fs.readFileSync(file, 'utf8'));
 	const lines = src.split('\n');
 	let n = 0,
@@ -50,25 +50,30 @@ function walk(dir, exts, skip = []) {
 	}
 	return out;
 }
-const [root, ...rest] = process.argv.slice(2);
-const perDir = rest.includes('--dirs');
-const perFile = rest.includes('--files');
-const skip = rest.includes('--vendor') ? [] : ['vendor', '.test.', '.spec.'];
-const files = walk(root, ['.ts', '.svelte', '.js', '.tsx'], skip);
-const byDir = {};
-let total = 0;
-const rows = [];
-for (const f of files) {
-	const c = countFile(f);
-	total += c;
-	const d = path.relative(root, path.dirname(f)).split('/')[0] || '.';
-	byDir[d] = (byDir[d] || 0) + c;
-	rows.push([c, f]);
+// The CLI runs only when this file is the entry (scripts/bundle-size.mjs imports `countFile`).
+if (import.meta.url === `file://${process.argv[1]}`) main();
+
+function main() {
+	const [root, ...rest] = process.argv.slice(2);
+	const perDir = rest.includes('--dirs');
+	const perFile = rest.includes('--files');
+	const skip = rest.includes('--vendor') ? [] : ['vendor', '.test.', '.spec.'];
+	const files = walk(root, ['.ts', '.svelte', '.js', '.tsx'], skip);
+	const byDir = {};
+	let total = 0;
+	const rows = [];
+	for (const f of files) {
+		const c = countFile(f);
+		total += c;
+		const d = path.relative(root, path.dirname(f)).split('/')[0] || '.';
+		byDir[d] = (byDir[d] || 0) + c;
+		rows.push([c, f]);
+	}
+	if (perFile)
+		rows.sort((a, b) => b[0] - a[0]).forEach(([c, f]) => console.log(String(c).padStart(6), f));
+	if (perDir)
+		Object.entries(byDir)
+			.sort((a, b) => b[1] - a[1])
+			.forEach(([d, c]) => console.log(String(c).padStart(6), d));
+	console.log('TOTAL', total, 'files', files.length);
 }
-if (perFile)
-	rows.sort((a, b) => b[0] - a[0]).forEach(([c, f]) => console.log(String(c).padStart(6), f));
-if (perDir)
-	Object.entries(byDir)
-		.sort((a, b) => b[1] - a[1])
-		.forEach(([d, c]) => console.log(String(c).padStart(6), d));
-console.log('TOTAL', total, 'files', files.length);

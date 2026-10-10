@@ -170,13 +170,19 @@ import { TRANSACTION } from '../constants.js';
 import type { JSONDoc } from '../utils/json.js';
 import {
 	defaultSemantics,
+	facadeConfigOf,
+	mergeSemantics,
 	normalizeRole,
 	SemanticConflictError,
-	semanticsDigest,
-	type NormalizedRole
+	semanticsDigest
 } from './semantics.js';
 
 export { SemanticConflictError };
+
+/** Refuse `op` on a destroyed document. */
+const alive = (document: EdytorDocument, op: string): void => {
+	if (document.destroyed) throw new DocumentDestroyedError(op);
+};
 
 /** Local actor identity — durable across replicas, independent of presence profiles. */
 export type DocumentActor = {
@@ -404,9 +410,7 @@ export class EdytorDocument {
 	 * current replicated state.
 	 */
 	get attribution(): DocumentAttribution {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('attribution');
-		}
+		alive(this, 'attribution');
 		return this._attributionCtl.view;
 	}
 	/**
@@ -463,13 +467,11 @@ export class EdytorDocument {
 	 * callers/views).
 	 */
 	private _refs = 1;
-	/** The adopted capability tables: per kind, the first declaration. */
-	private readonly _capability = {
-		roles: new Map<string, NormalizedRole>(),
-		rendersContent: new Map<string, boolean>(),
-		defaultChild: new Map<string, string>(),
-		marks: new Map<string, MarkEdge>()
-	};
+	/**
+	 * The adopted semantics (every contribution, merged: `mergeSemantics`)
+	 * and their lookups (`facadeConfigOf`, as the room reads its own).
+	 */
+	private readonly _capability = { config: mergeSemantics(), of: facadeConfigOf({}) };
 	private _defaultType: string;
 	private readonly _historyOptions: { captureTimeout?: number; limit?: number } | undefined;
 	private readonly _lineageDepth: number | undefined;
@@ -487,13 +489,14 @@ export class EdytorDocument {
 		this.doc = init.doc;
 		this._ownsDoc = init.ownsDoc;
 		this._defaultType = init.semantics?.defaultType ?? 'paragraph';
+		const of = () => this._capability.of;
 		this.facade = init.binding.create(asEngineDoc(this.doc), {
-			roleOf: (type) => this._capability.roles.get(type),
-			kinds: () => this._capability.roles.keys(),
+			roleOf: (type) => of().roleOf(type),
+			kinds: () => of().kinds(),
 			defaultType: this._defaultType,
-			defaultChildOf: (type) => this._capability.defaultChild.get(type),
-			rendersContent: (type) => this.rendersContent(type),
-			markEdge: (mark) => this._capability.marks.get(mark),
+			defaultChildOf: (type) => of().defaultChildOf(type),
+			rendersContent: (type) => of().rendersContent(type),
+			markEdge: (mark) => of().markEdge(mark),
 			// The facade's block-attribution ops read the actor lazily —
 			// `this.actor` is assigned below, after facade construction.
 			actor: () => this.actor,
@@ -545,16 +548,9 @@ export class EdytorDocument {
 	 */
 	private _advertise(): void {
 		if (!DEV) return;
-		const { roles, rendersContent, defaultChild, marks } = this._capability;
 		this.awareness.setLocalStateField(
 			'semantics',
-			semanticsDigest({
-				roles: Object.fromEntries(roles),
-				rendersContent: Object.fromEntries(rendersContent),
-				defaultChild: Object.fromEntries(defaultChild),
-				marks: Object.fromEntries([...marks].map(([mark, edge]) => [mark, { edge }])),
-				defaultType: this._defaultType
-			})
+			semanticsDigest({ ...this._capability.config, defaultType: this._defaultType })
 		);
 	}
 
@@ -649,13 +645,15 @@ export class EdytorDocument {
 	 * copies — mutation is not supported; contribute via {@link adoptSemantics}.
 	 */
 	get semantics() {
-		const { roles, rendersContent, defaultChild, marks } = this._capability;
+		const { roles, rendersContent, defaultChild, marks } = this._capability.config;
+		const entries = <T, U>(table: Record<string, T>, f: (value: T) => U) =>
+			new Map(Object.entries(table).map(([key, value]) => [key, f(value)]));
 		return {
 			defaultType: this._defaultType,
-			roles: new Map<string, BlockRole>(roles),
-			rendersContent: new Map(rendersContent),
-			defaultChild: new Map(defaultChild),
-			marks: new Map(marks)
+			roles: entries<BlockRole, BlockRole>(roles, normalizeRole),
+			rendersContent: new Map(Object.entries(rendersContent)),
+			defaultChild: new Map(Object.entries(defaultChild)),
+			marks: entries(marks, (mark): MarkEdge => mark.edge ?? 'inclusive')
 		};
 	}
 
@@ -665,11 +663,11 @@ export class EdytorDocument {
 	 * and root normalization apply against the new block's actual parent.
 	 */
 	defaultChild = (parentType: string | null): string =>
-		(parentType !== null ? this._capability.defaultChild.get(parentType) : undefined) ??
+		(parentType !== null ? this._capability.of.defaultChildOf(parentType) : undefined) ??
 		this._defaultType;
 
 	/** Whether kind `type` renders its own content slot (undeclared kinds do). */
-	rendersContent = (type: string): boolean => this._capability.rendersContent.get(type) ?? true;
+	rendersContent = (type: string): boolean => this._capability.of.rendersContent(type);
 
 	/**
 	 * Contribute document-level semantics — the seam views use to seed the
@@ -682,44 +680,19 @@ export class EdytorDocument {
 	 * - `rendersContent` and `defaultChild` entries follow the same rule;
 	 * - `defaultType` must match the document's when supplied.
 	 *
-	 * Atomic: everything validates before anything is adopted.
+	 * Atomic: everything validates before anything is adopted (the merge is
+	 * `mergeSemantics`'s).
 	 *
 	 * Contributions are document-lifetime: they survive the contributing
 	 * view's teardown, so sibling views keep the same structural rules.
 	 */
 	adoptSemantics = (config: DocumentSemanticsConfig): void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('adoptSemantics');
-		}
+		alive(this, 'adoptSemantics');
 		if (config.defaultType !== undefined && config.defaultType !== this._defaultType) {
 			throw new SemanticConflictError('defaultType', this._defaultType, config.defaultType);
 		}
-		const incoming = [
-			['roles', Object.entries(config.roles ?? {}).map(([t, r]) => [t, normalizeRole(r)] as const)],
-			['rendersContent', Object.entries(config.rendersContent ?? {})],
-			['defaultChild', Object.entries(config.defaultChild ?? {})],
-			[
-				'marks',
-				Object.entries(config.marks ?? {}).map(
-					([mark, m]) => [mark, m?.edge ?? 'inclusive'] as const
-				)
-			]
-		] as const;
-		// Pass 1 — validate EVERYTHING before mutating: a conflicting entry
-		// late in a table must not leave earlier entries half-adopted.
-		for (const [table, entries] of incoming) {
-			for (const [type, value] of entries) {
-				const existing = this._capability[table].get(type);
-				if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(value)) {
-					throw new SemanticConflictError(`${table} "${type}"`, existing, value);
-				}
-			}
-		}
-		// Pass 2 — apply: every incoming entry proved compatible.
-		for (const [table, entries] of incoming) {
-			const adopted = this._capability[table] as Map<string, unknown>;
-			for (const [type, value] of entries) adopted.set(type, value);
-		}
+		const merged = mergeSemantics(this._capability.config, { ...config, defaultType: undefined });
+		Object.assign(this._capability, { config: merged, of: facadeConfigOf(merged) });
 		this._advertise();
 		if (DEV) this._warnLines();
 		// A newly void kind sheds its children at read time; a block
@@ -742,18 +715,18 @@ export class EdytorDocument {
 	 * (the default type, another kind's default child) would be recast.
 	 */
 	private _warnLines(): void {
-		const { roles, defaultChild } = this._capability;
-		for (const [type, role] of roles) {
-			if (role.layout && !defaultChild.has(type))
+		const { roles, defaultChild } = this._capability.config;
+		for (const [type, role] of Object.entries(roles)) {
+			if (role.layout && !Object.hasOwn(defaultChild, type))
 				console.warn(
 					`[edytor] "${type}" declares \`layout\` without a \`defaultChild\` (its column kind): it is no layout.`
 				);
-			if (role.table && !defaultChild.has(type))
+			if (role.table && !Object.hasOwn(defaultChild, type))
 				console.warn(
 					`[edytor] "${type}" declares \`table\` without a \`defaultChild\` (its row kind): it is no table.`
 				);
 			if (!role.lines) continue;
-			const line = defaultChild.get(type);
+			const line = this._capability.of.defaultChildOf(type);
 			if (!role.island || line === undefined) {
 				console.warn(
 					`[edytor] "${type}" declares \`lines\` without \`island\` and a \`defaultChild\`: it holds no lines.`
@@ -762,7 +735,9 @@ export class EdytorDocument {
 			}
 			const shared =
 				line === this._defaultType ||
-				[...defaultChild].some(([other, child]) => child === line && !roles.get(other)?.lines);
+				Object.entries(defaultChild).some(
+					([other, child]) => child === line && !this._capability.of.roleOf(other)?.lines
+				);
 			if (shared)
 				console.warn(
 					`[edytor] "${type}" holds lines of "${line}", a kind other blocks use: outside "${type}" they show as their parent's default child. Give its lines a kind of their own.`
@@ -795,9 +770,7 @@ export class EdytorDocument {
 	 * not bootstrap — only this call (or `createDocument({value})`) does.
 	 */
 	sync = (value: JSONDoc = { children: [] }): void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('sync');
-		}
+		alive(this, 'sync');
 		if (this._readiness !== 'pending') {
 			return;
 		}
@@ -828,9 +801,7 @@ export class EdytorDocument {
 	 * {@link DocumentNotReadyError} instead of silently seeding).
 	 */
 	get history(): YUndoManager {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('history');
-		}
+		alive(this, 'history');
 		let history = this._history;
 		// A manager enrolls itself in its tracked origins and leaves them on
 		// `destroy()` — an external teardown (misuse, or the engine's own
@@ -863,9 +834,7 @@ export class EdytorDocument {
 	 * on view teardown — already-captured ops stay undoable.
 	 */
 	trackOrigin = (origin: unknown): void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('trackOrigin');
-		}
+		alive(this, 'trackOrigin');
 		this._trackedOrigins.add(origin);
 	};
 
@@ -916,9 +885,7 @@ export class EdytorDocument {
 	 * on pending).
 	 */
 	clearHistory = (): void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('clearHistory');
-		}
+		alive(this, 'clearHistory');
 		this._history?.clear();
 	};
 
@@ -928,9 +895,7 @@ export class EdytorDocument {
 	 * when it is tracked).
 	 */
 	transact = <T>(cb: () => T, origin: unknown = this.transaction): T => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('transact');
-		}
+		alive(this, 'transact');
 		return this.facade.transact(cb, origin);
 	};
 
@@ -1038,9 +1003,7 @@ export class EdytorDocument {
 	 * `attach`: a provider of its own, under the same rules.
 	 */
 	attachSync = (sync: EdytorSync, opts: { value?: JSONDoc } = {}): EdytorSyncCleanup | void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('attachSync');
-		}
+		alive(this, 'attachSync');
 		const target = sync.target ?? sync;
 		if (this._providers.has(target)) return;
 		this._pendingSyncs += 1;
@@ -1127,9 +1090,7 @@ export class EdytorDocument {
 	 * lifecycle).
 	 */
 	retain = (): (() => void) => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('retain');
-		}
+		alive(this, 'retain');
 		this._refs += 1;
 		let released = false;
 		return () => {
@@ -1247,17 +1208,26 @@ export const bindDocument = (Y: EngineApi) => {
 	 */
 	const attached = new WeakMap<YDoc, EdytorDocument>();
 
+	/** A document over `doc`, registered for `attachDocument`'s dedupe. */
 	const init = (
-		initOpts: Omit<EdytorDocumentInit, 'binding' | 'attribution' | 'engine' | 'awarenessCtor'>
+		doc: YDoc,
+		ownsDoc: boolean,
+		options: DocumentOptions,
+		semantics = options.semantics
 	): EdytorDocument => {
-		lineageDepthOf(initOpts.lineage?.depth);
-		return new EdytorDocument({
-			...initOpts,
+		lineageDepthOf(options.lineage?.depth);
+		const document = new EdytorDocument({
+			...options,
+			doc,
+			ownsDoc,
+			semantics,
 			binding,
 			attribution,
 			engine: Y,
 			awarenessCtor: Awareness
 		});
+		attached.set(doc, document);
+		return document;
 	};
 
 	/**
@@ -1277,43 +1247,16 @@ export const bindDocument = (Y: EngineApi) => {
 				'a different injected awareness'
 			);
 		}
-		if (options.actor !== undefined && options.actor.id !== existing.actor.id) {
-			throw new SemanticConflictError('actor.id', existing.actor.id, options.actor.id);
-		}
-		if (
-			options.history?.captureTimeout !== undefined &&
-			options.history.captureTimeout !== existing.historyCaptureTimeout
-		) {
-			throw new SemanticConflictError(
-				'history.captureTimeout',
-				existing.historyCaptureTimeout,
-				options.history.captureTimeout
-			);
-		}
-		if (options.history?.limit !== undefined && options.history.limit !== existing.historyLimit) {
-			throw new SemanticConflictError(
-				'history.limit',
-				existing.historyLimit,
-				options.history.limit
-			);
-		}
-		if (options.lineage?.depth !== undefined && options.lineage.depth !== existing.lineageDepth) {
-			throw new SemanticConflictError(
-				'lineage.depth',
-				existing.lineageDepth,
-				options.lineage.depth
-			);
-		}
-		if (
-			options.requireHydration !== undefined &&
-			options.requireHydration !== existing.requireHydration
-		) {
-			throw new SemanticConflictError(
-				'requireHydration',
-				existing.requireHydration,
-				options.requireHydration
-			);
-		}
+		const asked: [subject: string, live: unknown, wanted: unknown][] = [
+			['actor.id', existing.actor.id, options.actor?.id],
+			['history.captureTimeout', existing.historyCaptureTimeout, options.history?.captureTimeout],
+			['history.limit', existing.historyLimit, options.history?.limit],
+			['lineage.depth', existing.lineageDepth, options.lineage?.depth],
+			['requireHydration', existing.requireHydration, options.requireHydration]
+		];
+		for (const [subject, live, wanted] of asked)
+			if (wanted !== undefined && wanted !== live)
+				throw new SemanticConflictError(subject, live, wanted);
 		if (options.semantics !== undefined) {
 			existing.adoptSemantics(options.semantics);
 		}
@@ -1333,17 +1276,7 @@ export const bindDocument = (Y: EngineApi) => {
 			// structural rather than assumed.
 			const doc = new Y.Doc();
 			assertAdmission(asEngineDoc(doc), 'created document');
-			const document = init({
-				doc,
-				ownsDoc: true,
-				actor: options.actor,
-				awareness: options.awareness,
-				semantics: options.semantics ?? defaultSemantics,
-				history: options.history,
-				lineage: options.lineage,
-				requireHydration: options.requireHydration
-			});
-			attached.set(document.doc, document);
+			const document = init(doc, true, options, options.semantics ?? defaultSemantics);
 			if (options.value !== undefined) {
 				try {
 					document.sync(options.value);
@@ -1371,17 +1304,7 @@ export const bindDocument = (Y: EngineApi) => {
 		 */
 		loadDocument: (update: Uint8Array, options: LoadDocumentOptions = {}): EdytorDocument => {
 			const doc = admission.admitUpdate(update, 'loaded document');
-			const document = init({
-				doc,
-				ownsDoc: true,
-				actor: options.actor,
-				awareness: options.awareness,
-				semantics: options.semantics ?? defaultSemantics,
-				history: options.history,
-				lineage: options.lineage,
-				requireHydration: options.requireHydration
-			});
-			attached.set(doc, document);
+			const document = init(doc, true, options, options.semantics ?? defaultSemantics);
 			try {
 				document.sync();
 			} catch (error) {
@@ -1434,18 +1357,7 @@ export const bindDocument = (Y: EngineApi) => {
 			// Doc-level admission before composition — a refusal is typed
 			// and leaves the borrowed doc untouched (see the docstring).
 			assertAdmission(asEngineDoc(doc), 'attached document');
-			const document = init({
-				doc,
-				ownsDoc: false,
-				actor: options.actor,
-				awareness: options.awareness,
-				semantics: options.semantics,
-				history: options.history,
-				lineage: options.lineage,
-				requireHydration: options.requireHydration
-			});
-			attached.set(doc, document);
-			return document;
+			return init(doc, false, options);
 		}
 	};
 };

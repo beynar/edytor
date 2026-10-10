@@ -22,7 +22,7 @@
  */
 import type { EngineApi, YDoc } from '../engine-api.js';
 import { asEngineDoc } from '../structs.js';
-import { bindEdytorDoc } from '../edytor-doc.js';
+import { bindDocModel } from '../edytor-doc.js';
 import { keepingReplaced } from '../incarnations.js';
 import { PROTOCOL_VERSION, type GenerationRecord } from '../protocols/envelope.js';
 import type { DocumentSemanticsConfig } from '../document.js';
@@ -45,7 +45,7 @@ export const isPreviousGenerationRecord = (v: unknown): v is GenerationRecord =>
 type Reader = { toJSON(): JSONDoc; dispose(): void };
 
 export const bindGenerations = (Y: EngineApi) => {
-	const docs = bindEdytorDoc(Y);
+	const docs = bindDocModel(Y);
 	/** A facade reading with `semantics` (the bundled kinds' by default). */
 	const facadeWith =
 		(semantics: DocumentSemanticsConfig = defaultSemantics) =>

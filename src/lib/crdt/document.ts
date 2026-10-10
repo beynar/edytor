@@ -153,13 +153,13 @@ import {
 	type DocumentAttribution
 } from './attribution/index.js';
 import {
-	bindEdytorDoc,
+	bindDocModel,
 	DEFAULT_HISTORY_LIMIT,
 	isInitialized,
 	lineageDepthOf,
 	type BlockRole,
 	type EdytorDoc,
-	type EdytorDocBinding
+	type DocModelBinding
 } from './edytor-doc.js';
 import { assertAdmission, assertSchema, bindAdmission, checkSchema } from './admission.js';
 import { Awareness } from './protocols/awareness.js';
@@ -347,7 +347,7 @@ export type EdytorDocumentInit = {
 	/** Whether `destroy()` may `doc.destroy()` — true only for document-allocated docs. */
 	ownsDoc: boolean;
 	/** The bound facade binding this document composes (injected by `bindDocument`). */
-	binding: EdytorDocBinding;
+	binding: DocModelBinding;
 	/** The bound attribution service (injected by `bindDocument`). */
 	attribution: AttributionBinding;
 	/** The engine this document's doc belongs to (for `encode`). */
@@ -1235,7 +1235,7 @@ export type DocumentBinding = ReturnType<typeof bindDocument>;
  * their own surface here.
  */
 export const bindDocument = (Y: EngineApi) => {
-	const binding = bindEdytorDoc(Y);
+	const binding = bindDocModel(Y);
 	const attribution = bindAttribution(Y);
 	const admission = bindAdmission(Y);
 	/**
@@ -1452,7 +1452,7 @@ export const bindDocument = (Y: EngineApi) => {
 
 // ── production binding (module singleton — bound ONCE) ─────────────────
 //
-// All documents share ONE `bindEdytorDoc` binding, so the doc-shared
+// All documents share ONE `bindDocModel` binding, so the doc-shared
 // `RunView` (its `WeakMap<doc>` lease table) is maintained exactly once
 // per doc no matter how many documents/views compose it.
 const productionBinding = bindDocument(Y);

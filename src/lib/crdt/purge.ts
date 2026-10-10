@@ -29,6 +29,7 @@ import {
 	WITHDRAW_PREFIX
 } from './schema.js';
 import { bindDeletes, type Span } from './text/deletes.js';
+import { deleteIndex, type Copy, type Rec, type Unit as TextUnit } from './text/delete-index.js';
 import { baseIdOf, isIncarnationId } from './incarnations.js';
 import { attrItems, firstItem } from './structs.js';
 
@@ -80,6 +81,68 @@ export const readHorizon = (doc: EngineDoc): Horizon | null => {
 
 export const bindPurge = (Y: EngineApi) => {
 	const D = bindDeletes(Y);
+	const { rootSpans, holders, dropMarks, recordsIn, copiesOf, liveRoots, forget, collect } =
+		deleteIndex(Y);
+	type Old = (client: number, clock: number) => boolean;
+
+	/**
+	 * Whether every live mark holding a character of `spans` was written
+	 * where `old` says (a withdrawn block's content was deleted
+	 * before the horizon). Characters no mark holds count as old.
+	 */
+	const heldBefore = (doc: EngineDoc, spans: readonly Span[], old: Old): boolean => {
+		const s = D.state(doc);
+		return spans
+			.flatMap((sp) => rootSpans(s, sp))
+			.every((r) => holders(s, r).every((mark) => old(mark.client, mark.clock)));
+	};
+
+	/**
+	 * The text's part (`room.purge.what`), inside the purge
+	 * transaction: delete every text delete mark record `old` names, and
+	 * every restoration record `old` names whose copies are all deleted
+	 * and that no remaining mark holds; its copies are forgotten (the
+	 * `gcFilter` no longer keeps them) and collected. Writes no mark.
+	 */
+	const purgeText = (doc: EngineDoc, old: Old): { marks: number; records: number } => {
+		const s = D.state(doc);
+		const tr = s.doc._transaction;
+		if (tr === null) throw new Error('purge: outside a transaction');
+		const spans: Span[] = [];
+		const dropped: Rec[] = [];
+		for (let it = firstItem<TextUnit>(s.marks); it; it = it.right as TextUnit)
+			if (!it.deleted)
+				for (let j = 0; j < it.length; j++) {
+					const r = { client: it.id.client, clock: it.id.clock + j };
+					if (!old(r.client, r.clock)) continue;
+					dropped.push(r);
+					const last = spans[spans.length - 1];
+					if (last !== undefined && last.c === r.client && last.k + last.n === r.clock) last.n++;
+					else spans.push({ c: r.client, k: r.clock, n: 1 });
+				}
+		dropMarks(s, dropped);
+		const marks = dropped.length;
+		D.remove(tr, spans);
+		const doomed: { key: string; copies: Copy[] }[] = [];
+		attrItems<TextUnit>(s.restored).forEach((it, key) => {
+			if (it.deleted || !old(it.id.client, it.id.clock)) return;
+			const [record, bytes] = recordsIn(it, null)[0] ?? [];
+			if (bytes === undefined) return;
+			const copies = copiesOf(record, bytes);
+			const dead = copies.every(
+				(e) =>
+					liveRoots(s, { c: e.c, k: e.k, n: e.n, rk: e.k }).length === 0 &&
+					holders(s, { c: e.rc, k: e.rk, n: e.n }).length === 0
+			);
+			if (dead) doomed.push({ key, copies });
+		});
+		for (const { key, copies } of doomed) {
+			s.restored.deleteAttr(key);
+			forget(s, copies);
+			collect(s, tr, copies);
+		}
+		return { marks, records: doomed.length };
+	};
 
 	/**
 	 * Purge from `doc` (through `facade`, the facade over it) what was
@@ -159,7 +222,7 @@ export const bindPurge = (Y: EngineApi) => {
 			for (const id of shells) {
 				if (dead.has(id)) continue;
 				const s = own.streamOf(id);
-				if (s !== undefined && !D.heldBefore(doc, regionSpans(s), old)) continue;
+				if (s !== undefined && !heldBefore(doc, regionSpans(s), old)) continue;
 				const left = (children.get(id) ?? []).every((child) => {
 					const rec = blocks.get(child)!;
 					return rec.cands[0]?.p === id ? dead.has(child) : winnerOld(rec);
@@ -296,7 +359,7 @@ export const bindPurge = (Y: EngineApi) => {
 			report.candidates += rec.cands.length - 1;
 		}
 		// Text delete marks and restoration records past the horizon.
-		const text = D.purge(doc, old);
+		const text = purgeText(doc, old);
 		report.marks = text.marks;
 		report.records = text.records;
 		// The horizon record, last.

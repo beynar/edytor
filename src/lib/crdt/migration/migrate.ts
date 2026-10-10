@@ -32,7 +32,7 @@ import * as idb from 'lib0-v14/indexeddb';
 import * as f from 'lib0-v14/function';
 import type { EngineApi, YDoc } from '../engine-api.js';
 import { asEngineDoc } from '../structs.js';
-import { bindEdytorDoc } from '../edytor-doc.js';
+import { bindDocModel } from '../edytor-doc.js';
 import { bindLegacyReader } from './legacy-schema.js';
 import { keepingReplaced } from '../incarnations.js';
 import { generationDbName } from '../protocols/envelope.js';
@@ -175,7 +175,7 @@ export type Migration = ReturnType<typeof bindMigration>;
  */
 export const bindMigration = (Y: EngineApi) => {
 	const reader = bindLegacyReader(Y);
-	const edytorDoc = bindEdytorDoc(Y);
+	const edytorDoc = bindDocModel(Y);
 
 	/** The durable record — NON-CREATING: probing never leaves a database behind. */
 	const stored = async (name: string): Promise<MigrationRecord> => {

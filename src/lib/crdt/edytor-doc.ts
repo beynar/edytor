@@ -155,20 +155,21 @@ export type {
 
 export type EdytorDoc = ReturnType<EdytorDocBinding['create']>;
 export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
+export type DocModelBinding = ReturnType<typeof bindDocModel>;
 
 /**
  * Bind the assembled model to a concrete engine surface. `Y` must be the
  * vendored v14 module — injected so this file type-checks structurally and
- * never imports vendor `.js` (see `engine-api.ts`).
+ * never imports vendor `.js` (see `engine-api.ts`). A document composes
+ * this binding; {@link bindEdytorDoc} adds the room's purge and restore.
  */
-export const bindEdytorDoc = (Y: EngineApi) => {
+export const bindDocModel = (Y: EngineApi) => {
 	// The doc's index (`text/runs.ts`) is the one owner of derived state:
 	// commands, runs, anchors, the change report and rendering read it.
 	const R = bindRuns(Y);
 	const M = bindModel(Y);
 	const T = bindText(Y);
 	const D = bindDeletes(Y);
-	const P = bindPurge(Y);
 	/** Each history's release of all its steps (`releaseHistory`). */
 	const releasers = new WeakMap<YUndoManager, () => void>();
 	// Compact per-block attribution writes (`attribution/block.ts`).
@@ -654,12 +655,27 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * what an editing replica keeps.
 		 */
 		keepCopies: (doc: EngineDoc): void => void D.scope(doc),
+		/** The bound engine layers (same instances the facades use). */
+		model: M,
+		text: T,
+		runs: R
+	};
+};
+
+/**
+ * {@link bindDocModel} with the room's tasks: only the public binding
+ * (`bindCrdt(Y).doc`) reaches them, so an editor's graph holds neither.
+ */
+export const bindEdytorDoc = (Y: EngineApi) => {
+	const { model, text, runs, ...binding } = bindDocModel(Y);
+	// The spread last: the declared type lists the binding first, as before.
+	return {
 		/**
 		 * Purge from `doc` what was deleted before `horizon` (`room.purge.what`): real deletes, inside the caller's transaction,
 		 * and the horizon record every history reads (`hist.purge.horizon`).
 		 * The room's purge task runs it; `facade` is a facade over `doc`.
 		 */
-		purge: P.purge,
+		purge: bindPurge(Y).purge,
 		/** The purge horizon `doc` holds, or `null`. */
 		horizonOf: (doc: EngineDoc) => readHorizon(doc),
 		/**
@@ -667,9 +683,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * registry holds and writing only what differs (`room.history.restore`), inside the caller's transaction.
 		 */
 		restoreTo: restoreDocument,
-		/** The bound engine layers (same instances the facades use). */
-		model: M,
-		text: T,
-		runs: R
+		model,
+		text,
+		runs,
+		...binding
 	};
 };

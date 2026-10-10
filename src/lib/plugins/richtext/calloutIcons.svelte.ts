@@ -18,6 +18,7 @@ import type { SelectionValue } from '$lib/session/selection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { holdKeys, listPopup, menuKey } from '../list.svelte.js';
 import { layerBox } from '$lib/surface/overlay.js';
+import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
 /** A new callout's icon unless `createRichTextPlugin({ callout: { icon } })` names another. */
 export const DEFAULT_CALLOUT_ICON = '💡';
@@ -72,7 +73,7 @@ export const iconOf = (data: Record<string, unknown> | undefined, fallback: stri
  * (`parse`), never a tag another kind may export.
  */
 export const calloutHtml = (icon: string, content: string, children: string) =>
-	`<div data-edytor-callout="${icon.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}"><p>${content}</p>${children}</div>`;
+	`<div data-edytor-callout="${escapeHtml(icon)}"><p>${content}</p>${children}</div>`;
 
 /** What `picker.option(index)` spreads on a row: its id, role, state and handlers. */
 export type CalloutIconOption = {

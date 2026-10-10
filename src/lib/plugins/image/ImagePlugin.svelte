@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 	import type { Snippet } from 'svelte';
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
@@ -70,7 +71,6 @@
 	/** The data an image block reads (all optional). */
 	export type ImageData = { src?: string; alt?: string; width?: number; align?: ImageAlign };
 
-	const escape = (value: string) => value.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 	const px = (width: number | undefined) => (width === undefined ? undefined : `${width}px`);
 
 	/** One view's image state: its plugin's `upload`, the chrome, the uploads in flight. */
@@ -179,7 +179,7 @@
 							const width = imageWidthOf(block.data);
 							const align = imageAlignOf(block.data);
 							const img = src
-								? `<img src="${escape(src)}" alt="${escape(imageAltOf(block.data))}"${width ? ` width="${Math.round(width)}"` : ''}>`
+								? `<img src="${escapeHtml(src)}" alt="${escapeHtml(imageAltOf(block.data))}"${width ? ` width="${Math.round(width)}"` : ''}>`
 								: '';
 							const at = align === 'center' ? '' : ` data-align="${align}"`;
 							return `<figure${at}>${img}<figcaption>${caption}</figcaption></figure>`;

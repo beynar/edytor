@@ -37,6 +37,34 @@ export const rendered = (node: Element): Element => {
 /** Reads layout with the layer's origin; returns the writes to apply after every read. */
 export type Measure = (origin: DOMRect) => (() => void) | void;
 
+/**
+ * The run of `count` items in vertical order (a parent's children, the
+ * top-level blocks) whose boxes (`boxAt`, client px) meet the band from
+ * `top` to `bottom`, edges included unless `strict`: two binary searches,
+ * O(log n) boxes read, an item without a box counted as above the band.
+ * Answers its first index and the index after its last.
+ */
+export const bandRun = (
+	count: number,
+	boxAt: (index: number) => DOMRect | undefined,
+	top: number,
+	bottom: number,
+	strict = false
+): [number, number] => {
+	const search = (past: (box: DOMRect) => boolean, lo = 0) => {
+		let hi = count;
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			const box = boxAt(mid);
+			if (!box || past(box)) lo = mid + 1;
+			else hi = mid;
+		}
+		return lo;
+	};
+	const first = search((box) => (strict ? box.bottom <= top : box.bottom < top));
+	return [first, search((box) => (strict ? box.top < bottom : box.top <= bottom), first)];
+};
+
 /** A box relative to the layer. */
 export type LayerBox = { x: number; y: number; width: number; height: number };
 
@@ -146,17 +174,12 @@ export class Overlay {
 		if (!host || !resize || !view) return;
 		const kids = host.children;
 		const screen = view.innerHeight;
-		const search = (past: (rect: DOMRect) => boolean) => {
-			let [lo, hi] = [0, kids.length];
-			while (lo < hi) {
-				const mid = (lo + hi) >> 1;
-				if (past(kids[mid]!.getBoundingClientRect())) lo = mid + 1;
-				else hi = mid;
-			}
-			return lo;
-		};
-		const first = search((rect) => rect.bottom < -WATCHED_SCREENS * screen);
-		const last = search((rect) => rect.top <= (1 + WATCHED_SCREENS) * screen);
+		const [first, last] = bandRun(
+			kids.length,
+			(index) => kids[index]!.getBoundingClientRect(),
+			-WATCHED_SCREENS * screen,
+			(1 + WATCHED_SCREENS) * screen
+		);
 		const next = new Set<Element>();
 		for (let i = first; i < last; i++) if (this.#observed.has(kids[i]!)) next.add(kids[i]!);
 		for (const node of this.#watched)

@@ -8,6 +8,7 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { hidden } from '$lib/selection/visibility.js';
+import { bandRun } from '$lib/surface/overlay.js';
 
 /** A rectangle in viewport (client) coordinates. */
 export type MarqueeRect = { left: number; top: number; right: number; bottom: number };
@@ -53,23 +54,9 @@ export const marqueeBlocks = (edytor: Edytor, rect: MarqueeRect): Block[] => {
 	/** The children of `parent` at the rectangle's height: a binary search over their boxes. */
 	const rows = (ids: readonly string[]): Block[] => {
 		const at = (i: number) => box(idToBlock.block(ids[i]!));
-		let lo = 0;
-		let hi = ids.length;
-		while (lo < hi) {
-			const mid = (lo + hi) >> 1;
-			const b = at(mid);
-			if (!b || b.bottom <= rect.top) lo = mid + 1;
-			else hi = mid;
-		}
-		const first = lo;
-		hi = ids.length;
-		while (lo < hi) {
-			const mid = (lo + hi) >> 1;
-			const b = at(mid);
-			if (!b || b.top < rect.bottom) lo = mid + 1;
-			else hi = mid;
-		}
-		return ids.slice(first, lo).flatMap((id) => {
+		// Rows touch: an edge they share is no overlap.
+		const [first, end] = bandRun(ids.length, at, rect.top, rect.bottom, true);
+		return ids.slice(first, end).flatMap((id) => {
 			const block = idToBlock.block(id);
 			return hidden(block) ? [] : [block];
 		});

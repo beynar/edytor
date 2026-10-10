@@ -11,7 +11,8 @@ export type ExportKinds = Pick<Edytor, 'blocks' | 'marks' | 'inlineBlocks'>;
 export const encodeClipboardJson = (value: unknown) =>
 	btoa(encodeURIComponent(JSON.stringify(value)));
 
-const escapeHtml = (value: string) =>
+/** `value` escaped for an HTML text or a double-quoted attribute: every kind's export reads it. */
+export const escapeHtml = (value: string) =>
 	value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** A tag form wraps `inner`; attributes left `undefined` are omitted. */

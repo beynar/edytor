@@ -11,6 +11,7 @@ import {
 	type PartialLabels
 } from '$lib/labels.js';
 import { layerBox, pin, sameValues } from '$lib/surface/overlay.js';
+import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
 /** The part of KaTeX the plugin uses: `katex.renderToString`. */
 export type KatexLike = {
@@ -67,9 +68,6 @@ export const expressionOf = (data: unknown): string => {
 	const value = (data as EquationData | undefined)?.expression;
 	return typeof value === 'string' ? value : '';
 };
-
-const escape = (value: string) =>
-	value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** The cap of the drawings each renderer keeps. */
 const CACHE = 256;
@@ -131,7 +129,7 @@ export class EquationRenderer {
 				// TeX KaTeX cannot read: the source as text, below.
 			}
 		}
-		const source = escape(tex);
+		const source = escapeHtml(tex);
 		return (
 			`<span class="katex"><math xmlns="http://www.w3.org/1998/Math/MathML"${display ? ' display="block"' : ''}>` +
 			`<semantics><mrow><mtext>${source}</mtext></mrow><annotation encoding="${TEX}">${source}</annotation></semantics></math></span>`

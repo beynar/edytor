@@ -4,8 +4,6 @@ import {
 } from '$lib/clipboard/clipboard.js';
 import type { Edytor } from '../edytor.svelte.js';
 import { vetoable } from '$lib/utils.js';
-import { observeInternalDragSources } from './onDrop.js';
-import { observeShiftPasteModifier } from './onPaste.js';
 import { ownsEvent } from './nativeInteractiveControl.js';
 
 /**
@@ -17,9 +15,6 @@ export const copySelection = (edytor: Edytor, e: ClipboardEvent, hook: 'onCopy' 
 	// editable island) is the control's: overriding it would put the model
 	// selection's fragment on the clipboard, and a cut would delete it (`ownsEvent`).
 	if (edytor.selection.state.isVoidEditableElement || ownsEvent(edytor.node, e)) return false;
-
-	observeInternalDragSources(edytor.node?.getRootNode());
-	observeShiftPasteModifier(edytor.node?.getRootNode());
 
 	const claimed = (plugin: Edytor['plugins'][number]) =>
 		vetoable((prevent) => plugin[hook]?.({ prevent, e }));

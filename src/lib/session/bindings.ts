@@ -9,7 +9,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { extendVertically, navigationBindings, stayWithoutTarget, vertical } from './navigation.js';
-import { attemptOf, caretAt, intentSnapshot } from './attempt.js';
+import { caretAt, intentSnapshot } from './attempt.js';
 import {
 	flipToggles,
 	getSelectionBlocks,
@@ -20,9 +20,6 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { shown } from '$lib/selection/visibility.js';
 import type { HotKey } from './keymap.js';
-
-const STRUCTURAL_HOTKEY_DOM_REPAIR_WINDOW_MS = 500;
-const HISTORY_HOTKEY_DOM_REPAIR_WINDOW_MS = 150;
 
 /**
  * Remove the selected inline atom as one command: the caret lands where
@@ -62,23 +59,13 @@ const selectNextVoidBlockFromCaret = (edytor: Edytor) => {
 	return true;
 };
 
-/** The key's attempt: the model owns the DOM drift around its command for `window` ms. */
-const suppressHotkeyDomDrift = (edytor: Edytor, window: number) => {
-	const attempt = attemptOf(edytor, { inputType: 'hotkey', cancelable: true });
-	edytor.attempts.drift(edytor.attempts.admit(attempt, 'model'), 'discard', window);
-};
-
 const ownsDeleteSelection = (edytor: Edytor) =>
 	edytor.selection.selectedBlocks.size > 0 || edytor.selection.selectedInlineBlock.size > 0;
 
 const history =
 	(direction: 'undo' | 'redo'): HotKey =>
 	({ edytor, prevent }) =>
-		prevent(() => {
-			suppressHotkeyDomDrift(edytor, HISTORY_HOTKEY_DOM_REPAIR_WINDOW_MS);
-			if (direction === 'undo') edytor.historyUndo();
-			else edytor.historyRedo();
-		});
+		prevent(() => (direction === 'undo' ? edytor.historyUndo() : edytor.historyRedo()));
 
 /**
  * Block-selection keys walk the document order with the island seal,
@@ -169,7 +156,6 @@ const nest =
 	(operation: 'nestBlock' | 'unNestBlock'): HotKey =>
 	({ edytor, prevent }) =>
 		prevent(() => {
-			suppressHotkeyDomDrift(edytor, STRUCTURAL_HOTKEY_DOM_REPAIR_WINDOW_MS);
 			const selectedBlocks = edytor.selection.selectedBlocks;
 			const direction = operation === 'nestBlock' ? 'in' : 'out';
 			const blocks = getSelectionBlocks(edytor);

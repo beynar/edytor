@@ -862,7 +862,7 @@ test.describe('browser block handles and DnD', () => {
 		expect(blocks[3]?.children?.map(textOf)).toEqual(['Nested middle']);
 		// The blocks the range covered stay selected, the moved child too.
 		await expectSelection(page, { selectedBlockPaths: [[2], [3], [3, 0]] });
-		await page.evaluate(() => (window as Window & { __EDYTOR__?: any }).__EDYTOR__.history.undo());
+		await page.evaluate(() => (window as Window & { __EDYTOR__?: any }).__EDYTOR__.historyUndo());
 		await expect
 			.poll(() => readRootTexts(page))
 			.toEqual(['Start', 'Parent', 'image caption', 'Finish']);

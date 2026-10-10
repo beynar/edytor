@@ -66,7 +66,7 @@ describe('a refused + pick leaves the history as it was (low 1)', () => {
 		const { edytor, editor } = await render([p('a'), p('b')], [veto]);
 		await caretAt(edytor, 'a', 1);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'x' });
-		edytor.history.undo();
+		edytor.historyUndo();
 		await flushDomUpdates();
 		const [undo, redo] = [edytor.undoManager.undoStack.length, edytor.undoManager.redoStack.length];
 		expect(redo).toBe(1);
@@ -78,7 +78,7 @@ describe('a refused + pick leaves the history as it was (low 1)', () => {
 		expect(edytor.dispatcher.last?.status).toBe('refused');
 		expect(edytor.undoManager.undoStack.length).toBe(undo);
 		expect(edytor.undoManager.redoStack.length).toBe(redo);
-		edytor.history.redo();
+		edytor.historyRedo();
 		expect(texts(edytor)).toEqual(['paragraph ax', 'paragraph b']);
 	});
 });

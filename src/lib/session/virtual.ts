@@ -87,34 +87,32 @@ export const virtualLens = (
 		(prepare as Record<string, unknown>)[name] = (...args: Parameters<EdytorDoc['prepare'][K]>) =>
 			when(...args) ?? own(...args);
 	};
-	over('insertText', (b, _o, text, marks) =>
-		on(b)
-			? text
-				? create([spec({ content: [{ kind: 'text', text, marks }] })])
-				: noop()
-			: undefined
+	/** An op naming a block first: on the virtual paragraph, `when` plans it from the other arguments. */
+	type Rest<K extends keyof EdytorDoc['prepare']> =
+		Parameters<EdytorDoc['prepare'][K]> extends [unknown, ...infer R] ? R : never;
+	const onIt = <K extends keyof EdytorDoc['prepare']>(
+		name: K,
+		when: (...rest: Rest<K>) => Prepared
+	) => {
+		const plan = when as (...rest: unknown[]) => Prepared;
+		over(name, (b: unknown, ...rest: unknown[]) => (on(b as BlockId) ? plan(...rest) : undefined));
+	};
+	onIt('insertText', (_o, text, marks) =>
+		text ? create([spec({ content: [{ kind: 'text', text, marks }] })]) : noop()
 	);
-	over('insertInline', (b, _o, atom) =>
-		on(b) ? create([spec({ content: [{ kind: 'inline', ...atom }] })]) : undefined
+	onIt('insertInline', (_o, atom) => create([spec({ content: [{ kind: 'inline', ...atom }] })]));
+	onIt('splitBlock', (_o, newId, tail) =>
+		create([spec(), { id: newId, type: tail?.type ?? type(), data: tail?.data }])
 	);
-	over('splitBlock', (b, _o, newId, tail) =>
-		on(b)
-			? create([spec(), { id: newId, type: tail?.type ?? type(), data: tail?.data }])
-			: undefined
-	);
-	over('setBlockType', (b, t) => (on(b) ? create([spec({ type: t })]) : undefined));
-	over('setBlockData', (b, data) => (on(b) ? create([spec({ data })]) : undefined));
-	over('patchData', (t, ops) => {
-		if (typeof t !== 'string' || !on(t)) return undefined;
+	onIt('setBlockType', (t) => create([spec({ type: t })]));
+	onIt('setBlockData', (data) => create([spec({ data })]));
+	onIt('patchData', (ops) => {
 		const data = applyPatch({}, ops);
 		return data ? create([spec({ data })]) : REFUSED;
 	});
-	over('setBlock', (b, value) =>
-		on(b)
-			? create([spec({ ...value, type: value.type ?? type() } as Partial<BlockSpec>)])
-			: undefined
+	onIt('setBlock', (value) =>
+		create([spec({ ...value, type: value.type ?? type() } as Partial<BlockSpec>)])
 	);
-	// Enter at its end builds after it: the line is kept. What goes before it replaces it.
 	over('insertBlocks', (dest, specs) => {
 		if (specs.length > 0 && dest.parent === null && dest.index > 0 && active())
 			return create([spec(), ...specs.map(asBlockSpec)]);
@@ -144,7 +142,7 @@ export const virtualLens = (
 		'mergeForward',
 		'deleteBlock'
 	] as const)
-		over(name, (b: BlockId, ..._: unknown[]) => (on(b) ? noop() : undefined));
+		onIt(name, noop);
 	over('deleteBlocks', (ids) =>
 		ids.some(on) ? prepare.deleteBlocks(ids.filter((i) => !on(i))) : undefined
 	);

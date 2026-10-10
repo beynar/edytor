@@ -1,74 +1,21 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	import type { Block } from '$lib/block/block.svelte.js';
-	import type { Edytor } from '$lib/edytor.svelte.js';
 	import MediaEmpty from './MediaEmpty.svelte';
-	import { mediaKinds } from '$lib/crdt/semantics.js';
-	import { mediaEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
 	import {
-		claimed,
-		escapeHtml,
-		mediaLabels,
 		mediaEmpty,
-		mediaSourceOf,
 		safeMediaSrc,
-		mediaUploads,
+		sourcePlugin,
+		storeSource,
 		type MediaPluginOptions
 	} from './media.js';
-
-	const uploadOf = new WeakMap<Edytor, MediaPluginOptions['upload']>();
-
-	const audioLink = (block: Block | undefined, value: string) => {
-		const src = safeMediaSrc(value);
-		if (!block || !src) return false;
-		block.data.src = src;
-		return true;
-	};
 
 	/**
 	 * Notion's audio block: an audio file (an `http(s)` link, or an upload
 	 * through `upload`) in the browser's player, with an editable caption.
 	 * Void: its only text is the caption.
 	 */
-	export const createAudioPlugin =
-		(options: MediaPluginOptions = {}): Plugin =>
-		(edytor) => {
-			// First wins, as for the kind: a second listing never replaces it.
-			const first = !!edytor && !uploadOf.has(edytor);
-			if (first) uploadOf.set(edytor, options.upload);
-			const onPaste = first ? mediaUploads(edytor, 'audio', options.upload) : undefined;
-			const labels = labelsWith(mediaEnglish, options.labels);
-			mediaLabels.audio.claim(edytor, labels);
-			mediaEmpty.claim(edytor, 'audio', options.empty);
-			return {
-				...(onPaste ? { onPaste } : {}),
-				blocks: {
-					audio: {
-						...mediaKinds.audio,
-						snippet: audio,
-						element: 'figure',
-						presets: [
-							{
-								label: labels.audio.label,
-								icon: '🎵',
-								keywords: keywordsOf('block.audio', ['sound', 'music', 'mp3'], options.keywords),
-								group: 'Media'
-							}
-						],
-						html: (block, caption) => {
-							const src = safeMediaSrc(block.data?.src);
-							const media = src ? `<audio src="${escapeHtml(src)}" controls></audio>` : '';
-							return `<figure>${media}<figcaption>${caption}</figcaption></figure>`;
-						},
-						// An `audio` (bare, or in a `figure`) with a safe `src` or `source`.
-						parse: (el) => {
-							const src = mediaSourceOf(claimed(el, 'audio'));
-							return src ? { src } : undefined;
-						}
-					}
-				}
-			};
-		};
+	export const createAudioPlugin = (options: MediaPluginOptions = {}): Plugin =>
+		sourcePlugin('audio', options, '🎵', ['sound', 'music', 'mp3'], () => ({ snippet: audio }));
 
 	/** The audio block, links only. */
 	export const audioPlugin = createAudioPlugin();
@@ -87,8 +34,8 @@
 				kind="audio"
 				icon="🎵"
 				accept="audio/*"
-				upload={block.handle && uploadOf.get(block.handle.edytor)}
-				link={(value) => audioLink(block.handle, value)}
+				upload={mediaEmpty.upload(block.handle?.edytor, 'audio')}
+				link={(value) => storeSource(block.handle, value)}
 			/>
 		</div>
 	{/if}

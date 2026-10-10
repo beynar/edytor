@@ -1,29 +1,13 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	import type { Block } from '$lib/block/block.svelte.js';
-	import type { Edytor } from '$lib/edytor.svelte.js';
 	import MediaEmpty from './MediaEmpty.svelte';
-	import { mediaKinds } from '$lib/crdt/semantics.js';
-	import { mediaEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
 	import {
-		claimed,
-		escapeHtml,
-		mediaLabels,
 		mediaEmpty,
-		mediaSourceOf,
 		safeMediaSrc,
-		mediaUploads,
+		sourcePlugin,
+		storeSource,
 		type MediaPluginOptions
 	} from './media.js';
-
-	const uploadOf = new WeakMap<Edytor, MediaPluginOptions['upload']>();
-
-	const videoLink = (block: Block | undefined, value: string) => {
-		const src = safeMediaSrc(value);
-		if (!block || !src) return false;
-		block.data.src = src;
-		return true;
-	};
 
 	/**
 	 * Notion's video block: a video file (an `http(s)` link, or an upload
@@ -31,45 +15,8 @@
 	 * A YouTube or Vimeo link is an embed (`embedPlugin`). Void: its only
 	 * text is the caption.
 	 */
-	export const createVideoPlugin =
-		(options: MediaPluginOptions = {}): Plugin =>
-		(edytor) => {
-			// First wins, as for the kind: a second listing never replaces it.
-			const first = !!edytor && !uploadOf.has(edytor);
-			if (first) uploadOf.set(edytor, options.upload);
-			const onPaste = first ? mediaUploads(edytor, 'video', options.upload) : undefined;
-			const labels = labelsWith(mediaEnglish, options.labels);
-			mediaLabels.video.claim(edytor, labels);
-			mediaEmpty.claim(edytor, 'video', options.empty);
-			return {
-				...(onPaste ? { onPaste } : {}),
-				blocks: {
-					video: {
-						...mediaKinds.video,
-						snippet: video,
-						element: 'figure',
-						presets: [
-							{
-								label: labels.video.label,
-								icon: '🎬',
-								keywords: keywordsOf('block.video', ['movie', 'mp4', 'clip'], options.keywords),
-								group: 'Media'
-							}
-						],
-						html: (block, caption) => {
-							const src = safeMediaSrc(block.data?.src);
-							const media = src ? `<video src="${escapeHtml(src)}" controls></video>` : '';
-							return `<figure>${media}<figcaption>${caption}</figcaption></figure>`;
-						},
-						// A `video` (bare, or in a `figure`) with a safe `src` or `source`.
-						parse: (el) => {
-							const src = mediaSourceOf(claimed(el, 'video'));
-							return src ? { src } : undefined;
-						}
-					}
-				}
-			};
-		};
+	export const createVideoPlugin = (options: MediaPluginOptions = {}): Plugin =>
+		sourcePlugin('video', options, '🎬', ['movie', 'mp4', 'clip'], () => ({ snippet: video }));
 
 	/** The video block, links only. */
 	export const videoPlugin = createVideoPlugin();
@@ -96,8 +43,8 @@
 				kind="video"
 				icon="🎬"
 				accept="video/*"
-				upload={block.handle && uploadOf.get(block.handle.edytor)}
-				link={(value) => videoLink(block.handle, value)}
+				upload={mediaEmpty.upload(block.handle?.edytor, 'video')}
+				link={(value) => storeSource(block.handle, value)}
 			/>
 		</div>
 	{/if}

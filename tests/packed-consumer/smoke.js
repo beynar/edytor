@@ -12,15 +12,21 @@ const root = doc.get('content');
 assert.ok(root instanceof Y.Node);
 root.setAttr('type', 'root');
 
-// sequence + format + maintained delta
+// sequence + format: text reads as runs split where the formats change; a range read folds them
 const para = new Y.Node('paragraph');
 root.insert(0, [para]);
 para.insert(0, 'hello world');
 para.format(6, 5, { bold: true });
-assert.deepEqual(para.delta.toJSON().children, [
-	{ type: 'insert', insert: 'hello ' },
-	{ type: 'insert', insert: 'world', format: { bold: true } }
-]);
+assert.deepEqual(para.toArray(), ['hello ', 'world']);
+assert.deepEqual(
+	new Y.RangeCursor(para)
+		.read(0, 11)
+		.map((p) => [p.content.str.slice(p.offset, p.offset + p.len), p.formats]),
+	[
+		['hello ', undefined],
+		['world', { bold: true }]
+	]
+);
 
 // update round-trip between two docs
 const doc2 = new Y.Doc();

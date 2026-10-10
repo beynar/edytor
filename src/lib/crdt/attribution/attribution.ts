@@ -1,6 +1,5 @@
 /**
- * Legacy attribution surface: actor dictionary + inert reads over
- * pre-existing per-edit records.
+ * Attribution surface: the actor dictionary and the per-block records.
  *
  * The per-edit capture pipeline of earlier builds (immutable `a/<nonce>/<seq>` ContentMap records
  * written in a follow-up transaction per committed edit, projected onto
@@ -23,23 +22,14 @@
  *   also travel inside `encode()` output, so `loadDocument` restores the
  *   dictionary without republishing.
  *
- *   LEGACY RECORDS — documents saved by pre-U2 builds carry `a/` records
- *   under the same root. They are plain replicated state: preserved
- *   verbatim by `encode()`/sync and readable through `legacy()`, which
- *   decodes and merges them with the native `decodeContentMap` codecs.
- *   This build never writes new `a/` records; old replicas that still do
- *   simply append more keys — reads stay total and convergence is the
- *   ordinary attribute-record merge.
- *
- *   RETENTION — `a/` state is retained as long as it exists in the
- *   document (no GC of the records themselves); `live()`/renderer
- *   projections are gone, and the engine no longer ships concrete
- *   renderers (fork patch YP8, UPSTREAM.md) — consumers that need a rendered view over
- *   legacy records implement the engine's `AbstractRenderer` over the
- *   `ContentMap` `legacy()` returns and pass it to `toDelta({renderer})`.
+ *   LEGACY RECORDS — documents saved by early builds carry `a/` per-edit
+ *   records under the same root. They are plain replicated state, preserved
+ *   verbatim by `encode()`/sync (no GC of the records themselves); nothing
+ *   reads them. This build never writes new `a/` records; old replicas that
+ *   still do simply append more keys — convergence is the ordinary
+ *   attribute-record merge.
  */
 import type { EngineApi, EngineDoc } from '../engine-api.js';
-import type * as Engine from '../vendor/yjs/dts/index.js';
 import { ATTRIBUTION_ROOT } from '../schema.js';
 import { cloneJson, type JSONBlock } from '../../utils/json.js';
 import {
@@ -59,7 +49,6 @@ export { ATTRIBUTION_ROOT };
  */
 export const ATTRIBUTION_ORIGIN = Symbol('edytor.attribution');
 
-const RECORD_PREFIX = 'a/'; // legacy immutable per-transaction ContentMap records
 const ACTOR_PREFIX = 'u/'; // actorId → profile records
 const CLIENT_PREFIX = 'c/'; // replica clientID → actorId records
 
@@ -77,7 +66,7 @@ export type ActorProfile = {
 };
 
 /**
- * The document-level attribution surface. `actors`/`actorOf`/`legacy`
+ * The document-level attribution surface. `actors`/`actorOf`/`block`
  * read replicated doc state directly — they resolve remote-applied
  * records identically and stay correct as old replicas append records.
  */
@@ -92,16 +81,6 @@ export type DocumentAttribution = {
 	 * actor id; only the resolvable profile changes.
 	 */
 	setProfile(profile: ActorProfile): void;
-	/**
-	 * Merged read over the pre-existing `a/` records written by the
-	 * retired per-edit capture pipeline: `{inserts, deletes}` IdMaps in
-	 * the native ContentMap shape, decoded fresh per call. Returns `null`
-	 * when the document carries no legacy records. For a rendered history
-	 * view, implement the engine's `AbstractRenderer` over it (the engine
-	 * ships no concrete renderer); the ordinary
-	 * runs/projection surface does not consult it.
-	 */
-	legacy(): Engine.ContentMap | null;
 	/**
 	 * Compact per-block attribution for `blockId`
 	 * (`{createdBy, contributors, lastChangedBy}` — durable actor ids,
@@ -194,7 +173,7 @@ const profileOf = (actor: AttributionActor): ActorProfile => ({
  * calling document: one controller per `EdytorDocument`, attached in the
  * constructor, released on destroy.
  */
-export const bindAttribution = (Y: EngineApi) => {
+export const bindAttribution = (_Y: EngineApi) => {
 	/**
 	 * Attach the actor dictionary to `doc`: publishes this replica's
 	 * `c/`+`u/` records and returns the read-through view. No listeners —
@@ -238,26 +217,6 @@ export const bindAttribution = (Y: EngineApi) => {
 				return typeof value === 'string' && value.length > 0 ? value : undefined;
 			},
 			setProfile,
-			legacy: () => {
-				const inserts = Y.createIdMap();
-				const deletes = Y.createIdMap();
-				let found = false;
-				for (const key of root.attrKeys()) {
-					if (!key.startsWith(RECORD_PREFIX)) continue;
-					const value = root.getAttr(key);
-					if (!(value instanceof Uint8Array)) continue;
-					let change: Engine.ContentMap;
-					try {
-						change = Y.decodeContentMap(value);
-					} catch {
-						continue; // malformed record — skip, never poison the merged map
-					}
-					Y.insertIntoIdMap(inserts, change.inserts);
-					Y.insertIntoIdMap(deletes, change.deletes);
-					found = true;
-				}
-				return found ? Y.createContentMap(inserts, deletes) : null;
-			},
 			// `b/<id>` records live on the `blockattr` root and `l` on
 			// the block node — plain replicated reads, no observer needed.
 			block: (blockId) => blockAttributionOf(doc, blockId),

@@ -11,6 +11,7 @@ import * as buffer from 'lib0-v14/buffer'
 import * as s from 'lib0-v14/schema'
 import * as delta from 'lib0-v14/delta'
 import * as error from 'lib0-v14/error'
+import { toDelta } from '../../../src/tests/crdt/harness/delta.js'
 
 /**
  * @param {Y.Node} ynode
@@ -65,5 +66,5 @@ export const testTextDecodingCompatibilityV1 = _tc => {
     }
     return d.done()
   }
-  t.compare(doc.get('text').toDelta(), quillDeltaToDelta(oldVal))
+  t.compare(toDelta(doc.get('text')), quillDeltaToDelta(oldVal))
 }

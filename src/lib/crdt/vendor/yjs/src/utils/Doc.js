@@ -11,7 +11,6 @@ import * as promise from 'lib0-v14/promise'
 import { StructStore } from './StructStore.js'
 import { transact, generateNewClientId } from './Transaction.js'
 import { YNode } from '../ynode.js'
-import { $doc } from './schemas.js'
 
 /**
  * @typedef {Object} DocOpts
@@ -272,4 +271,5 @@ export class Doc extends ObservableV2 {
   }
 }
 
-Doc.prototype.$type = $doc
+/** The tag `isDoc` (`./schemas.js`) reads (YP15). @type {boolean} */
+Doc.prototype._isDoc = true

@@ -1179,7 +1179,7 @@ export class ContentFormat {
     // unaffected by construction. Remote applies and undo still clear the
     // whole pool (`_searchMarker.length = 0`), so no stale snapshot survives
     // an untracked integration.
-    const p = /** @type {import('../ynode.js').YNode<any>} */ (item.parent)
+    const p = /** @type {import('../ynode.js').YNode} */ (item.parent)
     p._hasFormatting = true
     // YP13: a paired mark's start carries its Lamport timestamp; the document
     // keeps the greatest it saw, so the next mark it writes wins over it.

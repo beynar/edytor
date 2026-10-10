@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import { mulberry32 } from './harness/rng.js';
+import { toDelta } from './harness/delta.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const VENDOR = join(here, '../../lib/crdt/vendor/yjs/src');
@@ -147,7 +148,7 @@ const program = (E, seed, steps) => {
 		snaps.push([
 			Buffer.from(E.encodeStateAsUpdate(a)).toString('base64'),
 			Buffer.from(E.encodeStateAsUpdate(b)).toString('base64'),
-			JSON.stringify(a.get('t').toDelta().toJSON())
+			JSON.stringify(toDelta(a.get('t')).toJSON())
 		]);
 	}
 	return snaps;

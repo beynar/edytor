@@ -42,7 +42,7 @@ export const createID = (client, clock) => new ID(client, clock)
  * `type` does not store any information about the `keyname`.
  * This function finds the correct `keyname` for `type` and throws otherwise.
  *
- * @param {YNode<any>} type
+ * @param {YNode} type
  * @return {string}
  *
  * @private

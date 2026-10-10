@@ -161,7 +161,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 	});
 
 	test('a local BigInt mark cannot poison reads; facade refuses pre-commit (R4 fixed)', () => {
-		// `text.format`/`applyDelta` accepts a BigInt mark (unlike `insert`,
+		// `text.format` accepts a BigInt mark (unlike `insert`,
 		// which validates). The format item integrates; then the commit's
 		// own update payload is encoded for 'update' listeners →
 		// ContentFormat.write's JSON.stringify throws mid-commit — the raw

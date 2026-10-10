@@ -42,6 +42,7 @@ import * as Y14 from '../../src/lib/crdt/vendor/yjs/src/index.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { statsOf } from './stats.js';
+import { toDelta } from '../../src/tests/crdt/harness/delta.js';
 
 const req = createRequire(import.meta.url);
 const vitestDir = req.resolve('vitest/package.json').replace(/\/package\.json$/, '');
@@ -985,9 +986,10 @@ const rangeReads = () => {
 			firstReadMs.push(first);
 			searchMarkers += text._searchMarker?.length ?? 0;
 			// Pre-WU8 reference: each of those reads materialized the whole
-			// 100k backing text through toDelta().toJSON() — once per slice.
+			// 100k backing text through toDelta().toJSON() — once per slice
+			// (the engine's delta read went with YP15: the test port renders it).
 			const d0 = performance.now();
-			text.toDelta().toJSON();
+			toDelta(text).toJSON();
 			toDeltaRefMs.push(performance.now() - d0);
 		}
 		doc.destroy();

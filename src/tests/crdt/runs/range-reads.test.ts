@@ -33,6 +33,7 @@ import { bindText, readRange } from '../../../lib/crdt/text/model.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { mulberry32, int, pick } from '../harness/rng.js';
 import { modelSpecSeed, MODEL_BASE_SEED } from '../scenarios/seeds.js';
+import { toDelta } from '../harness/delta.js';
 
 const M = bindModel(Y);
 const R = bindRuns(Y);
@@ -49,7 +50,7 @@ const oracleItemsOfRange = (text, i0, i1) => {
 	if (text.doc == null) return [];
 	const items = [];
 	let pos = 0;
-	const deltaJSON = text.toDelta().toJSON() ?? { children: [] };
+	const deltaJSON = toDelta(text).toJSON() ?? { children: [] };
 	for (const op of deltaJSON.children ?? []) {
 		const o = op;
 		if (o.type === 'retain') {

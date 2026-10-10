@@ -2,6 +2,7 @@ import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 import { init } from './testHelper.js' // eslint-disable-line
 import * as t from 'lib0-v14/testing'
 import * as delta from 'lib0-v14/delta'
+import { toDelta, toDeltaDeep, fromDelta } from '../../../src/tests/crdt/harness/delta.js'
 
 export const testInconsistentFormat = () => {
   /**
@@ -11,7 +12,7 @@ export const testInconsistentFormat = () => {
     const content = ydoc.get('text')
     content.format(0, 6, { bold: null })
     content.format(6, 4, { type: 'text' })
-    t.compare(content.toDelta(), delta.create().insert('Merge Test', { type: 'text' }).insert(' After', { type: 'text', italic: true }).done())
+    t.compare(toDelta(content), delta.create().insert('Merge Test', { type: 'text' }).insert(' After', { type: 'text', italic: true }).done())
   }
   const initializeYDoc = () => {
     const yDoc = new Y.Doc({ gc: false })
@@ -85,11 +86,11 @@ export const testUndoText = tc => {
   t.assert(text0.toString() === 'bcxyz')
   // test marks
   text0.format(1, 3, { bold: true })
-  t.compare(text0.toDelta(), delta.create().insert('b').insert('cxy', { bold: true }).insert('z').done())
+  t.compare(toDelta(text0), delta.create().insert('b').insert('cxy', { bold: true }).insert('z').done())
   undoManager.undo()
-  t.compare(text0.toDelta(), delta.create().insert('bcxyz').done())
+  t.compare(toDelta(text0), delta.create().insert('bcxyz').done())
   undoManager.redo()
-  t.compare(text0.toDelta(), delta.create().insert('b').insert('cxy', { bold: true }).insert('z').done())
+  t.compare(toDelta(text0), delta.create().insert('b').insert('cxy', { bold: true }).insert('z').done())
 }
 
 /**
@@ -325,22 +326,22 @@ export const testUndoXml = tc => {
   const undoManager = new Y.UndoManager(xml0)
   const child = new Y.Node('p')
   xml0.insert(0, [child])
-  const textchild = Y.Node.from(delta.create().insert('content'))
+  const textchild = fromDelta(delta.create().insert('content'))
   child.insert(0, [textchild])
   // format textchild and revert that change
   undoManager.stopCapturing()
   textchild.format(3, 4, { bold: true })
   const v1 = delta.create().insert([delta.create('p').insert([delta.create().insert('con').insert('tent', { bold: true }).done()]).done()]).done()
   const v2 = delta.create().insert([delta.create('p').insert([delta.create().insert('content').done()]).done()]).done()
-  t.compare(xml0.toDeltaDeep(), v1)
+  t.compare(toDeltaDeep(xml0), v1)
   undoManager.undo()
-  t.compare(xml0.toDeltaDeep(), v2)
+  t.compare(toDeltaDeep(xml0), v2)
   undoManager.redo()
-  t.compare(xml0.toDeltaDeep(), v1)
+  t.compare(toDeltaDeep(xml0), v1)
   xml0.delete(0, 1)
-  t.compare(xml0.toDeltaDeep(), delta.create().done())
+  t.compare(toDeltaDeep(xml0), delta.create().done())
   undoManager.undo()
-  t.compare(xml0.toDeltaDeep(), v1)
+  t.compare(toDeltaDeep(xml0), v1)
 }
 
 /**
@@ -410,7 +411,7 @@ export const testTypeScope = tc => {
 export const testUndoInEmbed = tc => {
   const { text0 } = init(tc, { users: 3 })
   const undoManager = new Y.UndoManager(text0)
-  const nestedText = Y.Node.from(delta.create().insert('initial text'))
+  const nestedText = fromDelta(delta.create().insert('initial text'))
   undoManager.stopCapturing()
   text0.insert(0, [nestedText], { bold: true })
   t.assert(nestedText.toString() === 'initial text')
@@ -507,19 +508,19 @@ export const testUndoNestedUndoIssue = _tc => {
     blocks3.push([blocks3block])
     text.setAttr('blocks', blocks3block)
   })
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something Else' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something Else' }) }) }))
   undoManager.undo()
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something' }) }) }))
   undoManager.undo()
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Type Something' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Type Something' }) }) }))
   undoManager.undo()
-  t.compare(design.toDeltaDeep(), delta.from({}))
+  t.compare(toDeltaDeep(design), delta.from({}))
   undoManager.redo()
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Type Something' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Type Something' }) }) }))
   undoManager.redo()
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something' }) }) }))
   undoManager.redo()
-  t.compare(design.toDeltaDeep(), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something Else' }) }) }))
+  t.compare(toDeltaDeep(design), delta.from({ text: delta.from({ blocks: delta.from({ text: 'Something Else' }) }) }))
 }
 
 /**
@@ -707,8 +708,8 @@ export const testUndoDeleteTextFormat = _tc => {
     .insert('Attack ships ')
     .insert('on fire', { bold: true })
     .insert(' off the shoulder of Orion.')
-  t.compare(text.toDelta(), expect)
-  t.compare(text2.toDelta(), expect)
+  t.compare(toDelta(text), expect)
+  t.compare(toDelta(text2), expect)
 }
 
 /**

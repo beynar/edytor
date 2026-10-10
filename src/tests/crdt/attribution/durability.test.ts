@@ -1,12 +1,12 @@
 /**
  * U2 — legacy `a/`/`u/`/`c/` compatibility: documents carrying records
  * written by pre-U2 builds keep them verbatim through load/encode/sync;
- * new edits never append `a/` records; `attribution.legacy()` decodes the
- * merged ContentMap for consumers that still render authorship history.
+ * new edits never append `a/` records. Nothing decodes the records (the
+ * `attribution.legacy()` read went with the engine's content-map codec), so
+ * every check here is on the bytes.
  *
  * The `a/` records under test are seeded by {@link writeLegacyRecord} —
- * byte-identical to what the retired capture wrote (`encodeContentMap`
- * under `a/<nonce>/<seq>` on the `attribution` root).
+ * stand-in payloads under `a/<nonce>/<seq>` on the `attribution` root.
  */
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
@@ -14,14 +14,12 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
 import {
 	applyUpdate,
-	attrsOn,
 	contentNodeOf,
-	deleteCovered,
 	docValue,
 	firstBlock,
-	insertAttrs,
 	itemsOf,
-	legacyMapFor,
+	legacyRecordFor,
+	recordBytes,
 	recordKeys,
 	wireDocs,
 	writeLegacyRecord,
@@ -72,11 +70,15 @@ const joinLate = (a: EdytorDocument, b: EdytorDocument): void => {
 const seedLegacy = (a: EdytorDocument, blockId: string): void => {
 	const first = itemsOf(contentNodeOf(a, blockId))[0]!;
 	const half = Math.max(1, Math.floor(first.length / 2));
-	writeLegacyRecord(a.doc, 'a/legacy0/0', legacyMapFor([{ id: first.id, length: half }], 'alice'));
+	writeLegacyRecord(
+		a.doc,
+		'a/legacy0/0',
+		legacyRecordFor([{ id: first.id, length: half }], 'alice')
+	);
 	writeLegacyRecord(
 		a.doc,
 		'a/legacy0/1',
-		legacyMapFor(
+		legacyRecordFor(
 			[
 				{
 					id: { client: first.id.client, clock: first.id.clock + half },
@@ -107,43 +109,17 @@ describe('legacy compat — save/load', () => {
 		a.destroy();
 	});
 
-	it('legacy() decodes the merged ContentMap (insert + delete attrs)', () => {
-		const a = authoredDocument(docValue('hi'), alice);
-		const block = firstBlock(a);
-		expect(a.attribution.legacy()).toBeNull(); // fresh doc — no records
-		seedLegacy(a, block.id);
-
-		const map = a.attribution.legacy()!;
-		expect(map).not.toBeNull();
-		const first = itemsOf(contentNodeOf(a, block.id))[0]!;
-		const half = Math.max(1, Math.floor(first.length / 2));
-		expect(attrsOn(map.inserts, first.id, half)).toContain('insert:alice');
-		expect(
-			attrsOn(map.inserts, { client: first.id.client, clock: first.id.clock + half }, 1)
-		).toContain('insert:carol');
-
-		// A delete-side record decodes into `deletes`.
-		const dead = { id: { client: 4242, clock: 0 }, length: 3 };
-		writeLegacyRecord(a.doc, 'a/legacy0/2', legacyMapFor([dead], 'bob', 'deletes'));
-		expect(deleteCovered(a, 'bob')).toBe(3);
-		a.destroy();
-	});
-
 	it('new edits on a restored doc append no a/ records and leave legacy state untouched', () => {
 		const a = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(a);
 		seedLegacy(a, block.id);
 		const restored = loadDocument(a.encode(), { actor: bob });
 		const before = legacyBytes(restored);
-		const firstId = itemsOf(contentNodeOf(restored, block.id))[0]!.id;
 
 		restored.transact(() => restored.facade.insertText(block.id, 2, '!'));
 		restored.transact(() => restored.facade.deleteText(block.id, 0, 1));
 		expect(recordKeys(restored)).toEqual(Object.keys(before).sort());
 		expect(legacyBytes(restored)).toEqual(before);
-		// The decoded map still covers the OLD item ids — tombstoned or live,
-		// untouched by the new edits.
-		expect(attrsOn(restored.attribution.legacy()!.inserts, firstId, 1)).toContain('insert:alice');
 		restored.destroy();
 		a.destroy();
 	});
@@ -168,7 +144,6 @@ describe('legacy compat — IndexedDB', () => {
 		const b = attachDocument(docB, { actor: bob });
 		b.sync();
 		expect(legacyBytes(b)).toEqual(expected);
-		expect(insertAttrs(b, block.id)).toContain('insert:alice');
 		expect(b.attribution.actorOf(a.clientID)).toBe('alice');
 		await pB.destroy();
 		b.destroy();
@@ -190,9 +165,10 @@ describe('legacy compat — live sync', () => {
 		// An "old replica" append: b writes an a/ record the way a pre-U2
 		// capture would — it merges onto a without disturbing anything.
 		const items = itemsOf(contentNodeOf(b, block.id));
-		writeLegacyRecord(b.doc, 'a/oldpeer/0', legacyMapFor(items.slice(0, 1), 'bob'));
+		const oldpeer = legacyRecordFor(items.slice(0, 1), 'bob');
+		writeLegacyRecord(b.doc, 'a/oldpeer/0', oldpeer);
 		expect(recordKeys(a).sort()).toEqual([...aRecords, 'a/oldpeer/0'].sort());
-		expect(insertAttrs(a, block.id)).toContain('insert:bob');
+		expect(recordBytes(a, 'a/oldpeer/0')).toEqual(oldpeer);
 
 		// New edits on the NEW build append nothing under a/.
 		b.transact(() => b.facade.insertText(block.id, 0, 'B'));
@@ -222,18 +198,18 @@ describe('legacy compat — live sync', () => {
 		const updates: Uint8Array[] = [];
 		const collect = (u: Uint8Array) => updates.push(u);
 		a.doc.on('update', collect);
-		writeLegacyRecord(a.doc, 'a/late/0', legacyMapFor(items.slice(0, 1), 'alice'));
+		const late = legacyRecordFor(items.slice(0, 1), 'alice');
+		writeLegacyRecord(a.doc, 'a/late/0', late);
 		a.doc.off('update', collect);
 		expect(updates).toHaveLength(1);
 
 		Y.applyUpdate(docD, updates[0]!, 'test');
-		const x = items[0]!;
-		const map = d.attribution.legacy()!;
-		expect(attrsOn(map.inserts, x.id, x.length)).toContain('insert:alice');
+		expect(recordBytes(d, 'a/late/0')).toEqual(late);
 
 		// Duplicate delivery stays convergent (attr LWW on the same key).
 		Y.applyUpdate(docD, updates[0]!, 'test');
-		expect(attrsOn(d.attribution.legacy()!.inserts, x.id, x.length)).toEqual(['insert:alice']);
+		expect(recordBytes(d, 'a/late/0')).toEqual(late);
+		expect(recordKeys(d)).toEqual(['a/late/0']);
 		d.destroy();
 		a.destroy();
 	});
@@ -245,8 +221,10 @@ describe('legacy compat — retention / GC', () => {
 		const block = firstBlock(a);
 		a.transact(() => a.facade.insertText(block.id, 0, 'X'));
 		const x = itemsOf(contentNodeOf(a, block.id))[0]!;
-		writeLegacyRecord(a.doc, 'a/legacy0/0', legacyMapFor([x], 'alice'));
-		writeLegacyRecord(a.doc, 'a/legacy0/1', legacyMapFor([x], 'alice', 'deletes'));
+		const inserted = legacyRecordFor([x], 'alice');
+		const deleted = legacyRecordFor([x], 'alice', 'deletes');
+		writeLegacyRecord(a.doc, 'a/legacy0/0', inserted);
+		writeLegacyRecord(a.doc, 'a/legacy0/1', deleted);
 		// Delete outside the tracked history: an untracked tombstone is not
 		// `keep`-marked, so the delete transaction's cleanup collects its payload.
 		a.clearHistory();
@@ -266,9 +244,8 @@ describe('legacy compat — retention / GC', () => {
 			true
 		);
 		// Legacy records survive: they key id-ranges, not payloads.
-		const map = a.attribution.legacy()!;
-		expect(attrsOn(map.deletes, x.id, x.length)).toContain('delete:alice');
-		expect(attrsOn(map.inserts, x.id, x.length)).toContain('insert:alice');
+		expect(recordBytes(a, 'a/legacy0/1')).toEqual(deleted);
+		expect(recordBytes(a, 'a/legacy0/0')).toEqual(inserted);
 		a.destroy();
 	});
 });

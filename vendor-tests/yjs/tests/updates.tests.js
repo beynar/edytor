@@ -9,6 +9,7 @@ import * as encoding from 'lib0-v14/encoding'
 import * as decoding from 'lib0-v14/decoding'
 import * as delta from 'lib0-v14/delta'
 import * as array from 'lib0-v14/array'
+import { toDelta, applyDelta } from '../../../src/tests/crdt/harness/delta.js'
 
 /**
  * @typedef {Object} Enc
@@ -191,7 +192,7 @@ export const testKeyEncoding = tc => {
   const update = Y.encodeStateAsUpdateV2(users[0])
   Y.applyUpdateV2(users[1], update)
 
-  const c = text1.toDelta()
+  const c = toDelta(text1)
   t.compare(
     c,
     delta.create()
@@ -368,11 +369,11 @@ export const testMergePendingUpdates = _tc => {
     serverUpdates.splice(serverUpdates.length, 0, update)
   })
   const yText = yDoc.get('textBlock')
-  yText.applyDelta(delta.create().insert('r').done())
-  yText.applyDelta(delta.create().insert('o').done())
-  yText.applyDelta(delta.create().insert('n').done())
-  yText.applyDelta(delta.create().insert('e').done())
-  yText.applyDelta(delta.create().insert('n').done())
+  applyDelta(yText, delta.create().insert('r').done())
+  applyDelta(yText, delta.create().insert('o').done())
+  applyDelta(yText, delta.create().insert('n').done())
+  applyDelta(yText, delta.create().insert('e').done())
+  applyDelta(yText, delta.create().insert('n').done())
 
   const yDoc1 = new Y.Doc()
   Y.applyUpdate(yDoc1, serverUpdates[0])

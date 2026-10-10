@@ -161,12 +161,6 @@ export interface EngineDeepEvent {
     readonly target: unknown;
     readonly currentTarget: unknown;
     readonly keysChanged?: ReadonlySet<string>;
-    readonly delta?: {
-        toJSON(): unknown;
-    };
-    readonly deltaDeep?: {
-        toJSON(): unknown;
-    };
     readonly transaction?: unknown;
 }
 ```
@@ -231,19 +225,8 @@ export interface EngineNode {
     get(index: number): unknown;
     slice(start?: number, end?: number): unknown[];
     toArray(): unknown[];
-    readonly delta: {
-        toJSON(): {
-            children?: unknown[];
-        };
-    };
-    toDelta(opts?: {
-        deep?: boolean;
-    }): {
-        toJSON(): unknown;
-    };
     observeDeep(f: (event: EngineDeepEvent, transaction: unknown) => void): unknown;
     unobserveDeep(f: (event: EngineDeepEvent, transaction: unknown) => void): void;
-    on(name: 'delta', f: (delta: unknown, origin: unknown) => void): void;
 }
 ```
 
@@ -1488,7 +1471,7 @@ declare const writeReadOnly: (encoder: encoding.Encoder) => void;
 #### crdt/engine.d.ts#EngineSymbol
 
 ```ts
-export type EngineSymbol = 'Doc' | 'Node' | 'UndoManager' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'decodeUpdateV2' | 'UpdateEncoderV1' | 'writeIdSet' | 'mergeUpdates' | 'applyUpdateV2' | 'encodeStateAsUpdateV2' | 'mergeUpdatesV2' | 'convertUpdateFormatV2ToV1' | 'UpdateDecoderV1' | 'UpdateEncoderV2' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'createRelativePositionFromTypeIndex' | 'createRelativePositionFromJSON' | 'createAbsolutePositionFromRelativePosition' | 'relativePositionToJSON' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'createIdMap' | 'insertIntoIdMap' | 'createContentMap' | 'decodeContentMap' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'ContentAny' | 'createID';
+export type EngineSymbol = 'Doc' | 'Node' | 'UndoManager' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'decodeUpdateV2' | 'UpdateEncoderV1' | 'writeIdSet' | 'mergeUpdates' | 'applyUpdateV2' | 'encodeStateAsUpdateV2' | 'convertUpdateFormatV2ToV1' | 'UpdateDecoderV1' | 'UpdateEncoderV2' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'createRelativePositionFromTypeIndex' | 'createRelativePositionFromJSON' | 'createAbsolutePositionFromRelativePosition' | 'relativePositionToJSON' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'ContentAny' | 'createID';
 ```
 
 #### crdt/engine.d.ts#Y

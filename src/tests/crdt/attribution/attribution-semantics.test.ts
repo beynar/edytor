@@ -12,8 +12,8 @@
  *   - `Edytor` views on one `EdytorDocument` share the facade's single
  *     actor — no per-view stamping, no double `l` items.
  *   - Legacy `a/` records (pre-U2 per-edit capture) and foreign roots
- *     coexist: preserved verbatim, decodable via `attribution.legacy()`,
- *     and gated by the same admission boundary as everything else.
+ *     coexist: preserved verbatim and gated by the same admission
+ *     boundary as everything else.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -35,12 +35,12 @@ import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	applyUpdate,
-	attrsOn,
 	docValue,
 	firstBlock,
 	itemsOf,
 	contentNodeOf,
-	legacyMapFor,
+	legacyRecordFor,
+	recordBytes,
 	recordKeys,
 	wireDocs,
 	writeLegacyRecord,
@@ -641,10 +641,10 @@ describe('concurrent first-touch merge (documented LWW residual)', () => {
 // ──────────────────────────────────────────────────────────────────────
 
 describe('upgrade — old record shapes', () => {
-	it('a pre-U1 doc (a/+u/+c/ records, no blockattr root) loads, decodes, and gains block attribution lazily', () => {
+	it('a pre-U1 doc (a/+u/+c/ records, no blockattr root) loads, keeps its records, and gains block attribution lazily', () => {
 		// Hand-build the pre-U1 shape: authorless init (no b/ records, no l),
-		// then raw a/<nonce>/<seq> ContentMap records + u//c/ dictionary
-		// entries exactly as the retired capture pipeline wrote them.
+		// then raw a/<nonce>/<seq> records + u//c/ dictionary entries where
+		// the retired capture pipeline wrote them.
 		const old = new Y.Doc();
 		E.init(old as unknown as EngineDoc, {
 			content: [{ id: 'old-b', type: 'paragraph', content: [{ kind: 'text', text: 'old' }] }]
@@ -653,7 +653,8 @@ describe('upgrade — old record shapes', () => {
 			'content'
 		) as EngineNode;
 		const first = itemsOf(content)[0]!;
-		writeLegacyRecord(old, 'a/oldbuild/0', legacyMapFor([first], 'alice'));
+		const record = legacyRecordFor([first], 'alice');
+		writeLegacyRecord(old, 'a/oldbuild/0', record);
 		old.transact(() => {
 			const root = old.get('attribution');
 			root.setAttr('u/alice', { name: 'Alice', color: '#a11' });
@@ -665,11 +666,8 @@ describe('upgrade — old record shapes', () => {
 		expect([...old.get('blockattr').attrKeys()]).toHaveLength(0);
 
 		const restored = loadDocument(update, { actor: bob });
-		// legacy() decodes the merged ContentMap — insert:alice over the item.
-		const map = restored.attribution.legacy();
-		expect(map).not.toBeNull();
-		const restoredFirst = itemsOf(contentNodeOf(restored, 'old-b'))[0]!;
-		expect(attrsOn(map!.inserts, restoredFirst.id, restoredFirst.length)).toContain('insert:alice');
+		// The a/ record arrives byte for byte.
+		expect(recordBytes(restored, 'a/oldbuild/0')).toEqual(record);
 		// The replicated dictionary survived; the new replica adds only its
 		// own c/<clientID> binding.
 		expect(restored.attribution.actors.get('alice')).toEqual({ name: 'Alice', color: '#a11' });
@@ -695,7 +693,8 @@ describe('upgrade — old record shapes', () => {
 		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const first = itemsOf(contentNodeOf(a, blockId))[0]!;
-		writeLegacyRecord(a.doc, 'a/oldbuild/0', legacyMapFor([first], 'alice'));
+		const record = legacyRecordFor([first], 'alice');
+		writeLegacyRecord(a.doc, 'a/oldbuild/0', record);
 
 		const restored = loadDocument(a.encode(), { actor: bob });
 		expect(restored.attribution.block(blockId)).toEqual({
@@ -703,12 +702,13 @@ describe('upgrade — old record shapes', () => {
 			contributors: new Set(['alice']),
 			lastChangedBy: 'alice'
 		});
-		expect(restored.attribution.legacy()).not.toBeNull();
+		expect(recordBytes(restored, 'a/oldbuild/0')).toEqual(record);
 		// New edits stamp `l`/contributors; the a/ bytes are byte-identical.
 		const before = recordKeys(restored).sort();
 		restored.transact(() => restored.facade.insertText(blockId, 0, 'B'));
 		expect(restored.attribution.block(blockId)?.lastChangedBy).toBe('bob');
 		expect(recordKeys(restored).sort()).toEqual(before);
+		expect(recordBytes(restored, 'a/oldbuild/0')).toEqual(record);
 		restored.destroy();
 		a.destroy();
 	});

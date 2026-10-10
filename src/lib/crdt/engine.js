@@ -33,7 +33,6 @@ export const Y = {
 	// storage in the v2 (columnar) encoding: room rows and the IndexedDB store
 	applyUpdateV2: V.applyUpdateV2,
 	encodeStateAsUpdateV2: V.encodeStateAsUpdateV2,
-	mergeUpdatesV2: V.mergeUpdatesV2,
 	convertUpdateFormatV2ToV1: V.convertUpdateFormatV2ToV1,
 	UpdateDecoderV1: V.UpdateDecoderV1,
 	UpdateEncoderV2: V.UpdateEncoderV2,
@@ -48,10 +47,6 @@ export const Y = {
 	createIdSet: V.createIdSet,
 	diffIdSet: V.diffIdSet,
 	insertIntoIdSet: V.insertIntoIdSet,
-	createIdMap: V.createIdMap,
-	insertIntoIdMap: V.insertIntoIdMap,
-	createContentMap: V.createContentMap,
-	decodeContentMap: V.decodeContentMap,
 	// text delete marks (`text/deletes.ts`, fork patch YP11)
 	iterateStructsByIdSet: V.iterateStructsByIdSet,
 	getItemCleanStart: V.getItemCleanStart,

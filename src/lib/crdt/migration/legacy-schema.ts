@@ -16,18 +16,19 @@
  * | --------- | ---------------- | -------------------------------- |
  * | `Y.Array` | 0                | sequence children (`get`/`length`) |
  * | `Y.Map`   | 1                | attrs (`getAttr`/`attrKeys`)     |
- * | `Y.Text`  | 2                | delta children: `{insert, format}` |
+ * | `Y.Text`  | 2                | text items under their format items |
  * | fragment  | 4                | root shared types                |
  *
  * Tombstoned content never appears — deleted blocks are absent from the
- * children sequence, deleted/format-removed text is absent from the delta —
+ * children sequence, deleted text and deleted format items are skipped —
  * so the materialized JSON is the logical doc exactly as a v13 reader saw
  * it (the same contract the v13 fixtures pin).
  */
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
-import { asEngineDoc } from '../structs.js';
+import { asEngineDoc, firstItem } from '../structs.js';
 import {
 	cloneJson,
+	jsonEquals,
 	type JSONBlock,
 	type JSONDoc,
 	type JSONInlineBlock,
@@ -69,11 +70,16 @@ export class PendingLegacyUpdatesError extends Error {
 
 type LegacyNode = EngineNode & { _legacyTypeRef?: number };
 
-type DeltaInsertOp = {
-	type?: string;
-	insert?: unknown;
-	format?: Record<string, unknown>;
+/** The parts of a legacy text's items the reader looks at. */
+type TextItem = {
+	deleted: boolean;
+	right: TextItem | null;
+	content: { getRef(): number; str?: string; key?: string; value?: unknown };
 };
+
+// Content refs (vendored `structs/Item.js` `getRef`).
+const STRING_REF = 4;
+const FORMAT_REF = 6;
 
 /**
  * True iff the doc carries the v13 Edytor schema: a `content` root whose
@@ -87,17 +93,40 @@ export const isLegacyDoc = (doc: EngineDoc): boolean => {
 	return children != null && children._legacyTypeRef === Y_ARRAY_REF;
 };
 
+/**
+ * A legacy text's runs: its live strings under the formats in effect there (a
+ * format item sets its key, a `null` value removes it). Strings next to each
+ * other (nothing but format items between them) under equal formats read as
+ * one run, as a v13 reader's delta showed them.
+ */
 const readText = (node: LegacyNode): JSONText[] => {
 	const out: JSONText[] = [];
-	const children = (node.delta?.toJSON?.() as { children?: DeltaInsertOp[] } | undefined)?.children;
-	for (const op of children ?? []) {
-		if (typeof op?.insert !== 'string') continue;
-		if (op.insert.length === 0) continue;
-		const t: JSONText = { text: op.insert };
-		if (op.format && Object.keys(op.format).length > 0) {
-			t.marks = { ...(op.format as Record<string, SerializableContent>) };
+	const formats = new Map<string, unknown>();
+	// `last`: the run the next string may extend (`null` after an embed)
+	let last: JSONText | null = null;
+	for (let item = firstItem<TextItem>(node); item !== null; item = item.right) {
+		if (item.deleted) continue;
+		const content = item.content;
+		const ref = content.getRef();
+		if (ref === FORMAT_REF) {
+			if (content.value == null) formats.delete(content.key!);
+			else formats.set(content.key!, content.value);
+		} else if (ref === STRING_REF) {
+			const text = content.str!;
+			if (text.length === 0) continue;
+			const marks =
+				formats.size === 0
+					? undefined
+					: (Object.fromEntries(formats) as Record<string, SerializableContent>);
+			if (last !== null && jsonEquals(last.marks, marks)) {
+				last.text += text;
+			} else {
+				last = { text, ...(marks === undefined ? {} : { marks }) };
+				out.push(last);
+			}
+		} else {
+			last = null;
 		}
-		out.push(t);
 	}
 	return out;
 };

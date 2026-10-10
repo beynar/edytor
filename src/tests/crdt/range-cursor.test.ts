@@ -8,31 +8,25 @@
  *   folded marks as clipping the whole-node `toDelta` render — marks
  *   inherited from format markers BEFORE the range, `{mark:null}` clears,
  *   boundary clips, surrogates, live inline atoms, tombstoned content and
- *   tombstoned format markers — because both sides consume the same
- *   `readItemPieces` physical-sequence interpretation.
- * - ATTRIBUTION: under an attribution renderer (the test port of the pruned
- *   `AttributionsRenderer`, `harness/content-map-renderer.js`) the pieces carry the same
- *   native attribution inputs (`attrs`/`deleted`) that the toDelta render
- *   turns into op-level `attribution`.
- * - READ PURITY: reads produce no updates, split no items, change no undo
- *   state, and install/mutate no renderer. The only writes are adaptive
+ *   tombstoned format markers — the reference is the engine's `toDelta` as it
+ *   stood before YP15 (the test port `harness/delta.js`). YP15 removed the
+ *   renderer, and with it the attribution rows of this file.
+ * - READ PURITY: reads produce no updates, split no items and change no undo
+ *   state. The only writes are adaptive
  *   `_searchMarker` checkpoint maintenance — the same non-replicated cache
  *   writes upstream's own read-path lookups (`findMarker`) perform.
  * - BOUNDS: `stats.items` counts sequence items stepped — a seeded or
  *   previously-walked read stays range-sized, never whole-text.
  * - SEED KINDS: the read seed accepts markers the mutation seed must
  *   reject (`a[b]b[b=null]c` counterexample) — and that acceptance is
- *   invisible to `applyDelta` (byte-identical updates).
+ *   invisible to the writes (byte-identical updates).
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
-import {
-	ArraySearchMarker,
-	createAttributionFromAttributionItems
-} from '../../lib/crdt/vendor/yjs/src/ynode.js';
-import { ContentMapRenderer, allIds, idMapOf, nodeItems } from './harness/content-map-renderer.js';
+import { ArraySearchMarker } from '../../lib/crdt/vendor/yjs/src/ynode.js';
+import { toDelta, applyDelta, nodeItems } from './harness/delta.js';
 
 const newDoc = () => {
 	const doc = new Y.Doc();
@@ -41,13 +35,13 @@ const newDoc = () => {
 };
 
 /** Apply a delta in one transaction. */
-const apply = (doc, text, d) => doc.transact(() => text.applyDelta(d));
+const apply = (doc, text, d) => doc.transact(() => applyDelta(text, d));
 
 /** The whole-node reference: `toDelta` insert ops clipped to `[i0, i1)`. */
-const oracleItemsOfRange = (text, i0, i1, renderer = null) => {
+const oracleItemsOfRange = (text, i0, i1) => {
 	const items = [];
 	let pos = 0;
-	const deltaJSON = text.toDelta(renderer === null ? {} : { renderer }).toJSON() ?? {
+	const deltaJSON = toDelta(text).toJSON() ?? {
 		children: []
 	};
 	for (const op of deltaJSON.children ?? []) {
@@ -91,8 +85,8 @@ const oracleItemsOfRange = (text, i0, i1, renderer = null) => {
  * Project the native piece stream to the oracle's shape — the same
  * projection Edytor's `readRange` performs.
  */
-const cursorItemsOfRange = (text, i0, i1, renderer = undefined) => {
-	const cur = renderer === undefined ? new Y.RangeCursor(text) : new Y.RangeCursor(text, renderer);
+const cursorItemsOfRange = (text, i0, i1) => {
+	const cur = new Y.RangeCursor(text);
 	const items = [];
 	for (const p of cur.read(i0, i1)) {
 		if (p.deleted || p.len === 0) continue;
@@ -119,10 +113,10 @@ const cursorItemsOfRange = (text, i0, i1, renderer = undefined) => {
 	return items;
 };
 
-const expectRangeParity = (text, ranges, renderer = null) => {
+const expectRangeParity = (text, ranges) => {
 	for (const [i0, i1] of ranges) {
-		expect(cursorItemsOfRange(text, i0, i1, renderer ?? undefined), `range ${i0}..${i1}`).toEqual(
-			oracleItemsOfRange(text, i0, i1, renderer)
+		expect(cursorItemsOfRange(text, i0, i1), `range ${i0}..${i1}`).toEqual(
+			oracleItemsOfRange(text, i0, i1)
 		);
 	}
 };
@@ -254,46 +248,6 @@ describe('RangeCursor — bounded output vs whole-node toDelta reference', () =>
 	});
 });
 
-describe('RangeCursor — renderer + native attribution', () => {
-	const attributedDoc = () => {
-		const doc = newDoc();
-		const text = doc.get('t');
-		apply(doc, text, delta.create().insert('abcdef', { b: true }).insert('ghi'));
-		// Attribute every inserted id to 'alice'.
-		const attributions = {
-			inserts: idMapOf(allIds(doc), [Y.createContentAttribute('insert', 'alice')]),
-			deletes: Y.createIdMap()
-		};
-		return { doc, text, renderer: new ContentMapRenderer(attributions) };
-	};
-
-	it('attributed pieces carry the same attribution inputs as the toDelta render', () => {
-		const { text, renderer } = attributedDoc();
-		const ops = text.toDelta({ renderer }).toJSON().children;
-		const pieces = new Y.RangeCursor(text, renderer).read(0, text.length);
-		const rendered = pieces.filter((p) => p.len > 0);
-		expect(rendered.length).toBe(ops.filter((o) => o.type === 'insert').length);
-		for (const p of rendered) {
-			const expected = createAttributionFromAttributionItems(p.attrs, p.deleted);
-			expect(expected).toEqual({ insert: ['alice'] });
-		}
-		expectRangeParity(text, allRanges(text.length), renderer);
-	});
-
-	it('reads under a renderer walk correctly without marker seeding (different index space)', () => {
-		const { text, renderer } = attributedDoc();
-		// The seek is renderer-gated (markers record raw countable space) —
-		// reads stay correct through the plain forward walk.
-		const stats = { items: 0, markers: 0 };
-		const cur = new Y.RangeCursor(text, renderer);
-		expect(cursorItemsOfRange(text, 2, 7, renderer)).toEqual(
-			oracleItemsOfRange(text, 2, 7, renderer)
-		);
-		cur.read(2, 7, stats);
-		expect(stats.items).toBeGreaterThan(0);
-	});
-});
-
 describe('RangeCursor — integration scenarios', () => {
 	it('remote integration: reads on a doc built from applyUpdate match the reference', () => {
 		const src = newDoc();
@@ -327,11 +281,11 @@ describe('RangeCursor — integration scenarios', () => {
 		const doc = newDoc();
 		const text = RICH_FORMAT(doc);
 		doc.transact(() => {
-			text.applyDelta(delta.create().retain(6).insert('NEW ', { bold: true }));
+			applyDelta(text, delta.create().retain(6).insert('NEW ', { bold: true }));
 			expect(cursorItemsOfRange(text, 6, 10)).toEqual(oracleItemsOfRange(text, 6, 10));
-			text.applyDelta(delta.create().retain(0).retain(6, { code: true }));
+			applyDelta(text, delta.create().retain(0).retain(6, { code: true }));
 			expect(cursorItemsOfRange(text, 0, 12)).toEqual(oracleItemsOfRange(text, 0, 12));
-			text.applyDelta(delta.create().retain(8).retain(4, { bold: null }));
+			applyDelta(text, delta.create().retain(8).retain(4, { bold: null }));
 			expect(cursorItemsOfRange(text, 6, 16)).toEqual(oracleItemsOfRange(text, 6, 16));
 		});
 		expectRangeParity(text, allRanges(text.length));
@@ -370,7 +324,7 @@ describe('RangeCursor — integration scenarios', () => {
 });
 
 describe('RangeCursor — read purity', () => {
-	it('reads produce no updates, no splits, no undo-history change, no renderer change', () => {
+	it('reads produce no updates, no splits, no undo-history change', () => {
 		const doc = newDoc();
 		const text = RICH_FORMAT(doc);
 		const um = new Y.UndoManager(text);
@@ -378,7 +332,6 @@ describe('RangeCursor — read purity', () => {
 		const updatesBefore = Y.encodeStateAsUpdate(doc);
 		const itemsBefore = nodeItems(text).length;
 		const stackBefore = um.undoStack.length + um.redoStack.length;
-		const rendererBefore = text._renderer;
 		// Reads across the whole text, seeded and cold.
 		for (const [i0, i1] of allRanges(text.length)) {
 			new Y.RangeCursor(text).read(i0, i1);
@@ -390,14 +343,14 @@ describe('RangeCursor — read purity', () => {
 		expect(Y.encodeStateAsUpdate(doc)).toEqual(updatesBefore);
 		expect(nodeItems(text).length).toBe(itemsBefore);
 		expect(um.undoStack.length + um.redoStack.length).toBe(stackBefore);
-		expect(text._renderer).toBe(rendererBefore);
 	});
 
 	it('marker perturbations from reads are behavior-invisible to mutations', () => {
 		const ops = [
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(10).insert('y'))),
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(5).retain(8, { b: true }))),
-			(t, doc) => doc.transact(() => t.applyDelta(delta.create().retain(3).delete(4)))
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(10).insert('y'))),
+			(t, doc) =>
+				doc.transact(() => applyDelta(t, delta.create().retain(5).retain(8, { b: true }))),
+			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(3).delete(4)))
 		];
 		const mk = (seeded) => {
 			const doc = newDoc();
@@ -405,7 +358,7 @@ describe('RangeCursor — read purity', () => {
 			doc.transact(() => {
 				const d = delta.create();
 				for (let i = 0; i < 30; i++) d.insert('x', i % 2 ? { i: true } : { b: true });
-				t.applyDelta(d);
+				applyDelta(t, d);
 			});
 			if (seeded) {
 				// Reads populate + perturb the checkpoint pool first.
@@ -420,7 +373,7 @@ describe('RangeCursor — read purity', () => {
 		const on = mk(true);
 		const off = mk(false);
 		expect(Y.encodeStateAsUpdate(on.doc)).toEqual(Y.encodeStateAsUpdate(off.doc));
-		expect(on.t.toDelta().toJSON()).toEqual(off.t.toDelta().toJSON());
+		expect(toDelta(on.t).toJSON()).toEqual(toDelta(off.t).toJSON());
 	});
 });
 
@@ -433,7 +386,7 @@ describe('RangeCursor — traversal bounds', () => {
 			for (let i = 0; i < 500; i++) {
 				d.insert('abcdefghij', i % 2 === 0 ? { bold: true } : {});
 			}
-			text.applyDelta(d);
+			applyDelta(text, d);
 		});
 		const wholeItems = nodeItems(text).length;
 		expect(wholeItems).toBeGreaterThanOrEqual(1000);
@@ -456,7 +409,7 @@ describe('RangeCursor — traversal bounds', () => {
 		doc.transact(() => {
 			const d = delta.create();
 			for (let i = 0; i < 200; i++) d.insert('s' + i + 'xxxxx ', i % 3 ? { i: true } : { b: true });
-			text.applyDelta(d);
+			applyDelta(text, d);
 		});
 		// Plant checkpoints via one cold pass.
 		const warm = new Y.RangeCursor(text);
@@ -512,16 +465,16 @@ describe('RangeCursor — read seed vs mutation seed (counterexample)', () => {
 		// against a markers-disabled doc: byte-identical store + delta.
 		const off = counterDoc();
 		off.text._searchMarker = null;
-		doc.transact(() => text.applyDelta(delta.create().retain(2).insert('X')));
-		off.doc.transact(() => off.text.applyDelta(delta.create().retain(2).insert('X')));
+		doc.transact(() => applyDelta(text, delta.create().retain(2).insert('X')));
+		off.doc.transact(() => applyDelta(off.text, delta.create().retain(2).insert('X')));
 		expect(Y.encodeStateAsUpdate(doc)).toEqual(Y.encodeStateAsUpdate(off.doc));
-		expect(text.toDelta().toJSON()).toEqual(off.text.toDelta().toJSON());
+		expect(toDelta(text).toJSON()).toEqual(toDelta(off.text).toJSON());
 	});
 
 	it('the mutation seed still anchors on first-at-index markers the read seed also accepts', () => {
 		// Sanity: an unformatted tail marker (first-at-index) seeds both.
 		const { doc, text } = counterDoc();
-		doc.transact(() => text.applyDelta(delta.create().retain(3))); // plants at tail
+		doc.transact(() => applyDelta(text, delta.create().retain(3))); // plants at tail
 		const stats = { items: 0, markers: 0 };
 		new Y.RangeCursor(text).read(2, 3, stats);
 		expect(stats.items).toBeLessThan(4);

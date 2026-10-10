@@ -2,6 +2,7 @@ import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 import * as delta from 'lib0-v14/delta'
 import * as t from 'lib0-v14/testing'
 import * as s from 'lib0-v14/schema'
+import { toDeltaDeep, applyDelta, eventDeltaDeep } from '../../../src/tests/crdt/harness/delta.js'
 
 /**
  * Delta is a versatile format enabling you to efficiently describe changes. It is part of lib0, so
@@ -126,7 +127,7 @@ export const testBasics = _tc => {
    */
   let observedDelta = delta.create()
   ynode.observe(event => {
-    observedDelta = event.deltaDeep
+    observedDelta = eventDeltaDeep(event)
     console.log('ynode changed:', observedDelta.toJSON())
   })
   // define a change: set attribute: a=42
@@ -138,11 +139,11 @@ export const testBasics = _tc => {
   mergedChanges.apply(attrChange)
   mergedChanges.apply(childChange).done()
   console.log('merged changes: ', mergedChanges.toJSON())
-  ynode.applyDelta(mergedChanges)
+  applyDelta(ynode, mergedChanges)
   // the observed change should equal the applied change
   t.assert(observedDelta.equals(mergedChanges))
   // read the current state of the yjs types as a delta
-  const currState = ynode.toDeltaDeep()
+  const currState = toDeltaDeep(ynode)
   t.assert(currState.equals(mergedChanges)) // equal to the changes that we applied
 }
 

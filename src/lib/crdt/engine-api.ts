@@ -2,12 +2,8 @@
  * Engine-facing types for the placement model.
  *
  * The vendored v14 engine is plain JSDoc-typed JS that is deliberately
- * excluded from `tsconfig.json` type-checking. Its emitted declarations
- * (`vendor/yjs/dts`) parameterize `YNode` on a delta-config generic that
- * collapses to `never` when instantiated with `any` — unusable as an
- * ergonomic call surface.
- *
- * So the model works against the STRUCTURAL interfaces below — the exact
+ * excluded from `tsconfig.json` type-checking. The model works against the
+ * STRUCTURAL interfaces below — the exact
  * subset of the v14 Node/Doc surface it uses — and receives the engine
  * module by injection (`bindModel(Y)`). Only `engine.js` (declared by
  * `engine.d.ts`) imports vendor `.js`, so `pnpm check` never traverses
@@ -64,8 +60,6 @@ export interface EngineDeepEvent {
 	readonly target: unknown;
 	readonly currentTarget: unknown;
 	readonly keysChanged?: ReadonlySet<string>;
-	readonly delta?: { toJSON(): unknown };
-	readonly deltaDeep?: { toJSON(): unknown };
 	readonly transaction?: unknown;
 }
 
@@ -97,14 +91,9 @@ export interface EngineNode {
 	slice(start?: number, end?: number): unknown[];
 	toArray(): unknown[];
 
-	/** Maintained delta cache — `toJSON()` yields the serialized op list. */
-	readonly delta: { toJSON(): { children?: unknown[] } };
-	toDelta(opts?: { deep?: boolean }): { toJSON(): unknown };
-
 	/** Deep event channel — anchors/observers follow the node across moves. */
 	observeDeep(f: (event: EngineDeepEvent, transaction: unknown) => void): unknown;
 	unobserveDeep(f: (event: EngineDeepEvent, transaction: unknown) => void): void;
-	on(name: 'delta', f: (delta: unknown, origin: unknown) => void): void;
 }
 
 /** Structural minimum of the vendored `Y.Doc`. */

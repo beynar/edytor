@@ -5,6 +5,7 @@ import * as prng from 'lib0-v14/prng'
 import * as delta from 'lib0-v14/delta'
 import * as s from 'lib0-v14/schema'
 import * as object from 'lib0-v14/object'
+import { toDelta, applyDelta, eventDelta, eventDeltaDeep, fromDelta } from '../../../src/tests/crdt/harness/delta.js'
 
 /**
  * @param {t.TestCase} _tc
@@ -37,7 +38,7 @@ export const testNestedMapEvent = () => {
   const ymapNested = ymap.setAttr('nested', new Y.Node())
   let called = 0
   ymap.observeDeep(event => {
-    const d = event.deltaDeep
+    const d = eventDeltaDeep(event)
     called++
     t.compare(d, delta.create().modifyAttr('nested', delta.create().setAttr('k', 'v')).done())
   })
@@ -52,7 +53,7 @@ export const testNestedMapEvent2 = () => {
   yarr.insert(0, [ymapNested])
   let called = 0
   yarr.observeDeep(event => {
-    const d = event.deltaDeep
+    const d = eventDeltaDeep(event)
     called++
     t.compare(d, delta.create().modify(delta.create().setAttr('k', 'v')))
   })
@@ -88,17 +89,17 @@ export const testMapEventError = _tc => {
  */
 export const testMapHavingIterableAsConstructorParamTests = tc => {
   const { map0 } = init(tc, { users: 1 })
-  const m1 = Y.Node.from(delta.create().setAttr('number', 1).setAttr('string', 'hello'))
+  const m1 = fromDelta(delta.create().setAttr('number', 1).setAttr('string', 'hello'))
   map0.setAttr('m1', m1)
   t.assert(m1.getAttr('number') === 1)
   t.assert(m1.getAttr('string') === 'hello')
-  const m2 = Y.Node.from(delta.create(delta.$deltaAny).setAttrs({ object: { x: 1 }, boolean: true }).done())
+  const m2 = fromDelta(delta.create(delta.$deltaAny).setAttrs({ object: { x: 1 }, boolean: true }).done())
   map0.setAttr('m2', m2)
   t.assert(m2.getAttr('object')?.x === 1)
   t.assert(m2.getAttr('boolean') === true)
   const m3 = new Y.Node()
-  m3.applyDelta(m1.toDelta())
-  m3.applyDelta(m2.toDelta())
+  applyDelta(m3, toDelta(m1))
+  applyDelta(m3, toDelta(m2))
   map0.setAttr('m3', m3)
   t.assert(m3.getAttr('number') === 1)
   t.assert(m3.getAttr('string') === 'hello')
@@ -425,7 +426,7 @@ export const testChangeEvent = tc => {
    */
   let changes = delta.create()
   map0.observe(e => {
-    changes = e.delta
+    changes = eventDelta(e)
   })
   map0.setAttr('a', 1)
   let keyChange = changes.attrs.a

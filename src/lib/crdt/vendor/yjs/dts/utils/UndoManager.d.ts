@@ -31,7 +31,7 @@ export class StackItem {
  * @property {StackItem} StackItemEvent.stackItem
  * @property {any} StackItemEvent.origin
  * @property {'undo'|'redo'} StackItemEvent.type
- * @property {Map<YNode,Array<YEvent<any>>>} StackItemEvent.changedParentTypes
+ * @property {Map<YNode,Array<YEvent>>} StackItemEvent.changedParentTypes
  */
 /**
  * Fires 'stack-item-added' event when a stack item was added to either the undo- or
@@ -197,7 +197,7 @@ export type StackItemEvent = {
     stackItem: StackItem;
     origin: any;
     type: "undo" | "redo";
-    changedParentTypes: Map<YNode, Array<YEvent<any>>>;
+    changedParentTypes: Map<YNode, Array<YEvent>>;
 };
 import { ObservableV2 } from 'lib0-v14/observable';
 import { YNode } from '../ynode.js';

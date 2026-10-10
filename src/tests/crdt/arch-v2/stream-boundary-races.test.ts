@@ -5,8 +5,8 @@
  *
  * Rows (expected results from the plan's contracts, never from running code):
  * F-D13 (R2 property corpus, 4 replicas, concurrent-format generator, property
- * (e)), F-D14, F-D19, F-U3, F-U4a–e (also with an attribution renderer active
- * on every backing text — U-3), F-I7 (doc half), and the re-pins D-1/D-17 name
+ * (e)), F-D14, F-D19, F-U3, F-U4a–e (the U-3 configuration with an attribution
+ * renderer went with the engine's renderer, YP15), F-I7 (doc half), and the re-pins D-1/D-17 name
  * (TX06a = F-D14, TX09a, TX04a under three client assignments).
  *
  * Every multi-replica row runs both delivery orders, duplicate delivery, a
@@ -15,7 +15,6 @@
 // @ts-nocheck -- drives the vendored engine JS directly (excluded lane).
 import { describe, expect, it } from 'vitest';
 import { createPeerSet } from '../harness/peer-set.js';
-import { ContentMapRenderer, contentMapOfDoc } from '../harness/content-map-renderer.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
 import * as S_ from '../harness/streams.js';
 import { isBoundary } from '../../../lib/crdt/text/model.js';
@@ -90,18 +89,6 @@ const undoCounted = (peer) => {
 	peer.doc.off('update', h);
 	return n;
 };
-/**
- * An attribution renderer that renders every deleted item (non-zero length) on every backing
- * text: every struct present at install time is attributed (the test port of the pruned
- * `AttributionsRenderer`, `harness/content-map-renderer.js`).
- */
-const installRenderers = (set) => {
-	for (const p of set.peers) {
-		const r = new ContentMapRenderer(contentMapOfDoc(p.doc, 'x'));
-		for (const [t] of S().view(p.doc).texts) t.useRenderer(r);
-	}
-};
-
 const HELLO = modelSpecSeed([
 	{ id: 'b', type: 'paragraph', content: [{ kind: 'text', text: 'hello world' }] }
 ]);
@@ -187,7 +174,7 @@ describe('TX04a on streams: same-point concurrent splits, three client assignmen
 	}
 });
 
-// ── F-U4a–e (+ the attribution-renderer configuration) ──────────────────
+// ── F-U4a–e ──────────────────────────────────────────────────────────────
 
 /** Split `b` of `seed` at 6 into `t` on A, everywhere; history on for every peer. */
 const withTail = (seed, ids) => {
@@ -198,8 +185,8 @@ const withTail = (seed, ids) => {
 	return set;
 };
 
-for (const renderer of [false, true]) {
-	const cfg = renderer ? ' [attribution renderer on every backing text]' : '';
+{
+	const cfg = '';
 
 	describe(`F-U4a: B splits the emptied tail at 0; A's undo returns world to t${cfg}`, () => {
 		for (const [a, b] of ASSIGN[2]) {
@@ -209,7 +196,6 @@ for (const renderer of [false, true]) {
 					ops.deleteText(set.A, 't', 0, 5);
 					set.deliver('A', 'B', { times: 2 });
 					expect(text(set.B, 't')).toBe('');
-					if (renderer) installRenderers(set);
 					ops.splitBlock(set.B, 't', 0, 'u');
 					if (!undoFirst) set.deliver('B', 'A', { times: 2 });
 					expect(undoCounted(set.A)).toBe(1);
@@ -243,7 +229,6 @@ for (const renderer of [false, true]) {
 					const set = withTail(SEED, [a, b]);
 					ops.deleteText(set.A, 't', 0, 5);
 					set.deliver('A', 'B', { times: 2 });
-					if (renderer) installRenderers(set);
 					ops.splitBlock(set.B, 't', 0, 'u');
 					if (!undoFirst) set.deliver('B', 'A');
 					expect(undoCounted(set.A)).toBe(1);
@@ -314,7 +299,6 @@ for (const renderer of [false, true]) {
 						const set = withTail(seed, [a, b]);
 						ops.deleteText(set.A, 't', at, len);
 						set.deliver('A', 'B', { times: 2 });
-						if (renderer) installRenderers(set);
 						ops.splitBlock(set.B, 't', at, 'u');
 						if (!undoFirst) set.deliver('B', 'A');
 						expect(undoCounted(set.A)).toBe(1);
@@ -341,7 +325,6 @@ for (const renderer of [false, true]) {
 					const set = withTail(HELLO, [a, b]);
 					ops.deleteText(set.A, 't', 0, 5);
 					expect(undoCounted(set.A)).toBe(1);
-					if (renderer) installRenderers(set);
 					ops.splitBlock(set.B, 't', 0, 'u'); // world is live on B
 					deliverOrdered(set, order);
 					settle(set);
@@ -398,7 +381,6 @@ for (const renderer of [false, true]) {
 								toC('A');
 							}
 							expect(text(set.C, 't')).toBe('');
-							if (renderer) installRenderers(set);
 							ops.splitBlock(set.C, 't', 0, 'u');
 							if (undoAfterAll)
 								for (const p of set.peers) if (p !== set.A) set.deliver(p.name, 'A');
@@ -420,18 +402,6 @@ for (const renderer of [false, true]) {
 		}
 	});
 }
-
-row(
-	'the attribution-renderer configuration is real: deleted items render with non-zero length',
-	() => {
-		const set = withTail(HELLO, [7, 3]);
-		ops.deleteText(set.A, 't', 0, 5);
-		installRenderers(set);
-		const host = set.A.doc.get('blocks').getAttr('b').getAttr('content');
-		expect(JSON.stringify(host.toDelta().toJSON())).toContain('world');
-		expect(text(set.A, 't')).toBe('');
-	}
-);
 
 // ── split = one boundary + the claims that follow the split point (D-21) ──
 

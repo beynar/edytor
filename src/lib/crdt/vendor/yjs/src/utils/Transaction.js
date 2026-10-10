@@ -1,7 +1,6 @@
 import * as error from 'lib0-v14/error'
 import * as map from 'lib0-v14/map'
 import * as math from 'lib0-v14/math'
-import * as logging from 'lib0-v14/logging'
 import { callAll } from 'lib0-v14/function'
 
 import { ContentFormat } from '../structs/Item.js'
@@ -87,7 +86,7 @@ export class Transaction {
     /**
      * Stores the events for the types that observe also child elements.
      * It is mainly used by `observeDeep`.
-     * @type {Map<YNode,Array<YEvent<any>>>}
+     * @type {Map<YNode,Array<YEvent>>}
      */
     this.changedParentTypes = new Map()
     /**
@@ -228,44 +227,28 @@ const cleanupTransactions = (transactionCleanups, i) => {
        */
       const fs = []
       // observe events on changed types. Deleted types are included: `callTypeObservers` tracks
-      // the event in `changedParentTypes` unconditionally (so changes inside a deleted type — e.g.
-      // a suggestion-deleted tombstone that a custom renderer still renders — bubble to live
-      // ancestors) and decides itself whether the type's own observers fire.
+      // the event in `changedParentTypes` unconditionally (so changes inside a deleted type bubble
+      // to live ancestors) and decides itself whether the type's own observers fire.
       transaction.changed.forEach((subs, itemtype) =>
         fs.push(() => {
           itemtype._callObserver(transaction, subs)
         })
       )
       fs.push(() => {
-        // deep observe events + the RDT `'delta'` channel. `changedParentTypes` holds the changed
-        // type AND all of its ancestors, so both `observeDeep` and `'delta'` bubble identically.
+        // deep observe events. `changedParentTypes` holds the changed type AND all of its
+        // ancestors, so `observeDeep` bubbles.
         transaction.changedParentTypes.forEach((events, type) => {
           // We need to think about the possibility that the user transforms the
           // Y.Doc in the event.
-          // Deleted types are tracked (so changes inside them bubble to live ancestors) but fire
-          // only while something still renders them — i.e. they have a renderer attached.
-          if (type._item !== null && type._item.deleted && type._renderer === null) return
-          const hasDeep = type._dEH.l.length > 0
-          const hasDeltaListeners = (type._observers.get('delta')?.size ?? 0) > 0
-          const maintaining = type._delta !== null
-          if (!hasDeep && !hasDeltaListeners && !maintaining) return
+          // Deleted types are tracked (so changes inside them bubble to live ancestors) but do
+          // not fire themselves.
+          if (type._item !== null && type._item.deleted) return
+          if (type._dEH.l.length === 0) return
           /**
-           * @type {YEvent<any>}
+           * @type {YEvent}
            */
           const deepEventHandler = events.find(event => event.target === type) || new YEvent(type, transaction, new Set(null))
-          if (hasDeep) {
-            callEventHandlerListeners(type._dEH, deepEventHandler, transaction)
-          }
-          if (hasDeltaListeners || maintaining) {
-            // the type-rooted deep delta of this transaction (a nested `modify` chain for ancestors)
-            const change = /** @type {any} */ (deepEventHandler.getDelta({ renderer: type._renderer, deep: true }).done())
-            // a base-renderer type doesn't render deleted content, so a change that happened
-            // entirely inside a deleted subtree renders to an empty delta — don't emit those no-ops
-            if (!change.isEmpty()) {
-              type._delta?.apply(change) // keep the cache current (incl. ancestors and diff-renderer attributions) — builder API only, see the YNode._delta fingerprint-memo invariant
-              if (hasDeltaListeners) type.emit('delta', [change, transaction.origin])
-            }
-          }
+          callEventHandlerListeners(type._dEH, deepEventHandler, transaction)
         })
       })
       fs.push(() => doc.emit('afterTransaction', [transaction, doc]))
@@ -308,7 +291,7 @@ const cleanupTransactions = (transactionCleanups, i) => {
         }
       }
       if (!transaction.local && transaction.insertSet.clients.has(doc.clientID)) {
-        logging.print(logging.ORANGE, logging.BOLD, '[yjs] ', logging.UNBOLD, logging.RED, 'Changed the client-id because another client seems to be using it.')
+        console.warn('[yjs] Changed the client-id because another client seems to be using it.')
         doc.clientID = generateNewClientId()
       }
       // @todo Merge all the transactions into one and provide send the data as a single update message

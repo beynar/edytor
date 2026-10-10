@@ -251,11 +251,11 @@ export const newNode = (Y: EngineApi, name: string): EngineNode =>
 	new Y.Node(name) as unknown as EngineNode;
 
 /**
- * A renderer-free bounded read cursor on `node` (the fork's `RangeCursor`),
- * in the caller's view of a cursor.
+ * A bounded read cursor on `node` (the fork's `RangeCursor`), in the
+ * caller's view of a cursor.
  */
 export const rangeCursorOf = <C>(Y: EngineApi, node: EngineNode): C =>
-	new Y.RangeCursor(asYNode(node), null) as unknown as C;
+	new Y.RangeCursor(asYNode(node)) as unknown as C;
 
 // ── node and document internals ──────────────────────────────────────────
 
@@ -278,21 +278,6 @@ export const sequenceLength = (node: EngineNode | YNode): number =>
 /** The item a node is the value of (`_item`), in the caller's view. */
 export const itemOf = <I = StoreStruct>(node: EngineNode): I | null =>
 	node._item as unknown as I | null;
-
-/**
- * Run `f` with `node`'s renderer (vendor `_renderer`) set aside: a write
- * addresses live-content space, whatever renderer a reader installed.
- */
-export const withoutRenderer = <T>(node: EngineNode, f: () => T): T => {
-	const n = node as unknown as { _renderer: unknown };
-	const renderer = n._renderer;
-	n._renderer = null;
-	try {
-		return f();
-	} finally {
-		n._renderer = renderer;
-	}
-};
 
 /** The struct store's reads edytor makes (vendor `doc.store`). */
 export type StoreLike = {

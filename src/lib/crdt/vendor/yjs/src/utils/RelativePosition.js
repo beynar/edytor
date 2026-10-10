@@ -3,7 +3,7 @@ import * as error from 'lib0-v14/error'
 import { Item, followRedone, ContentType } from '../structs/Item.js'
 import { findMarker } from '../ynode.js'
 import { findRootTypeKey, createID } from './ID.js'
-import { rendererContentLength } from './renderer-helpers.js'
+import { liveLength } from './transaction-helpers.js'
 
 /**
  * A relative position is based on the Yjs model and is not affected by document changes.
@@ -95,13 +95,13 @@ export const createRelativePositionFromJSON = json => new RelativePosition(json.
 
 export class AbsolutePosition {
   /**
-   * @param {YNode<any>} type
+   * @param {YNode} type
    * @param {number} index
    * @param {number} [assoc]
    */
   constructor (type, index, assoc = 0) {
     /**
-     * @type {YNode<any>}
+     * @type {YNode}
      */
     this.type = type
     /**
@@ -113,7 +113,7 @@ export class AbsolutePosition {
 }
 
 /**
- * @param {YNode<any>} type
+ * @param {YNode} type
  * @param {number} index
  * @param {number} [assoc]
  *
@@ -122,7 +122,7 @@ export class AbsolutePosition {
 export const createAbsolutePosition = (type, index, assoc = 0) => new AbsolutePosition(type, index, assoc)
 
 /**
- * @param {YNode<any>} type
+ * @param {YNode} type
  * @param {ID|null} item
  * @param {number} [assoc]
  *
@@ -145,12 +145,11 @@ export const createRelativePosition = (type, item, assoc) => {
  * @param {YNode} type The base type (e.g. YText or YArray).
  * @param {number} index The absolute position.
  * @param {number} [assoc]
- * @param {import('./renderer-helpers.js').AbstractRenderer?} renderer
  * @return {RelativePosition}
  *
  * @function
  */
-export const createRelativePositionFromTypeIndex = (type, index, assoc = 0, renderer = null) => {
+export const createRelativePositionFromTypeIndex = (type, index, assoc = 0) => {
   let t = type._start
   if (assoc < 0) {
     // associated to the left character or the beginning of a type, increment index if possible.
@@ -159,11 +158,11 @@ export const createRelativePositionFromTypeIndex = (type, index, assoc = 0, rend
     }
     index--
   }
-  // Seed the walk from a search marker — under `renderer === null` the loop
-  // below counts countable/non-deleted length, exactly the space
-  // `marker.index` records, so `findMarker`'s (item, left-edge-index) result
-  // is a valid cursor. With no markers this falls back to the `_start` walk.
-  if (renderer === null && index > 0 && type._searchMarker !== null && type._searchMarker.length > 0) {
+  // Seed the walk from a search marker — the loop below counts
+  // countable/non-deleted length, exactly the space `marker.index` records,
+  // so `findMarker`'s (item, left-edge-index) result is a valid cursor. With
+  // no markers this falls back to the `_start` walk.
+  if (index > 0 && type._searchMarker !== null && type._searchMarker.length > 0) {
     const m = findMarker(type, index)
     if (m !== null && m.index <= index) {
       t = m.p
@@ -171,7 +170,7 @@ export const createRelativePositionFromTypeIndex = (type, index, assoc = 0, rend
     }
   }
   while (t !== null) {
-    const len = rendererContentLength(renderer, t)
+    const len = liveLength(t)
     if (len > index) {
       // case 1: found position somewhere in the linked list
       return createRelativePosition(type, createID(t.id.client, t.id.clock + index), assoc)
@@ -212,12 +211,11 @@ const getItemWithOffset = (store, id) => {
  * @param {RelativePosition} rpos
  * @param {Doc} doc
  * @param {boolean} followUndoneDeletions - whether to follow undone deletions - see https://github.com/yjs/yjs/issues/638
- * @param {import('./renderer-helpers.js').AbstractRenderer?} renderer
  * @return {AbsolutePosition|null}
  *
  * @function
  */
-export const createAbsolutePositionFromRelativePosition = (rpos, doc, followUndoneDeletions = true, renderer = null) => {
+export const createAbsolutePositionFromRelativePosition = (rpos, doc, followUndoneDeletions = true) => {
   const store = doc.store
   const rightID = rpos.item
   const typeID = rpos.type
@@ -234,14 +232,13 @@ export const createAbsolutePositionFromRelativePosition = (rpos, doc, followUndo
     if (!(right instanceof Item)) {
       return null
     }
-    type = /** @type {YNode<any>} */ (right.parent)
-    // an index into a deleted type is meaningless - unless a renderer still renders the type
-    // (e.g. a deleted-but-rendered suggestion-mode subtree)
-    if (type._item === null || !type._item.deleted || rendererContentLength(renderer, type._item) > 0) {
-      index = rendererContentLength(renderer, right) === 0 ? 0 : (res.diff + (assoc >= 0 ? 0 : 1)) // adjust position based on left association if necessary
+    type = /** @type {YNode} */ (right.parent)
+    // an index into a deleted type is meaningless
+    if (type._item === null || !type._item.deleted) {
+      index = liveLength(right) === 0 ? 0 : (res.diff + (assoc >= 0 ? 0 : 1)) // adjust position based on left association if necessary
       let n = right.left
-      if (renderer === null && type._searchMarker !== null && type._searchMarker.length > 0) {
-        // Marker-assisted left walk: under `renderer === null` this loop
+      if (type._searchMarker !== null && type._searchMarker.length > 0) {
+        // Marker-assisted left walk: this loop
         // accumulates countable/non-deleted length — the same space
         // `marker.index` records — so the first marked item reached supplies
         // the sum of everything left of it and the walk can stop early.
@@ -257,17 +254,17 @@ export const createAbsolutePositionFromRelativePosition = (rpos, doc, followUndo
             if (m !== null) {
               // m.index is the left edge of n — the count of rendered units
               // strictly before it — so n's own contribution is added too.
-              index += m.index + rendererContentLength(renderer, n)
+              index += m.index + liveLength(n)
               n = null
               break
             }
           }
-          index += rendererContentLength(renderer, n)
+          index += liveLength(n)
           n = n.left
         }
       } else {
         while (n !== null) {
-          index += rendererContentLength(renderer, n)
+          index += liveLength(n)
           n = n.left
         }
       }

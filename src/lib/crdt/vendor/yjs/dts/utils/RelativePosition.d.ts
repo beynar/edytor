@@ -59,22 +59,22 @@ export function relativePositionToJSON(rpos: RelativePosition): any;
 export function createRelativePositionFromJSON(json: any): RelativePosition;
 export class AbsolutePosition {
     /**
-     * @param {YNode<any>} type
+     * @param {YNode} type
      * @param {number} index
      * @param {number} [assoc]
      */
-    constructor(type: YNode<any>, index: number, assoc?: number);
+    constructor(type: YNode, index: number, assoc?: number);
     /**
-     * @type {YNode<any>}
+     * @type {YNode}
      */
-    type: YNode<any>;
+    type: YNode;
     /**
      * @type {number}
      */
     index: number;
     assoc: number;
 }
-export function createAbsolutePosition(type: YNode<any>, index: number, assoc?: number): AbsolutePosition;
-export function createRelativePosition(type: YNode<any>, item: ID | null, assoc?: number): RelativePosition;
-export function createRelativePositionFromTypeIndex(type: YNode, index: number, assoc?: number, renderer?: import("./renderer-helpers.js").AbstractRenderer | null): RelativePosition;
-export function createAbsolutePositionFromRelativePosition(rpos: RelativePosition, doc: Doc, followUndoneDeletions?: boolean, renderer?: import("./renderer-helpers.js").AbstractRenderer | null): AbsolutePosition | null;
+export function createAbsolutePosition(type: YNode, index: number, assoc?: number): AbsolutePosition;
+export function createRelativePosition(type: YNode, item: ID | null, assoc?: number): RelativePosition;
+export function createRelativePositionFromTypeIndex(type: YNode, index: number, assoc?: number): RelativePosition;
+export function createAbsolutePositionFromRelativePosition(rpos: RelativePosition, doc: Doc, followUndoneDeletions?: boolean): AbsolutePosition | null;

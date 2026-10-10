@@ -1799,13 +1799,6 @@ export interface DocumentWrites {
     patchData(target: DataTarget, patches: readonly DataPatch[]): OpResult;
     setBlockData(id: BlockId, data: Record<string, unknown>): OpResult;
     duplicateBlock(id: BlockId, freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
-    insertTableRow(table: BlockId, index: number): OpResult;
-    deleteTableRows(rows: readonly BlockId[]): OpResult;
-    insertTableColumn(table: BlockId, index: number, width?: number): OpResult;
-    deleteTableColumn(table: BlockId, column: string | number): OpResult;
-    moveTableColumn(table: BlockId, column: string | number, to: number): OpResult;
-    moveTableRows(rows: readonly BlockId[], to: number): OpResult;
-    fillTableCell(row: BlockId, column: string | number): OpResult;
     insertText(id: BlockId, offset: number, text: string, marks?: Record<string, unknown>): OpResult;
     deleteText(id: BlockId, offset: number, length: number): OpResult;
     formatRange(id: BlockId, offset: number, length: number, marks: Record<string, unknown>): OpResult;

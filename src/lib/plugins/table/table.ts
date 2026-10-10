@@ -1,6 +1,6 @@
 /**
- * The table plugin's commands and reads over the document's table ops
- * (`table.*` in the delete contract): each command is one dispatched plan
+ * The table plugin's commands and reads over its table ops (`ops.ts`,
+ * `table.*` in the delete contract): each command is one dispatched plan
  * (hooks see it by its name: `insertTableRow`, `deleteTableRows`,
  * `insertTableColumn`, `deleteTableColumn`, `moveTableColumn`,
  * `moveTableRows`, `fillTableCell`), its own undo step, refused in a
@@ -13,6 +13,7 @@ import { dispatchPlan, type BlockOperations } from '$lib/block/block.utils.js';
 import type { TableAddPayload, TableChrome, TableGripPayload } from './chrome.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Prepared } from '$lib/crdt/index.js';
+import * as ops from './ops.js';
 import type { PartialLabels } from '$lib/labels.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { caretBox, sameLine } from '$lib/surface/lines.js';
@@ -115,7 +116,7 @@ const run = <O extends TableOperation>(
 export const insertRow = (table: Block, index: number, caret = false): Block | null => {
 	const { edytor } = table;
 	const plan = run(table, 'insertTableRow', { index }, (p) =>
-		edytor.facade.prepare.insertTableRow(table.id, p.index)
+		ops.insertTableRow(edytor.facade, table.id, p.index)
 	);
 	const row = plan ? (edytor.idToBlock.get(plan.ids[0]!) ?? null) : null;
 	if (row && caret) edytor.dispatcher.caret(row.children[0]?.firstText, 0);
@@ -125,7 +126,10 @@ export const insertRow = (table: Block, index: number, caret = false): Block | n
 /** Delete `rows` with their cells (`table.delete-row`). */
 export const deleteRows = (table: Block, rows: readonly Block[]) =>
 	run(table, 'deleteTableRows', { rows: [...rows] }, (p) =>
-		table.edytor.facade.prepare.deleteTableRows(p.rows.map((row) => row.id))
+		ops.deleteTableRows(
+			table.edytor.facade,
+			p.rows.map((row) => row.id)
+		)
 	) !== null;
 
 /**
@@ -135,7 +139,7 @@ export const deleteRows = (table: Block, rows: readonly Block[]) =>
 export const insertColumn = (table: Block, index: number, width?: number, caret?: number) => {
 	const applied =
 		run(table, 'insertTableColumn', { index, width }, (p) =>
-			table.edytor.facade.prepare.insertTableColumn(table.id, p.index, p.width)
+			ops.insertTableColumn(table.edytor.facade, table.id, p.index, p.width)
 		) !== null;
 	const grid = applied && caret !== undefined ? gridOf(table) : null;
 	if (grid) {
@@ -149,19 +153,20 @@ export const insertColumn = (table: Block, index: number, width?: number, caret?
 /** Delete a column, by id or position (`table.delete-column`). */
 export const deleteColumn = (table: Block, column: string | number) =>
 	run(table, 'deleteTableColumn', { column }, (p) =>
-		table.edytor.facade.prepare.deleteTableColumn(table.id, p.column)
+		ops.deleteTableColumn(table.edytor.facade, table.id, p.column)
 	) !== null;
 
 /** Move a column to position `to` (`table.move-column`). */
 export const moveColumn = (table: Block, column: string | number, to: number) =>
 	run(table, 'moveTableColumn', { column, to }, (p) =>
-		table.edytor.facade.prepare.moveTableColumn(table.id, p.column, p.to)
+		ops.moveTableColumn(table.edytor.facade, table.id, p.column, p.to)
 	) !== null;
 
 /** Move rows to position `to` among their table's rows (`table.move-row`). */
 export const moveRows = (table: Block, rows: readonly Block[], to: number) =>
 	run(table, 'moveTableRows', { rows: [...rows], to }, (p) =>
-		table.edytor.facade.prepare.moveTableRows(
+		ops.moveTableRows(
+			table.edytor.facade,
 			p.rows.map((row) => row.id),
 			p.to
 		)
@@ -174,7 +179,7 @@ export const moveRows = (table: Block, rows: readonly Block[], to: number) =>
 export const fillCell = (table: Block, row: string, column: string | number): Block | null => {
 	const { edytor } = table;
 	const plan = run(table, 'fillTableCell', { row, column }, (p) =>
-		edytor.facade.prepare.fillTableCell(p.row, p.column)
+		ops.fillTableCell(edytor.facade, p.row, p.column)
 	);
 	const cell = plan ? (edytor.idToBlock.get(plan.ids[0]!) ?? null) : null;
 	if (cell) edytor.dispatcher.caret(cell.firstText, 0);

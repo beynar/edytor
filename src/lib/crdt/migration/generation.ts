@@ -18,15 +18,12 @@
  * CRDT identity, history (undo), attribution, waiting deletes, and edits
  * a replica never sent before the cutover.
  *
- * Worker-safe: the room converts its container at load.
+ * Worker-safe: the room converts its container at load (and seeds what it
+ * reads). A browser's generation-4 IndexedDB store is not converted.
  */
 import type { EngineApi, YDoc } from '../engine-api.js';
-import { asEngineDoc } from '../structs.js';
-import { bindDocModel } from '../edytor-doc.js';
 import { keepingReplaced } from '../incarnations.js';
 import { PROTOCOL_VERSION, type GenerationRecord } from '../protocols/envelope.js';
-import type { DocumentSemanticsConfig } from '../document.js';
-import { defaultSemantics, facadeConfigOf } from '../semantics.js';
 import type { JSONDoc } from '../../utils/json.js';
 
 /** The schema generation this build converts from. */
@@ -44,63 +41,33 @@ export const isPreviousGenerationRecord = (v: unknown): v is GenerationRecord =>
 /** A facade that reads (`toJSON`) and is let go (`dispose`). */
 type Reader = { toJSON(): JSONDoc; dispose(): void };
 
-export const bindGenerations = (Y: EngineApi) => {
-	const docs = bindDocModel(Y);
-	/** A facade reading with `semantics` (the bundled kinds' by default). */
-	const facadeWith =
-		(semantics: DocumentSemanticsConfig = defaultSemantics) =>
-		(doc: YDoc) =>
-			docs.create(asEngineDoc(doc), facadeConfigOf(semantics));
-	const generations = {
-		isPreviousGenerationRecord,
-		/**
-		 * The visible document a state of generation 4 holds, as JSON: `updates`
-		 * (v1 updates, or `{ v2 }` snapshots, in order) applied to a scratch
-		 * document, read through `facadeOf` (a facade of this build, with the
-		 * semantics the document is read with).
-		 */
-		previousJSON: (
-			updates: ReadonlyArray<Uint8Array | { v2: Uint8Array }>,
-			facadeOf: (doc: YDoc) => Reader
-		): JSONDoc => {
-			const doc = keepingReplaced(new Y.Doc());
+export const bindGenerations = (Y: EngineApi) => ({
+	isPreviousGenerationRecord,
+	/**
+	 * The visible document a state of generation 4 holds, as JSON: `updates`
+	 * (v1 updates, or `{ v2 }` snapshots, in order) applied to a scratch
+	 * document, read through `facadeOf` (a facade of this build, with the
+	 * semantics the document is read with).
+	 */
+	previousJSON: (
+		updates: ReadonlyArray<Uint8Array | { v2: Uint8Array }>,
+		facadeOf: (doc: YDoc) => Reader
+	): JSONDoc => {
+		const doc = keepingReplaced(new Y.Doc());
+		try {
+			Y.transact(doc, () => {
+				for (const u of updates)
+					if (u instanceof Uint8Array) Y.applyUpdate(doc, u);
+					else Y.applyUpdateV2(doc, u.v2);
+			});
+			const facade = facadeOf(doc);
 			try {
-				Y.transact(doc, () => {
-					for (const u of updates)
-						if (u instanceof Uint8Array) Y.applyUpdate(doc, u);
-						else Y.applyUpdateV2(doc, u.v2);
-				});
-				const facade = facadeOf(doc);
-				try {
-					return facade.toJSON();
-				} finally {
-					facade.dispose();
-				}
+				return facade.toJSON();
 			} finally {
-				doc.destroy();
-			}
-		},
-		/**
-		 * This generation's seed of `value` — the update a document seeds it
-		 * with (deterministic: the same value writes the same update anywhere),
-		 * read with `semantics`.
-		 */
-		seedOf: (value: JSONDoc, semantics?: DocumentSemanticsConfig): Uint8Array => {
-			const doc = keepingReplaced(new Y.Doc());
-			try {
-				const facade = facadeWith(semantics)(doc);
-				facade.seed(value.children, value.data);
 				facade.dispose();
-				return Y.encodeStateAsUpdate(doc);
-			} finally {
-				doc.destroy();
 			}
-		},
-		/** {@link previousJSON} read with `semantics` (the bundled kinds' by default). */
-		previousJSONWith: (
-			updates: ReadonlyArray<Uint8Array | { v2: Uint8Array }>,
-			semantics?: DocumentSemanticsConfig
-		): JSONDoc => generations.previousJSON(updates, facadeWith(semantics))
-	};
-	return generations;
-};
+		} finally {
+			doc.destroy();
+		}
+	}
+});

@@ -46,20 +46,10 @@ export const load: PageLoad = ({ url }) => {
 		// the hand-built provider stack the collab specs and DST drive.
 		wssync: url.searchParams.get('wssync'),
 		wspersist: url.searchParams.get('wspersist'),
-		// Collaboration DST knobs: `actor` pins the document's local actor
-		// identity (deterministic per peer) and `lineagedepth` opts the
-		// document into the attribution history ring — both consumed only
-		// when the page injects its own `document` (see +page.svelte).
+		// Collaboration DST knob: `actor` pins the document's local actor
+		// identity (deterministic per peer) — consumed only when the page
+		// injects its own `document` (see +page.svelte).
 		actor: url.searchParams.get('actor'),
-		lineagedepth: (() => {
-			const raw = url.searchParams.get('lineagedepth');
-			if (raw === null) return undefined;
-			const depth = Number(raw);
-			if (!Number.isInteger(depth) || depth < 0) {
-				throw new TypeError(`lineagedepth must be a non-negative integer, got "${raw}"`);
-			}
-			return depth;
-		})(),
 		// arch-v2 R1: `?cells=shadow` keeps render cells next to the mirror and
 		// exposes their comparison on `window.__EDYTOR_CELLS__`.
 		cells: url.searchParams.get('cells') === 'shadow',

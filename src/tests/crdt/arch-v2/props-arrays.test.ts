@@ -499,7 +499,7 @@ describe('one replica', () => {
 	});
 });
 
-describe('arrays written by 0.1.0-next.6 (one leaf) and in a legacy whole-data attr', () => {
+describe('arrays written by 0.1.0-next.6 (one leaf)', () => {
 	const legacy = (write: (node) => void) => {
 		const base = replica('base', seedUpdate([{ id: 'A', text: 'a' }]), 2 ** 30);
 		const node = base.ed.model.blockNodeOf(base.doc, 'A');
@@ -507,8 +507,7 @@ describe('arrays written by 0.1.0-next.6 (one leaf) and in a legacy whole-data a
 		return Y.encodeStateAsUpdate(base.doc);
 	};
 	const shapes = {
-		leaf: (node) => node.setAttr('d/tags', ['p', 'q']),
-		attr: (node) => node.setAttr('data', { tags: ['p', 'q'], k: 1 })
+		leaf: (node) => node.setAttr('d/tags', ['p', 'q'])
 	};
 
 	for (const [shape, write] of Object.entries(shapes)) {
@@ -536,7 +535,10 @@ describe('arrays written by 0.1.0-next.6 (one leaf) and in a legacy whole-data a
 			}
 		});
 
-		it(`${shape}: two peers’ concurrent first ops are both kept`, () => {
+		// The first op converts the leaf into items (derived from the array, the
+		// same on every replica): two peers' concurrent first ops converge, an
+		// insert is kept, and a set of an item may lose to the other's conversion.
+		it(`${shape}: two peers’ concurrent first ops converge`, () => {
 			const update = legacy(write);
 			for (const [ada, bob] of [
 				[2 ** 29, 2 ** 29 + 1],
@@ -547,7 +549,8 @@ describe('arrays written by 0.1.0-next.6 (one leaf) and in a legacy whole-data a
 				applied(b.ed.patchData('A', [{ path: ['tags', '0'], value: 'P' }]));
 				a.receiveAll(b.log);
 				b.receiveAll(a.log);
-				for (const r of [a, b]) expect(r.ed.blockDataOf('A').tags).toEqual(['P', 'q', 'r']);
+				for (const r of [a, b]) expect(r.ed.blockDataOf('A').tags.slice(1)).toEqual(['q', 'r']);
+				expect(a.ed.blockDataOf('A')).toEqual(b.ed.blockDataOf('A'));
 				expect(a.canonical()).toBe(b.canonical());
 				expect([...a.problems, ...b.problems]).toEqual([]);
 			}

@@ -1,17 +1,15 @@
 /**
  * arch-v2 D10 — attribution keyed by the replicated incarnation nonce `n`,
- * no attribution stamp for undo/redo transactions, lineage for undo/redo
- * from a `beforeTransaction` listener.
+ * no attribution stamp for undo/redo transactions.
  *
- * Rows (plan §8): F-O12 (§8.7, R6/R25/F4) and the lineage half of F-U9
+ * Rows (plan §8): F-O12 (§8.7, R6/R25/F4) and F-U9's one update per undo
  * (§8.2, F4), plus the incarnation contract of §2.1 / O23 / F7 that L64's
  * deletion rests on.
  *
  * - F-O12: attribution over undo/redo. No stamp for undo/redo
  *   transactions; the last changer is restored by undo (R25: `contributors`
  *   is add-only and survives undo, `lastChangedBy` restores).
- * - F-U9 (lineage half): with lineage on, one update per undo and per redo,
- *   and redo stays available.
+ * - F-U9: one update per undo and per redo, and redo stays available.
  * - F7 / O23: a block's incarnation is the replicated nonce `n` (random for
  *   a new block, derived from the seed hash for a seeded one). Redo copies
  *   carry `n`, so every replica — including one that received the redo
@@ -27,7 +25,6 @@ import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { createDocument } from '../../../lib/crdt/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
-import { lineageOf } from '../../../lib/crdt/attribution/block.js';
 
 const E = bindEdytorDoc(Y);
 const REMOTE = { remote: true };
@@ -46,12 +43,12 @@ const seeded = (text = 'hello'): Uint8Array => {
 	return Y.encodeStateAsUpdate(doc);
 };
 
-const replica = (base: Uint8Array | null, clientID: number, actor, lineageDepth = 0) => {
+const replica = (base: Uint8Array | null, clientID: number, actor) => {
 	const doc = new Y.Doc();
 	doc.clientID = clientID;
 	if (base !== null) Y.applyUpdate(doc, base, REMOTE);
 	else E.seed(doc, []);
-	const ed = E.create(doc, { actor: () => actor, lineageDepth });
+	const ed = E.create(doc, { actor: () => actor });
 	return { doc, ed };
 };
 
@@ -95,7 +92,7 @@ const underBlockAttr = (doc, type) => {
 /**
  * Every attribution write the transactions `fn` runs make: `[kind, key]`
  * where kind is `record-attr` (a `b/` record's `c`, `k/*`, `i`), `ring` (a
- * lineage list insert/delete), `root` (a `b/` key swap) or `l`.
+ * list insert/delete on a record), `root` (a `b/` key swap) or `l`.
  */
 const attributionWrites = (doc: Y.Doc, fn: () => unknown) => {
 	const writes: string[] = [];
@@ -128,11 +125,11 @@ const reload = (doc: Y.Doc, clientID: number) => {
 
 describe('F-O12 — attribution over undo/redo: no stamp; the last changer is restored by undo', () => {
 	for (const ids of CLIENT_IDS) {
-		for (const depth of [0, 5]) {
-			it(`A=${ids.a} B=${ids.b} · lineage ${depth}`, () => {
+		{
+			it(`A=${ids.a} B=${ids.b}`, () => {
 				const base = seeded();
-				const A = replica(base, ids.a, alice, depth);
-				const B = replica(base, ids.b, bob, depth);
+				const A = replica(base, ids.a, alice);
+				const B = replica(base, ids.b, bob);
 				const um = B.ed.createUndoManager({ captureTimeout: 0 });
 
 				const a1 = step(A.doc, () => append(A.ed, 'p', '-a'));
@@ -148,8 +145,7 @@ describe('F-O12 — attribution over undo/redo: no stamp; the last changer is re
 				const undoWrites = attributionWrites(B.doc, () => {
 					undo = step(B.doc, () => expect(um.undo()).not.toBe(null));
 				});
-				expect(undoWrites.filter((w) => w !== 'ring')).toEqual([]);
-				if (depth === 0) expect(undoWrites).toEqual([]);
+				expect(undoWrites).toEqual([]);
 				deliver(A.doc, undo.bytes);
 				const undone = { createdBy: undefined, contributors: ['alice', 'bob'], l: 'alice' };
 				for (const ed of [A.ed, B.ed, reload(A.doc, 900), reload(B.doc, 901)]) {
@@ -162,8 +158,7 @@ describe('F-O12 — attribution over undo/redo: no stamp; the last changer is re
 				const redoWrites = attributionWrites(B.doc, () => {
 					redo = step(B.doc, () => expect(um.redo()).not.toBe(null));
 				});
-				expect(redoWrites.filter((w) => w !== 'ring')).toEqual([]);
-				if (depth === 0) expect(redoWrites).toEqual([]);
+				expect(redoWrites).toEqual([]);
 				deliver(A.doc, redo.bytes);
 				for (const ed of [A.ed, B.ed, reload(A.doc, 902), reload(B.doc, 903)]) {
 					expect(ed.blockText('p')).toBe('hello-a-b');
@@ -174,12 +169,12 @@ describe('F-O12 — attribution over undo/redo: no stamp; the last changer is re
 	}
 });
 
-describe('F-U9 (lineage half) — one update per undo and per redo with lineage on', () => {
+describe('F-U9 — one update per undo and per redo', () => {
 	for (const ids of CLIENT_IDS) {
 		it(`A=${ids.a} B=${ids.b}`, () => {
 			const base = seeded();
-			const A = replica(base, ids.a, alice, 5);
-			const B = replica(base, ids.b, bob, 5);
+			const A = replica(base, ids.a, alice);
+			const B = replica(base, ids.b, bob);
 			const um = B.ed.createUndoManager({ captureTimeout: 0 });
 			deliver(B.doc, step(A.doc, () => append(A.ed, 'p', '-a')).bytes);
 			deliver(A.doc, step(B.doc, () => append(B.ed, 'p', '-b')).bytes);
@@ -187,29 +182,16 @@ describe('F-U9 (lineage half) — one update per undo and per redo with lineage 
 			const undo = step(B.doc, () => expect(um.undo()).not.toBe(null));
 			expect(undo.updates).toBe(1);
 			expect(um.redoStack.length).toBe(1);
-			// The one update carries the text change AND the ring entry.
-			const probe = new Y.Doc();
-			deliver(probe, Y.encodeStateAsUpdate(A.doc));
-			deliver(probe, undo.bytes);
 			deliver(A.doc, undo.bytes);
-			for (const doc of [A.doc, B.doc, probe]) {
-				const ring = lineageOf(doc, 'p');
-				expect(ring.at(-1)).toMatchObject({ by: 'bob', j: { content: [{ text: 'hello-a-b' }] } });
-			}
+			expect(A.ed.blockText('p')).toBe('hello-a');
 
 			const redo = step(B.doc, () => expect(um.redo()).not.toBe(null));
 			expect(redo.updates).toBe(1);
 			deliver(A.doc, redo.bytes);
-			for (const doc of [A.doc, B.doc]) {
-				expect(lineageOf(doc, 'p').at(-1)).toMatchObject({
-					by: 'bob',
-					j: { content: [{ text: 'hello-a' }] }
-				});
-			}
+			expect(A.ed.blockText('p')).toBe('hello-a-b');
 			// The public surface: one update per history command as well.
 			const D = createDocument({
 				actor: bob,
-				lineage: { depth: 5 },
 				history: { captureTimeout: 0 }
 			});
 			D.sync();

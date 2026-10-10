@@ -61,7 +61,7 @@
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
 import { REGISTRY_KEY, type BlockId } from '../placement/model.js';
 import { BLOCK_ATTR_ROOT, isNodeLike, LAST_CHANGED_ATTR, NONCE, REC_PREFIX } from '../schema.js';
-import { attrItems, newNode as makeNode, onTransaction } from '../structs.js';
+import { attrItems, newNode as makeNode } from '../structs.js';
 
 /** The durable per-block attribution record a replica sees. */
 export type ActorId = string;
@@ -79,60 +79,6 @@ export type BlockAttribution = {
 	contributors: ReadonlySet<ActorId>;
 	/** The actor whose state change currently wins the LWW resolution. */
 	lastChangedBy?: ActorId;
-};
-
-/**
- * One bounded-lineage checkpoint on a block's `brec` record — the block's
- * subtree JSON captured JUST BEFORE a displacing edit: an `l` handoff
- * (another actor's first write), a delete, or an undo/redo touching the
- * block. Entries live as list items on the record node itself, appended
- * and ring-trimmed to the document's configured depth inside the owning
- * op's transaction — they die with the record on reincarnation. Compact
- * wire keys keep the replicated payload small; the public surface
- * (`attribution.history`) re-expands them.
- */
-export type LineageEntry = {
-	/** The displaced owner — the `l` winner when captured (absent when unattributed). */
-	a?: ActorId;
-	/** The actor whose edit displaced the state (or whose undo/redo touched the block). */
-	by: ActorId;
-	/**
-	 * Ring position at append — a display aid only. It can REPEAT (after a
-	 * trim the position counter rewinds, and concurrent replicas assign
-	 * the same position independently): never an entry id — list order is
-	 * the truth.
-	 */
-	s: number;
-	/** Wall-clock capture time — display only, never ordering. */
-	t?: number;
-	/** The displaced subtree snapshot (a `JSONBlock`). */
-	j: unknown;
-	/**
-	 * The appending writer's configured ring depth. THE retention bound is
-	 * the MAX of surviving entries' `d` — enforced identically by
-	 * `appendLineage` (same-tx trim), `attachRingTrim` (receive-side
-	 * repair), and `history()` (read view), so a shallow replica can never
-	 * evict a deeper writer's surviving history on ANY path. Entries
-	 * written before `d` existed leave it absent → the ring is exempt from
-	 * trimming entirely (the writers' bound is unknowable — evict
-	 * nothing).
-	 */
-	d?: number;
-};
-
-/**
- * The ring's retention bound — the deepest `lineage.depth` any surviving
- * entry's writer was configured with. `POSITIVE_INFINITY` when ANY entry
- * lacks `d` (pre-watermark data): without knowing every writer's bound,
- * no entry may be evicted on their behalf.
- */
-export const lineageWatermarkOf = (entries: LineageEntry[]): number => {
-	let wm = 0;
-	for (const e of entries) {
-		if (typeof e.d !== 'number' || !Number.isFinite(e.d)) return Number.POSITIVE_INFINITY;
-		if (e.d > wm) wm = e.d;
-	}
-	return wm;
 };
 
 // `BLOCK_ATTR_ROOT`/`LAST_CHANGED_ATTR`/`REC_PREFIX` live in the shared
@@ -206,16 +152,6 @@ export const blockAttributionOf = (doc: EngineDoc, id: BlockId): BlockAttributio
 		contributors,
 		lastChangedBy: typeof l === 'string' ? l : undefined
 	};
-};
-
-/**
- * Read one block's lineage ring, oldest → newest — or `undefined` when
- * the block carries no record. Entries are the stored content values;
- * callers deep-copy before exposing them publicly.
- */
-export const lineageOf = (doc: EngineDoc, id: BlockId): LineageEntry[] | undefined => {
-	const rec = recordOf(doc, id);
-	return rec === null ? undefined : (rec.toArray() as LineageEntry[]);
 };
 
 /**
@@ -335,127 +271,8 @@ export const bindBlockAttribution = (Y: EngineApi) => {
 			if (from === null) return;
 			const into = ensureRecord(doc, intoId, blockNodeOf(doc, intoId));
 			for (const a of contributorsOfRecord(from)) addContributor(into, a);
-		},
-		/**
-		 * Append a displaced-state checkpoint to the block's ring and trim
-		 * to the ring's watermark — `max` of surviving entries' `d`,
-		 * including the fresh one. The caller captures `entry.j` BEFORE its
-		 * model write (see `lineagePending` in `edytor-doc.ts`) and calls
-		 * this only after the write proves out, so a refused write appends
-		 * nothing. The watermark is THE retention policy — identical on
-		 * append, on receive (`attachRingTrim`), and on read — so a shallow
-		 * replica never evicts a deeper writer's surviving history, and the
-		 * bound shrinks only once the deepest entries have themselves
-		 * aged out. Concurrent appends under partition can still merge a
-		 * ring past the watermark — neither side saw the other's entry —
-		 * which the receive-side repair converges back.
-		 */
-		appendLineage: (
-			doc: EngineDoc,
-			id: BlockId,
-			entry: Omit<LineageEntry, 's' | 'd'>,
-			depth: number
-		): void => {
-			const rec = ensureRecord(doc, id);
-			rec.insert(rec.length, [{ ...entry, s: rec.length, d: depth }]);
-			const wm = lineageWatermarkOf(rec.toArray() as LineageEntry[]);
-			if (rec.length > wm) rec.delete(0, rec.length - wm);
-		},
-		/**
-		 * The block's lineage ring, oldest → newest — or `undefined` when
-		 * the block has no record at all. Entries are the stored content
-		 * values; the public surface copies them before handing them out.
-		 */
-		lineageOf,
-		/**
-		 * Attach the doc's shared ring-watermark repair — once per doc for
-		 * the doc's lifetime (module-level dedupe). See the module-level comment
-		 * below.
-		 */
-		attachRingTrim: (doc: EngineDoc): void => {
-			if (ringTrimAttached.has(doc)) return;
-			ringTrimAttached.set(doc, true);
-			const trimToWatermark = (rec: EngineNode): void => {
-				const wm = lineageWatermarkOf(rec.toArray() as LineageEntry[]);
-				if (rec.length > wm) rec.delete(0, rec.length - wm);
-			};
-			onTransaction<unknown>(doc, 'afterTransaction', (transaction) => {
-				try {
-					const changed = (transaction as { changed?: Map<unknown, Set<string | null>> })?.changed;
-					if (changed === undefined) return;
-					let over: EngineNode[] | undefined;
-					for (const type of changed.keys()) {
-						const rec = type as EngineNode;
-						if (
-							rec?.name === REC_NODE &&
-							rec.length > lineageWatermarkOf(rec.toArray() as LineageEntry[])
-						) {
-							(over ??= []).push(rec);
-						}
-					}
-					if (over === undefined) return;
-					// A follow-up transaction in the same cleanup sweep — the
-					// trim deletes exactly the items the next append would
-					// evict, so concurrent trims (each replica runs this on
-					// the same merged state) delete the SAME items and stay
-					// convergent. The watermark never goes below a surviving
-					// entry's own configured depth.
-					doc.transact(() => {
-						for (const rec of over!) trimToWatermark(rec);
-					}, LINEAGE_TRIM_ORIGIN);
-				} catch (err) {
-					// A failure here must never propagate — throwing inside
-					// `afterTransaction` would break the host transaction's
-					// cleanup sweep. An untrimmed ring still converges.
-					console.error('[edytor-doc] lineage ring trim failed; leaving over-cap state', err);
-				}
-			});
-			// Install-time sweep: a doc that arrived over-cap BEFORE this
-			// listener existed — `loadDocument`/`attachDocument` integrate
-			// the payload before the facade composes — never fires the
-			// hook above for that data. One O(records) pass converges it.
-			try {
-				const root = doc.get(BLOCK_ATTR_ROOT);
-				let over: EngineNode[] | undefined;
-				for (const key of root.attrKeys()) {
-					if (!key.startsWith(REC_PREFIX)) continue;
-					const rec = root.getAttr(key);
-					if (
-						isNodeLike(rec) &&
-						rec.name === REC_NODE &&
-						rec.length > lineageWatermarkOf(rec.toArray() as LineageEntry[])
-					) {
-						(over ??= []).push(rec);
-					}
-				}
-				if (over !== undefined) {
-					doc.transact(() => {
-						for (const rec of over!) trimToWatermark(rec);
-					}, LINEAGE_TRIM_ORIGIN);
-				}
-			} catch (err) {
-				console.error('[edytor-doc] lineage ring sweep failed; leaving over-cap state', err);
-			}
 		}
 	};
 };
-
-/**
- * Per-doc attach table for the shared ring-trim listener — module level
- * (not binding- or facade-scoped) so the listener is installed ONCE per
- * doc across every binding's facade `create()`, and never detached: a
- * ring pushed over its watermark by concurrent appends is converged even
- * after the last facade disposes. The `WeakMap` entry and the doc-held
- * listener die with the doc — no leak.
- */
-const ringTrimAttached = new WeakMap<EngineDoc, true>();
-
-/**
- * Origin of the ring-trim's delete writes — an origin no UndoManager
- * tracks, so trims never enter an undo stack and never recurse (the trim
- * only deletes ring items: the follow-up `afterTransaction` pass finds
- * the ring at exactly the watermark and stops).
- */
-const LINEAGE_TRIM_ORIGIN = Symbol('edytor.lineage-trim');
 
 export type BlockAttributionApi = ReturnType<typeof bindBlockAttribution>;

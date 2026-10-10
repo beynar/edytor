@@ -165,6 +165,16 @@ export {
 	isTablePlugin,
 	type TablePluginOptions
 } from './table/TablePlugin.svelte';
+// The table ops, prepared over any document (`document.apply(insertTableRow(document, …))`).
+export {
+	insertTableRow,
+	deleteTableRows,
+	insertTableColumn,
+	deleteTableColumn,
+	moveTableColumn,
+	moveTableRows,
+	fillTableCell
+} from './table/ops.js';
 export type {
 	TableChrome,
 	TableMenu,

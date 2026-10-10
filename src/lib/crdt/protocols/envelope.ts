@@ -45,9 +45,6 @@ export const GENERATION = generationWord(SCHEMA_VERSION);
  */
 export const GENERATION_PREFIX = 'edytor-v14-g5:';
 
-/** The prefix of the IndexedDB databases of schema generations 1 to 4. */
-export const PREVIOUS_GENERATION_PREFIX = 'edytor-v14:';
-
 /** The IndexedDB name a v14 provider uses for logical document `name`. */
 export const generationDbName = (name: string): string => GENERATION_PREFIX + name;
 

@@ -154,7 +154,7 @@ describe('shared model ctx — facet invalidation', () => {
 		const seen = reports(view);
 		set.A.transact(() => {
 			const node = doc.get('blocks').getAttr('a');
-			node.setAttr('data', { level: 2 });
+			node.setAttr('d/level', 2);
 		});
 		expect(seen).toHaveLength(1);
 		expect(seen[0].content.size).toBe(0);

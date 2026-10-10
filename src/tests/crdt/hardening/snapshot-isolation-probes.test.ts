@@ -134,7 +134,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		// Raw Yjs writes are outside the facade's sanitizeWireJson boundary —
 		// peers, migration tools, or raw consumers can ship them. Attr
 		// payloads encode via lib0 writeAny (BigInt encodes fine), so a
-		// BigInt block `data` replicates. FIXED: read paths project it
+		// BigInt data leaf replicates. FIXED: read paths project it
 		// through `cloneJsonSafe` — `{big:10n}` reads as `{big:10}` on every
 		// replica instead of throwing (deterministic normalization).
 		const src = new Y.Doc();
@@ -143,7 +143,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		src.get('blocks').setAttr('bad', sn);
 		sn.setAttr('id', 'bad');
 		sn.setAttr('type', 'paragraph');
-		sn.setAttr('data', { big: 10n });
+		sn.setAttr('d/big', 10n);
 		const update = Y.encodeStateAsUpdate(src); // wire-valid: writeAny path
 		const doc = new Y.Doc();
 		doc.clientID = cid++;

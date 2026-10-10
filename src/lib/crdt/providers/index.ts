@@ -144,10 +144,7 @@ export const bindProviders = (Y: EngineApi) => {
 	const ws = bindWebsocketProvider(Y);
 
 	// Local hydration always ends in `synced` or `failed`: no bound.
-	const localSync = (
-		name: string,
-		options: { disableBc?: boolean; convertPrevious?: boolean } = {}
-	): EdytorSync =>
+	const localSync = (name: string, options: { disableBc?: boolean } = {}): EdytorSync =>
 		Object.assign(
 			({ doc, awareness, synced, failed }: EdytorSyncPayload) => {
 				const provider = new idb.IndexeddbPersistence(name, doc, { awareness, ...options });
@@ -158,9 +155,8 @@ export const bindProviders = (Y: EngineApi) => {
 			{ bound: Infinity, target: `indexeddb:${name}` }
 		);
 
-	/** A document stored only here: a generation-4 store of `name` converts into it (the cutover). */
-	const createIndexeddbSync = (name: string): EdytorSync =>
-		localSync(name, { convertPrevious: true });
+	/** A document stored only here. */
+	const createIndexeddbSync = (name: string): EdytorSync => localSync(name);
 
 	/**
 	 * The socket, and by default a local store beside it. The store is its

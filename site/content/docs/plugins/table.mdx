@@ -202,36 +202,45 @@ These rules come from the document's roles: list the plugin in every view; a hea
 
 ## Document API
 
-On a document whose roles hold a table kind (a view with the plugin, or `defaultSemantics`, a headless document's default), every operation is one prepared plan (`apply(prepare.op(…))`) and one undo step:
+The table operations come with the plugin, not with the document: each one prepares one plan over any document's operations (an `EdytorDocument`, a view's `edytor.document`, a room's `transact` callback), composed of the document's own `patchData`, `insertBlocks`, `deleteBlocks` and `moveBlocks`, which `document.apply(…)` writes as one transaction and one undo step. The document needs roles holding a table kind (a view with the plugin, or `defaultSemantics`, a headless document's default):
 
 ```ts title="table.ts" check
-import { createDocument, tableBlock } from 'edytor';
+import {
+	createDocument,
+	deleteTableColumn,
+	insertTableColumn,
+	insertTableRow,
+	moveTableColumn,
+	tableBlock
+} from 'edytor';
 
 const document = createDocument({
 	value: { children: [{ ...tableBlock({ cells: [['a', 'b']] }), id: 't' }] }
 });
 
-document.insertTableRow('t', 1); // a row of empty cells at the end
-document.insertTableColumn('t', 0, 200); // a 200px column first, a cell in every row
-document.moveTableColumn('t', 'c2', 0); // reorder: no cell moves
-document.deleteTableColumn('t', 'c1');
+document.apply(insertTableRow(document, 't', 1)); // a row of empty cells at the end
+document.apply(insertTableColumn(document, 't', 0, 200)); // a 200px column first, a cell in every row
+document.apply(moveTableColumn(document, 't', 'c2', 0)); // reorder: no cell moves
+document.apply(deleteTableColumn(document, 't', 'c1'));
 document.tableGrid('t'); // { columns: [...], rows: [{ id, cells: [...] }] }
 ```
 
+Each operation takes the document first and answers a plan (or a refusal) that `apply` writes; its `ids` are the new row or cell, the rows, else the table.
+
 | API | What it does |
 | --- | --- |
-| `insertTableRow(table, index)` | A row with one empty cell per column at `index` among the rows |
-| `deleteTableRows(rows)` | The rows with their cells; a table left with no row goes too |
-| `insertTableColumn(table, index, width?)` | A new column in `data.columns` and an empty cell for it in every row |
-| `deleteTableColumn(table, column)` | The column (by id or position) and its cells (every entry of `data.columns` naming it); the last column takes the table |
-| `moveTableColumn(table, column, to)` | One reorder of `data.columns` |
-| `moveTableRows(rows, to)` | A move among the table's rows (refused out of it) |
-| `fillTableCell(row, column)` | Creates a padded cell (in a column shown unlisted, lists it again, last) |
-| `isTable(id)`, `isTableRow(id)`, `isTableCell(id)`, `tableOf(id)` | Whether a block is a table, its row or its cell, and the table holding it |
-| `tableColumns(table)` | The listed columns (`{ id, width? }[]`), or `null` |
-| `tableGrid(table)` | The column ids and each shown row's cells by column, `null` for a padded cell |
+| `insertTableRow(document, table, index)` | A row with one empty cell per column at `index` among the rows |
+| `deleteTableRows(document, rows)` | The rows with their cells; a table left with no row goes too |
+| `insertTableColumn(document, table, index, width?)` | A new column in `data.columns` and an empty cell for it in every row |
+| `deleteTableColumn(document, table, column)` | The column (by id or position) and its cells (every entry of `data.columns` naming it); the last column takes the table |
+| `moveTableColumn(document, table, column, to)` | One reorder of `data.columns` |
+| `moveTableRows(document, rows, to)` | A move among the table's rows (refused out of it) |
+| `fillTableCell(document, row, column)` | Creates a padded cell (in a column shown unlisted, lists it again, last) |
+| `isTable(id)`, `isTableRow(id)`, `isTableCell(id)`, `tableOf(id)` | The document's reads: whether a block is a table, its row or its cell, and the table holding it |
+| `tableColumns(table)` | The document's read of the listed columns (`{ id, width? }[]`), or `null` |
+| `tableGrid(table)` | The document's read of the column ids and each shown row's cells by column, `null` for a padded cell |
 
-Header flags and widths are data patches: `document.patchData(table, [{ path: ['headerRow'], value: true }])`, and a width on the column's entry by its item id, `[{ path: ['columns', document.dataItemIds(table, ['columns'])[i], 'width'], value: 200 }]` (a position works too, but counts every entry the stored array holds). `tableGrid` lists the listed columns, then any column it shows unlisted (an undone insert's, holding someone's text); `deleteTableColumn` and `fillTableCell` take its id or position, `moveTableColumn` refuses it. A cell never moves as a block, nothing merges into or out of one and it never splits (`canPlace`, `canMerge`, `splitBlock` refuse); a row moves only within its table. In a view, the commands run as `insertTableRow`, `deleteTableRows`, `insertTableColumn`, `deleteTableColumn`, `moveTableColumn`, `moveTableRows` and `fillTableCell`, so hooks see and may refuse them.
+Header flags and widths are data patches: `document.patchData(table, [{ path: ['headerRow'], value: true }])`, and a width on the column's entry by its item id, `[{ path: ['columns', document.dataItemIds(table, ['columns'])[i], 'width'], value: 200 }]` (a position works too, but counts every entry the stored array holds). `tableGrid` lists the listed columns, then any column it shows unlisted (an undone insert's, holding someone's text); `deleteTableColumn` and `fillTableCell` take its id or position, `moveTableColumn` refuses it. A cell never moves as a block, nothing merges into or out of one and it never splits (`canPlace`, `canMerge`, `splitBlock` refuse); a row moves only within its table. In a view, the plugin's commands dispatch them as `insertTableRow`, `deleteTableRows`, `insertTableColumn`, `deleteTableColumn`, `moveTableColumn`, `moveTableRows` and `fillTableCell`, so hooks see and may refuse them.
 
 ## Limitations
 

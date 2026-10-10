@@ -1864,7 +1864,6 @@ test.describe('collab sanity gate canaries', () => {
 				]
 			},
 			blocks: {},
-			lineage: {},
 			blockTexts: {
 				b0: { firstId: 't0', firstOwner: 'b0', lastId: 't0', lastOwner: 'b0', lastLen: 2 },
 				b1: { firstId: 'tc', firstOwner: 'c1', lastId: 'tc', lastOwner: 'c1', lastLen: 2 },
@@ -2087,7 +2086,6 @@ test.describe('collab seam expectation (the replicated slot, BW-04)', () => {
 		({
 			value: { children },
 			blocks: {},
-			lineage: {},
 			blockTexts,
 			actor: 'peer-1',
 			selection: null

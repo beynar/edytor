@@ -1,16 +1,15 @@
 import type { Snippet } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { BlockDefinition, Plugin, PluginOperations } from '$lib/plugins.js';
+import type { BlockDefinition, Plugin, PluginDefinitions, PluginOperations } from '$lib/plugins.js';
 import { mediaKinds } from '$lib/crdt/semantics.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
-import { fileUploads, type Uploader } from '../uploads.svelte.js';
+import type { Uploader } from '../uploads.svelte.js';
 import {
 	keywordsOf,
 	labelsWith,
 	mediaEnglish,
-	viewLabels,
 	type MediaLabels,
 	type PartialLabels
 } from '$lib/labels.js';
@@ -19,47 +18,91 @@ import type { MediaEmptyController } from './empty.svelte.js';
 /** The media kinds a view shows the labels of. */
 export type MediaKind = 'embed' | 'bookmark' | 'file' | 'video' | 'audio';
 
-/**
- * Each view's media labels, by kind: the first plugin of a kind listed in a
- * view claims them, as its kind record (first wins).
- */
-export const mediaLabels: Record<MediaKind, ReturnType<typeof viewLabels<MediaLabels>>> = {
-	embed: viewLabels(mediaEnglish),
-	bookmark: viewLabels(mediaEnglish),
-	file: viewLabels(mediaEnglish),
-	video: viewLabels(mediaEnglish),
-	audio: viewLabels(mediaEnglish)
+/** Each media kind's icon: its menu row, its empty block, its paste offer. */
+export const MEDIA_ICONS: Record<MediaKind, string> = {
+	embed: '⧉',
+	bookmark: '🔖',
+	file: '📎',
+	video: '🎬',
+	audio: '🎵'
 };
 
-const empties = new WeakMap<
-	Edytor,
-	Partial<Record<MediaKind, { snippet?: Snippet<[MediaEmptyController]>; upload?: Uploader }>>
->();
+/**
+ * A media kind in a view: the first plugin of the kind listed in it claims
+ * it, as its kind record (first wins): its words, its empty block's
+ * `empty` snippet (none: the built-in markup) and `upload`, how a block of
+ * it stores a source, and the embed's allowlist.
+ */
+export type MediaView = {
+	labels: MediaLabels;
+	empty?: Snippet<[MediaEmptyController]>;
+	upload?: Uploader;
+	/** Store `value` (a link, or the URL an upload of `file` answered) on `block`; answers whether it took it. */
+	store: (block: Block, value: string, file?: File) => boolean;
+	providers?: readonly EmbedProvider[];
+};
+
+const views = new WeakMap<Edytor, Partial<Record<MediaKind, MediaView>>>();
+
+/** The view's media kind, when a plugin of it is listed there. */
+export const mediaView = (edytor: Edytor | undefined, kind: MediaKind): MediaView | undefined =>
+	edytor && views.get(edytor)?.[kind];
+
+/** The words of `kind` in the view (English for none, or a view no plugin of it is listed in). */
+export const mediaLabelsOf = (edytor: Edytor | undefined, kind: MediaKind): MediaLabels =>
+	mediaView(edytor, kind)?.labels ?? mediaEnglish;
 
 /**
- * Each view's empty block, by kind: its `empty` snippet (with none, the
- * built-in markup) and its `upload`. The first plugin of a kind listed in a
- * view claims them, as its kind record; `claim` answers whether it did.
+ * A media kind's plugin (Notion's): a void `figure` with an editable
+ * caption, its preset (its icon, `keywords`) and words, and its view
+ * (`MediaView`), which the first plugin of the kind listed claims. `own`
+ * answers the kind's own parts: how it stores a source, its hooks and its
+ * record (its snippet, its export and import); `claims` says whether this
+ * plugin claimed the kind in `edytor`.
  */
-export const mediaEmpty = {
-	claim(
-		edytor: Edytor | undefined,
+export const mediaPlugin =
+	(
 		kind: MediaKind,
-		snippet?: Snippet<[MediaEmptyController]>,
-		upload?: Uploader
-	) {
-		if (!edytor) return false;
-		const own = empties.get(edytor) ?? {};
-		empties.set(edytor, own);
-		if (own[kind]) return false;
-		own[kind] = { snippet, upload };
-		return true;
-	},
-	of: (edytor: Edytor | undefined, kind: MediaKind) =>
-		edytor ? empties.get(edytor)?.[kind]?.snippet : undefined,
-	upload: (edytor: Edytor | undefined, kind: MediaKind) =>
-		edytor ? empties.get(edytor)?.[kind]?.upload : undefined
-};
+		options: MediaPluginOptions,
+		keywords: string[],
+		own: (
+			labels: MediaLabels,
+			edytor: Edytor,
+			claims: boolean
+		) => Pick<MediaView, 'store' | 'providers'> & {
+			hooks?: PluginOperations & PluginDefinitions;
+			record: Partial<BlockDefinition>;
+		}
+	): Plugin =>
+	(edytor) => {
+		const labels = labelsWith(mediaEnglish, options.labels);
+		const kinds = edytor && (views.get(edytor) ?? {});
+		const claims = !!kinds && !kinds[kind];
+		const { hooks, record, ...view } = own(labels, edytor, claims);
+		if (claims)
+			views.set(edytor, {
+				...kinds,
+				[kind]: { labels, empty: options.empty, upload: options.upload, ...view }
+			});
+		return {
+			...hooks,
+			blocks: {
+				[kind]: {
+					...mediaKinds[kind],
+					element: 'figure',
+					presets: [
+						{
+							label: labels[kind].label,
+							icon: MEDIA_ICONS[kind],
+							keywords: keywordsOf(`block.${kind}`, keywords, options.keywords),
+							group: 'Media'
+						}
+					],
+					...record
+				}
+			}
+		};
+	};
 
 /**
  * A web page's URL a media block may store or render: the link sanitizer's
@@ -334,100 +377,3 @@ export const mediaSourceOf = (element: HTMLElement | undefined) =>
 	);
 
 export { escapeHtml };
-
-/** The files each media kind takes: a video, an audio track, any other file. */
-const ACCEPTS: Record<'video' | 'audio' | 'file', (file: File) => boolean> = {
-	video: (file) => /^video\//i.test(file.type),
-	audio: (file) => /^audio\//i.test(file.type),
-	file: () => true
-};
-
-/**
- * Register `type`'s uploads on the view's (`media.files`): with an
- * `upload`, the files it takes (the file kind: any no other kind takes)
- * become its blocks. Answers the paste hook to list, or `undefined`
- * without an `upload` or a view.
- */
-export const mediaUploads = (
-	edytor: Edytor | undefined,
-	type: 'video' | 'audio' | 'file',
-	upload: Uploader | undefined
-): PluginOperations['onPaste'] => {
-	const uploads = upload ? fileUploads(edytor) : undefined;
-	if (!uploads || !upload) return undefined;
-	uploads.register({
-		type,
-		accepts: ACCEPTS[type],
-		fallback: type === 'file',
-		upload,
-		data: (file, answer) => {
-			const src = safeMediaSrc(answer);
-			if (!src) return null;
-			return type === 'file'
-				? { src, name: file.name || fileNameOf(src), size: file.size }
-				: { src };
-		},
-		filled: (data) => safeMediaSrc(data.src) !== null
-	});
-	return uploads.paste;
-};
-
-/** Store `value` as `block`'s source when it is one (`safeMediaSrc`); answers whether it did. */
-export const storeSource = (block: Block | undefined, value: string) => {
-	const src = safeMediaSrc(value);
-	if (!block || !src) return false;
-	block.data.src = src;
-	return true;
-};
-
-/**
- * The plugin of a kind holding one source (a video, an audio track, an
- * attachment; Notion's): a void `figure` with an editable caption, its
- * preset (`icon`, `keywords`), its words and its empty block (`mediaEmpty`),
- * the pasted and dropped files it takes with an `upload` (its first listing
- * in a view), and `record`'s own parts (its snippet). A video or an audio
- * track exports as its tag in a `figure` and imports from one (bare, or in
- * a `figure`) with a safe `src` or `source`; the file kind brings its own.
- */
-export const sourcePlugin =
-	(
-		kind: 'video' | 'audio' | 'file',
-		options: MediaPluginOptions,
-		icon: string,
-		keywords: string[],
-		record: () => BlockDefinition
-	): Plugin =>
-	(edytor) => {
-		const first = mediaEmpty.claim(edytor, kind, options.empty, options.upload);
-		const onPaste = first ? mediaUploads(edytor, kind, options.upload) : undefined;
-		const labels = labelsWith(mediaEnglish, options.labels);
-		mediaLabels[kind].claim(edytor, labels);
-		return {
-			...(onPaste ? { onPaste } : {}),
-			blocks: {
-				[kind]: {
-					...mediaKinds[kind],
-					element: 'figure',
-					presets: [
-						{
-							label: labels[kind].label,
-							icon,
-							keywords: keywordsOf(`block.${kind}`, keywords, options.keywords),
-							group: 'Media'
-						}
-					],
-					html: (block, caption) => {
-						const src = safeMediaSrc(block.data?.src);
-						// The tag, then its attributes: `<video src="…" controls></video>`.
-						const media = src ? `<${kind}` + ` src="${escapeHtml(src)}" controls></${kind}>` : '';
-						return `<figure>${media}<figcaption>${caption}</figcaption></figure>`;
-					},
-					parse: (el) => {
-						const src = mediaSourceOf(claimed(el, kind));
-						return src ? { src } : undefined;
-					},
-					...record()
-				}
-			}
-		};
-	};

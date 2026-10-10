@@ -167,81 +167,36 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 		}
 	};
 
-	const restoreCachedSelectionAfterKeyboardFocus = (event: FocusEvent) => {
-		if (edytor.readonly || event.target !== node) {
-			return;
-		}
-
-		if (event.relatedTarget instanceof Node && node.contains(event.relatedTarget)) {
-			return;
-		}
-
-		if (getEventTimeStamp(event) - lastPointerDownInsideEditorAt < 250) {
-			return;
-		}
-
-		const text = edytor.selection.state.startText;
-		if (!text) {
-			return;
-		}
-
-		const offset = edytor.selection.state.yStart;
-		const applyMeaningfulDomSelection = () => {
-			const selection = getDomSelectionSnapshot(node);
-			if (!selection?.anchorNode || !selection.focusNode) {
-				return false;
-			}
-
-			if (!node.contains(selection.anchorNode) || !node.contains(selection.focusNode)) {
-				return false;
-			}
-
-			const anchorText = edytor.selection.getTextOfNode(selection.anchorNode);
-			const focusText = edytor.selection.getTextOfNode(selection.focusNode);
-			if (!anchorText || !focusText) {
-				return false;
-			}
-
-			const isBrowserFocusReset =
-				selection.isCollapsed &&
-				anchorText === edytor.root?.firstEditableText &&
-				getYIndex(anchorText, selection.anchorNode, selection.anchorOffset) === 0;
-			if (isBrowserFocusReset) {
-				return false;
-			}
-
-			edytor.selection.applySelectionSnapshot(selection);
-			return true;
-		};
-		const restore = () => {
-			if (getActiveElement(node) !== node) {
-				return;
-			}
-
-			if (applyMeaningfulDomSelection()) {
-				return;
-			}
-
-			const s = edytor.selection.state;
-			// A remote delivery or command may have legitimately moved the
-			// selection since the focus-time capture — the CURRENT state
-			// owns the caret then; writing the cached point would yank it
-			// back to a pre-update position. The cache only wins while the
-			// state still equals it, or when the browser collapsed the
-			// caret to its focus-reset spot (first editable text at 0).
-			if (!s.isCollapsed || !s.startText) {
-				return;
-			}
-			const focusReset = s.startText === edytor.root?.firstEditableText && s.yStart === 0;
-			const [targetText, targetOffset] = focusReset ? [text, offset] : [s.startText, s.yStart];
-			if (!targetText?.node?.isConnected) {
-				return;
-			}
-
-			edytor.selection.setAtTextOffset(targetText, Math.min(targetOffset, targetText.length));
-		};
-
-		queueMicrotask(restore);
+	/**
+	 * A keyboard or programmatic focus returns to the model's selection: the
+	 * caret the browser puts at the start for the focus (its focus reset) is
+	 * not the user's, so the value is shown again; any other DOM selection of
+	 * the host's is the focus's own and adopted.
+	 */
+	const restoreAfterKeyboardFocus = (event: FocusEvent) => {
+		if (edytor.readonly || event.target !== node) return;
+		if (event.relatedTarget instanceof Node && node.contains(event.relatedTarget)) return;
+		if (getEventTimeStamp(event) - lastPointerDownInsideEditorAt < 250) return;
+		if (!edytor.selection.projection.start) return;
+		queueMicrotask(() => {
+			if (getActiveElement(node) !== node) return;
+			const dom = getDomSelectionSnapshot(node);
+			const { anchorNode, focusNode } = dom ?? {};
+			const text = anchorNode && edytor.selection.getTextOfNode(anchorNode);
+			const own =
+				text &&
+				focusNode &&
+				node.contains(anchorNode) &&
+				node.contains(focusNode) &&
+				edytor.selection.getTextOfNode(focusNode) &&
+				!(
+					dom!.isCollapsed &&
+					text === edytor.root?.firstEditableText &&
+					getYIndex(text, anchorNode, dom!.anchorOffset) === 0
+				);
+			if (own) edytor.selection.applySelectionSnapshot(dom);
+			else edytor.selection.select(edytor.selection.value);
+		});
 	};
 
 	return [
@@ -330,7 +285,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 				// A focus from outside (Tab, an app's `focus()`) places the user's caret.
 				edytor.projector.pressed();
 			}
-			restoreCachedSelectionAfterKeyboardFocus(event);
+			restoreAfterKeyboardFocus(event);
 		}),
 		on(node, 'focusout', (event: FocusEvent) => {
 			// Focus moving to a concrete element outside the editor is the

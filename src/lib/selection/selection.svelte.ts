@@ -27,6 +27,7 @@ import {
 	blockSelection,
 	noSelection,
 	project,
+	sameEnds,
 	sameValue,
 	serialize,
 	textSelection,
@@ -196,8 +197,6 @@ export class EdytorSelection {
 	scrollOnDisplay = false;
 	/** @internal The intent serial (gestures but `input`) when the last display was requested. */
 	requestSerial = 0;
-	/** @internal Why the last `select()` ran. */
-	cause: SelectCause = 'model';
 	/**
 	 * DOM fields (Surface) observed with the value they describe: the
 	 * mark-edge side a display or a DOM derive observed it with, and whether
@@ -292,7 +291,6 @@ export class EdytorSelection {
 		// history or host code asks for one.
 		if (cause === 'repair') this.edytor.surface.update();
 		else if (cause !== 'dom') this.display();
-		this.cause = cause;
 		if (surface) this.#surface = { value, ...surface };
 		const projection = project(value, this.edytor.facade);
 		const blocksOf = (ids: readonly string[]) =>
@@ -410,10 +408,8 @@ export class EdytorSelection {
 		const prev = this.value;
 		if (prev.kind !== 'text' || !prev.pending || next.kind !== 'text' || 'pending' in next)
 			return next;
-		const [a, b] = [project(prev, this.edytor.facade), project(next, this.edytor.facade)];
-		const at = (p: SelectionPoint | null, q: SelectionPoint | null) =>
-			p !== null && q !== null && p.block === q.block && p.offset === q.offset;
-		return at(a.start, b.start) && at(a.end, b.end)
+		const a = project(prev, this.edytor.facade);
+		return a.start && sameEnds(a, project(next, this.edytor.facade))
 			? textSelection(next.anchor, next.focus, prev.pending)
 			: next;
 	};
@@ -650,14 +646,8 @@ export class EdytorSelection {
 		// range anchored in host text but focused inside an island must not
 		// resolve either.
 		const container = this.edytor.node;
-		if (
-			!selection ||
-			!isOwnPoint(container, selection.anchorNode) ||
-			!isOwnPoint(container, selection.focusNode) ||
-			isKindControl(container, getActiveElement(container))
-		) {
-			return;
-		}
+		const read = this.#read(selection);
+		if (!selection || !read || isKindControl(container, getActiveElement(container))) return;
 
 		const { anchorNode, focusNode, isCollapsed } = selection;
 		// A native vertical move that landed on no caret stop takes the key's line stop.
@@ -668,8 +658,7 @@ export class EdytorSelection {
 			landed(this.edytor)
 		)
 			return;
-		const isReversed = isBackward(selection);
-		const { startNode, start, endNode, end } = ordered(selection, isReversed);
+		const { isReversed, startNode, start, endNode, end } = read;
 
 		const atom = getInlineBlockInSelectedRange(
 			this.edytor,
@@ -945,16 +934,25 @@ export class EdytorSelection {
 	 * @internal
 	 */
 	mint = (snapshot: DomSelectionSnapshot): SelectionValue | null => {
-		const container = this.edytor.node;
-		const { anchorNode, focusNode } = snapshot;
-		if (!container || !anchorNode || !focusNode) return null;
-		for (const node of [anchorNode, focusNode]) if (!isOwnPoint(container, node)) return null;
-		const reversed = isBackward(snapshot);
-		const { startNode, start, endNode, end } = ordered(snapshot, reversed);
+		const read = this.#read(snapshot);
+		if (!read) return null;
+		const { isReversed, startNode, start, endNode, end } = read;
 		const startText = this.getTextOfNode(startNode, start);
 		const endText = startText && this.getTextOfNode(endNode, end);
 		if (!startText || !endText) return null;
 		const from = offsetIn(startText, startNode, start);
-		return this.textValue(startText, from, endText, offsetIn(endText, endNode, end), reversed);
+		return this.textValue(startText, from, endText, offsetIn(endText, endNode, end), isReversed);
+	};
+
+	/**
+	 * A DOM selection whose two endpoints are this editor's own points (not
+	 * in a kind's control): its endpoints in document order and its direction.
+	 */
+	#read = (dom: DomSelectionSnapshot | null) => {
+		const container = this.edytor.node;
+		if (!dom || !isOwnPoint(container, dom.anchorNode) || !isOwnPoint(container, dom.focusNode))
+			return null;
+		const isReversed = isBackward(dom);
+		return { isReversed, ...ordered(dom, isReversed) };
 	};
 }

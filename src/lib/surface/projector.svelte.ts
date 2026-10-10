@@ -54,7 +54,8 @@ import {
 	getYIndex,
 	isTextBoundSelectionPoint
 } from '../selection/selection.utils.js';
-import { project, type SelectionValue } from '../session/selection.js';
+import { project, sameEnds, type SelectionValue } from '../session/selection.js';
+
 import type { Attempt } from '../session/attempt.js';
 import type { RangeEndpoints } from '../edytor.utils.js';
 
@@ -408,51 +409,39 @@ export class Projector {
 		if (this.#composing()) return false;
 		if (!requested && (selection.dragging || edytor.isHandlingUserInput)) return false;
 		const value = selection.value;
-		if (value.kind === 'none') {
-			// No selection shows no DOM range: asked for (a history step giving none
-			// back, a closing menu, a drift over it), a range inside the editor is
-			// cleared, and under the host's focus a caret the browser parks later
-			// is its own (`placed`), whatever key comes before it.
-			const active = getActiveElement(node);
-			if (requested && active && node.contains(active)) this.#parking = true;
-			const dom = getDomSelection(node);
-			if (requested && dom?.anchorNode && node.contains(dom.anchorNode) && this.#ours(requested)) {
-				clearDomSelection(node);
-				this.#displayed = null;
-				this.#serial = edytor.intentSerial;
-			}
-			return true;
-		}
-		if (!selection.projection.start) {
+		if (value.kind !== 'none' && !selection.projection.start) {
 			// A value that no longer resolves: the repair lands it (a live
 			// destination may exist only once this flush mounted it).
 			selection.restoreDeadSelectionEndpoints();
 			return false;
 		}
 		const dom = getDomSelection(node);
-		if (!dom) return true;
 		if (value.kind !== 'text') {
-			// A block set or an atom shows as selected elements, not a range.
-			// Displayed even when the DOM already holds no range (the atom's
-			// own pointerdown cleared it): a caret the browser parks later
-			// without a gesture (focusing the host) is then drift, not intent;
-			// the one it parks for the atom's press is drift through its release
-			// (`parked`). An atom asked for under the host's focus (a Shift+arrow
-			// onto it) is the press's case without the press: Chromium parks a
-			// caret at the host's start at the next key, whose `selectionchange`
-			// can land after that key counted as a gesture, so it stays the
-			// browser's (`#parking`), whatever key comes before it, as under none.
+			// None, a block set or an atom shows no DOM range. No selection asked
+			// for (a history step giving none back, a closing menu, a drift over
+			// it) clears a range inside the editor; a block set or an atom is
+			// displayed even when the DOM already holds no range (the atom's own
+			// pointerdown cleared it): a caret the browser parks later without a
+			// gesture (focusing the host) is then drift, not intent; the one it
+			// parks for the atom's press is drift through its release (`parked`).
+			// Under the host's focus, none or an atom asked for (a Shift+arrow
+			// onto it: Chromium parks a caret at the host's start at the next key,
+			// whose `selectionchange` can land after that key counted as a
+			// gesture) leaves any caret the browser parks later its own
+			// (`#parking`, `placed`), whatever key comes before it.
 			const active = getActiveElement(node);
-			if (value.kind === 'atom' && requested && active && node.contains(active))
+			if (requested && value.kind !== 'blocks' && active && node.contains(active))
 				this.#parking = true;
-			const inside = Boolean(dom.anchorNode && node.contains(dom.anchorNode));
-			if ((inside || dom.rangeCount === 0) && this.#ours(requested)) {
+			const inside = !!dom?.anchorNode && node.contains(dom.anchorNode);
+			const clears = value.kind === 'none' ? requested && inside : inside || dom?.rangeCount === 0;
+			if (clears && this.#ours(requested)) {
 				if (inside) clearDomSelection(node);
 				this.#displayed = null;
 				this.#serial = edytor.intentSerial;
 			}
 			return true;
 		}
+		if (!dom) return true;
 		const range = selection.textRange();
 		const { startText, yStart, endText, yEnd } = range;
 		const { isCollapsed, isReversed } = selection.projection;
@@ -611,15 +600,7 @@ export class Projector {
 		if (!snapshot?.anchorNode || this.#echoes(snapshot)) return;
 		const value = edytor.selection.mint(snapshot);
 		if (!value) return;
-		const minted = project(value, edytor.facade);
-		const current = edytor.selection.projection;
-		if (
-			minted.start?.block === current.start?.block &&
-			minted.start?.offset === current.start?.offset &&
-			minted.end?.block === current.end?.block &&
-			minted.end?.offset === current.end?.offset
-		)
-			return;
+		if (sameEnds(project(value, edytor.facade), edytor.selection.projection)) return;
 		this.#minted = { value, transaction };
 	};
 

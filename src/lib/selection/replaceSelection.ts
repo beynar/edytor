@@ -41,7 +41,7 @@ export const getSelectionBlocks = (edytor: Edytor): Block[] => {
 
 	if (projection.isCollapsed) return start ? [start] : [];
 	const enters = (block: Block) =>
-		block.isContainer && [start, end].some((edge) => edge && isInside(edge, block));
+		block.isContainer && [start, end].some((edge) => edge?.isChildOf(block));
 	return projection.blocks.flatMap((id) => {
 		const block = edytor.idToBlock.get(id);
 		return block && !hidden(block) && !enters(block) ? [block] : [];
@@ -62,13 +62,6 @@ export const flipToggles = (blocks: readonly Block[]) => {
 	for (const { node } of blocks)
 		if (node?.tagName === 'DETAILS')
 			(node as HTMLDetailsElement).open = !(node as HTMLDetailsElement).open;
-};
-
-/** Whether `block` is a descendant of `ancestor`. */
-const isInside = (block: Block, ancestor: Block) => {
-	for (let parent = block.parent; parent; parent = parent.parent)
-		if (parent === ancestor) return true;
-	return false;
 };
 
 /**
@@ -189,7 +182,7 @@ export const movable = (blocks: Iterable<Block>): Block[] => {
  */
 export const selectMoved = (edytor: Edytor, moved: Block[], before: Iterable<Block>) => {
 	const held = [...before];
-	const kept = held.filter((block) => moved.some((root) => isInside(block, root)));
+	const kept = held.filter((block) => moved.some((root) => block.isChildOf(root)));
 	// A layout moved for the blocks covering it whole stays selected as those blocks.
 	const lifted = new Set(liftLayouts(kept));
 	const roots = moved.filter((block) => !lifted.has(block) || held.includes(block));

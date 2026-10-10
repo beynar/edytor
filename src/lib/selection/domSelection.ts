@@ -1,186 +1,98 @@
-const hasSelectionApi = (root: Node): root is Node & { getSelection: () => Selection | null } =>
-	typeof (root as Node & { getSelection?: unknown }).getSelection === 'function';
+/**
+ * The DOM selection of the document or shadow root holding a node, and a
+ * snapshot of it: its endpoints as plain values and its ranges, a
+ * multi-range selection (Firefox) read as its bounding range.
+ */
+type Root = ShadowRoot & { getSelection?: () => Selection | null };
 
-const isShadowRoot = (root: Node | undefined): root is ShadowRoot =>
-	typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot;
-
-const getOwnerDocument = (node?: Node | null): Document | null =>
+const ownerOf = (node?: Node | null): Document | null =>
 	node?.ownerDocument ?? (typeof document === 'undefined' ? null : document);
+
+/** The shadow root holding `node`, if any. */
+const shadowOf = (node?: Node | null): Root | null => {
+	const root = node?.getRootNode();
+	return typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot ? root : null;
+};
+
+const documentSelection = (node?: Node | null) => {
+	const owner = ownerOf(node);
+	return owner?.defaultView?.getSelection?.() ?? owner?.getSelection?.() ?? null;
+};
 
 export type DomSelectionSnapshot = Pick<
 	Selection,
-	| 'anchorNode'
-	| 'anchorOffset'
-	| 'direction'
-	| 'focusNode'
-	| 'focusOffset'
-	| 'isCollapsed'
-	| 'rangeCount'
-	| 'toString'
-> & {
-	getRangeAt: (index: number) => Range;
-	nativeSelection: Selection | null;
-	type?: string;
-};
+	'anchorNode' | 'anchorOffset' | 'focusNode' | 'focusOffset' | 'isCollapsed' | 'rangeCount'
+> & { getRangeAt: (index: number) => Range };
 
-const getDocumentSelection = (node?: Node | null) => {
-	const ownerDocument = getOwnerDocument(node);
-	return ownerDocument?.defaultView?.getSelection?.() ?? ownerDocument?.getSelection?.() ?? null;
-};
+export const getDomSelection = (node?: Node | null): Selection | null =>
+	shadowOf(node)?.getSelection?.() ?? documentSelection(node);
 
-export const getDomSelection = (node?: Node | null): Selection | null => {
-	const root = node?.getRootNode();
-	if (isShadowRoot(root) && hasSelectionApi(root)) {
-		const selection = root.getSelection();
-		if (selection) {
-			return selection;
-		}
-	}
-
-	return getDocumentSelection(node);
-};
-
-export const getActiveElement = (node?: Node | null): Element | null => {
-	const root = node?.getRootNode();
-	if (isShadowRoot(root)) {
-		return root.activeElement ?? getOwnerDocument(node)?.activeElement ?? null;
-	}
-
-	return getOwnerDocument(node)?.activeElement ?? null;
-};
+export const getActiveElement = (node?: Node | null): Element | null =>
+	shadowOf(node)?.activeElement ?? ownerOf(node)?.activeElement ?? null;
 
 export const clearDomSelection = (node?: Node | null) => {
 	getDomSelection(node)?.removeAllRanges();
 };
 
 export const createDomRange = (node: Node): Range => {
-	const ownerDocument = getOwnerDocument(node);
-	if (!ownerDocument) {
-		throw new Error('Cannot create a DOM range without an owner document');
-	}
-	return ownerDocument.createRange();
+	const owner = ownerOf(node);
+	if (!owner) throw new Error('Cannot create a DOM range without an owner document');
+	return owner.createRange();
 };
 
-const isSelectionCollapsed = (selection: Selection) =>
-	selection.anchorNode === selection.focusNode && selection.anchorOffset === selection.focusOffset;
-
-const createDomSelectionSnapshot = (selection: Selection): DomSelectionSnapshot => ({
-	anchorNode: selection.anchorNode,
-	anchorOffset: selection.anchorOffset,
-	direction: selection.direction,
-	focusNode: selection.focusNode,
-	focusOffset: selection.focusOffset,
-	isCollapsed: isSelectionCollapsed(selection),
-	rangeCount: selection.rangeCount,
-	getRangeAt: (index) => selection.getRangeAt(index),
-	nativeSelection: selection,
-	toString: () => selection.toString(),
-	type: (selection as Selection & { type?: string }).type
-});
-
-export const createDomSelectionSnapshotFromRange = (
-	range: Range,
-	nativeSelection: Selection | null = null
-): DomSelectionSnapshot => ({
+/** A snapshot of one range, forward. */
+export const createDomSelectionSnapshotFromRange = (range: Range): DomSelectionSnapshot => ({
 	anchorNode: range.startContainer,
 	anchorOffset: range.startOffset,
-	direction: 'forward',
 	focusNode: range.endContainer,
 	focusOffset: range.endOffset,
 	isCollapsed: range.collapsed,
 	rangeCount: 1,
-	getRangeAt: (index) => {
-		if (index !== 0) {
-			throw new Error(`Selection range ${index} is unavailable`);
-		}
-		return range;
-	},
-	nativeSelection,
-	toString: () => range.toString(),
-	type: range.collapsed ? 'Caret' : 'Range'
+	getRangeAt: () => range
 });
 
-const createRangeFromStaticRange = (staticRange: StaticRange) => {
-	const range = createDomRange(staticRange.startContainer);
-	range.setStart(staticRange.startContainer, staticRange.startOffset);
-	range.setEnd(staticRange.endContainer, staticRange.endOffset);
-	return range;
-};
-
-const isNodeInside = (root: Node, target: Node) => root === target || root.contains(target);
-
-const getContainedRanges = (selection: Selection, container?: Node | null) => {
+/**
+ * A snapshot of `selection`. Several ranges inside `container` are read as
+ * their bounding range, and the DOM is canonicalized to it too, so what the
+ * user sees matches what the model derives (the editor has no multi-range
+ * model); one is read alone.
+ */
+const snapshotOf = (selection: Selection, container?: Node | null): DomSelectionSnapshot => {
 	const ranges: Range[] = [];
-	for (let index = 0; index < selection.rangeCount; index++) {
+	for (let index = 0; selection.rangeCount > 1 && index < selection.rangeCount; index++) {
 		const range = selection.getRangeAt(index);
 		if (
 			!container ||
-			(isNodeInside(container, range.startContainer) && isNodeInside(container, range.endContainer))
-		) {
+			(container.contains(range.startContainer) && container.contains(range.endContainer))
+		)
 			ranges.push(range);
-		}
 	}
-	return ranges;
-};
-
-const createDomSelectionSnapshotFromMultiRange = (
-	selection: Selection,
-	container?: Node | null
-): DomSelectionSnapshot | null => {
-	if (selection.rangeCount <= 1) {
-		return null;
+	if (ranges.length === 1) return createDomSelectionSnapshotFromRange(ranges[0]);
+	if (ranges.length > 1) {
+		const [first, last] = ranges.reduce(
+			([first, last], range) => [
+				range.compareBoundaryPoints(Range.START_TO_START, first) < 0 ? range : first,
+				range.compareBoundaryPoints(Range.END_TO_END, last) > 0 ? range : last
+			],
+			[ranges[0], ranges[0]]
+		);
+		const bounds = createDomRange(first.startContainer);
+		bounds.setStart(first.startContainer, first.startOffset);
+		bounds.setEnd(last.endContainer, last.endOffset);
+		selection.removeAllRanges();
+		selection.addRange(bounds);
+		return createDomSelectionSnapshotFromRange(bounds);
 	}
-
-	const ranges = getContainedRanges(selection, container);
-	if (ranges.length === 0) {
-		return null;
-	}
-
-	if (ranges.length === 1) {
-		return createDomSelectionSnapshotFromRange(ranges[0], selection);
-	}
-
-	let firstRange = ranges[0];
-	let lastRange = ranges[0];
-	for (const range of ranges.slice(1)) {
-		if (range.compareBoundaryPoints(Range.START_TO_START, firstRange) < 0) {
-			firstRange = range;
-		}
-		if (range.compareBoundaryPoints(Range.END_TO_END, lastRange) > 0) {
-			lastRange = range;
-		}
-	}
-
-	const combinedRange = createDomRange(firstRange.startContainer);
-	combinedRange.setStart(firstRange.startContainer, firstRange.startOffset);
-	combinedRange.setEnd(lastRange.endContainer, lastRange.endOffset);
-	// Not just a read: a multi-range selection is canonicalized to its
-	// bounding range in the DOM too, so what the user sees matches the
-	// snapshot the model derives (the editor has no multi-range model).
-	selection.removeAllRanges();
-	selection.addRange(combinedRange);
-	return createDomSelectionSnapshotFromRange(combinedRange, selection);
-};
-
-const getComposedRangeSnapshot = (
-	root: ShadowRoot,
-	selection: Selection | null
-): DomSelectionSnapshot | null => {
-	if (typeof selection?.getComposedRanges !== 'function') {
-		return null;
-	}
-
-	const [staticRange] = selection.getComposedRanges({ shadowRoots: [root] });
-	if (
-		!staticRange ||
-		!root.contains(staticRange.startContainer) ||
-		!root.contains(staticRange.endContainer)
-	) {
-		return null;
-	}
-
-	const range = createRangeFromStaticRange(staticRange);
-	return createDomSelectionSnapshotFromRange(range, selection);
+	const { anchorNode, anchorOffset, focusNode, focusOffset } = selection;
+	return {
+		anchorNode,
+		anchorOffset,
+		focusNode,
+		focusOffset,
+		isCollapsed: anchorNode === focusNode && anchorOffset === focusOffset,
+		rangeCount: selection.rangeCount,
+		getRangeAt: (index) => selection.getRangeAt(index)
+	};
 };
 
 /**
@@ -249,28 +161,23 @@ export const scrollCaretIntoView = (root: Element | null | undefined) => {
 };
 
 export const getDomSelectionSnapshot = (node?: Node | null): DomSelectionSnapshot | null => {
-	const root = node?.getRootNode();
-	const documentSelection = getDocumentSelection(node);
-
-	if (isShadowRoot(root)) {
-		if (hasSelectionApi(root)) {
-			const shadowSelection = root.getSelection();
-			if (shadowSelection?.anchorNode) {
-				return (
-					createDomSelectionSnapshotFromMultiRange(shadowSelection, node) ??
-					createDomSelectionSnapshot(shadowSelection)
-				);
-			}
-		}
-
-		const composedSnapshot = getComposedRangeSnapshot(root, documentSelection);
-		if (composedSnapshot) {
-			return composedSnapshot;
+	const root = shadowOf(node);
+	const selection = documentSelection(node);
+	if (root) {
+		const own = root.getSelection?.();
+		if (own?.anchorNode) return snapshotOf(own, node);
+		// A selection inside a shadow root the document only reports composed.
+		const [composed] = selection?.getComposedRanges?.({ shadowRoots: [root] }) ?? [];
+		if (
+			composed &&
+			root.contains(composed.startContainer) &&
+			root.contains(composed.endContainer)
+		) {
+			const range = createDomRange(composed.startContainer);
+			range.setStart(composed.startContainer, composed.startOffset);
+			range.setEnd(composed.endContainer, composed.endOffset);
+			return createDomSelectionSnapshotFromRange(range);
 		}
 	}
-
-	return documentSelection
-		? (createDomSelectionSnapshotFromMultiRange(documentSelection, node) ??
-				createDomSelectionSnapshot(documentSelection))
-		: null;
+	return selection && snapshotOf(selection, node);
 };

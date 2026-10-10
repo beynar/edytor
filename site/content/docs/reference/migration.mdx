@@ -14,7 +14,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
-Nothing yet.
+- **No drag-and-drop dependencies.** The editor no longer depends on Atlassian's drag-and-drop packages (`@atlaskit/pragmatic-drag-and-drop` and its hitbox and auto-scroll packages): it carries a copy of the parts its drags use, unchanged, about 23 KB less minified JavaScript in every app. Dragging behaves exactly as before. `BlockHandleController.registerHandle` is typed as returning `() => void`. If your app uses Pragmatic drag and drop itself, install it on its own; its drags and the editor's no longer share one adapter.
 
 ### From 1.0.0-rc.2
 
@@ -1115,6 +1115,7 @@ Every public change since 0.0.11, by area.
   - Built-ins: bold `strong`, italic `em`, underline `u`, strike `s`, code `code`, link `a` (sanitized `href`, `target`), superscript `sup`, subscript `sub`, color and highlight `span` with a sanitized `style`.
 - **`--edytor-trailing-space`.** The root has a bottom padding (`2em` by default, no specificity) where a click puts the caret in a trailing paragraph. See [styling](/docs/customization/styling#space-below-the-last-block).
 - **`edytor-long-page`.** The class on the editor or an ancestor gives top-level blocks `content-visibility: auto` and `contain-intrinsic-block-size: auto 32px`, under any theme (it replaced the Notion theme's `--edytor-block-visibility`); the block handles and remote carets measure a skipped block through its nearest rendered ancestor.
+- **Drag and drop without dependencies.** The block handles and table grips run Atlassian's Pragmatic drag and drop from a copy inside the editor (the element adapter, its drag preview, the list item hitbox and the auto-scroll), no longer from its packages.
 
 ### Collaboration and providers
 

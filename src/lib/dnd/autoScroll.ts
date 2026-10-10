@@ -1,4 +1,4 @@
-import { autoScrollApi } from './pragmatic.js';
+import { autoScroll, autoScrollWindow } from './pragmatic.js';
 
 /**
  * Auto-scroll for one drag (a block's, a table row's or column's; Atlassian's
@@ -15,7 +15,6 @@ export const autoScrollFor = (
 	// The scroller hit-tests with `elementsFromPoint` every frame (jsdom has none),
 	// so it is created only where that exists.
 	if (typeof root.ownerDocument.elementsFromPoint !== 'function') return () => {};
-	const { autoScroll, autoScrollWindow } = autoScrollApi();
 	const canScroll = ({ source }: { source: { data: Record<string | symbol, unknown> } }) =>
 		ours(source.data);
 	const releases = [autoScrollWindow({ canScroll })];

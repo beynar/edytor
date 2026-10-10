@@ -146,7 +146,7 @@ The same snippet works with `createBlockHandlesPlugin({ handle })` in `plugins`.
 
 ## Drag and drop
 
-Drag and drop uses Atlassian's [Pragmatic drag and drop](https://atlassian.design/components/pragmatic-drag-and-drop/about) and its [auto-scroll](#auto-scroll), and its drop zones use the [list item hitbox](https://atlassian.design/components/pragmatic-drag-and-drop/optional-packages/hitbox/about) (`@atlaskit/pragmatic-drag-and-drop-hitbox/list-item`), following its tree guidance: each level of the tree is a list, and an expanded item offers no "after" on its own row. While you drag, each block is a drop target. As in Notion, the hitbox splits the block's own row (not its children) into two halves, and the pointer's horizontal position decides nesting and the level:
+Drag and drop uses Atlassian's [Pragmatic drag and drop](https://atlassian.design/components/pragmatic-drag-and-drop/about) (a copy of its code inside the editor, not a dependency) and its [auto-scroll](#auto-scroll), and its drop zones use the [list item hitbox](https://atlassian.design/components/pragmatic-drag-and-drop/optional-packages/hitbox/about) (`@atlaskit/pragmatic-drag-and-drop-hitbox/list-item`), following its tree guidance: each level of the tree is a list, and an expanded item offers no "after" on its own row. While you drag, each block is a drop target. As in Notion, the hitbox splits the block's own row (not its children) into two halves, and the pointer's horizontal position decides nesting and the level:
 
 | Pointer position | Drop |
 | --- | --- |

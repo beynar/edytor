@@ -19,6 +19,9 @@
 	"exclude": [
 		"src/tests/**",
 		"src/lib/crdt/vendor/**",
+		// The forked drag and drop (`src/lib/dnd/vendor`): its JS is upstream's,
+		// read through the upstream declarations beside it.
+		"src/lib/dnd/vendor/**",
 		// `engine.js` is the runtime-only shim that pulls the vendored v14
 		// sources into the bundle. Its type surface is declared by the adjacent
 		// `engine.d.ts` (`Y: EngineApi`); keeping the .js out of the program

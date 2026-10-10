@@ -84,6 +84,7 @@ const groupOf = (name) => {
 	if (BY === 'file') return name;
 	if (name.startsWith('svelte/')) return 'svelte (runtime)';
 	if (name.startsWith('edytor/crdt/vendor/yjs')) return 'edytor/crdt/vendor/yjs';
+	if (name.startsWith('edytor/dnd/vendor/pragmatic')) return 'edytor/dnd/vendor/pragmatic';
 	const parts = name.split('/');
 	if (parts[0] === 'edytor')
 		return parts
@@ -161,7 +162,7 @@ for (const [app, svelteSource] of Object.entries(APPS)) {
 		const base = join(root, 'src/lib', rel.replace(/\.js$/, ''));
 		const file = [`${base}.ts`, `${base}.js`, join(root, 'src/lib', rel)].find(existsSync);
 		if (!file) continue;
-		loc[rel.startsWith('crdt/vendor/') ? 'vendor' : 'edytor'] += countFile(file);
+		loc[/^(crdt|dnd)\/vendor\//.test(rel) ? 'vendor' : 'edytor'] += countFile(file);
 		loc.files++;
 	}
 	totals.loc = loc;
@@ -173,7 +174,7 @@ for (const [app, svelteSource] of Object.entries(APPS)) {
 	report[app] = { totals, groups };
 
 	console.log(
-		`\n${app}: ${kb(totals.min)} min (${kb(totals.entry)} entry, ${kb(totals.lazy)} lazy in ${totals.chunks - 1} chunks), ${kb(totals.gzip)} gzip, ${kb(totals.brotli)} brotli; source lines shipped: ${loc.edytor} edytor + ${loc.vendor} vendored engine (${loc.files} files)`
+		`\n${app}: ${kb(totals.min)} min (${kb(totals.entry)} entry, ${kb(totals.lazy)} lazy in ${totals.chunks - 1} chunks), ${kb(totals.gzip)} gzip, ${kb(totals.brotli)} brotli; source lines shipped: ${loc.edytor} edytor + ${loc.vendor} vendored (${loc.files} files)`
 	);
 	for (const [group, bytes] of Object.entries(groups)
 		.sort((a, b) => b[1] - a[1])

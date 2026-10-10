@@ -1,5 +1,4 @@
 import { autoScrollFor } from '$lib/dnd/autoScroll.js';
-import type { ElementDropTargetEventPayloadMap } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 
 import type { Block } from '$lib/block/block.svelte.js';
 import type {
@@ -17,6 +16,7 @@ import {
 	extractInstruction,
 	setCustomNativeDragPreview,
 	type Availability,
+	type ElementDropTargetEventPayloadMap,
 	type Instruction
 } from '$lib/dnd/pragmatic.js';
 import { HIDDEN, hidden } from '$lib/selection/visibility.js';
@@ -348,7 +348,7 @@ export class BlockHandleController {
 		else selection.select(noSelection);
 	}
 
-	registerHandle(element: HTMLElement, block: Block) {
+	registerHandle(element: HTMLElement, block: Block): () => void {
 		if (!this.options.draggable) return () => {};
 		return draggable({
 			element,

@@ -107,7 +107,6 @@ const EXTERNALS = [
 	/^svelte(\/.*)?$/,
 	/^esm-env$/,
 	/^@tanstack\/highlight/,
-	/^@atlaskit\//,
 	/^lib0-v14$/ // the engine pulls lib0-v14/* subpaths — those stay bundled below
 ];
 

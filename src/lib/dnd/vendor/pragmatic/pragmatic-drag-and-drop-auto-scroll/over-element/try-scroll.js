@@ -1,0 +1,183 @@
+import { getInternalConfig } from '../shared/configuration.js';
+import { markAndGetEngagement } from '../shared/engagement-history.js';
+import { selector } from './data-attributes.js';
+import { getScrollBy } from './get-scroll-by.js';
+function isScrollingAvailable(value) {
+  return Boolean(value.top || value.left);
+}
+function tryScrollElements({
+  target,
+  input,
+  source,
+  findEntry,
+  timeSinceLastFrame,
+  available = {
+    top: true,
+    left: true
+  }
+}) {
+  var _container$getConfigu, _container$getAllowed, _container$getAllowed2;
+  // we cannot do any more scrolling
+  if (!isScrollingAvailable(available)) {
+    return available;
+  }
+
+  // run out of parents to search
+  if (!target) {
+    return available;
+  }
+  const element = target.closest(selector);
+
+  // cannot find any more scroll containers
+  if (!element) {
+    return available;
+  }
+  const container = findEntry(element);
+
+  // cannot find registration, this is bad.
+  // fail and just exit
+  if (!container) {
+    return available;
+  }
+  function continueSearchUp() {
+    var _element$parentElemen;
+    return tryScrollElements({
+      target: (_element$parentElemen = element === null || element === void 0 ? void 0 : element.parentElement) !== null && _element$parentElemen !== void 0 ? _element$parentElemen : null,
+      findEntry,
+      source,
+      timeSinceLastFrame,
+      input,
+      available
+    });
+  }
+  const feedback = {
+    input,
+    source,
+    element
+  };
+
+  // Engagement is not marked if scrolling is explicitly not allowed
+  if (container.canScroll && !container.canScroll(feedback)) {
+    return continueSearchUp();
+  }
+
+  // Marking engagement even if no edges are scrollable.
+  // We are marking engagement as soon as the element is scrolled over
+  const engagement = markAndGetEngagement(element);
+  const config = getInternalConfig((_container$getConfigu = container.getConfiguration) === null || _container$getConfigu === void 0 ? void 0 : _container$getConfigu.call(container, feedback));
+  const allowedAxis = (_container$getAllowed = (_container$getAllowed2 = container.getAllowedAxis) === null || _container$getAllowed2 === void 0 ? void 0 : _container$getAllowed2.call(container, feedback)) !== null && _container$getAllowed !== void 0 ? _container$getAllowed : 'all';
+  const scrollBy = getScrollBy({
+    element,
+    engagement,
+    input,
+    timeSinceLastFrame,
+    allowedAxis,
+    config
+  });
+
+  // Only allow scrolling in directions that have not already been used
+  const scroll = {
+    top: 0,
+    left: 0
+  };
+  if (available.top && scrollBy.top !== 0) {
+    scroll.top = scrollBy.top;
+    // can no longer scroll on the top after this
+    available.top = false;
+  }
+  if (available.left && scrollBy.left !== 0) {
+    scroll.left = scrollBy.left;
+    // can no longer scroll on the left after this
+    available.left = false;
+  }
+
+  // Only scroll if there is something to scroll
+  if (scroll.top !== 0 || scroll.left !== 0) {
+    element.scrollBy(scroll);
+  }
+  return continueSearchUp();
+}
+function tryScrollWindow({
+  input,
+  timeSinceLastFrame,
+  available,
+  source,
+  entries
+}) {
+  const element = document.documentElement;
+  const feedback = {
+    input,
+    source,
+    element
+  };
+  for (const entry of entries) {
+    var _entry$getConfigurati, _entry$getAllowedAxis, _entry$getAllowedAxis2;
+    // this entry is not allowing scrolling, we need to look for another
+    if (entry.canScroll && !entry.canScroll(feedback)) {
+      continue;
+    }
+
+    // Note: if we had an event for when the user is leaving a tab
+    // we _could_ conceptually reset the engagement
+    const engagement = markAndGetEngagement(element);
+    const config = getInternalConfig((_entry$getConfigurati = entry.getConfiguration) === null || _entry$getConfigurati === void 0 ? void 0 : _entry$getConfigurati.call(entry, feedback));
+    const allowedAxis = (_entry$getAllowedAxis = (_entry$getAllowedAxis2 = entry.getAllowedAxis) === null || _entry$getAllowedAxis2 === void 0 ? void 0 : _entry$getAllowedAxis2.call(entry, feedback)) !== null && _entry$getAllowedAxis !== void 0 ? _entry$getAllowedAxis : 'all';
+    const scrollBy = getScrollBy({
+      element,
+      engagement,
+      input,
+      config,
+      allowedAxis,
+      getRect: element => DOMRect.fromRect({
+        y: 0,
+        x: 0,
+        width: element.clientWidth,
+        height: element.clientHeight
+      }),
+      timeSinceLastFrame
+    });
+    const scroll = {
+      top: available.top ? scrollBy.top : 0,
+      left: available.left ? scrollBy.left : 0
+    };
+
+    // only trigger a scroll if we are actually scrolling
+    if (scroll.top !== 0 || scroll.left !== 0) {
+      element.scrollBy(scroll);
+    }
+
+    // We only want the window to scroll once
+    break;
+  }
+}
+export function tryScroll({
+  input,
+  findEntry,
+  timeSinceLastFrame,
+  source,
+  getWindowScrollEntries,
+  underUsersPointer
+}) {
+  // We are matching browser behaviour and scrolling inner elements
+  // before outer ones. So we try to scroll scroller containers before
+  // the window.
+  const remainder = tryScrollElements({
+    target: underUsersPointer,
+    timeSinceLastFrame,
+    input,
+    source,
+    findEntry
+  });
+
+  // Check if we can do any window scrolling
+  if (!isScrollingAvailable(remainder)) {
+    return;
+  }
+  tryScrollWindow({
+    input,
+    source,
+    entries: getWindowScrollEntries(),
+    timeSinceLastFrame,
+    available: remainder
+  });
+}

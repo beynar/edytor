@@ -46,6 +46,8 @@
 	"exclude": [
 		// Vendored upstream JS is checked by tsconfig.vendor-dts.json —
 		// the same exclusion tsconfig.json already declares.
-		"src/lib/crdt/vendor/**"
+		"src/lib/crdt/vendor/**",
+		// The forked drag and drop is read through its upstream declarations.
+		"src/lib/dnd/vendor/**"
 	]
 }

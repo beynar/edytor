@@ -409,7 +409,7 @@ export declare class BlockHandleController {
     addsColumn(block: Block): boolean;
     addBlock(block: Block, alt?: boolean, anchor?: HTMLElement | null): void;
     private ungrip;
-    registerHandle(element: HTMLElement, block: Block): import("@atlaskit/pragmatic-drag-and-drop/dist/types/internal-types.js").CleanupFn;
+    registerHandle(element: HTMLElement, block: Block): () => void;
     addDropTarget(node: HTMLElement, target: Block): () => void;
     private registerDropTarget;
     private registerMarginTarget;

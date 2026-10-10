@@ -8,15 +8,10 @@
 	 * over the listbox of languages. Both keep the keys and the ARIA through
 	 * the controller's attachments (`keys`, `popup`, `option(index)`).
 	 */
-	let { menu, readonly }: { menu: LanguageMenu; readonly: () => boolean } = $props();
+	let { menu }: { menu: LanguageMenu } = $props();
 
-	const place = $derived(menu.place);
+	const place = $derived(menu.open && menu.panel.place(4));
 	const custom = $derived(menu.settings.menu);
-
-	// The view turning readonly closes it.
-	$effect(() => {
-		if (readonly()) menu.lock();
-	});
 </script>
 
 <div role="presentation">

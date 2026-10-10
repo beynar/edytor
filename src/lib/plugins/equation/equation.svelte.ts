@@ -10,7 +10,7 @@ import {
 	type EquationLabels,
 	type PartialLabels
 } from '$lib/labels.js';
-import { layerBox, pin, sameValues } from '$lib/surface/overlay.js';
+import { Anchored } from '../anchored.svelte.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
 /** The part of KaTeX the plugin uses: `katex.renderToString`. */
@@ -186,14 +186,8 @@ export const parseEquation = (element: HTMLElement, display: boolean): EquationD
 /** Each view's equation labels: the first equation plugin listed claims them, as its kinds. */
 export const equationLabels = viewLabels(equationEnglish);
 
-/** The overlay host the editor renders in (the overlay's mount names it). */
-const HOST = '[data-edytor-equation-editor-host]';
-
 /** The equation being edited: a block equation, or an inline one (`atom`) in block `block`. */
 export type EquationTarget = { block: string; atom?: string };
-
-/** The edited equation's box, layer-relative. */
-export type EquationBox = { x: number; y: number; width: number; height: number };
 
 /**
  * One view's equation editor (Notion's): a click on an equation of an
@@ -217,10 +211,10 @@ export class EquationEditor {
 	/** The equation being edited (reactive). */
 	target = $state.raw<EquationTarget | null>(null);
 	/**
-	 * Its box, measured in the overlay's frame.
+	 * The editor's panel under the edited equation: its place, and what closes it.
 	 * @internal
 	 */
-	box = $state.raw<EquationBox | null>(null);
+	readonly panel: Anchored;
 
 	/** @internal */
 	constructor(
@@ -229,7 +223,14 @@ export class EquationEditor {
 		readonly renderer: EquationRenderer,
 		/** The plugin's words (`editor`, `placeholder`, `done`, …). */
 		readonly labels: EquationLabels = equationEnglish
-	) {}
+	) {
+		this.panel = new Anchored(
+			edytor,
+			'edytor-equation-editor-host',
+			() => (this.target ? this.#node(this.target) : undefined),
+			() => this.close(false)
+		);
+	}
 
 	/** The view is readonly (reactive): the editor closes. */
 	get readonly(): boolean {
@@ -242,12 +243,7 @@ export class EquationEditor {
 	 * @internal
 	 */
 	get place(): { left: number; top: number } | null {
-		const box = this.box;
-		if (!this.target || !box) return null;
-		return {
-			left: this.display ? box.x + box.width / 2 : box.x,
-			top: box.y + box.height + 6
-		};
+		return this.target && this.panel.place(6, this.display);
 	}
 
 	/** A block equation is edited (a field of several lines). */
@@ -299,7 +295,7 @@ export class EquationEditor {
 		const target = this.target;
 		if (!target) return;
 		this.target = null;
-		this.box = null;
+		this.panel.box = null;
 		this.edytor.overlay.invalidate();
 		const block = this.#block(target);
 		if (!block) return;
@@ -335,7 +331,7 @@ export class EquationEditor {
 			};
 			const element: HTMLElement = node;
 			element.addEventListener('keydown', keydown);
-			element.addEventListener('focusout', this.#blurred);
+			element.addEventListener('focusout', this.panel.blurred);
 			// Each equation the editor opens on: the field takes the focus, the caret at the end.
 			$effect(() => {
 				if (!this.target) return;
@@ -347,52 +343,9 @@ export class EquationEditor {
 			});
 			return () => {
 				element.removeEventListener('keydown', keydown);
-				element.removeEventListener('focusout', this.#blurred);
+				element.removeEventListener('focusout', this.panel.blurred);
 			};
 		});
-
-	/**
-	 * The view turned readonly: the editor closes, the equation as it is.
-	 * @internal
-	 */
-	lock = () => this.close(false);
-
-	/**
-	 * A press anywhere (capture): one outside the editor and its equation closes it.
-	 * @internal
-	 */
-	pressed = (event: MouseEvent) => {
-		const target = this.target;
-		if (!target) return;
-		const at = event.target as Element | null;
-		if (at?.closest?.(HOST)) return;
-		if (at instanceof Node && this.#node(target)?.contains(at)) return;
-		this.close(false);
-	};
-
-	/** Focus left the field for somewhere outside the editor: it closes. */
-	#blurred = (event: FocusEvent) => {
-		const to = event.relatedTarget;
-		const panel = (event.currentTarget as Element | null)?.closest(HOST);
-		// No new focus (the window went to the background): it stays.
-		if (!(to instanceof Node) || panel?.contains(to)) return;
-		this.close(false);
-	};
-
-	/**
-	 * The overlay measure: the edited equation's box; gone, the editor closes.
-	 * @internal
-	 */
-	measure = (host: HTMLElement, origin: DOMRect) => {
-		const target = this.target;
-		const node = target ? this.#node(target) : null;
-		const box = layerBox(node, origin);
-		return () => {
-			pin(host);
-			if (target && !node) return this.close(false);
-			if (!sameValues(box, this.box)) this.box = box;
-		};
-	};
 
 	#block = (target: EquationTarget): Block | undefined => {
 		const block = this.edytor.idToBlock.get(target.block);

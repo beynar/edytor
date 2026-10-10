@@ -261,9 +261,12 @@ export const DEFAULT_CODE_SETTINGS: CodeSettings = {
 	labels: codeEnglish
 };
 
-/** A language's label as shown: the labels' `languages` entry for its id, else its own. */
-export const languageLabel = (language: CodeLanguage, { labels }: CodeSettings) =>
-	labels.languages[language.id] ?? language.label;
+/**
+ * The languages `settings` lists, each with its label as shown (the
+ * labels' `languages` entry for its id, else its own), in order.
+ */
+export const labeledLanguages = ({ languages, labels }: CodeSettings) =>
+	languages.map(({ id, label }) => ({ id, label: labels.languages[id] ?? label }));
 
 /** Each view's code options, for its code blocks' header (which reads them through its view). */
 export const codeSettings = new WeakMap<Edytor, CodeSettings>();

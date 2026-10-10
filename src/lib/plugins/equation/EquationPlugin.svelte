@@ -9,7 +9,6 @@
 	import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 	import { equationKinds } from '$lib/crdt/semantics.js';
 	import { equationEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
-	import { onPress } from '$lib/events/onFocus.js';
 	import { id } from '$lib/utils.js';
 	import EquationView from './EquationView.svelte';
 	import EquationEditorPanel from './EquationEditor.svelte';
@@ -159,20 +158,7 @@
 					const view = equationViews.get(edytor);
 					if (!view || !owns()) return;
 					const { editor } = view;
-					const offPress = onPress(edytor, node.ownerDocument, editor.pressed, true);
-					const unmount = edytor.overlay.mount(
-						EquationEditorPanel,
-						{ editor, readonly: () => edytor.readonly, panel: options.panel },
-						'edytor-equation-editor-host',
-						// Above the block handles (5), as the image chrome.
-						7,
-						editor.measure
-					);
-					return () => {
-						offPress();
-						unmount();
-						editor.close(false);
-					};
+					return editor.panel.mount(node, EquationEditorPanel, { editor, panel: options.panel });
 				},
 				// A block equation this view just created empty (a slash pick, Turn into) opens its editor.
 				onAfterOperation: (change) => {

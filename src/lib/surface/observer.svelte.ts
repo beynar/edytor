@@ -46,7 +46,7 @@ import {
 	handleNativeLineBreakTextValue,
 	readDomText
 } from '../events/onInput.js';
-import { diverges, heal, ownedOf, type Kind } from './attributes.js';
+import { diverges, heal, ownedOf, type Kind, type Owned } from './attributes.js';
 import { getTextContentOffsetAtPoint } from '../events/domTextOffset.js';
 import type { Cell, Patched, Replaced } from './cells.js';
 
@@ -58,7 +58,8 @@ import type { Cell, Patched, Replaced } from './cells.js';
 type Verdict = 'adopt' | 'attempt' | 'invert' | 'defer';
 /** Where an adopted edit lands: the block and offset its anchor resolves to now. */
 type Place = { block: string; at: number; remove: number; insert: string };
-type Entry = { kind: Kind; block: string; name?: string };
+/** A registered element; `owned`: the attributes its render owns (a block's, `Block.svelte`). */
+type Entry = { kind: Kind; block: string; name?: string; owned?: () => Owned };
 /** A content's last rendered text, and the browser edit seen on it while the model equalled it. */
 type Base = { text: string; edit: { dom: string; anchor: DocAnchor | null } | null };
 /** A record that removed registered elements: what it removed and added, and where. */
@@ -195,8 +196,8 @@ export class SurfaceObserver {
 	};
 
 	/** Register an element the core rendered (an attachment); returns its release. */
-	register = (node: Element, kind: Kind, block: string, name?: string) => {
-		this.#registry.set(node, { kind, block, name });
+	register = (node: Element, kind: Kind, block: string, name?: string, owned?: () => Owned) => {
+		this.#registry.set(node, { kind, block, name, owned });
 		if (kind === 'block') this.#blocks.set(block, node);
 		else if (kind !== 'anchor' && kind !== 'preview') {
 			const set = this.#contents.get(block) ?? new Set();

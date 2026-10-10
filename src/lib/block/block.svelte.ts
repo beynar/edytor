@@ -43,6 +43,7 @@ import { jsonBlockToSpec } from '$lib/utils/json.js';
 import type { BlockDefinition } from '$lib/plugins.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 import type { DocBlock } from '$lib/crdt/index.js';
+import type { Owned } from '$lib/surface/attributes.js';
 import { revealed } from '$lib/selection/replaceSelection.js';
 import { propsProxy } from '$lib/session/props.js';
 
@@ -478,14 +479,14 @@ export class Block {
 	 * view state: an open toggle stays open.
 	 * @internal
 	 */
-	attach = (node: HTMLElement) => {
+	attach = (node: HTMLElement, owned?: () => Owned) => {
 		const names = this.definition.viewState ?? [];
 		const read = (from: HTMLElement): [string, string][] =>
 			names.flatMap((name) => (from.hasAttribute(name) ? [[name, from.getAttribute(name)!]] : []));
 		for (const [name, value] of this.node ? read(this.node) : this.#viewState)
 			if (names.includes(name)) node.setAttribute(name, value);
 		this.node = node;
-		const release = this.edytor.surface.register(node, 'block', this.id);
+		const release = this.edytor.surface.register(node, 'block', this.id, undefined, owned);
 		// Its attributes follow its own selected and focused membership.
 		this.edytor.selection.keep(this);
 		// A block laid out again with no commit moves the chrome beside it (the overlay measures).

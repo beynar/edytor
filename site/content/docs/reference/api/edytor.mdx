@@ -2017,8 +2017,8 @@ declare const createAudioPlugin: (options?: MediaPluginOptions) => Plugin;
 ## createBlockHandlesPlugin
 
 Block handles in the overlay, created lazily: a handle mounts
-for a block near the viewport (`nearTop` and the blocks inside them, not
-hidden; every block without layout),
+for a block near the viewport (the overlay's `near` top-level blocks and
+the blocks inside them, not hidden; every block without layout),
 under the pointer, selected, focused or dragged; drop targets exist only
 during our own drag. Hover is one delegated listener on the editor and
 one on the overlay (a block's handle keeps it hovered).

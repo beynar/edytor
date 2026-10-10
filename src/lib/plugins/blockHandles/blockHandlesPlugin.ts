@@ -1,7 +1,6 @@
 import type { Snippet } from 'svelte';
 import { mount, unmount } from 'svelte';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-import { bandRun } from '$lib/surface/overlay.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import BlockHandles from './BlockHandles.svelte';
@@ -65,37 +64,9 @@ const handlePlugins = new WeakSet<Plugin>();
 export const isBlockHandlesPlugin = (plugin: Plugin) => handlePlugins.has(plugin);
 
 /**
- * Where a handle mounts: a block within one screen of the viewport, above or
- * below. Without layout (no `IntersectionObserver`: a DOM without a
- * renderer), every block is near.
- */
-const NEAR_SCREENS = 1;
-
-/**
- * The top-level blocks near the viewport, by a binary search over their
- * boxes (document order is vertical order at the top level): reads
- * O(log n) boxes a frame, where an observer of every block computed them all
- * after each layout change.
- */
-const nearTop = (
-	blocks: readonly string[],
-	handle: (id: string) => Block,
-	screen: number
-): readonly Block[] => {
-	// Ids, a handle only for each box read: no handle for every top-level block.
-	const [first, end] = bandRun(
-		blocks.length,
-		(index) => handle(blocks[index]!).node?.getBoundingClientRect(),
-		-NEAR_SCREENS * screen,
-		(1 + NEAR_SCREENS) * screen
-	);
-	return blocks.slice(first, end).map(handle);
-};
-
-/**
  * Block handles in the overlay, created lazily: a handle mounts
- * for a block near the viewport (`nearTop` and the blocks inside them, not
- * hidden; every block without layout),
+ * for a block near the viewport (the overlay's `near` top-level blocks and
+ * the blocks inside them, not hidden; every block without layout),
  * under the pointer, selected, focused or dragged; drop targets exist only
  * during our own drag. Hover is one delegated listener on the editor and
  * one on the overlay (a block's handle keeps it hovered).
@@ -110,7 +81,6 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 		const blocks = new SvelteMap<string, Block>();
 		const near = new SvelteSet<string>();
 		const hovered = new SvelteSet<string>();
-		const ids = new WeakMap<Element, string>();
 		/** Layout is computed (a browser): the near band is measured, else every block is near. */
 		const measured = typeof IntersectionObserver !== 'undefined';
 		/** The blocks the band gained, mounted after the frame's paint (`afterPaint`). */
@@ -131,15 +101,15 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 		};
 		/** The near band, measured on the overlay's frames (a scroll, a resize, a commit). */
 		const measureNear = () => {
-			const view = edytor.node?.ownerDocument.defaultView;
-			if (!view || !edytor.root) return;
-			const tops = edytor.facade.childrenIds(null);
 			const next = new Set<string>();
 			const visit = (block: Block) => {
 				if (blocks.has(block.id) && !hidden(block)) next.add(block.id);
 				for (const child of block.children) visit(child);
 			};
-			for (const block of nearTop(tops, edytor.idToBlock.block, view.innerHeight)) visit(block);
+			for (const node of edytor.overlay.near) {
+				const block = edytor.idToBlock.get((node as HTMLElement).dataset.edytorId ?? '');
+				if (block?.node === node) visit(block);
+			}
 			return () => {
 				for (const id of near) if (!next.has(id)) near.delete(id);
 				const add = [...next].filter((id) => !near.has(id));
@@ -165,8 +135,8 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				node;
 				node = node.parentElement?.closest('[data-edytor-block="true"]')
 			) {
-				const id = ids.get(node);
-				if (id) next.add(id);
+				const id = (node as HTMLElement).dataset.edytorId ?? '';
+				if (blocks.get(id)?.node === node) next.add(id);
 			}
 			for (const id of hovered) if (!next.has(id)) hovered.delete(id);
 			for (const id of next) hovered.add(id);
@@ -215,7 +185,6 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				// Notion): a block selection covering a layout stands for it.
 				const { facade } = edytor;
 				if (facade.isLayout(block.id) || facade.isLayoutItem(block.id)) return offDropTarget;
-				ids.set(node, block.id);
 				blocks.set(block.id, block);
 				if (measured) edytor.overlay.invalidate();
 				else near.add(block.id);

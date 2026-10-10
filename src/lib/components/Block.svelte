@@ -92,7 +92,7 @@
 	import Child from './Block.svelte';
 	import Content from './Content.svelte';
 	import SuggestionPreview from './Suggestion.svelte';
-	import { blockDir, ownText } from '../surface/attributes.js';
+	import { blockDir, ownText, type Owned } from '../surface/attributes.js';
 	import { colorAttributes } from '../block/colors.js';
 
 	let { kid }: { kid: Kid } = $props();
@@ -136,8 +136,18 @@
 			? elementOf(definition.contentElement, cell?.data, id)
 			: undefined
 	);
-	/** Registers the block element: one element per block, re-registered when the tag changes. */
-	const register = (node: HTMLElement) => block?.handle?.attach(node);
+	/**
+	 * Registers the block element (one element per block, re-registered when
+	 * the tag changes) with what it owns: the core's attributes below, not
+	 * the kind's (`surface/attributes.ts` heals them).
+	 */
+	const register = (node: HTMLElement) =>
+		block?.handle?.attach(node, (): Owned => {
+			const owned: Record<string, string | null> = {};
+			for (const [name, value] of Object.entries(attributes ?? {}))
+				if (!(name in (element?.attributes ?? {}))) owned[name] = (value as string) ?? null;
+			return { strict: false, owned, style: userSelect ? { 'user-select': userSelect } : {} };
+		});
 	/**
 	 * Whether the selection holds this block, and whether it touches it: one
 	 * boolean each, read from the block's own membership (`isSelected`,

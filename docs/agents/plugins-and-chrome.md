@@ -89,7 +89,7 @@ UI snippets (site `customization/menus`, the one guide): every chrome surface is
 ## Input rules and block colours
 
 - Input rules (`inputRules`): first match that writes wins; one command, the matched text's removal leading it, its own undo step even when the match is the typed text alone (`dispatcher.alone`); never a paste or a drop (`dispatcher.command`); refused or declined: typed as typed.
-- Block colours: `colorAttributes` is the one reading (the core's block element and the attribute table; `colorClasses`/`colorsOfClasses` the copy's and the paste's Notion classes, `block-color-red`) and `setBlockColor` the one write (the block menu's Color, its search and the slash menu's `/red`; `colorable` says who takes one).
+- Block colours: `colorAttributes` is the one reading (the core's block element, whose attributes the attribute table reads; `colorClasses`/`colorsOfClasses` the copy's and the paste's Notion classes, `block-color-red`) and `setBlockColor` the one write (the block menu's Color, its search and the slash menu's `/red`; `colorable` says who takes one).
 
 ## Chrome in the surface
 

@@ -417,19 +417,21 @@
 	<!-- The room's JSON, read-only, while this view's document hydrates. -->
 	<div data-edytor-snapshot style="display: contents">
 		<Snapshot
-			value={snapshot}
-			readonly
-			plugins={userPlugins}
-			{defaultPlugins}
-			{blockHandles}
-			class={className}
-			{placeholder}
-			{labels}
-			aria-label={ariaLabel}
-			aria-labelledby={ariaLabelledby}
-			aria-describedby={ariaDescribedby}
-			{id}
 			{...snippets}
+			{...{
+				value: snapshot,
+				readonly: true,
+				plugins: userPlugins,
+				defaultPlugins,
+				blockHandles,
+				class: className,
+				placeholder,
+				labels,
+				'aria-label': ariaLabel,
+				'aria-labelledby': ariaLabelledby,
+				'aria-describedby': ariaDescribedby,
+				id
+			}}
 		/>
 	</div>
 {/if}

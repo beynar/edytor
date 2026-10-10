@@ -10,6 +10,7 @@ import {
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
+import { trackDrag } from '$lib/dnd/track.js';
 import type { TableLabels } from '$lib/labels.js';
 import { iconOf } from '../icons.js';
 import {
@@ -934,52 +935,24 @@ export class TableChrome {
 		if (event.button !== 0 || edytor.readonly || this.drag || !layout) return;
 		const col = layout.columns[column];
 		if (!col) return;
-		event.preventDefault();
-		event.stopPropagation();
-		const target = event.currentTarget as HTMLElement | null;
-		const pointer = event.type === 'pointerdown';
-		if (pointer) target?.setPointerCapture?.((event as PointerEvent).pointerId);
 		const table = this.block(layout.table);
 		if (!table) return;
 		const drag = this.resize(table, column, layout.room, event.clientX, event.clientX);
 		if (!drag) return;
 		// The press starts from the width the grid shows.
 		this.drag = { ...drag, width: col.width, max: Math.max(drag.max, col.width) };
-		const document = target?.ownerDocument ?? edytor.node?.ownerDocument;
-		const tracked = pointer ? document : document?.defaultView;
-		const [moves, ups] = pointer ? ['pointermove', 'pointerup'] : ['mousemove', 'mouseup'];
-		const move = (moved: MouseEvent) => {
-			if (!this.drag) return;
-			if (!edytor.dispatcher.permits()) return end(moved);
-			this.drag.at = moved.clientX;
-			edytor.overlay.invalidate();
-		};
-		const end = (ended: Event) => {
-			tracked?.removeEventListener(moves, move as EventListener);
-			tracked?.removeEventListener(ups, end);
-			tracked?.removeEventListener('pointercancel', end);
-			document?.removeEventListener('keydown', escape, true);
-			const drag = this.drag;
-			if (drag && ended.type === ups) {
-				drag.at = (ended as MouseEvent).clientX;
-				this.release(drag);
-				takeKeys(edytor);
+		this.#cancel = trackDrag(
+			edytor,
+			event,
+			(x) => {
+				if (this.drag) this.drag.at = x;
+			},
+			(x) => {
+				const drag = this.drag;
+				if (drag && x !== null) this.release({ ...drag, at: x });
+				this.drag = null;
 			}
-			this.drag = null;
-			edytor.overlay.invalidate();
-		};
-		const escape = (key: KeyboardEvent) => {
-			if (key.key !== 'Escape') return;
-			key.preventDefault();
-			key.stopPropagation();
-			end(key);
-		};
-		this.#cancel = () => end(new Event('cancel'));
-		tracked?.addEventListener(moves, move as EventListener);
-		tracked?.addEventListener(ups, end);
-		if (pointer) tracked?.addEventListener('pointercancel', end);
-		document?.addEventListener('keydown', escape, true);
-		edytor.overlay.invalidate();
+		);
 	};
 	#cancel: (() => void) | null = null;
 

@@ -12,7 +12,6 @@ import {
 } from './serializeClipboardFragment.js';
 import { isObject } from '$lib/crdt/data.js';
 
-
 const decodeJson = <T>(value: string): T => JSON.parse(decodeURIComponent(atob(value))) as T;
 
 /** A kind's name: a non-empty string. */

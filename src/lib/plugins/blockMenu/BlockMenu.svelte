@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { iconOf } from '../icons.js';
 	import { BLOCK_PALETTE } from '$lib/block/colors.js';
-	import type { BlockMenuColor, BlockMenuController } from './BlockMenuController.svelte.js';
+	import type { KindRow } from '$lib/kinds.js';
+	import type {
+		BlockMenuAction,
+		BlockMenuColor,
+		BlockMenuController
+	} from './BlockMenuController.svelte.js';
 
 	import type { Snippet } from 'svelte';
 	let {
@@ -15,12 +20,96 @@
 		if (controller.isOpen && controller.readonly) controller.close(false);
 	});
 
+	type Row = BlockMenuAction | KindRow | BlockMenuColor;
+	/** A row's shape: a colour (`field`), a kind (`value`), or an action. */
+	const shape = (row: Row) => ('field' in row ? 'color' : 'value' in row ? 'kind' : 'action');
+
+	/**
+	 * The heading over row `index` of `rows` (a flyout's with `flyout`) where
+	 * its group starts: Turn into over the kinds, Color over the colours (in
+	 * the Color flyout, one per field).
+	 */
+	const heading = (rows: Row[], index: number, flyout: boolean) => {
+		const [row, before] = [rows[index]!, rows[index - 1]];
+		const group = (of: Row) => (flyout && 'field' in of ? of.field : shape(of));
+		if (shape(row) === 'action' || (before && group(before) === group(row))) return;
+		if (!('field' in row)) return labels.turnInto;
+		if (!flyout) return labels.color;
+		return row.field === 'color' ? labels.textColor : labels.backgroundColor;
+	};
+
+	/**
+	 * A row's attributes (`option`, its look, its pointer): hovering makes it
+	 * the keyboard's row (an action's also opens or closes its flyout), a
+	 * click runs it as Enter does.
+	 */
+	const attributes = (row: Row, index: number, flyout: boolean) => {
+		const select = () =>
+			flyout ? (controller.flyoutIndex = index) : (controller.selectedIndex = index);
+		const own = {
+			...controller.option(index, flyout),
+			onclick: () => {
+				select();
+				if (flyout) controller.runFlyout();
+				else controller.runSelected();
+			}
+		};
+		if ('field' in row)
+			return {
+				...own,
+				class: 'block-menu-row block-menu-color',
+				'data-field': row.field,
+				'data-current': controller.isCurrentColor(row),
+				'data-testid': `block-menu-${row.id}`,
+				onmousemove: select
+			};
+		if ('value' in row)
+			return {
+				...own,
+				class: 'block-menu-row',
+				'data-current': flyout ? row === controller.currentKind : undefined,
+				onmousemove: select
+			};
+		return {
+			...own,
+			class: row.danger ? 'block-menu-row danger' : 'block-menu-row',
+			'data-checked': row.checked,
+			'data-hint': row.submenu ? undefined : row.hint,
+			'data-submenu': row.submenu ? 'true' : undefined,
+			'data-testid': `block-menu-${row.id}`,
+			onmouseenter: () => {
+				select();
+				if (row.submenu) controller.openFlyout(row.submenu);
+				else controller.flyout = false;
+			}
+		};
+	};
+
 	/** A colour row's swatch: its text colour on a white square, or its background. */
-	const swatch = (row: BlockMenuColor) =>
-		row.value === null
-			? undefined
-			: `var(--edytor-${row.field}-${row.value}, ${BLOCK_PALETTE[row.value][row.field]})`;
+	const swatch = (row: Row) =>
+		'field' in row && row.value !== null
+			? `var(--edytor-${row.field}-${row.value}, ${BLOCK_PALETTE[row.value][row.field]})`
+			: undefined;
 </script>
+
+{#snippet list(rows: Row[], flyout: boolean)}
+	{#each rows as row, index (`${shape(row)}:${row.id}`)}
+		{@const title = heading(rows, index, flyout)}
+		{#if title}<div class="block-menu-heading" role="presentation">{title}</div>{/if}
+		{#if row.id === 'delete' || row.id === 'duplicate'}<div
+				class="block-menu-divider"
+				role="separator"
+			></div>{/if}
+		<button
+			type="button"
+			{...attributes(row, index, flyout)}
+			style:--block-menu-icon={'field' in row
+				? undefined
+				: iconOf('value' in row ? row.id : row.icon)}
+			style:--block-menu-swatch={swatch(row)}>{row.label}</button
+		>
+	{/each}
+{/snippet}
 
 <!--
 	The keys, the ids, the roles and the publication to the view's root are
@@ -47,115 +136,25 @@
 						{controller.currentKind?.label ?? labels.block}
 					</div>
 				{/if}
-				{#each rows as row, index ('field' in row ? `color:${row.id}` : 'value' in row ? `kind:${row.id}` : row.id)}
-					{#if 'field' in row}
-						{#if index === 0 || !('field' in rows[index - 1]!)}
-							<div class="block-menu-heading" role="presentation">{labels.color}</div>
-						{/if}
-						<button
-							type="button"
-							{...controller.option(index)}
-							class="block-menu-row block-menu-color"
-							data-field={row.field}
-							data-current={controller.isCurrentColor(row)}
-							data-testid={`block-menu-${row.id}`}
-							style:--block-menu-swatch={swatch(row)}
-							onmousemove={() => (controller.selectedIndex = index)}
-							onclick={() => controller.paint(row)}>{row.label}</button
-						>
-					{:else if 'value' in row}
-						{#if index === 0 || !('value' in rows[index - 1]!) || 'field' in rows[index - 1]!}
-							<div class="block-menu-heading" role="presentation">{labels.turnInto}</div>
-						{/if}
-						<button
-							type="button"
-							{...controller.option(index)}
-							class="block-menu-row"
-							style:--block-menu-icon={iconOf(row.id)}
-							onmousemove={() => (controller.selectedIndex = index)}
-							onclick={() => controller.turnInto(row)}>{row.label}</button
-						>
-					{:else}
-						{#if row.id === 'delete' || row.id === 'duplicate'}<div
-								class="block-menu-divider"
-								role="separator"
-							></div>{/if}
-						<button
-							type="button"
-							{...controller.option(index)}
-							data-checked={row.checked}
-							class="block-menu-row"
-							class:danger={row.danger}
-							data-hint={row.submenu ? undefined : row.hint}
-							data-submenu={row.submenu ? 'true' : undefined}
-							data-testid={`block-menu-${row.id}`}
-							style:--block-menu-icon={iconOf(row.icon)}
-							onmouseenter={() => {
-								controller.selectedIndex = index;
-								if (row.submenu) controller.openFlyout(row.submenu);
-								else controller.flyout = false;
-							}}
-							onclick={() => (row.submenu ? controller.openFlyout(row.submenu) : row.run?.())}
-							>{row.label}</button
-						>
-					{/if}
-				{/each}
+				{@render list(rows, false)}
 				{#if rows.length === 0}
 					<div class="block-menu-empty" role="presentation">{labels.noResults}</div>
 				{/if}
 			</div>
 		</div>
-		{#if controller.flyout === 'turn'}
+		<!-- The open flyout: a new element for each (its id, name and opening). -->
+		{#each controller.flyout ? [controller.flyout] : [] as flyout (flyout)}
 			<div
 				class="block-menu block-menu-flyout"
 				role="menu"
-				aria-label={labels.turnInto}
+				aria-label={flyout === 'color' ? labels.color : labels.turnInto}
 				{@attach controller.flyoutMenu}
 			>
 				<div class="block-menu-rows" role="presentation">
-					<div class="block-menu-heading" role="presentation">{labels.turnInto}</div>
-					{#each controller.kinds as kind, index (kind.id)}
-						<button
-							type="button"
-							{...controller.option(index, true)}
-							class="block-menu-row"
-							data-current={kind === controller.currentKind}
-							onmousemove={() => (controller.flyoutIndex = index)}
-							style:--block-menu-icon={iconOf(kind.id)}
-							onclick={() => controller.turnInto(kind)}>{kind.label}</button
-						>
-					{/each}
+					{@render list(controller.flyoutRows, true)}
 				</div>
 			</div>
-		{:else if controller.flyout === 'color'}
-			<div
-				class="block-menu block-menu-flyout"
-				role="menu"
-				aria-label={labels.color}
-				{@attach controller.flyoutMenu}
-			>
-				<div class="block-menu-rows" role="presentation">
-					{#each controller.colors as color, index (color.id)}
-						{#if index === 0 || color.field !== controller.colors[index - 1]!.field}
-							<div class="block-menu-heading" role="presentation">
-								{color.field === 'color' ? labels.textColor : labels.backgroundColor}
-							</div>
-						{/if}
-						<button
-							type="button"
-							{...controller.option(index, true)}
-							class="block-menu-row block-menu-color"
-							data-field={color.field}
-							data-current={controller.isCurrentColor(color)}
-							data-testid={`block-menu-${color.id}`}
-							style:--block-menu-swatch={swatch(color)}
-							onmousemove={() => (controller.flyoutIndex = index)}
-							onclick={() => controller.paint(color)}>{color.label}</button
-						>
-					{/each}
-				</div>
-			</div>
-		{/if}
+		{/each}
 	</div>
 {/if}
 

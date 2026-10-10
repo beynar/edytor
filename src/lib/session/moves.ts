@@ -153,33 +153,42 @@ const place = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 		return [];
 	}
 	const [first, ...rest] = move.blocks;
-	if (move.beside) {
-		const { beside } = move;
-		// The beside plan, from the payload hooks leave: a new column, or a new
-		// layout wrapping the target; the sources cleaned in the same plan.
-		const ids = move.blocks.map((block) => block.id);
-		const besides = (payload: { beside?: BlockBeside }): Prepared =>
-			payload.beside
-				? edytor.facade.prepare.placeBeside(ids, payload.beside.target.id, payload.beside.side)
-				: { status: 'refused', ids: [] };
-		const touched = [
-			...new Set([...move.blocks.map((block) => block.parent), beside.target.parent])
-		];
-		const applied = rest.length
-			? dispatchPlan(first!, 'moveBlocks', move, besides, touched)
-			: dispatchPlan(first!, 'moveBlock', { path: move.path, beside }, besides, touched);
-		return applied ? move.blocks : [];
-	}
-	if ('direction' in request && request.direction === 'out') {
-		// The outdent plan: the siblings after the last block follow it.
-		const ids = move.blocks.map((block) => block.id);
-		const outdent = () => edytor.facade.prepare.unNestBlocks(ids);
-		const touched = [first!.parent, first!.parent?.parent, move.blocks.at(-1)];
-		const applied = rest.length
-			? dispatchPlan(first!, 'moveBlocks', move, outdent, touched)
-			: dispatchPlan(first!, 'moveBlock', { path: move.path }, outdent, touched);
-		return applied ? move.blocks : [];
-	}
+	const ids = move.blocks.map((block) => block.id);
+	const { beside } = move;
+	/** One move command whose plan `prepare` answers from the payload hooks leave. */
+	const planned = (
+		prepare: (payload: { beside?: BlockBeside }) => Prepared,
+		touched: (Block | null | undefined)[]
+	) =>
+		(
+			rest.length
+				? dispatchPlan(first!, 'moveBlocks', move, prepare, touched)
+				: dispatchPlan(
+						first!,
+						'moveBlock',
+						{ path: move.path, ...(beside && { beside }) },
+						prepare,
+						touched
+					)
+		)
+			? move.blocks
+			: [];
+	// The beside plan: a new column, or a new layout wrapping the target; the
+	// sources cleaned in the same plan.
+	if (beside)
+		return planned(
+			(payload) =>
+				payload.beside
+					? edytor.facade.prepare.placeBeside(ids, payload.beside.target.id, payload.beside.side)
+					: { status: 'refused', ids: [] },
+			[...new Set([...move.blocks.map((block) => block.parent), beside.target.parent])]
+		);
+	// The outdent plan: the siblings after the last block follow it.
+	if ('direction' in request && request.direction === 'out')
+		return planned(
+			() => edytor.facade.prepare.unNestBlocks(ids),
+			[first!.parent, first!.parent?.parent, move.blocks.at(-1)]
+		);
 	if (rest.length) return first!.moveBlocks(move) ?? [];
 	const moved = first!.moveBlock(move);
 	return moved ? [moved] : [];

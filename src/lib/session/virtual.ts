@@ -148,8 +148,7 @@ export const virtualLens = (
 	over('deleteBlocks', (ids) =>
 		ids.some(on) ? prepare.deleteBlocks(ids.filter((i) => !on(i))) : undefined
 	);
-	for (const name of ['moveBlock', 'nestBlock', 'unNestBlock', 'duplicateBlock'] as const)
-		over(name, (b: BlockId, ..._: unknown[]) => (on(b) ? REFUSED : undefined));
+	// A move, nest, outdent or duplicate of it is refused: the document holds no such block.
 
 	const lens: ViewDoc = Object.create(base);
 	const ops = Object.fromEntries(

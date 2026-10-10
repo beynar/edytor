@@ -24,10 +24,7 @@ import { Block } from '../block/block.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { EdgeSide, PendingMarks } from '$lib/session/editing/text.js';
-import {
-	isNativeFormControl,
-	isNestedForeignEditableTarget
-} from '$lib/events/nativeInteractiveControl.js';
+import { isKindControl, isOwnPoint } from '$lib/events/nativeInteractiveControl.js';
 import type { Anchor } from '$lib/crdt/text/model.js';
 import {
 	atomSelection,
@@ -860,33 +857,18 @@ export class EdytorSelection {
 		// A block selection ignores the DOM, but the one a drag across columns made while it lasts.
 		if (this.selectedBlocks.size > 0 && !(this.dragging && this.pointer.across)) return;
 
+		// A selection in a kind's own control (a form control, a nested
+		// editable island) or a focused one belongs to it, not the model —
+		// deriving it would map the caret into the control's host text and
+		// corrupt the next model-routed write. Both endpoints are checked: a
+		// range anchored in host text but focused inside an island must not
+		// resolve either.
 		const container = this.edytor.node;
 		if (
-			!selection?.anchorNode ||
-			!selection.focusNode ||
-			!container?.contains(selection.anchorNode as Node) ||
-			!container.contains(selection.focusNode as Node)
-		) {
-			return;
-		}
-
-		const activeElement = getActiveElement(this.edytor.node);
-		if (
-			activeElement instanceof Element &&
-			this.edytor.node?.contains(activeElement) &&
-			isNativeFormControl(activeElement)
-		) {
-			return;
-		}
-
-		// A selection inside a nested foreign editable belongs to the
-		// island, not the model — deriving it would map the caret into the
-		// island's host text and corrupt the next model-routed write. Both
-		// endpoints are checked: a range anchored in host text but focused
-		// inside an island must not resolve either.
-		if (
-			isNestedForeignEditableTarget(this.edytor.node, selection.anchorNode) ||
-			isNestedForeignEditableTarget(this.edytor.node, selection.focusNode)
+			!selection ||
+			!isOwnPoint(container, selection.anchorNode) ||
+			!isOwnPoint(container, selection.focusNode) ||
+			isKindControl(container, getActiveElement(container))
 		) {
 			return;
 		}
@@ -1366,8 +1348,7 @@ export class EdytorSelection {
 		const container = this.edytor.node;
 		const { anchorNode, focusNode } = snapshot;
 		if (!container || !anchorNode || !focusNode) return null;
-		for (const node of [anchorNode, focusNode])
-			if (!container.contains(node) || isNestedForeignEditableTarget(container, node)) return null;
+		for (const node of [anchorNode, focusNode]) if (!isOwnPoint(container, node)) return null;
 		const reversed = isBackward(snapshot);
 		const [startNode, start, endNode, end] = reversed
 			? [focusNode, snapshot.focusOffset, anchorNode, snapshot.anchorOffset]

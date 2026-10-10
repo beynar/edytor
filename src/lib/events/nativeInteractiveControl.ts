@@ -64,9 +64,6 @@ const findNativeControlInEvent = (event: Event, selector: string) => {
 export const isNativeInteractiveControl = (target: EventTarget | null) =>
 	Boolean(findClosestElement(target, NATIVE_INTERACTIVE_SELECTOR));
 
-export const isNativeFormControl = (target: EventTarget | null) =>
-	Boolean(findClosestElement(target, NATIVE_ACTIVE_ELEMENT_SELECTOR));
-
 export const isNativeInteractiveEvent = (event: Event) =>
 	Boolean(findNativeControlInEvent(event, NATIVE_INTERACTIVE_SELECTOR));
 
@@ -89,7 +86,7 @@ const EDITABLE_TARGET_SELECTOR = '[contenteditable]:not([contenteditable="false"
  * lifecycle; the outer editor must not snapshot them against the model
  * selection or commit their composition text.
  */
-export const isNestedForeignEditableTarget = (
+const isNestedForeignEditableTarget = (
 	editorRoot: Element | null | undefined,
 	target: EventTarget | null
 ) => {
@@ -130,3 +127,14 @@ export const isKindControl = (
  */
 export const ownsEvent = (editorRoot: Element | null | undefined, event: Event) =>
 	getEventPath(event).some((target) => isKindControl(editorRoot, target));
+
+/**
+ * An event of a native control anywhere (a link, the chrome's buttons beside
+ * the host) or of a kind's own: never the view's own composition or input.
+ */
+export const isControlEvent = (editorRoot: Element | null | undefined, event: Event) =>
+	isNativeInteractiveEvent(event) || ownsEvent(editorRoot, event);
+
+/** A DOM point of the view's own: inside the host and in no kind's own control. */
+export const isOwnPoint = (editorRoot: Element | null | undefined, node: Node | null | undefined) =>
+	Boolean(node && editorRoot?.contains(node) && !isKindControl(editorRoot, node));

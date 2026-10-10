@@ -4,10 +4,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { isInsideTrailingNewlineMarker } from '$lib/selection/selection.utils.js';
 import { replaceSelectionWithCollapsedTarget } from '$lib/selection/replaceSelection.js';
-import {
-	isNativeInteractiveEvent,
-	isNestedForeignEditableTarget
-} from './nativeInteractiveControl.js';
+import { isControlEvent } from './nativeInteractiveControl.js';
 import { getTextContentOffsetAtPoint } from './domTextOffset.js';
 import { runOccurrence } from './onBeforeInput.js';
 import {
@@ -276,12 +273,7 @@ export async function onInput(this: Edytor, event: Event) {
 	}
 
 	try {
-		if (
-			isNativeInteractiveEvent(event) ||
-			(event && isNestedForeignEditableTarget(this.node, event.target))
-		) {
-			return;
-		}
+		if (isControlEvent(this.node, event)) return;
 
 		if (isNativeHistoryInput(event)) {
 			// Same guard as the beforeinput channel — a history command

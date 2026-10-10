@@ -3,10 +3,7 @@ import { DEV } from 'esm-env';
 import { onBeforeInput } from './events/onBeforeInput.js';
 import { onCopy } from './events/onCopy.js';
 import { onCut } from './events/onCut.js';
-import {
-	isNativeInteractiveEvent,
-	isNestedForeignEditableTarget
-} from './events/nativeInteractiveControl.js';
+import { isControlEvent, isKindControl } from './events/nativeInteractiveControl.js';
 import { onInput } from './events/onInput.js';
 import { onPaste } from './events/onPaste.js';
 import { onTextDragEnd, onTextDragStart, preventUnsupportedDrop } from './events/onDrop.js';
@@ -940,16 +937,14 @@ export class Edytor {
 				!ours(active) &&
 				!ours(selection?.anchorNode) &&
 				!ours(this.selection.state.startText?.node)) ||
-			(active && isNestedForeignEditableTarget(this.node, active))
+			isKindControl(this.node, active)
 		)
 			return;
 		this.projector.committed();
 		this.selection.setAtTextOffset(text, Math.min(offset, text.length));
 	};
 	/** An event of this view's own composition (not a native control's, not a nested island's). */
-	private ownComposition = (event?: Event) =>
-		!event ||
-		(!isNativeInteractiveEvent(event) && !isNestedForeignEditableTarget(this.node, event.target));
+	private ownComposition = (event?: Event) => !event || !isControlEvent(this.node, event);
 
 	/** @internal */
 	onCompositionStart = (event?: CompositionEvent) => {

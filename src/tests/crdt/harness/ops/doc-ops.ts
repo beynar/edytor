@@ -30,6 +30,7 @@ import {
 	opTarget,
 	deadCause
 } from './model-ops.js';
+import { tables as tableOps } from '../table-ops.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -254,31 +255,37 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 						const col = (n: number) => (n >> 3) % Math.max(1, width + 1);
 						switch (pick % 7) {
 							case 0:
-								return ok(f.insertTableRow(table, at(pick)));
+								return ok(tableOps(f).insertTableRow(table, at(pick)));
 							case 1:
-								return rows.length > 0 && ok(f.deleteTableRows([rows[at(pick) % rows.length].id]));
+								return (
+									rows.length > 0 &&
+									ok(tableOps(f).deleteTableRows([rows[at(pick) % rows.length].id]))
+								);
 							case 2:
-								return ok(f.insertTableColumn(table, col(pick)));
+								return ok(tableOps(f).insertTableColumn(table, col(pick)));
 							case 3:
-								return width > 0 && ok(f.deleteTableColumn(table, col(pick) % width));
+								return width > 0 && ok(tableOps(f).deleteTableColumn(table, col(pick) % width));
 							case 4:
 								return (
 									width > 1 &&
-									ok(f.moveTableColumn(table, col(pick) % width, (col(pick) + 1) % width))
+									ok(tableOps(f).moveTableColumn(table, col(pick) % width, (col(pick) + 1) % width))
 								);
 							case 5:
 								return (
 									rows.length > 1 &&
 									ok(
-										f.moveTableRows([rows[at(pick) % rows.length].id], (at(pick) + 1) % rows.length)
+										tableOps(f).moveTableRows(
+											[rows[at(pick) % rows.length].id],
+											(at(pick) + 1) % rows.length
+										)
 									)
 								);
 							default: {
 								for (const row of rows) {
 									const pad = row.cells.indexOf(null);
-									if (pad >= 0) return ok(f.fillTableCell(row.id, grid.columns[pad]));
+									if (pad >= 0) return ok(tableOps(f).fillTableCell(row.id, grid.columns[pad]));
 								}
-								return ok(f.insertTableRow(table, rows.length));
+								return ok(tableOps(f).insertTableRow(table, rows.length));
 							}
 						}
 					})

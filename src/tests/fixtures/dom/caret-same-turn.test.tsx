@@ -126,11 +126,15 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 
 	// Coverage, not timing: jsdom cannot tell a render tick from the microtasks
 	// around it; the browser lanes pin the timing of this site.
+	// The engine sent no `beforeinput`: what it wrote is adopted from the DOM.
 	test('onInput: an input-only insertion over a range replaces it and selects after', async () => {
 		const { edytor, editor } = await one('hello world');
 		const text = edytor.root!.children[0]!.firstText!;
 		edytor.selection.selectText(text, 0, text, 5);
 		await flushDomUpdates();
+		const leaf = text.node!.firstChild as globalThis.Text;
+		leaf.data = 'X world';
+		document.getSelection()!.collapse(leaf, 1);
 		editor.dispatchEvent(
 			new InputEvent('input', { bubbles: true, inputType: 'insertText', data: 'X' })
 		);

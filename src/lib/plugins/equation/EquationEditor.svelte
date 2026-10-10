@@ -9,20 +9,10 @@
 	 * preview: each keystroke writes it. Both take the field's focus and keys
 	 * through the controller's attachment (`field`).
 	 */
-	let {
-		editor,
-		readonly,
-		panel
-	}: { editor: EquationEditor; readonly: () => boolean; panel?: Snippet<[EquationEditor]> } =
-		$props();
+	let { editor, panel }: { editor: EquationEditor; panel?: Snippet<[EquationEditor]> } = $props();
 
 	const labels = $derived(editor.labels);
 	const place = $derived(editor.place);
-
-	// The view turning readonly closes it.
-	$effect(() => {
-		if (readonly()) editor.lock();
-	});
 </script>
 
 <div role="presentation">

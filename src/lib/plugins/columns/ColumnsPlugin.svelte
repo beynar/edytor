@@ -11,6 +11,7 @@
 	} from '$lib/selection/replaceSelection.js';
 	import ColumnResizeStrips from './ColumnResize.svelte';
 	import { ColumnResize, weightOf } from './resize.svelte.js';
+	import { hoverChrome, listen } from '../bands.svelte.js';
 	import { columnsEnglish, keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
 
 	export type ColumnsPluginOptions = {
@@ -159,46 +160,33 @@
 				onSelectionChange: () => edytor.overlay.invalidate(),
 				// The resize bands: in the overlay, for the layout under the pointer.
 				onEdytorAttached: ({ node }) => {
-					const over = (event: PointerEvent) => resize.hover(event.target);
-					const leave = (event: PointerEvent) => !resize.drag && resize.leave(event.relatedTarget);
-					// The overlay (a band, a handle in a gap) keeps the bands while the pointer is on it.
-					const layer = edytor.overlay.layer;
-					// A block drag owns the pointer: no strip takes it meanwhile.
-					const drag = (event: Event) => (resize.dragging = event.type === 'dragstart');
-					const document = node.ownerDocument;
-					node.addEventListener('pointerover', over);
-					node.addEventListener('pointerleave', leave);
-					layer?.addEventListener('pointerleave', leave);
-					// A column block's handle in a gap stands for its block (the bands show over its layout).
-					const overHandle = (event: PointerEvent) => {
-						const handle = (event.target as Element | null)?.closest?.<HTMLElement>(
-							'[data-edytor-block-handle-host][data-block-id]'
-						);
-						const id = handle?.dataset.blockId;
-						if (id) resize.hover(edytor.idToBlock.get(id)?.node ?? null);
-					};
-					layer?.addEventListener('pointerover', overHandle);
-					document.addEventListener('dragstart', drag, true);
-					document.addEventListener('dragend', drag, true);
-					document.addEventListener('drop', drag, true);
-					const unmount = edytor.overlay.mount(
-						ColumnResizeStrips,
-						{ resize },
-						'edytor-column-resizers',
-						// Above the block handles (5): the band is the gap's left part at every height.
-						6,
-						resize.measure
-					);
-					return () => {
-						node.removeEventListener('pointerover', over);
-						node.removeEventListener('pointerleave', leave);
-						layer?.removeEventListener('pointerleave', leave);
-						layer?.removeEventListener('pointerover', overHandle);
-						document.removeEventListener('dragstart', drag, true);
-						document.removeEventListener('dragend', drag, true);
-						document.removeEventListener('drop', drag, true);
-						unmount();
-					};
+					const offs = [
+						// The overlay (a band, a handle in a gap) keeps the bands while the pointer is on
+						// it; a block drag owns the pointer: no strip takes it meanwhile.
+						hoverChrome(
+							edytor,
+							node,
+							resize.hover,
+							resize.leave,
+							(event) => (resize.dragging = event.type === 'dragstart')
+						),
+						// A column block's handle in a gap stands for its block (the bands show over its layout).
+						listen(edytor.overlay.layer, 'pointerover', (event) => {
+							const id = (event.target as Element | null)?.closest?.<HTMLElement>(
+								'[data-edytor-block-handle-host][data-block-id]'
+							)?.dataset.blockId;
+							if (id) resize.hover(edytor.idToBlock.get(id)?.node ?? null);
+						}),
+						edytor.overlay.mount(
+							ColumnResizeStrips,
+							{ resize },
+							'edytor-column-resizers',
+							// Above the block handles (5): the band is the gap's left part at every height.
+							6,
+							resize.measure
+						)
+					];
+					return () => offs.forEach((off) => off());
 				},
 				blocks: {
 					columns: {

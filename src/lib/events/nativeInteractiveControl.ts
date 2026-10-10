@@ -15,49 +15,26 @@ const findClosestElement = (target: EventTarget | null, selector: string) => {
 	return element?.closest(selector) ?? null;
 };
 
-const getEventPath = (event: Event) => {
-	if (typeof event.composedPath === 'function') {
-		return event.composedPath();
-	}
+const getEventPath = (event: Event) =>
+	event.composedPath?.() ?? (event.target ? [event.target] : []);
 
-	return event.target ? [event.target] : [];
-};
-
-const getActiveElement = (event: Event) => {
-	const target = getElementFromTarget(event.target);
-	if (target?.ownerDocument.activeElement) {
-		return target.ownerDocument.activeElement;
-	}
-
-	return typeof document === 'undefined' ? null : document.activeElement;
-};
-
+/**
+ * A control on the event's path, else the focused one (a link takes no
+ * focus there) when it holds the target or the target holds it.
+ */
 const findNativeControlInEvent = (event: Event, selector: string) => {
 	for (const target of getEventPath(event)) {
 		const control = findClosestElement(target, selector);
-		if (control) {
-			return control;
-		}
+		if (control) return control;
 	}
-
-	const activeElementSelector =
-		selector === NATIVE_INTERACTIVE_SELECTOR ? NATIVE_ACTIVE_ELEMENT_SELECTOR : selector;
-	const targetControl = findClosestElement(event.target, selector);
-	if (targetControl) {
-		return targetControl;
-	}
-
-	const targetElement = getElementFromTarget(event.target);
-	const activeElement = getActiveElement(event);
-	const isActiveElementRelatedToTarget =
-		typeof Element !== 'undefined' &&
-		activeElement instanceof Element &&
-		(!targetElement ||
-			activeElement === targetElement ||
-			activeElement.contains(targetElement) ||
-			targetElement.contains(activeElement));
-	return isActiveElementRelatedToTarget
-		? findClosestElement(activeElement, activeElementSelector)
+	const target = getElementFromTarget(event.target);
+	const active = (target?.ownerDocument ?? globalThis.document)?.activeElement;
+	return active &&
+		(!target || active === target || active.contains(target) || target.contains(active))
+		? findClosestElement(
+				active,
+				selector === NATIVE_INTERACTIVE_SELECTOR ? NATIVE_ACTIVE_ELEMENT_SELECTOR : selector
+			)
 		: null;
 };
 
@@ -79,40 +56,22 @@ export const isNativeTextControlEvent = (event: Event) =>
 const EDITABLE_TARGET_SELECTOR = '[contenteditable]:not([contenteditable="false" i])';
 
 /**
- * The event target sits inside a nested `contenteditable` island that is
- * neither the editor root nor a managed text element (text elements
- * carry their own `contentEditable="true"`). Such islands — a plugin
- * chrome editor, an embedded code field — own their input/composition
- * lifecycle; the outer editor must not snapshot them against the model
- * selection or commit their composition text.
- */
-const isNestedForeignEditableTarget = (
-	editorRoot: Element | null | undefined,
-	target: EventTarget | null
-) => {
-	const editable = findClosestElement(target, EDITABLE_TARGET_SELECTOR);
-	if (!editable || editable === editorRoot) {
-		return false;
-	}
-	return !editable.hasAttribute('data-edytor-text');
-};
-
-/**
  * A kind's own control: a form control (`input` of any type, `textarea`,
- * `select`, `button`) or a nested editable island inside the host, never the
- * root nor the editor's own text elements. It owns its focus, selection and
- * events; the projector never writes the editor's caret over it.
+ * `select`, `button`) or a nested editable island inside the host (a plugin
+ * chrome editor, an embedded code field: it owns its input and composition
+ * lifecycle), never the root nor the editor's own text elements (they carry
+ * their own `contentEditable="true"`). It owns its focus, selection and
+ * events; the projector never writes the editor's caret over it, and the
+ * editor never snapshots it nor commits its composition text.
  */
 export const isKindControl = (
 	editorRoot: Element | null | undefined,
 	target: EventTarget | null
 ) => {
-	const element = getElementFromTarget(target);
+	const editable = findClosestElement(target, EDITABLE_TARGET_SELECTOR);
 	const control =
-		findClosestElement(element, NATIVE_ACTIVE_ELEMENT_SELECTOR) ??
-		(isNestedForeignEditableTarget(editorRoot, element)
-			? findClosestElement(element, EDITABLE_TARGET_SELECTOR)
-			: null);
+		findClosestElement(target, NATIVE_ACTIVE_ELEMENT_SELECTOR) ??
+		(editable?.hasAttribute('data-edytor-text') ? null : editable);
 	return Boolean(control && editorRoot && control !== editorRoot && editorRoot.contains(control));
 };
 

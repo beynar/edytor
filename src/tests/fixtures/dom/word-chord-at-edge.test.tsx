@@ -2,7 +2,7 @@
 /**
  * SW10-crdt-1 (found by the DST list shape, AW-09): a word or line delete
  * chord (Option/Ctrl+Backspace, Cmd+Backspace) at the start of a block
- * deletes the neighbour like a character (`deleteCollapsedUnit`). WebKit
+ * deletes the neighbour like a character (a unit delete, `runBeforeInputDeleteCommand`). WebKit
  * announces no `beforeinput` for it at the document's first text, so
  * Option+Backspace at the start of an empty first list item did nothing in
  * Safari while Backspace lifted it out. The keydown fallback now covers

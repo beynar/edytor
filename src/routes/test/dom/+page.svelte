@@ -613,7 +613,7 @@
 		 * Collaboration-DST probes: state-vector diffing lets the multi-peer
 		 * runner capture each peer's locally-authored update after an
 		 * action, and `dumpDocument` projects the full convergent state
-		 * (canonical value + attribution + lineage ring) for exact
+		 * (canonical value + attribution) for exact
 		 * cross-peer comparison — no testid serialization shortcuts.
 		 */
 		stateVector: (doc: YDoc) => Y.encodeStateVector(doc),
@@ -651,7 +651,6 @@
 			};
 			const value = document.facade.toJSON();
 			const blocks: Record<string, unknown> = {};
-			const lineage: Record<string, unknown> = {};
 			const live = new Set<string>();
 			const walk = (children: CrdtJSONBlock[]) => {
 				for (const child of children) {
@@ -665,14 +664,13 @@
 									lastChangedBy: attribution.lastChangedBy
 								}
 							: null;
-						lineage[child.id] = document.attribution.history(child.id) ?? null;
 					}
 					if (child.children) walk(child.children);
 				}
 			};
 			walk(value.children);
 			// Attribution records survive their block's deletion — enumerate
-			// them directly so a deleted block's ring and stamps enter the
+			// them directly so a deleted block's stamps enter the
 			// comparison (live-tree walks can't reach them). Each entry is
 			// tagged `deleted` + its incarnation stamp.
 			for (const rec of blockRecordsOf(
@@ -687,7 +685,6 @@
 					contributors: attribution ? [...attribution.contributors].sort() : [],
 					lastChangedBy: attribution?.lastChangedBy
 				};
-				lineage[rec.id] = rec.lineage ?? null;
 			}
 			// The capturing peer's own model-side selection — per-peer by
 			// nature, so the runner excludes it from the convergence
@@ -838,7 +835,6 @@
 			return {
 				value,
 				blocks,
-				lineage,
 				blockTexts,
 				textContents,
 				textOwners,
@@ -1149,13 +1145,13 @@
 
 	const scenario = $derived(data.scenario);
 	const value = $derived(getScenarioValue(data.scenario, data.empty, data.dstDocument));
-	// Collaboration-DST injection: `?actor=`/`?lineagedepth=` make the page
-	// OWN the document so each browser peer gets a deterministic local actor
-	// and an enabled lineage ring — the props `createDocument` can't reach
-	// through the plain `{value}` mount path. Without either param the view
-	// stays on the internal-document path (`document` prop stays undefined).
+	// Collaboration-DST injection: `?actor=` makes the page OWN the document
+	// so each browser peer gets a deterministic local actor — the prop
+	// `createDocument` can't reach through the plain `{value}` mount path.
+	// Without it the view stays on the internal-document path (`document`
+	// prop stays undefined).
 	const injectedDocument = untrack(() =>
-		data.actor === null && data.lineagedepth === undefined
+		data.actor === null
 			? undefined
 			: createDocument({
 					// With a sync factory attached the doc must stay PENDING
@@ -1169,8 +1165,7 @@
 					...(collabSync
 						? {}
 						: { value: getScenarioValue(data.scenario, data.empty, data.dstDocument) }),
-					...(data.actor !== null ? { actor: { id: data.actor, name: data.actor } } : {}),
-					...(data.lineagedepth !== undefined ? { lineage: { depth: data.lineagedepth } } : {})
+					...(data.actor !== null ? { actor: { id: data.actor, name: data.actor } } : {})
 				})
 	);
 	const secondaryValue = $derived({

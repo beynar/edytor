@@ -27,10 +27,12 @@
 	});
 
 	const labels = $derived(controls.labels);
-	const aligns: { align: ImageAlign; label: string }[] = $derived([
-		{ align: 'left', label: labels.alignLeft },
-		{ align: 'center', label: labels.alignCenter },
-		{ align: 'right', label: labels.alignRight }
+	/** The toolbar's buttons: the three alignments, then the alt text's (no `align`). */
+	const buttons: { align?: ImageAlign; label: string; icon: string }[] = $derived([
+		{ align: 'left', label: labels.alignLeft, icon: alignIcons.left },
+		{ align: 'center', label: labels.alignCenter, icon: alignIcons.center },
+		{ align: 'right', label: labels.alignRight, icon: alignIcons.right },
+		{ label: labels.alt, icon: altIcon }
 	]);
 	const keep = (event: MouseEvent) => event.preventDefault();
 	/** The handle's hit box: 16px wide, inside the image's edge. */
@@ -40,6 +42,8 @@
 <div role="presentation">
 	{#if controls.shown && controls.box}
 		{@const box = controls.box}
+		<!-- The toolbar and the alt panel hang from the image's top right corner. -->
+		{@const right = `${box.x + box.width - 6}px`}
 		{#each ['left', 'right'] as const as side (side)}
 			<div
 				data-edytor-image-resize={side}
@@ -57,51 +61,38 @@
 		{#if !controls.drag && toolbar}
 			<div
 				data-edytor-image-toolbar-slot
-				style:left="{box.x + box.width - 6}px"
+				style:left={right}
 				style:top="{box.y + 6}px"
 				data-selecting={controls.selecting ? 'true' : undefined}
 			>
 				{@render toolbar(controls)}
 			</div>
 		{:else if !controls.drag}
+			<!-- Its role and name are the controller's `bar`. -->
 			<div
 				data-edytor-image-toolbar
-				role="toolbar"
-				aria-label={labels.toolbar}
-				style:left="{box.x + box.width - 6}px"
+				style:left={right}
 				style:top="{box.y + 6}px"
 				data-selecting={controls.selecting ? 'true' : undefined}
 				{@attach controls.bar}
 			>
-				{#each aligns as { align, label } (align)}
+				{#each buttons as { align, label, icon } (icon)}
 					<button
 						type="button"
 						data-edytor-image-align={align}
+						data-edytor-image-alt-toggle={align ? undefined : ''}
 						aria-label={label}
 						title={label}
-						aria-pressed={box.align === align}
+						aria-pressed={align ? box.align === align : undefined}
+						aria-expanded={align ? undefined : controls.editing === box.id}
 						onmousedown={keep}
-						onclick={() => controls.align(align)}
-						><span aria-hidden="true" style:mask-image={alignIcons[align]}></span></button
+						onclick={() => (align ? controls.align(align) : controls.toggleAlt())}
+						><span aria-hidden="true" style:mask-image={icon}></span></button
 					>
 				{/each}
-				<button
-					type="button"
-					data-edytor-image-alt-toggle
-					aria-label={labels.alt}
-					title={labels.alt}
-					aria-expanded={controls.editing === box.id}
-					onmousedown={keep}
-					onclick={controls.toggleAlt}
-					><span aria-hidden="true" style:mask-image={altIcon}></span></button
-				>
 			</div>
 			{#if controls.editing === box.id}
-				<div
-					data-edytor-image-alt-panel
-					style:left="{box.x + box.width - 6}px"
-					style:top="{box.y + 40}px"
-				>
+				<div data-edytor-image-alt-panel style:left={right} style:top="{box.y + 40}px">
 					<input
 						data-edytor-image-alt
 						aria-label={labels.alt}

@@ -218,6 +218,13 @@ export {
 	createTablePlugin,
 	isTablePlugin,
 	type TablePluginOptions,
+	insertTableRow,
+	deleteTableRows,
+	insertTableColumn,
+	deleteTableColumn,
+	moveTableColumn,
+	moveTableRows,
+	fillTableCell,
 	type TableChrome,
 	type TableMenu,
 	type TableMenuRow,
@@ -426,7 +433,6 @@ export type { DocumentOptions } from './crdt/document.js';
 export type {
 	ActorProfile,
 	AttributionActor,
-	BlockLineageEntry,
 	DocumentAttribution
 } from './crdt/attribution/attribution.js';
 export type { ActorId, BlockAttribution } from './crdt/attribution/block.js';

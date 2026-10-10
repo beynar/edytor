@@ -7,7 +7,6 @@
 		toolbar
 	}: { controller: ToolbarController; toolbar?: Snippet<[ToolbarController]> } = $props();
 
-	const keep = (event: MouseEvent) => event.preventDefault();
 	const labels = $derived(controller.labels);
 </script>
 
@@ -36,7 +35,6 @@
 				data-stop="turn"
 				aria-haspopup="menu"
 				aria-expanded={controller.panel === 'turn'}
-				onmousedown={keep}
 				onclick={() => controller.togglePanel('turn')}
 				>{controller.currentKind?.label ?? labels.text}<span
 					class="toolbar-chevron"
@@ -51,7 +49,6 @@
 				data-testid="toolbar-link"
 				aria-expanded={controller.panel === 'link'}
 				style:--toolbar-icon={linkIcon}
-				onmousedown={keep}
 				onclick={() => controller.togglePanel('link')}>{labels.link}</button
 			>
 			<span class="toolbar-divider" aria-hidden="true"></span>
@@ -64,7 +61,6 @@
 					title={item.label}
 					data-testid={`toolbar-${item.mark}`}
 					aria-pressed={controller.isActive(item.mark)}
-					onmousedown={keep}
 					onclick={() => controller.toggleMark(item.mark)}>{item.icon}</button
 				>
 			{/each}
@@ -76,7 +72,6 @@
 				aria-label={labels.color}
 				title={labels.textColor}
 				aria-expanded={controller.panel === 'color'}
-				onmousedown={keep}
 				onclick={() => controller.togglePanel('color')}
 				>A<span class="toolbar-chevron" aria-hidden="true"></span></button
 			>
@@ -92,7 +87,6 @@
 						class="toolbar-row"
 						data-current={kind === controller.currentKind}
 						style:--toolbar-icon={iconOf(kind.id)}
-						onmousedown={keep}
 						onclick={() => controller.turnInto(kind)}>{kind.label}</button
 					>
 				{/each}
@@ -112,7 +106,6 @@
 					class="toolbar-link-action"
 					data-testid="toolbar-link-apply"
 					title={labels.applyLink}
-					onmousedown={keep}
 					onclick={() => controller.applyLink()}>{labels.apply}</button
 				>
 				<button
@@ -120,40 +113,31 @@
 					class="toolbar-link-action"
 					data-testid="toolbar-link-remove"
 					title={labels.removeLink}
-					onmousedown={keep}
 					onclick={() => controller.removeLink()}>{labels.remove}</button
 				>
 			</div>
 		{:else if controller.panel === 'color'}
 			<div class="toolbar-panel" role="menu" aria-label={labels.color}>
-				<div class="toolbar-heading">{labels.textColor}</div>
-				<div class="toolbar-swatches">
-					{#each TOOLBAR_COLORS as color (color.name)}
-						<button
-							type="button"
-							role="menuitem"
-							class="toolbar-swatch"
-							title={labels.colorText(controller.colorName(color.name))}
-							style:color={color.text ?? 'inherit'}
-							onmousedown={keep}
-							onclick={() => controller.setColor('color', color.text)}>A</button
-						>
-					{/each}
-				</div>
-				<div class="toolbar-heading">{labels.backgroundColor}</div>
-				<div class="toolbar-swatches">
-					{#each TOOLBAR_COLORS as color (color.name)}
-						<button
-							type="button"
-							role="menuitem"
-							class="toolbar-swatch"
-							title={labels.colorBackground(controller.colorName(color.name))}
-							style:background={color.background ?? 'transparent'}
-							onmousedown={keep}
-							onclick={() => controller.setColor('highlight', color.background)}
-						></button>
-					{/each}
-				</div>
+				<!-- The text colours (an "A" in the colour), then the backgrounds (a filled square). -->
+				{#each ['color', 'highlight'] as const as mark (mark)}
+					{@const text = mark === 'color'}
+					<div class="toolbar-heading">{text ? labels.textColor : labels.backgroundColor}</div>
+					<div class="toolbar-swatches">
+						{#each TOOLBAR_COLORS as color (color.name)}
+							{@const name = controller.colorName(color.name)}
+							<button
+								type="button"
+								role="menuitem"
+								class="toolbar-swatch"
+								title={text ? labels.colorText(name) : labels.colorBackground(name)}
+								style:color={text ? (color.text ?? 'inherit') : undefined}
+								style:background={text ? undefined : (color.background ?? 'transparent')}
+								onclick={() => controller.setColor(mark, text ? color.text : color.background)}
+								>{text ? 'A' : ''}</button
+							>
+						{/each}
+					</div>
+				{/each}
 			</div>
 		{/if}
 	</div>

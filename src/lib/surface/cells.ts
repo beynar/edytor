@@ -244,6 +244,15 @@ export const partsOf = (runs: readonly ContentRun[]): readonly Part[] => {
 	return parts;
 };
 
+/** Whether a view renders mark `name` (its record has a tag or a snippet): an unknown mark renders its text only. */
+export const rendersMark = (
+	marks: ReadonlyMap<string, { tag?: unknown; snippet?: unknown }>,
+	name: string
+) => {
+	const mark = marks.get(name);
+	return Boolean(mark?.tag || mark?.snippet);
+};
+
 export type RenderDelta = {
 	readonly text: string;
 	/** Mark entries in nesting order (the first run's order when runs merge). */

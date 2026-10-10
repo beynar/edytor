@@ -78,13 +78,6 @@ export interface DocumentWrites {
 		id: BlockId,
 		freshId: (oldId: string, kind: 'block' | 'inline') => string
 	): OpResult;
-	insertTableRow(table: BlockId, index: number): OpResult;
-	deleteTableRows(rows: readonly BlockId[]): OpResult;
-	insertTableColumn(table: BlockId, index: number, width?: number): OpResult;
-	deleteTableColumn(table: BlockId, column: string | number): OpResult;
-	moveTableColumn(table: BlockId, column: string | number, to: number): OpResult;
-	moveTableRows(rows: readonly BlockId[], to: number): OpResult;
-	fillTableCell(row: BlockId, column: string | number): OpResult;
 	insertText(id: BlockId, offset: number, text: string, marks?: Record<string, unknown>): OpResult;
 	deleteText(id: BlockId, offset: number, length: number): OpResult;
 	formatRange(
@@ -207,13 +200,6 @@ export const DOCUMENT_OPERATIONS = [
 	'patchData',
 	'setBlockData',
 	'duplicateBlock',
-	'insertTableRow',
-	'deleteTableRows',
-	'insertTableColumn',
-	'deleteTableColumn',
-	'moveTableColumn',
-	'moveTableRows',
-	'fillTableCell',
 	'insertText',
 	'deleteText',
 	'formatRange',

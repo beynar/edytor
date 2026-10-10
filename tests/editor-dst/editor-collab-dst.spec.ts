@@ -37,7 +37,7 @@ import { parseSeedList } from './generator.js';
  * suite tests MULTI-USER editing: genuine concurrency under held,
  * permuted, duplicated, dropped, delayed and partitioned delivery, then
  * exact full-state convergence (block ids, structure, text, marks,
- * attribution, lineage) checked against a Node-side reference document
+ * attribution) checked against a Node-side reference document
  * built from per-peer captured updates — so a universally lost edit
  * cannot pass as "converged".
  *
@@ -71,13 +71,6 @@ if (!Number.isInteger(stepCount) || stepCount < 1) {
 const peerCount = Number(process.env.COLLAB_DST_PEERS ?? 3);
 if (peerCount !== 2 && peerCount !== 3) {
 	throw new Error(`COLLAB_DST_PEERS must be 2 or 3, got "${process.env.COLLAB_DST_PEERS}"`);
-}
-
-const lineageDepth = Number(process.env.COLLAB_DST_LINEAGE ?? 5);
-if (!Number.isInteger(lineageDepth) || lineageDepth < 0) {
-	throw new Error(
-		`COLLAB_DST_LINEAGE must be a non-negative integer, got "${process.env.COLLAB_DST_LINEAGE}"`
-	);
 }
 
 type ReplayArtifact = {
@@ -124,7 +117,7 @@ const schedules = process.env.COLLAB_DST_REPLAY
 	? [readReplaySchedule(process.env.COLLAB_DST_REPLAY)]
 	: [
 			...parseSeedList(process.env.COLLAB_DST_SEEDS ?? '1-6,9').map((seed) =>
-				generateCollabSchedule(seed, stepCount, peerCount, lineageDepth)
+				generateCollabSchedule(seed, stepCount, peerCount)
 			),
 			...pinnedSchedules()
 		];

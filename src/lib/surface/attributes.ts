@@ -11,9 +11,7 @@
  * resolves).
  */
 import type { Edytor } from '../edytor.svelte.js';
-import { replacedMark } from '../session/suggestions.svelte.js';
 import type { ContentRun } from '../crdt/index.js';
-import { colorAttributes } from '../block/colors.js';
 
 export type Owned = {
 	/** Attribute → required value ('' for a bare attribute, null when absent). */
@@ -67,7 +65,7 @@ export const insideVoid = (edytor: Edytor, block: string) => {
 export const ownedOf = (
 	edytor: Edytor,
 	element: Element,
-	entry: { kind: Kind; block: string; name?: string } | null
+	entry: { kind: Kind; block: string; name?: string; owned?: () => Owned } | null
 ): Owned | null => {
 	if (element === edytor.node)
 		return {
@@ -76,6 +74,8 @@ export const ownedOf = (
 			style: {}
 		};
 	if (!entry || entry.kind === 'preview') return null;
+	// A block's: what its render owns (`Block.svelte`), one reading.
+	if (entry.owned) return entry.owned();
 	const { block } = entry;
 	if (entry.kind === 'mark') {
 		const name = entry.name ?? null;
@@ -106,30 +106,6 @@ export const ownedOf = (
 				contenteditable: 'false'
 			},
 			style: {}
-		};
-	}
-	const cell = edytor.cells?.get(block);
-	const isVoid = Boolean(cell && edytor.definitionOf(cell.type).void);
-	if (entry.kind === 'block') {
-		const handle = edytor.idToBlock.block(block);
-		const { selectedBlocks, focusedBlocks } = edytor.selection;
-		const colors = colorAttributes(cell?.data);
-		return {
-			strict: false,
-			owned: {
-				'data-edytor-block': 'true',
-				'data-edytor-color': colors['data-edytor-color'] ?? null,
-				'data-edytor-background': colors['data-edytor-background'] ?? null,
-				'data-edytor-id': block,
-				'data-edytor-type': cell?.type ?? null,
-				'data-edytor-void': isVoid ? 'true' : null,
-				'data-edytor-selected': selectedBlocks.has(handle) ? 'true' : null,
-				'data-edytor-focused': focusedBlocks.has(handle) ? 'true' : null,
-				'data-edytor-suggestion-replaced': replacedMark(edytor.suggestions.at(block)),
-				dir: blockDir(ownText(cell?.runs ?? [])),
-				contenteditable: isVoid ? 'false' : null
-			},
-			style: isVoid ? { 'user-select': 'none' } : {}
 		};
 	}
 	const text = edytor.nodeToText.get(element);

@@ -146,7 +146,7 @@ The same snippet works with `createBlockHandlesPlugin({ handle })` in `plugins`.
 
 ## Drag and drop
 
-Drag and drop uses Atlassian's [Pragmatic drag and drop](https://atlassian.design/components/pragmatic-drag-and-drop/about) (a copy of its code inside the editor, not a dependency) and its [auto-scroll](#auto-scroll), and its drop zones use the [list item hitbox](https://atlassian.design/components/pragmatic-drag-and-drop/optional-packages/hitbox/about) (`@atlaskit/pragmatic-drag-and-drop-hitbox/list-item`), following its tree guidance: each level of the tree is a list, and an expanded item offers no "after" on its own row. While you drag, each block is a drop target. As in Notion, the hitbox splits the block's own row (not its children) into two halves, and the pointer's horizontal position decides nesting and the level:
+Drag and drop uses Atlassian's [Pragmatic drag and drop](https://atlassian.design/components/pragmatic-drag-and-drop/about) (a copy of its code inside the editor, not a dependency) and its [auto-scroll](#auto-scroll). Its drop zones follow the tree guidance of its [list item hitbox](https://atlassian.design/components/pragmatic-drag-and-drop/optional-packages/hitbox/about): each level of the tree is a list, and an expanded item offers no "after" on its own row. While you drag, each block is a drop target. As in Notion, the editor splits the block's own row (not its children) into two halves, and the pointer's horizontal position decides nesting and the level:
 
 | Pointer position | Drop |
 | --- | --- |
@@ -168,7 +168,7 @@ The nest threshold is the block's first text line's start plus one nesting step:
 Only placements the document allows are offered:
 
 - A block that cannot hold children (a divider, an image) never nests, and a level where the blocks do not fit gives way to the next nearest.
-- A half the document refuses entirely is the hitbox's `blocked` operation: the drop takes the other half's placement, and the indicator carries `data-blocked="true"`.
+- A half the document refuses entirely is `blocked`: the drop takes the other half's placement, and the indicator carries `data-blocked="true"`.
 - The dragged blocks' own rows and their children offer nothing, so letting go over them changes nothing (as in Notion), even for the last block of a nested group, whose levels would otherwise move it out of its parent. The one exception is a parent they leave with no other shown child: their rows are then the gap under that parent's row, and offer its levels.
 
 The placement is sticky, so the indicator does not flicker:

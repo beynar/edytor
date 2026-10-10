@@ -1,19 +1,13 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { blockSelection } from '$lib/session/selection.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
 import { prepareDeleteContent } from '$lib/edytor.utils.js';
 import { deleteSelectedBlocks, deleteSelectedRange } from '$lib/selection/replaceSelection.js';
 import { shown } from '$lib/selection/visibility.js';
-import { caretAt, type Attempt } from '$lib/session/attempt.js';
+import { blockSelection } from '$lib/session/selection.js';
+import { INTENTS, caretAt, type Attempt } from '$lib/session/attempt.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from '$lib/text/wordBoundary.js';
-
-/** A forward delete at a live composition's region keeps the preview (the IME owns it). */
-const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Attempt) =>
-	snapshot.inputType === 'deleteContentForward' &&
-	snapshot.isCollapsed &&
-	Boolean(snapshot.startText && edytor.composition.covers(snapshot.startText, snapshot.yStart));
 
 /**
  * Merge `from` into a collapsed toggle's header `into`, as the key's merge:
@@ -32,168 +26,111 @@ const mergeIntoHeader = (edytor: Edytor, from: Block, into: Block, backward: boo
 };
 
 /**
- * The line a forward merge into a collapsed toggle's header joins: `block`,
- * or for a container (a list) its first item's, descending as the
- * document's `mergeForward` does; the seam range then removes a container
- * left with no item.
+ * Delete at the caret's text edge, one character inside it: the inline
+ * atom beside the edge, else the character, the caret staying at its side.
  */
-const firstLine = (block: Block): Block => {
-	while (block.isContainer && block.children[0]) block = block.children[0];
-	return block;
+export const deleteInText = (
+	edytor: Edytor,
+	text: Text,
+	yStart: number,
+	back: boolean,
+	atEdge: boolean
+) => {
+	const { content } = text.parent;
+	if (!atEdge) {
+		const deletion = text.deleteText({ direction: back ? 'BACKWARD' : 'FORWARD', length: 1 });
+		return edytor.selection.selectText(text, back ? (deletion?.start ?? yStart - 1) : yStart);
+	}
+	const index = content.indexOf(text) + (back ? -1 : 1);
+	const before = back ? content.at(index - 1) : text;
+	// Read before the removal joins the texts beside the atom.
+	const offset = back && before instanceof Text ? before.length : yStart;
+	text.parent.removeInlineBlock({ index });
+	if (before instanceof Text) edytor.selection.selectText(before, offset);
 };
 
 const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, yStart } = snapshot;
-	if (!startText) {
-		return;
+	if (!startText) return;
+	const current = startText.parent;
+	// At a live composition's region the preview stays (the IME owns it).
+	const keep =
+		edytor.composition.covers(startText, yStart) ||
+		(snapshot.projection.isAtEndOfBlock && current.definition.void);
+	if (keep || !snapshot.projection.isAtEndOfBlock)
+		return keep
+			? edytor.selection.selectText(startText, yStart)
+			: deleteInText(edytor, startText, yStart, false, snapshot.projection.isAtEndOfText);
+	const next = shown(current, 'blockAfter');
+	if (next?.definition.void) return edytor.selection.select(blockSelection([next.id]));
+	if (next === current.closestNextBlock) current.mergeBlockForward();
+	else if (next) {
+		// A forward merge into a collapsed toggle's header joins its first line:
+		// a container's (a list's) first item, as the document's `mergeForward`.
+		let line = next;
+		while (line.isContainer && line.children[0]) line = line.children[0];
+		mergeIntoHeader(edytor, line, current, false);
 	}
-
-	if (isForwardDeleteInsideActiveComposition(edytor, snapshot)) {
-		edytor.selection.selectText(startText, yStart);
-		return;
-	}
-
-	if (snapshot.projection.isAtEndOfBlock) {
-		const currentBlock = startText.parent;
-		if (currentBlock.definition.void) {
-			edytor.selection.selectText(startText, yStart);
-			return;
-		}
-
-		const nextBlock = shown(currentBlock, 'blockAfter');
-		if (nextBlock?.definition.void) {
-			edytor.selection.select(blockSelection([nextBlock.id]));
-			return;
-		}
-
-		if (nextBlock === currentBlock.closestNextBlock) currentBlock.mergeBlockForward();
-		else if (nextBlock) mergeIntoHeader(edytor, firstLine(nextBlock), currentBlock, false);
-		caretAt(edytor, startText, yStart);
-		return;
-	}
-
-	if (snapshot.projection.isAtEndOfText) {
-		const index = startText.parent.content.indexOf(startText) + 1;
-		startText.parent.removeInlineBlock({ index });
-		edytor.selection.selectText(startText, yStart);
-		return;
-	}
-
-	startText.deleteText({ direction: 'FORWARD', length: 1 });
-	edytor.selection.selectText(startText, yStart);
-};
-
-/**
- * Backspace at the start of a catalogue kind other than its parent's default
- * (a bullet, a to-do, a heading) turns it into that default first, keeping
- * its content and children (`del.start.kind`, Notion); the next Backspace
- * merges or unnests. Structural kinds outside the catalogue (a `list-item`,
- * a `codeLine`) keep the structural path.
- */
-const resetKindAtStart = (edytor: Edytor, snapshot: Attempt) => {
-	const block = snapshot.startText?.parent;
-	if (!snapshot.projection.isAtStartOfBlock || !block?.convertible || !block.parent) return false;
-	const type = edytor.defaultChild(block.parent);
-	if (block.type === type || !edytor.kinds.some((row) => row.value.type === block.type)) {
-		return false;
-	}
-	block.setBlock({ value: { type, data: {} } });
-	caretAt(edytor, block.firstText, 0);
-	return true;
+	caretAt(edytor, startText, yStart);
 };
 
 const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, yStart } = snapshot;
-	const island = edytor.idToBlock.get(snapshot.projection.islandRoot ?? '');
-
-	if (resetKindAtStart(edytor, snapshot)) return;
-
-	// A table's cell keeps its caret at its start: nothing merges into or out of
-	// a cell, and it never outdents (`table.merge`).
-	const cell = startText?.parent;
-	if (snapshot.projection.isAtStartOfBlock && cell && edytor.facade.isTableCell(cell.id)) {
-		edytor.selection.selectText(startText!, 0);
+	const block = startText?.parent;
+	if (!block) return;
+	if (!snapshot.projection.isAtStartOfBlock)
+		return deleteInText(edytor, startText, yStart, true, snapshot.projection.isAtStartOfText);
+	const { facade, root } = edytor;
+	const parent = block.parent;
+	// At the start of a catalogue kind other than its parent's default (a
+	// bullet, a to-do, a heading), it turns into that default first, keeping
+	// its content and children (`del.start.kind`, Notion); structural kinds
+	// outside the catalogue (a `list-item`, a `codeLine`) keep the structural path.
+	const type = parent && edytor.defaultChild(parent);
+	if (
+		block.convertible &&
+		type &&
+		block.type !== type &&
+		edytor.kinds.some((row) => row.value.type === block.type)
+	) {
+		block.setBlock({ value: { type, data: {} } });
+		return caretAt(edytor, block.firstText, 0);
+	}
+	const at = facade.positionOf(block.id);
+	// A table's cell keeps its caret at its start: nothing merges into or out
+	// of a cell, and it never outdents (`table.merge`); nor does the
+	// document's first block, empty.
+	if (facade.isTableCell(block.id) || (block.isEmpty && at?.parent === null && at.index === 0))
+		return edytor.selection.selectText(startText, 0);
+	const island = edytor.idToBlock.get(edytor.selection.projection.islandRoot ?? '');
+	// A column's block never outdents (nothing but a column sits in a layout):
+	// it merges, across columns in reading order (`layout.merge`).
+	const inColumn = !!parent && !parent.isRoot && facade.isLayoutItem(parent.id);
+	const last = !!at && at.index === facade.childrenIds(at.parent).length - 1;
+	if (parent !== root && last && !island && !inColumn) {
+		const lifted = block.unNestBlock();
+		if (lifted) edytor.selection.selectText(lifted.firstText, 0);
 		return;
 	}
-
-	const place = startText && edytor.facade.positionOf(startText.parent.id);
-	const first = place?.parent === null && place.index === 0;
-	if (snapshot.projection.isAtStartOfBlock && first && startText?.parent.isEmpty) {
-		edytor.selection.selectText(startText, 0);
-		return;
-	}
-
-	if (!startText) {
-		return;
-	}
-
-	if (snapshot.projection.isAtStartOfBlock) {
-		const { facade } = edytor;
-		const column = startText.parent.parent;
-		// A column's block never outdents (nothing but a column sits in a layout):
-		// it merges, across columns in reading order (`layout.merge`).
-		const inColumn = !!column && !column.isRoot && facade.isLayoutItem(column.id);
-		// Its place by id: no handle for every sibling (the root's on a long page).
-		const at = facade.positionOf(startText.parent.id);
-		const last = !!at && at.index === facade.childrenIds(at.parent).length - 1;
-		if (column !== edytor.root && last && !island && !inColumn) {
-			const newBlock = startText.parent.unNestBlock();
-			if (newBlock) {
-				edytor.selection.selectText(newBlock.firstText, 0);
-			}
-			return;
-		}
-
-		if (island && island.children.length === 1) {
-			edytor.selection.select(blockSelection([island.id]));
-			return;
-		}
-
-		if (island && island.children.length > 1 && startText.parent.index === 0) {
-			return;
-		}
-
-		const block = startText.parent;
-		// A column's first block joins the line before its column (and, in the first,
-		// before its layout), as the document's merge does (`layout.merge`).
-		const structure = (at: Block | null) =>
-			inColumn &&
-			block.index === 0 &&
-			!!at &&
-			(facade.isLayout(at.id) || facade.isLayoutItem(at.id));
-		let previousBlock = shown(block, 'blockBefore');
-		let closest = block.closestPreviousBlock;
-		while (structure(previousBlock)) previousBlock = shown(previousBlock!, 'blockBefore');
-		while (structure(closest)) closest = closest!.closestPreviousBlock;
-		if (previousBlock?.definition.void) {
-			edytor.selection.select(blockSelection([previousBlock.id]));
-			return;
-		}
-
-		const previousText = previousBlock?.lastText;
-		const offset = previousText?.length;
-		if (previousBlock === closest) block.mergeBlockBackward();
-		else if (previousBlock) mergeIntoHeader(edytor, block, previousBlock, true);
-		if (typeof offset === 'number') caretAt(edytor, previousText, offset);
-		// A list's first item lifts out of it: the caret stays at its start.
-		else if (previousBlock === block.parent) caretAt(edytor, block.firstText, 0);
-		return;
-	}
-
-	if (snapshot.projection.isAtStartOfText) {
-		const index = startText.parent.content.indexOf(startText) - 1;
-		const previousText = startText.parent.content.at(index - 1);
-		const hasPreviousText = previousText && previousText instanceof Text;
-		const offset = hasPreviousText ? previousText.length : 0;
-		startText.parent.removeInlineBlock({ index });
-		if (hasPreviousText) {
-			edytor.selection.selectText(previousText, offset);
-		}
-		return;
-	}
-
-	const deletion = startText.deleteText({ direction: 'BACKWARD', length: 1 });
-	edytor.selection.selectText(startText, deletion?.start ?? yStart - 1);
+	if (island && island.children.length === 1)
+		return edytor.selection.select(blockSelection([island.id]));
+	if (island && block.index === 0) return;
+	// A column's first block joins the line before its column (and, in the first,
+	// before its layout), as the document's merge does (`layout.merge`).
+	const structure = (b: Block | null) =>
+		inColumn && block.index === 0 && !!b && (facade.isLayout(b.id) || facade.isLayoutItem(b.id));
+	let previous = shown(block, 'blockBefore');
+	let closest = block.closestPreviousBlock;
+	while (structure(previous)) previous = shown(previous!, 'blockBefore');
+	while (structure(closest)) closest = closest!.closestPreviousBlock;
+	if (previous?.definition.void) return edytor.selection.select(blockSelection([previous.id]));
+	const previousText = previous?.lastText;
+	const offset = previousText?.length;
+	if (previous === closest) block.mergeBlockBackward();
+	else if (previous) mergeIntoHeader(edytor, block, previous, true);
+	if (offset !== undefined) caretAt(edytor, previousText, offset);
+	// A list's first item lifts out of it: the caret stays at its start.
+	else if (previous === parent) caretAt(edytor, block.firstText, 0);
 };
 
 /**
@@ -219,68 +156,51 @@ const lineEdge = (text: Text, at: number, backward: boolean, soft: boolean): [Te
 };
 
 /**
- * A collapsed unit delete (`del.unit.*`): the model owns the extent — a word
- * run from the caret's own text, the caret's line to either side, or the
- * whole block — deleted as one range; the caret lands at its start.
+ * The model command of a delete intent. A block selection: every delete key
+ * (a word or line chord too) deletes the blocks as Backspace does —
+ * `onDeleteSelectedBlocks` first, children promoted (a drag or composition
+ * fragment is not a key). A range: the document's range deletion (a forward
+ * one needs its text). A collapsed caret: the intent's unit (`del.unit.*`),
+ * whose extent the model owns — a character; a word run from the caret's own
+ * text, the caret's line to either side, or the whole block, deleted as one
+ * range, the caret at its start; a cut, drag or composition fragment deletes
+ * nothing. A unit with nothing of the caret's own text in its direction
+ * (next to an inline atom, at the block's edge) is the neighbour, deleted
+ * like a character (atom, merge, unnest).
  */
-const deleteCollapsedUnit = (edytor: Edytor, snapshot: Attempt) => {
-	const { startText: text, yStart, inputType } = snapshot;
-	if (!text) return;
-	const [first, last] = [text.parent.firstText!, text.parent.lastText!];
-	const soft = inputType.startsWith('deleteSoftLine');
-	const [from, to]: [Text, number][] =
-		inputType === 'deleteWordBackward'
-			? [
-					[text, getPreviousWordStartOffset(text.stringContent, yStart)],
-					[text, yStart]
-				]
-			: inputType === 'deleteWordForward'
-				? [
-						[text, yStart],
-						[text, getNextWordEndOffset(text.stringContent, yStart)]
-					]
-				: inputType === 'deleteEntireSoftLine'
-					? [
-							[first, 0],
-							[last, last.length]
-						]
-					: inputType.endsWith('Backward')
-						? [lineEdge(text, yStart, true, soft), [text, yStart]]
-						: [[text, yStart], lineEdge(text, yStart, false, soft)];
-	// Nothing of the caret's own text lies in the delete direction (the caret
-	// is at the text's edge: next to an inline atom, or at the block's edge):
-	// the unit is the neighbour, deleted like a character (atom, merge, unnest).
-	if (from[0] === to[0] && from[1] === to[1] && inputType !== 'deleteEntireSoftLine') {
-		return inputType.endsWith('Backward')
-			? deleteContentBackward(edytor, snapshot)
-			: deleteContentForward(edytor, snapshot);
-	}
-	text.parent.deleteContentAtRange({ start: [from[0].index, from[1]], end: [to[0].index, to[1]] });
-	edytor.selection.selectText(...from);
-};
-
 export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: Attempt) => {
 	// The Android post-delete snap-back's evidence (a named projector rule):
 	// only an actual delete arms it, never a navigational jump.
 	edytor.projector.deleted(snapshot);
-	const { inputType } = snapshot;
-	const forward = /Forward$|^deleteContent$|^deleteEntireSoftLine$/.test(inputType);
-	// A block selection: every delete key (a word or line chord too) deletes
-	// the blocks as Backspace does — `onDeleteSelectedBlocks` first, children
-	// promoted (a drag or composition fragment is not a key).
-	if (edytor.selection.selectedBlocks.size && !/^delete(ByDrag|ByComposition)$/.test(inputType)) {
-		deleteSelectedBlocks(edytor);
-		return;
-	}
-	// A selection: the document's range deletion (a forward one needs its text).
+	const { inputType, startText: text, yStart } = snapshot;
+	const { dir, unit } = INTENTS[inputType] ?? {};
+	const back = !unit || dir === 'back';
+	if (edytor.selection.selectedBlocks.size && !/^delete(ByDrag|ByComposition)$/.test(inputType))
+		return deleteSelectedBlocks(edytor);
 	if (!snapshot.isCollapsed) {
-		if (!forward || snapshot.startText) deleteSelectedRange(edytor, { selection: snapshot });
+		if (back || text) deleteSelectedRange(edytor, { selection: snapshot });
 		return;
 	}
-	if (inputType === 'deleteContentBackward') return deleteContentBackward(edytor, snapshot);
-	if (inputType === 'deleteContentForward' || inputType === 'deleteContent')
-		return deleteContentForward(edytor, snapshot);
-	// A collapsed cut, drag or composition fragment deletes nothing.
-	if (!/^delete(ByCut|ByDrag|ByComposition)$/.test(inputType))
-		return deleteCollapsedUnit(edytor, snapshot);
+	if (!unit || !text) return;
+	const byChar = () =>
+		back ? deleteContentBackward(edytor, snapshot) : deleteContentForward(edytor, snapshot);
+	if (unit === 'char') return byChar();
+	const [first, last] = [text.parent.firstText!, text.parent.lastText!];
+	const word = back
+		? getPreviousWordStartOffset(text.stringContent, yStart)
+		: getNextWordEndOffset(text.stringContent, yStart);
+	const edge: [Text, number] =
+		unit === 'word' ? [text, word] : lineEdge(text, yStart, back, unit === 'soft');
+	const [from, to]: [Text, number][] =
+		unit === 'line'
+			? [
+					[first, 0],
+					[last, last.length]
+				]
+			: back
+				? [edge, [text, yStart]]
+				: [[text, yStart], edge];
+	if (unit !== 'line' && from[0] === to[0] && from[1] === to[1]) return byChar();
+	text.parent.deleteContentAtRange({ start: [from[0].index, from[1]], end: [to[0].index, to[1]] });
+	edytor.selection.selectText(...from);
 };

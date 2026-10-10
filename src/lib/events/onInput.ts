@@ -3,38 +3,11 @@ import { diffText } from '$lib/utils/diffText.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { domOffsetIn } from '$lib/selection/selection.utils.js';
-import { replaceSelectionWithCollapsedTarget } from '$lib/selection/replaceSelection.js';
 import { isControlEvent } from './nativeInteractiveControl.js';
 import { runOccurrence } from './onBeforeInput.js';
-import {
-	attemptOf,
-	kindOf,
-	type Attempt,
-	type Expect,
-	type TextPoint
-} from '$lib/session/attempt.js';
+import { attemptOf, kindOf } from '$lib/session/attempt.js';
 
 const ZERO_WIDTH_SPACE = '\u200B';
-
-const isNativeLineBreakTextInput = (event: Event) =>
-	typeof InputEvent !== 'undefined' &&
-	event instanceof InputEvent &&
-	(event.inputType === 'insertText' || kindOf(event.inputType) === 'break');
-
-const isTextInsertionInput = (event: Event): event is InputEvent =>
-	typeof InputEvent !== 'undefined' &&
-	event instanceof InputEvent &&
-	event.inputType === 'insertText' &&
-	typeof event.data === 'string' &&
-	event.data.length > 0;
-
-const isNativeHistoryInput = (event: Event): event is InputEvent =>
-	typeof InputEvent !== 'undefined' &&
-	event instanceof InputEvent &&
-	kindOf(event.inputType) === 'history';
-
-const runInputHistoryCommand = (edytor: Edytor, event: InputEvent) =>
-	event.inputType === 'historyUndo' ? edytor.historyUndo() : edytor.historyRedo();
 
 /**
  * What the browser shows for `text`: its element's text nodes in order (WebKit's
@@ -64,8 +37,6 @@ export const readDomText = (text: Text) => {
 	return value;
 };
 
-const isLiveText = (text: Text) => text.isInDocument;
-
 export const getCollapsedDomTextSelection = (edytor: Edytor) => {
 	const selection = getDomSelectionSnapshot(edytor.node);
 	if (!selection?.anchorNode || !selection.isCollapsed) {
@@ -87,48 +58,9 @@ export const getCollapsedDomTextSelection = (edytor: Edytor) => {
 	return { text, offset: domOffsetIn(text, selection.anchorNode, selection.anchorOffset) };
 };
 
-const getEventTextRepairTarget = (edytor: Edytor, event: Event) => {
-	const target = event.target instanceof Node ? event.target : null;
-	const text = edytor.selection.getTextOfNode(target);
-	if (!text?.node) {
-		return null;
-	}
-
-	return {
-		text,
-		offset:
-			edytor.selection.textRange().startText === text
-				? edytor.selection.textRange().yStart
-				: text.length
-	};
-};
-
 const getInputType = (event: Event) => {
 	const inputType = (event as InputEvent).inputType;
 	return typeof inputType === 'string' ? inputType : '';
-};
-
-const waitForSuppressedObservedMutationRepair = () =>
-	new Promise((resolve) => setTimeout(resolve, 20));
-
-/**
- * Where drift repair puts the caret: the command's caret, else the model
- * caret (a restore, or a line break), else the DOM caret; the event's text last.
- */
-const driftRepairTarget = (
-	edytor: Edytor,
-	event: Event,
-	repair: boolean,
-	caret: TextPoint | null
-) => {
-	const { startText, yStart } = edytor.selection.textRange();
-	const model = startText ? { text: startText, offset: yStart } : null;
-	const preferModel = repair || kindOf(getInputType(event)) === 'break';
-	return (
-		(repair && caret) ||
-		(preferModel ? model : getCollapsedDomTextSelection(edytor)) ||
-		getEventTextRepairTarget(edytor, event)
-	);
 };
 
 const getNativeLineBreakInsertionIndexFromValue = (text: Text, value: string) => {
@@ -137,10 +69,7 @@ const getNativeLineBreakInsertionIndexFromValue = (text: Text, value: string) =>
 };
 
 export const handleNativeLineBreakTextValue = async (edytor: Edytor, text: Text, value: string) => {
-	if (!isLiveText(text)) {
-		return false;
-	}
-
+	if (!text.isInDocument) return false;
 	const insertionIndex = getNativeLineBreakInsertionIndexFromValue(text, value);
 	if (insertionIndex === null) {
 		return false;
@@ -155,76 +84,6 @@ export const handleNativeLineBreakTextValue = async (edytor: Edytor, text: Text,
 	edytor.selection.selectText(text, insertionIndex);
 	await runOccurrence(edytor, { inputType, cancelable: false });
 	return true;
-};
-
-const handleNativeLineBreakTextInput = async (edytor: Edytor, event: Event) => {
-	if (!isNativeLineBreakTextInput(event)) {
-		return false;
-	}
-
-	const target = getCollapsedDomTextSelection(edytor) ?? getEventTextRepairTarget(edytor, event);
-	return target
-		? handleNativeLineBreakTextValue(edytor, target.text, readDomText(target.text))
-		: false;
-};
-
-const getExpandedSelectionInputText = (edytor: Edytor, event: Event) =>
-	!edytor.readonly &&
-	!edytor.isComposing &&
-	isTextInsertionInput(event) &&
-	!edytor.selection.projection.isCollapsed &&
-	edytor.selection.selectedBlocks.size === 0
-		? event.data
-		: null;
-
-const replaceExpandedSelectionFromInputOnlyText = (edytor: Edytor, value: string) => {
-	const target = replaceSelectionWithCollapsedTarget(edytor);
-	if (!target) {
-		return false;
-	}
-	edytor.selection.selectText(target.text, target.offset);
-
-	target.text.insertText({
-		value,
-		start: target.offset,
-		end: target.offset
-	});
-	target.text.refreshFromModel();
-	edytor.selection.selectText(target.text, target.offset + value.length);
-	return true;
-};
-
-/** Drift around a model-owned attempt: re-render its texts from the model and put the caret back. */
-const repairDrift = async (
-	edytor: Edytor,
-	attempt: Attempt,
-	expect: Extract<Expect, { kind: 'drift' }>,
-	event: Event
-) => {
-	const repair = expect.mode !== 'refresh';
-	if (attempt.isStructuralKeyFallback && attempt.phase === 'open' && !repair) {
-		// The key's attempt has not run yet: its deadline performs it.
-		expect.input = false;
-		edytor.attempts.arm(attempt, 50);
-		return;
-	}
-	const serial = edytor.intentSerial;
-	if (expect.mode === 'discard') {
-		await waitForSuppressedObservedMutationRepair();
-	}
-	expect.input = false;
-	if (expect.mode !== 'discard') edytor.attempts.arm(attempt, 0);
-	const target = driftRepairTarget(edytor, event, repair, expect.caret);
-	if (!target) return;
-	const eventTarget = getEventTextRepairTarget(edytor, event);
-	if (eventTarget && eventTarget.text !== target.text && isLiveText(eventTarget.text)) {
-		eventTarget.text.refreshFromModel();
-	}
-	target.text.refreshFromModel();
-	// The attempt decided the caret; `select()` it — the projector displays it —
-	// unless a gesture came during the wait: the selection is then the user's.
-	if (edytor.intentSerial !== serial) return;
-	edytor.selection.selectText(target.text, Math.min(target.offset, target.text.length));
 };
 
 /**
@@ -243,46 +102,41 @@ const claimOf = (edytor: Edytor, event: Event) => {
 };
 
 /**
- * An `input` event. Model-owned drift is repaired here; browser-made text is
- * never adopted here: the mutation queue is the only adopter, so
- * the `input` flushes it — a browser-owned attempt's change is adopted there,
- * once, through the dispatcher — then closes the attempt it belongs to.
+ * An `input` event. Browser-made text is never adopted here: the mutation
+ * queue is the only adopter (a native line break there runs as its
+ * occurrence), so the `input` flushes it — a browser-owned attempt's change
+ * is adopted there, once, through the dispatcher — then closes the attempt it
+ * belongs to. Drift around a model-owned attempt is the observer's to invert;
+ * a restoring attempt (a delete the browser could not be kept from) also
+ * re-renders the text the input landed in and shows its caret again, which
+ * the browser moved.
  */
 export async function onInput(this: Edytor, event: Event) {
 	// The live session's own input; a late one of its tail is drift it expects.
 	if (this.composition.input(event as InputEvent) === 'live') return;
+	const inputType = getInputType(event);
 	// The attempt this `input` belongs to: the newest whose expectation it satisfies.
-	let attempt = this.attempts.inputOf(getInputType(event));
+	let attempt = this.attempts.inputOf(inputType);
 	const expect = attempt?.expect;
-	if (attempt && expect?.kind === 'drift') {
-		return repairDrift(this, attempt, expect, event);
+	if (expect?.kind === 'drift') {
+		expect.input = false;
+		if (expect.mode !== 'restore') return;
+		this.attempts.arm(attempt!, 0);
+		const { selection } = this;
+		const at = expect.caret;
+		for (const text of [selection.getTextOfNode(event.target as Node | null), at?.text])
+			if (text?.isInDocument) text.refreshFromModel();
+		return selection.select(at ? selection.textValue(at.text, at.offset) : selection.value);
 	}
-
 	try {
 		if (isControlEvent(this.node, event)) return;
-
-		if (isNativeHistoryInput(event)) {
-			// Same guard as the beforeinput channel — a history command
-			// mid-composition consumes capture groups while the IME still
-			// owns the DOM node (engines that deliver history via `input`
-			// only would otherwise bypass the beforeinput swallow).
-			if (!this.isComposing) runInputHistoryCommand(this, event);
+		// History an engine delivers by `input` only; mid-composition it would
+		// consume capture groups while the IME still owns the DOM node.
+		if (kindOf(inputType) === 'history') {
+			if (!this.isComposing) this[inputType as 'historyUndo' | 'historyRedo']();
 			return;
 		}
-
 		attempt ??= claimOf(this, event);
-
-		if (await handleNativeLineBreakTextInput(this, event)) {
-			return;
-		}
-
-		const expandedSelectionInputText = getExpandedSelectionInputText(this, event);
-		if (expandedSelectionInputText) {
-			if (replaceExpandedSelectionFromInputOnlyText(this, expandedSelectionInputText)) {
-				return;
-			}
-		}
-
 		await this.surface.flush();
 	} finally {
 		if (attempt) this.attempts.close(attempt);

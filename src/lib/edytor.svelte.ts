@@ -23,7 +23,6 @@ import { virtualLens, type ViewDoc } from './session/virtual.js';
 import {
 	createCells,
 	placeholderOf,
-	segmentDeltas,
 	type Cell,
 	type Cells,
 	type RenderDelta,
@@ -956,9 +955,7 @@ export class Edytor {
 		const at = this.segmentOf(text);
 		if (!at) return [];
 		const { cell, segment } = at;
-		const pinned = this.pin.render(cell.id, segment.key);
-		const transform = this.definitionOf(cell.type).transformText;
-		return pinned?.deltas ?? segmentDeltas(cell, segment, transform);
+		return this.pin.shown(cell, segment, this.definitionOf(cell.type).transformText).deltas;
 	};
 
 	/** @internal The handle of inline atom `atom`, shown in block `id`. */

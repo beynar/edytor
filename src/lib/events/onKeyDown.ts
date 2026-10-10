@@ -1,5 +1,4 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { isInsideTrailingNewlineMarker } from '$lib/selection/selection.utils.js';
 import {
 	isNativeInteractiveEvent,
 	isNativeTextControl,
@@ -7,8 +6,8 @@ import {
 	ownsEvent
 } from './nativeInteractiveControl.js';
 import { replaceSelectedAtom } from '$lib/session/bindings.js';
-import { admitKeyAttempt } from './onBeforeInput.js';
-import { INTENTS, keyIntentOf, targetless } from '$lib/session/attempt.js';
+import { admitKeyAttempt, isTrailingSoftBreakBackward } from './onBeforeInput.js';
+import { INTENTS, intentSnapshot, keyIntentOf, targetless } from '$lib/session/attempt.js';
 import { getDomSelection } from '$lib/selection/domSelection.js';
 
 const isEventFromEditor = (edytor: Edytor, event: KeyboardEvent) => {
@@ -45,23 +44,17 @@ const shouldPreventNativeInteractiveDeletionKey = (event: KeyboardEvent) =>
 	!isNativeTextControlEvent(event) &&
 	(event.key.toLowerCase() === 'backspace' || event.key.toLowerCase() === 'delete');
 
-const modifierKeys = new Set(['Alt', 'Control', 'Meta', 'Shift']);
-
 const shouldRefreshSelectionBeforeKeyDown = (edytor: Edytor, event: KeyboardEvent) =>
-	!modifierKeys.has(event.key) &&
+	!/^(Alt|Control|Meta|Shift)$/.test(event.key) &&
 	hasCommandModifier(event) &&
 	edytor.selection.projection.isCollapsed &&
 	edytor.selection.selectedBlocks.size === 0 &&
 	edytor.selection.selectedInlineBlock.size === 0 &&
 	!isNativeInteractiveEvent(event);
 
-const isPrintableReplacementKey = (event: KeyboardEvent) => {
-	if (event.metaKey || event.ctrlKey || event.altKey || event.key === 'Dead') {
-		return false;
-	}
-
-	return event.key.length === 1;
-};
+/** A character key with no command modifier (a dead key's name is no character). */
+const isPrintableReplacementKey = (event: KeyboardEvent) =>
+	!hasCommandModifier(event) && event.key.length === 1;
 
 /** The editing intent of an unmodified key (a character, Backspace, Delete, Enter), if it has one. */
 const keyIntent = (event: KeyboardEvent) =>
@@ -70,64 +63,23 @@ const keyIntent = (event: KeyboardEvent) =>
 		: (keyIntentOf(event.key, event.shiftKey) ??
 			(isPrintableReplacementKey(event) ? 'insertText' : null));
 
-/** Copy, select all and the browser's find (the keymap does not run while readonly). */
-const isReadonlyAllowedShortcut = (event: KeyboardEvent) => {
-	const key = event.key.toLowerCase();
-	const hasCopyModifier = event.metaKey || event.ctrlKey;
-	return hasCopyModifier && (key === 'c' || key === 'a' || key === 'f');
-};
-
-const isReadonlyNavigationKey = (event: KeyboardEvent) =>
-	[
-		'arrowleft',
-		'arrowright',
-		'arrowup',
-		'arrowdown',
-		'home',
-		'end',
-		'pageup',
-		'pagedown',
-		'escape'
-	].includes(event.key.toLowerCase());
-
-const shouldPreventReadonlyMutationKey = (event: KeyboardEvent) => {
-	if (isNativeTextControlEvent(event)) {
-		return false;
-	}
-
-	if (isReadonlyAllowedShortcut(event) || isReadonlyNavigationKey(event)) {
-		return false;
-	}
-
-	const key = event.key.toLowerCase();
-	return (
-		key.length === 1 || key === 'backspace' || key === 'delete' || key === 'enter' || key === 'tab'
-	);
-};
-
-const isBackspaceFromTrailingNewlineMarker = (edytor: Edytor) => {
-	const { startText, yStart } = edytor.selection.textRange();
-	const { isCollapsed } = edytor.selection.projection;
-	if (
-		!isCollapsed ||
-		!startText?.node ||
-		!startText.endsWithNewline ||
-		yStart !== startText.length
-	) {
-		return false;
-	}
-
-	const selection = getDomSelection(startText.node);
-	const anchorNode = selection?.anchorNode;
-	return Boolean(anchorNode && isInsideTrailingNewlineMarker(anchorNode));
-};
+/**
+ * A key that would edit a readonly view (a character, Backspace, Delete,
+ * Enter, Tab), outside a text control: never copy, select all or the
+ * browser's find (the keymap does not run while readonly).
+ */
+const shouldPreventReadonlyMutationKey = (event: KeyboardEvent) =>
+	/^(.|backspace|delete|enter|tab)$/i.test(event.key) &&
+	!((event.metaKey || event.ctrlKey) && /^[acf]$/i.test(event.key)) &&
+	!isNativeTextControlEvent(event);
 
 /**
  * The intent a keydown admits when its `beforeinput` may never come: Enter
  * and Shift+Enter, and a Backspace or Delete over a range or at the edge of
- * its block or text (the trailing newline's marker, for Backspace). With a
+ * its block or text (or right after a trailing soft break, for Backspace,
+ * which the model deletes). With a
  * command modifier, a word or line chord at the block's edge deletes the
- * neighbour like a character (`deleteCollapsedUnit`); WebKit announces no
+ * neighbour like a character (a unit delete, `runBeforeInputDeleteCommand`); WebKit announces no
  * `beforeinput` for it at the document's first text.
  */
 const getStructuralFallbackInputType = (edytor: Edytor, event: KeyboardEvent) => {
@@ -141,7 +93,7 @@ const getStructuralFallbackInputType = (edytor: Edytor, event: KeyboardEvent) =>
 		return dir && isCollapsed && !event.shiftKey && atBlockEdge ? intent : null;
 	if (!dir) return intent;
 	const atTextEdge = back ? isAtStartOfText : isAtEndOfText;
-	const atMarker = back && isBackspaceFromTrailingNewlineMarker(edytor);
+	const atMarker = back && isTrailingSoftBreakBackward(intentSnapshot(edytor, intent!));
 	return !isCollapsed || atBlockEdge || atTextEdge || atMarker ? intent : null;
 };
 

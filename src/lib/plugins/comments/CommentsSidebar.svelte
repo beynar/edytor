@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { onMount, tick, type Snippet } from 'svelte';
-	import type { Action } from 'svelte/action';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { rangeRects } from '$lib/collaboration/remoteSelection.js';
 	import { hidden } from '$lib/selection/visibility.js';
 	import type { CommentRun } from '$lib/crdt/protocols/comments.js';
-	import type { CommentsController } from './CommentsController.svelte.js';
+	import type { CommentsController, PlacedThread } from './CommentsController.svelte.js';
 	import type { CommentCardPayload } from './commentsPlugin.js';
 
 	let {
@@ -44,19 +43,23 @@
 	let layout: Layout = $state.raw({ mode: 'margin', left: 0, cards: {}, draft: [], toggle: 0 });
 	let container: HTMLElement | undefined = $state();
 
-	/** The runs' first line box, relative to the overlay: the text's own, else its block's. */
-	const anchorOf = (runs: CommentRun[], origin: DOMRect): Rect | null => {
+	/** A run's text boxes, relative to the overlay. */
+	const rectsOf = (run: CommentRun, origin: DOMRect): Rect[] => {
+		const block = edytor.idToBlock.get(run.block);
+		const [start, end] = [
+			block?.textAtOffset(run.offset),
+			block?.textAtOffset(run.offset + run.length)
+		];
+		return start && end ? rangeRects(edytor, start, end, origin) : [];
+	};
+
+	/** The runs' first line box, relative to the overlay: the text's own, else its block's, else the host's top. */
+	const anchorOf = (runs: CommentRun[], origin: DOMRect, top: number): Rect => {
 		for (const run of runs) {
 			const block = edytor.idToBlock.get(run.block);
 			if (!block) continue;
-			if (!hidden(block)) {
-				const [start, end] = [
-					block.textAtOffset(run.offset),
-					block.textAtOffset(run.offset + run.length)
-				];
-				const rect = start && end ? rangeRects(edytor, start, end, origin)[0] : undefined;
-				if (rect) return rect;
-			}
+			const rect = hidden(block) ? undefined : rectsOf(run, origin)[0];
+			if (rect) return rect;
 			const node = block.node?.closest('details:not([open])') ?? block.node;
 			if (!node) continue;
 			const box = node.getBoundingClientRect();
@@ -67,7 +70,7 @@
 				height: 20
 			};
 		}
-		return null;
+		return { left: 0, top, width: 0, height: 20 };
 	};
 
 	/**
@@ -83,36 +86,19 @@
 		const hostRect = host.getBoundingClientRect();
 		const margin = hostRect.right + GAP + WIDTH <= view.innerWidth - 8;
 		const draftRuns = comments.draft ? comments.draftRuns() : [];
-		const draft = draftRuns.flatMap((run) => {
-			const block = edytor.idToBlock.get(run.block);
-			const [start, end] = [
-				block?.textAtOffset(run.offset),
-				block?.textAtOffset(run.offset + run.length)
-			];
-			return start && end ? rangeRects(edytor, start, end, origin) : [];
-		});
 		const heights = new Map<string, number>();
 		for (const node of container.querySelectorAll<HTMLElement>('[data-edytor-comment-card]'))
 			heights.set(node.dataset.edytorCommentCard!, node.getBoundingClientRect().height);
 		const heightOf = (id: string) => heights.get(id) || 96;
 		const hostTop = hostRect.top - origin.top;
-		const items: Array<{ id: string; anchor: Rect }> = [];
-		if (comments.draft) {
-			const anchor = anchorOf(draftRuns, origin);
-			items.push({ id: DRAFT, anchor: anchor ?? { left: 0, top: hostTop, width: 0, height: 20 } });
-		}
 		const active = comments.draft ? DRAFT : comments.active;
-		for (const thread of comments.shown) {
-			if (!margin && thread.id !== active) continue;
-			const anchor = anchorOf(thread.runs, origin);
-			items.push({
-				id: thread.id,
-				anchor: anchor ?? { left: 0, top: hostTop, width: 0, height: 20 }
-			});
-		}
-		items.sort((a, b) => a.anchor.top - b.anchor.top);
+		const items = [
+			...(comments.draft ? [{ id: DRAFT, runs: draftRuns }] : []),
+			...comments.shown.filter((thread) => margin || thread.id === active)
+		]
+			.map(({ id, runs }) => ({ id, anchor: anchorOf(runs, origin, hostTop) }))
+			.sort((a, b) => a.anchor.top - b.anchor.top);
 		const cards: Layout['cards'] = {};
-		const left = margin ? hostRect.right - origin.left + GAP : 0;
 		if (margin) {
 			const floor = hostTop + (comments.resolved.length > 0 ? 36 : 0);
 			const at = items.findIndex((item) => item.id === active);
@@ -147,9 +133,9 @@
 		}
 		const next: Layout = {
 			mode: margin ? 'margin' : 'popover',
-			left,
+			left: margin ? hostRect.right - origin.left + GAP : 0,
 			cards,
-			draft,
+			draft: draftRuns.flatMap((run) => rectsOf(run, origin)),
 			toggle: hostTop
 		};
 		if (JSON.stringify(next) === JSON.stringify(layout)) return;
@@ -168,53 +154,40 @@
 	});
 
 	/**
-	 * What the sidebar shows: on a narrow screen only the active thread. A
-	 * card the overlay has not placed yet renders hidden until its frame.
+	 * The cards: the draft's first (`null`), then the threads; on a narrow
+	 * screen only the active thread. A card the overlay has not placed yet
+	 * renders hidden until its frame.
 	 */
-	const placed = $derived(
-		layout.mode === 'margin'
+	const cards: (PlacedThread | null)[] = $derived([
+		...(comments.draft ? [null] : []),
+		...(layout.mode === 'margin'
 			? comments.shown
-			: comments.shown.filter((thread) => thread.id === comments.active)
-	);
+			: comments.shown.filter((thread) => thread.id === comments.active))
+	]);
 
-	/**
-	 * A composer field: Enter posts (Shift+Enter is a new line), Escape
-	 * gives up; it takes the focus when it mounts if `focus`.
-	 */
-	const composer: Action<
-		HTMLTextAreaElement,
-		{ submit: (body: string) => Promise<boolean> | boolean; cancel?: () => void; focus?: boolean }
-	> = (node, initial) => {
-		let params = initial;
-		if (params.focus) void tick().then(() => node.focus({ preventScroll: true }));
-		const keydown = async (event: KeyboardEvent) => {
-			if (event.isComposing) return;
-			if (event.key === 'Escape' && params.cancel) {
-				event.preventDefault();
-				params.cancel();
-			} else if (event.key === 'Enter' && !event.shiftKey) {
-				event.preventDefault();
-				const body = node.value;
-				if (await params.submit(body)) {
-					node.value = '';
-					node.dispatchEvent(new Event('input', { bubbles: true }));
-				}
-			}
-		};
-		node.addEventListener('keydown', keydown);
-		return {
-			update: (next) => (params = next),
-			destroy: () => node.removeEventListener('keydown', keydown)
-		};
+	/** Each composer's text, by card key (the draft's: `DRAFT`). */
+	const bodies: Record<string, string> = $state({});
+
+	/** Post a composer's text: the draft's as a new thread, else a reply; it empties once posted. */
+	const post = async (key: string) => {
+		const body = bodies[key] ?? '';
+		const posted = await (key === DRAFT ? comments.submit(body) : comments.reply(key, body));
+		if (posted) bodies[key] = '';
+		return posted;
 	};
 
-	let draftBody = $state('');
-	const postDraft = async () => {
-		if (await comments.submit(draftBody)) draftBody = '';
-	};
-	const replies: Record<string, string> = $state({});
-	const postReply = async (thread: string) => {
-		if (await comments.reply(thread, replies[thread] ?? '')) replies[thread] = '';
+	/** A composer field's keys: Enter posts (Shift+Enter is a new line), Escape gives up a draft. */
+	const keydown = (event: KeyboardEvent, key: string) => {
+		if (event.isComposing) return;
+		if (event.key === 'Escape' && key === DRAFT) {
+			event.preventDefault();
+			comments.cancel();
+		} else if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			// The field empties too once posted, even when its card went (a posted draft).
+			const field = event.currentTarget as HTMLTextAreaElement;
+			void post(key).then((posted) => posted && (field.value = ''));
+		}
 	};
 </script>
 
@@ -234,6 +207,39 @@
 		></span>
 	{/each}
 </div>
+
+{#snippet composer(key: string)}
+	{@const draft = key === DRAFT}
+	{@const label = draft ? labels.placeholder : labels.reply}
+	<div data-edytor-comment-composer>
+		<!-- The draft's field takes the focus as it mounts. -->
+		<textarea
+			data-edytor-comment-field={draft ? '' : undefined}
+			data-edytor-comment-reply={draft ? undefined : ''}
+			rows="1"
+			placeholder={label}
+			aria-label={label}
+			bind:value={bodies[key]}
+			onkeydown={(event) => keydown(event, key)}
+			{@attach draft && ((node) => void tick().then(() => node.focus({ preventScroll: true })))}
+		></textarea>
+		{#if draft || bodies[key]?.trim()}
+			<div data-edytor-comment-actions>
+				{#if draft}
+					<button type="button" data-edytor-comment-cancel onclick={comments.cancel}
+						>{labels.cancel}</button
+					>
+				{/if}
+				<button
+					type="button"
+					data-edytor-comment-post
+					disabled={!bodies[key]?.trim()}
+					onclick={() => post(key)}>{labels.post}</button
+				>
+			</div>
+		{/if}
+	</div>
+{/snippet}
 
 <div
 	bind:this={container}
@@ -257,65 +263,33 @@
 		>
 	{/if}
 
-	{#if comments.draft}
+	{#each cards as thread (thread?.id ?? DRAFT)}
+		{@const id = thread?.id ?? DRAFT}
+		{@const active = thread?.id === comments.active}
+		{@const at = layout.cards[id]}
+		<!-- A press on a thread's card makes it the active one; its buttons and fields keep their keys. -->
 		<div
-			data-edytor-comment-card={DRAFT}
-			data-edytor-comment-new
-			data-active
-			data-unplaced={layout.cards[DRAFT] ? undefined : ''}
-			style:top={`${layout.cards[DRAFT]?.top ?? 0}px`}
-			style:left={`${layout.cards[DRAFT]?.left ?? 0}px`}
-		>
-			{#if comments.draft.quote}
-				<blockquote data-edytor-comment-quote>{comments.draft.quote}</blockquote>
-			{/if}
-			<div data-edytor-comment-composer>
-				<textarea
-					data-edytor-comment-field
-					rows="1"
-					placeholder={labels.placeholder}
-					aria-label={labels.placeholder}
-					bind:value={draftBody}
-					use:composer={{
-						submit: (body) => comments.submit(body),
-						cancel: comments.cancel,
-						focus: true
-					}}
-				></textarea>
-				<div data-edytor-comment-actions>
-					<button type="button" data-edytor-comment-cancel onclick={comments.cancel}
-						>{labels.cancel}</button
-					>
-					<button
-						type="button"
-						data-edytor-comment-post
-						disabled={!draftBody.trim()}
-						onclick={postDraft}>{labels.post}</button
-					>
-				</div>
-			</div>
-			{#if comments.error}<p data-edytor-comment-error role="alert">{labels.failed}</p>{/if}
-		</div>
-	{/if}
-
-	{#each placed as thread (thread.id)}
-		{@const active = thread.id === comments.active}
-		<!-- A press on a card makes its thread the active one; its buttons and fields keep their keys. -->
-		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-		<div
-			data-edytor-comment-card={thread.id}
-			data-active={active || undefined}
-			data-resolved={thread.resolved ? '' : undefined}
-			data-unplaced={layout.cards[thread.id] ? undefined : ''}
-			role="article"
-			aria-label={labels.comment}
-			style:top={`${layout.cards[thread.id]?.top ?? 0}px`}
-			style:left={`${layout.cards[thread.id]?.left ?? 0}px`}
+			data-edytor-comment-card={id}
+			data-edytor-comment-new={thread ? undefined : ''}
+			data-active={thread ? active || undefined : ''}
+			data-resolved={thread?.resolved ? '' : undefined}
+			data-unplaced={at ? undefined : ''}
+			role={thread ? 'article' : undefined}
+			aria-label={thread ? labels.comment : undefined}
+			style:top={`${at?.top ?? 0}px`}
+			style:left={`${at?.left ?? 0}px`}
 			onclick={(event) => {
-				if (!(event.target as Element).closest('button, textarea')) comments.focus(thread.id);
+				if (thread && !(event.target as Element).closest('button, textarea'))
+					comments.focus(thread.id);
 			}}
 		>
-			{#if card}
+			{#if !thread}
+				{#if comments.draft?.quote}
+					<blockquote data-edytor-comment-quote>{comments.draft.quote}</blockquote>
+				{/if}
+				{@render composer(DRAFT)}
+				{#if comments.error}<p data-edytor-comment-error role="alert">{labels.failed}</p>{/if}
+			{:else if card}
 				{@render card({ thread, comments, active })}
 			{:else}
 				<div data-edytor-comment-head>
@@ -383,23 +357,7 @@
 					{/each}
 				</ol>
 				{#if active && comments.canComment && !thread.resolved}
-					<div data-edytor-comment-composer>
-						<textarea
-							data-edytor-comment-reply
-							rows="1"
-							placeholder={labels.reply}
-							aria-label={labels.reply}
-							bind:value={replies[thread.id]}
-							use:composer={{ submit: (body) => comments.reply(thread.id, body) }}
-						></textarea>
-						{#if replies[thread.id]?.trim()}
-							<div data-edytor-comment-actions>
-								<button type="button" data-edytor-comment-post onclick={() => postReply(thread.id)}
-									>{labels.post}</button
-								>
-							</div>
-						{/if}
-					</div>
+					{@render composer(thread.id)}
 				{/if}
 			{/if}
 		</div>

@@ -42,15 +42,14 @@
 		void: voidChrome
 	});
 
-	/** A child in the flow: a block's id, a block suggestion, or a preview's own block. */
-	type Kid = string | Suggestion | PreviewCell;
+	/**
+	 * A child in the flow: a block's id, a block suggestion's preview in the
+	 * flow among its siblings (in place of a block), or a suggestion's own
+	 * block, rendered from its preview cell, never registered (`Suggestion`).
+	 */
+	export type Kid = string | Suggestion | PreviewCell;
 	const kidKey = (kid: Kid) =>
 		typeof kid === 'string' || kid instanceof Suggestion ? kid : kid.id;
-	const idOf = (kid: Kid) =>
-		typeof kid === 'string' ? kid : kid instanceof Suggestion ? undefined : kid.id;
-	const previewOf = (kid: Kid) =>
-		typeof kid === 'string' || kid instanceof Suggestion ? undefined : kid;
-	const suggestionOf = (kid: Kid) => (kid instanceof Suggestion ? kid : undefined);
 
 	/** Tags that take no content: the kind renders the element only. */
 	const VOID_TAGS = new Set(['area', 'br', 'col', 'embed', 'hr', 'img', 'input', 'wbr']);
@@ -93,20 +92,15 @@
 	import Child from './Block.svelte';
 	import Content from './Content.svelte';
 	import SuggestionPreview from './Suggestion.svelte';
-	import { blockDir, ownText } from '../surface/attributes.js';
+	import { blockDir, ownText, type Owned } from '../surface/attributes.js';
 	import { colorAttributes } from '../block/colors.js';
 
-	let {
-		id,
-		preview,
-		suggestion
-	}: {
-		id?: string;
-		/** A suggestion's block: rendered from its preview cell, never registered (`Suggestion`). */
-		preview?: PreviewCell;
-		/** A block suggestion's preview in the flow among its siblings, in place of a block. */
-		suggestion?: Suggestion;
-	} = $props();
+	let { kid }: { kid: Kid } = $props();
+	const suggestion = $derived(kid instanceof Suggestion ? kid : undefined);
+	const preview = $derived(
+		typeof kid === 'string' || suggestion ? undefined : (kid as PreviewCell)
+	);
+	const id = $derived(typeof kid === 'string' ? kid : preview?.id);
 
 	const edytor = getContext<Edytor>('edytor');
 	// The structure renders from the cell; the snippet receives a view object.
@@ -142,20 +136,18 @@
 			? elementOf(definition.contentElement, cell?.data, id)
 			: undefined
 	);
-	/** Its direction from its own text (`blockDir`, bidi): none in a preview. */
-	const dir = $derived(preview ? null : blockDir(ownText(cell?.runs ?? [])));
 	/**
-	 * `dir` as an attribute, absent when `null`: Svelte writes `dir` as a
-	 * property, which would leave `dir=""` where the table wants none.
+	 * Registers the block element (one element per block, re-registered when
+	 * the tag changes) with what it owns: the core's attributes below, not
+	 * the kind's (`surface/attributes.ts` heals them).
 	 */
-	const direction = (node: HTMLElement, value: 'rtl' | 'ltr' | null) => {
-		const write = (next: 'rtl' | 'ltr' | null) =>
-			next ? node.setAttribute('dir', next) : node.removeAttribute('dir');
-		write(value);
-		return { update: write };
-	};
-	/** Registers the block element: one element per block, re-registered when the tag changes. */
-	const register = (node: HTMLElement) => block?.handle?.attach(node);
+	const register = (node: HTMLElement) =>
+		block?.handle?.attach(node, (): Owned => {
+			const owned: Record<string, string | null> = {};
+			for (const [name, value] of Object.entries(attributes ?? {}))
+				if (!(name in (element?.attributes ?? {}))) owned[name] = (value as string) ?? null;
+			return { strict: false, owned, style: userSelect ? { 'user-select': userSelect } : {} };
+		});
 	/**
 	 * Whether the selection holds this block, and whether it touches it: one
 	 * boolean each, read from the block's own membership (`isSelected`,
@@ -184,7 +176,9 @@
 			'data-edytor-selected': selected ? 'true' : undefined,
 			'data-edytor-focused': focused ? 'true' : undefined,
 			'data-edytor-suggestion-replaced': shown ? (replacedMark(shown) ?? undefined) : undefined,
-			contenteditable: definition?.void ? ('false' as const) : undefined
+			contenteditable: definition?.void ? ('false' as const) : undefined,
+			// Its direction from its own text (`blockDir`, bidi), absent without one: none in a preview.
+			dir: (!preview && blockDir(ownText(cell?.runs ?? []))) || undefined
 		}
 	);
 	const userSelect = $derived(definition?.void ? 'none' : undefined);
@@ -235,7 +229,7 @@
 {/snippet}<!--
 -->{#snippet children()}
 	{#each kids as kid (kidKey(kid))}
-		<Child id={idOf(kid)} preview={previewOf(kid)} suggestion={suggestionOf(kid)} />
+		<Child {kid} />
 	{/each}
 {/snippet}<!--
 	A kind this view does not register: a plain block, its text and children.
@@ -255,39 +249,27 @@
 -->{#if suggestion}
 	<SuggestionPreview {suggestion} />
 {:else if tag === 'div'}
-	<div {...attributes} style:user-select={userSelect} use:register use:direction={dir}>
+	<div {...attributes} style:user-select={userSelect} use:register>
 		{@render body?.(payload)}
 	</div>
 {:else if tag === 'li'}
-	<li {...attributes} style:user-select={userSelect} use:register use:direction={dir}>
+	<li {...attributes} style:user-select={userSelect} use:register>
 		{@render body?.(payload)}
 	</li>
 {:else if tag === 'details'}
-	<details {...attributes} style:user-select={userSelect} use:register use:direction={dir}>
+	<details {...attributes} style:user-select={userSelect} use:register>
 		{@render body?.(payload)}
 	</details>
 {:else if tag === 'figure'}
-	<figure {...attributes} style:user-select={userSelect} use:register use:direction={dir}>
+	<figure {...attributes} style:user-select={userSelect} use:register>
 		{@render body?.(payload)}
 	</figure>
 {:else if tag === 'hr'}
-	<hr {...attributes} style:user-select={userSelect} use:register use:direction={dir} />
+	<hr {...attributes} style:user-select={userSelect} use:register />
 {:else if tag && VOID_TAGS.has(tag)}
-	<svelte:element
-		this={tag}
-		{...attributes}
-		style:user-select={userSelect}
-		use:register
-		use:direction={dir}
-	/>
+	<svelte:element this={tag} {...attributes} style:user-select={userSelect} use:register />
 {:else if tag}
-	<svelte:element
-		this={tag}
-		{...attributes}
-		style:user-select={userSelect}
-		use:register
-		use:direction={dir}
-	>
+	<svelte:element this={tag} {...attributes} style:user-select={userSelect} use:register>
 		{@render body?.(payload)}
 	</svelte:element>
 {/if}

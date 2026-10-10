@@ -43,11 +43,11 @@ const p = (id: string, text: string, children?: unknown[]) => ({
 	...(children ? { children } : {})
 });
 
-/** A facade with an actor and a lineage ring (so a stamp would be visible) plus its undo manager. */
+/** A facade with an actor (so a stamp would be visible) plus its undo manager. */
 const make = (content: unknown[], clientID = 7) => {
 	const doc = new Y.Doc();
 	doc.clientID = clientID;
-	const ed = E.create(doc, { actor: () => ({ id: 'alice' }), lineageDepth: 3 });
+	const ed = E.create(doc, { actor: () => ({ id: 'alice' }) });
 	ed.init({ content });
 	const um = ed.createUndoManager({ captureTimeout: 0 });
 	return { doc, ed, um };

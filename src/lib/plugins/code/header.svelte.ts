@@ -12,7 +12,7 @@ import type { CodeLabels } from '$lib/labels.js';
 import type { BlockView } from '$lib/plugins.js';
 import { Text } from '$lib/text/text.svelte.js';
 import { attribute } from '../chrome.js';
-import { languageLabel, languageOf, type CodeSettings } from './languages.js';
+import { labeledLanguages, languageOf, type CodeSettings } from './languages.js';
 import type { LanguageMenu, LanguageRow } from './languageMenu.svelte.js';
 
 /** How long Copy reads Copied after a copy, in milliseconds. */
@@ -72,16 +72,12 @@ export class CodeHeader {
 	/** The language's label; a language the plugin does not list shows its id (reactive). */
 	get label(): string {
 		const language = this.language;
-		const row = this.settings.languages.find((row) => row.id === language);
-		return row ? languageLabel(row, this.settings) : language;
+		return this.languages.find((row) => row.id === language)?.label ?? language;
 	}
 
 	/** The languages the plugin lists, labeled, in order. */
 	get languages(): LanguageRow[] {
-		return this.settings.languages.map((row) => ({
-			id: row.id,
-			label: languageLabel(row, this.settings)
-		}));
+		return labeledLanguages(this.settings);
 	}
 
 	/** The plugin's words (`language`, `copy`, `copied`, …). */

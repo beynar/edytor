@@ -2,7 +2,6 @@ import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
-import { layerBox, pin, sameValues, type LayerBox } from '$lib/surface/overlay.js';
 import type { CodeLabels } from '$lib/labels.js';
 import {
 	attribute,
@@ -11,7 +10,8 @@ import {
 	type OptionAttributes
 } from '../chrome.js';
 import { holdKeys, listPopup } from '../list.svelte.js';
-import { languageLabel, languageOf, type CodeSettings } from './languages.js';
+import { Anchored } from '../anchored.svelte.js';
+import { labeledLanguages, languageOf, type CodeSettings } from './languages.js';
 
 /** A row of the language list: a language id and its label as shown. */
 export type LanguageRow = { id: string; label: string };
@@ -25,9 +25,6 @@ export type LanguageMenuItem = MenuItemPayload<LanguageRow> & {
 	/** It is the block's language. */
 	current: boolean;
 };
-
-/** The overlay host the list renders in (the overlay's mount names it). */
-const HOST = '[data-edytor-code-language-host]';
 
 /**
  * One view's code language list (Notion's): the header's language button
@@ -53,10 +50,10 @@ export class LanguageMenu {
 	/** The highlighted row, in `rows`. */
 	index = $state(0);
 	/**
-	 * The button's box, measured in the overlay's frame.
+	 * The list's panel under its button: its place, and what closes it.
 	 * @internal
 	 */
-	box = $state.raw<LayerBox | null>(null);
+	readonly panel: Anchored;
 
 	/** @internal */
 	constructor(
@@ -66,6 +63,12 @@ export class LanguageMenu {
 		readonly settings: CodeSettings
 	) {
 		this.popup = listPopup(edytor, 'code-languages', 'listbox', () => this.labels.language);
+		this.panel = new Anchored(
+			edytor,
+			'edytor-code-language-host',
+			() => (this.open ? this.#button(this.open.block) : undefined),
+			() => this.close()
+		);
 	}
 
 	/** The plugin's words (`language`, `search`, `noResults`, …). */
@@ -88,10 +91,7 @@ export class LanguageMenu {
 	/** The rows the query keeps: a language the plugin does not list first (the block's own), then the list. */
 	get rows(): LanguageRow[] {
 		const current = this.current;
-		const listed: LanguageRow[] = this.settings.languages.map((row) => ({
-			id: row.id,
-			label: languageLabel(row, this.settings)
-		}));
+		const listed = labeledLanguages(this.settings);
 		const all =
 			current && !listed.some((row) => row.id === current)
 				? [{ id: current, label: current }, ...listed]
@@ -110,16 +110,20 @@ export class LanguageMenu {
 	 */
 	get items(): LanguageMenuItem[] {
 		const current = this.current;
-		return this.rows.map((row, index) => ({
-			item: row,
-			id: this.rowId(row),
-			label: row.label,
-			selected: index === this.index,
-			current: row.id === current,
-			run: () => this.pick(row),
-			select: () => (this.index = index),
-			option: this.option(index)
-		}));
+		return this.rows.map((row, index) => {
+			const id = this.rowId(row);
+			const selected = index === this.index;
+			return {
+				item: row,
+				id,
+				label: row.label,
+				selected,
+				current: row.id === current,
+				run: () => this.pick(row),
+				select: () => (this.index = index),
+				option: optionAttributes(id, 'option', selected)
+			};
+		});
 	}
 
 	/** Whether `block`'s list is open. */
@@ -130,15 +134,6 @@ export class LanguageMenu {
 		return this.edytor.popups.idOf('code-languages');
 	}
 	rowId = (row: LanguageRow) => this.edytor.popups.idOf(`code-language-${row.id}`);
-
-	/**
-	 * Where the list stands: under its button, layer-relative.
-	 * @internal
-	 */
-	get place(): { left: number; top: number } | null {
-		const box = this.box;
-		return this.open && box ? { left: box.x, top: box.y + box.height + 4 } : null;
-	}
 
 	/** Open `block`'s list (`keys`: the keyboard opened it), or close it when it is open. */
 	toggle = (block: string, keys: boolean) => {
@@ -183,7 +178,7 @@ export class LanguageMenu {
 		const open = this.open;
 		if (!open) return;
 		this.open = null;
-		this.box = null;
+		this.panel.box = null;
 		this.query = '';
 		this.edytor.overlay.invalidate();
 		if (keys === 'button') this.#button(open.block)?.focus({ preventScroll: true });
@@ -222,14 +217,14 @@ export class LanguageMenu {
 			attribute(node, 'aria-controls', this.listId);
 			if (!node.hasAttribute('aria-label') && !node.hasAttribute('aria-labelledby'))
 				node.setAttribute('aria-label', this.labels.language);
-			node.addEventListener('focusout', this.#blurred);
+			node.addEventListener('focusout', this.panel.blurred);
 			const off = holdKeys(node, this.#keydown, () => {
 				const row = this.rows[this.index];
 				return row && this.rowId(row);
 			});
 			return () => {
 				off();
-				node.removeEventListener('focusout', this.#blurred);
+				node.removeEventListener('focusout', this.panel.blurred);
 			};
 		});
 
@@ -267,36 +262,6 @@ export class LanguageMenu {
 	};
 
 	/**
-	 * The view turned readonly: the list closes.
-	 * @internal
-	 */
-	lock = () => this.close();
-
-	/**
-	 * A press anywhere (capture): one outside the list and its button closes it.
-	 * @internal
-	 */
-	pressed = (event: MouseEvent) => {
-		const open = this.open;
-		if (!open) return;
-		const at = event.target as Element | null;
-		if (at?.closest?.(HOST)) return;
-		if (at instanceof Node && this.#button(open.block)?.contains(at)) return;
-		this.close();
-	};
-
-	/** Focus left the field for somewhere outside the list and its button: it closes. */
-	#blurred = (event: FocusEvent) => {
-		const open = this.open;
-		const to = event.relatedTarget;
-		// No new focus (the window went to the background): it stays.
-		if (!open || !(to instanceof Node)) return;
-		const host = (event.currentTarget as Element | null)?.closest(HOST);
-		if (host?.contains(to) || this.#button(open.block)?.contains(to)) return;
-		this.close();
-	};
-
-	/**
 	 * The language button of the code block holding a caret (where Alt+F10
 	 * takes the keys, as to a toolbar), if any.
 	 * @internal
@@ -308,21 +273,6 @@ export class LanguageMenu {
 		const code = startBlock?.type === 'codeLine' ? startBlock.parent : null;
 		if (!isCollapsed || !code || this.edytor.readonly) return null;
 		return this.#button(code.id);
-	};
-
-	/**
-	 * The overlay measure: the button's box; gone, the list closes.
-	 * @internal
-	 */
-	measure = (host: HTMLElement, origin: DOMRect) => {
-		const open = this.open;
-		const button = open ? this.#button(open.block) : null;
-		const box = layerBox(button, origin);
-		return () => {
-			pin(host);
-			if (open && !button) return this.close();
-			if (!sameValues(box, this.box)) this.box = box;
-		};
 	};
 
 	/** The language button of code block `block`, in this view (the header's `button` attachment marks it). */

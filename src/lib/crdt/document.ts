@@ -156,7 +156,6 @@ import {
 	bindDocModel,
 	DEFAULT_HISTORY_LIMIT,
 	isInitialized,
-	lineageDepthOf,
 	type BlockRole,
 	type EdytorDoc,
 	type DocModelBinding
@@ -249,17 +248,6 @@ export type DocumentOptions = {
 	 * {@link EdytorDocument.clearHistory} drops both stacks.
 	 */
 	history?: { captureTimeout?: number; limit?: number };
-	/**
-	 * Opt-in per-block lineage ring — `depth > 0` captures a subtree
-	 * snapshot just before an edit displaces a block's current
-	 * `lastChangedBy` owner (handoffs, deletes, undo/redo touches),
-	 * ring-trimmed to this many entries per block. `0`/absent disables
-	 * the feature: no captures, byte-identical writes. Read via
-	 * {@link DocumentAttribution.history}. Must be a finite non-negative
-	 * integer — `NaN`/`Infinity`/fractional/negative values raise
-	 * `RangeError` at creation (an unbounded ring is worse than no ring).
-	 */
-	lineage?: { depth?: number };
 	/**
 	 * Decide an EMPTY document only from a provider that synced: the
 	 * room answered, or a local store hydrated. A provider's bound or
@@ -364,7 +352,6 @@ export type EdytorDocumentInit = {
 	awareness?: Awareness;
 	semantics?: DocumentSemanticsConfig;
 	history?: { captureTimeout?: number; limit?: number };
-	lineage?: { depth?: number };
 	requireHydration?: boolean;
 };
 
@@ -473,7 +460,6 @@ export class EdytorDocument {
 	private readonly _capability = { config: mergeSemantics(), of: facadeConfigOf({}) };
 	private _defaultType: string;
 	private readonly _historyOptions: { captureTimeout?: number; limit?: number } | undefined;
-	private readonly _lineageDepth: number | undefined;
 	/** {@link DocumentOptions.requireHydration}: an empty document waits for a provider's `synced`. */
 	readonly requireHydration: boolean;
 	/** Attached providers keyed by transport target: one per target. */
@@ -499,7 +485,6 @@ export class EdytorDocument {
 			// The facade's block-attribution ops read the actor lazily —
 			// `this.actor` is assigned below, after facade construction.
 			actor: () => this.actor,
-			lineageDepth: init.lineage?.depth,
 			// The `writable` guard: a write on a read-only document refuses
 			// with the `SchemaMismatchError` naming the stamp.
 			assertWritable: () => assertSchema(asEngineDoc(this.doc), 'document')
@@ -513,7 +498,6 @@ export class EdytorDocument {
 		this.awareness = init.awareness ?? new init.awarenessCtor(this.doc);
 		this._ownsAwareness = init.awareness === undefined;
 		this._historyOptions = init.history;
-		this._lineageDepth = init.lineage?.depth;
 		this.requireHydration = init.requireHydration === true;
 		this.actor = init.actor ?? anonymousActor();
 		// Durable actor identity is separate from the presence profile: the
@@ -626,17 +610,6 @@ export class EdytorDocument {
 	 */
 	get historyLimit(): number {
 		return this._historyOptions?.limit ?? DEFAULT_HISTORY_LIMIT;
-	}
-
-	/**
-	 * The lineage ring depth this document was configured with — read by
-	 * the `attachDocument` dedupe compatibility check (a reattach naming
-	 * a different depth is a conflict; capture behavior cannot be retuned
-	 * on the live facade).
-	 * @internal
-	 */
-	get lineageDepth(): number | undefined {
-		return this._lineageDepth;
 	}
 
 	/**
@@ -1214,7 +1187,6 @@ export const bindDocument = (Y: EngineApi) => {
 		options: DocumentOptions,
 		semantics = options.semantics
 	): EdytorDocument => {
-		lineageDepthOf(options.lineage?.depth);
 		const document = new EdytorDocument({
 			...options,
 			doc,
@@ -1236,7 +1208,6 @@ export const bindDocument = (Y: EngineApi) => {
 	 * actor, awareness instance or merge window is a conflict.
 	 */
 	const assertAttachCompatible = (existing: EdytorDocument, options: DocumentOptions): void => {
-		lineageDepthOf(options.lineage?.depth);
 		if (options.awareness !== undefined && options.awareness !== existing.awareness) {
 			// SemanticConflictError serializes its operands — the awareness
 			// objects themselves are circular; describe them instead.
@@ -1250,7 +1221,6 @@ export const bindDocument = (Y: EngineApi) => {
 			['actor.id', existing.actor.id, options.actor?.id],
 			['history.captureTimeout', existing.historyCaptureTimeout, options.history?.captureTimeout],
 			['history.limit', existing.historyLimit, options.history?.limit],
-			['lineage.depth', existing.lineageDepth, options.lineage?.depth],
 			['requireHydration', existing.requireHydration, options.requireHydration]
 		];
 		for (const [subject, live, wanted] of asked)

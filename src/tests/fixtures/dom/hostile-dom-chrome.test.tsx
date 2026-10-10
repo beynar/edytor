@@ -13,7 +13,7 @@
  *   the DOM. `sanitizeLinkHref` allowlists schemes at both the write
  *   (`setLinkAtRange`) and render (`link` snippet) boundaries;
  * - the nested-editable selector was case-sensitive —
- *   `contenteditable="TRUE"` islands escaped `isNestedForeignEditableTarget`;
+ *   `contenteditable="TRUE"` islands escaped the nested-island rule of `isKindControl`;
  * - `applySelectionSnapshot` derived island selections into the host
  *   text — an island caret must not move the model selection.
  */

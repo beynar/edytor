@@ -56,7 +56,7 @@ export const INLINE_NODE = 'inline';
 /** Attr keys on a block node (`SCHEMA.blockAttrs`). */
 export const ID = 'id';
 export const TYPE = 'type';
-/** A block's or atom's whole data: the legacy layer, read under the leaves and exploded by the first patch. */
+/** A block's or atom's whole data, as documents before 0.1.0-next.6 stored it: no longer read; the room's purge deletes it. */
 export const DATA = 'data';
 /** A data leaf: `d/` and its path, RFC 6901 escaped (`crdt/data.ts`). */
 export const DATA_LEAF_PREFIX = 'd/';

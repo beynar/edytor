@@ -8,7 +8,70 @@
 	const count = $derived(
 		find.matches.length ? labels.count(find.current + 1, find.matches.length) : labels.noResults
 	);
+
+	/** A button of the bar: `data-edytor-find-<name>`, its name and hint, its text, its action. */
+	type Button = {
+		name: string;
+		label?: string;
+		hint?: string;
+		text: string;
+		run: () => unknown;
+		pressed?: boolean;
+		disabled?: boolean;
+	};
+	const none = $derived(!find.matches.length);
+	const searching: Button[] = $derived([
+		{
+			name: 'case',
+			label: labels.matchCase,
+			hint: labels.matchCase,
+			text: 'Aa',
+			run: () => (find.caseSensitive = !find.caseSensitive),
+			pressed: find.caseSensitive
+		},
+		{
+			name: 'previous',
+			label: labels.previous,
+			hint: labels.previousHint,
+			text: '↑',
+			run: find.previous,
+			disabled: none
+		},
+		{
+			name: 'next',
+			label: labels.next,
+			hint: labels.nextHint,
+			text: '↓',
+			run: find.next,
+			disabled: none
+		},
+		{
+			name: 'close',
+			label: labels.close,
+			hint: labels.closeHint,
+			text: '✕',
+			run: () => find.close()
+		}
+	]);
+	const replacing: Button[] = $derived([
+		{ name: 'replace', text: labels.replace, run: find.replace, disabled: none },
+		{ name: 'replace-all', text: labels.replaceAll, run: find.replaceAll, disabled: none }
+	]);
 </script>
+
+{#snippet buttons(list: Button[])}
+	{#each list as button (button.name)}
+		<button
+			type="button"
+			{...{ [`data-edytor-find-${button.name}`]: '' }}
+			aria-label={button.label}
+			title={button.hint}
+			aria-pressed={button.pressed}
+			disabled={button.disabled}
+			onclick={() => button.run()}>{button.text}</button
+		>
+	{/each}
+{/snippet}
 
 {#if find.isOpen}
 	<div data-edytor-find role="search" aria-label={labels.bar}>
@@ -28,37 +91,7 @@
 					use:find.field
 				/>
 				<span data-edytor-find-count aria-live="polite">{find.query ? count : ''}</span>
-				<button
-					type="button"
-					data-edytor-find-case
-					aria-label={labels.matchCase}
-					title={labels.matchCase}
-					aria-pressed={find.caseSensitive}
-					onclick={() => (find.caseSensitive = !find.caseSensitive)}>Aa</button
-				>
-				<button
-					type="button"
-					data-edytor-find-previous
-					aria-label={labels.previous}
-					title={labels.previousHint}
-					disabled={!find.matches.length}
-					onclick={find.previous}>↑</button
-				>
-				<button
-					type="button"
-					data-edytor-find-next
-					aria-label={labels.next}
-					title={labels.nextHint}
-					disabled={!find.matches.length}
-					onclick={find.next}>↓</button
-				>
-				<button
-					type="button"
-					data-edytor-find-close
-					aria-label={labels.close}
-					title={labels.closeHint}
-					onclick={() => find.close()}>✕</button
-				>
+				{@render buttons(searching)}
 			</div>
 			{#if find.canReplace}
 				<div data-edytor-find-row>
@@ -72,18 +105,7 @@
 						bind:value={find.replacement}
 						use:find.replaceField
 					/>
-					<button
-						type="button"
-						data-edytor-find-replace
-						disabled={!find.matches.length}
-						onclick={find.replace}>{labels.replace}</button
-					>
-					<button
-						type="button"
-						data-edytor-find-replace-all
-						disabled={!find.matches.length}
-						onclick={find.replaceAll}>{labels.replaceAll}</button
-					>
+					{@render buttons(replacing)}
 				</div>
 			{/if}
 		{/if}

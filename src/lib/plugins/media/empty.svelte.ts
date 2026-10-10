@@ -3,6 +3,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { MediaKindLabels, MediaLabels } from '$lib/labels.js';
 import type { MediaKind } from './media.js';
 import { fileUploads, type FileUpload, type Uploader } from '../uploads.svelte.js';
+import { linkField } from '../image/empty.svelte.js';
 
 /** Why the last link or upload was not embedded. */
 export type MediaEmptyFailure = 'invalid' | 'upload';
@@ -117,13 +118,5 @@ export class MediaEmptyController {
 	};
 
 	/** The link field (`{@attach empty.field}`): Enter embeds its `draft`. */
-	field: Attachment<HTMLInputElement> = (node) => {
-		const keydown = (event: KeyboardEvent) => {
-			if (event.key !== 'Enter' || event.isComposing) return;
-			event.preventDefault();
-			this.embed();
-		};
-		node.addEventListener('keydown', keydown);
-		return () => node.removeEventListener('keydown', keydown);
-	};
+	field: Attachment<HTMLInputElement> = linkField(() => this.embed());
 }

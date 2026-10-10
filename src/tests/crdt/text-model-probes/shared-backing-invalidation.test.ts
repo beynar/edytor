@@ -235,7 +235,7 @@ describe('gateF2/WU7 — mid-transaction read-your-writes (fast-eligible writes)
 			M.insertText(doc, 'a', 0, 'IN-TX');
 			expect(flat(view.runs('a'))).toBe('IN-TXalpha');
 			const node = doc.get('blocks').getAttr('a');
-			node.setAttr('data', { t: 9 });
+			node.setAttr('d/t', 9);
 			expect(view.view().blocks.get('a').data).toEqual({ t: 9 });
 			// The same transaction's slices churn must also be visible.
 			M.splitBlock(doc, 'b', 2, 'b2');

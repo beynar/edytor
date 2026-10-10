@@ -24,7 +24,7 @@ export const COLLAB_SCHEMA_VERSION = 1;
  *   (`wsbackoff`) then re-connects — a server-side blip.
  * - `healBarrier` is an explicit full-convergence assert point: every
  *   CONNECTED peer must reach identical canonical state (block ids,
- *   structure, text, marks, attribution, lineage) and equal the
+ *   structure, text, marks, attribution) and equal the
  *   runner's reference document built from captured updates.
  */
 export type CollabNetOp =
@@ -64,7 +64,6 @@ export type CollabSchedule = {
 	seed: number;
 	shape: string;
 	peerCount: number;
-	lineageDepth: number;
 	document: JSONDoc;
 	steps: CollabStep[];
 };
@@ -315,8 +314,7 @@ const netEpisodeFor = (rng: Rng, peerCount: number, stepBase: number): CollabSte
 export const generateCollabSchedule = (
 	seed: number,
 	stepCount: number,
-	peerCount: number,
-	lineageDepth = 5
+	peerCount: number
 ): CollabSchedule => {
 	const rng = mulberry32(seed * 0x9e3779b1 + peerCount * 0x85ebca6b + 1);
 	const { shape, document } = shapeDocument(seed, rng);
@@ -339,7 +337,6 @@ export const generateCollabSchedule = (
 		seed,
 		shape,
 		peerCount,
-		lineageDepth,
 		document,
 		steps
 	};

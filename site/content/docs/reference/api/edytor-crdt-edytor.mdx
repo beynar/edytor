@@ -170,13 +170,6 @@ declare const bindCrdt: (Y: EngineApi) => {
                 insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView) => import("./edytor-doc.js").Prepared;
                 deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
                 replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
-                insertTableRow: (table: import("./index.js").BlockId, index: number) => import("./edytor-doc.js").Prepared;
-                deleteTableRows: (rows: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
-                insertTableColumn: (table: import("./index.js").BlockId, index: number, width?: number) => import("./edytor-doc.js").Prepared;
-                deleteTableColumn: (table: import("./index.js").BlockId, column: string | number) => import("./edytor-doc.js").Prepared;
-                moveTableColumn: (table: import("./index.js").BlockId, column: string | number, to: number) => import("./edytor-doc.js").Prepared;
-                moveTableRows: (rows: readonly import("./index.js").BlockId[], to: number) => import("./edytor-doc.js").Prepared;
-                fillTableCell: (row: import("./index.js").BlockId, column: string | number) => import("./edytor-doc.js").Prepared;
                 insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").Prepared;
                 insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec | import("./index.js").JSONBlock) => import("./edytor-doc.js").Prepared;
                 moveBlocks: (ids: readonly import("./index.js").BlockId[], dest: import("./index.js").Destination) => import("./edytor-doc.js").Prepared;
@@ -294,13 +287,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => import("./edytor-doc.js").OpResult;
             deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
-            insertTableRow: (table: string, index: number) => import("./edytor-doc.js").OpResult;
-            deleteTableRows: (rows: readonly string[]) => import("./edytor-doc.js").OpResult;
-            insertTableColumn: (table: string, index: number, width?: number | undefined) => import("./edytor-doc.js").OpResult;
-            deleteTableColumn: (table: string, column: string | number) => import("./edytor-doc.js").OpResult;
-            moveTableColumn: (table: string, column: string | number, to: number) => import("./edytor-doc.js").OpResult;
-            moveTableRows: (rows: readonly string[], to: number) => import("./edytor-doc.js").OpResult;
-            fillTableCell: (row: string, column: string | number) => import("./edytor-doc.js").OpResult;
             insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").JSONBlock | import("./index.js").BlockSpec)[]) => import("./edytor-doc.js").OpResult;
             insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").JSONBlock | import("./index.js").BlockSpec) => import("./edytor-doc.js").OpResult;
             moveBlocks: (ids: readonly string[], dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
@@ -664,11 +650,11 @@ declare const bindCrdt: (Y: EngineApi) => {
                 destroy(): void;
                 disconnect(): void;
                 connect(): void;
-                emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<import("./protocol.js").WebsocketProviderEvents[N]>): void;
+                emit<N extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<import("./protocol.js").WebsocketProviderEvents[N]>): void;
                 _observers: Map<string, Set<any>>;
-                on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): import("./protocol.js").WebsocketProviderEvents[NAME];
-                once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
-                off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
+                on<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): import("./protocol.js").WebsocketProviderEvents[NAME];
+                once<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
+                off<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
             };
         };
         watchComments: (server: string, roomName: string, listener: (message: import("./protocol.js").CommentMessage) => void) => (() => void);
@@ -699,10 +685,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             toJSON(): import("./index.js").JSONDoc;
             dispose(): void;
         }) => import("./index.js").JSONDoc;
-        seedOf: (value: import("./index.js").JSONDoc, semantics?: import("./document.js").DocumentSemanticsConfig) => Uint8Array;
-        previousJSONWith: (updates: ReadonlyArray<Uint8Array | {
-            v2: Uint8Array;
-        }>, semantics?: import("./document.js").DocumentSemanticsConfig) => import("./index.js").JSONDoc;
     };
     sync: {
         messageYjsSyncStep1: number;
@@ -1150,13 +1132,6 @@ declare const DOCUMENT_OPERATIONS: readonly [
     "patchData",
     "setBlockData",
     "duplicateBlock",
-    "insertTableRow",
-    "deleteTableRows",
-    "insertTableColumn",
-    "deleteTableColumn",
-    "moveTableColumn",
-    "moveTableRows",
-    "fillTableCell",
     "insertText",
     "deleteText",
     "formatRange",
@@ -1250,7 +1225,6 @@ export type DocumentAttribution = {
     actorOf(client: number): string | undefined;
     setProfile(profile: ActorProfile): void;
     block(blockId: string): BlockAttribution | undefined;
-    history(blockId: string): BlockLineageEntry[] | undefined;
 };
 ```
 
@@ -1258,7 +1232,6 @@ export type DocumentAttribution = {
 - `actorOf`: Resolve an item's inserting replica (clientID) to an actor id (`c/` records).
 - `setProfile`: Re-publish the local actor's profile record (`u/<actorId>` — LWW).
 - `block`: Compact per-block attribution for `blockId` (`{createdBy, contributors, lastChangedBy}` — durable actor ids, never replica clientIDs), or `undefined` for system/foreign blocks that carry no record.
-- `history`: Opt-in bounded lineage ring for `blockId` — the block's subtree snapshots captured just BEFORE displacing events: another actor's first write (an `l` handoff), a delete, or an undo/redo touching the block.
 
 ## DocumentDestroyedError
 
@@ -1323,9 +1296,6 @@ export type DocumentOptions = {
         captureTimeout?: number;
         limit?: number;
     };
-    lineage?: {
-        depth?: number;
-    };
     requireHydration?: boolean;
 };
 ```
@@ -1334,7 +1304,6 @@ export type DocumentOptions = {
 - `semantics`: Up-front semantic configuration (views may also seed via `adoptSemantics`).
 - `awareness`: Borrow an existing awareness instance instead of creating one — `destroy()` will NOT destroy it (same owned/borrowed rule as the doc).
 - `history`: History tuning — applied when the document's undo manager attaches.
-- `lineage`: Opt-in per-block lineage ring — `depth > 0` captures a subtree snapshot just before an edit displaces a block's current `lastChangedBy` owner (handoffs, deletes, undo/redo touches), ring-trimmed to this many entries per block.
 - `requireHydration`: Decide an EMPTY document only from a provider that synced: the room answered, or a local store hydrated.
 
 ## DocumentReadiness
@@ -1493,13 +1462,6 @@ export interface DocumentWrites {
     patchData(target: DataTarget, patches: readonly DataPatch[]): OpResult;
     setBlockData(id: BlockId, data: Record<string, unknown>): OpResult;
     duplicateBlock(id: BlockId, freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
-    insertTableRow(table: BlockId, index: number): OpResult;
-    deleteTableRows(rows: readonly BlockId[]): OpResult;
-    insertTableColumn(table: BlockId, index: number, width?: number): OpResult;
-    deleteTableColumn(table: BlockId, column: string | number): OpResult;
-    moveTableColumn(table: BlockId, column: string | number, to: number): OpResult;
-    moveTableRows(rows: readonly BlockId[], to: number): OpResult;
-    fillTableCell(row: BlockId, column: string | number): OpResult;
     insertText(id: BlockId, offset: number, text: string, marks?: Record<string, unknown>): OpResult;
     deleteText(id: BlockId, offset: number, length: number): OpResult;
     formatRange(id: BlockId, offset: number, length: number, marks: Record<string, unknown>): OpResult;
@@ -1562,7 +1524,6 @@ export declare class EdytorDocument {
     private readonly _capability;
     private _defaultType;
     private readonly _historyOptions;
-    private readonly _lineageDepth;
     readonly requireHydration: boolean;
     private _providers;
     private _pendingSyncs;

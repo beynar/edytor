@@ -10,10 +10,8 @@ import {
 	serializeClipboardFragmentToPlainText,
 	type ExportKinds
 } from './serializeClipboardFragment.js';
+import { isObject } from '$lib/crdt/data.js';
 
-/** A plain object (arrays are not records here: fragment validation rejects them). */
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 const decodeJson = <T>(value: string): T => JSON.parse(decodeURIComponent(atob(value))) as T;
 
@@ -27,12 +25,12 @@ const all = (value: unknown, valid: (item: unknown) => boolean, optional = false
 // Input is JSON (a parsed payload, or `cloneJsonSafe` on the programmatic path): no value walk.
 /** A text (its marks a record) or an inline atom (its kind named). */
 const isPart = (value: unknown) =>
-	isRecord(value) &&
-	((typeof value.text === 'string' && (value.marks === undefined || isRecord(value.marks))) ||
+	isObject(value) &&
+	((typeof value.text === 'string' && (value.marks === undefined || isObject(value.marks))) ||
 		isName(value.type));
 
 const isBlock = (value: unknown): boolean =>
-	isRecord(value) &&
+	isObject(value) &&
 	isName(value.type) &&
 	all(value.content, isPart, true) &&
 	all(value.children, isBlock, true);
@@ -40,7 +38,7 @@ const isBlock = (value: unknown): boolean =>
 export const isValidEdytorClipboardFragment = (
 	value: unknown
 ): value is EdytorClipboardFragment => {
-	if (!isRecord(value) || value.version !== 1 || value.source !== 'edytor') return false;
+	if (!isObject(value) || value.version !== 1 || value.source !== 'edytor') return false;
 	if (value.kind === 'blocks') return all(value.blocks, isBlock);
 	return value.kind === 'content' && isName(value.blockType) && all(value.content, isPart);
 };

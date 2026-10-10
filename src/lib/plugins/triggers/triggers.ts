@@ -3,18 +3,23 @@
  * run in its `onBeforeOperation` (after its own hook), each trigger is a
  * `TriggerMenuController` fed by its `onAfterOperation` and
  * `onSelectionChange`, rendered in the overlay, and keyed through its
- * `hotkeys` (before its own bindings of the same keys). The precedence of
- * both is the plugin's place in the list.
+ * `hotkeys` (before its own bindings of the same keys), as the slash menu
+ * is (`withTriggerMenus`). The precedence of both is the plugin's place in
+ * the list.
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { ChangePayload, InitializedPlugin } from '$lib/plugins.js';
 import type { HotKey, HotKeyCombination } from '$lib/session/keymap.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { inputRulesHook } from '$lib/session/inputRules.js';
-import { TriggerMenuController, type TextInsertionPayload } from './TriggerController.svelte.js';
+import {
+	TriggerMenuController,
+	type TextInsertionPayload,
+	type TextTriggerController
+} from './TriggerController.svelte.js';
 import TriggerMenu from './TriggerMenu.svelte';
 import { caretRect, placeBelow } from './place.js';
-import { listHotkeys } from '../list.svelte.js';
+import { listHotkeys, type HeldList } from '../list.svelte.js';
 
 type Keys = Partial<Record<HotKeyCombination, HotKey>>;
 
@@ -53,55 +58,77 @@ export const withRulesAndTriggers = (
 	const controllers = triggers.map(
 		(trigger, index) => new TriggerMenuController(edytor, trigger, `trigger-${at}-${index}`)
 	);
-	const keys = listHotkeys(() => {
-		const controller = controllers.find(({ isOpen }) => isOpen);
-		return (
-			controller && {
-				move: (step) => controller.moveSelection(step),
-				// A pending search's Enter waits for its rows: never an older query's row.
-				pick:
-					controller.items.length || controller.loading
-						? () => void controller.pickSelected()
-						: undefined,
-				close: () => controller.close()
-			}
-		);
-	});
-	const hotkeys: Keys = { ...plugin.hotkeys };
-	for (const [chord, binding] of Object.entries(keys) as [HotKeyCombination, HotKey][])
-		hotkeys[chord] = both(binding, plugin.hotkeys?.[chord]);
-	extended.hotkeys = hotkeys;
-
-	extended.onAfterOperation = (change) => {
-		plugin.onAfterOperation?.(change);
-		if (change.operation !== 'insertText' || !('text' in change)) return;
-		for (const controller of controllers)
-			controller.handleTextInsertion(
-				change.text as Text,
-				change.block,
-				change.payload as TextInsertionPayload
-			);
-		edytor.overlay.invalidate();
-	};
-	extended.onSelectionChange = (selection) => {
-		plugin.onSelectionChange?.(selection);
-		for (const controller of controllers) controller.reconcileSelection();
-		edytor.overlay.invalidate();
-	};
-	extended.onEdytorAttached = (payload) => {
-		const own = plugin.onEdytorAttached?.(payload);
+	return withTriggerMenus(
+		edytor,
+		extended,
+		controllers,
+		(controller) => ({
+			move: (step) => controller.moveSelection(step),
+			// A pending search's Enter waits for its rows: never an older query's row.
+			pick:
+				controller.items.length || controller.loading
+					? () => void controller.pickSelected()
+					: undefined,
+			close: () => controller.close()
+		}),
 		// Below the caret (above it when there is no room), kept in the viewport.
-		const unmount = controllers.map((controller) =>
+		(controller) =>
 			edytor.overlay.mount(TriggerMenu, { controller }, 'edytor-trigger-menu-host', 50, (host) => {
 				if (!controller.isOpen) return;
 				const rect = caretRect(edytor);
 				return rect && placeBelow(host, rect, { width: 280, height: 240 });
 			})
-		);
-		return () => {
-			own?.();
-			for (const off of unmount) off();
-		};
+	);
+};
+
+/**
+ * `plugin` with trigger menus wired into its hooks (a plugin's `triggers`,
+ * the slash menu): each controller fed by its `onAfterOperation` (an
+ * `insertText`) and `onSelectionChange`, its menu mounted in the overlay by
+ * `mount` once the view is attached, and the open one keyed through its
+ * `hotkeys` (`listHotkeys`, before the plugin's own bindings of the same
+ * keys) as `held` drives it.
+ */
+export const withTriggerMenus = <C extends TextTriggerController>(
+	edytor: Edytor,
+	plugin: InitializedPlugin,
+	controllers: C[],
+	held: (controller: C) => HeldList,
+	mount: (controller: C) => () => void
+): InitializedPlugin => {
+	const keys = listHotkeys(() => {
+		const controller = controllers.find(({ isOpen }) => isOpen);
+		return controller && held(controller);
+	});
+	const hotkeys: Keys = { ...plugin.hotkeys };
+	for (const [chord, binding] of Object.entries(keys) as [HotKeyCombination, HotKey][])
+		hotkeys[chord] = both(binding, plugin.hotkeys?.[chord]);
+	return {
+		...plugin,
+		hotkeys,
+		onAfterOperation: (change) => {
+			plugin.onAfterOperation?.(change);
+			if (change.operation !== 'insertText' || !('text' in change)) return;
+			for (const controller of controllers)
+				controller.handleTextInsertion(
+					change.text as Text,
+					change.block,
+					change.payload as TextInsertionPayload
+				);
+			edytor.overlay.invalidate();
+		},
+		onSelectionChange: (selection) => {
+			plugin.onSelectionChange?.(selection);
+			for (const controller of controllers) controller.reconcileSelection();
+			edytor.overlay.invalidate();
+		},
+		onEdytorAttached: (payload) => {
+			const own = plugin.onEdytorAttached?.(payload);
+			const unmount = controllers.map(mount);
+			return () => {
+				own?.();
+				for (const off of unmount) off();
+			};
+		}
 	};
-	return extended;
 };

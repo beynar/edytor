@@ -1,7 +1,5 @@
-import type { Block } from '$lib/block/block.svelte.js';
 import type { Snippet } from 'svelte';
-import type { EditorCommand, Plugin } from '$lib/plugins.js';
-import type { Text } from '$lib/text/text.svelte.js';
+import type { EditorCommand, InitializedPlugin, Plugin } from '$lib/plugins.js';
 import {
 	BLOCK_ACTIVATE_EVENT,
 	BLOCK_ADD_EVENT,
@@ -10,10 +8,10 @@ import {
 import { onPress } from '$lib/events/onFocus.js';
 import SlashMenu from './SlashMenu.svelte';
 import { caretRect, placeBelow } from '../triggers/place.js';
-import { SlashMenuController, type TextInsertionPayload } from './SlashMenuController.svelte.js';
+import { SlashMenuController } from './SlashMenuController.svelte.js';
 import { labelsWith, type PartialLabels } from '$lib/labels.js';
 import type { MenuItemPayload } from '../chrome.js';
-import { listHotkeys } from '../list.svelte.js';
+import { withTriggerMenus } from '../triggers/triggers.js';
 
 /**
  * One row, for an `item` snippet: the row shape every menu shares (`item`
@@ -64,28 +62,7 @@ export const createSlashMenuPlugin =
 			return rect && placeBelow(host, rect, { width: 310, height: 350 });
 		};
 
-		return {
-			hotkeys: listHotkeys(
-				() =>
-					controller.isOpen && {
-						move: (step) => controller.moveSelection(step),
-						pick: controller.commands.length ? () => void controller.runSelected() : undefined,
-						close: () => controller.dismiss()
-					}
-			),
-			onAfterOperation: (change) => {
-				if (change.operation !== 'insertText' || !('text' in change)) return;
-				controller.handleTextInsertion(
-					change.text as Text,
-					change.block as Block,
-					change.payload as TextInsertionPayload
-				);
-				edytor.overlay.invalidate();
-			},
-			onSelectionChange: () => {
-				controller.reconcileSelection();
-				edytor.overlay.invalidate();
-			},
+		const plugin: InitializedPlugin = {
 			onEdytorAttached: ({ node }) => {
 				// A `+` offers its block: nothing is added until a row is picked.
 				const offer = (event: Event) => {
@@ -107,21 +84,32 @@ export const createSlashMenuPlugin =
 				node.addEventListener(BLOCK_ACTIVATE_EVENT, activate);
 				// Every press, WebKit's lone `mousedown` after a drag too (`onPress`).
 				const offPress = onPress(edytor, node.ownerDocument, outside, true);
-				const unmount = edytor.overlay.mount(
+				return () => {
+					node.removeEventListener(BLOCK_ADD_EVENT, offer);
+					node.removeEventListener(BLOCK_ACTIVATE_EVENT, activate);
+					offPress();
+				};
+			}
+		};
+		// The `/` trigger, wired as a plugin's triggers are.
+		return withTriggerMenus(
+			edytor,
+			plugin,
+			[controller],
+			() => ({
+				move: (step) => controller.moveSelection(step),
+				pick: controller.commands.length ? () => void controller.runSelected() : undefined,
+				close: () => controller.dismiss()
+			}),
+			() =>
+				edytor.overlay.mount(
 					SlashMenu,
 					{ controller, menu: options.menu, item: options.item },
 					'edytor-slash-menu-host',
 					50,
 					positionMenu
-				);
-				return () => {
-					node.removeEventListener(BLOCK_ADD_EVENT, offer);
-					node.removeEventListener(BLOCK_ACTIVATE_EVENT, activate);
-					offPress();
-					unmount();
-				};
-			}
-		};
+				)
+		);
 	};
 
 /** The Notion-style slash menu. */

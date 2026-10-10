@@ -1,17 +1,11 @@
 import type { Snippet } from 'svelte';
 import type { EditorCommand, InitializedPlugin, Plugin } from '$lib/plugins.js';
-import {
-	BLOCK_ACTIVATE_EVENT,
-	BLOCK_ADD_EVENT,
-	type BlockAddition
-} from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
-import { onPress } from '$lib/events/onFocus.js';
 import SlashMenu from './SlashMenu.svelte';
 import { caretRect } from '../triggers/place.js';
 import { placeNear } from '$lib/surface/overlay.js';
 import { SlashMenuController } from './SlashMenuController.svelte.js';
 import { slashMenuEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
-import type { MenuItemPayload } from '../chrome.js';
+import { handleMenuEvents, type MenuItemPayload } from '../chrome.js';
 import { withTriggerMenus } from '../triggers/triggers.js';
 
 /**
@@ -67,33 +61,24 @@ export const createSlashMenuPlugin =
 		};
 
 		const plugin: InitializedPlugin = {
-			onEdytorAttached: ({ node }) => {
-				// A `+` offers its block: nothing is added until a row is picked.
-				const offer = (event: Event) => {
-					event.preventDefault();
-					controller.offer((event as CustomEvent<BlockAddition>).detail);
-					edytor.overlay.invalidate();
-				};
-				const outside = (event: MouseEvent) => {
-					const target = event.target as Element | null;
+			onEdytorAttached: ({ node }) =>
+				handleMenuEvents(
+					edytor,
+					node,
+					// A grip's menu takes over (one menu at a time).
+					() => {
+						if (controller.addition) controller.close();
+					},
+					// A `+` offers its block: nothing is added until a row is picked.
+					(event) => {
+						event.preventDefault();
+						controller.offer(event.detail);
+						edytor.overlay.invalidate();
+					},
+					'[data-edytor-slash-menu-host]',
 					// The selection as it was; a press in the editor then places its caret.
-					if (controller.addition && !target?.closest?.('[data-edytor-slash-menu-host]'))
-						controller.dismiss(false);
-				};
-				// A grip's menu takes over (one menu at a time).
-				const activate = () => {
-					if (controller.addition) controller.close();
-				};
-				node.addEventListener(BLOCK_ADD_EVENT, offer);
-				node.addEventListener(BLOCK_ACTIVATE_EVENT, activate);
-				// Every press, WebKit's lone `mousedown` after a drag too (`onPress`).
-				const offPress = onPress(edytor, node.ownerDocument, outside, true);
-				return () => {
-					node.removeEventListener(BLOCK_ADD_EVENT, offer);
-					node.removeEventListener(BLOCK_ACTIVATE_EVENT, activate);
-					offPress();
-				};
-			}
+					() => controller.addition && controller.dismiss(false)
+				)
 		};
 		// The `/` trigger, wired as a plugin's triggers are.
 		return withTriggerMenus(

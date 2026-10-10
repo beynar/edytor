@@ -1,4 +1,4 @@
-import type { Snippet } from 'svelte';
+import type { Component, Snippet } from 'svelte';
 import type { Plugin } from '$lib/plugins.js';
 import Toolbar from './Toolbar.svelte';
 import LinkCard from './LinkCard.svelte';
@@ -137,45 +137,49 @@ export const createToolbarPlugin =
 				edytor.overlay.invalidate();
 			},
 			onEdytorAttached: () => {
-				const unmount = edytor.overlay.mount(
+				const offs: (() => void)[] = [];
+				// No press on the chrome takes focus, its background and a custom
+				// snippet's markup included (not only its buttons): the editor keeps
+				// its focus and its selection. A field (the link panel's input) takes
+				// its own. Every press has a `mousedown`, WebKit's lone one too
+				// (`onFocus.ts`), so no `pointerdown` is cancelled.
+				const keep = (event: Event) => {
+					if (!isNativeFieldEvent(event)) event.preventDefault();
+				};
+				/** Mount `component` in the overlay, its host keeping the focus on a press. */
+				const mount = <P extends Record<string, unknown>>(
+					component: Component<P>,
+					props: P,
+					name: string,
+					zIndex: number,
+					place: (host: HTMLElement) => (() => void) | void
+				) => {
+					offs.push(edytor.overlay.mount(component, props, name, zIndex, place));
+					const host = edytor.overlay.layer?.querySelector(`[data-${name}]`);
+					host?.addEventListener('mousedown', keep);
+					offs.push(() => host?.removeEventListener('mousedown', keep));
+					return host;
+				};
+				mount(
 					Toolbar,
 					{ controller, toolbar: options.toolbar },
 					'edytor-toolbar-host',
 					60,
 					positionToolbar
 				);
-				// No press on the chrome takes focus, its background and a custom
-				// snippet's markup included (not only its buttons): the editor keeps
-				// its focus and its selection. A field (the link panel's input) takes
-				// its own. Every press has a `mousedown`, WebKit's lone one too
-				// (`onFocus.ts`), so no `pointerdown` is cancelled.
-				const host = edytor.overlay.layer?.querySelector('[data-edytor-toolbar-host]');
-				const keep = (event: Event) => {
-					if (!isNativeFieldEvent(event)) event.preventDefault();
-				};
-				host?.addEventListener('mousedown', keep);
-				if (options.linkCard === false)
-					return () => {
-						host?.removeEventListener('mousedown', keep);
-						unmount();
-					};
-				const unmountCard = edytor.overlay.mount(
-					LinkCard,
-					{ controller, card: options.card },
-					'edytor-link-card-host',
-					61,
-					positionCard
-				);
-				const cardHost = edytor.overlay.layer?.querySelector('[data-edytor-link-card-host]');
-				cardHost?.addEventListener('mousedown', keep);
-				const untrack = edytor.node && cardHost ? trackLinks(edytor.node, cardHost) : () => {};
+				if (options.linkCard !== false) {
+					const card = mount(
+						LinkCard,
+						{ controller, card: options.card },
+						'edytor-link-card-host',
+						61,
+						positionCard
+					);
+					if (edytor.node && card) offs.push(trackLinks(edytor.node, card));
+					offs.push(() => controller.hover(null));
+				}
 				return () => {
-					host?.removeEventListener('mousedown', keep);
-					cardHost?.removeEventListener('mousedown', keep);
-					untrack();
-					controller.hover(null);
-					unmountCard();
-					unmount();
+					for (const off of offs.reverse()) off();
 				};
 			}
 		};

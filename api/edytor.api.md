@@ -5063,7 +5063,6 @@ export declare class TriggerMenuController<T = unknown> extends TextTriggerContr
     labelOf: (item: T) => string;
     keyOf: (item: T) => string;
     optionId: (index: number) => string;
-    private context;
     protected queried(query: string): void;
     private answered;
     close(): void;

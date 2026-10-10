@@ -249,23 +249,20 @@ export class BlockMenuController {
 	 */
 	option = (index: number, flyout = false): OptionAttributes => {
 		const row = (flyout ? this.flyoutRows : this.rows)[index];
-		const selected = (flyout ? this.flyoutIndex : this.selectedIndex) === index;
-		const id = row
-			? this.rowId(row, flyout)
-			: this.edytor.popups.idOf(`block-menu-${flyout ? 'flyout-' : ''}${index}`);
-		if (row && 'field' in row)
-			return optionAttributes(id, 'menuitemradio', selected, {
-				'aria-checked': this.isCurrentColor(row)
-			});
-		if (!row || 'value' in row) return optionAttributes(id, 'menuitem', selected);
+		// Only an action has `checked` and `submenu`, only a colour `field`.
+		const { checked, submenu } = (row ?? {}) as BlockMenuAction;
+		const color = row && 'field' in row;
+		const on = color ? this.isCurrentColor(row) : checked;
 		return optionAttributes(
-			id,
-			row.checked === undefined ? 'menuitem' : 'menuitemcheckbox',
-			selected,
+			row
+				? this.rowId(row, flyout)
+				: this.edytor.popups.idOf(`block-menu-${flyout ? 'flyout-' : ''}${index}`),
+			color ? 'menuitemradio' : on === undefined ? 'menuitem' : 'menuitemcheckbox',
+			(flyout ? this.flyoutIndex : this.selectedIndex) === index,
 			{
-				...(row.checked === undefined ? {} : { 'aria-checked': row.checked }),
-				...(row.submenu
-					? { 'aria-haspopup': 'menu' as const, 'aria-expanded': this.flyout === row.submenu }
+				...(on === undefined ? {} : { 'aria-checked': on }),
+				...(submenu
+					? { 'aria-haspopup': 'menu' as const, 'aria-expanded': this.flyout === submenu }
 					: {})
 			}
 		);
@@ -346,38 +343,37 @@ export class BlockMenuController {
 	}
 
 	get actions(): BlockMenuAction[] {
-		const { block, blocks } = this;
+		const { block, blocks, labels, edytor } = this;
 		if (!block) return [];
-		const canMove = (direction: 'up' | 'down') => () =>
-			this.edytor.canMoveBlocks({ blocks: outermost(blocks), direction });
-		const { labels } = this;
-		const [mod, shift] = this.edytor.keymap.isMac
-			? ['⌘', '⇧']
-			: [`${labels.ctrl}+`, `${labels.shift}+`];
+		const [mod, shift] = edytor.keymap.isMac ? ['⌘', '⇧'] : [`${labels.ctrl}+`, `${labels.shift}+`];
+		/** An action row, its icon named by its id. */
+		const action = (
+			id: string,
+			label: string,
+			more: Partial<BlockMenuAction>
+		): BlockMenuAction => ({
+			id,
+			label,
+			icon: `action.${id}`,
+			...more
+		});
+		const move = (direction: 'up' | 'down', label: string, arrow: string) =>
+			action(direction, label, {
+				hint: `${mod}${shift}${arrow}`,
+				isEnabled: () => edytor.canMoveBlocks({ blocks: outermost(blocks), direction }),
+				run: () => this.move(direction)
+			});
 		const all: BlockMenuAction[] = [
-			{
-				id: 'turn',
-				label: labels.turnInto,
-				icon: 'action.turn',
+			action('turn', labels.turnInto, {
 				submenu: 'turn',
 				isEnabled: () => convertedBlocks(this.members).length > 0
-			},
-			{
-				id: 'color',
-				label: labels.color,
-				icon: 'action.color',
+			}),
+			action('color', labels.color, {
 				submenu: 'color',
 				isEnabled: () => this.colorable.length > 0
-			},
+			}),
 			...(this.options.linkTo && this.linked
-				? [
-						{
-							id: 'link',
-							label: labels.copyLink,
-							icon: 'action.link',
-							run: () => this.copyLink()
-						}
-					]
+				? [action('link', labels.copyLink, { run: () => this.copyLink() })]
 				: []),
 			// The kind's own rows, on its block alone (a table's rows and switches). A
 			// switch keeps the menu open; any other row closes it, the caret its
@@ -396,37 +392,17 @@ export class BlockMenuController {
 								: row.run
 					}))
 				: []),
-			{
-				id: 'duplicate',
-				label: labels.duplicate,
-				icon: 'action.duplicate',
+			action('duplicate', labels.duplicate, {
 				hint: `${mod}D`,
 				run: () => (blocks.length > 1 ? this.duplicateAll(blocks) : this.duplicate(block))
-			},
-			{
-				id: 'up',
-				label: labels.moveUp,
-				icon: 'action.up',
-				hint: `${mod}${shift}↑`,
-				isEnabled: canMove('up'),
-				run: () => this.move('up')
-			},
-			{
-				id: 'down',
-				label: labels.moveDown,
-				icon: 'action.down',
-				hint: `${mod}${shift}↓`,
-				isEnabled: canMove('down'),
-				run: () => this.move('down')
-			},
-			{
-				id: 'delete',
-				label: labels.delete,
-				icon: 'action.delete',
+			}),
+			move('up', labels.moveUp, '↑'),
+			move('down', labels.moveDown, '↓'),
+			action('delete', labels.delete, {
 				hint: labels.deleteKey,
 				danger: true,
 				run: () => this.remove()
-			}
+			})
 		];
 		return all.filter(
 			(action) => matchesQuery(action, this.query) && action.isEnabled?.() !== false
@@ -439,11 +415,10 @@ export class BlockMenuController {
 	 */
 	get matchingKinds(): KindRow[] {
 		if (!this.query.trim()) return [];
-		if (!convertedBlocks(this.members).length)
-			return turnCommands(this.edytor, this.blocks).filter((kind) =>
-				matchesQuery(kind, this.query)
-			);
-		return this.kinds.filter((kind) => matchesQuery(kind, this.query));
+		const kinds = convertedBlocks(this.members).length
+			? this.kinds
+			: turnCommands(this.edytor, this.blocks);
+		return kinds.filter((kind) => matchesQuery(kind, this.query));
 	}
 
 	/**
@@ -573,20 +548,21 @@ export class BlockMenuController {
 
 	/** Run the keyboard row (or open its flyout). */
 	runSelected() {
-		const row = this.rows[this.selectedIndex];
-		if (!row) return;
-		if ('field' in row) return this.paint(row);
-		if ('value' in row) return this.turnInto(row);
-		if (row.submenu) this.openFlyout(row.submenu);
-		else row.run?.();
+		this.#run(this.rows[this.selectedIndex]);
 	}
 
 	/** Run the open flyout's keyboard row: convert to its kind, or paint its colour. */
 	runFlyout() {
-		const row = this.flyoutRows[this.flyoutIndex];
+		this.#run(this.flyoutRows[this.flyoutIndex]);
+	}
+
+	/** Run a row: paint a colour, convert to a kind, open an action's flyout or run it. */
+	#run(row: BlockMenuAction | KindRow | BlockMenuColor | undefined) {
 		if (!row) return;
 		if ('field' in row) this.paint(row);
-		else this.turnInto(row);
+		else if ('value' in row) this.turnInto(row);
+		else if (row.submenu) this.openFlyout(row.submenu);
+		else row.run?.();
 	}
 
 	/**

@@ -1,3 +1,5 @@
+<svelte:options runes />
+
 <script module lang="ts">
 	import type { Snippet } from 'svelte';
 	import type {

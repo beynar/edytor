@@ -61,16 +61,10 @@ export const observeInternalDragSources = (rootNode: Node | null | undefined) =>
 	);
 };
 
-if (typeof document !== 'undefined') {
-	observeInternalDragSources(document);
-}
-
-const isInternalDrag = (root: Element, dataTransfer: DataTransfer | null) => {
-	if (dataTransfer && Array.from(dataTransfer.types).includes(EDYTOR_BLOCK_DRAG_MIME)) {
-		return true;
-	}
-	return internalDragSource !== null && root.contains(internalDragSource);
-};
+/** The drag started inside the host. */
+const fromHost = (root: Element) =>
+	internalDragSource !== null && root.contains(internalDragSource);
+const typesOf = (dataTransfer: DataTransfer | null) => Array.from(dataTransfer?.types ?? []);
 
 /**
  * A foreign drop on a kind's own control (a field bound to `block.data`, a
@@ -79,7 +73,7 @@ const isInternalDrag = (root: Element, dataTransfer: DataTransfer | null) => {
  * which the browser would open in place of the page: that one is swallowed.
  */
 const isControlDrop = (root: Element, event: DragEvent) =>
-	!Array.from(event.dataTransfer?.types ?? []).includes('Files') && ownsEvent(root, event);
+	!typesOf(event.dataTransfer).includes('Files') && ownsEvent(root, event);
 
 /**
  * The view's own text drag: a selected text range dragged from
@@ -88,9 +82,8 @@ const isControlDrop = (root: Element, event: DragEvent) =>
 const isTextDrag = (edytor: Edytor | undefined, root: Element, dataTransfer: DataTransfer | null) =>
 	edytor !== undefined &&
 	textDragOf(edytor) !== undefined &&
-	!Array.from(dataTransfer?.types ?? []).includes(EDYTOR_BLOCK_DRAG_MIME) &&
-	internalDragSource !== null &&
-	root.contains(internalDragSource);
+	!typesOf(dataTransfer).includes(EDYTOR_BLOCK_DRAG_MIME) &&
+	fromHost(root);
 
 /** Where the view's text drag may land: an editable view, in its text, not a kind's control. */
 const takesTextDrop = (edytor: Edytor, root: Element, event: DragEvent) =>
@@ -140,11 +133,14 @@ export const onTextDragStart = (edytor: Edytor, event: DragEvent) => {
 /** The drag ended, dropped or not: no text drag. */
 export const onTextDragEnd = (edytor: Edytor) => endTextDrag(edytor);
 
+/** A drop from outside (no chrome drag, no drag from the host) of a payload the editor takes. */
 const isAcceptedForeignDrop = (root: Element, dataTransfer: DataTransfer | null) => {
-	if (!dataTransfer || isInternalDrag(root, dataTransfer)) {
-		return false;
-	}
-	return Array.from(dataTransfer.types).some((type) => ACCEPTED_FOREIGN_DROP_TYPES.includes(type));
+	const types = typesOf(dataTransfer);
+	return (
+		!types.includes(EDYTOR_BLOCK_DRAG_MIME) &&
+		!fromHost(root) &&
+		types.some((type) => ACCEPTED_FOREIGN_DROP_TYPES.includes(type))
+	);
 };
 
 type CaretPointDocument = Document & {
@@ -212,7 +208,6 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor?: Edytor) => {
 		event.stopPropagation();
 		return;
 	}
-	observeInternalDragSources(root.getRootNode());
 
 	// The view's own text drag: a move (a copy with Alt) where it may land.
 	if (isTextDrag(edytor, root, event.dataTransfer)) {

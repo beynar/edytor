@@ -26,7 +26,6 @@ import {
 	isNativeInteractiveEvent,
 	ownsEvent
 } from './nativeInteractiveControl.js';
-import { observeInternalDragSources } from './onDrop.js';
 import { runBeforeInputCommand } from './beforeInputCommands.js';
 import { readDomText } from './onInput.js';
 
@@ -302,7 +301,6 @@ const occur = (
 	offered: string | null,
 	reuse?: Attempt
 ) => {
-	observeInternalDragSources(edytor.node?.getRootNode());
 	const { event, declared } = occurrence;
 	const intent = intentOf(occurrence.inputType, occurrence.data ?? null, key?.inputType);
 	if (kindOf(intent) !== 'composition') edytor.composition.occurred(intent);
@@ -326,11 +324,12 @@ const occur = (
 	const attempt = reuse ? reproject(edytor, reuse) : attemptOf(edytor, occurrence, key?.inputType);
 	if (!reuse && declared && declares(edytor, attempt, declared))
 		adoptDeclared(edytor, attempt, declared);
+	// A native control's input over a block or atom selection (the others are
+	// the browser's, before any admission) writes nothing either.
 	if (
 		edytor.readonly ||
 		attempt.isVoidEditableElement ||
-		(event &&
-			(isBrowserOwnedNativeInput(edytor, event) || isNativeInteractiveControl(event.target)))
+		(event && isNativeInteractiveControl(event.target))
 	)
 		return drop();
 	const native = nativeOf(edytor, attempt);

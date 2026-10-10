@@ -15,6 +15,7 @@ import {
 } from '../selection/domSelection.js';
 import { getYIndex } from '../selection/selection.utils.js';
 import { noSelection } from '../session/selection.js';
+import { observeInternalDragSources } from './onDrop.js';
 
 const getEventTimeStamp = (event: Event | undefined) =>
 	event?.timeStamp || (typeof performance === 'undefined' ? Date.now() : performance.now());
@@ -95,6 +96,8 @@ export const onPress = (
 };
 
 export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] => {
+	// Where the host lives (the document, or a shadow root): its drags' sources.
+	observeInternalDragSources(node.getRootNode());
 	let lastPointerDownInsideEditorAt = Number.NEGATIVE_INFINITY;
 
 	/*

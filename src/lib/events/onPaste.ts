@@ -10,7 +10,6 @@ import { inCodeLines } from '$lib/session/inputRules.js';
 import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
-import { observeInternalDragSources } from './onDrop.js';
 import { runOccurrence } from './onBeforeInput.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
 import { ownsEvent } from './nativeInteractiveControl.js';
@@ -19,30 +18,18 @@ import { ownsEvent } from './nativeInteractiveControl.js';
  * Shift-paste requests a plain-text paste (PM input.ts:620-630 —
  * `mod-shift-v` and `Shift+Insert` keyCode 45 both take the plain branch).
  * `ClipboardEvent` carries no modifier state, so the Shift state is tracked
- * on keydown/keyup capture at the owning root (document or shadow root).
+ * on the document's keydown/keyup capture (a shadow root's keys are composed:
+ * the document sees them first, Shift included).
  */
 let shiftPasteModifierHeld = false;
-const observedShiftRoots = new WeakSet<Node>();
-
-export const observeShiftPasteModifier = (rootNode: Node | null | undefined) => {
-	if (!rootNode || observedShiftRoots.has(rootNode)) {
-		return;
-	}
-	observedShiftRoots.add(rootNode);
-	const track = (event: Event) => {
-		shiftPasteModifierHeld = (event as KeyboardEvent).shiftKey === true;
-	};
-	rootNode.addEventListener('keydown', track, true);
-	rootNode.addEventListener('keyup', track, true);
-	const view =
-		rootNode instanceof Document ? rootNode.defaultView : rootNode.ownerDocument?.defaultView;
-	view?.addEventListener('blur', () => {
-		shiftPasteModifierHeld = false;
-	});
-};
 
 if (typeof document !== 'undefined') {
-	observeShiftPasteModifier(document);
+	const track = (event: KeyboardEvent | FocusEvent) => {
+		shiftPasteModifierHeld = (event as KeyboardEvent).shiftKey === true;
+	};
+	document.addEventListener('keydown', track, true);
+	document.addEventListener('keyup', track, true);
+	window.addEventListener('blur', track);
 }
 
 /**
@@ -83,8 +70,6 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 		return;
 	}
 
-	observeInternalDragSources(this.node?.getRootNode());
-	observeShiftPasteModifier(this.node?.getRootNode());
 	syncCollapsedDomCaretForPaste(this);
 
 	const preferPlainText = shiftPasteModifierHeld && Boolean(e.clipboardData?.getData('text/plain'));

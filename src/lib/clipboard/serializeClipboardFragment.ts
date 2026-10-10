@@ -31,14 +31,17 @@ const textHtml = (part: JSONText, kinds: ExportKinds) => {
 	return html;
 };
 
-const contentHtml = (content: JSONContentPart[] = [], kinds: ExportKinds) =>
+/** The content as HTML, or as plain text: an atom by its kind's form (`html`, `plain`). */
+const contentOf = (content: JSONContentPart[] = [], kinds: ExportKinds, html: boolean) =>
 	content
-		.map((part) =>
-			isTextPart(part)
-				? textHtml(part, kinds)
-				: (kinds.inlineBlocks.get(part.type)?.html?.(part.data) ??
-					`<span data-edytor-inline-block="${escapeHtml(part.type)}"></span>`)
-		)
+		.map((part) => {
+			if (isTextPart(part)) return html ? textHtml(part, kinds) : part.text;
+			const atom = kinds.inlineBlocks.get(part.type);
+			return html
+				? (atom?.html?.(part.data) ??
+						`<span data-edytor-inline-block="${escapeHtml(part.type)}"></span>`)
+				: (atom?.plain?.(part.data) ?? '');
+		})
 		.join('');
 
 /** `classes` added to the first element of `html` (the block's own), beside a class it has. */
@@ -54,7 +57,7 @@ const withClasses = (html: string, classes: string) =>
 		: html;
 
 const blockHtml = (block: JSONBlock, kinds: ExportKinds): string => {
-	const content = contentHtml(block.content, kinds);
+	const content = contentOf(block.content, kinds, true);
 	const children = block.children?.map((child) => blockHtml(child, kinds)).join('') ?? '';
 	const form = kinds.blocks.get(block.type)?.html;
 	const html = !form
@@ -66,15 +69,8 @@ const blockHtml = (block: JSONBlock, kinds: ExportKinds): string => {
 	return withClasses(html, colorClasses(block.data));
 };
 
-const contentPlain = (content: JSONContentPart[] = [], kinds: ExportKinds) =>
-	content
-		.map((part) =>
-			isTextPart(part) ? part.text : (kinds.inlineBlocks.get(part.type)?.plain?.(part.data) ?? '')
-		)
-		.join('');
-
 const blockPlain = (block: JSONBlock, kinds: ExportKinds): string => {
-	const content = contentPlain(block.content, kinds);
+	const content = contentOf(block.content, kinds, false);
 	const children =
 		block.children
 			?.map((child) => blockPlain(child, kinds))
@@ -90,7 +86,7 @@ export const serializeClipboardFragmentToPlainText = (
 ) =>
 	fragment.kind === 'blocks'
 		? fragment.blocks.map((block) => blockPlain(block, kinds)).join('\n')
-		: contentPlain(fragment.content, kinds);
+		: contentOf(fragment.content, kinds, false);
 
 export const serializeClipboardFragmentToHtml = (
 	fragment: EdytorClipboardFragment,
@@ -100,6 +96,6 @@ export const serializeClipboardFragmentToHtml = (
 	const html =
 		fragment.kind === 'blocks'
 			? fragment.blocks.map((block) => blockHtml(block, kinds)).join('')
-			: `<p>${contentHtml(fragment.content, kinds)}</p>`;
+			: `<p>${contentOf(fragment.content, kinds, true)}</p>`;
 	return `<meta charset="utf-8"><span ${EDYTOR_FRAGMENT_ATTRIBUTE}="${encoded}" hidden></span>${html}`;
 };

@@ -31,7 +31,9 @@
  * pre-normalization.
  */
 import type { Block } from '$lib/block/block.svelte.js';
+import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
+import type { TextOperations } from '$lib/text/text.utils.js';
 import type { Flow, FlowTarget } from '$lib/crdt/flow.js';
 import type { Plan, Prepared } from '$lib/crdt/edytor-doc.js';
 import type { DataPatch } from '$lib/crdt/data.js';
@@ -179,11 +181,9 @@ export type BlockOperations = {
 
 /**
  * Bind an operation onto its wrapper: every call is dispatched as a command
- * (`session/commands.ts`): admission, hooks before any write (on the command
- * and, when `prepare` answers one document plan, on each planned step), one
- * transaction, normalization, the result. `func` receives the prepared plan
- * and answers the op's document result; `resolve` turns it into wrappers
- * after the commit patched them.
+ * (`session/commands.ts`): admission, hooks before any write, one
+ * transaction, normalization, the result. `func` answers the op's document
+ * result; `resolve` turns it into wrappers after the commit patched them.
  */
 export function batch<
 	T extends (...args: any[]) => any,
@@ -192,19 +192,46 @@ export function batch<
 >(
 	operation: O,
 	func: T,
-	prepare?: (payload: BlockOperations[O]) => Prepared,
 	resolve?: (this: any, out: ReturnType<T> | undefined, payload: Parameters<T>[0]) => R
 ): (...args: PayloadOf<Parameters<T>>) => R {
-	return function (this: Block, ...[payload]: PayloadOf<Parameters<T>>): R {
-		const out = this.edytor.dispatcher.dispatch(
+	const body = function (this: Block, _: unknown, payload: unknown) {
+		return func.call(this, payload);
+	};
+	return planned<Block, [unknown], ReturnType<T>, R>(operation, undefined, body, resolve) as (
+		...args: PayloadOf<Parameters<T>>
+	) => R;
+}
+
+/** What a wrapper's command is about: a text segment's, its block (`ChangePayload`'s text arm). */
+const contextOf = (self: Block | Text | Edytor) =>
+	'ordinal' in self ? { block: self.parent, text: self } : { block: self };
+
+/**
+ * Bind an operation that is one document plan onto its wrapper (a block, a
+ * text segment or the view): `prepare` answers the plan, so hooks see the
+ * command and each planned step before any write; `apply` writes it in the
+ * command's one transaction (a step of a running command prepares it there)
+ * and answers the op's document result, which `resolve` turns into wrappers
+ * after the commit patched them. A plan refused at preparation is still
+ * applied (writing nothing): `apply` answers its refusal.
+ */
+export function planned<S extends Block | Text | Edytor, A extends unknown[], X, R = X>(
+	operation: keyof BlockOperations | keyof TextOperations,
+	prepare: ((this: S, ...payload: A) => Prepared) | undefined,
+	apply: (this: S, plan: Prepared, payload: A[0]) => X,
+	resolve?: (this: S, out: X | undefined, payload: A[0]) => R
+): (...args: PayloadOf<A>) => R {
+	return function (this: S, ...[payload]: PayloadOf<A>): R {
+		const { dispatcher } = this.edytor;
+		const plan = prepare && ((p: A[0]) => prepare.call(this, ...([p] as A)));
+		const out = dispatcher.dispatch<A[0], X>(
 			operation,
 			payload,
-			{ block: this },
-			(p, plan) => func.call(this, p, plan),
-			prepare && ((p) => prepare.call(this, p))
+			contextOf(this),
+			(p, prepared = plan?.(p)) => apply.call(this, prepared!, p),
+			plan
 		);
-		const value = resolve ? resolve.call(this, out, payload) : (out as R);
-		return this.edytor.dispatcher.answer(value);
+		return dispatcher.answer(resolve ? resolve.call(this, out, payload) : (out as R));
 	};
 }
 
@@ -299,52 +326,42 @@ const prepareSibling = (self: Block, block: JSONBlock, after: boolean): Prepared
 			)
 		: REFUSED;
 
-export function prepareInsertAfter(this: Block, { block }: { block: JSONBlock }) {
+export function prepareInsertAfter(this: Block, { block }: BlockOperations['insertBlockAfter']) {
 	return prepareSibling(this, block, true);
 }
 
-export function prepareInsertBefore(this: Block, { block }: { block: JSONBlock }) {
+export function prepareInsertBefore(this: Block, { block }: BlockOperations['insertBlockBefore']) {
 	return prepareSibling(this, block, false);
 }
 
-/** Apply `plan` under `this`'s parent; the id it answers first (inserted or surviving). */
-function resultOf(this: Block, plan: Prepared): string | null {
+/** Write `plan` under `this`'s parent; the id it answers first (inserted or surviving). */
+export function firstId(this: Block, plan: Prepared): string | null {
 	return applyPlan(this, plan, [this.parent])?.ids[0] ?? null;
 }
 
-export function insertBlockAfter(
-	this: Block,
-	payload: BlockOperations['insertBlockAfter'],
-	plan = prepareInsertAfter.call(this, payload)
-): string | null {
-	return resultOf.call(this, plan);
+/** Write `plan` under `this`'s parent; the block it created (a split's tail). */
+export function createdId(this: Block, plan: Prepared): string | null {
+	return applyPlan(this, plan, [this.parent])?.effect.creates[0] ?? null;
 }
 
-export function insertBlockBefore(
-	this: Block,
-	payload: BlockOperations['insertBlockBefore'],
-	plan = prepareInsertBefore.call(this, payload)
-): string | null {
-	return resultOf.call(this, plan);
+/** Write `plan` under `this`'s parent. */
+export function written(this: Block, plan: Prepared): void {
+	applyPlan(this, plan, [this.parent]);
 }
 
-export function prepareDuplicate(this: Block) {
-	if (!this.parent || !this.isInTree) return REFUSED;
+/** Write `plan`, normalizing no child list; the block's content once written. */
+export function contentWritten(this: Block, plan: Prepared): void {
+	if (applyPlan(this, plan, [])) this.normalizeContent();
+}
+
+export function prepareDuplicate(this: Block, _: BlockOperations['duplicateBlock'] = {}) {
 	return this.edytor.facade.prepare.duplicateBlock(this.id, (_, kind) =>
 		id(kind === 'block' ? 'b' : 'i')
 	);
 }
 
-export function duplicateBlock(
-	this: Block,
-	_: BlockOperations['duplicateBlock'] = {},
-	plan = prepareDuplicate.call(this)
-): string | null {
-	return resultOf.call(this, plan);
-}
-
 export function prepareSplit(this: Block, { index, text }: BlockOperations['splitBlock']) {
-	if (!text || !this.parent || !this.model) return REFUSED;
+	if (!text || !this.parent) return REFUSED;
 	// The sibling takes its parent's default child type and no data — a
 	// list-like kind (`continues`) keeps its own, with its first preset's data.
 	const { continues, presets } = this.definition;
@@ -352,7 +369,7 @@ export function prepareSplit(this: Block, { index, text }: BlockOperations['spli
 		? { type: this.type, data: { ...(presets?.[0]?.data ?? {}) } }
 		: { type: this.edytor.defaultChild(this.parent), data: {} };
 	const offset = text.segStart + index;
-	return this.edytor.facade.prepare.splitBlock(this.model.id, offset, id('b'), tail);
+	return this.edytor.facade.prepare.splitBlock(this.id, offset, id('b'), tail);
 }
 
 /**
@@ -367,73 +384,37 @@ export function prepareSplitKeepingChildren(
 	tail: { type: string; data?: Record<string, unknown> },
 	child: boolean
 ): Prepared {
-	if (!text || !this.parent || !this.model) return REFUSED;
+	if (!text || !this.parent) return REFUSED;
 	const { facade } = this.edytor;
 	const born = id('b');
-	const split = facade.prepare.splitBlock(this.model.id, text.segStart + index, born, tail);
+	const split = facade.prepare.splitBlock(this.id, text.segStart + index, born, tail);
 	const step = 'writes' in split ? split.writes[0] : undefined;
 	if (step?.op !== 'splitBlock') return REFUSED;
 	if (!child) return facade.compose({ ...(split as Plan), writes: [step] });
 	// The rank of a first child, and the document's answer on placing the kind there.
-	const slot = facade.prepare.insertBlocks({ parent: this.model.id, index: 0 }, [
+	const slot = facade.prepare.insertBlocks({ parent: this.id, index: 0 }, [
 		{ id: born, type: tail.type }
 	]);
 	const first = 'writes' in slot ? slot.writes[0] : undefined;
 	if (first?.op !== 'insertBlocks') return REFUSED;
-	const placed = { ...step, parent: this.model.id, rank: first.ranks[0]! };
+	const placed = { ...step, parent: this.id, rank: first.ranks[0]! };
 	return facade.compose({ ...(split as Plan), writes: [placed] });
-}
-
-export function splitBlock(
-	this: Block,
-	payload: BlockOperations['splitBlock'],
-	plan = prepareSplit.call(this, payload)
-): string | null {
-	return applyPlan(this, plan, [this.parent])?.effect.creates[0] ?? null;
 }
 
 export function prepareRemove(
 	this: Block,
-	{ keepChildren = true }: { keepChildren?: boolean } = {}
+	{ keepChildren = true }: BlockOperations['removeBlock'] = {}
 ) {
-	if (!this.parent || !this.model || !this.isInTree) return REFUSED;
-	return this.edytor.facade.prepare.deleteBlock(this.model.id, { keepChildren });
+	if (!this.parent) return REFUSED;
+	return this.edytor.facade.prepare.deleteBlock(this.id, { keepChildren });
 }
 
-export function removeBlock(
-	this: Block,
-	payload: BlockOperations['removeBlock'] = {},
-	plan = prepareRemove.call(this, payload)
-) {
-	applyPlan(this, plan, [this.parent]);
+export function prepareMergeBackward(this: Block, _: BlockOperations['mergeBlockBackward'] = {}) {
+	return this.parent ? this.edytor.facade.prepare.mergeBackward(this.id) : REFUSED;
 }
 
-export function prepareMergeBackward(this: Block) {
-	return this.parent && this.model
-		? this.edytor.facade.prepare.mergeBackward(this.model.id)
-		: REFUSED;
-}
-
-export function prepareMergeForward(this: Block) {
-	return this.parent && this.model
-		? this.edytor.facade.prepare.mergeForward(this.model.id)
-		: REFUSED;
-}
-
-export function mergeBlockBackward(
-	this: Block,
-	_: BlockOperations['mergeBlockBackward'] = {},
-	plan = prepareMergeBackward.call(this)
-): string | null {
-	return resultOf.call(this, plan);
-}
-
-export function mergeBlockForward(
-	this: Block,
-	_: BlockOperations['mergeBlockForward'] = {},
-	plan = prepareMergeForward.call(this)
-): string | null {
-	return resultOf.call(this, plan);
+export function prepareMergeForward(this: Block, _: BlockOperations['mergeBlockForward'] = {}) {
+	return this.parent ? this.edytor.facade.prepare.mergeForward(this.id) : REFUSED;
 }
 
 /** The destination parent a view-tree path (`[...parentPath, index]`) names. */
@@ -450,16 +431,16 @@ export function prepareMove(this: Block, { path }: BlockOperations['moveBlock'])
 	// destinations, moves into the block's own subtree).
 	if (!path.length || path.some((p) => isNaN(p) || p < 0) || !this.parent) return REFUSED;
 	const [parent, index] = parentAt(this.edytor, path);
-	if (!parent || !this.model) return REFUSED;
-	return this.edytor.facade.prepare.moveBlock(this.model.id, { parent: ref(parent), index });
+	if (!parent) return REFUSED;
+	return this.edytor.facade.prepare.moveBlock(this.id, { parent: ref(parent), index });
 }
 
 export function moveBlock(
 	this: Block,
-	payload: BlockOperations['moveBlock'],
-	plan = prepareMove.call(this, payload)
+	plan: Prepared,
+	{ path }: BlockOperations['moveBlock']
 ): Block | null {
-	return applyPlan(this, plan, [this.parent, parentAt(this.edytor, payload.path)[0]]) ? this : null;
+	return applyPlan(this, plan, [this.parent, parentAt(this.edytor, path)[0]]) ? this : null;
 }
 
 /**
@@ -483,29 +464,22 @@ export function prepareMoves(this: Block, { blocks, path }: BlockOperations['mov
 
 export function moveBlocks(
 	this: Block,
-	payload: BlockOperations['moveBlocks'],
-	plan = prepareMoves.call(this, payload)
+	plan: Prepared,
+	{ blocks, path }: BlockOperations['moveBlocks']
 ): Block[] {
-	const { blocks, path } = payload;
 	const parents = new Set([...blocks.map((block) => block.parent), parentAt(this.edytor, path)[0]]);
 	return applyPlan(this, plan, [...parents]) ? blocks : [];
 }
 
 /**
- * The facade owns the refusal rules (`unNestBlock`: top-level blocks,
- * island-sealed blocks and sealed destinations).
+ * The facade owns the refusal rules (`unNestBlock`: a block shown nowhere,
+ * top-level blocks, island-sealed blocks and sealed destinations).
  */
-export function prepareUnNest(this: Block) {
-	return this.parent && this.model
-		? this.edytor.facade.prepare.unNestBlock(this.model.id)
-		: REFUSED;
+export function prepareUnNest(this: Block, _: BlockOperations['unNestBlock'] = {}) {
+	return this.edytor.facade.prepare.unNestBlock(this.id);
 }
 
-export function unNestBlock(
-	this: Block,
-	_: BlockOperations['unNestBlock'] = {},
-	plan = prepareUnNest.call(this)
-): Block | null {
+export function unNestBlock(this: Block, plan: Prepared): Block | null {
 	return applyPlan(this, plan, [this.parent, this.parent?.parent, this]) ? this : null;
 }
 
@@ -514,27 +488,21 @@ export function unNestBlock(
  * facade owns permission: `nestBlock` refuses void/island/inside-island
  * targets and island-sealed sources (`canPlace`).
  */
-export function prepareNest(this: Block) {
+export function prepareNest(this: Block, _: BlockOperations['nestBlock'] = {}) {
 	const target = this.previousBlock?.id;
-	return this.parent && this.model && target != null
-		? this.edytor.facade.prepare.nestBlock(this.model.id, target)
-		: REFUSED;
+	return target != null ? this.edytor.facade.prepare.nestBlock(this.id, target) : REFUSED;
 }
 
-export function nestBlock(
-	this: Block,
-	_: BlockOperations['nestBlock'] = {},
-	plan = prepareNest.call(this)
-): Block | null {
+export function nestBlock(this: Block, plan: Prepared): Block | null {
 	return applyPlan(this, plan, [this.parent, this.previousBlock]) ? this : null;
 }
 
+/** The document refuses the root and a dead block (`setBlock`: not live). */
 export function prepareSet(this: Block, { value }: BlockOperations['setBlock']) {
-	if (!this.model) return REFUSED;
 	// Spec preparation is pure JSON → `ContentItem`/`BlockSpec` conversion:
 	// the document stores the items verbatim and derives the content
 	// invariant on projection.
-	return this.edytor.facade.prepare.setBlock(this.model.id, {
+	return this.edytor.facade.prepare.setBlock(this.id, {
 		...(value.type !== undefined ? { type: value.type } : {}),
 		...(value.data !== undefined ? { data: cloneJson(value.data) } : {}),
 		...(value.content !== undefined ? { content: jsonContentToItems(value.content) } : {}),
@@ -544,13 +512,8 @@ export function prepareSet(this: Block, { value }: BlockOperations['setBlock']) 
 	});
 }
 
-export function setBlock(
-	this: Block,
-	payload: BlockOperations['setBlock'],
-	plan = prepareSet.call(this, payload)
-) {
-	if (!applyPlan(this, plan, [this])) return;
-	this.normalizeContent();
+export function setBlock(this: Block, plan: Prepared): void {
+	if (applyPlan(this, plan, [this])) this.normalizeContent();
 }
 
 export function pushContentIntoBlock(
@@ -571,19 +534,11 @@ export function pushContentIntoBlock(
 	this.normalizeContent();
 }
 
-export function prepareRemoveInline(this: Block, { index }: { index: number }) {
+export function prepareRemoveInline(this: Block, { index }: BlockOperations['removeInlineBlock']) {
 	const part = this.content.at(index);
-	return part instanceof InlineBlock && this.model
-		? this.edytor.facade.prepare.removeInline(this.model.id, part.id)
+	return part instanceof InlineBlock
+		? this.edytor.facade.prepare.removeInline(this.id, part.id)
 		: REFUSED;
-}
-
-export function removeInlineBlock(
-	this: Block,
-	payload: BlockOperations['removeInlineBlock'],
-	plan = prepareRemoveInline.call(this, payload)
-): void {
-	if (applyPlan(this, plan, [])) this.normalizeContent();
 }
 
 export function preparePatch(this: Block, { ops, atom }: BlockOperations['patchData']) {
@@ -591,11 +546,8 @@ export function preparePatch(this: Block, { ops, atom }: BlockOperations['patchD
 	return this.edytor.facade.prepare.patchData(target, ops);
 }
 
-export function patchData(
-	this: Block,
-	payload: BlockOperations['patchData'],
-	plan = preparePatch.call(this, payload)
-): void {
+/** Write `plan`, normalizing nothing (a data patch). */
+export function patched(this: Block, plan: Prepared): void {
 	applyPlan(this, plan, []);
 }
 
@@ -664,20 +616,12 @@ export function prepareDeleteRange(
 	{
 		start: [startIndex, startOffset],
 		end: [endIndex, endOffset]
-	}: { start: number[]; end: number[] }
+	}: BlockOperations['deleteContentAtRange']
 ) {
 	const parts = this.edytor.idToBlock.parts(this.id);
-	const [startPart, endPart] = [parts.at(startIndex!), parts.at(endIndex!)];
-	if (!startPart || !endPart || !this.model) return REFUSED;
-	const at = startPart.start + startOffset!;
-	const length = Math.max(0, endPart.start + endOffset! - at);
-	return this.edytor.facade.prepare.deleteText(this.model.id, at, length);
-}
-
-export function deleteContentAtRange(
-	this: Block,
-	payload: BlockOperations['deleteContentAtRange'],
-	plan = prepareDeleteRange.call(this, payload)
-) {
-	if (applyPlan(this, plan, [])) this.normalizeContent();
+	const [startPart, endPart] = [parts.at(startIndex), parts.at(endIndex)];
+	if (!startPart || !endPart) return REFUSED;
+	const at = startPart.start + startOffset;
+	const length = Math.max(0, endPart.start + endOffset - at);
+	return this.edytor.facade.prepare.deleteText(this.id, at, length);
 }

@@ -68,7 +68,7 @@ import {
 	PresenceWriter,
 	type PresenceOptions
 } from '$lib/collaboration/awarenessSelection.js';
-import { batch } from './block/block.utils.js';
+import { planned } from './block/block.utils.js';
 import {
 	canMoveBlocks as canMoveBlocksRelative,
 	moveBlocks as moveBlocksRelative,
@@ -93,8 +93,7 @@ import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import {
 	caretOf,
 	deleteBlocks,
-	deleteContentWithinSelection,
-	insertFlow,
+	caretWritten,
 	rangeCaret,
 	prepareDeleteBlocks,
 	prepareDeleteContent,
@@ -966,17 +965,17 @@ export class Edytor {
 		else this.composition.cancel();
 	};
 
-	deleteContentWithinSelection = batch(
+	deleteContentWithinSelection = planned(
 		'deleteContentWithinSelection',
-		deleteContentWithinSelection,
 		prepareDeleteContent,
+		caretWritten,
 		rangeCaret
 	);
 
 	/** @internal */
-	insertFlow = batch('insertFlow', insertFlow, prepareFlow, caretOf);
+	insertFlow = planned('insertFlow', prepareFlow, caretWritten, caretOf);
 
-	deleteBlocks = batch('deleteBlocks', deleteBlocks, prepareDeleteBlocks);
+	deleteBlocks = planned('deleteBlocks', prepareDeleteBlocks, deleteBlocks);
 
 	/** @internal The handle of the `ordinal`-th text segment of block `id` (the element a cell segment renders). */
 	textAt = (id: string, ordinal: number): Text => this.idToBlock.text(id, ordinal);

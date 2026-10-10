@@ -3,44 +3,40 @@ import type { Edytor } from '../edytor.svelte.js';
 import type { JSONBlock, JSONText, JSONInlineBlock } from '$lib/utils/json.js';
 import {
 	batch,
-	removeInlineBlock,
+	planned,
+	blockOf,
+	firstId,
+	createdId,
+	written,
+	contentWritten,
+	patched,
 	addChildBlock,
-	insertBlockAfter,
-	insertBlockBefore,
-	mergeBlockBackward,
-	mergeBlockForward,
-	nestBlock,
-	removeBlock,
-	setBlock,
-	splitBlock,
-	prepareSplit,
-	duplicateBlock,
-	prepareDuplicate,
-	prepareSet,
-	prepareMove,
-	prepareMoves,
+	addChildBlocks,
+	pushContentIntoBlock,
+	addInlineBlock,
+	textAfterAtom,
+	normalizeContent,
+	normalizeChildren,
 	prepareInsertAfter,
 	prepareInsertBefore,
+	prepareSplit,
+	prepareDuplicate,
 	prepareRemove,
 	prepareMergeBackward,
 	prepareMergeForward,
 	prepareUnNest,
+	unNestBlock,
 	prepareNest,
+	nestBlock,
+	prepareSet,
+	setBlock,
+	prepareMove,
+	moveBlock,
+	prepareMoves,
+	moveBlocks,
 	prepareRemoveInline,
 	preparePatch,
-	patchData,
 	prepareDeleteRange,
-	addChildBlocks,
-	pushContentIntoBlock,
-	unNestBlock,
-	moveBlock,
-	moveBlocks,
-	normalizeContent,
-	addInlineBlock,
-	textAfterAtom,
-	blockOf,
-	deleteContentAtRange,
-	normalizeChildren,
 	type BlockOperations
 } from './block.utils.js';
 import { jsonBlockToSpec, jsonContentToItems } from '$lib/utils/json.js';
@@ -382,27 +378,22 @@ export class Block {
 
 	addChildBlock = batch('addChildBlock', addChildBlock);
 	addChildBlocks = batch('addChildBlocks', addChildBlocks);
-	insertBlockAfter = batch('insertBlockAfter', insertBlockAfter, prepareInsertAfter, blockOf);
-	insertBlockBefore = batch('insertBlockBefore', insertBlockBefore, prepareInsertBefore, blockOf);
-	splitBlock = batch('splitBlock', splitBlock, prepareSplit, blockOf);
-	duplicateBlock = batch('duplicateBlock', duplicateBlock, prepareDuplicate, blockOf);
-	removeBlock = batch('removeBlock', removeBlock, prepareRemove);
-	unNestBlock = revealed(batch('unNestBlock', unNestBlock, prepareUnNest));
-	mergeBlockBackward = batch(
-		'mergeBlockBackward',
-		mergeBlockBackward,
-		prepareMergeBackward,
-		blockOf
-	);
-	mergeBlockForward = batch('mergeBlockForward', mergeBlockForward, prepareMergeForward, blockOf);
-	nestBlock = revealed(batch('nestBlock', nestBlock, prepareNest));
-	setBlock = batch('setBlock', setBlock, prepareSet);
-	moveBlock = revealed(batch('moveBlock', moveBlock, prepareMove));
-	moveBlocks = revealed(batch('moveBlocks', moveBlocks, prepareMoves));
+	insertBlockAfter = planned('insertBlockAfter', prepareInsertAfter, firstId, blockOf);
+	insertBlockBefore = planned('insertBlockBefore', prepareInsertBefore, firstId, blockOf);
+	splitBlock = planned('splitBlock', prepareSplit, createdId, blockOf);
+	duplicateBlock = planned('duplicateBlock', prepareDuplicate, firstId, blockOf);
+	removeBlock = planned('removeBlock', prepareRemove, written);
+	unNestBlock = revealed(planned('unNestBlock', prepareUnNest, unNestBlock));
+	mergeBlockBackward = planned('mergeBlockBackward', prepareMergeBackward, firstId, blockOf);
+	mergeBlockForward = planned('mergeBlockForward', prepareMergeForward, firstId, blockOf);
+	nestBlock = revealed(planned('nestBlock', prepareNest, nestBlock));
+	setBlock = planned('setBlock', prepareSet, setBlock);
+	moveBlock = revealed(planned('moveBlock', prepareMove, moveBlock));
+	moveBlocks = revealed(planned('moveBlocks', prepareMoves, moveBlocks));
 	pushContentIntoBlock = batch('pushContentIntoBlock', pushContentIntoBlock);
-	removeInlineBlock = batch('removeInlineBlock', removeInlineBlock, prepareRemoveInline);
-	patchData = batch('patchData', patchData, preparePatch);
-	#addInline = batch('addInlineBlock', addInlineBlock, undefined, textAfterAtom);
+	removeInlineBlock = planned('removeInlineBlock', prepareRemoveInline, contentWritten);
+	patchData = planned('patchData', preparePatch, patched);
+	#addInline = batch('addInlineBlock', addInlineBlock, textAfterAtom);
 	/**
 	 * Insert an inline atom: at `offset` of the block's content (block
 	 * offsets, an inline atom counting 1; a caret's), or at `index` of the
@@ -419,7 +410,7 @@ export class Block {
 	};
 	normalizeContent = batch('normalizeContent', normalizeContent);
 	normalizeChildren = batch('normalizeChildren', normalizeChildren);
-	deleteContentAtRange = batch('deleteContentAtRange', deleteContentAtRange, prepareDeleteRange);
+	deleteContentAtRange = planned('deleteContentAtRange', prepareDeleteRange, contentWritten);
 
 	/** Mark an element inside the block's markup as non-editable chrome (a header, a caption bar). */
 	void = voidChrome;

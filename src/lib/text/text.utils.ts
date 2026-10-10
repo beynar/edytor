@@ -1,6 +1,7 @@
 import type { JSONText, SerializableContent } from '$lib/utils/json.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
 import type { Text } from './text.svelte.js';
+import { planned } from '$lib/block/block.utils.js';
 
 export type TextOperations = {
 	insertText: {
@@ -33,22 +34,11 @@ export type TextOperations = {
 	};
 };
 
-export function batch<T extends (...args: any[]) => any, O extends keyof TextOperations>(
-	operation: O,
+/** Bind a text operation onto its segment: a command about the segment's block ({@link planned}). */
+export const batch = <T extends (payload: any) => any>(
+	operation: keyof TextOperations,
 	func: T
-): T {
-	return function (this: Text, payload: TextOperations[O]): ReturnType<T> {
-		// Dispatched like block operations (`session/commands.ts`): plugins see
-		// `block: this.parent` + `text: this`, the text arm of `ChangePayload`.
-		const out = this.edytor.dispatcher.dispatch(
-			operation,
-			payload,
-			{ block: this.parent, text: this },
-			func
-		) as ReturnType<T>;
-		return this.edytor.dispatcher.answer(out);
-	} as T;
-}
+): T => planned(operation, undefined, (_, payload) => func(payload)) as T;
 
 export function insertText(
 	this: Text,

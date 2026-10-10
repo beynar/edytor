@@ -205,7 +205,7 @@ export const indexState = (Y: EngineApi, T: TextEngine, doc: EngineDoc) => {
 		frames: new Set<Folded>(),
 		candidates: new Set<BlockId>(),
 		reporting: false,
-		/** The self-checks, once built (`checks.ts`). */
+		/** The self-checks, once built (`checksOf`). */
 		checks: null as SelfChecks | null
 	};
 };

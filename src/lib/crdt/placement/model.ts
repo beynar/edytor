@@ -135,7 +135,6 @@ export { promotedRank, sourceRank, SOURCE_SIDE } from './source.js';
 export {
 	bySlot,
 	childrenIndex,
-	displayIndex,
 	displayParentOf,
 	displaySlotOf,
 	documentOrder,

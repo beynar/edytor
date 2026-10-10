@@ -140,22 +140,6 @@ export const textRanker = (
 	};
 };
 
-/** The inverse of `ownerOf` over `blocks`: each live owner → the blocks it displays. */
-export const displayIndex = (
-	blocks: ReadonlyMap<BlockId, unknown>,
-	ownerOf: (b: BlockId) => Owner
-): Map<BlockId, BlockId[]> => {
-	const by = new Map<BlockId, BlockId[]>();
-	for (const b of blocks.keys()) {
-		const owner = ownerOf(b);
-		if (typeof owner !== 'string') continue;
-		const list = by.get(owner);
-		if (list === undefined) by.set(owner, [b]);
-		else list.push(b);
-	}
-	return by;
-};
-
 /**
  * THE liveness answer: `id` carries no live delete mark, owns
  * itself (`own.hidden` covers both: a delete-marked or unknown block owns

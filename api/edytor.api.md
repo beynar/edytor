@@ -437,6 +437,7 @@ export declare class BlockHandleController {
     private emptied;
     private zones;
     private placement;
+    private carrier;
     private getDragSource;
     private showIndicator;
 }

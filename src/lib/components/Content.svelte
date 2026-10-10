@@ -51,11 +51,7 @@
 	/** Segments are keyed causally (the preceding atom's id, or `start`), never by ordinal. */
 	const keyOf = (part: Part) => (part.kind === 'text' ? `s:${part.key}:${epoch}` : `a:${part.id}`);
 
-	const view = (segment: Segment) =>
-		edytor.pin.render(id, segment.key) ?? {
-			deltas: segmentDeltas(cell!, segment, transform),
-			empty: segment.text === ''
-		};
+	const view = (segment: Segment) => edytor.pin.shown(cell!, segment, transform);
 
 	/** A suggestion's text after this block's (`end`): its first block's content. */
 	const ghosts = $derived(

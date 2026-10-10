@@ -48,7 +48,7 @@ import {
 } from '../events/onInput.js';
 import { diverges, heal, ownedOf, type Kind, type Owned } from './attributes.js';
 import { getTextContentOffsetAtPoint } from '../events/domTextOffset.js';
-import type { Cell, Patched, Replaced } from './cells.js';
+import { rendersMark, type Cell, type Patched, type Replaced } from './cells.js';
 
 /**
  * What a text divergence asks for: adopted (`attempt`: claimed by the
@@ -701,10 +701,7 @@ export class SurfaceObserver {
 				const node = nodes[i];
 				const chain = delta.marks
 					.map(([name]) => name)
-					.filter((name) => {
-						const mark = this.edytor.marks.get(name);
-						return mark?.snippet || mark?.tag;
-					});
+					.filter((name) => rendersMark(this.edytor.marks, name));
 				if (!chain.length) {
 					if (node.nodeType !== Node.TEXT_NODE) return 'foreign-child';
 					continue;
@@ -903,7 +900,7 @@ const shownMarks = (text: Text, at: number) => {
 /** The rendered marks the model gives the character at `at` of `text`. */
 const modelMarks = (edytor: Edytor, text: Text, at: number) =>
 	Object.keys(activeMarks(text.getMarksAtRange(at, at + 1)[0]?.marks))
-		.filter((name) => edytor.marks.get(name)?.tag || edytor.marks.get(name)?.snippet)
+		.filter((name) => rendersMark(edytor.marks, name))
 		.sort()
 		.join();
 

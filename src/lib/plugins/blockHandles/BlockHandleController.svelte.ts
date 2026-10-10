@@ -843,8 +843,7 @@ export class BlockHandleController {
 		band?: 'left' | 'right'
 	): DropPlacement | null | undefined {
 		if (!row.node || !this.layouts) return undefined;
-		const group = this.moving(source);
-		if (group.some((moved) => moved === row || row.isChildOf(moved))) return undefined;
+		if (this.carrier(source, row)) return undefined;
 		const { facade } = this.edytor;
 		let placement: DropPlacement | undefined;
 		if (facade.isLayout(row.id)) {
@@ -913,7 +912,7 @@ export class BlockHandleController {
 	 */
 	private emptied(source: Block, row: Block) {
 		const group = this.moving(source);
-		const parent = group.find((moved) => moved === row || row.isChildOf(moved))?.parent;
+		const parent = this.carrier(source, row)?.parent;
 		if (!parent?.node || parent.isRoot || !this.targets.has(parent.node)) return row;
 		const shown = this.shown(parent);
 		return shown.length && shown.every((child) => group.includes(child)) ? parent : row;
@@ -939,9 +938,8 @@ export class BlockHandleController {
 	 * callout's), inside it first, either half.
 	 */
 	private zones(source: Block, row: Block, { clientX, clientY }: Input) {
+		if (this.carrier(source, row)) return { before: [], after: [] };
 		const group = this.moving(source);
-		if (group.some((moved) => moved === row || row.isChildOf(moved)))
-			return { before: [], after: [] };
 		const at = (target: Block | undefined, position: BlockMovePosition): DropPlacement[] =>
 			target?.node ? [{ target, node: target.node, position }] : [];
 		const before = at(row, 'before');
@@ -988,6 +986,11 @@ export class BlockHandleController {
 		if (aside !== undefined) return aside ?? false;
 		const { before, after } = this.zones(source, row, input);
 		return this.pick(source, record.data[BEFORE] ? [before, after] : [after, before]);
+	}
+
+	/** The dragged block that is `row` or holds it: its row offers nothing (it moves with the drag). */
+	private carrier(source: Block, row: Block) {
+		return this.moving(source).find((moved) => moved === row || row.isChildOf(moved));
 	}
 
 	/** The block our drag moves from (none in a read-only view). */

@@ -156,14 +156,6 @@ const themed = (root: HTMLElement, content: HTMLElement) => {
 	return scope;
 };
 
-/** The root's content width, capped (`MAX_WIDTH`). */
-const contentWidth = (root: HTMLElement) => {
-	const style = root.ownerDocument.defaultView?.getComputedStyle(root);
-	const padding = style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 0;
-	const width = root.clientWidth - (padding || 0);
-	return width > 0 ? Math.min(width, MAX_WIDTH) : MAX_WIDTH;
-};
-
 export type DragPreview = {
 	/** The ghost, `[data-edytor-drag-preview]`, to mount in the drag library's container. */
 	element: HTMLElement;
@@ -178,7 +170,7 @@ export type DragPreview = {
 /**
  * The ghost of `nodes` (the dragged blocks' elements, in document order),
  * grabbed at `pointer`: a copy of each block laid out at its own width (the
- * widest of them; the editor's content width when none is laid out), scaled by `SCALE` from its top left, cut at `MAX_HEIGHT`.
+ * widest of them; `MAX_WIDTH` when none is laid out), scaled by `SCALE` from its top left, cut at `MAX_HEIGHT`.
  * Nothing is added (no card, background, shadow, opacity, fade or count
  * badge): the blocks' own look. The pointer
  * keeps its place on the first block (a handle is left of it: a transparent
@@ -193,9 +185,9 @@ export const dragPreview = (
 	const first = nodes[0]?.getBoundingClientRect();
 	const dx = first ? pointer.clientX - first.left : 0;
 	const dy = first ? pointer.clientY - first.top : 0;
-	// Each block at its own width (a column's block at its column's), capped.
+	// Each block at its own width (a column's block at its column's), capped (the cap where none is laid out).
 	const own = Math.max(0, ...nodes.map((node) => node.getBoundingClientRect().width));
-	const width = own > 0 ? Math.min(own, MAX_WIDTH) : contentWidth(root);
+	const width = Math.min(own || MAX_WIDTH, MAX_WIDTH);
 
 	const list = document.createElement('div');
 	let shown = 0;

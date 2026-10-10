@@ -240,7 +240,7 @@ const androidNoOpBackspaceDeadline = (edytor: Edytor, attempt: Attempt) => {
  * Backspace right after a trailing soft break: the browser mishandles the
  * `<br>` it renders, so the model deletes the break (a command hooks see).
  */
-const isTrailingSoftBreakBackward = ({ inputType, yStart, yEnd, startText }: Attempt) =>
+export const isTrailingSoftBreakBackward = ({ inputType, yStart, yEnd, startText }: Attempt) =>
 	inputType === 'deleteContentBackward' &&
 	yStart === yEnd &&
 	!!startText?.stringContent.endsWith('\n') &&

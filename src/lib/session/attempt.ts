@@ -19,7 +19,6 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { EdgeSide } from './editing/text.js';
-import type { SelectionValue } from './selection.js';
 
 type Kind = 'text' | 'composition' | 'payload' | 'break' | 'delete' | 'history';
 export type IntentRow = {
@@ -113,6 +112,8 @@ const facts = (edytor: Edytor) => {
 	// Its block's place by id: no handle for every sibling (the root's on a long page).
 	const at = startText && edytor.facade.positionOf(startText.parent.id);
 	return {
+		/** The anchored target, fixed at admission. */
+		target: edytor.selection.value,
 		startText,
 		endText: state.endText,
 		texts: state.texts,
@@ -168,8 +169,6 @@ export type Attempt = ReturnType<typeof facts> & {
 	declared: StaticRange | null;
 	/** Admitted from a keydown (the key's intent wins; the browser may never announce it). */
 	isStructuralKeyFallback: boolean;
-	/** The anchored target, fixed at admission. */
-	target: SelectionValue;
 	owner: 'model' | 'browser';
 	expect: Expect | null;
 	phase: 'open' | 'applied' | 'failed' | 'closed';
@@ -198,7 +197,6 @@ export const attemptOf = (edytor: Edytor, occurrence: Occurrence, keyIntent?: st
 		hasDataTransferTextPayload: payload !== null,
 		declared: occurrence.declared ?? null,
 		isStructuralKeyFallback: Boolean(keyIntent),
-		target: edytor.selection.value,
 		owner: 'model',
 		expect: null,
 		phase: 'open'

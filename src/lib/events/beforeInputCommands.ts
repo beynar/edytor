@@ -24,25 +24,7 @@ import { offsetIn } from '$lib/selection/selection.utils.js';
 import { bodyShows } from '$lib/selection/visibility.js';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
-import { INTENTS, caretAt, intentSnapshot, kindOf, type Attempt } from '$lib/session/attempt.js';
-
-/**
- * Offer an intent's key to the bindings once per occurrence (the key it stands
- * for when no keydown offered it: Android, virtual keyboards): not when its
- * keydown already offered it (`offered`). A non-cancelable intent is offered
- * too — its attempt owns the browser's drift either way.
- */
-export const runBeforeInputHotkeyBridge = (
-	edytor: Edytor,
-	snapshot: Attempt,
-	offered: string | null
-) => {
-	const key =
-		snapshot.inputType === 'insertText' && snapshot.data === '\t'
-			? 'tab'
-			: INTENTS[snapshot.inputType]?.key;
-	return Boolean(key && key !== offered && edytor.keymap.run(key));
-};
+import { caretAt, intentSnapshot, kindOf, type Attempt } from '$lib/session/attempt.js';
 
 const insertText = (edytor: Edytor, snapshot: Attempt) => {
 	const { data } = snapshot;

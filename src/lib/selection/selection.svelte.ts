@@ -10,6 +10,8 @@ import {
 	getTextsInSelection,
 	getYIndex,
 	getMarkEdgeSide,
+	offsetIn,
+	ordered,
 	isTextBoundSelectionPoint,
 	normalizeUtf16Boundary,
 	SYNTHETIC_TEXT_OVERLAY_SELECTOR
@@ -880,7 +882,7 @@ export class EdytorSelection {
 			return;
 		}
 
-		const { anchorNode, focusNode, anchorOffset, focusOffset } = selection;
+		const { anchorNode, focusNode } = selection;
 		const isCollapsed = selection.isCollapsed;
 		// A native vertical move that landed on no caret stop takes the key's line stop.
 		if (
@@ -892,10 +894,7 @@ export class EdytorSelection {
 			return;
 		const ranges = getRangesFromSelection(selection);
 		const isReversed = isBackward(selection);
-		const startNode = isReversed ? focusNode : anchorNode;
-		const endNode = isReversed ? anchorNode : focusNode;
-		const start = isReversed ? focusOffset : anchorOffset;
-		const end = isReversed ? anchorOffset : focusOffset;
+		const { startNode, start, endNode, end } = ordered(selection, isReversed);
 
 		const selectedInlineBlock = this.getInlineBlockInSelectedRange(ranges[0]);
 		const selectionParts = selectedInlineBlock
@@ -1340,19 +1339,10 @@ export class EdytorSelection {
 		if (!container || !anchorNode || !focusNode) return null;
 		for (const node of [anchorNode, focusNode]) if (!isOwnPoint(container, node)) return null;
 		const reversed = isBackward(snapshot);
-		const [startNode, start, endNode, end] = reversed
-			? [focusNode, snapshot.focusOffset, anchorNode, snapshot.anchorOffset]
-			: [anchorNode, snapshot.anchorOffset, focusNode, snapshot.focusOffset];
+		const { startNode, start, endNode, end } = ordered(snapshot, reversed);
 		const { startText, endText } = this.getTextsInSelection(startNode, endNode, start, end);
 		if (!startText || !endText) return null;
-		const at = (text: Text, node: Node, offset: number) =>
-			Math.min(Math.max(getYIndex(text, node, offset), 0), text.length);
-		return this.textValue(
-			startText,
-			at(startText, startNode, start),
-			endText,
-			at(endText, endNode, end),
-			reversed
-		);
+		const from = offsetIn(startText, startNode, start);
+		return this.textValue(startText, from, endText, offsetIn(endText, endNode, end), reversed);
 	};
 }

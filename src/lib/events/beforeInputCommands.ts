@@ -20,7 +20,7 @@ import {
 	nextLine,
 	prepareSplitKeepingChildren
 } from '$lib/block/block.utils.js';
-import { getYIndex } from '$lib/selection/selection.utils.js';
+import { offsetIn } from '$lib/selection/selection.utils.js';
 import { bodyShows } from '$lib/selection/visibility.js';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
@@ -177,11 +177,7 @@ const dropPoint = (edytor: Edytor, snapshot: Attempt) => {
 			? edytor.selection.getTextOfNode(range.startContainer, range.startOffset)
 			: null;
 	if (!text) return null;
-	const offset = Math.max(
-		0,
-		Math.min(getYIndex(text, range!.startContainer, range!.startOffset), text.length)
-	);
-	return { text, offset };
+	return { text, offset: offsetIn(text, range!.startContainer, range!.startOffset) };
 };
 
 // A drop reported while whole blocks are selected must insert at the drop

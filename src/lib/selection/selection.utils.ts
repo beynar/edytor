@@ -209,32 +209,6 @@ const getStrayBoundaryTextElement = (node: Node, container?: HTMLElement | null)
 	return null;
 };
 
-const getTextOffsetAtElementBoundary = (text: Text, node: Node, offset: number) => {
-	const boundary = getElementBoundary(node, offset);
-	const textNode = text.node;
-	if (!boundary || !textNode) {
-		return null;
-	}
-
-	if (boundary.previousInline && boundary.nextText === textNode) {
-		return 0;
-	}
-
-	if (boundary.nextInline && boundary.previousText === textNode) {
-		return text.length;
-	}
-
-	if (boundary.previousText === textNode) {
-		return text.length;
-	}
-
-	if (boundary.nextText === textNode) {
-		return 0;
-	}
-
-	return null;
-};
-
 export function getTextOfNode(this: EdytorSelection, node: Node | null, offset?: number) {
 	if (!node) return null;
 	const textOf = (element: Node | null) => (element && this.edytor.nodeToText.get(element)) || null;
@@ -359,36 +333,60 @@ export const getMarkEdgeSide = (text: Text, node: Node | null, offset: number) =
 	return side;
 };
 
-export const getYIndex = (text: Text | null, node: Node | null, _start: number) => {
-	if (!text || !node) return _start;
-	const parent = text.node!;
-	const { isEmpty } = text;
+/**
+ * The offset the DOM point `(node, offset)` stands for in the rendered text
+ * `text` as the DOM holds it: its trailing newline's marker reads the end;
+ * no model rule (the DOM may be ahead of the model: a native insertion read
+ * before its adoption).
+ */
+export const domOffsetIn = (text: Text, node: Node, offset: number) =>
+	text.endsWithNewline && isInsideTrailingNewlineMarker(node)
+		? text.length
+		: getTextContentOffsetAtPoint(text.node!, node, offset);
 
-	if (text.endsWithNewline && isInsideTrailingNewlineMarker(node)) {
-		return text.length;
-	}
-
+/**
+ * The one DOM point → text offset mapper ({@link domOffsetIn} with the
+ * model's rules; `domPointOf` is its inverse): a point outside the text
+ * element beside it (an element boundary, past an inline atom) reads its
+ * edge, and an empty text's filler reads 0.
+ */
+export const getYIndex = (text: Text | null, node: Node | null, offset: number) => {
+	if (!text || !node) return offset;
+	const element = text.node!;
 	// A point inside the text element reads the text before it; the
 	// element-boundary rule is for points outside it.
-	const boundaryOffset = parent.contains(node)
-		? null
-		: getTextOffsetAtElementBoundary(text, node, _start);
-	if (boundaryOffset !== null) {
-		return boundaryOffset;
+	if (!element.contains(node)) {
+		const boundary = getElementBoundary(node, offset);
+		if (boundary?.previousText === element) return text.length;
+		if (boundary?.nextText === element) return 0;
 	}
-
-	const start = getTextContentOffsetAtPoint(parent, node, _start);
-	if ((start === 0 || start === 1) && isEmpty) {
-		return 0;
-	}
-	return start;
+	const at = domOffsetIn(text, node, offset);
+	return (at === 0 || at === 1) && text.isEmpty ? 0 : at;
 };
+
+/** {@link getYIndex} within the text's length (a caret the model can hold). */
+export const offsetIn = (text: Text, node: Node | null, offset: number) =>
+	Math.min(Math.max(getYIndex(text, node, offset), 0), text.length);
 
 /** The mounted text and display offset a DOM point stands in, or `null` (`edytor.ports.surface.pointAt`). */
 export function textPointAt(this: EdytorSelection, node: Node, offset: number) {
 	const text = getTextOfNode.call(this, node);
 	return text?.node ? { text, offset: getYIndex(text, node, offset) } : null;
 }
+
+/** A DOM selection's endpoints in document order, and whether it runs backward. */
+export const ordered = (
+	selection: Pick<
+		DomSelectionSnapshot,
+		'anchorNode' | 'anchorOffset' | 'focusNode' | 'focusOffset'
+	>,
+	reversed: boolean
+) => {
+	const { anchorNode, anchorOffset, focusNode, focusOffset } = selection;
+	return reversed
+		? { startNode: focusNode, start: focusOffset, endNode: anchorNode, end: anchorOffset }
+		: { startNode: anchorNode, start: anchorOffset, endNode: focusNode, end: focusOffset };
+};
 
 const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
 const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;

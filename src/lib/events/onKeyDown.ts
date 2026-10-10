@@ -70,40 +70,15 @@ const keyIntent = (event: KeyboardEvent) =>
 		: (keyIntentOf(event.key, event.shiftKey) ??
 			(isPrintableReplacementKey(event) ? 'insertText' : null));
 
-/** Copy, select all and the browser's find (the keymap does not run while readonly). */
-const isReadonlyAllowedShortcut = (event: KeyboardEvent) => {
-	const key = event.key.toLowerCase();
-	const hasCopyModifier = event.metaKey || event.ctrlKey;
-	return hasCopyModifier && (key === 'c' || key === 'a' || key === 'f');
-};
-
-const isReadonlyNavigationKey = (event: KeyboardEvent) =>
-	[
-		'arrowleft',
-		'arrowright',
-		'arrowup',
-		'arrowdown',
-		'home',
-		'end',
-		'pageup',
-		'pagedown',
-		'escape'
-	].includes(event.key.toLowerCase());
-
-const shouldPreventReadonlyMutationKey = (event: KeyboardEvent) => {
-	if (isNativeTextControlEvent(event)) {
-		return false;
-	}
-
-	if (isReadonlyAllowedShortcut(event) || isReadonlyNavigationKey(event)) {
-		return false;
-	}
-
-	const key = event.key.toLowerCase();
-	return (
-		key.length === 1 || key === 'backspace' || key === 'delete' || key === 'enter' || key === 'tab'
-	);
-};
+/**
+ * A key that would edit a readonly view (a character, Backspace, Delete,
+ * Enter, Tab), outside a text control: never copy, select all or the
+ * browser's find (the keymap does not run while readonly).
+ */
+const shouldPreventReadonlyMutationKey = (event: KeyboardEvent) =>
+	/^(.|backspace|delete|enter|tab)$/i.test(event.key) &&
+	!((event.metaKey || event.ctrlKey) && /^[acf]$/i.test(event.key)) &&
+	!isNativeTextControlEvent(event);
 
 const isBackspaceFromTrailingNewlineMarker = (edytor: Edytor) => {
 	const { isCollapsed, startText, yStart } = edytor.selection.state;

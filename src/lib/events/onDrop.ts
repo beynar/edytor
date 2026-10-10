@@ -166,28 +166,6 @@ const caretRangeFromPoint = (doc: CaretPointDocument, x: number, y: number) => {
 	return null;
 };
 
-const createCollapsedStaticRange = (container: Node, offset: number): StaticRange => {
-	if (typeof StaticRange === 'function') {
-		try {
-			return new StaticRange({
-				startContainer: container,
-				startOffset: offset,
-				endContainer: container,
-				endOffset: offset
-			});
-		} catch {
-			// Fall through to the structural StaticRange below.
-		}
-	}
-	return {
-		startContainer: container,
-		startOffset: offset,
-		endContainer: container,
-		endOffset: offset,
-		collapsed: true
-	} as StaticRange;
-};
-
 // Preventing the drop suppresses the browser's own `insertFromDrop`
 // beforeinput, so the accepted payload is the occurrence itself — the same
 // routing as `insertFromPaste`, with the resolved drop point as its declared
@@ -203,7 +181,12 @@ const insertFromDrop = (edytor: Edytor, root: Element, event: DragEvent) => {
 		dataTransfer: event.dataTransfer,
 		declared:
 			caret && root.contains(caret.container)
-				? createCollapsedStaticRange(caret.container, caret.offset)
+				? new StaticRange({
+						startContainer: caret.container,
+						startOffset: caret.offset,
+						endContainer: caret.container,
+						endOffset: caret.offset
+					})
 				: null,
 		cancelable: true
 	});

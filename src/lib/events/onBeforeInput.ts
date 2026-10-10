@@ -378,18 +378,9 @@ const runKeyAttempt = async (edytor: Edytor, attempt: Attempt) => {
 	edytor.attempts.arm(attempt, NATIVE_INPUT_REPAIR_WINDOW_MS);
 	// The browser may have moved the selection since the keydown: the key
 	// acts on its anchored target, which followed any concurrent edit.
-	edytor.selection.commit(attempt.target, 'repair');
-	const { state, selectedBlocks } = edytor.selection;
-	if (selectedBlocks.size > 0) {
-		edytor.selection.selectBlocks(...selectedBlocks);
-	} else if (state.startText && state.endText) {
-		if (state.isCollapsed) edytor.selection.setAtTextOffset(state.startText, state.yStart);
-		else edytor.selection.setAtRange(state.startText, state.yStart, state.endText, state.yEnd);
-	} else {
-		// Its target is gone (a remote delete): a named no-op.
-		edytor.attempts.close(attempt);
-		return;
-	}
+	edytor.selection.select(attempt.target);
+	// Its target is gone (a remote delete): a named no-op.
+	if (!edytor.selection.projection.start) return edytor.attempts.close(attempt);
 	// A real `beforeinput` or a newer key may have taken over meanwhile.
 	if (edytor.attempts.key !== attempt) return;
 	await edytor.userInput(() =>

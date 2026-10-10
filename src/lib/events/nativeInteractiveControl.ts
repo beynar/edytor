@@ -15,49 +15,26 @@ const findClosestElement = (target: EventTarget | null, selector: string) => {
 	return element?.closest(selector) ?? null;
 };
 
-const getEventPath = (event: Event) => {
-	if (typeof event.composedPath === 'function') {
-		return event.composedPath();
-	}
+const getEventPath = (event: Event) =>
+	event.composedPath?.() ?? (event.target ? [event.target] : []);
 
-	return event.target ? [event.target] : [];
-};
-
-const getActiveElement = (event: Event) => {
-	const target = getElementFromTarget(event.target);
-	if (target?.ownerDocument.activeElement) {
-		return target.ownerDocument.activeElement;
-	}
-
-	return typeof document === 'undefined' ? null : document.activeElement;
-};
-
+/**
+ * A control on the event's path, else the focused one (a link takes no
+ * focus there) when it holds the target or the target holds it.
+ */
 const findNativeControlInEvent = (event: Event, selector: string) => {
 	for (const target of getEventPath(event)) {
 		const control = findClosestElement(target, selector);
-		if (control) {
-			return control;
-		}
+		if (control) return control;
 	}
-
-	const activeElementSelector =
-		selector === NATIVE_INTERACTIVE_SELECTOR ? NATIVE_ACTIVE_ELEMENT_SELECTOR : selector;
-	const targetControl = findClosestElement(event.target, selector);
-	if (targetControl) {
-		return targetControl;
-	}
-
-	const targetElement = getElementFromTarget(event.target);
-	const activeElement = getActiveElement(event);
-	const isActiveElementRelatedToTarget =
-		typeof Element !== 'undefined' &&
-		activeElement instanceof Element &&
-		(!targetElement ||
-			activeElement === targetElement ||
-			activeElement.contains(targetElement) ||
-			targetElement.contains(activeElement));
-	return isActiveElementRelatedToTarget
-		? findClosestElement(activeElement, activeElementSelector)
+	const target = getElementFromTarget(event.target);
+	const active = (target?.ownerDocument ?? globalThis.document)?.activeElement;
+	return active &&
+		(!target || active === target || active.contains(target) || target.contains(active))
+		? findClosestElement(
+				active,
+				selector === NATIVE_INTERACTIVE_SELECTOR ? NATIVE_ACTIVE_ELEMENT_SELECTOR : selector
+			)
 		: null;
 };
 

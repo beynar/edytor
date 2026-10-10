@@ -157,7 +157,7 @@ const popStackItem = (undoManager, stack, eventType) => {
  * @property {StackItem} StackItemEvent.stackItem
  * @property {any} StackItemEvent.origin
  * @property {'undo'|'redo'} StackItemEvent.type
- * @property {Map<YNode,Array<YEvent<any>>>} StackItemEvent.changedParentTypes
+ * @property {Map<YNode,Array<YEvent>>} StackItemEvent.changedParentTypes
  */
 
 /**

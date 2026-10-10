@@ -20,7 +20,13 @@
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
 	import { mediaKinds, richTextKinds, richTextMarks } from '$lib/crdt/semantics.js';
-	import { keywordsOf, labelsWith, type PartialLabels, type RichTextLabels } from '$lib/labels.js';
+	import {
+		richTextEnglish,
+		keywordsOf,
+		labelsWith,
+		type PartialLabels,
+		type RichTextLabels
+	} from '$lib/labels.js';
 	import { richTextLabels } from './labels.js';
 	import { onPress } from '$lib/events/onFocus.js';
 	import TodoCheckbox from './TodoCheckbox.svelte';
@@ -111,7 +117,7 @@
 	 * paragraph invites a command only while focused.
 	 */
 	export const createRichTextPlaceholder = (labels?: PartialLabels<'richText'>) => {
-		const { placeholders } = labelsWith('richText', labels);
+		const { placeholders } = labelsWith(richTextEnglish, labels);
 		return ({ type, data, focused }: PlaceholderView): string | null => {
 			if (type === 'heading')
 				return placeholders.heading(Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3);
@@ -187,7 +193,7 @@
 	 * slash keywords in `keywords` (English by default).
 	 */
 	export const createRichTextPlugin = (options: RichTextPluginOptions = {}): Plugin => {
-		const labels = labelsWith('richText', options.labels);
+		const labels = labelsWith(richTextEnglish, options.labels);
 		const plugin: Plugin = (edytor) => {
 			richTextLabels.claim(edytor, labels);
 			// The view's callout icons: the first rich text plugin listed claims them.

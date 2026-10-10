@@ -22,7 +22,12 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { selectedMembers } from '$lib/selection/visibility.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
-import { labelsWith, type BlockMenuLabels, type PartialLabels } from '$lib/labels.js';
+import {
+	blockMenuEnglish,
+	labelsWith,
+	type BlockMenuLabels,
+	type PartialLabels
+} from '$lib/labels.js';
 import { BLOCK_COLORS, colorable, setBlockColor, type BlockColorField } from '$lib/block/colors.js';
 import {
 	attribute,
@@ -149,7 +154,7 @@ export class BlockMenuController {
 		private edytor: Edytor,
 		private options: BlockMenuOptions = {}
 	) {
-		this.labels = labelsWith('blockMenu', options.labels);
+		this.labels = labelsWith(blockMenuEnglish, options.labels);
 		this.#colors = colorRows(this.labels);
 		this.popup = listPopup(
 			edytor,

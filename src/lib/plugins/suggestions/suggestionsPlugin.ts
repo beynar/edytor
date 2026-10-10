@@ -3,7 +3,12 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Suggestion } from '$lib/session/suggestions.svelte.js';
 import SuggestionBars from './SuggestionBars.svelte';
-import { labelsWith, type PartialLabels, type SuggestionsLabels } from '$lib/labels.js';
+import {
+	suggestionsEnglish,
+	labelsWith,
+	type PartialLabels,
+	type SuggestionsLabels
+} from '$lib/labels.js';
 
 /** What a `bar` snippet receives: one block suggestion and its actions. */
 export type SuggestionBarPayload = {
@@ -47,7 +52,7 @@ const endAtCaret = (edytor: Edytor) => {
  * discards; Tab accepts an `end` suggestion at the caret.
  */
 export const createSuggestionsPlugin = (options: SuggestionsOptions = {}): Plugin => {
-	const labels = labelsWith('suggestions', options.labels);
+	const labels = labelsWith(suggestionsEnglish, options.labels);
 	const plugin: Plugin = (edytor) => ({
 		hotkeys: {
 			'mod+enter': ({ prevent }) => {

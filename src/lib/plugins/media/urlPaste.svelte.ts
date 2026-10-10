@@ -11,7 +11,7 @@ import { id } from '$lib/utils.js';
 import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
 import UrlPasteMenu from './UrlPasteMenu.svelte';
-import { englishLabels, type MediaLabels } from '$lib/labels.js';
+import { mediaEnglish, type MediaLabels } from '$lib/labels.js';
 import { inPage, optionAttributes, type OptionAttributes } from '../chrome.js';
 import { listHotkeys, listPopup } from '../list.svelte.js';
 
@@ -53,7 +53,7 @@ export class UrlPasteController {
 	constructor(
 		readonly edytor: Edytor,
 		/** The words the menu shows: the labels of the plugin that made the first offer. */
-		readonly labels: MediaLabels = englishLabels.media
+		readonly labels: MediaLabels = mediaEnglish
 	) {
 		this.popup = listPopup(
 			edytor,

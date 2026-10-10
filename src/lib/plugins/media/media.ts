@@ -3,7 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { PluginOperations } from '$lib/plugins.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 import { fileUploads, type Uploader } from '../uploads.svelte.js';
-import { viewLabels, type PartialLabels } from '$lib/labels.js';
+import { mediaEnglish, viewLabels, type MediaLabels, type PartialLabels } from '$lib/labels.js';
 import type { MediaEmptyController } from './empty.svelte.js';
 
 /** The media kinds a view shows the labels of. */
@@ -13,12 +13,12 @@ export type MediaKind = 'embed' | 'bookmark' | 'file' | 'video' | 'audio';
  * Each view's media labels, by kind: the first plugin of a kind listed in a
  * view claims them, as its kind record (first wins).
  */
-export const mediaLabels: Record<MediaKind, ReturnType<typeof viewLabels<'media'>>> = {
-	embed: viewLabels('media'),
-	bookmark: viewLabels('media'),
-	file: viewLabels('media'),
-	video: viewLabels('media'),
-	audio: viewLabels('media')
+export const mediaLabels: Record<MediaKind, ReturnType<typeof viewLabels<MediaLabels>>> = {
+	embed: viewLabels(mediaEnglish),
+	bookmark: viewLabels(mediaEnglish),
+	file: viewLabels(mediaEnglish),
+	video: viewLabels(mediaEnglish),
+	audio: viewLabels(mediaEnglish)
 };
 
 const empties = new WeakMap<

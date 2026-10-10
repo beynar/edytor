@@ -7,7 +7,7 @@
 		TriggerItemPayload
 	} from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
-	import { labelsWith, viewLabels, type PartialLabels } from '$lib/labels.js';
+	import { pageLinkEnglish, labelsWith, viewLabels, type PartialLabels } from '$lib/labels.js';
 	import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 
 	/** A page the page-link menu offers: what your app's search answers. */
@@ -48,7 +48,7 @@
 	};
 
 	/** Each view's page link labels: the first page link plugin listed claims them, as its atom. */
-	const pageLinkLabels = viewLabels('pageLink');
+	const pageLinkLabels = viewLabels(pageLinkEnglish);
 
 	/**
 	 * Links to your app's pages, as Notion's `[[`: it opens a menu of the pages
@@ -59,7 +59,7 @@
 	export const createPageLinkPlugin =
 		(options: PageLinkPluginOptions): Plugin =>
 		(edytor) => {
-			const labels = labelsWith('pageLink', options.labels);
+			const labels = labelsWith(pageLinkEnglish, options.labels);
 			pageLinkLabels.claim(edytor, labels);
 			return {
 				inlineBlocks: {

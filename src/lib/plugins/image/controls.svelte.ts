@@ -1,6 +1,6 @@
 import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { englishLabels, type ImageLabels } from '$lib/labels.js';
+import { imageEnglish, type ImageLabels } from '$lib/labels.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
 import {
 	imageAlignOf,
@@ -75,7 +75,7 @@ export class ImageControls {
 	constructor(
 		private edytor: Edytor,
 		/** The words the chrome shows (the plugin's `labels`). */
-		readonly labels: ImageLabels = englishLabels.image
+		readonly labels: ImageLabels = imageEnglish
 	) {}
 
 	/** The view is readonly (reactive). */

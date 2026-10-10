@@ -4,7 +4,7 @@ import type { Plugin } from '$lib/plugins.js';
 import type { CommentChange } from '$lib/crdt/protocols/comments.js';
 import { commentMarks } from '$lib/crdt/semantics.js';
 import type { CommentsClient } from '$lib/collaboration/comments/client.js';
-import { labelsWith, type PartialLabels } from '$lib/labels.js';
+import { commentsEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
 import CommentsSidebar from './CommentsSidebar.svelte';
 import {
 	CommentsController,
@@ -67,7 +67,7 @@ export const commentsController = (edytor: Edytor): CommentsController | undefin
 export const createCommentsPlugin =
 	(options: CommentsPluginOptions): Plugin =>
 	(edytor) => {
-		const labels = labelsWith('comments', options.labels);
+		const labels = labelsWith(commentsEnglish, options.labels);
 		const user = typeof options.user === 'string' ? { id: options.user } : options.user;
 		const comments = new CommentsController(edytor, {
 			client: options.client,

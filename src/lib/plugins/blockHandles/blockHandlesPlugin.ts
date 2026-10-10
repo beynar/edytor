@@ -6,7 +6,12 @@ import type { Plugin } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import BlockHandles from './BlockHandles.svelte';
 import { BlockHandleController } from './BlockHandleController.svelte.js';
-import { labelsWith, type BlockHandlesLabels, type PartialLabels } from '$lib/labels.js';
+import {
+	blockHandlesEnglish,
+	labelsWith,
+	type BlockHandlesLabels,
+	type PartialLabels
+} from '$lib/labels.js';
 import { hidden } from '$lib/selection/visibility.js';
 
 export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
@@ -113,7 +118,7 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 		const controller = new BlockHandleController(edytor, {
 			draggable: options.draggable !== false,
 			onActivate: options.onActivate,
-			labels: labelsWith('blockHandles', options.labels)
+			labels: labelsWith(blockHandlesEnglish, options.labels)
 		});
 		const blocks = new SvelteMap<string, Block>();
 		const near = new SvelteSet<string>();

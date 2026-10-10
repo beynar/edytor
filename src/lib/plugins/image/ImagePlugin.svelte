@@ -23,7 +23,7 @@
 	import type { ImageEmptyController } from './empty.svelte.js';
 	import { fileUploads, type FileUploads, type Uploader } from '../uploads.svelte.js';
 	import { onPress } from '$lib/events/onFocus.js';
-	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
+	import { imageEnglish, keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
 
 	export {
 		MAX_INLINE_IMAGE_BYTES,
@@ -95,7 +95,7 @@
 	 */
 	export const createImagePlugin = (pluginOptions: ImagePluginOptions = {}): Plugin => {
 		const { upload } = pluginOptions;
-		const labels = labelsWith('image', pluginOptions.labels);
+		const labels = labelsWith(imageEnglish, pluginOptions.labels);
 		const plugin: Plugin = (edytor) => {
 			imageLabels.claim(edytor, labels);
 			const own: View = {

@@ -4,7 +4,7 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import MediaEmpty from './MediaEmpty.svelte';
 	import { mediaKinds } from '$lib/crdt/semantics.js';
-	import { keywordsOf, labelsWith } from '$lib/labels.js';
+	import { mediaEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
 	import {
 		claimed,
 		escapeHtml,
@@ -38,7 +38,7 @@
 			const first = !!edytor && !uploadOf.has(edytor);
 			if (first) uploadOf.set(edytor, options.upload);
 			const onPaste = first ? mediaUploads(edytor, 'video', options.upload) : undefined;
-			const labels = labelsWith('media', options.labels);
+			const labels = labelsWith(mediaEnglish, options.labels);
 			mediaLabels.video.claim(edytor, labels);
 			mediaEmpty.claim(edytor, 'video', options.empty);
 			return {

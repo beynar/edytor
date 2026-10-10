@@ -5,7 +5,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EditorCommand } from '$lib/plugins.js';
 import { project, type SelectionValue } from '$lib/session/selection.js';
 import { BASIC_BLOCKS, matchesQuery } from '$lib/kinds.js';
-import { englishLabels, type SlashMenuLabels } from '$lib/labels.js';
+import { slashMenuEnglish, type SlashMenuLabels } from '$lib/labels.js';
 import type { BlockAddition } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { TextTriggerController } from '$lib/plugins/triggers/TriggerController.svelte.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
@@ -94,7 +94,7 @@ export class SlashMenuController extends TextTriggerController {
 	constructor(
 		edytor: Edytor,
 		/** The words the menu shows (the plugin's `labels`): read them in a custom `menu` or `item`. */
-		readonly labels: SlashMenuLabels = englishLabels.slashMenu
+		readonly labels: SlashMenuLabels = slashMenuEnglish
 	) {
 		super(edytor, '/', 'slash-menu');
 	}

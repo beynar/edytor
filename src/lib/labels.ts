@@ -512,394 +512,465 @@ const frozen = <T extends object>(value: T): T => {
 	return Object.freeze(value);
 };
 
-/**
- * The English dictionary: the default of every section. Frozen: start
- * yours from a copy (`{ ...englishLabels.toolbar, link: '…' }`).
- */
-export const englishLabels: Labels = frozen({
-	editor: {
-		suggestion: 'Suggestion',
-		block: (kind) => `${kind} block`,
-		blocks: (count) => `${count} blocks`,
-		movedUp: (what) => `Moved ${what} up`,
-		movedDown: (what) => `Moved ${what} down`,
-		indented: (what) => `Indented ${what}`,
-		outdented: (what) => `Outdented ${what}`,
-		moved: (what) => `Moved ${what}`,
-		deleted: (what) => `Deleted ${what}`,
-		triggerMenu: 'Suggestions',
-		searching: 'Searching…',
-		noResults: 'No results'
+/** The `editor` section in English (`englishLabels.editor`). */
+export const editorEnglish: EditorLabels = /* @__PURE__ */ frozen({
+	suggestion: 'Suggestion',
+	block: (kind) => `${kind} block`,
+	blocks: (count) => `${count} blocks`,
+	movedUp: (what) => `Moved ${what} up`,
+	movedDown: (what) => `Moved ${what} down`,
+	indented: (what) => `Indented ${what}`,
+	outdented: (what) => `Outdented ${what}`,
+	moved: (what) => `Moved ${what}`,
+	deleted: (what) => `Deleted ${what}`,
+	triggerMenu: 'Suggestions',
+	searching: 'Searching…',
+	noResults: 'No results'
+});
+
+/** The `richText` section in English (`englishLabels.richText`). */
+export const richTextEnglish: RichTextLabels = /* @__PURE__ */ frozen({
+	kinds: {
+		paragraph: 'Text',
+		heading1: 'Heading 1',
+		heading2: 'Heading 2',
+		heading3: 'Heading 3',
+		toggleHeading1: 'Toggle heading 1',
+		toggleHeading2: 'Toggle heading 2',
+		toggleHeading3: 'Toggle heading 3',
+		bulletedList: 'Bulleted list',
+		numberedList: 'Numbered list',
+		todoList: 'To-do list',
+		toggleList: 'Toggle list',
+		callout: 'Callout',
+		quote: 'Quote',
+		divider: 'Divider'
 	},
-	richText: {
-		kinds: {
-			paragraph: 'Text',
-			heading1: 'Heading 1',
-			heading2: 'Heading 2',
-			heading3: 'Heading 3',
-			toggleHeading1: 'Toggle heading 1',
-			toggleHeading2: 'Toggle heading 2',
-			toggleHeading3: 'Toggle heading 3',
-			bulletedList: 'Bulleted list',
-			numberedList: 'Numbered list',
-			todoList: 'To-do list',
-			toggleList: 'Toggle list',
-			callout: 'Callout',
-			quote: 'Quote',
-			divider: 'Divider'
-		},
-		marks: {
-			bold: 'Bold',
-			italic: 'Italic',
-			underline: 'Underline',
-			strike: 'Strike',
-			code: 'Code'
-		},
-		checkbox: 'Done',
-		emptyBody: {
-			toggle: 'Empty toggle. Click or drop blocks inside.',
-			callout: 'Empty callout. Click or drop blocks inside.'
-		},
-		calloutIcon: {
-			change: 'Change icon',
-			add: 'Add icon',
-			picker: 'Callout icons',
-			remove: 'Remove icon'
-		},
-		placeholders: {
-			heading: (level) => `Heading ${level}`,
-			toggleHeading: (level) => `Toggle heading ${level}`,
-			list: 'List',
-			todo: 'To-do',
-			toggle: 'Toggle',
-			quote: 'Empty quote',
-			callout: 'Callout title',
-			caption: 'Write a caption…',
-			empty: "Type '/' for commands"
-		}
+	marks: {
+		bold: 'Bold',
+		italic: 'Italic',
+		underline: 'Underline',
+		strike: 'Strike',
+		code: 'Code'
 	},
-	toolbar: {
-		bar: 'Text formatting',
-		text: 'Text',
-		turnInto: 'Turn into',
-		link: 'Link',
-		linkUrl: 'Link URL',
-		linkPlaceholder: 'Paste link',
-		apply: 'Apply',
-		applyLink: 'Apply link',
-		remove: 'Remove',
-		removeLink: 'Remove link',
-		color: 'Color',
-		textColor: 'Text color',
-		backgroundColor: 'Background color',
-		colors: {
-			Default: 'Default',
-			Gray: 'Gray',
-			Brown: 'Brown',
-			Orange: 'Orange',
-			Yellow: 'Yellow',
-			Green: 'Green',
-			Blue: 'Blue',
-			Purple: 'Purple',
-			Pink: 'Pink',
-			Red: 'Red'
-		},
-		colorText: (color) => `${color} text`,
-		colorBackground: (color) => `${color} background`,
-		card: 'Link',
-		open: 'Open',
-		openLink: 'Open link in a new tab',
-		edit: 'Edit',
-		editLink: 'Edit link'
+	checkbox: 'Done',
+	emptyBody: {
+		toggle: 'Empty toggle. Click or drop blocks inside.',
+		callout: 'Empty callout. Click or drop blocks inside.'
 	},
-	slashMenu: {
-		filter: 'Type to filter…',
-		filterLabel: 'Filter block commands',
-		list: 'Block commands',
-		noResults: 'No results',
-		close: 'Close menu',
-		closeKey: 'esc',
-		groups: {
-			'Basic blocks': 'Basic blocks',
-			'Advanced blocks': 'Advanced blocks',
-			Media: 'Media',
-			Layout: 'Layout',
-			Color: 'Color',
-			Inline: 'Inline'
-		}
+	calloutIcon: {
+		change: 'Change icon',
+		add: 'Add icon',
+		picker: 'Callout icons',
+		remove: 'Remove icon'
 	},
-	blockMenu: {
-		search: 'Search actions…',
-		searchLabel: 'Search actions',
-		menu: 'Block actions',
-		block: 'Block',
-		turnInto: 'Turn into',
-		color: 'Color',
-		textColor: 'Text color',
-		backgroundColor: 'Background color',
-		colors: {
-			default: 'Default',
-			gray: 'Gray',
-			brown: 'Brown',
-			orange: 'Orange',
-			yellow: 'Yellow',
-			green: 'Green',
-			blue: 'Blue',
-			purple: 'Purple',
-			pink: 'Pink',
-			red: 'Red'
-		},
-		colorText: (color) => `${color} text`,
-		colorBackground: (color) => `${color} background`,
-		copyLink: 'Copy link to block',
-		duplicate: 'Duplicate',
-		moveUp: 'Move up',
-		moveDown: 'Move down',
-		delete: 'Delete',
-		noResults: 'No results',
-		ctrl: 'Ctrl',
-		shift: 'Shift',
-		deleteKey: 'Del'
-	},
-	blockHandles: {
-		add: (kind) => `Add a block below ${kind} (Alt: above)`,
-		addBeside: (kind) => `Add a block below ${kind} (Alt: a column to the right)`,
-		addHint: 'Click to add below\nAlt-click to add a block above',
-		addBesideHint: 'Click to add below\nAlt-click to add a column to the right',
-		grip: (kind) => `${kind} block: drag to move, click for actions`
-	},
-	image: {
-		image: 'Image',
-		add: 'Add an image',
-		link: 'Image link',
-		linkPlaceholder: 'Paste the image link…',
-		embed: 'Embed image',
-		upload: 'Upload',
-		uploading: 'Uploading…',
-		tooLarge: (limit, upload) =>
-			`Inline images are limited to ${limit}: ${upload ? 'upload the file instead' : 'host the image and paste its link'}.`,
-		uploadFailed: 'The upload failed: try again or paste a link.',
-		invalid: "That doesn't look like an image link or upload.",
-		toolbar: 'Image',
-		alignLeft: 'Align left',
-		alignCenter: 'Align center',
-		alignRight: 'Align right',
-		alt: 'Alt text',
-		altPlaceholder: 'Describe the image…'
-	},
-	media: {
-		embed: {
-			label: 'Embed',
-			offer: 'Embed',
-			add: 'Embed a link',
-			placeholder: 'Paste the link…',
-			submit: 'Embed link',
-			invalid: 'No embed provider plays that link.'
-		},
-		bookmark: {
-			label: 'Web bookmark',
-			offer: 'Bookmark',
-			add: 'Add a web bookmark',
-			placeholder: 'Paste the link…',
-			submit: 'Create bookmark',
-			invalid: "That doesn't look like a web link."
-		},
-		file: {
-			label: 'File',
-			add: 'Embed a file',
-			addOrUpload: 'Upload or embed a file',
-			placeholder: 'Paste the file link…',
-			submit: 'Embed link',
-			invalid: "That doesn't look like a file link or upload."
-		},
-		video: {
-			label: 'Video',
-			add: 'Embed a video',
-			placeholder: 'Paste the video link…',
-			submit: 'Embed video',
-			invalid: "That doesn't look like a video link or upload."
-		},
-		audio: {
-			label: 'Audio',
-			add: 'Embed audio',
-			placeholder: 'Paste the audio link…',
-			submit: 'Embed audio',
-			invalid: "That doesn't look like an audio link or upload."
-		},
-		upload: 'Upload',
-		uploading: 'Uploading…',
-		uploadFailed: 'The upload failed: try again or paste a link.',
-		fileSize: bytes,
-		pasteAs: 'Paste as',
-		pasteLink: 'Link'
-	},
-	code: {
-		code: 'Code',
-		language: 'Code language',
-		search: 'Search for a language…',
-		noResults: 'No results',
-		copy: 'Copy',
-		copied: 'Copied',
-		languages: {}
-	},
-	find: {
-		bar: 'Find in page',
-		query: 'Find',
-		queryPlaceholder: 'Find in page',
-		noResults: 'No results',
-		count: (current, total) => `${current}/${total}`,
-		matchCase: 'Match case',
-		previous: 'Previous match',
-		previousHint: 'Previous match (Shift+Enter)',
-		next: 'Next match',
-		nextHint: 'Next match (Enter)',
-		close: 'Close',
-		closeHint: 'Close (Escape)',
-		replaceWith: 'Replace with',
-		replace: 'Replace',
-		replaceAll: 'Replace all'
-	},
-	suggestions: {
-		suggestion: 'Suggestion',
-		writing: (label) => `${label ?? 'AI'} is writing…`,
-		accept: 'Accept',
-		discard: 'Discard',
-		retry: 'Try again',
-		ctrl: 'Ctrl',
-		escape: 'Esc'
-	},
-	columns: {
-		columns: (count) => `${count} columns`,
-		resize: 'Resize columns'
-	},
-	page: {
-		page: 'Page',
-		untitled: 'Untitled'
-	},
-	toc: {
-		toc: 'Table of contents',
-		untitled: 'Untitled',
-		empty: 'Add headings to create a table of contents.'
-	},
-	pageLink: {
-		menu: 'Pages',
-		searching: 'Searching…',
-		noResults: 'No results',
-		untitled: 'Untitled'
-	},
-	comments: {
-		comment: 'Comment',
-		sidebar: 'Comments',
-		placeholder: 'Add a comment…',
-		reply: 'Reply…',
-		post: 'Comment',
-		cancel: 'Cancel',
-		resolve: 'Resolve',
-		reopen: 'Re-open',
-		delete: 'Delete',
-		resolvedBy: (name) => `Resolved by ${name}`,
-		showResolved: (count) => `Resolved (${count})`,
-		hideResolved: 'Hide resolved',
-		you: 'You',
-		when: (at) =>
-			Number.isFinite(at)
-				? new Intl.DateTimeFormat('en', {
-						month: 'short',
-						day: 'numeric',
-						hour: 'numeric',
-						minute: '2-digit'
-					}).format(at)
-				: '',
-		failed: 'Could not save the comment. Try again.'
-	},
-	table: {
-		table: 'Table',
-		headerRow: 'Header row',
-		headerColumn: 'Header column',
-		insertRowAbove: 'Insert row above',
-		insertRowBelow: 'Insert row below',
-		insertColumnLeft: 'Insert column left',
-		insertColumnRight: 'Insert column right',
-		insertAbove: 'Insert above',
-		insertBelow: 'Insert below',
-		insertLeft: 'Insert left',
-		insertRight: 'Insert right',
-		moveUp: 'Move up',
-		moveDown: 'Move down',
-		moveLeft: 'Move left',
-		moveRight: 'Move right',
-		deleteRow: 'Delete row',
-		deleteColumn: 'Delete column',
-		addRow: 'Add a row',
-		addColumn: 'Add a column',
-		rowMenu: 'Row options',
-		columnMenu: 'Column options',
-		resize: 'Resize column',
-		emptyCell: 'Empty cell'
-	},
-	mention: {
-		menu: 'People',
-		searching: 'Searching…',
-		noResults: 'No results'
-	},
-	history: {
-		title: 'Version history',
-		versions: 'Versions',
-		morning: 'Morning',
-		evening: 'Evening',
-		loading: 'Loading…',
-		empty: 'No versions yet. A version is saved twice a day while the page changes.',
-		noEditors: 'No editors',
-		moreEditors: (count) => `+${count}`,
-		saved: 'Saved',
-		preview: 'Version preview',
-		choose: 'Choose a version to preview it.',
-		highlight: 'Highlight changes',
-		added: (count) => `${count} added since`,
-		removed: (count) => `${count} removed since`,
-		changed: (count) => `${count} changed since`,
-		same: 'Same as the current page',
-		restore: 'Restore version',
-		restoring: 'Restoring…',
-		undo: 'Undo restore',
-		restored: 'Version restored.',
-		unchanged: 'The page already matches this version.',
-		unavailable: 'This version is no longer available.',
-		undone: 'Restore undone.',
-		nothingToUndo: 'There is no restore to undo.',
-		denied: 'You do not have access to this history.',
-		failed: 'The history could not be reached.'
-	},
-	equation: {
-		block: 'Block equation',
-		inline: 'Inline equation',
-		blockPlaceholder: 'Add a TeX equation',
-		inlinePlaceholder: 'New equation',
-		editor: 'Equation',
-		placeholder: 'E = mc^2',
-		done: 'Done',
-		invalid: 'Invalid equation'
+	placeholders: {
+		heading: (level) => `Heading ${level}`,
+		toggleHeading: (level) => `Toggle heading ${level}`,
+		list: 'List',
+		todo: 'To-do',
+		toggle: 'Toggle',
+		quote: 'Empty quote',
+		callout: 'Callout title',
+		caption: 'Write a caption…',
+		empty: "Type '/' for commands"
 	}
 });
 
+/** The `toolbar` section in English (`englishLabels.toolbar`). */
+export const toolbarEnglish: ToolbarLabels = /* @__PURE__ */ frozen({
+	bar: 'Text formatting',
+	text: 'Text',
+	turnInto: 'Turn into',
+	link: 'Link',
+	linkUrl: 'Link URL',
+	linkPlaceholder: 'Paste link',
+	apply: 'Apply',
+	applyLink: 'Apply link',
+	remove: 'Remove',
+	removeLink: 'Remove link',
+	color: 'Color',
+	textColor: 'Text color',
+	backgroundColor: 'Background color',
+	colors: {
+		Default: 'Default',
+		Gray: 'Gray',
+		Brown: 'Brown',
+		Orange: 'Orange',
+		Yellow: 'Yellow',
+		Green: 'Green',
+		Blue: 'Blue',
+		Purple: 'Purple',
+		Pink: 'Pink',
+		Red: 'Red'
+	},
+	colorText: (color) => `${color} text`,
+	colorBackground: (color) => `${color} background`,
+	card: 'Link',
+	open: 'Open',
+	openLink: 'Open link in a new tab',
+	edit: 'Edit',
+	editLink: 'Edit link'
+});
+
+/** The `slashMenu` section in English (`englishLabels.slashMenu`). */
+export const slashMenuEnglish: SlashMenuLabels = /* @__PURE__ */ frozen({
+	filter: 'Type to filter…',
+	filterLabel: 'Filter block commands',
+	list: 'Block commands',
+	noResults: 'No results',
+	close: 'Close menu',
+	closeKey: 'esc',
+	groups: {
+		'Basic blocks': 'Basic blocks',
+		'Advanced blocks': 'Advanced blocks',
+		Media: 'Media',
+		Layout: 'Layout',
+		Color: 'Color',
+		Inline: 'Inline'
+	}
+});
+
+/** The `blockMenu` section in English (`englishLabels.blockMenu`). */
+export const blockMenuEnglish: BlockMenuLabels = /* @__PURE__ */ frozen({
+	search: 'Search actions…',
+	searchLabel: 'Search actions',
+	menu: 'Block actions',
+	block: 'Block',
+	turnInto: 'Turn into',
+	color: 'Color',
+	textColor: 'Text color',
+	backgroundColor: 'Background color',
+	colors: {
+		default: 'Default',
+		gray: 'Gray',
+		brown: 'Brown',
+		orange: 'Orange',
+		yellow: 'Yellow',
+		green: 'Green',
+		blue: 'Blue',
+		purple: 'Purple',
+		pink: 'Pink',
+		red: 'Red'
+	},
+	colorText: (color) => `${color} text`,
+	colorBackground: (color) => `${color} background`,
+	copyLink: 'Copy link to block',
+	duplicate: 'Duplicate',
+	moveUp: 'Move up',
+	moveDown: 'Move down',
+	delete: 'Delete',
+	noResults: 'No results',
+	ctrl: 'Ctrl',
+	shift: 'Shift',
+	deleteKey: 'Del'
+});
+
+/** The `blockHandles` section in English (`englishLabels.blockHandles`). */
+export const blockHandlesEnglish: BlockHandlesLabels = /* @__PURE__ */ frozen({
+	add: (kind) => `Add a block below ${kind} (Alt: above)`,
+	addBeside: (kind) => `Add a block below ${kind} (Alt: a column to the right)`,
+	addHint: 'Click to add below\nAlt-click to add a block above',
+	addBesideHint: 'Click to add below\nAlt-click to add a column to the right',
+	grip: (kind) => `${kind} block: drag to move, click for actions`
+});
+
+/** The `image` section in English (`englishLabels.image`). */
+export const imageEnglish: ImageLabels = /* @__PURE__ */ frozen({
+	image: 'Image',
+	add: 'Add an image',
+	link: 'Image link',
+	linkPlaceholder: 'Paste the image link…',
+	embed: 'Embed image',
+	upload: 'Upload',
+	uploading: 'Uploading…',
+	tooLarge: (limit, upload) =>
+		`Inline images are limited to ${limit}: ${upload ? 'upload the file instead' : 'host the image and paste its link'}.`,
+	uploadFailed: 'The upload failed: try again or paste a link.',
+	invalid: "That doesn't look like an image link or upload.",
+	toolbar: 'Image',
+	alignLeft: 'Align left',
+	alignCenter: 'Align center',
+	alignRight: 'Align right',
+	alt: 'Alt text',
+	altPlaceholder: 'Describe the image…'
+});
+
+/** The `media` section in English (`englishLabels.media`). */
+export const mediaEnglish: MediaLabels = /* @__PURE__ */ frozen({
+	embed: {
+		label: 'Embed',
+		offer: 'Embed',
+		add: 'Embed a link',
+		placeholder: 'Paste the link…',
+		submit: 'Embed link',
+		invalid: 'No embed provider plays that link.'
+	},
+	bookmark: {
+		label: 'Web bookmark',
+		offer: 'Bookmark',
+		add: 'Add a web bookmark',
+		placeholder: 'Paste the link…',
+		submit: 'Create bookmark',
+		invalid: "That doesn't look like a web link."
+	},
+	file: {
+		label: 'File',
+		add: 'Embed a file',
+		addOrUpload: 'Upload or embed a file',
+		placeholder: 'Paste the file link…',
+		submit: 'Embed link',
+		invalid: "That doesn't look like a file link or upload."
+	},
+	video: {
+		label: 'Video',
+		add: 'Embed a video',
+		placeholder: 'Paste the video link…',
+		submit: 'Embed video',
+		invalid: "That doesn't look like a video link or upload."
+	},
+	audio: {
+		label: 'Audio',
+		add: 'Embed audio',
+		placeholder: 'Paste the audio link…',
+		submit: 'Embed audio',
+		invalid: "That doesn't look like an audio link or upload."
+	},
+	upload: 'Upload',
+	uploading: 'Uploading…',
+	uploadFailed: 'The upload failed: try again or paste a link.',
+	fileSize: bytes,
+	pasteAs: 'Paste as',
+	pasteLink: 'Link'
+});
+
+/** The `code` section in English (`englishLabels.code`). */
+export const codeEnglish: CodeLabels = /* @__PURE__ */ frozen({
+	code: 'Code',
+	language: 'Code language',
+	search: 'Search for a language…',
+	noResults: 'No results',
+	copy: 'Copy',
+	copied: 'Copied',
+	languages: {}
+});
+
+/** The `find` section in English (`englishLabels.find`). */
+export const findEnglish: FindLabels = /* @__PURE__ */ frozen({
+	bar: 'Find in page',
+	query: 'Find',
+	queryPlaceholder: 'Find in page',
+	noResults: 'No results',
+	count: (current, total) => `${current}/${total}`,
+	matchCase: 'Match case',
+	previous: 'Previous match',
+	previousHint: 'Previous match (Shift+Enter)',
+	next: 'Next match',
+	nextHint: 'Next match (Enter)',
+	close: 'Close',
+	closeHint: 'Close (Escape)',
+	replaceWith: 'Replace with',
+	replace: 'Replace',
+	replaceAll: 'Replace all'
+});
+
+/** The `suggestions` section in English (`englishLabels.suggestions`). */
+export const suggestionsEnglish: SuggestionsLabels = /* @__PURE__ */ frozen({
+	suggestion: 'Suggestion',
+	writing: (label) => `${label ?? 'AI'} is writing…`,
+	accept: 'Accept',
+	discard: 'Discard',
+	retry: 'Try again',
+	ctrl: 'Ctrl',
+	escape: 'Esc'
+});
+
+/** The `columns` section in English (`englishLabels.columns`). */
+export const columnsEnglish: ColumnsLabels = /* @__PURE__ */ frozen({
+	columns: (count) => `${count} columns`,
+	resize: 'Resize columns'
+});
+
+/** The `page` section in English (`englishLabels.page`). */
+export const pageEnglish: PageLabels = /* @__PURE__ */ frozen({
+	page: 'Page',
+	untitled: 'Untitled'
+});
+
+/** The `toc` section in English (`englishLabels.toc`). */
+export const tocEnglish: TocLabels = /* @__PURE__ */ frozen({
+	toc: 'Table of contents',
+	untitled: 'Untitled',
+	empty: 'Add headings to create a table of contents.'
+});
+
+/** The `pageLink` section in English (`englishLabels.pageLink`). */
+export const pageLinkEnglish: PageLinkLabels = /* @__PURE__ */ frozen({
+	menu: 'Pages',
+	searching: 'Searching…',
+	noResults: 'No results',
+	untitled: 'Untitled'
+});
+
+/** The `comments` section in English (`englishLabels.comments`). */
+export const commentsEnglish: CommentsLabels = /* @__PURE__ */ frozen({
+	comment: 'Comment',
+	sidebar: 'Comments',
+	placeholder: 'Add a comment…',
+	reply: 'Reply…',
+	post: 'Comment',
+	cancel: 'Cancel',
+	resolve: 'Resolve',
+	reopen: 'Re-open',
+	delete: 'Delete',
+	resolvedBy: (name) => `Resolved by ${name}`,
+	showResolved: (count) => `Resolved (${count})`,
+	hideResolved: 'Hide resolved',
+	you: 'You',
+	when: (at) =>
+		Number.isFinite(at)
+			? new Intl.DateTimeFormat('en', {
+					month: 'short',
+					day: 'numeric',
+					hour: 'numeric',
+					minute: '2-digit'
+				}).format(at)
+			: '',
+	failed: 'Could not save the comment. Try again.'
+});
+
+/** The `table` section in English (`englishLabels.table`). */
+export const tableEnglish: TableLabels = /* @__PURE__ */ frozen({
+	table: 'Table',
+	headerRow: 'Header row',
+	headerColumn: 'Header column',
+	insertRowAbove: 'Insert row above',
+	insertRowBelow: 'Insert row below',
+	insertColumnLeft: 'Insert column left',
+	insertColumnRight: 'Insert column right',
+	insertAbove: 'Insert above',
+	insertBelow: 'Insert below',
+	insertLeft: 'Insert left',
+	insertRight: 'Insert right',
+	moveUp: 'Move up',
+	moveDown: 'Move down',
+	moveLeft: 'Move left',
+	moveRight: 'Move right',
+	deleteRow: 'Delete row',
+	deleteColumn: 'Delete column',
+	addRow: 'Add a row',
+	addColumn: 'Add a column',
+	rowMenu: 'Row options',
+	columnMenu: 'Column options',
+	resize: 'Resize column',
+	emptyCell: 'Empty cell'
+});
+
+/** The `mention` section in English (`englishLabels.mention`). */
+export const mentionEnglish: MentionLabels = /* @__PURE__ */ frozen({
+	menu: 'People',
+	searching: 'Searching…',
+	noResults: 'No results'
+});
+
+/** The `history` section in English (`englishLabels.history`). */
+export const historyEnglish: HistoryPanelLabels = /* @__PURE__ */ frozen({
+	title: 'Version history',
+	versions: 'Versions',
+	morning: 'Morning',
+	evening: 'Evening',
+	loading: 'Loading…',
+	empty: 'No versions yet. A version is saved twice a day while the page changes.',
+	noEditors: 'No editors',
+	moreEditors: (count) => `+${count}`,
+	saved: 'Saved',
+	preview: 'Version preview',
+	choose: 'Choose a version to preview it.',
+	highlight: 'Highlight changes',
+	added: (count) => `${count} added since`,
+	removed: (count) => `${count} removed since`,
+	changed: (count) => `${count} changed since`,
+	same: 'Same as the current page',
+	restore: 'Restore version',
+	restoring: 'Restoring…',
+	undo: 'Undo restore',
+	restored: 'Version restored.',
+	unchanged: 'The page already matches this version.',
+	unavailable: 'This version is no longer available.',
+	undone: 'Restore undone.',
+	nothingToUndo: 'There is no restore to undo.',
+	denied: 'You do not have access to this history.',
+	failed: 'The history could not be reached.'
+});
+
+/** The `equation` section in English (`englishLabels.equation`). */
+export const equationEnglish: EquationLabels = /* @__PURE__ */ frozen({
+	block: 'Block equation',
+	inline: 'Inline equation',
+	blockPlaceholder: 'Add a TeX equation',
+	inlinePlaceholder: 'New equation',
+	editor: 'Equation',
+	placeholder: 'E = mc^2',
+	done: 'Done',
+	invalid: 'Invalid equation'
+});
+
 /**
- * Section `section` of the dictionary with `overrides` over the English one:
- * an entry replaces its English entry, a nested group's entries replace
+ * The English dictionary: the default of every section. Frozen: start
+ * yours from a copy (`{ ...englishLabels.toolbar, link: '…' }`). Each
+ * plugin reads only its own section, so an app ships the words of the
+ * plugins it lists.
+ */
+export const englishLabels: Labels = /* @__PURE__ */ frozen({
+	editor: editorEnglish,
+	richText: richTextEnglish,
+	toolbar: toolbarEnglish,
+	slashMenu: slashMenuEnglish,
+	blockMenu: blockMenuEnglish,
+	blockHandles: blockHandlesEnglish,
+	image: imageEnglish,
+	media: mediaEnglish,
+	code: codeEnglish,
+	find: findEnglish,
+	suggestions: suggestionsEnglish,
+	columns: columnsEnglish,
+	page: pageEnglish,
+	toc: tocEnglish,
+	pageLink: pageLinkEnglish,
+	comments: commentsEnglish,
+	table: tableEnglish,
+	mention: mentionEnglish,
+	history: historyEnglish,
+	equation: equationEnglish
+});
+
+/** The entries of a section to replace (`PartialLabels`). */
+type Overrides<L> = {
+	[P in keyof L]?: L[P] extends (...args: never[]) => unknown
+		? L[P]
+		: L[P] extends object
+			? Partial<L[P]>
+			: L[P];
+};
+
+/**
+ * A plugin's section, `english` (its English words), with `overrides` over
+ * it: an entry replaces its English entry, a nested group's entries replace
  * only theirs.
  */
-export const labelsWith = <K extends keyof Labels>(
-	section: K,
-	overrides: PartialLabels<K> | undefined
-): Labels[K] => {
-	const base = englishLabels[section] as Record<string, unknown>;
-	if (!overrides) return base as Labels[K];
+export const labelsWith = <L extends object>(
+	english: L,
+	overrides: Overrides<L> | undefined
+): L => {
+	if (!overrides) return english;
+	const base = english as Record<string, unknown>;
 	const merged: Record<string, unknown> = { ...base };
 	for (const [key, value] of Object.entries(overrides)) {
 		if (value === undefined) continue;
 		const own = base[key];
 		merged[key] = isGroup(own) && isGroup(value) ? { ...own, ...value } : value;
 	}
-	return merged as Labels[K];
+	return merged as L;
 };
 
 /**
@@ -918,15 +989,14 @@ export const keywordsOf = (
  * view claims them, as its kind records (first wins); its components read
  * them through the view they render in, English when none claimed them.
  */
-export const viewLabels = <K extends keyof Labels>(section: K) => {
-	const claimed = new WeakMap<object, Labels[K]>();
+export const viewLabels = <L extends object>(english: L) => {
+	const claimed = new WeakMap<object, L>();
 	return {
 		/** `labels` for `view`, unless a plugin listed before claimed it. */
-		claim: (view: object | undefined, labels: Labels[K]) => {
+		claim: (view: object | undefined, labels: L) => {
 			if (view && !claimed.has(view)) claimed.set(view, labels);
 		},
 		/** The labels of `view` (English for none, or a view no plugin claimed). */
-		of: (view: object | undefined): Labels[K] =>
-			(view && claimed.get(view)) || englishLabels[section]
+		of: (view: object | undefined): L => (view && claimed.get(view)) || english
 	};
 };

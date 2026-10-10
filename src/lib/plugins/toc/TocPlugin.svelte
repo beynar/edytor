@@ -2,7 +2,7 @@
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { tocKinds } from '$lib/crdt/semantics.js';
-	import { keywordsOf, labelsWith } from '$lib/labels.js';
+	import { tocEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
 	import TableOfContents from './TableOfContents.svelte';
 	import {
 		richTextHeadingLevel,
@@ -28,7 +28,7 @@
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!levelOf.has(edytor)) levelOf.set(edytor, options.headingLevel ?? richTextHeadingLevel);
-			const labels = labelsWith('toc', options.labels);
+			const labels = labelsWith(tocEnglish, options.labels);
 			tocLabels.claim(edytor, labels);
 			return {
 				blocks: {

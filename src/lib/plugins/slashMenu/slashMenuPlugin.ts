@@ -9,7 +9,7 @@ import { onPress } from '$lib/events/onFocus.js';
 import SlashMenu from './SlashMenu.svelte';
 import { caretRect, placeBelow } from '../triggers/place.js';
 import { SlashMenuController } from './SlashMenuController.svelte.js';
-import { labelsWith, type PartialLabels } from '$lib/labels.js';
+import { slashMenuEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
 import type { MenuItemPayload } from '../chrome.js';
 import { withTriggerMenus } from '../triggers/triggers.js';
 
@@ -44,7 +44,10 @@ export type SlashMenuOptions = {
 export const createSlashMenuPlugin =
 	(options: SlashMenuOptions = {}): Plugin =>
 	(edytor) => {
-		const controller = new SlashMenuController(edytor, labelsWith('slashMenu', options.labels));
+		const controller = new SlashMenuController(
+			edytor,
+			labelsWith(slashMenuEnglish, options.labels)
+		);
 
 		/**
 		 * Beside the caret (below a `+` it was opened from), kept in the

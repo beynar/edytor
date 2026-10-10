@@ -8,7 +8,7 @@
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
 	import type { MediaEmptyController } from './empty.svelte.js';
 	import { escapeHtml, mediaEmpty, mediaLabels, safeWebUrl } from './media.js';
-	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
+	import { mediaEnglish, keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
 
 	/** What an `unfurl` answers about a page; every field optional. */
 	export type BookmarkPreview = {
@@ -118,7 +118,7 @@
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!unfurlOf.has(edytor)) unfurlOf.set(edytor, options.unfurl);
-			const labels = labelsWith('media', options.labels);
+			const labels = labelsWith(mediaEnglish, options.labels);
 			mediaLabels.bookmark.claim(edytor, labels);
 			mediaEmpty.claim(edytor, 'bookmark', options.empty);
 			return {

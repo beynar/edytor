@@ -13,7 +13,7 @@ import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { englishLabels, type RichTextLabels } from '$lib/labels.js';
+import { richTextEnglish, type RichTextLabels } from '$lib/labels.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { holdKeys, listPopup, menuKey } from '../list.svelte.js';
@@ -119,7 +119,7 @@ export class CalloutIconPicker {
 		readonly icon: string = DEFAULT_CALLOUT_ICON,
 		/** The picker's choices. */
 		readonly icons: readonly string[] = CALLOUT_ICONS,
-		labels: RichTextLabels = englishLabels.richText
+		labels: RichTextLabels = richTextEnglish
 	) {
 		this.#words = labels;
 		this.popup = listPopup(edytor, 'callout-icons', 'menu', () => this.labels.picker);

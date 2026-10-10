@@ -14,7 +14,7 @@
 	import { HistoryRequestError } from './client.js';
 	import { versionDiff } from './diff.js';
 	import { versionHighlightsPlugin } from './versionHighlights.js';
-	import { labelsWith } from '$lib/labels.js';
+	import { historyEnglish, labelsWith } from '$lib/labels.js';
 	import { optionAttributes } from '$lib/plugins/chrome.js';
 
 	let {
@@ -35,7 +35,7 @@
 		onError
 	}: HistoryPanelProps = $props();
 
-	const labels = $derived(labelsWith('history', labelOverrides));
+	const labels = $derived(labelsWith(historyEnglish, labelOverrides));
 
 	/** The versions, newest first (`null` while the first list loads). */
 	let versions = $state.raw<HistoryVersion[] | null>(null);

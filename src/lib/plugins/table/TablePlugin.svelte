@@ -6,7 +6,7 @@
 	import { tableKinds } from '$lib/crdt/semantics.js';
 	import { tableBlock, unlistedOrder } from '$lib/crdt/tables.js';
 	import { onPress } from '$lib/events/onFocus.js';
-	import { keywordsOf, labelsWith, viewLabels } from '$lib/labels.js';
+	import { tableEnglish, keywordsOf, labelsWith, viewLabels } from '$lib/labels.js';
 	import TableChromeLayer from './TableChrome.svelte';
 	import { TableChrome } from './chrome.svelte.js';
 	import {
@@ -31,7 +31,7 @@
 	const tablePlugins = new WeakSet<Plugin>();
 	/** Each view's chrome (the first table plugin listed in it claims the view). */
 	const chromes = new WeakMap<Edytor, TableChrome>();
-	const labelsOf = viewLabels('table');
+	const labelsOf = viewLabels(tableEnglish);
 
 	/** Recognize any table plugin instance. */
 	export const isTablePlugin = (plugin: Plugin) => tablePlugins.has(plugin);
@@ -118,7 +118,7 @@
 		const minColumnWidth = options.minColumnWidth ?? 48;
 		const fresh = tableBlock({ rows: options.rows ?? 3, columns: options.columns ?? 3 });
 		const plugin: Plugin = (edytor) => {
-			const labels = labelsWith('table', options.labels);
+			const labels = labelsWith(tableEnglish, options.labels);
 			labelsOf.claim(edytor, labels);
 			const chrome =
 				chromes.get(edytor) ?? new TableChrome(edytor, labels, columnWidth, minColumnWidth);

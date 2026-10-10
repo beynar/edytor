@@ -4,7 +4,12 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
-import { englishLabels, viewLabels, type EquationLabels, type PartialLabels } from '$lib/labels.js';
+import {
+	equationEnglish,
+	viewLabels,
+	type EquationLabels,
+	type PartialLabels
+} from '$lib/labels.js';
 
 /** The part of KaTeX the plugin uses: `katex.renderToString`. */
 export type KatexLike = {
@@ -180,7 +185,7 @@ export const parseEquation = (element: HTMLElement, display: boolean): EquationD
 };
 
 /** Each view's equation labels: the first equation plugin listed claims them, as its kinds. */
-export const equationLabels = viewLabels('equation');
+export const equationLabels = viewLabels(equationEnglish);
 
 /** The overlay host the editor renders in (the overlay's mount names it). */
 const HOST = '[data-edytor-equation-editor-host]';
@@ -224,7 +229,7 @@ export class EquationEditor {
 		/** @internal */
 		readonly renderer: EquationRenderer,
 		/** The plugin's words (`editor`, `placeholder`, `done`, …). */
-		readonly labels: EquationLabels = englishLabels.equation
+		readonly labels: EquationLabels = equationEnglish
 	) {}
 
 	/** The view is readonly (reactive): the editor closes. */

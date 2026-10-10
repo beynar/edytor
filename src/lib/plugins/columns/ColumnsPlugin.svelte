@@ -11,7 +11,7 @@
 	} from '$lib/selection/replaceSelection.js';
 	import ColumnResizeStrips from './ColumnResize.svelte';
 	import { ColumnResize, weightOf } from './resize.svelte.js';
-	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
+	import { columnsEnglish, keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
 
 	export type ColumnsPluginOptions = {
 		/**
@@ -56,7 +56,7 @@
 		const id = `columns.${n}`;
 		return {
 			id,
-			label: labelsWith('columns', options.labels).columns(n),
+			label: labelsWith(columnsEnglish, options.labels).columns(n),
 			group: 'Layout',
 			// Notion's `/col3`, `/columns3` and `/column 3` too (query words match in order).
 			keywords: keywordsOf(
@@ -151,7 +151,7 @@
 			const resize = new ColumnResize(
 				edytor,
 				options.minWidth ?? 0.1,
-				labelsWith('columns', options.labels)
+				labelsWith(columnsEnglish, options.labels)
 			);
 			return {
 				commands: [2, 3, 4, 5].map((n) => layoutCommand(edytor, n, options)),

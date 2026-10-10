@@ -73,17 +73,17 @@ const markupOf = (source: string) => {
 
 describe('labelsWith', () => {
 	it('replaces the entries given and keeps the others', () => {
-		const toolbar = labelsWith('toolbar', { link: 'Lien' });
+		const toolbar = labelsWith(englishLabels.toolbar, { link: 'Lien' });
 		expect(toolbar.link).toBe('Lien');
 		expect(toolbar.bar).toBe(englishLabels.toolbar.bar);
 	});
 
 	it('replaces one entry of a nested group without the others', () => {
-		const richText = labelsWith('richText', { placeholders: { quote: 'Citation vide' } });
+		const richText = labelsWith(englishLabels.richText, { placeholders: { quote: 'Citation vide' } });
 		expect(richText.placeholders.quote).toBe('Citation vide');
 		expect(richText.placeholders.list).toBe('List');
 		expect(richText.placeholders.heading(2)).toBe('Heading 2');
-		const slash = labelsWith('slashMenu', { groups: { Media: 'Médias' } });
+		const slash = labelsWith(englishLabels.slashMenu, { groups: { Media: 'Médias' } });
 		expect(slash.groups).toEqual({
 			'Basic blocks': 'Basic blocks',
 			'Advanced blocks': 'Advanced blocks',
@@ -95,7 +95,7 @@ describe('labelsWith', () => {
 	});
 
 	it('answers English without overrides', () => {
-		expect(labelsWith('find', undefined)).toBe(englishLabels.find);
+		expect(labelsWith(englishLabels.find, undefined)).toBe(englishLabels.find);
 	});
 
 	it('the English dictionary is frozen, its nested groups too: no app edits every view', () => {

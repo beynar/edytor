@@ -38,7 +38,7 @@ import { Popups } from './surface/popups.svelte.js';
 import { onOneLine } from './surface/lines.js';
 import { withRulesAndTriggers } from './plugins/triggers/triggers.js';
 import { Announcer as AnnouncerState } from './session/announcer.svelte.js';
-import { englishLabels, labelsWith, type EditorLabels, type PartialLabels } from './labels.js';
+import { editorEnglish, labelsWith, type EditorLabels, type PartialLabels } from './labels.js';
 import Announcer from './components/Announcer.svelte';
 import RemoteSelections from './collaboration/RemoteSelections.svelte';
 import SuggestionRanges from './components/SuggestionRanges.svelte';
@@ -315,7 +315,7 @@ export class Edytor {
 	/** What this view announces to assistive technology (`session/announcer`): its block moves and deletes. */
 	readonly announcer: AnnouncerState = new AnnouncerState(this);
 	/** The words this view says itself (`<Edytor labels>`): its announcements, a suggestion's name. */
-	readonly labels: EditorLabels = englishLabels.editor;
+	readonly labels: EditorLabels = editorEnglish;
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONDoc) => void;
 	private onDocChange?: (change: DocChange) => void;
@@ -493,7 +493,7 @@ export class Edytor {
 		} = options;
 		warnRetired(options);
 		warnRetired(snippets);
-		this.labels = labelsWith('editor', labels);
+		this.labels = labelsWith(editorEnglish, labels);
 		if (document !== undefined) {
 			if (
 				doc !== undefined ||

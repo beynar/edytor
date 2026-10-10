@@ -7,7 +7,7 @@
 	import type { Snippet } from 'svelte';
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
 	import type { MediaEmptyController } from './empty.svelte.js';
-	import { keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
+	import { mediaEnglish, keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
 	import {
 		EMBED_ALLOW,
 		EMBED_PROVIDERS,
@@ -76,7 +76,7 @@
 		(edytor) => {
 			const allowed = options.providers ?? EMBED_PROVIDERS;
 			if (!providersOf.has(edytor)) providersOf.set(edytor, allowed);
-			const labels = labelsWith('media', options.labels);
+			const labels = labelsWith(mediaEnglish, options.labels);
 			mediaLabels.embed.claim(edytor, labels);
 			mediaEmpty.claim(edytor, 'embed', options.empty);
 			return {

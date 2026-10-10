@@ -155,35 +155,36 @@ export class FindController {
 	field: Action<HTMLInputElement> = (node) => {
 		this.#field = node;
 		this.#focus();
-		const keydown = (event: KeyboardEvent) => {
-			if (event.isComposing) return;
-			const mod = this.edytor.keymap.isMac ? event.metaKey : event.ctrlKey;
-			if (event.key === 'Enter') (event.shiftKey ? this.previous : this.next)();
-			else if (event.key === 'Escape') this.close();
-			else if (mod && event.key.toLowerCase() === 'f') node.select();
-			else return;
-			event.preventDefault();
-		};
-		node.addEventListener('keydown', keydown);
+		const off = this.#keys(node, true);
 		return {
 			destroy: () => {
-				node.removeEventListener('keydown', keydown);
+				off();
 				if (this.#field === node) this.#field = null;
 			}
 		};
 	};
 
 	/** The replacement field (`use:find.replaceField`): Enter replaces, Escape closes. */
-	replaceField: Action<HTMLInputElement> = (node) => {
+	replaceField: Action<HTMLInputElement> = (node) => ({ destroy: this.#keys(node, false) });
+
+	/**
+	 * A field's keys: Enter goes to the next match (Shift+Enter the previous
+	 * one) in the query field and replaces in the replacement field, Escape
+	 * closes, Mod+F selects the query.
+	 */
+	#keys = (node: HTMLInputElement, query: boolean) => {
 		const keydown = (event: KeyboardEvent) => {
 			if (event.isComposing) return;
-			if (event.key === 'Enter') this.replace();
+			const mod = this.edytor.keymap.isMac ? event.metaKey : event.ctrlKey;
+			if (event.key === 'Enter')
+				(query ? (event.shiftKey ? this.previous : this.next) : this.replace)();
 			else if (event.key === 'Escape') this.close();
+			else if (query && mod && event.key.toLowerCase() === 'f') node.select();
 			else return;
 			event.preventDefault();
 		};
 		node.addEventListener('keydown', keydown);
-		return { destroy: () => node.removeEventListener('keydown', keydown) };
+		return () => node.removeEventListener('keydown', keydown);
 	};
 
 	/** Stop following the document (the editor is going away). */

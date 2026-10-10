@@ -79,14 +79,14 @@
 					/>
 				</label>
 			{/if}
-			{#if panel.failed === 'inline'}
-				<small data-edytor-image-error="inline"
-					>{labels.tooLarge(panel.inlineLimit, panel.canUpload)}</small
+			{#if panel.failed}
+				<small data-edytor-image-error={panel.failed}
+					>{panel.failed === 'inline'
+						? labels.tooLarge(panel.inlineLimit, panel.canUpload)
+						: panel.failed === 'upload'
+							? labels.uploadFailed
+							: labels.invalid}</small
 				>
-			{:else if panel.failed === 'upload'}
-				<small data-edytor-image-error="upload">{labels.uploadFailed}</small>
-			{:else if panel.failed}
-				<small data-edytor-image-error="invalid">{labels.invalid}</small>
 			{/if}
 		</div>
 	{/if}

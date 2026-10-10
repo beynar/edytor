@@ -112,6 +112,19 @@
 			undefined;
 
 	/**
+	 * The kinds whose empty text names them, by placeholder (a callout's
+	 * title, as a toggle's, names itself).
+	 */
+	const NAMED: Record<string, 'list' | 'todo' | 'toggle' | 'quote' | 'callout'> = {
+		'bulleted-list-item': 'list',
+		'numbered-list-item': 'list',
+		'todo-item': 'todo',
+		toggle: 'toggle',
+		quote: 'quote',
+		callout: 'callout'
+	};
+
+	/**
 	 * Notion's placeholders in `labels` (English by default): headings,
 	 * lists, to-dos, toggles and quotes name their kind while empty; a
 	 * paragraph invites a command only while focused.
@@ -119,21 +132,16 @@
 	export const createRichTextPlaceholder = (labels?: PartialLabels<'richText'>) => {
 		const { placeholders } = labelsWith(richTextEnglish, labels);
 		return ({ type, data, focused }: PlaceholderView): string | null => {
-			if (type === 'heading')
-				return placeholders.heading(Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3);
-			if (type === 'toggle-heading')
-				return placeholders.toggleHeading(Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3);
-			if (type === 'bulleted-list-item' || type === 'numbered-list-item') return placeholders.list;
-			if (type === 'todo-item') return placeholders.todo;
-			if (type === 'toggle') return placeholders.toggle;
-			if (type === 'quote') return placeholders.quote;
-			// A callout's title, as a toggle's, names itself while empty.
-			if (type === 'callout') return placeholders.callout;
-			if (type === 'image' || Object.hasOwn(mediaKinds, type))
-				return focused ? placeholders.caption : null;
+			if (type === 'heading' || type === 'toggle-heading')
+				return placeholders[type === 'heading' ? 'heading' : 'toggleHeading'](
+					Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3
+				);
+			if (Object.hasOwn(NAMED, type)) return placeholders[NAMED[type]!];
 			// Code shows nothing in an empty line (Notion).
-			if (type === 'codeLine') return null;
-			return focused ? placeholders.empty : null;
+			if (type === 'codeLine' || !focused) return null;
+			return type === 'image' || Object.hasOwn(mediaKinds, type)
+				? placeholders.caption
+				: placeholders.empty;
 		};
 	};
 
@@ -175,18 +183,18 @@
 	// One key patched: a peer's concurrent edit of another key is kept.
 	const toggleTodo = (block: Block) => (block.data.checked = !block.data.checked);
 
-	/** Notion's "turn into" chords: Mod+Alt+0 text … 8 code (`block.<type>` command ids). */
-	const TURN_INTO: Record<string, string> = {
-		'mod+alt+0': 'block.paragraph',
-		'mod+alt+1': 'block.heading1',
-		'mod+alt+2': 'block.heading2',
-		'mod+alt+3': 'block.heading3',
-		'mod+alt+4': 'block.todo-item',
-		'mod+alt+5': 'block.bulleted-list-item',
-		'mod+alt+6': 'block.numbered-list-item',
-		'mod+alt+7': 'block.toggle',
-		'mod+alt+8': 'block.code'
-	};
+	/** Notion's "turn into" chords: Mod+Alt+0 text … 8 code (`block.<type>` command ids, by digit). */
+	const TURN_INTO = [
+		'paragraph',
+		'heading1',
+		'heading2',
+		'heading3',
+		'todo-item',
+		'bulleted-list-item',
+		'numbered-list-item',
+		'toggle',
+		'code'
+	];
 
 	/**
 	 * The rich text kinds and marks, with their words in `labels` and their
@@ -287,9 +295,10 @@
 					});
 				},
 				...Object.fromEntries(
-					Object.entries(TURN_INTO).map(([chord, id]): [string, HotKey] => [
-						chord,
+					TURN_INTO.map((type, digit): [string, HotKey] => [
+						`mod+alt+${digit}`,
 						({ prevent }) => {
+							const id = `block.${type}`;
 							if (edytor.commands.has(id)) prevent(() => void edytor.runCommand(id));
 						}
 					])

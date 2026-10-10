@@ -198,29 +198,29 @@ export class Block {
 
 	/** @internal */
 	get firstEditableText(): Text | undefined {
-		// Only a RENDERED text part is editable — a container's phantom
-		// content slot holds a Text with no `node`. Scan ALL children: the
-		// first child can be noneditable (a void divider) while a later
-		// child owns the text the caret must land in.
-		const own = this.content.find(
-			(part): part is Text => part instanceof Text && part.node != null
-		);
-		if (own) return own;
-		for (const child of this.children) {
-			const text = child.firstEditableText;
-			if (text) return text;
-		}
-		return undefined;
+		return this.#editable(false);
 	}
 
 	/** @internal */
 	get lastEditableText(): Text | undefined {
-		const own = this.content.findLast(
-			(part): part is Text => part instanceof Text && part.node != null
-		);
+		return this.#editable(true);
+	}
+
+	/**
+	 * The first (or `last`) editable text of the block's own content, else
+	 * of its subtree. Only a RENDERED text part is editable — a container's
+	 * phantom content slot holds a Text with no `node`. Every child is
+	 * scanned: the first can be noneditable (a void divider) while a later
+	 * one owns the text the caret must land in.
+	 */
+	#editable(last: boolean): Text | undefined {
+		const rendered = (part: Text | InlineBlock): part is Text =>
+			part instanceof Text && part.node != null;
+		const own = last ? this.content.findLast(rendered) : this.content.find(rendered);
 		if (own) return own;
-		for (let i = this.children.length - 1; i >= 0; i--) {
-			const text = this.children[i]!.lastEditableText;
+		const children = this.children;
+		for (const child of last ? children.reverse() : children) {
+			const text = child.#editable(last);
 			if (text) return text;
 		}
 		return undefined;

@@ -63,6 +63,14 @@ export const INTENTS: Record<string, IntentRow | undefined> = {
 };
 export const kindOf = (inputType: string) => INTENTS[inputType]?.kind;
 
+/** The intent a key stands for (Enter, Shift+Enter, Backspace, Delete): the table's `key`, read back. */
+export const keyIntentOf = (key: string, shift: boolean) => {
+	const name = key.toLowerCase();
+	const hotkey = shift && name === 'enter' ? 'shift+enter' : name;
+	for (const type in INTENTS) if (INTENTS[type]!.key === hotkey) return type;
+	return null;
+};
+
 /**
  * The intent of a reported inputType (misreport overrides): a text insertion
  * of `\n`/`\r` is a line break/paragraph, and a line break the engine reports

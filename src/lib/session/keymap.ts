@@ -126,14 +126,14 @@ export class Keymap {
 					continue;
 				}
 				const parts = keys.split(/\+(?!$)/);
-				const dead = parts.find((part) => !TOKENS.has(part.toLowerCase()));
-				if (DEV && dead !== undefined)
-					console.warn(
-						`[edytor] hotkey "${keys}" never fires: "${dead}" is neither a modifier ` +
-							'(mod, alt, ctrl, shift) nor a key name.'
-					);
-				const hint = DEV && dead === undefined && silent(parts);
-				if (hint) console.warn(`[edytor] hotkey "${keys}" never fires: ${hint}.`);
+				if (DEV) {
+					const dead = parts.find((part) => !TOKENS.has(part.toLowerCase()));
+					const hint =
+						dead === undefined
+							? silent(parts)
+							: `"${dead}" is neither a modifier (mod, alt, ctrl, shift) nor a key name`;
+					if (hint) console.warn(`[edytor] hotkey "${keys}" never fires: ${hint}.`);
+				}
 				const at = chord(parts);
 				this.table.set(at, [...(this.table.get(at) ?? []), binding as HotKey]);
 			}

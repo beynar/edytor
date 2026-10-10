@@ -216,19 +216,12 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	const cell = snapshot.startText?.parent;
 	if (cell && edytor.facade.isTableCell(cell.id)) return insertLineBreak(edytor, snapshot);
 	const target = replaceSelectionWithCollapsedTarget(edytor, snapshot);
-	if (!target) {
-		return;
-	}
-	edytor.selection.setAtTextOffset(target.text, target.offset);
-
-	const { startText, isCollapsed, yStart } = edytor.selection.state;
+	if (!target?.text.parent.parent) return;
+	const { text: startText, offset: yStart } = target;
+	edytor.selection.setAtTextOffset(startText, yStart);
 	const { isAtEndOfBlock, isAtStartOfBlock } = edytor.selection.projection;
-
-	if (!isCollapsed || !startText?.parent.parent) {
-		return;
-	}
 	// The new sibling's actual parent decides its type.
-	const defaultBlock = edytor.defaultChild(startText.parent.parent);
+	const defaultBlock = edytor.defaultChild(startText.parent.parent!);
 	const current = startText.parent;
 	const { continues } = current.definition;
 	const sibling = nextLine(current);

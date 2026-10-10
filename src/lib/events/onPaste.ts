@@ -51,83 +51,53 @@ const syncCollapsedDomCaretForPaste = (edytor: Edytor) => {
 	if (text) edytor.selection.setAtTextOffset(text, getYIndex(text, node, dom.anchorOffset));
 };
 
+/**
+ * A paste: the browser's in a readonly view, a void's field, a kind's own
+ * control (a field bound to `block.data`, a nested editable island:
+ * `ownsEvent` — inserting the fragment at the model selection would write
+ * the document AND cancel its paste) or under a live composition (its
+ * preview owns the write path: the browser pastes, the observer reconciles
+ * it after the end, as PM input.ts:656-660). Else, unless Shift asks for
+ * plain text: an Edytor fragment; what an extension's `onPaste` claims; a
+ * file nothing claimed inserts nothing (the Files → image seam), never its
+ * name; external HTML (HTML that carries nothing falls through); markdown
+ * text as its blocks (`paste.markdown`), except in a code block's lines.
+ * The plain text (or a URI) left is the paste occurrence's.
+ */
 export async function onPaste(this: Edytor, e: ClipboardEvent) {
-	if (this.readonly || this.selection.state.isVoidEditableElement) {
-		return;
-	}
-
-	// A paste in a kind's own control (a field bound to `block.data`, a
-	// nested editable island) is the control's (`ownsEvent`): inserting the
-	// fragment at the model selection would write the document AND cancel its paste.
-	if (ownsEvent(this.node, e)) {
-		return;
-	}
-
-	if (this.isComposing) {
-		// The composition preview owns the write path — the browser performs
-		// the paste and the deferred observer reconciles it after
-		// compositionend (PM input.ts:656-660 does the same).
-		return;
-	}
-
-	syncCollapsedDomCaretForPaste(this);
-
-	const preferPlainText = shiftPasteModifierHeld && Boolean(e.clipboardData?.getData('text/plain'));
-
-	if (!preferPlainText) {
-		const fragment = readEdytorClipboardFragment(e.clipboardData);
-		if (fragment) {
-			e.preventDefault();
-			return this.dispatcher.run('insertFromPaste', () =>
-				pasteFlow(this, flowOfFragment(fragment))
-			);
-		}
-
-		const claimed = (plugin: (typeof this.plugins)[number]) =>
-			vetoable((prevent) => plugin.onPaste?.({ prevent, e }));
-		if (this.dispatcher.intercept(claimed, () => e.preventDefault())) return;
-
-		// File payloads route only through the plugin `onPaste` hook (the
-		// Files → image seam: the image plugin with `upload` claims image
-		// files). An unclaimed file paste inserts nothing rather than silent
-		// file-name text.
-		if ((e.clipboardData?.files?.length ?? 0) > 0) {
-			e.preventDefault();
-			return;
-		}
-
-		// External HTML; HTML that carries nothing falls through to text/plain.
-		const flow = flowOfHtml(this, e.clipboardData?.getData('text/html'));
-		if (flow) {
-			e.preventDefault();
-			return this.dispatcher.run('insertFromPaste', () => pasteFlow(this, flow));
-		}
-
-		// Markdown text (`paste.markdown`): its blocks, except in a code block's lines.
-		const start = this.selection.projection.start?.block;
-		const at = start ? this.idToBlock.get(start) : undefined;
-		const markdown =
-			at && inCodeLines(this, at)
-				? null
-				: flowOfMarkdown(this, e.clipboardData?.getData('text/plain') ?? '');
-		if (markdown) {
-			e.preventDefault();
-			return this.dispatcher.run('insertFromPaste', () => pasteFlow(this, markdown));
-		}
-	}
-
 	if (
-		!e.clipboardData?.getData('text/plain') &&
-		!firstUriListEntry(e.clipboardData?.getData('text/uri-list'))
-	) {
+		this.readonly ||
+		this.selection.state.isVoidEditableElement ||
+		ownsEvent(this.node, e) ||
+		this.isComposing
+	)
 		return;
+	syncCollapsedDomCaretForPaste(this);
+	const data = e.clipboardData;
+	const plain = data?.getData('text/plain') ?? '';
+	let flow = null;
+	if (!(shiftPasteModifierHeld && plain)) {
+		const fragment = readEdytorClipboardFragment(data);
+		if (!fragment) {
+			const claimed = (plugin: (typeof this.plugins)[number]) =>
+				vetoable((prevent) => plugin.onPaste?.({ prevent, e }));
+			if (this.dispatcher.intercept(claimed, () => e.preventDefault())) return;
+			if (data?.files?.length) return e.preventDefault();
+		}
+		const start = this.idToBlock.get(this.selection.projection.start?.block ?? '');
+		flow = fragment
+			? flowOfFragment(fragment)
+			: (flowOfHtml(this, data?.getData('text/html')) ??
+				(start && inCodeLines(this, start) ? null : flowOfMarkdown(this, plain)));
 	}
-
+	if (!flow && !plain && !firstUriListEntry(data?.getData('text/uri-list'))) return;
 	e.preventDefault();
-	return runOccurrence(this, {
-		inputType: 'insertFromPaste',
-		data: e.clipboardData?.getData('text/plain') ?? '',
-		dataTransfer: e.clipboardData,
-		cancelable: true
-	});
+	return flow
+		? this.dispatcher.run('insertFromPaste', () => pasteFlow(this, flow))
+		: runOccurrence(this, {
+				inputType: 'insertFromPaste',
+				data: plain,
+				dataTransfer: data,
+				cancelable: true
+			});
 }

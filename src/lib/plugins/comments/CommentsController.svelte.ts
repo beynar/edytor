@@ -4,7 +4,7 @@ import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { CommandResult } from '$lib/session/commands.js';
 import { selectedTextSpans } from '$lib/selection/visibility.js';
 import { Text } from '$lib/text/text.svelte.js';
-import { reveal } from '$lib/selection/replaceSelection.js';
+import { dispatchPlan, showText } from '../planned.js';
 import {
 	COMMENT_MARK,
 	blockCommentRuns,
@@ -342,7 +342,7 @@ export class CommentsController {
 
 	/** The one write of a thread's anchor: its mark over `runs`, one command. */
 	#anchor = (thread: string, runs: CommentRun[]): CommandResult['status'] => {
-		const { facade, dispatcher, idToBlock } = this.edytor;
+		const { facade } = this.edytor;
 		if (runs.length === 0) return 'noop';
 		const mark = `${COMMENT_MARK}:${thread}`;
 		const prepare = (payload: { thread: string; runs: CommentRun[] }): Prepared =>
@@ -351,17 +351,7 @@ export class CommentsController {
 					facade.prepare.formatRange(block, offset, length, { [mark]: { id: payload.thread } })
 				)
 			);
-		const block = idToBlock.get(runs[0]!.block) ?? this.edytor.root!;
-		dispatcher.dispatch(
-			'addComment',
-			{ thread, runs },
-			{ block },
-			(payload, plan = prepare(payload)) => {
-				if ('writes' in plan) facade.apply(plan);
-			},
-			prepare
-		);
-		return dispatcher.last?.operation === 'addComment' ? dispatcher.last.status : 'refused';
+		return dispatchPlan(this.edytor, 'addComment', { thread, runs }, runs[0]!.block, prepare);
 	};
 
 	// ── A thread's actions ───────────────────────────────────────────────
@@ -387,14 +377,7 @@ export class CommentsController {
 	focus = (thread: string | null) => {
 		this.active = thread;
 		const run = thread ? this.anchors.get(thread)?.[0] : undefined;
-		const block = run && this.edytor.idToBlock.get(run.block);
-		if (block) {
-			reveal(block);
-			block.textAtOffset(run!.offset)?.text.node?.scrollIntoView?.({
-				block: 'nearest',
-				inline: 'nearest'
-			});
-		}
+		if (run) showText(this.edytor, run.block, run.offset);
 		this.edytor.overlay.invalidate();
 	};
 

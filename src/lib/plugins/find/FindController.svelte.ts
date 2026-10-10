@@ -5,7 +5,7 @@ import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { CommandResult } from '$lib/session/commands.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
-import { reveal } from '$lib/selection/replaceSelection.js';
+import { dispatchPlan, showText } from '../planned.js';
 import { findMatches, type FindMatch } from './search.js';
 import { findEnglish, type FindLabels } from '$lib/labels.js';
 
@@ -205,14 +205,7 @@ export class FindController {
 	 */
 	#show = () => {
 		const match = this.matches[this.current];
-		const block = match && this.edytor.idToBlock.get(match.block);
-		if (block) {
-			reveal(block);
-			block.textAtOffset(match!.offset)?.text.node?.scrollIntoView?.({
-				block: 'nearest',
-				inline: 'nearest'
-			});
-		}
+		if (match) showText(this.edytor, match.block, match.offset);
 		this.edytor.overlay.invalidate();
 	};
 
@@ -230,7 +223,7 @@ export class FindController {
 	 */
 	#replace = (matches: FindMatch[]): CommandResult['status'] => {
 		const { edytor } = this;
-		const { facade, dispatcher, idToBlock } = edytor;
+		const { facade, idToBlock } = edytor;
 		if (!matches.length) return 'noop';
 		const prepare = ({ matches, replacement }: ReplaceMatches): Prepared =>
 			// Last first: a step's offsets never depend on an earlier step's writes.
@@ -249,16 +242,6 @@ export class FindController {
 				})
 			);
 		const payload: ReplaceMatches = { matches, replacement: this.replacement };
-		const block = idToBlock.get(matches[0]!.block) ?? edytor.root!;
-		dispatcher.dispatch(
-			'replaceMatches',
-			payload,
-			{ block },
-			(payload, plan = prepare(payload)) => {
-				if ('writes' in plan) facade.apply(plan);
-			},
-			prepare
-		);
-		return dispatcher.last?.operation === 'replaceMatches' ? dispatcher.last.status : 'refused';
+		return dispatchPlan(edytor, 'replaceMatches', payload, matches[0]!.block, prepare);
 	};
 }

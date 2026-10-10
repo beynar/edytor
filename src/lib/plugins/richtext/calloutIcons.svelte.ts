@@ -17,6 +17,7 @@ import { richTextEnglish, type RichTextLabels } from '$lib/labels.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { holdKeys, listPopup, menuKey } from '../list.svelte.js';
+import { layerBox } from '$lib/surface/overlay.js';
 
 /** A new callout's icon unless `createRichTextPlugin({ callout: { icon } })` names another. */
 export const DEFAULT_CALLOUT_ICON = '💡';
@@ -298,8 +299,8 @@ export class CalloutIconPicker {
 		const icon = [...(node?.querySelectorAll('[data-edytor-callout-icon]') ?? [])].find(
 			(element) => element.closest('[data-edytor-block="true"]') === node
 		);
-		const rect = (icon ?? node)?.getBoundingClientRect();
-		const box = rect ? { x: rect.left - origin.left, y: rect.bottom - origin.top + 4 } : null;
+		const rect = layerBox(icon ?? node, origin);
+		const box = rect && { x: rect.x, y: rect.y + rect.height + 4 };
 		return () => {
 			// Never `display: none`: the picker takes the focus before its first measure.
 			Object.assign(host.style, {

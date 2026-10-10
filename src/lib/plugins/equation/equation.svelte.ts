@@ -10,6 +10,7 @@ import {
 	type EquationLabels,
 	type PartialLabels
 } from '$lib/labels.js';
+import { layerBox, pin, sameValues } from '$lib/surface/overlay.js';
 
 /** The part of KaTeX the plugin uses: `katex.renderToString`. */
 export type KatexLike = {
@@ -387,19 +388,11 @@ export class EquationEditor {
 	measure = (host: HTMLElement, origin: DOMRect) => {
 		const target = this.target;
 		const node = target ? this.#node(target) : null;
-		const rect = node?.isConnected ? node.getBoundingClientRect() : null;
-		const box = rect
-			? {
-					x: rect.left - origin.left,
-					y: rect.top - origin.top,
-					width: rect.width,
-					height: rect.height
-				}
-			: null;
+		const box = layerBox(node, origin);
 		return () => {
-			Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
+			pin(host);
 			if (target && !node) return this.close(false);
-			if (!sameBox(box, this.box)) this.box = box;
+			if (!sameValues(box, this.box)) this.box = box;
 		};
 	};
 
@@ -437,12 +430,3 @@ export type EquationView = { renderer: EquationRenderer; editor: EquationEditor 
 
 /** By view. */
 export const equationViews = new WeakMap<Edytor, EquationView>();
-
-const sameBox = (a: EquationBox | null, b: EquationBox | null) =>
-	a === b ||
-	(a !== null &&
-		b !== null &&
-		a.x === b.x &&
-		a.y === b.y &&
-		a.width === b.width &&
-		a.height === b.height);

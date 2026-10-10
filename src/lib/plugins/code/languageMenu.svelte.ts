@@ -2,6 +2,7 @@ import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
+import { layerBox, pin, sameValues, type LayerBox } from '$lib/surface/overlay.js';
 import type { CodeLabels } from '$lib/labels.js';
 import {
 	attribute,
@@ -24,9 +25,6 @@ export type LanguageMenuItem = MenuItemPayload<LanguageRow> & {
 	/** It is the block's language. */
 	current: boolean;
 };
-
-/** The list's box: its button's, layer-relative. */
-type Box = { x: number; y: number; width: number; height: number };
 
 /** The overlay host the list renders in (the overlay's mount names it). */
 const HOST = '[data-edytor-code-language-host]';
@@ -58,7 +56,7 @@ export class LanguageMenu {
 	 * The button's box, measured in the overlay's frame.
 	 * @internal
 	 */
-	box = $state.raw<Box | null>(null);
+	box = $state.raw<LayerBox | null>(null);
 
 	/** @internal */
 	constructor(
@@ -317,28 +315,11 @@ export class LanguageMenu {
 	measure = (host: HTMLElement, origin: DOMRect) => {
 		const open = this.open;
 		const button = open ? this.#button(open.block) : null;
-		const rect = button?.isConnected ? button.getBoundingClientRect() : null;
-		const box = rect
-			? {
-					x: rect.left - origin.left,
-					y: rect.top - origin.top,
-					width: rect.width,
-					height: rect.height
-				}
-			: null;
+		const box = layerBox(button, origin);
 		return () => {
-			Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
+			pin(host);
 			if (open && !button) return this.close();
-			const known = this.box;
-			if (
-				!known ||
-				!box ||
-				known.x !== box.x ||
-				known.y !== box.y ||
-				known.width !== box.width ||
-				known.height !== box.height
-			)
-				this.box = box;
+			if (!sameValues(box, this.box)) this.box = box;
 		};
 	};
 

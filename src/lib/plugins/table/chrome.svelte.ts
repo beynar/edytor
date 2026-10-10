@@ -11,6 +11,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
 import { trackDrag } from '$lib/dnd/track.js';
+import { pin } from '$lib/surface/overlay.js';
 import type { TableLabels } from '$lib/labels.js';
 import { iconOf } from '../icons.js';
 import {
@@ -552,7 +553,7 @@ export class TableChrome {
 	measure = (host: HTMLElement, origin: DOMRect) => {
 		const layout = this.shown ? this.read(origin) : null;
 		return () => {
-			Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
+			pin(host);
 			if (!sameLayout(layout, this.layout)) this.layout = layout;
 		};
 	};

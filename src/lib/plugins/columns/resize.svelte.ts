@@ -2,6 +2,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
 import { trackDrag } from '$lib/dnd/track.js';
+import { pin } from '$lib/surface/overlay.js';
 import { bandOf, gapBefore } from './gaps.js';
 import { stacks } from './stacking.js';
 import { columnsEnglish, type ColumnsLabels } from '$lib/labels.js';
@@ -188,7 +189,7 @@ export class ColumnResize {
 		};
 		return () => {
 			// Layer-relative, as the rest of the overlay's chrome.
-			Object.assign(host.style, { position: 'absolute', left: '0px', top: '0px' });
+			pin(host);
 			if (!sameStrips(strips, this.strips)) this.strips = strips;
 			this.guide = guide;
 		};

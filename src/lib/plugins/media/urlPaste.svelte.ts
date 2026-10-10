@@ -5,6 +5,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { PluginDefinitions, PluginOperations } from '$lib/plugins.js';
 import type { SerializableContent } from '$lib/utils/json.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
+import { placeNear } from '$lib/surface/overlay.js';
 import { onPress } from '$lib/events/onFocus.js';
 import { holdsNothing, lineage, placing } from '$lib/kinds.js';
 import { id } from '$lib/utils.js';
@@ -228,15 +229,8 @@ export class UrlPasteController {
 		if (!open) return;
 		const block = edytor.idToBlock.get(open.block);
 		if (!block?.isInTree) return () => this.close();
-		const view = host.ownerDocument.defaultView;
 		const rect = (block.firstText?.node ?? block.node)?.getBoundingClientRect();
-		if (!view || !rect) return;
-		const width = host.firstElementChild?.getBoundingClientRect().width || 220;
-		const height = host.firstElementChild?.getBoundingClientRect().height || 120;
-		const left = `${Math.max(8, Math.min(rect.left, view.innerWidth - width - 8))}px`;
-		const below = rect.bottom + height + 8 < view.innerHeight;
-		const top = `${Math.max(8, below ? rect.bottom + 4 : rect.top - height - 4)}px`;
-		return () => Object.assign(host.style, { left, top });
+		return rect && placeNear(host, rect, [220, 120], { gap: 4 });
 	};
 }
 

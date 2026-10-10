@@ -7,7 +7,8 @@ import {
 } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { onPress } from '$lib/events/onFocus.js';
 import SlashMenu from './SlashMenu.svelte';
-import { caretRect, placeBelow } from '../triggers/place.js';
+import { caretRect } from '../triggers/place.js';
+import { placeNear } from '$lib/surface/overlay.js';
 import { SlashMenuController } from './SlashMenuController.svelte.js';
 import { slashMenuEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
 import type { MenuItemPayload } from '../chrome.js';
@@ -62,7 +63,7 @@ export const createSlashMenuPlugin =
 			const anchor = addition?.anchor?.isConnected ? addition.anchor : addition?.block.node;
 			const box = anchor?.getBoundingClientRect();
 			const rect = box && (box.width || box.height) ? box : caretRect(edytor);
-			return rect && placeBelow(host, rect, { width: 310, height: 350 });
+			return rect && placeNear(host, rect, [310, 350]);
 		};
 
 		const plugin: InitializedPlugin = {

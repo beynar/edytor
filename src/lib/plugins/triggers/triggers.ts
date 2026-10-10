@@ -18,7 +18,8 @@ import {
 	type TextTriggerController
 } from './TriggerController.svelte.js';
 import TriggerMenu from './TriggerMenu.svelte';
-import { caretRect, placeBelow } from './place.js';
+import { caretRect } from './place.js';
+import { placeNear } from '$lib/surface/overlay.js';
 import { listHotkeys, type HeldList } from '../list.svelte.js';
 
 type Keys = Partial<Record<HotKeyCombination, HotKey>>;
@@ -76,7 +77,7 @@ export const withRulesAndTriggers = (
 			edytor.overlay.mount(TriggerMenu, { controller }, 'edytor-trigger-menu-host', 50, (host) => {
 				if (!controller.isOpen) return;
 				const rect = caretRect(edytor);
-				return rect && placeBelow(host, rect, { width: 280, height: 240 });
+				return rect && placeNear(host, rect, [280, 240]);
 			})
 	);
 };

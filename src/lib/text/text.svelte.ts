@@ -11,9 +11,8 @@ import {
 	setText,
 	splitText
 } from './text.utils.js';
-import { deltaToJson, runsToDeltas } from './deltas.js';
 import type { OpResult } from '$lib/crdt/index.js';
-import type { ContentPart } from '$lib/session/handles.js';
+import { segmentJSON, type ContentPart } from '$lib/session/handles.js';
 
 /** A write through the block's model that the document did not refuse. */
 const accepted = (r: OpResult | undefined): boolean => r !== undefined && r.status !== 'refused';
@@ -63,7 +62,7 @@ export class Text {
 	}
 
 	get value(): JSONText[] {
-		return deltaToJson(runsToDeltas(this.#at.part?.items ?? [])[0]);
+		return segmentJSON(this.#at.part?.items ?? []);
 	}
 
 	/** The segment's text. */

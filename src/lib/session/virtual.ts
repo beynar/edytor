@@ -165,34 +165,24 @@ export const virtualLens = (
 		virtual: () => (active() ? vid : null),
 		block: (b: BlockId) => (nodes ??= bindNodes(lens)).block(b),
 		// ── reads ────────────────────────────────────────────────────────
+		// The document answers an id it does not hold as a block with no
+		// parent, ancestors, neighbours, children, content, data items or
+		// place to move to or merge with: those reads pass through.
 		project: () => (active() ? { children: [projected()] } : base.project()),
-		childrenIds: (p: BlockId | null) =>
-			p === null && active() ? [vid] : on(p) ? [] : base.childrenIds(p),
+		childrenIds: (p: BlockId | null) => (p === null && active() ? [vid] : base.childrenIds(p)),
 		childSlots: (p: BlockId | null) =>
 			p === null && active() ? [{ id: vid, rank: '' }] : base.childSlots(p),
 		order: () => (active() ? [vid] : base.order()),
 		slotOf: (b: BlockId) => (on(b) ? { parent: null, rank: '' } : base.slotOf(b)),
 		positionOf: (b: BlockId) => (on(b) ? { parent: null, index: 0 } : base.positionOf(b)),
 		pathOf: (b: BlockId) => (on(b) ? [0] : base.pathOf(b)),
-		parentOf: (b: BlockId) => (on(b) ? null : base.parentOf(b)),
-		ancestorsOf: (b: BlockId) => (on(b) ? [] : base.ancestorsOf(b)),
 		isVisibleBlock: (b: BlockId) => on(b) || base.isVisibleBlock(b),
-		compare: (a: BlockId, b: BlockId) => (on(a) && on(b) ? 0 : base.compare(a, b)),
-		next: (b: BlockId, ...rest: unknown[]) => (on(b) ? null : base.next(b, ...(rest as []))),
-		previous: (b: BlockId, ...rest: unknown[]) =>
-			on(b) ? null : base.previous(b, ...(rest as [])),
 		blockTypeOf: (b: BlockId) => (on(b) ? type() : base.blockTypeOf(b)),
 		blockDataOf: (b: BlockId) => (on(b) ? {} : base.blockDataOf(b)),
-		dataItemIds: (t: Parameters<EdytorDoc['dataItemIds']>[0], path: readonly string[]) =>
-			typeof t === 'string' && on(t) ? [] : base.dataItemIds(t, path),
 		blockJSON: (b: BlockId) => (on(b) ? { id: vid, type: type(), data: {} } : base.blockJSON(b)),
 		blockText: (b: BlockId) => (on(b) ? '' : base.blockText(b)),
-		displayLength: (b: BlockId) => (on(b) ? 0 : base.displayLength(b)),
-		contentItems: (b: BlockId) => (on(b) ? [] : base.contentItems(b)),
+		// Never computed (and cached) by the index for an id it does not hold.
 		runs: (b: BlockId) => (on(b) ? [] : base.runs(b)),
-		canPlace: (ids: readonly BlockId[], parent?: BlockId | null) =>
-			!ids.some(on) && !on(parent) && base.canPlace(ids, parent),
-		canMerge: (from: BlockId, into: BlockId) => !on(from) && !on(into) && base.canMerge(from, into),
 		anchorAt: (b: BlockId, offset: number, affinity: 'left' | 'right' = 'left') =>
 			on(b)
 				? { b: vid, a: { i: null, a: affinity === 'left' ? -1 : 0 } }

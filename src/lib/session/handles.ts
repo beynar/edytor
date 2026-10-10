@@ -17,6 +17,7 @@ import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import { Text } from '../text/text.svelte.js';
 import type { ContentItem, ContentRun, DocChange } from '../crdt/index.js';
 import type { Edytor } from '../edytor.svelte.js';
+import type { JSONText } from '../utils/json.js';
 
 export type TextRunItem = { text: string; marks?: Record<string, unknown> };
 
@@ -47,6 +48,25 @@ export const contentParts = (items: readonly ContentItem[]): ContentPart[] => {
 	}
 	close();
 	return parts;
+};
+
+/**
+ * A text segment's items as `JSONText` runs (`text.value`): empty items
+ * dropped, adjacent runs with the same marks joined, each run's marks a
+ * copy (none when it has no mark).
+ */
+export const segmentJSON = (items: readonly TextRunItem[]): JSONText[] => {
+	const out: JSONText[] = [];
+	for (const { text, marks = {} } of items) {
+		if (!text) continue;
+		const keys = Object.keys(marks);
+		const last = out.at(-1);
+		const held = last?.marks ?? {};
+		if (last && Object.keys(held).length === keys.length && keys.every((k) => held[k] === marks[k]))
+			last.text += text;
+		else out.push(keys.length ? { text, marks: { ...marks } as JSONText['marks'] } : { text });
+	}
+	return out;
 };
 
 const ROOT = contentParts([]);

@@ -986,10 +986,11 @@ export class Edytor {
 	clear = (): boolean => {
 		const newBlock = this.dispatcher.run('clear', () =>
 			this.transact(() => {
-				const root = this.root!;
-				root.deleteChildren(0, root.children.length);
-				const block = { id: id('b'), type: this.defaultChild(root) };
-				root.insertChildren(0, [block]);
+				const { facade } = this;
+				for (const child of facade.childrenIds(null).reverse())
+					facade.block(child).delete({ keepChildren: false });
+				const block = { id: id('b'), type: this.defaultChild(this.root!) };
+				facade.insertBlock({ parent: null, index: 0 }, block);
 				return this.idToBlock.block(block.id);
 			})
 		);

@@ -17,67 +17,32 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const decodeJson = <T>(value: string): T => JSON.parse(decodeURIComponent(atob(value))) as T;
 
-const isValidTextPart = (value: unknown) => {
-	if (!isRecord(value) || typeof value.text !== 'string') {
-		return false;
-	}
+/** A kind's name: a non-empty string. */
+const isName = (value: unknown) => typeof value === 'string' && value.length > 0;
 
-	return value.marks === undefined || isRecord(value.marks);
-};
+/** Every item of a list (absent: none) passes `valid`. */
+const all = (value: unknown, valid: (item: unknown) => boolean, optional = false) =>
+	(optional && value === undefined) || (Array.isArray(value) && value.every(valid));
 
 // Input is JSON (a parsed payload, or `cloneJsonSafe` on the programmatic path): no value walk.
-const isValidInlineBlockPart = (value: unknown) =>
-	isRecord(value) && typeof value.type === 'string' && value.type.length > 0;
+/** A text (its marks a record) or an inline atom (its kind named). */
+const isPart = (value: unknown) =>
+	isRecord(value) &&
+	((typeof value.text === 'string' && (value.marks === undefined || isRecord(value.marks))) ||
+		isName(value.type));
 
-const isValidContentPart = (value: unknown) =>
-	isValidTextPart(value) || isValidInlineBlockPart(value);
-
-const isValidBlock = (value: unknown): boolean => {
-	if (!isRecord(value) || typeof value.type !== 'string' || value.type.length === 0) {
-		return false;
-	}
-
-	if (value.content !== undefined) {
-		if (!Array.isArray(value.content) || !value.content.every(isValidContentPart)) {
-			return false;
-		}
-	}
-
-	if (value.children !== undefined) {
-		if (!Array.isArray(value.children) || !value.children.every(isValidBlock)) {
-			return false;
-		}
-	}
-
-	return true;
-};
+const isBlock = (value: unknown): boolean =>
+	isRecord(value) &&
+	isName(value.type) &&
+	all(value.content, isPart, true) &&
+	all(value.children, isBlock, true);
 
 export const isValidEdytorClipboardFragment = (
 	value: unknown
 ): value is EdytorClipboardFragment => {
-	if (!value || typeof value !== 'object') {
-		return false;
-	}
-
-	const fragment = value as Partial<EdytorClipboardFragment>;
-	if (fragment.version !== 1 || fragment.source !== 'edytor') {
-		return false;
-	}
-
-	if (fragment.kind === 'blocks') {
-		return Array.isArray(fragment.blocks) && fragment.blocks.every(isValidBlock);
-	}
-
-	if (fragment.kind === 'content') {
-		return (
-			typeof fragment.blockType === 'string' &&
-			fragment.blockType.length > 0 &&
-			Array.isArray(fragment.content) &&
-			fragment.content.every(isValidContentPart)
-		);
-	}
-
-	return false;
+	if (!isRecord(value) || value.version !== 1 || value.source !== 'edytor') return false;
+	if (value.kind === 'blocks') return all(value.blocks, isBlock);
+	return value.kind === 'content' && isName(value.blockType) && all(value.content, isPart);
 };
 
 const parseEncodedFragment = (encoded: string) => {

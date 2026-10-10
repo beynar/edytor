@@ -4,26 +4,26 @@ export type JSONContentPart = JSONText | JSONInlineBlock;
 
 export const isTextPart = (part: JSONContentPart): part is JSONText => 'text' in part;
 
-export const sliceTextValue = (value: JSONText[], start: number, end: number) => {
-	let offset = 0;
-	const result: JSONText[] = [];
-
-	for (const part of value) {
-		const partStart = offset;
-		const partEnd = offset + part.text.length;
-		offset = partEnd;
-
-		if (partEnd <= start || partStart >= end) {
-			continue;
-		}
-
-		const textStart = Math.max(start - partStart, 0);
-		const textEnd = Math.min(end - partStart, part.text.length);
-		result.push({
-			text: part.text.slice(textStart, textEnd),
-			...(part.marks ? { marks: part.marks } : {})
-		});
+/**
+ * The parts of `content` inside display offsets `[from, to)` (an inline atom
+ * counts 1): the texts sliced, an empty slice dropped, the atoms whole.
+ */
+export const sliceContent = (
+	content: readonly JSONContentPart[] = [],
+	from = 0,
+	to = Infinity
+): JSONContentPart[] => {
+	const out: JSONContentPart[] = [];
+	let at = 0;
+	for (const part of content) {
+		const start = at;
+		at += isTextPart(part) ? part.text.length : 1;
+		if (at <= from || start >= to) continue;
+		out.push(
+			isTextPart(part)
+				? { ...part, text: part.text.slice(Math.max(0, from - start), to - start) }
+				: part
+		);
 	}
-
-	return result;
+	return out;
 };

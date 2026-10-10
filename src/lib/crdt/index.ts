@@ -170,8 +170,8 @@ export {
 
 export { type DocBlock } from './nodes.js';
 
-// `ContentRun` — the maintained-runs item the view layer's delta
-// serialization speaks (`text/deltas.ts`). Part of the public
+// `ContentRun` — the maintained-runs item the view layer's text values
+// read (`segmentJSON`, `session/handles.ts`). Part of the public
 // model→render vocabulary.
 export { type ContentRun } from './text/runs.js';
 

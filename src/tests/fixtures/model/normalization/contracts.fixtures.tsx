@@ -154,7 +154,8 @@ export const fixtures = defineFixtures([
 				</root>
 			);
 
-			edytor.root!.deleteChildren(0, edytor.root!.children.length);
+			for (const id of edytor.facade.childrenIds(null))
+				edytor.facade.block(id).delete({ keepChildren: false });
 			edytor.root!.normalizeChildren();
 
 			// The document is empty (`doc.empty.virtual`); the view's root shows one

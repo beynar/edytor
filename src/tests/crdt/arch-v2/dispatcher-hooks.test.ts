@@ -244,7 +244,7 @@ describe('readonly refuses every mutating command', () => {
 		expect(a.formatAt(0, 1, { bold: true })).toBe(false);
 		const root = edytor.root!;
 		root.insertChildren(0, [{ type: 'paragraph', content: [{ text: 'new' }] }]);
-		root.deleteChildren(0, 1);
+
 		expect(texts(edytor)).toEqual(ORIGINAL);
 		expect([bytes(), undo()]).toEqual([0, 0]);
 	});

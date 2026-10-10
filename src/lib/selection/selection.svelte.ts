@@ -10,6 +10,8 @@ import {
 	getTextsInSelection,
 	getYIndex,
 	getMarkEdgeSide,
+	offsetIn,
+	ordered,
 	isTextBoundSelectionPoint,
 	normalizeUtf16Boundary,
 	SYNTHETIC_TEXT_OVERLAY_SELECTOR
@@ -24,10 +26,7 @@ import { Block } from '../block/block.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { EdgeSide, PendingMarks } from '$lib/session/editing/text.js';
-import {
-	isNativeFormControl,
-	isNestedForeignEditableTarget
-} from '$lib/events/nativeInteractiveControl.js';
+import { isKindControl, isOwnPoint } from '$lib/events/nativeInteractiveControl.js';
 import type { Anchor } from '$lib/crdt/text/model.js';
 import {
 	atomSelection,
@@ -298,9 +297,12 @@ export class EdytorSelection {
 	requestSerial = 0;
 	/** @internal Why the last `select()` ran. */
 	cause: SelectCause = 'model';
-	/** DOM fields (Surface) observed with the value they describe. */
-	/** The mark-edge side a display or a DOM derive observed the value with. */
-	#surface: { value: SelectionValue; edge?: EdgeSide } | null = null;
+	/**
+	 * DOM fields (Surface) observed with the value they describe: the
+	 * mark-edge side a display or a DOM derive observed it with, and whether
+	 * a DOM derive read it from a node-bound native range.
+	 */
+	#surface: { value: SelectionValue; edge?: EdgeSide; nodeBound?: boolean } | null = null;
 	#compat = new WeakMap<SelectionProjection, { surface: unknown; state: SelectionState }>();
 
 	constructor(
@@ -408,7 +410,11 @@ export class EdytorSelection {
 	 * `surface` carries the mark-edge side the value was observed with.
 	 * @internal
 	 */
-	commit = (next: SelectionValue, cause: SelectCause = 'model', surface?: { edge?: EdgeSide }) => {
+	commit = (
+		next: SelectionValue,
+		cause: SelectCause = 'model',
+		surface?: { edge?: EdgeSide; nodeBound?: boolean }
+	) => {
 		next = this.#keepPending(this.#shown(next));
 		const changed = !sameValue(this.value, next);
 		if (changed) this.#value = next;
@@ -647,7 +653,7 @@ export class EdytorSelection {
 
 	/** @internal The mark-edge side a display showed the current value with. */
 	observed = (surface: { edge?: EdgeSide }) => {
-		this.#surface = { value: this.value, ...surface };
+		this.#surface = { value: this.value, nodeBound: this.hasNativeNodeSelection(), ...surface };
 	};
 
 	/**
@@ -860,38 +866,23 @@ export class EdytorSelection {
 		// A block selection ignores the DOM, but the one a drag across columns made while it lasts.
 		if (this.selectedBlocks.size > 0 && !(this.dragging && this.pointer.across)) return;
 
+		// A selection in a kind's own control (a form control, a nested
+		// editable island) or a focused one belongs to it, not the model —
+		// deriving it would map the caret into the control's host text and
+		// corrupt the next model-routed write. Both endpoints are checked: a
+		// range anchored in host text but focused inside an island must not
+		// resolve either.
 		const container = this.edytor.node;
 		if (
-			!selection?.anchorNode ||
-			!selection.focusNode ||
-			!container?.contains(selection.anchorNode as Node) ||
-			!container.contains(selection.focusNode as Node)
+			!selection ||
+			!isOwnPoint(container, selection.anchorNode) ||
+			!isOwnPoint(container, selection.focusNode) ||
+			isKindControl(container, getActiveElement(container))
 		) {
 			return;
 		}
 
-		const activeElement = getActiveElement(this.edytor.node);
-		if (
-			activeElement instanceof Element &&
-			this.edytor.node?.contains(activeElement) &&
-			isNativeFormControl(activeElement)
-		) {
-			return;
-		}
-
-		// A selection inside a nested foreign editable belongs to the
-		// island, not the model — deriving it would map the caret into the
-		// island's host text and corrupt the next model-routed write. Both
-		// endpoints are checked: a range anchored in host text but focused
-		// inside an island must not resolve either.
-		if (
-			isNestedForeignEditableTarget(this.edytor.node, selection.anchorNode) ||
-			isNestedForeignEditableTarget(this.edytor.node, selection.focusNode)
-		) {
-			return;
-		}
-
-		const { anchorNode, focusNode, anchorOffset, focusOffset } = selection;
+		const { anchorNode, focusNode } = selection;
 		const isCollapsed = selection.isCollapsed;
 		// A native vertical move that landed on no caret stop takes the key's line stop.
 		if (
@@ -903,10 +894,7 @@ export class EdytorSelection {
 			return;
 		const ranges = getRangesFromSelection(selection);
 		const isReversed = isBackward(selection);
-		const startNode = isReversed ? focusNode : anchorNode;
-		const endNode = isReversed ? anchorNode : focusNode;
-		const start = isReversed ? focusOffset : anchorOffset;
-		const end = isReversed ? anchorOffset : focusOffset;
+		const { startNode, start, endNode, end } = ordered(selection, isReversed);
 
 		const selectedInlineBlock = this.getInlineBlockInSelectedRange(ranges[0]);
 		const selectionParts = selectedInlineBlock
@@ -993,8 +981,19 @@ export class EdytorSelection {
 			return;
 		}
 
-		this.commit(this.textValue(startText, yStart, endText ?? startText, yEnd, isReversed), 'dom', {
-			edge: isCollapsed ? getMarkEdgeSide(startText, startNode, yStart) : undefined
+		const value = this.textValue(startText, yStart, endText ?? startText, yEnd, isReversed);
+		// A node-bound native range (endpoints outside text elements: a block
+		// node selection, a stray boundary node) is the shape engines extend
+		// their own way. They normalize it into text points asynchronously,
+		// so a keydown may find the DOM no longer node-bound: the same value
+		// derived again keeps the fact, any other derive clears it.
+		const nodeBound =
+			!isTextBoundSelectionPoint(anchorNode) ||
+			!isTextBoundSelectionPoint(focusNode) ||
+			(this.hasNativeNodeSelection() && sameValue(this.value, value));
+		this.commit(value, 'dom', {
+			edge: isCollapsed ? getMarkEdgeSide(startText, startNode, yStart) : undefined,
+			nodeBound
 		});
 		this.edytor.projector.observe();
 		if (shouldRestoreNormalizedDomRange && options.restoreNormalizedDomRange !== false && endText) {
@@ -1002,27 +1001,7 @@ export class EdytorSelection {
 			if (this.dragging) this.pointer.hold();
 			else this.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 		}
-
-		// Remember when the derived selection came from a node-bound
-		// native range (endpoints outside text elements — e.g. a block
-		// node selection or a stray boundary node). Engines asynchronously
-		// normalize such DOM selections into text points, so by the time a
-		// keydown arrives the live DOM selection may no longer look
-		// node-bound — the signature pins the flag to the derived
-		// selection it describes and any differently-shaped derive clears
-		// it.
-		const derivedKey = `${startText.id}:${yStart}:${endText?.id}:${yEnd}:${isReversed ? 1 : 0}`;
-		if (
-			!isTextBoundSelectionPoint(selection.anchorNode) ||
-			!isTextBoundSelectionPoint(selection.focusNode)
-		) {
-			this.#nodeBoundSelectionKey = derivedKey;
-		} else if (this.#nodeBoundSelectionKey !== derivedKey) {
-			this.#nodeBoundSelectionKey = null;
-		}
 	};
-
-	#nodeBoundSelectionKey: string | null = null;
 
 	/**
 	 * Whether the live model selection was derived from a node-bound
@@ -1030,16 +1009,8 @@ export class EdytorSelection {
 	 * engine-defined and therefore intercepted by the hotkey layer.
 	 * @internal
 	 */
-	hasNativeNodeSelection = () => {
-		const { startText, endText, yStart, yEnd, isReversed } = this.state;
-		if (!startText || !endText) {
-			return false;
-		}
-		return (
-			this.#nodeBoundSelectionKey ===
-			`${startText.id}:${yStart}:${endText.id}:${yEnd}:${isReversed ? 1 : 0}`
-		);
-	};
+	hasNativeNodeSelection = () =>
+		this.#surface?.value === this.value && this.#surface.nodeBound === true;
 
 	/**
 	 * Anchor a text position into the BACKING text that owns the atom at
@@ -1366,22 +1337,12 @@ export class EdytorSelection {
 		const container = this.edytor.node;
 		const { anchorNode, focusNode } = snapshot;
 		if (!container || !anchorNode || !focusNode) return null;
-		for (const node of [anchorNode, focusNode])
-			if (!container.contains(node) || isNestedForeignEditableTarget(container, node)) return null;
+		for (const node of [anchorNode, focusNode]) if (!isOwnPoint(container, node)) return null;
 		const reversed = isBackward(snapshot);
-		const [startNode, start, endNode, end] = reversed
-			? [focusNode, snapshot.focusOffset, anchorNode, snapshot.anchorOffset]
-			: [anchorNode, snapshot.anchorOffset, focusNode, snapshot.focusOffset];
+		const { startNode, start, endNode, end } = ordered(snapshot, reversed);
 		const { startText, endText } = this.getTextsInSelection(startNode, endNode, start, end);
 		if (!startText || !endText) return null;
-		const at = (text: Text, node: Node, offset: number) =>
-			Math.min(Math.max(getYIndex(text, node, offset), 0), text.length);
-		return this.textValue(
-			startText,
-			at(startText, startNode, start),
-			endText,
-			at(endText, endNode, end),
-			reversed
-		);
+		const from = offsetIn(startText, startNode, start);
+		return this.textValue(startText, from, endText, offsetIn(endText, endNode, end), reversed);
 	};
 }

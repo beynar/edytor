@@ -2,13 +2,9 @@ import type { Edytor } from '../edytor.svelte.js';
 import { diffText } from '$lib/utils/diffText.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
-import { isInsideTrailingNewlineMarker } from '$lib/selection/selection.utils.js';
+import { domOffsetIn } from '$lib/selection/selection.utils.js';
 import { replaceSelectionWithCollapsedTarget } from '$lib/selection/replaceSelection.js';
-import {
-	isNativeInteractiveEvent,
-	isNestedForeignEditableTarget
-} from './nativeInteractiveControl.js';
-import { getTextContentOffsetAtPoint } from './domTextOffset.js';
+import { isControlEvent } from './nativeInteractiveControl.js';
 import { runOccurrence } from './onBeforeInput.js';
 import {
 	attemptOf,
@@ -70,22 +66,6 @@ export const readDomText = (text: Text) => {
 
 const isLiveText = (text: Text) => text.isInDocument;
 
-const getDomOffsetWithinText = (text: Text, node: Node, offset: number) => {
-	if (!text.node) {
-		return 0;
-	}
-
-	if (text.endsWithNewline && isInsideTrailingNewlineMarker(node)) {
-		return text.length;
-	}
-
-	// No model-length clamp here — the DOM caret is read BEFORE the
-	// reconcile writes the model, so a native insertion legitimately sits
-	// past the current `text.length` (the trailing-newline marker case is
-	// handled above; `setAtTextOffset` clamps the final write).
-	return getTextContentOffsetAtPoint(text.node, node, offset);
-};
-
 export const getCollapsedDomTextSelection = (edytor: Edytor) => {
 	const selection = getDomSelectionSnapshot(edytor.node);
 	if (!selection?.anchorNode || !selection.isCollapsed) {
@@ -101,10 +81,10 @@ export const getCollapsedDomTextSelection = (edytor: Edytor) => {
 		return null;
 	}
 
-	return {
-		text,
-		offset: getDomOffsetWithinText(text, selection.anchorNode, selection.anchorOffset)
-	};
+	// No model rule here: the DOM caret is read BEFORE the reconcile writes
+	// the model, so a native insertion legitimately sits past `text.length`
+	// (`setAtTextOffset` clamps the final write).
+	return { text, offset: domOffsetIn(text, selection.anchorNode, selection.anchorOffset) };
 };
 
 const getEventTextRepairTarget = (edytor: Edytor, event: Event) => {
@@ -276,12 +256,7 @@ export async function onInput(this: Edytor, event: Event) {
 	}
 
 	try {
-		if (
-			isNativeInteractiveEvent(event) ||
-			(event && isNestedForeignEditableTarget(this.node, event.target))
-		) {
-			return;
-		}
+		if (isControlEvent(this.node, event)) return;
 
 		if (isNativeHistoryInput(event)) {
 			// Same guard as the beforeinput channel — a history command

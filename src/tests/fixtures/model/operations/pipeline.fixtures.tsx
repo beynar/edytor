@@ -23,7 +23,11 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { Text } from '$lib/text/text.svelte.js';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
-import { createTestEdytor, expectBlockInvariantSnapshot } from '../../../test.utils.js';
+import {
+	createTestEdytor,
+	expectBlockInvariantSnapshot,
+	insertParts
+} from '../../../test.utils.js';
 
 type RecordedCall = {
 	phase: 'before' | 'after';
@@ -344,7 +348,7 @@ export const fixtures = defineFixtures([
 
 			// Insert a text part after the existing segment — its atoms join the
 			// live segment; no second segment resolves.
-			block.insertParts(1, [[{ text: 'c' }]]);
+			insertParts(block, 1, [[{ text: 'c' }]]);
 
 			expect(block.content).toHaveLength(1);
 			expect((block.content[0] as Text).stringContent).toBe('abc');

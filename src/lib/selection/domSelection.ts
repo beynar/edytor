@@ -201,81 +201,51 @@ const getComposedRangeSnapshot = (
  *   `block:'nearest'` otherwise still nudges scroll containers.
  */
 export const scrollCaretIntoView = (root: Element | null | undefined) => {
-	if (!root) {
-		return;
-	}
-	const selection = getDomSelection(root);
+	const selection = root && getDomSelection(root);
 	const focusNode = selection?.focusNode;
-	if (!selection || !focusNode || selection.rangeCount === 0 || !root.contains(focusNode)) {
-		return;
-	}
-	const activeElement = getActiveElement(root);
-	if (activeElement !== root && !(activeElement && root.contains(activeElement))) {
-		return;
-	}
-
-	// Collapse a scratch range at the FOCUS endpoint so a backward range
-	// scrolls to the moving edge, and collapsed carets get the exact
-	// caret box rather than the element box. The offset is clamped — a
-	// foreign DOM mutation can leave the selection pointing past a
-	// shrunken node, and `setStart` throws on out-of-bounds offsets.
-	const caretRange = createDomRange(focusNode);
-	const maxOffset =
-		focusNode instanceof Element ? focusNode.childNodes.length : (focusNode.nodeValue?.length ?? 0);
-	caretRange.setStart(focusNode, Math.min(selection.focusOffset, maxOffset));
-	caretRange.collapse(true);
+	if (!selection || !focusNode || selection.rangeCount === 0 || !root.contains(focusNode)) return;
+	const active = getActiveElement(root);
+	if (!active || !root.contains(active)) return;
 	const element = focusNode instanceof Element ? focusNode : focusNode.parentElement;
-	if (!element) {
-		return;
-	}
-	// Optional-chained: non-layout environments (jsdom) don't implement
-	// range rects — the element box is the fallback in real browsers too
-	// when the caret rect comes back empty.
-	const caretRect = caretRange.getBoundingClientRect?.() ?? null;
+	if (!element) return;
+	// A scratch range collapsed at the FOCUS endpoint: a backward range
+	// scrolls to the moving edge, a caret gets its exact box. The offset is
+	// clamped — a foreign DOM mutation can leave the selection past a
+	// shrunken node, and `setStart` throws out of bounds.
+	const caret = createDomRange(focusNode);
+	const max =
+		focusNode instanceof Element ? focusNode.childNodes.length : (focusNode.nodeValue?.length ?? 0);
+	caret.setStart(focusNode, Math.min(selection.focusOffset, max));
+	caret.collapse(true);
+	// Optional-chained: jsdom has no range rects; an empty caret rect reads
+	// the element's box, in real browsers too.
+	const rect = caret.getBoundingClientRect?.();
 	const box =
-		caretRect && (caretRect.top !== 0 || caretRect.bottom !== 0)
-			? caretRect
-			: element.getBoundingClientRect();
-
-	const view = element.ownerDocument.defaultView;
-	const viewportHeight = view?.innerHeight ?? element.ownerDocument.documentElement.clientHeight;
-	const viewportWidth = view?.innerWidth ?? element.ownerDocument.documentElement.clientWidth;
-	const insideViewport =
-		box.top >= 0 && box.bottom <= viewportHeight && box.left >= 0 && box.right <= viewportWidth;
-
-	// The viewport check alone is not enough — an `overflow:auto/scroll/
-	// hidden` ancestor clips the caret while it stays inside the window
-	// viewport (the common "editor inside a scrollable pane" case). Walk
-	// the ancestor chain; any scrollable clip counts as out-of-view.
-	let clippedByScroller = false;
-	if (insideViewport && view?.getComputedStyle) {
-		for (
-			let ancestor = element.parentElement;
-			ancestor && ancestor !== element.ownerDocument.documentElement;
-			ancestor = ancestor.parentElement
-		) {
-			const style = view.getComputedStyle(ancestor);
-			const overflow = `${style.overflow} ${style.overflowX} ${style.overflowY}`;
-			if (!/(auto|scroll|hidden)/.test(overflow)) {
-				continue;
-			}
-			const rect = ancestor.getBoundingClientRect();
-			if (
-				box.top < rect.top ||
-				box.bottom > rect.bottom ||
-				box.left < rect.left ||
-				box.right > rect.right
-			) {
-				clippedByScroller = true;
-				break;
-			}
-		}
+		rect && (rect.top !== 0 || rect.bottom !== 0) ? rect : element.getBoundingClientRect();
+	const clips = (r: { top: number; bottom: number; left: number; right: number }) =>
+		box.top < r.top || box.bottom > r.bottom || box.left < r.left || box.right > r.right;
+	const document = element.ownerDocument;
+	const view = document.defaultView;
+	const { clientWidth, clientHeight } = document.documentElement;
+	// The viewport clips it, or a scrolling ancestor does while it stays in
+	// the window (the "editor inside a scrollable pane" case).
+	let clipped = clips({
+		top: 0,
+		left: 0,
+		bottom: view?.innerHeight ?? clientHeight,
+		right: view?.innerWidth ?? clientWidth
+	});
+	for (
+		let ancestor = element.parentElement;
+		!clipped && view?.getComputedStyle && ancestor && ancestor !== document.documentElement;
+		ancestor = ancestor.parentElement
+	) {
+		const { overflow, overflowX, overflowY } = view.getComputedStyle(ancestor);
+		clipped =
+			/(auto|scroll|hidden)/.test(`${overflow} ${overflowX} ${overflowY}`) &&
+			clips(ancestor.getBoundingClientRect());
 	}
-
-	if (insideViewport && !clippedByScroller) {
-		return;
-	}
-	element.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+	if (clipped) element.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
 };
 
 export const getDomSelectionSnapshot = (node?: Node | null): DomSelectionSnapshot | null => {

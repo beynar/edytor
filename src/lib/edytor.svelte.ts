@@ -3,10 +3,7 @@ import { DEV } from 'esm-env';
 import { onBeforeInput } from './events/onBeforeInput.js';
 import { onCopy } from './events/onCopy.js';
 import { onCut } from './events/onCut.js';
-import {
-	isNativeInteractiveEvent,
-	isNestedForeignEditableTarget
-} from './events/nativeInteractiveControl.js';
+import { isControlEvent, isKindControl } from './events/nativeInteractiveControl.js';
 import { onInput } from './events/onInput.js';
 import { onPaste } from './events/onPaste.js';
 import { onTextDragEnd, onTextDragStart, preventUnsupportedDrop } from './events/onDrop.js';
@@ -66,7 +63,7 @@ import {
 	PresenceWriter,
 	type PresenceOptions
 } from '$lib/collaboration/awarenessSelection.js';
-import { batch } from './block/block.utils.js';
+import { planned } from './block/block.utils.js';
 import {
 	canMoveBlocks as canMoveBlocksRelative,
 	moveBlocks as moveBlocksRelative,
@@ -91,8 +88,7 @@ import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import {
 	caretOf,
 	deleteBlocks,
-	deleteContentWithinSelection,
-	insertFlow,
+	caretWritten,
 	rangeCaret,
 	prepareDeleteBlocks,
 	prepareDeleteContent,
@@ -319,7 +315,9 @@ export class Edytor {
 	 * API-driven selection changes must never move the page).
 	 * @internal
 	 */
-	isHandlingUserInput = false;
+	get isHandlingUserInput(): boolean {
+		return this.userInputHandlingDepth > 0;
+	}
 	/**
 	 * Depth counter suppressing caret scroll during programmatic DOM
 	 * writes — remote mirror flushes and mutation-observer repairs can
@@ -795,30 +793,24 @@ export class Edytor {
 	 * affordances long after the gesture ended.
 	 */
 	private userInputHandlingDepth = 0;
-	private withUserInput = <E extends Event>(
-		handler: (event: E) => unknown,
+	private withUserInput = <A extends unknown[]>(
+		handler: (...args: A) => unknown,
 		opts: { bumpSerial?: boolean } = {}
 	) => {
-		return (event: E): unknown => {
-			// Depth-counted, not boolean: a synchronous wrapped listener
-			// landing inside an awaited handler's hold window must not
-			// clear the flag the outer handler still needs.
+		return (...args: A): unknown => {
+			// Depth-counted: a synchronous wrapped listener landing inside an
+			// awaited handler's hold window must not end the window the outer
+			// handler still needs.
 			this.userInputHandlingDepth++;
-			this.isHandlingUserInput = true;
 			if (opts.bumpSerial !== false) {
 				this.markUserGesture();
 			}
 			const clear = () => {
-				this.userInputHandlingDepth--;
-				if (this.userInputHandlingDepth <= 0) {
-					this.userInputHandlingDepth = 0;
-					this.isHandlingUserInput = false;
-					// A display the window held back gets its pass now.
-					this.projector.inputHandled();
-				}
+				// A display the window held back gets its pass now.
+				if (--this.userInputHandlingDepth === 0) this.projector.inputHandled();
 			};
 			try {
-				const result = handler(event);
+				const result = handler(...args);
 				// Async handlers keep the flag until they settle — the
 				// awaited model ops + selection writes are still "the
 				// user's input". Timer/rAF-deferred restores run after
@@ -895,8 +887,7 @@ export class Edytor {
 	 */
 	lastUserGestureOutsideEditor = false;
 	/** @internal Run `body` as part of the user's input (deferred work of an occurrence). */
-	userInput = <T>(body: () => T) =>
-		this.withUserInput(body, { bumpSerial: false })(new Event('input'));
+	userInput = <T>(body: () => T) => this.withUserInput(body, { bumpSerial: false })();
 	/**
 	 * A commit's caret: select it (the projector displays it once the pin's
 	 * render lands) and arm the IME post-commit jump rule — a move right after
@@ -915,16 +906,14 @@ export class Edytor {
 				!ours(active) &&
 				!ours(selection?.anchorNode) &&
 				!ours(this.selection.state.startText?.node)) ||
-			(active && isNestedForeignEditableTarget(this.node, active))
+			isKindControl(this.node, active)
 		)
 			return;
 		this.projector.committed();
 		this.selection.setAtTextOffset(text, Math.min(offset, text.length));
 	};
 	/** An event of this view's own composition (not a native control's, not a nested island's). */
-	private ownComposition = (event?: Event) =>
-		!event ||
-		(!isNativeInteractiveEvent(event) && !isNestedForeignEditableTarget(this.node, event.target));
+	private ownComposition = (event?: Event) => !event || !isControlEvent(this.node, event);
 
 	/** @internal */
 	onCompositionStart = (event?: CompositionEvent) => {
@@ -940,17 +929,17 @@ export class Edytor {
 		else this.composition.cancel();
 	};
 
-	deleteContentWithinSelection = batch(
+	deleteContentWithinSelection = planned(
 		'deleteContentWithinSelection',
-		deleteContentWithinSelection,
 		prepareDeleteContent,
+		caretWritten,
 		rangeCaret
 	);
 
 	/** @internal */
-	insertFlow = batch('insertFlow', insertFlow, prepareFlow, caretOf);
+	insertFlow = planned('insertFlow', prepareFlow, caretWritten, caretOf);
 
-	deleteBlocks = batch('deleteBlocks', deleteBlocks, prepareDeleteBlocks);
+	deleteBlocks = planned('deleteBlocks', prepareDeleteBlocks, deleteBlocks);
 
 	/** @internal The handle of the `ordinal`-th text segment of block `id` (the element a cell segment renders). */
 	textAt = (id: string, ordinal: number): Text => this.idToBlock.text(id, ordinal);

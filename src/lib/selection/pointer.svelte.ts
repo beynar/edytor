@@ -14,7 +14,7 @@ import { isNativeInteractiveEvent } from '$lib/events/nativeInteractiveControl.j
 import { acrossColumns } from './replaceSelection.js';
 import { getDomSelectionSnapshot, type DomSelectionSnapshot } from './domSelection.js';
 import { domPointOf } from '$lib/surface/projector.svelte.js';
-import { getElementFromNode, getYIndex, SUGGESTION } from './selection.utils.js';
+import { getElementFromNode, offsetIn, SUGGESTION } from './selection.utils.js';
 import type { EdytorSelection } from './selection.svelte.js';
 
 /** A text point under the pointer, with where the pointer was. */
@@ -271,7 +271,7 @@ export class SelectionPointer {
 
 		return {
 			text,
-			offset: Math.min(Math.max(getYIndex(text, node, domOffset), 0), text.length),
+			offset: offsetIn(text, node, domOffset),
 			clientX,
 			clientY
 		};

@@ -57,10 +57,7 @@ import {
 import { project, type SelectionValue } from '../session/selection.js';
 import type { Attempt } from '../session/attempt.js';
 import { isAndroidChromeBrowser } from '../events/events.utils.js';
-import {
-	isKindControl,
-	isNestedForeignEditableTarget
-} from '../events/nativeInteractiveControl.js';
+import { isKindControl, isOwnPoint } from '../events/nativeInteractiveControl.js';
 
 /** What a `selectionchange` is. Drift is displayed again; foreign writes and intent are adopted. */
 export type Observation = 'echo' | 'drift' | 'composition' | 'foreign' | 'intent';
@@ -252,9 +249,8 @@ export class Projector {
 		const { selection } = edytor;
 		const node = edytor.node;
 		const anchor = dom?.anchorNode;
-		// Not ours to classify: outside the editor, or in a nested editable island.
-		if (!dom || !anchor || !node?.contains(anchor) || isNestedForeignEditableTarget(node, anchor))
-			return 'foreign';
+		// Not ours to classify: outside the editor, or in a kind's own control.
+		if (!dom || !isOwnPoint(node, anchor)) return 'foreign';
 		if (this.#echoes(dom)) return 'echo';
 		// The one composition branch: a live session's host is the IME's.
 		if (edytor.composition.live) return this.#observed('composition');

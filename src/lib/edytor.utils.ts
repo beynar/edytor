@@ -39,7 +39,10 @@ export function caretOf(this: Edytor, at: At | null | undefined): readonly [Text
 
 type RangeDelete = { replace?: boolean; selection?: RangeEndpoints };
 
-/** The document's range deletion (`del.range.*`; `replace`: the deletion half of a replacement). */
+/**
+ * The document's range deletion of the selected range, or `selection`
+ * (`del.range.*`; `replace`: the deletion half of a replacement).
+ */
 export function prepareDeleteContent(this: Edytor, { replace = false, selection }: RangeDelete) {
 	const { startText, endText, yStart, yEnd } = selection ?? this.selection.state;
 	if (!startText || !endText) return REFUSED;
@@ -51,15 +54,8 @@ export function prepareDeleteContent(this: Edytor, { replace = false, selection 
 	return prepare(at(startText, yStart), at(endText, yEnd), viewOf(this));
 }
 
-/**
- * Delete the selected range (or `selection`) through the document's prepared
- * range deletion and answer the caret the op decided.
- */
-export function deleteContentWithinSelection(
-	this: Edytor,
-	payload: RangeDelete,
-	plan = prepareDeleteContent.call(this, payload)
-): At | null {
+/** Write a range or flow plan (`applyAt`) and answer the caret the op decided. */
+export function caretWritten(this: Edytor, plan: Prepared): At | null {
 	return applyAt(this, plan);
 }
 
@@ -72,17 +68,9 @@ export function rangeCaret(this: Edytor, at: At | null | undefined, payload: Ran
 
 type FlowInsert = { flow: Flow; target: FlowTarget };
 
+/** Place an admitted flow at `target` (`flow.*`). */
 export function prepareFlow(this: Edytor, { flow, target }: FlowInsert) {
 	return this.facade.prepare.insertFlow(target, flow, viewOf(this));
-}
-
-/** Place an admitted flow at `target` (`flow.*`) and answer the caret the op decided. */
-export function insertFlow(
-	this: Edytor,
-	payload: FlowInsert,
-	plan = prepareFlow.call(this, payload)
-): At | null {
-	return applyAt(this, plan);
 }
 
 type BlocksDelete = { blocks: Block[] };
@@ -92,11 +80,7 @@ export function prepareDeleteBlocks(this: Edytor, { blocks }: BlocksDelete) {
 }
 
 /** Delete a block selection (one document plan; nested members ride their ancestor). */
-export function deleteBlocks(
-	this: Edytor,
-	{ blocks }: BlocksDelete,
-	plan = prepareDeleteBlocks.call(this, { blocks })
-): boolean {
+export function deleteBlocks(this: Edytor, plan: Prepared, { blocks }: BlocksDelete): boolean {
 	if (!('writes' in plan)) return false;
 	const parents = new Set(blocks.map((block) => block.parent));
 	this.facade.apply(plan);

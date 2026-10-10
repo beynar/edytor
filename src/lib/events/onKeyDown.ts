@@ -8,58 +8,32 @@ import {
 } from './nativeInteractiveControl.js';
 import { replaceSelectedAtom } from '$lib/session/bindings.js';
 import { admitKeyAttempt } from './onBeforeInput.js';
-import { targetless } from '$lib/session/attempt.js';
+import { INTENTS, keyIntentOf, targetless } from '$lib/session/attempt.js';
 import { getDomSelection } from '$lib/selection/domSelection.js';
 
 const isEventFromEditor = (edytor: Edytor, event: KeyboardEvent) => {
-	if (!edytor.node) {
-		return true;
-	}
-
-	const activeElement = edytor.node.ownerDocument.activeElement;
-	const activeElementIsOutsideTextControl =
-		activeElement instanceof HTMLElement &&
-		!edytor.node.contains(activeElement) &&
-		isNativeTextControl(activeElement);
-	if (activeElementIsOutsideTextControl) {
+	const { node, selection } = edytor;
+	if (!node) return true;
+	const active = node.ownerDocument.activeElement;
+	if (active instanceof HTMLElement && !node.contains(active) && isNativeTextControl(active))
 		return false;
-	}
-
-	const hasEditorOwnedSelection =
-		edytor.selection.selectedBlocks.size > 0 || edytor.selection.selectedInlineBlock.size > 0;
+	// Focus on the host or inside it, or nowhere (the body): a selection of the
+	// editor's own (blocks, an atom; a text one under a command chord) takes the key.
+	const focused =
+		active === node.ownerDocument.body || (active instanceof Node && node.contains(active));
 	if (
-		hasEditorOwnedSelection &&
-		(activeElement === edytor.node ||
-			activeElement === edytor.node.ownerDocument.body ||
-			(activeElement instanceof Node && edytor.node.contains(activeElement)))
-	) {
+		focused &&
+		(selection.selectedBlocks.size > 0 ||
+			selection.selectedInlineBlock.size > 0 ||
+			((event.metaKey || event.ctrlKey) && selection.state.startText?.node))
+	)
 		return true;
-	}
-
-	if (event.composedPath().includes(edytor.node)) {
-		return true;
-	}
-
-	if (event.target instanceof Node && edytor.node.contains(event.target)) {
-		return true;
-	}
-
-	const hasModelTextSelection = Boolean(edytor.selection.state.startText?.node);
-	if (
-		(event.metaKey || event.ctrlKey) &&
-		hasModelTextSelection &&
-		(activeElement === edytor.node ||
-			activeElement === edytor.node.ownerDocument.body ||
-			(activeElement instanceof Node && edytor.node.contains(activeElement)))
-	) {
-		return true;
-	}
-
-	const selection = getDomSelection(edytor.node);
+	if (event.composedPath().includes(node)) return true;
+	if (event.target instanceof Node && node.contains(event.target)) return true;
+	const dom = getDomSelection(node);
 	return Boolean(
-		selection?.anchorNode &&
-		(edytor.node.contains(selection.anchorNode) ||
-			(selection.focusNode && edytor.node.contains(selection.focusNode)))
+		dom?.anchorNode &&
+		(node.contains(dom.anchorNode) || (dom.focusNode && node.contains(dom.focusNode)))
 	);
 };
 
@@ -90,13 +64,11 @@ const isPrintableReplacementKey = (event: KeyboardEvent) => {
 };
 
 /** The editing intent of an unmodified key (a character, Backspace, Delete, Enter), if it has one. */
-const keyIntent = (event: KeyboardEvent) => {
-	if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return null;
-	if (event.key === 'Backspace') return 'deleteContentBackward';
-	if (event.key === 'Delete') return 'deleteContentForward';
-	if (event.key === 'Enter') return event.shiftKey ? 'insertLineBreak' : 'insertParagraph';
-	return isPrintableReplacementKey(event) ? 'insertText' : null;
-};
+const keyIntent = (event: KeyboardEvent) =>
+	event.isComposing || hasCommandModifier(event)
+		? null
+		: (keyIntentOf(event.key, event.shiftKey) ??
+			(isPrintableReplacementKey(event) ? 'insertText' : null));
 
 /** Copy, select all and the browser's find (the keymap does not run while readonly). */
 const isReadonlyAllowedShortcut = (event: KeyboardEvent) => {
@@ -149,41 +121,27 @@ const isBackspaceFromTrailingNewlineMarker = (edytor: Edytor) => {
 	return Boolean(anchorNode && isInsideTrailingNewlineMarker(anchorNode));
 };
 
-const getStructuralFallbackInputType = (
-	edytor: Edytor,
-	event: KeyboardEvent
-): InputEvent['inputType'] | null => {
-	const key = event.key.toLowerCase();
+/**
+ * The intent a keydown admits when its `beforeinput` may never come: Enter
+ * and Shift+Enter, and a Backspace or Delete over a range or at the edge of
+ * its block or text (the trailing newline's marker, for Backspace). With a
+ * command modifier, a word or line chord at the block's edge deletes the
+ * neighbour like a character (`deleteCollapsedUnit`); WebKit announces no
+ * `beforeinput` for it at the document's first text.
+ */
+const getStructuralFallbackInputType = (edytor: Edytor, event: KeyboardEvent) => {
+	const intent = keyIntentOf(event.key, event.shiftKey);
+	const dir = intent && INTENTS[intent]!.dir;
 	const { isCollapsed, isAtStartOfBlock, isAtStartOfText, isAtEndOfBlock, isAtEndOfText } =
 		edytor.selection.projection;
-
-	if (hasCommandModifier(event)) {
-		// A word or line chord at the block's edge deletes the neighbour like a
-		// character (`deleteCollapsedUnit`); WebKit announces no `beforeinput`
-		// for it at the document's first text (SW10-crdt-1).
-		if (!isCollapsed || event.shiftKey) return null;
-		if (key === 'backspace' && isAtStartOfBlock) return 'deleteContentBackward';
-		if (key === 'delete' && isAtEndOfBlock) return 'deleteContentForward';
-		return null;
-	}
-
-	if (key === 'enter') {
-		return event.shiftKey ? 'insertLineBreak' : 'insertParagraph';
-	}
-
-	if (key === 'backspace') {
-		if (isBackspaceFromTrailingNewlineMarker(edytor)) {
-			return 'deleteContentBackward';
-		}
-
-		return !isCollapsed || isAtStartOfBlock || isAtStartOfText ? 'deleteContentBackward' : null;
-	}
-
-	if (key === 'delete') {
-		return !isCollapsed || isAtEndOfBlock || isAtEndOfText ? 'deleteContentForward' : null;
-	}
-
-	return null;
+	const back = dir === 'back';
+	const atBlockEdge = back ? isAtStartOfBlock : isAtEndOfBlock;
+	if (hasCommandModifier(event))
+		return dir && isCollapsed && !event.shiftKey && atBlockEdge ? intent : null;
+	if (!dir) return intent;
+	const atTextEdge = back ? isAtStartOfText : isAtEndOfText;
+	const atMarker = back && isBackspaceFromTrailingNewlineMarker(edytor);
+	return !isCollapsed || atBlockEdge || atTextEdge || atMarker ? intent : null;
 };
 
 export function onKeyDown(this: Edytor, e: KeyboardEvent) {

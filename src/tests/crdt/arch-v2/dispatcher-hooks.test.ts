@@ -245,7 +245,6 @@ describe('readonly refuses every mutating command', () => {
 		const root = edytor.root!;
 		root.insertChildren(0, [{ type: 'paragraph', content: [{ text: 'new' }] }]);
 		root.deleteChildren(0, 1);
-		edytor.idToBlock.get('b')!.insertParts(0, [[{ text: 'Y' }]]);
 		expect(texts(edytor)).toEqual(ORIGINAL);
 		expect([bytes(), undo()]).toEqual([0, 0]);
 	});

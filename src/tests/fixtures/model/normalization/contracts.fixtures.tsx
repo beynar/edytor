@@ -8,7 +8,12 @@ import { mentionPlugin } from '../../../atMention.svelte';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
-import { createTestEdytor, expectBlockInvariantSnapshot, removeIds } from '../../../test.utils.js';
+import {
+	createTestEdytor,
+	expectBlockInvariantSnapshot,
+	insertParts,
+	removeIds
+} from '../../../test.utils.js';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 
@@ -28,7 +33,7 @@ const expectSecondPassStable = (block: Block) => {
 /** Replace a block's content with JSON parts (R4: parts are specs, not wrappers). */
 const replaceContent = (block: Block, content: (JSONText[] | JSONInlineBlock)[]) => {
 	block.model!.deleteText(0, block.model!.length);
-	block.insertParts(0, content);
+	insertParts(block, 0, content);
 };
 
 const normalizationPlugin = (kind: 'content' | 'children'): Plugin => {

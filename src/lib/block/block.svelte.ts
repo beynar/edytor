@@ -1,49 +1,45 @@
 import { Text } from '../text/text.svelte.js';
 import type { Edytor } from '../edytor.svelte.js';
-import type { JSONBlock, JSONText, JSONInlineBlock } from '$lib/utils/json.js';
+import type { JSONBlock, JSONInlineBlock } from '$lib/utils/json.js';
 import {
 	batch,
-	removeInlineBlock,
+	planned,
+	blockOf,
+	firstId,
+	createdId,
+	written,
+	contentWritten,
+	patched,
 	addChildBlock,
-	insertBlockAfter,
-	insertBlockBefore,
-	mergeBlockBackward,
-	mergeBlockForward,
-	nestBlock,
-	removeBlock,
-	setBlock,
-	splitBlock,
-	prepareSplit,
-	duplicateBlock,
-	prepareDuplicate,
-	prepareSet,
-	prepareMove,
-	prepareMoves,
+	addChildBlocks,
+	pushContentIntoBlock,
+	addInlineBlock,
+	textAfterAtom,
+	normalizeContent,
+	normalizeChildren,
 	prepareInsertAfter,
 	prepareInsertBefore,
+	prepareSplit,
+	prepareDuplicate,
 	prepareRemove,
 	prepareMergeBackward,
 	prepareMergeForward,
 	prepareUnNest,
+	unNestBlock,
 	prepareNest,
+	nestBlock,
+	prepareSet,
+	setBlock,
+	prepareMove,
+	moveBlock,
+	prepareMoves,
+	moveBlocks,
 	prepareRemoveInline,
 	preparePatch,
-	patchData,
 	prepareDeleteRange,
-	addChildBlocks,
-	pushContentIntoBlock,
-	unNestBlock,
-	moveBlock,
-	moveBlocks,
-	normalizeContent,
-	addInlineBlock,
-	textAfterAtom,
-	blockOf,
-	deleteContentAtRange,
-	normalizeChildren,
 	type BlockOperations
 } from './block.utils.js';
-import { jsonBlockToSpec, jsonContentToItems } from '$lib/utils/json.js';
+import { jsonBlockToSpec } from '$lib/utils/json.js';
 import type { BlockDefinition } from '$lib/plugins.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 import type { DocBlock } from '$lib/crdt/index.js';
@@ -202,29 +198,29 @@ export class Block {
 
 	/** @internal */
 	get firstEditableText(): Text | undefined {
-		// Only a RENDERED text part is editable — a container's phantom
-		// content slot holds a Text with no `node`. Scan ALL children: the
-		// first child can be noneditable (a void divider) while a later
-		// child owns the text the caret must land in.
-		const own = this.content.find(
-			(part): part is Text => part instanceof Text && part.node != null
-		);
-		if (own) return own;
-		for (const child of this.children) {
-			const text = child.firstEditableText;
-			if (text) return text;
-		}
-		return undefined;
+		return this.#editable(false);
 	}
 
 	/** @internal */
 	get lastEditableText(): Text | undefined {
-		const own = this.content.findLast(
-			(part): part is Text => part instanceof Text && part.node != null
-		);
+		return this.#editable(true);
+	}
+
+	/**
+	 * The first (or `last`) editable text of the block's own content, else
+	 * of its subtree. Only a RENDERED text part is editable — a container's
+	 * phantom content slot holds a Text with no `node`. Every child is
+	 * scanned: the first can be noneditable (a void divider) while a later
+	 * one owns the text the caret must land in.
+	 */
+	#editable(last: boolean): Text | undefined {
+		const rendered = (part: Text | InlineBlock): part is Text =>
+			part instanceof Text && part.node != null;
+		const own = last ? this.content.findLast(rendered) : this.content.find(rendered);
 		if (own) return own;
-		for (let i = this.children.length - 1; i >= 0; i--) {
-			const text = this.children[i]!.lastEditableText;
+		const children = this.children;
+		for (const child of last ? children.reverse() : children) {
+			const text = child.#editable(last);
 			if (text) return text;
 		}
 		return undefined;
@@ -382,27 +378,22 @@ export class Block {
 
 	addChildBlock = batch('addChildBlock', addChildBlock);
 	addChildBlocks = batch('addChildBlocks', addChildBlocks);
-	insertBlockAfter = batch('insertBlockAfter', insertBlockAfter, prepareInsertAfter, blockOf);
-	insertBlockBefore = batch('insertBlockBefore', insertBlockBefore, prepareInsertBefore, blockOf);
-	splitBlock = batch('splitBlock', splitBlock, prepareSplit, blockOf);
-	duplicateBlock = batch('duplicateBlock', duplicateBlock, prepareDuplicate, blockOf);
-	removeBlock = batch('removeBlock', removeBlock, prepareRemove);
-	unNestBlock = revealed(batch('unNestBlock', unNestBlock, prepareUnNest));
-	mergeBlockBackward = batch(
-		'mergeBlockBackward',
-		mergeBlockBackward,
-		prepareMergeBackward,
-		blockOf
-	);
-	mergeBlockForward = batch('mergeBlockForward', mergeBlockForward, prepareMergeForward, blockOf);
-	nestBlock = revealed(batch('nestBlock', nestBlock, prepareNest));
-	setBlock = batch('setBlock', setBlock, prepareSet);
-	moveBlock = revealed(batch('moveBlock', moveBlock, prepareMove));
-	moveBlocks = revealed(batch('moveBlocks', moveBlocks, prepareMoves));
+	insertBlockAfter = planned('insertBlockAfter', prepareInsertAfter, firstId, blockOf);
+	insertBlockBefore = planned('insertBlockBefore', prepareInsertBefore, firstId, blockOf);
+	splitBlock = planned('splitBlock', prepareSplit, createdId, blockOf);
+	duplicateBlock = planned('duplicateBlock', prepareDuplicate, firstId, blockOf);
+	removeBlock = planned('removeBlock', prepareRemove, written);
+	unNestBlock = revealed(planned('unNestBlock', prepareUnNest, unNestBlock));
+	mergeBlockBackward = planned('mergeBlockBackward', prepareMergeBackward, firstId, blockOf);
+	mergeBlockForward = planned('mergeBlockForward', prepareMergeForward, firstId, blockOf);
+	nestBlock = revealed(planned('nestBlock', prepareNest, nestBlock));
+	setBlock = planned('setBlock', prepareSet, setBlock);
+	moveBlock = revealed(planned('moveBlock', prepareMove, moveBlock));
+	moveBlocks = revealed(planned('moveBlocks', prepareMoves, moveBlocks));
 	pushContentIntoBlock = batch('pushContentIntoBlock', pushContentIntoBlock);
-	removeInlineBlock = batch('removeInlineBlock', removeInlineBlock, prepareRemoveInline);
-	patchData = batch('patchData', patchData, preparePatch);
-	#addInline = batch('addInlineBlock', addInlineBlock, undefined, textAfterAtom);
+	removeInlineBlock = planned('removeInlineBlock', prepareRemoveInline, contentWritten);
+	patchData = planned('patchData', preparePatch, patched);
+	#addInline = batch('addInlineBlock', addInlineBlock, textAfterAtom);
 	/**
 	 * Insert an inline atom: at `offset` of the block's content (block
 	 * offsets, an inline atom counting 1; a caret's), or at `index` of the
@@ -419,7 +410,7 @@ export class Block {
 	};
 	normalizeContent = batch('normalizeContent', normalizeContent);
 	normalizeChildren = batch('normalizeChildren', normalizeChildren);
-	deleteContentAtRange = batch('deleteContentAtRange', deleteContentAtRange, prepareDeleteRange);
+	deleteContentAtRange = planned('deleteContentAtRange', prepareDeleteRange, contentWritten);
 
 	/** Mark an element inside the block's markup as non-editable chrome (a header, a caption bar). */
 	void = voidChrome;
@@ -476,26 +467,6 @@ export class Block {
 		const ids = this.edytor.facade.childrenIds(this.isRoot ? null : this.id);
 		for (const id of ids.slice(index, index + length).reverse())
 			this.edytor.facade.block(id).delete({ keepChildren: false });
-	};
-
-	/**
-	 * Insert content before part `index` (a text segment or an inline atom):
-	 * each entry is a text's runs or an atom, as JSON. Raw, as `insertChildren`.
-	 * @internal
-	 */
-	insertParts = (index: number, parts: (JSONText[] | JSONInlineBlock)[]): void => {
-		if (!this.edytor.dispatcher.permits()) return;
-		const model = this.model;
-		if (!model) return;
-		const all = this.edytor.idToBlock.parts(this.id);
-		let at = all[index]?.start ?? model.length;
-		for (const item of jsonContentToItems(parts.flat())) {
-			if (item.kind === 'inline') model.insertInline(at++, item);
-			else if (item.text) {
-				model.insertText(at, item.text, item.marks);
-				at += item.text.length;
-			}
-		}
 	};
 
 	/** The declared view state (`open` on a `details`) the block's last element held. */

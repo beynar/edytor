@@ -47,6 +47,7 @@ import {
 	readDomText
 } from '../events/onInput.js';
 import { diverges, heal, ownedOf, type Kind } from './attributes.js';
+import { getTextContentOffsetAtPoint } from '../events/domTextOffset.js';
 import type { Cell, Patched, Replaced } from './cells.js';
 
 export type Verdict = 'adopt' | 'invert' | 'defer';
@@ -114,12 +115,8 @@ const caretIn = (nodes: Node[]) => {
 	if (!anchor) return undefined;
 	let offset = 0;
 	for (const node of nodes) {
-		if (node === anchor || node.contains(anchor)) {
-			const range = node.ownerDocument!.createRange();
-			range.selectNodeContents(node);
-			range.setEnd(anchor, selection!.anchorOffset);
-			return offset + range.toString().length;
-		}
+		if (node.contains(anchor))
+			return offset + getTextContentOffsetAtPoint(node, anchor, selection!.anchorOffset);
 		offset += node.textContent?.length ?? 0;
 	}
 	return undefined;

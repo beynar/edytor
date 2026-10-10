@@ -661,7 +661,9 @@ describe('docs drift', () => {
 			['src/lib/block', 'src/lib/text']
 				.flatMap((dir) => sources(join(root, dir)))
 				.concat(join(root, 'src/lib/edytor.svelte.ts'))
-				.flatMap((path) => [...readFileSync(path, 'utf8').matchAll(/\bbatch\(\s*'(\w+)'/g)])
+				.flatMap((path) => [
+					...readFileSync(path, 'utf8').matchAll(/\b(?:batch|planned)\(\s*'(\w+)'/g)
+				])
 				.map(([, name]) => name)
 				// Normalization runs inside the command that requested it; hooks never see it.
 				.filter((name) => !name.startsWith('normalize'))

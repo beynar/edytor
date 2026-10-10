@@ -4,6 +4,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { BlockDefinition, Plugin, PluginOperations } from '$lib/plugins.js';
 import { mediaKinds } from '$lib/crdt/semantics.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
+import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 import { fileUploads, type Uploader } from '../uploads.svelte.js';
 import {
 	keywordsOf,
@@ -332,9 +333,7 @@ export const mediaSourceOf = (element: HTMLElement | undefined) =>
 		element?.getAttribute('src') ?? element?.querySelector('source[src]')?.getAttribute('src')
 	);
 
-/** HTML-escape `value` for an attribute or text of an export. */
-export const escapeHtml = (value: string) =>
-	value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+export { escapeHtml };
 
 /** The files each media kind takes: a video, an audio track, any other file. */
 const ACCEPTS: Record<'video' | 'audio' | 'file', (file: File) => boolean> = {
@@ -419,7 +418,8 @@ export const sourcePlugin =
 					],
 					html: (block, caption) => {
 						const src = safeMediaSrc(block.data?.src);
-						const media = src ? `<${kind} src="${escapeHtml(src)}" controls></${kind}>` : '';
+						// The tag, then its attributes: `<video src="…" controls></video>`.
+						const media = src ? `<${kind}` + ` src="${escapeHtml(src)}" controls></${kind}>` : '';
 						return `<figure>${media}<figcaption>${caption}</figcaption></figure>`;
 					},
 					parse: (el) => {

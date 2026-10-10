@@ -10,12 +10,7 @@ import type {
 	HistoryUndoResult,
 	HistoryVersion
 } from './client.js';
-import {
-	historyEnglish,
-	englishLabels,
-	type HistoryPanelLabels,
-	type PartialLabels
-} from '$lib/labels.js';
+import { historyEnglish, type HistoryPanelLabels, type PartialLabels } from '$lib/labels.js';
 import type { MenuItemPayload } from '$lib/plugins/chrome.js';
 
 export type { HistoryPanelLabels };

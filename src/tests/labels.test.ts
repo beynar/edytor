@@ -79,7 +79,9 @@ describe('labelsWith', () => {
 	});
 
 	it('replaces one entry of a nested group without the others', () => {
-		const richText = labelsWith(englishLabels.richText, { placeholders: { quote: 'Citation vide' } });
+		const richText = labelsWith(englishLabels.richText, {
+			placeholders: { quote: 'Citation vide' }
+		});
 		expect(richText.placeholders.quote).toBe('Citation vide');
 		expect(richText.placeholders.list).toBe('List');
 		expect(richText.placeholders.heading(2)).toBe('Heading 2');

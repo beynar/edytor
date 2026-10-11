@@ -778,7 +778,7 @@ export const runHotkey = async (
 							this.defaultPrevented = true;
 						},
 						stopPropagation() {},
-						composedPath: () => []
+						composedPath: (): EventTarget[] => []
 					};
 
 					return fallbackEvent as KeyboardEvent;

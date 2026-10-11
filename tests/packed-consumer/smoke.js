@@ -12,12 +12,11 @@ const root = doc.get('content');
 assert.ok(root instanceof Y.Node);
 root.setAttr('type', 'root');
 
-// sequence + format: text reads as runs split where the formats change; a range read folds them
+// sequence + mark: a range read folds the marks
 const para = new Y.Node('paragraph');
 root.insert(0, [para]);
 para.insert(0, 'hello world');
-para.format(6, 5, { bold: true });
-assert.deepEqual(para.toArray(), ['hello ', 'world']);
+para.mark(6, 5, 'bold', true, 0, 0);
 assert.deepEqual(
 	new Y.RangeCursor(para)
 		.read(0, 11)
@@ -31,14 +30,19 @@ assert.deepEqual(
 // update round-trip between two docs
 const doc2 = new Y.Doc();
 Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc));
-assert.equal(doc2.get('content').get(0).toString(), '<paragraph>hello world</paragraph>');
-
-// relative positions
-const rpos = Y.createRelativePositionFromTypeIndex(para, 3);
-const abs = Y.createAbsolutePositionFromRelativePosition(
-	Y.createRelativePositionFromJSON(Y.relativePositionToJSON(rpos)),
-	doc
+const para2 = new Y.RangeCursor(doc2.get('content')).read(0, 1)[0].content.type;
+assert.equal(para2.name, 'paragraph');
+assert.equal(
+	new Y.RangeCursor(para2)
+		.read(0, 11)
+		.map((p) => p.content.str.slice(p.offset, p.offset + p.len))
+		.join(''),
+	'hello world'
 );
+
+// positions as ids
+const at = Y.idAtIndex(para, 3);
+const abs = Y.indexOfId(doc, at);
 assert.equal(abs.index, 3);
 assert.equal(abs.type, para);
 

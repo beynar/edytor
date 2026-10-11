@@ -325,7 +325,7 @@ export class RoomComments {
 			const mark = `${COMMENT_MARK}:${id}`;
 			room.transact((facade) => {
 				for (const run of [...runs].reverse())
-					facade.unsetMark(run.block, run.offset, run.length, mark);
+					facade.formatRange(run.block, run.offset, run.length, { [mark]: null });
 			});
 		} catch (error) {
 			room.log({ edytor: 'fault', reason: 'internal', detail: `comment anchor: ${String(error)}` });

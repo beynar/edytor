@@ -38,7 +38,7 @@ describe('H4: a retype keeps the block’s data', () => {
 		const a = replica('ada', seedUpdate([todo]), 2 ** 26 + 1);
 		ok(a.ed.setBlock('t', { type: 'paragraph', data: {} }));
 		expect(a.ed.blockDataOf('t')).toEqual({ checked: true, color: 'red' });
-		ok(a.ed.setBlockData('t', { level: 'h2' }));
+		ok(a.ed.patchData('t', [{ path: [], value: { level: 'h2' } }]));
 		expect(a.ed.blockDataOf('t')).toEqual({ level: 'h2' });
 		a.destroy();
 	});

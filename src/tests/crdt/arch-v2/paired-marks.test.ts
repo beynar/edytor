@@ -45,8 +45,8 @@ describe('H5 Peritext §2.1 — overlapping marks of one value union', () => {
 				[{ id: 'P', text: 'The quick fox jumped' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 0, 9, 'bold', true));
-					ok(b.ed.setMark('P', 4, 9, 'bold', true));
+					ok(a.ed.formatRange('P', 0, 9, { bold: true }));
+					ok(b.ed.formatRange('P', 4, 9, { bold: true }));
 				},
 				{ assignments: clientPairs(24) }
 			)
@@ -65,8 +65,8 @@ describe('H5 Peritext §2.1 — overlapping marks of one value union', () => {
 				[{ id: 'P', text: 'The quick fox jumped' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 0, 9, 'bold', true));
-					ok(b.ed.setMark('P', 4, 9, 'italic', true));
+					ok(a.ed.formatRange('P', 0, 9, { bold: true }));
+					ok(b.ed.formatRange('P', 4, 9, { italic: true }));
 				},
 				{ assignments: clientPairs(12) }
 			)
@@ -87,9 +87,9 @@ describe('H5 Peritext §2.1 — overlapping marks of one value union', () => {
 				[{ id: 'P', text: 'abcdefghij' }],
 				3,
 				([a, b, c]) => {
-					ok(a.ed.setMark('P', 0, 4, 'bold', true));
-					ok(b.ed.setMark('P', 2, 4, 'bold', true));
-					ok(c.ed.setMark('P', 5, 3, 'bold', true));
+					ok(a.ed.formatRange('P', 0, 4, { bold: true }));
+					ok(b.ed.formatRange('P', 2, 4, { bold: true }));
+					ok(c.ed.formatRange('P', 5, 3, { bold: true }));
 				},
 				{ assignments: clientTriples(12) }
 			)
@@ -110,8 +110,8 @@ describe('H5 Peritext §2.2 — conflicting values: one winner where they overla
 				[{ id: 'P', text: 'The quick fox jumped' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 0, 9, 'color', 'red'));
-					ok(b.ed.setMark('P', 4, 9, 'color', 'blue'));
+					ok(a.ed.formatRange('P', 0, 9, { color: 'red' }));
+					ok(b.ed.formatRange('P', 4, 9, { color: 'blue' }));
 				},
 				{ assignments: clientPairs(24) }
 			)
@@ -134,9 +134,9 @@ describe('H5 Peritext §2.2 — conflicting values: one winner where they overla
 				[{ id: 'P', text: 'Hello World' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 0, 11, 'color', 'red'));
+					ok(a.ed.formatRange('P', 0, 11, { color: 'red' }));
 					b.receiveAll(a.log);
-					ok(b.ed.setMark('P', 3, 5, 'color', 'blue'));
+					ok(b.ed.formatRange('P', 3, 5, { color: 'blue' }));
 				},
 				{ assignments: clientPairs(24) }
 			)
@@ -155,8 +155,8 @@ describe('H5 Peritext §2.3 — removing a mark', () => {
 	it('bold the whole text, then unbold a middle word: only that word is plain', () => {
 		const out = settle(
 			converge([{ id: 'P', text: 'The quick fox' }], 2, ([a]) => {
-				ok(a.ed.setMark('P', 0, 13, 'bold', true));
-				ok(a.ed.unsetMark('P', 4, 5, 'bold'));
+				ok(a.ed.formatRange('P', 0, 13, { bold: true }));
+				ok(a.ed.formatRange('P', 4, 5, { bold: null }));
 			})
 		);
 		expect(out).toEqual([
@@ -174,9 +174,9 @@ describe('H5 Peritext §2.3 — removing a mark', () => {
 				[{ id: 'P', text: 'Hello World' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 0, 11, 'bold', true));
-					ok(a.ed.unsetMark('P', 5, 1, 'bold'));
-					ok(b.ed.setMark('P', 9, 2, 'bold', true));
+					ok(a.ed.formatRange('P', 0, 11, { bold: true }));
+					ok(a.ed.formatRange('P', 5, 1, { bold: null }));
+					ok(b.ed.formatRange('P', 9, 2, { bold: true }));
 				},
 				{ assignments: clientPairs(12) }
 			)
@@ -197,10 +197,10 @@ describe('H5 Peritext §2.3 — removing a mark', () => {
 				[{ id: 'P', text: 'abc' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 0, 3, 'bold', true));
+					ok(a.ed.formatRange('P', 0, 3, { bold: true }));
 					[a, b].forEach((r) => r !== a && r.receiveAll(a.log));
-					ok(a.ed.unsetMark('P', 0, 3, 'bold'));
-					ok(b.ed.setMark('P', 1, 1, 'italic', true));
+					ok(a.ed.formatRange('P', 0, 3, { bold: null }));
+					ok(b.ed.formatRange('P', 1, 1, { italic: true }));
 				},
 				{ assignments: clientPairs(12) }
 			)
@@ -222,7 +222,7 @@ describe('H5 Peritext §2.4 — inserting at a mark’s edges: the mark record�
 				[{ id: 'P', text: 'abc def' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 0, 3, 'link', 'https://x'));
+					ok(a.ed.formatRange('P', 0, 3, { link: 'https://x' }));
 					ok(b.ed.insertText('P', 3, 'Z'));
 				},
 				{ semantics: LINK, assignments: clientPairs(24) }
@@ -242,7 +242,7 @@ describe('H5 Peritext §2.4 — inserting at a mark’s edges: the mark record�
 				[{ id: 'P', text: 'x abc' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 2, 3, 'link', 'https://x'));
+					ok(a.ed.formatRange('P', 2, 3, { link: 'https://x' }));
 					ok(b.ed.insertText('P', 2, 'Z'));
 				},
 				{ semantics: LINK, assignments: clientPairs(24) }
@@ -262,7 +262,7 @@ describe('H5 Peritext §2.4 — inserting at a mark’s edges: the mark record�
 				[{ id: 'P', text: 'abc def' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 0, 3, 'bold', true));
+					ok(a.ed.formatRange('P', 0, 3, { bold: true }));
 					ok(b.ed.insertText('P', 3, 'Z'));
 				},
 				{ assignments: clientPairs(24) }
@@ -283,7 +283,7 @@ describe('H5 Peritext §2.4 — inserting at a mark’s edges: the mark record�
 				[{ id: 'P', text: 'x abc y' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 2, 3, 'code', true));
+					ok(a.ed.formatRange('P', 2, 3, { code: true }));
 					ok(b.ed.insertText('P', 5, 'R'));
 					ok(b.ed.insertText('P', 2, 'L'));
 				},
@@ -303,7 +303,7 @@ describe('H5 Peritext §2.4 — inserting at a mark’s edges: the mark record�
 		const document = replica('A', seedUpdate([{ id: 'P', text: 'abc' }], LINK), 2 ** 26 + 5, {
 			semantics: LINK
 		});
-		ok(document.ed.setMark('P', 0, 3, 'link', 'https://x'));
+		ok(document.ed.formatRange('P', 0, 3, { link: 'https://x' }));
 		// At the link's end, from inside the anchor (the view asks for the link):
 		ok(document.ed.insertText('P', 3, 'd', { link: 'https://x' }));
 		// At its end with no mark asked for, and in the middle with bold only:
@@ -323,7 +323,7 @@ describe('H5 Peritext §2.5 — text deleted under a mark', () => {
 	it('bold "fox", its text deleted and retyped concurrently by a peer that saw the bold: the new text is plain', () => {
 		const out = settle(
 			converge([{ id: 'P', text: 'The fox jumped' }], 2, ([a, b]) => {
-				ok(a.ed.setMark('P', 4, 3, 'bold', true));
+				ok(a.ed.formatRange('P', 4, 3, { bold: true }));
 				b.receiveAll(a.log);
 				ok(b.ed.deleteText('P', 4, 3));
 				ok(b.ed.insertText('P', 4, 'cat'));
@@ -338,7 +338,7 @@ describe('H5 Peritext §2.5 — text deleted under a mark', () => {
 				[{ id: 'P', text: 'abcdef' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 1, 4, 'bold', true));
+					ok(a.ed.formatRange('P', 1, 4, { bold: true }));
 					ok(b.ed.deleteText('P', 4, 1));
 					ok(b.ed.deleteText('P', 1, 1));
 				},
@@ -362,8 +362,8 @@ describe('H5 comments keyed `comment:<id>` never clip each other', () => {
 				[{ id: 'P', text: 'The quick fox jumped' }],
 				2,
 				([a, b]) => {
-					ok(a.ed.setMark('P', 0, 9, 'comment:c1', { id: 'c1' }));
-					ok(b.ed.setMark('P', 4, 9, 'comment:c2', { id: 'c2' }));
+					ok(a.ed.formatRange('P', 0, 9, { 'comment:c1': { id: 'c1' } }));
+					ok(b.ed.formatRange('P', 4, 9, { 'comment:c2': { id: 'c2' } }));
 				},
 				{ assignments: clientPairs(12) }
 			)
@@ -382,8 +382,8 @@ describe('H5 comments keyed `comment:<id>` never clip each other', () => {
 describe('H5 marks under undo and redo', () => {
 	it('undo of a bold removes exactly it; redo puts it back, paired as before', () => {
 		const r = replica('A', seedUpdate([{ id: 'P', text: 'abcdef' }]), 2 ** 26 + 7);
-		ok(r.ed.setMark('P', 0, 4, 'bold', true));
-		ok(r.ed.setMark('P', 2, 4, 'bold', true));
+		ok(r.ed.formatRange('P', 0, 4, { bold: true }));
+		ok(r.ed.formatRange('P', 2, 4, { bold: true }));
 		expect(runs(r.ed)).toEqual([['abcdef', { bold: true }]]);
 		r.undo();
 		expect(runs(r.ed)).toEqual([

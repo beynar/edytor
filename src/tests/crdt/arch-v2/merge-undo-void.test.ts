@@ -163,7 +163,7 @@ describe('UW-01: undo/redo of a raced type/data write keeps a defined value', ()
 	const P = [{ id: 'P', text: 'p', data: { v: 0 } }];
 	const types = { mine: 'heading', theirs: 'quote' };
 	const retype = (r, who) => r.ed.setBlockType('P', types[who]);
-	const redata = (r, who) => r.ed.setBlockData('P', { v: who });
+	const redata = (r, who) => r.ed.patchData('P', [{ path: [], value: { v: who } }]);
 	const M = [
 		{
 			id: 'P',
@@ -171,7 +171,8 @@ describe('UW-01: undo/redo of a raced type/data write keeps a defined value', ()
 		}
 	];
 	const inlineData = (ed) => ed.contentItems('P').find((c) => c.kind === 'inline')?.data;
-	const reinline = (r, who) => r.ed.setInlineData('P', 'M', { v: who });
+	const reinline = (r, who) =>
+		r.ed.patchData({ block: 'P', atom: 'M' }, [{ path: [], value: { v: who } }]);
 
 	it('setBlockType × undo', () => {
 		expectEach(race(P, retype, undo), (ed) => ed.blockTypeOf('P'), 'paragraph', 'quote');

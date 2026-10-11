@@ -125,13 +125,13 @@ export type {
 	JSONInlineBlock,
 	SerializableContent
 } from '../utils/json.js';
-/** Canonical JSON → the `BlockSpec` `facade.insertBlock` takes (ids kept or minted). */
+/** Canonical JSON → the `BlockSpec` `facade.insertBlocks` takes (ids kept or minted). */
 export { toBlockSpec } from '../utils/json.js';
 
 // ── 2 · The document's vocabulary ──────────────────────────────────────
 //
 // Types a consumer meets while driving the document's operations
-// (`DocumentOperations`: `document.insertBlock(…)`, a room's `transact`) — block specs, destinations, projected
+// (`DocumentOperations`: `document.insertBlocks(…)`, a room's `transact`) — block specs, destinations, projected
 // trees, change notifications — plus the engine-object types the
 // document's own members are typed as (`document.doc: YDoc`,
 // `document.history: YUndoManager`).

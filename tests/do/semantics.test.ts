@@ -61,14 +61,14 @@ const attempt = (room: Pick<AttachedDocument, 'transact'>) => {
 		seeded,
 		edit((facade) => facade.mergeBackward('p')),
 		edit((facade) => facade.splitBlock('img', 1, 'img2')),
-		edit((facade) => facade.moveBlock('line', { parent: null, index: 0 })),
+		edit((facade) => facade.moveBlocks(['line'], { parent: null, index: 0 })),
 		// XW-12: a code block renders no content — its first line never merges into it.
 		edit((facade) => facade.mergeBackward('line')),
 		// DR-crdt-2: nor does a list — its first item never merges into it
 		// (Backspace there lifts the item out instead, YW-02).
 		edit((facade) => facade.mergeBlocks('item', 'list')),
 		// C5: the layout rows are in `defaultSemantics` — a layout holds only its columns.
-		edit((facade) => facade.moveBlock('q', { parent: 'cols', index: 0 }))
+		edit((facade) => facade.moveBlocks(['q'], { parent: 'cols', index: 0 }))
 	];
 };
 

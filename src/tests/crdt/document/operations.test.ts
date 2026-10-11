@@ -2,7 +2,7 @@
  * The document's operations are its own members (`DocumentOperations`):
  * every name `DOCUMENT_OPERATIONS` lists reads through to the bound
  * facade (`document.facade`, internal since `1.0.0-rc.2`), so
- * `document.insertBlock(…)` writes exactly as the binding does.
+ * `document.insertBlocks(…)` writes exactly as the binding does.
  */
 import { describe, expect, it } from 'vitest';
 import { createDocument } from '$lib/crdt/document.js';
@@ -21,7 +21,7 @@ describe('document.operations', () => {
 		expect(document.insertText('p1', 5, ' world')).toMatchObject({ status: 'applied' });
 		expect(document.blockText('p1')).toBe('hello world');
 		const before = document.version;
-		document.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' });
+		document.insertBlocks({ parent: null, index: 1 }, [{ id: 'p2', type: 'paragraph' }]);
 		expect(document.version).not.toBe(before);
 		expect(document.childrenIds(null)).toEqual(['p1', 'p2']);
 		const plan = document.prepare.setBlockType('p2', 'heading');

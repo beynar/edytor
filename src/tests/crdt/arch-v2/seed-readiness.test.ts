@@ -427,10 +427,9 @@ describe('UW-03 — a late seed never displaces live content', () => {
 				const room = documentOn(a);
 				room.sync();
 				room.transact(() =>
-					room.facade.insertBlock(
-						{ parent: null, index: 1 },
+					room.facade.insertBlocks({ parent: null, index: 1 }, [
 						{ id: 'x', type: 'paragraph', content: [{ kind: 'text', text: 'hello' }] }
-					)
+					])
 				);
 				const snapshot = json(room);
 				room.transact(() => room.facade.insertText('x', 5, ' world'));

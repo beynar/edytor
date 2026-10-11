@@ -346,7 +346,7 @@ export class Edytor {
 	private lens?: ViewDoc;
 	/**
 	 * The document as this view reads and writes it (the virtual paragraph's
-	 * lens). The public raw path is the document's own operations (`edytor.document.insertBlock(…)`): its writes skip
+	 * lens). The public raw path is the document's own operations (`edytor.document.insertBlocks(…)`): its writes skip
 	 * the dispatcher (no hooks, no readonly admission, no undo policy).
 	 * @internal
 	 */

@@ -60,7 +60,7 @@ const outcomes = (seed, ada: Step[], bob: Step[], n = 48): string[] => {
 const enterEnd = (id: string, nid: string, text: string): Step[] => [
 	(ed) => {
 		const { parent, index } = ed.positionOf(id);
-		return ed.insertBlock({ parent, index: index + 1 }, { id: nid, type: 'paragraph' });
+		return ed.insertBlocks({ parent, index: index + 1 }, [{ id: nid, type: 'paragraph' }]);
 	},
 	(ed) => ed.insertText(nid, 0, text)
 ];

@@ -572,9 +572,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
                 replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView) => import("./edytor-doc.js").Prepared;
                 insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").Prepared;
-                insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec | import("./index.js").JSONBlock) => import("./edytor-doc.js").Prepared;
                 moveBlocks: (ids: readonly import("./index.js").BlockId[], dest: import("./index.js").Destination) => import("./edytor-doc.js").Prepared;
-                moveBlock: (id: import("./index.js").BlockId, dest: import("./index.js").Destination) => import("./edytor-doc.js").Prepared;
                 nestBlock: (id: import("./index.js").BlockId, parent: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
                 unNestBlock: (id: import("./index.js").BlockId) => import("./edytor-doc.js").Prepared;
                 unNestBlocks: (ids: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
@@ -599,17 +597,13 @@ declare const bindCrdt: (Y: EngineApi) => {
                 }) => import("./edytor-doc.js").Prepared;
                 setBlockType: (id: import("./index.js").BlockId, type: string) => import("./edytor-doc.js").Prepared;
                 patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").Prepared;
-                setBlockData: (id: import("./index.js").BlockId, data: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 duplicateBlock: (id: import("./index.js").BlockId, freshId?: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").Prepared;
                 insertText: (id: import("./index.js").BlockId, offset: number, text: string, marks?: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 deleteText: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
                 formatRange: (id: import("./index.js").BlockId, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
-                setMark: (id: import("./index.js").BlockId, offset: number, length: number, name: string, value: unknown) => import("./edytor-doc.js").Prepared;
-                unsetMark: (id: import("./index.js").BlockId, offset: number, length: number, name: string) => import("./edytor-doc.js").Prepared;
                 clearMarks: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
                 insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").Prepared;
                 removeInline: (id: import("./index.js").BlockId, inlineId: string) => import("./edytor-doc.js").Prepared;
-                setInlineData: (id: import("./index.js").BlockId, inlineId: string, data: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 deleteBlocks: (ids: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
             };
             apply: (p: import("./edytor-doc.js").Prepared) => import("./edytor-doc.js").OpResult;
@@ -688,9 +682,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").OpResult;
-            insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec | import("./index.js").JSONBlock) => import("./edytor-doc.js").OpResult;
             moveBlocks: (ids: readonly string[], dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
-            moveBlock: (id: string, dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
             nestBlock: (id: string, parent: string) => import("./edytor-doc.js").OpResult;
             unNestBlock: (id: string) => import("./edytor-doc.js").OpResult;
             unNestBlocks: (ids: readonly string[]) => import("./edytor-doc.js").OpResult;
@@ -715,17 +707,13 @@ declare const bindCrdt: (Y: EngineApi) => {
             }) => import("./edytor-doc.js").OpResult;
             setBlockType: (id: string, type: string) => import("./edytor-doc.js").OpResult;
             patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").OpResult;
-            setBlockData: (id: string, data: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
             duplicateBlock: (id: string, freshId?: ((oldId: string, kind: "block" | "inline") => string) | undefined) => import("./edytor-doc.js").OpResult;
             insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => import("./edytor-doc.js").OpResult;
             deleteText: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
             formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
-            setMark: (id: string, offset: number, length: number, name: string, value: unknown) => import("./edytor-doc.js").OpResult;
-            unsetMark: (id: string, offset: number, length: number, name: string) => import("./edytor-doc.js").OpResult;
             clearMarks: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
             insertInline: (id: string, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").OpResult;
             removeInline: (id: string, inlineId: string) => import("./edytor-doc.js").OpResult;
-            setInlineData: (id: string, inlineId: string, data: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
             deleteBlocks: (ids: readonly string[]) => import("./edytor-doc.js").OpResult;
             init: (opts?: Parameters<(doc: import("./engine-api.js").EngineDoc, opts?: {
                 content?: import("./index.js").BlockSpec[];

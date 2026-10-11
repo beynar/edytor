@@ -256,7 +256,7 @@ describe('cross-provider relay', () => {
 		const remote = new Y.Doc();
 		const red = E.create(remote);
 		red.init();
-		red.insertBlock({ parent: null, index: 0 }, { id: 'remote-b', type: 'paragraph' });
+		red.insertBlocks({ parent: null, index: 0 }, [{ id: 'remote-b', type: 'paragraph' }]);
 		const update = Y.encodeStateAsUpdate(remote);
 		const e = encoding.createEncoder();
 		writeProtocolVersion(e);

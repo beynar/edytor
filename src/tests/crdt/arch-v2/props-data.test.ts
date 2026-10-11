@@ -110,7 +110,7 @@ describe('block data: per-leaf last writer wins', () => {
 	it('a whole replace removes the keys it saw; a concurrent key under them is kept', () => {
 		settled(
 			converge(seed, 2, ([a, b]) => {
-				a.ed.setBlockData('A', { z: 1 });
+				a.ed.patchData('A', [{ path: [], value: { z: 1 } }]);
 				b.ed.patchData('A', [{ path: ['meta', 'b'], value: 2 }]);
 			}),
 			(o) => expect(dataOf(o)).toEqual({ z: 1, meta: { b: 2 } })
@@ -154,7 +154,7 @@ describe('block data: per-leaf last writer wins', () => {
 		const ed = document.facade;
 		const before = document.encode();
 		expect(ed.patchData('A', [{ path: ['a'], value: 1 }]).status).toBe('noop');
-		expect(ed.setBlockData('A', { a: 1 }).status).toBe('noop');
+		expect(ed.patchData('A', [{ path: [], value: { a: 1 } }]).status).toBe('noop');
 		expect(document.encode()).toEqual(before);
 		expect(ed.patchData('A', [{ path: 'a', value: 1 }]).status).toBe('refused');
 		expect(ed.patchData('A', [{ path: [], value: 3 }]).status).toBe('refused');
@@ -227,7 +227,9 @@ describe('inline atom data', () => {
 
 	it('setInlineData replaces the whole value; an absent atom is refused', () => {
 		const document = loadDocument(seedUpdate(seed));
-		expect(document.facade.setInlineData('A', 'm1', { z: 1 }).status).toBe('applied');
+		expect(
+			document.facade.patchData({ block: 'A', atom: 'm1' }, [{ path: [], value: { z: 1 } }]).status
+		).toBe('applied');
 		expect(document.facade.contentItems('A')[1].data).toEqual({ z: 1 });
 		expect(
 			document.facade.patchData({ block: 'A', atom: 'nope' }, [{ path: ['a'], value: 1 }]).status

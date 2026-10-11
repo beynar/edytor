@@ -278,10 +278,9 @@ const deadBoundary = (ids, config: (who: 'A' | 'B') => object = () => ({})) => {
 	const B = replica(base, ids.b, config('B'));
 	const um = new UndoManager(A.doc.get('blocks'), { captureTimeout: 0 });
 	expect(
-		A.ed.insertBlock(
-			{ parent: null, index: 1 },
+		A.ed.insertBlocks({ parent: null, index: 1 }, [
 			{ id: 'P', type: 'paragraph', content: [{ kind: 'text', text: 'Hello world' }] }
-		).status
+		]).status
 	).toBe('applied');
 	deliver(B, send(A));
 	expect(B.ed.splitBlock('P', 5, 'u').status).toBe('applied');
@@ -327,10 +326,9 @@ describe('F-D19 under hist.undo.withdraw: the undo keeps B’s split and Q; the 
 				const A = replica(base, ids.a);
 				const B = replica(base, ids.b);
 				const um = A.ed.createUndoManager({ captureTimeout: 0 });
-				A.ed.insertBlock(
-					{ parent: null, index: 1 },
+				A.ed.insertBlocks({ parent: null, index: 1 }, [
 					{ id: 'P', type: 'paragraph', content: [{ kind: 'text', text: 'Hello world' }] }
-				);
+				]);
 				deliver(B, send(A));
 				expect(B.ed.splitBlock('P', 5, 'u').status).toBe('applied');
 				expect(B.ed.insertText('u', 0, 'Q').status).toBe('applied');

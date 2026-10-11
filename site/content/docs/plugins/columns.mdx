@@ -248,7 +248,7 @@ document.isLayoutItem(document.parentOf('a')!); // true
 | `isLayout(id)`, `isLayoutItem(id)` | Whether a block is a layout (its kind's role says `layout`), or a column of one |
 | `besideAt(id, kind?)` | The block a beside placement at `id` stands beside: a list item's list, a code line's code block, else the block itself where a layout fits, else its outermost block below the root or a column |
 
-In a view, moves take two more positions: `edytor.move({ blocks, target, position: 'left' | 'right' })` runs `placeBeside` (see [Commands](/docs/editor/commands#moving-blocks)); hooks see `moveBlock` or `moveBlocks` with a `beside: { target, side }` payload (`BlockBeside`).
+In a view, moves take two more positions: `edytor.move({ blocks, target, position: 'left' | 'right' })` runs `placeBeside` (see [Commands](/docs/editor/commands#moving-blocks)); hooks see `moveBlocks` with a `beside: { target, side }` payload (`BlockBeside`).
 
 ## Limitations
 

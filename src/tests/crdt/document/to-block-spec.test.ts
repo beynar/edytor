@@ -28,10 +28,9 @@ describe('toBlockSpec', () => {
 	it('duplicates a block of the document with fresh ids', () => {
 		const document = createDocument({ value: { children: [{ ...template, id: 'src' }] } });
 		const { facade } = document;
-		facade.insertBlock(
-			{ parent: null, index: 1 },
+		facade.insertBlocks({ parent: null, index: 1 }, [
 			toBlockSpec(facade.blockJSON('src'), { freshIds: true })
-		);
+		]);
 
 		const [original, copy] = facade.toJSON().children;
 		expect(copy!.id).not.toBe('src');

@@ -108,7 +108,7 @@ describe('R1 — P4 marker corruption (facade)', () => {
 		ed.init({
 			content: [{ id: 'p', type: 'paragraph', content: [{ kind: 'text', text: 'x'.repeat(300) }] }]
 		});
-		ed.setMark('p', 100, 100, 'b', true);
+		ed.formatRange('p', 100, 100, { b: true });
 		ed.insertText('p', 150, 'P', { b: true });
 		ed.insertText('p', 50, 'Z', { b: true });
 		ed.insertText('p', 152, 'Q', { b: true });

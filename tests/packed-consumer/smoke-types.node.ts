@@ -31,7 +31,7 @@ const crdtDoc: bindings.YDoc = crdt.createDoc();
 const ed = crdt.doc.create(crdtDoc as unknown as bindings.EngineDoc);
 ed.init();
 const ids: string[] = ed.childrenIds(null);
-ed.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'paragraph' });
+ed.insertBlocks({ parent: null, index: 0 }, [{ id: 'b1', type: 'paragraph' }]);
 ed.insertText('b1', 0, 'typed');
 ed.formatRange('b1', 0, 5, { bold: true });
 const v: number | undefined = ed.schemaVersion();

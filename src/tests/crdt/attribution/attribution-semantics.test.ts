@@ -202,7 +202,7 @@ describe('local undo/redo', () => {
 		joinLate(a, b);
 		const unwire = wireDocs(a, b);
 
-		b.transact(() => b.facade.setMark(blockId, 0, 3, 'bold', true));
+		b.transact(() => b.facade.formatRange(blockId, 0, 3, { bold: true }));
 		expect(a.attribution.block(blockId)?.lastChangedBy).toBe('bob');
 		b.history.undo();
 		expect(a.attribution.block(blockId)).toEqual({
@@ -222,10 +222,9 @@ describe('local undo/redo', () => {
 		const unwire = wireDocs(a, b);
 
 		a.transact(() =>
-			a.facade.insertBlock(
-				{ parent: null, index: 1 },
+			a.facade.insertBlocks({ parent: null, index: 1 }, [
 				{ id: 'b2', type: 'paragraph', content: [{ kind: 'text', text: 'two' }] }
-			)
+			])
 		);
 		b.transact(() => b.facade.insertText('b2', 3, '!'));
 		expect(a.attribution.block('b2')?.lastChangedBy).toBe('bob');
@@ -292,10 +291,9 @@ describe('remote updates', () => {
 
 		// B authors a block — A reads bob's c/k/l exactly as written.
 		b.transact(() =>
-			b.facade.insertBlock(
-				{ parent: null, index: 1 },
+			b.facade.insertBlocks({ parent: null, index: 1 }, [
 				{ id: 'b-block', type: 'paragraph', content: [{ kind: 'text', text: 'B' }] }
-			)
+			])
 		);
 		expect(a.attribution.block('b-block')).toEqual({
 			createdBy: 'bob',
@@ -390,10 +388,9 @@ describe('multi-view — one document, one actor', () => {
 
 		// View 2 authors a NEW block — stamped once, under the document actor.
 		v2.transact(() =>
-			v2.facade.insertBlock(
-				{ parent: null, index: 1 },
+			v2.facade.insertBlocks({ parent: null, index: 1 }, [
 				{ id: 'v2-block', type: 'paragraph', content: [{ kind: 'text', text: 'v2' }] }
-			)
+			])
 		);
 		expect(document.attribution.block('v2-block')).toEqual({
 			createdBy: 'alice',
@@ -545,10 +542,9 @@ describe('remote edits vs local history', () => {
 
 		a.transact(() => a.facade.insertText(firstBlock(a).id, 0, 'L'));
 		b.transact(() =>
-			b.facade.insertBlock(
-				{ parent: null, index: 0 },
+			b.facade.insertBlocks({ parent: null, index: 0 }, [
 				{ id: 'remote-b', type: 'paragraph', content: [{ kind: 'text', text: 'rb' }] }
-			)
+			])
 		);
 		expect(a.facade.hasBlock('remote-b')).toBe(true);
 		expect(a.history.undoStack).toHaveLength(1);

@@ -138,7 +138,7 @@ describe('views sharing one document', () => {
 		// The rule is document-level — enforcement outlives the view.
 		expect(document.facade.isVoid(block.id)).toBe(true);
 		expect(
-			document.facade.insertBlock({ parent: block.id, index: 0 }, { id: 'x', type: 'paragraph' })
+			document.facade.insertBlocks({ parent: block.id, index: 0 }, [{ id: 'x', type: 'paragraph' }])
 				.status
 		).toBe('refused');
 

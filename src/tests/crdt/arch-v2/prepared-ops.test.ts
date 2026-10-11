@@ -90,13 +90,13 @@ describe('F-O11 — prepare is pure; the effect summary equals what the applied 
 			const OPS: [string, () => unknown][] = [
 				[
 					'insertBlock',
-					() => P.insertBlock(dest(), { id: rand() < 0.2 ? id() : freshId(), type: 'paragraph' })
+					() => P.insertBlocks(dest(), [{ id: rand() < 0.2 ? id() : freshId(), type: 'paragraph' }])
 				],
 				[
 					'insertBlocks',
 					() => P.insertBlocks(dest(), rand() < 0.3 ? [] : [p(freshId(), 'x', [p(freshId(), 'y')])])
 				],
-				['moveBlock', () => P.moveBlock(id(), dest())],
+				['moveBlock', () => P.moveBlocks([id()], dest())],
 				['moveBlocks', () => P.moveBlocks(rand() < 0.2 ? [] : [id(), id()], dest())],
 				['nestBlock', () => P.nestBlock(id(), id())],
 				['unNestBlock', () => P.unNestBlock(id())],
@@ -106,7 +106,7 @@ describe('F-O11 — prepare is pure; the effect summary equals what the applied 
 				['mergeForward', () => P.mergeForward(id())],
 				['deleteBlock', () => P.deleteBlock(id(), { keepChildren: rand() < 0.4 })],
 				['setBlockType', () => P.setBlockType(id(), pick(['paragraph', 'heading']))],
-				['setBlockData', () => P.setBlockData(id(), pick([{}, { level: 1 }]))],
+				['setBlockData', () => P.patchData(id(), [{ path: [], value: pick([{}, { level: 1 }]) }])],
 				[
 					'setBlock',
 					() =>
@@ -136,8 +136,8 @@ describe('F-O11 — prepare is pure; the effect summary equals what the applied 
 					() => P.insertText(id(), off(), pick(['', 'q', 'zz']), pick([undefined, { bold: true }]))
 				],
 				['deleteText', () => P.deleteText(id(), off(), len())],
-				['setMark', () => P.setMark(id(), off(), len(), 'bold', true)],
-				['unsetMark', () => P.unsetMark(id(), off(), len(), 'bold')],
+				['setMark', () => P.formatRange(id(), off(), len(), { bold: true })],
+				['unsetMark', () => P.formatRange(id(), off(), len(), { bold: null })],
 				['formatRange', () => P.formatRange(id(), off(), len(), { italic: pick([true, null]) })],
 				['clearMarks', () => P.clearMarks(id(), off(), len())],
 				['insertInline', () => P.insertInline(id(), off(), { id: freshId(), type: 'mention' })],
@@ -152,7 +152,9 @@ describe('F-O11 — prepare is pure; the effect summary equals what the applied 
 					'setInlineData',
 					() => {
 						const b = id();
-						return P.setInlineData(b, inlineIn(b), pick([{}, { v: 1 }]));
+						return P.patchData({ block: b, atom: inlineIn(b) }, [
+							{ path: [], value: pick([{}, { v: 1 }]) }
+						]);
 					}
 				]
 			];

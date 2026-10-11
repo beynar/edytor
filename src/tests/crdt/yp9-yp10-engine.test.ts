@@ -174,7 +174,7 @@ describe('YP10, YP19 — receiving a change over marked text writes nothing and 
 		]);
 		const a = replica('A', seed, 100);
 		const b = replica('B', seed, 200);
-		a.ed.setMark('D', 0, 2, 'bold', true);
+		a.ed.formatRange('D', 0, 2, { bold: true });
 		a.ed.insertText('E', 4, '!');
 		const steps = a.document.history.undoStack.length;
 		if (variant === 'replace')

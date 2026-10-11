@@ -40,7 +40,7 @@
  *
  * {@link jsonContentToItems} / {@link jsonBlockToSpec} are the canonical
  * JSON → facade `ContentItem`/`BlockSpec` converters — the admission shape
- * `facade.insertBlock`/`DocBlock.set` consume (see `placement/model.ts`
+ * `facade.insertBlocks` consumes (see `placement/model.ts`
  * `insertOne`/`appendItems`). Content preparation builds specs DIRECTLY
  * from JSON — never through disposable live-wrapper trees. The spec types
  * are imported type-only, so this module keeps its zero-runtime-dependency
@@ -420,7 +420,7 @@ export const jsonBlockToSpec = (
 
 /**
  * A canonical `JSONBlock` (from `facade.toJSON()`/`blockJSON`, a template, an
- * import) as the `BlockSpec` `facade.insertBlock` takes: ids are kept, and
+ * import) as the `BlockSpec` `facade.insertBlocks` takes: ids are kept, and
  * minted where missing; `freshIds` mints every id (a duplicate).
  */
 export const toBlockSpec = (block: JSONBlock, { freshIds = false } = {}): BlockSpec =>

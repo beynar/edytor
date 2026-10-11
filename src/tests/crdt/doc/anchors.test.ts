@@ -125,7 +125,7 @@ describe('anchor resolution through structure', () => {
 	it('merge: an anchor follows its atoms into the claiming block', () => {
 		const { ed } = seeded();
 		ed.insertText(DEFAULT_SEED_ID, 0, 'abc');
-		ed.insertBlock({ parent: null, index: 1 }, { id: 'b2', type: 'paragraph' });
+		ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'b2', type: 'paragraph' }]);
 		ed.insertText('b2', 0, 'def');
 		const caret = ed.anchorAt('b2', 1, 'left'); // binds 'd' in b2's backing
 		expect(caret?.b).toBe('b2');
@@ -138,8 +138,8 @@ describe('anchor resolution through structure', () => {
 	it('move: an anchor on a moved block keeps resolving inside it', () => {
 		const { ed } = seeded();
 		ed.insertText(DEFAULT_SEED_ID, 0, 'abc');
-		ed.insertBlock({ parent: null, index: 1 }, { id: 'wrap', type: 'paragraph' });
-		ed.insertBlock({ parent: null, index: 2 }, { id: 'b3', type: 'paragraph' });
+		ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'wrap', type: 'paragraph' }]);
+		ed.insertBlocks({ parent: null, index: 2 }, [{ id: 'b3', type: 'paragraph' }]);
 		const caret = ed.anchorAt(DEFAULT_SEED_ID, 1, 'left');
 		ed.nestBlock(DEFAULT_SEED_ID, 'wrap');
 		expect(ed.parentOf(DEFAULT_SEED_ID)).toBe('wrap');
@@ -148,7 +148,7 @@ describe('anchor resolution through structure', () => {
 
 	it('deleted backing block → resolveAnchor returns null (caller falls back)', () => {
 		const { ed } = seeded();
-		ed.insertBlock({ parent: null, index: 1 }, { id: 'b2', type: 'paragraph' });
+		ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'b2', type: 'paragraph' }]);
 		ed.insertText('b2', 0, 'def');
 		const caret = ed.anchorAt('b2', 1, 'left');
 		ed.deleteBlock('b2');
@@ -249,7 +249,7 @@ describe('anchors under concurrency (two replicas)', () => {
 	it('an anchor bound before a remote merge follows its atoms into the merge', () => {
 		const { d1, d2, e1, e2, push } = pair();
 		e1.insertText(DEFAULT_SEED_ID, 0, 'abc');
-		e1.insertBlock({ parent: null, index: 1 }, { id: 'b2', type: 'paragraph' });
+		e1.insertBlocks({ parent: null, index: 1 }, [{ id: 'b2', type: 'paragraph' }]);
 		e1.insertText('b2', 0, 'def');
 		push(d1, d2);
 		const caret = e1.anchorAt('b2', 1, 'left');
@@ -373,7 +373,7 @@ describe('anchors under concurrency (two replicas)', () => {
 		// Moving the OWNED block does not move its atoms' ownership —
 		// display order decouples from backing order; the seam caret is
 		// still the start of tail's stream.
-		expect(ed.moveBlock('tail', { parent: null, index: 0 }).status).toBe('applied');
+		expect(ed.moveBlocks(['tail'], { parent: null, index: 0 }).status).toBe('applied');
 		expect(ed.resolveAnchor(caret)).toEqual({ blockId: 'tail', offset: 0 });
 	});
 
@@ -400,7 +400,7 @@ describe('history independence — direct vs split construction', () => {
 	// bootstrap, tail ↔ d2) — not by CRDT internals.
 	it('a seam caret behaves identically whether its block was split or built directly', () => {
 		const direct = seeded();
-		direct.ed.insertBlock({ parent: null, index: 1 }, { id: 'd2', type: 'paragraph' });
+		direct.ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'd2', type: 'paragraph' }]);
 		direct.ed.insertText(DEFAULT_SEED_ID, 0, 'alpha');
 		direct.ed.insertText('d2', 0, 'Hello');
 

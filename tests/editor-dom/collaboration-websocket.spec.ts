@@ -654,10 +654,9 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 			// head; typing into it must fill the head, not append to the tail.
 			await pageA.evaluate(() => {
 				const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-				edytor.facade.insertBlock(
-					{ parent: null, index: Number.MAX_SAFE_INTEGER },
+				edytor.facade.insertBlocks({ parent: null, index: Number.MAX_SAFE_INTEGER }, [
 					{ id: 'wb', type: 'paragraph' }
-				);
+				]);
 				edytor.facade.insertText('wb', 0, 'abcdefghij');
 			});
 			await expectConverged(pageA, pageB);

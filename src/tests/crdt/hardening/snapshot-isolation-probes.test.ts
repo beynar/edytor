@@ -185,7 +185,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		doc2.clientID = cid++;
 		const ed2 = E.create(doc2);
 		ed2.init();
-		expect(() => ed2.setMark(BOOTSTRAP_BLOCK, 0, 0, 'big', 5n)).toThrow(/BigInt|JSON/i);
+		expect(() => ed2.formatRange(BOOTSTRAP_BLOCK, 0, 0, { big: 5n })).toThrow(/BigInt|JSON/i);
 		expect(() => Y.encodeStateAsUpdate(doc2)).not.toThrow();
 	});
 });
@@ -239,7 +239,7 @@ describe('gateH-R4 — DocChange payload isolation', () => {
 		const { ed } = seed();
 		const changes: any[] = [];
 		ed.onChange((c: any) => changes.push(c));
-		ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' });
+		ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'x', type: 'paragraph' }]);
 		const first = changes.at(-1)!;
 		const orderArr = first.order.get(null);
 		// FIXED: the published array IS the retained baseline — frozen at
@@ -254,7 +254,7 @@ describe('gateH-R4 — DocChange payload isolation', () => {
 			threw = true;
 		}
 		expect(threw).toBe(true);
-		ed.insertBlock({ parent: null, index: 1 }, { id: 'y', type: 'paragraph' });
+		ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'y', type: 'paragraph' }]);
 		const second = changes.at(-1)!;
 		// The second commit DID change root order (y inserted) — the intact
 		// baseline diffs it correctly.
@@ -307,7 +307,7 @@ describe('gateH-R4 — DocChange payload isolation', () => {
 		let writeThrew: unknown = null;
 		let readThrew: unknown = null;
 		try {
-			ed.setBlockData('b', cyclic);
+			ed.patchData('b', [{ path: [], value: cyclic }]);
 		} catch (e) {
 			writeThrew = e;
 		}

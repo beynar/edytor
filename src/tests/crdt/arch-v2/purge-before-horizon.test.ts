@@ -167,7 +167,7 @@ describe('H7: purge what was deleted before the horizon', () => {
 		const room = open('room', 1);
 		const ada = open('ada', 2);
 		ok(ada.ed.splitBlock('p1', 5, 'p1b')); // 'live ' | 'text'
-		ok(ada.ed.setBlockData('p1b', { tag: 'gone' }));
+		ok(ada.ed.patchData('p1b', [{ path: [], value: { tag: 'gone' } }]));
 		ok(ada.ed.mergeBlocks('p4', 'p1b')); // p1b claims p4
 		ok(ada.ed.deleteBlocks(['p1b']));
 		syncAll([room, ada]);
@@ -285,8 +285,8 @@ describe('H7: purge what was deleted before the horizon', () => {
 		const bob = open('bob', 3);
 		ok(ada.ed.splitBlock('p1', 5, 'p1b')); // 'live ' | 'text'
 		syncAll([room, ada, bob]);
-		ok(bob.ed.setBlockData('p1b', { color: 'blue' }));
-		ok(ada.ed.setBlockData('p1', { color: 'red' }));
+		ok(bob.ed.patchData('p1b', [{ path: [], value: { color: 'blue' } }]));
+		ok(ada.ed.patchData('p1', [{ path: [], value: { color: 'red' } }]));
 		syncAll([room, ada, bob]);
 		expect(room.ed.blockAttribution('p1b')).toMatchObject({ createdBy: 'ada' });
 		expect([...room.ed.blockAttribution('p1b').contributors]).toEqual(['bob']);

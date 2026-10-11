@@ -126,7 +126,7 @@ describe('P1-5 under hist.undo.withdraw — an undone id is not recycled; a late
 		const unwire = [unwireAB, wireDocs(a, c)];
 
 		a.transact(() =>
-			a.facade.insertBlock({ parent: null, index: 1 }, { id: 'shared', type: 'paragraph' })
+			a.facade.insertBlocks({ parent: null, index: 1 }, [{ id: 'shared', type: 'paragraph' }])
 		);
 		expect(c.facade.hasBlock('shared')).toBe(true);
 		// Sever A↔B so carol's update (C→A) cannot reach B — the delayed
@@ -166,14 +166,13 @@ describe('P1-5 under hist.undo.withdraw — an undone id is not recycled; a late
 		}
 
 		const recreated = b.transact(() =>
-			b.facade.insertBlock(
-				{ parent: null, index: 1 },
+			b.facade.insertBlocks({ parent: null, index: 1 }, [
 				{
 					id: 'shared',
 					type: 'paragraph',
 					content: [{ kind: 'text', text: 'new' }]
 				}
-			)
+			])
 		);
 		// The withdrawn block still owns its id.
 		expect(recreated.status).toBe('refused');
@@ -231,14 +230,13 @@ describe('P2-7 — paragraph attribution is a block-id lineage contract', () => 
 		const a = createDocument({ actor: alice });
 		a.sync({ children: [] });
 		a.transact(() =>
-			a.facade.insertBlock(
-				{ parent: null, index: 0 },
+			a.facade.insertBlocks({ parent: null, index: 0 }, [
 				{
 					id: 'shared',
 					type: 'paragraph',
 					content: [{ kind: 'text', text: 'abcd' }]
 				}
-			)
+			])
 		);
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);

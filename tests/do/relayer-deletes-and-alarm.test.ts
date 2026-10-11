@@ -88,7 +88,7 @@ const restoreBehindAda = async (room: string, edit: (ada: Attached) => void) => 
 	const ada = E.attachDocument(a, { actor: { id: 'ada' } });
 	ada.transact(() => {
 		ada.facade.insertText('seed', 0, 'ada: ');
-		ada.facade.setBlockData('seed', { tone: 'cool' });
+		ada.facade.patchData('seed', [{ path: [], value: { tone: 'cool' } }]);
 	});
 	await vi.waitFor(() => expect(tabA.acks.at(-1)?.get(a.clientID)).toBe(clockOf(a)));
 	expect(await runDurableObjectAlarm(hooked(room))).toBe(true);
@@ -153,7 +153,7 @@ describe("FW-09 · a relayer's deletes of a stripped author's stored items are k
 	it("a stripped rewrite of Ada's stored entry does not delete it: the value stays", async () => {
 		const room = 'hooked-restore-fw09-entry';
 		const { b, provider, ada } = await restoreBehindAda(room, (ada) =>
-			ada.facade.setBlockData('seed', { tone: 'warm' })
+			ada.facade.patchData('seed', [{ path: [], value: { tone: 'warm' } }])
 		);
 		const data = (f: { toJSON(): E.JSONDoc }) => f.toJSON().children[0].data;
 		expect(readFacade(b, data)).toEqual({ tone: 'warm' });

@@ -166,7 +166,7 @@ describe('gateF2 — unpaired-surrogate wire normalization (F2-M1)', () => {
 		const { A, B } = set;
 		A.transact(() => {
 			ed(A).setBlockType('p', `he${HI}ding`);
-			ed(A).setBlockData('p', { note: `da${LO}ta` });
+			ed(A).patchData('p', [{ path: [], value: { note: `da${LO}ta` } }]);
 			ops.setMark(A, 'p', 0, 2, `bo${HI}d`, true);
 		});
 		set.deliver('A', 'B');

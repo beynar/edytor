@@ -182,7 +182,7 @@ const fragmentedDoc = (n, cycles) => {
 		ed.insertText(id, 0, textOf(20));
 		ed.deleteText(id, 0, 20);
 		if (c % 4 === 0) {
-			ed.insertBlock({ parent: null, index: 0 }, { id: `tmp${c}`, type: 'paragraph' });
+			ed.insertBlocks({ parent: null, index: 0 }, [{ id: `tmp${c}`, type: 'paragraph' }]);
 			ed.deleteBlock(`tmp${c}`);
 		}
 	}
@@ -543,8 +543,7 @@ const ops = () => {
 		delete: lane(f, (ed, id) => ed.deleteText(id, 10, 8)),
 		'paste-text': lane(f, (ed, id) => ed.insertText(id, 10, textOf(500))),
 		'paste-subtree': lane(f, (ed, id) =>
-			ed.insertBlock(
-				{ parent: null, index: 0 },
+			ed.insertBlocks({ parent: null, index: 0 }, [
 				{
 					id: 'paste',
 					type: 'section',
@@ -554,7 +553,7 @@ const ops = () => {
 						content: [{ kind: 'text', text: textOf(80) }]
 					}))
 				}
-			)
+			])
 		),
 		format: lane(f, (ed, id) => ed.formatRange(id, 5, 25, { bold: true })),
 		note: 'single ops on a 1,000-block doc; delete removes 8 chars, paste-text inserts 500, paste-subtree a 6-block section, format bolds 20 chars.'
@@ -570,7 +569,7 @@ const moves = () => {
 				const { doc, ed } = specDoc(groupSpec(100));
 				return { doc, ed, targetId: 'b10' };
 			},
-			(ed, id) => ed.moveBlock(id, { parent: null, index: 60 })
+			(ed, id) => ed.moveBlocks([id], { parent: null, index: 60 })
 		),
 		'group-5': lane(
 			() => {
@@ -597,7 +596,7 @@ const moves = () => {
 			// `children` takes only nestedSpec's INNER chain (d1…d19 > leaf), so
 			// the move resolved against a missing parent and recorded 0 bytes.
 			// 'd19' is the deepest attached section (nest>d1>…>d19>leaf).
-			(ed, id) => ed.moveBlock(id, { parent: 'd19', index: 0 })
+			(ed, id) => ed.moveBlocks([id], { parent: 'd19', index: 0 })
 		),
 		note: 'placement-attribute moves; reparent drops a root block into the deepest section of a 20-deep chain.'
 	};

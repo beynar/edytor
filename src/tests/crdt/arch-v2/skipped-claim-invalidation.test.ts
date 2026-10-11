@@ -184,7 +184,7 @@ describe('P2.8 fix — a skipped claim still invalidates its holder', () => {
 			A.ed.onChange((c) => changes.push(c));
 			// One commit: `k` moves to the root, `a` and `g` are deleted.
 			A.ed.transact(() => {
-				A.ed.moveBlock('k', { parent: null, index: 0 });
+				A.ed.moveBlocks(['k'], { parent: null, index: 0 });
 				A.ed.deleteBlock('a');
 				A.ed.deleteBlock('g');
 			});

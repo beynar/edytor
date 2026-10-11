@@ -208,7 +208,7 @@ describe('remote edits vs local selection', () => {
 
 		const { remote, push } = await createRemotePeer(edytor);
 		// Bold 'o w' (offsets 4..7) — the caret at 5 lands inside the marked run.
-		remote.facade.setMark(edytor.root!.children[0]!.id, 4, 3, 'bold', true);
+		remote.facade.formatRange(edytor.root!.children[0]!.id, 4, 3, { bold: true });
 		await push();
 
 		await waitFor(() => expect(selectionState(edytor).startText?.isInDocument).toBe(true));

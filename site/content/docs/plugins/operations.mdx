@@ -263,8 +263,8 @@ The document's operations, the same on `edytor` (dispatched) and on `edytor.docu
 
 | Operation | Arguments |
 | --- | --- |
-| `insertBlocks`, `insertBlock` | `(dest: { parent, index }, blocks: JSONBlock[])`, one block for `insertBlock`; ids are minted where missing |
-| `moveBlocks`, `moveBlock` | `(ids, dest)`; the index counts the destination's children without the moved blocks |
+| `insertBlocks` | `(dest: { parent, index }, blocks: JSONBlock[])`; ids are minted where missing |
+| `moveBlocks` | `(ids, dest)`; the index counts the destination's children without the moved blocks |
 | `nestBlock` | `(id, parent)`: the last child of `parent` (under its last item when it is a list) |
 | `unNestBlock`, `unNestBlocks` | `(id)`, `(ids)`: after their parent, the siblings after the last one becoming its children |
 | `liftOut` | `(id, kind, { keep?, after? })`: out of the containers a `kind` cannot sit in |
@@ -278,12 +278,10 @@ The document's operations, the same on `edytor` (dispatched) and on `edytor.docu
 | `setBlock` | `(id, { type?, data?, content?, children? })`: content and children (JSON or specs) replace the block's |
 | `setBlockType` | `(id, type)` |
 | `patchData` | `(target, patches)`: `target` a block id, `{ block, atom }` for an inline atom, `null` for the document; each patch `{ path, value? }` (no `value` deletes), `{ path, splice }` or `{ path, order }` ([Properties](/docs/concepts/properties)) |
-| `setBlockData`, `setInlineData` | `(id, data)`, `(id, atom, data)`: a `patchData` of the root |
 | `duplicateBlock` | `(id, freshId?)`: a copy of the block and its subtree after it, under fresh ids |
 | `insertText` | `(id, offset, text, marks?)` |
 | `deleteText` | `(id, offset, length)` |
 | `formatRange` | `(id, offset, length, marks)`: `null` removes a mark |
-| `setMark`, `unsetMark` | `(id, offset, length, name, value)`, `(id, offset, length, name)` |
 | `clearMarks` | `(id, offset, length)`: every mark in the range |
 | `insertInline` | `(id, offset, { id?, type, data? })` |
 | `removeInline` | `(id, atom)` |

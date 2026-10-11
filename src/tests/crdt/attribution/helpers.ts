@@ -39,7 +39,7 @@ export const authoredDocument = (
 	meta.setAttr('v', SCHEMA_VERSION);
 	meta.setAttr('schema', SCHEMA_NAME);
 	value.children.forEach((block, index) =>
-		document.facade.insertBlock({ parent: null, index }, jsonBlockToSpec(block))
+		document.facade.insertBlocks({ parent: null, index }, [jsonBlockToSpec(block)])
 	);
 	document.sync();
 	return document;

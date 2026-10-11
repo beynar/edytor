@@ -146,7 +146,7 @@ describe('gateF2/WU7 — content streak then structural', () => {
 		expect(ed.blockText('a')).toBe('xxxxx43210alpha');
 		// Structural commit — fullDiff against the patched skeleton. If the
 		// skeleton drifted, `moved`/`order`/`removed` will be wrong or missing.
-		ed.moveBlock('a', { parent: 'd', index: 0 });
+		ed.moveBlocks(['a'], { parent: 'd', index: 0 });
 		const mv = changes[5];
 		expect(mv.moved.has('a')).toBe(true);
 		expect(mv.order.get('d')).toEqual(['a']);
@@ -159,7 +159,7 @@ describe('gateF2/WU7 — content streak then structural', () => {
 		expect([...post.content.keys()]).toEqual(['a']);
 		expect(ed.blockText('a')).toBe('>>xxxxx43210alpha');
 		// Meta on another block — skeleton meta fields must not be stale.
-		ed.setBlockData('b', { v: 1 });
+		ed.patchData('b', [{ path: [], value: { v: 1 } }]);
 		expect([...changes[7].meta.keys()]).toEqual(['b']);
 		// Structural removal — covered-by-parent semantics: deleting d
 		// removes a too (a's parent is d) but only the ROOT `d` is reported.

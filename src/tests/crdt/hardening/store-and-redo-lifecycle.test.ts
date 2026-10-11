@@ -157,10 +157,10 @@ describe('gateH-bonus — rehome rank stress', () => {
 		// blocks to root index 0 in reverse order.
 		const ids = edA.childrenIds(null);
 		for (let i = ids.length - 1; i >= 0; i--) {
-			edA.moveBlock(ids[i], { parent: null, index: 0 });
+			edA.moveBlocks([ids[i]], { parent: null, index: 0 });
 		}
 		for (let i = 0; i < 10; i++) {
-			edA.insertBlock({ parent: null, index: 0 }, { id: `n${i}`, type: 'paragraph' });
+			edA.insertBlocks({ parent: null, index: 0 }, [{ id: `n${i}`, type: 'paragraph' }]);
 		}
 		const orderA = edA.childrenIds(null);
 		// Converge to a second replica and compare ORDER (not bytes).

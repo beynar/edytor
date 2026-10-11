@@ -78,7 +78,7 @@ const storyDoc: bindings.YDoc = crdt.createDoc();
 const storyAwareness: bindings.Awareness = new crdt.Awareness(storyDoc);
 const storyEd = crdt.doc.create(storyDoc as unknown as bindings.EngineDoc);
 storyEd.init();
-storyEd.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'paragraph' });
+storyEd.insertBlocks({ parent: null, index: 0 }, [{ id: 'b1', type: 'paragraph' }]);
 storyEd.insertText('b1', 0, 'typed');
 storyEd.formatRange('b1', 0, 5, { bold: true });
 const storyJson: ReturnType<typeof storyEd.toJSON> = storyEd.toJSON();
@@ -142,10 +142,9 @@ const rootDoc: EdytorDocument = createDocument({
 const rootReadiness: DocumentReadiness = rootDoc.readiness;
 const rootProjected: ProjectedDoc = rootDoc.project();
 rootDoc.transact(() => rootDoc.insertText(rootProjected.children[0]!.id, 0, '!'));
-rootDoc.insertBlock(
-	{ parent: null, index: 1 },
+rootDoc.insertBlocks({ parent: null, index: 1 }, [
 	bindings.toBlockSpec(rootDoc.blockJSON('root-p1'), { freshIds: true })
-);
+]);
 rootDoc.history.undo();
 const rootAttribution: DocumentAttribution = rootDoc.attribution;
 const rootUpdate: Uint8Array = rootDoc.encode();

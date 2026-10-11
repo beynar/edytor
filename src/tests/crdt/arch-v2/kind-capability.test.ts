@@ -311,7 +311,7 @@ describe('F-O6 — canMove(r) ⇔ move(r) is not refused', () => {
 			const kind = r();
 			let actual: boolean;
 			if (ids.length === 1 && kind < 0.3) {
-				actual = ed.moveBlock(ids[0], { parent, index }).status !== 'refused';
+				actual = ed.moveBlocks([ids[0]], { parent, index }).status !== 'refused';
 			} else if (ids.length === 1 && kind < 0.45 && parent !== null) {
 				actual = ed.nestBlock(ids[0], parent).status !== 'refused';
 			} else {

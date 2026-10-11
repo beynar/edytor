@@ -153,7 +153,7 @@ edA.init(); // deterministic bootstrap — one canonical empty block
 const boot = edA.childrenIds(null)[0];
 assert.equal(typeof boot, 'string');
 edA.insertText(boot, 0, 'Hello, ');
-assert.ok(edA.insertBlock({ parent: null, index: 1 }, { id: 'b-world', type: 'paragraph' }));
+assert.ok(edA.insertBlocks({ parent: null, index: 1 }, [{ id: 'b-world', type: 'paragraph' }]));
 edA.insertText('b-world', 0, 'world');
 edA.formatRange('b-world', 0, 5, { bold: true });
 assert.equal(edA.blockText('b-world'), 'world');

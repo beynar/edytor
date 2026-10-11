@@ -53,7 +53,7 @@ describe('review — an undone creation keeps its id and its record (hist.undo.w
 		const unwire = wireDocs(a, b);
 
 		a.transact(() =>
-			a.facade.insertBlock({ parent: null, index: 1 }, { id: 'shared', type: 'paragraph' })
+			a.facade.insertBlocks({ parent: null, index: 1 }, [{ id: 'shared', type: 'paragraph' }])
 		);
 		expect(b.facade.hasBlock('shared')).toBe(true);
 
@@ -65,7 +65,7 @@ describe('review — an undone creation keeps its id and its record (hist.undo.w
 
 		// Bob cannot create a block under the withdrawn block's id.
 		const again = b.transact(() =>
-			b.facade.insertBlock({ parent: null, index: 1 }, { id: 'shared', type: 'paragraph' })
+			b.facade.insertBlocks({ parent: null, index: 1 }, [{ id: 'shared', type: 'paragraph' }])
 		);
 		expect(again.status).toBe('refused');
 		expect(b.facade.isVisibleBlock('shared')).toBe(false);

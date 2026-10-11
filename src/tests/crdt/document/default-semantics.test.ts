@@ -76,8 +76,8 @@ const edits = (semantics?: DocumentSemanticsConfig) => {
 	const statuses = [
 		facade.mergeBackward('p').status,
 		facade.splitBlock('img', 1, 'img2').status,
-		facade.moveBlock('line', { parent: null, index: 0 }).status,
-		facade.moveBlock('q', { parent: 'cols', index: 0 }).status
+		facade.moveBlocks(['line'], { parent: null, index: 0 }).status,
+		facade.moveBlocks(['q'], { parent: 'cols', index: 0 }).status
 	];
 	document.destroy();
 	return statuses;

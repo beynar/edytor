@@ -16,8 +16,8 @@ const document = createDocument({
 
 document.insertText('p1', 5, ' world'); // { status: 'applied', ids: ['p1'] }
 document.insertText('p1', 0, ''); // { status: 'noop', ids: [] }
-document.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' });
-document.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' }); // refused: id taken
+document.insertBlocks({ parent: null, index: 1 }, [{ id: 'p2', type: 'paragraph' }]);
+document.insertBlocks({ parent: null, index: 1 }, [{ id: 'p2', type: 'paragraph' }]); // refused: id taken
 ```
 
 ## Block roles
@@ -65,7 +65,7 @@ Offsets count what the block displays: one per UTF-16 text unit and one per inli
 ```ts title="copy-block.ts" check
 import { toBlockSpec } from 'edytor/crdt/edytor';
 
-doc.insertBlock({ parent: null, index: 1 }, toBlockSpec(doc.blockJSON('p1'), { freshIds: true }));
+doc.insertBlocks({ parent: null, index: 1 }, [toBlockSpec(doc.blockJSON('p1'), { freshIds: true })]);
 ```
 
 ## Results
@@ -90,10 +90,8 @@ type OpResult = {
 
 | Operation | `ids` when applied | Notes |
 | --- | --- | --- |
-| `insertBlock(dest, spec)` | the new block | Refused when `dest.parent` is missing, deleted or void, or any id in the spec is taken (by a live or deleted block). |
-| `insertBlocks(dest, specs)` | the new roots | All or nothing. |
-| `moveBlock(id, dest)` | the block | Keeps the block's identity and kind. Refused exactly when `canPlace([id], dest.parent)` is `false`, so never directly into a list unless it is an item. |
-| `moveBlocks(ids, dest)` | the blocks, in request order | One step; placed consecutively at `dest.index`. A list the move leaves with no item is removed (all the move ops do this). |
+| `insertBlocks(dest, specs)` | the new roots | All or nothing. Refused when `dest.parent` is missing, deleted or void, or any id in the specs is taken (by a live or deleted block). |
+| `moveBlocks(ids, dest)` | the blocks, in request order | One step; placed consecutively at `dest.index`, keeping each block's identity and kind. Refused exactly when `canPlace(ids, dest.parent)` is `false`, so never directly into a list unless the blocks are its items. A list the move leaves with no item is removed (all the move ops do this). |
 | `nestBlock(id, parent)` | the block | Moves it to the end of `parent`'s children. When `parent` is a list the block is no item of, it nests under the list's last item instead (Tab after a list, as in Notion); refused when the list ends with a block that holds no children, such as an image. |
 | `unNestBlock(id)` | the block | Moves it right after its parent; the siblings that followed it become its last children (unless it is void or an island, or they would not fit it). Out of a list, it becomes its new parent's default child, unless it stays inside an outer list of that kind (a nested list's item stays a list item), and never takes the items after it: a first item goes before the list, and a middle one splits the list: the list keeps the items after it and a new list of the same kind takes the ones before it. Into a list (a paragraph nested under an item), it becomes a list item. Refused where it would land directly in a container it is no item of (an image, a code block or a heading out of an item into its list, a paragraph out of a column into its columns layout). A list left with no item is removed. |
 | `unNestBlocks(ids)` | the blocks | The same for sibling blocks in document order, as one step: the siblings after the last one become its children (out of a list, they stay a list). The blocks land together, so a sibling between two of them that `ids` leaves out ends up before them: `unNestBlocks(['a', 'c'])` on a list `a` to `e` reads `b a c d e`. To keep the order, call it once per run of adjacent siblings, as <kbd>Shift+Tab</kbd> and `edytor.moveBlocks` with `direction: 'out'` do. |
@@ -109,7 +107,6 @@ type OpResult = {
 | `setBlock(id, { type?, data?, content?, children? })` | `id` | `type` updates in place; `data` sets the properties it names and keeps the others (a retype keeps the block's properties); `content` and `children` replace everything (new children need unused ids, or `reason: 'id-collision'`). Refused with `children` for a void kind. |
 | `setBlockType(id, type)` | `id` | To a void kind, the block's children move out, right after it. An island (a code block) retyped to another kind keeps its lines as that kind's default child, or as the document's default kind where that child shows no text (a column); an island without lines (a table) keeps its children's kinds. A block set to the document's default kind directly in a list shows as the list's item. |
 | `patchData(target, ops)` | the block, or none for the document | Patches the data of a block (`target` its id), of an inline block (`{ block, atom }`) or of the document (`null`). `ops` are applied in order; `path` lists object keys from the root, an array item by its index as a string or by its id (`~` and a lowercase letter, from `dataItemIds`), resolved when the op runs; a key that starts with `~` is written `~0…` (`['~0abc']` for the key `~abc`). `{ path, value? }` sets the value at `path` (objects are made along it; an index past the end pads with `null`), or deletes it (removes the item) without `value`; `path: []` replaces the whole object. `{ path, splice: [start, deleteCount?, ...items] }` removes and inserts items of the array at `path` as `Array.prototype.splice` does; `{ path, order }` moves its items (`order`: the current indexes in their new order). Only the properties and items it changes are written, so a peer's concurrent edit of another property or item is kept, and assigning an array keeps the items it keeps equal (the merge rules are in [Properties](/docs/concepts/properties#how-concurrent-edits-merge)). `noop` when nothing changes; refused for a missing target, a `path` that is not an array of strings, a root value that is not an object, an index or id that names no item (an item removed meanwhile, or whose array was deleted or replaced: nothing is written under it), a `splice` or `order` where there is no array, `splice` bounds that are not integers, or an `order` that is not a permutation. |
-| `setBlockData(id, data)` | `id` | Replaces the whole `data` object: `patchData(id, [{ path: [], value: data }])`. |
 | `duplicateBlock(id, freshId)` | the copy | Copies the subtree after `id`; `freshId(oldId, kind)` names each copied block (`kind` `'block'`) and inline atom (`'inline'`). An atom it returns no id for gets a fresh one; a block it returns no id for refuses the copy. |
 
 The table operations (`insertTableRow`, `deleteTableColumn`, …) come with the table plugin: each prepares a plan over these operations, which `apply` writes. See [Table](/docs/plugins/table#document-api). The document keeps the table reads (`isTable`, `tableOf`, `tableColumns`, `tableGrid`) and refuses a cell's move, merge or split (`canPlace`, `canMerge`, `splitBlock`); a row moves only within its table.
@@ -122,12 +119,12 @@ Two peers outdenting, lifting or turning into another kind items of one list, or
 
 Not covered, where the order can follow the client ids:
 
-- `insertBlock(s)` (the editor's Enter at a block's start or end, a kind picked from the + button's menu);
+- `insertBlocks` (the editor's Enter at a block's start or end, a kind picked from the + button's menu);
 - an `insertFlow` at a block's start whose first line stands apart (a list, a code block, a divider or an image), or at the end of a `view.header` block;
 - `duplicateBlock`;
 - an `insertFlow` that is `whole` (a block-selection copy) or `replace`s blocks (a paste or typing over selected blocks);
 - several structural calls by one replica before it syncs (the editor's Turn into over several blocks is one `liftOut` plan per block, and its Shift+Tab one `unNestBlocks` plan per run of adjacent blocks; `unNestBlocks` over adjacent siblings is one plan; one call over non-adjacent ones is not covered);
-- moves (`moveBlock(s)`, `nestBlock`: a drag, the handle's Alt+↑/↓/→, Mod+Shift+↑/↓, the block menu's Move up/down, Tab; the handle's Alt+← is the outdent, `unNestBlocks`, which is ranked).
+- moves (`moveBlocks`, `nestBlock`: a drag, the handle's Alt+↑/↓/→, Mod+Shift+↑/↓, the block menu's Move up/down, Tab; the handle's Alt+← is the outdent, `unNestBlocks`, which is ranked).
 
 The residuals (in the split of a list, a new line beside a block a peer moves, a merge into a block a peer splits, text typed or deleted after one's own split point) and these cases are listed in [Concurrent editing](/docs/collaboration/concurrent-editing#which-races-keep-the-text-order).
 
@@ -137,13 +134,10 @@ The residuals (in the split of a list, a new line beside a block a peer moves, a
 | --- | --- |
 | `insertText(id, offset, text, marks?)` | `marks` like `{ bold: true }`. |
 | `deleteText(id, offset, length)` | |
-| `formatRange(id, offset, length, marks)` | Sets several marks; a `null` value removes that mark. |
-| `setMark(id, offset, length, name, value)` | One mark. |
-| `unsetMark(id, offset, length, name)` | |
+| `formatRange(id, offset, length, marks)` | Sets the marks it names; a `null` value removes that mark. |
 | `clearMarks(id, offset, length)` | Removes every mark present in the range. |
 | `insertInline(id, offset, atom)` | `atom` is an `InlineSpec`. |
 | `removeInline(id, inlineId)` | |
-| `setInlineData(id, inlineId, data)` | Replaces the atom's `data`: `patchData({ block: id, atom: inlineId }, [{ path: [], value: data }])`. |
 
 Text operations also work inside void blocks, which may hold a caption.
 
@@ -172,7 +166,7 @@ if ('writes' in plan) {
 doc.apply(
   doc.compose(
     doc.prepare.setBlockType('p2', 'heading'),
-    doc.prepare.setBlockData('p2', { level: 2 })
+    doc.prepare.patchData('p2', [{ path: [], value: { level: 2 } }])
   )
 );
 ```

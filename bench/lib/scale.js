@@ -102,7 +102,7 @@ const atSize = (n) => {
 	const bs = Array.from({ length: 5 }, (_, i) => time(() => ed.deleteText(`b${100 + i}`, 0, 1))[1]);
 	const fm = Array.from(
 		{ length: 5 },
-		(_, i) => time(() => ed.setMark(`b${200 + i}`, 0, 3, 'bold', true))[1]
+		(_, i) => time(() => ed.formatRange(`b${200 + i}`, 0, 3, { bold: true }))[1]
 	);
 	const [, rd] = time(() =>
 		ed.deleteRange({ block: 'b300', offset: 2 }, { block: 'b340', offset: 2 })
@@ -210,10 +210,9 @@ const batched1000 = () => {
 		ed.init({ content: [{ id: 'r0', type: 'paragraph', content: [{ kind: 'text', text: 'x' }] }] });
 		const body = () => {
 			for (let i = 0; i < n; i++)
-				ed.insertBlock(
-					{ parent: null, index: i + 1 },
+				ed.insertBlocks({ parent: null, index: i + 1 }, [
 					{ id: `b${i}`, type: 'paragraph', content: [{ kind: 'text', text: 'hello' }] }
-				);
+				]);
 		};
 		return time(() => (oneTx ? ed.transact(body) : body()))[1];
 	};

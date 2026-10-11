@@ -35,10 +35,9 @@ const freshDoc = (withContent = true) => {
 	const ed = E.create(doc);
 	ed.init();
 	if (withContent) {
-		ed.insertBlock(
-			{ parent: null, index: Number.MAX_SAFE_INTEGER },
+		ed.insertBlocks({ parent: null, index: Number.MAX_SAFE_INTEGER }, [
 			{ id: 'b1', type: 'paragraph', content: [{ kind: 'text', text: 'hello' }] }
-		);
+		]);
 	}
 	return { doc, ed };
 };
@@ -80,10 +79,9 @@ describe('attack 2: undo scope vs meta/schema', () => {
 		const um = new UndoManager(registry, { captureTimeout: 0 });
 		const ed = E.create(doc);
 		ed.init();
-		ed.insertBlock(
-			{ parent: null, index: Number.MAX_SAFE_INTEGER },
+		ed.insertBlocks({ parent: null, index: Number.MAX_SAFE_INTEGER }, [
 			{ id: 'b1', type: 'paragraph' }
-		);
+		]);
 
 		um.undo(); // removes b1
 		expect(ed.childrenIds(null)).toEqual([DEFAULT_SEED_ID]);
@@ -99,7 +97,7 @@ describe('attack 2: undo scope vs meta/schema', () => {
 		const { doc, ed } = freshDoc(false);
 		const registry = doc.get('blocks');
 		const um = new UndoManager(registry, { captureTimeout: 0 });
-		ed.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'paragraph' });
+		ed.insertBlocks({ parent: null, index: 0 }, [{ id: 'b1', type: 'paragraph' }]);
 		um.undo();
 		// Undo consumed the only captured op — the bootstrap is unreachable.
 		expect(ed.childrenIds(null)).toEqual([DEFAULT_SEED_ID]);
@@ -113,7 +111,7 @@ describe('attack 2: undo scope vs meta/schema', () => {
 		const remote = new Y.Doc();
 		const remoteEd = E.create(remote);
 		remoteEd.init();
-		remoteEd.insertBlock({ parent: null, index: 0 }, { id: 'r1', type: 'paragraph' });
+		remoteEd.insertBlocks({ parent: null, index: 0 }, [{ id: 'r1', type: 'paragraph' }]);
 		// Remote application carries an origin object that is NOT in
 		// trackedOrigins — and the update lands outside the registry scope
 		// check anyway (changedParentTypes covers it — origin is the filter).
@@ -137,10 +135,9 @@ describe('attack 9: shared RunView lifecycle', () => {
 		// Symptom 1 — blocks created post-dispose are invisible: the stale
 		// view's index never got them, runs() returns [], and toJSON() OMITS
 		// their content entirely (contentJSON → [] → `content` key dropped).
-		ed2.insertBlock(
-			{ parent: null, index: Number.MAX_SAFE_INTEGER },
+		ed2.insertBlocks({ parent: null, index: Number.MAX_SAFE_INTEGER }, [
 			{ id: 'b_new', type: 'paragraph', content: [{ kind: 'text', text: 'new!' }] }
-		);
+		]);
 		const json = ed2.toJSON();
 		const bNew = json.children.find((b) => b.id === 'b_new');
 		expect(bNew).toBeDefined();
@@ -166,7 +163,7 @@ describe('attack 9: aliasing — caller objects leak into replicated state', () 
 			type: 'paragraph',
 			content: [{ kind: 'inline', id: 'i1', type: 'mention', data: { label: 'Ada' } }]
 		};
-		ed.insertBlock({ parent: null, index: Number.MAX_SAFE_INTEGER }, spec);
+		ed.insertBlocks({ parent: null, index: Number.MAX_SAFE_INTEGER }, [spec]);
 		console.log(`[gate2] inline-shape: ${JSON.stringify(ed.toJSON().children[1])}`);
 
 		// The caller still holds the object — and it's the SAME object stored
@@ -250,7 +247,7 @@ describe('attack 9: projector purity', () => {
 			children: Object.freeze([])
 		});
 		expect(() =>
-			ed.insertBlock({ parent: null, index: Number.MAX_SAFE_INTEGER }, spec)
+			ed.insertBlocks({ parent: null, index: Number.MAX_SAFE_INTEGER }, [spec])
 		).not.toThrow();
 		expect(JSON.stringify(ed.toJSON())).toContain('frozen');
 		ed.dispose();
@@ -352,19 +349,18 @@ describe('attack 7: DocChange mirror', () => {
 
 		// local ops
 		ed.insertText('b1', 5, ' world');
-		ed.setBlockData('b1', { flag: 1 });
-		ed.insertBlock(
-			{ parent: null, index: Number.MAX_SAFE_INTEGER },
+		ed.patchData('b1', [{ path: [], value: { flag: 1 } }]);
+		ed.insertBlocks({ parent: null, index: Number.MAX_SAFE_INTEGER }, [
 			{ id: 'b2', type: 'heading', content: [{ kind: 'text', text: 'T' }] }
-		);
-		ed.moveBlock('b2', { parent: null, index: 0 });
+		]);
+		ed.moveBlocks(['b2'], { parent: null, index: 0 });
 		expect(mirror.render()).toEqual(ed.toJSON());
 
 		// remote-applied update
 		const remote = new Y.Doc();
 		const remoteEd = E.create(remote);
 		remoteEd.init();
-		remoteEd.insertBlock({ parent: null, index: 0 }, { id: 'r1', type: 'paragraph' });
+		remoteEd.insertBlocks({ parent: null, index: 0 }, [{ id: 'r1', type: 'paragraph' }]);
 		Y.applyUpdate(doc, Y.encodeStateAsUpdate(remote), { remote: true });
 		expect(mirror.render()).toEqual(ed.toJSON());
 

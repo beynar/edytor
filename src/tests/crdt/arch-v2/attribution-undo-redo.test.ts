@@ -220,10 +220,9 @@ describe('F7 / O23 — the incarnation is the replicated nonce; an undo/redo kee
 				// `hist.undo.withdraw` the undo withdraws the node (it stays) and the
 				// redo lifts the mark: the incarnation is the same node.
 				const created = step(A.doc, () =>
-					A.ed.insertBlock(
-						{ parent: null, index: 1 },
+					A.ed.insertBlocks({ parent: null, index: 1 }, [
 						{ id: 'x', type: 'paragraph', content: [{ kind: 'text', text: 'x' }] }
-					)
+					])
 				);
 				const n = nonceOf(A.doc, 'x');
 				expect(n).not.toBe(undefined);
@@ -265,12 +264,12 @@ describe('F7 / O23 — the incarnation is the replicated nonce; an undo/redo kee
 	it('an undone creation is not a recycled id: its incarnation and record stay, a re-creation is refused', () => {
 		const A = replica(seeded(), 7, alice);
 		const um = A.ed.createUndoManager({ captureTimeout: 0 });
-		A.ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' });
+		A.ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'x', type: 'paragraph' }]);
 		const first = nonceOf(A.doc, 'x');
 		um.undo();
 		const B = replica(Y.encodeStateAsUpdate(A.doc), 3, bob);
 		expect(
-			B.ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' }).status
+			B.ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'x', type: 'paragraph' }]).status
 		).toBe('refused');
 		expect(nonceOf(B.doc, 'x')).toBe(first);
 		expect(attr(B.ed, 'x')).toEqual({ createdBy: 'alice', contributors: ['alice'], l: 'alice' });

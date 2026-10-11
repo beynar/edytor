@@ -282,7 +282,8 @@ export class RoomMoves {
 		const now = subtreesOf(f.toJSON().children, new Set([id]))[0];
 		const data = (now?.data ?? {}) as Record<string, unknown>;
 		const next = mergeData(edit.base.data, edit.src.data, data);
-		if (JSON.stringify(next) !== JSON.stringify(data)) f.apply(f.prepare.setBlockData(id, next));
+		if (JSON.stringify(next) !== JSON.stringify(data))
+			f.apply(f.prepare.patchData(id, [{ path: [], value: next }]));
 	}
 
 	/** The registry entries carrying a `del.<marker>` mark written between clocks `c0` and `c1`. */

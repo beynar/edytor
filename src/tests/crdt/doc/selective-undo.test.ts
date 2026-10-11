@@ -92,9 +92,9 @@ describe('selective undo — remote writes are never undone locally', () => {
 	it('local move + remote text edit: undo restores position, keeps remote text', () => {
 		const { d1, d2, e1, e2, um, sync } = pair();
 		e1.insertText(DEFAULT_SEED_ID, 0, 'a');
-		e1.insertBlock({ parent: null, index: 1 }, { id: 'b2', type: 'paragraph' });
+		e1.insertBlocks({ parent: null, index: 1 }, [{ id: 'b2', type: 'paragraph' }]);
 		e1.insertText('b2', 0, 'b');
-		e1.insertBlock({ parent: null, index: 2 }, { id: 'wrap', type: 'paragraph' });
+		e1.insertBlocks({ parent: null, index: 2 }, [{ id: 'wrap', type: 'paragraph' }]);
 		sync();
 
 		// Local: nest b2 under wrap. Remote: append text into b2.
@@ -180,7 +180,7 @@ describe('selective undo — remote writes are never undone locally', () => {
 		const depthAfterLocal = um.undoStack.length;
 
 		e2.insertText(DEFAULT_SEED_ID, 0, 'RR');
-		e2.insertBlock({ parent: null, index: 1 }, { id: 'rb', type: 'paragraph' });
+		e2.insertBlocks({ parent: null, index: 1 }, [{ id: 'rb', type: 'paragraph' }]);
 		sync();
 		// Remote transactions are non-local → nothing captured.
 		expect(um.undoStack.length).toBe(depthAfterLocal);

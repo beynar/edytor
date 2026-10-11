@@ -46,10 +46,9 @@ describe('UW-31: a derived own-text writer is a 53-bit id', () => {
 		// A raw registry history (no P12 withdraw): the undo deletes the blocks outright.
 		const um = new UndoManager(a.doc.get('blocks'), { captureTimeout: 0 });
 		tails.forEach((tail, i) =>
-			a.ed.insertBlock(
-				{ parent: null, index: 1 + i },
+			a.ed.insertBlocks({ parent: null, index: 1 + i }, [
 				{ id: `P${i}`, type: 'paragraph', content: [{ kind: 'text', text: 'Hello world' }] }
-			)
+			])
 		);
 		b.receiveAll(a.log);
 		tails.forEach((tail, i) => {

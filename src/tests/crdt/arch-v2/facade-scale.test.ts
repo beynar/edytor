@@ -114,7 +114,7 @@ const atSize = (n: number) => {
 		work(ed, () => ed.deleteText(`b${100 + i}`, 0, 1))
 	);
 	const fm = Array.from({ length: 5 }, (_, i) =>
-		work(ed, () => ed.setMark(`b${200 + i}`, 0, 3, 'bold', true))
+		work(ed, () => ed.formatRange(`b${200 + i}`, 0, 3, { bold: true }))
 	);
 	const rd = work(ed, () =>
 		ed.deleteRange({ block: 'b300', offset: 2 }, { block: 'b340', offset: 2 })

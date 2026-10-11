@@ -92,10 +92,9 @@ const reload = (r, clientID: number) => {
 };
 const shape = (ed) => ed.listBlockIds().map((id) => [id, ed.blockText(id)]);
 const insertN = (r, text: string, id = 'N') =>
-	r.ed.insertBlock(
-		{ parent: null, index: 1 },
+	r.ed.insertBlocks({ parent: null, index: 1 }, [
 		{ id, type: 'paragraph', content: [{ kind: 'text', text }] }
-	);
+	]);
 const every = (rs, check: (ed) => void) => {
 	for (const [i, r] of rs.entries()) check(r.ed);
 	for (const [i, r] of rs.entries()) check(reload(r, 900 + i));
@@ -128,14 +127,12 @@ describe('id.same.concurrent — the losing incarnation shows after the winner',
 			const base = seeded([para('x', 'x')]);
 			const A = replica(base, a);
 			const B = replica(base, b);
-			A.ed.insertBlock(
-				{ parent: null, index: 1 },
+			A.ed.insertBlocks({ parent: null, index: 1 }, [
 				{ id: 'N', type: 'heading', data: { level: 1 }, content: [{ kind: 'text', text: 'A' }] }
-			);
-			B.ed.insertBlock(
-				{ parent: null, index: 0 },
+			]);
+			B.ed.insertBlocks({ parent: null, index: 0 }, [
 				{ id: 'N', type: 'paragraph', data: { tone: 'b' }, content: [{ kind: 'text', text: 'B' }] }
-			);
+			]);
 			sync(A, B);
 			const json = A.ed.toJSON();
 			expect(json).toEqual(B.ed.toJSON());
@@ -235,18 +232,16 @@ describe('id.same.concurrent — the losing incarnation shows after the winner',
 			const base = seeded([para('x', 'x'), para('y', 'y')]);
 			const A = replica(base, a);
 			const B = replica(base, b);
-			A.ed.insertBlock(
-				{ parent: null, index: 2 },
+			A.ed.insertBlocks({ parent: null, index: 2 }, [
 				{ id: 'N', type: 'paragraph', content: [{ kind: 'text', text: 'aa' }] }
-			);
-			B.ed.insertBlock(
-				{ parent: null, index: 2 },
+			]);
+			B.ed.insertBlocks({ parent: null, index: 2 }, [
 				{ id: 'N', type: 'paragraph', content: [{ kind: 'text', text: 'bb' }] }
-			);
+			]);
 			sync(A, B);
 			// The winner merges a block into N: its claim follows the loser's text.
 			const winner = a > b ? A : B;
-			expect(winner.ed.moveBlock('y', { parent: null, index: 2 }).status).toBe('applied');
+			expect(winner.ed.moveBlocks(['y'], { parent: null, index: 2 }).status).toBe('applied');
 			expect(winner.ed.mergeBlocks('y', 'N').status).toBe('applied');
 			sync(A, B);
 			const shown = (a > b ? 'aabb' : 'bbaa') + 'y';
@@ -333,9 +328,9 @@ describe('id.same.concurrent — fuzz: colliding ids converge and lose no charac
 					if (roll < 0.3) {
 						const id = rand() < 0.7 ? pick(ids) : `f${seed}.${fresh++}`;
 						const ch = String.fromCodePoint(next++);
-						const res = ed.insertBlock(
+						const res = ed.insertBlocks(
 							{ parent: null, index: Math.floor(rand() * (visible.length + 1)) },
-							{ id, type: 'paragraph', content: [{ kind: 'text', text: ch }] }
+							[{ id, type: 'paragraph', content: [{ kind: 'text', text: ch }] }]
 						);
 						if (res.status === 'applied') written.push(ch);
 					} else if (roll < 0.75) {
@@ -395,14 +390,13 @@ describe('id.same.concurrent — fuzz with deletes and undo: colliding ids conve
 					const id = pick(visible);
 					const len = id === undefined ? 0 : ed.blockText(id).length;
 					if (roll < 0.25) {
-						ed.insertBlock(
-							{ parent: null, index: Math.floor(rand() * (visible.length + 1)) },
+						ed.insertBlocks({ parent: null, index: Math.floor(rand() * (visible.length + 1)) }, [
 							{
 								id: rand() < 0.7 ? pick(ids) : `f${seed}.${fresh++}`,
 								type: 'paragraph',
 								content: [{ kind: 'text', text: 'ab'.slice(0, 1 + Math.floor(rand() * 2)) }]
 							}
-						);
+						]);
 					} else if (roll < 0.45 && id !== undefined) {
 						ed.insertText(id, Math.floor(rand() * (len + 1)), 'xy'[Math.floor(rand() * 2)]);
 					} else if (roll < 0.55 && id !== undefined && len > 0) {
@@ -458,10 +452,9 @@ describe('id.same.concurrent — the purge removes both incarnations together', 
 		const ada = open('ada', seed, LIVE + 30, { semantics: defaultSemantics });
 		const bob = open('bob', seed, LIVE + 20, { semantics: defaultSemantics });
 		const insert = (r, text: string, id: string) =>
-			r.ed.insertBlock(
-				{ parent: null, index: 1 },
+			r.ed.insertBlocks({ parent: null, index: 1 }, [
 				{ id, type: 'paragraph', content: [{ kind: 'text', text }] }
-			);
+			]);
 		insert(ada, 'ADA-ONE', 'N');
 		insert(bob, 'BOB-ONE', 'N');
 		insert(ada, 'ADA-TWO', 'M');

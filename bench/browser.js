@@ -1176,7 +1176,9 @@ try {
 				ed.facade.insertText('b500', 0, 'x'.repeat(20));
 				ed.facade.deleteText('b500', 0, 20);
 				if (c % 4 === 0) {
-					ed.facade.insertBlock({ parent: null, index: 0 }, { id: `tmp${c}`, type: 'paragraph' });
+					ed.facade.insertBlocks({ parent: null, index: 0 }, [
+						{ id: `tmp${c}`, type: 'paragraph' }
+					]);
 					ed.facade.deleteBlock(`tmp${c}`);
 				}
 			}

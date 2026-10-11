@@ -147,7 +147,7 @@ describe('gateF1 WU2 — read-your-writes inside a transaction', () => {
 		const { A } = set;
 		const d = ed(A);
 		A.transact(() => {
-			d.moveBlock('mover', { parent: 'host', index: 1 });
+			d.moveBlocks(['mover'], { parent: 'host', index: 1 });
 			expect(d.positionOf('mover')).toEqual({ parent: 'host', index: 1 });
 			expect(d.pathOf('mover')).toEqual([1, 1]); // index path: host=root#1, mover=host#1
 			expect(d.parentOf('mover')).toBe('host');

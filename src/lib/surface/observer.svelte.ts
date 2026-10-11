@@ -248,7 +248,6 @@ export class SurfaceObserver {
 		return this.#dirty.size > 0 || this.#removed.length > 0;
 	};
 
-
 	/**
 	 * Compare and act now (an `input` event, a composition's end, a context
 	 * menu): the contents the last flush rendered, not those waiting for one.

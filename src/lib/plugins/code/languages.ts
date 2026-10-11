@@ -37,23 +37,25 @@ export type CodeLanguage = {
 	load?: () => Promise<readonly LanguageDefinition[]>;
 };
 
+/** The grammars more than one language loads. */
+const css = () => import('@tanstack/highlight/languages/css');
+const ts = () => import('@tanstack/highlight/languages/ts');
+const html = () => import('@tanstack/highlight/languages/html');
 const scripts = () =>
-	Promise.all([
-		import('@tanstack/highlight/languages/css'),
-		import('@tanstack/highlight/languages/js'),
-		import('@tanstack/highlight/languages/ts')
-	]).then(([{ css }, { js }, { ts }]) => [css, js, ts]);
+	Promise.all([css(), import('@tanstack/highlight/languages/js'), ts()]).then(
+		([{ css }, { js }, { ts }]) => [css, js, ts]
+	);
 
 /**
- * A listed language: its lines are tokenized with `grammar`, the definition
- * the module `load` imports exports by that name; a markup grammar (`embeds`)
- * also loads the style and script grammars it embeds.
+ * A listed language: its lines are tokenized with `grammar` (its id unless
+ * named), the definition the module `load` imports exports by that name; a
+ * markup grammar (`embeds`) also loads the style and script grammars it embeds.
  */
 const language = (
 	id: string,
 	label: string,
-	grammar: string,
 	load: () => Promise<object>,
+	grammar = id,
 	embeds = false
 ): CodeLanguage => ({
 	id,
@@ -69,42 +71,37 @@ const language = (
 /** The default languages, after Notion's list, sorted by label (Plain text first). */
 export const CODE_LANGUAGES: readonly CodeLanguage[] = [
 	{ id: 'plaintext', label: 'Plain text' },
-	language('bash', 'Bash', 'shell', () => import('@tanstack/highlight/languages/shell')),
-	language('cpp', 'C++', 'cpp', () => import('@tanstack/highlight/languages/cpp')),
-	language('css', 'CSS', 'css', () => import('@tanstack/highlight/languages/css')),
-	language('diff', 'Diff', 'diff', () => import('@tanstack/highlight/languages/diff')),
+	language('bash', 'Bash', () => import('@tanstack/highlight/languages/shell'), 'shell'),
+	language('cpp', 'C++', () => import('@tanstack/highlight/languages/cpp')),
+	language('css', 'CSS', css),
+	language('diff', 'Diff', () => import('@tanstack/highlight/languages/diff')),
 	language(
 		'docker',
 		'Docker',
-		'dockerfile',
-		() => import('@tanstack/highlight/languages/dockerfile')
+		() => import('@tanstack/highlight/languages/dockerfile'),
+		'dockerfile'
 	),
-	language('go', 'Go', 'go', () => import('@tanstack/highlight/languages/go')),
-	language('html', 'HTML', 'html', () => import('@tanstack/highlight/languages/html'), true),
+	language('go', 'Go', () => import('@tanstack/highlight/languages/go')),
+	language('html', 'HTML', html, 'html', true),
 	{ id: 'javascript', label: 'JavaScript', grammar: 'jsx', load: async () => [jsx] },
-	language('json', 'JSON', 'json', () => import('@tanstack/highlight/languages/json')),
-	language(
-		'markdown',
-		'Markdown',
-		'markdown',
-		() => import('@tanstack/highlight/languages/markdown')
-	),
-	language('mermaid', 'Mermaid', 'mermaid', () => import('@tanstack/highlight/languages/mermaid')),
-	language('php', 'PHP', 'php', () => import('@tanstack/highlight/languages/php')),
-	language('python', 'Python', 'python', () => import('@tanstack/highlight/languages/python')),
-	language('sql', 'SQL', 'sql', () => import('@tanstack/highlight/languages/sql')),
+	language('json', 'JSON', () => import('@tanstack/highlight/languages/json')),
+	language('markdown', 'Markdown', () => import('@tanstack/highlight/languages/markdown')),
+	language('mermaid', 'Mermaid', () => import('@tanstack/highlight/languages/mermaid')),
+	language('php', 'PHP', () => import('@tanstack/highlight/languages/php')),
+	language('python', 'Python', () => import('@tanstack/highlight/languages/python')),
+	language('sql', 'SQL', () => import('@tanstack/highlight/languages/sql')),
 	language(
 		'svelte',
 		'Svelte',
-		'svelte',
 		() => import('@tanstack/highlight/languages/svelte'),
+		'svelte',
 		true
 	),
-	language('toml', 'TOML', 'toml', () => import('@tanstack/highlight/languages/toml')),
-	language('typescript', 'TypeScript', 'ts', () => import('@tanstack/highlight/languages/ts')),
-	language('vue', 'Vue', 'vue', () => import('@tanstack/highlight/languages/vue'), true),
-	language('xml', 'XML', 'html', () => import('@tanstack/highlight/languages/html')),
-	language('yaml', 'YAML', 'yaml', () => import('@tanstack/highlight/languages/yaml'))
+	language('toml', 'TOML', () => import('@tanstack/highlight/languages/toml')),
+	language('typescript', 'TypeScript', ts, 'ts'),
+	language('vue', 'Vue', () => import('@tanstack/highlight/languages/vue'), 'vue', true),
+	language('xml', 'XML', html, 'html'),
+	language('yaml', 'YAML', () => import('@tanstack/highlight/languages/yaml'))
 ];
 
 /**

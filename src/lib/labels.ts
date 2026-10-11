@@ -512,6 +512,41 @@ const frozen = <T extends object>(value: T): T => {
 	return Object.freeze(value);
 };
 
+/** Words several sections say alike. */
+const NO_RESULTS = 'No results';
+const UNTITLED = 'Untitled';
+const UPLOADING = 'Uploading…';
+const UPLOAD_FAILED = 'The upload failed: try again or paste a link.';
+const SEARCHING = 'Searching…';
+/** Each name as its own label. */
+/* @__NO_SIDE_EFFECTS__ */
+const asIs = (names: string[]) => Object.fromEntries(names.map((name) => [name, name]));
+/** A color picker's words (the toolbar's, the block menu's). */
+const COLOR = 'Color';
+const TEXT_COLOR = 'Text color';
+const BACKGROUND_COLOR = 'Background color';
+const colorText = (color: string) => `${color} text`;
+const colorBackground = (color: string) => `${color} background`;
+/** Notion's palette's names (`Default`: none), by `key`. */
+/* @__NO_SIDE_EFFECTS__ */
+const colorNames = (key: (name: string) => string) =>
+	Object.fromEntries(
+		['Default', 'Gray', 'Brown', 'Orange', 'Yellow', 'Green', 'Blue', 'Purple', 'Pink', 'Red'].map(
+			(name) => [key(name), name]
+		)
+	);
+/** A media field's placeholder, for a link to `what` (`image `, or none). */
+/* @__NO_SIDE_EFFECTS__ */
+const pasteLink = (what = '') => `Paste the ${what}link…`;
+/** A media field's refusal of a link that is not `what` ("an image"). */
+/* @__NO_SIDE_EFFECTS__ */
+const notA = (what: string) => `That doesn't look like ${what} link or upload.`;
+/** An empty body's hint (`body.hint`). */
+/* @__NO_SIDE_EFFECTS__ */
+const emptyBody = (kind: string) => `Empty ${kind}. Click or drop blocks inside.`;
+const heading = (level: number) => `Heading ${level}`;
+const toggleHeading = (level: number) => `Toggle heading ${level}`;
+
 /** The `editor` section in English (`englishLabels.editor`). */
 export const editorEnglish: EditorLabels = /* @__PURE__ */ frozen({
 	suggestion: 'Suggestion',
@@ -524,20 +559,20 @@ export const editorEnglish: EditorLabels = /* @__PURE__ */ frozen({
 	moved: (what) => `Moved ${what}`,
 	deleted: (what) => `Deleted ${what}`,
 	triggerMenu: 'Suggestions',
-	searching: 'Searching…',
-	noResults: 'No results'
+	searching: SEARCHING,
+	noResults: NO_RESULTS
 });
 
 /** The `richText` section in English (`englishLabels.richText`). */
 export const richTextEnglish: RichTextLabels = /* @__PURE__ */ frozen({
 	kinds: {
 		paragraph: 'Text',
-		heading1: 'Heading 1',
-		heading2: 'Heading 2',
-		heading3: 'Heading 3',
-		toggleHeading1: 'Toggle heading 1',
-		toggleHeading2: 'Toggle heading 2',
-		toggleHeading3: 'Toggle heading 3',
+		heading1: heading(1),
+		heading2: heading(2),
+		heading3: heading(3),
+		toggleHeading1: toggleHeading(1),
+		toggleHeading2: toggleHeading(2),
+		toggleHeading3: toggleHeading(3),
 		bulletedList: 'Bulleted list',
 		numberedList: 'Numbered list',
 		todoList: 'To-do list',
@@ -555,8 +590,8 @@ export const richTextEnglish: RichTextLabels = /* @__PURE__ */ frozen({
 	},
 	checkbox: 'Done',
 	emptyBody: {
-		toggle: 'Empty toggle. Click or drop blocks inside.',
-		callout: 'Empty callout. Click or drop blocks inside.'
+		toggle: emptyBody('toggle'),
+		callout: emptyBody('callout')
 	},
 	calloutIcon: {
 		change: 'Change icon',
@@ -565,8 +600,8 @@ export const richTextEnglish: RichTextLabels = /* @__PURE__ */ frozen({
 		remove: 'Remove icon'
 	},
 	placeholders: {
-		heading: (level) => `Heading ${level}`,
-		toggleHeading: (level) => `Toggle heading ${level}`,
+		heading,
+		toggleHeading,
 		list: 'List',
 		todo: 'To-do',
 		toggle: 'Toggle',
@@ -589,23 +624,12 @@ export const toolbarEnglish: ToolbarLabels = /* @__PURE__ */ frozen({
 	applyLink: 'Apply link',
 	remove: 'Remove',
 	removeLink: 'Remove link',
-	color: 'Color',
-	textColor: 'Text color',
-	backgroundColor: 'Background color',
-	colors: {
-		Default: 'Default',
-		Gray: 'Gray',
-		Brown: 'Brown',
-		Orange: 'Orange',
-		Yellow: 'Yellow',
-		Green: 'Green',
-		Blue: 'Blue',
-		Purple: 'Purple',
-		Pink: 'Pink',
-		Red: 'Red'
-	},
-	colorText: (color) => `${color} text`,
-	colorBackground: (color) => `${color} background`,
+	color: COLOR,
+	textColor: TEXT_COLOR,
+	backgroundColor: BACKGROUND_COLOR,
+	colors: colorNames((name) => name),
+	colorText,
+	colorBackground,
 	card: 'Link',
 	open: 'Open',
 	openLink: 'Open link in a new tab',
@@ -618,17 +642,10 @@ export const slashMenuEnglish: SlashMenuLabels = /* @__PURE__ */ frozen({
 	filter: 'Type to filter…',
 	filterLabel: 'Filter block commands',
 	list: 'Block commands',
-	noResults: 'No results',
+	noResults: NO_RESULTS,
 	close: 'Close menu',
 	closeKey: 'esc',
-	groups: {
-		'Basic blocks': 'Basic blocks',
-		'Advanced blocks': 'Advanced blocks',
-		Media: 'Media',
-		Layout: 'Layout',
-		Color: 'Color',
-		Inline: 'Inline'
-	}
+	groups: asIs(['Basic blocks', 'Advanced blocks', 'Media', 'Layout', 'Color', 'Inline'])
 });
 
 /** The `blockMenu` section in English (`englishLabels.blockMenu`). */
@@ -638,29 +655,18 @@ export const blockMenuEnglish: BlockMenuLabels = /* @__PURE__ */ frozen({
 	menu: 'Block actions',
 	block: 'Block',
 	turnInto: 'Turn into',
-	color: 'Color',
-	textColor: 'Text color',
-	backgroundColor: 'Background color',
-	colors: {
-		default: 'Default',
-		gray: 'Gray',
-		brown: 'Brown',
-		orange: 'Orange',
-		yellow: 'Yellow',
-		green: 'Green',
-		blue: 'Blue',
-		purple: 'Purple',
-		pink: 'Pink',
-		red: 'Red'
-	},
-	colorText: (color) => `${color} text`,
-	colorBackground: (color) => `${color} background`,
+	color: COLOR,
+	textColor: TEXT_COLOR,
+	backgroundColor: BACKGROUND_COLOR,
+	colors: colorNames((name) => name.toLowerCase()),
+	colorText,
+	colorBackground,
 	copyLink: 'Copy link to block',
 	duplicate: 'Duplicate',
 	moveUp: 'Move up',
 	moveDown: 'Move down',
 	delete: 'Delete',
-	noResults: 'No results',
+	noResults: NO_RESULTS,
 	ctrl: 'Ctrl',
 	shift: 'Shift',
 	deleteKey: 'Del'
@@ -680,14 +686,14 @@ export const imageEnglish: ImageLabels = /* @__PURE__ */ frozen({
 	image: 'Image',
 	add: 'Add an image',
 	link: 'Image link',
-	linkPlaceholder: 'Paste the image link…',
+	linkPlaceholder: pasteLink('image '),
 	embed: 'Embed image',
 	upload: 'Upload',
-	uploading: 'Uploading…',
+	uploading: UPLOADING,
 	tooLarge: (limit, upload) =>
 		`Inline images are limited to ${limit}: ${upload ? 'upload the file instead' : 'host the image and paste its link'}.`,
-	uploadFailed: 'The upload failed: try again or paste a link.',
-	invalid: "That doesn't look like an image link or upload.",
+	uploadFailed: UPLOAD_FAILED,
+	invalid: notA('an image'),
 	toolbar: 'Image',
 	alignLeft: 'Align left',
 	alignCenter: 'Align center',
@@ -702,7 +708,7 @@ export const mediaEnglish: MediaLabels = /* @__PURE__ */ frozen({
 		label: 'Embed',
 		offer: 'Embed',
 		add: 'Embed a link',
-		placeholder: 'Paste the link…',
+		placeholder: pasteLink(),
 		submit: 'Embed link',
 		invalid: 'No embed provider plays that link.'
 	},
@@ -710,7 +716,7 @@ export const mediaEnglish: MediaLabels = /* @__PURE__ */ frozen({
 		label: 'Web bookmark',
 		offer: 'Bookmark',
 		add: 'Add a web bookmark',
-		placeholder: 'Paste the link…',
+		placeholder: pasteLink(),
 		submit: 'Create bookmark',
 		invalid: "That doesn't look like a web link."
 	},
@@ -718,27 +724,27 @@ export const mediaEnglish: MediaLabels = /* @__PURE__ */ frozen({
 		label: 'File',
 		add: 'Embed a file',
 		addOrUpload: 'Upload or embed a file',
-		placeholder: 'Paste the file link…',
+		placeholder: pasteLink('file '),
 		submit: 'Embed link',
-		invalid: "That doesn't look like a file link or upload."
+		invalid: notA('a file')
 	},
 	video: {
 		label: 'Video',
 		add: 'Embed a video',
-		placeholder: 'Paste the video link…',
+		placeholder: pasteLink('video '),
 		submit: 'Embed video',
-		invalid: "That doesn't look like a video link or upload."
+		invalid: notA('a video')
 	},
 	audio: {
 		label: 'Audio',
 		add: 'Embed audio',
-		placeholder: 'Paste the audio link…',
+		placeholder: pasteLink('audio '),
 		submit: 'Embed audio',
-		invalid: "That doesn't look like an audio link or upload."
+		invalid: notA('an audio')
 	},
 	upload: 'Upload',
-	uploading: 'Uploading…',
-	uploadFailed: 'The upload failed: try again or paste a link.',
+	uploading: UPLOADING,
+	uploadFailed: UPLOAD_FAILED,
 	fileSize: bytes,
 	pasteAs: 'Paste as',
 	pasteLink: 'Link'
@@ -749,7 +755,7 @@ export const codeEnglish: CodeLabels = /* @__PURE__ */ frozen({
 	code: 'Code',
 	language: 'Code language',
 	search: 'Search for a language…',
-	noResults: 'No results',
+	noResults: NO_RESULTS,
 	copy: 'Copy',
 	copied: 'Copied',
 	languages: {}
@@ -760,7 +766,7 @@ export const findEnglish: FindLabels = /* @__PURE__ */ frozen({
 	bar: 'Find in page',
 	query: 'Find',
 	queryPlaceholder: 'Find in page',
-	noResults: 'No results',
+	noResults: NO_RESULTS,
 	count: (current, total) => `${current}/${total}`,
 	matchCase: 'Match case',
 	previous: 'Previous match',
@@ -794,22 +800,22 @@ export const columnsEnglish: ColumnsLabels = /* @__PURE__ */ frozen({
 /** The `page` section in English (`englishLabels.page`). */
 export const pageEnglish: PageLabels = /* @__PURE__ */ frozen({
 	page: 'Page',
-	untitled: 'Untitled'
+	untitled: UNTITLED
 });
 
 /** The `toc` section in English (`englishLabels.toc`). */
 export const tocEnglish: TocLabels = /* @__PURE__ */ frozen({
 	toc: 'Table of contents',
-	untitled: 'Untitled',
+	untitled: UNTITLED,
 	empty: 'Add headings to create a table of contents.'
 });
 
 /** The `pageLink` section in English (`englishLabels.pageLink`). */
 export const pageLinkEnglish: PageLinkLabels = /* @__PURE__ */ frozen({
 	menu: 'Pages',
-	searching: 'Searching…',
-	noResults: 'No results',
-	untitled: 'Untitled'
+	searching: SEARCHING,
+	noResults: NO_RESULTS,
+	untitled: UNTITLED
 });
 
 /** The `comments` section in English (`englishLabels.comments`). */
@@ -869,8 +875,8 @@ export const tableEnglish: TableLabels = /* @__PURE__ */ frozen({
 /** The `mention` section in English (`englishLabels.mention`). */
 export const mentionEnglish: MentionLabels = /* @__PURE__ */ frozen({
 	menu: 'People',
-	searching: 'Searching…',
-	noResults: 'No results'
+	searching: SEARCHING,
+	noResults: NO_RESULTS
 });
 
 /** The `history` section in English (`englishLabels.history`). */

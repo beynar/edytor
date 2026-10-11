@@ -196,6 +196,7 @@ export const tableKinds = frozen({
  * `table`, `atomic`, `rendersContent`, `defaultChild`), and a bare snippet is a
  * plain kind. To add kinds to a bundled config, use {@link mergeSemantics}.
  */
+/* @__NO_SIDE_EFFECTS__ */
 export const semanticsOf = (...tables: Record<string, KindRecord>[]) => {
 	const semantics = {
 		roles: {} as Record<string, BlockRole>,
@@ -341,6 +342,7 @@ export const semanticsMismatch = (ours: Record<string, string>, theirs: unknown)
 };
 
 /** `config` with a mark-edge table, frozen. */
+/* @__NO_SIDE_EFFECTS__ */
 const withMarks = <C extends object>(config: C, marks: Record<string, { edge: MarkEdge }>) =>
 	frozen(Object.assign({}, config, { marks }));
 

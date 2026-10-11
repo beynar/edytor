@@ -864,7 +864,7 @@ describe('docs drift', () => {
 				'document-api',
 				read('site/content/docs/reference/document-api.mdx'),
 				[
-					'`insertBlock(s)`',
+					'`insertBlocks`',
 					'`duplicateBlock`',
 					'`whole`',
 					'`replace`s blocks',

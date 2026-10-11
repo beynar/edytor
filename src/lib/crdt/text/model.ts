@@ -334,18 +334,12 @@ export const newNode = (name: string): EngineNode => makeNode(Y, name);
 
 /** Anchor → live index in `text`, or `null` when its item is not integrated here. */
 export const resolveAnchor = (doc: EngineDoc, text: EngineNode, anchor: Anchor): number | null => {
-	const itemId = (text._item as { id?: { client: number; clock: number } } | null)?.id;
-	if (!itemId) return anchor.i === null ? (anchor.a < 0 ? 0 : text.length) : null;
-	const abs = Y.createAbsolutePositionFromRelativePosition(
-		Y.createRelativePositionFromJSON({
-			type: { client: itemId.client, clock: itemId.clock },
-			item: anchor.i === null ? null : { client: anchor.i.c, clock: anchor.i.k },
-			assoc: anchor.a
-		}),
-		asYDoc(doc),
-		false
-	);
-	return abs === null ? null : abs.index;
+	const item = text._item as { id?: unknown; content?: { type?: unknown } } | null;
+	// A text end: the text's own length, while the text is held (not collected).
+	if (anchor.i === null)
+		return !item?.id || item.content?.type === text ? (anchor.a < 0 ? 0 : text.length) : null;
+	if (!item?.id) return null;
+	return Y.indexOfId(asYDoc(doc), Y.createID(anchor.i.c, anchor.i.k), anchor.a)?.index ?? null;
 };
 
 /**
@@ -354,13 +348,8 @@ export const resolveAnchor = (doc: EngineDoc, text: EngineNode, anchor: Anchor):
  * text start), `assoc >= 0` the unit at `index` (`i: null` at the text end).
  */
 export const anchorAt = (text: EngineNode, index: number, assoc: number): Anchor => {
-	const json = Y.relativePositionToJSON(
-		Y.createRelativePositionFromTypeIndex(asYNode(text), index, assoc)
-	) as { item?: { client: number; clock: number } };
-	return {
-		i: json.item ? { c: json.item.client, k: json.item.clock } : null,
-		a: assoc < 0 ? -1 : 0
-	};
+	const id = Y.idAtIndex(asYNode(text), index, assoc);
+	return { i: id ? { c: id.client, k: id.clock } : null, a: assoc < 0 ? -1 : 0 };
 };
 
 /** A bounded read cursor on `text` (live-content space). */
@@ -399,18 +388,9 @@ const effectiveClaims = (
 ): Map<BlockId, Claim[]> => {
 	/** Live index of unit `ref` (assoc 0) in `text`, or `null` when it is not `text`'s. */
 	const indexIn = (text: EngineNode, ref: ItemRef): number | null => {
-		const itemId = (text._item as { id?: { client: number; clock: number } } | null)?.id;
-		if (!itemId) return null;
-		const abs = Y.createAbsolutePositionFromRelativePosition(
-			Y.createRelativePositionFromJSON({
-				type: { client: itemId.client, clock: itemId.clock },
-				item: { client: ref.c, clock: ref.k },
-				assoc: 0
-			}),
-			asYDoc(doc),
-			false
-		) as { type: unknown; index: number } | null;
-		return abs === null || abs.type !== text ? null : abs.index;
+		if (!text._item?.id) return null;
+		const abs = Y.indexOfId(asYDoc(doc), Y.createID(ref.c, ref.k));
+		return abs === null || (abs.type as unknown) !== text ? null : abs.index;
 	};
 	const targetOf = (holder: BlockId, c: Claim): BlockId => {
 		if (c.a === undefined) return holder;

@@ -38,9 +38,7 @@ import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from '../utils/jso
 
 /** The document's writes: each one transaction, answering what it did (`OpResult`). */
 export interface DocumentWrites {
-	insertBlock(dest: Destination, spec: JSONBlock | BlockSpec): OpResult;
 	insertBlocks(dest: Destination, specs: readonly (JSONBlock | BlockSpec)[]): OpResult;
-	moveBlock(id: BlockId, dest: Destination): OpResult;
 	moveBlocks(ids: readonly BlockId[], dest: Destination): OpResult;
 	nestBlock(id: BlockId, parent: BlockId): OpResult;
 	unNestBlock(id: BlockId): OpResult;
@@ -74,7 +72,6 @@ export interface DocumentWrites {
 	): OpResult;
 	setBlockType(id: BlockId, type: string): OpResult;
 	patchData(target: DataTarget, patches: readonly DataPatch[]): OpResult;
-	setBlockData(id: BlockId, data: Record<string, unknown>): OpResult;
 	/** `freshId` names each copy (fresh ids by default). */
 	duplicateBlock(
 		id: BlockId,
@@ -88,13 +85,10 @@ export interface DocumentWrites {
 		length: number,
 		marks: Record<string, unknown>
 	): OpResult;
-	setMark(id: BlockId, offset: number, length: number, name: string, value: unknown): OpResult;
-	unsetMark(id: BlockId, offset: number, length: number, name: string): OpResult;
 	clearMarks(id: BlockId, offset: number, length: number): OpResult;
 	/** An atom without an id gets a fresh one. */
 	insertInline(id: BlockId, offset: number, atom: NewInline): OpResult;
 	removeInline(id: BlockId, inlineId: string): OpResult;
-	setInlineData(id: BlockId, inlineId: string, data: Record<string, unknown>): OpResult;
 	deleteRange(from: DocPosition, to: DocPosition, view?: RangeView): OpResult;
 	replaceRange(from: DocPosition, to: DocPosition, view?: RangeView): OpResult;
 	insertFlow(target: FlowTarget, flow: Flow, view?: FlowView): OpResult;
@@ -180,9 +174,7 @@ export interface DocumentOperations extends DocumentWrites, DocumentReads {
 
 /** Every write of `DocumentWrites`: what a view dispatches under the same names (`edytor.insertBlocks(…)`). */
 export const DOCUMENT_WRITES = [
-	'insertBlock',
 	'insertBlocks',
-	'moveBlock',
 	'moveBlocks',
 	'nestBlock',
 	'unNestBlock',
@@ -199,17 +191,13 @@ export const DOCUMENT_WRITES = [
 	'setBlock',
 	'setBlockType',
 	'patchData',
-	'setBlockData',
 	'duplicateBlock',
 	'insertText',
 	'deleteText',
 	'formatRange',
-	'setMark',
-	'unsetMark',
 	'clearMarks',
 	'insertInline',
 	'removeInline',
-	'setInlineData',
 	'deleteRange',
 	'replaceRange',
 	'insertFlow'

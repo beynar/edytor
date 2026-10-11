@@ -54,7 +54,7 @@ describe('ed.createUndoManager — the supported undo seam', () => {
 	it('undoing block ops leaves meta.v untouched', () => {
 		const { doc, ed } = seeded();
 		const um = ed.createUndoManager(undoOps);
-		ed.insertBlock({ parent: null, index: 1 }, { id: 'b2', type: 'paragraph' });
+		ed.insertBlocks({ parent: null, index: 1 }, [{ id: 'b2', type: 'paragraph' }]);
 		expect(ed.childrenIds(null)).toContain('b2');
 		um.undo();
 		expect(ed.childrenIds(null)).not.toContain('b2');

@@ -6,7 +6,7 @@
 import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../../crdt/engine.js';
 import type { YDoc } from '../../crdt/index.js';
-import { asEngineDoc, keepFromCollection } from '../../crdt/structs.js';
+import { asEngineDoc, keepFromCollection, structAt as storeStructAt } from '../../crdt/structs.js';
 import { ROOM_ORIGIN } from './shared.js';
 import { crdt, type Decoded, type Item, type Struct } from './context.js';
 
@@ -43,15 +43,18 @@ export const storedStruct = (doc: YDoc, client: number, clock: number) => {
 };
 
 /** The struct of `run` (one client's, in clock order) at `clock`, or `undefined`. */
-export const structAt = (run: Struct[], clock: number): Struct | undefined => {
-	for (let lo = 0, hi = run.length - 1; lo <= hi; ) {
-		const mid = (lo + hi) >> 1;
-		const { id, length } = run[mid];
-		if (clock < id.clock) hi = mid - 1;
-		else if (clock >= id.clock + length) lo = mid + 1;
-		else return run[mid];
+export const structAt = (run: Struct[], clock: number): Struct | undefined =>
+	(storeStructAt(Y, run as never[], clock) as Struct | null) ?? undefined;
+
+/** A frame's structs by client, each run in clock order. */
+export const runsOf = (structs: Struct[]): Map<number, Struct[]> => {
+	const runs = new Map<number, Struct[]>();
+	for (const struct of structs) {
+		const run = runs.get(struct.id.client) ?? [];
+		run.push(struct);
+		runs.set(struct.id.client, run);
 	}
-	return undefined;
+	return runs;
 };
 
 /**
@@ -65,12 +68,7 @@ export const structAt = (run: Struct[], clock: number): Struct | undefined => {
  * or the frame holds collected, may be an entry.
  */
 export const replacedEntries = (doc: YDoc, structs: Struct[], pick: (item: Item) => boolean) => {
-	const frame = new Map<number, Struct[]>();
-	for (const struct of structs) {
-		const run = frame.get(struct.id.client) ?? [];
-		run.push(struct);
-		frame.set(struct.id.client, run);
-	}
+	const frame = runsOf(structs);
 	const known = new Map<Struct, boolean>();
 	const isEntry = (id: { client: number; clock: number }): boolean => {
 		const chain = new Set<Struct>();

@@ -129,7 +129,7 @@ describe('XW-03: only an island that declares `lines` holds lines', () => {
 				([a]) => {
 					expect(typed(a.ed)).toBe('T:table[R1:row[c1:cell,c2:cell]]');
 					const cell = { id: 'c3', type: 'cell', content: [{ kind: 'text', text: '3' }] };
-					expect(a.ed.insertBlock({ parent: 'R1', index: 2 }, cell).status).toBe('applied');
+					expect(a.ed.insertBlocks({ parent: 'R1', index: 2 }, [cell]).status).toBe('applied');
 				},
 				{ semantics }
 			)
@@ -146,7 +146,7 @@ describe('XW-03: only an island that declares `lines` holds lines', () => {
 				([a]) => {
 					expect(typed(a.ed)).toBe('K:callout[H:heading,P:paragraph[Q:paragraph]]');
 					const spec = { id: 'Z', type: 'paragraph', content: [{ kind: 'text', text: 'z' }] };
-					expect(a.ed.insertBlock({ parent: 'P', index: 1 }, spec).status).toBe('applied');
+					expect(a.ed.insertBlocks({ parent: 'P', index: 1 }, [spec]).status).toBe('applied');
 				},
 				{ semantics }
 			)
@@ -165,7 +165,7 @@ describe('XW-03: only an island that declares `lines` holds lines', () => {
 					const cell = { id: 'c3', type: 'cell', content: [{ kind: 'text', text: '3' }] };
 					a.receiveAll(
 						b.capture(() =>
-							expect(b.ed.insertBlock({ parent: 'R1', index: 2 }, cell).status).toBe('applied')
+							expect(b.ed.insertBlocks({ parent: 'R1', index: 2 }, [cell]).status).toBe('applied')
 						)
 					);
 					expect(a.undo()).not.toBe(undefined);
@@ -186,9 +186,9 @@ describe('XW-03: only an island that declares `lines` holds lines', () => {
 				semantics
 			}
 		)[0].ed;
-		expect(ed.insertBlock({ parent: 'L1', index: 0 }, { id: 'X', type: 'codeLine' }).status).toBe(
-			'refused'
-		);
+		expect(
+			ed.insertBlocks({ parent: 'L1', index: 0 }, [{ id: 'X', type: 'codeLine' }]).status
+		).toBe('refused');
 	});
 
 	it('`lines` without `island` or a `defaultChild` warns in development (it does nothing)', () => {
@@ -273,7 +273,7 @@ describe('XW-08: a retype reports the kinds it derives for promoted and stray li
 					const views = [mirror(a.ed), mirror(b.ed)];
 					const del = a.capture(() => a.ed.deleteBlocks(['C']));
 					const add = b.capture(() =>
-						expect(b.ed.insertBlock({ parent: 'C', index: 1 }, line('L2', 'b')).status).toBe(
+						expect(b.ed.insertBlocks({ parent: 'C', index: 1 }, [line('L2', 'b')]).status).toBe(
 							'applied'
 						)
 					);
@@ -390,7 +390,7 @@ describe('XW-10: deleting a line never seals the block the FW-01 rule displaced'
 			race((a, b) => {
 				const del = a.capture(() => a.ed.deleteBlocks(['L1']));
 				const mv = b.capture(() =>
-					expect(b.ed.moveBlock('N', { parent: null, index: 0 }).status).toBe('applied')
+					expect(b.ed.moveBlocks(['N'], { parent: null, index: 0 }).status).toBe('applied')
 				);
 				a.receiveAll(mv);
 				b.receiveAll(del);
@@ -424,7 +424,7 @@ describe('XW-11: line kinds come from the roles config', () => {
 							expect(a.ed.setBlockType('C', 'paragraph').status).toBe('applied')
 						);
 						const add = b.capture(() =>
-							expect(b.ed.insertBlock({ parent: 'C', index: 1 }, line('L3', 'c')).status).toBe(
+							expect(b.ed.insertBlocks({ parent: 'C', index: 1 }, [line('L3', 'c')]).status).toBe(
 								'applied'
 							)
 						);

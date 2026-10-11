@@ -32,7 +32,6 @@ import * as encoding from './tests/encoding.tests.js'
 import * as undoredo from './tests/undo-redo.tests.js'
 import * as doc from './tests/doc.tests.js'
 import * as updates from './tests/updates.tests.js'
-import * as relativePositions from './tests/relativePositions.tests.js'
 import * as idset from './tests/IdSet.tests.js'
 import * as attribution from './tests/attribution.tests.js'
 import * as delta from './tests/delta.tests.js'
@@ -47,7 +46,6 @@ const modules = {
 	encoding,
 	'undo-redo': undoredo,
 	updates,
-	relativePositions,
 	IdSet: idset,
 	attribution,
 	delta

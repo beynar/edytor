@@ -241,32 +241,3 @@ export const testRepeatRandomIntersects = tc => {
   compareIdSets(diffed1, altDiffed1)
 }
 
-/**
- * The allocation-free `covers` / `coveredLength` must agree with per-id `has` and with the
- * allocating `slice(...)` reduction.
- *
- * @param {t.TestCase} tc
- */
-export const testRepeatRandomCoversAndCoveredLength = tc => {
-  const clients = 4
-  const clockRange = 100
-  const ids = createRandomIdSet(tc.prng, clients, clockRange)
-  for (let iter = 0; iter < 300; iter++) {
-    const client = prng.int31(tc.prng, 0, clients - 1)
-    const clock = prng.int31(tc.prng, 0, clockRange)
-    const len = prng.int31(tc.prng, 1, clockRange - clock + 5) // may exceed the range to cover edges
-    // reference by scanning every id in the range
-    let refCovered = 0
-    let refCovers = true
-    for (let c = clock; c < clock + len; c++) {
-      if (ids.has(client, c)) refCovered++
-      else refCovers = false
-    }
-    t.assert(ids.covers(client, clock, len) === refCovers)
-    t.assert(ids.coveredLength(client, clock, len) === refCovered)
-    // cross-check against the allocating slice
-    const sliceCovered = ids.slice(client, clock, len).reduce((s, r) => r.exists ? s + r.len : s, 0)
-    t.assert(ids.coveredLength(client, clock, len) === sliceCovered)
-  }
-}
-

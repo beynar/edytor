@@ -1,44 +1,27 @@
 import * as binary from 'lib0-v14/binary'
 import * as error from 'lib0-v14/error'
-import * as iterator from 'lib0-v14/iterator'
 import * as map from 'lib0-v14/map'
 import * as math from 'lib0-v14/math'
-import * as object from 'lib0-v14/object'
-import * as traits from 'lib0-v14/traits'
-import { equalityDeep } from 'lib0-v14/function'
-import { ObservableV2 } from 'lib0-v14/observable'
 import {
   Item,
   ContentAny,
   ContentBinary,
   ContentDeleted,
-  ContentEmbed,
   ContentFormat,
-  ContentJSON,
   ContentString,
   ContentType,
   YXmlFragmentRefID,
   YXmlElementRefID,
-  YXmlHookRefID,
-  ContentDoc,
-  createContentDocFromDoc
+  YXmlHookRefID
 } from './structs/Item.js'
-import { removeEventHandlerListener, callEventHandlerListeners, addEventHandlerListener, createEventHandler } from './utils/EventHandler.js'
 import { createID } from './utils/ID.js'
-import { getItemCleanStart, cleanupFormattingGap, liveLength } from './utils/transaction-helpers.js'
+import { getItemCleanStart, liveLength, updateCurrentFormats } from './utils/transaction-helpers.js'
 import { transact } from './utils/Transaction.js'
-import { YEvent } from './utils/YEvent.js'
-import { isDoc } from './utils/schemas.js'
-import { foldPaired, formatValue, pairedRole, markClass, MARK_START, MARK_END, SIDE_LEFT } from './utils/marks.js' // YP13
+import { markClass, MARK_START, MARK_END, SIDE_LEFT } from './utils/marks.js' // YP13
 
 /**
  * @typedef {Object<string,any>|Array<any>|number|null|string|Uint8Array|BigInt|YNode} YValue
  */
-
-/**
- * https://docs.yjs.dev/getting-started/working-with-shared-types#caveats
- */
-export const warnPrematureAccess = () => { console.warn('Invalid access: Add Yjs type to a document before reading data.') } // YP15
 
 const maxSearchMarker = 80
 
@@ -87,193 +70,42 @@ export class ItemTextListPosition {
   }
 
   /**
-   * @param {Transaction} transaction
-   * @param {YNode} parent
-   * @param {number} length
-   * @param {Object<string,any>} formats
+   * Move past `length` live units, splitting the item the last one ends in,
+   * and past the deleted items around them (YP19: the positioning of every
+   * write; mark items are folded, never rewritten).
    *
-   * @function
+   * @param {Transaction} transaction
+   * @param {number} length
    */
-  formatText (transaction, parent, length, formats) {
-    minimizeFormatChanges(this, formats)
-    const negatedFormats = insertFormats(transaction, parent, this, formats)
-    // iterate until first non-format or null is found
-    // delete all formats with formats[format.key] != null
-    // also check the formats after the first non-format as we do not want to insert redundant negated formats there
-    // eslint-disable-next-line no-labels
-    iterationLoop: while (
-      this.right !== null &&
-      (length > 0 ||
-        (
-          negatedFormats.size > 0 &&
-          (this.right.deleted || this.right.content.constructor === ContentFormat)
-        )
-      )
-    ) {
-      switch (this.right.content.constructor) {
-        case ContentFormat: {
-          if (!this.right.deleted && pairedRole(/** @type {ContentFormat} */ (this.right.content)) >= 0) {
-            // YP13: a paired mark is folded, never rewritten by a plain format
-            updateCurrentFormats(this.currentFormats, /** @type {ContentFormat} */ (this.right.content))
-          } else if (!this.right.deleted) {
-            const { key, value } = /** @type {ContentFormat} */ (this.right.content)
-            const attr = formats[key]
-            if (attr !== undefined) {
-              if (equalFormats(attr, value)) {
-                negatedFormats.delete(key)
-              } else {
-                if (length === 0) {
-                  // no need to further extend negatedFormats
-                  // eslint-disable-next-line no-labels
-                  break iterationLoop
-                }
-                negatedFormats.set(key, value)
-              }
-              this.right.delete(transaction)
-            } else {
-              this.currentFormats.set(key, value)
-            }
-          }
-          break
-        }
-        default: {
-          const item = this.right
-          const rightLen = liveLength(item)
-          if (length < rightLen) {
-            // split at the offset
-            getItemCleanStart(transaction, createID(item.id.client, item.id.clock + length))
-            length = 0
-          } else {
-            length -= rightLen
-          }
-          break
-        }
+  advance (transaction, length) {
+    while (this.right !== null && this.right.deleted) this.forward()
+    while (this.right !== null && length > 0) {
+      const item = this.right
+      const len = liveLength(item)
+      if (length < len) {
+        getItemCleanStart(transaction, createID(item.id.client, item.id.clock + length))
+        length = 0
+      } else {
+        length -= len
       }
       this.forward()
     }
     if (length > 0) {
       throw new Error('Exceeded content range')
     }
-    insertNegatedFormats(transaction, parent, this, negatedFormats)
+    while (this.right !== null && this.right.deleted) this.forward()
   }
-}
-
-/**
- * Negate applied formats
- *
- * @param {Transaction} transaction
- * @param {YNode} parent
- * @param {ItemTextListPosition} currPos
- * @param {Map<string,any>} negatedFormats
- *
- * @private
- * @function
- */
-const insertNegatedFormats = (transaction, parent, currPos, negatedFormats) => {
-  // check if we really need to remove formats
-  while (
-    currPos.right !== null && (
-      currPos.right.deleted || (
-        currPos.right.content.constructor === ContentFormat &&
-        equalFormats(negatedFormats.get(/** @type {ContentFormat} */ (currPos.right.content).key), /** @type {ContentFormat} */ (currPos.right.content).value)
-      )
-    )
-  ) {
-    if (!currPos.right.deleted) {
-      negatedFormats.delete(/** @type {ContentFormat} */ (currPos.right.content).key)
-    }
-    currPos.forward()
-  }
-  const doc = transaction.doc
-  const ownClientId = doc.clientID
-  negatedFormats.forEach((val, key) => {
-    const left = currPos.left
-    const right = currPos.right
-    const nextFormat = new Item(createID(ownClientId, doc.store.getClock(ownClientId)), left, left && left.lastId, right, right && right.id, parent, null, new ContentFormat(key, val))
-    nextFormat.integrate(transaction, 0)
-    currPos.right = nextFormat
-    currPos.forward()
-    updateMarkerFormats(parent, currPos, /** @type {ContentFormat} */ (nextFormat.content))
-  })
-}
-
-/**
- * @param {Map<string,any>} currentFormats
- * @param {ContentFormat} format
- *
- * @private
- * @function
- */
-const updateCurrentFormats = (currentFormats, format) => {
-  if (foldPaired(currentFormats, format)) return // YP13
-  const { key, value } = format
-  if (value === null) {
-    currentFormats.delete(key)
-  } else {
-    currentFormats.set(key, value)
-  }
-}
-
-/**
- * @param {ItemTextListPosition} currPos
- * @param {Object<string,any>} formats
- *
- * @private
- * @function
- */
-const minimizeFormatChanges = (currPos, formats) => {
-  // go right while formats[right.key] === right.value (or right is deleted)
-  while (true) {
-    if (currPos.right === null) {
-      break
-    } else if (currPos.right.deleted || (currPos.right.content.constructor === ContentFormat && equalFormats(formats[(/** @type {ContentFormat} */ (currPos.right.content)).key] ?? null, /** @type {ContentFormat} */ (currPos.right.content).value))) {
-      //
-    } else {
-      break
-    }
-    currPos.forward()
-  }
-}
-
-/**
- * @param {Transaction} transaction
- * @param {YNode} parent
- * @param {ItemTextListPosition} currPos
- * @param {Object<string,any>} formats
- * @return {Map<string,any>}
- *
- * @private
- * @function
- **/
-const insertFormats = (transaction, parent, currPos, formats) => {
-  const doc = transaction.doc
-  const ownClientId = doc.clientID
-  const negatedFormats = new Map()
-  // insert format-start items
-  for (const key in formats) {
-    const val = formats[key]
-    const currentVal = currPos.currentFormats.get(key) ?? null
-    if (!equalFormats(currentVal, val)) {
-      // save negated format (set null if currentVal undefined)
-      negatedFormats.set(key, currentVal)
-      const { left, right } = currPos
-      currPos.right = new Item(createID(ownClientId, doc.store.getClock(ownClientId)), left, left && left.lastId, right, right && right.id, parent, null, new ContentFormat(key, val))
-      currPos.right.integrate(transaction, 0)
-      currPos.forward()
-      updateMarkerFormats(parent, currPos, /** @type {ContentFormat} */ ((/** @type {Item} */ (currPos.left)).content))
-    }
-  }
-  return negatedFormats
 }
 
 // YP13 begin (edytor fork: paired marks — see UPSTREAM.md YP13)
 /**
- * The contents an array insert writes (as `insertContentHelper` splits it).
+ * The contents an insert writes: a string, or an array split into its nodes and its runs of JSON values.
  *
- * @param {Array<any>} insert
+ * @param {Array<any>|string} insert
  * @return {Array<import('./structs/Item.js').AbstractContent>}
  */
 const contentsOf = insert => {
+  if (typeof insert === 'string') return [new ContentString(insert)]
   /** @type {Array<import('./structs/Item.js').AbstractContent>} */
   const out = []
   for (let i = 0; i < insert.length;) {
@@ -281,12 +113,9 @@ const contentsOf = insert => {
     if (first instanceof YNode) {
       out.push(new ContentType(first))
       i++
-    } else if (isDoc(first)) {
-      out.push(createContentDocFromDoc(first))
-      i++
     } else {
       let j = i + 1
-      for (; j < insert.length && !(insert[j] instanceof YNode || isDoc(insert[j])); j++) { /* nop */ }
+      for (; j < insert.length && !(insert[j] instanceof YNode); j++) { /* nop */ }
       out.push(new ContentAny((i === 0 && j === insert.length) ? insert : insert.slice(i, j)))
       i = j
     }
@@ -427,69 +256,6 @@ const markHelper = (transaction, parent, index, length, mark, value, startSide, 
 }
 // YP13 end
 
-/**
- * @param {Transaction} transaction
- * @param {YNode} parent
- * @param {ItemTextListPosition} currPos
- * @param {import('./structs/Item.js').AbstractContent} content
- * @param {Object<string,any>} formats
- *
- * @private
- * @function
- **/
-export const insertContent = (transaction, parent, currPos, content, formats) => {
-  currPos.currentFormats.forEach((_val, key) => {
-    if (formats[key] === undefined) {
-      formats[key] = null
-    }
-  })
-  const doc = transaction.doc
-  const ownClientId = doc.clientID
-  minimizeFormatChanges(currPos, formats)
-  const negatedFormats = insertFormats(transaction, parent, currPos, formats)
-  let { left, right, index } = currPos
-  if (parent._searchMarker) {
-    updateMarkerChanges(parent._searchMarker, currPos.index, content.getLength())
-  }
-  right = new Item(createID(ownClientId, doc.store.getClock(ownClientId)), left, left && left.lastId, right, right && right.id, parent, null, content)
-  right.integrate(transaction, 0)
-  currPos.right = right
-  currPos.index = index
-  currPos.forward()
-  insertNegatedFormats(transaction, parent, currPos, negatedFormats)
-}
-
-/**
- * @param {Transaction} transaction
- * @param {YNode} parent
- * @param {ItemTextListPosition} currPos
- * @param {Array<any>|string} insert
- * @param {Object<string,any>} formats
- */
-export const insertContentHelper = (transaction, parent, currPos, insert, formats) => {
-  if (typeof insert === 'string') {
-    insertContent(transaction, parent, currPos, new ContentString(insert), formats)
-  } else {
-    for (let i = 0; i < insert.length;) {
-      const first = insert[i]
-      if (first instanceof YNode) {
-        insertContent(transaction, parent, currPos, new ContentType(first), formats)
-        i++
-      } else if (isDoc(first)) {
-        insertContent(transaction, parent, currPos, createContentDocFromDoc(first), formats)
-        i++
-      } else {
-        // insert "any" content
-        // compute slice len
-        let j = i + 1
-        for (; j < insert.length && !(insert[j] instanceof YNode || isDoc(insert[j])); j++) { /* nop */ }
-        insertContent(transaction, parent, currPos, new ContentAny((i === 0 && j === insert.length) ? insert : insert.slice(i, j)), formats)
-        i = j
-      }
-    }
-  }
-}
-
 // YP7 begin (edytor fork: insertAtGapEnd — see UPSTREAM.md YP7)
 /**
  * Insert `content` at the END of the gap at live index `index`: walk `index`
@@ -537,8 +303,6 @@ export const insertAtGapEndHelper = (transaction, parent, index, content) => {
  */
 export const deleteText = (transaction, currPos, length) => {
   const startLength = length
-  const startFormats = map.copy(currPos.currentFormats)
-  const start = currPos.right
   while (length > 0 && currPos.right !== null) {
     const item = currPos.right
     if (!item.deleted && item.countable) {
@@ -549,9 +313,6 @@ export const deleteText = (transaction, currPos, length) => {
       item.delete(transaction)
     }
     currPos.forward()
-  }
-  if (start) {
-    cleanupFormattingGap(transaction, start, currPos.right, startFormats, currPos.currentFormats)
   }
   const parent = /** @type {YNode} */ (/** @type {Item} */ (currPos.left || currPos.right).parent)
   if (parent._searchMarker) {
@@ -603,101 +364,6 @@ export class ArraySearchMarker {
  * @param {ArraySearchMarker} marker
  */
 const refreshMarkerTimestamp = marker => { marker.timestamp = globalSearchMarkerTimestamp++ }
-
-/**
- * After a format marker item is integrated at `currPos` (it is `currPos.left`;
- * `currPos.right` is the item right of it), fold it into the format snapshot of
- * every search marker positioned at-or-right of the insertion — exactly what a
- * cursor passing the marker would do.
- *
- * Positions compare in *list order*, not just index space: markers anchored
- * at items sharing `currPos.index` but sitting left of the insertion (a
- * same-index run of non-countable/deleted items ending at `currPos.left`)
- * must NOT observe the new format — index equality alone is ambiguous there.
- *
- * Same-key boundary (R1 repair): a marker's `formats` snapshot is the fold of
- * the live format items left of its anchor. The new item changes that fold
- * only while it is the LAST live item setting its key before the anchor — a
- * later live format item that sets the same key again shadows it, so the
- * snapshot's value for that key still comes from that later marker and must
- * not be overwritten. The fold therefore walks right from the insertion and
- * stops at the first live same-key `ContentFormat`: markers anchored
- * at-or-before it are updated, everything past it keeps its (still valid)
- * snapshot.
- *
- * Candidates whose anchor the walk never reaches (stale record — anchor
- * unlinked/merged, or index lying about the real position) are invalidated
- * (`formats = null`) instead of trusting a position that can't be verified.
- *
- * @param {YNode} parent
- * @param {ItemTextListPosition} currPos
- * @param {ContentFormat} format
- */
-const updateMarkerFormats = (parent, currPos, format) => {
-  const ms = parent._searchMarker
-  if (ms === null) return
-  /**
-   * Anchors of the same-index run ending at `currPos.left`: deleted or
-   * non-countable items sharing `currPos.index` but sitting left of the
-   * insertion (the run always starts with the new format item itself, which
-   * is non-countable). Built lazily — only needed when a marker shares the
-   * insertion index.
-   *
-   * @type {Set<Item>?}
-   */
-  let leftRun = null
-  /**
-   * Snapshots at-or-right of the insertion — candidates for the fold.
-   *
-   * @type {Array<ArraySearchMarker>?}
-   */
-  let cands = null
-  let maxIndex = -1
-  for (let i = 0; i < ms.length; i++) {
-    const m = ms[i]
-    if (m.formats === null || m.index < currPos.index) continue
-    if (m.index === currPos.index) {
-      if (leftRun === null) {
-        leftRun = new Set()
-        for (let p = currPos.left; p !== null && (p.deleted || !p.countable); p = p.left) {
-          leftRun.add(p)
-        }
-      }
-      // fold only if m.p is at-or-right of currPos.right — i.e. not part of
-      // the same-index run terminating at currPos.left
-      if (leftRun.has(m.p)) continue
-    }
-    ;(cands ?? (cands = [])).push(m)
-    if (m.index > maxIndex) maxIndex = m.index
-  }
-  if (cands === null) return
-  let pindex = currPos.index
-  for (let p = currPos.right; p !== null; p = p.right) {
-    if (p.marker) {
-      for (let i = cands.length - 1; i >= 0; i--) {
-        if (cands[i].p === p) {
-          updateCurrentFormats(/** @type {Map<string,any>} */ (cands[i].formats), format)
-          cands.splice(i, 1)
-        }
-      }
-      if (cands.length === 0) return
-    }
-    if (!p.deleted && p.content.constructor === ContentFormat && /** @type {ContentFormat} */ (p.content).key === format.key) {
-      // Same-key boundary: snapshots past this item still draw this key from
-      // it — the new marker's reach ends here. (Markers anchored ON it were
-      // already updated: their snapshot is the state at their left edge,
-      // which precedes the item's own effect.)
-      return
-    }
-    if (!p.deleted && p.countable) {
-      pindex += p.length
-      if (pindex > maxIndex) break // every remaining anchor lies behind us — stale records
-    }
-  }
-  // Candidates never reached by the walk can't be verified at-or-right of the
-  // insertion — drop their snapshots rather than risk a stale read.
-  for (let i = 0; i < cands.length; i++) cands[i].formats = null
-}
 
 /**
  * This is rather complex so this function is the only thing that should overwrite a marker
@@ -931,87 +597,14 @@ export const updateMarkerChanges = (searchMarker, index, len) => {
   }
 }
 
-/**
- * Call event listeners with an event. This will also add an event to all
- * parents (for `.observeDeep` handlers).
- *
- * @param {YNode} type
- * @param {Transaction} transaction
-  * @param {YEvent} event
- */
-export const callTypeObservers = (type, transaction, event) => {
-  const changedType = type
-  const changedParentTypes = transaction.changedParentTypes
-  // track the event unconditionally — also for deleted types: the walk carries changes inside a
-  // deleted type up to the deep-event consumers on live ancestors.
-  while (true) {
-    // @ts-ignore
-    map.setIfUndefined(changedParentTypes, type, () => []).push(event)
-    if (type._item === null) {
-      break
-    }
-    type = /** @type {YNode} */ (type._item.parent)
-  }
-  // a deleted type's own observers stay silent (deleted content is invisible; mirrors the
-  // fire-time rule for `changedParentTypes` targets in `cleanupTransactions`).
-  if (changedType._item === null || !changedType._item.deleted) {
-    callEventHandlerListeners(/** @type {any} */ (changedType._eH), event, transaction)
-  }
-}
-
 // YP16 begin (edytor fork: writes without the delta layer — see UPSTREAM.md YP16)
 /**
- * One run of a node's current content: a string (text) or the elements of an array insert, under
- * the formats in effect there (`null`: none) — the shape a current-state `toDelta` op had.
+ * What a detached node was given, replayed when it integrates: its content
+ * (adjacent strings, and adjacent arrays, merged) and its attrs in
+ * first-write order (`null`: removed).
  *
- * @typedef {{ insert: string|Array<any>, format: Object<string,any>|null }} ContentRun
+ * @typedef {{ runs: Array<string|Array<any>>, attrs: Object<string,{ value: any }|null> }} Prelim
  */
-
-/**
- * What a detached node was given, replayed when it integrates: its content runs (adjacent runs of
- * one kind and equal formats merged — the normal form the pre-integration delta had) and its attrs
- * in first-write order (`null`: removed).
- *
- * @typedef {{ runs: Array<ContentRun>, attrs: Object<string,{ value: any }|null> }} Prelim
- */
-
-/**
- * The formats an insert writes: `null` and `undefined` values dropped, `null` when none remain.
- *
- * @param {Object<string,any>|null|undefined} format
- * @return {Object<string,any>|null}
- */
-const dataFormat = format => {
-  /** @type {Object<string,any>|null} */
-  let r = null
-  if (format != null) {
-    for (const k in format) {
-      const v = format[k]
-      if (v != null) (r ??= {})[k] = v
-    }
-  }
-  return r
-}
-
-/**
- * The formats a `format` call applies: `null` clears every format of a detached node's content,
- * `undefined` (no key) does nothing, a `null` value removes its key.
- *
- * @param {Object<string,any>|null|undefined} formats
- * @return {Object<string,any>|null|undefined}
- */
-const formatUpdate = formats => {
-  if (formats === null) return null
-  /** @type {Object<string,any>|undefined} */
-  let r
-  if (formats !== undefined) {
-    for (const k in formats) {
-      const v = formats[k]
-      if (v !== undefined) (r ??= {})[k] = v
-    }
-  }
-  return r
-}
 
 /**
  * @param {YNode} node
@@ -1022,7 +615,7 @@ const prelimOf = node => node._prelim ?? (node._prelim = { runs: [], attrs: Obje
 /**
  * Split `runs` so that a run starts at `index`; returns that run's position.
  *
- * @param {Array<ContentRun>} runs
+ * @param {Array<string|Array<any>>} runs
  * @param {number} index
  * @return {number}
  */
@@ -1030,112 +623,36 @@ const splitRuns = (runs, index) => {
   let i = 0
   for (; i < runs.length && index > 0; i++) {
     const run = runs[i]
-    const len = run.insert.length
-    if (index < len) {
-      runs.splice(i + 1, 0, { insert: run.insert.slice(index), format: run.format })
-      run.insert = run.insert.slice(0, index)
+    if (index < run.length) {
+      runs.splice(i, 1, run.slice(0, index), run.slice(index))
       return i + 1
     }
-    index -= len
+    index -= run.length
   }
   if (index > 0) throw new Error('Exceeded content range')
   return i
 }
 
 /**
- * Drop empty runs and merge adjacent runs of one kind and equal formats.
+ * Drop empty runs and merge adjacent runs of one kind.
  *
- * @param {Array<ContentRun>} runs
+ * @param {Array<string|Array<any>>} runs
  */
 const mergeRuns = runs => {
   for (let i = runs.length - 1; i >= 0; i--) {
-    if (runs[i].insert.length === 0) runs.splice(i, 1)
+    if (runs[i].length === 0) runs.splice(i, 1)
   }
   for (let i = runs.length - 1; i > 0; i--) {
     const a = runs[i - 1]
     const b = runs[i]
-    if (typeof a.insert === typeof b.insert && equalityDeep(a.format, b.format)) {
-      a.insert = typeof a.insert === 'string' ? a.insert + b.insert : a.insert.concat(b.insert)
-      runs.splice(i, 1)
+    if (typeof a === typeof b) {
+      runs.splice(i - 1, 2, typeof a === 'string' ? a + b : a.concat(b))
     }
   }
 }
 
 /**
- * The current content of `node` as runs (formats folded like the cursor folds them; a paired mark
- * shows its winning value under its mark name).
- *
- * @param {YNode} node
- * @return {Array<ContentRun>}
- */
-const readRuns = node => {
-  /** @type {Array<ContentRun>} */
-  const runs = []
-  /** @type {Map<string,any>} */
-  const current = new Map()
-  /** @type {Map<string,any>} */
-  const paired = new Map()
-  /** @type {Object<string,any>|null|undefined} */
-  let format = null
-  for (let item = node._start; item !== null; item = item.right) {
-    if (item.deleted) continue
-    const content = item.content
-    if (content.constructor === ContentFormat) {
-      let { key, value } = /** @type {ContentFormat} */ (content)
-      if (pairedRole(/** @type {ContentFormat} */ (content)) >= 0) {
-        foldPaired(paired, /** @type {ContentFormat} */ (content))
-        key = key.slice(1)
-        value = formatValue(paired.get(key) ?? null)
-      }
-      if (value == null) {
-        current.delete(key)
-      } else {
-        current.set(key, value)
-      }
-      format = undefined
-      continue
-    }
-    if (format === undefined) {
-      format = null
-      current.forEach((v, k) => { (format ??= {})[k] = v })
-    }
-    const last = runs.length > 0 ? runs[runs.length - 1] : null
-    if (content.constructor === ContentString) {
-      const str = /** @type {ContentString} */ (content).str
-      if (last !== null && typeof last.insert === 'string' && equalityDeep(last.format, format)) {
-        last.insert += str
-      } else {
-        runs.push({ insert: str, format })
-      }
-    } else {
-      const elems = content.getContent()
-      if (last !== null && typeof last.insert !== 'string' && equalityDeep(last.format, format)) {
-        for (let i = 0; i < elems.length; i++) last.insert.push(elems[i])
-      } else {
-        runs.push({ insert: elems.slice(), format })
-      }
-    }
-  }
-  return runs
-}
-
-/**
- * The live attrs of `node` as an object (no premature-access warning: a detached node has none).
- *
- * @param {YNode} node
- * @return {Object<string,any>}
- */
-const liveAttrs = node => {
-  /** @type {Object<string,any>} */
-  const res = {}
-  node._map.forEach((item, key) => {
-    if (!item.deleted) res[key] = item.content.getContent()[item.length - 1]
-  })
-  return res
-}
-
-/**
- * A cursor at live index `index` of `node` — the positioning step of every write. A distant index
+ * A cursor at live index `index` of `node` — the positioning step of a delete. A distant index
  * seeds the cursor from a format-aware search marker (UPSTREAM.md YP4): a marker at-or-left of the
  * target carrying a formats snapshot starts the walk there, provided its anchor is the first item
  * at its index (the walk from `_start` stops on the first unprocessed item at the target, format
@@ -1190,31 +707,28 @@ export const cursorAt = (transaction, node, index) => {
       adjust = bestIndex
     }
   }
-  currPos.formatText(transaction, node, index - adjust, {})
+  currPos.advance(transaction, index - adjust)
   // quiescent point at a positioning boundary — a later write near it seeds from this marker
   plantMarker(node, currPos)
   return currPos
 }
 
 /**
- * Write the content and attrs a detached node was given, in the order the pre-integration delta
- * applied them: the content runs with one cursor, then the attrs.
+ * Write the content and attrs a detached node was given: the content runs in order, then the
+ * attrs.
  *
  * @param {Transaction} transaction
  * @param {YNode} node
  * @param {Prelim} prelim
  */
 const writePrelim = (transaction, node, prelim) => {
-  const currPos = new ItemTextListPosition(null, node._start, 0, new Map())
+  let index = 0
   for (const run of prelim.runs) {
-    const formats = run.format === null ? {} : object.assign({}, run.format)
-    if (typeof run.insert === 'string') {
-      insertContent(transaction, node, currPos, new ContentString(run.insert), formats)
-    } else {
-      insertContentHelper(transaction, node, currPos, run.insert, formats)
+    for (const part of contentsOf(run)) {
+      insertInGapHelper(transaction, node, index, part)
+      index += part.getLength()
     }
   }
-  plantMarker(node, currPos)
   for (const key in prelim.attrs) {
     const attr = prelim.attrs[key]
     if (attr === null) {
@@ -1227,16 +741,14 @@ const writePrelim = (transaction, node, prelim) => {
 // YP16 end
 
 /**
- * The engine's node: a sequence (text, elements, nested nodes) and a map of attributes.
- *
- * @extends {ObservableV2<{ destroy: (type: YNode) => void }>}
+ * The engine's node: a sequence (text, elements, nested nodes) and a map of attributes. YP19: the
+ * reads and writes edytor calls — no observers, no plain formats, no JSON or string renderings.
  */
-export class YNode extends ObservableV2 {
+export class YNode {
   /**
    * @param {string?} name
    */
   constructor (name = null) {
-    super()
     /**
      * @type {string|null}
      */
@@ -1258,26 +770,11 @@ export class YNode extends ObservableV2 {
      */
     this.doc = null
     this._length = 0
-    /**
-     * Event handlers
-     * @type {EventHandler<YEvent,Transaction>}
-     */
-    this._eH = createEventHandler()
-    /**
-     * Deep event handlers
-     * @type {EventHandler<YEvent,Transaction>}
-     */
-    this._dEH = createEventHandler()
     this._legacyTypeRef = this.name == null ? YXmlFragmentRefID : YXmlElementRefID
     /**
      * @type {Array<ArraySearchMarker>|null}
      */
     this._searchMarker = []
-    /**
-     * Whether this YText contains formats.
-     * This flag is updated when a formatting item is integrated (see ContentFormat.integrate)
-     */
-    this._hasFormatting = false
     /**
      * The writes made while this node is detached, replayed when it integrates (YP16).
      * @type {Prelim|null}
@@ -1286,32 +783,14 @@ export class YNode extends ObservableV2 {
   }
 
   /**
-   * Emit the `'destroy'` event and unregister its listeners. The content and the
-   * `observe`/`observeDeep` handlers are left untouched.
+   * The live length of the sequence (`0` while detached).
    */
-  destroy () {
-    this.emit('destroy', [this])
-    super.destroy()
-  }
-
   get length () {
-    this.doc ?? warnPrematureAccess()
     return this._length
   }
 
   /**
-   * @return {YNode?}
-   */
-  get parent () {
-    return /** @type {YNode?} */ (this._item ? this._item.parent : null)
-  }
-
-  /**
    * Integrate this type into the Yjs instance.
-   *
-   * * Save this struct in the os
-   * * This type is sent to other client
-   * * Observer functions are fired
    *
    * @param {Doc} y The Yjs instance
    * @param {Item|null} item
@@ -1322,7 +801,7 @@ export class YNode extends ObservableV2 {
     const prelim = this._prelim
     if (prelim !== null) {
       this._prelim = null
-      if ((prelim.runs.length > 0 || !object.isEmpty(prelim.attrs)) && (item === null || !item.deleted)) {
+      if ((prelim.runs.length > 0 || Object.keys(prelim.attrs).length > 0) && (item === null || !item.deleted)) {
         transact(y, transaction => writePrelim(transaction, this, prelim))
       }
     }
@@ -1338,109 +817,9 @@ export class YNode extends ObservableV2 {
   }
 
   /**
-   * Creates YEvent and calls all type observers.
-   * Must be implemented by each type.
-   *
-   * @param {Transaction} transaction
-   * @param {Set<null|string>} parentSubs Keys changed on this type. `null` if list was modified.
-   */
-  _callObserver (transaction, parentSubs) {
-    const event = new YEvent(this, transaction, parentSubs)
-    callTypeObservers(this, transaction, event)
-    if (!transaction.local && this._searchMarker) {
-      this._searchMarker.length = 0
-    }
-    // If a remote change happened, we try to cleanup potential formatting duplicates.
-    if (!transaction.local && this._hasFormatting) {
-      transaction._needFormattingCleanup = true
-    }
-  }
-
-  /**
-   * Observe all events that are created on this type.
-   *
-   * @template {(target: YEvent, tr: Transaction) => void} F
-   * @param {F} f Observer function
-   * @return {F}
-   */
-  observe (f) {
-    addEventHandlerListener(this._eH, f)
-    return f
-  }
-
-  /**
-   * Observe all events that are created by this type and its children.
-   *
-   * @template {(target: YEvent, tr: Transaction) => void} F
-   * @param {F} f Observer function
-   * @return {F}
-   */
-  observeDeep (f) {
-    addEventHandlerListener(this._dEH, f)
-    return f
-  }
-
-  /**
-   * Unregister an observer function.
-   *
-   * @param {(type: YEvent, tr: Transaction) => void} f Observer function
-   */
-  unobserve (f) {
-    removeEventHandlerListener(this._eH, f)
-  }
-
-  /**
-   * Unregister an observer function.
-   *
-   * @param {(type: YEvent, tr: Transaction) => void} f Observer function
-   */
-  unobserveDeep (f) {
-    removeEventHandlerListener(this._dEH, f)
-  }
-
-  /**
-   * Makes a copy of this data type that can be included somewhere else.
-   *
-   * Note that the content is only readable _after_ it has been included somewhere in the Ydoc.
-   *
-   * @return {YNode}
-   */
-  clone () {
-    const cpy = this._copy()
-    this._map.forEach((item, key) => {
-      if (!item.deleted) {
-        const value = item.content.getContent()[item.length - 1]
-        cpy.setAttr(key, value instanceof YNode ? value.clone() : value)
-      }
-    })
-    let index = 0
-    for (const run of readRuns(this)) {
-      const insert = typeof run.insert === 'string' ? run.insert : run.insert.map(c => c instanceof YNode ? c.clone() : c)
-      cpy.insert(index, insert, run.format ?? undefined)
-      index += insert.length
-    }
-    return cpy
-  }
-
-  /**
-   * Removes all attributes.
-   */
-  clearAttrs () {
-    /** @type {Array<string>} */
-    const keys = []
-    this.forEachAttr((_, key) => { keys.push(key) })
-    if (keys.length === 0 || this.doc == null || (this._item !== null && this._item.deleted)) return
-    transact(this.doc, transaction => {
-      for (const key of keys) nodeMapDelete(transaction, this, key)
-    })
-  }
-
-  /**
    * Removes an attribute. A deleted node is left as it is.
    *
    * @param {string} attributeName The attribute name that is to be removed.
-   *
-   * @public
    */
   deleteAttr (attributeName) {
     if (this.doc == null) {
@@ -1457,8 +836,6 @@ export class YNode extends ObservableV2 {
    * @param {string} attributeName The attribute name that is to be set.
    * @param {VAL} attributeValue The attribute value that is to be set.
    * @return {VAL}
-   *
-   * @public
    */
   setAttr (attributeName, attributeValue) {
     if (this.doc == null) {
@@ -1474,68 +851,29 @@ export class YNode extends ObservableV2 {
    *
    * @param {string} attributeName The attribute name that identifies the queried value.
    * @return {any} The queried attribute value.
-   * @public
    */
   getAttr (attributeName) {
-    return nodeMapGet(this, attributeName)
+    const val = this._map.get(attributeName)
+    return val !== undefined && !val.deleted ? val.content.getContent()[val.length - 1] : undefined
   }
 
   /**
-   * Returns whether an attribute exists
-   *
-   * @param {string} attributeName The attribute name to check for existence.
-   * @return {boolean} whether the attribute exists.
-   *
-   * @public
-   */
-  hasAttr (attributeName) {
-    return nodeMapHas(this, attributeName)
-  }
-
-  /**
-   * Returns all attribute name/value pairs in a JSON Object.
-   *
-   * @return {Object<string,any>} A JSON Object that describes the attributes.
-   *
-   * @public
-   */
-  getAttrs () {
-    return nodeMapGetAll(this)
-  }
-
-  /**
-   * Inserts new content at an index: a string, or an array of elements (JSON values, nodes,
-   * documents). A deleted node is left as it is.
-   *
-   * @example
-   *  // Insert character 'a' at position 0
-   *  yarray.insert(0, ['a'])
-   *  // Insert numbers 1, 2 at position 1
-   *  yarray.insert(1, [1, 2])
+   * Inserts new content at an index — a string, or an array of elements (JSON values, nodes) —
+   * as `insertInGap` places it (YP19: one sequence write). A deleted node is left as it is.
    *
    * @param {number} index The index to insert content at.
-   * @param {Array<any>|string} content Array of content to append.
-   * @param {Object<string,any>} [format]
+   * @param {Array<any>|string} content
    */
-  insert (index, content, format) {
+  insert (index, content) {
     if ((typeof content !== 'string' && !Array.isArray(content)) || content.length === 0) return
     if (this.doc == null) {
       const runs = prelimOf(this).runs
-      runs.splice(splitRuns(runs, index), 0, { insert: typeof content === 'string' ? content : content.slice(), format: dataFormat(format) })
+      runs.splice(splitRuns(runs, index), 0, content.slice())
       mergeRuns(runs)
       return
     }
     if (this._item !== null && this._item.deleted) return
-    transact(this.doc, transaction => {
-      const currPos = cursorAt(transaction, this, index)
-      const formats = dataFormat(format) ?? {}
-      if (typeof content === 'string') {
-        insertContent(transaction, this, currPos, new ContentString(content), formats)
-      } else {
-        insertContentHelper(transaction, this, currPos, content.slice(), formats)
-      }
-      plantMarker(this, currPos)
-    })
+    this.insertInGap(index, content)
   }
 
   // YP7 begin (edytor fork: insertAtGapEnd — see UPSTREAM.md YP7)
@@ -1569,9 +907,8 @@ export class YNode extends ObservableV2 {
   insertInGap (index, content) {
     if (this.doc == null) throw new Error('insertInGap: node is not integrated')
     transact(this.doc, transaction => {
-      const parts = typeof content === 'string' ? [new ContentString(content)] : contentsOf(content)
       let at = index
-      for (const part of parts) {
+      for (const part of contentsOf(content)) {
         insertInGapHelper(transaction, this, at, part)
         at += part.getLength()
       }
@@ -1601,67 +938,6 @@ export class YNode extends ObservableV2 {
   // YP13 end
 
   /**
-   * Formats `[index, index + length)`: each key of `formats` takes its value there (`null`
-   * removes it). A deleted node is left as it is.
-   *
-   * @param {number} index
-   * @param {number} length
-   * @param {Object<string,any>} formats
-   */
-  format (index, length, formats) {
-    const update = formatUpdate(formats)
-    if (update === undefined || !(length > 0)) return
-    if (this.doc == null) {
-      const runs = prelimOf(this).runs
-      const from = splitRuns(runs, index)
-      const to = splitRuns(runs, index + length)
-      for (let i = from; i < to; i++) {
-        const run = runs[i]
-        if (update === null) {
-          run.format = null
-        } else {
-          /** @type {Object<string,any>} */
-          const f = object.assign({}, run.format)
-          for (const k in update) {
-            if (update[k] === null) {
-              delete f[k]
-            } else {
-              f[k] = update[k]
-            }
-          }
-          run.format = object.isEmpty(f) ? null : f
-        }
-      }
-      mergeRuns(runs)
-      return
-    }
-    if (this._item !== null && this._item.deleted) return
-    transact(this.doc, transaction => {
-      const currPos = cursorAt(transaction, this, index)
-      currPos.formatText(transaction, this, length, update ?? {})
-      plantMarker(this, currPos)
-    })
-  }
-
-  /**
-   * Appends content to this YArray.
-   *
-   * @param {Array<any>|string} content Array of content to append.
-   */
-  push (content) {
-    this.insert(this.length, content)
-  }
-
-  /**
-   * Prepends content to this YArray.
-   *
-   * @param {Array<any>|string} content Array of content to prepend.
-   */
-  unshift (content) {
-    this.insert(0, content)
-  }
-
-  /**
    * Deletes elements starting from an index. A deleted node is left as it is.
    *
    * @param {number} index Index at which to start deleting elements
@@ -1671,17 +947,11 @@ export class YNode extends ObservableV2 {
     if (!(length > 0)) return
     if (this.doc == null) {
       const runs = prelimOf(this).runs
-      const from = splitRuns(runs, index)
       let n = length
-      for (let i = from; i < runs.length && n > 0; i++) {
-        const run = runs[i]
-        if (run.insert.length > n) {
-          run.insert = run.insert.slice(n)
-          n = 0
-        } else {
-          n -= run.insert.length
-          run.insert = run.insert.slice(0, 0)
-        }
+      for (let i = splitRuns(runs, index); i < runs.length && n > 0; i++) {
+        const cut = Math.min(n, runs[i].length)
+        runs[i] = runs[i].slice(cut)
+        n -= cut
       }
       mergeRuns(runs)
       return
@@ -1692,128 +962,6 @@ export class YNode extends ObservableV2 {
       deleteText(transaction, currPos, length)
       plantMarker(this, currPos)
     })
-  }
-
-  /**
-   * Returns the i-th element from a YArray.
-   *
-   * @param {number} index The index of the element to return from the YArray
-   * @return {any}
-   */
-  get (index) {
-    return typeListGet(this, index)
-  }
-
-  /**
-   * Returns a portion of this YXmlFragment into a JavaScript Array selected
-   * from start to end (end not included).
-   *
-   * @param {number} [start]
-   * @param {number} [end]
-   * @return {Array<any>}
-   */
-  slice (start = 0, end = this.length) {
-    return typeListSlice(this, start, end)
-  }
-
-  /**
-   * Transforms this YArray to a JavaScript Array: each element, and each run of text under one set
-   * of formats as one string.
-   *
-   * @return {Array<any>}
-   */
-  toArray () {
-    /**
-     * @type {Array<any>}
-     */
-    const children = []
-    for (const run of readRuns(this)) {
-      if (typeof run.insert === 'string') {
-        children.push(run.insert)
-      } else {
-        for (let i = 0; i < run.insert.length; i++) children.push(run.insert[i])
-      }
-    }
-    return children
-  }
-
-  /**
-   * Transforms this Shared Type to a JSON object.
-   * @return {{ name?: string, attrs?: { [K:string|number]: any }, children?: Array<any>  }}
-   */
-  toJSON () {
-    /**
-     * @type {{[K:string]:any}}
-     */
-    const attrs = this.getAttrs()
-    for (const k in attrs) {
-      const attr = attrs[k]
-      attrs[k] = attr instanceof YNode ? attr.toJSON() : attr
-    }
-    const children = this.toArray().map(child => child instanceof YNode ? /** @type {any} */ (child.toJSON()) : child)
-    /**
-     * @type {any}
-     */
-    const res = {}
-    if (this.name != null) {
-      res.name = this.name
-    }
-    if (this.length > 0) {
-      res.children = children
-    }
-    if (this.attrSize > 0) {
-      res.attrs = attrs
-    }
-    return res
-  }
-
-  /**
-   * @param {object} opts
-   * @param {boolean} [opts.forceTag] enforce creating a surrouning <name /> tag, even if it is null.
-   * @return {string}
-   */
-  toString ({ forceTag = false } = {}) {
-    /**
-     * @type {Array<[string|number,string]>}
-     */
-    const attrs = []
-    this.forEachAttr((attr, key) => {
-      attrs.push([(key), /** @type {any} */ (attr) instanceof YNode ? attr.toString({ forceTag: true }) : JSON.stringify(attr)])
-    })
-    const attrsString = (attrs.length > 0 ? ' ' : '') + attrs.sort((a, b) => a[0].toString() < b[0].toString() ? -1 : 1).map(attr => attr[0] + '=' + attr[1]).join(' ')
-    /**
-     * @type {string}
-     */
-    const children = this.toArray().map(c => typeof c === 'string' ? c : (c instanceof YNode ? c.toString({ forceTag: true }) : JSON.stringify(c))).join('')
-    if (this.name == null && !forceTag && attrs.length === 0) {
-      return children
-    }
-    if (this.length === 0) {
-      return `<${this.name ?? ''}${attrsString} />`
-    }
-    return `<${this.name ?? ''}${attrsString}>${children}</${this.name ?? ''}>`
-  }
-
-  /**
-   * Returns an Array with the result of calling a provided function on every
-   * child-element.
-   *
-   * @template M
-   * @param {(child:any,index:number)=>M} f Function that produces an element of the new Array
-   * @return {Array<M>} A new array with each element being the result of the
-   *                 callback function
-   */
-  map (f) {
-    return this.toArray().map(f)
-  }
-
-  /**
-   * Executes a provided function once on every element of this YArray.
-   *
-   * @param {(child:any,index:number)=>any} f Function that produces an element of the new Array
-   */
-  forEach (f) {
-    return this.toArray().forEach(f)
   }
 
   /**
@@ -1830,57 +978,18 @@ export class YNode extends ObservableV2 {
   }
 
   /**
-   * Returns the keys for each element in the YMap Type.
+   * The keys of the live attributes.
    *
    * @return {IterableIterator<string>}
    */
-  attrKeys () {
-    return iterator.iteratorMap(createMapIterator(this), /** @param {any} v */ v => v[0])
+  * attrKeys () {
+    for (const [key, item] of this._map) {
+      if (!item.deleted) yield key
+    }
   }
 
   /**
-   * Returns the values for each element in the YMap Type.
-   *
-   * @return {IterableIterator<any>}
-   */
-  attrValues () {
-    return iterator.iteratorMap(createMapIterator(this), /** @param {any} v */ v => v[1].content.getContent()[v[1].length - 1])
-  }
-
-  /**
-   * Returns an Iterator of [key, value] pairs
-   *
-   * @return {IterableIterator<[string, any]>}
-   */
-  attrEntries () {
-    return iterator.iteratorMap(createMapIterator(this), /** @param {any} v */ v => /** @type {any} */ ([v[0], v[1].content.getContent()[v[1].length - 1]]))
-  }
-
-  /**
-   * Returns the number of stored attributes (count of key/value pairs)
-   *
-   * @return {number}
-   */
-  get attrSize () {
-    return [...createMapIterator(this)].length
-  }
-
-  /**
-   * Two nodes are equal when their names, attrs and content runs are.
-   *
-   * @param {this} other
-   */
-  [traits.EqualityTraitSymbol] (other) {
-    return this.name === other.name && equalityDeep(liveAttrs(this), liveAttrs(other)) && equalityDeep(readRuns(this), readRuns(other))
-  }
-
-  /**
-   * @todo this doesn't need to live in a method.
-   *
-   * Transform the properties of this type to binary and write it to an
-   * BinaryEncoder.
-   *
-   * This is called when this Item is sent to a remote peer.
+   * Write this node's type reference (and name), sent with the item that holds it.
    *
    * @param {UpdateEncoder} encoder The encoder to write data to.
    */
@@ -1892,79 +1001,6 @@ export class YNode extends ObservableV2 {
         encoder.writeKey(/** @type {string} */ (this.name))
         break
       }
-    }
-  }
-}
-
-/**
- * @param {any} a
- * @param {any} b
- * @return {boolean}
- */
-export const equalFormats = (a, b) => a === b || (typeof a === 'object' && typeof b === 'object' && a && b && object.equalFlat(a, b))
-
-/**
- * @param {YNode} type
- * @param {number} start
- * @param {number} end
- * @return {Array<any>}
- *
- * @private
- * @function
- */
-export const typeListSlice = (type, start, end) => {
-  type.doc ?? warnPrematureAccess()
-  if (start < 0) {
-    start = type._length + start
-  }
-  if (end < 0) {
-    end = type._length + end
-  }
-  let len = end - start
-  const cs = []
-  let n = type._start
-  while (n !== null && len > 0) {
-    if (n.countable && !n.deleted) {
-      const c = n.content.getContent()
-      if (c.length <= start) {
-        start -= c.length
-      } else {
-        for (let i = start; i < c.length && len > 0; i++) {
-          cs.push(c[i])
-          len--
-        }
-        start = 0
-      }
-    }
-    n = n.right
-  }
-  return cs
-}
-
-/**
- * @todo remove / inline this
- *
- * @param {YNode} type
- * @param {number} index
- * @return {any}
- *
- * @private
- * @function
- */
-export const typeListGet = (type, index) => {
-  type.doc ?? warnPrematureAccess()
-  const marker = findMarker(type, index)
-  let n = type._start
-  if (marker !== null) {
-    n = marker.p
-    index -= marker.index
-  }
-  for (; n !== null; n = n.right) {
-    if (!n.deleted && n.countable) {
-      if (index < n.length) {
-        return n.content.getContent()[index]
-      }
-      index -= n.length
     }
   }
 }
@@ -2017,9 +1053,7 @@ export const nodeMapSet = (transaction, parent, key, value) => {
         content = new ContentBinary(/** @type {Uint8Array} */ (value))
         break
       default:
-        if (isDoc(value)) {
-          content = createContentDocFromDoc(/** @type {Doc} */ (value))
-        } else if (value instanceof YNode) {
+        if (value instanceof YNode) {
           content = new ContentType(/** @type {any} */ (value))
         } else {
           throw new Error('Unexpected content type')
@@ -2027,67 +1061,6 @@ export const nodeMapSet = (transaction, parent, key, value) => {
     }
   }
   new Item(createID(ownClientId, doc.store.getClock(ownClientId)), left, left && left.lastId, null, null, parent, key, content).integrate(transaction, 0)
-}
-
-/**
- * @param {YNode} parent
- * @param {string} key
- * @return {Object<string,any>|number|null|Array<any>|string|Uint8Array|YNode|undefined}
- *
- * @private
- * @function
- */
-export const nodeMapGet = (parent, key) => {
-  parent.doc ?? warnPrematureAccess()
-  const val = parent._map.get(key)
-  return val !== undefined && !val.deleted ? val.content.getContent()[val.length - 1] : undefined
-}
-
-/**
- * @param {YNode} parent
- * @return {Object<string,Object<string,any>|number|null|Array<any>|string|Uint8Array|YNode|undefined>}
- *
- * @private
- * @function
- */
-export const nodeMapGetAll = (parent) => {
-  /**
-   * @type {Object<string,any>}
-   */
-  const res = {}
-  parent.doc ?? warnPrematureAccess()
-  parent._map.forEach((value, key) => {
-    if (!value.deleted) {
-      res[key] = value.content.getContent()[value.length - 1]
-    }
-  })
-  return res
-}
-
-/**
- * @param {YNode} parent
- * @param {string} key
- * @return {boolean}
- *
- * @private
- * @function
- */
-export const nodeMapHas = (parent, key) => {
-  parent.doc ?? warnPrematureAccess()
-  const val = parent._map.get(key)
-  return val !== undefined && !val.deleted
-}
-
-/**
- * @param {YNode & { _map: Map<string, Item> }} type
- * @return {IterableIterator<Array<any>>}
- *
- * @private
- * @function
- */
-export const createMapIterator = type => {
-  type.doc ?? warnPrematureAccess()
-  return iterator.iteratorFilter(type._map.entries(), /** @param {any} entry */ entry => !entry[1].deleted)
 }
 
 /**
@@ -2107,46 +1080,10 @@ export const readContentType = decoder => new ContentType(readYNode(decoder))
 export const readContentString = decoder => new ContentString(decoder.readString())
 
 /**
- * @private
- *
- * @param {UpdateDecoder} decoder
- * @return {ContentJSON}
- */
-export const readContentJSON = decoder => {
-  const len = decoder.readLen()
-  const cs = []
-  for (let i = 0; i < len; i++) {
-    const c = decoder.readString()
-    if (c === 'undefined') {
-      cs.push(undefined)
-    } else {
-      cs.push(JSON.parse(c))
-    }
-  }
-  return new ContentJSON(cs)
-}
-
-/**
  * @param {UpdateDecoder} decoder
  * @return {ContentFormat}
  */
 export const readContentFormat = decoder => new ContentFormat(decoder.readKey(), decoder.readJSON())
-
-/**
- * @private
- *
- * @param {UpdateDecoder} decoder
- * @return {ContentEmbed}
- */
-export const readContentEmbed = decoder => new ContentEmbed(decoder.readJSON())
-
-/**
- * @private
- *
- * @param {UpdateDecoder} decoder
- * @return {ContentDoc}
- */
-export const readContentDoc = decoder => new ContentDoc(decoder.readString(), decoder.readAny())
 
 /**
  * @param {UpdateDecoder} decoder
@@ -2175,23 +1112,27 @@ export const readContentBinary = decoder => new ContentBinary(decoder.readBuf())
  */
 export const readContentDeleted = decoder => new ContentDeleted(decoder.readLen())
 
+const refused = () => { error.unexpectedCase() }
+
 /**
- * A lookup map for reading Item content.
+ * A lookup map for reading Item content. YP19: JSON (2), embed (5) and
+ * subdocument (9) contents are refused like GC (0) and Skip (10): edytor
+ * writes none, so an update holding one is malformed.
  *
  * @type {Array<function(UpdateDecoder):AbstractContent>}
  */
 export const contentRefs = [
-  () => { error.unexpectedCase() }, // GC is not ItemContent
+  refused, // 0 - GC is not ItemContent
   readContentDeleted, // 1
-  readContentJSON, // 2
+  refused, // 2 - JSON
   readContentBinary, // 3
   readContentString, // 4
-  readContentEmbed, // 5
+  refused, // 5 - embed
   readContentFormat, // 6
   readContentType, // 7
   readContentAny, // 8
-  readContentDoc, // 9
-  () => { error.unexpectedCase() } // 10 - Skip is not ItemContent
+  refused, // 9 - subdocument
+  refused // 10 - Skip is not ItemContent
 ]
 
 /**

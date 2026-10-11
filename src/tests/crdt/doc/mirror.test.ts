@@ -172,18 +172,18 @@ describe('event-driven mirror', () => {
 		});
 
 		ed.insertText('b1', 0, 'X');
-		ed.setMark('b1', 0, 5, 'italic', true);
+		ed.formatRange('b1', 0, 5, { italic: true });
 		ed.insertInline('b1', 3, { id: 'm1', type: 'mention', data: { u: 'a' } });
-		ed.setInlineData('b1', 'm1', { u: 'b' });
-		ed.moveBlock('b1', { parent: 'b3', index: 0 });
+		ed.patchData({ block: 'b1', atom: 'm1' }, [{ path: [], value: { u: 'b' } }]);
+		ed.moveBlocks(['b1'], { parent: 'b3', index: 0 });
 		ed.nestBlock('b2', 'b3');
 		ed.unNestBlock('b2');
 		ed.splitBlock('b1', 4, 'b1-tail');
 		ed.mergeBlocks('b1-tail', 'b1');
 		ed.mergeBackward('b3');
 		ed.setBlockType('b2', 'heading');
-		ed.setBlockData('b2', { level: 3 });
-		ed.insertBlock({ parent: null, index: 0 }, { id: 'new', type: 'paragraph' });
+		ed.patchData('b2', [{ path: [], value: { level: 3 } }]);
+		ed.insertBlocks({ parent: null, index: 0 }, [{ id: 'new', type: 'paragraph' }]);
 		ed.duplicateBlock('new', (o) => `${o}-dup`);
 		ed.deleteBlock('new');
 		ed.moveBlocks(['b1', 'b2'], { parent: null, index: 0 });
@@ -223,7 +223,7 @@ describe('event-driven mirror', () => {
 		// Remote ops authored on A arrive on B as remote transactions.
 		edA.transact(() => {
 			edA.insertText('b1', 0, 'REMOTE ');
-			edA.moveBlock('b2', { parent: 'b3', index: 0 });
+			edA.moveBlocks(['b2'], { parent: 'b3', index: 0 });
 		});
 		Y.applyUpdate(b, Y.encodeStateAsUpdate(a, Y.encodeStateVector(b)), remoteOrigin('A'));
 

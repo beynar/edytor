@@ -18,7 +18,7 @@ import { bindWebsocketProvider } from '../../../lib/crdt/providers/websocket.js'
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Awareness } from '../../../lib/crdt/protocols/awareness.js';
-import * as bc from 'lib0-v14/broadcastchannel';
+import { tabs as bc } from '../../../lib/crdt/providers/room.js';
 import * as decoding from 'lib0-v14/decoding';
 import { GENERATION } from '../../../lib/crdt/protocols/envelope.js';
 import * as encoding from 'lib0-v14/encoding';
@@ -256,7 +256,7 @@ describe('cross-provider relay', () => {
 		const remote = new Y.Doc();
 		const red = E.create(remote);
 		red.init();
-		red.insertBlock({ parent: null, index: 0 }, { id: 'remote-b', type: 'paragraph' });
+		red.insertBlocks({ parent: null, index: 0 }, [{ id: 'remote-b', type: 'paragraph' }]);
 		const update = Y.encodeStateAsUpdate(remote);
 		const e = encoding.createEncoder();
 		writeProtocolVersion(e);

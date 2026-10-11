@@ -296,11 +296,11 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 		preservesIdentityOnMove: true,
 		preservesIdentityOnSplitMerge: true,
 
-		insertBlock: (peer, dest, spec) => peer.transact(() => ok(ed(peer).insertBlock(dest, spec))),
+		insertBlock: (peer, dest, spec) => peer.transact(() => ok(ed(peer).insertBlocks(dest, [spec]))),
 		// The adapters' `deleteBlock` is the whole-subtree delete (the model's op): explicit since promotion became the default.
 		deleteBlock: (peer, id) =>
 			peer.transact(() => ok(ed(peer).deleteBlock(id, { keepChildren: false }))),
-		moveBlock: (peer, id, dest) => peer.transact(() => ok(ed(peer).moveBlock(id, dest))),
+		moveBlock: (peer, id, dest) => peer.transact(() => ok(ed(peer).moveBlocks([id], dest))),
 		moveBlocks: (peer, ids, dest) => peer.transact(() => ok(ed(peer).moveBlocks(ids, dest))),
 		nestBlock: (peer, id, newParentId) =>
 			peer.transact(() => ok(ed(peer).nestBlock(id, newParentId))),
@@ -315,9 +315,9 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 		deleteText: (peer, id, offset, length) =>
 			peer.transact(() => ok(ed(peer).deleteText(id, offset, length))),
 		setMark: (peer, id, offset, length, name, value) =>
-			peer.transact(() => ok(ed(peer).setMark(id, offset, length, name, value))),
+			peer.transact(() => ok(ed(peer).formatRange(id, offset, length, { [name]: value }))),
 		unsetMark: (peer, id, offset, length, name) =>
-			peer.transact(() => ok(ed(peer).unsetMark(id, offset, length, name))),
+			peer.transact(() => ok(ed(peer).formatRange(id, offset, length, { [name]: null }))),
 		insertInline: (peer, id, offset, atom) =>
 			peer.transact(() => ok(ed(peer).insertInline(id, offset, atom))),
 		removeInline: (peer, id, inlineId) =>

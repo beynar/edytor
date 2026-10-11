@@ -57,9 +57,7 @@ import {
 	listBlockIds,
 	project,
 	resolveBlock,
-	type BlockId,
-	type BlockSpec,
-	type Destination
+	type BlockId
 } from './placement/model.js';
 import { bindText } from './text/model.js';
 import { bindDeletes } from './text/deletes.js';
@@ -303,10 +301,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 		/** Every document op, prepared — `apply(prepare.op(…))` is the op. */
 		const prepare = {
 			insertBlocks,
-			insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => insertBlocks(dest, [spec]),
 			moveBlocks,
-			/** Relocate `id` — identity preserved. */
-			moveBlock: (id: BlockId, dest: Destination) => moveBlocks([id], dest),
 			/**
 			 * Move `id` to the last position under `parent` — under a container
 			 * it is no item of, under its last item (`nestParent`: Tab after a list).
@@ -328,23 +323,13 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			setBlock,
 			setBlockType,
 			patchData,
-			/** Replace a block's `data`: a patch of its root. */
-			setBlockData: (id: BlockId, data: Record<string, unknown>) =>
-				patchData(id, [{ path: [], value: data }]),
 			duplicateBlock,
 			insertText,
 			deleteText,
 			formatRange,
-			setMark: (id: BlockId, offset: number, length: number, name: string, value: unknown) =>
-				formatRange(id, offset, length, { [name]: value }),
-			unsetMark: (id: BlockId, offset: number, length: number, name: string) =>
-				formatRange(id, offset, length, { [name]: null }),
 			clearMarks,
 			insertInline,
 			removeInline,
-			/** Replace an inline atom's `data`: a patch of its root. */
-			setInlineData: (id: BlockId, inlineId: string, data: Record<string, unknown>) =>
-				patchData({ block: id, atom: inlineId }, [{ path: [], value: data }]),
 			/** Delete a block selection — one plan; only the members leave (`deleteBlocks` above). */
 			deleteBlocks: (ids: readonly BlockId[]): Prepared => deleteBlocks(ids),
 			...rangeDeleteOps(ops),

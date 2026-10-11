@@ -923,7 +923,7 @@ export type CommentChange = {
 ```ts
 // collaboration/comments/client.d.ts
 export type CommentDocument = CommentAnchorSource & {
-    unsetMark(block: string, offset: number, length: number, mark: string): unknown;
+    formatRange(block: string, offset: number, length: number, marks: Record<string, unknown>): unknown;
     transact<T>(fn: () => T): T;
 };
 ```
@@ -1513,9 +1513,7 @@ export type DocumentSemanticsConfig = {
 ```ts
 // crdt/operations.d.ts
 export interface DocumentWrites {
-    insertBlock(dest: Destination, spec: JSONBlock | BlockSpec): OpResult;
     insertBlocks(dest: Destination, specs: readonly (JSONBlock | BlockSpec)[]): OpResult;
-    moveBlock(id: BlockId, dest: Destination): OpResult;
     moveBlocks(ids: readonly BlockId[], dest: Destination): OpResult;
     nestBlock(id: BlockId, parent: BlockId): OpResult;
     unNestBlock(id: BlockId): OpResult;
@@ -1542,17 +1540,13 @@ export interface DocumentWrites {
     }): OpResult;
     setBlockType(id: BlockId, type: string): OpResult;
     patchData(target: DataTarget, patches: readonly DataPatch[]): OpResult;
-    setBlockData(id: BlockId, data: Record<string, unknown>): OpResult;
     duplicateBlock(id: BlockId, freshId?: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
     insertText(id: BlockId, offset: number, text: string, marks?: Record<string, unknown>): OpResult;
     deleteText(id: BlockId, offset: number, length: number): OpResult;
     formatRange(id: BlockId, offset: number, length: number, marks: Record<string, unknown>): OpResult;
-    setMark(id: BlockId, offset: number, length: number, name: string, value: unknown): OpResult;
-    unsetMark(id: BlockId, offset: number, length: number, name: string): OpResult;
     clearMarks(id: BlockId, offset: number, length: number): OpResult;
     insertInline(id: BlockId, offset: number, atom: NewInline): OpResult;
     removeInline(id: BlockId, inlineId: string): OpResult;
-    setInlineData(id: BlockId, inlineId: string, data: Record<string, unknown>): OpResult;
     deleteRange(from: DocPosition, to: DocPosition, view?: RangeView): OpResult;
     replaceRange(from: DocPosition, to: DocPosition, view?: RangeView): OpResult;
     insertFlow(target: FlowTarget, flow: Flow, view?: FlowView): OpResult;
@@ -4688,7 +4682,7 @@ declare const deleteTableRows: (doc: Omit<DocumentOperations, "transact">, rows:
 
 ```ts
 // collaboration/providers.d.ts
-declare const documentSnapshot: ProviderStack['documentSnapshot'];
+declare const documentSnapshot: typeof snapshotOf;
 ```
 
 ### embedSourceOf
@@ -4754,7 +4748,7 @@ declare const isPrevention: (error: unknown) => error is PreventionError;
 
 ```ts
 // collaboration/providers.d.ts
-declare const lastUpdated: ProviderStack['lastUpdated'];
+declare const lastUpdated: typeof lastUpdatedOf;
 ```
 
 ### loadCodeLanguage
@@ -4796,7 +4790,7 @@ declare const moveTableRows: (doc: Omit<DocumentOperations, "transact">, rows: r
 
 ```ts
 // collaboration/providers.d.ts
-declare const prefetch: ProviderStack['prefetch'];
+declare const prefetch: typeof prefetchStack;
 ```
 
 ### richTextOperations
@@ -4977,7 +4971,7 @@ export type YUndoManager = import('./doc/history.js').UndoManager;
 #### crdt/engine.d.ts#EngineSymbol
 
 ```ts
-export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'createRelativePositionFromTypeIndex' | 'createRelativePositionFromJSON' | 'createAbsolutePositionFromRelativePosition' | 'relativePositionToJSON' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'ContentAny' | 'createID';
+export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'idAtIndex' | 'indexOfId' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'ContentAny' | 'createID';
 ```
 
 #### crdt/engine.d.ts#Y
@@ -5036,6 +5030,12 @@ export declare class IsolatedObservable<E extends Events<E>> extends ObservableV
 }
 ```
 
+#### crdt/providers/bound.d.ts#prefetch
+
+```ts
+declare const prefetch: (options: PrefetchOptions) => Promise<import("./index.js").PrefetchResult>;
+```
+
 #### crdt/providers/index.d.ts#IndexeddbSyncOptions
 
 ```ts
@@ -5070,9 +5070,6 @@ export type WebsocketSyncOptions = WebsocketTarget & {
 
 ```ts
 declare const bindProviders: (Y: EngineApi) => {
-    prefetch: (options: PrefetchOptions) => Promise<PrefetchResult>;
-    lastUpdated: (options: LastUpdatedOptions) => Promise<number | null>;
-    documentSnapshot: (options: LastUpdatedOptions) => Promise<JSONDoc | null>;
     IndexeddbPersistence: {
         new (name: string, doc: YDoc, options?: import("./indexeddb.js").IndexeddbPersistenceOptions): {
             doc: YDoc;
@@ -5096,7 +5093,7 @@ declare const bindProviders: (Y: EngineApi) => {
             bcconnected: boolean;
             disableBc: boolean;
             _ownsAwareness: boolean;
-            _bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+            _bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
             _awarenessUpdateHandler: (updates: {
                 added: number[];
                 updated: number[];
@@ -5168,7 +5165,7 @@ declare const bindProviders: (Y: EngineApi) => {
             bcChannel: string;
             bcconnected: boolean;
             disableBc: boolean;
-            _bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+            _bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
             _fromTab: {};
             wsUnsuccessfulReconnects: number;
             wsLastMessageReceived: number;
@@ -5235,11 +5232,23 @@ declare const bindProviders: (Y: EngineApi) => {
         _dbsize: number;
         _destroyed: boolean;
     }, forceStore?: boolean) => Promise<undefined>;
-    clearDocument: (name: string) => Promise<any>;
+    clearDocument: (name: string) => Promise<void>;
     PREFERRED_TRIM_SIZE: number;
     createIndexeddbSync: (name: string) => EdytorSync;
     createWebsocketSync: (options: WebsocketSyncOptions) => WebsocketSync;
 };
+```
+
+#### crdt/providers/index.d.ts#documentSnapshot
+
+```ts
+declare const documentSnapshot: (options: LastUpdatedOptions) => Promise<JSONDoc | null>;
+```
+
+#### crdt/providers/index.d.ts#lastUpdated
+
+```ts
+declare const lastUpdated: (options: LastUpdatedOptions) => Promise<number | null>;
 ```
 
 #### crdt/providers/websocket.d.ts#WebsocketProviderEvents

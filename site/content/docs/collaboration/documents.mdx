@@ -55,7 +55,7 @@ copy.toJSON(); // same JSON as the source
 
 | Member | Description |
 | --- | --- |
-| Operations and reads | The document's own: `insertBlock`, `insertText`, `toJSON`, `childrenIds`, order queries, `onChange`… (`DocumentOperations`). See the [document API reference](/docs/reference/document-api). |
+| Operations and reads | The document's own: `insertBlocks`, `insertText`, `toJSON`, `childrenIds`, order queries, `onChange`… (`DocumentOperations`). See the [document API reference](/docs/reference/document-api). |
 | `history` | The shared undo manager (`undo()`, `redo()`, `stopCapturing()`). Throws `DocumentNotReadyError` while the document is `pending`. |
 | `clearHistory()` | Empty the undo and redo stacks. Otherwise they keep the newest `history.limit` steps (200 by default). |
 | `awareness` | The one presence instance for every view and provider. See [Presence](/docs/collaboration/presence). |
@@ -150,7 +150,7 @@ import { loadDocument, toBlockSpec } from 'edytor/crdt/edytor';
 export function appendLine(saved: Uint8Array, text: string): Uint8Array {
   const document = loadDocument(saved, { actor: { id: 'server-bot' } }); // the bundled kinds' roles
   const index = document.childrenIds(null).length; // append at the root
-  document.insertBlock({ parent: null, index }, toBlockSpec({ type: 'paragraph', content: [{ text }] }));
+  document.insertBlocks({ parent: null, index }, [toBlockSpec({ type: 'paragraph', content: [{ text }] })]);
   const bytes = document.encode();
   document.destroy();
   return bytes;

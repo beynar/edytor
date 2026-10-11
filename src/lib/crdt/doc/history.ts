@@ -24,12 +24,13 @@ import {
 	TYPE
 } from '../schema.js';
 import {
+	changedUnder,
 	collectable,
 	collectNow,
 	collects,
 	dropSearchMarkers,
 	engineOps,
-	walkIdSetStructs,
+	walkIdSet,
 	type IdSetOf,
 	type StoreStruct
 } from '../structs.js';
@@ -62,7 +63,6 @@ type Tr = {
 	local: boolean;
 	insertSet: IdSetOf;
 	deleteSet: IdSetOf;
-	changedParentTypes: Map<unknown, unknown>;
 	changed: Map<unknown, Set<string | null>>;
 };
 
@@ -207,7 +207,7 @@ export class UndoManager {
 		const origin = tr.origin as { constructor?: unknown } | null;
 		if (
 			!this.captureTransaction(tr) ||
-			!this.#rules.scope.some((node) => tr.changedParentTypes.has(node)) ||
+			!changedUnder(tr, this.#rules.scope) ||
 			(!this.trackedOrigins.has(origin) &&
 				(!origin || !this.trackedOrigins.has(origin.constructor)))
 		)
@@ -330,7 +330,7 @@ export class UndoManager {
 		const gc = collects(doc);
 		doc.transact((tr: unknown) => {
 			for (const step of dropped)
-				walkIdSetStructs(Y, doc, step.deletes, (st) => {
+				walkIdSet(Y, doc, step.deletes, (st) => {
 					const it = st as StoreStruct & { content?: unknown };
 					if (it.content === undefined || it.keep !== true || !covered(it)) return;
 					it.keep = false;
@@ -392,7 +392,7 @@ export const docHistory = (c: HistoryContext) => {
 	 */
 	const repairAttrs = (step: StackItem): void => {
 		const lost = new Map<EngineNode, Map<string, unknown>>();
-		walkIdSetStructs(Y, doc, step.deletes, (s) => {
+		walkIdSet(Y, doc, step.deletes, (s) => {
 			const node = s.parent as EngineNode;
 			const key = s.parentSub;
 			// A collected struct (a node the room's purge removed) has no key.

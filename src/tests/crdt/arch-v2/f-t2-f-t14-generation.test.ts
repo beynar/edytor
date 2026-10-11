@@ -24,7 +24,7 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import * as encoding from 'lib0-v14/encoding';
-import * as bc from 'lib0-v14/broadcastchannel';
+import { tabs as bc } from '../../../lib/crdt/providers/room.js';
 import * as idb from 'lib0-v14/indexeddb';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';

@@ -30,6 +30,7 @@
  */
 import type { JSONBlock } from '../utils/json.js';
 import { canonKey } from '../crdt/text/model.js';
+import { hunk, type Unit } from '../crdt/restore.js';
 
 /** Where imported blocks land in the destination: under `parent` at `index`. */
 export type MoveDestination = { parent: string | null; index: number };
@@ -99,60 +100,6 @@ export type MoveNamespace = { getByName(name: string): MoveRoom };
 export const DEFAULT_MOVE_GRACE_DAYS = 30;
 
 // ── units and the three-way merge ─────────────────────────────────────
-
-/** One display unit: a character (a code point) with its marks, or an inline atom. */
-type Unit = { key: string; text?: string; marks?: Record<string, unknown>; atom?: JSONBlock };
-
-/** `content` one unit each, keyed for comparison. */
-export const unitsOf = (content: JSONBlock['content'] = []): Unit[] => {
-	const out: Unit[] = [];
-	for (const item of content) {
-		if ('text' in item && typeof item.text === 'string') {
-			const marks = (item.marks ?? undefined) as Record<string, unknown> | undefined;
-			const tag = canonKey(marks ?? {});
-			for (const ch of item.text) out.push({ key: `${ch}|${tag}`, text: ch, marks });
-		} else {
-			const atom = item as { id?: string; type: string; data?: unknown };
-			out.push({
-				key: `@${atom.id ?? ''}|${atom.type}|${canonKey(atom.data ?? {})}`,
-				atom: atom as unknown as JSONBlock
-			});
-		}
-	}
-	return out;
-};
-
-/** Units back to JSON content (adjacent text of equal marks joined). */
-export const contentOf = (units: readonly Unit[]): NonNullable<JSONBlock['content']> => {
-	const out: NonNullable<JSONBlock['content']> = [];
-	for (const u of units) {
-		if (u.atom !== undefined) {
-			out.push(u.atom as never);
-			continue;
-		}
-		const last = out[out.length - 1] as
-			| { text?: string; marks?: Record<string, unknown> }
-			| undefined;
-		if (last?.text !== undefined && canonKey(last.marks ?? {}) === canonKey(u.marks ?? {}))
-			last.text += u.text!;
-		else out.push({ text: u.text!, ...(u.marks === undefined ? {} : { marks: u.marks as never }) });
-	}
-	return out;
-};
-
-/** The one changed stretch from `x` to `y`: `x[p, e)` became `mid`. */
-export const hunk = (x: readonly Unit[], y: readonly Unit[]) => {
-	let p = 0;
-	while (p < x.length && p < y.length && x[p].key === y[p].key) p++;
-	let q = 0;
-	while (
-		q < x.length - p &&
-		q < y.length - p &&
-		x[x.length - 1 - q].key === y[y.length - 1 - q].key
-	)
-		q++;
-	return { p, e: x.length - q, mid: y.slice(p, y.length - q) };
-};
 
 /**
  * Merge the source's change (`base` → `src`) into the destination's

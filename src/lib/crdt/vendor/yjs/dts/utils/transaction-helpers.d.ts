@@ -10,7 +10,5 @@ export function addChangedTypeToTransaction(transaction: Transaction, type: YNod
 export function tryToMergeWithLefts(structs: Array<GC | Item | Skip>, pos: number): number;
 export function tryGcDeleteSet(tr: Transaction, ds: IdSet, gcFilter: (arg0: Item) => boolean): void;
 export function tryMerge(ds: IdSet, store: StructStore): void;
-export function cleanupContextlessFormattingGap(transaction: Transaction, item: Item | null): 0 | undefined;
 export function liveLength(item: Item): number;
 export function updateCurrentFormats(currentFormats: Map<string, any>, format: ContentFormat): void;
-export function cleanupFormattingGap(transaction: Transaction, start: Item, curr: Item | null, startFormats: Map<string, any>, currFormats: Map<string, any>): number;

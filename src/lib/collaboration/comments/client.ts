@@ -54,9 +54,14 @@ export type CommentsClient = {
 	attach?(document: CommentDocument): (() => void) | void;
 };
 
-/** What a client reads and writes of a document: its blocks' content, and a mark removal. */
+/** What a client reads and writes of a document: its blocks' content, and its marks (a removal). */
 export type CommentDocument = CommentAnchorSource & {
-	unsetMark(block: string, offset: number, length: number, mark: string): unknown;
+	formatRange(
+		block: string,
+		offset: number,
+		length: number,
+		marks: Record<string, unknown>
+	): unknown;
 	transact<T>(fn: () => T): T;
 };
 
@@ -228,6 +233,6 @@ const removeAnchors = (document: CommentDocument | undefined, id: string) => {
 	if (!document || !runs?.length) return;
 	document.transact(() => {
 		for (const run of [...runs].reverse())
-			document.unsetMark(run.block, run.offset, run.length, `${COMMENT_MARK}:${id}`);
+			document.formatRange(run.block, run.offset, run.length, { [`${COMMENT_MARK}:${id}`]: null });
 	});
 };

@@ -214,7 +214,7 @@ for (const adapterName of SELECTED_ADAPTERS) {
 		 * corpus state: the generated schedule for the same seed number may
 		 * now pass, which must NOT self-clean the file away.
 		 */
-		const PINNED_DIAGNOSTIC_ARTIFACTS = new Set(['seed-86', 'seed-140']);
+		const PINNED_DIAGNOSTIC_ARTIFACTS = new Set(['seed-140']);
 
 		for (const seed of CORPUS.seeds) {
 			it(`seed ${seed}`, () => {
@@ -315,12 +315,13 @@ for (const adapterName of SELECTED_ADAPTERS) {
 }
 
 describe('diagnostic lane: persisted upstream crash repros', () => {
-	// seed-86/140 are committed artifacts of genuine vendored-engine crashes
-	// (lossy reloads + Skip/GC overlap → iterateStructsByIdSet /
-	// findIndexSS). They stay DIAGNOSTIC on the raw adapter forever — a
-	// replay must classify as upstream-engine-crash EVIDENCE, never as a
-	// gate violation, and never silently disappear.
-	for (const name of ['seed-86', 'seed-140']) {
+	// seed-140 is a committed artifact of a genuine vendored-engine crash
+	// (lossy reloads + Skip/GC overlap → findIndexSS). It stays DIAGNOSTIC
+	// on the raw adapter forever — a replay must classify as
+	// upstream-engine-crash EVIDENCE, never as a gate violation, and never
+	// silently disappear. (seed-86 crashed in the formatting cleanup's
+	// delete-set walk, which fork patch YP19 removed with plain formats.)
+	for (const name of ['seed-140']) {
 		it(`${name} replays as upstream-engine-crash evidence`, () => {
 			const artifact = JSON.parse(readFileSync(`${FAILURE_DIR}/${name}.json`, 'utf8')) as {
 				seed: number;

@@ -198,7 +198,7 @@ describe('handles read the index', () => {
 		const peer = new Y.Doc();
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(edytor.doc));
 		const remote = attachDocument(peer);
-		remote.facade.insertBlock({ parent: null, index: 2 }, { id: 'r', type: 'paragraph' });
+		remote.facade.insertBlocks({ parent: null, index: 2 }, [{ id: 'r', type: 'paragraph' }]);
 		Y.applyUpdate(edytor.doc, Y.encodeStateAsUpdate(peer, Y.encodeStateVector(edytor.doc)));
 		expect(edytor.idToBlock.get('r')?.id).toBe('r');
 		expect(edytor.root!.children.map((c) => c.id)).toEqual(['a', 'b', 'r']);

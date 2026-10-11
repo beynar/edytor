@@ -3,24 +3,23 @@
 
 // Order matters: follows internals.js ordering to avoid circular dependency issues
 
-export { IdSet, equalIdSets, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, intersectSets } from './utils/ids.js'
+export { IdSet, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, intersectSets } from './utils/ids.js'
 export { Doc } from './utils/Doc.js'
 export { UpdateDecoder } from './utils/UpdateDecoder.js'
 export { UpdateEncoder } from './utils/UpdateEncoder.js'
 export { applyUpdate, encodeStateAsUpdate, encodeStateVector, decodeStateVector, diffUpdate, mergeUpdates } from './utils/encoding.js'
 export { ID, createID, compareIDs, findRootTypeKey } from './utils/ID.js'
 export { isParentOf } from './utils/isParentOf.js'
-export { createRelativePositionFromTypeIndex, createRelativePositionFromJSON, createAbsolutePositionFromRelativePosition, AbsolutePosition, RelativePosition, relativePositionToJSON } from './utils/RelativePosition.js'
+export { idAtIndex, indexOfId } from './utils/positions.js' // YP19
 export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from './utils/transaction-helpers.js' // YP14: isKeptReplaced
-export { Transaction, transact, cleanupYTextFormatting } from './utils/Transaction.js'
+export { Transaction, transact } from './utils/Transaction.js'
 export { redoItem, keepItem } from './utils/redo.js' // YP11, YP18
 export { decodeUpdate } from './utils/updates.js'
-export { YEvent } from './utils/YEvent.js'
 export { RangeCursor } from './utils/RangeCursor.js'
 export { YNode as Node } from './ynode.js'
 export { AbstractStruct } from './structs/AbstractStruct.js'
 export { GC } from './structs/GC.js'
-export { Item, followRedone, ContentBinary, ContentDeleted, ContentDoc, ContentEmbed, ContentFormat, ContentJSON, ContentAny, ContentString, ContentType } from './structs/Item.js'
+export { Item, followRedone, ContentBinary, ContentDeleted, ContentFormat, ContentAny, ContentString, ContentType } from './structs/Item.js'
 export { Skip } from './structs/Skip.js'
 
 /**

@@ -19,6 +19,20 @@ import * as Fork from '../../../lib/crdt/vendor/yjs/src/index.js';
  *
  * @param {any} Y
  */
+/**
+ * The types a transaction changed and their ancestors (what the engine's
+ * deep observers collected as `changedParentTypes` before YP19).
+ *
+ * @param {any} tr
+ * @return {Map<any, Array<any>>}
+ */
+const changedParentTypesOf = (tr) => {
+	const out = new Map();
+	for (const type of tr.changed.keys())
+		for (let t = type; t; t = t._item?.parent ?? null) if (!out.has(t)) out.set(t, []);
+	return out;
+};
+
 export const undoManagerOf = (Y) => {
 	const {
 		mergeIdSets,
@@ -180,7 +194,7 @@ export const undoManagerOf = (Y) => {
 		);
 		const res = undoManager.currStackItem;
 		if (res != null) {
-			const changedParentTypes = _tr.changedParentTypes;
+			const changedParentTypes = changedParentTypesOf(_tr);
 			undoManager.emit('stack-item-popped', [
 				{ stackItem: res, type: eventType, changedParentTypes, origin: undoManager },
 				undoManager
@@ -292,7 +306,8 @@ export const undoManagerOf = (Y) => {
 					!this.captureTransaction(transaction) ||
 					!this.scope.some(
 						(type) =>
-							transaction.changedParentTypes.has(/** @type {YNode} */ (type)) || type === this.doc
+							changedParentTypesOf(transaction).has(/** @type {YNode} */ (type)) ||
+							type === this.doc
 					) ||
 					(!this.trackedOrigins.has(transaction.origin) &&
 						(!transaction.origin || !this.trackedOrigins.has(transaction.origin.constructor)))
@@ -353,7 +368,7 @@ export const undoManagerOf = (Y) => {
 						stackItem: stack[stack.length - 1],
 						origin: transaction.origin,
 						type: undoing ? 'redo' : 'undo',
-						changedParentTypes: transaction.changedParentTypes
+						changedParentTypes: changedParentTypesOf(transaction)
 					},
 					this
 				];

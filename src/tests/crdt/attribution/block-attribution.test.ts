@@ -127,15 +127,14 @@ describe('block attribution — creation and identity', () => {
 		const d = createDocument({ actor: alice });
 		d.sync();
 		d.transact(() =>
-			d.facade.insertBlock(
-				{ parent: null, index: 0 },
+			d.facade.insertBlocks({ parent: null, index: 0 }, [
 				{
 					id: 'parent',
 					type: 'paragraph',
 					content: [{ kind: 'text', text: 'p' }],
 					children: [{ id: 'kid', type: 'paragraph', content: [{ kind: 'text', text: 'k' }] }]
 				}
-			)
+			])
 		);
 		for (const id of ['parent', 'kid']) {
 			expect(d.attribution.block(id)).toEqual({
@@ -176,11 +175,17 @@ describe('block attribution — content and metadata edits', () => {
 		const unwire = wireDocs(a, b);
 		b.transact(() => b.facade.insertInline(blockId, 2, { id: 'm1', type: 'mention' }));
 		expect(a.attribution.block(blockId)?.lastChangedBy).toBe('bob');
-		b.transact(() => b.facade.setInlineData(blockId, 'm1', { k: 1 }));
+		b.transact(() =>
+			b.facade.patchData({ block: blockId, atom: 'm1' }, [{ path: [], value: { k: 1 } }])
+		);
 		expect(a.attribution.block(blockId)?.lastChangedBy).toBe('bob');
 		// Same-value inline data rewrite → suppressed: no commit at all.
 		const noopCommits = commitsDuring(b, () => {
-			b.transact(() => expect(b.facade.setInlineData(blockId, 'm1', { k: 1 }).status).toBe('noop'));
+			b.transact(() =>
+				expect(
+					b.facade.patchData({ block: blockId, atom: 'm1' }, [{ path: [], value: { k: 1 } }]).status
+				).toBe('noop')
+			);
 		});
 		expect(noopCommits.filter((c) => c.attr || c.content)).toHaveLength(0);
 		b.transact(() => b.facade.removeInline(blockId, 'm1'));
@@ -195,13 +200,13 @@ describe('block attribution — content and metadata edits', () => {
 	it('mark writes stamp the block; same-value and no-mark writes are suppressed', () => {
 		const d = authoredDocument(docValue('hello'), alice);
 		const blockId = firstBlock(d).id;
-		d.transact(() => d.facade.setMark(blockId, 0, 3, 'bold', true));
+		d.transact(() => d.facade.formatRange(blockId, 0, 3, { bold: true }));
 		expect(d.attribution.block(blockId)?.lastChangedBy).toBe('alice');
 
 		// Same-value mark rewrite: the engine writes zero items → no
 		// commit at all (no content, no attribution).
 		const dupCommits = commitsDuring(d, () => {
-			d.transact(() => d.facade.setMark(blockId, 0, 3, 'bold', true));
+			d.transact(() => d.facade.formatRange(blockId, 0, 3, { bold: true }));
 		});
 		expect(dupCommits.filter((c) => c.attr || c.content)).toHaveLength(0);
 
@@ -213,7 +218,7 @@ describe('block attribution — content and metadata edits', () => {
 
 		// unsetMark for a mark the range doesn't carry → semantic no-op.
 		const unCommits = commitsDuring(d, () => {
-			d.transact(() => d.facade.unsetMark(blockId, 0, 3, 'italic'));
+			d.transact(() => d.facade.formatRange(blockId, 0, 3, { italic: null }));
 		});
 		expect(unCommits.filter((c) => c.attr || c.content)).toHaveLength(0);
 
@@ -224,7 +229,7 @@ describe('block attribution — content and metadata edits', () => {
 		expect(clearCommits.filter((c) => c.attr || c.content)).toHaveLength(0);
 
 		// A REAL mark change still stamps.
-		d.transact(() => d.facade.unsetMark(blockId, 0, 3, 'bold'));
+		d.transact(() => d.facade.formatRange(blockId, 0, 3, { bold: null }));
 		expect(d.attribution.block(blockId)?.lastChangedBy).toBe('alice');
 		expect(d.attribution.block(blockId)?.contributors).toEqual(new Set(['alice']));
 
@@ -256,10 +261,10 @@ describe('block attribution — content and metadata edits', () => {
 		expect(commits2.filter((c) => c.content || c.attr)).toHaveLength(0);
 		expect(a.attribution.block(blockId)?.lastChangedBy).toBe('bob');
 
-		b.transact(() => b.facade.setBlockData(blockId, { x: 1 }));
+		b.transact(() => b.facade.patchData(blockId, [{ path: [], value: { x: 1 } }]));
 		expect(a.attribution.block(blockId)?.lastChangedBy).toBe('bob');
 		const commits3 = commitsDuring(b, () => {
-			b.transact(() => b.facade.setBlockData(blockId, { x: 1 }));
+			b.transact(() => b.facade.patchData(blockId, [{ path: [], value: { x: 1 } }]));
 		});
 		expect(commits3.filter((c) => c.content || c.attr)).toHaveLength(0);
 		unwire();
@@ -291,7 +296,7 @@ describe('block attribution — structure', () => {
 		);
 		const before = a.attribution.block('two');
 		const commits = commitsDuring(a, () => {
-			a.transact(() => a.facade.moveBlock('two', { parent: null, index: 0 }));
+			a.transact(() => a.facade.moveBlocks(['two'], { parent: null, index: 0 }));
 		});
 		expect(commits.filter((c) => c.attr)).toHaveLength(0);
 		expect(a.attribution.block('two')).toEqual(before);
@@ -433,10 +438,9 @@ describe('block attribution — commit boundaries', () => {
 		const commits = commitsDuring(d, () => {
 			d.transact(() => {
 				d.facade.insertText(blockId, 0, 'x');
-				d.facade.insertBlock(
-					{ parent: null, index: 1 },
+				d.facade.insertBlocks({ parent: null, index: 1 }, [
 					{ id: 'b2', type: 'paragraph', content: [{ kind: 'text', text: 'y' }] }
-				);
+				]);
 			});
 		});
 		expect(commits.filter((c) => c.content && c.attr)).toHaveLength(1);
@@ -464,7 +468,7 @@ describe('block attribution — remote, load, unknown authors', () => {
 	it('loadDocument preserves block attribution verbatim', () => {
 		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
-		a.transact(() => a.facade.setMark(blockId, 0, 1, 'bold', true));
+		a.transact(() => a.facade.formatRange(blockId, 0, 1, { bold: true }));
 		const restored = loadDocument(a.encode(), { actor: bob });
 		expect(restored.attribution.block(blockId)).toEqual({
 			createdBy: 'alice',

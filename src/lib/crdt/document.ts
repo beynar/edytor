@@ -418,7 +418,7 @@ export type EdytorDocumentInit = {
  */
 /**
  * The document's operations and reads are its own members
- * (`document.insertBlock(…)`, `document.toJSON()`): see `DocumentOperations`.
+ * (`document.insertBlocks(…)`, `document.toJSON()`): see `DocumentOperations`.
  * `transact` is the document's (its local origin by default).
  */
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging, no-redeclare

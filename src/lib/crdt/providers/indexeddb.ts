@@ -34,9 +34,7 @@
  * The engine module is injected (`bindIndexeddbProvider(Y)`) — `src/lib`
  * never runtime-imports the vendored `.js`.
  */
-import * as idb from 'lib0-v14/indexeddb';
 import * as promise from 'lib0-v14/promise';
-import * as bc from 'lib0-v14/broadcastchannel';
 import * as encoding from 'lib0-v14/encoding';
 import { Awareness } from '../protocols/awareness.js';
 import { IsolatedObservable } from '../protocols/observable.js';
@@ -45,15 +43,19 @@ import { generationDbName } from '../protocols/envelope.js';
 import {
 	CUSTOM as customStoreName,
 	encodeRow,
+	lastKey,
 	openContainer,
 	readRow,
+	rtop,
 	snapshotRow,
+	storesOf,
 	UPDATES as updatesStoreName,
 	verifyOrStamp
 } from './container.js';
 import {
 	beginDestroy,
 	bindRoomProtocol,
+	tabs,
 	emitFailed,
 	initLifecycle,
 	markSynced,
@@ -120,21 +122,19 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		afterApplyUpdatesCallback: () => void = () => {}
 	): Promise<void> => {
 		const db = idbPersistence.db as IDBDatabase;
-		const [updatesStore, customStore] = idb.transact(db, [updatesStoreName, customStoreName]);
+		const [updatesStore, customStore] = storesOf(db, [updatesStoreName, customStoreName]);
 		return verifyOrStamp(idbPersistence.name, updatesStore, customStore)
-			.then(() =>
-				idb.getAll(updatesStore, idb.createIDBKeyRangeLowerBound(idbPersistence._dbref, false))
-			)
+			.then(() => rtop(updatesStore.getAll(IDBKeyRange.lowerBound(idbPersistence._dbref, false))))
 			.then((rows) => {
 				// The pre-hydration state row is written before the last key is read.
 				if (!idbPersistence._destroyed) beforeApplyUpdatesCallback(updatesStore);
-				return promise
-					.all([idb.getLastKey(updatesStore), idb.count(updatesStore)])
-					.then(([lastKey, cnt]) => {
-						idbPersistence._dbref = (lastKey as number) + 1;
+				return Promise.all([lastKey(updatesStore), rtop(updatesStore.count())]).then(
+					([last, cnt]) => {
+						idbPersistence._dbref = Number(last) + 1;
 						idbPersistence._dbsize = cnt;
 						return promise.all(rows.map(readRow));
-					});
+					}
+				);
 			})
 			.then((updates) => {
 				if (idbPersistence._destroyed) return;
@@ -153,7 +153,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	/** One transaction: the snapshot row, the rows below `below` deleted. */
 	const writeSnapshot = (idbPersistence: IdbPersistenceLike, row: ArrayBuffer, below: number) => {
 		const db = idbPersistence.db as IDBDatabase;
-		const [updatesStore] = idb.transact(db, [updatesStoreName]);
+		const [updatesStore] = storesOf(db, [updatesStoreName]);
 		// Track transaction commit: listeners attach while it is still active.
 		const tx = updatesStore.transaction;
 		const transactionDone = promise.create((resolve, reject) => {
@@ -164,11 +164,10 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		});
 		return promise
 			.all([
-				idb
-					.addAutoKey(updatesStore, row)
-					.then(() => idb.del(updatesStore, idb.createIDBKeyRangeUpperBound(below, true)))
+				rtop(updatesStore.add(row))
+					.then(() => rtop(updatesStore.delete(IDBKeyRange.upperBound(below, true))))
 					.then(() =>
-						idb.count(updatesStore).then((cnt) => {
+						rtop(updatesStore.count()).then((cnt) => {
 							idbPersistence._dbsize = cnt;
 						})
 					),
@@ -215,7 +214,8 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	 * Delete this generation's database by LOGICAL name (the generation
 	 * prefix is applied here; another generation's store is left).
 	 */
-	const clearDocument = (name: string) => idb.deleteDB(generationDbName(name));
+	const clearDocument = (name: string): Promise<void> =>
+		rtop(indexedDB.deleteDatabase(generationDbName(name))).then(() => undefined);
 
 	/**
 	 * Each provider's doc-`destroy` listener: it ends the provider (it never
@@ -271,7 +271,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		bcconnected = false;
 		disableBc: boolean;
 		_ownsAwareness: boolean;
-		_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+		_bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
 		_awarenessUpdateHandler: (
 			updates: { added: number[]; updated: number[]; removed: number[] },
 			origin: unknown
@@ -316,9 +316,9 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 					// A read-only doc's pre-hydration state is never persisted.
 					const beforeApplyUpdatesCallback = (updatesStore: IDBObjectStore) => {
 						if (!quarantined(doc)) {
-							idb
-								.addAutoKey(updatesStore, encodeRow(Y.encodeStateAsUpdate(doc)))
-								.catch((error) => this.emit('message-error', [error, this]));
+							rtop(updatesStore.add(encodeRow(Y.encodeStateAsUpdate(doc)))).catch((error) =>
+								this.emit('message-error', [error, this])
+							);
 						}
 					};
 					// Hydrated: join the room and claim `synced` (lifetime).
@@ -350,10 +350,10 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 				if (origin === this || quarantined(doc)) return;
 				if (this.db) {
 					try {
-						const [updatesStore] = idb.transact(this.db, [updatesStoreName]);
+						const [updatesStore] = storesOf(this.db, [updatesStoreName]);
 						// Storage failures must surface — never an unobserved
 						// rejection (the error channel observes every failure mode).
-						idb.addAutoKey(updatesStore, encodeRow(update)).catch((error) => {
+						rtop(updatesStore.add(encodeRow(update))).catch((error) => {
 							this.emit('message-error', [error, this]);
 						});
 						if (++this._dbsize >= PREFERRED_TRIM_SIZE) {
@@ -407,7 +407,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 
 		broadcastMessage(buf: Uint8Array) {
 			if (this.bcconnected) {
-				bc.publish(this.dbName, buf, this);
+				tabs.publish(this.dbName, buf, this);
 			}
 		}
 

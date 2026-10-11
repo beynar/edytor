@@ -24,7 +24,7 @@ import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js'
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 import { checkSchema, SchemaMismatchError } from '../../../lib/crdt/admission.js';
 import * as encoding from 'lib0-v14/encoding';
-import * as bc from 'lib0-v14/broadcastchannel';
+import { tabs as bc } from '../../../lib/crdt/providers/room.js';
 import * as idb from 'lib0-v14/indexeddb';
 import {
 	writeProtocolVersion,

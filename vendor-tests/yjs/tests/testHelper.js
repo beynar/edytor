@@ -367,7 +367,6 @@ export const compare = users => {
       return true
     })
     t.compare(Y.encodeStateVector(users[i]), Y.encodeStateVector(users[i + 1]))
-    Y.equalIdSets(Y.createDeleteSetFromStructStore(users[i].store), Y.createDeleteSetFromStructStore(users[i + 1].store))
     compareStructStores(users[i].store, users[i + 1].store)
     // YP8: snapshots are pruned — a snapshot is (state vector, delete set); the state vectors are
     // compared above, so compare the encoded delete sets.

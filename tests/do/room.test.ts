@@ -114,7 +114,7 @@ describe('room Durable Object — sync', () => {
 		applied(a.transact(() => a.facade.insertText('p1', 5, ' world')));
 		applied(
 			b.transact(() =>
-				b.facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' })
+				b.facade.insertBlocks({ parent: null, index: 1 }, [{ id: 'p2', type: 'paragraph' }])
 			)
 		);
 		applied(b.transact(() => b.facade.insertText('p2', 0, 'second')));
@@ -554,7 +554,7 @@ describe('room Durable Object — the shipped headless client path', () => {
 		applied(a.transact(() => a.facade.insertText('p1', 5, ' world')));
 		applied(
 			b.transact(() =>
-				b.facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' })
+				b.facade.insertBlocks({ parent: null, index: 1 }, [{ id: 'p2', type: 'paragraph' }])
 			)
 		);
 		applied(b.transact(() => b.facade.insertText('p2', 0, 'from bob')));

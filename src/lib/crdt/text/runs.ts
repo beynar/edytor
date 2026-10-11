@@ -62,7 +62,7 @@
  * (`report.ts`); the self-checks a test lane installs are `indexChecks`. This module declares the
  * index's types and wires the parts into the doc's one index.
  */
-import type { EngineApi, EngineDeepEvent, EngineDoc } from '../engine-api.js';
+import type { EngineApi, EngineDoc } from '../engine-api.js';
 import type { BlockId, ContentItem, ModelView, ProjectedBlock } from '../placement/model.js';
 import { isNodeLike } from '../schema.js';
 import { cloneJsonSafe } from '../../utils/json.js';
@@ -357,11 +357,11 @@ const buildView = (doc: EngineDoc): RunView => {
 	applyRetargets(null);
 	settle(shells, null);
 
-	const observer = (e: EngineDeepEvent): void => onCommit(e);
-	registry.observeDeep(observer);
+	// Every commit folds once, before the document's `afterTransaction` listeners.
+	doc.on('commit', onCommit);
 	/** Derived state lives exactly as long as the doc. */
 	const teardown = (): void => {
-		registry.unobserveDeep(observer);
+		doc.off('commit', onCommit);
 		doc.off('destroy', teardown);
 		doc.off('update', onUpdate);
 		indexes.delete(doc);

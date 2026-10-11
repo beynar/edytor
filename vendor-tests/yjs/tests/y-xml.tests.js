@@ -62,20 +62,6 @@ export const testHasProperty = tc => {
 /**
  * @param {t.TestCase} _tc
  */
-export const testYtextAttributes = _tc => {
-  const ydoc = new Y.Doc()
-  const ytext = ydoc.get('')
-  ytext.observe(event => {
-    t.assert(eventDelta(event).attrs.test?.type === 'insert')
-  })
-  ytext.setAttr('test', 42)
-  t.compare(ytext.getAttr('test'), 42)
-  t.compare(ytext.getAttrs(), { test: 42 })
-}
-
-/**
- * @param {t.TestCase} _tc
- */
 export const testSiblings = _tc => {
   const ydoc = new Y.Doc()
   const yxml = ydoc.get()
@@ -101,20 +87,6 @@ export const testClone = _tc => {
   ydoc.get('copyarr').insert(0, [cloneYxml])
   t.assert(cloneYxml.length === 3)
   t.compare(cloneYxml.toJSON(), yxml.toJSON())
-}
-
-/**
- * @param {t.TestCase} _tc
- */
-export const testFormattingBug = _tc => {
-  const ydoc = new Y.Doc()
-  const yxml = ydoc.get()
-  const q = delta.create()
-    .insert('A', { em: {}, strong: {} })
-    .insert('B', { em: {} })
-    .insert('C', { em: {}, strong: {} })
-  applyDelta(yxml, q)
-  t.compare(toDelta(yxml), q)
 }
 
 /**

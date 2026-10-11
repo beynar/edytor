@@ -138,7 +138,7 @@ describe('del.blocks.promote — only the selected blocks leave', () => {
 			expect(a.ed.deleteBlocks(['P']).status).toBe('applied');
 			expect(b.ed.insertText('C', 5, '!').status).toBe('applied');
 			expect(
-				b.ed.insertBlock({ parent: 'G', index: 0 }, { id: 'N', type: 'paragraph' }).status
+				b.ed.insertBlocks({ parent: 'G', index: 0 }, [{ id: 'N', type: 'paragraph' }]).status
 			).toBe('applied');
 			settle([a, b], 'C:"child!"[G:"grand"[N:""]] D:"second" Z:"after"');
 		}
@@ -162,9 +162,9 @@ describe('del.blocks.promote — only the selected blocks leave', () => {
 	each('a child a peer adds under the deleted parent takes the parent’s slot too', (ids) => {
 		const [a, b] = peers(FAMILY, ids);
 		expect(a.ed.deleteBlocks(['P']).status).toBe('applied');
-		expect(b.ed.insertBlock({ parent: 'P', index: 2 }, { id: 'N', type: 'paragraph' }).status).toBe(
-			'applied'
-		);
+		expect(
+			b.ed.insertBlocks({ parent: 'P', index: 2 }, [{ id: 'N', type: 'paragraph' }]).status
+		).toBe('applied');
 		settle([a, b], 'C:"child"[G:"grand"] D:"second" N:"" Z:"after"');
 	});
 
@@ -210,7 +210,7 @@ describe('del.blocks.promote — only the selected blocks leave', () => {
 			const [a, b] = peers(FAMILY, ids);
 			expect(a.ed.deleteBlock('P', { keepChildren: false }).status).toBe('applied');
 			expect(
-				b.ed.insertBlock({ parent: 'G', index: 0 }, { id: 'N', type: 'paragraph' }).status
+				b.ed.insertBlocks({ parent: 'G', index: 0 }, [{ id: 'N', type: 'paragraph' }]).status
 			).toBe('applied');
 			settle([a, b], 'N:"" Z:"after"');
 		}
@@ -249,7 +249,7 @@ const N = (id = 'N') => ({ id, type: 'paragraph' });
 /** A creates an empty block `N` after `P`; B receives it. */
 const created = (ids: number[]) => {
 	const [a, b] = peers([{ id: 'P', text: 'abc' }], ids);
-	b.receiveAll(a.capture(() => a.ed.insertBlock({ parent: null, index: 1 }, N())));
+	b.receiveAll(a.capture(() => a.ed.insertBlocks({ parent: null, index: 1 }, [N()])));
 	return [a, b];
 };
 
@@ -314,10 +314,9 @@ describe('hist.undo.withdraw — an undone creation keeps what others put in the
 	each('B nests a child inside A’s new block: the undone block stays as its holder', (ids) => {
 		const [a, b] = created(ids);
 		expect(
-			b.ed.insertBlock(
-				{ parent: 'N', index: 0 },
+			b.ed.insertBlocks({ parent: 'N', index: 0 }, [
 				{ id: 'K', type: 'paragraph', content: [{ kind: 'text', text: 'kid' }] }
-			).status
+			]).status
 		).toBe('applied');
 		quiesce([a, b]);
 		expect(a.undo()).not.toBeNull();
@@ -328,10 +327,9 @@ describe('hist.undo.withdraw — an undone creation keeps what others put in the
 		const [a, b] = created(ids);
 		expect(a.undo()).not.toBeNull();
 		expect(
-			b.ed.insertBlock(
-				{ parent: 'N', index: 0 },
+			b.ed.insertBlocks({ parent: 'N', index: 0 }, [
 				{ id: 'K', type: 'paragraph', content: [{ kind: 'text', text: 'kid' }] }
-			).status
+			]).status
 		).toBe('applied');
 		settle([a, b], 'P:"abc" N:""[K:"kid"]');
 	});
@@ -363,7 +361,7 @@ describe('hist.undo.withdraw — an undone creation keeps what others put in the
 					{ id: 'Q2', type: 'paragraph', content: [{ kind: 'text', text: 'two' }] }
 				]
 			};
-			expect(a.ed.insertBlock({ parent: null, index: 1 }, tree).status).toBe('applied');
+			expect(a.ed.insertBlocks({ parent: null, index: 1 }, [tree]).status).toBe('applied');
 			quiesce([a, b]);
 			expect(b.ed.insertText('Q2', 3, '!').status).toBe('applied');
 			quiesce([a, b]);
@@ -420,10 +418,9 @@ describe('hist.undo.withdraw — splits: the text the tail received rides back i
 		expect(a.ed.splitBlock('A', 2, 'T').status).toBe('applied');
 		quiesce([a, b]);
 		expect(
-			b.ed.insertBlock(
-				{ parent: 'T', index: 0 },
+			b.ed.insertBlocks({ parent: 'T', index: 0 }, [
 				{ id: 'K', type: 'paragraph', content: [{ kind: 'text', text: 'kid' }] }
-			).status
+			]).status
 		).toBe('applied');
 		quiesce([a, b]);
 		expect(a.undo()).not.toBeNull();

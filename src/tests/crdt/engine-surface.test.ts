@@ -26,10 +26,8 @@ const SYMBOLS = {
 	findIndexSS: 1,
 	// a concurrent creation of one block id keeps the losing node (fork P14, H13)
 	isKeptReplaced: 1,
-	createRelativePositionFromTypeIndex: 1,
-	createRelativePositionFromJSON: 1,
-	createAbsolutePositionFromRelativePosition: 1,
-	relativePositionToJSON: 1,
+	idAtIndex: 1,
+	indexOfId: 1,
 	createIdSet: 1,
 	diffIdSet: 1,
 	insertIntoIdSet: 1,

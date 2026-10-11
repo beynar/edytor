@@ -100,7 +100,7 @@ export const createMarkdownShortcutsPlugin = (): Plugin => (edytor) => {
 			const { facade, dispatcher } = edytor;
 			const plan = () =>
 				facade.compose(
-					facade.prepare.setMark(id, at + found.open, found.content, found.mark, true),
+					facade.prepare.formatRange(id, at + found.open, found.content, { [found.mark]: true }),
 					...(found.closing
 						? [facade.prepare.deleteText(id, at + found.open + found.content, found.closing)]
 						: []),

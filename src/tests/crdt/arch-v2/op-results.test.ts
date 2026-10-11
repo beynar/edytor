@@ -96,7 +96,7 @@ describe('F-D5 — empty inputs are noop, one result shape, nothing leaves the d
 		["insertText('')", (ed) => ed.insertText('a', 1, '')],
 		['empty delete', (ed) => ed.deleteText('a', 1, 0)],
 		['empty format', (ed) => ed.formatRange('a', 1, 0, { bold: true })],
-		['empty setMark', (ed) => ed.setMark('a', 1, 0, 'bold', true)],
+		['empty setMark', (ed) => ed.formatRange('a', 1, 0, { bold: true })],
 		['handle: empty delete', (ed) => ed.deleteText('a', 1, 0)],
 		["handle: insertText('')", (ed) => ed.insertText('a', 0, '')]
 	];
@@ -223,10 +223,9 @@ describe('F-D6 — setBlock with a reused child id refuses before any write; the
 describe('F-D7 — one ingress normalization for writes and lookups', () => {
 	test("insertBlock({id: 'x\\uD800'}); insertText by the same string and by the returned id both resolve", () => {
 		const { ed } = make([p('a', 'aa')]);
-		const inserted = ed.insertBlock(
-			{ parent: null, index: 1 },
+		const inserted = ed.insertBlocks({ parent: null, index: 1 }, [
 			{ id: 'x\uD800', type: 'paragraph' }
-		);
+		]);
 		expect(inserted.status).toBe('applied');
 		expect(inserted.ids).toEqual(['x�']);
 		const stored = inserted.ids[0];
@@ -242,8 +241,9 @@ describe('F-D7 — one ingress normalization for writes and lookups', () => {
 
 	test('an op resolves the same string to the stored block', () => {
 		const { ed } = make([p('a', 'aa')]);
-		const stored = ed.insertBlock({ parent: null, index: 1 }, { id: 'x\uD800', type: 'paragraph' })
-			.ids[0];
+		const stored = ed.insertBlocks({ parent: null, index: 1 }, [
+			{ id: 'x\uD800', type: 'paragraph' }
+		]).ids[0];
 		expect(ed.insertText('x\uD800', 0, 'ab').status).toBe('applied');
 		expect(ed.displayLength(stored)).toBe(2);
 	});
@@ -254,7 +254,7 @@ describe('F-D7 — one ingress normalization for writes and lookups', () => {
 		expect(split.status).toBe('applied');
 		expect(split.ids).toEqual(['s�']);
 		expect(ed.blockText('s\uDC00')).toBe('cd');
-		expect(ed.moveBlock('s\uDC00', { parent: null, index: 0 }).status).toBe('applied');
+		expect(ed.moveBlocks(['s\uDC00'], { parent: null, index: 0 }).status).toBe('applied');
 		expect(ed.nestBlock('b', 's\uDC00').status).toBe('applied');
 		expect(ed.childrenIds('s\uDC00')).toEqual(['b']);
 		expect(ed.deleteBlock('s\uDC00', { keepChildren: false }).status).toBe('applied');
@@ -320,10 +320,11 @@ describe('F-O4 — every op over a randomized corpus has one of three results, o
 			const OPS: [string, () => unknown][] = [
 				[
 					'insertBlock',
-					() => ed.insertBlock(dest(), { id: rand() < 0.2 ? id() : freshId(), type: 'paragraph' })
+					() =>
+						ed.insertBlocks(dest(), [{ id: rand() < 0.2 ? id() : freshId(), type: 'paragraph' }])
 				],
 				['insertBlocks', () => ed.insertBlocks(dest(), rand() < 0.3 ? [] : [p(freshId(), 'x')])],
-				['moveBlock', () => ed.moveBlock(id(), dest())],
+				['moveBlock', () => ed.moveBlocks([id()], dest())],
 				['moveBlocks', () => ed.moveBlocks(rand() < 0.2 ? [] : [id(), id()], dest())],
 				['nestBlock', () => ed.nestBlock(id(), id())],
 				['unNestBlock', () => ed.unNestBlock(id())],
@@ -333,7 +334,7 @@ describe('F-O4 — every op over a randomized corpus has one of three results, o
 				['mergeForward', () => ed.mergeForward(id())],
 				['deleteBlock', () => ed.deleteBlock(id(), { keepChildren: rand() < 0.3 })],
 				['setBlockType', () => ed.setBlockType(id(), pick(['paragraph', 'heading']))],
-				['setBlockData', () => ed.setBlockData(id(), pick([{}, { level: 1 }]))],
+				['setBlockData', () => ed.patchData(id(), [{ path: [], value: pick([{}, { level: 1 }]) }])],
 				[
 					'setBlock',
 					() =>
@@ -349,8 +350,8 @@ describe('F-O4 — every op over a randomized corpus has one of three results, o
 				['duplicateBlock', () => ed.duplicateBlock(id(), () => freshId())],
 				['insertText', () => ed.insertText(id(), off(), pick(['', 'q', 'zz']))],
 				['deleteText', () => ed.deleteText(id(), off(), len())],
-				['setMark', () => ed.setMark(id(), off(), len(), 'bold', true)],
-				['unsetMark', () => ed.unsetMark(id(), off(), len(), 'bold')],
+				['setMark', () => ed.formatRange(id(), off(), len(), { bold: true })],
+				['unsetMark', () => ed.formatRange(id(), off(), len(), { bold: null })],
 				['formatRange', () => ed.formatRange(id(), off(), len(), { italic: pick([true, null]) })],
 				['clearMarks', () => ed.clearMarks(id(), off(), len())],
 				['insertInline', () => ed.insertInline(id(), off(), { id: freshId(), type: 'mention' })],
@@ -365,13 +366,15 @@ describe('F-O4 — every op over a randomized corpus has one of three results, o
 					'setInlineData',
 					() => {
 						const b = id();
-						return ed.setInlineData(b, inlineIn(b), pick([{}, { v: 1 }]));
+						return ed.patchData({ block: b, atom: inlineIn(b) }, [
+							{ path: [], value: pick([{}, { v: 1 }]) }
+						]);
 					}
 				],
 				['handle.insertText', () => ed.insertText(id(), off(), pick(['', 'h']))],
 				['handle.deleteText', () => ed.deleteText(id(), off(), len())],
 				['handle.split', () => ed.splitBlock(id(), off(), freshId())],
-				['handle.moveTo', () => ed.moveBlock(id(), dest())],
+				['handle.moveTo', () => ed.moveBlocks([id()], dest())],
 				['handle.delete', () => ed.deleteBlock(id())],
 				['handle.setType', () => ed.setBlockType(id(), pick(['paragraph', 'heading']))]
 			];

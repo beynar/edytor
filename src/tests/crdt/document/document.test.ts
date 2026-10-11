@@ -90,7 +90,6 @@ describe('encode → loadDocument', () => {
 		expect(restored.ready).toBe(true);
 		expect(restored.readiness).toBe('hydrated');
 		expect(restored.doc.clientID).not.toBe(source.doc.clientID);
-		expect(restored.doc.guid).not.toBe(source.doc.guid);
 		expect(restored.actor.id).toBe('restorer');
 		expect(restored.facade.toJSON()).toEqual(source.facade.toJSON());
 

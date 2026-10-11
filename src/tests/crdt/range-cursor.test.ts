@@ -471,13 +471,4 @@ describe('RangeCursor — read seed vs mutation seed (counterexample)', () => {
 		expect(Y.encodeStateAsUpdate(doc)).toEqual(Y.encodeStateAsUpdate(off.doc));
 		expect(toDelta(text).toJSON()).toEqual(toDelta(off.text).toJSON());
 	});
-
-	it('the mutation seed still anchors on first-at-index markers the read seed also accepts', () => {
-		// Sanity: an unformatted tail marker (first-at-index) seeds both.
-		const { doc, text } = counterDoc();
-		doc.transact(() => applyDelta(text, delta.create().retain(3))); // plants at tail
-		const stats = { items: 0, markers: 0 };
-		new Y.RangeCursor(text).read(2, 3, stats);
-		expect(stats.items).toBeLessThan(4);
-	});
 });

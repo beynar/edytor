@@ -77,7 +77,7 @@ const healthy = (document) =>
 const edit = (f) => {
 	ok(f.splitBlock('p1', 5, 'p1b'));
 	ok(f.mergeBlocks('p2', 'p1'));
-	ok(f.setMark('h', 0, 5, 'italic', true));
+	ok(f.formatRange('h', 0, 5, { italic: true }));
 	ok(f.insertText('h', 11, ' more'));
 	ok(f.deleteBlocks(['i1']));
 	ok(
@@ -86,7 +86,7 @@ const edit = (f) => {
 		])
 	);
 	ok(f.moveBlocks(['p3a'], { parent: null, index: 0 }));
-	ok(f.setBlockData('h', { level: 'h2', color: 'red' }));
+	ok(f.patchData('h', [{ path: [], value: { level: 'h2', color: 'red' } }]));
 	ok(f.setBlock('p3', { type: 'heading', data: { level: 'h3' } }));
 	ok(f.insertText('cl1', 9, '0'));
 	ok(f.deleteBlocks(['c']));

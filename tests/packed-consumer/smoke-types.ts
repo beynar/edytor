@@ -43,12 +43,12 @@ node.setAttr('type', 'root');
 const child = new Y.Node('paragraph');
 node.insert(0, [child]);
 child.insert(0, 'typed');
-const d: unknown[] = child.toArray();
+const d: string[] = [...child.attrKeys()];
 const update: Uint8Array = Y.encodeStateAsUpdate(doc);
 const doc2: Y.Doc = new Y.Doc();
 Y.applyUpdate(doc2, update);
-const rpos: Y.RelativePosition = Y.createRelativePositionFromTypeIndex(child, 1);
-const json = Y.relativePositionToJSON(rpos);
+const at: Y.ID | null = Y.idAtIndex(child, 1);
+const json = at === null ? null : Y.indexOfId(doc, at);
 void d;
 void doc2;
 void json;
@@ -78,7 +78,7 @@ const storyDoc: bindings.YDoc = crdt.createDoc();
 const storyAwareness: bindings.Awareness = new crdt.Awareness(storyDoc);
 const storyEd = crdt.doc.create(storyDoc as unknown as bindings.EngineDoc);
 storyEd.init();
-storyEd.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'paragraph' });
+storyEd.insertBlocks({ parent: null, index: 0 }, [{ id: 'b1', type: 'paragraph' }]);
 storyEd.insertText('b1', 0, 'typed');
 storyEd.formatRange('b1', 0, 5, { bold: true });
 const storyJson: ReturnType<typeof storyEd.toJSON> = storyEd.toJSON();
@@ -142,10 +142,9 @@ const rootDoc: EdytorDocument = createDocument({
 const rootReadiness: DocumentReadiness = rootDoc.readiness;
 const rootProjected: ProjectedDoc = rootDoc.project();
 rootDoc.transact(() => rootDoc.insertText(rootProjected.children[0]!.id, 0, '!'));
-rootDoc.insertBlock(
-	{ parent: null, index: 1 },
+rootDoc.insertBlocks({ parent: null, index: 1 }, [
 	bindings.toBlockSpec(rootDoc.blockJSON('root-p1'), { freshIds: true })
-);
+]);
 rootDoc.history.undo();
 const rootAttribution: DocumentAttribution = rootDoc.attribution;
 const rootUpdate: Uint8Array = rootDoc.encode();

@@ -182,11 +182,11 @@ describe('F-D3 — a block hidden under a deleted parent is not a target', () =>
 				expect(ed.insertText('c', 0, 'x').status, 'insertText(c)').toBe('refused');
 				unchanged();
 				expect(
-					ed.insertBlock({ parent: 'c', index: 0 }, p('n', 'nn')).status,
+					ed.insertBlocks({ parent: 'c', index: 0 }, [p('n', 'nn')]).status,
 					'insertBlock(parent: c)'
 				).toBe('refused');
 				unchanged();
-				expect(ed.moveBlock('c', { parent: null, index: 0 }).status, 'moveBlock(c → root)').toBe(
+				expect(ed.moveBlocks(['c'], { parent: null, index: 0 }).status, 'moveBlock(c → root)').toBe(
 					'refused'
 				);
 				unchanged();
@@ -324,7 +324,7 @@ describe('F-D17 — A deletes b and undoes; offline P deletes "world" and bolds 
 				const undo = send(A);
 
 				expect(P.ed.deleteText('b', 6, 5).status).toBe('applied');
-				expect(P.ed.setMark('b', 0, 5, 'bold', true).status).toBe('applied');
+				expect(P.ed.formatRange('b', 0, 5, { bold: true }).status).toBe('applied');
 				const edits = send(P);
 
 				deliver(A, edits);

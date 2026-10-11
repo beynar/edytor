@@ -16,7 +16,7 @@ import {
 } from '../../crdt/schema.js';
 import type { YDoc } from '../../crdt/index.js';
 import type { Decoded, Item, Struct } from './context.js';
-import { heldClock, storedStruct, structAt } from './updates.js';
+import { heldClock, runsOf, storedStruct, structAt } from './updates.js';
 
 // ── Per-writer marks ──────────────────────────────────────────
 
@@ -30,17 +30,6 @@ const markWriter = (key: string | null | undefined): number | null => {
 			: null;
 	const digits = prefix === null ? '' : key.slice(prefix.length);
 	return /^\d{1,16}$/.test(digits) ? Number(digits) : null;
-};
-
-/** A frame's structs by client, each run in clock order. */
-const runsOf = (structs: Struct[]): Map<number, Struct[]> => {
-	const runs = new Map<number, Struct[]>();
-	for (const struct of structs) {
-		const run = runs.get(struct.id.client) ?? [];
-		run.push(struct);
-		runs.set(struct.id.client, run);
-	}
-	return runs;
 };
 
 type Id = { client: number; clock: number };

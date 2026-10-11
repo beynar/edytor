@@ -610,7 +610,7 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 		ok(a.transact(() => a.facade.insertText('p1', 5, ' world')));
 		ok(
 			b.transact(() =>
-				b.facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' })
+				b.facade.insertBlocks({ parent: null, index: 1 }, [{ id: 'p2', type: 'paragraph' }])
 			)
 		);
 		ok(b.transact(() => b.facade.insertText('p2', 0, 'second line')));
@@ -625,10 +625,9 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 		ok(b.transact(() => b.facade.deleteText('p2', 0, 7))); // "line"
 		ok(
 			b.transact(() =>
-				b.facade.insertBlock(
-					{ parent: null, index: 3 },
+				b.facade.insertBlocks({ parent: null, index: 3 }, [
 					{ id: 'p3', type: 'paragraph', content: [{ kind: 'text', text: 'doomed' }] }
-				)
+				])
 			)
 		);
 		await until(

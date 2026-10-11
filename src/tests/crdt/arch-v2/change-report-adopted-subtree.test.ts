@@ -55,8 +55,8 @@ const moveIntoAdded = (edit?: (ed) => void) => {
 	const before = { x: cells.get('x'), x1: cells.get('x1'), y: cells.get('y') };
 	const sv = Y.encodeStateVector(A.doc);
 	B.ed.transact(() => {
-		B.ed.insertBlock({ parent: null, index: 0 }, { id: 'z', type: 'paragraph' });
-		B.ed.moveBlock('x', { parent: 'z', index: 0 });
+		B.ed.insertBlocks({ parent: null, index: 0 }, [{ id: 'z', type: 'paragraph' }]);
+		B.ed.moveBlocks(['x'], { parent: 'z', index: 0 });
 		edit?.(B.ed);
 	});
 	Y.applyUpdate(A.doc, Y.encodeStateAsUpdate(B.doc, sv), 'remote');

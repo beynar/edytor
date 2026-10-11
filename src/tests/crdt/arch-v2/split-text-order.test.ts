@@ -71,7 +71,7 @@ describe('D-18 leaves a moved block where it was moved', () => {
 				],
 				([a, b]) => {
 					ok(a.ed.splitBlock('X', 5, 'N'));
-					ok(a.ed.moveBlock('N', { parent: null, index: 0 }));
+					ok(a.ed.moveBlocks(['N'], { parent: null, index: 0 }));
 					ok(b.ed.splitBlock('X', 2, 'M'));
 				},
 				clientPairs(24)

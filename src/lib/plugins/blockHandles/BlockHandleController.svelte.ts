@@ -275,7 +275,7 @@ export class BlockHandleController {
 			if (um && capture) um.captureTransaction = (tr) => !refused && capture(tr);
 			let out: unknown;
 			try {
-				out = dispatcher.run('insertBlock', () =>
+				out = dispatcher.run('insertBlocks', () =>
 					edytor.transact(() => {
 						const type = block.parent && edytor.defaultChild(block.parent);
 						if (!type) return;
@@ -298,7 +298,7 @@ export class BlockHandleController {
 						if (facade.version !== added || (result !== false && last?.status !== 'refused'))
 							return result;
 						refused =
-							last?.status === 'refused' ? last : { operation: 'insertBlock', status: 'refused' };
+							last?.status === 'refused' ? last : { operation: 'insertBlocks', status: 'refused' };
 						// The take-back of this command's own uncommitted write, not a user command.
 						if (!reused) facade.apply(facade.prepare.deleteBlocks([target.id]));
 						// Still answered: the command scope settles a vetoed async command's rejection.

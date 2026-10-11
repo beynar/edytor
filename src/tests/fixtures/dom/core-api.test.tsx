@@ -61,10 +61,9 @@ describe('UW-17 · a kind the view does not register renders as a plain block', 
 		const remoteDoc = new Y.Doc();
 		Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(edytor.doc));
 		const remote = attachDocument(remoteDoc);
-		remote.facade.insertBlock(
-			{ parent: null, index: 1 },
+		remote.facade.insertBlocks({ parent: null, index: 1 }, [
 			{ id: 'peer', type: 'widget', content: [{ kind: 'text', text: 'from a peer' }] }
-		);
+		]);
 		Y.applyUpdate(edytor.doc, Y.encodeStateAsUpdate(remoteDoc, Y.encodeStateVector(edytor.doc)));
 		await flushDomUpdates();
 		expect(blockElement(editor, 'peer')?.textContent).toBe('from a peer');

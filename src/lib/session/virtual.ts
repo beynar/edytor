@@ -105,7 +105,6 @@ export const virtualLens = (
 		create([spec(), { id: newId, type: tail?.type ?? type(), data: tail?.data }])
 	);
 	onIt('setBlockType', (t) => create([spec({ type: t })]));
-	onIt('setBlockData', (data) => create([spec({ data })]));
 	onIt('patchData', (ops) => {
 		const data = applyPatch({}, ops);
 		return data ? create([spec({ data })]) : REFUSED;
@@ -118,7 +117,6 @@ export const virtualLens = (
 			return create([spec(), ...specs.map(asBlockSpec)]);
 		return on(dest.parent) ? create([spec({ children: specs.map(asBlockSpec) })]) : undefined;
 	});
-	over('insertBlock', (dest, s) => prepare.insertBlocks(dest, [s]));
 	over('insertFlow', (target: FlowTarget, flow: Flow) => {
 		if ('replace' in target) return target.replace.some(on) ? flowInto(flow, false) : undefined;
 		// At a slot beside or under it (a suggestion), the lines take its place.
@@ -133,11 +131,8 @@ export const virtualLens = (
 	for (const name of [
 		'deleteText',
 		'formatRange',
-		'setMark',
-		'unsetMark',
 		'clearMarks',
 		'removeInline',
-		'setInlineData',
 		'mergeBackward',
 		'mergeForward',
 		'deleteBlock'

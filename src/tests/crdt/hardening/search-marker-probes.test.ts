@@ -19,6 +19,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
+import { findMarker } from '../../../lib/crdt/vendor/yjs/src/ynode.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { toDelta, applyDelta } from '../harness/delta.js';
 import { UndoManager } from '../harness/undo.js';
@@ -28,9 +29,11 @@ let cid = 900_000;
 
 /** Plant a format-carrying marker by forcing findMarker to walk to `index`. */
 const plantMarkerAt = (t: any, index: number) => {
-	// typeListGet → findMarker(type, index): creates/repositions a marker and
-	// folds ContentFormat items into marker.formats during the rightward walk.
-	t.get(index);
+	// findMarker(type, index) on an empty pool: creates a marker and folds
+	// ContentFormat items into marker.formats during the walk from the start
+	// (a write's marker carries no snapshot since YP19).
+	if (t._searchMarker) t._searchMarker.length = 0;
+	findMarker(t, index);
 };
 
 const seededMarkerCount = (t: any) =>
@@ -235,7 +238,7 @@ describe('gateH-R1 — marker-seeded anchor serialization (facade writes)', () =
 				}
 			]
 		});
-		ed.setMark('b', 100, 100, 'b', true);
+		ed.formatRange('b', 100, 100, { b: true });
 		// Generate markers via reads at several positions.
 		for (const i of [50, 150, 250]) {
 			const a = ed.anchorAt('b', i);
@@ -294,7 +297,7 @@ describe('gateH-R1 — facade-level randomized differential (markers on vs off)'
 					{ id: 'c', type: 'paragraph', content: [{ kind: 'text', text: 'y'.repeat(60) }] }
 				]
 			});
-			ed.setMark('b', 40, 80, 'b', true);
+			ed.formatRange('b', 40, 80, { b: true });
 			const um = ed.createUndoManager({ captureTimeout: 0 });
 			if (!withMarkers) {
 				for (const id of ['b', 'c']) contentOf(ed, id)._searchMarker = null;
@@ -328,8 +331,8 @@ describe('gateH-R1 — facade-level randomized differential (markers on vs off)'
 				const pos = Math.floor(draw() * len);
 				const n = Math.floor(draw() * Math.min(20, len - pos));
 				if (n > 0) {
-					if (draw() < 0.5) s.ed.setMark(id, pos, n, 'b', true);
-					else s.ed.unsetMark(id, pos, n, 'b');
+					if (draw() < 0.5) s.ed.formatRange(id, pos, n, { b: true });
+					else s.ed.formatRange(id, pos, n, { b: null });
 				}
 			} else if (roll < 0.92 && lenOf(s, 'b') > 4) {
 				// split then occasionally merge back

@@ -66,7 +66,7 @@ import {
 	onTransaction,
 	stepsOf,
 	structAt,
-	walkIdSetStructs,
+	walkIdSet,
 	type StoreStruct
 } from '../structs.js';
 import {
@@ -376,13 +376,8 @@ export const bindDeletes = (Y: EngineApi) => {
 	/** The text units `ids` names, as spans. */
 	const unitsIn = (s: State, ids: IdSet): Span[] => {
 		const out: Span[] = [];
-		ids.clients.forEach((ranges, c) => {
-			for (const r of ranges.getIds())
-				walkIdSetStructs(Y, s.doc, idSet([{ c, k: r.clock, n: r.len }]), (st) => {
-					const lo = Math.max(r.clock, st.id.clock);
-					const hi = Math.min(r.clock + r.len, st.id.clock + st.length);
-					if (hi > lo && isUnit(st as Unit)) out.push({ c, k: lo, n: hi - lo });
-				});
+		walkIdSet(Y, s.doc, ids, (st, lo, hi) => {
+			if (hi > lo && isUnit(st as Unit)) out.push({ c: st.id.client, k: lo, n: hi - lo });
 		});
 		return out;
 	};

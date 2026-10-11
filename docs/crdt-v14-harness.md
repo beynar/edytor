@@ -321,9 +321,8 @@ green.
 
 ### Upstream crash repros stay diagnostic
 
-`failures/seed-86.json` / `seed-140.json` (vendored rc.26
-`iterateStructsByIdSet`/`findIndexSS` crashes over destroyed ranges) are
-replayed by a permanent test: they must classify as
+`failures/seed-140.json` (a vendored rc.26 `findIndexSS` crash over
+destroyed ranges) is replayed by a permanent test: it must classify as
 `upstream-engine-crash` _evidence_ on the raw adapter — never a gate
 failure, never silently green. Artifacts now also persist `evidence` and
 `tagVerdicts` for provenance.
@@ -374,7 +373,8 @@ the real model adapter lands in U03+.
   failures automatically; pending MV01–MV10 become runnable.
 - U04: `preservesIdentityOnSplitMerge` flip does the same for `lost-identity`;
   `lost-edit` stays expected (concurrent deletes legitimately erase tags).
-- U07: `upstream-engine-crash` repros (`failures/seed-86.json`,
-  `failures/seed-140.json`) — vendored rc.26 crashes iterating delete sets
+- U07: `upstream-engine-crash` repro (`failures/seed-140.json`; `seed-86.json`
+  crashed in the formatting cleanup's delete-set walk, which fork patch YP19
+  removed) — vendored rc.26 crashes iterating delete sets
   over destroyed ranges; needs the persistence/provider story (and possibly
   an upstream report). `unrecoverable-loss` pins the convergent-loss contract.

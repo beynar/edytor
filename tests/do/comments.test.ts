@@ -341,7 +341,7 @@ describe('room.comments.anchor', () => {
 		});
 		await vi.waitFor(() => expect(ada.synced).toBe(true));
 		await add(room, 'a1');
-		author.facade.setMark('p1', 4, 5, 'comment:a1', { id: 'a1' });
+		author.facade.formatRange('p1', 4, 5, { 'comment:a1': { id: 'a1' } });
 		const marked = () =>
 			readFacade(author.doc, (facade) =>
 				facade

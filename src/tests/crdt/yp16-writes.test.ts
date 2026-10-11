@@ -1,13 +1,15 @@
 /**
- * YP16 (UPSTREAM.md) — the fork's writes without the delta layer store exactly
- * what upstream's delta-driven writes stored.
+ * YP16, YP19 (UPSTREAM.md) — the fork's writes without the delta layer, and
+ * its one sequence write (`insert` placed as `insertInGap`, no plain format),
+ * store exactly what upstream's delta-driven writes stored for the same
+ * unformatted program.
  *
  * Differential: seeded programs over every public write of a node — `insert`
- * (text with formats, arrays mixing JSON values and nodes), `delete`, `format`
- * (set, `null` clear, `{}` and `null` updates), `setAttr`/`deleteAttr`/
- * `clearAttrs`, `push`/`unshift`, writes to DETACHED nodes (the pre-integration
- * list replayed on integration, nested detached nodes included), undo/redo,
- * remote exchange between two replicas, gc on and off — replayed on this fork
+ * (text, arrays mixing JSON values and nodes), `delete`, `setAttr`/
+ * `deleteAttr`/`clearAttrs`, `push`/`unshift` (the last three the tests'
+ * own, `harness/node-reads.js`, on the fork), writes to DETACHED nodes (the
+ * pre-integration list replayed on integration, nested detached nodes
+ * included), undo/redo, gc on and off — replayed on this fork
  * and on an engine that still writes through `applyDelta`. After EVERY
  * operation both replicas' `encodeStateAsUpdate` bytes must be identical across
  * the engines, and so must their deep content (the baseline's own `toDelta`,
@@ -22,7 +24,10 @@
  *   this program, an array insert with formats) — a pre-YP16 behaviour the
  *   second baseline keeps pinned;
  * - the fork as it stood before YP16 (`git archive` of {@link BEFORE}, when the
- *   commit is in the clone): every operation, exchange included.
+ *   commit is in the clone): local writes with the search markers on. Remote
+ *   exchange is left out since YP19: the formatting cleanup that followed a
+ *   remote change split the items its delete set reached (a split inside a
+ *   surrogate pair stores U+FFFD halves), and YP19 removed it.
  */
 // @ts-nocheck -- drives two engines' plain JS directly.
 import { execFileSync } from 'node:child_process';
@@ -66,24 +71,6 @@ const beforeYP16 = async () => {
 	);
 };
 
-const FORMATS = [
-	undefined,
-	{},
-	{ bold: true },
-	{ italic: true, bold: true },
-	{ bold: null },
-	{ href: { url: 'x' } },
-	{ bold: true, italic: null }
-];
-const UPDATES = [
-	{ bold: true },
-	{ bold: null },
-	{ italic: true },
-	{},
-	null,
-	{ href: { url: 'y' } },
-	{ a: undefined }
-];
 const WORDS = ['a', 'bc', 'def', '😀x', 'ghij'];
 
 /**
@@ -109,7 +96,7 @@ const program = (E, seed, gc, exchange, markers) => {
 			const k = int(rng, 0, 5);
 			if (k <= 1) {
 				const s = pick(rng, WORDS);
-				n.insert(int(rng, 0, len), s, pick(rng, FORMATS));
+				n.insert(int(rng, 0, len), s);
 				len += s.length;
 			} else if (k === 2) {
 				const arr = [
@@ -117,16 +104,13 @@ const program = (E, seed, gc, exchange, markers) => {
 					...(depth < 1 && bool(rng) ? [detached(depth + 1)] : []),
 					7
 				];
-				n.insert(int(rng, 0, len), arr, pick(rng, FORMATS));
+				n.insert(int(rng, 0, len), arr);
 				len += arr.length;
 			} else if (k === 3 && len > 0) {
 				const at = int(rng, 0, len - 1);
 				const l = int(rng, 1, len - at);
 				n.delete(at, l);
 				len -= l;
-			} else if (k === 4 && len > 0) {
-				const at = int(rng, 0, len - 1);
-				n.format(at, int(rng, 1, len - at), pick(rng, UPDATES));
 			} else {
 				const key = pick(rng, ['x', 'y', 'z']);
 				if (bool(rng, 0.7))
@@ -143,14 +127,10 @@ const program = (E, seed, gc, exchange, markers) => {
 		const m = doc.get('m');
 		const len = t.length;
 		const k = int(rng, 0, 13);
-		if (k <= 2) t.insert(int(rng, 0, len), pick(rng, WORDS), pick(rng, FORMATS));
-		else if (k === 3)
-			t.insert(int(rng, 0, len), [int(rng, 0, 9), detached(0), { o: 1 }], pick(rng, FORMATS));
+		if (k <= 2) t.insert(int(rng, 0, len), pick(rng, WORDS));
+		else if (k === 3) t.insert(int(rng, 0, len), [int(rng, 0, 9), detached(0), { o: 1 }]);
 		else if (k === 4) t.delete(int(rng, 0, len), len === 0 ? 0 : int(rng, 0, 3));
-		else if (k === 5 && len > 0) {
-			const at = int(rng, 0, len - 1);
-			t.format(at, int(rng, 0, len - at), pick(rng, UPDATES));
-		} else if (k === 6)
+		else if (k === 6)
 			m.setAttr(
 				pick(rng, ['a', 'b', 'c']),
 				bool(rng) ? detached(0) : pick(rng, [1, 'two', null, [3]])
@@ -162,8 +142,7 @@ const program = (E, seed, gc, exchange, markers) => {
 		else if (k === 11) ums[di].redo();
 		else if (k === 12) {
 			const node = m.getAttr('a');
-			if (node instanceof E.Node)
-				node.insert(int(rng, 0, node.length), pick(rng, WORDS), pick(rng, FORMATS));
+			if (node instanceof E.Node) node.insert(int(rng, 0, node.length), pick(rng, WORDS));
 		} else if (exchange) {
 			// exchange: both replicas catch up
 			const u0 = E.encodeStateAsUpdate(docs[0], E.encodeStateVector(docs[1]));
@@ -199,7 +178,7 @@ const differential = (B, gc, exchange, markers) => {
 	}
 };
 
-describe('YP16 — writes without the delta layer store what the delta layer stored', () => {
+describe('YP16, YP19 — the writes store what the delta layer stored', () => {
 	for (const gc of [true, false]) {
 		it(`vs pristine upstream: 40 programs × 120 local operations, gc ${gc ? 'on' : 'off'}`, async () => {
 			const U = await upstream();
@@ -209,11 +188,11 @@ describe('YP16 — writes without the delta layer store what the delta layer sto
 		});
 
 		it.runIf(hasBefore)(
-			`vs the fork before YP16: 40 programs × 120 operations with exchange, gc ${gc ? 'on' : 'off'}`,
+			`vs the fork before YP16: 40 programs × 120 local operations, search markers on, gc ${gc ? 'on' : 'off'}`,
 			async () => {
 				const B = await beforeYP16();
 				expect(typeof B.Node.prototype.applyDelta).toBe('function');
-				differential(B, gc, true, true);
+				differential(B, gc, false, true);
 			}
 		);
 	}
@@ -225,12 +204,11 @@ describe('YP16 — writes without the delta layer store what the delta layer sto
 			doc.clientID = 5;
 			const n = new E.Node('p');
 			n.setAttr('b', 1);
-			n.insert(0, 'xy', { bold: true });
+			n.insert(0, 'xy');
 			n.setAttr('a', 2);
 			n.deleteAttr('b');
 			n.insert(1, 'Z');
 			n.setAttr('b', 3); // keeps its first-write slot
-			n.format(0, 2, { italic: true });
 			n.delete(2, 1);
 			doc.get('r').insert(0, [n]);
 			return Buffer.from(stateOf(E, doc)).toString('hex');

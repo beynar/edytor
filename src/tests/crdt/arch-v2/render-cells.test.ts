@@ -188,8 +188,8 @@ describe('R1 — cells patched exactly from the change report', () => {
 	red('move: the two parent lists, never the moved cell', () => {
 		const { ed } = seed();
 		const m = mount(ed);
-		expectPatch(ed, m, () => ed.moveBlock('c', { parent: 'a', index: 0 }), ['a', null]);
-		expectPatch(ed, m, () => ed.moveBlock('a1', { parent: 'd', index: 0 }), ['a', 'd']);
+		expectPatch(ed, m, () => ed.moveBlocks(['c'], { parent: 'a', index: 0 }), ['a', null]);
+		expectPatch(ed, m, () => ed.moveBlocks(['a1'], { parent: 'd', index: 0 }), ['a', 'd']);
 	});
 
 	red('delete: the parent list; the subtree cells are gone', () => {
@@ -225,7 +225,7 @@ describe('R1 — cells patched exactly from the change report', () => {
 		const { ed } = seed();
 		const m = mount(ed);
 		expectPatch(ed, m, () => ed.setBlockType('c', 'heading'), ['c']);
-		expectPatch(ed, m, () => ed.setBlockData('c', { level: 2 }), ['c']);
+		expectPatch(ed, m, () => ed.patchData('c', [{ path: [], value: { level: 2 } }]), ['c']);
 		expect(m.tree.get('c').data).toEqual({ level: 2 });
 	});
 
@@ -256,10 +256,10 @@ describe('R1 — cells patched exactly from the change report', () => {
 		const reports = [];
 		A.ed.onChange((c) => reports.push(c));
 		const sv = Y.encodeStateVector(A.doc);
-		B.ed.insertBlock({ parent: null, index: 0 }, { id: 'z', type: 'paragraph' });
+		B.ed.insertBlocks({ parent: null, index: 0 }, [{ id: 'z', type: 'paragraph' }]);
 		B.ed.setBlockType('x', 'paragraph');
 		B.ed.insertText('x', 2, '!');
-		B.ed.moveBlock('x', { parent: 'z', index: 0 });
+		B.ed.moveBlocks(['x'], { parent: 'z', index: 0 });
 		Y.applyUpdate(A.doc, Y.encodeStateAsUpdate(B.doc, sv), 'remote');
 		expect(shape(m.tree)).toEqual(oracle(A.ed));
 		expect([...m.patches.at(-1)].sort()).toEqual([null, 'x', 'z'].sort());
@@ -287,7 +287,8 @@ describe('R1 — cells patched exactly from the change report', () => {
 		expectPatch(
 			A.ed,
 			m,
-			() => send(() => B.ed.insertBlock({ parent: 'a', index: 1 }, { id: 'n', type: 'paragraph' })),
+			() =>
+				send(() => B.ed.insertBlocks({ parent: 'a', index: 1 }, [{ id: 'n', type: 'paragraph' }])),
 			['a', 'n']
 		);
 		expect(A.ed.toJSON()).toEqual(B.ed.toJSON());
@@ -374,9 +375,9 @@ describe('R1 — patched cells equal a fresh build after every commit (K7)', () 
 				const atomIn = (b) =>
 					(ed.hasBlock(b) ? ed.contentItems(b) : []).find((i) => i.kind === 'inline')?.id ?? 'x';
 				return [
-					() => ed.insertBlock(dest(), { id: freshId(), type: 'paragraph' }),
+					() => ed.insertBlocks(dest(), [{ id: freshId(), type: 'paragraph' }]),
 					() => ed.insertBlocks(dest(), [p(freshId(), 'x', [p(freshId(), 'y')])]),
-					() => ed.moveBlock(id(), dest()),
+					() => ed.moveBlocks([id()], dest()),
 					() => ed.nestBlock(id(), id()),
 					() => ed.unNestBlock(id()),
 					() => ed.splitBlock(id(), off(), freshId()),
@@ -384,7 +385,7 @@ describe('R1 — patched cells equal a fresh build after every commit (K7)', () 
 					() => ed.mergeBackward(id()),
 					() => ed.deleteBlock(id(), { keepChildren: rand() < 0.4 }),
 					() => ed.setBlockType(id(), pick(['paragraph', 'heading'])),
-					() => ed.setBlockData(id(), pick([{}, { level: 1 }])),
+					() => ed.patchData(id(), [{ path: [], value: pick([{}, { level: 1 }]) }]),
 					() => ed.insertText(id(), off(), pick(['q', 'zz']), pick([undefined, { bold: true }])),
 					() => ed.deleteText(id(), off(), Math.floor(rand() * 4)),
 					() => ed.formatRange(id(), off(), 2, { italic: pick([true, null]) }),

@@ -113,7 +113,7 @@ export const fixtures = defineFixtures([
 		// U10 regression — chromium `block-handles.spec.ts` "drags multiple
 		// selected sibling blocks together" lost BOTH dragged blocks: the
 		// pre-v14 path cloned JSON, deleted the sources, then re-inserted the
-		// same ids, which `facade.insertBlock` refuses (registry entries are
+		// same ids, which `facade.insertBlocks` refuses (registry entries are
 		// retained after delete). The grouped drag now goes through one
 		// `facade.moveBlocks` transaction — identity preserved, one undo step.
 		description: 'drags multiple selected sibling blocks together (identity preserved)',

@@ -261,10 +261,7 @@ export class Notes extends DurableObject<Env> {
 
   appendNote(text: string) {
     return this.document.transact((doc) =>
-      doc.insertBlock(
-        { parent: null, index: doc.childrenIds(null).length },
-        toBlockSpec({ type: 'paragraph', content: [{ text }] })
-      )
+      doc.insertBlocks({ parent: null, index: doc.childrenIds(null).length }, [toBlockSpec({ type: 'paragraph', content: [{ text }] })])
     );
   }
 }

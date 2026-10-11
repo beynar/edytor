@@ -63,7 +63,7 @@ describe('diffSnaps oracle agrees with the facade change report', () => {
 			() => ed.nestBlock('c', 'b'),
 			() => ed.splitBlock('a', 2, 'a2'),
 			() => ed.deleteBlock('b'),
-			() => ed.setMark('a', 0, 2, 'bold', true)
+			() => ed.formatRange('a', 0, 2, { bold: true })
 		];
 		for (const step of steps) {
 			const before = snapOf(ed);

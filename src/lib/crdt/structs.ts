@@ -86,23 +86,21 @@ export const structAt = (
 };
 
 /**
- * Walk every struct an IdSet covers, invoking `fn` per struct in
- * (client, clock) order. IdSet ranges are item-aligned (they record whole
- * structs), so an overlapping struct is a covered struct — the walk never
- * splits.
- *
- * `fn` returning `false` halts the walk early (caller-side short-circuit).
+ * Walk every struct an IdSet covers, in (client, clock) order: `fn(struct,
+ * from, to)` gets the struct and the clock range `[from, to)` of it the set
+ * covers (a struct can reach past a range a diff of two id sets cut). The
+ * walk never splits a struct; `fn` returning `false` halts it.
  *
  * Returns `false` when coverage was INCOMPLETE — a client's struct list
  * was missing or a range start could not be located — so the caller can
  * fall back to an all-consumers/opaque answer instead of trusting a
  * partial walk. `clientsOf` throws first when the store itself is absent.
  */
-export const walkIdSetStructs = (
+export const walkIdSet = (
 	Y: EngineApi,
 	doc: EngineDoc,
 	idSet: IdSetLike,
-	fn: (struct: StoreStruct) => boolean | void
+	fn: (struct: StoreStruct, from: number, to: number) => boolean | void
 ): boolean => {
 	const clients = clientsOf(doc);
 	let complete = true;
@@ -126,48 +124,10 @@ export const walkIdSetStructs = (
 			for (; i < structs.length; i++) {
 				const s = structs[i]!;
 				if (s.id.clock >= end) break;
-				if (fn(s) === false) {
+				if (fn(s, Math.max(r.clock, s.id.clock), Math.min(end, s.id.clock + s.length)) === false) {
 					stopped = true;
 					return;
 				}
-			}
-		}
-	});
-	return complete;
-};
-
-/**
- * {@link walkIdSetStructs}, clipped: `fn(struct, from, to)` gets the clock
- * range `[from, to)` of the struct the id set covers (a struct can reach past
- * a range a diff of two id sets cut).
- */
-export const walkIdSetRanges = (
-	Y: EngineApi,
-	doc: EngineDoc,
-	idSet: IdSetLike,
-	fn: (struct: StoreStruct, from: number, to: number) => void
-): boolean => {
-	const clients = clientsOf(doc);
-	let complete = true;
-	idSet.clients.forEach((ranges, client) => {
-		const structs = clients.get(client);
-		if (structs === undefined) {
-			complete = false;
-			return;
-		}
-		for (const r of ranges.getIds()) {
-			const end = r.clock + r.len;
-			let i: number;
-			try {
-				i = Y.findIndexSS(structs as never[], r.clock);
-			} catch {
-				complete = false;
-				continue;
-			}
-			for (; i < structs.length; i++) {
-				const s = structs[i]!;
-				if (s.id.clock >= end) break;
-				fn(s, Math.max(r.clock, s.id.clock), Math.min(end, s.id.clock + s.length));
 			}
 		}
 	});
@@ -331,6 +291,25 @@ export const onTransaction = <T>(
 	event: 'beforeTransaction' | 'afterTransaction',
 	f: (tr: T) => void
 ): void => (doc as unknown as { on(e: string, f: (tr: T) => void): void }).on(event, f);
+
+/**
+ * Whether a transaction changed one of `nodes` or a node under one: its
+ * `changed` types and their ancestors (what a deep observer of `nodes`
+ * would have heard; the engine has none, fork patch YP19).
+ */
+export const changedUnder = (
+	tr: { changed: Map<unknown, unknown> },
+	nodes: readonly unknown[]
+): boolean => {
+	for (const type of tr.changed.keys())
+		for (
+			let t = type as { _item: { parent: unknown } | null } | null;
+			t;
+			t = t._item?.parent as never
+		)
+			if (nodes.includes(t)) return true;
+	return false;
+};
 
 /** A doc's event registry (vendor `on`/`off`). */
 type Events = {

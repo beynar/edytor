@@ -240,7 +240,7 @@ const emacs: Record<string, HotKey> = {
 	'ctrl+o': ({ edytor, prevent }) => {
 		if (owned(edytor) || !edytor.selection.textAt(edytor.selection.projection.start)) return;
 		prevent(() =>
-			edytor.dispatcher.run('insertBlock', () =>
+			edytor.dispatcher.run('insertBlocks', () =>
 				edytor.ports.input.insertLineBreak(intentSnapshot(edytor, 'insertLineBreak'), 'before')
 			)
 		);

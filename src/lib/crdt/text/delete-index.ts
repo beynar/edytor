@@ -15,7 +15,7 @@ import {
 	collects,
 	engineOps,
 	structAt,
-	walkIdSetStructs,
+	walkIdSet,
 	type IdSetLike,
 	type IdSetOf,
 	type StoreStruct
@@ -173,11 +173,8 @@ export const deleteIndex = (Y: EngineApi) => {
 	/** The live parts of member `m`, in root coordinates. */
 	const liveRoots = (s: State, m: Member): Span[] => {
 		const out: Span[] = [];
-		walkIdSetStructs(Y, s.doc, idSet([m]), (st) => {
-			if (st.deleted) return;
-			const lo = Math.max(m.k, st.id.clock);
-			const hi = Math.min(m.k + m.n, st.id.clock + st.length);
-			if (hi > lo) out.push({ c: m.c, k: m.rk + lo - m.k, n: hi - lo });
+		walkIdSet(Y, s.doc, idSet([m]), (st, lo, hi) => {
+			if (!st.deleted && hi > lo) out.push({ c: m.c, k: m.rk + lo - m.k, n: hi - lo });
 		});
 		return out;
 	};
@@ -189,11 +186,7 @@ export const deleteIndex = (Y: EngineApi) => {
 
 	/** The live index of id `c:k` in its text (YATA order: the same on every replica). */
 	const indexOf = (s: State, c: number, k: number): number =>
-		Y.createAbsolutePositionFromRelativePosition(
-			Y.createRelativePositionFromJSON({ item: { client: c, clock: k }, assoc: 0 }),
-			asYDoc(s.doc),
-			false
-		)?.index ?? Infinity;
+		Y.indexOfId(asYDoc(s.doc), Y.createID(c, k))?.index ?? Infinity;
 
 	/**
 	 * List order of ids `a` and `b` of one text (negative: `a` first): their
@@ -373,7 +366,7 @@ export const deleteIndex = (Y: EngineApi) => {
 		const fresh = { copies: [] as Copy[], marks: [] as Rec[], released: false };
 		if (!tr.changed.has(s.marks) && !tr.changed.has(s.restored)) return fresh;
 		const inserted: StoreStruct[] = [];
-		walkIdSetStructs(Y, s.doc, tr.insertSet, (st) => {
+		walkIdSet(Y, s.doc, tr.insertSet, (st) => {
 			if (st.parent === s.restored || st.parent === s.marks) inserted.push(st);
 		});
 		for (const st of inserted)
@@ -385,7 +378,7 @@ export const deleteIndex = (Y: EngineApi) => {
 				for (const [r, bytes] of recordsIn(st, tr.insertSet))
 					if (indexMark(s, r, bytes)) fresh.marks.push(r);
 		const dropped: Rec[] = [];
-		walkIdSetStructs(Y, s.doc, tr.deleteSet, (st) => {
+		walkIdSet(Y, s.doc, tr.deleteSet, (st) => {
 			if (st.parent === s.marks) for (const [r] of recordsIn(st, tr.deleteSet)) dropped.push(r);
 			// A restoration record only the purge deletes: its copies are
 			// forgotten and collected on every replica, as on the room.
@@ -416,7 +409,7 @@ export const deleteIndex = (Y: EngineApi) => {
 	/** Collect the deleted items wholly inside `copies` (none a history keeps). */
 	const collect = (s: State, tr: unknown, copies: readonly Copy[]): void => {
 		if (!collects(s.doc) || copies.length === 0) return;
-		walkIdSetStructs(Y, s.doc, idSet(copies), (st) => {
+		walkIdSet(Y, s.doc, idSet(copies), (st) => {
 			const it = st as Unit & { keep?: boolean; content: { constructor: { name: string } } };
 			const inside = copies.some(
 				(e) => e.c === it.id.client && e.k <= it.id.clock && it.id.clock + it.length <= e.k + e.n

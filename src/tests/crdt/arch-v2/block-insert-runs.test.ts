@@ -37,7 +37,7 @@ const lines = (rep, tag: string, after: string, count: number): void => {
 	for (let i = 1; i <= count; i++) {
 		const id = `${tag}${i}`;
 		const { parent, index } = rep.ed.positionOf(prev);
-		ok(rep.ed.insertBlock({ parent, index: index + 1 }, { id, type: 'paragraph' }));
+		ok(rep.ed.insertBlocks({ parent, index: index + 1 }, [{ id, type: 'paragraph' }]));
 		ok(rep.ed.insertText(id, 0, id));
 		prev = id;
 	}
@@ -96,13 +96,15 @@ describe('H1: concurrent Enters at the end of one block never interleave', () =>
 				lines(a, 'a', 'X', 1);
 				for (const u of a.log) b.receive(u);
 				const { parent, index } = b.ed.positionOf('a1');
-				ok(b.ed.insertBlock({ parent, index: index + 1 }, { id: 'b1', type: 'paragraph' }));
+				ok(b.ed.insertBlocks({ parent, index: index + 1 }, [{ id: 'b1', type: 'paragraph' }]));
 				ok(b.ed.insertText('b1', 0, 'b1'));
 				let prev = 'a1';
 				for (const id of ['a2', 'a3']) {
 					const at = a.ed.positionOf(prev);
 					ok(
-						a.ed.insertBlock({ parent: at.parent, index: at.index + 1 }, { id, type: 'paragraph' })
+						a.ed.insertBlocks({ parent: at.parent, index: at.index + 1 }, [
+							{ id, type: 'paragraph' }
+						])
 					);
 					ok(a.ed.insertText(id, 0, id));
 					prev = id;
@@ -144,19 +146,6 @@ describe('H1: the run rule (`rankAfter`)', () => {
 		const before = rankAfter(left, r, 9, () => 0.5);
 		expect(decodeRank(before)).toHaveLength(2);
 		expect(left < before && before < r).toBe(true);
-	});
-	it('a run of the earlier two-segment form (data arrays) is still extended in place', () => {
-		const left = rankBetween(undefined, undefined, 9, () => 0.5);
-		const old =
-			left +
-			encodeRank([
-				{ v: RANK_RUN, t: 9 },
-				{ v: 0, t: 9 }
-			]);
-		const r = rankAfter(old, undefined, 9, () => 0.5);
-		expect(decodeRank(r)).toHaveLength(3);
-		expect(r.startsWith(left + encodeRank([{ v: RANK_RUN, t: 9 }]))).toBe(true);
-		expect(r > old).toBe(true);
 	});
 	it('nothing a peer inserts after the same left lands inside the run', () => {
 		const left = rankBetween(undefined, undefined, 9, () => 0.5);

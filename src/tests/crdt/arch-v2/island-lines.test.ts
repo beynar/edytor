@@ -84,7 +84,7 @@ describe('FW-01: undo of an island delete or merge never seals a peer’s block 
 		for (const o of one(
 			race(code, cases.delete.run, (a, b) => {
 				b.receiveAll(a.log);
-				expect(b.ed.moveBlock('N', { parent: null, index: 0 }).status).toBe('applied');
+				expect(b.ed.moveBlocks(['N'], { parent: null, index: 0 }).status).toBe('applied');
 			})
 		)) {
 			expect(typed(o.ed)).toBe('N:paragraph C:code[L1:codeLine]');
@@ -189,8 +189,8 @@ describe('SW-crdt-3: inserting under a code line is refused', () => {
 			{ semantics }
 		)[0].ed;
 		const line = (id: string) => ({ id, type: 'codeLine', content: [{ kind: 'text', text: id }] });
-		expect(ed.insertBlock({ parent: 'L1', index: 0 }, line('X')).status).toBe('refused');
-		expect(ed.insertBlock({ parent: 'C', index: 1 }, line('L2')).status).toBe('applied');
+		expect(ed.insertBlocks({ parent: 'L1', index: 0 }, [line('X')]).status).toBe('refused');
+		expect(ed.insertBlocks({ parent: 'C', index: 1 }, [line('L2')]).status).toBe('applied');
 		expect(typed(ed)).toBe('C:code[L1:codeLine,L2:codeLine]');
 	});
 });
@@ -217,7 +217,7 @@ describe('SW-crdt-4: a line a peer moved away shows no code line kind when an un
 		{ id: 'N', text: 'n' }
 	];
 	const moves = {
-		'moves it to the top': (ed) => ed.moveBlock('L1', { parent: null, index: 0 }),
+		'moves it to the top': (ed) => ed.moveBlocks(['L1'], { parent: null, index: 0 }),
 		'nests it under N': (ed) => ed.nestBlock('L1', 'N')
 	};
 	const expected = {

@@ -262,11 +262,7 @@ export const rankBetween = (
 	}
 };
 
-/**
- * The digit of the run marker data arrays wrote up to 0.1.0-next.21 (a run
- * of that form is the marker segment, then ranks of the client's own): still
- * read as a run, so what a client inserts there stays in it.
- */
+/** The base of the run band: a run member's digit lies just above it. */
 export const RANK_RUN = -(2 ** 30);
 /**
  * A run member's digit lies in `(RANK_RUN, RANK_RUN + RUN_BAND)`: below every
@@ -305,21 +301,21 @@ export const rankAfter = (
 	const top = encodeRank([{ v: RANK_RUN + RUN_BAND, t: 0 }]);
 	/**
 	 * `prefix` and a rank after `after` (`undefined`: the run opens) in the
-	 * run: inside the band when `band`. Opening, it takes the band's middle,
-	 * or a digit below the run's first member; at the run's end it appends as
-	 * an open end does (a window, not half the band); else between the two.
+	 * run, inside the band. Opening, it takes the band's middle, or a digit
+	 * below the run's first member; at the run's end it appends as an open
+	 * end does (a window, not half the band); else between the two.
 	 */
-	const own = (prefix: string, after: string | undefined, band: boolean): string => {
+	const own = (prefix: string, after: string | undefined): string => {
 		const tail = (r?: string) =>
 			r && r.length > prefix.length && r.startsWith(prefix) ? r.slice(prefix.length) : undefined;
 		let next = tail(right);
-		if (band && next !== undefined && next > top) next = undefined;
+		if (next !== undefined && next > top) next = undefined;
 		let mine: string;
 		if (after === undefined) {
 			if (next === undefined) mine = encodeRank([{ v: RUN_START, t: client }]);
-			else if (band && next > bottom) mine = rankBetween(bottom, next, client, rand, false);
+			else if (next > bottom) mine = rankBetween(bottom, next, client, rand, false);
 			else return plain();
-		} else if (next === undefined && band) {
+		} else if (next === undefined) {
 			const append = rankBetween(after, undefined, client, rand, false);
 			mine = append < top ? append : rankBetween(after, top, client, rand, false);
 		} else mine = rankBetween(after, next, client, rand, false);
@@ -328,16 +324,10 @@ export const rankAfter = (
 	};
 	// A member of the client's run: the next member, inside the band.
 	if (last.t === client && inRun(last.v))
-		return own(encodeRank(segs.slice(0, -1)), encodeRank([last]), true);
-	// A run of the earlier form (the marker, then the client's ranks): stays in it.
-	const k = segs.findLastIndex((g) => g.v === RANK_RUN);
-	if (k >= 0 && segs[k]!.t === client) {
-		const prefix = encodeRank(segs.slice(0, k + 1));
-		return own(prefix, left.length > prefix.length ? left.slice(prefix.length) : undefined, false);
-	}
+		return own(encodeRank(segs.slice(0, -1)), encodeRank([last]));
 	// A rank the client made: its run opens right after it. The prefix keeps
 	// `left`'s tie: a peer's rank of the same digit and a greater tie
 	// then sorts after the whole run, never between `left` and it.
-	if (last.t === client) return own(left, undefined, true);
+	if (last.t === client) return own(left, undefined);
 	return plain();
 };

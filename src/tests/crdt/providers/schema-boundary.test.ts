@@ -36,7 +36,7 @@ import { attachDocument } from '../../../lib/crdt/index.js';
 import { SCHEMA_VERSION } from '../../../lib/crdt/protocol.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
-import * as bc from 'lib0-v14/broadcastchannel';
+import { tabs as bc } from '../../../lib/crdt/providers/room.js';
 import * as idb from 'lib0-v14/indexeddb';
 import { readRow } from '../../../lib/crdt/providers/container.js';
 import * as envelope from '../../../lib/crdt/protocols/envelope.js';
@@ -596,13 +596,13 @@ describe('same-generation forged stamp — already in a same-generation containe
 		const good1 = new Y.Doc();
 		const eg1 = E.create(good1);
 		eg1.init();
-		eg1.insertBlock({ parent: null, index: 0 }, { id: 'good-a', type: 'paragraph' });
+		eg1.insertBlocks({ parent: null, index: 0 }, [{ id: 'good-a', type: 'paragraph' }]);
 		const row1 = Y.encodeStateAsUpdate(good1);
 		const row2 = makeV99Update();
 		const good3 = new Y.Doc();
 		const eg3 = E.create(good3);
 		eg3.init();
-		eg3.insertBlock({ parent: null, index: 0 }, { id: 'good-b', type: 'paragraph' });
+		eg3.insertBlocks({ parent: null, index: 0 }, [{ id: 'good-b', type: 'paragraph' }]);
 		const row3 = Y.encodeStateAsUpdate(good3);
 		await seedGenerationDb(name, [row1, row2, row3]);
 

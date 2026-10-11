@@ -118,7 +118,7 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 
 	test('marks on the deleted text are restored with the atoms — in tail', () => {
 		const { ed } = seed();
-		ed.setMark('b', 6, 5, 'b', true); // 'world' bold before the split
+		ed.formatRange('b', 6, 5, { b: true }); // 'world' bold before the split
 		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
 		ed.deleteText('tail', 0, 5);

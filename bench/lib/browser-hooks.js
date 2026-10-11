@@ -858,7 +858,7 @@ export const INSTALL_HOOKS = () => {
 		insertText: (a) => ed.facade.insertText(a[0], a[1], a[2]),
 		deleteText: (a) => ed.facade.deleteText(a[0], a[1], a[2]),
 		formatRange: (a) => ed.facade.formatRange(a[0], a[1], a[2], a[3]),
-		setMark: (a) => ed.facade.setMark(a[0], a[1], a[2], a[3], a[4]),
+		setMark: (a) => ed.facade.formatRange(a[0], a[1], a[2], { [a[3]]: a[4] }),
 		splitBlock: (a) => ed.facade.splitBlock(a[0], a[1], a[2]),
 		undo: () => ed.undoManager.undo(),
 		redo: () => ed.undoManager.redo()

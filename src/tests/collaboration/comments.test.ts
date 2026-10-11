@@ -185,9 +185,9 @@ describe('comment.anchor — a thread is the runs its mark covers', () => {
 	it('across blocks, in document order; overlapping threads keep their own runs', () => {
 		const document = doc();
 		const { facade } = document;
-		facade.setMark('a', 4, 15, 'comment:t1', { id: 't1' });
-		facade.setMark('b', 0, 5, 'comment:t1', { id: 't1' });
-		facade.setMark('a', 10, 9, 'comment:t2', { id: 't2' });
+		facade.formatRange('a', 4, 15, { 'comment:t1': { id: 't1' } });
+		facade.formatRange('b', 0, 5, { 'comment:t1': { id: 't1' } });
+		facade.formatRange('a', 10, 9, { 'comment:t2': { id: 't2' } });
 		const anchors = commentAnchors(facade);
 		expect(anchors.get('t1')).toEqual([
 			{ block: 'a', offset: 4, length: 15 },
@@ -200,7 +200,7 @@ describe('comment.anchor — a thread is the runs its mark covers', () => {
 	it('survives a split and a merge (the text moves, never copied)', () => {
 		const document = doc();
 		const { facade } = document;
-		facade.setMark('a', 4, 11, 'comment:t1', { id: 't1' }); // "quick brown"
+		facade.formatRange('a', 4, 11, { 'comment:t1': { id: 't1' } }); // "quick brown"
 		facade.splitBlock('a', 10, 'a2'); // "the quick " | "brown fox"
 		expect(commentAnchors(facade).get('t1')).toEqual([
 			{ block: 'a', offset: 4, length: 6 },
@@ -312,7 +312,7 @@ describe('createMemoryCommentsClient', () => {
 		const client = createMemoryCommentsClient({ user: 'ada' });
 		client.attach!(document.facade);
 		await client.send({ op: 'add', thread: 'm1', body: 'x' });
-		document.facade.setMark('a', 0, 5, 'comment:m1', { id: 'm1' });
+		document.facade.formatRange('a', 0, 5, { 'comment:m1': { id: 'm1' } });
 		expect(commentAnchors(document.facade).get('m1')).toHaveLength(1);
 		await client.send({ op: 'delete', thread: 'm1' });
 		expect(commentAnchors(document.facade).get('m1')).toBeUndefined();

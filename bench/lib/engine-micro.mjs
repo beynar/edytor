@@ -154,20 +154,20 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 	);
 }
 
-// ── 2. relative-position resolution — multiple anchors ──────────────
+// ── 2. position resolution — multiple anchors (ids, fork patch YP19) ──
 {
 	// create anchors scattered across the text, then resolve each.
 	const anchors = [];
 	const N_ANCHORS = 200;
 	for (let i = 0; i < N_ANCHORS; i++) {
 		const idx = Math.floor(((i + 0.5) * text.length) / N_ANCHORS);
-		anchors.push(Y.createRelativePositionFromTypeIndex(text, idx, 0));
+		anchors.push(Y.idAtIndex(text, idx, 0));
 	}
 	bench(
-		`createAbsolutePositionFromRelativePosition ×${N_ANCHORS} (resolve all)`,
+		`indexOfId ×${N_ANCHORS} (resolve all)`,
 		() => {
 			for (const a of anchors) {
-				Y.createAbsolutePositionFromRelativePosition(a, doc, false);
+				Y.indexOfId(doc, a);
 			}
 		},
 		QUICK ? 100 : 400
@@ -175,21 +175,21 @@ console.log(`fragmented text built: length=${text.length} targetItems~${ITEMS}`)
 	// per-anchor cost for one distant anchor
 	const far = anchors[N_ANCHORS - 1];
 	bench(
-		'createAbsolutePositionFromRelativePosition (single distant)',
+		'indexOfId (single distant)',
 		() => {
-			Y.createAbsolutePositionFromRelativePosition(far, doc, false);
+			Y.indexOfId(doc, far);
 		},
 		QUICK ? 2000 : 8000
 	);
 }
 
-// ── 3. anchor creation — createRelativePositionFromTypeIndex ────────
+// ── 3. anchor creation — idAtIndex ──────────────────────────────────
 {
 	const pos = Math.floor(text.length * 0.9);
 	bench(
-		`createRelativePositionFromTypeIndex(${pos}) (distant)`,
+		`idAtIndex(${pos}) (distant)`,
 		() => {
-			Y.createRelativePositionFromTypeIndex(text, pos, 0);
+			Y.idAtIndex(text, pos, 0);
 		},
 		QUICK ? 2000 : 8000
 	);

@@ -123,7 +123,9 @@ describe('H2 · validate: accept, then compensate (per-block locks)', () => {
 		});
 		const bob = await join(room, 'bob');
 		// Ada locks `p`: allowed (it was nobody's).
-		ada.document.transact(() => ada.document.facade.setBlockData('p', { lockedBy: 'ada' }));
+		ada.document.transact(() =>
+			ada.document.facade.patchData('p', [{ path: [], value: { lockedBy: 'ada' } }])
+		);
 		await vi.waitFor(async () =>
 			expect((await roomJSON(room)).children[0].data).toEqual({ lockedBy: 'ada' })
 		);
@@ -143,7 +145,7 @@ describe('H2 · validate: accept, then compensate (per-block locks)', () => {
 		// Bob's edit of the free block, and a block he adds before `p`, apply.
 		bob.document.transact(() => bob.document.facade.insertText('q', 0, 'bob: '));
 		bob.document.transact(() =>
-			bob.document.facade.insertBlock({ parent: null, index: 0 }, { id: 'b', type: 'paragraph' })
+			bob.document.facade.insertBlocks({ parent: null, index: 0 }, [{ id: 'b', type: 'paragraph' }])
 		);
 		await vi.waitFor(async () =>
 			expect((await roomJSON(room)).children.map((b) => b.id)).toEqual(['b', 'p', 'q'])
@@ -153,7 +155,7 @@ describe('H2 · validate: accept, then compensate (per-block locks)', () => {
 		// Bob deletes the locked block, then unlocks it: both undone.
 		bob.document.transact(() => bob.document.facade.deleteBlock('p'));
 		await vi.waitFor(async () => expect(await reasons(room, 'denied')).toHaveLength(2));
-		bob.document.transact(() => bob.document.facade.setBlockData('p', {}));
+		bob.document.transact(() => bob.document.facade.patchData('p', [{ path: [], value: {} }]));
 		await vi.waitFor(async () => expect(await reasons(room, 'denied')).toHaveLength(3));
 		const end = await converged(room, ada.document, bob.document);
 		expect(end.json.children.map((b) => [b.id, b.data])).toEqual([
@@ -176,7 +178,9 @@ describe('H2 · validate: accept, then compensate (per-block locks)', () => {
 	it("the validation history keeps nothing: deleted text is collected, a denied frame's text too", async () => {
 		const room = 'locked-collect';
 		const ada = await join(room, 'ada', { children: [para('p', 'mine'), para('q', 'free')] });
-		ada.document.transact(() => ada.document.facade.setBlockData('p', { lockedBy: 'ada' }));
+		ada.document.transact(() =>
+			ada.document.facade.patchData('p', [{ path: [], value: { lockedBy: 'ada' } }])
+		);
 		const bob = await join(room, 'bob');
 		ada.document.transact(() => ada.document.facade.insertText('q', 0, 'SECRET'));
 		ada.document.transact(() => ada.document.facade.deleteText('q', 0, 6));

@@ -80,11 +80,8 @@ console.log('== relative-position anchors across peers ==');
 // anchor created on baseline resolves identically on patched
 const relpos = YBaseline.createRelativePositionFromTypeIndex(tB, 150, 0);
 const rjson = YBaseline.relativePositionToJSON(relpos);
-const onA = YPatched.createAbsolutePositionFromRelativePosition(
-	YPatched.createRelativePositionFromJSON(rjson),
-	A,
-	false
-);
+// the fork resolves a position as an item id (fork patch YP19)
+const onA = YPatched.indexOfId(A, YPatched.createID(rjson.item.client, rjson.item.clock));
 const onB = YBaseline.createAbsolutePositionFromRelativePosition(relpos, B, false);
 check('anchor resolves same index', onA?.index === onB?.index, `${onA?.index} vs ${onB?.index}`);
 

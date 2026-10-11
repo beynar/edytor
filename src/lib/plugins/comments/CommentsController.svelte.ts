@@ -200,8 +200,8 @@ export class CommentsController {
 		const detach = client.attach?.({
 			order: () => edytor.facade.order(),
 			contentItems: (id) => edytor.facade.contentItems(id),
-			unsetMark: (block, offset, length, mark) =>
-				edytor.facade.unsetMark(block, offset, length, mark),
+			formatRange: (block, offset, length, marks) =>
+				edytor.facade.formatRange(block, offset, length, marks),
 			// A store's removal is no step of this view's history.
 			transact: (fn) => (edytor.doc._transaction ? fn() : edytor.dispatcher.outside(() => fn()))
 		});

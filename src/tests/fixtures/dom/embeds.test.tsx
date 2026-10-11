@@ -423,7 +423,9 @@ describe('file', () => {
 		// A peer sets the source while the upload runs: theirs stays.
 		await pick(0);
 		edytor.facade.apply(
-			edytor.facade.prepare.setBlockData('f', { src: 'https://peer.example/theirs.pdf' })
+			edytor.facade.prepare.patchData('f', [
+				{ path: [], value: { src: 'https://peer.example/theirs.pdf' } }
+			])
 		);
 		finish('https://files.example/mine.pdf');
 		await flushDomUpdates();

@@ -214,9 +214,9 @@ describe('F-O7 — change report vs the diffSnaps oracle over the random corpus'
 					(ed.hasBlock(b) ? ed.contentItems(b) : []).find((i) => i.kind === 'inline')?.id ??
 					'no-atom';
 				return [
-					() => ed.insertBlock(dest(), { id: freshId(), type: 'paragraph' }),
+					() => ed.insertBlocks(dest(), [{ id: freshId(), type: 'paragraph' }]),
 					() => ed.insertBlocks(dest(), [p(freshId(), 'x', [p(freshId(), 'y')])]),
-					() => ed.moveBlock(id(), dest()),
+					() => ed.moveBlocks([id()], dest()),
 					() => ed.moveBlocks([id(), id()], dest()),
 					() => ed.nestBlock(id(), id()),
 					() => ed.unNestBlock(id()),
@@ -226,7 +226,7 @@ describe('F-O7 — change report vs the diffSnaps oracle over the random corpus'
 					() => ed.mergeForward(id()),
 					() => ed.deleteBlock(id(), { keepChildren: rand() < 0.4 }),
 					() => ed.setBlockType(id(), pick(['paragraph', 'heading', 'box'])),
-					() => ed.setBlockData(id(), pick([{}, { level: 1 }])),
+					() => ed.patchData(id(), [{ path: [], value: pick([{}, { level: 1 }]) }]),
 					() =>
 						ed.setBlock(id(), {
 							type: pick([undefined, 'heading']),
@@ -236,7 +236,7 @@ describe('F-O7 — change report vs the diffSnaps oracle over the random corpus'
 					() => ed.duplicateBlock(id(), () => freshId()),
 					() => ed.insertText(id(), off(), pick(['q', 'zz']), pick([undefined, { bold: true }])),
 					() => ed.deleteText(id(), off(), len()),
-					() => ed.setMark(id(), off(), len(), 'bold', true),
+					() => ed.formatRange(id(), off(), len(), { bold: true }),
 					() => ed.formatRange(id(), off(), len(), { italic: pick([true, null]) }),
 					() => ed.insertInline(id(), off(), { id: freshId(), type: 'mention' }),
 					() => {
@@ -245,7 +245,9 @@ describe('F-O7 — change report vs the diffSnaps oracle over the random corpus'
 					},
 					() => {
 						const b = id();
-						return ed.setInlineData(b, inlineIn(b), pick([{}, { v: 1 }]));
+						return ed.patchData({ block: b, atom: inlineIn(b) }, [
+							{ path: [], value: pick([{}, { v: 1 }]) }
+						]);
 					}
 				];
 			};
@@ -340,7 +342,7 @@ describe('D9 — publication: nested once, change-then-revert nothing, every fac
 				ed.insertText('c', 0, 'y');
 				ed.transact(() => ed.setBlockType('b', 'heading'));
 			});
-			ed.moveBlock('c', { parent: null, index: 0 });
+			ed.moveBlocks(['c'], { parent: null, index: 0 });
 		});
 		expect(seen).toHaveLength(1);
 		expect([...seen[0].content.keys()].sort()).toEqual(['a', 'c']);
@@ -357,8 +359,8 @@ describe('D9 — publication: nested once, change-then-revert nothing, every fac
 			ed.deleteText('a', 2, 2);
 			ed.setBlockType('b', 'heading');
 			ed.setBlockType('b', 'paragraph');
-			ed.moveBlock('a', { parent: null, index: 3 });
-			ed.moveBlock('a', { parent: null, index: 0 });
+			ed.moveBlocks(['a'], { parent: null, index: 3 });
+			ed.moveBlocks(['a'], { parent: null, index: 0 });
 		});
 		expect(seen).toEqual([]);
 	});
@@ -481,9 +483,9 @@ describe('F-O9 — a read inside a transaction sees the edits before it', () => 
 	test('structure: insert a block → read order → insert under it → read order', () => {
 		const { ed } = make();
 		ed.transact(() => {
-			ed.insertBlock({ parent: null, index: 1 }, p('m', 'mid'));
+			ed.insertBlocks({ parent: null, index: 1 }, [p('m', 'mid')]);
 			expect(ed.listBlockIds()).toEqual(['a', 'm', 'b']);
-			ed.insertBlock({ parent: 'm', index: 0 }, p('m1', 'kid'));
+			ed.insertBlocks({ parent: 'm', index: 0 }, [p('m1', 'kid')]);
 			expect(ed.listBlockIds()).toEqual(['a', 'm', 'm1', 'b']);
 			ed.deleteBlock('m', { keepChildren: false });
 			expect(ed.listBlockIds()).toEqual(['a', 'b']);
@@ -509,7 +511,7 @@ describe('F-O5 — one transaction of N inserts folds about what N separate tran
 		debug.reset();
 		const body = () => {
 			for (let i = 0; i < n; i++)
-				ed.insertBlock({ parent: null, index: i + 1 }, p(`b${i}`, 'hello'));
+				ed.insertBlocks({ parent: null, index: i + 1 }, [p(`b${i}`, 'hello')]);
 		};
 		if (oneTx) ed.transact(body);
 		else body();

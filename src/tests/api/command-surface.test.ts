@@ -203,14 +203,11 @@ describe('API-09 · one write API, two entry points', () => {
 
 	test('the raw path, the document’s same operation, takes JSONBlock', () => {
 		const { edytor, document } = view();
-		const result = edytor.document.insertBlock(
-			{ parent: null, index: 2 },
-			{
+		const result = edytor.document.insertBlocks({ parent: null, index: 2 }, [{
 				type: 'paragraph',
 				content: [{ text: 'raw ' }, { text: 'bold', marks: { bold: true } }],
 				children: [{ id: 'kid', type: 'paragraph', content: [{ text: 'child' }] }]
-			}
-		);
+			}]);
 		expect(result.status).toBe('applied');
 		const [id] = result.ids;
 		expect(id).toBeTypeOf('string');

@@ -439,7 +439,7 @@ describe('F-O13 — the correction is adopted once, where it was typed; the conc
 		const truth = await autocorrectThen(
 			edytor,
 			() => {
-				remote.facade.moveBlock(id, { parent: null, index: 0 });
+				remote.facade.moveBlocks([id], { parent: null, index: 0 });
 				remote.deliver();
 			},
 			{ index: 1 }

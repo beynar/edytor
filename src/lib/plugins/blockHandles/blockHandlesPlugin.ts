@@ -8,8 +8,6 @@ import { BlockHandleController } from './BlockHandleController.svelte.js';
 import { hidden } from '$lib/selection/visibility.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
 
-export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
-
 /** What a `handle` snippet receives. */
 export type BlockHandleSnippetPayload = {
 	block: Block;
@@ -49,7 +47,6 @@ export type BlockHandleSnippetPayload = {
 export type BlockHandlesOptions = {
 	/** Keep the handle and its keyboard actions, but omit pointer dragging and drop targets. */
 	draggable?: boolean;
-	onActivate?: (activation: BlockHandleActivation) => void;
 	/**
 	 * The `+` and ⋮⋮ beside each block, and their words (without it, no
 	 * handle shows and no block drags); placement and hover are the plugin's.
@@ -69,8 +66,7 @@ export const createBlockHandlesPlugin =
 	(options: BlockHandlesOptions = {}): Plugin =>
 	(edytor) => {
 		const controller = new BlockHandleController(edytor, {
-			draggable: options.draggable !== false,
-			onActivate: options.onActivate
+			draggable: options.draggable !== false
 		});
 		const blocks = new SvelteMap<string, Block>();
 		const near = new SvelteSet<string>();

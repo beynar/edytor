@@ -17,7 +17,6 @@ export {
 } from './blockHandles/BlockHandleController.svelte.js';
 export {
 	createBlockHandlesPlugin,
-	type BlockHandleActivation,
 	type BlockHandlesOptions,
 	type BlockHandleSnippetPayload
 } from './blockHandles/blockHandlesPlugin.js';

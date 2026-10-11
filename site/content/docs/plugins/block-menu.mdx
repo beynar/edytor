@@ -51,7 +51,7 @@ icon: menu
 <Edytor {plugins} />
 ```
 
-The menu opens from [block handles](/docs/plugins/block-handles) (`createBlockHandlesPlugin({ handle })`, listed beside it). Pass no `onActivate` to them: a handle with an `onActivate` callback calls it instead, and the menu never opens. Without a `menu`, a grip click opens nothing: the plugin still binds <kbd>Mod</kbd> + <kbd>D</kbd> and the colour commands.
+The menu opens from [block handles](/docs/plugins/block-handles) (`createBlockHandlesPlugin({ handle })`, listed beside it). Without a `menu`, a grip click opens nothing: the plugin still binds <kbd>Mod</kbd> + <kbd>D</kbd> and the colour commands.
 
 ## Options
 
@@ -161,7 +161,7 @@ export const highlightBlock = (edytor: EdytorInstance) => {
 
 ## How it opens
 
-When a handle is clicked and no `onActivate` is set, block handles dispatch a DOM event on the editor's root:
+When a handle is clicked, block handles dispatch a DOM event on the editor's root:
 
 ```ts title="activate.ts" check
 import { BLOCK_ACTIVATE_EVENT, type BlockActivation } from 'edytor';
@@ -220,4 +220,4 @@ The snippet receives the `BlockMenuController`:
 Every action closes the menu and returns the caret: it replaces the block selection the grip click left, and the projector draws it after the flush.
 
 
-To open a different menu without this plugin, listen for `edytor-block-activate`, or pass `onActivate` to the block handles (see [Building a block menu](/docs/plugins/block-handles#building-a-block-menu)). [Menus and handles](/docs/customization/menus) shows the other snippets.
+To open a different menu without this plugin, listen for `edytor-block-activate` (see [Building a block menu](/docs/plugins/block-handles#building-a-block-menu)). [Menus and handles](/docs/customization/menus) shows the other snippets.

@@ -112,7 +112,6 @@ export {
 	type BlockActivation,
 	type BlockAddition,
 	createBlockHandlesPlugin,
-	type BlockHandleActivation,
 	type BlockHandlesOptions,
 	type BlockHandleSnippetPayload,
 	type BlockHandleController,

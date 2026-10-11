@@ -75,22 +75,33 @@ A readonly view connects the same way: with `room`, `server` or `sync` it is a l
 
 ### Block handles
 
-The handles are a plugin whose markup is yours: list `createBlockHandlesPlugin({ handle })`, the `+` and the grip drawn by your `handle` snippet ([Block handles](/docs/plugins/block-handles)). Add [`createBlockMenuPlugin({ menu })`](/docs/plugins/block-menu) to open a block menu on a grip click, or pass `onActivate` to open your own:
+The handles are a plugin whose markup is yours: list `createBlockHandlesPlugin({ handle })`, the `+` and the grip drawn by your `handle` snippet ([Block handles](/docs/plugins/block-handles)). Add [`createBlockMenuPlugin({ menu })`](/docs/plugins/block-menu) to open a block menu on a grip click, or listen for its `edytor-block-activate` event to open your own:
 
 ```svelte title="Handles.svelte" check
 <script lang="ts">
 	import {
 		Edytor,
+		BLOCK_ACTIVATE_EVENT,
 		createBlockHandlesPlugin,
-		type BlockHandleActivation,
-		type BlockHandleSnippetPayload
+		type BlockActivation,
+		type BlockHandleSnippetPayload,
+		type Plugin
 	} from 'edytor';
 
 	let menu = $state<{ blockId: string; anchor: HTMLElement } | null>(null);
-	const onActivate = ({ block, anchor }: BlockHandleActivation) => {
-		menu = { blockId: block.id, anchor };
-	};
-	const plugins = [createBlockHandlesPlugin({ handle, onActivate })];
+	/** Your menu answers a grip click (`preventDefault`: it takes the keys). */
+	const myMenu: Plugin = () => ({
+		onEdytorAttached: ({ node }) => {
+			const open = (event: Event) => {
+				const { block, anchor } = (event as CustomEvent<BlockActivation>).detail;
+				event.preventDefault();
+				menu = { blockId: block.id, anchor };
+			};
+			node.addEventListener(BLOCK_ACTIVATE_EVENT, open);
+			return () => node.removeEventListener(BLOCK_ACTIVATE_EVENT, open);
+		}
+	});
+	const plugins = [createBlockHandlesPlugin({ handle }), myMenu];
 </script>
 
 {#snippet handle({ label, grip }: BlockHandleSnippetPayload)}

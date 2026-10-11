@@ -12,18 +12,10 @@ List `createBlockHandlesPlugin({ handle })` in `plugins`; `handle` draws the `+`
 
 ```svelte title="Handles.svelte" check
 <script lang="ts">
-	import {
-		Edytor,
-		createBlockHandlesPlugin,
-		type BlockHandleActivation,
-		type BlockHandleSnippetPayload
-	} from 'edytor';
+	import { Edytor, createBlockHandlesPlugin, type BlockHandleSnippetPayload } from 'edytor';
 
-	const openMenu = ({ block, anchor }: BlockHandleActivation) => {
-		console.log('open a menu for', block.id, 'next to', anchor);
-	};
-	// Handles and keyboard moves, no pointer drag, and a click callback.
-	const plugins = [createBlockHandlesPlugin({ handle, draggable: false, onActivate: openMenu })];
+	// Handles and keyboard moves, no pointer drag.
+	const plugins = [createBlockHandlesPlugin({ handle, draggable: false })];
 </script>
 
 {#snippet handle({ label, grip, add, readonly }: BlockHandleSnippetPayload)}
@@ -50,10 +42,6 @@ List `createBlockHandlesPlugin({ handle })` in `plugins`; `handle` draws the `+`
       type: "boolean",
       default: "true",
       description: "false keeps the handle and its keyboard moves, but disables pointer dragging and drop targets.",
-    },
-    onActivate: {
-      type: "({ block, anchor }: BlockHandleActivation) => void",
-      description: "Called when a grip is clicked, after the block is selected (a block selection that already holds it stays; over a text range across blocks, the blocks it covers are selected). anchor is the grip element, to position a menu against. Without it, the click dispatches an edytor-block-activate event instead (see below).",
     },
   }}
 />
@@ -265,7 +253,7 @@ The handle claims every <kbd>Alt</kbd>+arrow while it has focus. A handle of a b
 
 ## Building a block menu
 
-The [block menu plugin](/docs/plugins/block-menu) is a complete Notion-style menu's behavior: list `createBlockMenuPlugin({ menu })` and leave `onActivate` unset. When no `onActivate` is passed, a grip click dispatches a DOM event on the editor's root, which that plugin (or your own) listens for. A menu that takes the keyboard answers it with `event.preventDefault()`. Unanswered (no menu), the editor takes the focus, so the keys act on the selected block as in Notion: <kbd>Backspace</kbd> deletes it, <kbd>Shift</kbd>+arrows extend the selection, typing replaces it. (The grip keeps its <kbd>Alt</kbd>+arrow moves while it has focus, from <kbd>Tab</kbd>.)
+The [block menu plugin](/docs/plugins/block-menu) is a complete Notion-style menu's behavior: list `createBlockMenuPlugin({ menu })`. A grip click, after selecting the block (a block selection that already holds it stays; over a text range across blocks, the blocks it covers are selected), dispatches a DOM event on the editor's root, which that plugin (or your own) listens for. A menu that takes the keyboard answers it with `event.preventDefault()`. Unanswered (no menu), the editor takes the focus, so the keys act on the selected block as in Notion: <kbd>Backspace</kbd> deletes it, <kbd>Shift</kbd>+arrows extend the selection, typing replaces it. (The grip keeps its <kbd>Alt</kbd>+arrow moves while it has focus, from <kbd>Tab</kbd>.)
 
 ```ts title="myMenuPlugin.ts" check
 import { BLOCK_ACTIVATE_EVENT, type BlockActivation, type Plugin } from 'edytor';
@@ -284,12 +272,12 @@ export const myMenuPlugin: Plugin = () => ({
 });
 ```
 
-To build your own menu instead, pass `onActivate`. It gives you the block and the grip element; the click has already selected the block. A typical menu converts or moves the block with the editor's commands and then returns the caret to the text:
+To build your own menu instead, listen for that event (as above): its `detail` gives you the block and the grip element; the click has already selected the block. A typical menu converts or moves the block with the editor's commands and then returns the caret to the text:
 
 ```ts title="onActivate.ts" check
-import type { BlockHandleActivation } from 'edytor';
+import type { BlockActivation } from 'edytor';
 
-const onActivate = async ({ block, anchor }: BlockHandleActivation) => {
+export const onActivate = async ({ block, anchor }: BlockActivation) => {
 	const { edytor } = block;
 	const rect = anchor.getBoundingClientRect();
 	// Show your menu at rect.right, rect.top, listing edytor.kinds and move actions.

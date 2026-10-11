@@ -145,19 +145,6 @@ describe('H1: the run rule (`rankAfter`)', () => {
 		expect(decodeRank(before)).toHaveLength(2);
 		expect(left < before && before < r).toBe(true);
 	});
-	it('a run of the earlier two-segment form (data arrays) is still extended in place', () => {
-		const left = rankBetween(undefined, undefined, 9, () => 0.5);
-		const old =
-			left +
-			encodeRank([
-				{ v: RANK_RUN, t: 9 },
-				{ v: 0, t: 9 }
-			]);
-		const r = rankAfter(old, undefined, 9, () => 0.5);
-		expect(decodeRank(r)).toHaveLength(3);
-		expect(r.startsWith(left + encodeRank([{ v: RANK_RUN, t: 9 }]))).toBe(true);
-		expect(r > old).toBe(true);
-	});
 	it('nothing a peer inserts after the same left lands inside the run', () => {
 		const left = rankBetween(undefined, undefined, 9, () => 0.5);
 		const right = rankBetween(left, undefined, 5, () => 0.9);

@@ -77,7 +77,7 @@ All from `edytor/protocol`:
 
 | Export | Use |
 | --- | --- |
-| `bindCrdt(Y).sync` | `writeSyncStep1`, `writeSyncStep2`, `readSyncStep1`, `writeUpdate`, `readUpdate` (a Step 2's payload too), `readSyncMessage`, `lacks(doc, stateVector)`, `applyRemote(doc, update, origin)`, `writeSaved`, `readSaved`. |
+| `bindCrdt(Y).sync` | `writeSyncStep1`, `writeSyncStep2`, `writeUpdate`, `lacks(doc, stateVector)`, `applyRemote(doc, update, origin)`, `writeSaved`, `readSaved`. |
 | `frame(type, write)` | Build a frame: the generation word, the type, then whatever `write(encoder)` writes. |
 | `GENERATION`, `generationWord`, `PROTOCOL_VERSION`, `SCHEMA_VERSION`, `readProtocolVersion` | The generation gate. |
 | `messageSync`, `messageAwareness`, `messageAuth`, `messageQueryAwareness`, `messageSaved`, `messageChunk`, `messageComments` | Message types. |
@@ -85,7 +85,7 @@ All from `edytor/protocol`:
 | `messageYjsSyncStep1`, `messageYjsSyncStep2`, `messageYjsUpdate` | Sync subtypes. |
 | `messagePermissionDenied`, `writePermissionDenied(encoder, reason)` | The auth reply to a refused write. |
 | `messageReadOnly`, `writeReadOnly(encoder)` | The read-only notice at the join. |
-| `readAwarenessEntries`, `writeAwarenessEntries`, `applyAwarenessUpdate`, `encodeAwarenessUpdate`, `modifyAwarenessUpdate` | The awareness codec. |
+| `readAwarenessEntries`, `writeAwarenessEntries`, `applyAwarenessUpdate`, `encodeAwarenessUpdate` | The awareness codec. |
 | `chunkFrame`, `createChunkReader`, `MAX_FRAME_BYTES`, `ChunkLimitError` | Chunked frames. |
 | `CLOSE` | The close codes the room and its router send, by name (`refused` `1008`, `fault` `1011`, `invalidDocument` `4400`, `expired` `4401`, `denied` `4403`, `replicaTaken` `4409`, `quota` `4413`; see [admission](/docs/server/room#admission)). |
 | `createDecoder`, `readVarUint`, `readVarUint8Array`, `writeVarUint8Array` | The lib0 helpers for frame bodies. |

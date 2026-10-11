@@ -105,7 +105,6 @@ export {
 export {
 	applyAwarenessUpdate,
 	encodeAwarenessUpdate,
-	modifyAwarenessUpdate,
 	readAwarenessEntries,
 	writeAwarenessEntries,
 	type AwarenessEntry

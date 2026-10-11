@@ -1773,10 +1773,7 @@ declare const bindCrdt: (Y: EngineApi) => {
         remoteApplyOrigin: symbol;
         writeSyncStep1: (encoder: import("lib0-v14/encoding").Encoder, doc: YDoc) => void;
         writeSyncStep2: (encoder: import("lib0-v14/encoding").Encoder, doc: YDoc, encodedStateVector?: Uint8Array) => void;
-        readSyncStep1: (decoder: import("lib0-v14/decoding").Decoder, encoder: import("lib0-v14/encoding").Encoder, doc: YDoc) => void;
         writeUpdate: (encoder: import("lib0-v14/encoding").Encoder, update: Uint8Array) => void;
-        readUpdate: (decoder: import("lib0-v14/decoding").Decoder, doc: YDoc, transactionOrigin: unknown, errorHandler?: (error: Error) => unknown) => void;
-        readSyncMessage: (decoder: import("lib0-v14/decoding").Decoder, encoder: import("lib0-v14/encoding").Encoder, doc: YDoc, transactionOrigin: unknown, errorHandler?: (error: Error) => unknown) => number;
         applyRemote: (doc: YDoc, update: Uint8Array, transactionOrigin: unknown, errorHandler?: (error: Error) => unknown) => {
             applied: boolean;
             problem: import("./edytor-doc.js").SchemaProblem | null;

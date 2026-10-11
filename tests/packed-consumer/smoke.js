@@ -119,7 +119,7 @@ assert.equal(awareness.getLocalState(), null);
 // Providers construct through the bound stack (no engine import inside).
 assert.equal(typeof crdt.providers.IndexeddbPersistence, 'function');
 assert.equal(typeof crdt.providers.WebsocketProvider, 'function');
-assert.equal(typeof crdt.sync.readSyncMessage, 'function');
+assert.equal(typeof crdt.sync.applyRemote, 'function');
 
 // The README-documented sync factories ship on the package root for Svelte
 // consumers (`import { Edytor, createIndexeddbSync } from 'edytor'` — checked

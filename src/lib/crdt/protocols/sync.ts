@@ -22,18 +22,13 @@
  * does NOT mean v13 and v14 peers are interchangeable — the provider layer
  * (`providers/*`) wraps every message in the protocol-version envelope
  * (`protocols/envelope.ts`) so engines that do not speak v14 never reach
- * `readSyncMessage`.
+ * {@link applyRemote}.
  *
- * API boundary — two tiers:
- *
- * - RAW readers (`readSyncStep1`, `readUpdate` — a SyncStep2's payload too —
- *   `readSyncMessage`) apply through the inbound refusal but report
- *   nothing, and `readSyncMessage` THROWS on an unknown message type. They
- *   exist for harnesses/custom transports; the shipped providers do not
- *   route room traffic through them.
- * - The path the providers use lives in `providers/room.ts`:
- *   `applyRemote` + per-type dispatch, so a refused payload never mutates
- *   the live doc and an unknown type is a reported drop, not a throw.
+ * One inbound path: every payload a client or a server receives applies
+ * through `applyRemote`, which refuses a forged schema stamp before
+ * anything integrates; the providers dispatch by message type in
+ * `providers/room.ts` (an unknown type is a reported drop), the room in
+ * `cloudflare/room/admission.ts`.
  *
  * Engine functions are injected (`bindSync(Y)`): `src/lib` never
  * runtime-imports the vendored `.js` (see `engine-api.ts`), so the caller
@@ -109,10 +104,6 @@ export const bindSync = (Y: EngineApi) => {
 		encoding.writeVarUint8Array(encoder, Y.encodeStateAsUpdate(doc, encodedStateVector));
 	};
 
-	/** Read SyncStep1 message and reply with SyncStep2. */
-	const readSyncStep1 = (decoder: decoding.Decoder, encoder: encoding.Encoder, doc: YDoc): void =>
-		writeSyncStep2(encoder, doc, decoding.readVarUint8Array(decoder));
-
 	/**
 	 * The state-vector coverage test of the join rule: does the encoded
 	 * state vector `sv` hold anything `doc` lacks?
@@ -128,20 +119,6 @@ export const bindSync = (Y: EngineApi) => {
 	const writeUpdate = (encoder: encoding.Encoder, update: Uint8Array): void => {
 		encoding.writeVarUint(encoder, messageYjsUpdate);
 		encoding.writeVarUint8Array(encoder, update);
-	};
-
-	/**
-	 * Read and apply an Update's or a SyncStep2's payload — through the same
-	 * inbound refusal as the providers ({@link applyRemote}), which report
-	 * a refused stamp; this raw reader reports only decode/apply errors.
-	 */
-	const readUpdate = (
-		decoder: decoding.Decoder,
-		doc: YDoc,
-		transactionOrigin: unknown,
-		errorHandler?: (error: Error) => unknown
-	): void => {
-		applyRemote(doc, decoding.readVarUint8Array(decoder), transactionOrigin, errorHandler);
 	};
 
 	/**
@@ -290,36 +267,6 @@ export const bindSync = (Y: EngineApi) => {
 			: null
 	});
 
-	/**
-	 * Read a sync message from `decoder`; writes any reply (SyncStep2) into
-	 * `encoder`. Returns the decoded message type. Callers MUST gate the
-	 * protocol-version envelope before invoking this (see `envelope.ts`).
-	 * RAW: payloads apply through the inbound refusal (unreported) and an
-	 * unknown message type THROWS — the shipped providers dispatch through
-	 * `providers/room.ts` (`applyRemote` + reported drops) instead.
-	 */
-	const readSyncMessage = (
-		decoder: decoding.Decoder,
-		encoder: encoding.Encoder,
-		doc: YDoc,
-		transactionOrigin: unknown,
-		errorHandler?: (error: Error) => unknown
-	): number => {
-		const messageType = decoding.readVarUint(decoder);
-		switch (messageType) {
-			case messageYjsSyncStep1:
-				readSyncStep1(decoder, encoder, doc);
-				break;
-			case messageYjsSyncStep2:
-			case messageYjsUpdate:
-				readUpdate(decoder, doc, transactionOrigin, errorHandler);
-				break;
-			default:
-				throw new Error('Unknown message type');
-		}
-		return messageType;
-	};
-
 	return {
 		messageYjsSyncStep1,
 		messageYjsSyncStep2,
@@ -327,10 +274,7 @@ export const bindSync = (Y: EngineApi) => {
 		remoteApplyOrigin,
 		writeSyncStep1,
 		writeSyncStep2,
-		readSyncStep1,
 		writeUpdate,
-		readUpdate,
-		readSyncMessage,
 		applyRemote,
 		lacks,
 		writeSaved,

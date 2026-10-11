@@ -216,24 +216,19 @@ export const removeAwarenessStates = (
 	}
 };
 
+/** The update carrying `clients`' entries of `awareness` (their states in `states`). */
 export const encodeAwarenessUpdate = (
 	awareness: Awareness,
 	clients: number[],
 	states: AwarenessStates = awareness.states
-): Uint8Array => {
-	const len = clients.length;
-	const encoder = encoding.createEncoder();
-	encoding.writeVarUint(encoder, len);
-	for (let i = 0; i < len; i++) {
-		const clientID = clients[i];
-		const state = states.get(clientID) || null;
-		const clock = (awareness.meta.get(clientID) as MetaClientState).clock;
-		encoding.writeVarUint(encoder, clientID);
-		encoding.writeVarUint(encoder, clock);
-		encoding.writeVarString(encoder, JSON.stringify(state));
-	}
-	return encoding.toUint8Array(encoder);
-};
+): Uint8Array =>
+	writeAwarenessEntries(
+		clients.map((clientID) => ({
+			clientID,
+			clock: (awareness.meta.get(clientID) as MetaClientState).clock,
+			state: states.get(clientID) || null
+		}))
+	);
 
 /** One awareness entry on the wire: a client's clock and state (`null` = removed). */
 export type AwarenessEntry = {
@@ -256,7 +251,7 @@ export const readAwarenessEntries = (update: Uint8Array): AwarenessEntry[] => {
 	}));
 };
 
-/** Instance-free awareness codec: encode entries as an update (the wire format of {@link encodeAwarenessUpdate}). */
+/** Instance-free awareness codec: encode entries as an update. */
 export const writeAwarenessEntries = (entries: readonly AwarenessEntry[]): Uint8Array =>
 	encoding.encode((encoder) => {
 		encoding.writeVarUint(encoder, entries.length);
@@ -268,18 +263,6 @@ export const writeAwarenessEntries = (entries: readonly AwarenessEntry[]): Uint8
 	});
 
 /**
- * Modify the content of an awareness update before re-encoding it to an
- * awareness update — e.g. a central server preventing identity hijacking.
- */
-export const modifyAwarenessUpdate = (
-	update: Uint8Array,
-	modify: (state: Record<string, unknown> | null) => Record<string, unknown> | null
-): Uint8Array =>
-	writeAwarenessEntries(
-		readAwarenessEntries(update).map((entry) => ({ ...entry, state: modify(entry.state) }))
-	);
-
-/**
  * Apply an encoded awareness update. `origin` is forwarded on the emitted
  * change/update events.
  */
@@ -288,17 +271,14 @@ export const applyAwarenessUpdate = (
 	update: Uint8Array,
 	origin: unknown
 ): void => {
-	const decoder = decoding.createDecoder(update);
 	const timestamp = time.getUnixTime();
 	const added: number[] = [];
 	const updated: number[] = [];
 	const filteredUpdated: number[] = [];
 	const removed: number[] = [];
-	const len = decoding.readVarUint(decoder);
-	for (let i = 0; i < len; i++) {
-		const clientID = decoding.readVarUint(decoder);
-		let clock = decoding.readVarUint(decoder);
-		const state = JSON.parse(decoding.readVarString(decoder));
+	for (const entry of readAwarenessEntries(update)) {
+		const { clientID, state } = entry;
+		let { clock } = entry;
 		const clientMeta = awareness.meta.get(clientID);
 		const prevState = awareness.states.get(clientID);
 		const currClock = clientMeta === undefined ? 0 : clientMeta.clock;

@@ -64,15 +64,7 @@ describe('one update encoding', () => {
 		const payload = decoding.readVarUint8Array(decoder);
 		expect(Buffer.from(payload).equals(Buffer.from(Y.encodeStateAsUpdate(a.doc)))).toBe(true);
 		const b = new Y.Doc();
-		const reader = encoding.createEncoder();
-		encoding.writeVarUint(reader, crdt.sync.messageYjsSyncStep2);
-		encoding.writeVarUint8Array(reader, payload);
-		crdt.sync.readSyncMessage(
-			decoding.createDecoder(encoding.toUint8Array(reader)),
-			encoding.createEncoder(),
-			b,
-			'remote'
-		);
+		crdt.sync.applyRemote(b, payload, 'remote');
 		expect(
 			Buffer.from(Y.encodeStateVector(b)).equals(Buffer.from(Y.encodeStateVector(a.doc)))
 		).toBe(true);

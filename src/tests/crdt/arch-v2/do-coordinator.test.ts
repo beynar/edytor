@@ -881,9 +881,12 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 			{ clientID: 11, clock: 4, state: null }
 		]);
 
-		// modifyAwarenessUpdate (now built on the codec) keeps its contract.
-		const modified = E.modifyAwarenessUpdate(encoded, (state) =>
-			state && 'cursor' in state ? null : state
+		// A relay rewrites states through the codec.
+		const modified = E.writeAwarenessEntries(
+			E.readAwarenessEntries(encoded).map((entry) => ({
+				...entry,
+				state: entry.state && 'cursor' in entry.state ? null : entry.state
+			}))
 		);
 		expect(E.readAwarenessEntries(modified).map((e) => e.state)).toEqual([
 			{ user: { name: 'Ada' } },

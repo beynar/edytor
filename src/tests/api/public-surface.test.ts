@@ -70,7 +70,6 @@ const WIRE = [
 	'ChunkLimitError',
 	'applyAwarenessUpdate',
 	'encodeAwarenessUpdate',
-	'modifyAwarenessUpdate',
 	'readAwarenessEntries',
 	'writeAwarenessEntries',
 	'createDecoder',

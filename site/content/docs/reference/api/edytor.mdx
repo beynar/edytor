@@ -2765,7 +2765,7 @@ readiness contract requires:
 
 `sync()` is the only transition out of `pending`, and it is the
 document-side admission re-check: a doc that arrived in a problem
-state (unversioned/unsupported/foreign/legacy — e.g. via raw
+state (unversioned/unsupported/foreign — e.g. via raw
 `applyUpdate` bypass writes) refuses there with a typed error, stays
 `pending`, and preserves the state — never silently becoming `local`.
 

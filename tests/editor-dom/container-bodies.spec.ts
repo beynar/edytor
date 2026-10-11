@@ -193,8 +193,8 @@ test.describe('container bodies', () => {
 		await page.keyboard.press('ArrowRight');
 		await page.keyboard.press('ArrowRight');
 		await expect(picker.getByRole('menuitemradio', { name: '❗' })).toHaveAttribute(
-			'data-active',
-			''
+			'data-selected',
+			'true'
 		);
 		await page.keyboard.press('Enter');
 		await expect(picker).toHaveCount(0);
@@ -202,8 +202,8 @@ test.describe('container bodies', () => {
 		await icon.click();
 		await page.keyboard.press('End');
 		await expect(picker.getByRole('menuitem', { name: 'Remove icon' })).toHaveAttribute(
-			'data-active',
-			''
+			'data-selected',
+			'true'
 		);
 		await page.keyboard.press('Enter');
 		await expect.poll(() => iconOf(page, 'c')).toBe('');

@@ -4,7 +4,6 @@ export {
 	richTextPlaceholder,
 	CALLOUT_ICONS,
 	type CalloutIconPicker,
-	type CalloutIconOption,
 	type RichTextPluginOptions
 } from './richtext/RichTextPlugin.svelte';
 export { createArrowMovePlugin } from './arrowMove/arrowMove.js';

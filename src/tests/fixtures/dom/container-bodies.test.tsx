@@ -372,7 +372,7 @@ describe('callout.icon: the icon picker', () => {
 		expect(active().getAttribute('aria-checked')).toBe('true');
 		await dispatchDomKeyDown(menu()!, { key: 'ArrowRight' });
 		expect(active()).toBe(choices()[1]);
-		expect(active().hasAttribute('data-active')).toBe(true);
+		expect(active().getAttribute('data-selected')).toBe('true');
 		await dispatchDomKeyDown(menu()!, { key: 'ArrowDown' });
 		expect(active()).toBe(choices()[9]);
 		await dispatchDomKeyDown(menu()!, { key: 'Escape' });

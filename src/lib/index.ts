@@ -85,7 +85,6 @@ export {
 	richTextPlaceholder,
 	CALLOUT_ICONS,
 	type CalloutIconPicker,
-	type CalloutIconOption,
 	type RichTextPluginOptions,
 	createArrowMovePlugin,
 	createCodePlugin,

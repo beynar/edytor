@@ -1,7 +1,7 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { pin } from '$lib/surface/overlay.js';
-import { BandDrag } from '../bands.svelte.js';
+import { BandDrag, bandKey } from '../bands.svelte.js';
 import { bandOf, gapBefore } from './gaps.js';
 import { stacks } from './stacking.js';
 import { columnsEnglish, labelsOf } from '$lib/labels.js';
@@ -276,7 +276,7 @@ export class ColumnResize {
 	 * never the editor's; Escape gives the keys back to the editor.
 	 */
 	key = (event: KeyboardEvent, strip: Strip) => {
-		const step = this.band.key(event, {
+		const step = bandKey(this.edytor, this.band, event, {
 			ArrowLeft: -1,
 			ArrowRight: 1,
 			Home: -Infinity,

@@ -22,7 +22,6 @@
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
 	import { mediaKinds, richTextKinds, richTextMarks } from '$lib/crdt/semantics.js';
 	import { richTextEnglish, keywordsOf, labelsOf, type RichTextLabels } from '$lib/labels.js';
-	import { onPress } from '$lib/events/onFocus.js';
 	import TodoCheckbox from './TodoCheckbox.svelte';
 	import EmptyBody from './EmptyBody.svelte';
 	import CalloutIcon from './CalloutIcon.svelte';
@@ -37,7 +36,6 @@
 	} from './calloutIcons.svelte.js';
 
 	export { richTextOperations, CALLOUT_ICONS, CalloutIconPicker };
-	export type { CalloutIconOption } from './calloutIcons.svelte.js';
 
 	const nativeFormatMarks = {
 		formatBold: 'bold',
@@ -363,25 +361,13 @@
 					openLink(href, node.ownerDocument.defaultView);
 				};
 				node.addEventListener('click', click);
-				// A press outside the picker closes it (WebKit's lone `mousedown` too).
-				const offPress = picker && onPress(edytor, node.ownerDocument, picker.pressed, true);
 				const menu = calloutOptions?.picker;
+				// With the menus: above the handles and the image chrome.
 				const unmount =
-					picker &&
-					menu &&
-					edytor.overlay.mount(
-						CalloutIconHost,
-						{ picker, menu },
-						'edytor-callout-icons-host',
-						// With the menus: above the handles and the image chrome.
-						70,
-						picker.measure
-					);
+					picker && menu && picker.panel.mount(node, CalloutIconHost, { picker, menu }, 70);
 				return () => {
 					node.removeEventListener('click', click);
-					offPress?.();
 					unmount?.();
-					picker?.close(false);
 				};
 			},
 			onBeforeInput: ({ e, prevent }) => {

@@ -489,7 +489,7 @@ The [code](/docs/plugins/code) plugin's `header` draws the header above each cod
 
 ## Callout icon picker
 
-A callout's icon opens the view's icon picker (the first rich text plugin listed owns it); `createRichTextPlugin({ callout: { picker } })` draws it, under the icon while `picker.isOpen`. `keys` and `popup` on its element make it the `menu` that takes the focus and the keys (the arrows walk a grid of `picker.columns` icons per row, <kbd>Enter</kbd> picks, <kbd>Escape</kbd> closes); each row spreads `picker.option(index)`, `index` in `picker.icons` and `picker.icons.length` for Remove icon.
+A callout's icon opens the view's icon picker (the first rich text plugin listed owns it); `createRichTextPlugin({ callout: { picker } })` draws it, under the icon while `picker.isOpen`. `keys` and `popup` on its element make it the `menu` that takes the focus and the keys (the arrows walk a grid of `picker.columns` icons per row, <kbd>Enter</kbd> picks, <kbd>Escape</kbd> closes); each row spreads `picker.option(index)` and runs `picker.pick(index)` on its click, `index` in `picker.icons` and `picker.icons.length` for Remove icon.
 
 ```svelte title="CalloutPicker.svelte" check
 <script lang="ts">
@@ -502,10 +502,10 @@ A callout's icon opens the view's icon picker (the first rich text plugin listed
 	<div class="picker" {@attach icons.keys} {@attach icons.popup}>
 		<div class="grid" role="none" style:--columns={icons.columns}>
 			{#each icons.icons as icon, index (index)}
-				<button type="button" tabindex="-1" {...icons.option(index)}>{icon}</button>
+				<button type="button" {...icons.option(index)} onclick={() => icons.pick(index)}>{icon}</button>
 			{/each}
 		</div>
-		<button type="button" tabindex="-1" {...icons.option(icons.icons.length)}>Remove icon</button>
+		<button type="button" {...icons.option(icons.icons.length)} onclick={() => icons.pick(icons.icons.length)}>Remove icon</button>
 	</div>
 {/snippet}
 

@@ -78,7 +78,7 @@ A callout is Notion's: an icon, a title and a content.
 <Edytor plugins={[richText]} />
 ```
 
-`callout.picker` is the picker's markup. It receives the picker (`CalloutIconPicker`): the callout it is open on (`block`), the choices (`icons`), the icon the callout shows (`current`), `set(icon)`, `remove()` and `close()`, and `readonly`; the words are your markup's. Put `{@attach picker.keys}` and `{@attach picker.popup}` on its element, which then takes the focus and the keys and is announced to assistive technology, and spread `picker.option(i)` on each row: its id, role, state (`data-active` on the keyboard's row, `aria-checked` on the current icon) and handlers; `picker.option(picker.icons.length)` is Remove icon. Lay the icons out `picker.columns` to a row (the arrows move up and down by that many). The editor places it under the icon.
+`callout.picker` is the picker's markup. It receives the picker (`CalloutIconPicker`): the callout it is open on (`block`), the choices (`icons`), the icon the callout shows (`current`), `set(icon)`, `remove()` and `close()`, and `readonly`; the words are your markup's. Put `{@attach picker.keys}` and `{@attach picker.popup}` on its element, which then takes the focus and the keys and is announced to assistive technology, spread `picker.option(i)` on each row, as every menu's rows (its id, role, `data-selected` on the keyboard's row, `aria-checked` on the current icon), and run `picker.pick(i)` on its click; `i === picker.icons.length` is Remove icon. Lay the icons out `picker.columns` to a row (the arrows move up and down by that many). The editor places it under the icon.
 
 ```svelte title="IconPicker.svelte" check
 <script lang="ts">
@@ -90,9 +90,13 @@ A callout is Notion's: an icon, a title and a content.
 {#snippet iconPicker(picker: CalloutIconPicker)}
 	<div class="icons" aria-label="Callout icons" {@attach picker.keys} {@attach picker.popup}>
 		{#each picker.icons as icon, index (index)}
-			<button type="button" {...picker.option(index)}>{icon}</button>
+			<button type="button" {...picker.option(index)} onclick={() => picker.pick(index)}>{icon}</button>
 		{/each}
-		<button type="button" {...picker.option(picker.icons.length)}>Remove icon</button>
+		<button
+			type="button"
+			{...picker.option(picker.icons.length)}
+			onclick={() => picker.pick(picker.icons.length)}>Remove icon</button
+		>
 	</div>
 {/snippet}
 

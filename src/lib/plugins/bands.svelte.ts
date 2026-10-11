@@ -120,22 +120,27 @@ export class BandDrag<D extends { at: number }> {
 	lock = () => {
 		if (this.drag && !this.edytor.dispatcher.permits()) this.#cancel?.();
 	};
-
-	/**
-	 * A key on a focused band: every key there is the band's, never the
-	 * editor's; Escape gives the keys back to the editor. The step `steps`
-	 * gives the key, when one does and a write may start (no drag in progress).
-	 */
-	key(event: KeyboardEvent, steps: Record<string, number>): number | undefined {
-		event.stopPropagation();
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			takeKeys(this.edytor);
-			return;
-		}
-		const step = steps[event.key];
-		if (step === undefined) return;
-		event.preventDefault();
-		return this.drag || !this.edytor.dispatcher.permits() ? undefined : step;
-	}
 }
+
+/**
+ * A key on a focused band of `band`: every key there is the band's, never
+ * the editor's; Escape gives the keys back to the editor. The step `steps`
+ * gives the key, when one does and a write may start (no drag in progress).
+ */
+export const bandKey = (
+	edytor: Edytor,
+	band: BandDrag<{ at: number }>,
+	event: KeyboardEvent,
+	steps: Record<string, number>
+): number | undefined => {
+	event.stopPropagation();
+	if (event.key === 'Escape') {
+		event.preventDefault();
+		takeKeys(edytor);
+		return;
+	}
+	const step = steps[event.key];
+	if (step === undefined) return;
+	event.preventDefault();
+	return band.drag || !edytor.dispatcher.permits() ? undefined : step;
+};

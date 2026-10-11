@@ -18,7 +18,7 @@ import {
 	type OptionAttributes
 } from '../chrome.js';
 import { holdKeys, listPopup, menuKey } from '../list.svelte.js';
-import { BandDrag, listen } from '../bands.svelte.js';
+import { BandDrag, bandKey, listen } from '../bands.svelte.js';
 import { tablePreview } from './dragPreview.js';
 import {
 	caretCell,
@@ -857,7 +857,7 @@ export class TableChrome {
 	 * @internal
 	 */
 	key = (event: KeyboardEvent, column: number) => {
-		const step = this.band.key(event, { ArrowLeft: -1, ArrowRight: 1 });
+		const step = bandKey(this.edytor, this.band, event, { ArrowLeft: -1, ArrowRight: 1 });
 		const drag = step && this.#resize(column, 0, step * (event.shiftKey ? 32 : 8));
 		if (drag) this.#release(drag);
 	};

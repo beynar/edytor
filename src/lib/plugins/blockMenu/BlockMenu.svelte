@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { iconOf } from '../icons.js';
-	import { BLOCK_PALETTE } from '$lib/block/colors.js';
+	import { TOOLBAR_COLORS } from '../toolbar/ToolbarController.svelte.js';
 	import type { KindRow } from '$lib/kinds.js';
 	import type {
 		BlockMenuAction,
@@ -85,11 +85,15 @@
 		};
 	};
 
-	/** A colour row's swatch: its text colour on a white square, or its background. */
-	const swatch = (row: Row) =>
-		'field' in row && row.value !== null
-			? `var(--edytor-${row.field}-${row.value}, ${BLOCK_PALETTE[row.value][row.field]})`
-			: undefined;
+	/**
+	 * A colour row's swatch: its text colour on a white square, or its
+	 * background; the theme token, with Notion's light value (the palette's).
+	 */
+	const swatch = (row: Row) => {
+		if (!('field' in row) || row.value === null) return undefined;
+		const light = TOOLBAR_COLORS.find(({ name }) => name.toLowerCase() === row.value)!;
+		return `var(--edytor-${row.field}-${row.value}, ${row.field === 'color' ? light.text : light.background})`;
+	};
 </script>
 
 {#snippet list(rows: Row[], flyout: boolean)}

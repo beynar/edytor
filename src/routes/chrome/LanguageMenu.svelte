@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import type { LanguageMenu } from '$lib/index.js';
 
 	/**
@@ -12,7 +13,8 @@
 <div data-edytor-code-language-menu>
 	<input
 		type="text"
-		placeholder={menu.labels.search}
+		placeholder={words.code.search}
+		aria-label={words.code.language}
 		spellcheck="false"
 		autocomplete="off"
 		autocapitalize="off"
@@ -20,7 +22,7 @@
 		oninput={(event) => menu.search(event.currentTarget.value)}
 		{@attach menu.keys}
 	/>
-	<div data-edytor-code-language-list {@attach menu.popup}>
+	<div data-edytor-code-language-list aria-label={words.code.language} {@attach menu.popup}>
 		{#each menu.items as item, index (item.item.id)}
 			<!-- The field keeps the focus: a row is pressed, never focused. -->
 			<div
@@ -31,12 +33,12 @@
 				onclick={item.run}
 				role="option"
 			>
-				{item.label}
+				{item.item.label}
 			</div>
 		{/each}
 	</div>
 	{#if menu.rows.length === 0}
-		<div data-edytor-code-language-empty role="status">{menu.labels.noResults}</div>
+		<div data-edytor-code-language-empty role="status">{words.code.noResults}</div>
 	{/if}
 </div>
 

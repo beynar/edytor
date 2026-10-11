@@ -1,14 +1,9 @@
 import { mount, unmount, type Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
+import { branded } from '../brand.js';
 import type { Suggestion } from '$lib/session/suggestions.svelte.js';
 import SuggestionBars from './SuggestionBars.svelte';
-import {
-	suggestionsEnglish,
-	labelsWith,
-	type PartialLabels,
-	type SuggestionsLabels
-} from '$lib/labels.js';
 
 /** What a `bar` snippet receives: one block suggestion and its actions. */
 export type SuggestionBarPayload = {
@@ -21,24 +16,15 @@ export type SuggestionBarPayload = {
 	readonly: boolean;
 	/** The view's keys are a Mac's: Mod is ⌘ (name the Accept key with it). */
 	mac: boolean;
-	/** The plugin's words (`labels`), for your bar. */
-	labels: SuggestionsLabels;
 };
 
 export type SuggestionsOptions = {
 	/**
-	 * The bar under each block suggestion (without it, none: the keys still
-	 * accept and discard); placement and keys are the plugin's.
+	 * The bar under each block suggestion and its words (without it, none:
+	 * the keys still accept and discard); placement and keys are the plugin's.
 	 */
 	bar?: Snippet<[SuggestionBarPayload]>;
-	/** The words the bar shows, over the English ones. */
-	labels?: PartialLabels<'suggestions'>;
 };
-
-const suggestionPlugins = new WeakSet<Plugin>();
-
-/** Recognize any suggestions plugin instance (the component's default yields to yours). */
-export const isSuggestionsPlugin = (plugin: Plugin) => suggestionPlugins.has(plugin);
 
 /**
  * The `end` suggestion a Tab at the caret accepts: a collapsed caret in its
@@ -59,7 +45,6 @@ const endAtCaret = (edytor: Edytor) => {
  * discards; Tab accepts an `end` suggestion at the caret.
  */
 export const createSuggestionsPlugin = (options: SuggestionsOptions = {}): Plugin => {
-	const labels = labelsWith(suggestionsEnglish, options.labels);
 	const plugin: Plugin = (edytor) => ({
 		hotkeys: {
 			'mod+enter': ({ prevent }) => {
@@ -80,14 +65,10 @@ export const createSuggestionsPlugin = (options: SuggestionsOptions = {}): Plugi
 			if (!bar) return;
 			const bars = mount(SuggestionBars, {
 				target: edytor.overlay.layer!,
-				props: { edytor, bar, labels }
+				props: { edytor, bar }
 			});
 			return () => void unmount(bars);
 		}
 	});
-	suggestionPlugins.add(plugin);
-	return plugin;
+	return branded('suggestions', plugin);
 };
-
-/** The suggestions' keys, with no bar. */
-export const suggestionsPlugin = createSuggestionsPlugin();

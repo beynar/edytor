@@ -27,7 +27,4 @@
 				return src ? { src, name: name || fileNameOf(src) } : undefined;
 			}
 		});
-
-	/** The file block, links only. */
-	export const filePlugin = createFilePlugin();
 </script>

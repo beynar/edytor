@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { convertBlocks, convertToKind } from '$lib/kinds.js';
 import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
 import {
@@ -165,7 +165,7 @@ describe('Turn into a kind that replaces the block, in a list (AW-01)', () => {
 	});
 
 	it('typing "---" in an empty item does the same', async () => {
-		const view = await render([markdownShortcutsPlugin], seed());
+		const view = await render([createMarkdownShortcutsPlugin()], seed());
 		await at(view, 'e', 0);
 		await type(view, '---');
 		expect(shape(view)).toEqual(dividerForE);
@@ -192,7 +192,7 @@ describe('Turn into a kind that replaces the block, in a list (AW-01)', () => {
 		await slash(menu, 'code');
 		expect(shape(menu)).toEqual(codeForE);
 		document.body.innerHTML = '';
-		const typed = await render([markdownShortcutsPlugin], seed());
+		const typed = await render([createMarkdownShortcutsPlugin()], seed());
 		await at(typed, 'e', 0);
 		await type(typed, '```');
 		expect(shape(typed)).toEqual(codeForE);
@@ -319,7 +319,7 @@ describe('A vetoed Turn into of an item of a list nested right in a list (AW-03)
 	});
 
 	it('typing "# " keeps the typed text and the lists', async () => {
-		const view = await render([veto, markdownShortcutsPlugin], seed());
+		const view = await render([veto, createMarkdownShortcutsPlugin()], seed());
 		await at(view, 'c', 0);
 		await type(view, '# ');
 		expect(shape(view)).toEqual([
@@ -438,7 +438,7 @@ describe('Sweep: the list’s own kind on a block shed into it (SW10-lists-1)', 
 	});
 
 	it('typing "- " at its start does the same', async () => {
-		const view = await render([markdownShortcutsPlugin], seed());
+		const view = await render([createMarkdownShortcutsPlugin()], seed());
 		await at(view, 'h', 0);
 		await type(view, '- ');
 		expect(shape(view)).toEqual([[U, ['list-item "a"', 'list-item "h"', 'list-item "c"']]]);
@@ -615,7 +615,7 @@ describe('Turn into a shed block’s own kind keeps it in its list (DR-behavior-
 	});
 
 	it('typing "## " at its start does the same', async () => {
-		const view = await render([markdownShortcutsPlugin], seed(heading));
+		const view = await render([createMarkdownShortcutsPlugin()], seed(heading));
 		await at(view, 'h', 0);
 		await type(view, '## ');
 		expect(shape(view)).toEqual(inPlace('heading'));

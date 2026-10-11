@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import type { CommentsController } from '$lib/index.js';
 
 	/** Notion's top of the comments margin, drawn for `createCommentsPlugin({ header })`: the resolved toggle. */
@@ -12,8 +13,8 @@
 		aria-pressed={comments.showResolved}
 		onclick={() => (comments.showResolved = !comments.showResolved)}
 		>{comments.showResolved
-			? comments.labels.hideResolved
-			: comments.labels.showResolved(comments.resolved.length)}</button
+			? words.comments.hideResolved
+			: words.comments.showResolved(comments.resolved.length)}</button
 	>
 {/if}
 

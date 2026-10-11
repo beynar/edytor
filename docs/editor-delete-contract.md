@@ -826,7 +826,7 @@ a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
     outdent of `d` → `p|a|b|c|d|e|q` on some pairs, where the serial result
     is `p|b|a|c|d|e|q` (DR-rest-2);
   - moves (`moveBlocks`, `nestBlock`): a drag, the handle's Alt+↑/↓/→
-    (Alt+← is the outdent, ranked), Mod+Shift+↑/↓ (arrowMovePlugin), the
+    (Alt+← is the outdent, ranked), Mod+Shift+↑/↓ (createArrowMovePlugin()), the
     block menu's Move up/down and Tab (`nestBlock` at the parent's end:
     Tab on `y` ‖ Enter at the end of the last child of the block above →
     the new line can read after `y`).

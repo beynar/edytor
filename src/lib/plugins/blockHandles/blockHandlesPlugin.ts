@@ -5,16 +5,8 @@ import type { Plugin } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import BlockHandles from './BlockHandles.svelte';
 import { BlockHandleController } from './BlockHandleController.svelte.js';
-import {
-	blockHandlesEnglish,
-	labelsWith,
-	type BlockHandlesLabels,
-	type PartialLabels
-} from '$lib/labels.js';
 import { hidden } from '$lib/selection/visibility.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
-
-export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
 
 /** What a `handle` snippet receives. */
 export type BlockHandleSnippetPayload = {
@@ -50,21 +42,16 @@ export type BlockHandleSnippetPayload = {
 	controls: { add: string | undefined; grip: string | undefined };
 	/** What the menu the `+` or the grip opened is, while it is open: their `aria-haspopup`. */
 	haspopup: { add: Popup['haspopup']; grip: Popup['haspopup'] };
-	/** The handles' words (`add(label)`, `grip(label)`, their hints). */
-	labels: BlockHandlesLabels;
 };
 
 export type BlockHandlesOptions = {
 	/** Keep the handle and its keyboard actions, but omit pointer dragging and drop targets. */
 	draggable?: boolean;
-	onActivate?: (activation: BlockHandleActivation) => void;
 	/**
-	 * The `+` and ⋮⋮ beside each block (without it, no handle shows and no
-	 * block drags); placement and hover are the plugin's.
+	 * The `+` and ⋮⋮ beside each block, and their words (without it, no
+	 * handle shows and no block drags); placement and hover are the plugin's.
 	 */
 	handle?: Snippet<[BlockHandleSnippetPayload]>;
-	/** The handles' accessible names and tooltips, over the English ones. */
-	labels?: PartialLabels<'blockHandles'>;
 };
 
 /**
@@ -79,9 +66,7 @@ export const createBlockHandlesPlugin =
 	(options: BlockHandlesOptions = {}): Plugin =>
 	(edytor) => {
 		const controller = new BlockHandleController(edytor, {
-			draggable: options.draggable !== false,
-			onActivate: options.onActivate,
-			labels: labelsWith(blockHandlesEnglish, options.labels)
+			draggable: options.draggable !== false
 		});
 		const blocks = new SvelteMap<string, Block>();
 		const near = new SvelteSet<string>();

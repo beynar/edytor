@@ -16,7 +16,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
-import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import type { MarqueeBoxPayload } from '$lib/plugins/marquee/MarqueeController.svelte.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
@@ -97,7 +97,7 @@ const render = async (children: JSONBlock[], plugins: Plugin[] = [], readonly = 
 			<paragraph>|</paragraph>
 		</root>,
 		{
-			plugins: [...plugins, columnsPlugin, richTextPlugin],
+			plugins: [...plugins, createColumnsPlugin(), richTextPlugin],
 			value: { children },
 			autoSelectFixture: false,
 			blockHandles: false,
@@ -427,7 +427,7 @@ describe('the gesture (sel.marquee)', () => {
 				<paragraph>|</paragraph>
 			</root>,
 			{
-				plugins: [marqueePlugin, columnsPlugin, richTextPlugin],
+				plugins: [marqueePlugin, createColumnsPlugin(), richTextPlugin],
 				value: { children: [p('A'), p('B')] },
 				autoSelectFixture: false
 			}

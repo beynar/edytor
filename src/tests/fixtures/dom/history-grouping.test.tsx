@@ -47,7 +47,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import {
 	canonicalTree,
@@ -265,7 +265,7 @@ describe('a menu action after typing is its own step (UW-16)', () => {
 const conversions: Plugin[] = [
 	richTextPlugin,
 	mentionPlugin,
-	markdownShortcutsPlugin,
+	createMarkdownShortcutsPlugin(),
 	slashMenuPlugin
 ];
 

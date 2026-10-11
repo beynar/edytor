@@ -49,14 +49,15 @@ export class Anchored {
 		);
 
 	/**
-	 * Mount the panel in the overlay above the block handles (5), with a
-	 * press listener (capture) on `node`'s document and the readonly rule.
-	 * Answers the teardown, which closes it.
+	 * Mount the panel in the overlay at `zIndex` (above the block handles, 5,
+	 * by default), with a press listener (capture) on `node`'s document and
+	 * the readonly rule. Answers the teardown, which closes it.
 	 */
 	mount = <Props extends Record<string, unknown>>(
 		node: HTMLElement,
 		component: Component<Props>,
-		props: Props
+		props: Props,
+		zIndex = 7
 	) => {
 		const { edytor } = this;
 		const offPress = onPress(
@@ -70,7 +71,7 @@ export class Anchored {
 				),
 			true
 		);
-		const unmount = edytor.overlay.mount(component, props, this.name, 7, (host, origin) => {
+		const unmount = edytor.overlay.mount(component, props, this.name, zIndex, (host, origin) => {
 			const anchor = this.anchor();
 			const box = layerBox(anchor, origin);
 			return () => {

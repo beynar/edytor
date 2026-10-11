@@ -3,14 +3,9 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { Suggestion } from '$lib/session/suggestions.svelte.js';
 	import type { SuggestionBarPayload } from './suggestionsPlugin.js';
-	import type { SuggestionsLabels } from '$lib/labels.js';
 
 	/** The plugin's `bar` under each block suggestion's preview, placed once per frame. */
-	let {
-		edytor,
-		bar,
-		labels
-	}: { edytor: Edytor; bar: Snippet<[SuggestionBarPayload]>; labels: SuggestionsLabels } = $props();
+	let { edytor, bar }: { edytor: Edytor; bar: Snippet<[SuggestionBarPayload]> } = $props();
 
 	/** Each bar's place under its preview, layer-relative, measured once per frame. */
 	let places = $state<Record<string, { left: number; top: number; width: number }>>({});
@@ -54,8 +49,7 @@
 		discard: suggestion.discard,
 		retry: suggestion.retryable ? suggestion.retry : undefined,
 		readonly: edytor.readonly,
-		mac: edytor.keymap.isMac,
-		labels
+		mac: edytor.keymap.isMac
 	});
 </script>
 

@@ -1,46 +1,25 @@
 import type { Snippet } from 'svelte';
-import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { BlockDefinition, Plugin, PluginDefinitions, PluginOperations } from '$lib/plugins.js';
 import { mediaKinds } from '$lib/crdt/semantics.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 import type { Uploader } from '../uploads.svelte.js';
-import {
-	keywordsOf,
-	labelsWith,
-	mediaEnglish,
-	type MediaLabels,
-	type PartialLabels
-} from '$lib/labels.js';
-import type { MediaEmptyController } from './empty.svelte.js';
+import { keywordsOf, labelsOf, mediaEnglish } from '$lib/labels.js';
+import { MEDIA_ICONS, type EmptyView, type MediaEmptyController } from './empty.svelte.js';
 
-/** The media kinds a view shows the labels of. */
+/** The media kinds. */
 export type MediaKind = 'embed' | 'bookmark' | 'file' | 'video' | 'audio';
 
-/** Each media kind's icon: its menu row, its empty block, its paste offer. */
-export const MEDIA_ICONS: Record<MediaKind, string> = {
-	embed: '⧉',
-	bookmark: '🔖',
-	file: '📎',
-	video: '🎬',
-	audio: '🎵'
-};
+export { MEDIA_ICONS };
 
 /**
  * A media kind in a view: the first plugin of the kind listed in it claims
- * it, as its kind record (first wins): its words, its empty block's
+ * it, as its kind record (first wins): its empty block's
  * `empty` snippet (none: nothing drawn) and `upload`, how a block of
  * it stores a source, and the embed's allowlist.
  */
-export type MediaView = {
-	labels: MediaLabels;
-	empty?: Snippet<[MediaEmptyController]>;
-	upload?: Uploader;
-	/** Store `value` (a link, or the URL an upload of `file` answered) on `block`; answers whether it took it. */
-	store: (block: Block, value: string, file?: File) => boolean;
-	providers?: readonly EmbedProvider[];
-};
+export type MediaView = EmptyView & { providers?: readonly EmbedProvider[] };
 
 const views = new WeakMap<Edytor, Partial<Record<MediaKind, MediaView>>>();
 
@@ -48,13 +27,10 @@ const views = new WeakMap<Edytor, Partial<Record<MediaKind, MediaView>>>();
 export const mediaView = (edytor: Edytor | undefined, kind: MediaKind): MediaView | undefined =>
 	edytor && views.get(edytor)?.[kind];
 
-/** The words of `kind` in the view (English for none, or a view no plugin of it is listed in). */
-export const mediaLabelsOf = (edytor: Edytor | undefined, kind: MediaKind): MediaLabels =>
-	mediaView(edytor, kind)?.labels ?? mediaEnglish;
-
 /**
  * A media kind's plugin (Notion's): a void `figure` with an editable
- * caption, its preset (its icon, `keywords`) and words, and its view
+ * caption, its preset (its icon, `keywords`, its name in the view's
+ * `media` labels), and its view
  * (`MediaView`), which the first plugin of the kind listed claims. `own`
  * answers the kind's own parts: how it stores a source, its hooks and its
  * record (its snippet, its export and import); `claims` says whether this
@@ -66,7 +42,6 @@ export const mediaPlugin =
 		options: MediaPluginOptions,
 		keywords: string[],
 		own: (
-			labels: MediaLabels,
 			edytor: Edytor,
 			claims: boolean
 		) => Pick<MediaView, 'store' | 'providers'> & {
@@ -75,14 +50,13 @@ export const mediaPlugin =
 		}
 	): Plugin =>
 	(edytor) => {
-		const labels = labelsWith(mediaEnglish, options.labels);
 		const kinds = edytor && (views.get(edytor) ?? {});
 		const claims = !!kinds && !kinds[kind];
-		const { hooks, record, ...view } = own(labels, edytor, claims);
+		const { hooks, record, ...view } = own(edytor, claims);
 		if (claims)
 			views.set(edytor, {
 				...kinds,
-				[kind]: { labels, empty: options.empty, upload: options.upload, ...view }
+				[kind]: { empty: options.empty, upload: options.upload, ...view }
 			});
 		return {
 			...hooks,
@@ -92,9 +66,9 @@ export const mediaPlugin =
 					element: 'figure',
 					presets: [
 						{
-							label: labels[kind].label,
+							label: labelsOf(edytor, 'media', mediaEnglish)[kind],
 							icon: MEDIA_ICONS[kind],
-							keywords: keywordsOf(`block.${kind}`, keywords, options.keywords),
+							keywords: keywordsOf(edytor, `block.${kind}`, keywords),
 							group: 'Media'
 						}
 					],
@@ -142,12 +116,8 @@ export type MediaPluginOptions = {
 	 * embedded.
 	 */
 	upload?: Uploader;
-	/** The words the block shows (its empty panel, its menu row), over the English ones. */
-	labels?: PartialLabels<'media'>;
-	/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
-	keywords?: Partial<Record<string, string[]>>;
 	/**
-	 * An empty block's markup (its "Add …" button and link panel, its upload's
+	 * An empty block's markup and its words (its "Add …" button and link panel, its upload's
 	 * progress, or a readonly view's placeholder; without it, nothing): the
 	 * block's `MediaEmptyController` (`open`, `draft`, `failed`, `pending`,
 	 * `embed`, `upload`, `readonly`) is its argument.

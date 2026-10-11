@@ -8,7 +8,7 @@ import {
 } from './BlockMenuController.svelte.js';
 
 /**
- * Notion's block menu: a handle click (without an `onActivate` of your own)
+ * Notion's block menu: a handle click
  * opens it beside the handle — search, Turn into, Color, Duplicate, Move,
  * Delete, and Copy link when `linkTo` is given. Also binds Mod+D (duplicate
  * the selected blocks, or the caret's block), and adds the colours to the
@@ -83,7 +83,7 @@ export const createBlockMenuPlugin =
 
 		return {
 			// Colours by name in the slash menu (`/red`), as in Notion.
-			commands: colorCommands(edytor, controller.labels),
+			commands: colorCommands(edytor),
 			hotkeys: {
 				'mod+d': ({ prevent }) => {
 					if (edytor.readonly) return;

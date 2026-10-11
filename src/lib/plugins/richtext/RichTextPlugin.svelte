@@ -1,5 +1,6 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload, KindPreset, PlaceholderView } from '$lib/plugins.js';
+	import { branded } from '../brand.js';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { presetId } from '$lib/kinds.js';
@@ -20,15 +21,7 @@
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
 	import { mediaKinds, richTextKinds, richTextMarks } from '$lib/crdt/semantics.js';
-	import {
-		richTextEnglish,
-		keywordsOf,
-		labelsWith,
-		type PartialLabels,
-		type RichTextLabels
-	} from '$lib/labels.js';
-	import { richTextLabels } from './labels.js';
-	import { onPress } from '$lib/events/onFocus.js';
+	import { richTextEnglish, keywordsOf, labelsOf, type RichTextLabels } from '$lib/labels.js';
 	import TodoCheckbox from './TodoCheckbox.svelte';
 	import EmptyBody from './EmptyBody.svelte';
 	import CalloutIcon from './CalloutIcon.svelte';
@@ -43,7 +36,6 @@
 	} from './calloutIcons.svelte.js';
 
 	export { richTextOperations, CALLOUT_ICONS, CalloutIconPicker };
-	export type { CalloutIconOption } from './calloutIcons.svelte.js';
 
 	const nativeFormatMarks = {
 		formatBold: 'bold',
@@ -125,37 +117,28 @@
 	};
 
 	/**
-	 * Notion's placeholders in `labels` (English by default): headings,
-	 * lists, to-dos, toggles and quotes name their kind while empty; a
-	 * paragraph invites a command only while focused.
+	 * Notion's placeholders, in the view's `richText` labels (English by
+	 * default): headings, lists, to-dos, toggles and quotes name their kind
+	 * while empty; a paragraph invites a command only while focused.
 	 */
-	export const createRichTextPlaceholder = (labels?: PartialLabels<'richText'>) => {
-		const { placeholders } = labelsWith(richTextEnglish, labels);
-		return ({ type, data, focused }: PlaceholderView): string | null => {
-			if (type === 'heading' || type === 'toggle-heading')
-				return placeholders[type === 'heading' ? 'heading' : 'toggleHeading'](
-					Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3
-				);
-			if (Object.hasOwn(NAMED, type)) return placeholders[NAMED[type]!];
-			// Code shows nothing in an empty line (Notion).
-			if (type === 'codeLine' || !focused) return null;
-			return type === 'image' || Object.hasOwn(mediaKinds, type)
-				? placeholders.caption
-				: placeholders.empty;
-		};
+	export const richTextPlaceholder = (
+		{ type, data, focused }: PlaceholderView,
+		edytor?: Edytor
+	): string | null => {
+		const { placeholders } = labelsOf(edytor, 'richText', richTextEnglish);
+		if (type === 'heading' || type === 'toggle-heading')
+			return placeholders[type === 'heading' ? 'heading' : 'toggleHeading'](
+				Number(headingLevel(data.level).slice(1)) as 1 | 2 | 3
+			);
+		if (Object.hasOwn(NAMED, type)) return placeholders[NAMED[type]!];
+		// Code shows nothing in an empty line (Notion).
+		if (type === 'codeLine' || !focused) return null;
+		return type === 'image' || Object.hasOwn(mediaKinds, type)
+			? placeholders.caption
+			: placeholders.empty;
 	};
 
-	/** Notion's placeholders, in English. */
-	export const richTextPlaceholder = createRichTextPlaceholder();
-
 	export type RichTextPluginOptions = {
-		/** The kinds', marks' and checkbox's words (English by default). */
-		labels?: PartialLabels<'richText'>;
-		/**
-		 * The slash menu's keywords of a kind, by command id (`block.heading1`):
-		 * they replace that preset's own (list the English ones to keep them).
-		 */
-		keywords?: Partial<Record<string, string[]>>;
 		/** Callouts' icons. */
 		callout?: {
 			/**
@@ -166,7 +149,7 @@
 			/** The icon picker's choices (`CALLOUT_ICONS` by default). */
 			icons?: readonly string[];
 			/**
-			 * The icon picker's markup: it renders while the picker is open,
+			 * The icon picker's markup and its words: it renders while the picker is open,
 			 * placed under the icon (without it, the icon opens nothing). Put `{@attach picker.keys}` and
 			 * `{@attach picker.popup}` on its element and spread
 			 * `picker.option(i)` on each row (`picker.icons.length`: Remove icon).
@@ -174,11 +157,6 @@
 			picker?: Snippet<[CalloutIconPicker]>;
 		};
 	};
-
-	const richTextPlugins = new WeakSet<Plugin>();
-
-	/** Recognize any rich text plugin instance (the component's default yields to yours). */
-	export const isRichTextPlugin = (plugin: Plugin) => richTextPlugins.has(plugin);
 
 	// One key patched: a peer's concurrent edit of another key is kept.
 	const toggleTodo = (block: Block) => (block.data.checked = !block.data.checked);
@@ -197,44 +175,31 @@
 	];
 
 	/**
-	 * The rich text kinds and marks, with their words in `labels` and their
-	 * slash keywords in `keywords` (English by default).
+	 * The rich text kinds and marks, their words and slash keywords the
+	 * view's (`labels`, English by default).
 	 */
 	export const createRichTextPlugin = (options: RichTextPluginOptions = {}): Plugin => {
-		const labels = labelsWith(richTextEnglish, options.labels);
 		const plugin: Plugin = (edytor) => {
-			richTextLabels.claim(edytor, labels);
+			const labels = labelsOf(edytor, 'richText', richTextEnglish);
 			// The view's callout icons: the first rich text plugin listed claims them.
 			const picker = calloutIconViews.has(edytor)
 				? undefined
 				: new CalloutIconPicker(
 						edytor,
 						options.callout?.icon ?? DEFAULT_CALLOUT_ICON,
-						options.callout?.icons ?? CALLOUT_ICONS,
-						labels
+						options.callout?.icons ?? CALLOUT_ICONS
 					);
 			if (picker) calloutIconViews.set(edytor, picker);
 			return richText(edytor, labels, options, picker);
 		};
-		richTextPlugins.add(plugin);
-		return plugin;
+		return branded('richText', plugin);
 	};
 
-	/** A preset whose slash keywords `keywords` may replace, by its command id. */
-	const preset = (
-		id: string,
-		row: KindPreset,
-		keywords: RichTextPluginOptions['keywords']
-	): KindPreset => {
-		const own = keywordsOf(id, row.keywords, keywords);
-		return own ? { ...row, keywords: own } : row;
-	};
-
-	/** The rich text records of `edytor`, in `labels`, its presets' keywords replaced by `keywords`. */
+	/** The rich text records of `edytor`, in `labels`, its presets' keywords the view's. */
 	const richText = (
 		edytor: Edytor,
 		labels: RichTextLabels,
-		{ keywords, callout: calloutOptions }: RichTextPluginOptions,
+		{ callout: calloutOptions }: RichTextPluginOptions,
 		/** The view's callout icon picker, when this plugin claimed it (the first listed). */
 		picker: CalloutIconPicker | undefined
 	): ReturnType<Plugin> => {
@@ -246,7 +211,10 @@
 		/** The disclosures this view created, opened once drawn (`onBlockAttached`). */
 		const opening = new Set<string>();
 		const presets = (type: string, rows: KindPreset[]) =>
-			rows.map((row, index) => preset(presetId(type, index, rows.length), row, keywords));
+			rows.map((row, index) => {
+				const own = keywordsOf(edytor, presetId(type, index, rows.length), row.keywords);
+				return own ? { ...row, keywords: own } : row;
+			});
 		const operations = richTextOperations(edytor);
 		/** The space an autolink types itself: its own insertion is not looked at again. */
 		let autolinking = false;
@@ -393,25 +361,13 @@
 					openLink(href, node.ownerDocument.defaultView);
 				};
 				node.addEventListener('click', click);
-				// A press outside the picker closes it (WebKit's lone `mousedown` too).
-				const offPress = picker && onPress(edytor, node.ownerDocument, picker.pressed, true);
 				const menu = calloutOptions?.picker;
+				// With the menus: above the handles and the image chrome.
 				const unmount =
-					picker &&
-					menu &&
-					edytor.overlay.mount(
-						CalloutIconHost,
-						{ picker, menu },
-						'edytor-callout-icons-host',
-						// With the menus: above the handles and the image chrome.
-						70,
-						picker.measure
-					);
+					picker && menu && picker.panel.mount(node, CalloutIconHost, { picker, menu }, 70);
 				return () => {
 					node.removeEventListener('click', click);
-					offPress?.();
 					unmount?.();
-					picker?.close(false);
 				};
 			},
 			onBeforeInput: ({ e, prevent }) => {
@@ -703,9 +659,6 @@
 			}
 		};
 	};
-
-	/** The rich text kinds and marks, in English. */
-	export const richTextPlugin: Plugin = createRichTextPlugin();
 </script>
 
 <!--

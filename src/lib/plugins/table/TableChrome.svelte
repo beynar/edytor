@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { keepFocus } from '../chrome.js';
+	import { labelsOf, tableEnglish } from '$lib/labels.js';
 	import type { TableAddPayload, TableChrome, TableGripPayload } from './chrome.svelte.js';
 
 	/**
@@ -25,7 +26,7 @@
 		add?: Snippet<[TableAddPayload]>;
 	} = $props();
 
-	const labels = $derived(chrome.labels);
+	const labels = $derived(labelsOf(chrome.edytor, 'table', tableEnglish));
 	const layout = $derived(chrome.layout);
 	const line = $derived(chrome.line);
 	const menuPlace = $derived(chrome.menuPlace);
@@ -45,7 +46,6 @@
 >
 	{#if chrome.shown && layout}
 		{#each grip ? chrome.grips : [] as place (place.kind)}
-			{@const label = labels[`${place.kind}Menu`]}
 			<!-- Centered on where the grip stands: its flex host is a point. -->
 			<div
 				data-edytor-table-grip-host={place.kind}
@@ -59,10 +59,8 @@
 						index: place.index,
 						expanded: chrome.menu?.kind === place.kind,
 						dragging: chrome.moving?.kind === place.kind,
-						label,
 						toggle: () => chrome.toggle(place.kind),
 						grip: chrome.gripOf(place.kind),
-						labels,
 						chrome
 					})}
 				{/if}
@@ -80,7 +78,6 @@
 			></div>
 		{/if}
 		{#each add ? chrome.bars : [] as bar (bar.kind)}
-			{@const label = bar.kind === 'row' ? labels.addRow : labels.addColumn}
 			<div
 				data-edytor-table-add-host={bar.kind}
 				role="presentation"
@@ -91,7 +88,7 @@
 				onmousedown={keepFocus}
 			>
 				{#if add}
-					{@render add({ kind: bar.kind, label, add: () => chrome.add(bar.kind), labels })}
+					{@render add({ kind: bar.kind, add: () => chrome.add(bar.kind) })}
 				{/if}
 			</div>
 		{/each}

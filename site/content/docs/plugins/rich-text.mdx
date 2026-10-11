@@ -4,7 +4,7 @@ description: The rich text plugin's block kinds, marks, Notion hotkeys, placehol
 icon: type
 ---
 
-`richTextPlugin` defines the everyday document: paragraphs, headings, lists, to-dos, toggles, toggle headings, callouts, quotes, dividers, and ten marks, with Notion's shortcuts. The core defines no block kinds, so `<Edytor>` includes it by default, after your plugins:
+`createRichTextPlugin()` defines the everyday document: paragraphs, headings, lists, to-dos, toggles, toggle headings, callouts, quotes, dividers, and ten marks, with Notion's shortcuts. The core defines no block kinds, so `<Edytor>` includes it by default, after your plugins:
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -15,7 +15,7 @@ icon: type
 <Edytor />
 ```
 
-`createRichTextPlugin({ labels, keywords, callout })` builds it in another language or with other callout icons (see [Toggles and callouts](#toggles-and-callouts)): `labels` (a `PartialLabels<'richText'>`) names the presets, the toolbar's mark buttons and the to-do checkbox, and `keywords` replaces a preset's slash keywords by command id (see [Localization](/docs/customization/localization)); `richTextPlugin` is the English one. A listed instance replaces the default. List it yourself to translate it, to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
+`createRichTextPlugin({ callout })` builds it with other callout icons (see [Toggles and callouts](#toggles-and-callouts)). Its words (the presets, the toolbar's mark buttons, the to-do checkbox, the placeholders) are the view's `richText` labels, and its slash keywords the view's `keywords` (see [Localization](/docs/customization/localization)). A listed instance replaces the default. List it yourself to translate it, to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
 
 ## Block kinds
 
@@ -78,7 +78,7 @@ A callout is Notion's: an icon, a title and a content.
 <Edytor plugins={[richText]} />
 ```
 
-`callout.picker` is the picker's markup. It receives the picker (`CalloutIconPicker`): the callout it is open on (`block`), the choices (`icons`), the icon the callout shows (`current`), `set(icon)`, `remove()` and `close()`, its words (`labels`) and `readonly`. Put `{@attach picker.keys}` and `{@attach picker.popup}` on its element, which then takes the focus and the keys and is announced to assistive technology, and spread `picker.option(i)` on each row: its id, role, state (`data-active` on the keyboard's row, `aria-checked` on the current icon) and handlers; `picker.option(picker.icons.length)` is Remove icon. Lay the icons out `picker.columns` to a row (the arrows move up and down by that many). The editor places it under the icon.
+`callout.picker` is the picker's markup. It receives the picker (`CalloutIconPicker`): the callout it is open on (`block`), the choices (`icons`), the icon the callout shows (`current`), `set(icon)`, `remove()` and `close()`, and `readonly`; the words are your markup's. Put `{@attach picker.keys}` and `{@attach picker.popup}` on its element, which then takes the focus and the keys and is announced to assistive technology, spread `picker.option(i)` on each row, as every menu's rows (its id, role, `data-selected` on the keyboard's row, `aria-checked` on the current icon), and run `picker.pick(i)` on its click; `i === picker.icons.length` is Remove icon. Lay the icons out `picker.columns` to a row (the arrows move up and down by that many). The editor places it under the icon.
 
 ```svelte title="IconPicker.svelte" check
 <script lang="ts">
@@ -88,11 +88,15 @@ A callout is Notion's: an icon, a title and a content.
 </script>
 
 {#snippet iconPicker(picker: CalloutIconPicker)}
-	<div class="icons" {@attach picker.keys} {@attach picker.popup}>
+	<div class="icons" aria-label="Callout icons" {@attach picker.keys} {@attach picker.popup}>
 		{#each picker.icons as icon, index (index)}
-			<button type="button" {...picker.option(index)}>{icon}</button>
+			<button type="button" {...picker.option(index)} onclick={() => picker.pick(index)}>{icon}</button>
 		{/each}
-		<button type="button" {...picker.option(picker.icons.length)}>{picker.labels.remove}</button>
+		<button
+			type="button"
+			{...picker.option(picker.icons.length)}
+			onclick={() => picker.pick(picker.icons.length)}>Remove icon</button
+		>
 	</div>
 {/snippet}
 

@@ -4,16 +4,16 @@ description: The table plugin adds Notion's simple table, a grid of text cells. 
 icon: table
 ---
 
-`tablePlugin` adds Notion's simple table: a grid of **cells**, each holding text (its lines are line breaks), in **rows** and **columns**. You make one with the slash menu or the block menu's Turn into ("Table"), or by pasting an HTML table. Hover it to add a row (the `+` under it) or a column (the `+` beside it), and to reach a row's and a column's grip: drag it to move the row or column, click it for its menu (insert, move, delete). The grips, their menus and the `+` are your snippets, `createTablePlugin({ grip, menu, add })`: the plugin places them and gives them the drag, the keys and the ARIA, and without them shows none ([Menus and handles](/docs/customization/menus#table-grips-menu-and-)). Drag a column's right edge to resize it, as far as the page leaves room. The table's block menu inserts and deletes rows and columns where the caret was, and has Notion's **Header row** and **Header column** switches.
+`createTablePlugin()` adds Notion's simple table: a grid of **cells**, each holding text (its lines are line breaks), in **rows** and **columns**. You make one with the slash menu or the block menu's Turn into ("Table"), or by pasting an HTML table. Hover it to add a row (the `+` under it) or a column (the `+` beside it), and to reach a row's and a column's grip: drag it to move the row or column, click it for its menu (insert, move, delete). The grips, their menus and the `+` are your snippets, `createTablePlugin({ grip, menu, add })`: the plugin places them and gives them the drag, the keys and the ARIA, and without them shows none ([Menus and handles](/docs/customization/menus#table-grips-menu-and-)). Drag a column's right edge to resize it, as far as the page leaves room. The table's block menu inserts and deletes rows and columns where the caret was, and has Notion's **Header row** and **Header column** switches.
 
 The plugin is not a default plugin: list it in `plugins`.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, tablePlugin } from 'edytor';
+	import { Edytor, createTablePlugin } from 'edytor';
 	import 'edytor/themes/notion.css';
 
-	const plugins = [tablePlugin];
+	const plugins = [createTablePlugin()];
 </script>
 
 <div class="edytor-notion">
@@ -25,7 +25,7 @@ List it in every view that may open a document holding tables. A view without it
 
 ## Options
 
-`createTablePlugin(options)` takes a `TablePluginOptions`; `tablePlugin` is the plugin with the defaults.
+`createTablePlugin(options)` takes a `TablePluginOptions`; `createTablePlugin()` is the plugin with the defaults.
 
 <TypeTable
   type={{
@@ -40,14 +40,6 @@ List it in every view that may open a document holding tables. A view without it
       type: "number",
       default: "48",
       description: "The narrowest a resize leaves a column, in pixels.",
-    },
-    labels: {
-      type: "PartialLabels<'table'>",
-      description: "The command's, the switches', the menus' and the controls' words, over the English ones. See Localization.",
-    },
-    keywords: {
-      type: "Partial<Record<string, string[]>>",
-      description: "The slash menu's keywords of the Table command (block.table); they replace its own.",
     },
     grip: {
       type: "Snippet<[TableGripPayload]>",
@@ -65,10 +57,9 @@ List it in every view that may open a document holding tables. A view without it
 />
 
 ```ts title="plugins.ts" check
-import { createTablePlugin, isTablePlugin, type Plugin } from 'edytor';
+import { createTablePlugin, type Plugin } from 'edytor';
 
 export const table: Plugin = createTablePlugin({ rows: 2, columns: 4, columnWidth: 160 });
-isTablePlugin(table); // true: any table plugin instance
 ```
 
 ## The kinds

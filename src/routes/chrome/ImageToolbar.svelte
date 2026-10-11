@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import { alignIcons, altIcon } from './icons.js';
 	import type { ImageControls } from '$lib/index.js';
 
@@ -9,7 +10,7 @@
 	 * field takes it.
 	 */
 	let { controls }: { controls: ImageControls } = $props();
-	const labels = $derived(controls.labels);
+	const labels = $derived(words.image);
 	/** The toolbar's buttons: the three alignments, then the alt text's (no `align`). */
 	const buttons = $derived([
 		{ align: 'left', label: labels.alignLeft, icon: alignIcons.left },
@@ -22,8 +23,8 @@
 
 {#if controls.box}
 	{@const box = controls.box}
-	<!-- Its role and name are the controller's `bar`. -->
-	<div data-image-toolbar {@attach controls.bar}>
+	<!-- Its role is the controller's `bar`. -->
+	<div data-image-toolbar aria-label={labels.toolbar} {@attach controls.bar}>
 		{#each buttons as { align, label, icon } (icon)}
 			<button
 				type="button"

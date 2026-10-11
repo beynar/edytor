@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import { linkIcon } from './icons.js';
 	import type { ToolbarController } from '$lib/index.js';
 
 	/** The card under a hovered link, drawn for `createToolbarPlugin({ card })`. */
 	let { controller }: { controller: ToolbarController } = $props();
-	const labels = $derived(controller.labels);
+	const labels = $derived(words.toolbar);
 </script>
 
 <!--

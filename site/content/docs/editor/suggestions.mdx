@@ -159,7 +159,7 @@ A `Suggestion`:
 
 ## The default UI
 
-`suggestionsPlugin` is on by default in `<Edytor>`, with arrow moves, images and rich text ([Default plugins](/docs/plugins#default-plugins)): its keys. Its bar under each block suggestion, in the [overlay](/docs/customization/styling#the-overlay), is your `bar` snippet (below; the demo's shows the label, `AI is writing…` while it streams, **Accept**, **Discard**, and **Try again** when the suggestion has an `onRetry`, Discard only in a readonly view). An `end` suggestion has no bar: the keys accept it.
+`createSuggestionsPlugin()` is on by default in `<Edytor>`, with arrow moves, images and rich text ([Default plugins](/docs/plugins#default-plugins)): its keys. Its bar under each block suggestion, in the [overlay](/docs/customization/styling#the-overlay), is your `bar` snippet (below; the demo's shows the label, `AI is writing…` while it streams, **Accept**, **Discard**, and **Try again** when the suggestion has an `onRetry`, Discard only in a readonly view). An `end` suggestion has no bar: the keys accept it.
 
 | Keys | Action | Where |
 | --- | --- | --- |
@@ -169,7 +169,7 @@ A `Suggestion`:
 
 The keys claim nothing while there is no suggestion, so <kbd>Mod</kbd> + <kbd>Enter</kbd> still checks to-dos and opens toggles. Plugins listed before it in `plugins` get the keys first ([Plugin order](/docs/plugins#plugin-order)); in a code line, the [code plugin](/docs/plugins/code)'s <kbd>Tab</kbd> accepts an `end` suggestion too.
 
-Render the bar with `createSuggestionsPlugin({ bar })` (without it, no bar shows). Placement and keys are the plugin's. The bar receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (with an `onRetry`), `readonly`, `mac` (Mod is ⌘), and `labels`, the plugin's words, for your markup:
+Render the bar with `createSuggestionsPlugin({ bar })` (without it, no bar shows). Placement and keys are the plugin's. The bar receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (with an `onRetry`), `readonly` and `mac` (Mod is ⌘); its words are your markup's:
 
 ```svelte title="AiBar.svelte" check
 <script lang="ts">
@@ -188,7 +188,7 @@ Render the bar with `createSuggestionsPlugin({ bar })` (without it, no bar shows
 <Edytor plugins={[createSuggestionsPlugin({ bar })]} />
 ```
 
-Prevent the buttons' `mousedown` so the editor keeps its focus and selection. `createSuggestionsPlugin({ labels })` translates the words your bar reads (Accept, Discard, Try again, the streaming line as a function of the label; see [Localization](/docs/customization/localization)), and `<Edytor labels>` a preview's accessible name when the suggestion has no `label`. A plugin instance in `plugins` replaces the default one; `defaultPlugins={false}` removes it, and suggestions still show, without a bar or keys.
+Prevent the buttons' `mousedown` so the editor keeps its focus and selection. `<Edytor labels>` (its `editor.suggestion`) translates a preview's accessible name when the suggestion has no `label` (see [Localization](/docs/customization/localization)). A plugin instance in `plugins` replaces the default one; `defaultPlugins={false}` removes it, and suggestions still show, without a bar or keys.
 
 ## Rendering and styling
 

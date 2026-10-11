@@ -23,8 +23,8 @@ export type PlaceholderView = {
 	empty: boolean;
 };
 
-/** An empty block's placeholder text: one string, or one per block (`null`: none). */
-export type Placeholder = string | ((view: PlaceholderView) => string | null);
+/** An empty block's placeholder text: one string, or one per block of the view (`null`: none). */
+export type Placeholder = string | ((view: PlaceholderView, edytor: Edytor) => string | null);
 
 /**
  * Represents the payload for mark snippets with generic serializable content.
@@ -217,18 +217,12 @@ export type Trigger<T = any> = {
 	/** A row's key, which keeps its markup across queries: default its `id`, else its label. Two rows may share one. */
 	key?: (item: T) => string;
 	/**
-	 * The menu's markup; it renders while `controller.isOpen`, placed at the
-	 * caret (without it, nothing shows). Its keys stay the editor's; keep its
-	 * ARIA with `{@attach controller.popup}` on the list and
-	 * `{...controller.option(index)}` on each row.
+	 * The menu's markup and its words; it renders while `controller.isOpen`,
+	 * placed at the caret (without it, nothing shows). Its keys stay the
+	 * editor's; keep its ARIA with `{@attach controller.popup}` on the list
+	 * (name it with `aria-label`) and `{...controller.option(index)}` on each row.
 	 */
 	menu?: Snippet<[TriggerMenuController<T>]>;
-	/** The menu's accessible name (default: the view's `labels.triggerMenu`, `Suggestions`). */
-	name?: string;
-	/** The text shown when no row matches (default: the view's `labels.noResults`, `No results`). */
-	empty?: string;
-	/** The text shown while a search is pending and no row is shown (default: the view's `labels.searching`, `Searching…`). */
-	searching?: string;
 	/** Whether the menu may open in `block` (default: a block that is not void and not in a code block). */
 	enabled?: (block: Block) => boolean;
 };

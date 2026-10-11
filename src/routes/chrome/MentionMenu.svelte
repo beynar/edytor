@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import TriggerMenu from './TriggerMenu.svelte';
 	import type { MentionItem, TriggerMenuController } from '$lib/index.js';
 
@@ -10,7 +11,7 @@
 		typeof src === 'string' && /^(https?:|data:image\/)/i.test(src.trim()) ? src : undefined;
 </script>
 
-<TriggerMenu {controller}>
+<TriggerMenu {controller} said={words.mention}>
 	{#snippet row(item: MentionItem, index: number)}
 		<button
 			type="button"

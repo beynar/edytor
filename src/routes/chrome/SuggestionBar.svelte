@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import type { SuggestionBarPayload } from '$lib/index.js';
 
 	/**
@@ -7,7 +8,8 @@
 	 * again when the app passed `onRetry`.
 	 */
 	let { bar }: { bar: SuggestionBarPayload } = $props();
-	const { suggestion, labels } = $derived(bar);
+	const { suggestion } = $derived(bar);
+	const labels = $derived(words.suggestions);
 	const keep = (event: MouseEvent) => event.preventDefault();
 </script>
 

@@ -2,14 +2,9 @@
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { tocKinds } from '$lib/crdt/semantics.js';
-	import { tocEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
+	import { tocEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import TableOfContents from './TableOfContents.svelte';
-	import {
-		richTextHeadingLevel,
-		tocLabels,
-		type TocHeadingLevel,
-		type TocPluginOptions
-	} from './toc.js';
+	import { richTextHeadingLevel, type TocHeadingLevel, type TocPluginOptions } from './toc.js';
 
 	export type { TocHeadingLevel, TocPluginOptions };
 
@@ -20,16 +15,15 @@
 	 * headings, live, indented by level; a click scrolls to one (opening the
 	 * closed toggles it sits in). Void: it holds no text, and its list is
 	 * never stored, only drawn. Its preset in the slash menu turns an empty
-	 * line into one, or inserts it after the line; its words are `labels`
-	 * (English by default).
+	 * line into one, or inserts it after the line; its words are the view's
+	 * `toc` labels (English by default).
 	 */
 	export const createTocPlugin =
 		(options: TocPluginOptions = {}): Plugin =>
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!levelOf.has(edytor)) levelOf.set(edytor, options.headingLevel ?? richTextHeadingLevel);
-			const labels = labelsWith(tocEnglish, options.labels);
-			tocLabels.claim(edytor, labels);
+			const labels = labelsOf(edytor, 'toc', tocEnglish);
 			return {
 				blocks: {
 					toc: {
@@ -41,11 +35,12 @@
 							{
 								label: labels.toc,
 								icon: '☰',
-								keywords: keywordsOf(
-									'block.toc',
-									['toc', 'outline', 'headings', 'contents'],
-									options.keywords
-								),
+								keywords: keywordsOf(edytor, 'block.toc', [
+									'toc',
+									'outline',
+									'headings',
+									'contents'
+								]),
 								group: 'Advanced blocks'
 							}
 						],
@@ -58,9 +53,6 @@
 				}
 			};
 		};
-
-	/** The table of contents over the rich text headings. */
-	export const tocPlugin = createTocPlugin();
 </script>
 
 {#snippet toc({ block }: BlockSnippetPayload)}

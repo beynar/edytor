@@ -13,14 +13,11 @@ import type { Snippet } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type {
 	BlockHandleSnippetPayload,
-	BlockHandlesLabels,
 	BlockMenuController,
 	BlockMenuOptions,
 	CodeHeader,
-	CodeLabels,
 	CodePluginOptions,
 	EquationEditor,
-	EquationLabels,
 	EquationPluginOptions,
 	LanguageMenu,
 	LanguageMenuItem,
@@ -28,7 +25,6 @@ import type {
 	TableAddPayload,
 	TableChrome,
 	TableGripPayload,
-	TableLabels,
 	TableMenuItem,
 	TableMenuRow,
 	TablePluginOptions,
@@ -38,7 +34,6 @@ import type {
 	CommentsController,
 	EmbedPluginOptions,
 	ImageControls,
-	ImageEmptyController,
 	ImagePluginOptions,
 	MarqueeBoxPayload,
 	MarqueePluginOptions,
@@ -82,7 +77,7 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<Payload<EmbedPluginOptions['menu']>>().toEqualTypeOf<UrlPasteController>();
 		expectTypeOf<Payload<BookmarkPluginOptions['menu']>>().toEqualTypeOf<UrlPasteController>();
 		expectTypeOf<Payload<ImagePluginOptions['toolbar']>>().toEqualTypeOf<ImageControls>();
-		expectTypeOf<Payload<ImagePluginOptions['empty']>>().toEqualTypeOf<ImageEmptyController>();
+		expectTypeOf<Payload<ImagePluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
 		expectTypeOf<Payload<MediaPluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
 		expectTypeOf<Payload<EmbedPluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
 		expectTypeOf<Payload<BookmarkPluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
@@ -95,15 +90,15 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<Payload<EquationPluginOptions['panel']>>().toEqualTypeOf<EquationEditor>();
 	});
 
-	it('a table’s grip and `+` receive their own payloads, which carry the chrome’s words', () => {
+	it('a table’s grip and `+` receive their own payloads, with no words (the markup’s)', () => {
 		expectTypeOf<Payload<TablePluginOptions['grip']>>().toEqualTypeOf<TableGripPayload>();
 		expectTypeOf<Payload<TablePluginOptions['add']>>().toEqualTypeOf<TableAddPayload>();
 		expectTypeOf<TableGripPayload['grip']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<TableGripPayload['kind']>().toEqualTypeOf<'row' | 'column'>();
-		expectTypeOf<TableGripPayload['labels']>().toEqualTypeOf<TableLabels>();
+		expectTypeOf<TableGripPayload>().not.toHaveProperty('labels');
 		expectTypeOf<TableGripPayload['chrome']>().toEqualTypeOf<TableChrome>();
 		expectTypeOf<TableAddPayload['add']>().toEqualTypeOf<() => void>();
-		expectTypeOf<TableAddPayload['labels']>().toEqualTypeOf<TableLabels>();
+		expectTypeOf<TableAddPayload>().not.toHaveProperty('label');
 	});
 
 	it('the marquee’s box receives its rectangle and what it selects', () => {
@@ -123,7 +118,7 @@ describe('each chrome snippet takes its exported payload', () => {
 			add: string | undefined;
 			grip: string | undefined;
 		}>();
-		expectTypeOf<BlockHandleSnippetPayload['labels']>().toEqualTypeOf<BlockHandlesLabels>();
+		expectTypeOf<BlockHandleSnippetPayload>().not.toHaveProperty('labels');
 		expectTypeOf<BlockHandleSnippetPayload['beside']>().toEqualTypeOf<boolean>();
 		expectTypeOf<BlockHandleSnippetPayload['haspopup']>().toEqualTypeOf<{
 			add: 'listbox' | 'menu' | 'dialog' | undefined;
@@ -134,33 +129,32 @@ describe('each chrome snippet takes its exported payload', () => {
 		>();
 	});
 
-	it('a controller carries its words, its readonly state and a close', () => {
-		expectTypeOf<BlockMenuController>().toHaveProperty('labels');
+	it('a controller carries its readonly state and a close, never the chrome’s words', () => {
+		expectTypeOf<BlockMenuController>().not.toHaveProperty('labels');
 		expectTypeOf<BlockMenuController['readonly']>().toEqualTypeOf<boolean>();
-		expectTypeOf<SlashMenuController>().toHaveProperty('labels');
+		expectTypeOf<SlashMenuController>().not.toHaveProperty('labels');
 		expectTypeOf<SlashMenuController['readonly']>().toEqualTypeOf<boolean>();
 		expectTypeOf<SlashMenuController['close']>().toBeFunction();
-		expectTypeOf<ToolbarController>().toHaveProperty('labels');
-		expectTypeOf<UrlPasteController>().toHaveProperty('labels');
+		expectTypeOf<ToolbarController>().not.toHaveProperty('labels');
+		expectTypeOf<UrlPasteController>().not.toHaveProperty('labels');
 		expectTypeOf<UrlPasteController['close']>().toBeFunction();
-		expectTypeOf<ImageControls>().toHaveProperty('labels');
+		expectTypeOf<ImageControls>().not.toHaveProperty('labels');
 		expectTypeOf<ImageControls['readonly']>().toEqualTypeOf<boolean>();
-		expectTypeOf<ImageEmptyController['readonly']>().toEqualTypeOf<boolean>();
 		expectTypeOf<MediaEmptyController['readonly']>().toEqualTypeOf<boolean>();
-		expectTypeOf<SuggestionBarPayload>().toHaveProperty('labels');
-		expectTypeOf<TableChrome['labels']>().toEqualTypeOf<TableLabels>();
+		expectTypeOf<SuggestionBarPayload>().not.toHaveProperty('labels');
+		expectTypeOf<TableChrome>().not.toHaveProperty('labels');
 		expectTypeOf<TableChrome['readonly']>().toEqualTypeOf<boolean>();
 		expectTypeOf<TableChrome['close']>().toBeFunction();
-		expectTypeOf<CodeHeader['labels']>().toEqualTypeOf<CodeLabels>();
+		expectTypeOf<CodeHeader>().not.toHaveProperty('labels');
 		expectTypeOf<CodeHeader['readonly']>().toEqualTypeOf<boolean>();
 		expectTypeOf<CodeHeader['editable']>().toEqualTypeOf<boolean>();
 		expectTypeOf<CodeHeader['copied']>().toEqualTypeOf<boolean>();
-		expectTypeOf<CodeHeader['languages']>().toEqualTypeOf<LanguageRow[]>();
+		expectTypeOf<CodeHeader['languages']>().toEqualTypeOf<readonly LanguageRow[]>();
 		expectTypeOf<CodeHeader['setLanguage']>().toEqualTypeOf<(id: string) => void>();
-		expectTypeOf<LanguageMenu['labels']>().toEqualTypeOf<CodeLabels>();
+		expectTypeOf<LanguageMenu>().not.toHaveProperty('labels');
 		expectTypeOf<LanguageMenu['readonly']>().toEqualTypeOf<boolean>();
 		expectTypeOf<LanguageMenu['close']>().toBeFunction();
-		expectTypeOf<EquationEditor['labels']>().toEqualTypeOf<EquationLabels>();
+		expectTypeOf<EquationEditor>().not.toHaveProperty('labels');
 		expectTypeOf<EquationEditor['readonly']>().toEqualTypeOf<boolean>();
 		expectTypeOf<EquationEditor['close']>().toBeFunction();
 	});

@@ -4,7 +4,7 @@ description: The file plugin adds Notion's file block, an attachment uploaded th
 icon: paperclip
 ---
 
-`filePlugin` adds Notion's file block: an empty panel (your `empty` snippet) until the block has a file, then the file's name and size, linking to it, with an editable caption. Files are uploaded through the `upload` function you provide, or linked. It is not a default plugin: list it.
+`createFilePlugin()` adds Notion's file block: an empty panel (your `empty` snippet) until the block has a file, then the file's name and size, linking to it, with an editable caption. Files are uploaded through the `upload` function you provide, or linked. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -23,7 +23,7 @@ icon: paperclip
 <Edytor plugins={[file]} />
 ```
 
-A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. `filePlugin` is the plugin without `upload`: links only.
+A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. `createFilePlugin()` is the plugin without `upload`: links only.
 
 ## Options
 
@@ -34,14 +34,6 @@ A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. `fileP
     upload: {
       type: "(file: File) => Promise<string>",
       description: "Upload a file and answer its URL (`report.progress(fraction)` draws the block's bar). Adds an Upload button to the empty block and takes pasted and dropped files no other kind takes. Without it, files are linked only.",
-    },
-    labels: {
-      type: "PartialLabels<'media'>",
-      description: "The empty panel's words (file, upload) and the size format (fileSize), over the English ones. See Localization.",
-    },
-    keywords: {
-      type: "Partial<Record<string, string[]>>",
-      description: "The slash menu's keywords by command id (block.file); they replace the command's own.",
     },
     empty: {
       type: "Snippet<[MediaEmptyController]>",

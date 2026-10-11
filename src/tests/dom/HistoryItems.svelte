@@ -13,7 +13,7 @@
 	const history = untrack(() => new VersionHistory({ client, document, id: uid }));
 </script>
 
-<ul role="listbox" aria-label={history.labels.versions} onkeydown={history.keys}>
+<ul role="listbox" aria-label="Versions" onkeydown={history.keys}>
 	{#each history.versions ?? [] as version, index (version.key)}
 		<li role="presentation">
 			<button
@@ -23,7 +23,7 @@
 				data-key={version.key}
 				data-current={version.key === history.selected}
 				onclick={() => void history.select(version.key)}
-				>{history.titleOf(version)} · {version.editors.length}</button
+				>{history.dateOf(version)} · {version.slot} · {version.editors.length}</button
 			>
 		</li>
 	{/each}

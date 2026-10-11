@@ -37,12 +37,12 @@ export const load: PageServerLoad = async ({ params }) => {
 
 ```svelte title="src/routes/notes/[id]/+page.svelte" check
 <script lang="ts">
-	import { Edytor, codePlugin } from 'edytor';
+	import { Edytor, createCodePlugin } from 'edytor';
 
 	let { data } = $props();
 </script>
 
-<Edytor readonly value={data.value} plugins={[codePlugin]} />
+<Edytor readonly value={data.value} plugins={[createCodePlugin()]} />
 ```
 
 Pass the same plugins you use to edit. A block type no plugin defines renders as a plain block (its text and children) and logs a warning in development.

@@ -21,14 +21,14 @@ Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable 
 
 ## Features
 
-- **Notion-style editing out of the box.** `<Edytor />` alone is a rich text editor with images and block handles: headings, toggle headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks and Notion's hotkeys. Add the Notion theme, a block menu (block colours; drag one block, or every block the selection covers), a slash menu, a selection toolbar, markdown shortcuts (`markdownShortcutsPlugin`) and code blocks.
-- **Pages and a table of contents, opt-in.** `createPagePlugin` links a block to another document (a page per room, opened and named by your app), and `tocPlugin` lists the headings live ([Page](https://edytor.dev/docs/plugins/page), [Table of contents](https://edytor.dev/docs/plugins/table-of-contents)).
-- **Columns, opt-in.** List `columnsPlugin` for Notion's multi-column layouts: drag a block to the edge of another to put them side by side, or pick "2 columns" to "5 columns"; drag the gap to resize. Layouts converge across collaborators and the room ([Columns](https://edytor.dev/docs/plugins/columns)).
-- **Tables, opt-in.** List `tablePlugin` for Notion's simple table: cells of text, <kbd>Tab</kbd> between them, rows and columns added, moved and deleted from the table's edges and grips, resizable columns, header row and column, HTML tables pasted and copied. Concurrent row and column edits converge on every replica ([Table](https://edytor.dev/docs/plugins/table)).
+- **Notion-style editing out of the box.** `<Edytor />` alone is a rich text editor with images and block handles: headings, toggle headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks and Notion's hotkeys. Add the Notion theme, a block menu (block colours; drag one block, or every block the selection covers), a slash menu, a selection toolbar, markdown shortcuts (`createMarkdownShortcutsPlugin()`) and code blocks.
+- **Pages and a table of contents, opt-in.** `createPagePlugin` links a block to another document (a page per room, opened and named by your app), and `createTocPlugin()` lists the headings live ([Page](https://edytor.dev/docs/plugins/page), [Table of contents](https://edytor.dev/docs/plugins/table-of-contents)).
+- **Columns, opt-in.** List `createColumnsPlugin()` for Notion's multi-column layouts: drag a block to the edge of another to put them side by side, or pick "2 columns" to "5 columns"; drag the gap to resize. Layouts converge across collaborators and the room ([Columns](https://edytor.dev/docs/plugins/columns)).
+- **Tables, opt-in.** List `createTablePlugin()` for Notion's simple table: cells of text, <kbd>Tab</kbd> between them, rows and columns added, moved and deleted from the table's edges and grips, resizable columns, header row and column, HTML tables pasted and copied. Concurrent row and column edits converge on every replica ([Table](https://edytor.dev/docs/plugins/table)).
 - **Mentions, page links and your own triggers.** `createMentionPlugin` (`@` people) and `createPageLinkPlugin` (`[[` pages) take your app's search; a plugin's `inputRules` (`:smile:` → 😄) and `triggers` (a menu on a typed character) declare the rest ([Input rules and triggers](https://edytor.dev/docs/plugins/input-rules)).
 - **Comments, opt-in.** `createCommentsPlugin` adds Notion's comment threads: select text, press Comment, and the thread shows in a sidebar beside it with replies, Resolve and Re-open. The room keeps the threads beside the document and sends each change live; the anchor follows the text through edits and is not copied ([Comments](https://edytor.dev/docs/plugins/comments)).
 - **Your markup.** Blocks, marks and inline atoms render through your Svelte snippets; the slash menu, toolbar, block menu and handles take a snippet and keep their behavior.
-- **Your language.** Every word the chrome shows or says, slash keywords included, comes from a labels dictionary each plugin takes; English by default ([Localization](https://edytor.dev/docs/customization/localization)).
+- **Your language.** Every word the package shows or says, slash keywords included, comes from one labels dictionary the view takes (`<Edytor labels>`); your chrome's words are your markup's; English by default ([Localization](https://edytor.dev/docs/customization/localization)).
 - **Synced properties.** `block.data`, `atom.data` and `edytor.data` read and write like plain objects (`bind:value={block.data.title}`); each property and each array item syncs on its own, so concurrent edits of different properties, or of different items of one array, merge.
 - **AI suggestions.** `edytor.suggestions.add(position, content)` proposes text, paragraphs, lists, to-dos or images after, before or inside a block, at the end of its text, or in place of the selection; it streams in, shows only on your screen, and becomes one undo step when accepted ([Suggestions](https://edytor.dev/docs/editor/suggestions)).
 - **Plugins that can veto anything.** Every command is prepared before it writes; plugins see the command and each planned step and can refuse or replace it.
@@ -53,9 +53,9 @@ pnpm add edytor
 <script lang="ts">
 	import {
 		Edytor,
-		codePlugin,
+		createCodePlugin,
 		createSlashMenuPlugin,
-		markdownShortcutsPlugin,
+		createMarkdownShortcutsPlugin,
 		richTextPlaceholder,
 		type JSONDoc,
 		type SlashMenuController
@@ -65,7 +65,11 @@ pnpm add edytor
 	const value: JSONDoc = {
 		children: [{ type: 'paragraph', content: [{ text: 'Hello, World!' }] }]
 	};
-	const plugins = [codePlugin, markdownShortcutsPlugin, createSlashMenuPlugin({ menu })];
+	const plugins = [
+		createCodePlugin(),
+		createMarkdownShortcutsPlugin(),
+		createSlashMenuPlugin({ menu })
+	];
 </script>
 
 <!-- The chrome is headless: your snippet draws the menu, the plugin gives it its keys and ARIA. -->

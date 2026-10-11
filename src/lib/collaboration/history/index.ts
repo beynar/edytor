@@ -16,6 +16,6 @@ export {
 export { versionDiff, type VersionChange, type VersionDiff } from './diff.js';
 export {
 	VersionHistory,
-	type HistoryPanelLabels,
+	type VersionHistoryStatus,
 	type VersionHistoryOptions
 } from './panel.svelte.js';

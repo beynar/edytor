@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import type { EquationEditor } from '$lib/index.js';
 
 	/**
@@ -8,7 +9,7 @@
 	 */
 	let { editor }: { editor: EquationEditor } = $props();
 
-	const labels = $derived(editor.labels);
+	const labels = $derived(words.equation);
 </script>
 
 <div data-edytor-equation-editor role="dialog" aria-label={labels.editor}>

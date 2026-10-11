@@ -65,7 +65,6 @@ For people mentions, use the [mention plugin](/docs/plugins/mention): `@` opens 
 
 	const days: Trigger<string> = {
 		char: '@',
-		name: 'Dates',
 		items: (query) => ['today', 'tomorrow'].filter((day) => day.startsWith(query)),
 		// `from` is where the `@` was: the atom goes there, the caret after it.
 		onPick: (day, { block, from, caret }) => {

@@ -10,8 +10,6 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { InputRule, InputRuleContext, PluginOperations } from '$lib/plugins.js';
-import type { Text } from '$lib/text/text.svelte.js';
-import type { TextOperations } from '$lib/text/text.utils.js';
 
 /** A line of a `lines` island (a code block's line): no rule, no trigger runs there. */
 export const inCodeLines = (edytor: Edytor, block: Block) => {
@@ -39,109 +37,95 @@ export const inputRulesHook = (
 	/** A rule's replacement, or the typed text after it declined, is running: no rule runs on its writes. */
 	let running = false;
 
-	/** The typed text lands as typed, the caret after it. */
-	const typeAsIs = (text: Text, payload: TextOperations['insertText'], at: number) => {
-		text.insertText(payload);
-		edytor.dispatcher.caret(text, at + payload.value.length);
-	};
-
 	return (change) => {
+		const { dispatcher, facade, selection } = edytor;
 		if (running || change.operation !== 'insertText' || !rules.length) return;
 		// Typed text only: a paste or a drop (a URL pasted at the caret) completes no rule.
-		if (edytor.dispatcher.command?.startsWith('insertFrom')) return;
+		if (dispatcher.command?.startsWith('insertFrom')) return;
 		const { payload, block, prevent, text } = change;
-		const caret = edytor.selection.caret;
-		const { startText, yStart } = edytor.selection.textRange();
+		const { startText, yStart } = selection.textRange();
 		// Only text typed at the caret: an insertion elsewhere completes no rule.
-		if (!caret || !startText || text !== startText || caret.block.id !== block.id) return;
+		if (!selection.caret || !text || text !== startText) return;
 		if ((payload.start ?? yStart) !== yStart || (payload.end ?? yStart) !== yStart) return;
 		if (!payload.value || inCodeLines(edytor, block)) return;
-		const before = startText.stringContent.slice(0, yStart);
+		const before = text.stringContent.slice(0, yStart);
 		const subject = before + payload.value;
-		// The first rule that matches, with the typed text inside its match.
-		const first = rules.findIndex((rule) => {
+		// The rules that match, with the typed text inside their match.
+		const matches = rules.flatMap((rule) => {
 			const match = matchAtEnd(rule.find, subject);
-			return !!match && match.index <= before.length;
+			return match && match.index <= before.length ? [{ rule, match }] : [];
 		});
-		if (first === -1) return;
+		if (!matches.length) return;
+
+		/** The typed text lands as typed, the caret after it. */
+		const typeAsIs = () => {
+			text.insertText(payload);
+			dispatcher.caret(text, yStart + payload.value.length);
+		};
+
+		/**
+		 * Run `rule` over `match`: whether it wrote, or `null` when it declined
+		 * (the next rule is asked).
+		 */
+		const apply = (rule: InputRule, match: RegExpExecArray): boolean | null => {
+			/** The match's start in the segment; the match in the block, `from` to the caret. */
+			const start = match.index;
+			const from = text.segStart + start;
+			const to = text.segStart + yStart;
+			let removed: boolean | null = null;
+			/** Remove the match in the same plan as `then`'s first operation: `ctx.remove`. */
+			const remove = (then?: () => unknown) => {
+				const last = dispatcher.last;
+				if (to > from) {
+					const removal = facade.prepare.deleteText(block.id, from, to - from);
+					const run = dispatcher.lead(removal, () => then?.());
+					// Nothing took the lead: the matched text goes on its own, unless `then` declined.
+					if (!run.taken && run.out !== false && text.index !== -1)
+						block.deleteContentAtRange({
+							start: [text.index, start],
+							end: [text.index, yStart]
+						});
+				} else dispatcher.alone(() => then?.());
+				removed = dispatcher.last !== last && dispatcher.last?.status === 'applied';
+				return removed;
+			};
+			const ctx: InputRuleContext = {
+				edytor,
+				block,
+				from,
+				to,
+				typed: payload.value,
+				caret: (offset) => void dispatcher.caret({ block, offset }),
+				remove
+			};
+			const last = dispatcher.last;
+			// Whatever the rule writes is a step of its own, even when no removal leads it.
+			const out = dispatcher.alone(() => rule.replace(match, ctx));
+			if (typeof out === 'string') {
+				const written = remove(() =>
+					dispatcher.alone(() => text.insertText({ value: out, start, end: start }))
+				);
+				if (written) dispatcher.caret({ block, offset: from + out.length });
+				return written;
+			}
+			if (out === false || out === null) return removed;
+			if (removed !== null) return removed;
+			// Written without `remove`: what its own commands did decides.
+			if (dispatcher.last !== last) return dispatcher.last?.status === 'applied';
+			return out === true ? true : null;
+		};
 
 		prevent(() => {
 			running = true;
 			try {
-				for (const rule of rules.slice(first)) {
-					const match = matchAtEnd(rule.find, subject);
-					if (!match || match.index > before.length) continue;
-					const written = apply(rule, match, startText, block, yStart, caret.offset, payload);
-					if (written !== null) {
-						if (!written) typeAsIs(startText, payload, yStart);
-						return;
-					}
+				for (const { rule, match } of matches) {
+					const written = apply(rule, match);
+					if (written !== null) return written || typeAsIs();
 				}
-				typeAsIs(startText, payload, yStart);
+				typeAsIs();
 			} finally {
 				running = false;
 			}
 		});
 	};
-
-	/**
-	 * Run `rule` over `match`: whether it wrote, or `null` when it declined
-	 * (the next rule is asked).
-	 */
-	function apply(
-		rule: InputRule,
-		match: RegExpExecArray,
-		text: Text,
-		block: Block,
-		yStart: number,
-		caretOffset: number,
-		payload: TextOperations['insertText']
-	): boolean | null {
-		const { dispatcher, facade } = edytor;
-		/** The match's start in the segment, and in the block. */
-		const start = match.index;
-		const from = caretOffset - (yStart - start);
-		const to = caretOffset;
-		let removed: boolean | null = null;
-		/** Remove the match in the same plan as `then`'s first operation: `ctx.remove`. */
-		const removeMatch = (then?: () => unknown) => {
-			const last = dispatcher.last;
-			if (to > from) {
-				const removal = facade.prepare.deleteText(block.id, from, to - from);
-				const run = dispatcher.lead(removal, () => then?.());
-				// Nothing took the lead: the matched text goes on its own, unless `then` declined.
-				if (!run.taken && run.out !== false && text.index !== -1)
-					block.deleteContentAtRange({
-						start: [text.index, start],
-						end: [text.index, yStart]
-					});
-			} else dispatcher.alone(() => then?.());
-			removed = dispatcher.last !== last && dispatcher.last?.status === 'applied';
-			return removed;
-		};
-		const ctx: InputRuleContext = {
-			edytor,
-			block,
-			from,
-			to,
-			typed: payload.value,
-			caret: (offset) => void dispatcher.caret({ block, offset }),
-			remove: removeMatch
-		};
-		const last = dispatcher.last;
-		// Whatever the rule writes is a step of its own, even when no removal leads it.
-		const out = dispatcher.alone(() => rule.replace(match, ctx));
-		if (typeof out === 'string') {
-			const written = removeMatch(() =>
-				dispatcher.alone(() => text.insertText({ value: out, start, end: start }))
-			);
-			if (written) dispatcher.caret({ block, offset: from + out.length });
-			return written;
-		}
-		if (out === false || out === null) return removed ?? null;
-		if (removed !== null) return removed;
-		// Written without `remove`: what its own commands did decides.
-		if (dispatcher.last !== last) return dispatcher.last?.status === 'applied';
-		return out === true ? true : null;
-	}
 };

@@ -22,14 +22,14 @@ type At = { block: string; offset: number };
  * Apply a prepared op and answer the caret it reports (`null` when it planned
  * none); the caret's block and its parent are normalized in its transaction.
  */
-export const applyAt = (edytor: Edytor, plan: Prepared): At | null => {
+export function applyAt(this: Edytor, plan: Prepared): At | null {
 	if (!('writes' in plan) || !plan.at) return null;
-	const { facade, dispatcher } = edytor;
+	const { facade, dispatcher } = this;
 	facade.apply(plan);
 	dispatcher.request(plan.at.block, normalizeContent);
 	dispatcher.request(facade.parentOf(plan.at.block) ?? 'root', normalizeChildren);
 	return plan.at;
-};
+}
 
 /** The caret an op answered, as a text handle and offset. */
 export function caretOf(this: Edytor, at: At | null | undefined): readonly [Text | null, number] {
@@ -52,11 +52,6 @@ export function prepareDeleteContent(this: Edytor, { replace = false, selection 
 	});
 	const prepare = replace ? this.facade.prepare.replaceRange : this.facade.prepare.deleteRange;
 	return prepare(at(startText, yStart), at(endText, yEnd), viewOf(this));
-}
-
-/** Write a range or flow plan (`applyAt`) and answer the caret the op decided. */
-export function caretWritten(this: Edytor, plan: Prepared): At | null {
-	return applyAt(this, plan);
 }
 
 /** The range deletion's caret; refused at preparation: the range's start; vetoed: none. */

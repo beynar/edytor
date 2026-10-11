@@ -9,6 +9,7 @@
  */
 import type { Text } from '$lib/text/text.svelte.js';
 import type { Attempt } from './attempt.js';
+import type { SelectionPoint } from './selection.js';
 
 /** The surface as the session sees it: the projector, the observer, the DOM selection. */
 export interface SurfacePort {
@@ -33,7 +34,7 @@ export interface SurfacePort {
 	 * ends where a line wraps), or `null` where nothing is laid out
 	 * (`surface/lines.ts`).
 	 */
-	sameLine(a: { text: Text; offset: number }, b: { text: Text; offset: number }): boolean | null;
+	sameLine(a: SelectionPoint, b: SelectionPoint): boolean | null;
 }
 
 /** The input commands a key binding runs (`events/beforeInputCommands.ts`). */

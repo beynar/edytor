@@ -44,12 +44,11 @@ const shouldPreventNativeInteractiveDeletionKey = (event: KeyboardEvent) =>
 	!isNativeTextControlEvent(event) &&
 	(event.key.toLowerCase() === 'backspace' || event.key.toLowerCase() === 'delete');
 
+/** A command chord at a caret (a block or atom selection projects no caret). */
 const shouldRefreshSelectionBeforeKeyDown = (edytor: Edytor, event: KeyboardEvent) =>
 	!/^(Alt|Control|Meta|Shift)$/.test(event.key) &&
 	hasCommandModifier(event) &&
 	edytor.selection.projection.isCollapsed &&
-	edytor.selection.selectedBlocks.size === 0 &&
-	edytor.selection.selectedInlineBlock.size === 0 &&
 	!isNativeInteractiveEvent(event);
 
 /** A character key with no command modifier (a dead key's name is no character). */

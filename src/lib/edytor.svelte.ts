@@ -87,7 +87,7 @@ import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import {
 	caretOf,
 	deleteBlocks,
-	caretWritten,
+	applyAt,
 	rangeCaret,
 	prepareDeleteBlocks,
 	prepareDeleteContent,
@@ -261,7 +261,7 @@ export class Edytor {
 			parked: () => this.projector.parked(),
 			clear: () => clearDomSelection(this.node),
 			pointAt: (node, offset) => textPointAt.call(this.selection, node, offset),
-			sameLine: (a, b) => onOneLine(a, b)
+			sameLine: (a, b) => onOneLine(this.selection.textAt(a), this.selection.textAt(b))
 		},
 		input: {
 			runIntent: (inputType) => runIntent(this, inputType),
@@ -931,12 +931,12 @@ export class Edytor {
 	deleteContentWithinSelection = planned(
 		'deleteContentWithinSelection',
 		prepareDeleteContent,
-		caretWritten,
+		applyAt,
 		rangeCaret
 	);
 
 	/** @internal */
-	insertFlow = planned('insertFlow', prepareFlow, caretWritten, caretOf);
+	insertFlow = planned('insertFlow', prepareFlow, applyAt, caretOf);
 
 	deleteBlocks = planned('deleteBlocks', prepareDeleteBlocks, deleteBlocks);
 

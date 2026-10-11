@@ -15,6 +15,7 @@ import * as YPatched from '../../src/lib/crdt/vendor/yjs/src/index.js';
 import * as YBaseline from '../vendor-baseline/yjs/index.js';
 import * as delta from 'lib0-v14/delta';
 import { applyDelta, toDelta } from '../../src/tests/crdt/harness/delta.js';
+import { UndoManager } from '../../src/tests/crdt/harness/undo.js';
 
 let failures = 0;
 const check = (name, cond, extra = '') => {
@@ -38,11 +39,12 @@ const fragmented = (Y, doc, n) => {
 };
 
 const sync = (a, b) => {
-	// state-vector-diffed update exchange, both directions
+	// state-vector-diffed update exchange, both directions; the fork's one
+	// encoding is upstream's v2 (YP17)
 	const ua = YPatched.encodeStateAsUpdate(a, YBaseline.encodeStateVector(b));
-	const ub = YBaseline.encodeStateAsUpdate(b, YPatched.encodeStateVector(a));
+	const ub = YBaseline.encodeStateAsUpdateV2(b, YPatched.encodeStateVector(a));
 	YPatched.applyUpdate(a, ub);
-	YBaseline.applyUpdate(b, ua);
+	YBaseline.applyUpdateV2(b, ua);
 };
 
 console.log('== interop: baseline -> patched bootstrap ==');
@@ -97,7 +99,7 @@ check('after deletes: delta identical', normDelta(tA) === normDelta(tB));
 check('after deletes: lengths equal', tA.length === tB.length);
 
 console.log('== undo on patched side, synced to baseline ==');
-const um = new YPatched.UndoManager(tA, { trackedOrigins: new Set([A]) });
+const um = new UndoManager(tA, { trackedOrigins: new Set([A]) });
 A.transact(() => applyDelta(tA, delta.create().retain(5).insert('UNDO-ME', { b: true })), A);
 sync(A, B);
 check('pre-undo delta identical', normDelta(tA) === normDelta(tB));

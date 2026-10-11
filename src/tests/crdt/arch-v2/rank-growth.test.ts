@@ -150,11 +150,12 @@ describe('EW-02: ranks and documents stay small under typing and reordering', ()
 			ok(ed.moveBlock(id, { parent: null, index: up ? index - 1 : index + 1 }));
 		}
 		const { rank, bytes } = measure(document);
-		// Measured: 23 characters (one rank of two segments, 32 in the format
-		// before P7; the others one, 13), 69,229 bytes (16, 70,647 before P7;
-		// 151,975 before the history kept 200 steps, P6; before FX-04: 32;
-		// wave 13's source-ranked moves: 10 MB).
-		expect(rank).toBeLessThanOrEqual(24);
+		// Measured: 25 characters (one rank of two segments; 23 before schema
+		// 6, whose seed writer ids differ; 32 in the format before P7; the
+		// others one, 13), 69,229 bytes (16, 70,647 before P7; 151,975 before
+		// the history kept 200 steps, P6; before FX-04: 32; wave 13's
+		// source-ranked moves: 10 MB).
+		expect(rank).toBeLessThanOrEqual(25);
 		expect(bytes).toBeLessThanOrEqual(75_000);
 	});
 });

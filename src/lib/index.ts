@@ -15,7 +15,7 @@
  *
  * - `edytor/crdt/edytor` — the document API without Svelte (Node, Workers),
  *   and the full facade vocabulary (`BlockSpec`, `Destination`,
- *   `ProjectedDoc`, `DocAnchor`, …), attribution, migration and `bindCrdt`;
+ *   `ProjectedDoc`, `DocAnchor`, …), attribution and `bindCrdt`;
  * - `edytor/protocol` — the wire and coordinator vocabulary (frames,
  *   message types, codecs, generation records, admission gates, the raw
  *   provider classes);

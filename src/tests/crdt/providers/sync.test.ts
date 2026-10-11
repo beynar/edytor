@@ -92,12 +92,7 @@ describe('SY01: sync protocol over real providers', () => {
 		const u3 = Y.encodeStateAsUpdate(docA);
 
 		const apply = (doc, update) => {
-			const e = encoding.createEncoder();
-			sync.writeUpdate(e, update);
-			const msg = encoding.toUint8Array(e);
-			const dec = decoding.createDecoder(msg);
-			const enc = encoding.createEncoder();
-			expect(sync.readSyncMessage(dec, enc, doc, 'test')).toBe(sync.messageYjsUpdate);
+			expect(sync.applyRemote(doc, update, 'test')).toMatchObject({ applied: true, problem: null });
 		};
 
 		// deliver u3, u1, u2 — then duplicates
@@ -126,13 +121,13 @@ describe('SY01: sync protocol over real providers', () => {
 		const e1 = encoding.createEncoder();
 		sync.writeSyncStep1(e1, docB);
 		const dec1 = decoding.createDecoder(encoding.toUint8Array(e1));
-		const enc1 = encoding.createEncoder();
-		expect(sync.readSyncMessage(dec1, enc1, docA, 'test')).toBe(sync.messageYjsSyncStep1);
+		expect(decoding.readVarUint(dec1)).toBe(sync.messageYjsSyncStep1);
+		const reply = encoding.createEncoder();
+		sync.writeSyncStep2(reply, docA, decoding.readVarUint8Array(dec1));
 		// A's reply is a SyncStep2 with just the diff
-		const replyDec = decoding.createDecoder(encoding.toUint8Array(enc1));
-		expect(sync.readSyncMessage(replyDec, encoding.createEncoder(), docB, 'test')).toBe(
-			sync.messageYjsSyncStep2
-		);
+		const replyDec = decoding.createDecoder(encoding.toUint8Array(reply));
+		expect(decoding.readVarUint(replyDec)).toBe(sync.messageYjsSyncStep2);
+		sync.applyRemote(docB, decoding.readVarUint8Array(replyDec), 'test');
 		expect(docB.get('content').getAttr('b')).toBe(2);
 		expect(Y.encodeStateVector(docB)).toEqual(Y.encodeStateVector(docA));
 	});

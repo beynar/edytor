@@ -1,5 +1,6 @@
 import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 import * as t from 'lib0-v14/testing'
+import { UndoManager } from '../../../src/tests/crdt/harness/undo.js'
 
 /**
  * @param {Y.Node<{text:true}>} ytext
@@ -131,7 +132,7 @@ export const testRelativePositionWithUndo = _tc => {
   const ytext = ydoc.get()
   ytext.insert(0, 'hello world')
   const rpos = Y.createRelativePositionFromTypeIndex(ytext, 1)
-  const um = new Y.UndoManager(ytext)
+  const um = new UndoManager(ytext)
   ytext.delete(0, 6)
   t.assert(Y.createAbsolutePositionFromRelativePosition(rpos, ydoc)?.index === 0)
   um.undo()

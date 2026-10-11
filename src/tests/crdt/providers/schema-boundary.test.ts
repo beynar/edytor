@@ -400,10 +400,8 @@ describe('same-generation forged stamp — BroadcastChannel (IndexeddbPersistenc
 		const rows = await readRows(name);
 		for (const row of rows) {
 			const probe = new Y.Doc();
-			// The compacted snapshot row is v2, maybe gzip (P5).
-			const update = await readRow(row);
-			if (update instanceof Uint8Array) Y.applyUpdate(probe, update);
-			else Y.applyUpdateV2(probe, update.v2);
+			// The compacted snapshot row, maybe gzip (P5).
+			Y.applyUpdate(probe, await readRow(row));
 			expect(E.schemaVersion(probe)).not.toBe(99);
 		}
 		await pA.destroy();

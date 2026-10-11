@@ -123,7 +123,7 @@ describe('remote exclusion — no apply path enters local undo', () => {
 		document.destroy();
 	});
 
-	it('protocol inbound applies (readSyncMessage) never capture — stamped or not', () => {
+	it('protocol inbound applies (applyRemote) never capture — stamped or not', () => {
 		const { remote, hydrate } = remotePeer('seed');
 		const document = createDocument();
 		hydrate(document);
@@ -137,11 +137,7 @@ describe('remote exclusion — no apply path enters local undo', () => {
 		// layer's remoteApplyOrigin default then stamps it).
 		for (const origin of [{ provider: true }, undefined] as const) {
 			const update = Y.encodeStateAsUpdate(remote.doc, Y.encodeStateVector(document.doc));
-			const e = encoding.createEncoder();
-			syncProtocol.writeUpdate(e, update);
-			const dec = decoding.createDecoder(encoding.toUint8Array(e));
-			const enc = encoding.createEncoder();
-			syncProtocol.readSyncMessage(dec, enc, document.doc, origin);
+			syncProtocol.applyRemote(document.doc, update, origin);
 			expect(document.history.undoStack).toHaveLength(0);
 		}
 		expect(blockText(document, firstBlock(document).id)).toBe('seed wire');

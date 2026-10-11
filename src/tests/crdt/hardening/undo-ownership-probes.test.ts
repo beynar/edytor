@@ -42,6 +42,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 400_000;
@@ -226,7 +227,7 @@ describe('gateH-R3 — torn committed frame (R5-D6 joint finding)', () => {
 		// One semantic change carrying the repaired state — the repair
 		// transaction's identical recompute publishes nothing.
 		expect(changes.length).toBe(1);
-		expect(changes[0].origin instanceof Y.UndoManager).toBe(true);
+		expect(changes[0].origin).toBe(um);
 		const texts = new Map([...changes[0].content.entries()].map(([k, v]: any) => [k, flat(v)]));
 		// 'b' is unchanged ('hello ' → 'hello ') → absent from the diff;
 		// 'tail' gained the resurrected atoms.

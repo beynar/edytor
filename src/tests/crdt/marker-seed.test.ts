@@ -20,6 +20,7 @@ import { describe, expect, test } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
 import { toDelta, applyDelta } from './harness/delta.js';
+import { UndoManager } from './harness/undo.js';
 
 /** Build a fragmented formatted text: n single-char items separated by format markers. */
 const buildFragmented = (doc, name, n) => {
@@ -128,7 +129,7 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 			const doc = newDoc();
 			const t = buildFragmented(doc, 't', 120);
 			if (!withMarkers) t._searchMarker = null;
-			const um = new Y.UndoManager(t);
+			const um = new UndoManager(t);
 			doc.transact(() => applyDelta(t, delta.create().retain(50).insert('ZZ', { b: true })));
 			doc.transact(() => applyDelta(t, delta.create().retain(30).delete(20)));
 			um.undo();

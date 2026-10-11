@@ -330,7 +330,7 @@ describe('H7: the stored size after a purge', () => {
 		const room = replica('room', seedUpdate(blocks, defaultSemantics), LIVE + 1, {
 			semantics: defaultSemantics
 		});
-		const size = () => Y.encodeStateAsUpdateV2(room.doc).length;
+		const size = () => Y.encodeStateAsUpdate(room.doc).length;
 		const full = size();
 		ok(room.ed.deleteBlocks(blocks.slice(1).map((b) => b.id)));
 		const deleted = size();
@@ -341,8 +341,8 @@ describe('H7: the stored size after a purge', () => {
 		const alone = replica('alone', seedUpdate([blocks[0]], defaultSemantics), LIVE + 2, {
 			semantics: defaultSemantics
 		});
-		const visible = Y.encodeStateAsUpdateV2(alone.doc).length;
-		const stored = async (r) => (await packed(Y.encodeStateAsUpdateV2(r.doc))).length;
+		const visible = Y.encodeStateAsUpdate(alone.doc).length;
+		const stored = async (r) => (await packed(Y.encodeStateAsUpdate(r.doc))).length;
 		console.info(
 			`H7 size (v2 / gzip v2): purged ${purged} / ${await stored(room)} B, deleted ${deleted} B, full ${full} B, visible alone ${visible} / ${await stored(alone)} B`
 		);

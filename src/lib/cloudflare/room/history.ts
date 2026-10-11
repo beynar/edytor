@@ -5,7 +5,6 @@
  * and undoing that restore. The stores themselves are `../history.ts`.
  */
 import { Y } from '../../crdt/engine.js';
-import * as E from '../../crdt/protocol.js';
 import { gunzip, packed } from '../../crdt/storage.js';
 import {
 	asEngineDoc,
@@ -15,7 +14,7 @@ import {
 	engineOps,
 	stepsOf
 } from '../../crdt/structs.js';
-import type { JSONDoc, YDoc, YUndoManager } from '../../crdt/index.js';
+import type { JSONDoc, YUndoManager } from '../../crdt/index.js';
 import type { Attachment, RestoreResult, SocketIdentity } from '../DocumentRoom.js';
 import { PURGE_ORIGIN, RESTORE_ORIGIN, noTimers } from './shared.js';
 import {
@@ -311,15 +310,7 @@ export class RoomHistory {
 			return null;
 		const bytes = await gunzip(found.value);
 		return noTimers(() => {
-			let doc: YDoc;
-			try {
-				doc = admit([{ v2: bytes }], `room ${room.ctx.id} version ${key}`, () => null);
-			} catch (error) {
-				// A version written by generation 4 reads through its JSON (`room.generation.convert`).
-				const problem = (error as { problem?: { kind?: string; version?: number } }).problem;
-				if (problem?.kind !== 'unsupported' || problem.version !== E.PREVIOUS_SCHEMA) throw error;
-				return crdt.generations.previousJSON([{ v2: bytes }], (d) => room.facadeOf(d));
-			}
+			const doc = admit(bytes, `room ${room.ctx.id} version ${key}`, () => null);
 			const facade = room.facadeOf(doc);
 			try {
 				return facade.toJSON();
@@ -469,11 +460,6 @@ export class RoomHistory {
 					};
 	}
 
-	/** Forget the last restore's step (its table was emptied: a conversion). */
-	clearRestore() {
-		this.restoreStep = null;
-	}
-
 	/** Forget the restore's step and the open slot's editors (a reset dropped their tables). */
 	forget() {
 		this.restoreStep = null;
@@ -501,7 +487,7 @@ export class RoomHistory {
 		this.restoreStep = null;
 		room.sql.exec(`DELETE FROM ${room.tables.restore}`);
 		const history = this.restoreManager;
-		if (history !== null) room.facade.releaseHistory(history);
+		if (history !== null) history.clear();
 		const doc = room.live;
 		if (doc === null) return;
 		const gc = collects(doc);

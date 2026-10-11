@@ -357,11 +357,7 @@ export class Admission {
 		if (syncType !== E.messageYjsSyncStep2 && syncType !== E.messageYjsUpdate) {
 			return room.refuse(ws, { reason: 'malformed', detail: `sync type ${syncType}` });
 		}
-		// A SyncStep2 is v2 on the wire: every path below reads v1.
-		const update = decode(() => {
-			const payload = E.readVarUint8Array(decoder);
-			return syncType === E.messageYjsSyncStep2 ? sync.step2Update(payload) : payload;
-		});
+		const update = decode(() => E.readVarUint8Array(decoder));
 		const started = now();
 		try {
 			this.onUpdate(ws, attachment, doc, update);

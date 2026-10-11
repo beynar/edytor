@@ -2754,7 +2754,7 @@ readiness contract requires:
 
 `sync()` is the only transition out of `pending`, and it is the
 document-side admission re-check: a doc that arrived in a problem
-state (unversioned/unsupported/foreign/legacy — e.g. via raw
+state (unversioned/unsupported/foreign — e.g. via raw
 `applyUpdate` bypass writes) refuses there with a typed error, stays
 `pending`, and preserves the state — never silently becoming `local`.
 
@@ -3073,7 +3073,7 @@ export declare class EdytorDocument {
 - `rendersContent`: Whether kind `type` renders its own content slot (undeclared kinds do).
 - `adoptSemantics`: Contribute document-level semantics — the seam views use to seed the structural roles implied by their plugin block definitions.
 - `sync`: The readiness transition — decide the document's content state.
-- `history`: The default local history (registry-scoped `Y.UndoManager` — `undo`/`redo`/`stopCapturing`/stacks).
+- `history`: The default local history (the registry-scoped undo manager — `undo`/`redo`/`stopCapturing`/stacks).
 - `trackOrigin`: Track a local-edit transaction origin for history capture — the seam views use to enroll their own `TRANSACTION` instance in this document's history.
 - `untrackOrigin`: Release a previously-tracked origin — the view-teardown counterpart of `trackOrigin`.
 - `clearHistory`: Drop the undo/redo stacks.
@@ -7093,7 +7093,7 @@ export declare class ToolbarController {
     readonly labels: ToolbarLabels;
     private shown;
     linkUrl: string;
-    panel: "link" | "color" | "turn" | null;
+    panel: "color" | "link" | "turn" | null;
     private selectionSnapshot;
     private isRestoringSelection;
     private focusField;
@@ -7352,15 +7352,14 @@ export declare class UndecodableUpdateError extends Error {
 
 ## UnsupportedDocError
 
-Error raised by `assertUsableDoc` — the doc cannot host a v14 facade.
-`kind` distinguishes a foreign engine object (a real v13 `yjs` Doc — a
-different CRDT implementation entirely) from a v14 doc that decodes the
-legacy v13 Edytor schema (applied v13 update rows awaiting migration).
+Error raised by `assertUsableDoc` — the doc cannot host a v14 facade:
+a foreign engine object (a v13 `yjs` Doc — a different CRDT implementation
+entirely).
 
 ```ts
 export declare class UnsupportedDocError extends Error {
-    readonly kind: 'foreign' | 'legacy';
-    constructor(kind: 'foreign' | 'legacy');
+    readonly kind: 'foreign';
+    constructor(kind: 'foreign');
 }
 ```
 

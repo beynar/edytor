@@ -22,7 +22,8 @@ export type EngineApi = typeof Engine;
 
 export type YDoc = InstanceType<typeof Y.Doc>;
 export type YNode = InstanceType<typeof Y.Node>;
-export type YUndoManager = InstanceType<typeof Y.UndoManager>;
+/** The document's undo manager (`doc/history.ts`). */
+export type YUndoManager = import('./doc/history.js').UndoManager;
 export type YTransaction = Y.Transaction;
 export type YItem = Y.Item;
 

@@ -19,11 +19,11 @@ export class AbstractStruct {
      */
     mergeWith(_right: GC | Item | Skip): boolean;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} _encoder The encoder to write data to.
+     * @param {UpdateEncoder} _encoder The encoder to write data to.
      * @param {number} _offset
      * @param {number} _encodingRef
      */
-    write(_encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _encodingRef: number): void;
+    write(_encoder: UpdateEncoder, _offset: number, _encodingRef: number): void;
     /**
      * @param {Transaction} _transaction
      * @param {number} _offset

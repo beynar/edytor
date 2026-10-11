@@ -117,12 +117,12 @@ const entries = {
 };
 
 // The exact engine symbols referenced by shipped src/lib (grep-verified):
-// Doc, Node, UndoManager, transact, applyUpdate, encodeStateAsUpdate,
+// Doc, Node, transact, applyUpdate, encodeStateAsUpdate,
 // encodeStateVector + the relative-position helpers used by text anchors.
 const usedSurfaceEntry = `
 import * as Y from '${ROOT}dist/crdt/vendor/yjs/src/index.js';
 export const used = [
-	Y.Doc, Y.Node, Y.UndoManager, Y.transact,
+	Y.Doc, Y.Node, Y.transact,
 	Y.applyUpdate, Y.encodeStateAsUpdate, Y.encodeStateVector,
 	Y.createRelativePositionFromTypeIndex, Y.createRelativePositionFromJSON,
 	Y.createAbsolutePositionFromRelativePosition, Y.relativePositionToJSON

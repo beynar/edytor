@@ -42,13 +42,9 @@ const abs = Y.createAbsolutePositionFromRelativePosition(
 assert.equal(abs.index, 3);
 assert.equal(abs.type, para);
 
-// UndoManager
-const um = new Y.UndoManager(doc);
-doc.transact(() => para.insert(11, '!'));
-um.undo();
-assert.equal(para.toString(), '<paragraph>hello world</paragraph>');
-um.redo();
-assert.equal(para.toString(), '<paragraph>hello world!</paragraph>');
+// The engine ships no undo manager: a document's history is edytor's
+// (`createUndoManager`, `document.history`).
+assert.equal('UndoManager' in Y, false);
 
 // ── package boundary: node-safe subpaths vs the component root ───────────
 //
@@ -66,12 +62,12 @@ await assert.rejects(
 
 // `edytor/crdt/edytor` — the bindings subpath (the engine path `edytor/crdt`
 // stays the raw vendored module). This is THE public surface for
-// node/SSR-side CRDT work: Doc, facade, awareness, providers, migration.
+// node/SSR-side CRDT work: Doc, facade, awareness, providers.
 const bindings = await import('edytor/crdt/edytor');
 assert.equal(typeof bindings.bindCrdt, 'function');
 assert.equal(typeof bindings.Awareness, 'function');
 // D-15 (C1): the `bind*` building blocks are internal — `bindCrdt(Y)` is the
-// one composition entry (`.doc`, `.providers`, `.migration`, `.sync`, …).
+// one composition entry (`.doc`, `.providers`, `.sync`, …).
 for (const retired of [
 	'bindEdytorDoc',
 	'bindMigration',
@@ -123,8 +119,7 @@ assert.equal(awareness.getLocalState(), null);
 // Providers construct through the bound stack (no engine import inside).
 assert.equal(typeof crdt.providers.IndexeddbPersistence, 'function');
 assert.equal(typeof crdt.providers.WebsocketProvider, 'function');
-assert.equal(typeof crdt.migration.migrate, 'function');
-assert.equal(typeof crdt.sync.readSyncMessage, 'function');
+assert.equal(typeof crdt.sync.applyRemote, 'function');
 
 // The README-documented sync factories ship on the package root for Svelte
 // consumers (`import { Edytor, createIndexeddbSync } from 'edytor'` — checked

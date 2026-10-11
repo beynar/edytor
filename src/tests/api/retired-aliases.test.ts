@@ -13,7 +13,6 @@
  *   types, which this file's type check does not load).
  * - `block.suggestText`, `block.suggestions`, `block.acceptSuggestedText`:
  *   `edytor.suggestions` with `{ end: block.id }`.
- * - `MigrateOptions.leaseMs`/`waitMs`/`pollMs`/`owner` (accepted no-ops).
  *
  * A retired name passed anyway (an untyped caller: `hotKeys` as an option or
  * a prop, `blockDnd` as a prop, whatever its value) registers nothing and
@@ -35,7 +34,6 @@ import {
 import type { EdytorProps } from '$lib/components/Edytor.svelte';
 import { Edytor, type EdytorOptions } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import type { MigrateOptions } from '$lib/crdt/migration/migrate.js';
 import type { WebsocketSyncOptions } from '$lib/collaboration/providers.js';
 import { richTextPlugin } from '../../routes/chrome/plugins.js';
 
@@ -115,12 +113,5 @@ describe('retired aliases', () => {
 		expect('suggestText' in block).toBe(false);
 		expect('acceptSuggestedText' in block).toBe(false);
 		expect('suggestions' in block).toBe(false);
-	});
-
-	test('the migrator takes no lease options', () => {
-		expectTypeOf<MigrateOptions>().not.toHaveProperty('leaseMs');
-		expectTypeOf<MigrateOptions>().not.toHaveProperty('waitMs');
-		expectTypeOf<MigrateOptions>().not.toHaveProperty('pollMs');
-		expectTypeOf<MigrateOptions>().not.toHaveProperty('owner');
 	});
 });

@@ -13,7 +13,7 @@
  * - a pending document never writes or broadcasts a bootstrap block
  *   before `sync()` — pinned through a real `IndexeddbPersistence`
  *   provider and its BC frames;
- * - hydration/migration/admission writes never enter local undo.
+ * - hydration/admission writes never enter local undo.
  */
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
@@ -186,9 +186,6 @@ describe('loadDocument admission', () => {
 			UndecodableUpdateError
 		);
 	});
-
-	// (v13-era payload → UnsupportedDocError 'legacy' — covered against the
-	// real fixture binaries in ../migration/migration-admission.test.ts.)
 });
 
 describe('attachDocument admission', () => {

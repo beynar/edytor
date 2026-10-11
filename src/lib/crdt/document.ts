@@ -98,8 +98,8 @@
  *
  * ── History ────────────────────────────────────────────────────────────
  *
- * One registry-scoped `Y.UndoManager` per document (the facade's
- * supported seam). Capture is gated by TWO live checks, both consulted
+ * One registry-scoped undo manager per document (`doc/history.ts`, the
+ * facade's supported seam). Capture is gated by TWO live checks, both consulted
  * on every committing transaction:
  *
  * - `trackedOrigins` — a LIVE per-document set checked by identity: the
@@ -136,9 +136,9 @@
  * History is lazy: it attaches at `sync()`, or on first `history` access
  * once the doc is initialized — it NEVER initializes content itself, so
  * bootstrap/hydration writes all predate capture and are naturally
- * excluded. Stacks are unbounded (the engine prunes nothing); prune
- * explicitly via {@link clearHistory} / `history.clear()`, and tune the
- * merge window via `history.captureTimeout`.
+ * excluded. The undo stack keeps `history.limit` steps; drop them all
+ * via {@link clearHistory} / `history.clear()`, and tune the merge window
+ * via `history.captureTimeout`.
  */
 import type { MarkEdge } from './text/marks.js';
 import { DEV } from 'esm-env';
@@ -316,7 +316,7 @@ export class DocumentDestroyedError extends Error {
  *
  * `sync()` is the only transition out of `pending`, and it is the
  * document-side admission re-check: a doc that arrived in a problem
- * state (unversioned/unsupported/foreign/legacy — e.g. via raw
+ * state (unversioned/unsupported/foreign — e.g. via raw
  * `applyUpdate` bypass writes) refuses there with a typed error, stays
  * `pending`, and preserves the state — never silently becoming `local`.
  */
@@ -731,7 +731,7 @@ export class EdytorDocument {
 	 * - `'initialized'` verdict (provider-hydrated, or a loaded restore) →
 	 *   the schema was just asserted; content is left alone;
 	 * - a doc in a problem state (unversioned/unsupported/foreign schema
-	 *   claim, legacy layout — possible via raw `applyUpdate` writes that
+	 *   claim — possible via raw `applyUpdate` writes that
 	 *   bypass the transport gate) REFUSES readiness: the typed error
 	 *   propagates, the document stays `pending`, and the doc's state is
 	 *   preserved. Retrying after the state heals (e.g. a remote update
@@ -769,7 +769,7 @@ export class EdytorDocument {
 	};
 
 	/**
-	 * The default local history (registry-scoped `Y.UndoManager` —
+	 * The default local history (the registry-scoped undo manager —
 	 * `undo`/`redo`/`stopCapturing`/stacks). Lazy: attaches at `sync()`,
 	 * or on first access once the document is decided — it NEVER seeds
 	 * content itself (accessing it on a pending doc throws
@@ -1266,9 +1266,8 @@ export const bindDocument = (Y: EngineApi) => {
 		 * state). Staged admission: the payload is
 		 * decoded+integrated onto a SCRATCH doc and the document admission
 		 * gate runs on the merged result — a corrupt payload
-		 * ({@link UndecodableUpdateError}), a v13-era layout
-		 * ({@link UnsupportedDocError} `'legacy'` → migration path), or a
-		 * schema claim this build cannot own ({@link SchemaMismatchError})
+		 * ({@link UndecodableUpdateError}, a v13 document's bytes among
+		 * them), or a schema claim this build cannot own ({@link SchemaMismatchError})
 		 * refuses BEFORE the facade/history/awareness ever compose, and
 		 * the caller's bytes are never touched. Only then does `sync()`
 		 * complete readiness (history attaches after the restored schema
@@ -1295,8 +1294,7 @@ export const bindDocument = (Y: EngineApi) => {
 		 * provider path) drives `sync()`.
 		 *
 		 * Admission runs BEFORE any composition touches the doc: a
-		 * foreign engine object or applied-but-unmigrated v13 state
-		 * refuses with {@link UnsupportedDocError}, an
+		 * foreign engine object refuses with {@link UnsupportedDocError}, an
 		 * unversioned/unsupported/foreign schema claim with
 		 * {@link SchemaMismatchError} — the borrowed doc is left
 		 * byte-identical (the gate reads are write-free) and can be

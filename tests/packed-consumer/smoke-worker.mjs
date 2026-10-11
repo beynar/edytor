@@ -183,9 +183,7 @@ try {
 			const type = E.readVarUint(decoder);
 			const payload = E.readVarUint8Array(decoder);
 			if (type === E.messageYjsSyncStep1) continue;
-			// A SyncStep2 is v2 on the wire (P5).
-			const update = type === E.messageYjsSyncStep2 ? sync.step2Update(payload) : payload;
-			const { applied, problem } = sync.applyRemote(reader, update, 'room');
+			const { applied, problem } = sync.applyRemote(reader, payload, 'room');
 			assert.ok(applied && problem === null, 'the reader admits the room state');
 			step2 ||= type === E.messageYjsSyncStep2;
 		}
@@ -221,11 +219,7 @@ try {
 			const type = E.readVarUint(decoder);
 			const payload = E.readVarUint8Array(decoder);
 			if (type === E.messageYjsSyncStep1) continue;
-			sync.applyRemote(
-				probe,
-				type === E.messageYjsSyncStep2 ? sync.step2Update(payload) : payload,
-				'room'
-			);
+			sync.applyRemote(probe, payload, 'room');
 			probed ||= type === E.messageYjsSyncStep2;
 		}
 		return probed;

@@ -126,7 +126,7 @@ Each version is one value in the store:
 | | |
 | --- | --- |
 | Key | `history/<room id>/<YYYY-MM-DD>-am` or `-pm`, the room id percent-encoded, the date local. |
-| Value | The document's state, as the room's compaction stores it (the compact v2 encoding, gzip-compressed). |
+| Value | The document's state, as the room's compaction stores it (gzip-compressed). |
 | Metadata | `{ bytes, blocks, editors, at }`: its size, its visible blocks, the slot's editors, when it was written. Kept under 1,024 bytes (KV's metadata limit, for every store): past it, the last editors are left out and counted in `more`. |
 | Expiry | `expiresAt`, the retention (30 days) after it was written: KV's `expirationTtl`, R2's custom metadata, a column of the room's table. |
 

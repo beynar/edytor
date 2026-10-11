@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15 and YP16 (no delta layer)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding) and YP18 (no undo manager)
 global.d.ts upstream global.d.ts, plus patches YP1 and YP8
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -543,7 +543,9 @@ partial delete or full delete over A's bold run, A's undo stack is unchanged,
 one undo removes A's last edit, and the peers still converge; the stripped
 tree (the YP10 hunks removed) puts the cleanup on the stack.
 
-### YP11 — UndoManager `restoreFilter` and `onApply`: the document decides how deleted text comes back (`src/utils/UndoManager.js`, `src/index.js`)
+### YP11 — UndoManager `restoreFilter` and `onApply`: the document decides how deleted text comes back (`src/utils/UndoManager.js`, `src/index.js`) — the hooks REMOVED by YP18
+
+Since YP18 the undo manager is edytor's own and calls these rules directly; the fork keeps only the `redoItem` export. The record below is the patch as it stood.
 
 Reason: the engine's undo re-creates deleted content as COPIES and records no
 writer for a delete. Two peers that delete the same character concurrently and
@@ -582,7 +584,9 @@ upstream suite pass unchanged.
 
 Vendor delta: +9 xloc in `src/` (census `--vendor`: 5,769 → 5,778).
 
-### YP12 — UndoManager `withdraw`: the document keeps an item an undo would delete (`src/utils/UndoManager.js`)
+### YP12 — UndoManager `withdraw`: the document keeps an item an undo would delete (`src/utils/UndoManager.js`) — REMOVED by YP18
+
+Since YP18 the withdraw rule is a step of edytor's own undo manager. The record below is the patch as it stood.
 
 Reason: the engine undoes an insert by deleting the inserted items, and a
 deleted type deletes everything inside it. Undoing a block's creation
@@ -795,6 +799,83 @@ from upstream, unchanged by YP16 and pinned by (2): remote integration, and
 the YP4 seeded cursor, which in one seed (an array insert with formats at a
 seeded position) places an item differently from upstream's walk (equal
 content, different bytes).
+
+### YP17 — one update encoding: upstream's v2, under the unsuffixed names (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js`, `src/utils/encoding.js`, `src/utils/updates.js`, `src/utils/Transaction.js`, `src/utils/ids.js`, `src/utils/Doc.js`, `src/index.js`, `global.d.ts`)
+
+Reason: the fork carried two update encodings (v1 and the columnar v2) and
+every producer and consumer chose one: the wire sent a SyncStep2 in v2 and
+converted it to v1 on receipt, updates in v1, the room and the browser
+store kept v1 update rows beside v2 snapshots, tagged by a storage format
+in their generation record. The engine already kept its pending structs
+and deletes in v2. One encoding is v2: smaller for any state (2,000
+blocks: 720,855 → 544,410 bytes, gzip 150,174 → 75,475) and for structural
+edits (an Enter 472 → 388), equal for a keystroke (133 / 134). Edytor's
+schema generation 6 is the cutover; nothing converts the other encoding.
+
+Patch:
+
+- `UpdateEncoderV1`/`UpdateDecoderV1` and `IdSetEncoderV1`/`IdSetDecoderV1`
+  are removed; the v2 classes are renamed `UpdateEncoder`, `UpdateDecoder`,
+  `IdSetEncoder`, `IdSetDecoder` (the `…V1 | …V2` JSDoc unions with them).
+- `applyUpdate`, `readUpdate`, `encodeStateAsUpdate`, `mergeUpdates`,
+  `diffUpdate` and `decodeUpdate` are the v2 functions (`applyUpdateV2`,
+  `readUpdateV2`, `encodeStateAsUpdateV2`, `mergeUpdatesV2`, `diffUpdateV2`,
+  `decodeUpdateV2` renamed, their encoder/decoder parameters removed);
+  `convertUpdateFormat`/`convertUpdateFormatV2ToV1` and the leftover
+  obfuscator typedef are removed. `readUpdate` is not exported.
+- `encodeStateVector`/`decodeStateVector` write and read the state vector
+  with a plain lib0 encoder (byte-identical: a state vector only ever used
+  the rest encoder); `readStateVector`, `writeStateVector`,
+  `writeDocumentStateVector` and `encodeStateVectorV2` are folded into them.
+- The `update` event carries the update in the one encoding; the `updateV2`
+  event is removed.
+- `edytor/crdt` exports `UpdateEncoder`, `UpdateDecoder` and `diffUpdate`
+  in place of the V1/V2 pairs (see `src/tests/crdt/yp8-surface.test.ts`).
+
+Interop: an upstream engine reads the fork's bytes with its `…V2`
+functions (`bench/lib/interop.mjs`, the baseline legs of
+`search-marker-format.test.ts` and `yp16-writes.test.ts` compare against
+upstream's `encodeStateAsUpdateV2`). Vendored execution lines 5,123 →
+4,872. Test side: `compatibility.tests.js` (v1 documents of Yjs 13) is
+removed; the upstream suite's helpers run every program in the one
+encoding (`testHelper.js`, `updates.tests.js`).
+
+### YP18 — no undo manager: the history is edytor's (`src/utils/UndoManager.js` → `src/utils/redo.js`, `src/index.js`, `global.d.ts`)
+
+Reason: two mechanisms layered one undo. The engine's `UndoManager` kept the
+stacks, the capture window, the scope and tracked origins, and replayed a
+step; edytor's history (`src/lib/crdt/doc/history.ts`) drove it through the
+YP11/YP12 hooks and managed its stacks from outside (the step limit and the
+release of what a dropped step kept, the purge horizon, the shared own-text
+ids, the room's restore and validation histories). Now edytor's
+`UndoManager` is the one owner: it captures and replays over the engine's
+struct primitives, and the fork keeps only those.
+
+Patch:
+
+- `utils/UndoManager.js` is removed except `redoItem` and `keepItem`, now in
+  `utils/redo.js`. `redoItem(transaction, item, redoitems, itemsToDelete,
+  deletedByHistory?)` takes a predicate (whether a step of the history
+  deletes an id) in place of `ignoreRemoteAttributeChanges` and the undo
+  manager. Gone: `UndoManager`, `StackItem`, `popStackItem`, the stack
+  events, `deleteFilter`, `captureTransaction` defaults, `addToScope`,
+  `ignoreRemoteAttributeChanges`, the YP11/YP12 hooks.
+- `index.js` exports `keepItem` and `followRedone` (edytor's history keeps
+  deleted items and follows a local copy's chain) and uses `globalThis` for
+  its duplicate-import guard (Baseline 2024).
+- `global.d.ts` loses `UndoManager` and `StackItem`.
+
+Vendored execution lines 4,872 → 4,630; an app bundle 546.4 → 545.0 KB min
+(minimal), 745.4 → 744.0 (every plugin): edytor's manager is 4.3 KB where
+the engine's (without `redoItem`) and the hooks' driver were 5.6.
+
+Test side: `src/tests/crdt/harness/undo.js` is the engine's `UndoManager`
+as it stood before YP18 (`undoManagerOf(Y)`, over the fork or a copy of its
+tree), for the upstream suite, the replica harness's `raw` adapter, the
+engine probes and the differentials. Removed with their subject:
+`yp11-undo-hooks.test.ts`, `yp12-undo-withdraw.test.ts` (the hooks' rows;
+the rules are the facade history's `hist.undo.*` rows) and the upstream row
+on `ignoreRemoteAttributeChanges`.
 
 ## Generated declarations (`dts/`)
 

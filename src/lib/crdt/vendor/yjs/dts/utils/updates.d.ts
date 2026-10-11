@@ -1,9 +1,9 @@
 export class LazyStructReader {
     /**
-     * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+     * @param {UpdateDecoder} decoder
      * @param {boolean} filterSkips
      */
-    constructor(decoder: UpdateDecoderV1 | UpdateDecoderV2, filterSkips: boolean);
+    constructor(decoder: UpdateDecoder, filterSkips: boolean);
     gen: Generator<GC | Item | Skip, void, unknown>;
     /**
      * @type {null | Item | Skip | GC}
@@ -20,19 +20,15 @@ export function decodeUpdate(update: Uint8Array): {
     structs: (GC | Item | Skip)[];
     ds: import("./ids.js").IdSet;
 };
-export function decodeUpdateV2(update: Uint8Array, YDecoder?: typeof UpdateDecoderV2 | typeof UpdateDecoderV1): {
-    structs: (GC | Item | Skip)[];
-    ds: import("./ids.js").IdSet;
-};
 export class LazyStructWriter {
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {import('./UpdateEncoder.js').UpdateEncoder} encoder
      */
-    constructor(encoder: UpdateEncoderV1 | UpdateEncoderV2);
+    constructor(encoder: import("./UpdateEncoder.js").UpdateEncoder);
     currClient: number;
     startClock: number;
     written: number;
-    encoder: UpdateEncoderV1 | UpdateEncoderV2;
+    encoder: import("./UpdateEncoder.js").UpdateEncoder;
     /**
      * We want to write operations lazily, but also we need to know beforehand how many operations we want to write for each client.
      *
@@ -51,20 +47,7 @@ export class LazyStructWriter {
 export function sliceStruct(left: Item | GC | Skip, diff: number): Item | GC | Skip;
 export function writeStructToLazyStructWriter(lazyWriter: LazyStructWriter, struct: Item | GC | Skip, offset: number, offsetEnd: number): void;
 export function finishLazyStructWriting(lazyWriter: LazyStructWriter): void;
-export function convertUpdateFormat(update: Uint8Array, blockTransformer: (arg0: Item | GC | Skip) => Item | GC | Skip, YDecoder: typeof UpdateDecoderV2 | typeof UpdateDecoderV1, YEncoder: typeof UpdateEncoderV2 | typeof UpdateEncoderV1): Uint8Array<ArrayBuffer>;
-export function convertUpdateFormatV2ToV1(update: Uint8Array): Uint8Array<ArrayBuffer>;
-export type ObfuscatorOptions = {
-    formatting?: boolean | undefined;
-    subdocs?: boolean | undefined;
-    /**
-     * Whether to obfuscate nodeName / hookName
-     */
-    name?: boolean | undefined;
-};
 import { GC } from '../structs/GC.js';
 import { Item } from '../structs/Item.js';
 import { Skip } from '../structs/Skip.js';
-import { UpdateDecoderV1 } from './UpdateDecoder.js';
-import { UpdateDecoderV2 } from './UpdateDecoder.js';
-import { UpdateEncoderV1 } from './UpdateEncoder.js';
-import { UpdateEncoderV2 } from './UpdateEncoder.js';
+import { UpdateDecoder } from './UpdateDecoder.js';

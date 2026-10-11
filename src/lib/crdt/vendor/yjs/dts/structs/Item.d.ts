@@ -180,11 +180,11 @@ export class AbstractContent {
      */
     gc(_transaction: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} _encoder
+     * @param {UpdateEncoder} _encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
      */
-    write(_encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
+    write(_encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
      * @return {1|2|3|4|5|6|7|8|9}
      */
@@ -239,11 +239,11 @@ export class ContentAny {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} offset
      * @param {number} offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, offset: number, offsetEnd: number): void;
+    write(encoder: UpdateEncoder, offset: number, offsetEnd: number): void;
     /**
      * @return {8}
      */
@@ -295,11 +295,11 @@ export class ContentBinary {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
+    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
      * @return {3}
      */
@@ -351,11 +351,11 @@ export class ContentDeleted {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} offset
      * @param {number} offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, offset: number, offsetEnd: number): void;
+    write(encoder: UpdateEncoder, offset: number, offsetEnd: number): void;
     /**
      * @return {1}
      */
@@ -420,11 +420,11 @@ export class ContentDoc {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
+    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
      * @return {9}
      */
@@ -480,11 +480,11 @@ export class ContentEmbed {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
+    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
      * @return {5}
      */
@@ -541,11 +541,11 @@ export class ContentFormat {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
+    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
      * @return {6}
      */
@@ -603,11 +603,11 @@ export class ContentJSON {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} offset
      * @param {number} offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, offset: number, offsetEnd: number): void;
+    write(encoder: UpdateEncoder, offset: number, offsetEnd: number): void;
     /**
      * @return {2}
      */
@@ -665,11 +665,11 @@ export class ContentString {
      */
     gc(_tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} offset
      * @param {number} offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, offset: number, offsetEnd: number): void;
+    write(encoder: UpdateEncoder, offset: number, offsetEnd: number): void;
     /**
      * @return {4}
      */
@@ -734,11 +734,11 @@ export class ContentType {
      */
     gc(tr: Transaction): void;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} _offset
      * @param {number} _offsetEnd
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, _offset: number, _offsetEnd: number): void;
+    write(encoder: UpdateEncoder, _offset: number, _offsetEnd: number): void;
     /**
      * @return {7}
      */

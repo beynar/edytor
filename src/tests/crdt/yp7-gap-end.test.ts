@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import { toDelta } from './harness/delta.js';
+import { undoManagerOf } from './harness/undo.js';
 
 /** Red on the reference (no YP7): `it.fails` in the tests-first commit. */
 const row = it;
@@ -226,7 +227,7 @@ const program = (E, seed, steps) => {
 	};
 	const a = mk(4242);
 	const b = mk(4343);
-	const um = new E.UndoManager(a.get('t'), { captureTimeout: 0 });
+	const um = new (E.UndoManager ?? undoManagerOf(E))(a.get('t'), { captureTimeout: 0 });
 	const snaps = [];
 	const marks = [{ b: true }, { b: 'x' }, { b: null }, { i: true }, {}];
 	for (let s = 0; s < steps; s++) {

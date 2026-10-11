@@ -1480,13 +1480,12 @@ describe('documented command results (editor/commands)', () => {
  * paragraph long enough to be a wall of text is a list or a table waiting to
  * happen. The changelog is written for users: per release, what breaks, what
  * is new and what was fixed, never a ticket, a contract row or a file of the
- * repository. Importing v13 documents is a guide of its own.
+ * repository.
  */
 describe('docs readability (WU-19)', () => {
 	const site = files(join(root, 'site/content/docs'));
 	const read = (path: string) => readFileSync(join(root, 'site/content/docs', path), 'utf8');
 	const CHANGELOG = 'reference/migration.mdx';
-	const IMPORT = 'reference/v13-import.mdx';
 
 	/** The lines of a page outside fenced code and table rows, with their numbers. */
 	const prose = (text: string) => {
@@ -1514,7 +1513,7 @@ describe('docs readability (WU-19)', () => {
 		expect(long).toEqual([]);
 	});
 
-	it('the changelog and the v13 import guide name no ticket, contract row or repository path', () => {
+	it('the changelog names no ticket, contract row or repository path', () => {
 		// The ticket grammar `pnpm check:api` rejects in public JSDoc
 		// (`scripts/api-report.mjs`), function keys (`Alt+F10`) and Cloudflare's
 		// R2 aside.
@@ -1523,7 +1522,7 @@ describe('docs readability (WU-19)', () => {
 		// The contract rows' namespaces (`del.blocks.promote`, `room.compact.*`).
 		const row =
 			/^(?:(?:del|flow|sel|hist|layout|order|room|net|conc|merge|mark|link)(?:\.[\w*-]+)+|doc\.(?:empty|hydrate)\b.*|data\.(?:atomic|retype)\b.*|id\.same\b.*|code\.language\b.*|crdt\.doc\b.*|[\w.]+\.\*)$/;
-		const hits = [CHANGELOG, IMPORT].flatMap((page) =>
+		const hits = [CHANGELOG].flatMap((page) =>
 			prose(read(page)).flatMap(([at, line]) => {
 				const text = line.replace(/<kbd>[^<]*<\/kbd>|\+F\d{1,2}\b/g, '');
 				const found = [
@@ -1572,14 +1571,12 @@ describe('docs readability (WU-19)', () => {
 		expect(notes.trimStart()).toMatch(/^### Unreleased\n/);
 	});
 
-	it('the v13 import guide is a page of its own, in the reference sidebar', () => {
-		const guide = read(IMPORT);
-		expect(guide).toContain('migration.migrate(name)');
-		expect(guide).toContain('`rolledback`');
-		expect(read('reference/meta.ts')).toMatch(/"migration",\s*"v13-import"/);
-		expect(read(CHANGELOG)).not.toContain('## Importing v13 documents');
+	it('no page links the removed v13 import guide', () => {
+		expect(read('reference/meta.ts')).not.toContain('v13-import');
 		const stale = site
-			.filter((path) => readFileSync(path, 'utf8').includes('migration#importing-v13-documents'))
+			.filter((path) =>
+				/v13-import|migration#importing-v13-documents/.test(readFileSync(path, 'utf8'))
+			)
 			.map((path) => relative(root, path));
 		expect(stale).toEqual([]);
 	});
@@ -1740,9 +1737,9 @@ describe('docs readability (WU-19)', () => {
 		expect(filed).toEqual([]);
 	});
 
-	it('the README names the changelog and the v13 import guide', () => {
+	it('the README names the changelog', () => {
 		const readme = readFileSync(join(root, 'README.md'), 'utf8');
-		expect(readme).toContain('https://edytor.dev/docs/reference/v13-import');
+		expect(readme).not.toContain('https://edytor.dev/docs/reference/v13-import');
 		expect(readme).toMatch(/\[changelog\]\(https:\/\/edytor\.dev\/docs\/reference\/migration\)/);
 	});
 });

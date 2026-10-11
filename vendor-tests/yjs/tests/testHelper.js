@@ -33,42 +33,16 @@ const broadcastMessage = (y, m) => {
   }
 }
 
-export let useV2 = false
-
-export const encV1 = {
+/**
+ * YP17: the fork has one update encoding; the helpers' encoding switch is gone.
+ */
+export const enc = {
   encodeStateAsUpdate: Y.encodeStateAsUpdate,
   mergeUpdates: Y.mergeUpdates,
   applyUpdate: Y.applyUpdate,
   logUpdate: () => {}, // YP8: the update loggers are pruned
   updateEventName: /** @type {'update'} */ ('update'),
-  /**
-   * YP8: the V1 `diffUpdate` wrapper is pruned; the V2 core it wrapped is kept.
-   * @param {Uint8Array} update
-   * @param {Uint8Array} sv
-   */
-  diffUpdate: (update, sv) => Y.diffUpdateV2(update, sv, Y.UpdateDecoderV1, Y.UpdateEncoderV1)
-}
-
-export const encV2 = {
-  encodeStateAsUpdate: Y.encodeStateAsUpdateV2,
-  mergeUpdates: Y.mergeUpdatesV2,
-  applyUpdate: Y.applyUpdateV2,
-  logUpdate: () => {}, // YP8: the update loggers are pruned
-  updateEventName: /** @type {'updateV2'} */ ('updateV2'),
-  diffUpdate: Y.diffUpdateV2
-}
-
-export let enc = encV1
-
-const useV1Encoding = () => {
-  useV2 = false
-  enc = encV1
-}
-
-const useV2Encoding = () => {
-  console.error('sync protocol doesnt support v2 protocol yet, fallback to v1 encoding') // @Todo
-  useV2 = false
-  enc = encV1
+  diffUpdate: Y.diffUpdate
 }
 
 /**
@@ -287,13 +261,6 @@ export const init = (tc, { users = 5 } = {}, initTestObject) => {
     users: []
   }
   const gen = tc.prng
-  // choose an encoding approach at random
-  if (prng.bool(gen)) {
-    useV2Encoding()
-  } else {
-    useV1Encoding()
-  }
-
   const testConnector = new TestConnector(gen)
   result.testConnector = testConnector
   for (let i = 0; i < users; i++) {
@@ -307,7 +274,6 @@ export const init = (tc, { users = 5 } = {}, initTestObject) => {
   }
   testConnector.syncAll()
   result.testObjects = result.users.map(initTestObject || (() => null))
-  useV1Encoding()
   return /** @type {any} */ (result)
 }
 
@@ -417,7 +383,7 @@ export const compare = users => {
  * @param {Y.StructStore} store
  */
 const encodeDeleteSet = store => {
-  const encoder = new Y.UpdateEncoderV1()
+  const encoder = new Y.UpdateEncoder()
   Y.writeIdSet(encoder, Y.createDeleteSetFromStructStore(store))
   return encoder.toUint8Array()
 }

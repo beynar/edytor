@@ -1,6 +1,9 @@
 /// <reference path="./global.d.ts" />
 export { Doc } from "./utils/Doc.js";
+export { UpdateDecoder } from "./utils/UpdateDecoder.js";
+export { UpdateEncoder } from "./utils/UpdateEncoder.js";
 export { isParentOf } from "./utils/isParentOf.js";
+export { decodeUpdate } from "./utils/updates.js";
 export { YEvent } from "./utils/YEvent.js";
 export { RangeCursor } from "./utils/RangeCursor.js";
 export { YNode as Node } from "./ynode.js";
@@ -9,13 +12,10 @@ export { GC } from "./structs/GC.js";
 export { Skip } from "./structs/Skip.js";
 export type ContentIds = import("./utils/ids.js").ContentIds;
 export { IdSet, equalIdSets, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, intersectSets } from "./utils/ids.js";
-export { UpdateDecoderV1, UpdateDecoderV2 } from "./utils/UpdateDecoder.js";
-export { UpdateEncoderV1, UpdateEncoderV2 } from "./utils/UpdateEncoder.js";
-export { applyUpdate, applyUpdateV2, readUpdateV2, encodeStateAsUpdate, encodeStateAsUpdateV2, encodeStateVector, decodeStateVector, diffUpdateV2, mergeUpdates, mergeUpdatesV2 } from "./utils/encoding.js";
+export { applyUpdate, encodeStateAsUpdate, encodeStateVector, decodeStateVector, diffUpdate, mergeUpdates } from "./utils/encoding.js";
 export { ID, createID, compareIDs, findRootTypeKey } from "./utils/ID.js";
 export { createRelativePositionFromTypeIndex, createRelativePositionFromJSON, createAbsolutePositionFromRelativePosition, AbsolutePosition, RelativePosition, relativePositionToJSON } from "./utils/RelativePosition.js";
 export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from "./utils/transaction-helpers.js";
 export { Transaction, transact, cleanupYTextFormatting } from "./utils/Transaction.js";
-export { UndoManager, redoItem } from "./utils/UndoManager.js";
-export { decodeUpdate, decodeUpdateV2, convertUpdateFormatV2ToV1 } from "./utils/updates.js";
-export { Item, ContentBinary, ContentDeleted, ContentDoc, ContentEmbed, ContentFormat, ContentJSON, ContentAny, ContentString, ContentType } from "./structs/Item.js";
+export { redoItem, keepItem } from "./utils/redo.js";
+export { Item, followRedone, ContentBinary, ContentDeleted, ContentDoc, ContentEmbed, ContentFormat, ContentJSON, ContentAny, ContentString, ContentType } from "./structs/Item.js";

@@ -522,14 +522,11 @@ export class Composition {
 	#tracked<T>(write: () => T): T {
 		const um = this.edytor.undoManager;
 		if (!um || this.#item) return write();
-		const record = ({ stackItem }: { stackItem: unknown }) => (this.#item ??= stackItem);
-		um.on('stack-item-added', record);
-		um.on('stack-item-updated', record);
+		const off = um.observe(({ stackItem }) => (this.#item ??= stackItem));
 		try {
 			return write();
 		} finally {
-			um.off('stack-item-added', record);
-			um.off('stack-item-updated', record);
+			off();
 		}
 	}
 

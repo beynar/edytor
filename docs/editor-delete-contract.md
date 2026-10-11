@@ -2490,7 +2490,7 @@ document's capture listener (`pressOutside`, `events/onFocus.ts`). Pins:
 
 ### `hist.dead-pop` — obsolete undo items
 
-`UndoManager.popStackItem` may consume a dead/obsolete stack item (entries
+The undo manager's replay (`crdt/doc/history.ts`) may consume a dead/obsolete stack item (entries
 neutralized by remote edits) without applying a change or growing the
 opposite stack. The legal oracle is **source stack shrank OR opposite
 grew** — not both. A dead command shows neither and still fails.
@@ -2548,53 +2548,40 @@ text a peer's undo may copy again. Before Phase 2 the room's live document
 collected it (its Step2 served the copy deleted) while the merged records
 still held it.
 
-### `room.store.v2` — snapshots in v2, compressed, tagged (P5)
+### `room.store.v2` — one update encoding, compressed snapshots
 
-A container's generation record carries its storage format (`storage`,
-absent = `'v1'`, the only format before 0.1.0-next.23). This build writes
-`'v2'`: snapshots in the v2 encoding (`encodeStateAsUpdateV2`), gzip-
-compressed where the platform has `CompressionStream` (a compressed
-snapshot starts with `1f 8b`, a v2 update with `00`); update and waiting
-records, and the IndexedDB store's update rows, stay v1, which is smaller
-for one edit (24 against 28 bytes for a keystroke, 13 against 24 for a
-one-character delete). The room compresses a snapshot in place after
-storing it raw (`compressLater`; the store-before-ack path is
-synchronous) and inflates it when it starts (`inflate`), keeping the raw
-bytes for a rebuild. A v1 container loads as it is, takes v1 update
-records, and is rewritten in v2 by its next compaction (`storage-v2`,
-`storage-v2.test.ts`). The IndexedDB store writes a snapshot as an
-object row `{ v2 }`, which a build before 0.1.0-next.23 refuses to read
-(its row codec throws) instead of misreading. The wire stays v1.
+Every record a container holds — the room's snapshot, update and waiting
+records, the IndexedDB store's rows — is an update in the engine's one
+encoding, the columnar one upstream Yjs calls v2 (fork patch YP17: the v1
+encoding is gone from the fork). A snapshot is also gzip-compressed where
+the platform has `CompressionStream` (a compressed snapshot starts with
+`1f 8b`, an update with `00`, a generation record with `{`). The room
+compresses a snapshot in place after storing it raw (`compressLater`; the
+store-before-ack path is synchronous) and inflates it when it starts
+(`inflate`), keeping the raw bytes for a rebuild; one that does not inflate
+refuses the container (`snapshots.test.ts`, `tests/do/snapshots.test.ts`).
+The generation record names no format.
 
-### `room.generation.convert` — a generation-4 container converts through its JSON (Phase 4)
+### `room.generation` — another generation is refused, never converted (schema 6)
 
-Schema generation 5 (wire word `14005`) changes what a document stores
-(paired marks, shorter ranks): bytes of generation 4 are never integrated
-beside generation 5's. A room loading a container whose generation record
-is generation 4's reads its records into a scratch document (no admission,
-no write), takes its visible document as JSON
-(`crdt.generations.previousJSON`) and seeds it as generation 5's (the
-deterministic seed `onLoad`'s JSON gets), replacing the container in one
-storage transaction (rows, replicas, purge epochs, slot editors and the
-stored restore go; meta stays). A history version of generation 4 reads
-through the same JSON. A frame of generation 4 is refused before decode
-(`1008`, `refused: generation`); a container of any other generation is
-refused until `reset()`. A browser store of generation 4
-(`edytor-v14:<name>`) is left as it was beside the new one
-(`edytor-v14-g5:<name>`): a document stored only there converts into it
-(`convertPrevious`), one a room keeps takes the room's state
-(`generation-5-cutover.test.ts`, `tests/do/gen5-cutover.test.ts`).
+Schema generation 6 (wire word `14006`) changed the update encoding: bytes
+of another generation are never integrated. A frame of another generation
+is refused before decode (`1008`, `refused: generation`); a container of
+another generation refuses every socket (`1008`, `refused: container`)
+until `reset()` starts it again from `onLoad`; a history version of
+another generation does not read; a browser store of another generation
+(`edytor-v14-g5:<name>`, `edytor-v14:<name>`) is left as it was beside
+the new one (`edytor-v14-g6:<name>`), which starts empty
+(`arch-v2/generation.test.ts`).
 
-### `net.step2.v2` — a SyncStep2 is v2, an Update v1 (P5 wire)
+### `net.step2.v2` — a SyncStep2 and an Update carry one encoding
 
-A SyncStep2 carries a state and is written in the v2 encoding
-(`writeSyncStep2`), converted to v1 on receipt (`step2Update`) before the
-one inbound path; an Update carries one transaction and stays v1, which is
-smaller for most single edits. Measured (1,000-block document, 53-bit
-client id): a full Step 2 280,557 → 220,444 bytes (gzip 55,016 → 28,476);
-a keystroke 60 / 60, a one-character delete 13 / 24, a block move 62 / 84,
-a block delete 43 / 65, an Enter 355 / 293, five keystrokes merged
-114 / 53 (v1 / v2).
+A SyncStep2 carries a state (`writeSyncStep2`: `encodeStateAsUpdate`), an
+Update one transaction (the document's `update` event); both are applied
+as they are through the one inbound path (`applyRemote`). Measured
+against the v1 encoding (2,000 blocks, a typing session): a full state
+720,855 → 544,410 bytes (gzip 150,174 → 75,475); a keystroke 133 / 134,
+an Enter 472 / 388 (v1 / the one encoding).
 
 ### `room.quota` — a write past a quota is refused, the socket closed `4413` (H3)
 
@@ -2766,7 +2753,7 @@ content, parent }` from an index the room keeps from every change report.
 writes the inverse as its own transaction — the history undo of exactly
 that frame's transaction (a history on the room's facade whose tracked
 origin is the frame's socket, released after each frame by P6's rule,
-`facade.releaseHistory`, so it keeps no deleted content alive): its inserts
+`history.clear()`, so it keeps no deleted content alive): its inserts
 deleted (its creations withdrawn, `hist.undo.withdraw`), its deletes
 restored (text by copy where no other writer's delete mark holds it,
 YP11; its block delete marks removed), its moves and attr writes reverted

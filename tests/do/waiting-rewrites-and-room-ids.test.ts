@@ -248,7 +248,7 @@ describe('YW-09 · read-only tabs on the channel', () => {
 
 /** A delete-only update of `count` separate ranges of `client`'s items. */
 const deletesOf = (client: number, count: number) => {
-	const body = new Y.UpdateEncoderV1();
+	const body = new Y.UpdateEncoder();
 	encoding.writeVarUint(body.restEncoder, 0); // no structs
 	const deletes = Y.createIdSet();
 	for (let i = 0; i < count; i++) deletes.add(client, 2 * i, 1);

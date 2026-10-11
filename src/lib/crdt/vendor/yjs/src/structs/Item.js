@@ -463,7 +463,7 @@ export class Item extends AbstractStruct {
    *
    * This is called when this Item is sent to a remote peer.
    *
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder The encoder to write data to.
+   * @param {UpdateEncoder} encoder The encoder to write data to.
    * @param {number} offset
    * @param {number} offsetEnd
    */
@@ -599,7 +599,7 @@ export class AbstractContent {
   }
 
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} _encoder
+   * @param {UpdateEncoder} _encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
    */
@@ -688,7 +688,7 @@ export class ContentAny {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} offset
    * @param {number} offsetEnd
    */
@@ -775,7 +775,7 @@ export class ContentBinary {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
    */
@@ -864,7 +864,7 @@ export class ContentDeleted {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} offset
    * @param {number} offsetEnd
    */
@@ -978,7 +978,7 @@ export class ContentDoc {
   gc (_tr) {}
 
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
    */
@@ -1086,7 +1086,7 @@ export class ContentEmbed {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
    */
@@ -1195,7 +1195,7 @@ export class ContentFormat {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
    */
@@ -1287,7 +1287,7 @@ export class ContentJSON {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} offset
    * @param {number} offsetEnd
    */
@@ -1394,7 +1394,7 @@ export class ContentString {
    */
   gc (_tr) {}
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} offset
    * @param {number} offsetEnd
    */
@@ -1531,7 +1531,7 @@ export class ContentType {
   }
 
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} _offset
    * @param {number} _offsetEnd
    */

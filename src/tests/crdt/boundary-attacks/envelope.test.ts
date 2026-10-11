@@ -96,7 +96,8 @@ const v13UpdateMessage = () => {
 	encoding.writeVarUint(e, 0); // v13 messageSync
 	encoding.writeVarUint(e, 2); // v13 sync Update
 	encoding.writeVarUint8Array(e, update13);
-	return { msg: encoding.toUint8Array(e), update13 };
+	// The same state in the encoding a v14 frame carries (smuggled inside one).
+	return { msg: encoding.toUint8Array(e), update13: Y13.encodeStateAsUpdateV2(doc13) };
 };
 
 describe('attack 1b: real v13 updates never reach a v14 doc', () => {

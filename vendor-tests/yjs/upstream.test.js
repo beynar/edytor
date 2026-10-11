@@ -30,7 +30,6 @@ import * as yText from './tests/y-text.tests.js'
 import * as yXml from './tests/y-xml.tests.js'
 import * as encoding from './tests/encoding.tests.js'
 import * as undoredo from './tests/undo-redo.tests.js'
-import * as compatibility from './tests/compatibility.tests.js'
 import * as doc from './tests/doc.tests.js'
 import * as updates from './tests/updates.tests.js'
 import * as relativePositions from './tests/relativePositions.tests.js'
@@ -47,7 +46,6 @@ const modules = {
 	'y-xml': yXml,
 	encoding,
 	'undo-redo': undoredo,
-	compatibility,
 	updates,
 	relativePositions,
 	IdSet: idset,

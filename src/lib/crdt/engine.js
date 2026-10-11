@@ -15,7 +15,6 @@ import * as V from './vendor/yjs/src/index.js';
 export const Y = {
 	Doc: V.Doc,
 	Node: V.Node,
-	UndoManager: V.UndoManager,
 	Item: V.Item,
 	RangeCursor: V.RangeCursor,
 	transact: V.transact,
@@ -24,18 +23,10 @@ export const Y = {
 	encodeStateVector: V.encodeStateVector,
 	decodeStateVector: V.decodeStateVector,
 	decodeUpdate: V.decodeUpdate,
-	// the engine's pending store is V2-encoded (admission of pending structs)
-	decodeUpdateV2: V.decodeUpdateV2,
 	// the store-before-ack body carries the acknowledged deletes (`sync.writeSaved`)
-	UpdateEncoderV1: V.UpdateEncoderV1,
+	UpdateEncoder: V.UpdateEncoder,
 	writeIdSet: V.writeIdSet,
 	mergeUpdates: V.mergeUpdates,
-	// storage in the v2 (columnar) encoding: room rows and the IndexedDB store
-	applyUpdateV2: V.applyUpdateV2,
-	encodeStateAsUpdateV2: V.encodeStateAsUpdateV2,
-	convertUpdateFormatV2ToV1: V.convertUpdateFormatV2ToV1,
-	UpdateDecoderV1: V.UpdateDecoderV1,
-	UpdateEncoderV2: V.UpdateEncoderV2,
 	Skip: V.Skip,
 	findIndexSS: V.findIndexSS,
 	// a concurrent creation of one block id keeps the losing node (fork patch YP14)
@@ -51,6 +42,11 @@ export const Y = {
 	iterateStructsByIdSet: V.iterateStructsByIdSet,
 	getItemCleanStart: V.getItemCleanStart,
 	redoItem: V.redoItem,
+	// the document's undo manager (`doc/history.ts`, fork patch YP18)
+	keepItem: V.keepItem,
+	followRedone: V.followRedone,
+	isParentOf: V.isParentOf,
+	mergeIdSets: V.mergeIdSets,
 	// a folded delete record appended after the one it replaces
 	ContentAny: V.ContentAny,
 	createID: V.createID

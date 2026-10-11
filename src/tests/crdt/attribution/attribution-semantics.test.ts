@@ -15,15 +15,11 @@
  *     coexist: preserved verbatim and gated by the same admission
  *     boundary as everything else.
  */
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import {
 	SchemaMismatchError,
-	UnsupportedDocError,
 	attachDocument,
 	createDocument,
 	loadDocument,
@@ -777,15 +773,5 @@ describe('admission gates', () => {
 
 		// attachDocument refuses the same states on a live doc.
 		expect(() => attachDocument(v99, { actor: bob })).toThrow(SchemaMismatchError);
-	});
-
-	it('a v13-layout update refuses at load with the legacy migration error', () => {
-		const fixture = join(
-			dirname(fileURLToPath(import.meta.url)),
-			'../fixtures/legacy-v13/nested-marks.update.bin'
-		);
-		const update = new Uint8Array(readFileSync(fixture));
-		expect(() => loadDocument(update)).toThrow(UnsupportedDocError);
-		expect(() => loadDocument(update)).toThrow(/legacy v13/);
 	});
 });

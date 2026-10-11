@@ -332,6 +332,12 @@ export const onTransaction = <T>(
 	f: (tr: T) => void
 ): void => (doc as unknown as { on(e: string, f: (tr: T) => void): void }).on(event, f);
 
+/** A doc's event registry (vendor `on`/`off`). */
+type Events = {
+	on(event: string, f: (...args: never[]) => void): void;
+	off(event: string, f: (...args: never[]) => void): void;
+};
+
 /** The steps of a history's undo stack (or its redo stack), in the caller's view. */
 export const stepsOf = <S>(stack: YUndoManager['undoStack']): S[] => stack as unknown as S[];
 
@@ -367,18 +373,52 @@ export const engineOps = (Y: EngineApi) => {
 		cleanStart: <I = StoreStruct>(tr: unknown, client: number, clock: number): I =>
 			Y.getItemCleanStart(tr as Tr, Y.createID(client, clock)) as unknown as I,
 		/**
-		 * Re-create deleted `item` as the engine's undo does (`redoItem`): its
-		 * copy, or `null` when it cannot come back.
+		 * Re-create deleted `item` (`redoItem`, fork patch YP18): its copy, or
+		 * `null` when it cannot come back. `items` are re-created with it (a
+		 * parent among them first); an attr does not come back over a later
+		 * write unless `skipped` (the step's inserts) or `deletedByHistory`
+		 * holds that write.
 		 */
-		redo: <I = StoreStruct>(tr: unknown, item: I, items: Set<I>, um: YUndoManager): I | null =>
+		redo: <I = StoreStruct>(
+			tr: unknown,
+			item: I,
+			items: Set<I>,
+			skipped: IdSetLike = Y.createIdSet() as unknown as IdSetLike,
+			deletedByHistory?: (id: { client: number; clock: number }) => boolean
+		): I | null =>
 			Y.redoItem(
 				tr as Tr,
 				item as unknown as Item,
 				items as unknown as Set<Item>,
-				Y.createIdSet(),
-				false,
-				um
+				skipped as unknown as V,
+				deletedByHistory as never
 			) as unknown as I | null,
+		/** Merge id sets into a new one. */
+		merge: (sets: IdSetLike[]): IdSetOf =>
+			Y.mergeIdSets(sets as unknown as V[]) as unknown as IdSetOf,
+		/** Whether a store struct is an item (not a GC or a Skip). */
+		isItem: (struct: unknown): struct is StoreStruct => struct instanceof Y.Item,
+		/** Whether `item` sits in `node`'s subtree. */
+		inside: (node: EngineNode, item: StoreStruct): boolean =>
+			Y.isParentOf(asYNode(node), item as unknown as Item),
+		/** Keep `item` (and its parents) from collection (`keepItem`). */
+		keep: (item: StoreStruct): void => Y.keepItem(item as unknown as Item, true),
+		/** The newest copy a local undo or redo made of `item` (its `redone` chain), split there, inside `tr`. */
+		latest: (tr: unknown, item: StoreStruct): StoreStruct => {
+			if (!item.redone) return item;
+			const store = (tr as { doc: { store: unknown } }).doc.store;
+			const { item: copy, diff } = Y.followRedone(store as never, item.id as never);
+			return (diff > 0
+				? Y.getItemCleanStart(tr as Tr, Y.createID(copy.id.client, copy.id.clock + diff))
+				: copy) as unknown as StoreStruct;
+		},
+		/** Delete `item` inside `tr`. */
+		remove: (tr: unknown, item: StoreStruct): void => (item as unknown as Item).delete(tr as Tr),
+		/** Listen to a doc event (vendor `on`/`off`), with the caller's view of its arguments. */
+		on: (doc: EngineDoc, event: string, f: (...args: never[]) => void): void =>
+			(doc as unknown as Events).on(event, f),
+		off: (doc: EngineDoc, event: string, f: (...args: never[]) => void): void =>
+			(doc as unknown as Events).off(event, f),
 		/**
 		 * Integrate a new item holding `content` right after `left` (its
 		 * origin: `left`'s last id) in `parent`, written by `client` at

@@ -25,7 +25,7 @@ export const LIB = path.join(ROOT, 'src/lib');
  * - root: the composition root (`Edytor`), the mount and the public entry.
  */
 export const CONTEXTS = [
-	['sync', /^crdt\/(providers|protocols|migration)\//],
+	['sync', /^crdt\/(providers|protocols)\//],
 	['sync', /^cloudflare\//],
 	['doc', /^crdt\//],
 	['shared', /^(utils|constants|labels)(\/|\.[jt]s$)/],

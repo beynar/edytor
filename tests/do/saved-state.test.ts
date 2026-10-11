@@ -132,7 +132,7 @@ describe('XW-02 · a read-only socket reaches saved', () => {
 		tab.doc.on('update', (update: Uint8Array) => heard.push(update));
 		ada.transact(() => ada.facade.deleteText('seed', 'from onLoad'.length, 2));
 		// Its delete part alone, as a delete that adds no data (an undone insert) is sent.
-		const body = new Y.UpdateEncoderV1();
+		const body = new Y.UpdateEncoder();
 		encoding.writeVarUint(body.restEncoder, 0); // no structs
 		Y.writeIdSet(body, Y.decodeUpdate(heard.at(-1)!).ds);
 		const deletion = body.toUint8Array();
@@ -321,7 +321,7 @@ describe("XW-07 · a relayer's delete of an author's lost text is kept for the a
 
 /** A delete-only update of `count` separate ranges of `client`'s items. */
 const deletesOf = (client: number, count: number) => {
-	const body = new Y.UpdateEncoderV1();
+	const body = new Y.UpdateEncoder();
 	encoding.writeVarUint(body.restEncoder, 0); // no structs
 	const deletes = Y.createIdSet();
 	for (let i = 0; i < count; i++) deletes.add(client, 2 * i, 1);
@@ -389,7 +389,7 @@ describe('XW-07 · a stored waiting delete cannot forge the schema stamp', () =>
 			}
 		)._map.get('v')!.id;
 		const eve = await RawClient.bare(room, { user: 'eve' });
-		const body = new Y.UpdateEncoderV1();
+		const body = new Y.UpdateEncoder();
 		encoding.writeVarUint(body.restEncoder, 0); // no structs
 		const deletes = Y.createIdSet();
 		deletes.add(stamp.client, stamp.clock, 1);

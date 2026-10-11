@@ -426,9 +426,9 @@ export class YNode extends ObservableV2<{
      *
      * This is called when this Item is sent to a remote peer.
      *
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder The encoder to write data to.
+     * @param {UpdateEncoder} encoder The encoder to write data to.
      */
-    _write(encoder: UpdateEncoderV1 | UpdateEncoderV2): void;
+    _write(encoder: UpdateEncoder): void;
     /**
      * Two nodes are equal when their names, attrs and content runs are.
      *
@@ -453,23 +453,23 @@ export function nodeMapHas(parent: YNode, key: string): boolean;
 export function createMapIterator(type: YNode & {
     _map: Map<string, Item>;
 }): IterableIterator<Array<any>>;
-export function readContentType(decoder: UpdateDecoderV1 | UpdateDecoderV2): ContentType;
-export function readContentString(decoder: UpdateDecoderV1 | UpdateDecoderV2): ContentString;
-export function readContentJSON(decoder: UpdateDecoderV1 | UpdateDecoderV2): ContentJSON;
-export function readContentFormat(decoder: UpdateDecoderV1 | UpdateDecoderV2): ContentFormat;
-export function readContentEmbed(decoder: UpdateDecoderV1 | UpdateDecoderV2): ContentEmbed;
-export function readContentDoc(decoder: UpdateDecoderV1 | UpdateDecoderV2): ContentDoc;
-export function readContentAny(decoder: UpdateDecoderV1 | UpdateDecoderV2): ContentAny;
-export function readContentBinary(decoder: UpdateDecoderV1 | UpdateDecoderV2): ContentBinary;
-export function readContentDeleted(decoder: UpdateDecoderV1 | UpdateDecoderV2): ContentDeleted;
+export function readContentType(decoder: UpdateDecoder): ContentType;
+export function readContentString(decoder: UpdateDecoder): ContentString;
+export function readContentJSON(decoder: UpdateDecoder): ContentJSON;
+export function readContentFormat(decoder: UpdateDecoder): ContentFormat;
+export function readContentEmbed(decoder: UpdateDecoder): ContentEmbed;
+export function readContentDoc(decoder: UpdateDecoder): ContentDoc;
+export function readContentAny(decoder: UpdateDecoder): ContentAny;
+export function readContentBinary(decoder: UpdateDecoder): ContentBinary;
+export function readContentDeleted(decoder: UpdateDecoder): ContentDeleted;
 /**
  * A lookup map for reading Item content.
  *
- * @type {Array<function(UpdateDecoderV1 | UpdateDecoderV2):AbstractContent>}
+ * @type {Array<function(UpdateDecoder):AbstractContent>}
  */
-export const contentRefs: Array<(arg0: UpdateDecoderV1 | UpdateDecoderV2) => AbstractContent>;
-export function readItemContent(decoder: UpdateDecoderV1 | UpdateDecoderV2, info: number): import("./structs/Item.js").AbstractContent;
-export function readYNode(decoder: UpdateDecoderV1 | UpdateDecoderV2): YNode;
+export const contentRefs: Array<(arg0: UpdateDecoder) => AbstractContent>;
+export function readItemContent(decoder: UpdateDecoder, info: number): import("./structs/Item.js").AbstractContent;
+export function readYNode(decoder: UpdateDecoder): YNode;
 export type YValue = {
     [x: string]: any;
 } | Array<any> | number | null | string | Uint8Array | bigint | YNode;

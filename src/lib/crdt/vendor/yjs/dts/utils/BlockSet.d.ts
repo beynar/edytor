@@ -1,5 +1,5 @@
-export function readBlockSet(decoder: UpdateDecoderV1 | UpdateDecoderV2): BlockSet;
-export function writeBlockSet(encoder: UpdateEncoderV1 | UpdateEncoderV2, blocks: BlockSet): void;
+export function readBlockSet(decoder: UpdateDecoder): BlockSet;
+export function writeBlockSet(encoder: UpdateEncoder, blocks: BlockSet): void;
 export class BlockSet {
     /**
      * @type {Map<number, BlockRange>}

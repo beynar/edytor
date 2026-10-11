@@ -349,7 +349,7 @@ export const INSTALL_HOOKS = () => {
 	const txCtor = ed.transaction?.constructor;
 	const rotCtor = ed.remoteOnlyTransaction?.constructor;
 	const docTx = ed.document?.transaction;
-	const UmCtor = Y.UndoManager;
+	const UmCtor = ed.undoManager?.constructor;
 	const classify = (origin, local) => {
 		if (local === false) return 'remote-apply';
 		if (origin === null || origin === undefined) return 'local-untyped';
@@ -530,7 +530,7 @@ export const INSTALL_HOOKS = () => {
 	const txRecs = new WeakMap(); // engine Transaction → record entry
 	const emitStack = []; // [{name, txr}]
 	const txOf = (name, args) => {
-		if (name === 'update' || name === 'updateV2') return args?.[3];
+		if (name === 'update') return args?.[3];
 		if (name === 'afterAllTransactions' || name === 'beforeAllTransactions') return null;
 		return args?.[0];
 	};

@@ -64,10 +64,6 @@ export declare class AttachedDocument {
     } | {
         kind: 'restored';
         records: number;
-    } | {
-        kind: 'converted';
-        from: number;
-        records: number;
     };
     private readonly room;
     constructor(ctx: DurableObjectState, options?: AttachRoomOptions);
@@ -1053,12 +1049,6 @@ export type RoomLogEntry = {
     reason: 'storage' | 'internal';
     detail: string;
 } | {
-    edytor: 'convert';
-    from: number;
-    to: number;
-    blocks: number;
-    bytes: number;
-} | {
     edytor: 'move';
     moveId: string;
     role: 'out' | 'in';
@@ -1162,7 +1152,6 @@ export type StoredRecord = {
     kind: RowKind;
     record: number;
     bytes: Uint8Array<ArrayBuffer>;
-    v2: boolean;
 };
 ```
 

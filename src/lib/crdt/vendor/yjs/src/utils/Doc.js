@@ -32,7 +32,6 @@ import { YNode } from '../ynode.js'
  * @property {function(Doc):void} DocEvents.load
  * @property {function(boolean, Doc):void} DocEvents.sync
  * @property {function(Uint8Array<ArrayBuffer>, any, Doc, Transaction):void} DocEvents.update
- * @property {function(Uint8Array<ArrayBuffer>, any, Doc, Transaction):void} DocEvents.updateV2
  * @property {function(Doc):void} DocEvents.beforeAllTransactions
  * @property {function(Transaction, Doc):void} DocEvents.beforeTransaction
  * @property {function(Transaction, Doc):void} DocEvents.beforeObserverCalls

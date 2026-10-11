@@ -17,7 +17,6 @@
  * @property {function(Doc):void} DocEvents.load
  * @property {function(boolean, Doc):void} DocEvents.sync
  * @property {function(Uint8Array<ArrayBuffer>, any, Doc, Transaction):void} DocEvents.update
- * @property {function(Uint8Array<ArrayBuffer>, any, Doc, Transaction):void} DocEvents.updateV2
  * @property {function(Doc):void} DocEvents.beforeAllTransactions
  * @property {function(Transaction, Doc):void} DocEvents.beforeTransaction
  * @property {function(Transaction, Doc):void} DocEvents.beforeObserverCalls
@@ -200,7 +199,6 @@ export type DocEvents = {
     load: (arg0: Doc) => void;
     sync: (arg0: boolean, arg1: Doc) => void;
     update: (arg0: Uint8Array<ArrayBuffer>, arg1: any, arg2: Doc, arg3: Transaction) => void;
-    updateV2: (arg0: Uint8Array<ArrayBuffer>, arg1: any, arg2: Doc, arg3: Transaction) => void;
     beforeAllTransactions: (arg0: Doc) => void;
     beforeTransaction: (arg0: Transaction, arg1: Doc) => void;
     beforeObserverCalls: (arg0: Transaction, arg1: Doc) => void;

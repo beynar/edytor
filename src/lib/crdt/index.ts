@@ -24,9 +24,9 @@
  *   (`BlockSpec`, `Destination`, `ProjectedDoc`, `DocChange`, `JSONDoc`,
  *   …), the provider/sync contract (`EdytorSync`), `Awareness`, the
  *   admission errors a load throws, the attribution read surface
- *   (`DocumentAttribution`), and migration.
+ *   (`DocumentAttribution`).
  * - **Composition** — `bindCrdt(Y)` for consumers that inject the engine
- *   themselves (node/SSR-side provider stacks, migration tooling,
+ *   themselves (node/SSR-side provider stacks,
  *   alternate engine instances) plus the engine typings that contract
  *   needs.
  *
@@ -238,25 +238,7 @@ export {
 // `DocBlock.attribution` are the read entry points.
 export { type ActorId, type BlockAttribution } from './attribution/index.js';
 
-// ── 6 · Migration ──────────────────────────────────────────────────────
-//
-// v13 → v14 one-way import: `isLegacyDoc` detects a v13-era layout, the
-// `Migration` surface (via `bindCrdt(Y).migration` or `bindMigration`)
-// rebuilds an admitted document whose `MigrateResult.update` restores
-// through `loadDocument`. Runbook: `docs/crdt-v14-migration.md`.
-
-export { isLegacyDoc } from './migration/legacy-schema.js';
-
-export {
-	type Migration,
-	type MigrationStatus,
-	type MigrationRecord,
-	type MigrationPhase,
-	type MigrateResult,
-	type MigrateOptions
-} from './migration/migrate.js';
-
-// ── 7 · Composition — injecting the engine ─────────────────────────────
+// ── 6 · Composition — injecting the engine ─────────────────────────────
 //
 // `bindCrdt(Y)` is the supported one-shot entry for consumers that take
 // the engine themselves (the documented node/SSR path):
@@ -271,18 +253,16 @@ export {
 //
 // Everything `bindCrdt` composes is also available pre-bound through the
 // document factories above — reach for `bindCrdt` when the caller needs
-// the raw provider/migration/sync stacks on a doc it owns, not for
+// the raw provider/sync stacks on a doc it owns, not for
 // ordinary document work. `EngineApi`/`EngineDoc`/`YDoc` and friends are
 // the typings that injection contract speaks.
 
-import { bindGenerations } from './migration/generation.js';
 import type { EngineApi, YDoc } from './engine-api.js';
 import { Awareness as _Awareness } from './protocols/awareness.js';
 import { bindAdmission } from './admission.js';
 import { bindAttribution } from './attribution/index.js';
 import { bindEdytorDoc } from './edytor-doc.js';
 import { bindProviders } from './providers/index.js';
-import { bindMigration } from './migration/migrate.js';
 import { bindSync } from './protocols/sync.js';
 
 export const bindCrdt = (Y: EngineApi) => {
@@ -294,9 +274,6 @@ export const bindCrdt = (Y: EngineApi) => {
 		Awareness: _Awareness,
 		doc,
 		providers: bindProviders(Y),
-		migration: bindMigration(Y),
-		/** The generation cutover (4 → 5): a generation-4 state read as JSON. */
-		generations: bindGenerations(Y),
 		sync: bindSync(Y),
 		/** The document-admission boundary (`admitUpdate` staged restore + the shared gate vocabulary). */
 		admission: bindAdmission(Y),

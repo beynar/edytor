@@ -6,7 +6,6 @@ import * as text from './y-text.tests.js'
 import * as xml from './y-xml.tests.js'
 import * as encoding from './encoding.tests.js'
 import * as undoredo from './undo-redo.tests.js'
-import * as compatibility from './compatibility.tests.js'
 import * as doc from './doc.tests.js'
 import * as updates from './updates.tests.js'
 import * as relativePositions from './relativePositions.tests.js'
@@ -23,7 +22,7 @@ if (isBrowser) {
 }
 
 const tests = {
-  doc, map, array, text, xml, encoding, undoredo, compatibility, updates, relativePositions, idset, attribution, delta
+  doc, map, array, text, xml, encoding, undoredo, updates, relativePositions, idset, attribution, delta
 }
 
 const run = async () => {

@@ -16,7 +16,7 @@
  *   codec that needs no `Awareness` instance (whose sweep timer blocks
  *   hibernation);
  * - the admission gates (`assertAdmission`, `inspectAdmission`, …) that
- *   diagnostics and migration tooling read;
+ *   diagnostics read;
  * - the raw provider classes behind `createIndexeddbSync` and
  *   `createWebsocketSync` (`IndexeddbPersistence`, `WebsocketProvider`)
  *   and `storeState`.
@@ -51,14 +51,10 @@ export {
 	frame,
 	PROTOCOL_VERSION,
 	GENERATION_RECORD,
-	STORED_GENERATION_RECORD,
-	STORAGE_FORMAT,
 	GenerationMismatchError,
 	readProtocolVersion,
-	type GenerationRecord,
-	type StorageFormat
+	type GenerationRecord
 } from './protocols/envelope.js';
-export { PREVIOUS_SCHEMA, isPreviousGenerationRecord } from './migration/generation.js';
 
 // ── Message types, acknowledgements and chunks ─────────────────────────
 export {
@@ -109,7 +105,6 @@ export {
 export {
 	applyAwarenessUpdate,
 	encodeAwarenessUpdate,
-	modifyAwarenessUpdate,
 	readAwarenessEntries,
 	writeAwarenessEntries,
 	type AwarenessEntry

@@ -47,12 +47,10 @@ const d: unknown[] = child.toArray();
 const update: Uint8Array = Y.encodeStateAsUpdate(doc);
 const doc2: Y.Doc = new Y.Doc();
 Y.applyUpdate(doc2, update);
-const um: Y.UndoManager = new Y.UndoManager(doc);
 const rpos: Y.RelativePosition = Y.createRelativePositionFromTypeIndex(child, 1);
 const json = Y.relativePositionToJSON(rpos);
 void d;
 void doc2;
-void um;
 void json;
 
 // ── public binding surface types ─────────────────────────────────────────
@@ -65,14 +63,12 @@ const v: number | undefined = ed.schemaVersion();
 const undo = ed.createUndoManager({ captureTimeout: 0 });
 const awareness: bindings.Awareness = new crdt.Awareness(crdtDoc);
 const providers: bindings.ProviderStack = crdt.providers;
-const migration: bindings.Migration = crdt.migration;
 const sync: SyncProtocol = crdt.sync;
 void ids;
 void v;
 void undo;
 void awareness;
 void providers;
-void migration;
 void sync;
 
 // ── the real consumer story must be fully typed ──────────────────────────

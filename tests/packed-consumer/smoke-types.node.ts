@@ -19,12 +19,10 @@ const d: unknown[] = child.toArray();
 const update: Uint8Array = Y.encodeStateAsUpdate(doc);
 const doc2: Y.Doc = new Y.Doc();
 Y.applyUpdate(doc2, update);
-const um: Y.UndoManager = new Y.UndoManager(doc);
 const rpos: Y.RelativePosition = Y.createRelativePositionFromTypeIndex(child, 1);
 const json = Y.relativePositionToJSON(rpos);
 void d;
 void doc2;
-void um;
 void json;
 
 // ── binding surface types (Doc + Awareness + facade + providers + sync) ──
@@ -41,7 +39,6 @@ const undo = ed.createUndoManager({ captureTimeout: 0 });
 const storyJson: ReturnType<typeof ed.toJSON> = ed.toJSON();
 const awareness: bindings.Awareness = new crdt.Awareness(crdtDoc);
 const providers: bindings.ProviderStack = crdt.providers;
-const migration: bindings.Migration = crdt.migration;
 const sync: protocol.SyncProtocol = crdt.sync;
 const sv: Uint8Array = Y.encodeStateVector(crdtDoc);
 const delta: Uint8Array = Y.encodeStateAsUpdate(crdtDoc, sv);
@@ -57,7 +54,6 @@ void undo;
 void storyJson;
 void awareness;
 void providers;
-void migration;
 void sync;
 
 // `<Edytor {sync}>` factories are reachable through the bound stack too —

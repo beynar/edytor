@@ -34,6 +34,7 @@ import { describe, expect, it } from 'vitest';
 import * as F from '../../lib/crdt/vendor/yjs/src/index.js';
 import { toDelta } from './harness/delta.js';
 import { bool, int, mulberry32, pick } from './harness/rng.js';
+import { undoManagerOf } from './harness/undo.js';
 
 const upstream = async () => {
 	const require = createRequire(import.meta.url);
@@ -96,7 +97,9 @@ const program = (E, seed, gc, exchange, markers) => {
 	docs[1].clientID = 22;
 	// the fork without its search-marker pool: the cursor walks from the start, as upstream does
 	if (!markers) for (const d of docs) d.get('t')._searchMarker = null;
-	const ums = docs.map((d) => new E.UndoManager([d.get('t'), d.get('m')], { captureTimeout: 0 }));
+	const ums = docs.map(
+		(d) => new (E.UndoManager ?? undoManagerOf(E))([d.get('t'), d.get('m')], { captureTimeout: 0 })
+	);
 	/** A detached node with a few writes of its own (lengths tracked here: a detached node has none). */
 	const detached = (depth) => {
 		const n = new E.Node(pick(rng, [null, 'p', 'q']));
@@ -172,9 +175,12 @@ const program = (E, seed, gc, exchange, markers) => {
 	};
 };
 
+/** A document's state in the fork's one encoding: upstream's v2 (YP17), the baselines' `…V2`. */
+const stateOf = (E, d) => (E.encodeStateAsUpdateV2 ?? E.encodeStateAsUpdate)(d);
+
 const snapshot = (E, docs) =>
 	docs.map((d) => ({
-		bytes: Buffer.from(E.encodeStateAsUpdate(d)).toString('hex'),
+		bytes: Buffer.from(stateOf(E, d)).toString('hex'),
 		t: JSON.stringify(toDelta(d.get('t'), { deep: true }).toJSON()),
 		m: JSON.stringify(toDelta(d.get('m'), { deep: true }).toJSON())
 	}));
@@ -227,7 +233,7 @@ describe('YP16 — writes without the delta layer store what the delta layer sto
 			n.format(0, 2, { italic: true });
 			n.delete(2, 1);
 			doc.get('r').insert(0, [n]);
-			return Buffer.from(E.encodeStateAsUpdate(doc)).toString('hex');
+			return Buffer.from(stateOf(E, doc)).toString('hex');
 		};
 		expect(run(F)).toBe(run(U));
 	});

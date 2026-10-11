@@ -173,9 +173,9 @@ export function _intersectSets(setA: IdSet, setB: IdSet): IdSet;
 export function intersectSets(setA: IdSet, setB: IdSet): IdSet;
 export function createIdSet(): IdSet;
 export function createDeleteSetFromStructStore(ss: StructStore): IdSet;
-export function writeIdSet(encoder: IdSetEncoderV1 | IdSetEncoderV2, idSet: IdSet): void;
-export function readIdSet(decoder: IdSetDecoderV1 | IdSetDecoderV2): IdSet;
-export function readAndApplyDeleteSet(decoder: IdSetDecoderV1 | IdSetDecoderV2, transaction: Transaction, store: StructStore): Uint8Array<ArrayBuffer> | null;
+export function writeIdSet(encoder: IdSetEncoder, idSet: IdSet): void;
+export function readIdSet(decoder: IdSetDecoder): IdSet;
+export function readAndApplyDeleteSet(decoder: IdSetDecoder, transaction: Transaction, store: StructStore): Uint8Array<ArrayBuffer> | null;
 export type ContentIds = {
     inserts: IdSet;
     deletes: IdSet;

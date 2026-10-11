@@ -4776,7 +4776,7 @@ export declare class ToolbarController {
     readonly labels: ToolbarLabels;
     private shown;
     linkUrl: string;
-    panel: "link" | "color" | "turn" | null;
+    panel: "color" | "link" | "turn" | null;
     private selectionSnapshot;
     private isRestoringSelection;
     private focusField;
@@ -4953,8 +4953,8 @@ export declare class UndecodableUpdateError extends Error {
 ```ts
 // crdt/doc/gate.d.ts
 export declare class UnsupportedDocError extends Error {
-    readonly kind: 'foreign' | 'legacy';
-    constructor(kind: 'foreign' | 'legacy');
+    readonly kind: 'foreign';
+    constructor(kind: 'foreign');
 }
 ```
 
@@ -5812,13 +5812,13 @@ export type YDoc = InstanceType<typeof Y.Doc>;
 #### crdt/engine-api.d.ts#YUndoManager
 
 ```ts
-export type YUndoManager = InstanceType<typeof Y.UndoManager>;
+export type YUndoManager = import('./doc/history.js').UndoManager;
 ```
 
 #### crdt/engine.d.ts#EngineSymbol
 
 ```ts
-export type EngineSymbol = 'Doc' | 'Node' | 'UndoManager' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'decodeUpdateV2' | 'UpdateEncoderV1' | 'writeIdSet' | 'mergeUpdates' | 'applyUpdateV2' | 'encodeStateAsUpdateV2' | 'convertUpdateFormatV2ToV1' | 'UpdateDecoderV1' | 'UpdateEncoderV2' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'createRelativePositionFromTypeIndex' | 'createRelativePositionFromJSON' | 'createAbsolutePositionFromRelativePosition' | 'relativePositionToJSON' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'ContentAny' | 'createID';
+export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'createRelativePositionFromTypeIndex' | 'createRelativePositionFromJSON' | 'createAbsolutePositionFromRelativePosition' | 'relativePositionToJSON' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'ContentAny' | 'createID';
 ```
 
 #### crdt/engine.d.ts#Y
@@ -6060,11 +6060,11 @@ declare const bindProviders: (Y: EngineApi) => {
             destroy(): void;
             disconnect(): void;
             connect(): void;
-            emit<N extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
+            emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
             _observers: Map<string, Set<any>>;
-            on<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
-            once<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
-            off<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
+            once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
         };
     };
     watchComments: (server: string, roomName: string, listener: (message: import("../protocol.js").CommentMessage) => void) => (() => void);

@@ -1,7 +1,7 @@
 /**
- * Per-writer text delete marks — the block delete marks' rule applied to text (fork patch YP11).
+ * Per-writer text delete marks — the block delete marks' rule applied to text.
  *
- * Deleting text tombstones its engine items, and the engine's undo brings
+ * Deleting text tombstones its engine items, and an undo brings
  * text back as COPIES (new items). The engine records no writer for a
  * delete, so two writers who deleted the same character concurrently could
  * not tell each other's delete from their own: one undo brought it back
@@ -21,8 +21,8 @@
  * text keeps its order whoever restores it. Every decision is made by the
  * replica whose fact it is, never on another replica's stale state:
  *
- * - restoring (the undoing history): the engine hands every text unit of a
- *   popped step to `restoreFilter`, which withholds it, and `onApply`
+ * - restoring (the undoing history): the history hands every text unit of a
+ *   replayed step to `restoreFilter`, which withholds it, and `onApply`
  *   restores each character of the step no other live mark holds and no
  *   copy shows, once. A character another mark holds stays PENDING on that
  *   history, which restores it once no mark holds it and no copy shows (two
@@ -184,7 +184,7 @@ export const bindDeletes = (Y: EngineApi) => {
 				// A leaf has no copy: a local `redone` link left by an earlier
 				// restoration points at a copy this lineage no longer shows.
 				(it as { redone: unknown }).redone = null;
-				const copy = ops.redo(tr, it, new Set([it]), p.um());
+				const copy = ops.redo(tr, it, new Set([it]));
 				if (copy === null) continue;
 				dropSearchMarkers(copy.parent);
 				// An inline atom comes back with its attributes: they were deleted with
@@ -192,7 +192,7 @@ export const bindDeletes = (Y: EngineApi) => {
 				const attrs = it.content.type?._map;
 				if (attrs !== undefined) {
 					const kids = [...attrs.values()].filter((c) => c.deleted);
-					for (const kid of kids) ops.redo(tr, kid, new Set(kids), p.um());
+					for (const kid of kids) ops.redo(tr, kid, new Set(kids));
 				}
 				const e = {
 					c: copy.id.client,
@@ -453,7 +453,7 @@ export const bindDeletes = (Y: EngineApi) => {
 		state: attach,
 		remove,
 
-		/** The `restoreFilter` and `onApply` options of a history on `doc` (fork patch YP11). */
+		/** The restore and apply rules of a history on `doc` (`doc/history.ts`). */
 		history: (doc: EngineDoc, um: () => YUndoManager) => {
 			const s = attach(doc);
 			const p: Policy = { um, watch: [], tr: null, units: [] };

@@ -1,5 +1,6 @@
 import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 import * as t from 'lib0-v14/testing'
+import { UndoManager } from '../../../src/tests/crdt/harness/undo.js'
 
 /**
  * @param {t.TestCase} _tc
@@ -287,7 +288,7 @@ export const testSubdocLoadEdgeCasesAutoload = _tc => {
 export const testSubdocsUndo = _tc => {
   const ydoc = new Y.Doc()
   const elems = ydoc.get()
-  const undoManager = new Y.UndoManager(elems)
+  const undoManager = new UndoManager(elems)
   const subdoc = new Y.Doc()
   // @ts-ignore
   elems.insert(0, [subdoc])

@@ -11,6 +11,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import { toDelta, eventDelta, eventDeltaDeep } from './harness/delta.js';
+import { UndoManager } from './harness/undo.js';
 
 describe('v14 smoke: document & unified node', () => {
 	test('create Y.Doc and obtain a root Y.Node via doc.get', () => {
@@ -196,7 +197,7 @@ describe('v14 smoke: UndoManager', () => {
 	test('undo/redo scoped to a Doc', () => {
 		const doc = new Y.Doc();
 		const node = doc.get('content');
-		const um = new Y.UndoManager(doc);
+		const um = new UndoManager(doc);
 		doc.transact(() => node.insert(0, 'first'));
 		um.stopCapturing();
 		doc.transact(() => node.insert(5, ' second'));
@@ -215,7 +216,7 @@ describe('v14 smoke: UndoManager', () => {
 		const remote = new Y.Doc();
 		local.get('content').insert(0, 'shared ');
 		Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
-		const um = new Y.UndoManager(local, { trackedOrigins: new Set(['local-origin']) });
+		const um = new UndoManager(local, { trackedOrigins: new Set(['local-origin']) });
 		local.transact(() => local.get('content').insert(7, 'LOCAL'), 'local-origin');
 		remote.get('content').insert(0, 'REMOTE ');
 		Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(local)));

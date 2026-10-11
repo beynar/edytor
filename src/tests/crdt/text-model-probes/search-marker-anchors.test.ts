@@ -26,6 +26,7 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import * as Y13 from 'yjs';
 import * as delta from 'lib0-v14/delta';
 import { toDelta, applyDelta } from '../harness/delta.js';
+import { UndoManager } from '../harness/undo.js';
 
 const buildFragmented = (doc, name, n) => {
 	const text = doc.get(name);
@@ -152,7 +153,7 @@ describe('gateF2/WU9 — undo resurrection around markers', () => {
 			const doc = newDoc();
 			const t = buildFragmented(doc, 't', 150);
 			if (!withMarkers) t._searchMarker = null;
-			const um = new Y.UndoManager(t);
+			const um = new UndoManager(t);
 			// plant marker at 120
 			doc.transact(() => applyDelta(t, delta.create().retain(120).insert('P')));
 			// delete a range ADJACENT to (not covering) the marker
@@ -175,7 +176,7 @@ describe('gateF2/WU9 — undo resurrection around markers', () => {
 			const doc = newDoc();
 			const t = buildFragmented(doc, 't', 150);
 			if (!withMarkers) t._searchMarker = null;
-			const um = new Y.UndoManager(t);
+			const um = new UndoManager(t);
 			doc.transact(() => applyDelta(t, delta.create().retain(120).insert('P', { u: true })));
 			um.undo(); // removes 'P' — marker anchor deleted by undo
 			doc.transact(() => applyDelta(t, delta.create().retain(110).insert('zz')));
@@ -216,7 +217,7 @@ describe('gateF2/WU9 — wire interop', () => {
 		// v14 list content surfaces as a v13 YText (`doc.get` returns a bare
 		// AbstractType; the typed getter binds the decoded ref correctly).
 		const d13 = new Y13.Doc();
-		Y13.applyUpdate(d13, update);
+		Y13.applyUpdateV2(d13, update);
 		const t13 = d13.getText('t');
 		const s13 = t13.toString();
 		expect(s13).toContain('mid');
@@ -228,7 +229,7 @@ describe('gateF2/WU9 — wire interop', () => {
 		const t13 = d13.getText('t');
 		t13.insert(0, 'hello ');
 		t13.insert(6, 'world', { bold: true });
-		const update = Y13.encodeStateAsUpdate(d13);
+		const update = Y13.encodeStateAsUpdateV2(d13);
 		const doc = newDoc();
 		Y.applyUpdate(doc, update);
 		const t = doc.get('t');

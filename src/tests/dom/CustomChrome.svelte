@@ -18,7 +18,6 @@
 		CodeHeader,
 		EquationEditor,
 		ImageControls,
-		ImageEmptyController,
 		LanguageMenu,
 		MediaEmptyController,
 		MentionItem,
@@ -348,7 +347,7 @@
 	</div>
 {/snippet}
 
-{#snippet imageEmpty(empty: ImageEmptyController)}
+{#snippet imageEmpty(empty: MediaEmptyController)}
 	<div data-testid="custom-image-empty" data-readonly={empty.readonly}>
 		{#if !empty.readonly}
 			<input

@@ -161,8 +161,6 @@ export {
 	type UrlPasteOption,
 	type ImageControls,
 	type ImageBox,
-	type ImageEmptyController,
-	type ImageEmptyFailure,
 	type MenuItemPayload,
 	type OptionAttributes,
 	createFindPlugin,

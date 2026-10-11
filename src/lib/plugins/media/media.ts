@@ -1,5 +1,4 @@
 import type { Snippet } from 'svelte';
-import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { BlockDefinition, Plugin, PluginDefinitions, PluginOperations } from '$lib/plugins.js';
 import { mediaKinds } from '$lib/crdt/semantics.js';
@@ -7,19 +6,12 @@ import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 import type { Uploader } from '../uploads.svelte.js';
 import { keywordsOf, labelsOf, mediaEnglish } from '$lib/labels.js';
-import type { MediaEmptyController } from './empty.svelte.js';
+import { MEDIA_ICONS, type EmptyView, type MediaEmptyController } from './empty.svelte.js';
 
 /** The media kinds. */
 export type MediaKind = 'embed' | 'bookmark' | 'file' | 'video' | 'audio';
 
-/** Each media kind's icon: its menu row, its empty block, its paste offer. */
-export const MEDIA_ICONS: Record<MediaKind, string> = {
-	embed: '⧉',
-	bookmark: '🔖',
-	file: '📎',
-	video: '🎬',
-	audio: '🎵'
-};
+export { MEDIA_ICONS };
 
 /**
  * A media kind in a view: the first plugin of the kind listed in it claims
@@ -27,13 +19,7 @@ export const MEDIA_ICONS: Record<MediaKind, string> = {
  * `empty` snippet (none: nothing drawn) and `upload`, how a block of
  * it stores a source, and the embed's allowlist.
  */
-export type MediaView = {
-	empty?: Snippet<[MediaEmptyController]>;
-	upload?: Uploader;
-	/** Store `value` (a link, or the URL an upload of `file` answered) on `block`; answers whether it took it. */
-	store: (block: Block, value: string, file?: File) => boolean;
-	providers?: readonly EmbedProvider[];
-};
+export type MediaView = EmptyView & { providers?: readonly EmbedProvider[] };
 
 const views = new WeakMap<Edytor, Partial<Record<MediaKind, MediaView>>>();
 

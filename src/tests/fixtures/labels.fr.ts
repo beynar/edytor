@@ -105,8 +105,7 @@ export const fr: Labels = {
 		deleteKey: 'Suppr'
 	},
 	image: {
-		image: 'Image',
-		uploading: 'Téléversement…'
+		image: 'Image'
 	},
 	media: {
 		embed: 'Intégration',

@@ -17,7 +17,6 @@
 		EquationEditor,
 		FindController,
 		ImageControls,
-		ImageEmptyController,
 		LanguageMenu as LanguageMenuController,
 		MarqueeBoxPayload,
 		MediaEmptyController,
@@ -40,7 +39,6 @@
 	import CommentsHeader from './CommentsHeader.svelte';
 	import EquationPanel from './EquationPanel.svelte';
 	import FindBar from './FindBar.svelte';
-	import ImageEmpty from './ImageEmpty.svelte';
 	import ImageToolbar from './ImageToolbar.svelte';
 	import LanguageMenu from './LanguageMenu.svelte';
 	import LinkCard from './LinkCard.svelte';
@@ -72,7 +70,6 @@
 		tableAdd,
 		equationPanel,
 		imageToolbar,
-		imageEmpty,
 		mediaEmpty,
 		blockHandle,
 		commentCard,
@@ -145,10 +142,6 @@
 
 {#snippet imageToolbar(controls: ImageControls)}
 	<ImageToolbar {controls} />
-{/snippet}
-
-{#snippet imageEmpty(panel: ImageEmptyController)}
-	<ImageEmpty {panel} />
 {/snippet}
 
 {#snippet mediaEmpty(panel: MediaEmptyController)}

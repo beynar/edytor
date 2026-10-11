@@ -4,7 +4,7 @@
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import { branded } from '../brand.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
-	import ImageEmpty from './ImageEmpty.svelte';
+	import MediaEmpty from '../media/MediaEmpty.svelte';
 	import ImageChrome from './ImageChrome.svelte';
 	import { imageKinds } from '$lib/crdt/semantics.js';
 	import {
@@ -21,7 +21,7 @@
 		type ImageAlign
 	} from './image.js';
 	import { ImageControls } from './controls.svelte.js';
-	import type { ImageEmptyController } from './empty.svelte.js';
+	import { MEDIA_ICONS, type EmptyView, type MediaEmptyController } from '../media/empty.svelte.js';
 	import { fileUploads, type FileUploads, type Uploader } from '../uploads.svelte.js';
 	import { onPress } from '$lib/events/onFocus.js';
 	import { imageEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
@@ -53,12 +53,13 @@
 		 */
 		toolbar?: Snippet<[ImageControls]>;
 		/**
-		 * An empty image's markup (Notion's "Add an image" and its link panel,
-		 * or the placeholder of a readonly view; without it, nothing): it
-		 * receives the block's `ImageEmptyController` (`open`, `draft`,
-		 * `failed`, `embed`, `upload`, `readonly`).
+		 * An empty image's markup and its words (Notion's "Add an image" and its
+		 * link panel, a pasted or dropped file's upload, or the placeholder of a
+		 * readonly view; without it, nothing): it receives the block's
+		 * `MediaEmptyController` (`kind` `image`; `open`, `draft`, `failed`,
+		 * `pending`, `embed`, `upload`, `readonly`), as a media block's `empty` does.
 		 */
-		empty?: Snippet<[ImageEmptyController]>;
+		empty?: Snippet<[MediaEmptyController]>;
 	};
 
 	/** The data an image block reads (all optional). */
@@ -66,13 +67,8 @@
 
 	const px = (width: number | undefined) => (width === undefined ? undefined : `${width}px`);
 
-	/** One view's image state: its plugin's `upload`, the chrome, the uploads in flight. */
-	type View = {
-		upload?: Uploader;
-		controls: ImageControls;
-		uploads?: FileUploads;
-		empty?: Snippet<[ImageEmptyController]>;
-	};
+	/** One view's image state: its plugin's `upload`, `empty` and source rule, the chrome, the uploads in flight. */
+	type View = EmptyView & { controls: ImageControls; uploads?: FileUploads };
 	/** By view; the first image plugin of a view owns it, as its kind's definition (first wins). */
 	const views = new WeakMap<Edytor, View>();
 
@@ -90,7 +86,15 @@
 				upload,
 				controls: new ImageControls(edytor),
 				uploads: upload ? fileUploads(edytor) : undefined,
-				empty: pluginOptions.empty
+				empty: pluginOptions.empty,
+				// An accepted source; an inline image over the cap is never stored.
+				store: (block, value) => {
+					const src = safeImageSrc(value);
+					if (!src) return 'invalid';
+					if (oversizedInlineImage(src)) return 'inline';
+					block.data.src = src;
+					return null;
+				}
 			};
 			// The records read with no view (`plugin(undefined)`) keep no state.
 			if (edytor && !views.has(edytor)) {
@@ -153,7 +157,7 @@
 						presets: [
 							{
 								label: labels.image,
-								icon: '🖼',
+								icon: MEDIA_ICONS.image,
 								keywords: keywordsOf(edytor, 'block.image', ['picture', 'photo', 'img']),
 								group: 'Media'
 							}
@@ -192,7 +196,6 @@
 	<!-- A suggestion's preview (no handle) reads only its data. -->
 	{@const view = block.handle ? views.get(block.handle.edytor) : undefined}
 	{@const src = safeImageSrc(block.data.src)}
-	{@const upload = src ? undefined : view?.uploads?.of(block.id)}
 	{#if src}
 		<div use:block.void data-edytor-image data-align={imageAlignOf(block.data)}>
 			<img
@@ -204,23 +207,12 @@
 				)}
 			/>
 		</div>
-	{:else if upload?.status === 'uploading'}
-		<div use:block.void data-edytor-image data-edytor-image-uploading data-align="center">
-			{#if upload.preview}<img src={upload.preview} alt="" draggable="false" />{/if}
-			<span data-edytor-image-progress role="status">
-				<progress value={upload.progress ?? undefined} max="1"></progress>
-				{labelsOf(block.handle?.edytor, 'image', imageEnglish).uploading}
-			</span>
-		</div>
 	{:else}
 		<div use:block.void data-edytor-image-empty>
-			<ImageEmpty
+			<MediaEmpty
 				block={block.handle}
-				upload={view?.upload}
-				uploads={view?.uploads}
-				error={upload?.status === 'failed' ? 'upload' : null}
-				landed={upload?.status === 'landed'}
-				emptyOf={(edytor) => views.get(edytor)?.empty}
+				kind="image"
+				viewOf={(edytor) => (edytor ? views.get(edytor) : undefined)}
 			/>
 		</div>
 	{/if}<!--
@@ -243,23 +235,5 @@
 	}
 	[data-edytor-image] img {
 		max-width: 100%;
-	}
-	[data-edytor-image-uploading] {
-		min-height: 48px;
-		border-radius: 4px;
-		background: rgba(55, 53, 47, 0.04);
-	}
-	[data-edytor-image-uploading] img {
-		opacity: 0.5;
-	}
-	[data-edytor-image-progress] {
-		position: absolute;
-		top: 8px;
-		right: 8px;
-		padding: 2px 8px;
-		border-radius: 4px;
-		background: rgba(15, 15, 15, 0.6);
-		color: #fff;
-		font-size: 12px;
 	}
 </style>

@@ -46,7 +46,7 @@ Two rules hold for every snippet:
 | [Toolbar and link card](#toolbar-and-link-card) | `createToolbarPlugin({ toolbar, card })` | `ToolbarController` | `popup`, `keys`, `linkField` |
 | [URL paste menu](#url-paste-menu) | `createEmbedPlugin({ menu })`, `createBookmarkPlugin({ menu })` | `UrlPasteController` | `popup`, `option(index)` |
 | [Image toolbar](#image-toolbar) | `createImagePlugin({ toolbar })` | `ImageControls` | `bar`, `altField` |
-| [Empty image and media blocks](#empty-image-and-media-blocks) | `createImagePlugin({ empty })`, the media plugins' `empty` | `ImageEmptyController`, `MediaEmptyController` | `field` |
+| [Empty image and media blocks](#empty-image-and-media-blocks) | `createImagePlugin({ empty })`, the media plugins' `empty` | `MediaEmptyController` | `field` |
 | [Table grips, menu and `+`](#table-grips-menu-and-) | `createTablePlugin({ grip, menu, add })` | `TableGripPayload`, `TableChrome` (rows: `TableMenuItem`), `TableAddPayload` | `grip`; `popup`, `keys`, `option(index)` |
 | [Code header and language list](#code-header-and-language-list) | `createCodePlugin({ header, menu })` | `CodeHeader`, `LanguageMenu` (rows: `LanguageMenuItem`) | `button`; `keys`, `popup`, `option(index)` |
 | [Callout icon picker](#callout-icon-picker) | `createRichTextPlugin({ callout: { picker } })` | `CalloutIconPicker` | `keys`, `popup`, `option(index)` |
@@ -317,7 +317,7 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 
 ## Empty image and media blocks
 
-`empty` draws an empty block: the image's "Add an image" and its link panel, and the same for the [embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video) and [audio](/docs/plugins/audio) blocks, a readonly view's placeholder included. It receives one controller per empty block: `open`, `draft` (bind your field to it), `failed` (why the last link or upload was not embedded), `embed(value?)`, `upload(file)` (with the plugin's `upload`, `canUpload`), and `readonly` (no control may write: show a placeholder). A media block's controller adds `kind`, `kindLabels`, `label`, `icon`, `accept`, and `pending`, the upload of a pasted or dropped file (`status`, `progress`).
+`empty` draws an empty block: the image's "Add an image" and its link panel, and the same for the [embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video) and [audio](/docs/plugins/audio) blocks, a readonly view's placeholder included: one snippet shape, one controller (`MediaEmptyController`) per empty block of any of these kinds: `kind` (`image`, `embed`, `bookmark`, `file`, `video`, `audio`: your words for it), `icon`, `open`, `draft` (bind your field to it), `failed` (why the last link or upload was not embedded: `invalid`, `inline` for an inline image over `MAX_INLINE_IMAGE_BYTES`, `upload`), `embed(value?)`, `upload(file)` (with the plugin's `upload`, `canUpload`, the picker's `accept`), `pending`, the upload of a pasted or dropped file (`status`, `progress`, an image's `preview`), and `readonly` (no control may write: show a placeholder).
 
 ```svelte title="EmptyBlocks.svelte" check
 <script lang="ts">
@@ -325,7 +325,7 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 		Edytor,
 		createImagePlugin,
 		createVideoPlugin,
-		type ImageEmptyController,
+		MAX_INLINE_IMAGE_BYTES,
 		type MediaEmptyController
 	} from 'edytor';
 
@@ -335,14 +335,14 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 	];
 </script>
 
-{#snippet emptyImage(image: ImageEmptyController)}
+{#snippet emptyImage(image: MediaEmptyController)}
 	{#if image.readonly}
 		<p>Image</p>
 	{:else}
 		<input aria-label="Image link" bind:value={image.draft} {@attach image.field} />
 		<button onclick={() => image.embed()}>Embed image</button>
 		{#if image.failed === 'inline'}
-			<small>Inline images are limited to {image.inlineLimit}.</small>
+			<small>Inline images are limited to {MAX_INLINE_IMAGE_BYTES} bytes.</small>
 		{:else if image.failed}
 			<small>That doesn't look like an image link.</small>
 		{/if}

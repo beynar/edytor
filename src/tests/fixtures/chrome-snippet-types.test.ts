@@ -34,7 +34,6 @@ import type {
 	CommentsController,
 	EmbedPluginOptions,
 	ImageControls,
-	ImageEmptyController,
 	ImagePluginOptions,
 	MarqueeBoxPayload,
 	MarqueePluginOptions,
@@ -78,7 +77,7 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<Payload<EmbedPluginOptions['menu']>>().toEqualTypeOf<UrlPasteController>();
 		expectTypeOf<Payload<BookmarkPluginOptions['menu']>>().toEqualTypeOf<UrlPasteController>();
 		expectTypeOf<Payload<ImagePluginOptions['toolbar']>>().toEqualTypeOf<ImageControls>();
-		expectTypeOf<Payload<ImagePluginOptions['empty']>>().toEqualTypeOf<ImageEmptyController>();
+		expectTypeOf<Payload<ImagePluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
 		expectTypeOf<Payload<MediaPluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
 		expectTypeOf<Payload<EmbedPluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
 		expectTypeOf<Payload<BookmarkPluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
@@ -141,7 +140,6 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<UrlPasteController['close']>().toBeFunction();
 		expectTypeOf<ImageControls>().not.toHaveProperty('labels');
 		expectTypeOf<ImageControls['readonly']>().toEqualTypeOf<boolean>();
-		expectTypeOf<ImageEmptyController['readonly']>().toEqualTypeOf<boolean>();
 		expectTypeOf<MediaEmptyController['readonly']>().toEqualTypeOf<boolean>();
 		expectTypeOf<SuggestionBarPayload>().not.toHaveProperty('labels');
 		expectTypeOf<TableChrome>().not.toHaveProperty('labels');

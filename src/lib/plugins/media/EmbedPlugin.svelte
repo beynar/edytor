@@ -69,9 +69,9 @@
 				// The block's link, when a provider plays it.
 				store: (block, value) => {
 					const url = safeWebUrl(value);
-					if (!url || !embedSourceOf(url, allowed)) return false;
+					if (!url || !embedSourceOf(url, allowed)) return 'invalid';
 					block.data.url = url;
-					return true;
+					return null;
 				},
 				hooks: urlPaste(
 					edytor,
@@ -138,7 +138,11 @@
 		</div>
 	{:else}
 		<div use:block.void data-edytor-media-empty>
-			<MediaEmpty block={block.handle} kind="embed" />
+			<MediaEmpty
+				block={block.handle}
+				kind="embed"
+				viewOf={(edytor) => mediaView(edytor, 'embed')}
+			/>
 		</div>
 	{/if}
 	<!-- The core renders the kind's <figure> around this markup. -->

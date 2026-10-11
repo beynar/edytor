@@ -9,6 +9,7 @@
 		fileNameOf,
 		mediaPlugin,
 		mediaSourceOf,
+		mediaView,
 		safeMediaSrc,
 		type MediaPluginOptions
 	} from './media.js';
@@ -78,10 +79,10 @@
 			return {
 				store: (block, value, file) => {
 					const data = sourceData(kind, value, file);
-					if (!data) return false;
+					if (!data) return 'invalid';
 					if (kind === 'file') block.setData(data);
 					else block.data.src = data.src;
-					return true;
+					return null;
 				},
 				hooks: uploads ? { onPaste: uploads.paste } : {},
 				record: { snippet: source, ...record }
@@ -134,7 +135,11 @@
 		</div>
 	{:else}
 		<div use:block.void data-edytor-media-empty>
-			<MediaEmpty block={block.handle} kind={block.type as SourceKind} />
+			<MediaEmpty
+				block={block.handle}
+				kind={block.type as SourceKind}
+				viewOf={(edytor) => mediaView(edytor, block.type as SourceKind)}
+			/>
 		</div>
 	{/if}
 	<!-- The core renders the kind's <figure> around this markup. -->

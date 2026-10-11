@@ -97,7 +97,6 @@ export {
 export type { MediaEmptyController, MediaEmptyFailure } from './media/empty.svelte.js';
 export type { UrlPasteController, UrlPasteOffer, UrlPasteOption } from './media/urlPaste.svelte.js';
 export type { ImageControls, ImageBox } from './image/controls.svelte.js';
-export type { ImageEmptyController, ImageEmptyFailure } from './image/empty.svelte.js';
 export type { BlockHandleController } from './blockHandles/BlockHandleController.svelte.js';
 export { createColumnsPlugin, type ColumnsPluginOptions } from './columns/ColumnsPlugin.svelte';
 export { createFindPlugin, findController, type FindPluginOptions } from './find/findPlugin.js';

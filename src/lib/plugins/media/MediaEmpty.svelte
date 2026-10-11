@@ -2,42 +2,34 @@
 	import { getContext, untrack } from 'svelte';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
-	import { MEDIA_ICONS, mediaView, type MediaKind } from './media.js';
-	import { MediaEmptyController } from './empty.svelte.js';
+	import type { MediaKind } from './media.js';
+	import { MediaEmptyController, type EmptyView } from './empty.svelte.js';
 	import { fileUploads } from '../uploads.svelte.js';
 
 	/**
-	 * A media block's empty state: a `MediaEmptyController`, which the view's
-	 * `empty` snippet for the kind draws. The kind in the block's view
-	 * (`mediaView`) stores the link, or an uploaded file's URL (only on a
-	 * block still empty when it lands). A readonly view, or a suggestion's
-	 * preview (no `block`), may not write: no control may run `upload` (or a
-	 * bookmark's `unfurl`). A pasted or dropped file (`media.files`) shows
-	 * its upload (`pending`); a failed one opens the panel with its error;
-	 * data answered while the block was not shown fills it as soon as it
-	 * shows.
+	 * An image's or a media block's empty state: a `MediaEmptyController`,
+	 * which the view's `empty` snippet for the kind draws. The kind in the
+	 * block's view (`viewOf`) stores the link, or an uploaded file's URL
+	 * (only on a block still empty when it lands). A readonly view, or a
+	 * suggestion's preview (no `block`), may not write: no control may run
+	 * `upload`. A pasted or dropped file shows its upload (`pending`); a
+	 * failed one opens the panel with its error; data answered while the
+	 * block was not shown fills it as soon as it shows.
 	 */
 	let {
 		block,
-		kind
+		kind,
+		viewOf
 	}: {
 		block: Block | undefined;
-		kind: MediaKind;
+		kind: MediaKind | 'image';
+		/** The kind in a view: its `empty`, `upload` and `store`. */
+		viewOf: (edytor: Edytor | undefined) => EmptyView | undefined;
 	} = $props();
 	/** The view rendering it (a suggestion's preview included): whose `empty` it draws. */
 	const view = getContext<Edytor>('edytor');
-	const panel = untrack(() => {
-		/** The kind in the block's view: its `upload`, how it stores a source. */
-		const own = mediaView(block?.edytor, kind);
-		const store = (value: string, file?: File) => Boolean(block && own?.store(block, value, file));
-		return new MediaEmptyController(block, kind, MEDIA_ICONS[kind], {
-			accept: kind === 'video' || kind === 'audio' ? `${kind}/*` : undefined,
-			upload: own?.upload,
-			link: (value) => store(value),
-			file: (picked, src) => store(src, picked)
-		});
-	});
-	const empty = untrack(() => mediaView(block?.edytor ?? view, kind)?.empty);
+	const panel = untrack(() => new MediaEmptyController(block, kind, viewOf(block?.edytor)));
+	const empty = untrack(() => viewOf(block?.edytor ?? view)?.empty);
 	/** The upload of a pasted or dropped file into this block, if any. */
 	const pending = $derived(panel.pending);
 	// After the flush that shows the block: never inside the transaction that showed it.

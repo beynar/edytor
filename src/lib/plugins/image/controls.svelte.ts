@@ -42,9 +42,7 @@ type Drag = {
 
 /** The image element of a shown image block (none while it uploads); an image holds no block. */
 const imageOf = (node: Element | null | undefined) =>
-	node?.querySelector<HTMLImageElement>(
-		'[data-edytor-image]:not([data-edytor-image-uploading]) > img'
-	) ?? null;
+	node?.querySelector<HTMLImageElement>('[data-edytor-image] > img') ?? null;
 
 /**
  * The image chrome (Notion's), in the overlay: on the image under

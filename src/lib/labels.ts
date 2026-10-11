@@ -98,8 +98,6 @@ export type BlockMenuLabels = {
 export type ImageLabels = {
 	/** The preset. */
 	image: string;
-	/** A pasted or dropped image's block while it uploads. */
-	uploading: string;
 };
 
 /** The media kinds' presets, and a file's size. */
@@ -335,10 +333,7 @@ export const blockMenuEnglish: BlockMenuLabels = /* @__PURE__ */ frozen({
 });
 
 /** The `image` section in English. */
-export const imageEnglish: ImageLabels = /* @__PURE__ */ frozen({
-	image: 'Image',
-	uploading: 'Uploading…'
-});
+export const imageEnglish: ImageLabels = /* @__PURE__ */ frozen({ image: 'Image' });
 
 /** The `media` section in English. */
 export const mediaEnglish: MediaLabels = /* @__PURE__ */ frozen({

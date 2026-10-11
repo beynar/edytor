@@ -5,7 +5,7 @@
 	import type { Snippet } from 'svelte';
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
 	import type { MediaEmptyController } from './empty.svelte.js';
-	import { MEDIA_ICONS, escapeHtml, mediaPlugin, safeWebUrl } from './media.js';
+	import { MEDIA_ICONS, escapeHtml, mediaPlugin, mediaView, safeWebUrl } from './media.js';
 
 	/** What an `unfurl` answers about a page; every field optional. */
 	export type BookmarkPreview = {
@@ -103,10 +103,10 @@
 			return {
 				store: (block, value) => {
 					const url = safeWebUrl(value);
-					if (!url) return false;
+					if (!url) return 'invalid';
 					block.data.url = url;
 					void fill(block, url);
-					return true;
+					return null;
 				},
 				hooks: urlPaste(
 					edytor,
@@ -164,7 +164,11 @@
 		</div>
 	{:else}
 		<div use:block.void data-edytor-media-empty>
-			<MediaEmpty block={block.handle} kind="bookmark" />
+			<MediaEmpty
+				block={block.handle}
+				kind="bookmark"
+				viewOf={(edytor) => mediaView(edytor, 'bookmark')}
+			/>
 		</div>
 	{/if}
 	<!-- The core renders the kind's <figure> around this markup. -->

@@ -409,10 +409,11 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 			// Contract (anchor contract, "deleted atoms resolve to the gap where
 			// they lived"): the caret sits in `hello wo|rld`, bound left to the
 			// `o`. A peer deletes `llo wor` (display 2..9) out of the italic text,
-			// so the local apply is followed by the engine's formatting cleanup —
-			// a second transaction opened while the apply still commits. The DOM
-			// still shows the old text there; nothing may be minted from it. The
-			// caret follows its anchor to the gap: `he|ld`, offset 2.
+			// and a listener of the apply's commit opens a second transaction
+			// while the apply still commits (as a provider's or the history's
+			// follow-up write does). The DOM still shows the old text there;
+			// nothing may be minted from it. The caret follows its anchor to the
+			// gap: `he|ld`, offset 2.
 			const { edytor } = await renderDomEdytor(
 				<root>
 					<paragraph>
@@ -426,11 +427,18 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 			edytor.doc.on('beforeTransaction', (transaction: { origin: unknown }) =>
 				origins.push(transaction.origin)
 			);
+			const nested = Symbol('nested');
+			const follow = (transaction: { origin: unknown }) => {
+				if (transaction.origin !== 'peer') return;
+				edytor.doc.off('afterTransaction', follow);
+				edytor.doc.transact(() => {}, nested);
+			};
+			edytor.doc.on('afterTransaction', follow);
 			const remote = peer(edytor);
 			remote.facade.deleteText(first!.id, 2, 7);
 			await remote.push();
 			// The fixture exercises the nested transaction the row names.
-			expect(origins.map(String)).toEqual(['peer', 'Symbol(yjs.formatting-cleanup)']);
+			expect(origins).toEqual(['peer', nested]);
 			expect(edytor.value.children![0]!.content).toEqual([
 				{ text: 'held', marks: { italic: true } }
 			]);

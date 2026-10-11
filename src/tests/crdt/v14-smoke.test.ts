@@ -10,7 +10,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
-import { toDelta, eventDelta, eventDeltaDeep } from './harness/delta.js';
+import { toDelta } from './harness/delta.js';
 import { UndoManager } from './harness/undo.js';
 
 describe('v14 smoke: document & unified node', () => {
@@ -55,102 +55,74 @@ describe('v14 smoke: document & unified node', () => {
 		expect(child.slice(0, 5).join('')).toBe('hello');
 	});
 
-	test('formatting attributes: bold range visible in the delta read', () => {
+	test('marks: a paired mark over a range is visible in the delta read', () => {
 		const doc = new Y.Doc();
 		const node = new Y.Node('paragraph');
 		doc.get('content').insert(0, [node]);
 		node.insert(0, 'hello world');
-		node.format(6, 5, { bold: true });
+		// YP19: the engine's only marks are paired operations (YP13)
+		node.mark(6, 5, 'bold', true, 0, 0);
 		const d = toDelta(node).toJSON();
 		expect(d.children).toEqual([
 			{ type: 'insert', insert: 'hello ' },
 			{ type: 'insert', insert: 'world', format: { bold: true } }
 		]);
-		// inserting with format directly works too — but note: reads on a
-		// detached (not-yet-integrated) node warn "Invalid access" and render
-		// empty, so integrate before reading it.
-		const n2 = new Y.Node('paragraph');
-		n2.insert(0, 'italic!', { italic: true });
-		doc.get('content').insert(1, [n2]);
-		const d2 = toDelta(n2).toJSON();
-		expect(d2.children).toEqual([{ type: 'insert', insert: 'italic!', format: { italic: true } }]);
 	});
 });
 
-describe('v14 smoke: observers', () => {
-	test('observe fires YEvent with delta + keysChanged', () => {
-		const doc = new Y.Doc();
-		const node = doc.get('content');
-		/** @type {any[]} */
-		const events = [];
-		node.observe((/** @type {any} */ e) => events.push(e));
-		doc.transact(() => {
-			node.insert(0, 'abc');
-		});
-		expect(events).toHaveLength(1);
-		expect(events[0].target).toBe(node);
-		expect(events[0].childListChanged).toBe(true);
-		expect(eventDelta(events[0]).toJSON().children).toEqual([{ type: 'insert', insert: 'abc' }]);
-		doc.transact(() => node.setAttr('data', 1));
-		expect([...events[1].keysChanged]).toEqual(['data']);
-	});
-
-	test('observeDeep bubbles one deep YEvent per changed ancestor', () => {
+describe('v14 smoke: commits', () => {
+	test('`commit` fires once per transaction, before `afterTransaction`, with what changed', () => {
 		const doc = new Y.Doc();
 		const root = doc.get('content');
 		const child = new Y.Node('paragraph');
 		root.insert(0, [child]);
+		/** @type {string[]} */
+		const order = [];
 		/** @type {any[]} */
-		const deepEvents = [];
-		root.observeDeep((/** @type {any} */ e) => deepEvents.push(e));
+		const commits = [];
+		doc.on('commit', (/** @type {any} */ tr) => {
+			order.push('commit');
+			commits.push(tr);
+		});
+		doc.on('afterTransaction', () => order.push('after'));
 		doc.transact(() => {
 			child.insert(0, 'nested');
 			child.setAttr('id', 'c1');
 		});
-		// v14: observeDeep receives a single type-rooted YEvent (not an array of
-		// events like v13). The change to the descendant surfaces as a nested
-		// modify/insert in the deep delta.
-		expect(deepEvents.length).toBeGreaterThanOrEqual(1);
-		const deep = deepEvents[0];
-		expect(deep.target).toBe(root);
-		expect(eventDeltaDeep(deep).toJSON()).toBeTruthy();
+		expect(order).toEqual(['commit', 'after']);
+		expect([...commits[0].changed.get(child)]).toEqual(expect.arrayContaining([null, 'id']));
 	});
 });
 
-describe('v14 smoke: relative positions', () => {
-	test('createRelativePositionFromTypeIndex + JSON roundtrip + absolute resolution', () => {
+describe('v14 smoke: positions as ids', () => {
+	test('idAtIndex + indexOfId resolve a position', () => {
 		const doc = new Y.Doc();
 		const node = new Y.Node('paragraph');
 		doc.get('content').insert(0, [node]);
 		node.insert(0, 'hello world');
-		const rpos = Y.createRelativePositionFromTypeIndex(node, 6);
-		expect(rpos).toBeInstanceOf(Y.RelativePosition);
-		const json = Y.relativePositionToJSON(rpos);
-		const abs = Y.createAbsolutePositionFromRelativePosition(
-			Y.createRelativePositionFromJSON(json),
-			doc
-		);
-		expect(abs).toBeInstanceOf(Y.AbsolutePosition);
+		const id = Y.idAtIndex(node, 6);
+		const abs = Y.indexOfId(doc, id);
 		expect(abs.type).toBe(node);
 		expect(abs.index).toBe(6);
+		// the text's ends bind no unit
+		expect(Y.idAtIndex(node, 11)).toBe(null);
+		expect(Y.idAtIndex(node, 0, -1)).toBe(null);
 	});
 
-	test('a serialized relative position follows a later insert before it', () => {
+	test('a position bound to a unit follows a later insert before it', () => {
 		const doc = new Y.Doc();
 		const node = new Y.Node('paragraph');
 		doc.get('content').insert(0, [node]);
 		node.insert(0, 'abc');
-		const stored = JSON.stringify(
-			Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(node, 2))
-		);
+		const id = Y.idAtIndex(node, 2);
 		// insert before the anchored position → resolved index shifts
 		node.insert(0, 'ZZ');
-		const abs = Y.createAbsolutePositionFromRelativePosition(
-			Y.createRelativePositionFromJSON(JSON.parse(stored)),
-			doc
-		);
+		const abs = Y.indexOfId(doc, Y.createID(id.client, id.clock));
 		expect(abs.index).toBe(4);
 		expect(abs.type).toBe(node);
+		// bound after the unit before it (`assoc < 0`)
+		const left = Y.idAtIndex(node, 4, -1);
+		expect(Y.indexOfId(doc, left, -1).index).toBe(4);
 	});
 });
 
@@ -162,7 +134,8 @@ describe('v14 smoke: update encoding roundtrip', () => {
 		const child = new Y.Node('paragraph');
 		child.setAttr('id', 'b1');
 		root.insert(0, [child]);
-		child.insert(0, 'synced', { bold: true });
+		child.insert(0, 'synced');
+		child.mark(0, 6, 'bold', true, 0, 0);
 
 		const doc2 = new Y.Doc();
 		Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc));

@@ -32,6 +32,7 @@ import { Skip } from '../structs/Skip.js'
 import { Item } from '../structs/Item.js'
 import { GC } from '../structs/GC.js'
 import { Doc } from './Doc.js'
+import { transact } from './Transaction.js'
 import { writeStructs } from './encoding-helpers.js'
 
 /**
@@ -260,8 +261,8 @@ const integrateStructs = (transaction, store, clientsStructRefs) => {
  * @function
  */
 export const readUpdate = (decoder, ydoc, transactionOrigin, structDecoder = new UpdateDecoder(decoder)) =>
-  ydoc.transact(transaction => {
-    // force that transaction.local is set to non-local
+  transact(ydoc, transaction => {
+    // force that transaction.local is set to non-local (a nested apply too)
     transaction.local = false
     let retry = false
     const doc = transaction.doc

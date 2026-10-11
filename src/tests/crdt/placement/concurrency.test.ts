@@ -9,6 +9,7 @@
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
+import { changedUnder } from '../../../lib/crdt/structs.js';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../oracles/model-ops.js';
 import { createPeerPair, createPeerTriple } from '../harness/peer-set.js';
@@ -332,7 +333,8 @@ describe('placement model — concurrency (MV01–MV10)', () => {
 		const handle = ops.resolveBlock(A, 'b1');
 		expect(handle).not.toBeNull();
 		let deepEvents = 0;
-		handle.observeDeep(() => deepEvents++);
+		// What the node's deep observers heard (fork patch YP19: the commits under it).
+		A.doc.on('commit', (tr: never) => void (changedUnder(tr, [handle]) && deepEvents++));
 		ops.moveBlock(A, 'b1', { parent: 'b3', index: 0 });
 		// Same engine handle — the anchor followed the move.
 		expect(ops.resolveBlock(A, 'b1')).toBe(handle);

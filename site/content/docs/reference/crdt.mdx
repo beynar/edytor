@@ -42,10 +42,10 @@ export function catchUp(stored: Uint8Array<ArrayBuffer>, updates: Uint8Array<Arr
 
 - documents (`Doc`), nodes and transactions;
 - one update encoding (the columnar one upstream Yjs calls v2): `applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`, `diffUpdate`, `decodeUpdate`, `UpdateEncoder`, `UpdateDecoder`, `encodeStateVector`, `decodeStateVector`;
-- relative positions in JSON form (`createRelativePositionFromTypeIndex`, `relativePositionToJSON`, `createRelativePositionFromJSON`, `createAbsolutePositionFromRelativePosition`);
+- positions as ids: `idAtIndex(node, index, assoc)` (the id a position binds) and `indexOfId(doc, id, assoc)` (its live index and node);
 - id sets with their codec, and `RangeCursor`.
 
-A node's writes are its methods (`insert`, `delete`, `format`, `setAttr`, `deleteAttr`); its content reads as `toArray()` (each element, and each run of text under one set of formats as one string), `toJSON()`, or `new Y.RangeCursor(node).read(from, to)`, the formatted pieces of a range with their formats:
+A node's writes are its methods (`insert`, `delete`, `mark`, `setAttr`, `deleteAttr`); its attributes read with `getAttr`, `forEachAttr` and `attrKeys`, its content with `new Y.RangeCursor(node).read(from, to)`, the pieces of a range with their marks. A mark is a paired operation, `mark(index, length, name, value, startSide, endSide)` (`value` `null` removes it; each side, `0` or `1`, decides whether an insert at that edge lands inside). A commit is told by the document's events: `commit` (once per transaction, with `transaction.changed`), then `afterTransaction`; nodes have no observers.
 
 ```ts title="src/lib/read.ts" check
 import * as Y from 'edytor/crdt';
@@ -61,7 +61,7 @@ export function boldText(node: Y.Node): string[] {
 }
 ```
 
-**What was pruned:** the delta layer (`toDelta`, `applyDelta`, `node.delta`, a node's `'delta'` event, `event.delta`, `Node.from`), the renderers, the schemas (`$doc`, `$nodeAny`, `$idSet`), id maps and content maps, snapshots, the v1 update encoding, the undo manager, the update logging and obfuscation helpers, the binary relative-position codec, id-set algebra beyond the basics, and the content-id helpers. Edytor never used them at run time; without the delta layer every app ships about 54 KB less JavaScript. A document built from an update is a new document followed by `Y.applyUpdate(doc, update)`: `bindCrdt(Y).createDoc()` when the update holds edytor content (see the keep-replaced rule below), `new Y.Doc()` only for a document that never holds any.
+**What was pruned:** the delta layer (`toDelta`, `applyDelta`, `node.delta`, a node's `'delta'` event, `event.delta`, `Node.from`), the renderers, the schemas (`$doc`, `$nodeAny`, `$idSet`), id maps and content maps, snapshots, the v1 update encoding, the undo manager, the update logging and obfuscation helpers, relative-position objects, id-set algebra beyond the basics, the content-id helpers, plain formats and their cleanup, observers and events on nodes, subdocuments and the load state, the JSON, embed and subdocument contents, and a node's renderings (`toJSON`, `toString`, `toArray`). Edytor never used them at run time; without the delta layer every app ships about 54 KB less JavaScript. A document built from an update is a new document followed by `Y.applyUpdate(doc, update)`: `bindCrdt(Y).createDoc()` when the update holds edytor content (see the keep-replaced rule below), `new Y.Doc()` only for a document that never holds any.
 
 **What was added:** the struct primitives edytor's own undo manager replays a step with (`redoItem`, `keepItem`, `followRedone`). The history is edytor's (`document.history`): it decides how deleted text comes back and keeps a block a peer wrote into when its creation is undone, which is what makes [concurrent undo](/docs/collaboration/concurrent-editing) behave.
 

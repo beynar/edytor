@@ -281,7 +281,7 @@ const pendingItemRanges = (p: Peer): IdRange[] => {
  * regressed a state vector or dropped pending items) and post-barrier
  * pending state remains. After `healPeer × n + deliverAll + syncAll('full')
  * + deliverAll`, every item in every store has been offered to every peer,
- * so a still-pending struct is either absent from all stores or stranded
+ * so a still-pending struct (or skipped gap) is either absent from all stores or stranded
  * behind a transitively destroyed dep — both are correct convergent-loss
  * semantics, not sync defects.
  *
@@ -293,7 +293,9 @@ const pendingItemRanges = (p: Peer): IdRange[] => {
 const hasDestroyedPendingDeps = (peers: Peer[], sawLoss: boolean): boolean => {
 	let sawPendingStructs = false;
 	for (const p of peers) {
-		if (p.doc.store.pendingStructs) sawPendingStructs = true;
+		// A gap the store integrated around (a skip) is pending too: the
+		// structs after it wait on what never arrived.
+		if (p.doc.store.pendingStructs || !p.doc.store.skips.isEmpty()) sawPendingStructs = true;
 	}
 	if (sawPendingStructs) {
 		// Pending residue after a barrier in a run with observed loss is

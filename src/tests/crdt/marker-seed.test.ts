@@ -149,14 +149,12 @@ describe('WU9/YP4 marker seeding — differential vs disabled', () => {
 			(t, doc) => doc.transact(() => applyDelta(t, delta.create().retain(10).delete(5)))
 		]);
 		for (const pos of [0, 1, 40, 90, 150, ta.length - 1]) {
-			const ra = Y.createRelativePositionFromTypeIndex(ta, pos, 0);
-			const rb = Y.createRelativePositionFromTypeIndex(tb, pos, 0);
-			expect(Y.relativePositionToJSON(ra)).toEqual(Y.relativePositionToJSON(rb));
-			const aa = Y.createAbsolutePositionFromRelativePosition(ra, a, false);
-			const ab = Y.createAbsolutePositionFromRelativePosition(rb, b, false);
-			expect(aa === null ? null : { index: aa.index, assoc: aa.assoc }).toEqual(
-				ab === null ? null : { index: ab.index, assoc: ab.assoc }
-			);
+			const ra = Y.idAtIndex(ta, pos, 0);
+			const rb = Y.idAtIndex(tb, pos, 0);
+			expect(ra).toEqual(rb);
+			const aa = ra === null ? null : Y.indexOfId(a, ra);
+			const ab = rb === null ? null : Y.indexOfId(b, rb);
+			expect(aa === null ? null : aa.index).toEqual(ab === null ? null : ab.index);
 		}
 	});
 

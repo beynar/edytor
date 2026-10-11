@@ -17,16 +17,11 @@ declare type Transaction = import('./src/utils/Transaction.js').Transaction
 declare type StructStore = import('./src/utils/StructStore.js').StructStore
 declare type Doc = import('./src/utils/Doc.js').Doc
 declare type YNode = import('./src/ynode.js').YNode
-declare type YEvent = import('./src/utils/YEvent.js').YEvent
-declare type EventHandler<ARG1=any,ARG2=any> = import('./src/utils/EventHandler.js').EventHandler<ARG1, ARG2>
 
 declare type AbstractStruct = import('./src/structs/AbstractStruct.js').AbstractStruct
 declare type AbstractContent = import('./src/structs/Item.js').AbstractContent
 declare type ContentType = import('./src/structs/Item.js').ContentType
 declare type ContentAny = import('./src/structs/Item.js').ContentAny
-declare type ContentDoc = import('./src/structs/Item.js').ContentDoc
-declare type ContentJSON = import('./src/structs/Item.js').ContentJSON
-declare type ContentEmbed = import('./src/structs/Item.js').ContentEmbed
 declare type ContentFormat = import('./src/structs/Item.js').ContentFormat
 declare type ContentDeleted = import('./src/structs/Item.js').ContentDeleted
 declare type ContentString = import('./src/structs/Item.js').ContentString

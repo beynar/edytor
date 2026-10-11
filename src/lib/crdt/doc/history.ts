@@ -24,6 +24,7 @@ import {
 	TYPE
 } from '../schema.js';
 import {
+	changedUnder,
 	collectable,
 	collectNow,
 	collects,
@@ -62,7 +63,6 @@ type Tr = {
 	local: boolean;
 	insertSet: IdSetOf;
 	deleteSet: IdSetOf;
-	changedParentTypes: Map<unknown, unknown>;
 	changed: Map<unknown, Set<string | null>>;
 };
 
@@ -207,7 +207,7 @@ export class UndoManager {
 		const origin = tr.origin as { constructor?: unknown } | null;
 		if (
 			!this.captureTransaction(tr) ||
-			!this.#rules.scope.some((node) => tr.changedParentTypes.has(node)) ||
+			!changedUnder(tr, this.#rules.scope) ||
 			(!this.trackedOrigins.has(origin) &&
 				(!origin || !this.trackedOrigins.has(origin.constructor)))
 		)

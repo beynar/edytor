@@ -1,5 +1,4 @@
 import * as math from 'lib0-v14/math'
-import * as traits from 'lib0-v14/traits'
 import * as encoding from 'lib0-v14/encoding'
 import * as decoding from 'lib0-v14/decoding'
 import * as array from 'lib0-v14/array'
@@ -34,38 +33,7 @@ export class IdRange {
   copyWith (clock, len) {
     return new IdRange(clock, len)
   }
-
 }
-
-export class MaybeIdRange {
-  /**
-   * @param {number} clock
-   * @param {number} len
-   * @param {boolean} exists
-   */
-  constructor (clock, len, exists) {
-    /**
-     * @type {number}
-     */
-    this.clock = clock
-    /**
-     * @type {number}
-     */
-    this.len = len
-    /**
-     * @type {boolean}
-     */
-    this.exists = exists
-  }
-}
-
-/**
- * @param {number} clock
- * @param {number} len
- * @param {boolean} exists
- * @return {MaybeIdRange}
- */
-export const createMaybeIdRange = (clock, len, exists) => new MaybeIdRange(clock, len, exists)
 
 export class IdRanges {
   /**
@@ -146,12 +114,8 @@ export class IdRanges {
     }
     return ids
   }
-
 }
 
-/**
- * @implements {traits.EqualityTrait}
- */
 export class IdSet {
   constructor () {
     /**
@@ -162,17 +126,6 @@ export class IdSet {
 
   isEmpty () {
     return this.clients.size === 0
-  }
-
-  /**
-   * @param {(idrange:IdRange, client:number) => void} f
-   */
-  forEach (f) {
-    this.clients.forEach((ranges, client) => {
-      ranges.getIds().forEach((range) => {
-        f(range, client)
-      })
-    })
   }
 
   /**
@@ -215,113 +168,6 @@ export class IdSet {
   }
 
   /**
-   * Whether the entire range `[clock, clock+len)` of `client` is contained in this set.
-   * Allocation-free (binary search). Because `getIds()` returns maximal, merged ranges, full
-   * coverage of a range implies it lies within a single range.
-   *
-   * @param {number} client
-   * @param {number} clock
-   * @param {number} len
-   * @return {boolean}
-   */
-  covers (client, clock, len) {
-    const dr = this.clients.get(client)
-    if (dr) {
-      const ranges = dr.getIds()
-      const index = findIndexInIdRanges(ranges, clock)
-      if (index !== null) {
-        const r = ranges[index]
-        return clock + len <= r.clock + r.len
-      }
-    }
-    return false
-  }
-
-  /**
-   * Total number of ids in `[clock, clock+len)` of `client` contained in this set.
-   * Allocation-free (binary search + linear scan of the overlapping ranges). Equivalent to
-   * `slice(client, clock, len).reduce((s, r) => r.exists ? s + r.len : s, 0)` without allocating.
-   *
-   * @param {number} client
-   * @param {number} clock
-   * @param {number} len
-   * @return {number}
-   */
-  coveredLength (client, clock, len) {
-    const dr = this.clients.get(client)
-    let covered = 0
-    if (dr) {
-      const ranges = dr.getIds()
-      const end = clock + len
-      let index = findRangeStartInIdRanges(ranges, clock)
-      if (index !== null) {
-        for (; index < ranges.length; index++) {
-          const r = ranges[index]
-          if (r.clock >= end) break
-          const from = r.clock < clock ? clock : r.clock
-          const rEnd = r.clock + r.len
-          const to = rEnd > end ? end : rEnd
-          covered += to - from
-        }
-      }
-    }
-    return covered
-  }
-
-  /**
-   * Return slices of ids that exist in this idset.
-   *
-   * @param {number} client
-   * @param {number} clock
-   * @param {number} len
-   * @return {Array<MaybeIdRange>}
-   */
-  slice (client, clock, len) {
-    const dr = this.clients.get(client)
-    /**
-     * @type {Array<MaybeIdRange>}
-     */
-    const res = []
-    if (dr) {
-      /**
-       * @type {Array<IdRange>}
-       */
-      const ranges = dr.getIds()
-      let index = findRangeStartInIdRanges(ranges, clock)
-      if (index !== null) {
-        let prev = null
-        while (index < ranges.length) {
-          let r = ranges[index]
-          if (r.clock < clock) {
-            r = new IdRange(clock, r.len - (clock - r.clock))
-          }
-          if (r.clock + r.len > clock + len) {
-            r = new IdRange(r.clock, clock + len - r.clock)
-          }
-          if (r.len <= 0) break
-          const prevEnd = prev != null ? prev.clock + prev.len : clock
-          if (prevEnd < r.clock) {
-            res.push(createMaybeIdRange(prevEnd, r.clock - prevEnd, false))
-          }
-          prev = r
-          res.push(createMaybeIdRange(r.clock, r.len, true))
-          index++
-        }
-      }
-    }
-    if (res.length > 0) {
-      const last = res[res.length - 1]
-      const end = last.clock + last.len
-      if (end < clock + len) {
-        res.push(createMaybeIdRange(end, clock + len - end, false))
-      }
-    } else {
-      res.push(createMaybeIdRange(clock, len, false))
-    }
-    return res
-  }
-
-  /**
    * @param {number} client
    * @param {number} clock
    * @param {number} len
@@ -345,33 +191,6 @@ export class IdSet {
     _deleteRangeFromIdSet(this, client, clock, len)
   }
 
-  /**
-   * @param {any} other
-   */
-  [traits.EqualityTraitSymbol] (other) {
-    return equalIdSets(this, other)
-  }
-}
-
-/**
- * @param {IdSet} ds1
- * @param {IdSet} ds2
- */
-export const equalIdSets = (ds1, ds2) => {
-  if (ds1.clients.size !== ds2.clients.size) return false
-  for (const [client, _deleteItems1] of ds1.clients.entries()) {
-    const deleteItems1 = _deleteItems1.getIds()
-    const deleteItems2 = ds2.clients.get(client)?.getIds()
-    if (deleteItems2 === undefined || deleteItems1.length !== deleteItems2.length) return false
-    for (let i = 0; i < deleteItems1.length; i++) {
-      const di1 = deleteItems1[i]
-      const di2 = deleteItems2[i]
-      if (di1.clock !== di2.clock || di1.len !== di2.len) {
-        return false
-      }
-    }
-  }
-  return true
 }
 
 /**

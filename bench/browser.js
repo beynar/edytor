@@ -894,7 +894,7 @@ try {
 			async ([k, targetId, t]) => {
 				const { edytor: ed, Y, E, S } = window.__BENCH__;
 				const doc = ed.doc;
-				const peer = new Y.Doc({ guid: doc.guid });
+				const peer = new Y.Doc();
 				Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
 				const peerEd = E.create(peer);
 				const updates = [];
@@ -964,7 +964,7 @@ try {
 					async ([k, targetId, t]) => {
 						const { edytor: ed, Y, E, S } = window.__BENCH__;
 						const doc = ed.doc;
-						const peer = new Y.Doc({ guid: doc.guid });
+						const peer = new Y.Doc();
 						Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
 						const peerEd = E.create(peer);
 						for (let j = 0; j < k; j++) peerEd.insertText(targetId, 5 + j, 'r');

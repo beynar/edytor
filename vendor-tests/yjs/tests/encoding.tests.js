@@ -5,12 +5,9 @@ import {
   readContentDeleted,
   readContentBinary,
   readContentString,
-  readContentJSON,
-  readContentEmbed,
   readContentType,
   readContentFormat,
-  readContentAny,
-  readContentDoc
+  readContentAny
 } from '../../../src/lib/crdt/vendor/yjs/src/ynode.js'
 
 
@@ -20,14 +17,13 @@ import {
 export const testStructReferences = _tc => {
   t.assert(contentRefs.length === 11)
   t.assert(contentRefs[1] === readContentDeleted)
-  t.assert(contentRefs[2] === readContentJSON) // TODO: deprecate content json?
+  // YP19: JSON (2), embed (5) and subdocument (9) contents are refused
+  t.assert(contentRefs[2] === contentRefs[0] && contentRefs[5] === contentRefs[0] && contentRefs[9] === contentRefs[0])
   t.assert(contentRefs[3] === readContentBinary)
   t.assert(contentRefs[4] === readContentString)
-  t.assert(contentRefs[5] === readContentEmbed)
   t.assert(contentRefs[6] === readContentFormat)
   t.assert(contentRefs[7] === readContentType)
   t.assert(contentRefs[8] === readContentAny)
-  t.assert(contentRefs[9] === readContentDoc)
   // contentRefs[10] is reserved for Skip structs
 }
 

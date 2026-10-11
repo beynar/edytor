@@ -169,9 +169,12 @@ export const testMergeUpdates = tc => {
 export const testKeyEncoding = tc => {
   const { users, text0, text1 } = init(tc, { users: 2 })
 
-  text0.insert(0, 'a', { italic: true })
+  // YP19: the engine's formats are paired marks (exclusive edges: an insert beside one stays out)
+  text0.insert(0, 'a')
+  text0.mark(0, 1, 'italic', true, 1, 0)
   text0.insert(0, 'b')
-  text0.insert(0, 'c', { italic: true })
+  text0.insert(0, 'c')
+  text0.mark(0, 1, 'italic', true, 1, 0)
 
   const update = Y.encodeStateAsUpdate(users[0])
   Y.applyUpdate(users[1], update)

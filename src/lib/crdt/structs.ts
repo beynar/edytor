@@ -332,6 +332,25 @@ export const onTransaction = <T>(
 	f: (tr: T) => void
 ): void => (doc as unknown as { on(e: string, f: (tr: T) => void): void }).on(event, f);
 
+/**
+ * Whether a transaction changed one of `nodes` or a node under one: its
+ * `changed` types and their ancestors (what a deep observer of `nodes`
+ * would have heard; the engine has none, fork patch YP19).
+ */
+export const changedUnder = (
+	tr: { changed: Map<unknown, unknown> },
+	nodes: readonly unknown[]
+): boolean => {
+	for (const type of tr.changed.keys())
+		for (
+			let t = type as { _item: { parent: unknown } | null } | null;
+			t;
+			t = t._item?.parent as never
+		)
+			if (nodes.includes(t)) return true;
+	return false;
+};
+
 /** A doc's event registry (vendor `on`/`off`). */
 type Events = {
 	on(event: string, f: (...args: never[]) => void): void;

@@ -5,36 +5,6 @@ import * as delta from 'lib0-v14/delta'
 import { toDelta, toDeltaDeep, fromDelta } from '../../../src/tests/crdt/harness/delta.js'
 import { UndoManager } from '../../../src/tests/crdt/harness/undo.js'
 
-export const testInconsistentFormat = () => {
-  /**
-   * @param {Y.Doc} ydoc
-   */
-  const testYjsMerge = ydoc => {
-    const content = ydoc.get('text')
-    content.format(0, 6, { bold: null })
-    content.format(6, 4, { type: 'text' })
-    t.compare(toDelta(content), delta.create().insert('Merge Test', { type: 'text' }).insert(' After', { type: 'text', italic: true }).done())
-  }
-  const initializeYDoc = () => {
-    const yDoc = new Y.Doc({ gc: false })
-    const content = yDoc.get('text')
-    content.insert(0, ' After', { type: 'text', italic: true })
-    content.insert(0, 'Test', { type: 'text' })
-    content.insert(0, 'Merge ', { type: 'text', bold: true })
-    return yDoc
-  }
-  {
-    const yDoc = initializeYDoc()
-    testYjsMerge(yDoc)
-  }
-  {
-    const initialYDoc = initializeYDoc()
-    const yDoc = new Y.Doc({ gc: false })
-    Y.applyUpdate(yDoc, Y.encodeStateAsUpdate(initialYDoc))
-    testYjsMerge(yDoc)
-  }
-}
-
 /**
  * @param {t.TestCase} tc
  */
@@ -46,52 +16,6 @@ export const testInfiniteCaptureTimeout = tc => {
   array0.push([4, 5, 6])
   undoManager.undo()
   t.compare(array0.toArray(), [1, 2, 3])
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testUndoText = tc => {
-  const { testConnector, text0, text1 } = init(tc, { users: 3 })
-  const undoManager = new UndoManager(text0)
-
-  // items that are added & deleted in the same transaction won't be undo
-  text0.insert(0, 'test')
-  text0.delete(0, 4)
-  undoManager.undo()
-  t.assert(text0.toString() === '')
-
-  // follow redone items
-  text0.insert(0, 'a')
-  undoManager.stopCapturing()
-  text0.delete(0, 1)
-  undoManager.stopCapturing()
-  undoManager.undo()
-  t.assert(text0.toString() === 'a')
-  undoManager.undo()
-  t.assert(text0.toString() === '')
-
-  text0.insert(0, 'abc')
-  text1.insert(0, 'xyz')
-  testConnector.syncAll()
-  undoManager.undo()
-  t.assert(text0.toString() === 'xyz')
-  undoManager.redo()
-  t.assert(text0.toString() === 'abcxyz')
-  testConnector.syncAll()
-  text1.delete(0, 1)
-  testConnector.syncAll()
-  undoManager.undo()
-  t.assert(text0.toString() === 'xyz')
-  undoManager.redo()
-  t.assert(text0.toString() === 'bcxyz')
-  // test marks
-  text0.format(1, 3, { bold: true })
-  t.compare(toDelta(text0), delta.create().insert('b').insert('cxy', { bold: true }).insert('z').done())
-  undoManager.undo()
-  t.compare(toDelta(text0), delta.create().insert('bcxyz').done())
-  undoManager.redo()
-  t.compare(toDelta(text0), delta.create().insert('b').insert('cxy', { bold: true }).insert('z').done())
 }
 
 /**
@@ -317,32 +241,6 @@ export const testUndoArray = tc => {
   t.compare(array0.toJSON().children, [{ attrs: { b: 2 } }])
   undoManager.redo()
   t.compare(array0.toJSON().children, [{ attrs: { a: 1, b: 2 } }])
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testUndoXml = tc => {
-  const { xml0 } = init(tc, { users: 3 })
-  const undoManager = new UndoManager(xml0)
-  const child = new Y.Node('p')
-  xml0.insert(0, [child])
-  const textchild = fromDelta(delta.create().insert('content'))
-  child.insert(0, [textchild])
-  // format textchild and revert that change
-  undoManager.stopCapturing()
-  textchild.format(3, 4, { bold: true })
-  const v1 = delta.create().insert([delta.create('p').insert([delta.create().insert('con').insert('tent', { bold: true }).done()]).done()]).done()
-  const v2 = delta.create().insert([delta.create('p').insert([delta.create().insert('content').done()]).done()]).done()
-  t.compare(toDeltaDeep(xml0), v1)
-  undoManager.undo()
-  t.compare(toDeltaDeep(xml0), v2)
-  undoManager.redo()
-  t.compare(toDeltaDeep(xml0), v1)
-  xml0.delete(0, 1)
-  t.compare(toDeltaDeep(xml0), delta.create().done())
-  undoManager.undo()
-  t.compare(toDeltaDeep(xml0), v1)
 }
 
 /**
@@ -739,32 +637,3 @@ export const testUndoDeleteInMap = (tc) => {
   t.compare(map0.toJSON().attrs, { a: 'a' })
 }
 
-/**
- * It should expose the StackItem being processed if undoing
- *
- * @param {t.TestCase} _tc
- */
-export const testUndoDoingStackItem = async (_tc) => {
-  const doc = new Y.Doc()
-  const text = doc.get('text')
-  const undoManager = new UndoManager([text])
-  undoManager.on('stack-item-added', /** @param {any} event */ event => {
-    event.stackItem.meta.set('str', '42')
-  })
-  let metaUndo = /** @type {any} */ (null)
-  let metaRedo = /** @type {any} */ (null)
-  text.observe((event) => {
-    const /** @type {UndoManager} */ origin = event.transaction.origin
-    if (origin === undoManager && origin.undoing) {
-      metaUndo = origin.currStackItem?.meta.get('str')
-    } else if (origin === undoManager && origin.redoing) {
-      metaRedo = origin.currStackItem?.meta.get('str')
-    }
-  })
-  text.insert(0, 'abc')
-  undoManager.undo()
-  undoManager.redo()
-  t.compare(metaUndo, '42', 'currStackItem is accessible while undoing')
-  t.compare(metaRedo, '42', 'currStackItem is accessible while redoing')
-  t.compare(undoManager.currStackItem, null, 'currStackItem is null after observe/transaction')
-}

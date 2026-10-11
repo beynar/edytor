@@ -288,7 +288,6 @@ export type {
 	EngineApi,
 	EngineDoc,
 	EngineNode,
-	EngineDeepEvent,
 	EngineTransaction,
 	EngineItemRef,
 	YNode,

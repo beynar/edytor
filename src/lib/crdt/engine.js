@@ -31,10 +31,9 @@ export const Y = {
 	findIndexSS: V.findIndexSS,
 	// a concurrent creation of one block id keeps the losing node (fork patch YP14)
 	isKeptReplaced: V.isKeptReplaced,
-	createRelativePositionFromTypeIndex: V.createRelativePositionFromTypeIndex,
-	createRelativePositionFromJSON: V.createRelativePositionFromJSON,
-	createAbsolutePositionFromRelativePosition: V.createAbsolutePositionFromRelativePosition,
-	relativePositionToJSON: V.relativePositionToJSON,
+	// a position as an item id and back (fork patch YP19)
+	idAtIndex: V.idAtIndex,
+	indexOfId: V.indexOfId,
 	createIdSet: V.createIdSet,
 	diffIdSet: V.diffIdSet,
 	insertIntoIdSet: V.insertIntoIdSet,

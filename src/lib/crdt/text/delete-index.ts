@@ -189,11 +189,7 @@ export const deleteIndex = (Y: EngineApi) => {
 
 	/** The live index of id `c:k` in its text (YATA order: the same on every replica). */
 	const indexOf = (s: State, c: number, k: number): number =>
-		Y.createAbsolutePositionFromRelativePosition(
-			Y.createRelativePositionFromJSON({ item: { client: c, clock: k }, assoc: 0 }),
-			asYDoc(s.doc),
-			false
-		)?.index ?? Infinity;
+		Y.indexOfId(asYDoc(s.doc), Y.createID(c, k))?.index ?? Infinity;
 
 	/**
 	 * List order of ids `a` and `b` of one text (negative: `a` first): their

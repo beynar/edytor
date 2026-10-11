@@ -32,7 +32,6 @@ export {
 	type EngineApi,
 	type EngineDoc,
 	type EngineNode,
-	type EngineDeepEvent,
 	type EngineTransaction,
 	type EngineItemRef,
 	type YNode,

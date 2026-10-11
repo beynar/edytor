@@ -56,16 +56,6 @@ export class StructStore {
     structs.push(struct)
   }
 
-  /**
-   * Expects that id is actually in store. This function throws or is an infinite loop otherwise.
-   *
-   * @param {ID} id
-   * @return {GC|Item}
-   */
-  get (id) {
-    const structs = /** @type {Array<GC|Item>} */ (this.clients.get(id.client))
-    return structs[findIndexSS(structs, id.clock)]
-  }
 
   /**
    * Expects that id is actually in store. This function throws or is an infinite loop otherwise.
@@ -96,18 +86,6 @@ export class StructStore {
     return lastStruct.id.clock + lastStruct.length
   }
 
-  /**
-   * Perform a binary search on a sorted array
-   * @param {ID} id
-   * @return {{ structs: Array<GC|Item|Skip>, index: number }}
-   *
-   * @function
-   */
-  getIndex (id) {
-    const structs = this.clients.get(id.client) || []
-    const index = findIndexSS(structs, id.clock)
-    return { structs, index }
-  }
 }
 
 /**

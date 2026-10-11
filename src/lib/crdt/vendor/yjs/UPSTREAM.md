@@ -33,8 +33,8 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding) and YP18 (no undo manager)
-global.d.ts upstream global.d.ts, plus patches YP1 and YP8
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer), YP17 (one update encoding), YP18 (no undo manager) and YP19 (only what edytor calls)
+global.d.ts upstream global.d.ts, plus patches YP1, YP8 and YP19
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
 UPSTREAM.md this file
@@ -520,7 +520,7 @@ Oracle: `src/tests/crdt/yp9-yp10-engine.test.ts` — the raw program in every
 delivery order, the facade program the fuzz found in every order, and the
 stripped tree (the YP9 hunks removed) stays pending on A3, B1, A1, A2.
 
-### YP10 — the formatting cleanup after a remote change runs under an untracked origin (`src/utils/Transaction.js`)
+### YP10 — the formatting cleanup after a remote change runs under an untracked origin (`src/utils/Transaction.js`) — REMOVED by YP19 (no cleanup)
 
 Reason: `cleanupYTextAfterTransaction` deletes the format items a remote
 change made redundant in a new transaction with the `null` origin — the
@@ -877,6 +877,97 @@ engine probes and the differentials. Removed with their subject:
 the rules are the facade history's `hist.undo.*` rows) and the upstream row
 on `ignoreRemoteAttributeChanges`.
 
+### YP19 — the engine ships what edytor calls: no plain formats, no observers, no subdocuments, no relative-position objects (`src/ynode.js`, `src/structs/Item.js`, `src/utils/Doc.js`, `src/utils/Transaction.js`, `src/utils/transaction-helpers.js`, `src/utils/encoding.js`, `src/utils/ids.js`, `src/utils/StructStore.js`, `src/utils/positions.js` (new), `src/index.js`, `global.d.ts`)
+
+Reason: YP8 pruned the declarations nothing reaches, but a class ships
+every method, and the reachable functions still carried paths edytor never
+takes. Two ways of doing one thing each: plain format items beside the
+paired marks (YP13), type observers and deep events beside the document's
+transaction events, `RelativePosition`/`AbsolutePosition` objects and their
+JSON form beside edytor's anchors (an item id and a side), a subdocument
+lifecycle and load/sync promises beside edytor's document readiness. The
+fork keeps one of each. An app bundle: 488.1 → 471.8 KB min (minimal),
+703.3 → 687.0 (every plugin); the engine's share 60.7 → 45.2 KB.
+
+Patch:
+
+- **Formats.** The only format items are paired marks (`mark`). Gone: the
+  plain-format writes (`YNode#format`, `insert`'s format argument,
+  `ItemTextListPosition#formatText`, `insertFormats`,
+  `insertNegatedFormats`, `minimizeFormatChanges`, `updateMarkerFormats`,
+  `insertContent`/`insertContentHelper`, `equalFormats`), the formatting
+  cleanups (`cleanupYTextFormatting`, `cleanupYTextAfterTransaction`,
+  `cleanupFormattingGap`, `cleanupContextlessFormattingGap`,
+  `Doc#cleanupFormatting`, `Transaction#_needFormattingCleanup`,
+  `YNode#_hasFormatting`) and with them YP10. A plain format item a peer
+  writes integrates and is inert: no cursor folds it
+  (`updateCurrentFormats` folds paired marks only), no read shows it.
+- **One sequence write.** `YNode#insert(index, content)` places as
+  `insertInGap` does (YP13); the positioning step of a delete is
+  `ItemTextListPosition#advance` (walk `length` live units, past the deleted
+  items around them). Without marks in the gap both place exactly where the
+  old formatted walk did: the YP16 differential (local programs, search
+  markers on and off) stays byte-identical to upstream and to the fork
+  before YP16.
+- **No observers.** `observe`/`observeDeep`/`unobserve*`, `YEvent`,
+  `EventHandler.js`, `callTypeObservers`, `_callObserver`,
+  `Transaction#changedParentTypes`, the `beforeObserverCalls` and
+  `afterTransactionCleanup` events are gone. A commit emits `commit`
+  (new), then `afterTransaction`, each listener run even if another throws;
+  a remote transaction still clears the search markers of the types it
+  changed. edytor's index folds on `commit` when the registry or a node under
+  it changed (`changedUnder` in `crdt/structs.ts`, what the deep observer of
+  the registry heard); the history captures a transaction by the same test
+  over its scope.
+- **No subdocuments, no load state.** `ContentDoc`, `createContentDocFromDoc`,
+  `Doc#load`/`getSubdocs`/`getSubdocGuids`/`toJSON`, `guid`,
+  `collectionid`, `meta`, `autoLoad`, `shouldLoad`, `isLoaded`,
+  `isSynced`, `whenLoaded`, `whenSynced`, the `load`/`sync`/`subdocs`
+  events, `Transaction#subdocs*`, `beforeState`/`afterState`, `meta`,
+  `cleanUps`; `Doc` takes `{ gc, gcFilter }`.
+- **Contents.** `ContentJSON`, `ContentEmbed` and `ContentDoc` are gone;
+  their refs (2, 5, 9) are refused on decode like GC (0) and Skip (10), so an
+  update holding one is malformed.
+- **Positions.** `utils/RelativePosition.js` is replaced by
+  `utils/positions.js`: `idAtIndex(node, index, assoc)` (the unit a position
+  binds, `null` at an end) and `indexOfId(doc, id, assoc)` (`{ type, index }`
+  or `null`), the marker-assisted walks unchanged, no redone-chain option.
+- **Node.** `YNode` is no `ObservableV2` (nothing listened to a node's
+  `destroy`); gone: `parent`, `clone`, `clearAttrs`, `hasAttr`, `getAttrs`,
+  `push`, `unshift`, `get`, `slice`, `toArray`, `toJSON`, `toString`, `map`,
+  `forEach`, `attrValues`, `attrEntries`, `attrSize`, the equality trait,
+  `typeListGet`/`typeListSlice`, `nodeMapGet(All)`/`nodeMapHas`,
+  `createMapIterator`, the premature-access warning. `attrKeys` is a
+  generator. A detached node's pending content is plain runs (no formats).
+- **Ids, store.** `IdSet#forEach`/`covers`/`coveredLength`/`slice`, the
+  equality trait, `MaybeIdRange`, `equalIdSets`, `StructStore#get`/
+  `getIndex`.
+- `readUpdate` runs through `transact(doc, …, origin, false)` (a top-level
+  apply is non-local from `beforeTransaction` on; a nested one is forced
+  non-local, as before).
+
+Test side: `src/tests/crdt/harness/node-reads.js` installs the renderings and
+conveniences the tests read state through (`toJSON`, `toString`, `toArray`,
+`get`, `slice`, `getAttrs`, `hasAttr`, the attr iterators, `map`,
+`forEach`, `push`, `unshift`, `clone`, `clearAttrs`, `parent`) on the node's
+prototype, from `src/tests/setup/engine-reads.ts` in every vitest lane (and
+on a stripped copy's node where a differential loads one). The harness's
+`applyDelta` writes a formatted op as paired mark operations (an insert takes
+exactly its formats, a retain sets the keys it names); the raw adapter marks
+with `mark`; the harness's pre-YP18 `UndoManager` derives
+`changedParentTypes` from `changed`. Removed with their subject: the
+upstream tests of observers and events, subdocuments, relative positions,
+plain formatting and its cleanup (`y-text`, `y-map`, `y-array`, `doc`,
+`delta`, `undo-redo`, `attribution`, `IdSet`, `y-xml`;
+`relativePositions.tests.js` whole), `src/tests/crdt/runs/delta-contract.test.ts`
+(the deep observer as the index's payload), the YP10 discriminating row, the
+`yp16-writes` exchange runs (the removed cleanup split the items a remote
+delete set reached) and the `seed-86` crash artifact (its crash site was the
+cleanup's delete-set walk). Ported: `v14-smoke` (marks, the `commit` event,
+`idAtIndex`/`indexOfId`), the YP7 rows (gaps built with marks), the marker
+probes (planting through `findMarker`), `testStructReferences`,
+`testKeyEncoding`. Upstream suite: 197 → 126 tests.
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so
@@ -928,8 +1019,8 @@ diff -r "$UP/tests" /tmp/yjs-tests-normalized
 Runner: `vendor-tests/yjs/upstream.test.js` registers every `testXxx(tc)`
 export as a vitest test with a real `lib0-v14/testing` `TestCase`.
 
-- `pnpm test:crdt` — **196 pass / 6 skipped / 0 failed** since YP16 (216/6
-  since YP8, 325/6
+- `pnpm test:crdt` — **120 pass / 6 skipped / 0 failed** since YP19 (196/6
+  since YP16, 216/6 since YP8, 325/6
   before; upstream standard tier; the 6 skips are upstream's own
   `t.skip(!t.production)` extensive-tier gates: 3× y-array, 3× y-map random
   stress tests).

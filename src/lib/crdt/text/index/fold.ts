@@ -5,13 +5,14 @@
  */
 import { readData } from '../../data.js';
 import { Y } from '../../engine.js';
-import type { EngineDeepEvent, EngineNode } from '../../engine-api.js';
+import type { EngineNode } from '../../engine-api.js';
 import { LIVE_WRITERS, baseIdOf, incarnationId } from '../../incarnations.js';
 import { type BlockId, candidatesOf } from '../../placement/model.js';
 import { CONTENT, NONCE, hasDeleteMark, isNodeLike } from '../../schema.js';
 import {
 	type IdSetLike,
 	type StoreStruct,
+	changedUnder,
 	engineOps,
 	itemOf,
 	queuedTransactions,
@@ -517,9 +518,12 @@ export const indexFold = (
 				lengthOf(tr.insertSet) + lengthOf(tr.deleteSet) !== (cursors.get(tr)?.mark ?? 0)
 		);
 
-	/** The commit: fold `transaction.changed` once (the report publishes from `update`). */
-	const onCommit = (e: EngineDeepEvent): void => {
-		const tr = e.transaction as Tx;
+	/**
+	 * The commit of a transaction that changed the registry or a node under
+	 * it: fold `transaction.changed` once (the report publishes from `update`).
+	 */
+	const onCommit = (tr: Tx): void => {
+		if (!changedUnder(tr as { changed: Map<unknown, unknown> }, [registry])) return;
 		let [ins, del] = [tr.insertSet, tr.deleteSet];
 		// The writes a read folded already moved the rows: only the rest
 		// are edits now (the facets fold again, idempotent).

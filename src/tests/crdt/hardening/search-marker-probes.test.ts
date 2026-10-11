@@ -19,6 +19,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
+import { findMarker } from '../../../lib/crdt/vendor/yjs/src/ynode.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { toDelta, applyDelta } from '../harness/delta.js';
 import { UndoManager } from '../harness/undo.js';
@@ -28,9 +29,11 @@ let cid = 900_000;
 
 /** Plant a format-carrying marker by forcing findMarker to walk to `index`. */
 const plantMarkerAt = (t: any, index: number) => {
-	// typeListGet → findMarker(type, index): creates/repositions a marker and
-	// folds ContentFormat items into marker.formats during the rightward walk.
-	t.get(index);
+	// findMarker(type, index) on an empty pool: creates a marker and folds
+	// ContentFormat items into marker.formats during the walk from the start
+	// (a write's marker carries no snapshot since YP19).
+	if (t._searchMarker) t._searchMarker.length = 0;
+	findMarker(t, index);
 };
 
 const seededMarkerCount = (t: any) =>

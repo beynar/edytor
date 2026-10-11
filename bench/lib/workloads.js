@@ -4,6 +4,10 @@
  */
 import * as Y13 from 'yjs';
 import * as Y14 from '../../src/lib/crdt/vendor/yjs/src/index.js';
+import { installNodeReads } from '../../src/tests/crdt/harness/node-reads.js';
+
+// The fork ships no node renderings (fork patch YP19): read through the tests' own.
+installNodeReads();
 import { measure, statsOf } from './stats.js';
 import {
 	ROOT,

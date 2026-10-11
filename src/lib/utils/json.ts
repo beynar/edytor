@@ -111,73 +111,57 @@ const JSON_COERCION: Record<string, string> = {
 	ArrayBuffer: 'coerces to {}'
 };
 
-/**
- * Dev-only: collect one line per value that will not survive a JSON
- * round-trip. Capped so a hostile payload cannot flood the report.
- */
-const collectJsonBoundaryViolations = (
-	value: unknown,
-	path: string,
-	violations: string[],
-	seen: Set<unknown>
-): void => {
-	if (violations.length >= MAX_JSON_BOUNDARY_VIOLATIONS || value === null) {
-		return;
-	}
-
-	const type = typeof value;
-	if (type === 'string' || type === 'boolean') {
-		return;
-	}
-	if (type === 'number') {
-		if (!Number.isFinite(value as number)) {
-			violations.push(`${path}: non-finite number coerces to null`);
-		}
-		return;
-	}
-	if (type === 'undefined') {
-		violations.push(`${path}: undefined key is dropped (array slot → null)`);
-		return;
-	}
-	if (type === 'function' || type === 'symbol' || type === 'bigint') {
-		violations.push(`${path}: ${type} is not serializable`);
-		return;
-	}
-
-	if (seen.has(value)) {
-		violations.push(`${path}: circular reference throws at serialize time`);
-		return;
-	}
-
-	if (Array.isArray(value)) {
-		seen.add(value);
-		value.forEach((item, index) =>
-			collectJsonBoundaryViolations(item, `${path}[${index}]`, violations, seen)
-		);
-		seen.delete(value);
-		return;
-	}
-
-	const proto = Object.getPrototypeOf(value);
-	if (proto !== Object.prototype && proto !== null) {
-		const name = (value as object).constructor?.name ?? 'non-plain object';
-		violations.push(`${path}: ${name} is not JSON — ${JSON_COERCION[name] ?? 'coerces to {}'}`);
-		return;
-	}
-
-	seen.add(value);
-	for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-		collectJsonBoundaryViolations(item, `${path}.${key}`, violations, seen);
-	}
-	seen.delete(value);
-};
-
 const reportedJsonBoundaryViolations = new Set<string>();
 
-/** Dev-only violation report shared by {@link cloneJson} and {@link cloneJsonSafe}. */
+/**
+ * Dev-only violation report shared by {@link cloneJson} and
+ * {@link cloneJsonSafe}: one line per value that will not survive a JSON
+ * round-trip, capped so a hostile payload cannot flood the report. The
+ * walk is declared in here: a recursive module-level helper survives the
+ * production build's tree-shaking even when nothing calls it.
+ */
 const warnJsonBoundary = (fn: string, value: unknown): void => {
 	const violations: string[] = [];
-	collectJsonBoundaryViolations(value, '$', violations, new Set());
+	const seen = new Set<unknown>();
+	const collect = (item: unknown, path: string): void => {
+		if (violations.length >= MAX_JSON_BOUNDARY_VIOLATIONS || item === null) return;
+		const type = typeof item;
+		if (type === 'string' || type === 'boolean') return;
+		if (type === 'number') {
+			if (!Number.isFinite(item as number))
+				violations.push(`${path}: non-finite number coerces to null`);
+			return;
+		}
+		if (type === 'undefined') {
+			violations.push(`${path}: undefined key is dropped (array slot → null)`);
+			return;
+		}
+		if (type === 'function' || type === 'symbol' || type === 'bigint') {
+			violations.push(`${path}: ${type} is not serializable`);
+			return;
+		}
+		if (seen.has(item)) {
+			violations.push(`${path}: circular reference throws at serialize time`);
+			return;
+		}
+		if (Array.isArray(item)) {
+			seen.add(item);
+			item.forEach((each, index) => collect(each, `${path}[${index}]`));
+			seen.delete(item);
+			return;
+		}
+		const proto = Object.getPrototypeOf(item);
+		if (proto !== Object.prototype && proto !== null) {
+			const name = (item as object).constructor?.name ?? 'non-plain object';
+			violations.push(`${path}: ${name} is not JSON — ${JSON_COERCION[name] ?? 'coerces to {}'}`);
+			return;
+		}
+		seen.add(item);
+		for (const [key, each] of Object.entries(item as Record<string, unknown>))
+			collect(each, `${path}.${key}`);
+		seen.delete(item);
+	};
+	collect(value, '$');
 	if (violations.length === 0) return;
 	const report = violations.join('\n  ');
 	if (reportedJsonBoundaryViolations.has(report)) return;

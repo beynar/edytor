@@ -761,7 +761,7 @@ export type BlockSpec = {
 
 ## codeKinds
 
-`codePlugin`'s structural rows: the code block is an island of `codeLine`s (`lines`).
+`createCodePlugin()`'s structural rows: the code block is an island of `codeLine`s (`lines`).
 
 ```ts
 declare const codeKinds: {
@@ -776,7 +776,7 @@ declare const codeKinds: {
 
 ## codeSemantics
 
-`codePlugin`'s block roles.
+`createCodePlugin()`'s block roles.
 
 ```ts
 declare const codeSemantics: {
@@ -1798,7 +1798,7 @@ export type FlowView = RangeView & {
 
 ## imageKinds
 
-`imagePlugin`'s structural rows: void, its only text is the caption.
+`createImagePlugin()`'s structural rows: void, its only text is the caption.
 
 ```ts
 declare const imageKinds: {
@@ -1810,7 +1810,7 @@ declare const imageKinds: {
 
 ## imageSemantics
 
-`imagePlugin`'s block roles.
+`createImagePlugin()`'s block roles.
 
 ```ts
 declare const imageSemantics: {
@@ -1975,8 +1975,8 @@ declare const markName: (key: string) => string;
 
 ## mediaKinds
 
-The media plugins' structural rows (`embedPlugin`, `bookmarkPlugin`,
-`filePlugin`, `videoPlugin`, `audioPlugin`): void like the image, their
+The media plugins' structural rows (`createEmbedPlugin()`, `createBookmarkPlugin()`,
+`createFilePlugin()`, `createVideoPlugin()`, `createAudioPlugin()`): void like the image, their
 only text is the caption.
 
 ```ts
@@ -2198,7 +2198,7 @@ export type RangeView = {
 
 ## richTextKinds
 
-`richTextPlugin`'s structural rows (its other kinds are plain).
+`createRichTextPlugin()`'s structural rows (its other kinds are plain).
 
 ```ts
 declare const richTextKinds: {
@@ -2223,7 +2223,7 @@ declare const richTextKinds: {
 
 ## richTextMarks
 
-`richTextPlugin`'s mark edges: where a concurrent insert at each end
+`createRichTextPlugin()`'s mark edges: where a concurrent insert at each end
 of a mark lands. A link grows at its start only (typing after it
 stays out of it unless from inside the anchor); the others are inclusive.
 
@@ -2237,7 +2237,7 @@ declare const richTextMarks: {
 
 ## richTextSemantics
 
-`richTextPlugin`'s block roles and mark edges, for `createDocument({ semantics })` and the room.
+`createRichTextPlugin()`'s block roles and mark edges, for `createDocument({ semantics })` and the room.
 
 ```ts
 declare const richTextSemantics: {

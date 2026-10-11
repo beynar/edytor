@@ -2,6 +2,7 @@
 	import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 	import type { Snippet } from 'svelte';
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
+	import { branded } from '../brand.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import ImageEmpty from './ImageEmpty.svelte';
 	import ImageChrome from './ImageChrome.svelte';
@@ -82,10 +83,6 @@
 	};
 	/** By view; the first image plugin of a view owns it, as its kind's definition (first wins). */
 	const views = new WeakMap<Edytor, View>();
-	const imagePlugins = new WeakSet<Plugin>();
-
-	/** Recognize any image plugin instance (the component's default yields to yours). */
-	export const isImagePlugin = (plugin: Plugin) => imagePlugins.has(plugin);
 
 	/**
 	 * Notion's image block: an "Add an image" panel until it has a source (a
@@ -198,12 +195,8 @@
 			};
 		};
 
-		imagePlugins.add(plugin);
-		return plugin;
+		return branded('image', plugin);
 	};
-
-	/** The image block, links only. */
-	export const imagePlugin = createImagePlugin();
 </script>
 
 <!-- No whitespace before the caption (one node per block less to walk). -->

@@ -4,7 +4,7 @@ description: The image plugin adds Notion's image block, a void figure with an e
 icon: image
 ---
 
-`imagePlugin` adds Notion's image block: an "Add an image" panel (your `empty` snippet) until the block has a source, then the image with an editable caption. Hovering the image, or selecting its block, shows handles to resize it and a toolbar to align it and set its alt text. `<Edytor>` includes it by default, so the slash menu lists "Image" under `Media` without any setup. Give it an `upload` and pasted or dropped image files become image blocks too.
+`createImagePlugin()` adds Notion's image block: an "Add an image" panel (your `empty` snippet) until the block has a source, then the image with an editable caption. Hovering the image, or selecting its block, shows handles to resize it and a toolbar to align it and set its alt text. `<Edytor>` includes it by default, so the slash menu lists "Image" under `Media` without any setup. Give it an `upload` and pasted or dropped image files become image blocks too.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -25,7 +25,7 @@ icon: image
 <Edytor plugins={[image]} />
 ```
 
-An image plugin you list (`imagePlugin` or any `createImagePlugin(...)`) replaces the default one. `imagePlugin` is the plugin without options: links only.
+An image plugin you list (any `createImagePlugin(...)`) replaces the default one. Without options it takes links only.
 
 ## Options
 
@@ -71,7 +71,7 @@ An image plugin you list (`imagePlugin` or any `createImagePlugin(...)`) replace
 
 The block is void: it is not part of the text flow, takes no children and is never merged. Its only text is the caption, which stays editable. The command id is `block.image`. The kind declares no `empty` shape, so turning a paragraph into an image keeps the paragraph's text as the caption.
 
-A source is accepted only when it is an `http:` or `https:` URL, a `blob:` URL or an inline `data:image/…` URL. Any other value, in the document or typed in the panel, is treated as no source. The check is exported as `safeImageSrc(value)` (the accepted source, or `null`), `isImagePlugin(plugin)` tells whether a plugin is an image plugin, and the types `ImageData` and `ImageAlign` and the constant `MIN_IMAGE_WIDTH` are exported too. A failed `upload` shows the panel's error instead of an image.
+A source is accepted only when it is an `http:` or `https:` URL, a `blob:` URL or an inline `data:image/…` URL. Any other value, in the document or typed in the panel, is treated as no source. The check is exported as `safeImageSrc(value)` (the accepted source, or `null`), and the types `ImageData` and `ImageAlign` and the constant `MIN_IMAGE_WIDTH` are exported too. A failed `upload` shows the panel's error instead of an image.
 
 An inline image is stored in the document itself, and every catch-up and every update that carries the block sends it again, so the plugin takes one only up to `MAX_INLINE_IMAGE_BYTES` (1 MiB of its `data:` URL). Give the plugin an `upload` that stores the file and answers its URL: that is the way to add a large image.
 
@@ -114,7 +114,7 @@ A readonly view shows none of this, and a drag in progress ends when the view tu
 
 ## Image and caption
 
-With a source, the block renders the image (its `alt`, its `width`, not draggable) in a wrapper that places it by `align`, then the caption in a `<figcaption>`. With [`richTextPlaceholder`](/docs/customization/placeholder#notion-placeholders), an empty caption shows "Write a caption…" while focused.
+With a source, the block renders the image (its `alt`, its `width`, not draggable) in a wrapper that places it by `align`, then the caption in a `<figcaption>`. With [`createRichTextPlaceholder()`](/docs/customization/placeholder#notion-placeholders), an empty caption shows "Write a caption…" while focused.
 
 To set the source from code:
 

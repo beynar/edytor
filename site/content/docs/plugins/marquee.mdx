@@ -4,17 +4,17 @@ description: The marquee plugin selects blocks with a rectangle, as in Notion. P
 icon: mouse-pointer-2
 ---
 
-`marqueePlugin` selects blocks with a rectangle, Notion's rubber band. Press in an empty area beside or below the blocks and drag: the blocks a rectangle following the pointer touches are selected while you drag. Release, and the blocks stay selected with the keyboard on them: <kbd>Delete</kbd>, <kbd>Mod</kbd> + <kbd>C</kbd>, <kbd>Mod</kbd> + <kbd>X</kbd>, <kbd>Tab</kbd>, the arrow keys and the [block menu](/docs/plugins/block-menu) act on them as on any block selection.
+`createMarqueePlugin()` selects blocks with a rectangle, Notion's rubber band. Press in an empty area beside or below the blocks and drag: the blocks a rectangle following the pointer touches are selected while you drag. Release, and the blocks stay selected with the keyboard on them: <kbd>Delete</kbd>, <kbd>Mod</kbd> + <kbd>C</kbd>, <kbd>Mod</kbd> + <kbd>X</kbd>, <kbd>Tab</kbd>, the arrow keys and the [block menu](/docs/plugins/block-menu) act on them as on any block selection.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, marqueePlugin } from 'edytor';
+	import { Edytor, createMarqueePlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[marqueePlugin]} />
+<Edytor plugins={[createMarqueePlugin()]} />
 ```
 
-`marqueePlugin` draws no rectangle: the blocks are selected and the rectangle is your `box` snippet, `createMarqueePlugin({ box })` ([Markup](#markup)). It is opt-in, not a [default plugin](/docs/plugins#default-plugins). It adds no dependency: the gesture is the editor's own, about 8 KB minified (3 KB gzipped).
+`createMarqueePlugin()` draws no rectangle: the blocks are selected and the rectangle is your `box` snippet, `createMarqueePlugin({ box })` ([Markup](#markup)). It is opt-in, not a [default plugin](/docs/plugins#default-plugins). It adds no dependency: the gesture is the editor's own, about 8 KB minified (3 KB gzipped).
 
 ## Where a rectangle starts
 

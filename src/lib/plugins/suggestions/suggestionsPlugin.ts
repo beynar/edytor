@@ -1,6 +1,7 @@
 import { mount, unmount, type Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
+import { branded } from '../brand.js';
 import type { Suggestion } from '$lib/session/suggestions.svelte.js';
 import SuggestionBars from './SuggestionBars.svelte';
 import {
@@ -34,11 +35,6 @@ export type SuggestionsOptions = {
 	/** The words the bar shows, over the English ones. */
 	labels?: PartialLabels<'suggestions'>;
 };
-
-const suggestionPlugins = new WeakSet<Plugin>();
-
-/** Recognize any suggestions plugin instance (the component's default yields to yours). */
-export const isSuggestionsPlugin = (plugin: Plugin) => suggestionPlugins.has(plugin);
 
 /**
  * The `end` suggestion a Tab at the caret accepts: a collapsed caret in its
@@ -85,9 +81,5 @@ export const createSuggestionsPlugin = (options: SuggestionsOptions = {}): Plugi
 			return () => void unmount(bars);
 		}
 	});
-	suggestionPlugins.add(plugin);
-	return plugin;
+	return branded('suggestions', plugin);
 };
-
-/** The suggestions' keys, with no bar. */
-export const suggestionsPlugin = createSuggestionsPlugin();

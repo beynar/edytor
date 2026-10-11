@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
-	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+	import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+	import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { mentionPlugin } from '../../../tests/atMention.svelte';
 	import type { Plugin } from '$lib/plugins.js';
-	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
-	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
+	import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
 	import {
 		blockHandlesPlugin,
@@ -575,7 +575,7 @@
 		...(data.polish
 			? [
 					blockMenuPlugin,
-					tocPlugin,
+					createTocPlugin(),
 					createPagePlugin({
 						open: (pageId, { newTab }) =>
 							Object.assign(window, {
@@ -586,18 +586,18 @@
 					})
 				]
 			: []),
-		arrowMovePlugin,
+		createArrowMovePlugin(),
 		data.scenario === 'image' ? uploadingImagePlugin : imagePlugin,
 		...(data.scenario === 'image' ? [uploadingFilePlugin] : []),
 		codePlugin,
-		markdownShortcutsPlugin,
+		createMarkdownShortcutsPlugin(),
 		// `triggers=1`: the shipped mention and page-link menus and an input rule, in place of
 		// the fixture's `@` (an empty atom at once).
 		...(data.triggers ? [triggerMentions, triggerPages, emojiRules] : [mentionPlugin]),
 		slashMenuPlugin,
 		toolbarPlugin,
 		suggestionsPlugin,
-		...(data.columns ? [columnsPlugin] : []),
+		...(data.columns ? [createColumnsPlugin()] : []),
 		richTextPlugin,
 		propsPlugin
 	]);

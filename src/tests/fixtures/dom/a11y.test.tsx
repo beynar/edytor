@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { englishLabels } from '$lib/labels.js';
 import {
 	dispatchDomBeforeInput,
@@ -277,7 +277,7 @@ describe('the live region announces block moves and deletes', () => {
 	});
 
 	it('a move says what moved and where', async () => {
-		const { edytor } = await render([h1('t'), p('a'), p('b')], [arrowMovePlugin]);
+		const { edytor } = await render([h1('t'), p('a'), p('b')], [createArrowMovePlugin()]);
 		await caretIn(edytor, 't', 1);
 		await dispatchDomKeyDown(document, { key: 'ArrowDown', ctrlKey: true, shiftKey: true });
 		expect(edytor.value.children!.map((b) => b.id)).toEqual(['a', 't', 'b']);
@@ -299,7 +299,7 @@ describe('the live region announces block moves and deletes', () => {
 	});
 
 	it('a refused move announces nothing', async () => {
-		const { edytor } = await render([p('a'), p('b')], [arrowMovePlugin]);
+		const { edytor } = await render([p('a'), p('b')], [createArrowMovePlugin()]);
 		await caretIn(edytor, 'a', 1);
 		await dispatchDomKeyDown(document, { key: 'ArrowUp', ctrlKey: true, shiftKey: true });
 		expect(region()!.textContent).toBe('');

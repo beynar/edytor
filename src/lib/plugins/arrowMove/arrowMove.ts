@@ -1,4 +1,5 @@
 import type { Plugin } from '$lib/plugins.js';
+import { branded } from '../brand.js';
 import type { HotKey } from '$lib/session/keymap.js';
 import type { BlockMoveDirection } from '$lib/session/moves.js';
 import {
@@ -34,11 +35,13 @@ const move =
 		});
 	};
 
-export const arrowMovePlugin: Plugin = () => ({
-	hotkeys: {
-		'mod+arrowdown': move('down'),
-		'mod+arrowup': move('up'),
-		'mod+shift+arrowdown': move('down', true),
-		'mod+shift+arrowup': move('up', true)
-	}
-});
+/** Block moves from the keyboard (Mod+Up/Down, Mod+Shift+Up/Down): a default plugin. */
+export const createArrowMovePlugin = (): Plugin =>
+	branded('arrowMove', () => ({
+		hotkeys: {
+			'mod+arrowdown': move('down'),
+			'mod+arrowup': move('up'),
+			'mod+shift+arrowdown': move('down', true),
+			'mod+shift+arrowup': move('up', true)
+		}
+	}));

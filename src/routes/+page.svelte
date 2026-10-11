@@ -2,11 +2,11 @@
 	import { onMount } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import type { JSONDoc } from '$lib/utils/json.js';
-	import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
-	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
+	import { createRichTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+	import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+	import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+	import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 	import { tableBlock } from '$lib/crdt/tables.js';
 	import {
 		blockHandlesPlugin,
@@ -74,10 +74,10 @@
 	// The handles unless `?handles=0`; the demo's chrome draws every menu (`./chrome`).
 	const plugins = [
 		...(page.url.searchParams.get('handles') === '0' ? [] : [blockHandlesPlugin]),
-		arrowMovePlugin,
+		createArrowMovePlugin(),
 		imagePlugin,
 		codePlugin,
-		markdownShortcutsPlugin,
+		createMarkdownShortcutsPlugin(),
 		mentionPlugin,
 		pageLinkPlugin,
 		slashMenuPlugin,
@@ -86,11 +86,11 @@
 			linkTo: (block) => `${location.origin}${location.pathname}#block-${block.id}`
 		}),
 		demoPagePlugin,
-		columnsPlugin,
+		createColumnsPlugin(),
 		findPlugin,
 		// Drag from the page's margins or below the last block to select blocks (Notion).
 		marquee({ container: '.demo-main' }),
-		tocPlugin,
+		createTocPlugin(),
 		tablePlugin,
 		// KaTeX loads from jsDelivr the first time an equation shows.
 		equation(),
@@ -358,7 +358,7 @@
 							{sync}
 							class="demo-edytor"
 							aria-label="A calmer place to think"
-							placeholder={richTextPlaceholder}
+							placeholder={createRichTextPlaceholder()}
 							bind:edytor
 						/>
 					{/if}

@@ -37,13 +37,9 @@
 
 	export type { TablePluginOptions };
 
-	const tablePlugins = new WeakSet<Plugin>();
 	/** Each view's chrome (the first table plugin listed in it claims the view). */
 	const chromes = new WeakMap<Edytor, TableChrome>();
 	const labelsOf = viewLabels(tableEnglish);
-
-	/** Recognize any table plugin instance. */
-	export const isTablePlugin = (plugin: Plugin) => tablePlugins.has(plugin);
 
 	/**
 	 * The column ids `table`'s rows show, read from the cells (reactive), as
@@ -285,12 +281,8 @@
 				}
 			};
 		};
-		tablePlugins.add(plugin);
 		return plugin;
 	};
-
-	/** The table with the default options. */
-	export const tablePlugin = createTablePlugin();
 
 	/** `table`'s grid template: each column's width (the resize preview while a band drags it). */
 	const templateOf = (view: BlockView) => {

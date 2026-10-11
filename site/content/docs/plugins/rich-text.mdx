@@ -4,7 +4,7 @@ description: The rich text plugin's block kinds, marks, Notion hotkeys, placehol
 icon: type
 ---
 
-`richTextPlugin` defines the everyday document: paragraphs, headings, lists, to-dos, toggles, toggle headings, callouts, quotes, dividers, and ten marks, with Notion's shortcuts. The core defines no block kinds, so `<Edytor>` includes it by default, after your plugins:
+`createRichTextPlugin()` defines the everyday document: paragraphs, headings, lists, to-dos, toggles, toggle headings, callouts, quotes, dividers, and ten marks, with Notion's shortcuts. The core defines no block kinds, so `<Edytor>` includes it by default, after your plugins:
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -15,7 +15,7 @@ icon: type
 <Edytor />
 ```
 
-`createRichTextPlugin({ labels, keywords, callout })` builds it in another language or with other callout icons (see [Toggles and callouts](#toggles-and-callouts)): `labels` (a `PartialLabels<'richText'>`) names the presets, the toolbar's mark buttons and the to-do checkbox, and `keywords` replaces a preset's slash keywords by command id (see [Localization](/docs/customization/localization)); `richTextPlugin` is the English one. A listed instance replaces the default. List it yourself to translate it, to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
+`createRichTextPlugin({ labels, keywords, callout })` builds it in another language or with other callout icons (see [Toggles and callouts](#toggles-and-callouts)): `labels` (a `PartialLabels<'richText'>`) names the presets, the toolbar's mark buttons and the to-do checkbox, and `keywords` replaces a preset's slash keywords by command id (see [Localization](/docs/customization/localization)); `createRichTextPlugin()` is the English one. A listed instance replaces the default. List it yourself to translate it, to place it elsewhere in the order, or with `defaultPlugins={false}` (see [Default plugins](/docs/plugins#default-plugins)). To change one of its kinds, define a kind with the same name in any of your plugins, since they come before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
 
 ## Block kinds
 
@@ -197,4 +197,4 @@ format.insertDividerAtSelection();
 
 ## Placeholders
 
-`richTextPlaceholder` gives the kinds Notion's placeholders ("Heading 1", "Toggle heading 1", "List", "To-do", "Type '/' for commands" in a focused paragraph…). Pass it to `<Edytor placeholder={richTextPlaceholder} />`. See [Placeholder](/docs/customization/placeholder#notion-placeholders).
+`createRichTextPlaceholder()` gives the kinds Notion's placeholders ("Heading 1", "Toggle heading 1", "List", "To-do", "Type '/' for commands" in a focused paragraph…). Pass it to `<Edytor placeholder={createRichTextPlaceholder()} />`. See [Placeholder](/docs/customization/placeholder#notion-placeholders).

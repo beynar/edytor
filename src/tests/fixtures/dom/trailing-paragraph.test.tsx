@@ -20,7 +20,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
 import { codePlugin, richTextPlugin, tablePlugin } from '../../../routes/chrome/plugins.js';
@@ -56,7 +56,7 @@ const render = (children: JSONBlock[], readonly = false) =>
 			<paragraph>|</paragraph>
 		</root>,
 		{
-			plugins: [codePlugin, columnsPlugin, tablePlugin, richTextPlugin],
+			plugins: [codePlugin, createColumnsPlugin(), tablePlugin, richTextPlugin],
 			value: { children },
 			autoSelectFixture: false,
 			readonly

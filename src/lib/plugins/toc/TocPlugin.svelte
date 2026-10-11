@@ -58,9 +58,6 @@
 				}
 			};
 		};
-
-	/** The table of contents over the rich text headings. */
-	export const tocPlugin = createTocPlugin();
 </script>
 
 {#snippet toc({ block }: BlockSnippetPayload)}

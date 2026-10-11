@@ -4,14 +4,14 @@ description: The table of contents plugin adds Notion's table of contents block,
 icon: list-tree
 ---
 
-`tocPlugin` adds Notion's table of contents: a `toc` block lists the document's headings and toggle headings, live, in reading order, each indented by its level. A click scrolls to the heading. It is not a default plugin: list it.
+`createTocPlugin()` adds Notion's table of contents: a `toc` block lists the document's headings and toggle headings, live, in reading order, each indented by its level. A click scrolls to the heading. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, tocPlugin } from 'edytor';
+	import { Edytor, createTocPlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[tocPlugin]} />
+<Edytor plugins={[createTocPlugin()]} />
 ```
 
 A [slash menu](/docs/plugins/slash-menu) then lists "Table of contents" under `Advanced blocks` (keywords `toc`, `outline`, `headings`, `contents`). Like a divider it replaces an empty line, and goes after a line that holds text.

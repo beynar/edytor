@@ -13,8 +13,8 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createRichTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { convertToKind } from '$lib/kinds.js';
 import { hidden } from '$lib/selection/visibility.js';
 import { serializeClipboardFragmentToHtml } from '$lib/clipboard/serializeClipboardFragment.js';
@@ -38,8 +38,8 @@ const render = (children: JSONBlock[]) =>
 		</root>,
 		{
 			plugins: [
-				markdownShortcutsPlugin,
-				() => ({ placeholder: richTextPlaceholder }),
+				createMarkdownShortcutsPlugin(),
+				() => ({ placeholder: createRichTextPlaceholder() }),
 				richTextPlugin
 			],
 			value: { children }

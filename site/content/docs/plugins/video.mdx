@@ -4,7 +4,7 @@ description: The video plugin adds Notion's video block, a video file in the bro
 icon: video
 ---
 
-`videoPlugin` adds Notion's video block: an "Embed a video" panel (your `empty` snippet) until the block has a source, then the browser's player (`<video controls>`), with an editable caption. It is not a default plugin: list it.
+`createVideoPlugin()` adds Notion's video block: an "Embed a video" panel (your `empty` snippet) until the block has a source, then the browser's player (`<video controls>`), with an editable caption. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -23,7 +23,7 @@ icon: video
 <Edytor plugins={[video]} />
 ```
 
-A [slash menu](/docs/plugins/slash-menu) then lists "Video" under `Media`. `videoPlugin` is the plugin without `upload`: links only. A YouTube or Vimeo link is not a video file: it plays in an [embed](/docs/plugins/embed).
+A [slash menu](/docs/plugins/slash-menu) then lists "Video" under `Media`. `createVideoPlugin()` is the plugin without `upload`: links only. A YouTube or Vimeo link is not a video file: it plays in an [embed](/docs/plugins/embed).
 
 ## Options
 

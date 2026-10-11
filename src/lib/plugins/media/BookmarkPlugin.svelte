@@ -146,9 +146,6 @@
 				}
 			};
 		});
-
-	/** The bookmark block, without unfurling: the card shows the URL. */
-	export const bookmarkPlugin = createBookmarkPlugin();
 </script>
 
 {#snippet bookmark({ block, content }: BlockSnippetPayload<Record<string, unknown>>)}

@@ -104,6 +104,3 @@ export const createMarqueePlugin =
 			}
 		};
 	};
-
-/** The marquee with no rectangle drawn (`createMarqueePlugin({ box })` draws one). */
-export const marqueePlugin = createMarqueePlugin();

@@ -5,14 +5,14 @@
 
 <script lang="ts">
 	import {
-		Edytor,
-		columnsPlugin,
-		markdownShortcutsPlugin,
-		richTextPlaceholder,
-		tableBlock,
-		type EdytorInstance,
-		type JSONDoc
-	} from 'edytor';
+	Edytor,
+	createColumnsPlugin,
+	createMarkdownShortcutsPlugin,
+	createRichTextPlaceholder,
+	tableBlock,
+	type EdytorInstance,
+	type JSONDoc
+} from 'edytor';
 	// The demo's chrome (the package draws none), copied by scripts/pack-edytor.sh.
 	import {
 		blockHandlesPlugin,
@@ -149,10 +149,10 @@
 		blockHandlesPlugin,
 		blockMenuPlugin,
 		codePlugin,
-		columnsPlugin,
+		createColumnsPlugin(),
 		tablePlugin,
 		marquee({ container: '.live-editor' }),
-		markdownShortcutsPlugin,
+		createMarkdownShortcutsPlugin(),
 		slashMenuPlugin,
 		toolbarPlugin,
 		suggestionsPlugin,
@@ -192,7 +192,7 @@
 			{room}
 			params={{ guest }}
 			{plugins}
-			placeholder={richTextPlaceholder}
+			placeholder={createRichTextPlaceholder()}
 		/>
 	</div>
 </div>

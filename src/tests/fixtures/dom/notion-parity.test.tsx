@@ -6,10 +6,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock, SerializableContent } from '$lib/utils/json.js';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { createRichTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import {
 	type CanonicalBlock,
@@ -73,13 +73,13 @@ describe('inline markdown', () => {
 		['~~gone~~ ', [{ text: 'gone', marks: { strike: true } }, { text: ' ' }]],
 		['a *b* ', [{ text: 'a ' }, { text: 'b', marks: { italic: true } }, { text: ' ' }]]
 	])('%j marks its content and drops the markers', async (typed, content) => {
-		const { edytor, editor } = await render([markdownShortcutsPlugin]);
+		const { edytor, editor } = await render([createMarkdownShortcutsPlugin()]);
 		await type(editor, typed);
 		expect(canonicalTree(edytor)).toEqual([{ type: 'paragraph', content }]);
 	});
 
 	it.each(['x * a*', '2 * 3 * 4', 'x ** **'])('%j stays text (padded or empty)', async (typed) => {
-		const { edytor, editor } = await render([markdownShortcutsPlugin]);
+		const { edytor, editor } = await render([createMarkdownShortcutsPlugin()]);
 		await type(editor, typed);
 		expect(canonicalTree(edytor)).toEqual([{ type: 'paragraph', content: [{ text: typed }] }]);
 	});
@@ -93,7 +93,7 @@ describe('inline markdown refused', () => {
 				if ((operation as string) === 'inlineMarkdown') prevent();
 			}
 		});
-		const { edytor, editor } = await render([refuse, markdownShortcutsPlugin]);
+		const { edytor, editor } = await render([refuse, createMarkdownShortcutsPlugin()]);
 		await type(editor, '`x`');
 		expect(canonicalTree(edytor)).toEqual([{ type: 'paragraph', content: [{ text: '`x`' }] }]);
 	});
@@ -135,7 +135,7 @@ describe('shortcuts', () => {
 	});
 
 	it('Mod+Shift+Down moves the caret block (no selection needed)', async () => {
-		const { edytor } = await render([arrowMovePlugin], {
+		const { edytor } = await render([createArrowMovePlugin()], {
 			children: [
 				{ type: 'paragraph', content: [{ text: 'a' }] },
 				{ type: 'paragraph', content: [{ text: 'b' }] }
@@ -630,7 +630,7 @@ describe('lists on Backspace', () => {
 		const { edytor, editor } = await renderDomEdytor(empty, {
 			plugins: [richTextPlugin, mentionPlugin],
 			// The harness types the prop as a string; `<Edytor>` takes a function too.
-			placeholder: richTextPlaceholder as unknown as string,
+			placeholder: createRichTextPlaceholder() as unknown as string,
 			value: { children: [{ type: 'bulleted-list-item', content: [{ text: '' }] }] }
 		});
 		await backspaceAtStartOf(edytor, editor, [0]);
@@ -939,7 +939,7 @@ describe('menus', () => {
 describe('placeholders', () => {
 	it('names each kind as Notion does', () => {
 		const at = (type: string, data = {}, focused = false) =>
-			richTextPlaceholder({ type, data, focused, empty: true });
+			createRichTextPlaceholder()({ type, data, focused, empty: true });
 		expect([
 			at('heading', { level: 'h2' }),
 			at('bulleted-list-item'),

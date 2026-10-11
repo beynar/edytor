@@ -265,9 +265,6 @@
 				}
 			};
 		};
-
-	/** Code blocks in `CODE_LANGUAGES`, JavaScript by default. */
-	export const codePlugin: Plugin = createCodePlugin();
 </script>
 
 <!-- No whitespace between the header and the code (one node per block less to walk). -->

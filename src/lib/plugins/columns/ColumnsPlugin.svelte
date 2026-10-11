@@ -29,11 +29,6 @@
 		keywords?: Partial<Record<string, string[]>>;
 	};
 
-	const columnsPlugins = new WeakSet<Plugin>();
-
-	/** Recognize any columns plugin instance (the component's default yields to yours). */
-	export const isColumnsPlugin = (plugin: Plugin) => columnsPlugins.has(plugin);
-
 	/** A weight read back from HTML (`data-width`), when it is one. */
 	const parsedWidth = (element: HTMLElement): Record<string, number> => {
 		const width = Number(element.getAttribute('data-width'));
@@ -217,12 +212,8 @@
 				}
 			};
 		};
-		columnsPlugins.add(plugin);
 		return plugin;
 	};
-
-	/** Columns with the default options. */
-	export const columnsPlugin = createColumnsPlugin();
 </script>
 
 <!--

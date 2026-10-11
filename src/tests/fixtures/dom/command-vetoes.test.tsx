@@ -23,7 +23,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import {
 	canonicalTree,
@@ -173,7 +173,7 @@ describe('F-M3 — a veto inside a composite', () => {
 			<root>
 				<paragraph>|</paragraph>
 			</root>,
-			{ plugins: plugins(markdownShortcutsPlugin, vetoing('setBlock')) }
+			{ plugins: plugins(createMarkdownShortcutsPlugin(), vetoing('setBlock')) }
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '#' });
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: ' ' });
@@ -186,7 +186,7 @@ describe('F-M3 — a veto inside a composite', () => {
 			<root>
 				<paragraph>|</paragraph>
 			</root>,
-			{ plugins: plugins(markdownShortcutsPlugin) }
+			{ plugins: plugins(createMarkdownShortcutsPlugin()) }
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '#' });
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: ' ' });

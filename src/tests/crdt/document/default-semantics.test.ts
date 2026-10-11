@@ -27,9 +27,9 @@ import {
 	type JSONDoc
 } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-import { pagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
-import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
+import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
+import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 import {
 	audioPlugin,
 	bookmarkPlugin,
@@ -187,9 +187,9 @@ describe('defaultSemantics on a headless document', () => {
 			codePlugin,
 			imagePlugin,
 			...media,
-			columnsPlugin,
-			pagePlugin,
-			tocPlugin,
+			createColumnsPlugin(),
+			createPagePlugin(),
+			createTocPlugin(),
 			tablePlugin,
 			createEquationPlugin()
 		];

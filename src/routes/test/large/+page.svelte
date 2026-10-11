@@ -6,7 +6,7 @@
 	import { onMount, tick, untrack } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { blockHandlesPlugin, codePlugin, richTextPlugin } from '../../chrome/plugins.js';
-	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createDocument, type EdytorDocument } from '$lib/crdt/index.js';
 	import { applyAwarenessUpdate, encodeAwarenessUpdate } from '$lib/crdt/protocol.js';
 	import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
@@ -34,7 +34,7 @@
 	const value: JSONDoc = {
 		children: Array.from({ length: blocks }, (_, i) => blockAt(i))
 	};
-	const plugins = [blockHandlesPlugin, codePlugin, columnsPlugin, richTextPlugin];
+	const plugins = [blockHandlesPlugin, codePlugin, createColumnsPlugin(), richTextPlugin];
 
 	const start = performance.now();
 	const main = createDocument({ value, actor: { id: 'ada', name: 'Ada', color: '#2783de' } });

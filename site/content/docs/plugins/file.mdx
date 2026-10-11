@@ -4,7 +4,7 @@ description: The file plugin adds Notion's file block, an attachment uploaded th
 icon: paperclip
 ---
 
-`filePlugin` adds Notion's file block: an empty panel (your `empty` snippet) until the block has a file, then the file's name and size, linking to it, with an editable caption. Files are uploaded through the `upload` function you provide, or linked. It is not a default plugin: list it.
+`createFilePlugin()` adds Notion's file block: an empty panel (your `empty` snippet) until the block has a file, then the file's name and size, linking to it, with an editable caption. Files are uploaded through the `upload` function you provide, or linked. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -23,7 +23,7 @@ icon: paperclip
 <Edytor plugins={[file]} />
 ```
 
-A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. `filePlugin` is the plugin without `upload`: links only.
+A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. `createFilePlugin()` is the plugin without `upload`: links only.
 
 ## Options
 

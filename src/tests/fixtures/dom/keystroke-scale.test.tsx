@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { SvelteSet } from 'svelte/reactivity';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import type { JSONDoc } from '$lib/utils/json.js';
 import {
 	dispatchDomBeforeInput,
@@ -103,7 +103,7 @@ const measure = async (blocks: number): Promise<Record<Key, Counts>> => {
 			autoSelectFixture: false,
 			// No block handles: without layout every block is near and has one
 			// (the Playwright row counts the handles with layout).
-			plugins: [richTextPlugin, arrowMovePlugin],
+			plugins: [richTextPlugin, createArrowMovePlugin()],
 			blockHandles: false
 		}
 	);

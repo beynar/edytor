@@ -113,9 +113,6 @@
 			})
 		);
 	};
-
-	/** The embed block with the default providers. */
-	export const embedPlugin = createEmbedPlugin();
 </script>
 
 {#snippet embed({ block, content }: BlockSnippetPayload<{ url?: string }>)}

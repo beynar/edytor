@@ -4,16 +4,16 @@ description: The columns plugin adds Notion's multi-column layouts. Drag a block
 icon: columns-3
 ---
 
-`columnsPlugin` adds Notion's columns: a **layout** shows two to five **columns** side by side, and each column holds any blocks (text, lists, to-dos, code, images, toggles). You make one by dragging a block to the left or right edge of another, or from the slash menu, the `+` menu or the block menu's Turn into, and you resize the columns by dragging the gap between them.
+`createColumnsPlugin()` adds Notion's columns: a **layout** shows two to five **columns** side by side, and each column holds any blocks (text, lists, to-dos, code, images, toggles). You make one by dragging a block to the left or right edge of another, or from the slash menu, the `+` menu or the block menu's Turn into, and you resize the columns by dragging the gap between them.
 
 The plugin is not a default plugin: list it in `plugins`.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, codePlugin, columnsPlugin } from 'edytor';
+	import { Edytor, createCodePlugin, createColumnsPlugin } from 'edytor';
 	import 'edytor/themes/notion.css';
 
-	const plugins = [columnsPlugin, codePlugin];
+	const plugins = [createColumnsPlugin(), createCodePlugin()];
 </script>
 
 <div class="edytor-notion">
@@ -25,7 +25,7 @@ List it in every view that may open a document holding layouts. A view without i
 
 ## Options
 
-`createColumnsPlugin(options)` takes a `ColumnsPluginOptions`; `columnsPlugin` is the plugin with the defaults.
+`createColumnsPlugin(options)` takes a `ColumnsPluginOptions`; `createColumnsPlugin()` is the plugin with the defaults.
 
 <TypeTable
   type={{
@@ -46,10 +46,9 @@ List it in every view that may open a document holding layouts. A view without i
 />
 
 ```ts title="plugins.ts" check
-import { createColumnsPlugin, isColumnsPlugin, type Plugin } from 'edytor';
+import { createColumnsPlugin, type Plugin } from 'edytor';
 
 export const columns: Plugin = createColumnsPlugin({ minWidth: 0.15 });
-isColumnsPlugin(columns); // true: any columns plugin instance
 ```
 
 ## The kinds

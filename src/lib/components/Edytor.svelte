@@ -20,27 +20,28 @@
 	import { createIndexeddbSync, createWebsocketSync } from '$lib/collaboration/providers.js';
 	export { EdytorClass as EdytorContext, useEdytor };
 	import type { Placeholder, Plugin } from '$lib/plugins.js';
+	import { brandOf } from '$lib/plugins/brand.js';
 	import type { PartialLabels } from '$lib/labels.js';
-	import { isRichTextPlugin, richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-	import { imagePlugin, isImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-	import {
-		isSuggestionsPlugin,
-		suggestionsPlugin
-	} from '$lib/plugins/suggestions/suggestionsPlugin.js';
+	import { createRichTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+	import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+	import { createImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+	import { createSuggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 
 	/**
-	 * The plugins every view has unless it lists its own (or sets
+	 * The plugins every view has unless it lists one of their kind (or sets
 	 * `defaultPlugins={false}`), after the app's so its kinds and keys win:
 	 * block moves, the suggestion UI, the image kind, then rich text.
 	 */
-	const withDefaults = (plugins: Plugin[] = []): Plugin[] => [
-		...plugins,
-		...(plugins.includes(arrowMovePlugin) ? [] : [arrowMovePlugin]),
-		...(plugins.some(isSuggestionsPlugin) ? [] : [suggestionsPlugin]),
-		...(plugins.some(isImagePlugin) ? [] : [imagePlugin]),
-		...(plugins.some(isRichTextPlugin) ? [] : [richTextPlugin])
+	const DEFAULTS = [
+		createArrowMovePlugin(),
+		createSuggestionsPlugin(),
+		createImagePlugin(),
+		createRichTextPlugin()
 	];
+	const withDefaults = (plugins: Plugin[] = []): Plugin[] => {
+		const listed = new Set(plugins.map(brandOf));
+		return [...plugins, ...DEFAULTS.filter((plugin) => !listed.has(brandOf(plugin)))];
+	};
 	/**
 	 * The sync of a room id no dial can carry (`validRoomId`): no socket, the
 	 * refusal `routeDocumentSocket` would give (`4400`), and the local copy

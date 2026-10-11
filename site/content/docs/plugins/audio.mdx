@@ -4,17 +4,17 @@ description: The audio plugin adds Notion's audio block, an audio file in the br
 icon: music
 ---
 
-`audioPlugin` adds Notion's audio block: an "Embed audio" panel (your `empty` snippet) until the block has a source, then the browser's player (`<audio controls>`), with an editable caption. It is not a default plugin: list it.
+`createAudioPlugin()` adds Notion's audio block: an "Embed audio" panel (your `empty` snippet) until the block has a source, then the browser's player (`<audio controls>`), with an editable caption. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, audioPlugin } from 'edytor';
+	import { Edytor, createAudioPlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[audioPlugin]} />
+<Edytor plugins={[createAudioPlugin()]} />
 ```
 
-A [slash menu](/docs/plugins/slash-menu) then lists "Audio" under `Media`. `audioPlugin` is the plugin without `upload`: links only.
+A [slash menu](/docs/plugins/slash-menu) then lists "Audio" under `Media`. `createAudioPlugin()` is the plugin without `upload`: links only.
 
 ## Options
 

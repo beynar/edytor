@@ -7,7 +7,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import type { PlaceholderView } from '$lib/plugins.js';
+import { createRichTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { dispatchCopy, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
 import { richTextPlugin } from '../../../routes/chrome/plugins.js';
@@ -42,12 +43,12 @@ describe('heading levels: h1 to h3', () => {
 
 	it('the placeholder names the level it renders', () => {
 		const view = (level?: string) =>
-			richTextPlaceholder({
+			createRichTextPlaceholder()({
 				type: 'heading',
 				data: level ? { level } : {},
 				focused: false,
 				empty: true
-			} as Parameters<typeof richTextPlaceholder>[0]);
+			} as PlaceholderView);
 		expect([view('h5'), view('h2'), view()]).toEqual(['Heading 3', 'Heading 2', 'Heading 1']);
 	});
 });

@@ -13,12 +13,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
-import {
-	createRichTextPlaceholder,
-	richTextPlaceholder
-} from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { createRichTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	dispatchClipboardPaste,
 	dispatchCopy,
@@ -173,7 +170,7 @@ describe('body.open: a toggle this view creates opens', () => {
 	it('`> ` typed on a new line makes an open toggle; Enter after its title goes into the body', async () => {
 		const { edytor, editor } = await render(
 			[{ id: 'a', type: 'paragraph', content: [] }],
-			[markdownShortcutsPlugin, richTextPlugin]
+			[createMarkdownShortcutsPlugin(), richTextPlugin]
 		);
 		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 0);
 		await flushDomUpdates();
@@ -276,9 +273,9 @@ describe('callout: an icon, a title and a content', () => {
 	});
 
 	it('its empty title shows its placeholder, focused or not', () => {
-		expect(richTextPlaceholder({ type: 'callout', data: {}, focused: false } as never)).toBe(
-			'Callout title'
-		);
+		expect(
+			createRichTextPlaceholder()({ type: 'callout', data: {}, focused: false } as never)
+		).toBe('Callout title');
 		expect(
 			createRichTextPlaceholder({ placeholders: { callout: 'Titre' } })({
 				type: 'callout',

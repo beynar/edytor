@@ -142,10 +142,10 @@ Pass it with the bundled plugins (`<Edytor>` adds rich text after them). None of
 
 ```svelte title="src/routes/+page.svelte" check
 <script lang="ts">
-	import { Edytor, markdownShortcutsPlugin } from 'edytor';
+	import { Edytor, createMarkdownShortcutsPlugin } from 'edytor';
 	import { notePlugin } from '$lib/NotePlugin.svelte';
 
-	const plugins = [notePlugin, markdownShortcutsPlugin];
+	const plugins = [notePlugin, createMarkdownShortcutsPlugin()];
 
 	const value = {
 		children: [

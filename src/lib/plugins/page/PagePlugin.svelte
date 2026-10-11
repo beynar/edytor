@@ -115,9 +115,6 @@
 					: []
 			};
 		};
-
-	/** The page block without a way to open, name or create pages: a block showing its stored title. */
-	export const pagePlugin = createPagePlugin();
 </script>
 
 {#snippet page({ block }: BlockSnippetPayload<Record<string, unknown>>)}

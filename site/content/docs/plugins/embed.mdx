@@ -4,14 +4,14 @@ description: The embed plugin adds Notion's embed block, a provider's player (Yo
 icon: app-window
 ---
 
-`embedPlugin` adds Notion's embed block: an "Embed a link" panel (your `empty` snippet) until the block has a link, then the provider's player in a sandboxed `iframe`, with an editable caption. It is not a default plugin: list it.
+`createEmbedPlugin()` adds Notion's embed block: an "Embed a link" panel (your `empty` snippet) until the block has a link, then the provider's player in a sandboxed `iframe`, with an editable caption. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, embedPlugin } from 'edytor';
+	import { Edytor, createEmbedPlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[embedPlugin]} />
+<Edytor plugins={[createEmbedPlugin()]} />
 ```
 
 A [slash menu](/docs/plugins/slash-menu) then lists "Embed" under `Media`, and pasting a link a provider plays on an empty line offers to embed it ([Pasting a link on an empty line](/docs/editor/clipboard#pasting-a-link-on-an-empty-line)).

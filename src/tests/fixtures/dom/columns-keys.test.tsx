@@ -18,7 +18,7 @@
  * hand-authored from the contract.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -51,7 +51,7 @@ const backspace = (editor: HTMLElement) =>
 	dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
 const del = (editor: HTMLElement) =>
 	dispatchDomBeforeInput(editor, { inputType: 'deleteContentForward' });
-const render = (children = contractDoc()) => renderColumns(children, [arrowMovePlugin]);
+const render = (children = contractDoc()) => renderColumns(children, [createArrowMovePlugin()]);
 
 describe('Backspace at a column edge (layout.merge)', () => {
 	it("at column 2's first block: into column 1's last line; the layout dissolves", async () => {

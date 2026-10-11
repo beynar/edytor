@@ -29,23 +29,23 @@ This page builds a Notion-style editor: rich text blocks and marks, images, code
 ```svelte title="src/lib/Editor.svelte" check
 <script lang="ts">
 	import {
-		Edytor,
-		codePlugin,
-		createSlashMenuPlugin,
-		createToolbarPlugin,
-		markdownShortcutsPlugin,
-		richTextPlaceholder,
-		type EdytorInstance,
-		type JSONDoc,
-		type SlashMenuController,
-		type ToolbarController
-	} from 'edytor';
+	Edytor,
+	createCodePlugin,
+	createSlashMenuPlugin,
+	createToolbarPlugin,
+	createMarkdownShortcutsPlugin,
+	createRichTextPlaceholder,
+	type EdytorInstance,
+	type JSONDoc,
+	type SlashMenuController,
+	type ToolbarController
+} from 'edytor';
 	import 'edytor/themes/notion.css';
 
 	// Rich text, images and arrow moves are included by default.
 	const plugins = [
-		codePlugin,
-		markdownShortcutsPlugin,
+		createCodePlugin(),
+		createMarkdownShortcutsPlugin(),
 		createSlashMenuPlugin({ menu }),
 		createToolbarPlugin({ toolbar })
 	];
@@ -93,7 +93,7 @@ This page builds a Notion-style editor: rich text blocks and marks, images, code
 {/snippet}
 
 <div class="edytor-notion">
-	<Edytor {plugins} {value} {onChange} bind:edytor class="editor" placeholder={richTextPlaceholder} />
+	<Edytor {plugins} {value} {onChange} bind:edytor class="editor" placeholder={createRichTextPlaceholder()} />
 </div>
 
 <style>
@@ -112,17 +112,17 @@ This page builds a Notion-style editor: rich text blocks and marks, images, code
 </style>
 ```
 
-The `edytor-notion` class applies the imported theme to the document, and `richTextPlaceholder` shows Notion's placeholders ("Heading 1", "To-do", "Type '/' for commands"…). The menus are your markup: the plugins place them, open and close them, and give them their keys and ARIA through the controller (`popup`, `keys`, `option(index)`). Block handles (a `+` and a drag grip beside each block) and a block menu on the grip are two more plugins drawn by your snippets, `createBlockHandlesPlugin({ handle })` and `createBlockMenuPlugin({ menu })`. The demo's complete Notion-style chrome, every surface with its styles, is in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome): copy it to start from Notion's look.
+The `edytor-notion` class applies the imported theme to the document, and `createRichTextPlaceholder()` shows Notion's placeholders ("Heading 1", "To-do", "Type '/' for commands"…). The menus are your markup: the plugins place them, open and close them, and give them their keys and ARIA through the controller (`popup`, `keys`, `option(index)`). Block handles (a `+` and a drag grip beside each block) and a block menu on the grip are two more plugins drawn by your snippets, `createBlockHandlesPlugin({ handle })` and `createBlockMenuPlugin({ menu })`. The demo's complete Notion-style chrome, every surface with its styles, is in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome): copy it to start from Notion's look.
 
 What each plugin adds:
 
 | Plugin | Adds |
 | --- | --- |
-| `richTextPlugin` (default) | The rich text block kinds and marks, their keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, …) and HTML import rules. List, to-do and toggle items continue on <kbd>Enter</kbd>. |
-| `imagePlugin` (default) | An image block: embed from a link (or your upload, with `createImagePlugin({ upload })`), with an editable caption. |
-| `arrowMovePlugin` (default) | <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move the caret's block; <kbd>Mod</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move selected blocks. |
-| `codePlugin` | A `code` block (an island of `codeLine` children) with syntax highlighting. |
-| `markdownShortcutsPlugin` | Typing `# `, `- `, `1. `, `[] `, `" `, `> `, `---` or ```` ``` ```` at the start of a block converts it; `**bold**`, `*italic*` and friends format inline. |
+| `createRichTextPlugin()` (default) | The rich text block kinds and marks, their keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, …) and HTML import rules. List, to-do and toggle items continue on <kbd>Enter</kbd>. |
+| `createImagePlugin()` (default) | An image block: embed from a link (or your upload, with `createImagePlugin({ upload })`), with an editable caption. |
+| `createArrowMovePlugin()` (default) | <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move the caret's block; <kbd>Mod</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move selected blocks. |
+| `createCodePlugin()` | A `code` block (an island of `codeLine` children) with syntax highlighting. |
+| `createMarkdownShortcutsPlugin()` | Typing `# `, `- `, `1. `, `[] `, `" `, `> `, `---` or ```` ``` ```` at the start of a block converts it; `**bold**`, `*italic*` and friends format inline. |
 | `createSlashMenuPlugin({ menu })` | A menu of block kinds, opened by typing `/`. |
 | `createToolbarPlugin({ toolbar })` | A floating toolbar over a text selection: Turn into, link, marks and colors. |
 | `createBlockHandlesPlugin({ handle })` | A `+` and a drag grip beside each block: drag and drop, keyboard moves. |

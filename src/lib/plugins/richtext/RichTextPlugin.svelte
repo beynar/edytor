@@ -1,5 +1,6 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload, KindPreset, PlaceholderView } from '$lib/plugins.js';
+	import { branded } from '../brand.js';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { presetId } from '$lib/kinds.js';
@@ -145,9 +146,6 @@
 		};
 	};
 
-	/** Notion's placeholders, in English. */
-	export const richTextPlaceholder = createRichTextPlaceholder();
-
 	export type RichTextPluginOptions = {
 		/** The kinds', marks' and checkbox's words (English by default). */
 		labels?: PartialLabels<'richText'>;
@@ -174,11 +172,6 @@
 			picker?: Snippet<[CalloutIconPicker]>;
 		};
 	};
-
-	const richTextPlugins = new WeakSet<Plugin>();
-
-	/** Recognize any rich text plugin instance (the component's default yields to yours). */
-	export const isRichTextPlugin = (plugin: Plugin) => richTextPlugins.has(plugin);
 
 	// One key patched: a peer's concurrent edit of another key is kept.
 	const toggleTodo = (block: Block) => (block.data.checked = !block.data.checked);
@@ -216,8 +209,7 @@
 			if (picker) calloutIconViews.set(edytor, picker);
 			return richText(edytor, labels, options, picker);
 		};
-		richTextPlugins.add(plugin);
-		return plugin;
+		return branded('richText', plugin);
 	};
 
 	/** A preset whose slash keywords `keywords` may replace, by its command id. */
@@ -703,9 +695,6 @@
 			}
 		};
 	};
-
-	/** The rich text kinds and marks, in English. */
-	export const richTextPlugin: Plugin = createRichTextPlugin();
 </script>
 
 <!--

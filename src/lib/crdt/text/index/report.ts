@@ -7,7 +7,6 @@ import { readData } from '../../data.js';
 import type { EngineDoc } from '../../engine-api.js';
 import type { BlockId, ContentItem, ProjectedBlock } from '../../placement/model.js';
 import { callEach } from '../../protocols/observable.js';
-import { protectItems, readSegs } from '../model.js';
 import type { IndexReport } from '../runs.js';
 import type { IndexCache } from './cache.js';
 import type { IndexFold } from './fold.js';
@@ -25,10 +24,8 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 		dirtyLists,
 		leftLists,
 		candidates,
-		ownShim,
 		ensurePlacements,
 		typeOf,
-		intern,
 		runs,
 		syncAll
 	} = ix;
@@ -38,9 +35,8 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 
 	// ── projection ───────────────────────────────────────────────────
 
-	/** `id`'s visible content items, canonical and frozen. */
-	const itemsOf = (id: BlockId): ContentItem[] =>
-		protectItems(readSegs(ownShim.display(id) ?? []), intern) as ContentItem[];
+	/** `id`'s visible content items: its runs, as fresh wrappers over their shared payloads. */
+	const itemsOf = (id: BlockId): ContentItem[] => runs(id).map((r) => ({ ...r }));
 
 	const projectBlock = (id: BlockId): ProjectedBlock => {
 		const rec = blocks.get(id)!;

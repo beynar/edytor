@@ -138,33 +138,13 @@ const mod = (value: number, divisor: number): number =>
 const comparePoint = (left: [number, number], right: [number, number]): number =>
 	left[0] === right[0] ? left[1] - right[1] : left[0] - right[0];
 
-const graphemeBoundaries = (value: string): number[] => {
-	type Segment = { index: number; segment: string };
-	type SegmenterApi = { segment(value: string): Iterable<Segment> };
-	type SegmenterConstructor = new (
-		locale?: string | string[],
-		options?: { granularity: 'grapheme' }
-	) => SegmenterApi;
-	const SegmenterCtor = (Intl as typeof Intl & { Segmenter?: SegmenterConstructor }).Segmenter;
-	if (SegmenterCtor) {
-		return [
-			0,
-			...Array.from(
-				new SegmenterCtor(undefined, { granularity: 'grapheme' }).segment(value),
-				({ index, segment }) => index + segment.length
-			)
-		];
-	}
-
-	let offset = 0;
-	return [
-		0,
-		...Array.from(value, (codePoint) => {
-			offset += codePoint.length;
-			return offset;
-		})
-	];
-};
+const graphemeBoundaries = (value: string): number[] => [
+	0,
+	...Array.from(
+		new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
+		({ index, segment }) => index + segment.length
+	)
+];
 
 const resolveTextOffset = (entropy: number, value: string): number => {
 	const boundaries = graphemeBoundaries(value);

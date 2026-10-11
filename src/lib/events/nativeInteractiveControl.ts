@@ -15,15 +15,12 @@ const findClosestElement = (target: EventTarget | null, selector: string) => {
 	return element?.closest(selector) ?? null;
 };
 
-const getEventPath = (event: Event) =>
-	event.composedPath?.() ?? (event.target ? [event.target] : []);
-
 /**
  * A control on the event's path, else the focused one (a link takes no
  * focus there) when it holds the target or the target holds it.
  */
 const findNativeControlInEvent = (event: Event, selector: string) => {
-	for (const target of getEventPath(event)) {
+	for (const target of event.composedPath()) {
 		const control = findClosestElement(target, selector);
 		if (control) return control;
 	}
@@ -85,7 +82,7 @@ export const isKindControl = (
  * `onDrop` all ask this.
  */
 export const ownsEvent = (editorRoot: Element | null | undefined, event: Event) =>
-	getEventPath(event).some((target) => isKindControl(editorRoot, target));
+	event.composedPath().some((target) => isKindControl(editorRoot, target));
 
 /**
  * An event of a native control anywhere (a link, the chrome's buttons beside

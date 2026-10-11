@@ -298,21 +298,11 @@ const cloneMarks = (
 ): Record<string, SerializableContent> | undefined =>
 	marks === undefined ? undefined : structuredClone(marks);
 
-const graphemes = (value: string): string[] => {
-	type Segment = { segment: string };
-	type SegmenterApi = { segment(value: string): Iterable<Segment> };
-	type SegmenterConstructor = new (
-		locale?: string | string[],
-		options?: { granularity: 'grapheme' }
-	) => SegmenterApi;
-	const SegmenterCtor = (Intl as typeof Intl & { Segmenter?: SegmenterConstructor }).Segmenter;
-	return SegmenterCtor
-		? Array.from(
-				new SegmenterCtor(undefined, { granularity: 'grapheme' }).segment(value),
-				({ segment }) => String(segment)
-			)
-		: Array.from(value);
-};
+const graphemes = (value: string): string[] =>
+	Array.from(
+		new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
+		({ segment }) => segment
+	);
 
 const textRun = (text: string, marks?: Record<string, SerializableContent>): JSONText => ({
 	text,

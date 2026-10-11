@@ -139,16 +139,23 @@ describe('onboarding truth (WU-18)', () => {
 		expect(page).toContain(`Node.js ${node.replace(/^\D+/, '').split('.')[0]}`);
 	});
 
-	it('the oldest browser versions are those of the newest features the package uses (DOC-11)', () => {
-		// Each feature's first version (MDN), and how the shipped code spells it. A use of
-		// one raises the floor: the page names it and its table holds the highest floor.
+	it('the supported browsers are Baseline 2024, and the package uses no feature newer than them (DOC-11)', () => {
+		// The supported floor: Chrome and Edge, Firefox, Safari (Chrome on Android is Chrome's).
+		const BASELINE = [120, 125, 17.4] as const;
+		// Each feature's first version (MDN), and how the shipped code spells it. None may
+		// need more than the floor; the page names each one the code uses.
 		const FEATURES = [
+			{ name: '`Intl.Segmenter`', use: /\bIntl\.Segmenter\b/, floor: [87, 125, 14.1] },
 			{ name: '`String.prototype.toWellFormed`', use: /\.toWellFormed\(/, floor: [111, 119, 16.4] },
 			{ name: 'lookbehind', use: /\(\?<[!=]/, floor: [62, 78, 16.4] },
 			{ name: '`Array.prototype.toSorted`', use: /\.toSorted\(/, floor: [110, 115, 16] },
 			{ name: '`toReversed`', use: /\.toReversed\(/, floor: [110, 115, 16] },
+			{ name: '`ResizeObserver`', use: /\bnew ResizeObserver\(/, floor: [64, 69, 13.1] },
+			{ name: '`Element.checkVisibility`', use: /\.checkVisibility\(/, floor: [105, 106, 17.4] },
 			{ name: '`color-mix()`', use: /color-mix\(/, floor: [111, 113, 16.2] },
 			{ name: 'container queries', use: /@container\b/, floor: [105, 110, 16] },
+			{ name: 'unprefixed `mask`', use: /(?<![-\w])mask:/, floor: [120, 53, 15.4] },
+			{ name: '`:has()`', use: /:has\(/, floor: [105, 121, 15.4] },
 			{ name: '`Object.groupBy`', use: /\b(?:Object|Map)\.groupBy\(/, floor: [117, 119, 17.4] },
 			{
 				name: '`Promise.withResolvers`',
@@ -177,15 +184,16 @@ describe('onboarding truth (WU-18)', () => {
 			});
 		const shipped = sources(join(root, 'src/lib')).join('\n');
 		const used = FEATURES.filter((feature) => feature.use.test(shipped));
-		const floor = [0, 1, 2].map((engine) =>
-			Math.max(...used.map((feature) => feature.floor[engine]!))
-		);
-		const [chrome, firefox, safari] = floor.map(String);
+		for (const feature of used)
+			for (const engine of [0, 1, 2])
+				expect(feature.floor[engine], feature.name).toBeLessThanOrEqual(BASELINE[engine]);
+		const [chrome, firefox, safari] = BASELINE.map(String);
 		const page = read('site/content/docs/reference/platform-support.mdx');
 		for (const feature of used) expect(page, feature.name).toContain(feature.name);
 		expect(page).toContain(`| Chrome, Edge | ${chrome} |`);
 		expect(page).toContain(`| Firefox | ${firefox} |`);
 		expect(page).toContain(`| Safari, iOS | ${safari} |`);
+		expect(page).toContain(`| Chrome on Android | ${chrome} |`);
 		for (const path of [
 			'site/content/docs/getting-started/index.mdx',
 			'site/content/docs/reference/migration.mdx'

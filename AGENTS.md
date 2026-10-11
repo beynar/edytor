@@ -156,6 +156,7 @@ LARGE_PROFILE=1 pnpm exec playwright test --project=chromium large-page.profile 
 ## Practical rules
 
 - Change behaviour in its owner. If a change needs a flag, timer, retry or a second place that decides the same thing, stop: a contract row or an owner rule is missing.
+- Browsers: Baseline 2024 and later (Chrome/Edge 120, Firefox 125, Safari/iOS 17.4, Android Chrome 120; site `reference/platform-support`, held by `docs-onboarding.test.ts`: no shipped feature newer than them). No code path or feature detection for an older engine; a path one supported engine still needs names it, and an engine workaround names its still-open bug. An API every supported engine has but jsdom lacks is stubbed in `src/tests/dom/setup.ts` rather than detected in `src/lib`.
 - Timers are named, counted browser rules only (`pnpm census` reports them); no `tick()` polling, no re-assert loops.
 - Keep `src/lib/crdt` Worker-safe; run `pnpm check:worker` when touching it.
 - Verify engine APIs in the vendored source (`src/lib/crdt/vendor/yjs/src`), not from Yjs v13 examples; fork changes go through `UPSTREAM.md`.

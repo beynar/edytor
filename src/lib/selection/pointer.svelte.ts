@@ -14,7 +14,11 @@ import {
 	isNativeInteractiveEvent
 } from '$lib/events/nativeInteractiveControl.js';
 import { acrossColumns } from './replaceSelection.js';
-import { getDomSelectionSnapshot, type DomSelectionSnapshot } from './domSelection.js';
+import {
+	caretAtPoint,
+	getDomSelectionSnapshot,
+	type DomSelectionSnapshot
+} from './domSelection.js';
 import { domPointOf } from '$lib/surface/projector.svelte.js';
 import {
 	getElementFromNode,
@@ -30,11 +34,6 @@ export type PointerTextPoint = {
 	offset: number;
 	clientX: number;
 	clientY: number;
-};
-
-type DocumentWithCaretPoint = Document & {
-	caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-	caretRangeFromPoint?: (x: number, y: number) => Range | null;
 };
 
 /** Where a press was, and its modifiers: what a margin click reads at its release. */
@@ -256,24 +255,13 @@ export class SelectionPointer {
 
 	/** The text point under the pointer, if any. */
 	pointAt = (clientX: number, clientY: number) => {
-		const ownerDocument = (this.selection.edytor.node?.ownerDocument ??
-			document) as DocumentWithCaretPoint;
-		const caretPosition = ownerDocument.caretPositionFromPoint?.(clientX, clientY);
-		const caretRange = caretPosition ? null : ownerDocument.caretRangeFromPoint?.(clientX, clientY);
-		const node = caretPosition?.offsetNode ?? caretRange?.startContainer ?? null;
-		const domOffset = caretPosition?.offset ?? caretRange?.startOffset ?? null;
-		const text = this.selection.getTextOfNode(node, domOffset ?? undefined);
-
-		if (!text || typeof domOffset !== 'number') {
-			return null;
-		}
-
-		return {
-			text,
-			offset: offsetIn(text, node, domOffset),
+		const at = caretAtPoint(
+			this.selection.edytor.node?.ownerDocument ?? document,
 			clientX,
 			clientY
-		};
+		);
+		const text = at && this.selection.getTextOfNode(at.node, at.offset);
+		return text ? { text, offset: offsetIn(text, at.node, at.offset), clientX, clientY } : null;
 	};
 
 	offsetAt = (text: Text, clientX: number, clientY: number) => {

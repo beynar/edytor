@@ -76,7 +76,7 @@ type Place = { id: string; type?: string; kids: readonly string[] }[];
 
 /** How long the tail owns late signals of an engine that sends no next occurrence (compared at use). */
 const TAIL_MS = 500;
-const now = () => (typeof performance === 'undefined' ? Date.now() : performance.now());
+const now = () => performance.now();
 
 const isAppleWebKit = () =>
 	typeof navigator !== 'undefined' &&

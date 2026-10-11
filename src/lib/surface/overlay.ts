@@ -19,13 +19,10 @@ import { mount, unmount, type Component } from 'svelte';
  * `content-visibility: auto` skips it off screen, or it is not
  * displayed. Its geometry is not computed — reading it would force a layout
  * of that subtree, every frame a measure asks — so measures read its nearest
- * rendered ancestor instead (`checkVisibility`; where it is missing, every
- * node counts as rendered).
+ * rendered ancestor instead (`checkVisibility`).
  */
 export const renderSkipped = (node: Element): boolean =>
-	(
-		node as Element & { checkVisibility?: (options: { contentVisibilityAuto: boolean }) => boolean }
-	).checkVisibility?.({ contentVisibilityAuto: true }) === false;
+	!node.checkVisibility({ contentVisibilityAuto: true });
 
 /** `node`, or its nearest ancestor whose rendering the browser does not skip. */
 export const rendered = (node: Element): Element => {
@@ -214,11 +211,7 @@ export class Overlay {
 	invalidate = () => {
 		const view = this.layer?.ownerDocument.defaultView;
 		if (this.#frame !== null || !view) return;
-		if (view.requestAnimationFrame) this.#frame = view.requestAnimationFrame(this.#run);
-		else {
-			this.#frame = 0;
-			queueMicrotask(this.#run);
-		}
+		this.#frame = view.requestAnimationFrame(this.#run);
 	};
 
 	#run = () => {
@@ -268,23 +261,22 @@ export class Overlay {
 		layer.style.cssText = 'position: absolute; width: 0; height: 0';
 		host.after(layer);
 		this.layer = layer;
-		const resize =
-			typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(this.invalidate);
+		const resize = new ResizeObserver(this.invalidate);
 		this.#resize = resize;
 		this.#host = host;
-		resize?.observe(host);
+		resize.observe(host);
 		document.addEventListener('scroll', this.invalidate, { capture: true, passive: true });
 		view?.addEventListener('resize', this.invalidate);
 		this.invalidate();
 		return () => {
-			resize?.disconnect();
+			resize.disconnect();
 			this.#watched.clear();
 			this.near = [];
 			if (this.#resize === resize) this.#resize = null;
 			if (this.#host === host) this.#host = null;
 			document.removeEventListener('scroll', this.invalidate, { capture: true });
 			view?.removeEventListener('resize', this.invalidate);
-			if (this.#frame) view?.cancelAnimationFrame?.(this.#frame);
+			if (this.#frame !== null) view?.cancelAnimationFrame(this.#frame);
 			this.#frame = null;
 			layer.remove();
 			if (this.layer === layer) this.layer = null;

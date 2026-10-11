@@ -45,7 +45,7 @@ The pre-release is on npm under the `next` tag. Name the tag: a bare `edytor` is
 pnpm add edytor
 ```
 
-`svelte@^5` is a peer dependency. Do not install `yjs`: the v14 engine is vendored (`edytor/crdt`). See [installation](https://edytor.dev/docs/getting-started) and [platform support](https://edytor.dev/docs/reference/platform-support) (Chrome, Edge, Firefox and Safari; real phones are not tested yet).
+`svelte@^5` is a peer dependency. Do not install `yjs`: the v14 engine is vendored (`edytor/crdt`). See [installation](https://edytor.dev/docs/getting-started) and [platform support](https://edytor.dev/docs/reference/platform-support) (Baseline 2024: Chrome and Edge 120, Firefox 125, Safari 17.4 and later; real phones are not tested yet).
 
 ## Quick start
 

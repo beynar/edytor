@@ -175,7 +175,6 @@ export class SurfaceObserver {
 
 	/** Observe `root` (the host): records name what to compare. */
 	attach = (root: HTMLElement) => {
-		if (typeof MutationObserver === 'undefined') return () => {};
 		const mo = (this.#mo = new MutationObserver((records) => {
 			records.forEach(this.#intake);
 			this.signal();

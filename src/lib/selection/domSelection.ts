@@ -14,10 +14,7 @@ const shadowOf = (node?: Node | null): Root | null => {
 	return typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot ? root : null;
 };
 
-const documentSelection = (node?: Node | null) => {
-	const owner = ownerOf(node);
-	return owner?.defaultView?.getSelection?.() ?? owner?.getSelection?.() ?? null;
-};
+const documentSelection = (node?: Node | null) => ownerOf(node)?.getSelection() ?? null;
 
 export type DomSelectionSnapshot = Pick<
 	Selection,
@@ -32,6 +29,22 @@ export const getActiveElement = (node?: Node | null): Element | null =>
 
 export const clearDomSelection = (node?: Node | null) => {
 	getDomSelection(node)?.removeAllRanges();
+};
+
+/**
+ * The caret point under (`x`, `y`): `caretPositionFromPoint` (Firefox,
+ * Chromium 128, Safari 26.2), else `caretRangeFromPoint` (the supported
+ * Chromium and Safari before those).
+ */
+export const caretAtPoint = (doc: Document, x: number, y: number) => {
+	const at = doc as Document & {
+		caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+		caretRangeFromPoint?: (x: number, y: number) => Range | null;
+	};
+	const position = at.caretPositionFromPoint?.(x, y);
+	if (position?.offsetNode) return { node: position.offsetNode, offset: position.offset };
+	const range = at.caretRangeFromPoint?.(x, y);
+	return range ? { node: range.startContainer, offset: range.startOffset } : null;
 };
 
 /** A range in `node`'s document (a node always has one). */

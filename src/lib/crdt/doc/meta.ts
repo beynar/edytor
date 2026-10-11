@@ -92,12 +92,10 @@ export const metaOps = (c: OpsContext) => {
 	 */
 	const leafSets = (data: unknown, current: unknown): DataPatch[] => {
 		const out: DataPatch[] = [];
-		const plainObject = (v: unknown): v is Record<string, unknown> =>
-			v !== null && typeof v === 'object' && !Array.isArray(v);
 		const walk = (v: unknown, at: unknown, path: string[]): void => {
-			if (plainObject(v) && Object.keys(v).length > 0 && (path.length === 0 || plainObject(at)))
+			if (isObject(v) && Object.keys(v).length > 0 && (path.length === 0 || isObject(at)))
 				for (const [k, x] of Object.entries(v))
-					walk(x, plainObject(at) ? at[k] : undefined, [...path, k]);
+					walk(x, isObject(at) ? at[k] : undefined, [...path, k]);
 			else if (path.length > 0) out.push({ path, value: v });
 		};
 		walk(sanitizeWireJson(data), current, []);

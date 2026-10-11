@@ -332,48 +332,43 @@ export const bindProviders = (Y: EngineApi) => {
 	};
 
 	/**
-	 * When the room last stored a change (ms since the epoch), or `null`:
-	 * one authorized HTTP `GET <server>/<room>?lastUpdated`, which
-	 * `routeDocumentSocket` answers without opening the document. Compare
-	 * it with when a document was last fetched to decide whether to
-	 * `prefetch` it. Throws on an HTTP error (`403` refused, `401` expired).
+	 * One authorized HTTP `GET <server>/<room>?<key>` (`lastUpdated`,
+	 * `snapshot`), which `routeDocumentSocket` answers without a socket: its
+	 * JSON. Throws on an HTTP error (`403` refused, `401` expired).
 	 */
-	const lastUpdated = async (options: LastUpdatedOptions): Promise<number | null> => {
-		const [serverUrl, room] = targetOf('lastUpdated', options);
+	const query = async (caller: string, key: string, options: LastUpdatedOptions) => {
+		const [serverUrl, room] = targetOf(caller, options);
 		const url = new URL(`${serverUrl.replace(/^ws/, 'http')}/${encodeURIComponent(room)}`);
-		for (const [key, value] of Object.entries(options.params ?? {}))
-			url.searchParams.set(key, value);
-		url.searchParams.set('lastUpdated', '1');
+		for (const [name, value] of Object.entries(options.params ?? {}))
+			url.searchParams.set(name, value);
+		url.searchParams.set(key, '1');
 		const response = await (options.fetch ?? fetch)(url.toString());
 		if (!response.ok) {
-			throw new Error(`lastUpdated of ${room}: ${response.status} ${await response.text()}`);
+			throw new Error(`${key} of ${room}: ${response.status} ${await response.text()}`);
 		}
-		const { lastUpdated: at } = (await response.json()) as { lastUpdated: number | null };
+		return (await response.json()) as { lastUpdated: number | null; document?: JSONDoc };
+	};
+
+	/**
+	 * When the room last stored a change (ms since the epoch), or `null`:
+	 * `?lastUpdated`, answered without opening the document. Compare it with
+	 * when a document was last fetched to decide whether to `prefetch` it.
+	 * Throws on an HTTP error (`403` refused, `401` expired).
+	 */
+	const lastUpdated = async (options: LastUpdatedOptions): Promise<number | null> => {
+		const { lastUpdated: at } = await query('lastUpdated', 'lastUpdated', options);
 		return typeof at === 'number' ? at : null;
 	};
 
 	/**
 	 * The room's document as JSON, or `null` when it stores nothing yet:
-	 * one authorized HTTP `GET <server>/<room>?snapshot`, which
-	 * `routeDocumentSocket` answers from the room's live document. Show it
-	 * while a view's own copy hydrates: `<Edytor snapshot>`. Throws on an
-	 * HTTP error (`403` refused, `401` expired).
+	 * `?snapshot`, answered from the room's live document. Show it while a
+	 * view's own copy hydrates: `<Edytor snapshot>`. Throws on an HTTP error
+	 * (`403` refused, `401` expired).
 	 */
 	const documentSnapshot = async (options: LastUpdatedOptions): Promise<JSONDoc | null> => {
-		const [serverUrl, room] = targetOf('documentSnapshot', options);
-		const url = new URL(`${serverUrl.replace(/^ws/, 'http')}/${encodeURIComponent(room)}`);
-		for (const [key, value] of Object.entries(options.params ?? {}))
-			url.searchParams.set(key, value);
-		url.searchParams.set('snapshot', '1');
-		const response = await (options.fetch ?? fetch)(url.toString());
-		if (!response.ok) {
-			throw new Error(`snapshot of ${room}: ${response.status} ${await response.text()}`);
-		}
-		const { lastUpdated: at, document } = (await response.json()) as {
-			lastUpdated: number | null;
-			document: JSONDoc;
-		};
-		return typeof at === 'number' ? document : null;
+		const { lastUpdated: at, document } = await query('documentSnapshot', 'snapshot', options);
+		return typeof at === 'number' ? document! : null;
 	};
 
 	return {

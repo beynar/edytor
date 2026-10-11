@@ -152,6 +152,7 @@ import {
 	type AttributionController,
 	type DocumentAttribution
 } from './attribution/index.js';
+import { profileOf } from './attribution/attribution.js';
 import {
 	docFacade,
 	DEFAULT_HISTORY_LIMIT,
@@ -560,12 +561,8 @@ export class EdytorDocument {
 		// `actor` field carries the stable id, `user`
 		// carries the display profile remote carets already read.
 		this.awareness.setLocalStateField('actor', this.actor);
-		if (this.actor.name !== undefined || this.actor.color !== undefined) {
-			this.awareness.setLocalStateField('user', {
-				...(this.actor.name !== undefined ? { name: this.actor.name } : {}),
-				...(this.actor.color !== undefined ? { color: this.actor.color } : {})
-			});
-		}
+		const user = profileOf(this.actor);
+		if (Object.keys(user).length) this.awareness.setLocalStateField('user', user);
 		// Attribution service — attaches after the facade (which gates
 		// foreign docs) and after the actor is fixed. Publishes this
 		// replica's actor dictionary entries (`c/`+`u/`) once; ordinary

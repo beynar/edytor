@@ -113,7 +113,8 @@ const sanitizeProfile = (value: unknown): ActorProfile => {
 	return out;
 };
 
-const profileOf = (actor: AttributionActor): ActorProfile => ({
+/** The display profile of `actor`: its name and color, those it has. */
+export const profileOf = (actor: AttributionActor): ActorProfile => ({
 	...(actor.name !== undefined ? { name: actor.name } : {}),
 	...(actor.color !== undefined ? { color: actor.color } : {})
 });

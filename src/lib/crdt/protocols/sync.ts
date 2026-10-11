@@ -87,6 +87,12 @@ export const messageYjsSyncStep1 = 0;
 export const messageYjsSyncStep2 = 1;
 export const messageYjsUpdate = 2;
 
+/** An inbound update that could not be read or applied: its handler hears it, the console shows it. */
+const reportUpdateError = (error: unknown, errorHandler?: (error: Error) => unknown): void => {
+	if (errorHandler != null) errorHandler(error as Error);
+	console.error('Caught error while handling a Yjs update', error);
+};
+
 /**
  * Bind the sync protocol to a concrete engine module (the vendored v14 `Y`).
  */
@@ -130,9 +136,7 @@ export const bindSync = (Y: EngineApi) => {
 		try {
 			update = step2Update(decoding.readVarUint8Array(decoder));
 		} catch (error) {
-			if (errorHandler != null) errorHandler(error as Error);
-			console.error('Caught error while handling a Yjs update', error);
-			return;
+			return reportUpdateError(error, errorHandler);
 		}
 		applyRemote(doc, update, transactionOrigin, errorHandler);
 	};
@@ -268,8 +272,7 @@ export const bindSync = (Y: EngineApi) => {
 				? { applied: true, problem: null }
 				: { applied: true, problem: null, discarded };
 		} catch (error) {
-			if (errorHandler != null) errorHandler(error as Error);
-			console.error('Caught error while handling a Yjs update', error);
+			reportUpdateError(error, errorHandler);
 			return { applied: false, problem: null };
 		}
 	};

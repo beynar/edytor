@@ -173,18 +173,26 @@ export const docReads = (c: DocBase) => {
 		const parent = positionOf(id)?.parent;
 		return parent != null && isLines(parent);
 	};
+	/** The child kind `role` gives `id`'s kind: a layout's item kind, a table's row kind. */
+	const childKindOf =
+		(role: 'layout' | 'table') =>
+		(id: BlockId): string | undefined => {
+			const type = blockTypeOf(id);
+			return type === undefined ? undefined : roles[role](type);
+		};
+	/** `id` is of its parent's `kindOf` kind, directly in it (a column, a row). */
+	const childOf =
+		(kindOf: (id: BlockId) => string | undefined) =>
+		(id: BlockId): boolean => {
+			const parent = positionOf(id)?.parent;
+			return parent != null && blockTypeOf(id) === kindOf(parent);
+		};
 	/** The item kind of `id` when it is a layout (its role says `layout`): its default child. */
-	const itemKindOf = (id: BlockId): string | undefined => {
-		const type = blockTypeOf(id);
-		return type === undefined ? undefined : roles.layout(type);
-	};
+	const itemKindOf = childKindOf('layout');
 	/** `id` is a layout (`layout.*`). */
 	const isLayout = (id: BlockId): boolean => itemKindOf(id) !== undefined;
 	/** `id` is a layout item: of its layout's item kind, directly in it (a column). */
-	const isLayoutItem = (id: BlockId): boolean => {
-		const parent = positionOf(id)?.parent;
-		return parent != null && blockTypeOf(id) === itemKindOf(parent);
-	};
+	const isLayoutItem = childOf(itemKindOf);
 	/** `id` is a layout or holds one in its shown subtree (`layout.nest`). */
 	const holdsLayout = (id: BlockId): boolean => isLayout(id) || childrenIds(id).some(holdsLayout);
 	/** `id` is a layout item or sits inside one. */
@@ -194,10 +202,7 @@ export const docReads = (c: DocBase) => {
 	// ── tables (`table.*`) ────────────────────────────────────────────
 
 	/** The row kind of `id` when it is a table (its role says `table`): its default child. */
-	const rowKindOf = (id: BlockId): string | undefined => {
-		const type = blockTypeOf(id);
-		return type === undefined ? undefined : roles.table(type);
-	};
+	const rowKindOf = childKindOf('table');
 	/** `id` is a table (`table.*`). */
 	const isTable = (id: BlockId): boolean => rowKindOf(id) !== undefined;
 	/** `type` is a row kind of a table kind the roles declare (`tableRow`). */
@@ -211,10 +216,7 @@ export const docReads = (c: DocBase) => {
 			return row !== undefined && roles.defaultChild(row) === type;
 		});
 	/** `id` is a table's row: of its table's row kind, directly in it. */
-	const isTableRow = (id: BlockId): boolean => {
-		const parent = positionOf(id)?.parent;
-		return parent != null && blockTypeOf(id) === rowKindOf(parent);
-	};
+	const isTableRow = childOf(rowKindOf);
 	/** `id` is a table's cell: of its row's cell kind, directly in a row of a table. */
 	const isTableCell = (id: BlockId): boolean => {
 		const row = positionOf(id)?.parent;

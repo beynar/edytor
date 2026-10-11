@@ -1,47 +1,36 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
-	import type { UrlPasteController } from './urlPaste.svelte.js';
+	import type { UrlPasteController } from '$lib/index.js';
 
-	let {
-		controller,
-		menu
-	}: { controller: UrlPasteController; menu?: Snippet<[UrlPasteController]> } = $props();
-	// An editor turning readonly closes the menu (its conversions would be refused).
-	$effect(() => {
-		if (controller.open && controller.readonly) controller.close();
-	});
+	/** The menu a URL pasted on an empty line opens, drawn for an embed or bookmark plugin's `menu`. */
+	let { controller }: { controller: UrlPasteController } = $props();
 </script>
 
 <!--
 	The editor keeps the keyboard: its keys move and pick (the plugin's
 	hotkeys). The listbox's id, role and publication to the view's root are
 	the controller's `popup` attachment, a row's attributes its
-	`option(index)`: a custom `menu` that uses them behaves as this one.
+	`option(index)`.
 -->
-{#if controller.open && menu}
-	{@render menu(controller)}
-{:else if controller.open}
-	<div
-		class="url-paste-menu"
-		data-edytor-url-paste-menu
-		role="listbox"
-		aria-label={controller.labels.pasteAs}
-		tabindex="-1"
-		{@attach controller.popup}
-	>
-		{#each controller.open.options as option, index (option.id)}
-			<button
-				type="button"
-				class="url-paste-option"
-				{...controller.option(index)}
-				data-edytor-url-paste-option={option.id}
-				onmousemove={() => (controller.index = index)}
-				onclick={() => controller.pick(option)}
-				><span aria-hidden="true">{option.icon}</span>{option.label}</button
-			>
-		{/each}
-	</div>
-{/if}
+<div
+	class="url-paste-menu"
+	data-edytor-url-paste-menu
+	role="listbox"
+	aria-label={controller.labels.pasteAs}
+	tabindex="-1"
+	{@attach controller.popup}
+>
+	{#each controller.open?.options ?? [] as option, index (option.id)}
+		<button
+			type="button"
+			class="url-paste-option"
+			{...controller.option(index)}
+			data-edytor-url-paste-option={option.id}
+			onmousemove={() => (controller.index = index)}
+			onclick={() => controller.pick(option)}
+			><span aria-hidden="true">{option.icon}</span>{option.label}</button
+		>
+	{/each}
+</div>
 
 <style>
 	.url-paste-menu {

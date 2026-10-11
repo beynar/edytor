@@ -32,7 +32,7 @@
 	import TodoCheckbox from './TodoCheckbox.svelte';
 	import EmptyBody from './EmptyBody.svelte';
 	import CalloutIcon from './CalloutIcon.svelte';
-	import CalloutIconMenu from './CalloutIconMenu.svelte';
+	import CalloutIconHost from './CalloutIconPicker.svelte';
 	import {
 		CALLOUT_ICONS,
 		CalloutIconPicker,
@@ -166,8 +166,8 @@
 			/** The icon picker's choices (`CALLOUT_ICONS` by default). */
 			icons?: readonly string[];
 			/**
-			 * Replace the icon picker's markup: it renders while the picker is
-			 * open, placed under the icon. Put `{@attach picker.keys}` and
+			 * The icon picker's markup: it renders while the picker is open,
+			 * placed under the icon (without it, the icon opens nothing). Put `{@attach picker.keys}` and
 			 * `{@attach picker.popup}` on its element and spread
 			 * `picker.option(i)` on each row (`picker.icons.length`: Remove icon).
 			 */
@@ -395,11 +395,13 @@
 				node.addEventListener('click', click);
 				// A press outside the picker closes it (WebKit's lone `mousedown` too).
 				const offPress = picker && onPress(edytor, node.ownerDocument, picker.pressed, true);
+				const menu = calloutOptions?.picker;
 				const unmount =
 					picker &&
+					menu &&
 					edytor.overlay.mount(
-						CalloutIconMenu,
-						{ picker, menu: calloutOptions?.picker },
+						CalloutIconHost,
+						{ picker, menu },
 						'edytor-callout-icons-host',
 						// With the menus: above the handles and the image chrome.
 						70,

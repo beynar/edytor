@@ -10,7 +10,6 @@
 import { describe, expect, it } from 'vitest';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
 import {
 	canonicalTree,
@@ -19,6 +18,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const empty = (
 	<root>

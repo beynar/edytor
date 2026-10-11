@@ -4,11 +4,16 @@ description: The mention plugin opens a menu of your app's people when you type 
 icon: at-sign
 ---
 
-`createMentionPlugin` brings Notion's people mentions. Typing `@` opens a menu of the people your app's `items(query)` answers; the text typed after `@` filters it. Picking one replaces `@query` with a `mention` atom and puts the caret after it.
+`createMentionPlugin` brings Notion's people mentions. Typing `@` opens a menu of the people your app's `items(query)` answers; the text typed after `@` filters it. Picking one replaces `@query` with a `mention` atom and puts the caret after it. The menu is your `menu` snippet (without it, nothing shows and <kbd>Enter</kbd> still picks the first person).
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createMentionPlugin, type MentionItem } from 'edytor';
+	import {
+		Edytor,
+		createMentionPlugin,
+		type MentionItem,
+		type TriggerMenuController
+	} from 'edytor';
 
 	const people: MentionItem[] = [
 		{ id: 'u1', label: 'Ada Lovelace', description: 'Engineering' },
@@ -17,9 +22,20 @@ icon: at-sign
 
 	const mentions = createMentionPlugin({
 		items: (query) =>
-			people.filter((person) => person.label.toLowerCase().includes(query.toLowerCase()))
+			people.filter((person) => person.label.toLowerCase().includes(query.toLowerCase())),
+		menu
 	});
 </script>
+
+{#snippet menu(people: TriggerMenuController<MentionItem>)}
+	<ul {@attach people.popup}>
+		{#each people.items as person, index (person.id)}
+			<li {...people.option(index)} onclick={() => void people.pick(person)}>{person.label}</li>
+		{:else}
+			<li role="presentation">{people.loading ? people.searching : people.empty}</li>
+		{/each}
+	</ul>
+{/snippet}
 
 <Edytor plugins={[mentions]} />
 ```
@@ -36,13 +52,12 @@ It is not a default plugin: list it in `plugins`, in every view of a document th
       description: "The people matching the text typed after @. Return a promise to search your server: the newest query's answer wins.",
     },
     char: { type: "string", description: "The character that opens the menu. Default @." },
-    item: { type: "Snippet<[TriggerItemPayload<MentionItem>]>", description: "Replace each row of the menu. Spread its option on the row so the editor names the highlighted row." },
-    menu: { type: "Snippet<[TriggerMenuController<MentionItem>]>", description: "Replace the whole menu. Keep its ARIA with {@attach controller.popup} on the list and {...controller.option(index)} on each row. See Menus and handles." },
+    menu: { type: "Snippet<[TriggerMenuController<MentionItem>]>", description: "The menu, at the caret while it is open (without it, nothing shows). Keep its ARIA with {@attach controller.popup} on the list and {...controller.option(index)} on each row. See Menus and handles." },
     labels: { type: "PartialLabels<'mention'>", description: "The menu's words over the English ones: `menu` (the listbox's name, People), `searching` (Searching…) and `noResults` (No results). See Localization." },
   }}
 />
 
-A `MentionItem` is `{ id, label, description?, avatar? }`: `id` is the person's id in your app, `label` the name shown in the menu and in the mention, `description` a line beside it in the menu (an email, a role), and `avatar` an image URL (`http:`, `https:` or a `data:` image; anything else shows the name's initial).
+A `MentionItem` is `{ id, label, description?, avatar? }`: `id` is the person's id in your app, `label` the name shown in the menu and in the mention, `description` a line beside it in your menu (an email, a role), and `avatar` an image URL for your row (the demo's draws an `http:`, `https:` or `data:` image, else the name's initial).
 
 A search over the network:
 

@@ -10,8 +10,8 @@
 import { describe, expect, it } from 'vitest';
 import { createDocument, semanticsOf } from '$lib/crdt/index.js';
 import { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { clientPairs, converge, replica, seedUpdate } from './replica-harness.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const ok = (r) => {
 	if (r && r.status !== undefined && r.status !== 'applied')

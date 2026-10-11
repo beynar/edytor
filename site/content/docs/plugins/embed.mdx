@@ -4,17 +4,17 @@ description: The embed plugin adds Notion's embed block, a provider's player (Yo
 icon: app-window
 ---
 
-`embedPlugin` adds Notion's embed block: an "Embed a link" panel until the block has a link, then the provider's player in a sandboxed `iframe`, with an editable caption. It is not a default plugin: list it.
+`embedPlugin` adds Notion's embed block: an "Embed a link" panel (your `empty` snippet) until the block has a link, then the provider's player in a sandboxed `iframe`, with an editable caption. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, embedPlugin, slashMenuPlugin } from 'edytor';
+	import { Edytor, embedPlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[embedPlugin, slashMenuPlugin]} />
+<Edytor plugins={[embedPlugin]} />
 ```
 
-The slash menu then lists "Embed" under `Media`, and pasting a link a provider plays on an empty line offers to embed it ([Pasting a link on an empty line](/docs/editor/clipboard#pasting-a-link-on-an-empty-line)).
+A [slash menu](/docs/plugins/slash-menu) then lists "Embed" under `Media`, and pasting a link a provider plays on an empty line offers to embed it ([Pasting a link on an empty line](/docs/editor/clipboard#pasting-a-link-on-an-empty-line)).
 
 ## Options
 
@@ -36,11 +36,11 @@ The slash menu then lists "Embed" under `Media`, and pasting a link a provider p
     },
     menu: {
       type: "Snippet<[UrlPasteController]>",
-      description: "Replaces the menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass. Keep its ARIA with {@attach controller.popup} and {...controller.option(index)}. See Menus and handles.",
+      description: "The menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass; without one, the link stays and nothing shows. Keep its ARIA with {@attach controller.popup} and {...controller.option(index)}. See Menus and handles.",
     },
     empty: {
       type: "Snippet<[MediaEmptyController]>",
-      description: "Replaces an empty block's markup (its button and link panel, a readonly view's placeholder). See Menus and handles.",
+      description: "The empty block's markup (its button and link panel, a readonly view's placeholder); without it, an empty block shows nothing. See Menus and handles.",
     },
   }}
 />
@@ -95,7 +95,7 @@ Match the host exactly (never a suffix or a substring) and check every id you co
 
 The block is void like the [image](/docs/plugins/image): it takes no children and is never merged, and its only text is the caption. The command id is `block.embed`. Its role is in `defaultSemantics`, so the room and headless documents treat it as void too.
 
-In the empty block, the link field ("Paste the link…") embeds a link a provider plays as one data write, and shows "No embed provider plays that link." for another. A readonly view shows a passive placeholder.
+In the empty block, `empty.embed()` (the demo's link field, "Paste the link…") embeds a link a provider plays as one data write, and sets `failed` for another (the demo says "No embed provider plays that link."). A readonly view's controller is `readonly`: show a passive placeholder.
 
 ## Clipboard
 
@@ -109,10 +109,6 @@ In the empty block, the link field ("Paste the link…") embeds a link a provide
 | `[data-edytor-type='embed']`          | The `figure`                                    |
 | `[data-edytor-embed]`                 | The frame's wrapper (its aspect ratio or height) |
 | `[data-edytor-embed-unsupported]`     | The link shown for a URL no provider plays      |
-| `[data-edytor-media-empty]`           | The empty state                                 |
-| `[data-edytor-media-add]`             | The "Embed a link" button                       |
-| `[data-edytor-media-placeholder]`     | The readonly empty state                        |
-| `[data-edytor-media-form]`            | The link panel (field, button, error)           |
-| `[data-edytor-media-error]`           | The panel's error                               |
+| `[data-edytor-media-empty]`           | Where the empty state (your `empty` snippet) renders |
 
-The [Notion theme](/docs/customization/styling#notion-theme) styles them. The `media` selectors are shared by every media block's empty state ([bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)).
+The [Notion theme](/docs/customization/styling#notion-theme) styles the blocks; the empty state's look is your markup's (the demo's `MediaEmpty.svelte`, shared by every media block: [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)).

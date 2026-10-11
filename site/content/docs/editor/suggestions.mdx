@@ -26,7 +26,7 @@ A suggestion is content a view proposes at a position: an AI draft, a completion
 <Edytor bind:edytor />
 ```
 
-`<Edytor>` shows a bar under the preview (Accept, Discard) and binds <kbd>Mod</kbd>+<kbd>Enter</kbd> and <kbd>Escape</kbd> to it: see [The default UI](#the-default-ui).
+`<Edytor>` binds <kbd>Mod</kbd>+<kbd>Enter</kbd> and <kbd>Escape</kbd> to it, and a bar of yours can show under the preview (Accept, Discard): see [The default UI](#the-default-ui).
 
 ## Positions
 
@@ -159,7 +159,7 @@ A `Suggestion`:
 
 ## The default UI
 
-`suggestionsPlugin` is on by default in `<Edytor>`, with arrow moves, images and rich text ([Default plugins](/docs/plugins#default-plugins)). It shows a bar under each block suggestion, in the [overlay](/docs/customization/styling#the-overlay): the label (`AI is writing…` while it streams), **Accept**, **Discard**, and **Try again** when the suggestion has an `onRetry`. A readonly view shows Discard only. An `end` suggestion has no bar: the keys accept it.
+`suggestionsPlugin` is on by default in `<Edytor>`, with arrow moves, images and rich text ([Default plugins](/docs/plugins#default-plugins)): its keys. Its bar under each block suggestion, in the [overlay](/docs/customization/styling#the-overlay), is your `bar` snippet (below; the demo's shows the label, `AI is writing…` while it streams, **Accept**, **Discard**, and **Try again** when the suggestion has an `onRetry`, Discard only in a readonly view). An `end` suggestion has no bar: the keys accept it.
 
 | Keys | Action | Where |
 | --- | --- | --- |
@@ -169,7 +169,7 @@ A `Suggestion`:
 
 The keys claim nothing while there is no suggestion, so <kbd>Mod</kbd> + <kbd>Enter</kbd> still checks to-dos and opens toggles. Plugins listed before it in `plugins` get the keys first ([Plugin order](/docs/plugins#plugin-order)); in a code line, the [code plugin](/docs/plugins/code)'s <kbd>Tab</kbd> accepts an `end` suggestion too.
 
-Render your own bar with `createSuggestionsPlugin({ bar })`. Placement and keys stay the plugin's. The bar receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (with an `onRetry`), `readonly`, and `labels`, the plugin's words, for your markup:
+Render the bar with `createSuggestionsPlugin({ bar })` (without it, no bar shows). Placement and keys are the plugin's. The bar receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (with an `onRetry`), `readonly`, `mac` (Mod is ⌘), and `labels`, the plugin's words, for your markup:
 
 ```svelte title="AiBar.svelte" check
 <script lang="ts">
@@ -188,7 +188,7 @@ Render your own bar with `createSuggestionsPlugin({ bar })`. Placement and keys 
 <Edytor plugins={[createSuggestionsPlugin({ bar })]} />
 ```
 
-Prevent the buttons' `mousedown` so the editor keeps its focus and selection. `createSuggestionsPlugin({ labels })` translates the default bar (Accept, Discard, Try again, the streaming line as a function of the label; see [Localization](/docs/customization/localization)), and `<Edytor labels>` a preview's accessible name when the suggestion has no `label`. A plugin instance in `plugins` replaces the default one; `defaultPlugins={false}` removes it, and suggestions still show, without a bar or keys.
+Prevent the buttons' `mousedown` so the editor keeps its focus and selection. `createSuggestionsPlugin({ labels })` translates the words your bar reads (Accept, Discard, Try again, the streaming line as a function of the label; see [Localization](/docs/customization/localization)), and `<Edytor labels>` a preview's accessible name when the suggestion has no `label`. A plugin instance in `plugins` replaces the default one; `defaultPlugins={false}` removes it, and suggestions still show, without a bar or keys.
 
 ## Rendering and styling
 
@@ -208,9 +208,9 @@ The kinds render their blocks as in the document, images included, with `data-ed
 | `[data-edytor-suggestion-replaced]` | A block a `replace` removes (`="empty"`: one that holds nothing, folded by the core so the content takes its place) |
 | `[data-edytor-suggestion-range]` | A rectangle over the text a range `replace` removes (overlay) |
 | `[data-edytor-text-suggestion]` | An `end` suggestion's ghost text |
-| `[data-edytor-suggestion-bar]` | The default bar (overlay) |
+| `[data-edytor-suggestion-bar]` | Where your bar renders, under its preview (overlay) |
 
-The [Notion theme](/docs/customization/styling#notion-theme) gives the group a tinted background, pulses it while it streams (not with reduced motion), strikes through replaced blocks and greys the ghost text. Its custom properties: `--edytor-suggestion-accent` (the bar's label), `--edytor-suggestion-background`, `--edytor-suggestion-removed` (replaced blocks), `--edytor-suggestion-removed-line` (a range's underline), `--edytor-suggestion-bar-space` (the room under a group for the bar, `40px`) and `--edytor-suggestion-bar-background`.
+The [Notion theme](/docs/customization/styling#notion-theme) gives the group a tinted background, pulses it while it streams (not with reduced motion), strikes through replaced blocks and greys the ghost text. Its custom properties: `--edytor-suggestion-background`, `--edytor-suggestion-removed` (replaced blocks), `--edytor-suggestion-removed-line` (a range's underline), `--edytor-suggestion-bar-space` (the room under a group for the bar, `40px`).
 
 ## Live example
 

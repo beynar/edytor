@@ -4,21 +4,21 @@ description: The audio plugin adds Notion's audio block, an audio file in the br
 icon: music
 ---
 
-`audioPlugin` adds Notion's audio block: an "Embed audio" panel until the block has a source, then the browser's player (`<audio controls>`), with an editable caption. It is not a default plugin: list it.
+`audioPlugin` adds Notion's audio block: an "Embed audio" panel (your `empty` snippet) until the block has a source, then the browser's player (`<audio controls>`), with an editable caption. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, audioPlugin, slashMenuPlugin } from 'edytor';
+	import { Edytor, audioPlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[audioPlugin, slashMenuPlugin]} />
+<Edytor plugins={[audioPlugin]} />
 ```
 
-The slash menu then lists "Audio" under `Media`. `audioPlugin` is the plugin without `upload`: links only.
+A [slash menu](/docs/plugins/slash-menu) then lists "Audio" under `Media`. `audioPlugin` is the plugin without `upload`: links only.
 
 ## Options
 
-`createAudioPlugin(options)` takes a `MediaPluginOptions`: `upload(file, report)` uploads a file and answers its URL (`report.progress(fraction)` draws the block's bar), adding an Upload button to the empty block (`accept="audio/*"`) and taking pasted and dropped audio files ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)); `labels` (a `PartialLabels<'media'>`, see [Localization](/docs/customization/localization)) translates the empty panel (audio, upload), `keywords` the slash keywords of `block.audio`, and `empty` (a `Snippet<[MediaEmptyController]>`) replaces the empty block's markup ([Menus and handles](/docs/customization/menus#empty-image-and-media-blocks)). The answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
+`createAudioPlugin(options)` takes a `MediaPluginOptions`: `upload(file, report)` uploads a file and answers its URL (`report.progress(fraction)` draws the block's bar), adding an Upload button to the empty block (`accept="audio/*"`) and taking pasted and dropped audio files ([Pasted and dropped files](/docs/editor/clipboard#pasted-and-dropped-files)); `labels` (a `PartialLabels<'media'>`, see [Localization](/docs/customization/localization)) translates the empty panel (audio, upload), `keywords` the slash keywords of `block.audio`, and `empty` (a `Snippet<[MediaEmptyController]>`) draws the empty block, without which it shows nothing ([Menus and handles](/docs/customization/menus#empty-image-and-media-blocks)). The answer is stored only when the block is still there, of its kind and without a source: a source a collaborator set while the upload ran stays.
 
 ## The kind
 

@@ -17,9 +17,9 @@ import {
 	type EdytorDocument
 } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { BlockDefinition, Plugin } from '../../../lib/plugins.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const docValue = (text = 'shared'): JSONDoc => ({
 	children: [{ type: 'paragraph', content: [{ text }] }]

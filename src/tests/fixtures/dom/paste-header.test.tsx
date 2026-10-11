@@ -15,10 +15,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import { EDYTOR_FRAGMENT_MIME } from '$lib/clipboard/types.js';
 import { encodeClipboardJson } from '$lib/clipboard/serializeClipboardFragment.js';
 import {
@@ -31,6 +28,7 @@ import {
 import { expectNoHiddenContent } from './invariants.js';
 import { hidden } from '$lib/selection/visibility.js';
 import { selectionState } from '../../selection.js';
+import { codePlugin, imagePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

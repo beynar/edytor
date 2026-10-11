@@ -45,8 +45,6 @@ import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import type { JSONDoc } from '$lib/utils/json.js';
 import {
 	dispatchComposition,
@@ -62,6 +60,7 @@ import { fold, foldPlugin } from '../../dom/R6FoldKind.svelte';
 import { effectDispatcher } from '../../dom/r6Effects.svelte.js';
 import { truthOf } from '../../oracles/truth.js';
 import { selectionState } from '../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Rows; those red on the reference (`arch-v2/ref-r7`) were `it.fails` in the tests-first commit. */
 const row = it;

@@ -17,7 +17,10 @@ export type MarqueePluginOptions = {
 	container?: string | ((editor: HTMLElement) => Element | null | undefined);
 	/** How far (px) the pointer moves before the rectangle starts: a shorter press is a click. Default 4. */
 	threshold?: number;
-	/** Replace the rectangle's markup; it renders in a host placed and sized to the rectangle. */
+	/**
+	 * The rectangle's markup; it renders in a host placed and sized to the
+	 * rectangle (without it, the blocks are selected and no rectangle shows).
+	 */
 	box?: Snippet<[MarqueeBoxPayload]>;
 };
 
@@ -70,26 +73,29 @@ export const createMarqueePlugin =
 							if (around) controller.press(event, false);
 						})
 					);
-				const unmount = edytor.overlay.mount(
-					MarqueeBox,
-					{ controller, box: options.box },
-					'edytor-marquee-host',
-					6,
-					(host) => {
-						const rect = controller.rect;
-						return () =>
-							Object.assign(host.style, {
-								pointerEvents: 'none',
-								display: rect ? '' : 'none',
-								...(rect && {
-									left: `${rect.left}px`,
-									top: `${rect.top}px`,
-									width: `${rect.width}px`,
-									height: `${rect.height}px`
-								})
-							});
-					}
-				);
+				const { box } = options;
+				const unmount = box
+					? edytor.overlay.mount(
+							MarqueeBox,
+							{ controller, box },
+							'edytor-marquee-host',
+							6,
+							(host) => {
+								const rect = controller.rect;
+								return () =>
+									Object.assign(host.style, {
+										pointerEvents: 'none',
+										display: rect ? '' : 'none',
+										...(rect && {
+											left: `${rect.left}px`,
+											top: `${rect.top}px`,
+											width: `${rect.width}px`,
+											height: `${rect.height}px`
+										})
+									});
+							}
+						)
+					: () => {};
 				return () => {
 					controller.destroy();
 					offs.forEach((off) => off());
@@ -99,5 +105,5 @@ export const createMarqueePlugin =
 		};
 	};
 
-/** The marquee with the default rectangle. */
+/** The marquee with no rectangle drawn (`createMarqueePlugin({ box })` draws one). */
 export const marqueePlugin = createMarqueePlugin();

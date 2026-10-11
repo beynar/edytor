@@ -12,7 +12,6 @@ import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { pin } from '$lib/surface/overlay.js';
 import type { TableLabels } from '$lib/labels.js';
-import { iconOf } from '../icons.js';
 import {
 	attribute,
 	optionAttributes,
@@ -137,8 +136,6 @@ export type TableMenuRow = {
 	id: string;
 	/** Its words, in the plugin's labels. */
 	label: string;
-	/** Its built-in icon's name. */
-	icon: string;
 	/** It deletes. */
 	danger?: boolean;
 	/** Whether it can run now (Move up on the first row cannot). */
@@ -147,17 +144,15 @@ export type TableMenuRow = {
 };
 
 /**
- * One row of a grip's menu, for a custom `menu`: the row shape every menu
+ * One row of a grip's menu, for your `menu`: the row shape every menu
  * shares (`item` is the row, `run` runs it and closes the menu), with
- * whether it can run now, whether it deletes, and its built-in icon.
+ * whether it can run now and whether it deletes.
  */
 export type TableMenuItem = MenuItemPayload<TableMenuRow> & {
 	/** It cannot run now (`aria-disabled`): the keys skip it, a click does nothing. */
 	disabled: boolean;
 	/** It deletes. */
 	danger: boolean;
-	/** The built-in line icon as a CSS `mask-image` value, when the row has one. */
-	icon: string | undefined;
 };
 
 /**
@@ -225,9 +220,9 @@ type Bar = { kind: 'row' | 'column'; left: number; top: number; width?: number; 
  * drops the preview. Every action is a table command (`table.ts`): refused
  * when the view is readonly.
  *
- * What a custom `menu` snippet receives: the open menu (`menu`), its rows
+ * What a `menu` snippet receives: the open menu (`menu`), its rows
  * (`items`, each a `MenuItemPayload`), the keyboard's row (`index`), the
- * attachments that keep the built-in keys and ARIA (`popup` and `keys` on
+ * attachments that give it the keys and the ARIA (`popup` and `keys` on
  * the menu's element, `option(index)` spread on each row), `close()` and
  * the plugin's `labels`. A grip's own attachment is its payload's `grip`.
  */
@@ -654,10 +649,10 @@ export class TableChrome {
 	rowId = (row: TableMenuRow) => this.edytor.popups.idOf(`table-menu-${row.id}`);
 
 	/**
-	 * The open menu's rows for a custom `menu`: each the row shape every menu
+	 * The open menu's rows for your `menu`: each the row shape every menu
 	 * shares (`run` runs it and closes the menu, `select` makes it the
 	 * keyboard's, `option` its attributes), whether it can run now
-	 * (`disabled`), whether it deletes (`danger`), and its icon.
+	 * (`disabled`) and whether it deletes (`danger`).
 	 */
 	get items(): TableMenuItem[] {
 		return this.rows.map((row, index) => {
@@ -669,7 +664,6 @@ export class TableChrome {
 				selected: index === this.index,
 				disabled,
 				danger: Boolean(row.danger),
-				icon: iconOf(row.icon),
 				run: () => this.runRow(row),
 				select: () => {
 					if (!disabled) this.index = index;
@@ -809,24 +803,21 @@ export class TableChrome {
 			row ? moveRows(table, [block!], to) : moveColumn(table, index, to);
 		const [back, forth] = row ? ['Up', 'Down'] : ['Left', 'Right'];
 		const [before, after] = row ? ['Above', 'Below'] : [back, forth];
-		const icons = row ? ['action.up', 'action.down'] : ['table.left', 'table.right'];
 		return (
 			[
-				[`insert${before}`, icons[0], true, () => insert(index)],
-				[`insert${after}`, icons[1], true, () => insert(index + 1)],
-				[`move${back}`, icons[0], index > 0, () => move(index - 1)],
-				[`move${forth}`, icons[1], index < last, () => move(index + 1)],
+				[`insert${before}`, true, () => insert(index)],
+				[`insert${after}`, true, () => insert(index + 1)],
+				[`move${back}`, index > 0, () => move(index - 1)],
+				[`move${forth}`, index < last, () => move(index + 1)],
 				[
 					row ? 'deleteRow' : 'deleteColumn',
-					'action.delete',
 					true,
 					() => (row ? deleteRows(table, [block!]) : deleteColumn(table, index))
 				]
 			] as const
-		).map(([key, icon, enabled, run], at) => ({
+		).map(([key, enabled, run], at) => ({
 			id: kebab(key),
 			label: this.labels[key as keyof TableLabels] as string,
-			icon: icon!,
 			...(at === 4 && { danger: true }),
 			isEnabled: () => enabled,
 			run

@@ -17,13 +17,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONText, SerializableContent } from '$lib/utils/json.js';
 import { truthOf } from '../../oracles/truth.js';
 import { dispatchCopy, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since P2.7. */
 const row = it;

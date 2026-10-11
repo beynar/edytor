@@ -2,12 +2,7 @@
 
 <script module lang="ts">
 	import type { Snippet } from 'svelte';
-	import type {
-		InlineBlockSnippetPayload,
-		Plugin,
-		TriggerContext,
-		TriggerItemPayload
-	} from '$lib/plugins.js';
+	import type { InlineBlockSnippetPayload, Plugin, TriggerContext } from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
 	import { pageLinkEnglish, labelsWith, viewLabels, type PartialLabels } from '$lib/labels.js';
 	import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
@@ -37,12 +32,11 @@
 		href?: (page: PageLinkItem) => string | undefined;
 		/** The text that opens the menu (default `[[`). */
 		char?: string;
-		/** Replace each row of the menu. */
-		item?: Snippet<[TriggerItemPayload<PageLinkItem>]>;
 		/**
-		 * Replace the whole menu; it renders while `controller.isOpen`, at the
-		 * caret. Keep its ARIA with `{@attach controller.popup}` on the list and
-		 * `{...controller.option(index)}` on each row.
+		 * The menu's markup; it renders while `controller.isOpen`, at the caret
+		 * (without it, nothing shows). Keep its ARIA with `{@attach
+		 * controller.popup}` on the list and `{...controller.option(index)}` on
+		 * each row.
 		 */
 		menu?: Snippet<[TriggerMenuController<PageLinkItem>]>;
 		/** The words the menu and the atom show, over the English ones. */
@@ -82,7 +76,6 @@
 						items: (query, ctx) => options.search(query, ctx),
 						label: (page: PageLinkItem) => page.title,
 						key: (page: PageLinkItem) => page.id,
-						item: options.item ?? row,
 						menu: options.menu,
 						onPick: (page: PageLinkItem, { block, from, caret }) => {
 							const href = sanitizeLinkHref(page.href ?? options.href?.(page)) ?? undefined;
@@ -118,20 +111,6 @@
 	>
 {/snippet}
 
-{#snippet row({ item, option, run, select }: TriggerItemPayload<PageLinkItem>)}
-	<button
-		type="button"
-		class="edytor-page-link-row"
-		{...option}
-		data-testid="trigger-menu-item"
-		onmousemove={select}
-		onclick={run}
-	>
-		<span class="icon" aria-hidden="true">{item.icon ?? '📄'}</span>
-		<span class="title">{item.title}</span>
-	</button>
-{/snippet}
-
 <style>
 	.edytor-page-link {
 		color: inherit;
@@ -148,28 +127,5 @@
 	.edytor-page-link.selected {
 		border-radius: 3px;
 		background: rgba(35, 131, 226, 0.14);
-	}
-	.edytor-page-link-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		width: 100%;
-		height: 28px;
-		padding: 0 8px;
-		border: 0;
-		border-radius: 6px;
-		background: none;
-		color: inherit;
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
-	}
-	.edytor-page-link-row[data-selected='true'] {
-		background: rgba(33, 27, 23, 0.06);
-	}
-	.edytor-page-link-row .title {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 </style>

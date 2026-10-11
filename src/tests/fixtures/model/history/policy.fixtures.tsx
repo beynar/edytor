@@ -1,11 +1,11 @@
 /** @jsxImportSource ../../../jsx */
 import { expect } from 'vitest';
 
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../../atMention.svelte';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { canonicalValue, runBeforeInput, runHotkey } from '../../../test.utils.js';
 import { selectionState } from '../../../selection.js';
+import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 const getHistoryState = (edytor: {
 	undoManager: { undoStack: unknown[]; redoStack: unknown[] };

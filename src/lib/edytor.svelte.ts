@@ -134,7 +134,7 @@ const OVERRIDDEN = { Mark: 'mark', InlineBlock: 'inline kind', Block: 'kind' } a
  */
 const RETIRED: Record<string, string> = {
 	hotKeys: '`hotkeys`',
-	blockDnd: '`blockHandles` (`blockHandles={false}` hides the handles)'
+	blockDnd: '`createBlockHandlesPlugin({ handle })`'
 };
 const warnRetired = (source: object | undefined) => {
 	if (!source) return;

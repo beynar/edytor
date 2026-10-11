@@ -30,7 +30,7 @@ export const MEDIA_ICONS: Record<MediaKind, string> = {
 /**
  * A media kind in a view: the first plugin of the kind listed in it claims
  * it, as its kind record (first wins): its words, its empty block's
- * `empty` snippet (none: the built-in markup) and `upload`, how a block of
+ * `empty` snippet (none: nothing drawn) and `upload`, how a block of
  * it stores a source, and the embed's allowlist.
  */
 export type MediaView = {
@@ -147,10 +147,10 @@ export type MediaPluginOptions = {
 	/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
 	keywords?: Partial<Record<string, string[]>>;
 	/**
-	 * Replace an empty block's markup (its "Add …" button and link panel, its
-	 * upload's progress, or a readonly view's placeholder): it receives the
+	 * An empty block's markup (its "Add …" button and link panel, its upload's
+	 * progress, or a readonly view's placeholder; without it, nothing): the
 	 * block's `MediaEmptyController` (`open`, `draft`, `failed`, `pending`,
-	 * `embed`, `upload`, `readonly`).
+	 * `embed`, `upload`, `readonly`) is its argument.
 	 */
 	empty?: Snippet<[MediaEmptyController]>;
 };

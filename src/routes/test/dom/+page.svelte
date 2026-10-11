@@ -2,29 +2,33 @@
 	import { untrack } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-	import { createImagePlugin, imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { mentionPlugin } from '../../../tests/atMention.svelte';
-	import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
-	import { createPageLinkPlugin } from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
 	import type { Plugin } from '$lib/plugins.js';
-	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-	import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
-	import { createMarqueePlugin } from '$lib/plugins/marquee/marqueePlugin.js';
-	import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
-	import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
-	import { createFilePlugin } from '$lib/plugins/media/FilePlugin.svelte';
-	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
-	import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
-	import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
+	import {
+		blockHandlesPlugin,
+		blockMenuPlugin,
+		bookmarkPlugin,
+		codePlugin,
+		embedPlugin,
+		equation,
+		file,
+		findPlugin,
+		image,
+		imagePlugin,
+		marquee,
+		mention,
+		pageLink,
+		richTextPlugin,
+		slashMenuPlugin,
+		suggestionsPlugin,
+		tablePlugin,
+		toolbarPlugin
+	} from '../../chrome/plugins.js';
 	import { clearDocument, createWebsocketSync, type EdytorSync } from '$lib/collaboration/index.js';
 	import {
 		IndexeddbPersistence,
@@ -507,7 +511,7 @@
 	 * The `image` scenario's upload (WU-21): the file back as an inline image,
 	 * after a short wait, so a spec sees the placeholder, then the image.
 	 */
-	const uploadingImagePlugin = createImagePlugin({
+	const uploadingImagePlugin = image({
 		upload: (file) =>
 			new Promise((resolve, reject) => {
 				const reader = new FileReader();
@@ -521,7 +525,7 @@
 	 * The `image` scenario's file upload (`media.files`): a local `blob:` URL
 	 * after a short wait, its progress reported half way.
 	 */
-	const uploadingFilePlugin = createFilePlugin({
+	const uploadingFilePlugin = file({
 		upload: (file, report) =>
 			new Promise((resolve) => {
 				report.progress(0.5);
@@ -530,7 +534,7 @@
 	});
 
 	/** The `triggers` scenario's people, pages (answered after a wait, as a search) and rules. */
-	const triggerMentions = createMentionPlugin({
+	const triggerMentions = mention({
 		items: (query) =>
 			[
 				{ id: 'u1', label: 'Ada Lovelace' },
@@ -538,7 +542,7 @@
 				{ id: 'u3', label: 'Grace Hopper' }
 			].filter((person) => person.label.toLowerCase().includes(query.toLowerCase()))
 	});
-	const triggerPages = createPageLinkPlugin({
+	const triggerPages = pageLink({
 		search: (query) =>
 			new Promise((resolve) =>
 				setTimeout(
@@ -555,14 +559,15 @@
 		href: (page) => `/pages/${page.id}`
 	});
 	// KaTeX from the CDN, the default (the Playwright fixture serves it offline).
-	const equationPlugin = createEquationPlugin();
+	const equationPlugin = equation();
 	// The shell's padding is the page margin a marquee starts in, as the host's own area.
-	const marqueePlugin = createMarqueePlugin({ container: '[data-testid="editor-shell"]' });
+	const marqueePlugin = marquee({ container: '[data-testid="editor-shell"]' });
 	const emojiRules: Plugin = () => ({
 		inputRules: [{ find: /:smile:$/, replace: () => '😄' }]
 	});
 
 	const plugins = $derived([
+		...(data.handles ? [blockHandlesPlugin] : []),
 		...(data.find ? [findPlugin] : []),
 		...(data.marquee ? [marqueePlugin] : []),
 		...(data.scenario === 'table' ? [tablePlugin, ...(data.polish ? [] : [blockMenuPlugin])] : []),
@@ -1319,7 +1324,6 @@
 			bind:edytor
 			{plugins}
 			defaultPlugins={false}
-			blockHandles={data.handles}
 			document={injectedDocument}
 			{value}
 			{readonly}
@@ -1340,7 +1344,6 @@
 				bind:edytor={secondaryEdytor}
 				{plugins}
 				defaultPlugins={false}
-				blockHandles={data.handles}
 				value={secondaryValue}
 				{translate}
 				{spellcheck}

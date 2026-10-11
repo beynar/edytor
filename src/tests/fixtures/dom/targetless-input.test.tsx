@@ -9,7 +9,6 @@
  * parked is never adopted.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { takeKeys } from '$lib/events/onFocus.js';
 import {
 	dispatchComposition,
@@ -20,6 +19,7 @@ import {
 	textNodeOf
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

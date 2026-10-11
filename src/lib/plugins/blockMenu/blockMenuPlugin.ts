@@ -1,7 +1,6 @@
 import type { Plugin } from '$lib/plugins.js';
-import { handleMenuEvents } from '../chrome.js';
+import { handleMenuEvents, mountChrome } from '../chrome.js';
 import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
-import BlockMenu from './BlockMenu.svelte';
 import {
 	BlockMenuController,
 	colorCommands,
@@ -109,12 +108,13 @@ export const createBlockMenuPlugin =
 					'[data-edytor-block-menu-host], [data-edytor-block-handle-host]',
 					() => controller.isOpen && close()
 				);
-				const unmount = edytor.overlay.mount(
-					BlockMenu,
-					{ controller, menu: options.menu },
-					'edytor-block-menu-host',
-					70,
-					place
+				const unmount = mountChrome(
+					edytor,
+					options.menu,
+					controller,
+					() => controller.isOpen,
+					{ name: 'edytor-block-menu-host', zIndex: 70, measure: place },
+					close
 				);
 				return () => {
 					off();
@@ -123,6 +123,3 @@ export const createBlockMenuPlugin =
 			}
 		};
 	};
-
-/** The block menu without a block link. */
-export const blockMenuPlugin = createBlockMenuPlugin();

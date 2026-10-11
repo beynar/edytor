@@ -23,9 +23,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { RenderedNode } from '../../jsx/types.js';
 import {
 	dispatchDomBeforeInput,
@@ -34,6 +32,7 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
+import { blockHandlesPlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since S5. */
 const row = it;

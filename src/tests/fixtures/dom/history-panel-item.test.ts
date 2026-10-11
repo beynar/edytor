@@ -1,10 +1,9 @@
 /**
- * The version history panel's `item` snippet: one object argument, the row
- * shape every menu shares (`item`/`version`, `id`, `label`, `selected`,
- * `run`, `select`, `option`). A row that spreads `option` is a listbox
- * option the list's keys walk as they walk the built-in rows (WAI-ARIA 1.2
- * listbox: the arrows, Home and End move the selection and the focus; one
- * tab stop, the selected row). Expected states come from that pattern.
+ * The version history's controller (`VersionHistory`) under the app's own
+ * markup: a row that spreads `history.option(index)` is a listbox option
+ * the list's keys (`history.keys`) walk (WAI-ARIA 1.2 listbox: the arrows,
+ * Home and End move the selection and the focus; one tab stop, the
+ * selected row). Expected states come from that pattern.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { render } from '@testing-library/svelte';
@@ -55,7 +54,7 @@ const key = async (target: Element, init: KeyboardEventInit) => {
 	await settle();
 };
 
-describe('the history panel’s `item` snippet', () => {
+describe('the version history under the app’s rows', () => {
 	it('renders each version with its label; the rows are the listbox’s options', async () => {
 		render(HistoryItems, { props: { client, document: createDocument({ value: live }) } });
 		await settle();
@@ -68,7 +67,7 @@ describe('the history panel’s `item` snippet', () => {
 		expect(rows().map((row) => row.tabIndex)).toEqual([0, -1]);
 	});
 
-	it('the list’s arrows walk the custom rows; a click (`run`) previews its version', async () => {
+	it('the list’s arrows walk the custom rows; a click (`select`) previews its version', async () => {
 		reads.length = 0;
 		render(HistoryItems, { props: { client, document: createDocument({ value: live }) } });
 		await settle();

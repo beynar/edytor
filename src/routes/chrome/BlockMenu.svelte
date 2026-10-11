@@ -1,24 +1,17 @@
 <script lang="ts">
-	import { iconOf } from '../icons.js';
-	import { TOOLBAR_COLORS } from '../toolbar/ToolbarController.svelte.js';
-	import type { KindRow } from '$lib/kinds.js';
-	import type {
-		BlockMenuAction,
-		BlockMenuColor,
-		BlockMenuController
-	} from './BlockMenuController.svelte.js';
+	import { iconOf } from './icons.js';
+	import {
+		TOOLBAR_COLORS,
+		type BlockMenuAction,
+		type BlockMenuColor,
+		type BlockMenuController,
+		type KindRow
+	} from '$lib/index.js';
 
-	import type { Snippet } from 'svelte';
-	let {
-		controller,
-		menu
-	}: { controller: BlockMenuController; menu?: Snippet<[BlockMenuController]> } = $props();
+	/** Notion's block menu, drawn for `createBlockMenuPlugin({ menu })`. */
+	let { controller }: { controller: BlockMenuController } = $props();
 	const rows = $derived(controller.rows);
 	const labels = $derived(controller.labels);
-	// An editor turning readonly closes the menu (its actions would be refused).
-	$effect(() => {
-		if (controller.isOpen && controller.readonly) controller.close(false);
-	});
 
 	type Row = BlockMenuAction | KindRow | BlockMenuColor;
 	/** A row's shape: a colour (`field`), a kind (`value`), or an action. */
@@ -117,50 +110,45 @@
 
 <!--
 	The keys, the ids, the roles and the publication to the view's root are
-	the controller's attachments (`keys`, `popup`, `flyoutMenu`, `option`):
-	a custom `menu` that uses them behaves as this one.
+	the controller's attachments (`keys`, `popup`, `flyoutMenu`, `option`).
 -->
-{#if controller.isOpen && menu}
-	{@render menu(controller)}
-{:else if controller.isOpen}
-	<div class="block-menu-frame">
-		<div class="block-menu" data-testid="block-menu" data-edytor-block-menu tabindex="-1">
-			<div class="block-menu-search">
-				<input
-					placeholder={labels.search}
-					aria-label={labels.searchLabel}
-					value={controller.query}
-					{@attach controller.keys}
-					oninput={(event) => controller.search(event.currentTarget.value)}
-				/>
-			</div>
-			<div class="block-menu-rows" role="menu" aria-label={labels.menu} {@attach controller.popup}>
-				{#if !controller.query}
-					<div class="block-menu-heading" role="presentation">
-						{controller.currentKind?.label ?? labels.block}
-					</div>
-				{/if}
-				{@render list(rows, false)}
-				{#if rows.length === 0}
-					<div class="block-menu-empty" role="presentation">{labels.noResults}</div>
-				{/if}
+<div class="block-menu-frame">
+	<div class="block-menu" data-testid="block-menu" data-edytor-block-menu tabindex="-1">
+		<div class="block-menu-search">
+			<input
+				placeholder={labels.search}
+				aria-label={labels.searchLabel}
+				value={controller.query}
+				{@attach controller.keys}
+				oninput={(event) => controller.search(event.currentTarget.value)}
+			/>
+		</div>
+		<div class="block-menu-rows" role="menu" aria-label={labels.menu} {@attach controller.popup}>
+			{#if !controller.query}
+				<div class="block-menu-heading" role="presentation">
+					{controller.currentKind?.label ?? labels.block}
+				</div>
+			{/if}
+			{@render list(rows, false)}
+			{#if rows.length === 0}
+				<div class="block-menu-empty" role="presentation">{labels.noResults}</div>
+			{/if}
+		</div>
+	</div>
+	<!-- The open flyout: a new element for each (its id, name and opening). -->
+	{#each controller.flyout ? [controller.flyout] : [] as flyout (flyout)}
+		<div
+			class="block-menu block-menu-flyout"
+			role="menu"
+			aria-label={flyout === 'color' ? labels.color : labels.turnInto}
+			{@attach controller.flyoutMenu}
+		>
+			<div class="block-menu-rows" role="presentation">
+				{@render list(controller.flyoutRows, true)}
 			</div>
 		</div>
-		<!-- The open flyout: a new element for each (its id, name and opening). -->
-		{#each controller.flyout ? [controller.flyout] : [] as flyout (flyout)}
-			<div
-				class="block-menu block-menu-flyout"
-				role="menu"
-				aria-label={flyout === 'color' ? labels.color : labels.turnInto}
-				{@attach controller.flyoutMenu}
-			>
-				<div class="block-menu-rows" role="presentation">
-					{@render list(controller.flyoutRows, true)}
-				</div>
-			</div>
-		{/each}
-	</div>
-{/if}
+	{/each}
+</div>
 
 <style>
 	.block-menu-frame {

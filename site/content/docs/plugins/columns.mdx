@@ -10,10 +10,10 @@ The plugin is not a default plugin: list it in `plugins`.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, codePlugin, columnsPlugin, slashMenuPlugin, blockMenuPlugin } from 'edytor';
+	import { Edytor, codePlugin, columnsPlugin } from 'edytor';
 	import 'edytor/themes/notion.css';
 
-	const plugins = [columnsPlugin, codePlugin, slashMenuPlugin, blockMenuPlugin];
+	const plugins = [columnsPlugin, codePlugin];
 </script>
 
 <div class="edytor-notion">

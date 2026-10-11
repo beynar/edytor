@@ -1,9 +1,8 @@
 /**
  * A code block's header (`code.language`): the block's language, a button
  * that opens the view's language list (`LanguageMenu`) and Copy. One per
- * rendered code block; the default markup (`CodeHeader.svelte`) and an
- * app's `header` snippet read the same controller and share its
- * attachment (`button`), so a custom header keeps the keys and the ARIA.
+ * rendered code block with the app's `header` snippet, whose attachment
+ * (`button`) gives its markup the keys and the ARIA.
  */
 import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';

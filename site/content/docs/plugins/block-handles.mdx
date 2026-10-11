@@ -4,37 +4,47 @@ description: The block handles plugin adds a + button and a drag grip beside eac
 icon: grip-vertical
 ---
 
-Block handles are the two buttons left of each block, as in Notion: a `+` that adds a block, then the ⋮⋮ grip. Drag the grip to reorder, nest or outdent a block, or every block the selection covers; focus it and use <kbd>Alt</kbd> with the arrow keys to move it; click it to select the block and open a block menu, such as the bundled [block menu](/docs/plugins/block-menu). `<Edytor>` includes them by default.
+Block handles are the two buttons left of each block, as in Notion: a `+` that adds a block, then the ⋮⋮ grip. Drag the grip to reorder, nest or outdent a block, or every block the selection covers; focus it and use <kbd>Alt</kbd> with the arrow keys to move it; click it to select the block and open a block menu, such as the bundled [block menu](/docs/plugins/block-menu). The plugin ships the placement, the hover, the drag and drop and the keys; the two buttons are your `handle` snippet.
 
 ## Enabling and configuring
 
-The `blockHandles` prop of `<Edytor>` controls the plugin:
+List `createBlockHandlesPlugin({ handle })` in `plugins`; `handle` draws the `+` and the grip of each block (without it, no handle shows and no block drags):
 
 ```svelte title="Handles.svelte" check
 <script lang="ts">
-	import { Edytor, type BlockHandleActivation } from 'edytor';
+	import {
+		Edytor,
+		createBlockHandlesPlugin,
+		type BlockHandleActivation,
+		type BlockHandleSnippetPayload
+	} from 'edytor';
 
 	const openMenu = ({ block, anchor }: BlockHandleActivation) => {
 		console.log('open a menu for', block.id, 'next to', anchor);
 	};
+	// Handles and keyboard moves, no pointer drag, and a click callback.
+	const plugins = [createBlockHandlesPlugin({ handle, draggable: false, onActivate: openMenu })];
 </script>
 
-<!-- Default: handles with drag and drop. -->
-<Edytor />
+{#snippet handle({ label, grip, add, readonly, labels }: BlockHandleSnippetPayload)}
+	{#if !readonly}
+		<button
+			aria-label={labels.add(label)}
+			onmousedown={(event) => event.preventDefault()}
+			onclick={(event) => add(event.altKey, event.currentTarget)}>+</button
+		>
+		<button use:grip aria-label={labels.grip(label)}>⠿</button>
+	{/if}
+{/snippet}
 
-<!-- No handles at all. -->
-<Edytor blockHandles={false} />
-
-<!-- Handles and keyboard moves, no pointer drag, and a click callback. -->
-<Edytor blockHandles={{ draggable: false, onActivate: openMenu }} />
+<Edytor {plugins} />
 ```
 
 <TypeTable
   type={{
-    blockHandles: {
-      type: "boolean | BlockHandlesOptions",
-      default: "true",
-      description: "false omits the handles. An object configures them.",
+    handle: {
+      type: "Snippet<[BlockHandleSnippetPayload]>",
+      description: "The + and the grip, beside each block. Without it, no handle shows. See The handle below.",
     },
     draggable: {
       type: "boolean",
@@ -45,20 +55,14 @@ The `blockHandles` prop of `<Edytor>` controls the plugin:
       type: "({ block, anchor }: BlockHandleActivation) => void",
       description: "Called when a grip is clicked, after the block is selected (a block selection that already holds it stays; over a text range across blocks, the blocks it covers are selected). anchor is the grip element, to position a menu against. Without it, the click dispatches an edytor-block-activate event instead (see below).",
     },
-    handle: {
-      type: "Snippet<[BlockHandleSnippetPayload]>",
-      description: "Replaces the + and the grip with your markup. See Custom handle below.",
-    },
     labels: {
       type: "PartialLabels<'blockHandles'>",
-      description: "The accessible names and tooltips of the + and the grip, functions of the block's kind label, over the English ones. See Localization.",
+      description: "The words your handle reads (payload.labels): the + and the grip's names and tooltips, functions of the block's kind label, over the English ones. See Localization.",
     },
   }}
 />
 
 The configuration is read when the editor mounts.
-
-You can also build the plugin yourself and list it in `plugins`: `blockHandlesPlugin` is the default, `createBlockHandlesPlugin(options)` takes the same options as the prop. The editor recognizes either one and does not add a second set of handles. When `blockHandles` is an object, it replaces any handle plugin in the list.
 
 ## Handles
 
@@ -69,8 +73,7 @@ A handle sits in the editor's overlay layer, left of its block, aligned with the
 - A handle is transparent until you hover its block, and its block stays hovered while the pointer goes from the text to the handle and rests on it (the handle sits flush with the block). On touch devices (no hover), handles are always visible.
 - In a column's gap the column resize band is the gap's left part, 10px wide and the layout's height: wherever its gray guide shows, at any height, a press resizes. A block's handle spans the rest of the gap, its `+` (18px there) and its grip together flush with the block (Notion's `+ ⋮⋮`; at the default 46px gap, 10 + 18 + 18, neither is under the band), and its box covers the block's whole row: a pointer anywhere in it hovers the block, shown or not, so the grip is reached from any side, as in Notion. Column 1's handles sit in the editor's gutter, over no gap, as a root block's do.
 - While a text selection runs (a press in the editor, until its release), the handles and the column resize bands take no pointer, so the browser computes the selection against the text, never selecting a block (Notion; over the bare gap between two columns, see the [columns' limitations](/docs/plugins/columns#limitations)).
-- The buttons are gray (`#ada9a3`) with a 6px-rounded hover background.
-- The buttons are named after the block's kind, from its preset label: the grip "Heading 1 block: drag to move, click for actions", the `+` "Add a block below Heading 1 (Alt: above)". While the menu a `+` or a grip opened is open, that button has `aria-expanded="true"`, `aria-controls` (the menu) and `aria-haspopup`. See [Accessibility](/docs/editor/accessibility#block-handles).
+- Name the buttons after the block's kind (`payload.label`, from its preset label) with the plugin's words: `labels.grip(label)` "Heading 1 block: drag to move, click for actions", `labels.add(label)` "Add a block below Heading 1 (Alt: above)" (`labels.addBeside(label)` when `beside`). While the menu a `+` or a grip opened is open, give that button `aria-expanded="true"`, `aria-controls` and `aria-haspopup` from the payload's `expanded`, `controls` and `haspopup`. See [Accessibility](/docs/editor/accessibility#block-handles). The demo's Notion-style handle (gray `#ada9a3` buttons, a 6px-rounded hover background) is `BlockHandle.svelte` in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome).
 
 ### The + button
 
@@ -84,14 +87,14 @@ Clicking `+` opens the [slash menu](/docs/plugins/slash-menu#from-the-block-hand
 | A press outside the menu, focus leaving it, or the editor turning readonly | The menu closes as <kbd>Escape</kbd> does (a press outside then places the caret). |
 | The selection is still the block selection a grip click made (its menu open, or closed on a divider) | `+` first gives back the selection held before the grip was clicked (a text caret when there was none), so <kbd>Escape</kbd> never leaves the grip's block selection for the next key to replace. |
 | A plugin vetoes the insertion | Nothing is added, and `edytor.dispatcher.last` reads `refused`. |
-| No slash menu is listed | `+` inserts an empty block of the default kind at once and puts the caret in it. |
+| No slash menu is listed | `+` inserts an empty block of the default kind at once and puts the caret in it (a slash menu listed without its `menu` snippet answers it, and shows nothing). |
 | A readonly editor | The button does nothing. |
 
 The `+` dispatches `BLOCK_ADD_EVENT` (`'edytor-block-add'`, detail `{ block, anchor, insert }`, a `BlockAddition`) on the editor's root. A menu of your own answers it with `event.preventDefault()`, and calls `insert(then?)` once the user picks: it adds the block, puts the caret in it and runs `then`, as one undo step. The addition and `then`'s writes are one transaction. When `then` answers `false`, or the command it runs is refused (by the document or an extension's veto) before changing anything, `insert` takes the block back inside that transaction and answers `false`: the document, its undo and redo steps and the selection are as they were.
 
-### Custom handle
+### The handle
 
-A `handle` snippet replaces the `+` and the grip of every handle. The plugin keeps placing it beside the block's first line, showing it on hover and mounting it lazily. The snippet receives a `BlockHandleSnippetPayload`:
+The `handle` snippet draws the `+` and the grip of every handle. The plugin places it beside the block's first line, shows it on hover and mounts it lazily. The snippet receives a `BlockHandleSnippetPayload`:
 
 <TypeTable
   type={{
@@ -99,50 +102,17 @@ A `handle` snippet replaces the `+` and the grip of every handle. The plugin kee
     label: { type: "string", description: "The block's kind as people read it, from its preset label (\"Heading 1\"): name your buttons with it." },
     grip: { type: "action", description: "use:grip makes an element the grip: dragging (when draggable), a click that selects the block and opens its menu, and the Alt+arrow moves while it has focus." },
     add: { type: "(alt?: boolean, anchor?: HTMLElement | null) => void", description: "What + does: the slash menu offers what to add below (with true, Alt+click: above, or for a block directly in a column a new column right of its column); nothing is added until a row is picked. The menu opens under anchor (your + button, event.currentTarget), else under the block." },
-    addable: { type: "boolean", description: "Whether the block takes a +: always true (a block in a column too, as in Notion)." },
+    beside: { type: "boolean", description: "Alt+click on the + adds a column right of the block's (a block directly in a layout's column): name it with labels.addBeside(label)." },
     readonly: { type: "boolean", description: "The editor is readonly: hide your buttons." },
     draggable: { type: "boolean", description: "Pointer dragging is on." },
     expanded: { type: "{ add: boolean; grip: boolean }", description: "Whether the menu the + or the grip opened is open: their aria-expanded." },
     controls: { type: "{ add: string | undefined; grip: string | undefined }", description: "The id of the menu the + or the grip opened, while it is open: their aria-controls." },
-    labels: { type: "BlockHandlesLabels", description: "The handles' words: labels.add(label), labels.grip(label), their hints. See Localization." },
+    haspopup: { type: "{ add: 'listbox' | 'menu' | 'dialog' | undefined; grip: … }", description: "What the menu the + or the grip opened is, while it is open: their aria-haspopup." },
+    labels: { type: "BlockHandlesLabels", description: "The handles' words: labels.add(label), labels.addBeside(label), labels.grip(label), their hints. See Localization." },
   }}
 />
 
-```svelte title="Editor.svelte" check
-<script lang="ts">
-	import { Edytor, type BlockHandleSnippetPayload } from 'edytor';
-</script>
-
-{#snippet handle({
-	label,
-	grip,
-	add,
-	readonly,
-	expanded,
-	controls,
-	labels
-}: BlockHandleSnippetPayload)}
-	{#if !readonly}
-		<button
-			aria-label={labels.add(label)}
-			aria-expanded={expanded.add || undefined}
-			aria-controls={controls.add}
-			onmousedown={(event) => event.preventDefault()}
-			onclick={(event) => add(event.altKey, event.currentTarget)}>+</button
-		>
-		<button
-			use:grip
-			aria-label={labels.grip(label)}
-			aria-expanded={expanded.grip || undefined}
-			aria-controls={controls.grip}>⠿</button
-		>
-	{/if}
-{/snippet}
-
-<Edytor blockHandles={{ handle }} />
-```
-
-The same snippet works with `createBlockHandlesPlugin({ handle })` in `plugins`. Your markup renders inside the handle's host, `[data-edytor-block-handle-host]` (a flex row right-aligned to the block's left edge, which carries the hover fade), without the buttons' built-in styles. Keep `preventDefault` on the `+` button's `mousedown`, so the click does not move the caret first. [Menus and handles](/docs/customization/menus#block-handle) shows it with the other snippets.
+Your markup renders inside the handle's host, `[data-edytor-block-handle-host]` (a flex row right-aligned to the block's left edge, which carries the hover fade; over a column gap, `data-over-gap="true"`, it spans the gap). Keep `preventDefault` on the `+` button's `mousedown`, so the click does not move the caret first. [Menus and handles](/docs/customization/menus#block-handle) shows it with the other snippets.
 
 ## Drag and drop
 
@@ -240,18 +210,18 @@ Beside a list item or a code line, the layout wraps the whole list or code block
 
 ### The drop indicator
 
-The indicator is Notion's plain 4px bar, drawn in the overlay rather than on the block, so rounded or padded block styles cannot bend it:
+The indicator is a 4px bar (Notion's) the plugin places in the overlay rather than on the block, so rounded or padded block styles cannot bend it. It is `[data-edytor-drop-indicator]` (with `data-position`, `data-count`, `data-blocked`); the plugin gives it its place and size, its look is yours:
 
 - **Before or after**: the bar spans the blocks at the drop slot. Between two siblings it is centered in the gap and spans both blocks, so hovering the bottom of one block and the top of the next shows the same bar.
 - **Before a first child** (the lower half of a block whose children show): at that child's top, indented to its column.
 - **After an ancestor** (below the last block of a nested group): below that block's row, indented to the ancestor's level.
 - **Inside**: the same bar where the new child will land (after the target's last visible child, else after its own row), indented to the child's column and running to the target's right edge. With no visible child to measure, the column is one nesting step past the target's text: `--edytor-nest-indent` in px (see [Nested blocks](/docs/customization/styling#nested-blocks)), else 24px.
 
-Set its color with `--edytor-drop-indicator-color` on the editor or any ancestor of the blocks (the default is Notion's `rgba(35, 131, 226, 0.43)`):
+Give it a color, as the demo does. The plugin carries the theme's `--edytor-drop-indicator-color` from the target block onto the indicator (the overlay is not inside the editor), so your rule reads the variable your theme sets (the [Notion theme](/docs/customization/styling) sets Notion's `rgba(35, 131, 226, 0.43)`):
 
 ```css
-[data-edytor] {
-	--edytor-drop-indicator-color: #2eaadc;
+[data-edytor-overlay] [data-edytor-drop-indicator] {
+	background: var(--edytor-drop-indicator-color, #2eaadc);
 }
 ```
 
@@ -259,11 +229,17 @@ Set its color with `--edytor-drop-indicator-color` on the editor or any ancestor
 
 When the drop will nest the dragged blocks in another block, that future parent also gets Notion's soft backdrop: a rounded tint over its own row (its own content, not its children), drawn by the same overlay layer as the bar, so block styles cannot distort it. It shows for an **inside** drop (on the target, or, inside a list, on the last item the blocks nest under), and for a before/after drop among the children of a block that is not already their parent; a before/after drop that keeps the blocks' parent, or lands them at the root, shows the bar alone. It fades in and out as the placement changes, and the drop commits the placement it showed. It is `[data-edytor-drop-backdrop]` in the overlay, with `data-shown="true"` and the parent's `data-block-id` while it applies.
 
-Set its color with `--edytor-drop-backdrop-color` on the editor or any ancestor of the blocks. The default, also set by the [Notion theme](/docs/customization/styling), is Notion's light tint, `rgba(35, 131, 226, 0.14)`. On a dark page, set Notion's dark tint yourself:
+Its look is yours too; the plugin carries `--edytor-drop-backdrop-color` onto it as it does the bar's. The demo's is Notion's light tint, fading in while it applies:
 
 ```css
-.dark [data-edytor] {
-	--edytor-drop-backdrop-color: rgba(35, 131, 226, 0.2);
+[data-edytor-overlay] [data-edytor-drop-backdrop] {
+	border-radius: 4px;
+	background: var(--edytor-drop-backdrop-color, rgba(35, 131, 226, 0.14));
+	opacity: 0;
+	transition: opacity 120ms ease;
+}
+[data-edytor-overlay] [data-edytor-drop-backdrop][data-shown='true'] {
+	opacity: 1;
 }
 ```
 
@@ -294,7 +270,7 @@ The handle claims every <kbd>Alt</kbd>+arrow while it has focus. A handle of a b
 
 ## Building a block menu
 
-The [block menu plugin](/docs/plugins/block-menu) is a complete Notion-style menu: list `blockMenuPlugin` and leave `onActivate` unset. When no `onActivate` is passed, a grip click dispatches a DOM event on the editor's root, which that plugin (or your own) listens for. A menu that takes the keyboard answers it with `event.preventDefault()`. Unanswered (no menu), the editor takes the focus, so the keys act on the selected block as in Notion: <kbd>Backspace</kbd> deletes it, <kbd>Shift</kbd>+arrows extend the selection, typing replaces it. (The grip keeps its <kbd>Alt</kbd>+arrow moves while it has focus, from <kbd>Tab</kbd>.)
+The [block menu plugin](/docs/plugins/block-menu) is a complete Notion-style menu's behavior: list `createBlockMenuPlugin({ menu })` and leave `onActivate` unset. When no `onActivate` is passed, a grip click dispatches a DOM event on the editor's root, which that plugin (or your own) listens for. A menu that takes the keyboard answers it with `event.preventDefault()`. Unanswered (no menu), the editor takes the focus, so the keys act on the selected block as in Notion: <kbd>Backspace</kbd> deletes it, <kbd>Shift</kbd>+arrows extend the selection, typing replaces it. (The grip keeps its <kbd>Alt</kbd>+arrow moves while it has focus, from <kbd>Tab</kbd>.)
 
 ```ts title="myMenuPlugin.ts" check
 import { BLOCK_ACTIVATE_EVENT, type BlockActivation, type Plugin } from 'edytor';

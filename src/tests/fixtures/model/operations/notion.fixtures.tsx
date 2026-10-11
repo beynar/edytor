@@ -1,11 +1,10 @@
 /** @jsxImportSource ../../../jsx */
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts';
 import { mentionPlugin } from '../../../atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { runBeforeInput } from '../../../test.utils.js';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
+import { codePlugin, richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 const notionPlugins = [richTextPlugin, mentionPlugin, markdownShortcutsPlugin];
 const noopSnippet = (() => null) as never;

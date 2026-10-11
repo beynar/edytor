@@ -20,11 +20,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONDoc } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import {
 	commentsController,
-	createCommentsPlugin,
 	type CommentsPluginOptions
 } from '$lib/plugins/comments/commentsPlugin.js';
 import { createMemoryCommentsClient } from '$lib/collaboration/comments/client.js';
@@ -37,6 +34,11 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import {
+	comments as createCommentsPlugin,
+	richTextPlugin,
+	toolbarPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

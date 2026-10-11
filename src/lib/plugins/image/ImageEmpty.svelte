@@ -7,15 +7,12 @@
 	import type { FileUploads, Uploader } from '../uploads.svelte.js';
 
 	/**
-	 * Notion's empty image: "Add an image", then a link field (and Upload with
-	 * an `upload`). A readonly view, or a suggestion's preview (no `block`),
-	 * shows a passive placeholder: no control may run `upload` for a write the
-	 * view would refuse. A pasted or dropped file whose upload failed
-	 * (`error`) opens the panel with its error; embedding a source forgets
+	 * An empty image: its state is an `ImageEmptyController` (a readonly view,
+	 * or a suggestion's preview, no `block`, may not write), which the
+	 * plugin's `empty` snippet draws. A pasted or dropped file whose upload
+	 * failed (`error`) opens it with its error; embedding a source forgets
 	 * it. A block whose upload answered while it was not shown (`landed`: its
-	 * paste undone, then redone) gets that URL as soon as it shows here. Its
-	 * state is an `ImageEmptyController`, which an `empty` snippet renders
-	 * instead of this markup.
+	 * paste undone, then redone) gets that URL as soon as it shows here.
 	 */
 	let {
 		block,
@@ -23,14 +20,15 @@
 		uploads,
 		error = null,
 		landed = false,
-		empty
+		emptyOf
 	}: {
 		block: Block | undefined;
 		upload?: Uploader;
 		uploads?: FileUploads;
 		error?: 'upload' | null;
 		landed?: boolean;
-		empty?: Snippet<[ImageEmptyController]>;
+		/** A view's `empty` snippet: the rendering view's, a suggestion's preview included. */
+		emptyOf: (edytor: Edytor) => Snippet<[ImageEmptyController]> | undefined;
 	} = $props();
 
 	// After the flush that shows the block: never inside the transaction that showed it.
@@ -40,54 +38,11 @@
 			untrack(() => uploads?.fill(id));
 		}
 	});
-	/** The words of the view rendering it (a suggestion's preview included). */
-	const labels = imageLabels.of(getContext<Edytor>('edytor'));
+	/** The view rendering it (a suggestion's preview included): its words and its `empty`. */
+	const view = getContext<Edytor>('edytor');
+	const labels = imageLabels.of(view);
+	const empty = untrack(() => emptyOf(block?.edytor ?? view));
 	const panel = untrack(() => new ImageEmptyController(block, labels, { upload, uploads, error }));
 </script>
 
-{#if empty}
-	{@render empty(panel)}
-{:else if panel.readonly}
-	<div data-edytor-image-placeholder><span aria-hidden="true">🖼</span> {labels.image}</div>
-{:else}
-	<button
-		type="button"
-		data-edytor-image-add
-		onmousedown={(event) => event.preventDefault()}
-		onclick={panel.toggle}><span aria-hidden="true">🖼</span> {labels.add}</button
-	>
-	{#if panel.open}
-		<div data-edytor-image-form>
-			<input
-				placeholder={labels.linkPlaceholder}
-				aria-label={labels.link}
-				bind:value={panel.draft}
-				{@attach panel.field}
-			/>
-			<button type="button" onclick={() => panel.embed()}>{labels.embed}</button>
-			{#if panel.canUpload}
-				<label data-edytor-image-upload>
-					{labels.upload}
-					<input
-						type="file"
-						accept="image/*"
-						hidden
-						onchange={(event) => {
-							const file = event.currentTarget.files?.[0];
-							if (file) void panel.upload(file);
-						}}
-					/>
-				</label>
-			{/if}
-			{#if panel.failed}
-				<small data-edytor-image-error={panel.failed}
-					>{panel.failed === 'inline'
-						? labels.tooLarge(panel.inlineLimit, panel.canUpload)
-						: panel.failed === 'upload'
-							? labels.uploadFailed
-							: labels.invalid}</small
-				>
-			{/if}
-		</div>
-	{/if}
-{/if}
+{#if empty}{@render empty(panel)}{/if}

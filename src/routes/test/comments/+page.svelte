@@ -11,8 +11,7 @@
 	import { page } from '$app/state';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { createDocument } from '$lib/crdt/index.js';
-	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-	import { createCommentsPlugin } from '$lib/plugins/comments/commentsPlugin.js';
+	import { comments as commentsPlugin, toolbarPlugin } from '../../chrome/plugins.js';
 	import {
 		createCommentsClient,
 		createMemoryCommentsClient
@@ -42,7 +41,7 @@
 				})
 			: memory;
 	const heard: Array<{ type: CommentChange['type']; own: boolean }> = [];
-	const comments = createCommentsPlugin({
+	const comments = commentsPlugin({
 		client,
 		user: { id: 'ada', name: 'Ada Lovelace' },
 		users: (id) => (id === 'bob' ? { name: 'Bob' } : undefined),

@@ -16,10 +16,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
-import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { insertColumn } from '$lib/plugins/table/table.js';
 import { Y } from '$lib/crdt/engine.js';
@@ -32,6 +28,12 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	blockMenu as createBlockMenuPlugin,
+	richTextPlugin,
+	slashMenuPlugin,
+	tablePlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

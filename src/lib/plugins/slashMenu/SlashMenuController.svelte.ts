@@ -86,13 +86,13 @@ export class SlashMenuController extends TextTriggerController {
 
 	constructor(
 		edytor: Edytor,
-		/** The words the menu shows (the plugin's `labels`): read them in a custom `menu` or `item`. */
+		/** The words the menu shows (the plugin's `labels`): read them in your `menu`. */
 		readonly labels: SlashMenuLabels = slashMenuEnglish
 	) {
 		super(edytor, '/', 'slash-menu');
 	}
 
-	/** A row's element id (page-unique), for `aria-activedescendant`: set it on a custom `item`. */
+	/** A row's element id (page-unique), for `aria-activedescendant` (`option(index)` sets it). */
 	optionId = (command: EditorCommand) => this.edytor.popups.idOf(`slash-menu-${command.id}`);
 
 	protected get listName() {
@@ -118,7 +118,7 @@ export class SlashMenuController extends TextTriggerController {
 
 	/**
 	 * The element that holds a `+` menu's keyboard (`{@attach controller.keys}`:
-	 * its field, or the element a custom `menu` is wrapped in). Focused when
+	 * its field, or the menu element itself). Focused when
 	 * it mounts, it takes the menu's keys (↑/↓ walk the rows, Enter runs the
 	 * highlighted one, Escape closes the menu and gives the selection back);
 	 * on an element that is not a field, typing and Backspace edit the query.

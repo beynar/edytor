@@ -5,6 +5,7 @@
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import type { Awareness, DocChange, EdytorDocument, YDoc } from '$lib/crdt/index.js';
 	import type { EdytorSync, PresenceOptions } from '$lib/collaboration/index.js';
+	import { blockHandlesPlugin, handlePlugins } from '../../routes/chrome/plugins.js';
 
 	type Props = {
 		value: JSONDoc;
@@ -27,7 +28,10 @@
 		onDocChange?: (change: DocChange) => void;
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		onReady?: (edytor: EdytorContext) => void;
-		/** The view's block handles (`<Edytor blockHandles>`, on by default). */
+		/**
+		 * The demo chrome's block handles, on by default (`false`: none); a
+		 * handles plugin listed in `plugins` stands for them.
+		 */
 		blockHandles?: boolean;
 		/** The root textbox's name and id (`aria-label`, `aria-labelledby`, `aria-describedby`, `id`). */
 		label?: {
@@ -75,9 +79,12 @@
 <EdytorComponent
 	bind:edytor
 	{value}
-	{plugins}
+	plugins={blockHandles === false
+		? plugins?.filter((plugin) => !handlePlugins.has(plugin))
+		: plugins?.some((plugin) => handlePlugins.has(plugin))
+			? plugins
+			: [blockHandlesPlugin, ...(plugins ?? [])]}
 	defaultPlugins={false}
-	{blockHandles}
 	{readonly}
 	{placeholder}
 	{translate}

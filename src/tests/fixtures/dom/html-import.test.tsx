@@ -37,9 +37,7 @@ import type { Plugin } from '$lib/plugins.js';
 import type { JSONDoc } from '$lib/utils/json.js';
 import { runBeforeInputCommand } from '$lib/events/beforeInputCommands.js';
 import { attemptOf } from '$lib/session/attempt.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { bannerPlugin } from '../../dom/S6BannerKind.svelte';
 import {
 	canonicalTree,
@@ -51,6 +49,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference (HTML import retired); green since P4.1. */
 const row = it;

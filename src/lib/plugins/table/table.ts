@@ -32,20 +32,24 @@ export type TablePluginOptions = {
 	/** The slash menu's keywords of the table command (`block.table`), which replace its own. */
 	keywords?: Partial<Record<string, string[]>>;
 	/**
-	 * Replace a row's or a column's grip: it renders centered where the
-	 * grip stands (left of the hovered row, above the hovered column). Put
+	 * A row's or a column's grip: it renders centered where the grip stands
+	 * (left of the hovered row, above the hovered column; without it, no
+	 * grip). Put
 	 * `{@attach payload.grip}` on its element: the drag, the click that
 	 * opens its menu, its keys and its ARIA.
 	 */
 	grip?: Snippet<[TableGripPayload]>;
 	/**
-	 * Replace a grip's menu: it renders under its grip while
-	 * `chrome.menu` is set. Put `{@attach chrome.popup}` and
+	 * A grip's menu: it renders under its grip while `chrome.menu` is set
+	 * (without it, nothing shows). Put `{@attach chrome.popup}` and
 	 * `{@attach chrome.keys}` on its element and spread `item.option` (or
 	 * `chrome.option(index)`) on each row of `chrome.items`.
 	 */
 	menu?: Snippet<[TableChrome]>;
-	/** Replace the `+` under the table (a row) and beside it (a column): it renders along that edge. */
+	/**
+	 * The `+` under the table (a row) and beside it (a column): it renders
+	 * along that edge (without it, no `+`).
+	 */
 	add?: Snippet<[TableAddPayload]>;
 };
 

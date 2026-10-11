@@ -30,8 +30,9 @@
 		/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
 		keywords?: Partial<Record<string, string[]>>;
 		/**
-		 * Replace the menu a URL pasted on an empty line opens (Link, Embed,
-		 * Bookmark); it renders while `controller.open`, under the line. The
+		 * The menu a URL pasted on an empty line opens (Link, Embed, Bookmark);
+		 * it renders while `controller.open`, under the line (without it, the
+		 * link is kept and nothing shows). The
 		 * view's one menu takes the first `menu` its embed and bookmark
 		 * plugins pass. Its keys stay the editor's; keep its ARIA with
 		 * `{@attach controller.popup}` on the list and
@@ -39,8 +40,8 @@
 		 */
 		menu?: Snippet<[UrlPasteController]>;
 		/**
-		 * Replace an empty block's markup (its "Add …" button and link panel,
-		 * or a readonly view's placeholder): it receives the block's
+		 * An empty block's markup (its "Add …" button and link panel, or a
+		 * readonly view's placeholder; without it, nothing): it receives the block's
 		 * `MediaEmptyController` (`open`, `draft`, `failed`, `embed`, `readonly`).
 		 */
 		empty?: Snippet<[MediaEmptyController]>;

@@ -32,7 +32,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { BlockDefinition, Plugin } from '$lib/plugins.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -41,6 +40,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /**
  * Rows still red (expected-fail). Red on the reference (arch-v2/ref-s7): F-U1

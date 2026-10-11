@@ -15,7 +15,6 @@ import { createDocument, loadDocument, type EdytorDocument } from '$lib/crdt/ind
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { propsPlugin } from '../../dom/PropsKind.svelte';
 import {
 	dispatchClipboardPaste,
@@ -27,6 +26,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const value = {
 	children: [

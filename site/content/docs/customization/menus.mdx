@@ -1,24 +1,28 @@
 ---
 title: Menus and handles
-description: Replace the markup of every built-in popup, menu, toolbar, panel and handle with your own typed Svelte snippet, while the plugins keep the behavior, the keyboard and the accessibility.
+description: Draw every popup, menu, toolbar, panel and handle with your own typed Svelte snippet; the plugins own the behavior, the keyboard and the accessibility, and ship no markup of their own.
 icon: panels-top-left
 ---
 
-The built-in chrome follows Notion: the slash menu, the mention and page link menus, the block menu, the selection toolbar and its link card, the menu a pasted URL opens, the image toolbar, the empty image and media blocks, a table's grips, menus and `+` bars, a code block's header and language list, the equation editor, the comment cards, the suggestion bar, the version history rows, the block handles and the marquee's rectangle. Each one takes a snippet that renders your markup instead. The plugin keeps the behavior: when the UI opens, where it is placed, the keys it claims, the commands it runs. Your markup keeps the keyboard and the ARIA of the built-in one through a few attachments the controller hands you.
+Edytor's chrome is headless: the slash menu, the mention and page link menus, the block menu, the selection toolbar and its link card, the menu a pasted URL opens, the image toolbar, the empty image and media blocks, a table's grips, menus and `+` bars, a code block's header and language list, the callout icon picker, the equation editor, the comment cards, the suggestion bar, the version history, the block handles and the marquee's rectangle are drawn by your snippets. The package ships the behavior: when the UI opens, where it is placed, the keys it claims, the commands it runs, and the keyboard and ARIA your markup takes through a few attachments its controller hands you. It ships no markup for them.
+
+**Without its snippet, a surface renders nothing**, and its controller still works: with `createSlashMenuPlugin()` and no `menu`, typing `/divider` and <kbd>Enter</kbd> still inserts a divider, and nothing shows. A plugin whose main job is a kind (code, table, image, the media kinds, equations) keeps its blocks; only its chrome is yours.
+
+The examples below are the short version of each surface. The complete Notion-style markup of every surface, with its styles, is the demo's: [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome) in the repository (`chrome.svelte` holds the snippets, `plugins.ts` passes them to each factory). Copy what you need.
 
 ## The pattern
 
 Every element is customized the same way:
 
-- **Where.** A snippet option in the plugin's factory options (`createBlockMenuPlugin({ menu })`), or a prop of the component (`<HistoryPanel item>`).
-- **Naming.** A whole surface is named by what it is: `menu`, `toolbar`, `card`, `bar`, `empty`, `header`, `panel`, `box`; a control by what it is: `grip`, `add`. One row of a list is always `item`.
-- **Typing.** A snippet takes one object argument whose type is exported from `edytor`: `Snippet<[BlockMenuController]>`, `Snippet<[SlashMenuItem]>`. A whole surface receives its controller: its state, its actions, its words (`labels`), `readonly`, and a way to close it. A row receives the shape every list shares, `MenuItemPayload`: `{ item, id, label, selected, run, select, option }`.
-- **Accessibility.** The keyboard and the ARIA live on the controller as [attachments](https://svelte.dev/docs/svelte/@attach), never in the built-in markup only. The built-in markup uses the same attachments, so a snippet that uses them behaves exactly as it does.
+- **Where.** A snippet option in the plugin's factory options (`createBlockMenuPlugin({ menu })`). The version history is a controller you make in your component (`new VersionHistory(…)`).
+- **Naming.** A whole surface is named by what it is: `menu`, `toolbar`, `card`, `bar`, `empty`, `header`, `panel`, `box`, `picker`; a control by what it is: `grip`, `add`, `handle`. One surface, one snippet: your snippet draws its rows.
+- **Typing.** A snippet takes one object argument whose type is exported from `edytor`: `Snippet<[BlockMenuController]>`. A whole surface receives its controller: its state, its actions, its words (`labels`), `readonly`, and a way to close it. A controller that builds its rows hands them in the shape every list shares, `MenuItemPayload`: `{ item, id, label, selected, run, select, option }` (a table menu's `items`, a code language list's `items`).
+- **Accessibility.** The keyboard and the ARIA live on the controller as [attachments](https://svelte.dev/docs/svelte/@attach) and row attributes: a snippet that uses them gets the keys and the ARIA the accessibility tests prove (the demo's markup is the one they run).
 
 | Attachment | Put it on | What it does |
 | --- | --- | --- |
 | `{@attach controller.popup}` | The list (`listbox` or `menu`), or the toolbar | Gives the element its id, and its role and name unless you set them; keeps the focus where it is on a press; publishes the popup to the editor's root (`aria-controls`, `aria-haspopup`, `aria-activedescendant` when the root holds the keyboard) while it is in the page, and withdraws it when it goes |
-| `{@attach controller.keys}` | The element that holds the keyboard: the block menu's or the `+` menu's field, the toolbar, a table's grip menu, the code language list's search field | Takes the menu's keys (arrows, <kbd>Home</kbd>, <kbd>End</kbd>, <kbd>Enter</kbd>, <kbd>Escape</kbd>, …), focuses the element when it mounts, and makes it name the list and its highlighted row |
+| `{@attach controller.keys}` | The element that holds the keyboard: the block menu's or the `+` menu's field (or the `+` menu itself), the toolbar, a table's grip menu, the code language list's search field, the callout icon picker | Takes the menu's keys (arrows, <kbd>Home</kbd>, <kbd>End</kbd>, <kbd>Enter</kbd>, <kbd>Escape</kbd>, …), focuses the element when it mounts, and makes it name the list and its highlighted row |
 | `{...controller.option(index)}` | Each row | Its id, `role`, `aria-selected` (or `aria-checked`), `tabindex="-1"`, `data-selected`, and scrolls the keyboard's row into view. A row payload carries it as `option` |
 | `{@attach controller.flyoutMenu}` | The block menu's open flyout | Its id, role, name and placement beside the menu |
 | `{@attach controller.linkField}` | The toolbar's link field | Its id (unique per editor, for a `label`'s `for`), the focus when the panel opens, <kbd>Enter</kbd> applies, <kbd>Escape</kbd> closes |
@@ -27,6 +31,7 @@ Every element is customized the same way:
 | `{@attach payload.grip}` | A table's row or column grip | The drag (the row or the column moves where it is dropped), the click that opens its menu, <kbd>↓</kbd> opens it too and <kbd>Escape</kbd> gives the keys back to the editor; its name, `aria-haspopup`, `aria-expanded` and `aria-controls` |
 | `{@attach header.button}` | A code block's language button | Opens the language list on a click, <kbd>↓</kbd> or <kbd>↑</kbd> (<kbd>Alt</kbd>+<kbd>F10</kbd> at a caret in the block reaches it), <kbd>Escape</kbd> gives the keys back to the code; its name, `aria-haspopup`, `aria-expanded` and `aria-controls` |
 | `{@attach editor.field}` | The equation editor's source field | The focus when the editor opens, the caret at the end; <kbd>Enter</kbd> and <kbd>Escape</kbd> close the editor (<kbd>Shift</kbd>+<kbd>Enter</kbd> is a newline in a block equation), and so does the focus leaving the panel |
+| `{...history.option(index)}`, `onkeydown={history.keys}` | A version's row, the versions list | The row's `role="option"`, id, `aria-selected` and the list's one tab stop; the list's arrows, <kbd>Home</kbd> and <kbd>End</kbd> move the selection and the focus |
 
 Two rules hold for every snippet:
 
@@ -35,8 +40,8 @@ Two rules hold for every snippet:
 
 | UI | Option | Receives | Attachments |
 | --- | --- | --- | --- |
-| [Slash menu](#slash-menu) | `createSlashMenuPlugin({ menu, item })` | `SlashMenuController`, `SlashMenuItem` | `popup`, `option(index)`; `keys` in a `+` menu |
-| [Mention, page link, any trigger](#mention-page-link-and-other-trigger-menus) | `createMentionPlugin({ menu, item })`, `createPageLinkPlugin({ menu, item })`, a trigger's `menu` and `item` | `TriggerMenuController<T>`, `TriggerItemPayload<T>` | `popup`, `option(index)` |
+| [Slash menu](#slash-menu) | `createSlashMenuPlugin({ menu })` | `SlashMenuController` | `popup`, `option(index)`; `keys` in a `+` menu |
+| [Mention, page link, any trigger](#mention-page-link-and-other-trigger-menus) | `createMentionPlugin({ menu })`, `createPageLinkPlugin({ menu })`, a trigger's `menu` | `TriggerMenuController<T>` | `popup`, `option(index)` |
 | [Block menu](#block-menu) | `createBlockMenuPlugin({ menu })` | `BlockMenuController` | `keys`, `popup`, `option(index)`, `flyoutMenu` |
 | [Toolbar and link card](#toolbar-and-link-card) | `createToolbarPlugin({ toolbar, card })` | `ToolbarController` | `popup`, `keys`, `linkField` |
 | [URL paste menu](#url-paste-menu) | `createEmbedPlugin({ menu })`, `createBookmarkPlugin({ menu })` | `UrlPasteController` | `popup`, `option(index)` |
@@ -44,20 +49,21 @@ Two rules hold for every snippet:
 | [Empty image and media blocks](#empty-image-and-media-blocks) | `createImagePlugin({ empty })`, the media plugins' `empty` | `ImageEmptyController`, `MediaEmptyController` | `field` |
 | [Table grips, menu and `+`](#table-grips-menu-and-) | `createTablePlugin({ grip, menu, add })` | `TableGripPayload`, `TableChrome` (rows: `TableMenuItem`), `TableAddPayload` | `grip`; `popup`, `keys`, `option(index)` |
 | [Code header and language list](#code-header-and-language-list) | `createCodePlugin({ header, menu })` | `CodeHeader`, `LanguageMenu` (rows: `LanguageMenuItem`) | `button`; `keys`, `popup`, `option(index)` |
+| [Callout icon picker](#callout-icon-picker) | `createRichTextPlugin({ callout: { picker } })` | `CalloutIconPicker` | `keys`, `popup`, `option(index)` |
 | [Equation editor](#equation-editor) | `createEquationPlugin({ panel })` | `EquationEditor` | `field` |
-| [Comment cards](#comment-cards) | `createCommentsPlugin({ card })` | `CommentCardPayload` | |
+| [Comment cards](#comment-cards) | `createCommentsPlugin({ card, header })` | `CommentCardPayload`, `CommentsController` | |
 | [Suggestion bar](#suggestion-bar) | `createSuggestionsPlugin({ bar })` | `SuggestionBarPayload` | |
-| [Version history rows](#version-history-rows) | `<HistoryPanel item>` | `HistoryVersionItem` | its `option` |
-| [Block handle](#block-handle) | `createBlockHandlesPlugin({ handle })`, the `blockHandles` prop | `BlockHandleSnippetPayload` | `use:grip`; `expanded`, `controls` |
+| [Version history](#version-history) | `new VersionHistory({ client, document })` | your component reads it | `option(index)`, `keys` |
+| [Block handle](#block-handle) | `createBlockHandlesPlugin({ handle })` | `BlockHandleSnippetPayload` | `use:grip`; `expanded`, `controls`, `haspopup` |
 | [Marquee rectangle](#marquee-rectangle) | `createMarqueePlugin({ box })` | `MarqueeBoxPayload` | |
 
-Each factory also takes `labels`, the words of its built-in markup, which its controller carries for yours (`controller.labels`): see [Localization](/docs/customization/localization). Your markup renders in the plugin's host without the built-in styles. `slashMenuPlugin`, `toolbarPlugin`, `blockMenuPlugin` and `blockHandlesPlugin` are the same plugins with the built-in markup.
+Each factory also takes `labels`, the words its controller carries for your markup (`controller.labels`) and says itself (a list's accessible name): see [Localization](/docs/customization/localization). Your markup renders in the plugin's host, placed by the plugin; its look is all yours.
 
 A snippet declared at the top level of a component's markup can be used in its `<script>`, so you build the plugins there, as every example below does.
 
 ## Slash menu
 
-`menu` replaces the whole menu; `item` replaces each row and keeps the built-in sections, empty state and footer. The menu opens on `/` (the editor's root keeps the keyboard: its <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd> are the plugin's) or from a block handle's `+` (`controller.addition` is set: the menu holds the keyboard, through your field with `keys`). See [Slash menu](/docs/plugins/slash-menu#custom-markup).
+`menu` draws the menu while `controller.isOpen`. It opens on `/` (the editor's root keeps the keyboard: its <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd> are the plugin's) or from a block handle's `+` (`controller.addition` is set: the menu holds the keyboard, through the element you give `keys`). `controller.commands` are the rows, in their groups' order (`command.group`, named by `controller.groupName`). See [Slash menu](/docs/plugins/slash-menu#markup).
 
 ```svelte title="SlashMenuEditor.svelte" check
 <script lang="ts">
@@ -101,42 +107,11 @@ A snippet declared at the top level of a component's markup can be used in its `
 <Edytor {plugins} />
 ```
 
-An `item` row receives a `SlashMenuItem`: the shared row shape (`item` is the command, `run` runs it, removing the `/query` in the same step), with `command` and `icon` (the built-in line icon as a CSS `mask-image` value):
-
-```svelte title="SlashRows.svelte" check
-<script lang="ts">
-	import { Edytor, createSlashMenuPlugin, type SlashMenuItem } from 'edytor';
-
-	const plugins = [createSlashMenuPlugin({ item })];
-</script>
-
-{#snippet item({ command, label, icon, option, run, select }: SlashMenuItem)}
-	<button {...option} class="row" onmousedown={(e) => e.preventDefault()} onmousemove={select} onclick={run}>
-		{#if icon}<span class="icon" style:mask-image={icon}></span>{:else}<span>{command.icon}</span>{/if}
-		{label}
-	</button>
-{/snippet}
-
-<Edytor {plugins} />
-
-<style>
-	.row[data-selected='true'] {
-		background: #f1f1ef;
-	}
-	.icon {
-		width: 18px;
-		height: 18px;
-		background: currentColor;
-		mask-size: contain;
-	}
-</style>
-```
-
-In a `+` menu, the plugin wraps your `menu` in a focused element that holds the keyboard with `keys` too: typing and <kbd>Backspace</kbd> edit `controller.query` when your snippet has no field. `controller.commands` holds only the commands that can run in the block being added; `controller.dismiss()` closes the menu with the selection given back.
+In a `+` menu, `keys` goes on the element that holds the keyboard: your field, as above, or the menu element itself (give it `tabindex="-1"`): then typing and <kbd>Backspace</kbd> edit `controller.query`. `controller.commands` holds only the commands that can run in the block being added; `controller.dismiss()` closes the menu with the selection given back.
 
 ## Mention, page link and other trigger menus
 
-A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugins/mention), `[[` for [page links](/docs/plugins/page-link), or your plugin's own) takes `menu` (the whole menu, a `TriggerMenuController<T>`) and `item` (a row, a `TriggerItemPayload<T>`: the shared row shape, `pick` the same as `run`). The editor's root keeps the keyboard; `popup` names the list and its highlighted row from it.
+A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugins/mention), `[[` for [page links](/docs/plugins/page-link), or your plugin's own) takes `menu`, the whole menu: a `TriggerMenuController<T>` whose `items` are the rows (`labelOf(item)` their words, `pick(item)` picks one). The editor's root keeps the keyboard; `popup` names the list and its highlighted row from it.
 
 ```svelte title="MentionEditor.svelte" check
 <script lang="ts">
@@ -176,7 +151,7 @@ A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugin
 
 ## Block menu
 
-`menu` renders while `controller.isOpen`, beside the grip that opened it. Its field holds the keyboard: `keys` gives it the built-in keys (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>→</kbd> opens a row's flyout and <kbd>←</kbd> closes it, <kbd>Enter</kbd> runs the row, <kbd>Delete</kbd> removes the blocks while the query is empty, <kbd>Escape</kbd> closes the flyout, then the menu) and makes it name the menu, or the open flyout, and its highlighted row. `controller.rows` are the keyboard's rows (the actions, then the kinds and the colours a query names); `runSelected()` runs the highlighted one, `runFlyout()` the flyout's. See [Block menu](/docs/plugins/block-menu#custom-markup).
+`menu` renders while `controller.isOpen`, beside the grip that opened it. Its field holds the keyboard: `keys` gives it the menu's keys (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>→</kbd> opens a row's flyout and <kbd>←</kbd> closes it, <kbd>Enter</kbd> runs the row, <kbd>Delete</kbd> removes the blocks while the query is empty, <kbd>Escape</kbd> closes the flyout, then the menu) and makes it name the menu, or the open flyout, and its highlighted row. `controller.rows` are the keyboard's rows (the actions, then the kinds and the colours a query names); `runSelected()` runs the highlighted one, `runFlyout()` the flyout's. See [Block menu](/docs/plugins/block-menu#markup).
 
 ```svelte title="BlockMenuEditor.svelte" check
 <script lang="ts">
@@ -231,7 +206,7 @@ A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugin
 
 ## Toolbar and link card
 
-`toolbar` renders while `controller.isVisible`, above the selection. On the bar, `popup` publishes it to the root (with <kbd>Alt</kbd>+<kbd>F10</kbd> as its shortcut) and marks it for the placement; `keys` makes it one tab stop: <kbd>Alt</kbd>+<kbd>F10</kbd> focuses it, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd> and <kbd>End</kbd> walk its buttons, <kbd>Escape</kbd> gives the focus back to the editor over the same selection. `linkField` is the link panel's field. `card` replaces the card shown under a hovered link (`linkCard: false` shows none). See [Toolbar](/docs/plugins/toolbar#custom-markup).
+`toolbar` renders while `controller.isVisible`, above the selection. On the bar, `popup` publishes it to the root (with <kbd>Alt</kbd>+<kbd>F10</kbd> as its shortcut) and marks it for the placement; `keys` makes it one tab stop: <kbd>Alt</kbd>+<kbd>F10</kbd> focuses it, <kbd>←</kbd>/<kbd>→</kbd>, <kbd>Home</kbd> and <kbd>End</kbd> walk its buttons, <kbd>Escape</kbd> gives the focus back to the editor over the same selection. `linkField` is the link panel's field. `card` draws the card shown under a hovered link (without it, no card). See [Toolbar](/docs/plugins/toolbar#markup).
 
 ```svelte title="ToolbarEditor.svelte" check
 <script lang="ts">
@@ -279,7 +254,7 @@ No press on the toolbar or the card takes the editor's focus (their hosts cancel
 
 ## URL paste menu
 
-With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plugin, a bare URL pasted on an empty line becomes a link and opens a menu: Link, Embed, Bookmark. `menu` replaces it (the view's one menu takes the first `menu` its embed and bookmark plugins pass). It renders while `controller.open`, under the line; the editor keeps the keyboard (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> picks, <kbd>Escape</kbd> keeps the link).
+With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plugin, a bare URL pasted on an empty line becomes a link and opens a menu: Link, Embed, Bookmark. `menu` draws it (the view's one menu takes the first `menu` its embed and bookmark plugins pass; without one, the link stays and nothing shows). It renders while `controller.open`, under the line; the editor keeps the keyboard (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> picks, <kbd>Escape</kbd> keeps the link).
 
 ```svelte title="PasteMenuEditor.svelte" check
 <script lang="ts">
@@ -307,7 +282,7 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 
 ## Image toolbar
 
-`toolbar` replaces the alignment buttons and the alt text field over the hovered (or selected) image; it renders at the image's top right while the chrome shows and no resize handle drags. The resize handles stay the plugin's. `bar` marks it so a press on it keeps the alt field open (its Alt button toggles it); `altField` focuses the field when it opens, closes it on <kbd>Enter</kbd> or <kbd>Escape</kbd> (the editor takes its keys back) and when the focus leaves it. See [Image](/docs/plugins/image).
+`toolbar` draws the alignment buttons and the alt text field over the hovered (or selected) image; it renders at the image's top right while the chrome shows and no resize handle drags. The resize handles are the plugin's. `bar` marks it so a press on it keeps the alt field open (its Alt button toggles it); `altField` focuses the field when it opens, closes it on <kbd>Enter</kbd> or <kbd>Escape</kbd> (the editor takes its keys back) and when the focus leaves it. See [Image](/docs/plugins/image).
 
 ```svelte title="ImageEditor.svelte" check
 <script lang="ts">
@@ -342,7 +317,7 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 
 ## Empty image and media blocks
 
-`empty` replaces an empty block's markup: the image's "Add an image" and its link panel, and the same for the [embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video) and [audio](/docs/plugins/audio) blocks, a readonly view's placeholder included. It receives one controller per empty block: `open`, `draft` (bind your field to it), `failed` (why the last link or upload was not embedded), `embed(value?)`, `upload(file)` (with the plugin's `upload`, `canUpload`), and `readonly` (no control may write: show a placeholder). A media block's controller adds `kind`, `kindLabels`, `label`, `icon`, `accept`, and `pending`, the upload of a pasted or dropped file (`status`, `progress`).
+`empty` draws an empty block: the image's "Add an image" and its link panel, and the same for the [embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video) and [audio](/docs/plugins/audio) blocks, a readonly view's placeholder included. It receives one controller per empty block: `open`, `draft` (bind your field to it), `failed` (why the last link or upload was not embedded), `embed(value?)`, `upload(file)` (with the plugin's `upload`, `canUpload`), and `readonly` (no control may write: show a placeholder). A media block's controller adds `kind`, `kindLabels`, `label`, `icon`, `accept`, and `pending`, the upload of a pasted or dropped file (`status`, `progress`).
 
 ```svelte title="EmptyBlocks.svelte" check
 <script lang="ts">
@@ -403,11 +378,11 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 
 ## Table grips, menu and `+`
 
-The [table](/docs/plugins/table) plugin's chrome shows over the hovered table. `grip` replaces the grip of the hovered row (left of the table) and of the hovered column (above it): the plugin renders it centered where the grip stands, and `{@attach payload.grip}` gives it the drag, the click that opens its menu and the keys (<kbd>↓</kbd> opens the menu, <kbd>Escape</kbd> gives the keys back to the editor). A press on a grip is never prevented: that would stop the native drag.
+The [table](/docs/plugins/table) plugin's chrome shows over the hovered table (its column resize bands are the plugin's). `grip` draws the grip of the hovered row (left of the table) and of the hovered column (above it): the plugin renders it centered where the grip stands, and `{@attach payload.grip}` gives it the drag, the click that opens its menu and the keys (<kbd>↓</kbd> opens the menu, <kbd>Escape</kbd> gives the keys back to the editor). A press on a grip is never prevented: that would stop the native drag.
 
-`menu` replaces the grip's menu, under the grip while `chrome.menu` is set: `popup` and `keys` on its element make it a `menu` that takes the focus, its <kbd>↓</kbd>/<kbd>↑</kbd> walk the rows that can run, <kbd>Home</kbd>/<kbd>End</kbd> reach the ends, <kbd>Enter</kbd> runs the row, <kbd>Escape</kbd> closes it. `chrome.items` are the rows (Insert above, Insert below, Move up, Move down, Delete row, or the column's), each a `MenuItemPayload` with `disabled` (Move up on the first row, `aria-disabled`), `danger` and `icon`.
+`menu` draws the grip's menu, under the grip while `chrome.menu` is set: `popup` and `keys` on its element make it a `menu` that takes the focus, its <kbd>↓</kbd>/<kbd>↑</kbd> walk the rows that can run, <kbd>Home</kbd>/<kbd>End</kbd> reach the ends, <kbd>Enter</kbd> runs the row, <kbd>Escape</kbd> closes it. `chrome.items` are the rows (Insert above, Insert below, Move up, Move down, Delete row, or the column's), each a `MenuItemPayload` with `disabled` (Move up on the first row, `aria-disabled`) and `danger`; `item.item.id` names the row (`insert-above`, `move-down`, `delete-column`, …) for your icons.
 
-`add` replaces the `+` under the table (a row at its end) and beside it (a column): the plugin lays it along that edge, as wide (tall) as the table shows, and keeps the editor's selection on a press.
+`add` draws the `+` under the table (a row at its end) and beside it (a column): the plugin lays it along that edge, as wide (tall) as the table shows, and keeps the editor's selection on a press.
 
 ```svelte title="TableChrome.svelte" check
 <script lang="ts">
@@ -468,9 +443,9 @@ The [table](/docs/plugins/table) plugin's chrome shows over the hovered table. `
 
 ## Code header and language list
 
-The [code](/docs/plugins/code) plugin's `header` replaces the header above each code block (the language's button and Copy), inside the block's non-editable part. It receives the block's `CodeHeader`: `language` (its id) and `label`, the plugin's `languages`, `editable` (false in a readonly view and a suggestion's preview: show the label only), `expanded`, `setLanguage(id)`, `toggle()`, `copy()` and `copied` (true for a moment after a copy), and `labels`. `{@attach header.button}` makes your button open the view's language list under it, with the built-in keys and ARIA.
+The [code](/docs/plugins/code) plugin's `header` draws the header above each code block (the language's button and Copy), inside the block's non-editable part (the plugin places it at the block's top). It receives the block's `CodeHeader`: `language` (its id) and `label`, the plugin's `languages`, `editable` (false in a readonly view and a suggestion's preview: show the label only), `expanded`, `setLanguage(id)`, `toggle()`, `copy()` and `copied` (true for a moment after a copy), and `labels`. `{@attach header.button}` makes your button open the view's language list under it, with the keys and the ARIA.
 
-`menu` replaces that list (the first code plugin listed in a view owns it). It renders under the button while `menu.open` is set; `keys` on its search field makes it the `combobox` that holds the keys (<kbd>↓</kbd>/<kbd>↑</kbd> move the highlighted row, <kbd>Enter</kbd> picks it, <kbd>Escape</kbd> closes: the keys go back to the button when they opened the list, else to the editor), `popup` on the list makes it the `listbox` the root names, and each row of `menu.items` spreads its `option` (`current` marks the block's language).
+`menu` draws that list (the first code plugin listed in a view owns it). It renders under the button while `menu.open` is set; `keys` on its search field makes it the `combobox` that holds the keys (<kbd>↓</kbd>/<kbd>↑</kbd> move the highlighted row, <kbd>Enter</kbd> picks it, <kbd>Escape</kbd> closes: the keys go back to the button when they opened the list, else to the editor), `popup` on the list makes it the `listbox` the root names, and each row of `menu.items` spreads its `option` (`current` marks the block's language).
 
 ```svelte title="CodeChrome.svelte" check
 <script lang="ts">
@@ -512,9 +487,41 @@ The [code](/docs/plugins/code) plugin's `header` replaces the header above each 
 <Edytor {plugins} />
 ```
 
+## Callout icon picker
+
+A callout's icon opens the view's icon picker (the first rich text plugin listed owns it); `createRichTextPlugin({ callout: { picker } })` draws it, under the icon while `picker.isOpen`. `keys` and `popup` on its element make it the `menu` that takes the focus and the keys (the arrows walk a grid of `picker.columns` icons per row, <kbd>Enter</kbd> picks, <kbd>Escape</kbd> closes); each row spreads `picker.option(index)`, `index` in `picker.icons` and `picker.icons.length` for Remove icon.
+
+```svelte title="CalloutPicker.svelte" check
+<script lang="ts">
+	import { Edytor, createRichTextPlugin, type CalloutIconPicker } from 'edytor';
+
+	const plugins = [createRichTextPlugin({ callout: { picker } })];
+</script>
+
+{#snippet picker(icons: CalloutIconPicker)}
+	<div class="picker" {@attach icons.keys} {@attach icons.popup}>
+		<div class="grid" role="none" style:--columns={icons.columns}>
+			{#each icons.icons as icon, index (index)}
+				<button type="button" tabindex="-1" {...icons.option(index)}>{icon}</button>
+			{/each}
+		</div>
+		<button type="button" tabindex="-1" {...icons.option(icons.icons.length)}>{icons.labels.remove}</button>
+	</div>
+{/snippet}
+
+<Edytor {plugins} />
+
+<style>
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(var(--columns), 32px);
+	}
+</style>
+```
+
 ## Equation editor
 
-The [equation](/docs/plugins/equation) plugin's `panel` replaces the editor that opens under an equation (its TeX source, KaTeX's error, Done). It renders while `editor.target` is set, under the equation (centered under a block one). It receives the view's `EquationEditor`: `expression` and `set(value)` (each keystroke one write, the typing one undo step), `display` (a block equation), `error`, `close()` and `labels`. `{@attach editor.field}` on the source's field gives it the focus when the editor opens and its keys: <kbd>Enter</kbd> and <kbd>Escape</kbd> close the editor (<kbd>Shift</kbd>+<kbd>Enter</kbd> is a newline in a block equation), as does the focus leaving the panel.
+The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that opens under an equation (its TeX source, KaTeX's error, Done). It renders while `editor.target` is set, under the equation (centered under a block one). It receives the view's `EquationEditor`: `expression` and `set(value)` (each keystroke one write, the typing one undo step), `display` (a block equation), `error`, `close()` and `labels`. `{@attach editor.field}` on the source's field gives it the focus when the editor opens and its keys: <kbd>Enter</kbd> and <kbd>Escape</kbd> close the editor (<kbd>Shift</kbd>+<kbd>Enter</kbd> is a newline in a block equation), as does the focus leaving the panel.
 
 ```svelte title="EquationPanel.svelte" check
 <script lang="ts">
@@ -545,7 +552,7 @@ The [equation](/docs/plugins/equation) plugin's `panel` replaces the editor that
 
 ## Comment cards
 
-`card` replaces a thread card's markup; the sidebar still places it beside its text. It receives a `CommentCardPayload`: the `thread` (its `comments`, `quote`, `resolved`), the view's `comments` controller (`reply`, `resolve`, `reopen`, `remove`, `mayDelete`, `userOf`, `labels`) and whether the thread is the `active` one. See [Comments](/docs/plugins/comments).
+`card` draws a card of the comments sidebar; the plugin places each card beside its text (under it, on a narrow screen). It receives a `CommentCardPayload`: the `thread` (its `comments`, `quote`, `resolved`), or `null` for the comment being written (its text `comments.draft.quote`: post it with `comments.submit(body)`, give it up with `comments.cancel()`), the view's `comments` controller (`reply`, `resolve`, `reopen`, `remove`, `mayDelete`, `userOf`, `labels`) and whether the thread is the `active` one. `header` draws the top of the margin (Notion's "Resolved (2)" toggle: `comments.resolved`, `comments.showResolved`); the cards stack under it. Without `card`, no sidebar shows: the threads are still highlighted and kept. See [Comments](/docs/plugins/comments).
 
 ```svelte title="CommentsEditor.svelte" check
 <script lang="ts">
@@ -562,17 +569,31 @@ The [equation](/docs/plugins/equation) plugin's `panel` replaces the editor that
 </script>
 
 {#snippet card({ thread, comments, active }: CommentCardPayload)}
-	<article class:active>
-		<blockquote>{thread.quote}</blockquote>
-		{#each thread.comments as comment (comment.id)}
-			<p><strong>{comments.userOf(comment.author).name ?? comment.author}</strong> {comment.body}</p>
-		{/each}
-		{#if thread.resolved}
-			<button onclick={() => void comments.reopen(thread.id)}>{comments.labels.reopen}</button>
-		{:else}
-			<button onclick={() => void comments.resolve(thread.id)}>{comments.labels.resolve}</button>
-		{/if}
-	</article>
+	{#if thread}
+		<article class:active>
+			<blockquote>{thread.quote}</blockquote>
+			{#each thread.comments as comment (comment.id)}
+				<p><strong>{comments.userOf(comment.author).name ?? comment.author}</strong> {comment.body}</p>
+			{/each}
+			{#if thread.resolved}
+				<button onclick={() => void comments.reopen(thread.id)}>{comments.labels.reopen}</button>
+			{:else}
+				<button onclick={() => void comments.resolve(thread.id)}>{comments.labels.resolve}</button>
+			{/if}
+		</article>
+	{:else}
+		<form
+			onsubmit={(event) => {
+				event.preventDefault();
+				const field = new FormData(event.currentTarget).get('body');
+				void comments.submit(String(field ?? ''));
+			}}
+		>
+			<textarea name="body" aria-label={comments.labels.placeholder}></textarea>
+			<button type="button" onclick={() => comments.cancel()}>{comments.labels.cancel}</button>
+			<button>{comments.labels.post}</button>
+		</form>
+	{/if}
 {/snippet}
 
 <Edytor {plugins} />
@@ -580,7 +601,7 @@ The [equation](/docs/plugins/equation) plugin's `panel` replaces the editor that
 
 ## Suggestion bar
 
-`bar` replaces the bar under each block [suggestion](/docs/editor/suggestions); the plugin keeps its placement and keys (<kbd>Mod</kbd>+<kbd>Enter</kbd> accepts, <kbd>Escape</kbd> discards). It receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (when the app passed `onRetry`), `readonly` and the plugin's `labels`.
+`bar` draws the bar under each block [suggestion](/docs/editor/suggestions); the plugin keeps its placement and keys (<kbd>Mod</kbd>+<kbd>Enter</kbd> accepts, <kbd>Escape</kbd> discards; without a `bar`, the keys still do). It receives a `SuggestionBarPayload`: the `suggestion`, `accept`, `discard`, `retry` (when the app passed `onRetry`), `readonly`, `mac` (Mod is ⌘) and the plugin's `labels`.
 
 ```svelte title="SuggestionsEditor.svelte" check
 <script lang="ts">
@@ -601,37 +622,52 @@ The [equation](/docs/plugins/equation) plugin's `panel` replaces the editor that
 <Edytor {plugins} />
 ```
 
-## Version history rows
+## Version history
 
-The [history panel](/docs/server/history-panel)'s `item` replaces a version's row in the list. It receives a `HistoryVersionItem`: the shared row shape (`item` and `version` are the version, `label` its date and slot, `run` and `select` preview it) and `option`, which makes your row an `option` of the panel's listbox, the list's one tab stop when it is selected: the list's <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd> and <kbd>End</kbd> walk it. `version` (`Snippet<[HistoryVersion, { selected }]>`) still replaces only a row's content.
+The [version history](/docs/server/history-panel) is a controller you make in your component: `new VersionHistory({ client, document })` lists the room's versions (`versions`, newest first), previews one (`select(key)`, `selected`, `preview`, `previewPlugins`, `diff` against the live `document`), restores it (`restore()`, `undo()`, `busy`, `undoable`, `status`, `failed`) and writes their words in its `labels` (`titleOf(version)`, `editorsOf`, `timeOf`). Each row spreads `option(index)`: an `option` of your listbox, its one tab stop when selected; the list's `onkeydown={history.keys}` walks them (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd>, <kbd>End</kbd>). Make it in the component's script: its effects list the versions and follow the document.
 
 ```svelte title="Versions.svelte" check
 <script lang="ts">
-	import { HistoryPanel, createHistoryClient, type HistoryVersionItem } from 'edytor';
+	import { untrack } from 'svelte';
+	import { Edytor, VersionHistory, createHistoryClient, type EdytorDocument } from 'edytor';
 
-	let { room }: { room: string } = $props();
+	let { room, document }: { room: string; document: EdytorDocument } = $props();
 	const client = createHistoryClient({ server: 'https://example.com/history', room });
+	const history = untrack(() => new VersionHistory({ client, document }));
 </script>
 
-{#snippet item({ version, label, selected, option, run }: HistoryVersionItem)}
-	<button type="button" {...option} class:selected onclick={run}>
-		{label}
-		<small>{version.editors.join(', ')}</small>
-	</button>
-{/snippet}
-
-<HistoryPanel {client} {item} />
+<ul role="listbox" aria-label={history.labels.versions} onkeydown={history.keys}>
+	{#each history.versions ?? [] as version, index (version.key)}
+		<li role="presentation">
+			<button type="button" {...history.option(index)} onclick={() => void history.select(version.key)}>
+				{history.titleOf(version)} <small>{history.editorsOf(version)}</small>
+			</button>
+		</li>
+	{/each}
+</ul>
+{#if history.preview}
+	{#key history.previewKey}
+		<Edytor readonly value={history.preview} plugins={history.previewPlugins} />
+	{/key}
+{/if}
+<button disabled={history.busy || !history.shown} onclick={() => void history.restore()}>
+	{history.labels.restore}
+</button>
+<p role="status">{history.status}</p>
 ```
 
 ## Block handle
 
-`handle` replaces the `+` and the grip. `use:grip` gives any element the grip's behavior: dragging (every block the selection covers when it covers this one, with the count preview), a click that selects the block and opens the block menu (or calls `onActivate`), and the <kbd>Alt</kbd>+arrow moves. `add(alt?, anchor?)` is what the `+` does: it opens the slash menu under `anchor` (pass your button, `event.currentTarget`; else under the block), and adds nothing until a row is picked. `expanded` and `controls` say which menu the `+` or the grip opened while it is open (their `aria-expanded` and `aria-controls`), and `labels` are the handles' words (`labels.add(label)`, `labels.grip(label)`). Placement beside the block's first line and the hover fade stay the plugin's. Pass it with `blockHandles={{ handle }}`, alongside `draggable` and `onActivate`, or with `createBlockHandlesPlugin({ handle })`. See [Block handles](/docs/plugins/block-handles#custom-handle).
+`handle` draws the `+` and the grip beside each block: list `createBlockHandlesPlugin({ handle })` (without a `handle`, no handle shows). `use:grip` gives any element the grip's behavior: dragging (every block the selection covers when it covers this one, with the count preview), a click that selects the block and opens the block menu (or calls `onActivate`), and the <kbd>Alt</kbd>+arrow moves. `add(alt?, anchor?)` is what the `+` does: it opens the slash menu under `anchor` (pass your button, `event.currentTarget`; else under the block), and adds nothing until a row is picked. `expanded`, `controls` and `haspopup` say which menu the `+` or the grip opened while it is open (their `aria-expanded`, `aria-controls` and `aria-haspopup`), `beside` that Alt+click adds a column (a block in a column), and `labels` are the handles' words (`labels.add(label)`, `labels.addBeside(label)`, `labels.grip(label)`). Placement beside the block's first line and the hover fade are the plugin's.
+
+A drag's drop indicator is placed by the plugin too: style `[data-edytor-drop-indicator]` (the 4px bar where the blocks land) and `[data-edytor-drop-backdrop]` (the future parent's row; `data-shown` while the drop nests). See [Block handles](/docs/plugins/block-handles#the-handle).
 
 ```svelte title="Handles.svelte" check
 <script lang="ts">
-	import { Edytor, type BlockHandleSnippetPayload } from 'edytor';
+	import { Edytor, createBlockHandlesPlugin, type BlockHandleSnippetPayload } from 'edytor';
 
 	const keep = (event: MouseEvent) => event.preventDefault();
+	const plugins = [createBlockHandlesPlugin({ handle })];
 </script>
 
 {#snippet handle({
@@ -662,12 +698,18 @@ The [history panel](/docs/server/history-panel)'s `item` replaces a version's ro
 	{/if}
 {/snippet}
 
-<Edytor blockHandles={{ handle }} />
+<Edytor {plugins} />
+
+<style>
+	:global([data-edytor-drop-indicator]) {
+		background: rgba(35, 131, 226, 0.43);
+	}
+</style>
 ```
 
 ## Marquee rectangle
 
-`box` replaces the rectangle the [marquee](/docs/plugins/marquee) draws while it selects blocks. It renders in the plugin's host, which the plugin places and sizes to the rectangle (it takes no pointer), so fill it. It receives a `MarqueeBoxPayload`: `rect` (the rectangle in viewport coordinates, a `DOMRectReadOnly`), `count` (the blocks selected, the ones <kbd>Shift</kbd> or <kbd>Mod</kbd> kept included), `ids` (theirs) and `adding` (<kbd>Shift</kbd> or <kbd>Mod</kbd> was held at the press). The gesture, the selection, the keys and the auto-scroll stay the plugin's; the rectangle has no keyboard or ARIA of its own (the selected blocks are the editor's selection).
+`box` draws the rectangle of the [marquee](/docs/plugins/marquee) while it selects blocks (without it, the blocks are selected and no rectangle shows). It renders in the plugin's host, which the plugin places and sizes to the rectangle (it takes no pointer), so fill it. It receives a `MarqueeBoxPayload`: `rect` (the rectangle in viewport coordinates, a `DOMRectReadOnly`), `count` (the blocks selected, the ones <kbd>Shift</kbd> or <kbd>Mod</kbd> kept included), `ids` (theirs) and `adding` (<kbd>Shift</kbd> or <kbd>Mod</kbd> was held at the press). The gesture, the selection, the keys and the auto-scroll stay the plugin's; the rectangle has no keyboard or ARIA of its own (the selected blocks are the editor's selection).
 
 ```svelte title="Marquee.svelte" check
 <script lang="ts">

@@ -14,13 +14,10 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import {
 	createRichTextPlaceholder,
-	createRichTextPlugin,
-	richTextPlaceholder,
-	richTextPlugin
+	richTextPlaceholder
 } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	dispatchClipboardPaste,
@@ -32,6 +29,11 @@ import {
 } from '../../dom/test.utils.js';
 import { customPicker } from '../../dom/CustomCalloutPicker.svelte';
 import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	blockMenuPlugin,
+	richText as createRichTextPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

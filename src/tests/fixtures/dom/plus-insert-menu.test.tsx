@@ -8,18 +8,20 @@
  * converts in place. Escape, a press outside, a blur or readonly insert
  * nothing. Expected states are hand-authored from Notion.
  */
+import { keyedMenu, seen } from '../../dom/KeyedMenu.svelte';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createRawSnippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { createSlashMenuPlugin, slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-import type { SlashMenuController } from '$lib/plugins/slashMenu/SlashMenuController.svelte.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import {
+	codePlugin,
+	richTextPlugin,
+	slashMenu as createSlashMenuPlugin,
+	slashMenuPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -321,17 +323,10 @@ describe('without the slash menu, or with a custom menu', () => {
 		expect(caret(edytor)).toBe('paragraph@0');
 	});
 
-	it('a custom `menu` snippet: typing goes to the menu query, never the document', async () => {
-		let controller: SlashMenuController | undefined;
-		const custom = createRawSnippet((get: () => SlashMenuController) => ({
-			render: () => '<div data-testid="custom-menu"></div>',
-			setup: () => {
-				controller = get();
-			}
-		}));
+	it('a custom `menu` snippet holding the keys (`keys` on itself): typing goes to the menu query, never the document', async () => {
 		const { edytor, editor } = await render(
 			[p('a'), p('b')],
-			[createSlashMenuPlugin({ menu: custom })]
+			[createSlashMenuPlugin({ menu: keyedMenu })]
 		);
 		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 1);
 		await flushDomUpdates();
@@ -341,9 +336,9 @@ describe('without the slash menu, or with a custom menu', () => {
 		expect(editor.contains(document.activeElement)).toBe(false);
 		const typing = document.activeElement!;
 		for (const letter of 'head') await key(letter, typing);
-		expect(controller!.query).toBe('head');
+		expect(seen.controller!.query).toBe('head');
 		await key('Backspace', typing);
-		expect(controller!.query).toBe('hea');
+		expect(seen.controller!.query).toBe('hea');
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'paragraph "b"']);
 		await key('Enter', typing);
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'heading', 'paragraph "b"']);

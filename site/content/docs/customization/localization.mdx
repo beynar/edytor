@@ -4,7 +4,7 @@ description: Translate every word the editor's chrome shows or says, from the me
 icon: languages
 ---
 
-Every word the editor shows or says comes from a dictionary of labels: the menus, the toolbar, the handles' names, the empty image and media panels, the code header, the find bar, the suggestion bar, the comments sidebar, the page, table of contents and page link blocks, the mention and page link menus, the equations, the version history panel, the placeholders and what screen readers hear. English is the default. To show another language, pass each plugin its `labels`, and the view its own:
+Every word the editor shows or says comes from a dictionary of labels: the kinds and their placeholders, the page, table of contents and page link blocks, the equations, what screen readers hear, the names the controllers give your chrome (a list's accessible name), and the words they carry for your chrome's markup (`controller.labels`: the menus, the toolbar, the handles' names, the empty image and media panels, the code header, the find bar, the suggestion bar, the comment cards, the version history). The chrome's markup is yours ([Menus and handles](/docs/customization/menus)); its controllers hand it these words so it speaks the view's language. English is the default. To show another language, pass each plugin its `labels`, and the view its own:
 
 | Words | Where to pass them | Section of `Labels` |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ Every word the editor shows or says comes from a dictionary of labels: the menus
 | The selection toolbar and the link card | `createToolbarPlugin({ labels })` | `toolbar` |
 | The slash and `+` menus, their section headings | `createSlashMenuPlugin({ labels })` | `slashMenu` |
 | The block menu, its Turn into and Color flyouts | `createBlockMenuPlugin({ labels })` | `blockMenu` |
-| The `+` and grip of each block | `blockHandles={{ labels }}` or `createBlockHandlesPlugin({ labels })` | `blockHandles` |
+| The `+` and grip of each block | `createBlockHandlesPlugin({ labels })` | `blockHandles` |
 | The image block and its chrome | `createImagePlugin({ labels })` | `image` |
 | The embed, bookmark, file, video and audio blocks, the pasted-link menu | `createEmbedPlugin`, `createBookmarkPlugin`, `createFilePlugin`, `createVideoPlugin`, `createAudioPlugin` (`{ labels }`) | `media` |
 | The code block's header and its languages | `createCodePlugin({ labels })` | `code` |
@@ -23,11 +23,11 @@ Every word the editor shows or says comes from a dictionary of labels: the menus
 | The page block and its "Page" command | `createPagePlugin({ labels, keywords })` | `page` |
 | The table of contents block and its preset | `createTocPlugin({ labels, keywords })` | `toc` |
 | The `[[` page link menu and atom | `createPageLinkPlugin({ labels })` | `pageLink` |
-| The comments sidebar, its fields and the toolbar's Comment button | `createCommentsPlugin({ labels })` | `comments` |
+| The comment cards, the sidebar's name and the toolbar's Comment button | `createCommentsPlugin({ labels })` | `comments` |
 | The table command, its block menu switches, row and column menus | `createTablePlugin({ labels })` | `table` |
 | Block move and delete announcements, a suggestion's default name | `<Edytor labels>` | `editor` |
 | The `@` mention menu | `createMentionPlugin({ labels })` | `mention` |
-| The version history panel | `<HistoryPanel labels>` | `history` |
+| The version history | `new VersionHistory({ labels })` | `history` |
 | Block move and delete announcements, a suggestion's default name, a trigger menu that names none | `<Edytor labels>` | `editor` |
 
 `labels` takes any entries of its section: the ones you leave out stay English, and so does an entry of a nested group (`kinds`, `placeholders`, `groups`, `colors`, a media kind) you leave out. A label that says something about a value is a function of it, so each language orders and inflects its own words: `movedUp: (what) => ...`, `columns: (count) => ...`, `fileSize: (bytes) => ...`, the history panel's `added: (count) => ...`.
@@ -454,6 +454,7 @@ Then give each plugin its section. Listing `createRichTextPlugin` and `createIma
 <script lang="ts">
 	import {
 		Edytor,
+		createBlockHandlesPlugin,
 		createBlockMenuPlugin,
 		createCodePlugin,
 		createColumnsPlugin,
@@ -470,7 +471,9 @@ Then give each plugin its section. Listing `createRichTextPlugin` and `createIma
 	} from 'edytor';
 	import { fr, frKeywords } from '$lib/fr';
 
+	// Each chrome plugin's snippets are yours: they read these words through their controllers.
 	const plugins = [
+		createBlockHandlesPlugin({ labels: fr.blockHandles }),
 		createRichTextPlugin({ labels: fr.richText, keywords: frKeywords }),
 		createSlashMenuPlugin({ labels: fr.slashMenu }),
 		createToolbarPlugin({ labels: fr.toolbar }),
@@ -489,13 +492,12 @@ Then give each plugin its section. Listing `createRichTextPlugin` and `createIma
 <Edytor
 	{plugins}
 	labels={fr.editor}
-	blockHandles={{ labels: fr.blockHandles }}
 	placeholder={createRichTextPlaceholder(fr.richText)}
 	aria-label="Corps de la page"
 />
 ```
 
-The version history panel takes its section the same way, with the locale its dates are written in: `<HistoryPanel {client} labels={fr.history} locale="fr" />`.
+The version history takes its section the same way, with the locale its dates are written in: `new VersionHistory({ client, labels: fr.history, locale: 'fr' })`.
 
 The view's own accessible name is yours to give (`aria-label`, `aria-labelledby`): the editor has none of its own.
 
@@ -509,9 +511,9 @@ A preset's `group` (`Basic blocks`, `Advanced blocks`, `Media`, `Layout`, `Color
 
 Code languages are named by the language list (`CODE_LANGUAGES`, or your `languages`); the code labels' `languages` replaces a label by language id (`{ plaintext: 'Texte brut' }`).
 
-## Custom markup
+## Your markup
 
-A custom `menu`, `item`, `toolbar` or `bar` snippet renders your words, but its controller carries the plugin's labels (`controller.labels`, `find.labels`), so your markup can reuse them. A custom block handle receives the block's kind as `label`, read from the kind's translated preset.
+Your `menu`, `toolbar`, `card` or `bar` snippet renders your words; its controller carries the plugin's labels (`controller.labels`, `find.labels`), so your markup can speak the view's language with them. A block handle receives the block's kind as `label`, read from the kind's translated preset.
 
 ## What is not localized
 

@@ -21,10 +21,10 @@ import SiblingEdytors from '../../../dom/SiblingEdytors.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../../dom/test.utils.js';
 import { createDocument } from '$lib/crdt/index.js';
 import { Y } from '$lib/crdt/engine.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { createIndexeddbSync, type EdytorSync } from '$lib/collaboration/index.js';
 import type { JSONDoc } from '$lib/utils/json.js';
+import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 const input = (
 	<root>

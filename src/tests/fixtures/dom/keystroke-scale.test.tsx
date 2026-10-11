@@ -20,7 +20,6 @@ import { describe, expect, it } from 'vitest';
 import { SvelteSet } from 'svelte/reactivity';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import type { JSONDoc } from '$lib/utils/json.js';
 import {
@@ -29,6 +28,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const SMALL = 1_000;
 const LARGE = 5_000;

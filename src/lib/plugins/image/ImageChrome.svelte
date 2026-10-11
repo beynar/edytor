@@ -1,17 +1,13 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { alignIcons, altIcon } from '../icons.js';
-	import type { ImageAlign } from './image.js';
 	import type { ImageControls } from './controls.svelte.js';
 
 	/**
 	 * The image chrome (`ImageControls`), in the overlay: a resize handle on
-	 * each side of the hovered image (Notion's pill, at mid-height), and a
-	 * toolbar at its top right: the three alignments and the alt text field
-	 * (a `toolbar` snippet replaces both, placed there). A press on the
-	 * toolbar keeps the editor's focus; the alt field takes it. The toolbar's
-	 * role and marks (`bar`) and the alt field's keys and focus (`altField`)
-	 * are the controller's attachments, a custom `toolbar`'s too.
+	 * each side of the hovered image (Notion's pill, at mid-height), and the
+	 * plugin's `toolbar` snippet at its top right (the alignments, the alt
+	 * text field). The toolbar's role and marks (`bar`) and the alt field's
+	 * keys and focus (`altField`) are the controller's attachments.
 	 */
 	let { controls, toolbar }: { controls: ImageControls; toolbar?: Snippet<[ImageControls]> } =
 		$props();
@@ -26,15 +22,6 @@
 		controls.invalidate();
 	});
 
-	const labels = $derived(controls.labels);
-	/** The toolbar's buttons: the three alignments, then the alt text's (no `align`). */
-	const buttons: { align?: ImageAlign; label: string; icon: string }[] = $derived([
-		{ align: 'left', label: labels.alignLeft, icon: alignIcons.left },
-		{ align: 'center', label: labels.alignCenter, icon: alignIcons.center },
-		{ align: 'right', label: labels.alignRight, icon: alignIcons.right },
-		{ label: labels.alt, icon: altIcon }
-	]);
-	const keep = (event: MouseEvent) => event.preventDefault();
 	/** The handle's hit box: 16px wide, inside the image's edge. */
 	const HANDLE = 16;
 </script>
@@ -67,42 +54,6 @@
 			>
 				{@render toolbar(controls)}
 			</div>
-		{:else if !controls.drag}
-			<!-- Its role and name are the controller's `bar`. -->
-			<div
-				data-edytor-image-toolbar
-				style:left={right}
-				style:top="{box.y + 6}px"
-				data-selecting={controls.selecting ? 'true' : undefined}
-				{@attach controls.bar}
-			>
-				{#each buttons as { align, label, icon } (icon)}
-					<button
-						type="button"
-						data-edytor-image-align={align}
-						data-edytor-image-alt-toggle={align ? undefined : ''}
-						aria-label={label}
-						title={label}
-						aria-pressed={align ? box.align === align : undefined}
-						aria-expanded={align ? undefined : controls.editing === box.id}
-						onmousedown={keep}
-						onclick={() => (align ? controls.align(align) : controls.toggleAlt())}
-						><span aria-hidden="true" style:mask-image={icon}></span></button
-					>
-				{/each}
-			</div>
-			{#if controls.editing === box.id}
-				<div data-edytor-image-alt-panel style:left={right} style:top="{box.y + 40}px">
-					<input
-						data-edytor-image-alt
-						aria-label={labels.alt}
-						placeholder={labels.altPlaceholder}
-						value={controls.alt}
-						oninput={(event) => controls.setAlt(event.currentTarget.value)}
-						{@attach controls.altField}
-					/>
-				</div>
-			{/if}
 		{/if}
 	{/if}
 </div>
@@ -139,80 +90,10 @@
 		opacity: 1;
 	}
 
-	/* A custom toolbar's place: the image's top right, sized to its markup. */
+	/* The toolbar's place: the image's top right, sized to its markup. */
 	[data-edytor-image-toolbar-slot] {
 		position: absolute;
 		width: max-content;
 		transform: translateX(-100%);
-	}
-
-	[data-edytor-image-toolbar] {
-		position: absolute;
-		display: flex;
-		gap: 2px;
-		/* The layer has no width: size to the buttons, not to it. */
-		width: max-content;
-		padding: 2px;
-		transform: translateX(-100%);
-		border-radius: 6px;
-		background: var(--edytor-image-toolbar-background, #fff);
-		box-shadow:
-			0 0 0 1px rgba(15, 15, 15, 0.05),
-			0 3px 6px rgba(15, 15, 15, 0.1);
-		font-size: 13px;
-	}
-
-	[data-edytor-image-toolbar] button {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		padding: 0;
-		border: 0;
-		border-radius: 4px;
-		background: transparent;
-		color: rgba(55, 53, 47, 0.65);
-		cursor: pointer;
-	}
-
-	[data-edytor-image-toolbar] button:hover,
-	[data-edytor-image-toolbar] button[aria-pressed='true'],
-	[data-edytor-image-toolbar] button[aria-expanded='true'] {
-		background: rgba(55, 53, 47, 0.08);
-		color: rgb(55, 53, 47);
-	}
-
-	[data-edytor-image-toolbar] button span {
-		width: 18px;
-		height: 18px;
-		background: currentColor;
-		mask-size: contain;
-		mask-repeat: no-repeat;
-	}
-
-	[data-edytor-image-alt-panel] {
-		position: absolute;
-		width: 240px;
-		padding: 4px;
-		transform: translateX(-100%);
-		border-radius: 6px;
-		background: var(--edytor-image-toolbar-background, #fff);
-		box-shadow:
-			0 0 0 1px rgba(15, 15, 15, 0.05),
-			0 3px 6px rgba(15, 15, 15, 0.1);
-	}
-
-	[data-edytor-image-alt] {
-		box-sizing: border-box;
-		width: 100%;
-		height: 28px;
-		padding: 0 8px;
-		border: 0;
-		border-radius: 4px;
-		background: rgba(242, 241, 238, 0.6);
-		box-shadow: inset 0 0 0 1px rgba(15, 15, 15, 0.1);
-		font: inherit;
-		outline: 0;
 	}
 </style>

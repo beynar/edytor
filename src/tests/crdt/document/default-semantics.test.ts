@@ -27,19 +27,21 @@ import {
 	type JSONDoc
 } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-import { embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
-import { bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
-import { filePlugin } from '$lib/plugins/media/FilePlugin.svelte';
-import { videoPlugin } from '$lib/plugins/media/VideoPlugin.svelte';
-import { audioPlugin } from '$lib/plugins/media/AudioPlugin.svelte';
 import { pagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
-import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
-import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
+import {
+	audioPlugin,
+	bookmarkPlugin,
+	codePlugin,
+	embedPlugin,
+	equation as createEquationPlugin,
+	filePlugin,
+	imagePlugin,
+	richTextPlugin,
+	tablePlugin,
+	videoPlugin
+} from '../../../routes/chrome/plugins.js';
 
 const value: JSONDoc = {
 	children: [

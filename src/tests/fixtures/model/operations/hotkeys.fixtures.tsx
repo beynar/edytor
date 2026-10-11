@@ -3,13 +3,12 @@ import { expect, vi } from 'vitest';
 
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../../atMention.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { runHotkey } from '../../../test.utils.js';
 import { selectionState, selectBlocks } from '../../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 const mockApplePlatform = (edytor: Edytor) => {
 	Object.defineProperty(edytor.keymap, 'isMac', {

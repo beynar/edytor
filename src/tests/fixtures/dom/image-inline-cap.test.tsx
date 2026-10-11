@@ -6,14 +6,10 @@
  * (`net.chunk.outbound` in `docs/editor-delete-contract.md`).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-	createImagePlugin,
-	MAX_INLINE_IMAGE_BYTES,
-	storableImageSrc
-} from '$lib/plugins/image/ImagePlugin.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { MAX_INLINE_IMAGE_BYTES, storableImageSrc } from '$lib/plugins/image/ImagePlugin.svelte';
 import type { BlockDefinition } from '$lib/plugins.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { image as createImagePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

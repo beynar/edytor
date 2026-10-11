@@ -20,8 +20,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
-import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { dispatchCopy, dispatchDomKeyDown, flushDomUpdates } from '../../dom/test.utils.js';
 import {
 	block,
@@ -36,6 +34,10 @@ import {
 	tree
 } from './columns.helpers.js';
 import { selectBlocks } from '../../selection.js';
+import {
+	blockHandlesPlugin,
+	blockMenu as createBlockMenuPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

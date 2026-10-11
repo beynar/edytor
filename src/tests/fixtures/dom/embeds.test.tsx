@@ -18,22 +18,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	EMBED_PROVIDERS,
 	EMBED_SANDBOX,
-	createEmbedPlugin,
-	embedPlugin,
 	embedSourceOf,
 	type EmbedProvider
 } from '$lib/plugins/media/EmbedPlugin.svelte';
-import { createBookmarkPlugin, bookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
-import { createFilePlugin } from '$lib/plugins/media/FilePlugin.svelte';
-import { videoPlugin, createVideoPlugin } from '$lib/plugins/media/VideoPlugin.svelte';
-import { audioPlugin } from '$lib/plugins/media/AudioPlugin.svelte';
 import { safeMediaSrc, safeWebUrl } from '$lib/plugins/media/media.js';
 import { defaultSemantics } from '$lib/crdt/semantics.js';
-import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 import {
 	canonicalTree,
 	dispatchClipboardPaste,
@@ -41,6 +33,18 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import {
+	audioPlugin,
+	bookmark as createBookmarkPlugin,
+	bookmarkPlugin,
+	embed as createEmbedPlugin,
+	embedPlugin,
+	file as createFilePlugin,
+	richTextPlugin,
+	suggestionsPlugin,
+	video as createVideoPlugin,
+	videoPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

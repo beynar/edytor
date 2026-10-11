@@ -19,14 +19,14 @@ import { createRawSnippet } from 'svelte';
 import EdytorComponent from '$lib/components/Edytor.svelte';
 import { createDocument } from '$lib/crdt/index.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import {
-	blockHandlesPlugin,
-	createBlockHandlesPlugin,
-	type BlockHandleActivation
-} from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
+import { type BlockHandleActivation } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 import type { InlineBlockSnippetPayload } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { renderDomEdytor } from '../../dom/test.utils.js';
+import {
+	blockHandles as createBlockHandlesPlugin,
+	blockHandlesPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 describe('component defaults and overrides', () => {
 	test('mounts with no value and no optional plugins — the facade seeds the bootstrap block (D1)', async () => {
@@ -42,51 +42,37 @@ describe('component defaults and overrides', () => {
 			expect(
 				rendered.container.querySelector('[data-edytor-block][data-edytor-type="paragraph"]')
 			).toBeTruthy();
+			// Headless chrome: no handle without an app's `handle` snippet.
+			expect(rendered.container.querySelector('[data-edytor-block-handle-host]')).toBeNull();
+		});
+	});
+
+	test('the handles show only where a handles plugin draws them (`createBlockHandlesPlugin({ handle })`)', async () => {
+		const rendered = render(EdytorComponent, {
+			props: { plugins: [richTextPlugin, blockHandlesPlugin] }
+		});
+
+		await waitFor(() => {
 			expect(rendered.container.querySelectorAll('[data-testid="block-handle"]')).toHaveLength(1);
 		});
 	});
 
-	test('blockHandles=false hides the built-in handles', async () => {
-		const rendered = render(EdytorComponent, {
-			props: { plugins: [richTextPlugin], blockHandles: false }
-		});
-
-		await waitFor(() => {
-			expect(rendered.container.querySelector('[data-edytor-block]')).toBeTruthy();
-		});
-		expect(rendered.container.querySelector('[data-testid="block-handle"]')).toBeNull();
-	});
-
-	test('a retired `blockDnd={false}` prop hides nothing and warns, naming `blockHandles`', async () => {
+	test('a retired `blockDnd={false}` prop hides nothing and warns, naming its replacement', async () => {
 		const warn = vi.spyOn(console, 'warn');
 		try {
 			const rendered = render(EdytorComponent, {
-				props: { plugins: [richTextPlugin], ...({ blockDnd: false } as object) }
+				props: { plugins: [richTextPlugin, blockHandlesPlugin], ...({ blockDnd: false } as object) }
 			});
 			await waitFor(() => {
 				expect(rendered.container.querySelector('[data-edytor-block]')).toBeTruthy();
 			});
 			expect(rendered.container.querySelectorAll('[data-testid="block-handle"]')).toHaveLength(1);
 			expect(warn.mock.calls.map(([message]) => String(message))).toContainEqual(
-				expect.stringMatching(/`blockDnd`.*removed.*`blockHandles`/)
+				expect.stringMatching(/`blockDnd`.*removed.*`createBlockHandlesPlugin/)
 			);
 		} finally {
 			warn.mockRestore();
 		}
-	});
-
-	test('blockHandles=false hides handles even when the default plugin is listed', async () => {
-		const rendered = render(EdytorComponent, {
-			props: {
-				plugins: [richTextPlugin, blockHandlesPlugin],
-				blockHandles: false
-			}
-		});
-
-		await waitFor(() => {
-			expect(rendered.container.querySelector('[data-edytor-block]')).toBeTruthy();
-		});
-		expect(rendered.container.querySelector('[data-testid="block-handle"]')).toBeNull();
 	});
 
 	test('uses one configured handle plugin when it is supplied explicitly', async () => {
@@ -103,26 +89,11 @@ describe('component defaults and overrides', () => {
 		).toBe(false);
 	});
 
-	test('blockHandles=false removes an explicitly supplied configured plugin', async () => {
-		const rendered = render(EdytorComponent, {
-			props: {
-				plugins: [richTextPlugin, createBlockHandlesPlugin()],
-				blockHandles: false
-			}
-		});
-
-		await waitFor(() => {
-			expect(rendered.container.querySelector('[data-edytor-block]')).toBeTruthy();
-		});
-		expect(rendered.container.querySelector('[data-testid="block-handle"]')).toBeNull();
-	});
-
 	test('non-draggable handles retain typed activation and block selection', async () => {
 		const onActivate = vi.fn((activation: BlockHandleActivation) => activation);
 		const rendered = render(EdytorComponent, {
 			props: {
-				plugins: [richTextPlugin],
-				blockHandles: { draggable: false, onActivate }
+				plugins: [richTextPlugin, createBlockHandlesPlugin({ draggable: false, onActivate })]
 			}
 		});
 		const handle = await waitFor(() => {

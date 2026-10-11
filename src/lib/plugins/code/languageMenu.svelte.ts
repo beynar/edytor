@@ -17,9 +17,9 @@ import { labeledLanguages, languageOf, type CodeSettings } from './languages.js'
 export type LanguageRow = { id: string; label: string };
 
 /**
- * One row of the language list, for a custom `menu`: the row shape every
+ * One row of the language list, for your `menu`: the row shape every
  * menu shares (`item` is the language, `run` picks it), and whether it is
- * the block's own language (`current`, the built-in ✓).
+ * the block's own language (`current`, the demo's ✓).
  */
 export type LanguageMenuItem = MenuItemPayload<LanguageRow> & {
 	/** It is the block's language. */
@@ -36,10 +36,10 @@ export type LanguageMenuItem = MenuItemPayload<LanguageRow> & {
  * its button; opened by a press, to the editor. A press or a focus outside
  * closes it, as readonly does.
  *
- * What a custom `menu` snippet receives: the open list (`open`), the query
+ * What a `menu` snippet receives: the open list (`open`), the query
  * and its rows (`query`, `items`, each a `MenuItemPayload`), the keyboard's
  * row (`index`), `search`, `pick` and `close`, the plugin's `labels`, and
- * the attachments that keep the built-in keys and ARIA: `keys` on the
+ * the attachments that give it the keys and the ARIA: `keys` on the
  * search field, `popup` on the list, `option(index)` spread on each row.
  */
 export class LanguageMenu {
@@ -104,7 +104,7 @@ export class LanguageMenu {
 	}
 
 	/**
-	 * The rows for a custom `menu`: each the row shape every menu shares
+	 * The rows for your `menu`: each the row shape every menu shares
 	 * (`run` picks it, `select` highlights it, `option` its attributes), and
 	 * whether it is the block's language (`current`).
 	 */

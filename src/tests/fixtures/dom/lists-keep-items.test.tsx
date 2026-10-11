@@ -10,8 +10,6 @@
 import { describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -22,6 +20,7 @@ import {
 import type { EngineDoc, EngineNode } from '$lib/crdt/engine-api.js';
 import { selectionState } from '../../selection.js';
 import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
+import { imagePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const empty = (
 	<root>

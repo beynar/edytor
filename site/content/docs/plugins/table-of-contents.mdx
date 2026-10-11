@@ -8,13 +8,13 @@ icon: list-tree
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, tocPlugin, slashMenuPlugin } from 'edytor';
+	import { Edytor, tocPlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[tocPlugin, slashMenuPlugin]} />
+<Edytor plugins={[tocPlugin]} />
 ```
 
-The slash menu then lists "Table of contents" under `Advanced blocks` (keywords `toc`, `outline`, `headings`, `contents`). Like a divider it replaces an empty line, and goes after a line that holds text.
+A [slash menu](/docs/plugins/slash-menu) then lists "Table of contents" under `Advanced blocks` (keywords `toc`, `outline`, `headings`, `contents`). Like a divider it replaces an empty line, and goes after a line that holds text.
 
 ## What it lists
 

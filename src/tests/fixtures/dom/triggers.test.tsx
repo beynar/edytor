@@ -19,13 +19,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { InputRule, Plugin } from '$lib/plugins.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { createMentionPlugin, type MentionItem } from '$lib/plugins/mention/MentionPlugin.svelte';
-import {
-	createPageLinkPlugin,
-	type PageLinkItem
-} from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
+import { type MentionItem } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { type PageLinkItem } from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
 import {
 	dispatchClipboardPaste,
 	dispatchComposition,
@@ -36,6 +31,13 @@ import {
 	type RenderDomEdytorOptions
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import {
+	chrome,
+	codePlugin,
+	mention as createMentionPlugin,
+	pageLink as createPageLinkPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -586,7 +588,14 @@ describe('review fixes', () => {
 
 	it('rows sharing a key or a label render, each with its own element id', async () => {
 		const tags: Plugin = () => ({
-			triggers: [{ char: '#', items: () => ['tag', 'tag', 'a b', 'a_b'], onPick: () => false }]
+			triggers: [
+				{
+					char: '#',
+					items: () => ['tag', 'tag', 'a b', 'a_b'],
+					onPick: () => false,
+					menu: chrome.triggerMenu
+				}
+			]
 		});
 		const { edytor, editor } = await render([p('a', '')], [tags]);
 		await caretAt(edytor, 'a', 0);

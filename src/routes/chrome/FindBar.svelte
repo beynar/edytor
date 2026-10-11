@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
-	import type { FindController } from './FindController.svelte.js';
+	import type { FindController } from '$lib/index.js';
 
-	let { find, bar }: { find: FindController; bar?: Snippet<[FindController]> } = $props();
+	/** Notion's find bar, drawn for `createFindPlugin({ bar })`: the query, the count, the steps, Replace. */
+	let { find }: { find: FindController } = $props();
 
 	const labels = $derived(find.labels);
 	const count = $derived(
@@ -73,44 +73,38 @@
 	{/each}
 {/snippet}
 
-{#if find.isOpen}
-	<div data-edytor-find role="search" aria-label={labels.bar}>
-		{#if bar}
-			{@render bar(find)}
-		{:else}
-			<div data-edytor-find-row>
-				<input
-					data-edytor-find-query
-					type="text"
-					placeholder={labels.queryPlaceholder}
-					aria-label={labels.query}
-					autocomplete="off"
-					spellcheck="false"
-					value={find.query}
-					oninput={(event) => (find.query = event.currentTarget.value)}
-					use:find.field
-				/>
-				<span data-edytor-find-count aria-live="polite">{find.query ? count : ''}</span>
-				{@render buttons(searching)}
-			</div>
-			{#if find.canReplace}
-				<div data-edytor-find-row>
-					<input
-						data-edytor-find-replacement
-						type="text"
-						placeholder={labels.replaceWith}
-						aria-label={labels.replaceWith}
-						autocomplete="off"
-						spellcheck="false"
-						bind:value={find.replacement}
-						use:find.replaceField
-					/>
-					{@render buttons(replacing)}
-				</div>
-			{/if}
-		{/if}
+<div data-edytor-find role="search" aria-label={labels.bar}>
+	<div data-edytor-find-row>
+		<input
+			data-edytor-find-query
+			type="text"
+			placeholder={labels.queryPlaceholder}
+			aria-label={labels.query}
+			autocomplete="off"
+			spellcheck="false"
+			value={find.query}
+			oninput={(event) => (find.query = event.currentTarget.value)}
+			use:find.field
+		/>
+		<span data-edytor-find-count aria-live="polite">{find.query ? count : ''}</span>
+		{@render buttons(searching)}
 	</div>
-{/if}
+	{#if find.canReplace}
+		<div data-edytor-find-row>
+			<input
+				data-edytor-find-replacement
+				type="text"
+				placeholder={labels.replaceWith}
+				aria-label={labels.replaceWith}
+				autocomplete="off"
+				spellcheck="false"
+				bind:value={find.replacement}
+				use:find.replaceField
+			/>
+			{@render buttons(replacing)}
+		</div>
+	{/if}
+</div>
 
 <style>
 	[data-edytor-find] {

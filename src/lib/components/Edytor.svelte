@@ -21,12 +21,6 @@
 	export { EdytorClass as EdytorContext, useEdytor };
 	import type { Placeholder, Plugin } from '$lib/plugins.js';
 	import type { PartialLabels } from '$lib/labels.js';
-	import {
-		blockHandlesPlugin,
-		createBlockHandlesPlugin,
-		isBlockHandlesPlugin,
-		type BlockHandlesOptions
-	} from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 	import { isRichTextPlugin, richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { imagePlugin, isImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
@@ -47,16 +41,6 @@
 		...(plugins.some(isImagePlugin) ? [] : [imagePlugin]),
 		...(plugins.some(isRichTextPlugin) ? [] : [richTextPlugin])
 	];
-	/**
-	 * The handles: none with `false`, the configured ones (replacing any
-	 * listed) with options, else the listed ones or the default, first.
-	 */
-	const withHandles = (plugins: Plugin[] | undefined, handles: boolean | BlockHandlesOptions) => {
-		const others = plugins?.filter((plugin) => !isBlockHandlesPlugin(plugin));
-		if (handles === false) return others;
-		if (typeof handles === 'object') return [createBlockHandlesPlugin(handles), ...(others ?? [])];
-		return plugins?.some(isBlockHandlesPlugin) ? plugins : [blockHandlesPlugin, ...(plugins ?? [])];
-	};
 	/**
 	 * The sync of a room id no dial can carry (`validRoomId`): no socket, the
 	 * refusal `routeDocumentSocket` would give (`4400`), and the local copy
@@ -82,8 +66,6 @@
 
 	export type EdytorProps = Snippets & {
 		plugins?: Plugin[];
-		/** Show built-in block handles, with optional pointer dragging and activation callback. */
-		blockHandles?: boolean | BlockHandlesOptions;
 		/** Add rich text, arrow moves, the suggestion UI and images unless `plugins` lists them (default `true`). */
 		defaultPlugins?: boolean;
 		class?: string;
@@ -195,7 +177,6 @@
 
 	let {
 		plugins: userPlugins,
-		blockHandles,
 		defaultPlugins = true,
 		class: className,
 		'aria-label': ariaLabel,
@@ -238,10 +219,7 @@
 	const initialEdytorOptions = untrack(() => ({
 		snippets,
 		readonly,
-		plugins: withHandles(
-			defaultPlugins ? withDefaults(userPlugins) : userPlugins,
-			blockHandles ?? true
-		),
+		plugins: defaultPlugins ? withDefaults(userPlugins) : userPlugins,
 		document: edytorDocument,
 		doc,
 		awareness,
@@ -423,7 +401,6 @@
 				readonly: true,
 				plugins: userPlugins,
 				defaultPlugins,
-				blockHandles,
 				class: className,
 				placeholder,
 				labels,

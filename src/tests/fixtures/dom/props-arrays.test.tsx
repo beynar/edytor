@@ -15,9 +15,9 @@ import { createDocument, loadDocument, type EdytorDocument } from '$lib/crdt/ind
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONDoc } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { propsPlugin } from '../../dom/PropsKind.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const tasks = [
 	{ title: 'a', done: false },

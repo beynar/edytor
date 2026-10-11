@@ -4,11 +4,11 @@ description: Comment threads on text, as in Notion. Select text and press Commen
 icon: message-square
 ---
 
-`createCommentsPlugin` adds Notion's comments. Select some text and press **Comment** in the toolbar (or <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd>): a card opens beside the text, you write, <kbd>Enter</kbd> posts. The text stays highlighted while the thread is open, its card sits in a sidebar at the text's height, and anyone can reply, resolve it or open it again.
+`createCommentsPlugin` adds Notion's comments. Select some text and press **Comment** in the toolbar (or <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd>): a card opens beside the text, you write, <kbd>Enter</kbd> posts. The text stays highlighted while the thread is open, its card sits in a sidebar at the text's height, and anyone can reply, resolve it or open it again. The plugin ships the threads, the highlight and the sidebar's placement; each card is your `card` snippet ([The sidebar](#the-sidebar)).
 
 ```svelte title="Page.svelte" check
 <script lang="ts">
-	import { Edytor, createCommentsClient, createCommentsPlugin, toolbarPlugin } from 'edytor';
+	import { Edytor, createCommentsClient, createCommentsPlugin } from 'edytor';
 
 	let { id, token, user }: { id: string; token: string; user: { id: string; name: string } } =
 		$props();
@@ -24,10 +24,10 @@ icon: message-square
 	});
 </script>
 
-<Edytor server="wss://example.com/rooms" room={id} params={{ token }} plugins={[comments, toolbarPlugin]} />
+<Edytor server="wss://example.com/rooms" room={id} params={{ token }} plugins={[comments]} />
 ```
 
-It is opt-in, not a [default plugin](/docs/plugins#default-plugins). It needs a **client**, where the threads live, and the current **user**. The threads are kept by the [room](/docs/server/comments) beside the document, never in it: the document holds only each thread's anchor. List the [toolbar](/docs/plugins/toolbar) for its Comment button; without it, <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd> and `commentsController(edytor).start()` start a thread.
+It is opt-in, not a [default plugin](/docs/plugins#default-plugins). It needs a **client**, where the threads live, and the current **user**. The threads are kept by the [room](/docs/server/comments) beside the document, never in it: the document holds only each thread's anchor. A [toolbar](/docs/plugins/toolbar) lists its Comment button in `controller.marks` (its `toggleMark('comment')` starts a thread); without one, <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd> and `commentsController(edytor).start()` do. Without a `card`, the threads are kept and highlighted and no sidebar shows.
 
 ## Writing a thread
 
@@ -42,29 +42,24 @@ Comments come from everyone in the document live: the client hears each change t
 
 ## The sidebar
 
-When the viewport has room right of the editor (288 px and a 32 px gap), the cards sit there, Notion's margin, each at its text's height, without overlapping. On a narrow screen only the active thread's card shows, under its text. Open threads whose text was deleted have no place in the margin; they stay in `commentsController(edytor).threads` with no runs.
+The sidebar is the plugin's placement of your cards: `card` draws each one, a thread's or the one being written (`thread: null`), and `header` the top of the margin (Notion's **Resolved (n)**). The writing, posting, replying and resolving described above are what the demo's card does with the controller (`submit`, `reply`, `resolve`, `reopen`, `remove`, `cancel`); its markup is `CommentCard.svelte` in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome). When the viewport has room right of the editor (288 px and a 32 px gap), the cards sit there, Notion's margin, each at its text's height, without overlapping. On a narrow screen only the active thread's card shows, under its text. Open threads whose text was deleted have no place in the margin; they stay in `commentsController(edytor).threads` with no runs.
 
 The sidebar lives in the editor's [overlay](/docs/customization/styling#the-overlay), beside the host, never inside it. The highlight is a stylesheet in the page's `head` (`style[data-edytor-comments-style]`) for each open thread's mark element (`[data-edytor-mark="comment:<id>"]`): nothing is written on the editor's own elements. The text of a thread being written is highlighted in the overlay.
 
 | Attribute | Element |
 | --- | --- |
-| `data-edytor-comments` | The sidebar (`data-mode`: `margin` or `popover`) |
-| `data-edytor-comment-card` | A thread's card (its id; the new thread's is `:draft`), with `data-active`, `data-resolved` |
+| `data-edytor-comments` | The sidebar (`data-mode`: `margin` or `popover`; `role="complementary"`) |
+| `data-edytor-comment-card` | Where a card renders (its thread's id; the new thread's is `:draft`), with `data-active`, `data-resolved`; a click on it outside a button or a field makes its thread the active one |
 | `data-edytor-comment-new` | The card of the thread being written |
-| `data-edytor-comment-quote` | The text the thread was made on |
-| `data-edytor-comment` | One comment, with `data-edytor-comment-author`, `-time`, `-body`, `-delete` inside |
-| `data-edytor-comment-field`, `data-edytor-comment-reply` | The new thread's field, a reply field |
-| `data-edytor-comment-resolve`, `data-edytor-comment-reopen` | The buttons |
-| `data-edytor-comments-toggle` | The **Resolved (n)** button |
+| `data-edytor-comments-header` | Where `header` renders, at the margin's top |
 
 | Variable | Default |
 | --- | --- |
 | `--edytor-comment-highlight` | The open threads' text: `rgb(255 212 0 / 0.14)` |
 | `--edytor-comment-underline` | Its underline: `rgb(255 212 0 / 0.8)` |
 | `--edytor-comment-active` | The active thread's text: `rgb(255 212 0 / 0.42)` |
-| `--edytor-comments-background`, `--edytor-comments-color` | The cards |
 
-`card` replaces a thread card's markup (the sidebar still places it): it receives a `CommentCardPayload`, `{ thread, comments, active }`, the controller included for its actions. An example is on [Menus and handles](/docs/customization/menus#comment-cards).
+`card` receives a `CommentCardPayload`, `{ thread, comments, active }`, the controller included for its actions; `header` receives the controller. An example is on [Menus and handles](/docs/customization/menus#comment-cards).
 
 ## Anchors
 
@@ -130,7 +125,7 @@ The client merges what it hears by `rev`, so an answer and a change arriving in 
 
 ```svelte title="Demo.svelte" check
 <script lang="ts">
-	import { Edytor, createCommentsPlugin, createMemoryCommentsClient, toolbarPlugin } from 'edytor';
+	import { Edytor, createCommentsPlugin, createMemoryCommentsClient } from 'edytor';
 
 	const comments = createCommentsPlugin({
 		client: createMemoryCommentsClient({ user: 'ada' }),
@@ -138,7 +133,7 @@ The client merges what it hears by `rev`, so an answer and a change arriving in 
 	});
 </script>
 
-<Edytor plugins={[comments, toolbarPlugin]} />
+<Edytor plugins={[comments]} />
 ```
 
 ## Users

@@ -2,9 +2,7 @@
 import { waitFor } from '@testing-library/svelte';
 import { expect } from 'vitest';
 
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { defineDomFixture, defineFixtures } from '../types.js';
 import {
@@ -15,6 +13,7 @@ import {
 	dispatchPaste
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const dispatchNonCancelableDomBeforeInput = async (
 	target: HTMLElement,

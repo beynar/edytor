@@ -20,8 +20,8 @@ import {
 } from '../../lib/collaboration/awarenessSelection.js';
 import { Edytor } from '../../lib/edytor.svelte.js';
 import { serialize } from '../../lib/session/selection.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { jsonEquals, type JSONDoc } from '../../lib/utils/json.js';
+import { richTextPlugin } from '../../routes/chrome/plugins.js';
 
 const docValue = (text = 'shared'): JSONDoc => ({
 	children: [{ type: 'paragraph', content: [{ text }] }]

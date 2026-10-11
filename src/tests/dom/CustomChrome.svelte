@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { createSlashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
+	import { createBlockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 	import { createToolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 	import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
@@ -48,6 +49,7 @@
 		{ id: 'grace', label: 'Grace Hopper' }
 	];
 	const plugins = [
+		createBlockHandlesPlugin({ handle }),
 		createSlashMenuPlugin({ menu: slashMenu }),
 		createToolbarPlugin({ toolbar: bar, card: linkCard }),
 		createBlockMenuPlugin({ menu: blockMenu }),
@@ -385,7 +387,7 @@
 	</div>
 {/snippet}
 
-<Edytor bind:edytor {plugins} {value} blockHandles={{ handle }} aria-label="Custom chrome" />
+<Edytor bind:edytor {plugins} {value} aria-label="Custom chrome" />
 
 <style>
 	.custom-handle {

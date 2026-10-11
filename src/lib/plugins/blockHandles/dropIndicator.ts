@@ -16,7 +16,7 @@ import {
 	type DropPlacement
 } from './geometry.js';
 
-/** Notion's drop bar: 4px (its colour's default is in `BlockHandle.svelte`). */
+/** Notion's drop bar: 4px (its height in `BlockHandles.svelte`, its look the app's). */
 const BAR = 4;
 
 /** A box in client px; without a height, the CSS's (the bar's 4px). */

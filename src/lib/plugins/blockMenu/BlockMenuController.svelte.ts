@@ -43,10 +43,11 @@ export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
 	linkTo?: (block: Block) => string;
 	/**
-	 * Replace the menu; it renders while `controller.isOpen`, placed beside
-	 * the handle (mark your panel `data-edytor-block-menu` for placement).
+	 * The menu's markup; it renders while `controller.isOpen`, placed beside
+	 * the handle (mark your panel `data-edytor-block-menu` for placement;
+	 * without it, nothing shows).
 	 * The controller runs every action; `close()` returns the caret. Keep
-	 * the built-in keyboard and ARIA with its attachments: `{@attach
+	 * the keyboard and the ARIA with its attachments: `{@attach
 	 * controller.keys}` on the field that holds the keyboard, `{@attach
 	 * controller.popup}` on the menu, `{...controller.option(index)}` on each
 	 * row, `{@attach controller.flyoutMenu}` on an open flyout.
@@ -146,7 +147,7 @@ export class BlockMenuController {
 	/** The keyboard's row in the open flyout. */
 	flyoutIndex = $state(0);
 
-	/** The words the menu shows (the plugin's `labels`): read them in a custom `menu`. */
+	/** The words the menu shows (the plugin's `labels`): read them in your `menu`. */
 	readonly labels: BlockMenuLabels;
 	/** The Color flyout's rows, in `labels`. */
 	readonly #colors: BlockMenuColor[];

@@ -4,7 +4,7 @@ description: The image plugin adds Notion's image block, a void figure with an e
 icon: image
 ---
 
-`imagePlugin` adds Notion's image block: an "Add an image" panel until the block has a source, then the image with an editable caption. Hovering the image, or selecting its block, shows handles to resize it and a toolbar to align it and set its alt text. `<Edytor>` includes it by default, so the slash menu lists "Image" under `Media` without any setup. Give it an `upload` and pasted or dropped image files become image blocks too.
+`imagePlugin` adds Notion's image block: an "Add an image" panel (your `empty` snippet) until the block has a source, then the image with an editable caption. Hovering the image, or selecting its block, shows handles to resize it and a toolbar to align it and set its alt text. `<Edytor>` includes it by default, so the slash menu lists "Image" under `Media` without any setup. Give it an `upload` and pasted or dropped image files become image blocks too.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -47,11 +47,11 @@ An image plugin you list (`imagePlugin` or any `createImagePlugin(...)`) replace
     },
     toolbar: {
       type: "Snippet<[ImageControls]>",
-      description: "Replaces the alignment buttons and the alt field over the hovered image, placed at its top right; the resize handles stay. Keep their behavior with {@attach controls.bar} and {@attach controls.altField}. See Menus and handles.",
+      description: "The alignment buttons and the alt field over the hovered image, placed at its top right (without it, the resize handles alone). Keep their behavior with {@attach controls.bar} and {@attach controls.altField}. See Menus and handles.",
     },
     empty: {
       type: "Snippet<[ImageEmptyController]>",
-      description: "Replaces an empty image's markup (Add an image, its link panel, a readonly view's placeholder): open, draft, failed, embed, upload, readonly. See Menus and handles.",
+      description: "An empty image's markup (Add an image, its link panel, a readonly view's placeholder): open, draft, failed, embed, upload, readonly. Without it, an empty image shows nothing. See Menus and handles.",
     },
   }}
 />
@@ -142,18 +142,12 @@ The [Notion theme](/docs/customization/styling#notion-theme) styles the block. W
 | `[data-edytor-image]`             | The wrapper around the `img` (`data-align`) |
 | `[data-edytor-image-uploading]`   | The wrapper while a pasted file uploads |
 | `[data-edytor-image-progress]`    | Its "Uploading…" label                 |
-| `[data-edytor-image-empty]`       | The empty state                        |
-| `[data-edytor-image-add]`         | The "Add an image" button              |
-| `[data-edytor-image-placeholder]` | The readonly empty state               |
-| `[data-edytor-image-form]`        | The link panel (field, buttons, error) |
-| `[data-edytor-image-upload]`      | The Upload button (a `label`)          |
-| `[data-edytor-image-error]`       | The panel's error (`="invalid"`, `="upload"` for a failed upload, or `="inline"` for an inline image over 1 MiB) |
+| `[data-edytor-image-empty]`       | Where the empty state (your `empty` snippet) renders |
 | `[data-edytor-image-resize]`      | A resize handle in the overlay (`="left"`, `="right"`) |
-| `[data-edytor-image-toolbar]`     | The hover toolbar in the overlay       |
-| `[data-edytor-image-align]`       | An alignment button (`="left"`, `="center"`, `="right"`, `aria-pressed`) |
-| `[data-edytor-image-alt-toggle]`  | The Alt text button                    |
-| `[data-edytor-image-alt]`         | The alt text field                     |
+| `[data-edytor-image-toolbar-slot]` | Where your `toolbar` renders, at the image's top right |
+| `[data-edytor-image-toolbar]`     | Your toolbar's bar (`controls.bar` marks it) |
+| `[data-edytor-image-alt]`         | Your alt text field (`controls.altField` marks it) |
 
-The chrome reads `--edytor-image-handle-color` and `--edytor-image-toolbar-background`.
+The resize handles read `--edytor-image-handle-color`. An `empty` failure is `"invalid"`, `"upload"` for a failed upload, or `"inline"` for an inline image over 1 MiB.
 
 To change the markup, override the snippet with an `imageBlock` snippet prop (see [the component page](/docs/editor/edytor-component#snippets)). To replace the kind itself, define an `image` kind in your own plugin: the default image plugin comes after yours, and definitions are first-wins.

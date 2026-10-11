@@ -54,26 +54,28 @@ pnpm add edytor
 	import {
 		Edytor,
 		codePlugin,
+		createSlashMenuPlugin,
 		markdownShortcutsPlugin,
-		slashMenuPlugin,
-		toolbarPlugin,
-		blockMenuPlugin,
 		richTextPlaceholder,
-		type JSONDoc
+		type JSONDoc,
+		type SlashMenuController
 	} from 'edytor';
 	import 'edytor/themes/notion.css';
 
 	const value: JSONDoc = {
 		children: [{ type: 'paragraph', content: [{ text: 'Hello, World!' }] }]
 	};
-	const plugins = [
-		codePlugin,
-		markdownShortcutsPlugin,
-		slashMenuPlugin,
-		toolbarPlugin,
-		blockMenuPlugin
-	];
+	const plugins = [codePlugin, markdownShortcutsPlugin, createSlashMenuPlugin({ menu })];
 </script>
+
+<!-- The chrome is headless: your snippet draws the menu, the plugin gives it its keys and ARIA. -->
+{#snippet menu(slash: SlashMenuController)}
+	<ul {@attach slash.popup}>
+		{#each slash.commands as command, index (command.id)}
+			<li {...slash.option(index)} onclick={() => void slash.run(command)}>{command.label}</li>
+		{/each}
+	</ul>
+{/snippet}
 
 <div class="edytor-notion">
 	<Edytor
@@ -85,7 +87,7 @@ pnpm add edytor
 </div>
 ```
 
-An editable editor is client-only: in SvelteKit, mount it once the page has hydrated ([quick start](https://edytor.dev/docs/getting-started/quick-start#mount-it-in-a-page)). `<Edytor>` adds the rich text, image, arrow-move and suggestions plugins after yours, and block handles. To collaborate, name a room and a server running the [`edytor/cloudflare` room](https://edytor.dev/docs/server/quick-start):
+An editable editor is client-only: in SvelteKit, mount it once the page has hydrated ([quick start](https://edytor.dev/docs/getting-started/quick-start#mount-it-in-a-page)). `<Edytor>` adds the rich text, image, arrow-move and suggestions plugins after yours. Every menu, toolbar, handle and panel is drawn by your snippets ([menus and handles](https://edytor.dev/docs/customization/menus)); the demo's Notion-style chrome is in `src/routes/chrome`, to copy. To collaborate, name a room and a server running the [`edytor/cloudflare` room](https://edytor.dev/docs/server/quick-start):
 
 ```svelte
 <Edytor

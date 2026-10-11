@@ -1,7 +1,7 @@
 /**
  * What every chrome surface shares with the markup that renders it, the
- * built-in one and a snippet's alike: the row payload of an `item` snippet,
- * a row's attributes (`option(index)`), and the small DOM rules the
+ * app's snippet: the one host (`mountChrome`), the row payload a controller
+ * builds, a row's attributes (`option(index)`), and the small DOM rules the
  * controllers' attachments apply (a press that keeps the focus, an
  * element given its id, role and name).
  */
@@ -47,8 +47,8 @@ export const mountChrome = <T>(
 		: () => {};
 
 /**
- * One row of a chrome list, for an `item` snippet: the same shape in every
- * menu (the slash menu's, a trigger's, the version history's).
+ * One row of a chrome list a controller builds for the app's markup: the
+ * same shape in every menu (a table grip's, the code language list's).
  */
 export type MenuItemPayload<T> = {
 	/** What the row stands for: a command, a trigger's row, a version. */

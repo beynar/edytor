@@ -15,7 +15,7 @@ export type ToolbarOptions = {
 	/**
 	 * The toolbar's markup; it renders while `controller.isVisible`, placed
 	 * above the selection (without it, nothing shows). A press on it never takes the editor's focus (its
-	 * fields, an input or a select, take their own). Keep the built-in
+	 * fields, an input or a select, take their own). Give it the
 	 * keyboard and ARIA with its attachments: `{@attach controller.popup}`
 	 * and `{@attach controller.keys}` on the bar (its id, role, placement and
 	 * publication; the shortcut that reaches it, the roving tab stop and

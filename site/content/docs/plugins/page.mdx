@@ -10,7 +10,7 @@ Each page is a document of its own, one [room](/docs/server/room) per page (see 
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createPagePlugin, slashMenuPlugin } from 'edytor';
+	import { Edytor, createPagePlugin } from 'edytor';
 
 	// Your app's pages: their titles, as reactive state, follow renames.
 	let titles = $state<Record<string, string>>({ 'doc-42': 'Roadmap' });
@@ -28,7 +28,7 @@ Each page is a document of its own, one [room](/docs/server/room) per page (see 
 	});
 </script>
 
-<Edytor plugins={[page, slashMenuPlugin]} />
+<Edytor plugins={[page]} />
 ```
 
 `pagePlugin` is the plugin without options: the block shows the title it stores and opens nothing.

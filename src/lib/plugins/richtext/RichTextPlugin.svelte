@@ -32,7 +32,7 @@
 	import TodoCheckbox from './TodoCheckbox.svelte';
 	import EmptyBody from './EmptyBody.svelte';
 	import CalloutIcon from './CalloutIcon.svelte';
-	import CalloutIconMenu from './CalloutIconPicker.svelte';
+	import CalloutIconHost from './CalloutIconPicker.svelte';
 	import {
 		CALLOUT_ICONS,
 		CalloutIconPicker,
@@ -400,7 +400,7 @@
 					picker &&
 					menu &&
 					edytor.overlay.mount(
-						CalloutIconMenu,
+						CalloutIconHost,
 						{ picker, menu },
 						'edytor-callout-icons-host',
 						// With the menus: above the handles and the image chrome.

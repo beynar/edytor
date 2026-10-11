@@ -153,7 +153,7 @@ await room.undoRestore(); // the last restore, once
 
 A room without history throws from `listHistory`, `readHistory` and `restoreHistory`.
 
-In the browser, [`HistoryPanel`](/docs/server/history-panel) is the UI over these: the versions with their editors, a read-only preview of one with the blocks added, removed and changed since highlighted, and Restore and Undo restore, through `createHistoryClient` (the requests below) or a client of your own.
+In the browser, [`VersionHistory`](/docs/server/history-panel) is the controller of a UI over these: the versions with their editors, a read-only preview of one with the blocks added, removed and changed since highlighted, and Restore and Undo restore, through `createHistoryClient` (the requests below) or a client of your own.
 
 ### Over HTTP
 

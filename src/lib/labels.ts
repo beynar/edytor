@@ -314,7 +314,7 @@ export type MentionLabels = {
 	noResults: string;
 };
 
-/** The version history panel (`HistoryPanel`). */
+/** The version history (`VersionHistory`) and the panel an app draws over it. */
 export type HistoryPanelLabels = {
 	/** The panel's name (its `aria-label`). */
 	title: string;

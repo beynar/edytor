@@ -4,11 +4,11 @@ description: The file plugin adds Notion's file block, an attachment uploaded th
 icon: paperclip
 ---
 
-`filePlugin` adds Notion's file block: an empty panel until the block has a file, then the file's name and size, linking to it, with an editable caption. Files are uploaded through the `upload` function you provide, or linked. It is not a default plugin: list it.
+`filePlugin` adds Notion's file block: an empty panel (your `empty` snippet) until the block has a file, then the file's name and size, linking to it, with an editable caption. Files are uploaded through the `upload` function you provide, or linked. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createFilePlugin, slashMenuPlugin } from 'edytor';
+	import { Edytor, createFilePlugin } from 'edytor';
 
 	const file = createFilePlugin({
 		upload: async (picked) => {
@@ -20,10 +20,10 @@ icon: paperclip
 	});
 </script>
 
-<Edytor plugins={[file, slashMenuPlugin]} />
+<Edytor plugins={[file]} />
 ```
 
-The slash menu then lists "File" under `Media`. `filePlugin` is the plugin without `upload`: links only.
+A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. `filePlugin` is the plugin without `upload`: links only.
 
 ## Options
 
@@ -45,7 +45,7 @@ The slash menu then lists "File" under `Media`. `filePlugin` is the plugin witho
     },
     empty: {
       type: "Snippet<[MediaEmptyController]>",
-      description: "Replaces an empty block's markup (its button, link panel and upload, a pasted file's progress, a readonly view's placeholder). See Menus and handles.",
+      description: "The empty block's markup (its button, link panel and upload, a pasted file's progress, a readonly view's placeholder); without it, an empty block shows nothing. See Menus and handles.",
     },
   }}
 />
@@ -73,6 +73,5 @@ The block is void like the [image](/docs/plugins/image), and its only text is th
 | `[data-edytor-file]`        | The link's wrapper              |
 | `[data-edytor-file-name]`   | The name                        |
 | `[data-edytor-file-size]`   | The size (`5 B`, `1.2 MB`)      |
-| `[data-edytor-media-upload]` | The empty panel's Upload button |
 
 The empty state uses the shared `media` selectors (see [Embed](/docs/plugins/embed#styling)).

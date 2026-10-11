@@ -178,7 +178,7 @@ export class BlockHandleController {
 		return this.options.draggable;
 	}
 
-	/** The words the handles say (the plugin's `labels`): read them in a custom `handle`. */
+	/** The words the handles say (the plugin's `labels`): read them in your `handle`. */
 	get labels(): BlockHandlesLabels {
 		return this.options.labels ?? blockHandlesEnglish;
 	}

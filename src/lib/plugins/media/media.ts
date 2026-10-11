@@ -30,7 +30,7 @@ export const MEDIA_ICONS: Record<MediaKind, string> = {
 /**
  * A media kind in a view: the first plugin of the kind listed in it claims
  * it, as its kind record (first wins): its words, its empty block's
- * `empty` snippet (none: the built-in markup) and `upload`, how a block of
+ * `empty` snippet (none: nothing drawn) and `upload`, how a block of
  * it stores a source, and the embed's allowlist.
  */
 export type MediaView = {

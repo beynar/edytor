@@ -46,17 +46,26 @@ Pass an array to the `plugins` prop of `<Edytor>`:
 	import {
 		Edytor,
 		codePlugin,
-		slashMenuPlugin,
-		toolbarPlugin,
+		createSlashMenuPlugin,
 		markdownShortcutsPlugin,
-		blockMenuPlugin
+		type SlashMenuController
 	} from 'edytor';
 
-	const plugins = [codePlugin, markdownShortcutsPlugin, slashMenuPlugin, toolbarPlugin, blockMenuPlugin];
+	const plugins = [codePlugin, markdownShortcutsPlugin, createSlashMenuPlugin({ menu })];
 </script>
+
+{#snippet menu(slash: SlashMenuController)}
+	<ul {@attach slash.popup}>
+		{#each slash.commands as command, index (command.id)}
+			<li {...slash.option(index)} onclick={() => void slash.run(command)}>{command.label}</li>
+		{/each}
+	</ul>
+{/snippet}
 
 <Edytor {plugins} />
 ```
+
+A plugin with chrome (a menu, a toolbar, the block handles, a panel) ships its behavior and none of its markup: its factory takes the snippets that draw it, and without them it draws nothing ([Menus and handles](/docs/customization/menus)).
 
 Plugins are read once, when the component mounts. Changing the array afterwards has no effect.
 
@@ -67,16 +76,15 @@ Plugins are read once, when the component mounts. Changing the array afterwards 
 | Plugin | Position | Replaced by |
 | --- | --- | --- |
 | [`arrowMovePlugin`](/docs/plugins/arrow-move) | after yours | `arrowMovePlugin` in your list |
-| [`suggestionsPlugin`](/docs/editor/suggestions#the-default-ui) | after yours | `suggestionsPlugin` or any `createSuggestionsPlugin(...)` in your list |
-| [`imagePlugin`](/docs/plugins/image) | after yours | `imagePlugin` or any `createImagePlugin(...)` in your list |
+| [`suggestionsPlugin`](/docs/editor/suggestions#the-default-ui) (its keys, no bar) | after yours | `suggestionsPlugin` or any `createSuggestionsPlugin(...)` in your list |
+| [`imagePlugin`](/docs/plugins/image) (its kind, no chrome) | after yours | `imagePlugin` or any `createImagePlugin(...)` in your list |
 | [`richTextPlugin`](/docs/plugins/rich-text) | last | `richTextPlugin` in your list |
-| [Block handles](/docs/plugins/block-handles) | first | the `blockHandles` prop, or a handles plugin in your list |
 
-The example above therefore runs block handles, your five plugins, then arrow move, suggestions, image and rich text. A default you list yourself stays where you put it, so older code that passes `plugins={[richTextPlugin]}` still works.
+The example above therefore runs your three plugins, then arrow move, suggestions, image and rich text. A default you list yourself stays where you put it, so older code that passes `plugins={[richTextPlugin]}` still works.
 
-Some bundled plugins are not defaults: list [`columnsPlugin`](/docs/plugins/columns), [`codePlugin`](/docs/plugins/code), [`findPlugin`](/docs/plugins/find), [`marqueePlugin`](/docs/plugins/marquee), [comments](/docs/plugins/comments), the media plugins ([embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)), the [page](/docs/plugins/page), [table of contents](/docs/plugins/table-of-contents), [table](/docs/plugins/table) and [equation](/docs/plugins/equation) plugins, the menus, the toolbar and markdown shortcuts yourself when you want them.
+Some bundled plugins are not defaults: list [`columnsPlugin`](/docs/plugins/columns), [`codePlugin`](/docs/plugins/code), [find](/docs/plugins/find), [`marqueePlugin`](/docs/plugins/marquee), [comments](/docs/plugins/comments), the media plugins ([embed](/docs/plugins/embed), [bookmark](/docs/plugins/bookmark), [file](/docs/plugins/file), [video](/docs/plugins/video), [audio](/docs/plugins/audio)), the [page](/docs/plugins/page), [table of contents](/docs/plugins/table-of-contents), [table](/docs/plugins/table) and [equation](/docs/plugins/equation) plugins, the block handles, the menus, the toolbar and markdown shortcuts yourself when you want them.
 
-Pass `defaultPlugins={false}` to get exactly your list (block handles still follow `blockHandles`). The defaults are added by the `<Edytor>` component, per view; the editor instance underneath has none of its own.
+Pass `defaultPlugins={false}` to get exactly your list. The defaults are added by the `<Edytor>` component, per view; the editor instance underneath has none of its own.
 
 ## Plugin order
 
@@ -123,13 +131,13 @@ Import it like any other module: `import { highlightPlugin } from './HighlightPl
 | [Video](/docs/plugins/video) and [Audio](/docs/plugins/audio) | `videoPlugin`, `createVideoPlugin`, `audioPlugin`, `createAudioPlugin` | Video and audio files in the browser's players, linked or uploaded. Opt-in |
 | [Columns](/docs/plugins/columns)                       | `columnsPlugin`, `createColumnsPlugin` | Notion's multi-column layouts: drag a block beside another, "2 columns" to "5 columns", resize by dragging the gap. Opt-in: list it in `plugins` |
 | [Table](/docs/plugins/table)                           | `tablePlugin`, `createTablePlugin` | Notion's simple table: cells of text in rows and columns, Tab between cells, rows and columns added, moved and deleted from the table's edges and grips, header row and column. Opt-in |
-| [Block handles](/docs/plugins/block-handles)           | `blockHandlesPlugin`, `createBlockHandlesPlugin` | A `+` and a drag grip beside each block, drag and drop, keyboard moves. On by default |
-| [Block menu](/docs/plugins/block-menu)                 | `blockMenuPlugin`, `createBlockMenuPlugin` | Notion's block menu on a grip click: search, Turn into, Color, Duplicate, Move, Delete |
-| [Slash menu](/docs/plugins/slash-menu)                 | `slashMenuPlugin`, `createSlashMenuPlugin` | A sectioned command menu opened by typing `/`                             |
-| [Toolbar](/docs/plugins/toolbar)                       | `toolbarPlugin`, `createToolbarPlugin` | A floating toolbar over text selections: Turn into, link, marks and colors    |
+| [Block handles](/docs/plugins/block-handles)           | `createBlockHandlesPlugin` | A `+` and a drag grip (your `handle`) beside each block, drag and drop, keyboard moves. Opt-in |
+| [Block menu](/docs/plugins/block-menu)                 | `createBlockMenuPlugin` | Notion's block menu (your `menu`) on a grip click: search, Turn into, Color, Duplicate, Move, Delete |
+| [Slash menu](/docs/plugins/slash-menu)                 | `createSlashMenuPlugin` | A command menu (your `menu`) opened by typing `/`                             |
+| [Toolbar](/docs/plugins/toolbar)                       | `createToolbarPlugin` | A floating toolbar (your `toolbar`) over text selections: Turn into, link, marks and colors    |
 | [Markdown shortcuts](/docs/plugins/markdown-shortcuts) | `markdownShortcutsPlugin` | Block prefixes such as `# ` or `- `, and inline `**bold**`, `*italic*`, `` `code` ``, `~strike~` |
 | [Arrow move](/docs/plugins/arrow-move)                 | `arrowMovePlugin`         | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the caret's block; <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves selected blocks. On by default |
-| [Find and replace](/docs/plugins/find)                 | `findPlugin`, `createFindPlugin` | <kbd>Mod</kbd> + <kbd>F</kbd> opens a find and replace bar: matches highlighted, closed toggles opened, Replace all in one undo step. Opt-in: list it in `plugins` |
+| [Find and replace](/docs/plugins/find)                 | `createFindPlugin` | <kbd>Mod</kbd> + <kbd>F</kbd> opens a find and replace bar: matches highlighted, closed toggles opened, Replace all in one undo step. Opt-in: list it in `plugins` |
 | [Marquee selection](/docs/plugins/marquee)             | `marqueePlugin`, `createMarqueePlugin` | Notion's rubber band: drag from the margins or below the last block to select blocks with a rectangle, live. Opt-in |
 | [Page](/docs/plugins/page)                             | `pagePlugin`, `createPagePlugin` | Notion's subpage block: a link to another document with its title, opened, named and created by your functions. Opt-in |
 | [Table of contents](/docs/plugins/table-of-contents)   | `tocPlugin`, `createTocPlugin` | Notion's table of contents: the document's headings, live, each scrolling to its heading. Opt-in |

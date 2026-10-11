@@ -570,7 +570,7 @@ export declare class BlockHandleController {
 ```
 
 - `dragging`: The block whose handle is the source of the drag in progress (its handle stays mounted).
-- `labels`: The words the handles say (the plugin's `labels`): read them in a custom `handle`.
+- `labels`: The words the handles say (the plugin's `labels`): read them in your `handle`.
 - `labelOf`: The block's kind as people read it (`kindLabel`: "Heading 1"), its handle's name; reactive through the block's cell (a Turn into renames it).
 - `opened`: The popup the `+` or the grip of `block` opened, while it is open (`edytor.popups`).
 - `grip`: Make `node` the block's grip: dragging (when draggable), a click that selects the block and opens its menu, and the Alt+arrow moves.
@@ -759,7 +759,7 @@ export declare class BlockMenuController {
 - `blocks`: The blocks the actions apply to, in document order: the block selection when it holds `block` (Notion), else `block` alone — as clicked, so a grip-selected list is one block (Move, Duplicate, Copy link, the caret after).
 - `flyout`: The open flyout: the kinds (`turn`), the colours (`color`), or none.
 - `flyoutIndex`: The keyboard's row in the open flyout.
-- `labels`: The words the menu shows (the plugin's `labels`): read them in a custom `menu`.
+- `labels`: The words the menu shows (the plugin's `labels`): read them in your `menu`.
 - `readonly`: The editor is readonly: the menu closes.
 - `menuId`: The menu's and the Turn into flyout's element ids (page-unique), for `aria-controls`.
 - `rowId`: A row's element id (page-unique; a flyout's with `flyout`), for `aria-activedescendant`.
@@ -3640,7 +3640,7 @@ export declare class FindController {
 }
 ```
 
-- `labels`: The words the bar shows (the plugin's `labels`): read them in a custom `bar`.
+- `labels`: The words the bar shows (the plugin's `labels`): read them in your `bar`.
 - `replacement`: The replacement text.
 - `query`: What the bar searches for; setting it shows the current match.
 - `query`: What the bar searches for; setting it shows the current match.
@@ -3842,7 +3842,7 @@ export type HistoryClientOptions = {
 
 ## HistoryPanelLabels
 
-The version history panel (`HistoryPanel`).
+The version history (`VersionHistory`) and the panel an app draws over it.
 
 ```ts
 export type HistoryPanelLabels = {
@@ -4541,10 +4541,10 @@ command, one undo step). Opened by the keys, the list gives them back to
 its button; opened by a press, to the editor. A press or a focus outside
 closes it, as readonly does.
 
-What a custom `menu` snippet receives: the open list (`open`), the query
+What a `menu` snippet receives: the open list (`open`), the query
 and its rows (`query`, `items`, each a `MenuItemPayload`), the keyboard's
 row (`index`), `search`, `pick` and `close`, the plugin's `labels`, and
-the attachments that keep the built-in keys and ARIA: `keys` on the
+the attachments that give it the keys and the ARIA: `keys` on the
 search field, `popup` on the list, `option(index)` spread on each row.
 
 ```ts
@@ -4582,7 +4582,7 @@ export declare class LanguageMenu {
 - `readonly`: The view is readonly (reactive): the list closes.
 - `current`: The open block's language id.
 - `rows`: The rows the query keeps: a language the plugin does not list first (the block's own), then the list.
-- `items`: The rows for a custom `menu`: each the row shape every menu shares (`run` picks it, `select` highlights it, `option` its attributes), and whether it is the block's language (`current`).
+- `items`: The rows for your `menu`: each the row shape every menu shares (`run` picks it, `select` highlights it, `option` its attributes), and whether it is the block's language (`current`).
 - `isOpenFor`: Whether `block`'s list is open.
 - `listId`: The list's and its rows' element ids (page-unique).
 - `toggle`: Open `block`'s list (`keys`: the keyboard opened it), or close it when it is open.
@@ -4596,9 +4596,9 @@ export declare class LanguageMenu {
 
 ## LanguageMenuItem
 
-One row of the language list, for a custom `menu`: the row shape every
+One row of the language list, for your `menu`: the row shape every
 menu shares (`item` is the language, `run` picks it), and whether it is
-the block's own language (`current`, the built-in ✓).
+the block's own language (`current`, the demo's ✓).
 
 ```ts
 export type LanguageMenuItem = MenuItemPayload<LanguageRow> & {
@@ -4735,7 +4735,7 @@ export type MarqueeBoxPayload = {
 
 ## marqueePlugin
 
-The marquee with the default rectangle.
+The marquee with no rectangle drawn (`createMarqueePlugin({ box })` draws one).
 
 ```ts
 declare const marqueePlugin: Plugin;
@@ -4755,7 +4755,7 @@ export type MarqueePluginOptions = {
 
 - `container`: An element around the editor whose empty area starts a marquee too (the page, as in Notion): a CSS selector the editor's element is matched against with `closest()`, or a function of the editor's element.
 - `threshold`: How far (px) the pointer moves before the rectangle starts: a shorter press is a click.
-- `box`: Replace the rectangle's markup; it renders in a host placed and sized to the rectangle.
+- `box`: The rectangle's markup; it renders in a host placed and sized to the rectangle (without it, the blocks are selected and no rectangle shows).
 
 ## MAX_INLINE_IMAGE_BYTES
 
@@ -5011,8 +5011,8 @@ export type MentionPluginOptions = {
 
 ## MenuItemPayload
 
-One row of a chrome list, for an `item` snippet: the same shape in every
-menu (the slash menu's, a trigger's, the version history's).
+One row of a chrome list a controller builds for the app's markup: the
+same shape in every menu (a table grip's, the code language list's).
 
 ```ts
 export type MenuItemPayload<T> = {
@@ -6177,14 +6177,14 @@ export declare class SlashMenuController extends TextTriggerController {
 }
 ```
 
-- `labels`: The words the menu shows (the plugin's `labels`): read them in a custom `menu` or `item`.
+- `labels`: The words the menu shows (the plugin's `labels`): read them in your `menu`.
 - `addition`: Opened by a handle's `+` (`BLOCK_ADD_EVENT`): no `/` in the text, the query is the menu's own field, and a picked row adds the block first.
 - `groupName`: A group's heading: its key in the labels' `groups`, else the key itself.
-- `optionId`: A row's element id (page-unique), for `aria-activedescendant`: set it on a custom `item`.
+- `optionId`: A row's element id (page-unique), for `aria-activedescendant` (`option(index)` sets it).
 - `listName`: The listbox's accessible name.
 - `rowIdAt`: The element id of the row at `index`, if there is such a row.
 - `popupOf`: A `+`'s menu names its highlighted row from its own field, and tells the `+` it opened it.
-- `keys`: The element that holds a `+` menu's keyboard (`{@attach controller.keys}`: its field, or the element a custom `menu` is wrapped in).
+- `keys`: The element that holds a `+` menu's keyboard (`{@attach controller.keys}`: its field, or the menu element itself).
 - `count`: The rows the keyboard moves through.
 - `admits`: A `/` opens the menu in a block a kind can replace (`convertible`).
 - `queried`: A query no command matches is prose (a URL, a path), and so is one that opens with whitespace (`yes / no`) or holds only hyphens (`/-`): the menu closes.
@@ -6356,7 +6356,7 @@ export type SuggestionOptions = {
 
 - `id`: The suggestion's id (default: minted).
 - `status`: Default `ready` with content, `streaming` without.
-- `label`: A name for the UI (the default bar shows it).
+- `label`: A name for the UI (an app's suggestion bar shows it).
 - `onRetry`: Offer "Try again": called by `retry()` once the content is emptied.
 
 ## SuggestionRange
@@ -6553,9 +6553,9 @@ column's `data.columns[i].width` (one command, one undo step), Escape
 drops the preview. Every action is a table command (`table.ts`): refused
 when the view is readonly.
 
-What a custom `menu` snippet receives: the open menu (`menu`), its rows
+What a `menu` snippet receives: the open menu (`menu`), its rows
 (`items`, each a `MenuItemPayload`), the keyboard's row (`index`), the
-attachments that keep the built-in keys and ARIA (`popup` and `keys` on
+attachments that give it the keys and the ARIA (`popup` and `keys` on
 the menu's element, `option(index)` spread on each row), `close()` and
 the plugin's `labels`. A grip's own attachment is its payload's `grip`.
 
@@ -6595,7 +6595,7 @@ export declare class TableChrome {
 - `close`: Close the menu; the editor takes the keys back.
 - `menuId`: The menu element's id (page-unique), for `aria-controls`.
 - `rowId`: A row's element id (page-unique), for `aria-activedescendant`.
-- `items`: The open menu's rows for a custom `menu`: each the row shape every menu shares (`run` runs it and closes the menu, `select` makes it the keyboard's, `option` its attributes), whether it can run now (`disabled`) and whether it deletes (`danger`).
+- `items`: The open menu's rows for your `menu`: each the row shape every menu shares (`run` runs it and closes the menu, `select` makes it the keyboard's, `option` its attributes), whether it can run now (`disabled`) and whether it deletes (`danger`).
 - `option`: The attributes of the open menu's row at `index`: spread them on its element (`{...chrome.option(index)}`).
 - `popup`: The menu's element (`{@attach chrome.popup}`): its id, `menu` role and name (Row options, Column options) unless it has its own, presses that keep the focus, and its publication to the view's root (`edytor.popups`: `aria-controls`, `aria-haspopup`) while it is in the page; `data-edytor-table-menu` names the kind it is open on.
 - `keys`: The element that holds the menu's keyboard (`{@attach chrome.keys}`, the menu's own): it takes the focus when it mounts and names the keyboard's row (`aria-activedescendant`); ArrowDown and ArrowUp walk the rows that can run (around the ends), Home and End reach the first and last, Enter or Space runs the row, Escape and Tab close the menu and give the keys back to the editor.
@@ -6699,7 +6699,7 @@ export type TableMenu = {
 
 ## TableMenuItem
 
-One row of a grip's menu, for a custom `menu`: the row shape every menu
+One row of a grip's menu, for your `menu`: the row shape every menu
 shares (`item` is the row, `run` runs it and closes the menu), with
 whether it can run now and whether it deletes.
 
@@ -7142,7 +7142,7 @@ export declare class ToolbarController {
 }
 ```
 
-- `labels`: The words the toolbar shows (the plugin's `labels`): read them in a custom `toolbar`.
+- `labels`: The words the toolbar shows (the plugin's `labels`): read them in your `toolbar`.
 - `panel`: The open panel: the kind menu, the link field or the colors.
 - `hovered`: The link under the pointer, for the link card (`link.card`).
 - `colorName`: A palette color's name as shown (`labels.colors`).
@@ -7531,6 +7531,7 @@ export declare class VersionHistory {
     diff: import("./diff.js").VersionDiff | null;
     preview: JSONDoc | null;
     previewKey: string | null;
+    changes: ReadonlyMap<string, VersionChange>;
     previewPlugins: Plugin[];
     selectedVersion: HistoryVersion | null;
     refresh: () => Promise<void>;
@@ -7558,7 +7559,8 @@ export declare class VersionHistory {
 - `diff`: The previewed version against the live document: its counts and the changed blocks.
 - `preview`: What the preview renders: the version, with the blocks removed since when highlighting.
 - `previewKey`: A key for the preview: it remounts when what it renders changes (`value` is read once).
-- `previewPlugins`: The preview's plugins: the highlights of the changes, then the app's.
+- `changes`: The blocks changed since the version, by id, while highlighting (else none).
+- `previewPlugins`: The preview's plugins: the highlights of the changes (read live), then the app's.
 - `selectedVersion`: The previewed version, as listed.
 - `refresh`: List the versions again; keeps the selection when it is still listed, else selects the newest.
 - `select`: Preview the version `key` (`null`: none).

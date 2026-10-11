@@ -36,7 +36,7 @@ export class FindController {
 
 	constructor(
 		private edytor: Edytor,
-		/** The words the bar shows (the plugin's `labels`): read them in a custom `bar`. */
+		/** The words the bar shows (the plugin's `labels`): read them in your `bar`. */
 		readonly labels: FindLabels = findEnglish
 	) {}
 

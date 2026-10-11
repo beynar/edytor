@@ -45,7 +45,7 @@ export type SuggestionOptions = {
 	id?: string;
 	/** Default `ready` with content, `streaming` without. */
 	status?: SuggestionStatus;
-	/** A name for the UI (the default bar shows it). */
+	/** A name for the UI (an app's suggestion bar shows it). */
 	label?: string;
 	/** Offer "Try again": called by `retry()` once the content is emptied. */
 	onRetry?: (suggestion: Suggestion) => void;

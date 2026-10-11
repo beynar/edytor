@@ -78,7 +78,7 @@ A stored code block looks like this:
 
 A code block's language is its `data.language`, an id from the plugin's `languages` (`code.language`). A block without one, as every code block stored before the picker was, is in the default language, JavaScript. The header names the language by its label (`code.language.label`): a language the plugin does not list shows its id as stored, and its lines are plain text.
 
-The header's language is a button (`button[data-edytor-code-language]`, named "Code language: JavaScript", with a chevron) that opens the language list under it, in the overlay, as in Notion (`code.language.picker`): a search field over the languages by label, the block's own marked with a check and highlighted. Typing filters the rows by label or id (`script` keeps JavaScript and TypeScript, `cpp` keeps C++); a click on a row, or <kbd>Enter</kbd> on the highlighted one, sets `data.language`. A pick is one `patchData` command, so it is one undo step, refused in a readonly view, and seen by hooks; a collaborator's concurrent edits of the block's other data are kept. The block's lines render again in the new language, its grammar loaded if it is the first of its kind. A readonly view and a suggestion's preview show the label only, as a `<span data-edytor-code-language>`.
+The header and the language list are your markup: `createCodePlugin({ header, menu })`, a `Snippet<[CodeHeader]>` drawn above each block's lines and a `Snippet<[LanguageMenu]>` drawn under the button that opened it (without them, a code block has no header, and its language is set from code or a [command](/docs/editor/commands)). In the demo, as in Notion, the header's language is a button (named "Code language: JavaScript", with a chevron) that opens the language list under it, in the overlay (`code.language.picker`): a search field over the languages by label, the block's own marked with a check and highlighted. Typing filters the rows by label or id (`script` keeps JavaScript and TypeScript, `cpp` keeps C++); a click on a row, or <kbd>Enter</kbd> on the highlighted one, sets `data.language`. A pick is one `patchData` command, so it is one undo step, refused in a readonly view, and seen by hooks; a collaborator's concurrent edits of the block's other data are kept. The block's lines render again in the new language, its grammar loaded if it is the first of its kind. In a readonly view and a suggestion's preview the header's `editable` is false: show the label only.
 
 The keyboard reaches it all:
 
@@ -94,7 +94,7 @@ The keyboard reaches it all:
 
 The search field is a `combobox` naming the highlighted row (`aria-activedescendant`) of a `listbox`; the button carries `aria-haspopup="listbox"` and `aria-expanded`. A list the keys opened gives them back to its button; one a click opened, to the editor, its caret where it was. A press or a focus outside the list closes it, as does the view turning readonly.
 
-The header and the list take your own markup: `createCodePlugin({ header, menu })`, a `Snippet<[CodeHeader]>` and a `Snippet<[LanguageMenu]>`, whose attachments (`header.button`, `menu.keys`, `menu.popup`, `menu.option(index)`) keep these keys and this ARIA. See [Menus and handles](/docs/customization/menus#code-header-and-language-list).
+The controllers' attachments (`header.button`, `menu.keys`, `menu.popup`, `menu.option(index)`) give your markup these keys and this ARIA. See [Menus and handles](/docs/customization/menus#code-header-and-language-list); the demo's markup is `CodeHeader.svelte` and `LanguageMenu.svelte` in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome).
 
 `CODE_LANGUAGES` holds the default list, after Notion's:
 
@@ -196,13 +196,12 @@ The stylesheet draws the block like Notion's: a `#f7f6f3` panel rounded 10px, pa
 | Selector                        | Element                                        |
 | ------------------------------- | ---------------------------------------------- |
 | `[data-edytor-type='code']`     | The block panel                                |
-| `[data-edytor-code-header]`     | The header, void chrome the caret never enters |
-| `[data-edytor-code-language]`   | The language button (`button`, `[aria-expanded='true']` while its list is open), or its label (`span`) in a readonly view |
-| `[data-edytor-code-copy]`       | The Copy button                                |
-| `[data-edytor-code-language-menu]` | The language list, in the overlay: its search field (`input`) and its rows (`[data-edytor-code-language-option]`, the block's own `[data-current]`, the highlighted one `[aria-selected='true']`); `[data-edytor-code-language-empty]` when no language matches |
+| `[data-edytor-code-header]`     | Where your header renders, at the panel's top: void chrome the caret never enters |
+| `[data-edytor-code-language-button]` | Your language button (`header.button` marks it; `[aria-expanded='true']` while its list is open) |
+| `[data-edytor-code-language-panel]` | Where your language list renders, in the overlay |
 | `pre.th-code`                   | The code area                                  |
 
-The panel's colors are custom properties a theme or an app sets on the editor or the block: `--edytor-code-background` and `--edytor-code-color` (the panel and its text), `--edytor-code-chrome-color` (the language and Copy), `--edytor-code-chrome-hover` (their hovered background) and `--edytor-code-accent` (the focus ring and the search field's border).
+The panel's colors are custom properties a theme or an app sets on the editor or the block: `--edytor-code-background` and `--edytor-code-color` (the panel and its text).
 
 ```css
 [data-edytor-type='code'] {

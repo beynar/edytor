@@ -144,7 +144,7 @@ export type TableMenuRow = {
 };
 
 /**
- * One row of a grip's menu, for a custom `menu`: the row shape every menu
+ * One row of a grip's menu, for your `menu`: the row shape every menu
  * shares (`item` is the row, `run` runs it and closes the menu), with
  * whether it can run now and whether it deletes.
  */
@@ -220,9 +220,9 @@ type Bar = { kind: 'row' | 'column'; left: number; top: number; width?: number; 
  * drops the preview. Every action is a table command (`table.ts`): refused
  * when the view is readonly.
  *
- * What a custom `menu` snippet receives: the open menu (`menu`), its rows
+ * What a `menu` snippet receives: the open menu (`menu`), its rows
  * (`items`, each a `MenuItemPayload`), the keyboard's row (`index`), the
- * attachments that keep the built-in keys and ARIA (`popup` and `keys` on
+ * attachments that give it the keys and the ARIA (`popup` and `keys` on
  * the menu's element, `option(index)` spread on each row), `close()` and
  * the plugin's `labels`. A grip's own attachment is its payload's `grip`.
  */
@@ -649,7 +649,7 @@ export class TableChrome {
 	rowId = (row: TableMenuRow) => this.edytor.popups.idOf(`table-menu-${row.id}`);
 
 	/**
-	 * The open menu's rows for a custom `menu`: each the row shape every menu
+	 * The open menu's rows for your `menu`: each the row shape every menu
 	 * shares (`run` runs it and closes the menu, `select` makes it the
 	 * keyboard's, `option` its attributes), whether it can run now
 	 * (`disabled`) and whether it deletes (`danger`).

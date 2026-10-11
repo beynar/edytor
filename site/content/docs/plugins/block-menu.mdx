@@ -4,21 +4,58 @@ description: The block menu plugin opens Notion's block menu when you click a bl
 icon: menu
 ---
 
-`blockMenuPlugin` opens a menu when you click a block handle's ⋮⋮ grip: a search field, Turn into, Color, Duplicate, Move up, Move down and Delete, as in Notion. It also binds <kbd>Mod</kbd> + <kbd>D</kbd> to duplicate a block, and adds the colours to the [slash menu](/docs/plugins/slash-menu) by name: `/red` offers "Red text" and "Red background" ([Block colors](#block-colors)).
+`createBlockMenuPlugin({ menu })` opens a menu when you click a block handle's ⋮⋮ grip: a search field, Turn into, Color, Duplicate, Move up, Move down and Delete, as in Notion. The menu is your `menu` snippet: the plugin ships its rows, actions, keys and ARIA, and no markup (see [Markup](#markup)). It also binds <kbd>Mod</kbd> + <kbd>D</kbd> to duplicate a block, and adds the colours to the [slash menu](/docs/plugins/slash-menu) by name: `/red` offers "Red text" and "Red background" ([Block colors](#block-colors)).
 
 ```svelte title="Menu.svelte" check
 <script lang="ts">
-	import { Edytor, blockMenuPlugin } from 'edytor';
+	import { Edytor, createBlockMenuPlugin, type BlockMenuController } from 'edytor';
+
+	const plugins = [createBlockMenuPlugin({ menu })];
 </script>
 
-<Edytor plugins={[blockMenuPlugin]} />
+{#snippet menu(controller: BlockMenuController)}
+	<div class="menu" data-edytor-block-menu>
+		<input
+			aria-label={controller.labels.searchLabel}
+			value={controller.query}
+			oninput={(event) => controller.search(event.currentTarget.value)}
+			{@attach controller.keys}
+		/>
+		<div {@attach controller.popup}>
+			{#each controller.rows as row, index (`${index}:${row.id}`)}
+				<button
+					{...controller.option(index)}
+					onclick={() => {
+						controller.selectedIndex = index;
+						controller.runSelected();
+					}}>{row.label}</button
+				>
+			{/each}
+		</div>
+		{#if controller.flyout}
+			<div {@attach controller.flyoutMenu}>
+				{#each controller.flyoutRows as row, index (row.id)}
+					<button
+						{...controller.option(index, true)}
+						onclick={() => {
+							controller.flyoutIndex = index;
+							controller.runFlyout();
+						}}>{row.label}</button
+					>
+				{/each}
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
+<Edytor {plugins} />
 ```
 
-The menu opens from [block handles](/docs/plugins/block-handles), which `<Edytor>` adds by default. Pass no `onActivate` to them: a handle with an `onActivate` callback calls it instead, and the menu never opens.
+The menu opens from [block handles](/docs/plugins/block-handles) (`createBlockHandlesPlugin({ handle })`, listed beside it). Pass no `onActivate` to them: a handle with an `onActivate` callback calls it instead, and the menu never opens. Without a `menu`, a grip click opens nothing: the plugin still binds <kbd>Mod</kbd> + <kbd>D</kbd> and the colour commands.
 
 ## Options
 
-`blockMenuPlugin` has no block link and the built-in markup. `createBlockMenuPlugin(options)` builds one with options:
+`createBlockMenuPlugin(options)` takes:
 
 ```ts title="blockMenu.ts" check
 import { createBlockMenuPlugin } from 'edytor';
@@ -36,7 +73,7 @@ const blockMenu = createBlockMenuPlugin({
     },
     menu: {
       type: "Snippet<[BlockMenuController]>",
-      description: "Replaces the menu's markup. See Custom markup below.",
+      description: "The menu's markup. Without it, nothing shows. See Markup below.",
     },
     labels: {
       type: "PartialLabels<'blockMenu'>",
@@ -49,9 +86,9 @@ The options type is `BlockMenuOptions`.
 
 ## What it shows
 
-The menu opens beside the grip, top-aligned 8px to its right (to its left when the right has no room, flipped up when the space below is short), follows scrolling and resizing, and closes when the grip leaves the view. The Turn into and Color flyouts open beside the menu, to its right (to its left when the right has no room), top-aligned with it and moved up as far as the viewport needs (8px from its edges, by the flyout's laid-out size, so its opening animation never leaves it past the bottom); taller than the viewport, it scrolls inside, so every row stays reachable by the mouse (`[data-edytor-block-menu-flyout]`). From top to bottom:
+The menu's rows are the controller's (`controller.rows`); the demo draws them as below. The menu opens beside the grip, top-aligned 8px to its right (to its left when the right has no room, flipped up when the space below is short), follows scrolling and resizing, and closes when the grip leaves the view. The Turn into and Color flyouts open beside the menu, to its right (to its left when the right has no room), top-aligned with it and moved up as far as the viewport needs (8px from its edges, by the flyout's laid-out size, so its opening animation never leaves it past the bottom); taller than the viewport, it scrolls inside, so every row stays reachable by the mouse (`[data-edytor-block-menu-flyout]`). From top to bottom:
 
-1. A "Search actions…" field, focused.
+1. A "Search actions…" field, focused (`keys`).
 2. A heading naming the block's kind, such as "Heading 2".
 3. The actions:
 
@@ -137,13 +174,13 @@ import { BLOCK_ACTIVATE_EVENT, type BlockActivation } from 'edytor';
 
 `block` is the clicked block and `anchor` the grip element. The block menu listens for it and answers it with `preventDefault()`, as it takes the keyboard (unanswered, the editor takes the focus after the click). A plugin of your own can listen for the same event in `onEdytorAttached` to open a different menu, or to add behavior next to this one.
 
-## Placement and styling
+## Placement
 
-The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-block-menu-host` and `z-index: 70`. Its markup and styles are built in: a 265px panel with line icons for the built-in kinds and actions, the kind flyout beside it, and a 140ms fade and scale-in. The panel has `data-edytor-block-menu` and `data-testid="block-menu"`, and each action row `data-testid="block-menu-<id>"`, with ids `turn`, `color`, `link`, `duplicate`, `up`, `down` and `delete`; each colour row is `data-testid="block-menu-<field>.<name>"` (`color.red`, `background.default`), its swatch drawn from the same tokens as the blocks.
+The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-block-menu-host` and `z-index: 70`, placed beside the grip by the element marked `data-edytor-block-menu` (else your snippet's first element); a flyout marked `data-edytor-block-menu-flyout` is placed beside it. Its look is yours: the demo's Notion-style panel (265px, line icons, a 140ms fade and scale-in) is `BlockMenu.svelte` in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome); its rows' action ids are `turn`, `color`, `link`, `duplicate`, `up`, `down` and `delete`, a colour row's `<field>.<name>` (`color.red`, `background.default`).
 
-## Custom markup
+## Markup
 
-A `menu` snippet replaces the panel. It renders while `controller.isOpen`, in the same host, placed beside the grip by the element marked `data-edytor-block-menu` (else your snippet's first element). The plugin keeps opening it on a grip click, closing it on a press outside, placing it, and <kbd>Mod</kbd> + <kbd>D</kbd>. The keys in the table above, and the ARIA, are the controller's attachments, which the built-in panel uses too: `{@attach controller.keys}` on your search field, `{@attach controller.popup}` on the element holding the rows, `{...controller.option(index)}` on each row, `{@attach controller.flyoutMenu}` on an open flyout.
+A `menu` snippet draws the menu. It renders while `controller.isOpen`, in that host. The plugin keeps opening it on a grip click, closing it on a press outside, placing it, and <kbd>Mod</kbd> + <kbd>D</kbd>. The keys in the table above, and the ARIA, are the controller's attachments: `{@attach controller.keys}` on your search field, `{@attach controller.popup}` on the element holding the rows, `{...controller.option(index)}` on each row, `{@attach controller.flyoutMenu}` on an open flyout. The example at the top of this page uses them all.
 
 The snippet receives the `BlockMenuController`:
 
@@ -184,51 +221,7 @@ The snippet receives the `BlockMenuController`:
   }}
 />
 
-Every action closes the menu and returns the caret, as in the built-in menu: it replaces the block selection the grip click left, and the projector draws it after the flush.
+Every action closes the menu and returns the caret: it replaces the block selection the grip click left, and the projector draws it after the flush.
 
-```svelte title="Editor.svelte" check
-<script lang="ts">
-	import { Edytor, createBlockMenuPlugin, type BlockMenuController } from 'edytor';
-
-	const plugins = [createBlockMenuPlugin({ menu })];
-</script>
-
-{#snippet menu(controller: BlockMenuController)}
-	<div class="menu" data-edytor-block-menu>
-		<input
-			aria-label={controller.labels.searchLabel}
-			value={controller.query}
-			oninput={(event) => controller.search(event.currentTarget.value)}
-			{@attach controller.keys}
-		/>
-		<div {@attach controller.popup}>
-			{#each controller.rows as row, index (`${index}:${row.id}`)}
-				<button
-					{...controller.option(index)}
-					onclick={() => {
-						controller.selectedIndex = index;
-						controller.runSelected();
-					}}>{row.label}</button
-				>
-			{/each}
-		</div>
-		{#if controller.flyout}
-			<div {@attach controller.flyoutMenu}>
-				{#each controller.flyoutRows as row, index (row.id)}
-					<button
-						{...controller.option(index, true)}
-						onclick={() => {
-							controller.flyoutIndex = index;
-							controller.runFlyout();
-						}}>{row.label}</button
-					>
-				{/each}
-			</div>
-		{/if}
-	</div>
-{/snippet}
-
-<Edytor {plugins} />
-```
 
 To open a different menu without this plugin, listen for `edytor-block-activate`, or pass `onActivate` to the block handles (see [Building a block menu](/docs/plugins/block-handles#building-a-block-menu)). [Menus and handles](/docs/customization/menus) shows the other snippets.

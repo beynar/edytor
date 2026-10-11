@@ -59,7 +59,7 @@ export class ToolbarController {
 
 	constructor(
 		private edytor: Edytor,
-		/** The words the toolbar shows (the plugin's `labels`): read them in a custom `toolbar`. */
+		/** The words the toolbar shows (the plugin's `labels`): read them in your `toolbar`. */
 		readonly labels: ToolbarLabels = toolbarEnglish
 	) {}
 

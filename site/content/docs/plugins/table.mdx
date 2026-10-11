@@ -10,10 +10,10 @@ The plugin is not a default plugin: list it in `plugins`.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, tablePlugin, slashMenuPlugin, blockMenuPlugin } from 'edytor';
+	import { Edytor, tablePlugin } from 'edytor';
 	import 'edytor/themes/notion.css';
 
-	const plugins = [tablePlugin, slashMenuPlugin, blockMenuPlugin];
+	const plugins = [tablePlugin];
 </script>
 
 <div class="edytor-notion">
@@ -51,15 +51,15 @@ List it in every view that may open a document holding tables. A view without it
     },
     grip: {
       type: "Snippet<[TableGripPayload]>",
-      description: "Replace a row's and a column's grip, centered where the grip stands; {@attach payload.grip} keeps its drag, its menu, its keys and its ARIA. See Menus and handles.",
+      description: "A row's and a column's grip, centered where the grip stands (without it, no grip); {@attach payload.grip} keeps its drag, its menu, its keys and its ARIA. See Menus and handles.",
     },
     menu: {
       type: "Snippet<[TableChrome]>",
-      description: "Replace a grip's menu, under its grip; {@attach chrome.popup} and {@attach chrome.keys} on its element, each row of chrome.items spreads its option. See Menus and handles.",
+      description: "A grip's menu, under its grip (without it, a grip's click opens nothing); {@attach chrome.popup} and {@attach chrome.keys} on its element, each row of chrome.items spreads its option. See Menus and handles.",
     },
     add: {
       type: "Snippet<[TableAddPayload]>",
-      description: "Replace the + under the table and beside it, laid along that edge. See Menus and handles.",
+      description: "The + under the table and beside it, laid along that edge (without it, no +). See Menus and handles.",
     },
   }}
 />
@@ -182,7 +182,6 @@ These rules come from the document's roles: list the plugin in every view; a hea
 | --- | --- | --- |
 | `--edytor-table-border` | `rgb(233, 233, 231)` | The cells' borders |
 | `--edytor-table-header-background` | `rgb(247, 246, 243)` | A header cell's background |
-| `--edytor-table-grip-background` | `#fff` | The row and column grips |
 | `--edytor-table-resize-color` | `rgba(35, 131, 226, 0.43)` | A column edge's resize line |
 | `--edytor-table-drop-color` | `rgba(35, 131, 226, 0.43)` | The drop line of a row's or column's drag |
 
@@ -194,11 +193,11 @@ These rules come from the document's roles: list the plugin in every view; a hea
 | `[data-edytor-table-cell]` | A cell (`data-edytor-column`: its position; `data-edytor-table-header="true"` for a header cell) |
 | `[data-edytor-table-pad]` | A padded cell's placeholder |
 | `[data-edytor-table-scroll]` | The table's box, which scrolls the grid sideways |
-| `[data-edytor-table-grip]`, `[data-edytor-table-add]`, `[data-edytor-table-resize]` | The chrome, in the overlay (`data-dragging="true"` on a grip while it drags) |
-| `[data-edytor-table-grip-host]`, `[data-edytor-table-add-host]`, `[data-edytor-table-menu-host]` | Where a grip (a point it centers on), a `+` bar and a menu stand: the built-in markup's and your snippets' |
+| `[data-edytor-table-resize]` | A column edge's resize band, in the overlay |
+| `[data-edytor-table-grip-host]`, `[data-edytor-table-add-host]`, `[data-edytor-table-menu-host]` | Where your grip (a point it centers on, `data-dragging="true"` on the grip while it drags), `+` bar and menu stand |
 | `[data-edytor-table-drop]` | The drop line of a grip's drag (`row` or `column`, `data-gap`: its position among the rows or columns) |
 | `[data-edytor-table-drag-preview]` | The picture following the pointer during a grip's drag |
-| `.edytor-table-menu` | A grip's menu (`[data-edytor-table-menu="row"]` or `"column"`; its keyboard's row `[data-selected="true"]`) |
+| `[data-edytor-table-menu]` | Your grip's menu (`="row"` or `"column"`, set by `popup`; its keyboard's row `[data-selected="true"]`) |
 
 ## Document API
 

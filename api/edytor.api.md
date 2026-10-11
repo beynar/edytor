@@ -5066,6 +5066,7 @@ export declare class VersionHistory {
     diff: import("./diff.js").VersionDiff | null;
     preview: JSONDoc | null;
     previewKey: string | null;
+    changes: ReadonlyMap<string, VersionChange>;
     previewPlugins: Plugin[];
     selectedVersion: HistoryVersion | null;
     refresh: () => Promise<void>;

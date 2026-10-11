@@ -337,11 +337,10 @@ export const docReads = (c: DocBase) => {
 	 * absent/deleted blocks. This is the transaction-aware counterpart
 	 * of the commit-synced {@link runsView} read surface.
 	 *
-	 * The range reader emits BORROWED `marks`/`data` (cursor format
-	 * state / the replicated inline attr) — every item's payload is
-	 * swapped for the view's canonical frozen instance before it crosses
-	 * the public boundary, so callers can't mutate engine state through
-	 * the snapshot. Item wrappers and the array stay fresh and mutable.
+	 * The items are the block's maintained runs: their payloads are the
+	 * index's canonical frozen instances (`===` the ones `runs` publishes),
+	 * so callers can't mutate engine state through the snapshot. Item
+	 * wrappers and the array stay fresh and mutable.
 	 */
 	const contentItems = (id: BlockId): ContentItem[] => runsView.contentItems(id);
 

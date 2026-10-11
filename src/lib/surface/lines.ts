@@ -49,9 +49,9 @@ export const sameLine = (a: DOMRect, b: DOMRect) =>
  * text).
  */
 export const onOneLine = (
-	a: { text: Text; offset: number },
-	b: { text: Text; offset: number }
+	a: { text: Text; offset: number } | null,
+	b: { text: Text; offset: number } | null
 ): boolean | null => {
-	const [x, y] = [caretBox(a.text, a.offset, false), caretBox(b.text, b.offset, false)];
+	const [x, y] = [a && caretBox(a.text, a.offset, false), b && caretBox(b.text, b.offset, false)];
 	return x && y ? sameLine(x, y) : null;
 };

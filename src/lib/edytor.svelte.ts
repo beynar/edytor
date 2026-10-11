@@ -261,7 +261,7 @@ export class Edytor {
 			parked: () => this.projector.parked(),
 			clear: () => clearDomSelection(this.node),
 			pointAt: (node, offset) => textPointAt.call(this.selection, node, offset),
-			sameLine: (a, b) => onOneLine(a, b)
+			sameLine: (a, b) => onOneLine(this.selection.textAt(a), this.selection.textAt(b))
 		},
 		input: {
 			runIntent: (inputType) => runIntent(this, inputType),

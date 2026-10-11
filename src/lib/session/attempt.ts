@@ -29,50 +29,49 @@ export type IntentRow = {
 	/** A delete's unit at a collapsed caret (none: a cut, drag or composition fragment, which deletes nothing there). */
 	unit?: 'char' | 'word' | 'soft' | 'hard' | 'line';
 };
-const row = (
-	kind: Kind,
-	key?: string,
-	dir?: IntentRow['dir'],
-	unit?: IntentRow['unit']
-): IntentRow => ({ kind, key, dir, unit });
+/** The inputTypes of each kind (the directional deletes are generated below). */
+const KINDS: Record<Kind, string> = {
+	text: 'insertText insertReplacementText insertFromYank insertTranspose',
+	composition: 'insertCompositionText insertFromComposition deleteCompositionText',
+	payload: 'insertFromPaste insertFromPasteAsQuotation insertFromDrop',
+	break: 'insertParagraph insertLineBreak',
+	delete: 'deleteByCut deleteByDrag deleteByComposition deleteContent deleteEntireSoftLine',
+	history: 'historyUndo historyRedo'
+};
+const KEYS: Record<string, string> = {
+	insertParagraph: 'enter',
+	insertLineBreak: 'shift+enter',
+	deleteContentBackward: 'backspace',
+	deleteContentForward: 'delete'
+};
 
 /** The one inputType → intent table; everything downstream switches on its rows. */
-export const INTENTS: Record<string, IntentRow | undefined> = {
-	insertText: row('text'),
-	insertReplacementText: row('text'),
-	insertFromYank: row('text'),
-	insertTranspose: row('text'),
-	insertCompositionText: row('composition'),
-	insertFromComposition: row('composition'),
-	deleteCompositionText: row('composition'),
-	insertFromPaste: row('payload'),
-	insertFromPasteAsQuotation: row('payload'),
-	insertFromDrop: row('payload'),
-	insertParagraph: row('break', 'enter'),
-	insertLineBreak: row('break', 'shift+enter'),
-	deleteContentBackward: row('delete', 'backspace', 'back', 'char'),
-	deleteContentForward: row('delete', 'delete', 'fwd', 'char'),
-	deleteWordBackward: row('delete', undefined, 'back', 'word'),
-	deleteSoftLineBackward: row('delete', undefined, 'back', 'soft'),
-	deleteHardLineBackward: row('delete', undefined, 'back', 'hard'),
-	deleteWordForward: row('delete', undefined, 'fwd', 'word'),
-	deleteSoftLineForward: row('delete', undefined, 'fwd', 'soft'),
-	deleteHardLineForward: row('delete', undefined, 'fwd', 'hard'),
-	deleteByCut: row('delete'),
-	deleteByDrag: row('delete'),
-	deleteByComposition: row('delete'),
-	deleteContent: row('delete', undefined, undefined, 'char'),
-	deleteEntireSoftLine: row('delete', undefined, undefined, 'line'),
-	historyUndo: row('history'),
-	historyRedo: row('history')
-};
+export const INTENTS: Record<string, IntentRow | undefined> = {};
+for (const [kind, types] of Object.entries(KINDS) as [Kind, string][])
+	for (const type of types.split(' ')) INTENTS[type] = { kind, key: KEYS[type] };
+INTENTS.deleteContent!.unit = 'char';
+INTENTS.deleteEntireSoftLine!.unit = 'line';
+// `delete<Unit><Backward|Forward>`: the name says the unit and the direction.
+for (const [part, unit] of [
+	['Content', 'char'],
+	['Word', 'word'],
+	['SoftLine', 'soft'],
+	['HardLine', 'hard']
+] as const)
+	for (const [side, dir] of [
+		['Backward', 'back'],
+		['Forward', 'fwd']
+	] as const) {
+		const type = `delete${part}${side}`;
+		INTENTS[type] = { kind: 'delete', key: KEYS[type], dir, unit };
+	}
 export const kindOf = (inputType: string) => INTENTS[inputType]?.kind;
 
 /** The intent a key stands for (Enter, Shift+Enter, Backspace, Delete): the table's `key`, read back. */
 export const keyIntentOf = (key: string, shift: boolean) => {
 	const name = key.toLowerCase();
 	const hotkey = shift && name === 'enter' ? 'shift+enter' : name;
-	for (const type in INTENTS) if (INTENTS[type]!.key === hotkey) return type;
+	for (const type in KEYS) if (KEYS[type] === hotkey) return type;
 	return null;
 };
 

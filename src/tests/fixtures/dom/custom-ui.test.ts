@@ -174,7 +174,7 @@ describe('custom snippets with the attachments', () => {
 		const listbox = named(editor.getAttribute('aria-controls'));
 		expect(listbox?.closest('[data-testid="custom-slash-menu"]')).not.toBeNull();
 		expect(listbox?.getAttribute('role')).toBe('listbox');
-		expect(listbox?.hasAttribute('aria-label')).toBe(false);
+		expect(listbox?.getAttribute('aria-label')).toBe('Block commands');
 		expect(editor.getAttribute('aria-haspopup')).toBe('listbox');
 		const options = all('custom-slash-row');
 		expect(options.every((option) => option.getAttribute('role') === 'option')).toBe(true);
@@ -516,17 +516,17 @@ describe('custom snippets with the attachments', () => {
 			expect(grip.dataset.index).toBe('0');
 			expect(grip.getAttribute('draggable')).toBe('true');
 			// Named by the app's markup, never by the package.
-			expect(grip.hasAttribute('aria-label')).toBe(false);
+			expect(grip.getAttribute('aria-label')).toBe('Row options');
 			expect(grip.getAttribute('aria-haspopup')).toBe('menu');
 			expect(grip.getAttribute('aria-expanded')).toBe('false');
-			expect(tableGrip('column')?.hasAttribute('aria-label')).toBe(false);
+			expect(tableGrip('column')?.getAttribute('aria-label')).toBe('Column options');
 
 			await click(grip);
 			const menu = one('custom-table-menu')!;
 			expect(menu.closest('[data-edytor-table-menu-host]')).not.toBeNull();
 			expect(document.activeElement).toBe(menu);
 			expect(menu.getAttribute('role')).toBe('menu');
-			expect(menu.hasAttribute('aria-label')).toBe(false);
+			expect(menu.getAttribute('aria-label')).toBe('Row options');
 			expect(menu.dataset.edytorTableMenu).toBe('row');
 			expect(named(editor.getAttribute('aria-controls'))).toBe(menu);
 			expect(editor.getAttribute('aria-haspopup')).toBe('menu');
@@ -587,7 +587,7 @@ describe('custom snippets with the attachments', () => {
 			await key(column, { key: 'ArrowDown' });
 			const menu = one('custom-table-menu')!;
 			expect(menu.dataset.edytorTableMenu).toBe('column');
-			expect(menu.hasAttribute('aria-label')).toBe(false);
+			expect(menu.getAttribute('aria-label')).toBe('Column options');
 			expect(document.activeElement).toBe(menu);
 			// Move left: the second column becomes the first.
 			const at = rows().findIndex((row) => row.dataset.row === 'move-left');
@@ -637,7 +637,7 @@ describe('custom snippets with the attachments', () => {
 			expect(button().textContent).toBe('SQL');
 			expect(button().getAttribute('aria-haspopup')).toBe('listbox');
 			expect(button().getAttribute('aria-expanded')).toBe('false');
-			expect(button().hasAttribute('aria-label')).toBe(false);
+			expect(button().getAttribute('aria-label')).toBe('Code language: SQL');
 
 			await click(button());
 			// Placed under the button in the overlay's next frame.
@@ -648,7 +648,7 @@ describe('custom snippets with the attachments', () => {
 			expect(field.getAttribute('aria-expanded')).toBe('true');
 			const list = named(field.getAttribute('aria-controls'));
 			expect(list?.getAttribute('role')).toBe('listbox');
-			expect(list?.hasAttribute('aria-label')).toBe(false);
+			expect(list?.getAttribute('aria-label')).toBe('Code language');
 			expect(named(editor.getAttribute('aria-controls'))).toBe(list);
 			expect(editor.getAttribute('aria-haspopup')).toBe('listbox');
 			expect(button().getAttribute('aria-expanded')).toBe('true');

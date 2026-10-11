@@ -956,7 +956,7 @@ export const dispatchPasteAtCaret = async (
 		}
 
 		const part = edytor.root?.children[blockIndex]?.content?.[contentIndex];
-		if (typeof part?.insertAt !== 'function' || typeof part?.stringContent !== 'string') {
+		if (typeof part?.getMarksAtRange !== 'function' || typeof part?.stringContent !== 'string') {
 			throw new Error(
 				`content[${contentIndex}] of block ${blockIndex} is not a Text (got ${part?.constructor?.name})`
 			);

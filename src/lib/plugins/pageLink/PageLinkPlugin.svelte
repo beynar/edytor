@@ -85,12 +85,10 @@
 								...(href ? { href } : {}),
 								...(page.icon ? { icon: page.icon } : {})
 							};
-							const after = block.addInlineBlock({
-								offset: from,
-								block: { type: 'pageLink', data }
-							});
-							if (after) caret(from + 1);
-							return !!after;
+							const atom = { type: 'pageLink', data };
+							const written = edytor.insertInline(block.id, from, atom).status === 'applied';
+							if (written) caret(from + 1);
+							return written;
 						}
 					}
 				]

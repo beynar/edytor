@@ -110,7 +110,7 @@ suggestion.update(textToBlocks(markdown));
 
 `suggestion.accept()` writes the content and answers an `OpResult` (`{ status, ids }`):
 
-- **One command.** It runs through the [dispatcher](/docs/editor/commands) as `acceptSuggestion`, with the payload `{ suggestion: { id, at, content } }`. `onBeforeOperation` sees the command, then each step it plans (`addChildBlocks`, `removeBlock`, `insertText`…; for a text range, the range's deletion), and can refuse it with `prevent()`. `dispatcher.last` records the result.
+- **One command.** It runs through the [dispatcher](/docs/editor/commands) as `acceptSuggestion`, with the payload `{ suggestion: { id, at, content } }`. `onBeforeOperation` sees the command, then each step it plans (`insertBlocks`, `deleteBlock`, `insertText`…; for a text range, the range's deletion), and can refuse it with `prevent()`. `dispatcher.last` records the result.
 - **One undo step.** The content and anything it replaces go and come back together. Typing right after it is a step of its own.
 - **Fresh ids.** The blocks and atoms get new ids; the ids in `content` are ignored.
 - **The caret** ends the content: the end of the last block's last line.

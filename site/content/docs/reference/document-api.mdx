@@ -241,20 +241,6 @@ const off = doc.onChange((change) => {
 
 `transact(fn, origin?)` groups several operations into one transaction and one change event. It is not a rollback: a throw from `fn` does not undo the writes made before it. That holds for `document.transact` and the room's [`transact`](/docs/server/extending#edit-on-the-server) too; for all or nothing, apply one `prepare.*` plan, since a refused plan writes nothing. Prefer `document.transact(fn)`, which also makes it one undo step.
 
-## Block handles
-
-`document.block(id)` returns a handle over one block, with the same operations bound to that id. Handles are cached per id and safe on missing ids (operations are `refused`).
-
-```ts title="block-handle.ts" check
-const block = doc.block('p1');
-block.insertText(0, '> ');
-block.items; // ContentItem[]
-block.split(2, 'p1-tail');
-block.delete(); // children take its place; delete({ keepChildren: false }) removes them too
-```
-
-Members: `id`, `attribution`, `items`, `runs`, `length`, `childIds()`, `insertText`, `deleteText`, `format`, `setMark`, `unsetMark`, `clearMarks`, `insertInline`, `removeInline`, `setInlineData` (a replace), `insertChild(index, spec)`, `moveTo({ parent, index })`, `nestUnder(parent)`, `unNest()`, `split(offset, newId, tail?)`, `mergeBackward()`, `mergeForward()`, `mergeFrom(other)`, `delete(opts?)`, `setType`, `setData` (a replace), `set(value)`, `duplicate(freshId)` (the same callback as `duplicateBlock`).
-
 ## Attribution
 
 Each block records who created it and who changed it, as actor ids (`actor.id` from `createDocument`):

@@ -33,7 +33,7 @@ The value is reactive, so `$derived(edytor.selection.value.kind)` updates with t
 
 ## The caret
 
-`edytor.selection.caret` is the collapsed text caret as `{ block, offset }`: the `Block` handle and the offset in its content, where an inline atom counts as 1. It is `null` when the selection is not a caret (a range, an atom, blocks, none). These block offsets are the ones the document's operations (`edytor.document.insertText(…)`) take, an input rule's and a trigger's context reads ([Input rules and triggers](/docs/plugins/input-rules)), `block.addInlineBlock({ offset })` inserts at and `dispatcher.caret` takes.
+`edytor.selection.caret` is the collapsed text caret as `{ block, offset }`: the `Block` handle and the offset in its content, where an inline atom counts as 1. It is `null` when the selection is not a caret (a range, an atom, blocks, none). These block offsets are the ones the document's operations (`edytor.insertText(…)`, `edytor.insertInline(…)`) take, an input rule's and a trigger's context reads ([Input rules and triggers](/docs/plugins/input-rules)) and `dispatcher.caret` takes.
 
 ```ts title="caret.ts" check
 const caret = edytor.selection.caret;
@@ -41,13 +41,12 @@ if (caret) {
 	const { block, offset } = caret;
 	// The same caret, two characters on (clamped to the block's content).
 	edytor.selection.setCaret({ block, offset: offset + 2 });
-	// The text segment that shows an offset, and the offset in it.
-	const at = block.textAtOffset(offset);
-	if (at) at.text.insertText({ value: '→ ', start: at.offset, end: at.offset });
+	// Writes take the same block offsets.
+	edytor.insertText(block.id, offset, '→ ');
 }
 ```
 
-`selection.setCaret({ block, offset })` selects a caret there; a block that shows no text (a divider) keeps the selection as it was. `block.textAtOffset(offset)` answers the text segment that shows a block offset and the offset inside it, for the text handle's own methods (a boundary before an inline atom reads the text before it).
+`selection.setCaret({ block, offset })` selects a caret there; a block that shows no text (a divider) keeps the selection as it was. `block.textAtOffset(offset)` answers the text segment that shows a block offset and the offset inside it (a boundary before an inline atom reads the text before it).
 
 ## Reading positions: `projection`
 
@@ -134,7 +133,7 @@ A block selection is exactly its members:
 - A press anywhere outside the editor and its own menus, handles and toolbar ends a block selection (the selection becomes `none`), as in Notion. <kbd>Shift</kbd> or <kbd>Mod</kbd> held at the press keeps it. So does a press inside an element marked `data-edytor-keep-selection`: put it on your own toolbar or sidebar when its buttons act on the selected blocks. A text selection is left as the browser leaves it.
 - Copying a block selection copies only the selected blocks, a selected list or code block with everything in it.
 
-Selected blocks have the `data-edytor-selected` attribute, and the editor's root has `data-edytor-selection="blocks"` while the selection is a block selection (the browser's own text highlight is hidden under it). `edytor.selection.selectedBlocks` is a reactive, read-only `Set<Block>` of the blocks as clicked: a grip-selected list is one block there. `edytor.selection.selectedMembers` is what a command over the selection acts on, in document order: the selected blocks, a selected list or code block with its whole subtree (hidden toggle bodies included). Pass it to your own commands, such as `edytor.deleteBlocks({ blocks: edytor.selection.selectedMembers })`. `focusedBlocks` holds the blocks a text selection is in (`data-edytor-focused`).
+Selected blocks have the `data-edytor-selected` attribute, and the editor's root has `data-edytor-selection="blocks"` while the selection is a block selection (the browser's own text highlight is hidden under it). `edytor.selection.selectedBlocks` is a reactive, read-only `Set<Block>` of the blocks as clicked: a grip-selected list is one block there. `edytor.selection.selectedMembers` is what a command over the selection acts on, in document order: the selected blocks, a selected list or code block with its whole subtree (hidden toggle bodies included). Pass it to your own commands, such as `edytor.deleteBlocks(edytor.selection.selectedMembers.map((block) => block.id))`. `focusedBlocks` holds the blocks a text selection is in (`data-edytor-focused`).
 
 ## Pending marks
 

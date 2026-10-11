@@ -45,9 +45,9 @@ In the editor:
 - <kbd>Tab</kbd> nests the current block under the block before it. <kbd>Shift</kbd>+<kbd>Tab</kbd> moves it out, after its parent; the blocks nested after it follow as its children, as in any outliner (an item of a list container leaves the list instead, see [Containers](#containers)). Over a selection of sibling blocks, both keys move them together and keep them selected.
 - <kbd>Backspace</kbd> at the start of a nested block that is its parent's last child moves it out one level instead of merging (a heading, list item or other menu kind first turns into a paragraph; see [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role)).
 - Block handles drag blocks before, after or inside other blocks, and, with the columns plugin, beside them (left or right, in columns).
-- `edytor.moveBlocks` and `edytor.canMoveBlocks` do the same from code (see [Commands](/docs/editor/commands#moving-blocks)).
+- `edytor.move` and `edytor.canMove` do the same from code (see [Commands](/docs/editor/commands#moving-blocks)).
 
-Deleting a block, or a block selection, does not delete the children that were not selected: they take the deleted block's place. `block.removeBlock({ keepChildren: false })` removes a whole subtree.
+Deleting a block, or a block selection, does not delete the children that were not selected: they take the deleted block's place. `edytor.deleteBlocks(ids)` with the ids of the whole subtree removes it all.
 
 ## Void blocks
 

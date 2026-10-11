@@ -1827,10 +1827,10 @@ describe('a relative move never hides the moved block (YW-13)', () => {
 	const isOpen = (edytor: Awaited<ReturnType<typeof render>>['edytor'], id: string) =>
 		(edytor.idToBlock.get(id)!.node as HTMLDetailsElement).open;
 
-	it('edytor.moveBlocks({ direction: "in" }) beside a closed toggle opens it', async () => {
+	it('edytor.move({ direction: "in" }) beside a closed toggle opens it', async () => {
 		const { edytor } = await render([], { children: [toggle('t', [para('body')]), para('x')] });
 		expect(isOpen(edytor, 't')).toBe(false);
-		const moved = edytor.moveBlocks({ blocks: [edytor.idToBlock.get('x')!], direction: 'in' });
+		const moved = edytor.move({ blocks: [edytor.idToBlock.get('x')!], direction: 'in' });
 		await flushDomUpdates();
 		expect(moved.map((block) => block.id)).toEqual(['x']);
 		expect(edytor.idToBlock.get('x')!.parent?.id).toBe('t');
@@ -1841,16 +1841,16 @@ describe('a relative move never hides the moved block (YW-13)', () => {
 	it('edytor.moveBlocks inside a closed toggle as a target opens it', async () => {
 		const { edytor } = await render([], { children: [toggle('t'), para('x')] });
 		const [t, x] = [edytor.idToBlock.get('t')!, edytor.idToBlock.get('x')!];
-		edytor.moveBlocks({ blocks: [x], target: t, position: 'inside' });
+		edytor.move({ blocks: [x], target: t, position: 'inside' });
 		await flushDomUpdates();
 		expect(isOpen(edytor, 't')).toBe(true);
 	});
 
-	it('edytor.moveBlocks({ direction: "out" }) of a closed toggle that adopts its siblings opens it', async () => {
+	it('edytor.move({ direction: "out" }) of a closed toggle that adopts its siblings opens it', async () => {
 		const { edytor } = await render([], {
 			children: [para('p', [toggle('t', [para('body')]), para('s')])]
 		});
-		edytor.moveBlocks({ blocks: [edytor.idToBlock.get('t')!], direction: 'out' });
+		edytor.move({ blocks: [edytor.idToBlock.get('t')!], direction: 'out' });
 		await flushDomUpdates();
 		expect(edytor.idToBlock.get('s')!.parent?.id).toBe('t');
 		expect(isOpen(edytor, 't')).toBe(true);

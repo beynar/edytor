@@ -293,7 +293,7 @@ describe('F-I16 — a session and its commit are one undo step', () => {
 		const vetoing: Plugin = () => ({
 			onBeforeOperation: (change) => {
 				if (
-					change.operation === 'removeBlock' &&
+					change.operation === 'deleteBlock' &&
 					(change.block as { content?: { stringContent?: string }[] }).content?.[0]
 						?.stringContent === 'bb'
 				)

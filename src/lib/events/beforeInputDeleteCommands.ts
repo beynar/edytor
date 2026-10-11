@@ -1,13 +1,17 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import { dispatchPlan } from '$lib/block/block.utils.js';
-import { prepareDeleteContent } from '$lib/edytor.utils.js';
+import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { deleteSelectedBlocks, deleteSelectedRange } from '$lib/selection/replaceSelection.js';
-import { shown } from '$lib/selection/visibility.js';
+import { shown, viewOf } from '$lib/selection/visibility.js';
 import { blockSelection } from '$lib/session/selection.js';
 import { INTENTS, caretAt, type Attempt } from '$lib/session/attempt.js';
-import { getNextWordEndOffset, getPreviousWordStartOffset } from '$lib/text/wordBoundary.js';
+import {
+	getNextGraphemeEnd,
+	getNextWordEndOffset,
+	getPreviousGraphemeStart,
+	getPreviousWordStartOffset
+} from '$lib/text/wordBoundary.js';
 
 /**
  * Merge `from` into a collapsed toggle's header `into`, as the key's merge:
@@ -17,12 +21,17 @@ import { getNextWordEndOffset, getPreviousWordStartOffset } from '$lib/text/word
  * refuses all of it. Nothing when the document refuses the merge (an island).
  */
 const mergeIntoHeader = (edytor: Edytor, from: Block, into: Block, backward: boolean) => {
+	const { facade, dispatcher } = edytor;
 	const [end, start] = [into.lastText, from.firstText];
-	if (!end || !start || !('writes' in edytor.facade.prepare.mergeBlocks(from.id, into.id))) return;
-	const seam = { startText: end, yStart: end.length, endText: start, yEnd: 0 };
-	const plan = () => prepareDeleteContent.call(edytor, { replace: true, selection: seam });
-	if (backward) dispatchPlan(from, 'mergeBlockBackward', {}, plan, [from.parent]);
-	else dispatchPlan(into, 'mergeBlockForward', {}, plan, [from.parent]);
+	if (!end || !start || !('writes' in facade.prepare.mergeBlocks(from.id, into.id))) return;
+	const seam = () =>
+		facade.prepare.replaceRange(
+			{ block: into.id, offset: end.segStart + end.length },
+			{ block: from.id, offset: start.segStart },
+			viewOf(edytor)
+		);
+	if (backward) dispatcher.plan('mergeBackward', [from.id], seam, from);
+	else dispatcher.plan('mergeForward', [into.id], seam, into);
 };
 
 /**
@@ -38,14 +47,22 @@ export const deleteInText = (
 ) => {
 	const { content } = text.parent;
 	if (!atEdge) {
-		const deletion = text.deleteText({ direction: back ? 'BACKWARD' : 'FORWARD', length: 1 });
-		return edytor.selection.selectText(text, back ? (deletion?.start ?? yStart - 1) : yStart);
+		// One character is one grapheme, at the caret as it is now (anchored: a
+		// peer's edit since the occurrence moved it).
+		const value = text.stringContent;
+		const at = edytor.selection.textRange().yStart;
+		const [start, end] = back
+			? [getPreviousGraphemeStart(value, at), at]
+			: [at, getNextGraphemeEnd(value, at)];
+		if (end > start) edytor.deleteText(text.parent.id, text.segStart + start, end - start);
+		return edytor.selection.selectText(text, back ? start : yStart);
 	}
 	const index = content.indexOf(text) + (back ? -1 : 1);
 	const before = back ? content.at(index - 1) : text;
 	// Read before the removal joins the texts beside the atom.
 	const offset = back && before instanceof Text ? before.length : yStart;
-	text.parent.removeInlineBlock({ index });
+	const atom = content.at(index);
+	if (atom instanceof InlineBlock) edytor.removeInline(text.parent.id, atom.id);
 	if (before instanceof Text) edytor.selection.selectText(before, offset);
 };
 
@@ -63,7 +80,7 @@ const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 			: deleteInText(edytor, startText, yStart, false, snapshot.projection.isAtEndOfText);
 	const next = shown(current, 'blockAfter');
 	if (next?.definition.void) return edytor.selection.select(blockSelection([next.id]));
-	if (next === current.closestNextBlock) current.mergeBlockForward();
+	if (next === current.closestNextBlock) edytor.mergeForward(current.id);
 	else if (next) {
 		// A forward merge into a collapsed toggle's header joins its first line:
 		// a container's (a list's) first item, as the document's `mergeForward`.
@@ -93,7 +110,7 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 		block.type !== type &&
 		edytor.kinds.some((row) => row.value.type === block.type)
 	) {
-		block.setBlock({ value: { type, data: {} } });
+		edytor.setBlock(block.id, { type, data: {} });
 		return caretAt(edytor, block.firstText, 0);
 	}
 	const at = facade.positionOf(block.id);
@@ -108,8 +125,8 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 	const inColumn = !!parent && !parent.isRoot && facade.isLayoutItem(parent.id);
 	const last = !!at && at.index === facade.childrenIds(at.parent).length - 1;
 	if (parent !== root && last && !island && !inColumn) {
-		const lifted = block.unNestBlock();
-		if (lifted) edytor.selection.selectText(lifted.firstText, 0);
+		if (edytor.unNestBlock(block.id).status === 'applied')
+			edytor.selection.selectText(block.firstText, 0);
 		return;
 	}
 	if (island && island.children.length === 1)
@@ -126,7 +143,7 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 	if (previous?.definition.void) return edytor.selection.select(blockSelection([previous.id]));
 	const previousText = previous?.lastText;
 	const offset = previousText?.length;
-	if (previous === closest) block.mergeBlockBackward();
+	if (previous === closest) edytor.mergeBackward(block.id);
 	else if (previous) mergeIntoHeader(edytor, block, previous, true);
 	if (offset !== undefined) caretAt(edytor, previousText, offset);
 	// A list's first item lifts out of it: the caret stays at its start.
@@ -201,6 +218,7 @@ export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: Attempt) =
 				? [edge, [text, yStart]]
 				: [[text, yStart], edge];
 	if (unit !== 'line' && from[0] === to[0] && from[1] === to[1]) return byChar();
-	text.parent.deleteContentAtRange({ start: [from[0].index, from[1]], end: [to[0].index, to[1]] });
+	const at = from[0].segStart + from[1];
+	edytor.deleteText(text.parent.id, at, to[0].segStart + to[1] - at);
 	edytor.selection.selectText(...from);
 };

@@ -283,8 +283,9 @@ export class EquationEditor {
 	set = (expression: string) => {
 		const target = this.target;
 		if (!target || expression === this.expression) return;
-		const data = target.atom ? this.#atom(target)?.data : this.#block(target)?.data;
-		if (data) data.expression = expression;
+		const at = target.atom ? { block: target.block, atom: target.atom } : target.block;
+		if (target.atom ? this.#atom(target) : this.#block(target))
+			this.edytor.patchData(at, [{ path: ['expression'], value: expression }]);
 	};
 
 	/**
@@ -306,7 +307,7 @@ export class EquationEditor {
 			if (!atom) return;
 			const offset = offsetOf(block, atom);
 			if (!expressionOf(atom.data) && this.edytor.dispatcher.permits()) {
-				block.removeInlineBlock({ index: atom.index });
+				this.edytor.removeInline(block.id, atom.id);
 				if (keys) selection.setCaret({ block, offset });
 			} else if (keys) selection.setCaret({ block, offset: offset + 1 });
 		} else if (keys) selection.select(blockSelection([block.id]));

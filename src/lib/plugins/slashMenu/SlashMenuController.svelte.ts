@@ -13,8 +13,6 @@ import type { Popup } from '$lib/surface/popups.svelte.js';
 import { attribute, isField, keepFocus } from '../chrome.js';
 import { holdKeys } from '../list.svelte.js';
 
-export type { TextInsertionPayload } from '$lib/plugins/triggers/TriggerController.svelte.js';
-
 /**
  * The view a `+`'s menu asks `isEnabled` of: the editor, its selection a
  * caret at the start of the block the `+` adds, below `block` (a stand-in

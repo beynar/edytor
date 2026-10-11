@@ -227,11 +227,9 @@ describe('dragging a block selection by one of its handles', () => {
 		]);
 		const [one, x, m1] = ['one', 'x', 'm1'].map((id) => block(edytor, id));
 		// An item alone may go beside m1; a paragraph may not sit directly in a list.
-		expect(edytor.canMoveBlocks({ blocks: [one!], target: m1!, position: 'before' })).toBe(true);
-		expect(edytor.canMoveBlocks({ blocks: [one!, x!], target: m1!, position: 'before' })).toBe(
-			false
-		);
-		expect(edytor.moveBlocks({ blocks: [one!, x!], target: m1!, position: 'before' })).toEqual([]);
+		expect(edytor.canMove({ blocks: [one!], target: m1!, position: 'before' })).toBe(true);
+		expect(edytor.canMove({ blocks: [one!, x!], target: m1!, position: 'before' })).toBe(false);
+		expect(edytor.move({ blocks: [one!, x!], target: m1!, position: 'before' })).toEqual([]);
 		expect(tree(edytor)).toEqual([['L', ['one']], 'x', ['M', ['m1']]]);
 	});
 });

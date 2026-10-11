@@ -81,7 +81,7 @@ Clicking `+` opens the [slash menu](/docs/plugins/slash-menu#from-the-block-hand
 
 | Case | What `+` does |
 | --- | --- |
-| A block directly in a column, with <kbd>Alt</kbd> | Adds a column instead, right of the block's column, holding the new block (as Notion: one `edytor.moveBlocks` with `position: 'right'` in the same undo step). |
+| A block directly in a column, with <kbd>Alt</kbd> | Adds a column instead, right of the block's column, holding the new block (as Notion: one `edytor.move` with `position: 'right'` in the same undo step). |
 | The picked kind does not fit where the block is | It lands where it fits, as the slash menu places it: beside a list's item, a heading splits the list after the item and a list's own kind adds an item; a divider or code block follows the block. |
 | The block is already an empty block of the parent's default kind | The picked kind converts it instead of adding another. |
 | A press outside the menu, focus leaving it, or the editor turning readonly | The menu closes as <kbd>Escape</kbd> does (a press outside then places the caret). |
@@ -173,7 +173,7 @@ As in Notion, dragging the handle of a block the selection covers moves every bl
 - **A block selection**: its blocks as clicked (a selected list is one block: dragging one of its items, or pressing <kbd>Alt</kbd> + an arrow on the item's handle, moves that item alone, as with a selected paragraph's child).
 - **A text range across blocks**: every block it spans, as <kbd>Tab</kbd> and Turn into read them (a list the range only enters counts through the items it spans; a code block's lines count as the code block).
 
-The outermost of those blocks move, in document order, wherever they sit: their children, and a closed toggle's hidden body, travel with them. The drop is one `edytor.moveBlocks` call, one undo step.
+The outermost of those blocks move, in document order, wherever they sit: their children, and a closed toggle's hidden body, travel with them. The drop is one `edytor.move` call, one undo step.
 
 - **Preview.** The [drag preview](#the-drag-preview) shows them all, and neither it nor the indicator shows a count badge (their count is `data-count` on `[data-edytor-drop-indicator]` and on `[data-edytor-drag-preview]`, for your own styling).
 - **Selection.** While the drag lasts the moving blocks are block-selected (a text range becomes the block selection of the blocks it covers, and stays so when the drag is cancelled), and after the drop they stay selected (a moved block's selected children too). Undo puts the blocks back and restores the selection you had before the drag (the text range, or the caret), redo the moved blocks' selection.
@@ -201,7 +201,7 @@ When the document has a layout kind (the [columns plugin](/docs/plugins/columns)
 - **Left**: the page margin past the handle column (up to 120px further left, then the [reorder](#dropping-outside-the-blocks)) at the row's height, even entered from above or below, and, inside the editor, the 20px slop left of a row in a column (in the gap); only for a block at the root or directly in a column, a list's item standing for its list (a nested block keeps the pointer's horizontal position for its levels, and its row in the page margin reorders). The blocks go first. The handle column itself (as wide as the drag's handle, left of the blocks' text) is never a beside band: there the row at the pointer's height takes the drop before or after it, by its halves, row after row, gaps between rows included, so a drag straight down the handles reorders.
 - **The gap between two columns**: a new column between them.
 
-Beside a list item or a code line, the layout wraps the whole list or code block. Beside any other block it wraps that block where it is: a toggle's or a callout's child gets its layout inside the toggle or callout (a toggle's child inside a column, where no layout may go, gets a new column beside its column instead). The drop is one `edytor.moveBlocks` call with `position: 'left' | 'right'` (one undo step that restores the selection held before the drag; the moved blocks end selected).
+Beside a list item or a code line, the layout wraps the whole list or code block. Beside any other block it wraps that block where it is: a toggle's or a callout's child gets its layout inside the toggle or callout (a toggle's child inside a column, where no layout may go, gets a new column beside its column instead). The drop is one `edytor.move` call with `position: 'left' | 'right'` (one undo step that restores the selection held before the drag; the moved blocks end selected).
 
 - **Refused bands.** A band the document refuses (a whole layout dragged beside a block, since no layout goes into a column) shows nothing, and letting go there moves nothing. No band is offered where the layout would stack its columns (under 480px wide).
 - **Over a layout**, only the column under the pointer is measured, and a short gap never keeps a placement across a column boundary.
@@ -302,13 +302,13 @@ const onActivate = async ({ block, anchor }: BlockHandleActivation) => {
 	// click selected, a selected list's items too (a list itself never converts).
 	await edytor.runCommand('block.heading2');
 	// Or "Move down":
-	if (edytor.canMoveBlocks({ blocks: [block], direction: 'down' })) {
-		edytor.moveBlocks({ blocks: [block], direction: 'down' });
+	if (edytor.canMove({ blocks: [block], direction: 'down' })) {
+		edytor.move({ blocks: [block], direction: 'down' });
 	}
 };
 ```
 
-The same `edytor.moveBlocks` and `edytor.canMoveBlocks` calls move blocks from anywhere, with `direction` (`up`, `down`, `in`, `out`) or with a `target` and `position` (`before`, `after`, `inside`). Like the handles, `moveBlocks` opens a closed toggle the blocks land in, or that takes blocks as children, so a moved block is never hidden. See [Commands](/docs/editor/commands).
+The same `edytor.move` and `edytor.canMove` calls move blocks from anywhere, with `direction` (`up`, `down`, `in`, `out`) or with a `target` and `position` (`before`, `after`, `inside`). Like the handles, a move opens a closed toggle the blocks land in, or that takes blocks as children, so a moved block is never hidden. See [Commands](/docs/editor/commands).
 
 A click leaves a block selection behind, and a DOM range alone does not replace it. To put the caret back in the block after a menu action, call `selection.setCaret({ block, offset: 0 })` once — it replaces the block selection and the projector draws it after the flush — then focus the editor. A kind whose own content is not displayed (a list container) takes the caret in its first child:
 

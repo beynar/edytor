@@ -116,11 +116,10 @@ describe('the caret in block offsets', () => {
 		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 3 });
 	});
 
-	it('addInlineBlock takes a block offset', async () => {
+	it('insertInline takes a block offset', async () => {
 		const { edytor } = await render([p('a', 'hello')]);
 		const block = edytor.idToBlock.get('a')!;
-		const after = block.addInlineBlock({ offset: 2, block: { type: 'widget', data: {} } });
-		expect(after?.stringContent).toBe('llo');
+		expect(edytor.insertInline('a', 2, { type: 'widget', data: {} }).status).toBe('applied');
 		expect(block.value.content).toEqual([
 			{ text: 'he' },
 			expect.objectContaining({ type: 'widget' }),
@@ -161,7 +160,7 @@ describe('input rules', () => {
 	it('a refused replacement types the text as typed and keeps the match', async () => {
 		const veto: Plugin = () => ({
 			onBeforeOperation: ({ operation, prevent }) => {
-				if (operation === 'deleteContentAtRange') prevent();
+				if (operation === 'deleteText') prevent();
 			}
 		});
 		const { edytor, editor } = await render([p('a', 'hi :smile')], [emojiPlugin, veto]);
@@ -221,7 +220,7 @@ describe('input rules', () => {
 					replace: (_match, { block, from, remove }) =>
 						from === 0 &&
 						remove(() => {
-							block.type = 'todo-item';
+							block.edytor.setBlock(block.id, { type: 'todo-item' });
 						})
 				}
 			]
@@ -397,7 +396,7 @@ describe('the @ mention menu', () => {
 	it('a refused pick keeps the query and puts the caret after it', async () => {
 		const veto: Plugin = () => ({
 			onBeforeOperation: ({ operation, prevent }) => {
-				if (operation === 'addInlineBlock') prevent();
+				if (operation === 'insertInline') prevent();
 			}
 		});
 		const { edytor, editor } = await render([p('a', '')], [mentions, veto]);
@@ -508,11 +507,8 @@ describe('review fixes', () => {
 		const { edytor } = await render([p('a', 'hello')]);
 		const block = edytor.idToBlock.get('a')!;
 		await caretAt(edytor, 'a', 1);
-		const out = edytor.dispatcher.caret(null, () => {
-			block.firstText!.insertText({ value: '!', start: 5, end: 5 });
-			return 'ran';
-		});
-		expect(out).toBe('ran');
+		const out = edytor.dispatcher.caret(null, () => edytor.insertText(block.id, 5, '!'));
+		expect(out?.status).toBe('applied');
 		expect(contentOf(edytor, 'a')).toBe('hello!');
 		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 1 });
 	});
@@ -520,11 +516,10 @@ describe('review fixes', () => {
 	it('dispatcher.caret({ block, offset }, ops): declared before ops, it follows the edit', async () => {
 		const { edytor } = await render([p('a', 'hello')]);
 		const block = edytor.idToBlock.get('a')!;
-		const out = edytor.dispatcher.caret({ block, offset: 3 }, () => {
-			block.firstText!.insertText({ value: 'XY', start: 0, end: 0 });
-			return true;
-		});
-		expect(out).toBe(true);
+		const out = edytor.dispatcher.caret({ block, offset: 3 }, () =>
+			edytor.insertText(block.id, 0, 'XY')
+		);
+		expect(out?.status).toBe('applied');
 		expect(contentOf(edytor, 'a')).toBe('XYhello');
 		expect(caretOf(edytor)).toEqual({ block: 'a', offset: 5 });
 	});

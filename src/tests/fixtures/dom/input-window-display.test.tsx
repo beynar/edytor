@@ -79,8 +79,8 @@ describe('a display held back by the user-input window runs when it closes', () 
 		// An occurrence's handler that is still running (awaited work) when its
 		// render's flushes have all landed.
 		void edytor.userInput(async () => {
-			first.firstText!.removeMarksFromText({ start: 0, end: 4 });
-			second.firstText!.removeMarksFromText({ start: 0, end: 4 });
+			edytor.clearMarks(first.id, 0, 4);
+			edytor.clearMarks(second.id, 0, 4);
 			await held;
 		});
 		await flushDomUpdates();

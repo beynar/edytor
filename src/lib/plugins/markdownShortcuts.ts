@@ -107,14 +107,8 @@ export const markdownShortcutsPlugin: Plugin = (edytor) => {
 					facade.prepare.deleteText(id, at, found.open)
 				);
 			const payload = { value: typed, start: before.length, end: before.length };
-			const applied = dispatcher.dispatch(
-				'inlineMarkdown',
-				payload,
-				{ block, text },
-				(_p, prepared = plan()) => ('writes' in prepared ? facade.apply(prepared) : null),
-				plan
-			);
-			if (!applied) return false;
+			const result = dispatcher.plan('inlineMarkdown', payload, plan, block, text);
+			if (result.status !== 'applied') return false;
 			// Typing after the shortcut continues without the mark.
 			edytor.selection.stage({});
 			caret(at + found.content);

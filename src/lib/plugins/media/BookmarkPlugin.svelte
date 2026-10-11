@@ -109,7 +109,7 @@
 				store: (block, value) => {
 					const url = safeWebUrl(value);
 					if (!url) return false;
-					block.data.url = url;
+					block.edytor.patchData(block.id, [{ path: ['url'], value: url }]);
 					void fill(block, url);
 					return true;
 				},

@@ -110,7 +110,7 @@ describe('H8: an atomic data path is written as one leaf', () => {
 		});
 		const edytor = new Edytor({ document, plugins: [embedPlugin, richTextPlugin] });
 		expect(document.semantics.roles.get('widget')).toMatchObject({ atomic: [['link']] });
-		edytor.idToBlock.get('e')!.data.link = { url: 'y' };
+		edytor.patchData('e', [{ path: ['link'], value: { url: 'y' } }]);
 		expect(document.facade.resolveBlock('e').getAttr('d/link')).toEqual({ url: 'y' });
 		expect(document.facade.blockDataOf('e')).toEqual({ link: { url: 'y' } });
 		edytor.destroy();

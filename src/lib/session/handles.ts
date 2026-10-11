@@ -15,7 +15,7 @@
 import { Block } from '../block/block.svelte.js';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import { Text } from '../text/text.svelte.js';
-import type { ContentItem, ContentRun, DocChange } from '../crdt/index.js';
+import type { ContentItem, ContentRun, Destination, DocChange } from '../crdt/index.js';
 import type { Edytor } from '../edytor.svelte.js';
 import type { JSONText } from '../utils/json.js';
 
@@ -70,6 +70,15 @@ export const segmentJSON = (items: readonly TextRunItem[]): JSONText[] => {
 };
 
 const ROOT = contentParts([]);
+
+/** The destination right after `block` among its siblings (`after: false`, right before it). */
+export const siblingSlot = (block: Block, after = true): Destination => {
+	const parent = block.parent;
+	return {
+		parent: !parent || parent.isRoot ? null : parent.id,
+		index: block.index + Number(after)
+	};
+};
 
 export class Handles {
 	readonly root: Block;

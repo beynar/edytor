@@ -181,7 +181,8 @@
 	export const isRichTextPlugin = (plugin: Plugin) => richTextPlugins.has(plugin);
 
 	// One key patched: a peer's concurrent edit of another key is kept.
-	const toggleTodo = (block: Block) => (block.data.checked = !block.data.checked);
+	const toggleTodo = (block: Block) =>
+		block.edytor.patchData(block.id, [{ path: ['checked'], value: !block.data.checked }]);
 
 	/** Notion's "turn into" chords: Mod+Alt+0 text … 8 code (`block.<type>` command ids, by digit). */
 	const TURN_INTO = [
@@ -322,7 +323,7 @@
 				prevent(() => {
 					const end = yStart + href.length;
 					edytor.dispatcher.run('insertFromPaste', () => {
-						text.insertText({ value: href, start: yStart, end: yStart });
+						edytor.insertText(text.parent.id, text.segStart + yStart, href);
 						edytor.dispatcher.caret(text, end);
 					});
 					if (text.stringContent.slice(yStart, end) === href)
@@ -334,10 +335,11 @@
 			// (`link.autolink.typed`, Notion).
 			onBeforeOperation: (change) => {
 				// A block without children retyped into a disclosure from another kind (the
-				// slash menu, a markdown shortcut, Turn into): the toggle it becomes opens on
-				// its empty body (`body.open`). One with children keeps them out of sight.
-				if (change.operation === 'setBlock') {
-					const type = change.payload.value.type ?? change.block.type;
+				// slash menu, a markdown shortcut, Turn into: their planned `setBlockType`):
+				// the toggle it becomes opens on its empty body (`body.open`). One with
+				// children keeps them out of sight.
+				if (change.operation === 'setBlockType') {
+					const [, type] = change.payload;
 					const opens =
 						DISCLOSURES.has(type) &&
 						!DISCLOSURES.has(change.block.type) &&
@@ -346,10 +348,11 @@
 				}
 				if (autolinking || change.operation !== 'insertText') return;
 				const { payload, text, prevent } = change;
-				if (payload.value !== ' ' || !linkable()) return;
+				if (payload[2] !== ' ' || !linkable()) return;
 				const { startText, yStart } = edytor.selection.textRange();
 				const { isCollapsed } = edytor.selection.projection;
-				if (!isCollapsed || text !== startText || (payload.start ?? yStart) !== yStart) return;
+				if (!isCollapsed || !text || text !== startText) return;
+				if (payload[1] !== text.segStart + yStart) return;
 				const found = typedLink(text.stringContent.slice(0, yStart));
 				const end = found && found.start + found.href.length;
 				if (!found || !end) return;
@@ -360,7 +363,7 @@
 				prevent(() => {
 					autolinking = true;
 					try {
-						text.insertText(payload);
+						edytor.insertText(...payload);
 					} finally {
 						autolinking = false;
 					}
@@ -369,7 +372,7 @@
 				});
 			},
 			onAfterOperation: (change) => {
-				if (change.operation !== 'setBlock' || retyping !== change.block.id) return;
+				if (retyping !== change.block.id) return;
 				retyping = null;
 				if (DISCLOSURES.has(change.block.type)) opening.add(change.block.id);
 			},

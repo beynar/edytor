@@ -79,7 +79,7 @@ export class ImageEmptyController {
 		// An inline image over the cap is never stored: it would weigh on every sync.
 		this.failed = !src ? 'invalid' : oversizedInlineImage(src) ? 'inline' : null;
 		if (src && this.failed === null && this.block) {
-			this.block.data.src = src;
+			this.block.edytor.patchData(this.block.id, [{ path: ['src'], value: src }]);
 			this.options.uploads?.clear(this.block.id);
 		}
 	};

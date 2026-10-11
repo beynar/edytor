@@ -4,7 +4,7 @@ import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { CommandResult } from '$lib/session/commands.js';
 import { selectedTextSpans } from '$lib/selection/visibility.js';
 import { Text } from '$lib/text/text.svelte.js';
-import { dispatchPlan, showText } from '../planned.js';
+import { showText } from '../planned.js';
 import {
 	COMMENT_MARK,
 	blockCommentRuns,
@@ -353,7 +353,8 @@ export class CommentsController {
 					facade.prepare.formatRange(block, offset, length, { [mark]: { id: payload.thread } })
 				)
 			);
-		return dispatchPlan(this.edytor, 'addComment', { thread, runs }, runs[0]!.block, prepare);
+		const block = this.edytor.idToBlock.get(runs[0]!.block);
+		return this.edytor.dispatcher.plan('addComment', { thread, runs }, prepare, block).status;
 	};
 
 	// ── A thread's actions ───────────────────────────────────────────────

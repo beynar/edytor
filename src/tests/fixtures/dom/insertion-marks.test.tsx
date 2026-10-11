@@ -242,7 +242,7 @@ describe('one rule on every insertion path: valued pending marks at a caret', ()
 
 	row('a programmatic insertText without marks', async () => {
 		const { edytor, text } = await pending();
-		text.insertText({ value: 'x', start: 2, end: 2 });
+		edytor.insertText(text.parent.id, text.segStart + 2, 'x');
 		expect(marksAt(edytor, 2)).toEqual(PENDING);
 	});
 });

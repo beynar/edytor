@@ -382,7 +382,7 @@ test.describe('browser clipboard behavior', () => {
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			const leading = edytor.root.children[0].content[0];
-			edytor.transact(() => leading.insertAt(0, '\n'));
+			edytor.transact(() => edytor.facade.insertText(leading.parent.id, leading.segStart, '\n'));
 		});
 		// Pin the model caret and paste in one synchronous task: the paste
 		// pipeline reads `selection.state`, and a queued selectionchange

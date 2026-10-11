@@ -10,13 +10,8 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { ChangePayload, InitializedPlugin } from '$lib/plugins.js';
 import type { HotKey, HotKeyCombination } from '$lib/session/keymap.js';
-import type { Text } from '$lib/text/text.svelte.js';
 import { inputRulesHook } from '$lib/session/inputRules.js';
-import {
-	TriggerMenuController,
-	type TextInsertionPayload,
-	type TextTriggerController
-} from './TriggerController.svelte.js';
+import { TriggerMenuController, type TextTriggerController } from './TriggerController.svelte.js';
 import { caretRect } from './place.js';
 import { placeNear } from '$lib/surface/overlay.js';
 import { listHotkeys, type HeldList } from '../list.svelte.js';
@@ -120,13 +115,11 @@ export const withTriggerMenus = <C extends TextTriggerController>(
 		hotkeys,
 		onAfterOperation: (change) => {
 			plugin.onAfterOperation?.(change);
-			if (change.operation !== 'insertText' || !('text' in change)) return;
+			if (change.operation !== 'insertText' || !change.text) return;
+			const [, offset, value] = change.payload;
+			const { text } = change;
 			for (const controller of controllers)
-				controller.handleTextInsertion(
-					change.text as Text,
-					change.block,
-					change.payload as TextInsertionPayload
-				);
+				controller.handleTextInsertion(text, change.block, offset - text.segStart, value);
 			edytor.overlay.invalidate();
 		},
 		onSelectionChange: (selection) => {

@@ -380,7 +380,7 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 						armed = false;
 						const log = edytor.root!.children[1]!.firstText!;
 						edytor.dispatcher.run('insertText', () =>
-							log.insertText({ value: '!', start: log.length, end: log.length })
+							edytor.insertText(log.parent.id, log.segStart + log.length, '!')
 						);
 					}
 				}
@@ -455,7 +455,7 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 					hook.push((edytor.doc as unknown as { _transaction: unknown })._transaction !== null);
 					const log = edytor.root!.children[1]!.firstText!;
 					edytor.dispatcher.run('insertText', () =>
-						log.insertText({ value: '!', start: log.length, end: log.length })
+						edytor.insertText(log.parent.id, log.segStart + log.length, '!')
 					);
 				}
 			}

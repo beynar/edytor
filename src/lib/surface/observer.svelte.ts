@@ -39,7 +39,7 @@ import type { Edytor } from '../edytor.svelte.js';
 import type { Text } from '../text/text.svelte.js';
 import { diffText } from '../utils/diffText.js';
 import { jsonEquals } from '../utils/json.js';
-import { activeMarks } from '../session/editing/text.js';
+import { activeMarks, marksForInsertion } from '../session/editing/text.js';
 import { INTENTS } from '../session/attempt.js';
 import {
 	getCollapsedDomTextSelection,
@@ -943,14 +943,14 @@ export const adopt = async (
 	const same = removed.every((part) => jsonEquals(activeMarks(part.marks), marks));
 	const shown = insert && shownMarks(text, at);
 	const kind = attempt ? attempt.inputType || (insert ? 'insertText' : 'deleteContent') : null;
-	edytor.dispatcher.run(kind ?? 'foreignChange', () =>
-		insert
-			? text.insertText({ value: insert, start: at, end: at + remove })
-			: text.parent.deleteContentAtRange({
-					start: [text.index, at],
-					end: [text.index, at + remove]
-				})
-	);
+	edytor.dispatcher.run(kind ?? 'foreignChange', () => {
+		const [id, from] = [text.parent.id, text.segStart + at];
+		// A replaced range's common marks; else the view's insertion rule.
+		const replaced = remove ? text.getMarksAtRange(at, at + remove) : undefined;
+		const marks = replaced && marksForInsertion(text, at, { replaced });
+		if (remove) edytor.deleteText(id, from, remove);
+		if (insert) edytor.insertText(id, from, insert, marks);
+	});
 	const adopted = text.isInDocument && text.stringContent === value;
 	if (attempt) attempt.phase = adopted ? 'applied' : 'failed';
 	if (!text.isInDocument) return true;

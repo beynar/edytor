@@ -228,7 +228,7 @@ describe('HX-02: the documented block-selection snippets', () => {
 		selectBlocks(edytor, block(edytor, 'L'));
 		await flushDomUpdates();
 		expect(edytor.selection.selectedMembers.map((b) => b.id)).toEqual(['L', 'one', 'two']);
-		edytor.deleteBlocks({ blocks: edytor.selection.selectedMembers });
+		edytor.deleteBlocks(edytor.selection.selectedMembers.map((b) => b.id));
 		await flushDomUpdates();
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'paragraph "b"']);
 	});

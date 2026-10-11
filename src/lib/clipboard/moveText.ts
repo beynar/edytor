@@ -2,9 +2,9 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Flow } from '$lib/crdt/flow.js';
 import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { DocAnchor } from '$lib/crdt/index.js';
+import type { Text } from '$lib/text/text.svelte.js';
 import { project, type SelectionPoint, type SelectionValue } from '$lib/session/selection.js';
 import { viewOf } from '$lib/selection/visibility.js';
-import { applyAt, caretOf } from '$lib/edytor.utils.js';
 import { flowOfFragment } from './insertClipboardFragment.js';
 import type { EdytorClipboardFragment } from './types.js';
 
@@ -75,6 +75,12 @@ export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): bo
 	const prepare = ({ from, to, copy }: MoveText): Prepared =>
 		copy ? place(to) : facade.compose(place(to), remove(from));
 	const block = edytor.idToBlock.get(to.block);
+	/** Write a stage in the command; answers the caret it decides. */
+	const write = (plan: Prepared) => {
+		if (!('writes' in plan) || !plan.at) return null;
+		dispatcher.write(plan);
+		return plan.at;
+	};
 	/** Where the content went: its start and its end, bound to the placed text. */
 	const placed: { from?: DocAnchor | null; to?: DocAnchor | null } = {};
 	const payload: MoveText = { from: { start, end }, to, copy };
@@ -88,13 +94,12 @@ export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): bo
 			const first = facade.anchorAt(from.start.block, from.start.offset, 'right');
 			const last = facade.anchorAt(from.end.block, from.end.offset, 'left');
 			placed.from = facade.anchorAt(to.block, to.offset, 'left');
-			const at = applyAt.call(edytor, place(to));
+			const at = write(place(to));
 			placed.to = at && facade.anchorAt(at.block, at.offset, 'left');
 			if (copy || !at) return;
 			const [a, b] = [first && facade.resolveAnchor(first), last && facade.resolveAnchor(last)];
 			if (!a || !b) return;
-			applyAt.call(
-				edytor,
+			write(
 				remove({
 					start: { block: a.blockId, offset: a.offset },
 					end: { block: b.blockId, offset: b.offset }
@@ -104,12 +109,14 @@ export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): bo
 		prepare
 	);
 	if (dispatcher.last?.status !== 'applied' || !placed.to) return keep();
-	const point = (anchor: DocAnchor | null | undefined) => {
+	/** The text and offset an anchor resolves to. */
+	const point = (anchor: DocAnchor | null | undefined): [Text | null, number] => {
 		const hit = anchor && facade.resolveAnchor(anchor);
-		return hit ? { block: hit.blockId, offset: hit.offset } : null;
+		const at = hit && edytor.idToBlock.get(hit.blockId)?.textAtOffset(hit.offset);
+		return at ? [at.text, at.offset] : [null, 0];
 	};
-	const [startText, startOffset] = caretOf.call(edytor, point(placed.from));
-	const [endText, endOffset] = caretOf.call(edytor, point(placed.to));
+	const [startText, startOffset] = point(placed.from);
+	const [endText, endOffset] = point(placed.to);
 	if (startText && endText) edytor.selection.selectText(startText, startOffset, endText, endOffset);
 	else if (endText) edytor.selection.selectText(endText, endOffset);
 	return true;

@@ -42,7 +42,11 @@ export const fixtures = defineFixtures([
 				throw new Error('Missing startText for undo/redo test');
 			}
 
-			startText.insertText({ value: '!' });
+			edytor.insertText(
+				startText.parent.id,
+				startText.segStart + selectionState(edytor).yStart,
+				'!'
+			);
 			await runHotkey(edytor, 'mod+z');
 			await runHotkey(edytor, 'mod+shift+z');
 		},
@@ -284,7 +288,11 @@ export const fixtures = defineFixtures([
 				throw new Error('Missing startText for redo test');
 			}
 
-			startText.insertText({ value: '!' });
+			edytor.insertText(
+				startText.parent.id,
+				startText.segStart + selectionState(edytor).yStart,
+				'!'
+			);
 			await runHotkey(edytor, 'mod+z');
 			return runHotkey(edytor, 'ctrl+y');
 		},
@@ -309,7 +317,11 @@ export const fixtures = defineFixtures([
 				throw new Error('Missing startText for Apple redo test');
 			}
 
-			startText.insertText({ value: '!' });
+			edytor.insertText(
+				startText.parent.id,
+				startText.segStart + selectionState(edytor).yStart,
+				'!'
+			);
 			await runHotkey(edytor, 'mod+z', { ctrlKey: false, metaKey: true });
 			const ctrlY = await runHotkey(edytor, 'ctrl+y');
 			const modY = await runHotkey(edytor, 'mod+y', { ctrlKey: false, metaKey: true });

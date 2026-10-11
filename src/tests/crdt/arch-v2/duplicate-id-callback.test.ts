@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createDocument } from '../../../lib/crdt/index.js';
-import type { DocBlock } from '../../../lib/crdt/index.js';
+import type { DocumentWrites, OpResult } from '../../../lib/crdt/index.js';
 
 const seed = () =>
 	createDocument({
@@ -30,12 +30,12 @@ const atomsOf = (document: ReturnType<typeof seed>, id: string) =>
 	) as { id: string; type: string }[];
 
 describe('duplicateBlock with a block-only callback (NW-11)', () => {
-	it('mints a fresh inline atom id instead of throwing (block handle)', () => {
+	it('mints a fresh inline atom id instead of throwing', () => {
 		const document = seed();
 		const map = new Map([['p', 'p2']]);
-		let result: ReturnType<DocBlock['duplicate']> | undefined;
+		let result: OpResult | undefined;
 		expect(() => {
-			result = document.facade.block('p').duplicate((old) => map.get(old)!);
+			result = document.facade.duplicateBlock('p', (old) => map.get(old)!);
 		}).not.toThrow();
 		expect(result).toMatchObject({ status: 'applied', ids: ['p2'] });
 		const [atom] = atomsOf(document, 'p2');
@@ -49,7 +49,7 @@ describe('duplicateBlock with a block-only callback (NW-11)', () => {
 	it('refuses (no throw, no write) when a block id is not answered', () => {
 		const document = seed();
 		const before = JSON.stringify(document.facade.toJSON());
-		let result: ReturnType<DocBlock['duplicate']> | undefined;
+		let result: OpResult | undefined;
 		expect(() => {
 			result = document.facade.duplicateBlock('p', () => undefined as unknown as string);
 		}).not.toThrow();
@@ -61,11 +61,11 @@ describe('duplicateBlock with a block-only callback (NW-11)', () => {
 	it('the typed callback receives the kind of each id', () => {
 		const document = seed();
 		const seen: [string, 'block' | 'inline'][] = [];
-		const fresh: Parameters<DocBlock['duplicate']>[0] = (old, kind) => {
+		const fresh: NonNullable<Parameters<DocumentWrites['duplicateBlock']>[1]> = (old, kind) => {
 			seen.push([old, kind]);
 			return `${old}-copy`;
 		};
-		expect(document.facade.block('p').duplicate(fresh).status).toBe('applied');
+		expect(document.facade.duplicateBlock('p', fresh).status).toBe('applied');
 		expect(seen).toEqual([
 			['p', 'block'],
 			['m1', 'inline']

@@ -62,12 +62,8 @@ import {
 	PresenceWriter,
 	type PresenceOptions
 } from '$lib/collaboration/awarenessSelection.js';
-import { planned } from './block/block.utils.js';
-import {
-	canMoveBlocks as canMoveBlocksRelative,
-	moveBlocks as moveBlocksRelative,
-	type BlockMoveRequest
-} from './session/moves.js';
+import { canMove, move, type BlockMoveRequest } from './session/moves.js';
+import { DOCUMENT_WRITES, type DocumentWrites } from './crdt/operations.js';
 import type {
 	Plugin,
 	BlockSnippetPayload,
@@ -84,15 +80,6 @@ import { on } from 'svelte/events';
 import { Keymap, type HotKey, type HotKeyCombination } from './session/keymap.js';
 import { TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
-import {
-	caretOf,
-	deleteBlocks,
-	applyAt,
-	rangeCaret,
-	prepareDeleteBlocks,
-	prepareDeleteContent,
-	prepareFlow
-} from './edytor.utils.js';
 import { Dispatcher } from './session/commands.js';
 import { History } from './session/history.js';
 import { kindCatalogue, kindCommand, UNKNOWN_KIND, type KindRow } from './kinds.js';
@@ -216,6 +203,19 @@ class MarkRecords extends Map<string, MarkDefinition> {
 	}
 }
 
+/**
+ * The view writes with the document's operations (`DocumentWrites`), under
+ * the same names and arguments as a bare `EdytorDocument`, dispatched:
+ * readonly and `document.writable` admit them, every extension hook sees
+ * them and their planned steps first, each is one transaction and the undo
+ * policy's step, the blocks it touched are normalized, and the caret it
+ * decides (a range deletion, a placed flow) is selected. Each answers its
+ * `OpResult` (`refused` when the view, a hook or the document refused it);
+ * `dispatcher.last` records it.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
+export interface Edytor extends DocumentWrites {}
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging, no-redeclare
 export class Edytor {
 	node?: HTMLElement;
 	marks: Map<string, MarkDefinition> = new MarkRecords();
@@ -242,8 +242,6 @@ export class Edytor {
 	get synced(): boolean {
 		return this.root !== undefined;
 	}
-	/** `batch` binds operations onto blocks and the view alike: both answer `.edytor`. */
-	readonly edytor = this;
 	selection: EdytorSelection;
 	/** @internal The only writer of the DOM selection (`surface/projector`). */
 	readonly projector: Projector = new Projector(this);
@@ -278,13 +276,12 @@ export class Edytor {
 		return this.facade.docData();
 	};
 	/**
-	 * The document's properties as a live proxy (`session/props.ts`): read
-	 * and write them like a plain object (`edytor.data.title = 'Notes'`,
-	 * `bind:value={edytor.data.title}`); each write is a `patchData` command
-	 * on the root. Type it by augmenting {@link EdytorDocData}.
+	 * The document's properties, read-your-writes and reactive. Write them
+	 * with `edytor.patchData(null, patches)`. Type them by augmenting
+	 * {@link EdytorDocData}.
 	 */
-	get data(): EdytorDocData {
-		return this.idToBlock.root.data as EdytorDocData;
+	get data(): Readonly<EdytorDocData> {
+		return this.docData() as EdytorDocData;
 	}
 	/** @internal The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
 	readonly pin = new Pin();
@@ -420,10 +417,14 @@ export class Edytor {
 	};
 
 	/** Whether a block move (relative step or beside/inside a target) is structurally allowed. */
-	canMoveBlocks = (request: BlockMoveRequest): boolean => canMoveBlocksRelative(this, request);
+	canMove = (request: BlockMoveRequest): boolean => canMove(this, request);
 
-	/** Move blocks one relative step, or before, after or inside a live target block. */
-	moveBlocks = (request: BlockMoveRequest): Block[] => moveBlocksRelative(this, request);
+	/**
+	 * Move blocks one relative step, or before, after, inside or beside a live
+	 * target block: resolved to the document's move (`moveBlocks`, an outdent's
+	 * `unNestBlocks`, `placeBeside`) and announced. Answers the moved blocks.
+	 */
+	move = (request: BlockMoveRequest): Block[] => move(this, request);
 
 	/** @internal This view's history (the named exception to commands through the dispatcher): bare engine undo/redo, one restorer. */
 	readonly history = new History(this);
@@ -466,6 +467,10 @@ export class Edytor {
 			warnRetired(options);
 			warnRetired(snippets);
 		}
+		for (const name of DOCUMENT_WRITES)
+			Object.defineProperty(this, name, {
+				value: (...args: never) => this.dispatcher.operate(name, args)
+			});
 		this.labels = labelsWith(editorEnglish, labels);
 		if (document !== undefined) {
 			if (
@@ -931,18 +936,6 @@ export class Edytor {
 		else this.composition.cancel();
 	};
 
-	deleteContentWithinSelection = planned(
-		'deleteContentWithinSelection',
-		prepareDeleteContent,
-		applyAt,
-		rangeCaret
-	);
-
-	/** @internal */
-	insertFlow = planned('insertFlow', prepareFlow, applyAt, caretOf);
-
-	deleteBlocks = planned('deleteBlocks', prepareDeleteBlocks, deleteBlocks);
-
 	/** @internal The handle of the `ordinal`-th text segment of block `id` (the element a cell segment renders). */
 	textAt = (id: string, ordinal: number): Text => this.idToBlock.text(id, ordinal);
 
@@ -986,11 +979,10 @@ export class Edytor {
 	clear = (): boolean => {
 		const newBlock = this.dispatcher.run('clear', () =>
 			this.transact(() => {
-				const { facade } = this;
-				for (const child of facade.childrenIds(null).reverse())
-					facade.block(child).delete({ keepChildren: false });
+				for (const child of this.facade.childrenIds(null).reverse())
+					this.deleteBlock(child, { keepChildren: false });
 				const block = { id: id('b'), type: this.defaultChild(this.root!) };
-				facade.insertBlock({ parent: null, index: 0 }, block);
+				this.insertBlocks({ parent: null, index: 0 }, [block]);
 				return this.idToBlock.block(block.id);
 			})
 		);

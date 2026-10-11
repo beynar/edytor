@@ -39,6 +39,7 @@
  *   read-only view a foreign annotation wrapper stays and a damaged identity
  *   attribute is healed.
  */
+import { siblingSlot } from '$lib/session/handles.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Y } from '$lib/crdt/engine.js';
 import { attachDocument } from '$lib/crdt/document.js';
@@ -667,9 +668,9 @@ describe('answers (b)–(f): what the observer does with each divergence', () =>
 			while (root.firstChild !== second) root.removeChild(root.firstChild!);
 			expect(await settled(edytor)).toEqual([]);
 			expect(first.isConnected).toBe(true);
-			edytor.root!.children[1]!.insertBlockAfter({
-				block: { id: 'third', type: 'paragraph', content: [{ text: 'ef' }] }
-			});
+			edytor.insertBlocks(siblingSlot(edytor.root!.children[1]!), [
+				{ id: 'third', type: 'paragraph', content: [{ text: 'ef' }] }
+			]);
 			expect(await settled(edytor)).toEqual([]);
 			// The root renders its blocks in cell order, then the render anchor.
 			expect(

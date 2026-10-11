@@ -362,7 +362,7 @@ export class BlockMenuController {
 		const move = (direction: 'up' | 'down', label: string, arrow: string) =>
 			action(direction, label, {
 				hint: `${mod}${shift}${arrow}`,
-				isEnabled: () => edytor.canMoveBlocks({ blocks: outermost(blocks), direction }),
+				isEnabled: () => edytor.canMove({ blocks: outermost(blocks), direction }),
 				run: () => this.move(direction)
 			});
 		const all: BlockMenuAction[] = [
@@ -460,7 +460,7 @@ export class BlockMenuController {
 
 	move(direction: 'up' | 'down') {
 		if (!this.blocks.length) return;
-		this.edytor.moveBlocks({ blocks: outermost(this.blocks), direction });
+		this.edytor.move({ blocks: outermost(this.blocks), direction });
 		this.close();
 	}
 
@@ -498,7 +498,7 @@ export class BlockMenuController {
 	}
 
 	duplicate(block: Block) {
-		const copy = block.duplicateBlock();
+		const copy = this.edytor.idToBlock.get(this.edytor.duplicateBlock(block.id).ids[0] ?? '');
 		this.close(false);
 		this.caret(copy ?? block);
 	}
@@ -510,11 +510,10 @@ export class BlockMenuController {
 	 */
 	duplicateAll(blocks: Block[]) {
 		const copies = this.edytor.dispatcher
-			.each('insertBlock', outermost(blocks), (block) => block.duplicateBlock())
-			.filter((copy) => copy != null);
+			.each('duplicateBlock', outermost(blocks), (block) => this.edytor.duplicateBlock(block.id))
+			.flatMap((copy) => (copy?.status === 'applied' ? copy.ids : []));
 		this.close(false);
-		if (copies.length)
-			this.edytor.selection.select(blockSelection(copies.map((block) => block.id)));
+		if (copies.length) this.edytor.selection.select(blockSelection(copies));
 	}
 
 	/**

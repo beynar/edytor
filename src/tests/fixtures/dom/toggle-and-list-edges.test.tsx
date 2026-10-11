@@ -281,7 +281,7 @@ describe('the public nest, unnest and move commands reveal a closed toggle (ZW-0
 	it('nestBlock into a closed toggle opens it', async () => {
 		const view = await render([], [toggle('t', [p('body')]), p('x')]);
 		expect(open(view, 't')).toBe(false);
-		expect(get(view, 'x').nestBlock()).toBe(get(view, 'x'));
+		expect(view.edytor.nestBlock('x', 't').status).toBe('applied');
 		await flushDomUpdates();
 		expect(shape(view)).toEqual([['toggle "t"', ['paragraph "body"', 'paragraph "x"']]]);
 		expect(open(view, 't')).toBe(true);
@@ -291,7 +291,7 @@ describe('the public nest, unnest and move commands reveal a closed toggle (ZW-0
 	it('unNestBlock of a closed toggle that adopts the siblings after it opens it', async () => {
 		const view = await render([], [p('a', [toggle('x', [p('xb')]), p('y')])]);
 		expect(open(view, 'x')).toBe(false);
-		get(view, 'x').unNestBlock();
+		view.edytor.unNestBlock('x');
 		await flushDomUpdates();
 		expect(shape(view)).toEqual([
 			'paragraph "a"',
@@ -301,20 +301,19 @@ describe('the public nest, unnest and move commands reveal a closed toggle (ZW-0
 		expect(hidden(get(view, 'y'))).toBe(false);
 	});
 
-	it('moveBlock and moveBlocks into a closed toggle open it', async () => {
+	it('moveBlocks into a closed toggle opens it', async () => {
 		const view = await render([], [toggle('t', [p('body')]), p('x'), p('y')]);
-		get(view, 'x').moveBlock({ path: [0, 1] });
+		view.edytor.moveBlocks(['x'], { parent: 't', index: 1 });
 		await flushDomUpdates();
 		expect(open(view, 't')).toBe(true);
 		(get(view, 't').node as HTMLDetailsElement).open = false;
-		const y = get(view, 'y');
-		y.moveBlocks({ blocks: [y], path: [0, 2] });
+		view.edytor.moveBlocks(['y'], { parent: 't', index: 2 });
 		await flushDomUpdates();
 		expect(shape(view)).toEqual([
 			['toggle "t"', ['paragraph "body"', 'paragraph "x"', 'paragraph "y"']]
 		]);
 		expect(open(view, 't')).toBe(true);
-		expect(hidden(y)).toBe(false);
+		expect(hidden(get(view, 'y'))).toBe(false);
 	});
 });
 

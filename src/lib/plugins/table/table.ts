@@ -9,9 +9,9 @@
  */
 import type { Snippet } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
-import { dispatchPlan, type BlockOperations } from '$lib/block/block.utils.js';
 import type { TableAddPayload, TableChrome, TableGripPayload } from './chrome.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import type { Commands } from '$lib/plugins.js';
 import type { Prepared } from '$lib/crdt/index.js';
 import * as ops from './ops.js';
 import type { PartialLabels } from '$lib/labels.js';
@@ -108,13 +108,16 @@ export const caretCell = (edytor: Edytor): Block | null => {
 	return block?.id && edytor.facade.isTableCell(block.id) ? block : null;
 };
 
-/** `prepare` dispatched as `operation` on `table`: one plan, its own undo step; the plan or `null`. */
+/** `prepare` dispatched as `operation` on `table`: one plan, its own undo step; the plan's ids, or `null` when refused. */
 const run = <O extends TableOperation>(
 	table: Block,
 	operation: O,
-	payload: BlockOperations[O],
-	prepare: (payload: BlockOperations[O]) => Prepared
-) => dispatchPlan(table, operation, payload, prepare, []);
+	payload: Commands[O],
+	prepare: (payload: Commands[O]) => Prepared
+) => {
+	const result = table.edytor.dispatcher.plan(operation, payload, prepare, table);
+	return result.status === 'refused' ? null : result;
+};
 
 /** Insert a row at `index` (`table.insert-row`); the caret goes to its first cell when `caret`. */
 export const insertRow = (table: Block, index: number, caret = false): Block | null => {
@@ -192,7 +195,7 @@ export const fillCell = (table: Block, row: string, column: string | number): Bl
 
 /** Toggle `flag` (`headerRow` or `headerColumn`) of `table`'s data (`table.header`). */
 export const toggleHeader = (table: Block, flag: 'headerRow' | 'headerColumn') => {
-	(table.data as Record<string, unknown>)[flag] = table.data[flag] !== true;
+	table.edytor.patchData(table.id, [{ path: [flag], value: table.data[flag] !== true }]);
 };
 
 /** A label key as a row id: `insertRowAbove` → `insert-row-above`. */

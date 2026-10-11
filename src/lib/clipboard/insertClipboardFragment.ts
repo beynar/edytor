@@ -4,6 +4,7 @@ import type { JSONContentPart } from '$lib/block/contentRange.js';
 import {
 	keepsSelectedBlocks,
 	replaceSelectionWithCollapsedTarget,
+	caretLeft,
 	type SelectionInsertionTarget,
 	type SelectionReplacementState
 } from '$lib/selection/replaceSelection.js';
@@ -79,9 +80,9 @@ export const pasteFlow = (
 	const block = p?.text.parent;
 	if (!replace.length && !block) return;
 	const target = block ? { block: block.id, offset: p!.text.segStart + p!.offset } : { replace };
-	const [text, offset] = edytor.insertFlow({ flow, target });
+	const end = caretLeft(edytor, edytor.insertFlow(target, flow));
 	if (replace.length) edytor.selection.select(noSelection);
-	caretAt(edytor, text, offset);
+	caretAt(edytor, end?.text, end?.offset ?? 0);
 };
 
 /** Programmatic insertion: the fragment is untrusted input, projected to JSON and validated here. */

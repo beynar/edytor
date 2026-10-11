@@ -86,7 +86,7 @@ It renders `<span class="edytor-mention" data-edytor-mention data-mention-id="u1
 
 The menu is a [trigger](/docs/plugins/input-rules#triggers): it opens at the start of a text or after whitespace (`ada@example.com` opens nothing), <kbd>↑</kbd>/<kbd>↓</kbd> move the highlight, <kbd>Enter</kbd> or a click picks, <kbd>Escape</kbd> closes it and keeps the text. A query that matches nobody shows "No results" (`labels.noResults`), and a space after it closes the menu. It does not open in a code block or a readonly view.
 
-The pick is one undo step, separate from the typing before it: undo gives back `@query`. A plugin that refuses the `addInlineBlock` operation, or the removal of `@query` (a `deleteContentAtRange` step), keeps the text, with the caret after it.
+The pick is one undo step, separate from the typing before it: undo gives back `@query`. A plugin that refuses the `insertInline` operation, or the removal of `@query` (a `deleteText` step), keeps the text, with the caret after it.
 
 The menu's listbox is named "People"; while it is open the editor's root names it and its highlighted row ([Accessibility](/docs/editor/accessibility#menus-and-popups)). Its rows show an avatar (or an initial), the name and the description; replace them with `item`.
 

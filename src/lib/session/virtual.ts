@@ -16,7 +16,6 @@
 import type { BlockId, BlockSpec, DocChange, ProjectedBlock } from '../crdt/index.js';
 import type { DocAnchor, DocFacade, EdytorDoc, Prepared } from '../crdt/edytor-doc.js';
 import { placedEnd, type Flow, type FlowTarget } from '../crdt/flow.js';
-import { bindNodes } from '../crdt/nodes.js';
 import { applyPatch } from '../crdt/data.js';
 import { REFUSED } from '../crdt/doc/plan.js';
 import { id } from '../utils.js';
@@ -99,7 +98,9 @@ export const virtualLens = (
 	onIt('insertText', (_o, text, marks) =>
 		text ? create([spec({ content: [{ kind: 'text', text, marks }] })]) : noop()
 	);
-	onIt('insertInline', (_o, atom) => create([spec({ content: [{ kind: 'inline', ...atom }] })]));
+	onIt('insertInline', (_o, atom) =>
+		create([spec({ content: [{ kind: 'inline', ...atom, id: atom.id ?? id('i') }] })])
+	);
 	onIt('splitBlock', (_o, newId, tail) =>
 		create([spec(), { id: newId, type: tail?.type ?? type(), data: tail?.data }])
 	);
@@ -155,11 +156,9 @@ export const virtualLens = (
 				base.apply((prepare as Record<string, (...a: unknown[]) => Prepared>)[name]!(...args))
 		])
 	);
-	let nodes: ReturnType<typeof bindNodes> | undefined;
 	Object.assign(lens, ops, {
 		prepare,
 		virtual: () => (active() ? vid : null),
-		block: (b: BlockId) => (nodes ??= bindNodes(lens)).block(b),
 		// ── reads ────────────────────────────────────────────────────────
 		// The document answers an id it does not hold as a block with no
 		// parent, ancestors, neighbours, children, content, data items or

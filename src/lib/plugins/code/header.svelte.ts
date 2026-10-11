@@ -104,7 +104,7 @@ export class CodeHeader {
 	setLanguage = (id: string) => {
 		const block = this.view().handle;
 		if (!this.editable || !block?.isInTree || id === this.language) return;
-		block.data.language = id;
+		block.edytor.patchData(block.id, [{ path: ['language'], value: id }]);
 	};
 
 	/**

@@ -293,9 +293,49 @@ declare const DOCUMENT_OPERATIONS: readonly [
     "apply",
     "compose",
     "transact",
-    "block",
     "onChange",
     "version"
+];
+```
+
+### DOCUMENT_WRITES
+
+```ts
+// crdt/operations.d.ts
+declare const DOCUMENT_WRITES: readonly [
+    "insertBlock",
+    "insertBlocks",
+    "moveBlock",
+    "moveBlocks",
+    "nestBlock",
+    "unNestBlock",
+    "unNestBlocks",
+    "liftOut",
+    "wrapInLayout",
+    "placeBeside",
+    "splitBlock",
+    "mergeBlocks",
+    "mergeBackward",
+    "mergeForward",
+    "deleteBlock",
+    "deleteBlocks",
+    "setBlock",
+    "setBlockType",
+    "patchData",
+    "setBlockData",
+    "duplicateBlock",
+    "insertText",
+    "deleteText",
+    "formatRange",
+    "setMark",
+    "unsetMark",
+    "clearMarks",
+    "insertInline",
+    "removeInline",
+    "setInlineData",
+    "deleteRange",
+    "replaceRange",
+    "insertFlow"
 ];
 ```
 
@@ -342,48 +382,6 @@ export type Destination = {
 export type DocAnchor = {
     b: BlockId;
     a: Anchor;
-};
-```
-
-### DocBlock
-
-```ts
-// crdt/nodes.d.ts
-export type DocBlock = {
-    readonly id: BlockId;
-    readonly document: DocumentOperations;
-    readonly attribution: BlockAttribution | undefined;
-    readonly items: readonly ContentItem[];
-    readonly length: number;
-    readonly runs: readonly ContentRun[];
-    childIds(): BlockId[];
-    insertText(offset: number, text: string, marks?: Record<string, unknown>): OpResult;
-    deleteText(offset: number, length: number): OpResult;
-    format(offset: number, length: number, marks: Record<string, unknown>): OpResult;
-    setMark(offset: number, length: number, name: string, value: unknown): OpResult;
-    unsetMark(offset: number, length: number, name: string): OpResult;
-    clearMarks(offset: number, length: number): OpResult;
-    insertInline(offset: number, spec: InlineSpec): OpResult;
-    removeInline(inlineId: string): OpResult;
-    setInlineData(inlineId: string, data: Record<string, unknown>): OpResult;
-    insertChild(index: number, spec: BlockSpec): OpResult;
-    moveTo(dest: {
-        parent: NodeRef;
-        index: number;
-    }): OpResult;
-    nestUnder(parent: DocBlock | BlockId): OpResult;
-    unNest(): OpResult;
-    split(offset: number, newId: BlockId, tail?: SplitTail): OpResult;
-    mergeBackward(): OpResult;
-    mergeForward(): OpResult;
-    mergeFrom(other: DocBlock | BlockId): OpResult;
-    delete(opts?: {
-        keepChildren?: boolean;
-    }): OpResult;
-    setType(type: string): OpResult;
-    setData(data: Record<string, unknown>): OpResult;
-    set(value: Parameters<DocumentWrites['setBlock']>[1]): OpResult;
-    duplicate(freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
 };
 ```
 
@@ -470,7 +468,6 @@ export interface DocumentOperations extends DocumentWrites, DocumentReads {
     apply(plan: Prepared): OpResult;
     compose(...parts: Prepared[]): Prepared;
     transact<R>(fn: () => R, origin?: unknown): R;
-    block(id: BlockId): DocBlock;
     onChange(listener: (change: DocChange) => void): () => void;
     readonly version: number;
 }
@@ -611,20 +608,20 @@ export interface DocumentWrites {
     setBlock(id: BlockId, value: {
         type?: string;
         data?: Record<string, unknown>;
-        content?: ContentItem[];
-        children?: BlockSpec[];
+        content?: (ContentItem | JSONText | JSONInlineBlock)[];
+        children?: (BlockSpec | JSONBlock)[];
     }): OpResult;
     setBlockType(id: BlockId, type: string): OpResult;
     patchData(target: DataTarget, patches: readonly DataPatch[]): OpResult;
     setBlockData(id: BlockId, data: Record<string, unknown>): OpResult;
-    duplicateBlock(id: BlockId, freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
+    duplicateBlock(id: BlockId, freshId?: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
     insertText(id: BlockId, offset: number, text: string, marks?: Record<string, unknown>): OpResult;
     deleteText(id: BlockId, offset: number, length: number): OpResult;
     formatRange(id: BlockId, offset: number, length: number, marks: Record<string, unknown>): OpResult;
     setMark(id: BlockId, offset: number, length: number, name: string, value: unknown): OpResult;
     unsetMark(id: BlockId, offset: number, length: number, name: string): OpResult;
     clearMarks(id: BlockId, offset: number, length: number): OpResult;
-    insertInline(id: BlockId, offset: number, atom: InlineSpec): OpResult;
+    insertInline(id: BlockId, offset: number, atom: NewInline): OpResult;
     removeInline(id: BlockId, inlineId: string): OpResult;
     setInlineData(id: BlockId, inlineId: string, data: Record<string, unknown>): OpResult;
     deleteRange(from: DocPosition, to: DocPosition, view?: RangeView): OpResult;
@@ -1291,20 +1288,20 @@ declare const bindCrdt: (Y: EngineApi) => {
                 setBlock: (id: import("./index.js").BlockId, value: {
                     type?: string;
                     data?: Record<string, unknown>;
-                    content?: import("./index.js").ContentItem[];
-                    children?: import("./index.js").BlockSpec[];
+                    content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                    children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
                 }) => import("./edytor-doc.js").Prepared;
                 setBlockType: (id: import("./index.js").BlockId, type: string) => import("./edytor-doc.js").Prepared;
                 patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").Prepared;
                 setBlockData: (id: import("./index.js").BlockId, data: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
-                duplicateBlock: (id: import("./index.js").BlockId, freshId: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").Prepared;
+                duplicateBlock: (id: import("./index.js").BlockId, freshId?: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").Prepared;
                 insertText: (id: import("./index.js").BlockId, offset: number, text: string, marks?: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 deleteText: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
                 formatRange: (id: import("./index.js").BlockId, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 setMark: (id: import("./index.js").BlockId, offset: number, length: number, name: string, value: unknown) => import("./edytor-doc.js").Prepared;
                 unsetMark: (id: import("./index.js").BlockId, offset: number, length: number, name: string) => import("./edytor-doc.js").Prepared;
                 clearMarks: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
-                insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./index.js").InlineSpec) => import("./edytor-doc.js").Prepared;
+                insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").Prepared;
                 removeInline: (id: import("./index.js").BlockId, inlineId: string) => import("./edytor-doc.js").Prepared;
                 setInlineData: (id: import("./index.js").BlockId, inlineId: string, data: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 deleteBlocks: (ids: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
@@ -1381,7 +1378,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             };
             runsView: import("./text/runs.js").RunView;
             version: number;
-            block: (id: import("./index.js").BlockId) => import("./nodes.js").DocBlock;
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => import("./edytor-doc.js").OpResult;
             deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
@@ -1408,20 +1404,20 @@ declare const bindCrdt: (Y: EngineApi) => {
             setBlock: (id: string, value: {
                 type?: string;
                 data?: Record<string, unknown>;
-                content?: import("./index.js").ContentItem[];
-                children?: import("./index.js").BlockSpec[];
+                content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
             }) => import("./edytor-doc.js").OpResult;
             setBlockType: (id: string, type: string) => import("./edytor-doc.js").OpResult;
             patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").OpResult;
             setBlockData: (id: string, data: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
-            duplicateBlock: (id: string, freshId: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").OpResult;
+            duplicateBlock: (id: string, freshId?: ((oldId: string, kind: "block" | "inline") => string) | undefined) => import("./edytor-doc.js").OpResult;
             insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => import("./edytor-doc.js").OpResult;
             deleteText: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
             formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
             setMark: (id: string, offset: number, length: number, name: string, value: unknown) => import("./edytor-doc.js").OpResult;
             unsetMark: (id: string, offset: number, length: number, name: string) => import("./edytor-doc.js").OpResult;
             clearMarks: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
-            insertInline: (id: string, offset: number, atom: import("./index.js").InlineSpec) => import("./edytor-doc.js").OpResult;
+            insertInline: (id: string, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").OpResult;
             removeInline: (id: string, inlineId: string) => import("./edytor-doc.js").OpResult;
             setInlineData: (id: string, inlineId: string, data: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
             deleteBlocks: (ids: readonly string[]) => import("./edytor-doc.js").OpResult;
@@ -2184,6 +2180,14 @@ export type LeafWrite = readonly [
 ];
 ```
 
+#### crdt/doc/content.d.ts#NewInline
+
+```ts
+export type NewInline = Omit<InlineSpec, 'id'> & {
+    id?: string;
+};
+```
+
 #### crdt/doc/gate.d.ts#SchemaProblem
 
 ```ts
@@ -2382,20 +2386,20 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             setBlock: (id: BlockId, value: {
                 type?: string;
                 data?: Record<string, unknown>;
-                content?: ContentItem[];
-                children?: BlockSpec[];
+                content?: (ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                children?: (BlockSpec | JSONBlock)[];
             }) => Prepared;
             setBlockType: (id: BlockId, type: string) => Prepared;
             patchData: (target: DataTarget, patches: readonly DataPatch[]) => Prepared;
             setBlockData: (id: BlockId, data: Record<string, unknown>) => Prepared;
-            duplicateBlock: (id: BlockId, freshId: (oldId: string, kind: "block" | "inline") => string) => Prepared;
+            duplicateBlock: (id: BlockId, freshId?: (oldId: string, kind: "block" | "inline") => string) => Prepared;
             insertText: (id: BlockId, offset: number, text: string, marks?: Record<string, unknown>) => Prepared;
             deleteText: (id: BlockId, offset: number, length: number) => Prepared;
             formatRange: (id: BlockId, offset: number, length: number, marks: Record<string, unknown>) => Prepared;
             setMark: (id: BlockId, offset: number, length: number, name: string, value: unknown) => Prepared;
             unsetMark: (id: BlockId, offset: number, length: number, name: string) => Prepared;
             clearMarks: (id: BlockId, offset: number, length: number) => Prepared;
-            insertInline: (id: BlockId, offset: number, atom: InlineSpec) => Prepared;
+            insertInline: (id: BlockId, offset: number, atom: import("./doc/content.js").NewInline) => Prepared;
             removeInline: (id: BlockId, inlineId: string) => Prepared;
             setInlineData: (id: BlockId, inlineId: string, data: Record<string, unknown>) => Prepared;
             deleteBlocks: (ids: readonly BlockId[]) => Prepared;
@@ -2472,7 +2476,6 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         };
         runsView: RunView;
         version: number;
-        block: (id: BlockId) => DocBlock;
         insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => OpResult;
         deleteRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
         replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
@@ -2499,20 +2502,20 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         setBlock: (id: string, value: {
             type?: string;
             data?: Record<string, unknown>;
-            content?: ContentItem[];
-            children?: BlockSpec[];
+            content?: (ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+            children?: (BlockSpec | JSONBlock)[];
         }) => OpResult;
         setBlockType: (id: string, type: string) => OpResult;
         patchData: (target: DataTarget, patches: readonly DataPatch[]) => OpResult;
         setBlockData: (id: string, data: Record<string, unknown>) => OpResult;
-        duplicateBlock: (id: string, freshId: (oldId: string, kind: "block" | "inline") => string) => OpResult;
+        duplicateBlock: (id: string, freshId?: ((oldId: string, kind: "block" | "inline") => string) | undefined) => OpResult;
         insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => OpResult;
         deleteText: (id: string, offset: number, length: number) => OpResult;
         formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => OpResult;
         setMark: (id: string, offset: number, length: number, name: string, value: unknown) => OpResult;
         unsetMark: (id: string, offset: number, length: number, name: string) => OpResult;
         clearMarks: (id: string, offset: number, length: number) => OpResult;
-        insertInline: (id: string, offset: number, atom: InlineSpec) => OpResult;
+        insertInline: (id: string, offset: number, atom: import("./doc/content.js").NewInline) => OpResult;
         removeInline: (id: string, inlineId: string) => OpResult;
         setInlineData: (id: string, inlineId: string, data: Record<string, unknown>) => OpResult;
         deleteBlocks: (ids: readonly string[]) => OpResult;
@@ -2725,12 +2728,6 @@ export type FlowTarget = DocPosition | {
 } | {
     slot: Destination;
 };
-```
-
-#### crdt/nodes.d.ts#NodeRef
-
-```ts
-export type NodeRef = DocBlock | BlockId | null;
 ```
 
 #### crdt/placement/model.d.ts#BlockRec

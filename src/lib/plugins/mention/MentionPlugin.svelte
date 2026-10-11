@@ -67,11 +67,12 @@
 					label: (person: MentionItem) => person.label,
 					key: (person: MentionItem) => person.id,
 					menu: options.menu,
-					onPick: (person: MentionItem, { block, from, caret }) => {
+					onPick: (person: MentionItem, { edytor, block, from, caret }) => {
 						const data: MentionData = { id: person.id, label: person.label };
-						const after = block.addInlineBlock({ offset: from, block: { type: 'mention', data } });
-						if (after) caret(from + 1);
-						return !!after;
+						const written =
+							edytor.insertInline(block.id, from, { type: 'mention', data }).status === 'applied';
+						if (written) caret(from + 1);
+						return written;
 					}
 				}
 			]

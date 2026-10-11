@@ -356,10 +356,10 @@ describe('A block shed into a list is reordered within it (AW-06)', () => {
 	it('moving it up or down passes its neighbouring items; with an item it moves too', async () => {
 		const view = await render([], seed());
 		const { edytor } = view;
-		expect(edytor.moveBlocks({ blocks: [get(view, 'x')], direction: 'up' }).length).toBe(1);
+		expect(edytor.move({ blocks: [get(view, 'x')], direction: 'up' }).length).toBe(1);
 		expect(shape(view)).toEqual([[U, ['divider ""', 'list-item "a"', 'list-item "c"']]]);
 		expect(
-			edytor.moveBlocks({ blocks: [get(view, 'x'), get(view, 'a')], direction: 'down' }).length
+			edytor.move({ blocks: [get(view, 'x'), get(view, 'a')], direction: 'down' }).length
 		).toBe(2);
 		expect(shape(view)).toEqual([[U, ['list-item "c"', 'divider ""', 'list-item "a"']]]);
 	});
@@ -383,7 +383,7 @@ describe('Tab after a list ending in a block that holds no children (AW-07)', ()
 			target: get(view, 'u'),
 			position: 'inside' as const
 		};
-		expect(view.edytor.canMoveBlocks(request)).toBe(false);
+		expect(view.edytor.canMove(request)).toBe(false);
 	});
 });
 
@@ -503,7 +503,7 @@ describe('Sweep: Turn into in an emptied document (SW10-lists-3)', () => {
 	/** A document whose only block was deleted: it shows the virtual paragraph. */
 	const emptied = async (plugins: Plugin[] = []) => {
 		const view = await render(plugins, [p('x')]);
-		get(view, 'x').removeBlock();
+		view.edytor.deleteBlock('x');
 		await flushDomUpdates();
 		return view;
 	};
@@ -566,7 +566,7 @@ describe('Tab and Shift+Tab over a text range that runs through a list (DR-behav
 describe('A divider in an emptied document (DR-behavior-2)', () => {
 	const emptied = async (plugins: Plugin[] = []) => {
 		const view = await render(plugins, [p('x')]);
-		get(view, 'x').removeBlock();
+		view.edytor.deleteBlock('x');
 		await flushDomUpdates();
 		view.edytor.selection.selectText(view.edytor.root!.children[0]!.firstText!, 0);
 		await flushDomUpdates();

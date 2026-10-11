@@ -180,9 +180,11 @@ export class FileUploads {
 	/** The data's write, outside the history; refused (readonly), it is held for the next show. */
 	#write = (id: string, data: Record<string, unknown>) => {
 		const { edytor } = this;
-		const block = edytor.idToBlock.get(id)!;
 		edytor.dispatcher.outside(() =>
-			block.patchData({ ops: Object.entries(data).map(([key, value]) => ({ path: [key], value })) })
+			edytor.patchData(
+				id,
+				Object.entries(data).map(([key, value]) => ({ path: [key], value }))
+			)
 		);
 		if (edytor.dispatcher.last?.status === 'applied') this.#uploads.delete(id);
 		else this.#uploads.set(id, { status: 'landed', data });

@@ -79,8 +79,8 @@
 				store: (block, value, file) => {
 					const data = sourceData(kind, value, file);
 					if (!data) return false;
-					if (kind === 'file') block.setData(data);
-					else block.data.src = data.src;
+					if (kind === 'file') block.edytor.patchData(block.id, [{ path: [], value: data }]);
+					else block.edytor.patchData(block.id, [{ path: ['src'], value: data.src }]);
 					return true;
 				},
 				hooks: uploads ? { onPaste: uploads.paste } : {},

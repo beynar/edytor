@@ -244,7 +244,7 @@ describe('accept and discard', () => {
 		const { edytor } = await mount();
 		edytor.suggestions.add({ after: 'b' }, 'New').accept();
 		const { startText, yStart } = selectionState(edytor);
-		startText!.insertText({ value: '!', start: yStart, end: yStart });
+		edytor.insertText(startText!.parent.id, startText!.segStart + yStart, '!');
 		expect(shape(edytor)).toEqual([BASE[0], BASE[1], 'paragraph:New!', BASE[2]]);
 		edytor.historyUndo();
 		expect(shape(edytor)).toEqual([BASE[0], BASE[1], 'paragraph:New', BASE[2]]);
@@ -333,7 +333,7 @@ describe('session only', () => {
 		edytor.suggestions.add({ after: 'b' }, 'Gone');
 		edytor.suggestions.add({ replace: ['a', 'b'] }, 'Gone too');
 		const kept = edytor.suggestions.add({ end: 'l' }, '!');
-		edytor.deleteBlocks({ blocks: [edytor.idToBlock.get('b')!] });
+		edytor.deleteBlocks(['b']);
 		await flushDomUpdates();
 		expect(edytor.suggestions.list).toEqual([kept]);
 		expect(editor.querySelectorAll('[data-edytor-suggestion]').length).toBe(0);

@@ -1,77 +1,77 @@
 ---
 title: Editing programmatically
-description: Change the document from code with handle commands or the document's operations, read their results, group writes with transact, and move blocks.
+description: Change the document from code with the one set of document operations, through the view (dispatched) or the bare document (raw), read their results, group writes with transact, and move blocks.
 icon: terminal
 ---
 
-You can change a document from code in two ways: **handle commands**, which behave like user edits, and **document operations**, which write the document directly. This page shows both, how to read their results, and how to move blocks.
+Every write is one of the document's operations (`insertBlocks`, `splitBlock`, `insertText`, `patchData`, `moveBlocks`…), with one set of names and arguments and two entry points: through the view, `edytor.insertText(…)`, it behaves like a user edit; on the bare document, `edytor.document.insertText(…)`, it writes directly. Handles (`Block`, `Text`, `InlineBlock`) only read: you pass their ids. This page shows both entry points, how to read their results, and how to move blocks.
 
-## Commands or operations
+## Through the view or on the document
 
-| | Handle commands | Facade operations |
+| | `edytor.<operation>(…)` | `edytor.document.<operation>(…)` |
 | --- | --- | --- |
-| Called on | `Block`, `Text`, the editor | `edytor.document` (or `document` without a view) |
-| Addresses | Handles and offsets inside a text segment | Block ids and block offsets |
-| Plugin hooks (`onBeforeOperation`, `onAfterOperation`) | Yes: plugins can refuse or replace them | No |
+| Names and arguments | The document's operations | The same |
+| Plugin hooks (`onBeforeOperation`, `onAfterOperation`) | Yes: plugins can refuse, replace or rewrite them | No |
 | Normalization (`normalizeContent`, `normalizeChildren`) | Yes | No |
+| Undo | One step, by the view's [policy](/docs/editor/history) | Captured as a headless edit |
+| The caret it decides (a range deletion, a placed paste) | Selected | None |
 | Refused in a readonly view | Yes | No |
-| Result | `edytor.dispatcher.last` (a `CommandResult`), whose `value` is the return value | An `OpResult` |
+| Result | An `OpResult`; `edytor.dispatcher.last` records the command | An `OpResult` |
 | Needs a view | Yes | No, works headlessly |
 
-Use handle commands for anything a user could have done, so your plugins see it. Use document operations for imports, migrations, server-side edits and code that must bypass plugins.
+Write through the view for anything a user could have done, so your plugins see it. Write on the document for imports, migrations, server-side edits and code that must bypass plugins.
 
-## Handle commands
-
-Block commands take a payload object:
+Operations address blocks by id and use block offsets, where an inline atom counts as one character: offset `o` of a text segment is `text.segStart + o`.
 
 ```ts title="block-commands.ts" check
-const block = edytor.idToBlock.get('intro')!;
+const id = 'intro';
+const block = edytor.idToBlock.get(id)!;
 
-// Insert blocks around it. Both return the new block's handle.
-const next = block.insertBlockAfter({ block: { type: 'paragraph', content: [{ text: 'After' }] } });
-block.insertBlockBefore({ block: { type: 'heading', data: { level: 'h2' } } });
+// Insert blocks around it, at a destination: its parent (null: the root) and an index.
+const at = { parent: null, index: block.index + 1 };
+const inserted = edytor.insertBlocks(at, [{ type: 'paragraph', content: [{ text: 'After' }] }]);
+const next = edytor.idToBlock.get(inserted.ids[0]!); // the new block's handle
 
 // Change its kind, data, content or children in one step.
-block.setBlock({ value: { type: 'quote' } });
-block.data.icon = '✦'; // one property: a `patchData` command (see concepts/properties)
-block.setData({ icon: '✦' }); // replace the whole `data`, also `patchData`
-block.type = 'quote'; // also `setBlock`, in place: a list's item set to a paragraph still shows as an item
+edytor.setBlock(id, { type: 'quote' }); // in place: a list's item set to a paragraph still shows as an item
 // (`convertToKind` takes it out of the list, as Turn into does)
+edytor.patchData(id, [{ path: ['icon'], value: '✦' }]); // one property (see concepts/properties)
+edytor.patchData(id, [{ path: [], value: { icon: '✦' } }]); // replace the whole `data`
 
 // Structure.
-block.nestBlock(); // last child of the previous sibling
-block.unNestBlock(); // after its parent; the siblings after it become its children
+edytor.nestBlock(id, block.previousBlock!.id); // last child of the previous sibling
+edytor.unNestBlock(id); // after its parent; the siblings after it become its children
 // (a list's item leaves the list instead, see concepts/blocks#containers)
-block.mergeBlockBackward(); // join into the previous block (a list's first item leaves the list instead)
-block.addChildBlock({ block: { type: 'paragraph' }, index: 0 });
-block.removeBlock(); // children take its place
-block.removeBlock({ keepChildren: false }); // the whole subtree
+edytor.mergeBackward(id); // join into the previous block (a list's first item leaves the list instead)
+edytor.insertBlocks({ parent: id, index: 0 }, [{ type: 'paragraph' }]);
+edytor.deleteBlock(id); // children take its place
+edytor.deleteBlock(id, { keepChildren: false }); // the whole subtree
 
-// Split at an offset inside a text segment. Returns the new block.
-const text = block.firstText!;
-const tail = block.splitBlock({ index: 3, text });
+// Split at a block offset into a new block (its id is yours), of the kind you name.
+edytor.splitBlock(id, 3, 'intro-tail', { type: 'paragraph' });
+void next;
 ```
-
-Text commands run on a `Text` segment. Offsets are inside the segment:
 
 ```ts title="text-commands.ts" check
-const text = block.firstText!;
-text.insertText({ value: 'Hello', start: 0, end: 0 });
-text.insertText({ value: 'link', start: 5, end: 5, marks: { link: { href: 'https://example.com' } } });
-text.deleteText({ direction: 'BACKWARD', length: 1 }); // at the caret
-text.markText({ mark: 'bold', start: 0, end: 5, toggle: true });
-text.removeMarksFromText({ start: 0, end: 5 });
+const id = 'intro';
+edytor.insertText(id, 0, 'Hello'); // takes the marks the caret would give it
+edytor.insertText(id, 5, 'link', { link: { href: 'https://example.com' } });
+edytor.deleteText(id, 4, 1);
+edytor.formatRange(id, 0, 5, { bold: true, italic: null }); // null removes a mark
+edytor.clearMarks(id, 0, 5);
+edytor.insertInline(id, 2, { type: 'mention', data: { name: 'Ada' } });
 ```
 
-Without `start`/`end`, text commands use the current selection. Without `marks`, inserted text takes the marks the caret would give it (pending marks, then the neighboring text).
+Through the view, an `insertText` without marks takes the marks the caret would give it (pending marks when it lands at the caret, then the neighboring text); pass `{}` for plain text.
 
-Commands on the selection live on the editor and on `richTextOperations`:
+Gestures on the selection are the editor's and `richTextOperations`':
 
 ```ts title="selection-commands.ts" check
 import { richTextOperations } from 'edytor';
 
-edytor.deleteContentWithinSelection({}); // delete the selected range
-edytor.deleteBlocks({ blocks: edytor.selection.selectedMembers }); // a selected list with its items
+const { start, end, isCollapsed } = edytor.selection.projection;
+if (start && end && !isCollapsed) edytor.deleteRange(start, end); // the selected range; the caret goes where the document says
+edytor.deleteBlocks(edytor.selection.selectedMembers.map((block) => block.id)); // a selected list with its items
 
 const rich = richTextOperations(edytor);
 rich.setMarkAtRange('bold'); // toggle over the selection, or stage at a caret
@@ -81,17 +81,28 @@ rich.removeAllMarksAtRange();
 rich.insertDividerAtSelection();
 ```
 
-To change the block kind, see [`convertToKind`](/docs/concepts/blocks#kinds-and-presets).
+To change the block kind, see [`convertToKind`](/docs/concepts/blocks#kinds-and-presets). The full list of operations and their arguments is in [Operations](/docs/plugins/operations#operation-reference).
 
 ### Results
 
-Every command sets `edytor.dispatcher.last`, a `CommandResult`:
+Every operation answers an `OpResult`:
+
+```ts title="op-result.ts" check
+type OpResult = {
+	status: 'applied' | 'noop' | 'refused';
+	ids: readonly string[]; // what it created, moved or targeted (empty unless applied)
+	reason?: string; // e.g. 'id-collision'; 'view' when the view or a plugin refused it
+};
+```
+
+Through the view, each command also sets `edytor.dispatcher.last`, a `CommandResult`, which a gesture issuing several commands reads:
 
 ```ts title="result.ts" check
-block.mergeBlockBackward();
-const { operation, status, value } = edytor.dispatcher.last!;
+const merged = edytor.mergeBackward(block.id);
+const into = edytor.idToBlock.get(merged.ids[0] ?? ''); // the block merged into
+const { operation, status } = edytor.dispatcher.last!;
 // status: 'applied' | 'noop' | 'refused' | 'failed'
-// value: what the command returned (here the merged-into block), undefined when refused
+void [into, operation, status];
 ```
 
 | Status | Meaning |
@@ -101,19 +112,11 @@ const { operation, status, value } = edytor.dispatcher.last!;
 | `refused` | The view is readonly, the document is read-only, the document refused it (for example merging into a void block), or a plugin prevented it. Nothing was written and no undo step was recorded. |
 | `failed` | It threw. The error is in `last.error` and is rethrown. |
 
-Commands that create blocks also return handles: `insertBlockAfter`, `splitBlock` and `mergeBlockBackward` return a `Block`, `null` when the document refuses the command, and `undefined` when it never ran (a readonly view, or a plugin prevented it). The same value is `dispatcher.last.value`, so one read gives both: test `status`, then use `value`. When a plugin prevents the command and its `prevent(cb)` runs the same command in its place, the call you made answers `undefined` and `dispatcher.last` is the replacement's result, its `value` included. `value` is recorded once the command returns, after `onAfterOperation`: that hook reads `status`, not `value`.
+When a plugin prevents a command and its `prevent(cb)` runs the same command in its place, the call you made answers `refused` (`reason: 'view'`) and `dispatcher.last` is the replacement's result.
 
-## Facade operations
+## On the document
 
-`edytor.document` is the raw path: it writes the document directly, with no plugin hooks, no normalization, no undo policy and no readonly check (a readonly view's app can still write through it). It addresses blocks by id and uses block offsets, where an inline block counts as one character. Every operation returns an `OpResult`:
-
-```ts title="op-result.ts" check
-type OpResult = {
-	status: 'applied' | 'noop' | 'refused';
-	ids: readonly string[]; // what it created, moved or targeted (empty unless applied)
-	reason?: string; // e.g. 'id-collision'
-};
-```
+`edytor.document` is the raw path: the same operations write the document directly, with no plugin hooks, no normalization, no undo policy and no readonly check (a readonly view's app can still write through it). An empty operation (`insertText(id, 0, '')`) is `noop`; an unknown or deleted target is `refused`.
 
 ```ts title="document-operations.ts" check
 const { document } = edytor;
@@ -122,26 +125,26 @@ const id = 'intro';
 document.insertText(id, 0, 'Hello ', { bold: true });
 document.deleteText(id, 0, 6);
 document.formatRange(id, 0, 5, { italic: true, bold: null }); // null removes a mark
-document.insertBlock(
+document.insertBlocks(
 	{ parent: null, index: 0 }, // null parent = the root
-	{ id: 'title', type: 'heading', data: { level: 'h1' }, content: [{ text: 'Title' }] }
+	[{ id: 'title', type: 'heading', data: { level: 'h1' }, content: [{ text: 'Title' }] }]
 );
-document.moveBlock('title', { parent: null, index: 2 });
-document.setBlockType(id, 'quote');
+document.moveBlocks(['title'], { parent: null, index: 2 });
+document.setBlock(id, { type: 'quote' });
 document.deleteBlock(id); // { keepChildren: false } removes the subtree
 ```
 
-Document inserts (`insertBlock`, `insertBlocks`) take the `JSONBlock` shape that `edytor.value` and `document.toJSON()` use, ids kept and minted where you leave them out, or a `BlockSpec` (an `id` on every block, content items with a `kind`: `{ kind: 'text', text, marks? }` or `{ kind: 'inline', id, type, data? }`). To copy a block, mint every id with `toBlockSpec(json, { freshIds: true })`:
+Inserts (`insertBlocks`, `setBlock`'s `children`) take the `JSONBlock` shape that `edytor.value` and `document.toJSON()` use, ids kept and minted where you leave them out, or a `BlockSpec` (an `id` on every block, content items with a `kind`: `{ kind: 'text', text, marks? }` or `{ kind: 'inline', id, type, data? }`). To copy a block, mint every id with `toBlockSpec(json, { freshIds: true })`, or call `duplicateBlock(id)`:
 
 ```ts title="copy-block.ts" check
 import { toBlockSpec } from 'edytor/crdt/edytor';
 
-doc.insertBlock({ parent: null, index: 1 }, toBlockSpec(doc.blockJSON('title'), { freshIds: true }));
+doc.insertBlocks({ parent: null, index: 1 }, [
+	toBlockSpec(doc.blockJSON('title'), { freshIds: true })
+]);
 ```
 
-`block.model` is a block's node in the document: `block.model.setData(data)` writes `data` directly, with no plugin hooks and regardless of `readonly`. An empty operation (`insertText(id, 0, '')`) is `noop`; an unknown or deleted target is `refused`.
-
-The full list (`splitBlock`, `mergeBlocks`, `deleteBlocks`, `deleteRange`, `insertFlow`, `insertInline`, `duplicateBlock`, the `prepare`/`apply` two-phase form, …) is in [the document API reference](/docs/reference/document-api).
+The `prepare`/`apply` two-phase form, the reads and the document's lifecycle are in [the document API reference](/docs/reference/document-api).
 
 ## Grouping with `transact`
 
@@ -149,9 +152,8 @@ The full list (`splitBlock`, `mergeBlocks`, `deleteBlocks`, `deleteRange`, `inse
 
 ```ts title="transact.ts" check
 edytor.transact(() => {
-	const heading = edytor.idToBlock.get('title')!;
-	heading.setBlock({ value: { data: { level: 'h2' } } });
-	edytor.document.insertText('intro', 0, 'Updated: ');
+	edytor.setBlock('title', { data: { level: 'h2' } });
+	edytor.insertText('intro', 0, 'Updated: ');
 });
 ```
 
@@ -159,16 +161,16 @@ Nested `transact` calls join the outer one. Without a view, use `document.transa
 
 ## Moving blocks
 
-`edytor.moveBlocks` moves blocks with their identity, children and content, as one undo step. Describe the destination relative to a target block:
+`edytor.moveBlocks(ids, { parent, index })` moves blocks to a destination with their identity, children and content. `edytor.move(request)` resolves a move described the way a user makes it — relative to a target block, or one step in a direction — to the document's move (`moveBlocks`, an outdent's `unNestBlocks`, a beside placement's `placeBeside`), as one undo step, and announces it to assistive technology:
 
 ```ts title="move-after.ts" check
 const source = edytor.idToBlock.get('intro')!;
 const target = edytor.idToBlock.get('outro')!;
 const request = { blocks: [source], target, position: 'after' as const };
-if (edytor.canMoveBlocks(request)) edytor.moveBlocks(request);
+if (edytor.canMove(request)) edytor.move(request);
 ```
 
-`position` is `'before'`, `'after'`, `'inside'` (as the target's last child), or `'left'`/`'right'`: beside the target, side by side. Hooks see `moveBlock`/`moveBlocks` with `beside: { target, side }`. Beside the target, with the [columns plugin](/docs/plugins/columns) (a kind whose role says `layout`):
+`position` is `'before'`, `'after'`, `'inside'` (as the target's last child), or `'left'`/`'right'`: beside the target, side by side. Hooks see `moveBlocks`, or `placeBeside` beside the target. Beside the target, with the [columns plugin](/docs/plugins/columns) (a kind whose role says `layout`):
 
 - the blocks go in a new column next to the target's column, or, when the target is in none, the target and the blocks are wrapped in a new two-column layout;
 - a list item or a code line stands for its whole list or code block, any other block for itself where it is (a toggle's child is wrapped inside the toggle, unless that would put a layout in a column); a column stands for itself (right of it is the gap after it);
@@ -185,13 +187,13 @@ Or describe one relative step with `direction`:
 | `out` | After the parent. The siblings after the last moved block become its children (an outdent). An item of a list container leaves the list instead: before it, after it, or between its two halves, without the items after it ([Containers](/docs/concepts/blocks#containers)). |
 
 ```ts title="move-down.ts" check
-const moved = edytor.moveBlocks({ blocks: [...edytor.selection.selectedBlocks], direction: 'down' });
+const moved = edytor.move({ blocks: [...edytor.selection.selectedBlocks], direction: 'down' });
 ```
 
 - A group moved by `direction` must be siblings, and keeps its document order. With `target` and `position`, the blocks land in the order you pass them.
-- With `in` or `out`, siblings that have another block between them move as separate runs of adjacent siblings, as <kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> do, so the text keeps its order: `[a, c]` out of a list `a` to `e` leaves `b` between them. A run that cannot move stays where it is, and the result lists only the blocks that moved; `canMoveBlocks` is `true` when at least one run can move. With `up` or `down` the group moves together.
-- `moveBlocks` returns the blocks it moved, or `[]` when the move was refused (`dispatcher.last.status` is then `'refused'`, also for a move `canMoveBlocks` rejects).
-- A closed toggle the blocks land in, or that takes blocks as children (`out`), opens, so a moved block is never hidden. The block commands `nestBlock`, `unNestBlock`, `moveBlock` and `moveBlocks` open it too.
-- `canMoveBlocks` answers whether the move is structurally allowed. It is `false` for a destination inside a void block or an island, for blocks that sit inside an island, for a destination inside the moved blocks' own subtree, and directly inside a list for a block that is not a list item (a move keeps kinds; see [Containers](/docs/concepts/blocks#containers)). Direction `out` answers as <kbd>Shift+Tab</kbd> does: a paragraph under a list item outdents into the list as a list item, and an image, a code block or a heading there is refused. A plugin can still refuse the command.
+- With `in` or `out`, siblings that have another block between them move as separate runs of adjacent siblings, as <kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> do, so the text keeps its order: `[a, c]` out of a list `a` to `e` leaves `b` between them. A run that cannot move stays where it is, and the result lists only the blocks that moved; `canMove` is `true` when at least one run can move. With `up` or `down` the group moves together.
+- `move` returns the blocks it moved, or `[]` when the move was refused (`dispatcher.last.status` is then `'refused'`, also for a move `canMove` rejects).
+- A closed toggle the blocks land in, or that takes blocks as children (`out`), opens, so a moved block is never hidden. Every move through the view (`moveBlocks`, `nestBlock`, `unNestBlock`, `unNestBlocks`, `placeBeside`) opens it too; a peer's move, an undo or a redo opens nothing.
+- `canMove` answers whether the move is structurally allowed. It is `false` for a destination inside a void block or an island, for blocks that sit inside an island, for a destination inside the moved blocks' own subtree, and directly inside a list for a block that is not a list item (a move keeps kinds; see [Containers](/docs/concepts/blocks#containers)). Direction `out` answers as <kbd>Shift+Tab</kbd> does: a paragraph under a list item outdents into the list as a list item, and an image, a code block or a heading there is refused. A plugin can still refuse the command.
 
 These are the same moves block handles, <kbd>Alt</kbd>+arrows on a focused handle and <kbd>Mod</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> (`arrowMovePlugin`) perform. The types are exported as `BlockMoveRequest`, `BlockMovePosition` and `BlockMoveDirection`.

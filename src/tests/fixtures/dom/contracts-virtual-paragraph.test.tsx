@@ -68,8 +68,8 @@ const p = (text: string, type = 'paragraph'): CanonicalBlock => ({
 const emptied = async (options: Parameters<typeof renderDomEdytor>[1] = {}) => {
 	const a = await renderDomEdytor(seed, { autoSelectFixture: false, ...options });
 	const b = await replicaOf(a, options);
-	a.edytor.root!.children[0]!.removeBlock();
-	b.edytor.root!.children[1]!.removeBlock();
+	a.edytor.deleteBlock(a.edytor.root!.children[0]!.id);
+	b.edytor.deleteBlock(b.edytor.root!.children[1]!.id);
 	await flushDomUpdates();
 	await deliver(a, b);
 	await deliver(b, a);
@@ -157,7 +157,7 @@ describe('doc.empty.virtual — an emptied document shows a virtual paragraph', 
 	it('a block-kind command creates it with that kind', async () => {
 		const { a } = await emptied();
 		const vid = shown(a)[0]![0]!;
-		a.edytor.root!.children[0]!.setBlock({ value: { type: 'heading', data: { level: 2 } } });
+		a.edytor.setBlock(vid, { type: 'heading', data: { level: 2 } });
 		await flushDomUpdates();
 		assertCanonicalTree(a.edytor, [{ type: 'heading', id: vid, data: { level: 2 } }]);
 	});

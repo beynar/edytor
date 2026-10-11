@@ -2,6 +2,7 @@
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { splitAtSelection } from '../../helpers/model.js';
 import { findBlockAndTextAtPath } from '../../../test.utils.js';
+import { siblingSlot } from '$lib/session/handles.js';
 import { selectionState } from '../../../selection.js';
 
 export const fixtures = defineFixtures([
@@ -236,30 +237,12 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const { block, text } = findBlockAndTextAtPath(edytor)([0, 0]);
-			return block.splitBlock({ index: 5, text });
+			return edytor.splitBlock(block.id, text.segStart + 5, 'b-tail', { type: 'paragraph' });
 		},
 		output: (
 			<root>
 				<paragraph>Hello</paragraph>
 				<paragraph> world!</paragraph>
-			</root>
-		)
-	}),
-	defineModelTransformFixture({
-		description: 'returns null when splitting a block without a parent',
-		input: (
-			<root>
-				<paragraph>Hello| world!</paragraph>
-			</root>
-		),
-		run: ({ edytor }) => {
-			const { text } = findBlockAndTextAtPath(edytor)([0, 0]);
-			return edytor.root?.splitBlock({ index: 5, text }) ?? null;
-		},
-		result: { kind: 'null' },
-		output: (
-			<root>
-				<paragraph>Hello world!</paragraph>
 			</root>
 		)
 	}),
@@ -270,7 +253,7 @@ export const fixtures = defineFixtures([
 				<paragraph>|Hello</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward() ?? null,
+		run: ({ edytor }) => edytor.mergeBackward(selectionState(edytor).startBlock!.id),
 		result: { kind: 'null' },
 		output: (
 			<root>
@@ -286,7 +269,7 @@ export const fixtures = defineFixtures([
 				<paragraph>World</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward() ?? null,
+		run: ({ edytor }) => edytor.mergeBackward(selectionState(edytor).startBlock!.id),
 		result: { kind: 'block', path: [0], type: 'paragraph' },
 		output: (
 			<root>
@@ -302,7 +285,7 @@ export const fixtures = defineFixtures([
 				<paragraph>|world!</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward(),
+		run: ({ edytor }) => edytor.mergeBackward(selectionState(edytor).startBlock!.id),
 		output: (
 			<root>
 				<paragraph>Helloworld!</paragraph>
@@ -322,7 +305,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Last</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward() ?? null,
+		run: ({ edytor }) => edytor.mergeBackward(selectionState(edytor).startBlock!.id),
 		result: { kind: 'block', path: [0], type: 'paragraph' },
 		output: (
 			<root>
@@ -345,7 +328,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward(),
+		run: ({ edytor }) => edytor.mergeBackward(selectionState(edytor).startBlock!.id),
 		output: (
 			<root>
 				<paragraph>
@@ -364,7 +347,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward(),
+		run: ({ edytor }) => edytor.mergeBackward(selectionState(edytor).startBlock!.id),
 		output: (
 			<root>
 				<paragraph>
@@ -381,7 +364,7 @@ export const fixtures = defineFixtures([
 				<paragraph>|World</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward(),
+		run: ({ edytor }) => edytor.mergeBackward(selectionState(edytor).startBlock!.id),
 		output: (
 			<root>
 				<paragraph>World</paragraph>
@@ -396,7 +379,7 @@ export const fixtures = defineFixtures([
 				<paragraph>world!</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockForward() ?? null,
+		run: ({ edytor }) => edytor.mergeForward(selectionState(edytor).startBlock!.id),
 		result: { kind: 'block', path: [0], type: 'paragraph' },
 		output: (
 			<root>
@@ -411,7 +394,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Hello|</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockForward() ?? null,
+		run: ({ edytor }) => edytor.mergeForward(selectionState(edytor).startBlock!.id),
 		result: { kind: 'null' },
 		output: (
 			<root>
@@ -427,7 +410,7 @@ export const fixtures = defineFixtures([
 				<paragraph>World</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockForward() ?? null,
+		run: ({ edytor }) => edytor.mergeForward(selectionState(edytor).startBlock!.id),
 		result: { kind: 'block', path: [0], type: 'paragraph' },
 		output: (
 			<root>
@@ -448,7 +431,7 @@ export const fixtures = defineFixtures([
 				<paragraph>Last</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockForward(),
+		run: ({ edytor }) => edytor.mergeForward(selectionState(edytor).startBlock!.id),
 		output: (
 			<root>
 				<paragraph>Helloworld</paragraph>
@@ -465,8 +448,9 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			selectionState(edytor).startBlock?.setBlock({
-				value: { type: 'list-item', content: [{ text: 'Hello world!' }] }
+			edytor.setBlock(selectionState(edytor).startBlock!.id, {
+				type: 'list-item',
+				content: [{ text: 'Hello world!' }]
 			}),
 		output: (
 			<root>
@@ -482,7 +466,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			selectionState(edytor).startBlock?.setBlock({ value: { type: 'list-item' } }),
+			edytor.setBlock(selectionState(edytor).startBlock!.id, { type: 'list-item' }),
 		output: (
 			<root>
 				<list-item>Hello world!</list-item>
@@ -497,8 +481,9 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			selectionState(edytor).startBlock?.setBlock({
-				value: { type: 'paragraph', content: [{ text: 'Updated content' }] }
+			edytor.setBlock(selectionState(edytor).startBlock!.id, {
+				type: 'paragraph',
+				content: [{ text: 'Updated content' }]
 			}),
 		output: (
 			<root>
@@ -517,11 +502,9 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			selectionState(edytor).startBlock?.setBlock({
-				value: {
-					type: 'paragraph',
-					children: [{ type: 'paragraph', content: [{ text: 'New child' }] }]
-				}
+			edytor.setBlock(selectionState(edytor).startBlock!.id, {
+				type: 'paragraph',
+				children: [{ type: 'paragraph', content: [{ text: 'New child' }] }]
 			}),
 		output: (
 			<root>
@@ -540,9 +523,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			selectionState(edytor).startBlock?.setBlock({
-				value: { type: 'paragraph', content: [] }
-			}),
+			edytor.setBlock(selectionState(edytor).startBlock!.id, { type: 'paragraph', content: [] }),
 		output: (
 			<root>
 				<paragraph></paragraph>
@@ -560,9 +541,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			selectionState(edytor).startBlock?.setBlock({
-				value: { type: 'paragraph', children: [] }
-			}),
+			edytor.setBlock(selectionState(edytor).startBlock!.id, { type: 'paragraph', children: [] }),
 		output: (
 			<root>
 				<paragraph>Parent</paragraph>
@@ -577,8 +556,9 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			selectionState(edytor).startBlock?.setBlock({
-				value: { type: 'paragraph', data: { align: 'center' } }
+			edytor.setBlock(selectionState(edytor).startBlock!.id, {
+				type: 'paragraph',
+				data: { align: 'center' }
 			}),
 		output: (
 			<root>
@@ -594,11 +574,9 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) =>
-			selectionState(edytor).startBlock?.setBlock({
-				value: {
-					type: 'paragraph',
-					content: [{ type: 'mention' }, { text: 'center' }, { type: 'mention' }]
-				}
+			edytor.setBlock(selectionState(edytor).startBlock!.id, {
+				type: 'paragraph',
+				content: [{ type: 'mention' }, { text: 'center' }, { type: 'mention' }]
 			}),
 		output: (
 			<root>
@@ -617,31 +595,13 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const { block } = findBlockAndTextAtPath(edytor)([0, 0]);
-			return block.insertBlockBefore({
-				block: { type: 'paragraph', content: [{ text: 'Before' }] }
-			});
+			return edytor.insertBlocks(siblingSlot(block, false), [
+				{ type: 'paragraph', content: [{ text: 'Before' }] }
+			]);
 		},
 		output: (
 			<root>
 				<paragraph>Before</paragraph>
-				<paragraph>Hello</paragraph>
-			</root>
-		)
-	}),
-	defineModelTransformFixture({
-		description: 'returns null when inserting a sibling before the root block',
-		input: (
-			<root>
-				<paragraph>Hello</paragraph>
-			</root>
-		),
-		run: ({ edytor }) =>
-			edytor.root?.insertBlockBefore({
-				block: { type: 'paragraph', content: [{ text: 'Before' }] }
-			}) ?? null,
-		result: { kind: 'null' },
-		output: (
-			<root>
 				<paragraph>Hello</paragraph>
 			</root>
 		)
@@ -655,32 +615,14 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const { block } = findBlockAndTextAtPath(edytor)([0, 0]);
-			return block.insertBlockAfter({
-				block: { type: 'paragraph', content: [{ text: 'After' }] }
-			});
+			return edytor.insertBlocks(siblingSlot(block), [
+				{ type: 'paragraph', content: [{ text: 'After' }] }
+			]);
 		},
 		output: (
 			<root>
 				<paragraph>Hello</paragraph>
 				<paragraph>After</paragraph>
-			</root>
-		)
-	}),
-	defineModelTransformFixture({
-		description: 'returns null when inserting a sibling after the root block',
-		input: (
-			<root>
-				<paragraph>Hello</paragraph>
-			</root>
-		),
-		run: ({ edytor }) =>
-			edytor.root?.insertBlockAfter({
-				block: { type: 'paragraph', content: [{ text: 'After' }] }
-			}) ?? null,
-		result: { kind: 'null' },
-		output: (
-			<root>
-				<paragraph>Hello</paragraph>
 			</root>
 		)
 	}),
@@ -697,9 +639,9 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const { block } = findBlockAndTextAtPath(edytor)([0, 0]);
-			return block.insertBlockAfter({
-				block: { type: 'paragraph', content: [{ text: 'After' }] }
-			});
+			return edytor.insertBlocks(siblingSlot(block), [
+				{ type: 'paragraph', content: [{ text: 'After' }] }
+			]);
 		},
 		result: { kind: 'block', path: [1], type: 'paragraph' },
 		output: (

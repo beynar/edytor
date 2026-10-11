@@ -19,7 +19,7 @@ import { mentionPlugin } from './atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import type { SerializableContent } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
-import type { Awareness, YDoc } from '$lib/crdt/index.js';
+import type { Awareness, OpResult, YDoc } from '$lib/crdt/index.js';
 import { blocksBetween } from './order.helpers.js';
 import { selectionState } from './selection.js';
 import { richTextPlugin } from '../routes/chrome/plugins.js';
@@ -52,6 +52,8 @@ export type SelectionExpectation = {
 export type OperationResultExpectation =
 	| { kind: 'void' }
 	| { kind: 'null' }
+	/** An operation's `OpResult` status. */
+	| { kind: 'applied' | 'noop' | 'refused' }
 	| { kind: 'block'; path: number[]; type?: string }
 	| { kind: 'text'; path: number[]; content?: string }
 	| { kind: 'inline-block'; path: number[]; type?: string }
@@ -109,13 +111,13 @@ export const insertParts = (
 	index: number,
 	parts: (JSONText[] | JSONInlineBlock)[]
 ): void => {
-	const model = block.model;
-	if (!model) return;
-	let at = block.edytor.idToBlock.parts(block.id)[index]?.start ?? model.length;
+	if (block.isRoot) return;
+	const { facade: document, idToBlock } = block.edytor;
+	let at = idToBlock.parts(block.id)[index]?.start ?? document.displayLength(block.id);
 	for (const item of jsonContentToItems(parts.flat())) {
-		if (item.kind === 'inline') model.insertInline(at++, item);
+		if (item.kind === 'inline') document.insertInline(block.id, at++, item);
 		else if (item.text) {
-			model.insertText(at, item.text, item.marks);
+			document.insertText(block.id, at, item.text, item.marks);
 			at += item.text.length;
 		}
 	}
@@ -610,11 +612,37 @@ export const expectSelection = (edytor: Edytor, expected: SelectionExpectation) 
 	}
 };
 
+/** An operation's answer (`OpResult`). */
+const isOpResult = (value: unknown): value is OpResult =>
+	typeof value === 'object' && value !== null && 'status' in value && 'ids' in value;
+
 export const expectOperationResult = (
-	result: Block | Text | InlineBlock | Block[] | readonly [Text | null, number] | null | void,
-	expected: OperationResultExpectation
+	answer:
+		| OpResult
+		| Block
+		| Text
+		| InlineBlock
+		| Block[]
+		| readonly [Text | null, number]
+		| null
+		| void,
+	expected: OperationResultExpectation,
+	edytor?: Edytor
 ) => {
+	// An operation's result: its status, or the blocks it names (`ids`) as handles.
+	let result = answer;
+	if (isOpResult(answer)) {
+		if (expected.kind === 'applied' || expected.kind === 'noop' || expected.kind === 'refused')
+			return expect(answer.status).toBe(expected.kind);
+		if (expected.kind === 'null') return expect(answer.status).toBe('refused');
+		const blocks = answer.ids.map((id) => edytor!.idToBlock.get(id));
+		result = expected.kind === 'blocks' ? (blocks as Block[]) : blocks[0];
+	}
 	switch (expected.kind) {
+		case 'applied':
+		case 'noop':
+		case 'refused':
+			throw new Error(`Expected an OpResult, got ${String(answer)}`);
 		case 'void':
 			expect(result).toBeUndefined();
 			return;

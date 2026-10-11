@@ -301,7 +301,7 @@ describe('replace — one command, one undo step', () => {
 		// One command, its steps shown to hooks under their names.
 		expect(seen.filter((op) => op === 'replaceMatches')).toHaveLength(1);
 		expect(seen.filter((op) => op === 'insertText')).toHaveLength(5);
-		expect(seen.filter((op) => op === 'deleteContentAtRange')).toHaveLength(5);
+		expect(seen.filter((op) => op === 'deleteText')).toHaveLength(5);
 		expect(count()).toBe('No results');
 
 		edytor.historyUndo();

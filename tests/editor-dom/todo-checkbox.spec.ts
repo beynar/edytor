@@ -48,7 +48,7 @@ test.describe('to-do checkbox', () => {
 		await open(page);
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.idToBlock.block('task').data.checked = true;
+			edytor.patchData('task', [{ path: ['checked'], value: true }]);
 		});
 		await expect(box(page)).toBeChecked();
 		issues.assertClean();

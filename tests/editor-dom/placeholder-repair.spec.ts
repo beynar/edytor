@@ -169,7 +169,7 @@ test.describe('placeholder (user-visible)', () => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			const tail = edytor.root.children[0].content.at(-1);
 			edytor.doc.transact(() => {
-				tail.deleteAt(0, tail.length);
+				edytor.facade.deleteText(tail.parent.id, tail.segStart, tail.length);
 			}, 'r5-inline-delete');
 		});
 		await expect
@@ -197,7 +197,7 @@ test.describe('placeholder (user-visible)', () => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			const text = edytor?.root?.children?.[0]?.firstText;
 			edytor.doc.transact(() => {
-				text.insertAt(0, '!');
+				edytor.facade.insertText(text.parent.id, text.segStart, '!');
 			}, 'remote-programmatic-update');
 		});
 

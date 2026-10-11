@@ -11,7 +11,7 @@
  *   (P12: Enter at end/start inserts a `paragraph` inside the list; P10: the
  *   merged-out child becomes `paragraph`).
  * - F-O6 — over a randomized corpus of move requests,
- *   `canMoveBlocks(r) ⇔ moveBlocks(r) is not refused`, on the document
+ *   `canMove(r) ⇔ move(r) is not refused`, on the document
  *   (`canPlace` vs the move ops) and on the view (the relative-move API the
  *   drop affordance and the menus use). D4 turns "not refused" into the
  *   `status` result; until then a refused document move returns `false` and
@@ -135,7 +135,7 @@ describe('F-D4 — same definition, different position', () => {
 	test('view: an island merged out of a list leaves its child as a list item', () => {
 		const document = createDocument({ value: { children: ISLAND_IN_LIST } });
 		const edytor = new Edytor({ document, plugins: [richTextPlugin, boxPlugin] });
-		edytor.idToBlock.get('box')!.mergeBlockBackward();
+		edytor.mergeBackward('box');
 		const [ol] = document.facade.toJSON().children;
 		expect(ol.children.map((child) => [child.id, child.type])).toEqual([
 			['one', 'list-item'],
@@ -287,7 +287,7 @@ const CORPUS_ROLES = { box: { island: true }, divider: { void: true } };
 
 const pick = <T>(r: () => number, xs: readonly T[]): T => xs[Math.floor(r() * xs.length)]!;
 
-describe('F-O6 — canMoveBlocks(r) ⇔ moveBlocks(r) is not refused', () => {
+describe('F-O6 — canMove(r) ⇔ move(r) is not refused', () => {
 	const corpusDocument = () => {
 		const document = createDocument({
 			value: { children: CORPUS },
@@ -346,8 +346,8 @@ describe('F-O6 — canMoveBlocks(r) ⇔ moveBlocks(r) is not refused', () => {
 			const target = pick(r, live);
 			const position = pick(r, positions);
 			const request = { blocks, target, position };
-			const expected = edytor.canMoveBlocks(request);
-			const actual = edytor.moveBlocks(request).length > 0;
+			const expected = edytor.canMove(request);
+			const actual = edytor.move(request).length > 0;
 			expect({ step, actual }).toEqual({ step, actual: expected });
 			if (actual) accepted++;
 			else refused++;

@@ -211,7 +211,7 @@ describe('the block menu caret after Delete', () => {
 	it('refused by an extension, the block stays and the caret returns to it (RW-11)', async () => {
 		const keep: Plugin = () => ({
 			onBeforeOperation: ({ operation, prevent }) => {
-				if (operation === 'removeBlock') prevent();
+				if (operation === 'deleteBlock') prevent();
 			}
 		});
 		const { edytor, editor } = await render([blockMenuPlugin, keep], [p('one'), p('two')]);

@@ -57,7 +57,7 @@ import {
 import { project, sameEnds, type SelectionValue } from '../session/selection.js';
 
 import type { Attempt } from '../session/attempt.js';
-import type { RangeEndpoints } from '../edytor.utils.js';
+import type { RangeEndpoints } from '../selection/replaceSelection.js';
 
 import { isAndroidChromeBrowser } from '../events/events.utils.js';
 import { isKindControl, isOwnPoint } from '../events/nativeInteractiveControl.js';

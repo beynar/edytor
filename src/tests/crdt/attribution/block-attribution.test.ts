@@ -267,13 +267,13 @@ describe('block attribution — content and metadata edits', () => {
 		b.destroy();
 	});
 
-	it('setBlock content replacement stamps; DocBlock handle delegates the same', () => {
+	it('setBlock content replacement stamps; the document read answers the same', () => {
 		const d = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(d).id;
 		d.transact(() => d.facade.setBlock(blockId, { content: [{ kind: 'text', text: 'new' }] }));
 		expect(d.attribution.block(blockId)?.lastChangedBy).toBe('alice');
-		// The typed-node surface sees the same record.
-		expect(d.facade.block(blockId).attribution).toEqual(d.attribution.block(blockId));
+		// The document's own read sees the same record.
+		expect(d.blockAttribution(blockId)).toEqual(d.attribution.block(blockId));
 		d.destroy();
 	});
 });

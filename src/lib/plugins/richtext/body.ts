@@ -10,9 +10,9 @@ import type { Block } from '$lib/block/block.svelte.js';
 export const openBody = (block: Block): Block | undefined => {
 	const { edytor } = block;
 	return edytor.dispatcher.run('openBody', () => {
-		const child =
-			block.children[0] ??
-			block.addChildBlock({ block: { type: edytor.defaultChild(block) }, index: 0 });
+		const added = () =>
+			edytor.insertBlocks({ parent: block.id, index: 0 }, [{ type: edytor.defaultChild(block) }]);
+		const child = block.children[0] ?? edytor.idToBlock.get(added().ids[0] ?? '');
 		edytor.dispatcher.caret(child?.firstText, 0);
 		return child ?? undefined;
 	});

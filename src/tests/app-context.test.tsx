@@ -63,12 +63,9 @@ describe('gate3: cloneJson boundary loss', () => {
 			const date = new Date('2024-01-01T00:00:00Z');
 			const map = new Map([['k', 'v']]);
 
-			block.setData({
-				when: date,
-				lookup: map,
-				undef: undefined,
-				fn: () => 1
-			});
+			edytor.patchData(block.id, [
+				{ path: [], value: { when: date, lookup: map, undef: undefined, fn: () => 1 } }
+			]);
 
 			const persisted = edytor.facade.toJSON().children[0].data;
 			expect(persisted.when).toBe('2024-01-01T00:00:00.000Z'); // Date → string
@@ -99,7 +96,7 @@ describe('gate3: cloneJson boundary loss', () => {
 			const block = edytor.root.children[0];
 			const text = block.content[0];
 			const date = new Date('2024-06-01T00:00:00Z');
-			text.insertText({ value: 'X', start: 0, end: 0, marks: { link: { at: date } } });
+			edytor.insertText(block.id, 0, 'X', { link: { at: date } });
 			const stored = edytor.facade.toJSON().children[0].content[0];
 			expect(stored.marks.link.at).toBe('2024-06-01T00:00:00.000Z');
 
@@ -124,7 +121,7 @@ describe('gate3: undo in app context', () => {
 		prime(edytor, B);
 
 		const text = edytor.root.children[0].content[0];
-		text.insertText({ value: 'AAA ', start: 0, end: 0 }); // local undoable
+		edytor.insertText(edytor.root.children[0].id, 0, 'AAA '); // local undoable
 
 		// Peer B edits through its own facade binding.
 		const facadeB = peer.create(B, { defaultType: 'paragraph' });
@@ -150,7 +147,7 @@ describe('gate3: undo in app context', () => {
 		prime(edytor, B);
 
 		const text = edytor.root.children[0].content[0];
-		text.insertText({ value: 'X', start: 0, end: 0 });
+		edytor.insertText(edytor.root.children[0].id, 0, 'X');
 		const facadeB = peer.create(B, { defaultType: 'paragraph' });
 		facadeB.insertText(facadeB.childrenIds(null)[0], 5, ' R');
 

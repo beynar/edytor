@@ -62,7 +62,7 @@ A callout is Notion's: an icon, a title and a content.
 
 - Its title is its own text, semibold (`[data-edytor-callout-title]`), with the placeholder "Callout title" while empty ([placeholders](#placeholders)). <kbd>Enter</kbd> at the end of the title, or in the middle of it, goes into the content, whether or not it has blocks yet.
 - Its content is its children, any blocks. Copied, a callout is `<div data-edytor-callout="💡"><p>Title</p>…</div>`, which pastes back as the callout, its icon kept; as plain text, its title then its content.
-- Its icon is `data.icon`: the editor's default when the callout has none (`💡`, or the `callout.icon` option), no icon when it is `''`. A new callout takes the default. Set it from code as any data, `block.data.icon = '🔥'`.
+- Its icon is `data.icon`: the editor's default when the callout has none (`💡`, or the `callout.icon` option), no icon when it is `''`. A new callout takes the default. Set it from code as any data, `edytor.patchData(block.id, [{ path: ['icon'], value: '🔥' }])`.
 - Clicking the icon (`[data-edytor-callout-icon]`, a button named "Change icon", "Add icon" when the callout has none) opens the view's icon picker under it: your `callout.picker` snippet (without one, nothing shows). Picking an icon, or Remove icon, is one undo step; Escape, <kbd>Tab</kbd> or a click elsewhere closes it unchanged. The arrows move through the icons (up and down by a row), Home and End go to the ends, <kbd>Enter</kbd> or <kbd>Space</kbd> picks, and the editor gets the keys back with its caret. The block menu of a callout has a Change icon row, the keyboard's way to the picker. A readonly editor shows the icon only.
 
 ```svelte title="CalloutIcons.svelte" check

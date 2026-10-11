@@ -82,8 +82,7 @@ export const setBlockColor = (
 	);
 	if (!painted.length) return false;
 	const applied = edytor.dispatcher.each('setBlockColor', painted, (block) => {
-		block.patchData({ ops: [{ path: [field], value: name }] });
-		return edytor.dispatcher.last?.status === 'applied';
+		return edytor.patchData(block.id, [{ path: [field], value: name }]).status === 'applied';
 	});
 	return applied.some(Boolean);
 };

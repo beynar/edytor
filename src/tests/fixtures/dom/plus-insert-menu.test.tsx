@@ -298,7 +298,7 @@ describe('a veto on the + insert', () => {
 			}
 		});
 
-	for (const operation of ['insertBlockAfter', 'setBlock']) {
+	for (const operation of ['insertBlocks', 'setBlock']) {
 		it(`a vetoed ${operation} inserts nothing and reports refused`, async () => {
 			const { edytor } = await withMenu([p('a'), p('b')], [veto(operation)]);
 			edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 1);

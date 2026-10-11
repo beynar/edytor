@@ -16,7 +16,7 @@ const EMOJI: Record<string, string> = { smile: '😄' };
 /** Typing the closing `:` of `:name:` replaces the whole trigger with its emoji. */
 const emojiPlugin: Plugin = (edytor) => ({
 	onBeforeOperation: ({ operation, payload, block, prevent }) => {
-		if (operation !== 'insertText' || payload.value !== ':') return;
+		if (operation !== 'insertText' || payload[2] !== ':') return;
 		const { startText: text, yStart } = selectionState(edytor);
 		if (!text) return;
 		const match = /:(\w+)$/.exec(text.stringContent.slice(0, yStart));
@@ -24,14 +24,11 @@ const emojiPlugin: Plugin = (edytor) => ({
 		if (!emoji) return;
 		const start = yStart - match[0].length;
 		prevent(() => {
-			// The documented example (`plugins/operations`): the public facade.
+			// The documented example (`plugins/operations`): the document's prepared operation.
 			const { dispatcher, document } = edytor;
-			const trigger: Prepared = document.facade.prepare.deleteText(
-				block.id,
-				text.segStart + start,
-				match[0].length
-			);
-			dispatcher.lead(trigger, () => text.insertText({ value: emoji, start, end: start }));
+			const at = text.segStart + start;
+			const trigger: Prepared = document.prepare.deleteText(block.id, at, match[0].length);
+			dispatcher.lead(trigger, () => edytor.insertText(block.id, at, emoji));
 			if (dispatcher.last?.status === 'applied') dispatcher.caret(text, start + emoji.length);
 		});
 	}
@@ -66,7 +63,7 @@ describe('a trigger as one plan', () => {
 			'the replacement',
 			() => ({
 				onBeforeOperation: ({ operation, payload, prevent }) => {
-					if (operation === 'insertText' && payload.value === '😄') prevent();
+					if (operation === 'insertText' && payload[2] === '😄') prevent();
 				}
 			})
 		],
@@ -74,7 +71,7 @@ describe('a trigger as one plan', () => {
 			"the trigger's removal (a step)",
 			() => ({
 				onBeforeOperation: ({ operation, prevent }) => {
-					if (operation === 'deleteContentAtRange') prevent();
+					if (operation === 'deleteText') prevent();
 				}
 			})
 		]

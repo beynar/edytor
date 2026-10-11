@@ -68,10 +68,10 @@ For people mentions, use the [mention plugin](/docs/plugins/mention): `@` opens 
 		name: 'Dates',
 		items: (query) => ['today', 'tomorrow'].filter((day) => day.startsWith(query)),
 		// `from` is where the `@` was: the atom goes there, the caret after it.
-		onPick: (day, { block, from, caret }) => {
-			const after = block.addInlineBlock({ offset: from, block: { type: 'date', data: { day } } });
-			if (after) caret(from + 1);
-			return !!after;
+		onPick: (day, { edytor, block, from, caret }) => {
+			const atom = edytor.insertInline(block.id, from, { type: 'date', data: { day } });
+			if (atom.status === 'applied') caret(from + 1);
+			return atom.status === 'applied';
 		}
 	};
 
@@ -102,25 +102,26 @@ For people mentions, use the [mention plugin](/docs/plugins/mention): `@` opens 
 
 ## Inserting, updating and removing atoms
 
-Insert an atom with `addInlineBlock` on the block, at an offset of its content (block offsets, an atom counting 1; the caret's):
+Insert an atom with `insertInline`, at an offset of its block's content (block offsets, an atom counting 1; the caret's):
 
 ```ts title="insertMention.ts" check
 const caret = edytor.selection.caret; // { block, offset }, or null when the selection is not a caret
 if (caret) {
 	const { block, offset } = caret;
-	const after = block.addInlineBlock({ offset, block: { type: 'mention', data: { label: 'Ada' } } });
-	// after is the text segment right after the atom: put the caret there.
-	if (after) edytor.selection.setCaret({ block, offset: offset + 1 });
+	const atom = edytor.insertInline(block.id, offset, { type: 'mention', data: { label: 'Ada' } });
+	// The caret goes right after the atom.
+	if (atom.status === 'applied') edytor.selection.setCaret({ block, offset: offset + 1 });
 }
 ```
 
-It is an `addInlineBlock` operation, visible to plugins. An atom's id is generated when you leave `id` out.
+It is an `insertInline` operation, visible to plugins. An atom's id is generated when you leave `id` out. An atom inserted at the caret keeps the caret's pending marks for the text typed after it.
 
-An atom's handle is an `InlineBlock`: `atom.data` is its data as a live proxy (`atom.data.name = 'Ada'` writes one property), `atom.setData(data)` replaces it (both a `patchData` operation on its block with `atom` set, visible to plugins and refused in a readonly view; see [Properties](/docs/concepts/properties)), `atom.parent` is its block and `atom.index` its position in `block.content`. Remove it with a `removeInlineBlock` operation on its block:
+An atom's handle is an `InlineBlock`: `atom.data` reads its data, `atom.parent` is its block and `atom.index` its position in `block.content`. Write its data with a `patchData` on `{ block, atom }` (visible to plugins and refused in a readonly view; see [Properties](/docs/concepts/properties)), and remove it with `removeInline`:
 
 ```ts title="removeMention.ts" check
-const atom = block.content.find((part) => part.id === 'mention-1');
-if (atom) block.removeInlineBlock({ index: atom.index });
+const target = { block: block.id, atom: 'mention-1' };
+edytor.patchData(target, [{ path: ['label'], value: 'Ada L.' }]);
+edytor.removeInline(block.id, 'mention-1');
 ```
 
 Users select an atom with the arrow keys or a click; <kbd>Backspace</kbd> or <kbd>Delete</kbd> removes a selected atom, and typing replaces it.

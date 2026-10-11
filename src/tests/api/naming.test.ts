@@ -66,7 +66,7 @@ describe('API-13 · value and onChange are one type', () => {
 	test('what onChange hands back opens as the same document', () => {
 		let saved: JSONDoc | undefined;
 		const edytor = view({ onChange: (next) => void (saved = next) });
-		edytor.idToBlock.get('a')!.firstText!.insertText({ value: 'x', start: 0, end: 0 });
+		edytor.insertText('a', 0, 'x');
 		expect(saved?.children.map((b) => b.id)).toEqual(['a']);
 		const again = new Edytor({ document: createDocument({ value: saved }), plugins: [richTextPlugin] });
 		expect(again.value.children).toEqual(edytor.value.children);

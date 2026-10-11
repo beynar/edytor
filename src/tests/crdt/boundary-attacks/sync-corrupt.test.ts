@@ -4,7 +4,7 @@ import { expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
 import * as encoding from 'lib0-v14/encoding';
-import * as bc from 'lib0-v14/broadcastchannel';
+import { tabs as bc } from '../../../lib/crdt/providers/room.js';
 import { writeProtocolVersion, generationDbName } from '../../../lib/crdt/protocols/envelope.js';
 
 const providers = bindIndexeddbProvider(Y);

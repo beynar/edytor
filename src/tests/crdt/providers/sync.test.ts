@@ -154,7 +154,7 @@ describe('SY01: sync protocol over real providers', () => {
 		const v13Msg = encoding.toUint8Array(e);
 
 		// publish into the shared room
-		const { publish } = await import('lib0-v14/broadcastchannel');
+		const { publish } = (await import('../../../lib/crdt/providers/room.js')).tabs;
 		publish(generationDbName(name), v13Msg.buffer.slice(0), 'v13-peer');
 		await nextTick();
 

@@ -27,7 +27,7 @@ import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Awareness } from '../../../lib/crdt/protocols/awareness.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
-import * as bc from 'lib0-v14/broadcastchannel';
+import { tabs as bc } from '../../../lib/crdt/providers/room.js';
 import * as idb from 'lib0-v14/indexeddb';
 import {
 	writeProtocolVersion,

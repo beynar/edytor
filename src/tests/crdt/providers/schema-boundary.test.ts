@@ -36,7 +36,7 @@ import { attachDocument } from '../../../lib/crdt/index.js';
 import { SCHEMA_VERSION } from '../../../lib/crdt/protocol.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
-import * as bc from 'lib0-v14/broadcastchannel';
+import { tabs as bc } from '../../../lib/crdt/providers/room.js';
 import * as idb from 'lib0-v14/indexeddb';
 import { readRow } from '../../../lib/crdt/providers/container.js';
 import * as envelope from '../../../lib/crdt/protocols/envelope.js';

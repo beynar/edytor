@@ -925,7 +925,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 bcconnected: boolean;
                 disableBc: boolean;
                 _ownsAwareness: boolean;
-                _bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+                _bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
                 _awarenessUpdateHandler: (updates: {
                     added: number[];
                     updated: number[];
@@ -997,7 +997,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 bcChannel: string;
                 bcconnected: boolean;
                 disableBc: boolean;
-                _bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+                _bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
                 _fromTab: {};
                 wsUnsuccessfulReconnects: number;
                 wsLastMessageReceived: number;
@@ -1064,7 +1064,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             _dbsize: number;
             _destroyed: boolean;
         }, forceStore?: boolean) => Promise<undefined>;
-        clearDocument: (name: string) => Promise<any>;
+        clearDocument: (name: string) => Promise<void>;
         PREFERRED_TRIM_SIZE: number;
         createIndexeddbSync: (name: string) => import("./index.js").EdytorSync;
         createWebsocketSync: (options: import("./index.js").WebsocketSyncOptions) => import("./index.js").WebsocketSync;
@@ -1610,7 +1610,7 @@ declare const bindProviders: (Y: EngineApi) => {
             bcconnected: boolean;
             disableBc: boolean;
             _ownsAwareness: boolean;
-            _bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+            _bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
             _awarenessUpdateHandler: (updates: {
                 added: number[];
                 updated: number[];
@@ -1682,7 +1682,7 @@ declare const bindProviders: (Y: EngineApi) => {
             bcChannel: string;
             bcconnected: boolean;
             disableBc: boolean;
-            _bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+            _bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
             _fromTab: {};
             wsUnsuccessfulReconnects: number;
             wsLastMessageReceived: number;
@@ -1749,7 +1749,7 @@ declare const bindProviders: (Y: EngineApi) => {
         _dbsize: number;
         _destroyed: boolean;
     }, forceStore?: boolean) => Promise<undefined>;
-    clearDocument: (name: string) => Promise<any>;
+    clearDocument: (name: string) => Promise<void>;
     PREFERRED_TRIM_SIZE: number;
     createIndexeddbSync: (name: string) => EdytorSync;
     createWebsocketSync: (options: WebsocketSyncOptions) => WebsocketSync;
@@ -1802,7 +1802,7 @@ declare const bindIndexeddbProvider: (Y: EngineApi) => {
             bcconnected: boolean;
             disableBc: boolean;
             _ownsAwareness: boolean;
-            _bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+            _bcSubscriber: (data: ArrayBuffer | Uint8Array, origin: unknown) => void;
             _awarenessUpdateHandler: (updates: {
                 added: number[];
                 updated: number[];
@@ -1858,7 +1858,7 @@ declare const bindIndexeddbProvider: (Y: EngineApi) => {
         };
     };
     storeState: (idbPersistence: IdbPersistenceLike, forceStore?: boolean) => Promise<undefined>;
-    clearDocument: (name: string) => Promise<any>;
+    clearDocument: (name: string) => Promise<void>;
     PREFERRED_TRIM_SIZE: number;
 };
 ```

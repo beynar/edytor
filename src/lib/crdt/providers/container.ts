@@ -6,7 +6,6 @@
  * writer (a provider's compaction appends its snapshot before deleting the
  * rows it subsumes).
  */
-import * as idb from 'lib0-v14/indexeddb';
 import {
 	GENERATION_KEY,
 	GenerationMismatchError,
@@ -18,9 +17,38 @@ import { gunzip, packed } from '../storage.js';
 export const UPDATES = 'updates';
 export const CUSTOM = 'custom';
 
-/** Open (creating when absent) a container with its two stores. */
+/** A request's result, as a promise (its failure as an `Error`). */
+export const rtop = <T>(request: IDBRequest<T>): Promise<T> =>
+	new Promise((resolve, reject) => {
+		request.onerror = () => reject(new Error(String(request.error)));
+		request.onsuccess = () => resolve(request.result);
+	});
+
+/** The stores `names` of one read-write transaction on `db`. */
+export const storesOf = (db: IDBDatabase, names: string[]): IDBObjectStore[] => {
+	const transaction = db.transaction(names, 'readwrite');
+	return names.map((name) => transaction.objectStore(name));
+};
+
+/** The greatest key of `store` (`null` when it is empty). */
+export const lastKey = (store: IDBObjectStore): Promise<IDBValidKey | null> =>
+	rtop(store.openKeyCursor(null, 'prev')).then((cursor) => cursor?.key ?? null);
+
+/** Open (creating when absent) a container with its two stores; it closes when another version opens. */
 export const openContainer = (dbName: string): Promise<IDBDatabase> =>
-	idb.openDB(dbName, (db) => idb.createStores(db, [[UPDATES, { autoIncrement: true }], [CUSTOM]]));
+	new Promise((resolve, reject) => {
+		const request = indexedDB.open(dbName);
+		request.onupgradeneeded = () => {
+			request.result.createObjectStore(UPDATES, { autoIncrement: true });
+			request.result.createObjectStore(CUSTOM);
+		};
+		request.onerror = () => reject(request.error);
+		request.onsuccess = () => {
+			const db = request.result;
+			db.onversionchange = () => db.close();
+			resolve(db);
+		};
+	});
 
 /** A row is the update's bytes in a buffer of their own. */
 export const encodeRow = (update: Uint8Array): ArrayBuffer => update.slice().buffer;
@@ -46,9 +74,9 @@ export const verifyOrStamp = async (
 	updates: IDBObjectStore,
 	custom: IDBObjectStore
 ): Promise<void> => {
-	const found = await idb.get(custom, GENERATION_KEY);
-	if (found === undefined && (await idb.count(updates)) === 0) {
-		await idb.rtop(custom.put({ ...GENERATION_RECORD }, GENERATION_KEY));
+	const found = await rtop(custom.get(GENERATION_KEY));
+	if (found === undefined && (await rtop(updates.count())) === 0) {
+		await rtop(custom.put({ ...GENERATION_RECORD }, GENERATION_KEY));
 	} else if (!isGenerationRecord(found)) {
 		throw new GenerationMismatchError(name, found);
 	}

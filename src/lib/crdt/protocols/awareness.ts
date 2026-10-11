@@ -14,11 +14,11 @@
  * wire compatibility is not peer compatibility (presence payload versioning
  * is the presence layer's concern).
  */
+import { jsonEquals } from '../../utils/json.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import * as time from 'lib0-v14/time';
 import * as math from 'lib0-v14/math';
-import * as f from 'lib0-v14/function';
 import { IsolatedObservable } from './observable.js';
 
 export const outdatedTimeout = 30000;
@@ -161,7 +161,7 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 			}
 		} else {
 			updated.push(clientID);
-			if (!f.equalityDeep(prevState, state)) {
+			if (!jsonEquals(prevState, state)) {
 				filteredUpdated.push(clientID);
 			}
 		}
@@ -307,7 +307,7 @@ export const applyAwarenessUpdate = (
 			} else if (clientMeta !== undefined && state === null) {
 				removed.push(clientID);
 			} else if (state !== null) {
-				if (!f.equalityDeep(state, prevState)) {
+				if (!jsonEquals(state, prevState)) {
 					filteredUpdated.push(clientID);
 				}
 				updated.push(clientID);

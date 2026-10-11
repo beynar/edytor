@@ -9,7 +9,10 @@
 import type { Text } from '../text/text.svelte.js';
 import { blockSelection } from '$lib/session/selection.js';
 import { toTrailingParagraph } from '$lib/session/navigation.js';
-import { isNativeInteractiveEvent } from '$lib/events/nativeInteractiveControl.js';
+import {
+	isNativeInteractiveControl,
+	isNativeInteractiveEvent
+} from '$lib/events/nativeInteractiveControl.js';
 import { acrossColumns } from './replaceSelection.js';
 import { getDomSelectionSnapshot, type DomSelectionSnapshot } from './domSelection.js';
 import { domPointOf } from '$lib/surface/projector.svelte.js';
@@ -74,7 +77,7 @@ export class SelectionPointer {
 			return null;
 		}
 		// A suggestion's preview is no block's chrome: a press there is its own (cancelled).
-		if (nonEditableElement.closest(`input, textarea, select, button, a[href], ${SUGGESTION}`)) {
+		if (isNativeInteractiveControl(nonEditableElement) || nonEditableElement.closest(SUGGESTION)) {
 			return null;
 		}
 		const block = this.selection.getBlockOfNode(nonEditableElement);

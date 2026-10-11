@@ -20,7 +20,11 @@ import { SvelteSet } from 'svelte/reactivity';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { EdgeSide, PendingMarks } from '$lib/session/editing/text.js';
 import type { RangeEndpoints } from '$lib/edytor.utils.js';
-import { isKindControl, isOwnPoint } from '$lib/events/nativeInteractiveControl.js';
+import {
+	isKindControl,
+	isNativeInteractiveControl,
+	isOwnPoint
+} from '$lib/events/nativeInteractiveControl.js';
 import type { Anchor } from '$lib/crdt/text/model.js';
 import {
 	atomSelection,
@@ -672,9 +676,7 @@ export class EdytorSelection {
 			// A press in a non-native editable island (contenteditable=false, no control).
 			const island = getElementFromNode(startNode)?.closest('[contenteditable="false"]');
 			const islandBlock =
-				island &&
-				!island.closest('input, textarea, select, button, a[href]') &&
-				this.getBlockOfNode(island);
+				island && !isNativeInteractiveControl(island) && this.getBlockOfNode(island);
 			if (islandBlock && islandBlock.firstText) return this.selectText(islandBlock.firstText, 0);
 			// A point on a white space node: the model caret is displayed again.
 			if (!inlineBlock && this.textAt(this.projection.start)) return this.display();

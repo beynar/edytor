@@ -62,3 +62,63 @@
 		</div>
 	{/if}
 {/if}
+
+<style>
+	[data-edytor-media-add],
+	[data-edytor-media-placeholder] {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		padding: 12px 36px 12px 12px;
+		border-radius: 6px;
+		background: rgba(33, 27, 23, 0.04);
+		color: var(--notion-text-secondary, #73726e);
+		font: inherit;
+		font-size: 14px;
+		text-align: left;
+		text-decoration: none;
+		cursor: pointer;
+		transition: background-color 80ms ease;
+	}
+	[data-edytor-media-placeholder] {
+		cursor: default;
+	}
+	[data-edytor-media-add]:hover {
+		background: rgba(33, 27, 23, 0.07);
+	}
+	[data-edytor-media-form] {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+	}
+	[data-edytor-media-form] input:not([type='file']) {
+		flex: 1;
+		min-width: 200px;
+		height: 32px;
+		padding: 0 10px;
+		border-radius: 6px;
+		background: rgba(242, 241, 238, 0.6);
+		box-shadow: inset 0 0 0 1px rgba(15, 15, 15, 0.1);
+		font: inherit;
+		font-size: 14px;
+		outline: 0;
+	}
+	[data-edytor-media-form] button,
+	[data-edytor-media-upload] {
+		height: 32px;
+		padding: 0 12px;
+		border-radius: 6px;
+		background: var(--notion-blue, #2383e2);
+		color: #fff;
+		font-size: 14px;
+		font-weight: 500;
+		line-height: 32px;
+		cursor: pointer;
+	}
+	[data-edytor-media-form] small {
+		flex-basis: 100%;
+		color: #cf5148;
+	}
+</style>

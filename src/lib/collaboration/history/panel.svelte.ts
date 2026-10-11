@@ -106,11 +106,13 @@ export class VersionHistory {
 	);
 	/** A key for the preview: it remounts when what it renders changes (`value` is read once). */
 	previewKey = $derived.by(() => this.preview && JSON.stringify(this.preview));
-	/** The preview's plugins: the highlights of the changes, then the app's. */
-	previewPlugins = $derived.by(() => {
-		const changes = this.highlight && this.diff ? this.diff.changes : NONE;
-		return [versionHighlightsPlugin(() => changes), ...(this.#options.plugins ?? [])];
-	});
+	/** The blocks changed since the version, by id, while highlighting (else none). */
+	changes = $derived.by(() => (this.highlight && this.diff ? this.diff.changes : NONE));
+	/** The preview's plugins: the highlights of the changes (read live), then the app's. */
+	previewPlugins = $derived.by(() => [
+		versionHighlightsPlugin(() => this.changes),
+		...(this.#options.plugins ?? [])
+	]);
 	/** The previewed version, as listed. */
 	selectedVersion = $derived.by(
 		() => this.versions?.find((entry) => entry.key === this.selected) ?? null

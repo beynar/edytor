@@ -6,7 +6,7 @@ import {
 	writeEdytorClipboardData
 } from '$lib/clipboard/clipboard.js';
 import { endTextDrag, startTextDrag, textDragOf } from '$lib/clipboard/moveText.js';
-import { getDomSelection } from '$lib/selection/domSelection.js';
+import { caretAtPoint, getDomSelection } from '$lib/selection/domSelection.js';
 
 /**
  * Payloads the editor can consume on drop. Preventing `dragover` is what
@@ -142,28 +142,20 @@ const isAcceptedForeignDrop = (root: Element, dataTransfer: DataTransfer | null)
 	);
 };
 
-type CaretPointDocument = Document & {
-	caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-	caretRangeFromPoint?: (x: number, y: number) => Range | null;
-};
-
 // Preventing the drop suppresses the browser's own `insertFromDrop`
 // beforeinput, so the accepted payload is the occurrence itself — the same
 // routing as `insertFromPaste`, with the drop point as its declared target
-// range: `caretPositionFromPoint` (the spec API: Firefox, Chromium ≥128),
-// else `caretRangeFromPoint` (the legacy WebKit/Chromium one).
+// range (`caretAtPoint`).
 const insertFromDrop = (edytor: Edytor, root: Element, event: DragEvent) => {
-	const doc = root.ownerDocument as CaretPointDocument;
-	const { clientX: x, clientY: y } = event;
-	const at = doc.caretPositionFromPoint?.(x, y);
-	const point = at?.offsetNode
-		? new StaticRange({
-				startContainer: at.offsetNode,
-				startOffset: at.offset,
-				endContainer: at.offsetNode,
-				endOffset: at.offset
-			})
-		: doc.caretRangeFromPoint?.(x, y);
+	const at = caretAtPoint(root.ownerDocument, event.clientX, event.clientY);
+	const point =
+		at &&
+		new StaticRange({
+			startContainer: at.node,
+			startOffset: at.offset,
+			endContainer: at.node,
+			endOffset: at.offset
+		});
 	return runOccurrence(edytor, {
 		inputType: 'insertFromDrop',
 		dataTransfer: event.dataTransfer,

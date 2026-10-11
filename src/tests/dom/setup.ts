@@ -51,3 +51,12 @@ if (!HTMLElement.prototype.scrollIntoView) {
 if (!Document.prototype.elementsFromPoint) {
 	Document.prototype.elementsFromPoint = () => [];
 }
+
+// Every supported engine has these; jsdom computes no layout, so nothing
+// resizes and every element counts as rendered.
+globalThis.ResizeObserver ??= class {
+	observe() {}
+	unobserve() {}
+	disconnect() {}
+};
+Element.prototype.checkVisibility ??= () => true;

@@ -82,25 +82,13 @@ export function getMarksAtRange(this: Text, yStart: number, yEnd: number) {
 	return result;
 }
 
-type Segmenter = new (
-	locale?: string,
-	options?: { granularity: 'grapheme' }
-) => { segment(value: string): Iterable<{ index: number }> };
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
-/** The offsets where `value`'s graphemes start, then its length (code points without `Intl.Segmenter`). */
-const graphemeEdges = (value: string): number[] => {
-	const Segmenter = (Intl as { Segmenter?: Segmenter }).Segmenter;
-	const starts = Segmenter
-		? Array.from(
-				new Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
-				(s) => s.index
-			)
-		: [];
-	if (!Segmenter)
-		for (let at = 0; at < value.length; at += value.codePointAt(at)! > 0xffff ? 2 : 1)
-			starts.push(at);
-	return [...starts, value.length];
-};
+/** The offsets where `value`'s graphemes start, then its length. */
+const graphemeEdges = (value: string): number[] => [
+	...Array.from(graphemes.segment(value), (s) => s.index),
+	value.length
+];
 
 const clamp = (value: string, offset: number) => Math.min(Math.max(offset, 0), value.length);
 

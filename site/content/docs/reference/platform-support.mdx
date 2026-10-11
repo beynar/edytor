@@ -1,10 +1,10 @@
 ---
 title: Platform support
-description: The browsers, versions, devices and runtimes Edytor is tested on, the oldest versions its code can run on, and where mobile keyboards and IME input stand.
+description: The browsers, versions, devices and runtimes Edytor supports and is tested on, and where mobile keyboards and IME input stand.
 icon: monitor-smartphone
 ---
 
-Edytor claims support for what its test lanes run, and nothing more. This page lists those lanes, the oldest browsers the shipped code can run on, and what is not tested yet: real phones and their keyboards above all.
+Edytor supports the browsers of Baseline 2024 and later, and its test lanes run the current version of each engine. This page lists those lanes, the oldest supported versions, and what is not tested yet: real phones and their keyboards above all.
 
 ## Browsers
 
@@ -20,19 +20,22 @@ The collaboration lane also runs real browsers of the three engines against the 
 
 The desktop lanes are what "supported" means: selection, typing, deletion, paste, drag and drop, block handles, menus, columns and undo behave the same in the three engines, except where a page names an engine difference (native <kbd>↑</kbd>/<kbd>↓</kbd> across [columns](/docs/plugins/columns#keys), for one).
 
-### Oldest versions
+### Supported versions
 
-The package ships modern JavaScript and CSS, with no polyfills. Its code uses `String.prototype.toWellFormed` (on every string written to the document), a regular expression with lookbehind (parsed when the package loads), `Array.prototype.toSorted` and `toReversed`, `color-mix()` and container queries, so it needs at least:
+The oldest versions of the [Baseline 2024](https://web.dev/baseline) browsers:
 
-| Browser | Oldest version |
+| Browser | Oldest supported version |
 | --- | --- |
-| Chrome, Edge | 111 |
-| Firefox | 119 |
-| Safari, iOS | 16.4 |
+| Chrome, Edge | 120 |
+| Firefox | 125 |
+| Safari, iOS | 17.4 |
+| Chrome on Android | 120 |
 
-An older browser fails outright, not by degrees: Safari before 16.4 refuses to load the package (the lookbehind is a syntax error there), and Chrome before 111 and Firefox before 119 throw as soon as a document is seeded or edited (no `toWellFormed`). Firefox 115 ESR is too old; the 128 ESR and later work.
+The package ships modern JavaScript and CSS, with no polyfills and no code paths for older engines: it relies on `Intl.Segmenter` (a grapheme is one character for the arrow keys and Backspace), `String.prototype.toWellFormed`, a regular expression with lookbehind, `Array.prototype.toSorted` and `toReversed`, `ResizeObserver`, `Element.checkVisibility`, `color-mix()`, container queries, unprefixed `mask` and `:has()`. An older browser is not supported: it may refuse to load the package or throw at the first edit, and no fix is made for it. Firefox 115 ESR is too old; the 128 ESR and later are supported.
 
-These are floors, not tested versions: between them and the versions in the table above, the editor is expected to work but no lane runs it. The [Notion theme](/docs/customization/styling#notion-theme) also uses `:has()`, which Firefox supports from 121; Firefox 119 and 120 draw headings without the theme's heading spacing. Features the browser may lack are detected rather than required: the local copy needs IndexedDB, and compressed snapshots need `CompressionStream` (without it they are stored uncompressed).
+Where the supported engines still differ, the editor keeps one path for each: the caret under the pointer comes from `caretPositionFromPoint` (Firefox, Chrome 128, Safari 26.2) or `caretRangeFromPoint` (earlier Chrome and Safari), and a selection inside a shadow root from the shadow root's own selection (Chromium), `getComposedRanges` (Safari) or the document's selection (Firefox). Engine bugs still open in a supported browser stay worked around, such as Safari's missing `pointerdown` for the first press after a drag (WebKit bug 202287). The local copy needs IndexedDB, and compressed snapshots need `CompressionStream`, which every supported browser has.
+
+These are floors, not tested versions: the lanes run the engines in the [Browsers](#browsers) table.
 
 ## Mobile and touch
 

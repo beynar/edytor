@@ -43,7 +43,8 @@ export const metaOps = (c: OpsContext) => {
 		leavingIsland,
 		settle,
 		remove,
-		atomOf
+		atomOf,
+		writeContent
 	} = c;
 
 	/**
@@ -237,15 +238,7 @@ export const metaOps = (c: OpsContext) => {
 		if (content !== undefined) {
 			const length = displayLength(id);
 			if (length > 0) writes.push({ op: 'deleteText', id, offset: 0, length });
-			let at = 0;
-			for (const item of content) {
-				if (item.kind === 'inline')
-					writes.push({ op: 'insertInline', id, offset: at++, atom: item });
-				else if (item.text !== '') {
-					writes.push({ op: 'insertText', id, offset: at, text: item.text, marks: item.marks });
-					at += item.text.length;
-				}
-			}
+			writeContent(writes, id, 0, content);
 		}
 		if (children !== undefined) {
 			for (const kid of childrenIds(id)) writes.push(remove(kid));

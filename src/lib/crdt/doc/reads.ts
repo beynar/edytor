@@ -379,7 +379,6 @@ export const docReads = (c: DocBase) => {
 		isLayoutItem,
 		holdsLayout,
 		insideItem,
-		rowKindOf,
 		isTable,
 		isRowKind,
 		isCellKind,

@@ -265,17 +265,6 @@ export const flowOps = (c: FlowContext) => {
 			)
 				return c.REFUSED;
 			const writes: PlanStep[] = [];
-			const text = (id: BlockId, at: number, l: FlowLine): number => {
-				for (const item of l.content ?? []) {
-					if (item.kind === 'inline')
-						writes.push({ op: 'insertInline', id, offset: at++, atom: item });
-					else if (item.text !== '') {
-						writes.push({ op: 'insertText', id, offset: at, text: item.text, marks: item.marks });
-						at += item.text.length;
-					}
-				}
-				return at;
-			};
 			/** A joined line's children lead the block it joins; `moved` follow them. */
 			const kids = (
 				to: BlockId,
@@ -300,7 +289,7 @@ export const flowOps = (c: FlowContext) => {
 			 * keeps its own, as Enter does), its children first.
 			 */
 			const join = (l: FlowLine, at: number, ranks?: string[]): number => {
-				const end = text(B, at, l);
+				const end = c.writeContent(writes, B, at, l.content);
 				const kind = l.type && fit(parent, l.type);
 				if (len === 0 && !header && kind && kind === l.type)
 					writes.push(
@@ -380,7 +369,7 @@ export const flowOps = (c: FlowContext) => {
 			kids(T, joinsTail ? last() : undefined, moved);
 			place(slot, ranks);
 			const at = joinsTail
-				? { block: T, offset: text(T, 0, last()) }
+				? { block: T, offset: c.writeContent(writes, T, 0, last().content) }
 				: (end ?? { block: T, offset: 0 });
 			return { ...c.plan([B, ...ids, T], writes), at };
 		}

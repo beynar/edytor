@@ -14,7 +14,8 @@ import {
 	ranksAt,
 	SOURCE_SIDE,
 	sourceRank,
-	type BlockId
+	type BlockId,
+	type ContentItem
 } from '../placement/model.js';
 import { refused, effectOf } from './plan.js';
 import type { Plan, PlanStep } from './types.js';
@@ -435,6 +436,22 @@ export const planSteps = (c: StepsContext) => {
 	/** Text items overlapping `[at, end)` of `id` (inline atoms carry no marks). */
 	const textIn = (id: BlockId, at: number, end: number) =>
 		spans(id).flatMap((s) => (s.item.kind === 'text' && s.at < end && s.end > at ? [s.item] : []));
+	/** Push the steps writing `items` into `id` from `at` (text runs and atoms in order); the end offset. */
+	const writeContent = (
+		writes: PlanStep[],
+		id: BlockId,
+		at: number,
+		items: readonly ContentItem[] = []
+	): number => {
+		for (const item of items) {
+			if (item.kind === 'inline') writes.push({ op: 'insertInline', id, offset: at++, atom: item });
+			else if (item.text !== '') {
+				writes.push({ op: 'insertText', id, offset: at, text: item.text, marks: item.marks });
+				at += item.text.length;
+			}
+		}
+		return at;
+	};
 
 	/** `writes`, then every container the `leaving` blocks leave with no child removed. */
 	const emptied = (
@@ -476,9 +493,9 @@ export const planSteps = (c: StepsContext) => {
 		remove,
 		merge,
 		clamp,
-		spans,
 		atomOf,
-		textIn
+		textIn,
+		writeContent
 	};
 };
 

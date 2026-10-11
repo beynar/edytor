@@ -160,5 +160,5 @@ export const bindSeed = (Y: EngineApi, BA: BlockAttributionApi) => {
 		data?: JsonObj
 	): void => Y.applyUpdate(asYDoc(doc), seedUpdate(value, defaultType, data), SEED_ORIGIN);
 
-	return { init, seedUpdate, seed };
+	return { init, seed };
 };

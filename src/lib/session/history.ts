@@ -20,7 +20,7 @@
  * carets ride the change, as for a remote undo).
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { project, textSelection, type SelectionValue } from './selection.js';
+import { project, sameEnds, textSelection, type SelectionValue } from './selection.js';
 
 type Entry = { before: SelectionValue; after?: SelectionValue };
 type StackItem = { meta: Map<string, unknown> };
@@ -103,11 +103,16 @@ export class History {
 	 * moves) restores the one the user had.
 	 */
 	began = (value: SelectionValue) => {
-		const { undoManager: um, transaction: key } = this.edytor;
-		const item = um?.undoStack.at(-1) as StackItem | undefined;
-		const entry = item && entries(item).get(key);
+		const { entry } = this.#top();
 		if (entry) entry.before = value;
 	};
+
+	/** The top undo item and this view's entry on it. */
+	#top() {
+		const { undoManager: um, transaction: key } = this.edytor;
+		const item = um?.undoStack.at(-1) as StackItem | undefined;
+		return { item, entry: item && entries(item).get(key) };
+	}
 
 	/** The dispatcher wrote in this transaction: an insertion (`inserts`) or not. */
 	wrote = (insertion: boolean) => {
@@ -123,15 +128,12 @@ export class History {
 	 * follows.
 	 */
 	continues = (value: SelectionValue) => {
-		const { undoManager: um, transaction: key, facade } = this.edytor;
-		const item = um?.undoStack.at(-1) as StackItem | undefined;
-		if (item?.meta.get(INSERTING) !== true) return false;
-		const after = (item?.meta.get(KEY) as Map<unknown, Entry> | undefined)?.get(key)?.after;
-		if (after?.kind !== 'text' || value.kind !== 'text') return false;
-		const [a, b] = [project(after, facade), project(value, facade)];
-		const at = (p: typeof a.start, q: typeof a.start) =>
-			p !== null && q !== null && p.block === q.block && p.offset === q.offset;
-		return at(a.start, b.start) && at(a.end, b.end);
+		const { item, entry } = this.#top();
+		const after = entry?.after;
+		if (item?.meta.get(INSERTING) !== true || after?.kind !== 'text' || value.kind !== 'text')
+			return false;
+		const a = project(after, this.edytor.facade);
+		return !!a.start && sameEnds(a, project(value, this.edytor.facade));
 	};
 
 	/**

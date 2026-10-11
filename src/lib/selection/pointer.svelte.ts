@@ -16,7 +16,12 @@ import {
 import { acrossColumns } from './replaceSelection.js';
 import { getDomSelectionSnapshot, type DomSelectionSnapshot } from './domSelection.js';
 import { domPointOf } from '$lib/surface/projector.svelte.js';
-import { getElementFromNode, offsetIn, SUGGESTION } from './selection.utils.js';
+import {
+	getElementFromNode,
+	isTextBoundSelectionPoint,
+	offsetIn,
+	SUGGESTION
+} from './selection.utils.js';
 import type { EdytorSelection } from './selection.svelte.js';
 
 /** A text point under the pointer, with where the pointer was. */
@@ -60,11 +65,6 @@ export class SelectionPointer {
 	/** A normalization the drag holds back until its release. */
 	hold = () => {
 		this.#held = true;
-	};
-
-	private insideText = (node: Node | null) => {
-		const element = getElementFromNode(node);
-		return Boolean(element?.closest('[data-edytor-text]'));
 	};
 
 	private chromeBlock = (node: Node | null) => {
@@ -236,7 +236,7 @@ export class SelectionPointer {
 		if (e.detail < 3) return;
 		const targetNode = e.target instanceof Node ? e.target : null;
 		const clickedBlock = this.selection.getBlockOfNode(targetNode);
-		if (clickedBlock?.definition.void && !this.insideText(targetNode)) {
+		if (clickedBlock?.definition.void && !isTextBoundSelectionPoint(targetNode)) {
 			e.preventDefault();
 			this.selection.select(blockSelection([clickedBlock.id]));
 			return;

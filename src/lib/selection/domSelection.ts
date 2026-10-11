@@ -34,11 +34,8 @@ export const clearDomSelection = (node?: Node | null) => {
 	getDomSelection(node)?.removeAllRanges();
 };
 
-export const createDomRange = (node: Node): Range => {
-	const owner = ownerOf(node);
-	if (!owner) throw new Error('Cannot create a DOM range without an owner document');
-	return owner.createRange();
-};
+/** A range in `node`'s document (a node always has one). */
+export const createDomRange = (node: Node): Range => ownerOf(node)!.createRange();
 
 /** A snapshot of one range, forward. */
 export const createDomSelectionSnapshotFromRange = (range: Range): DomSelectionSnapshot => ({

@@ -13,7 +13,12 @@ import {
 	normalizeUtf16Boundary,
 	SYNTHETIC_TEXT_OVERLAY_SELECTOR
 } from './selection.utils.js';
-import { clearDomSelection, getActiveElement, type DomSelectionSnapshot } from './domSelection.js';
+import {
+	clearDomSelection,
+	createDomRange,
+	getActiveElement,
+	type DomSelectionSnapshot
+} from './domSelection.js';
 import { getDomSelectionSnapshot } from './domSelection.js';
 import type { Block } from '../block/block.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
@@ -85,7 +90,7 @@ export const isBackward = (selection: {
 	if (!anchorNode || !focusNode) return false;
 	if (anchorNode === focusNode) return selection.focusOffset < selection.anchorOffset;
 	try {
-		const range = (anchorNode.ownerDocument ?? document).createRange();
+		const range = createDomRange(anchorNode);
 		range.setStart(anchorNode, selection.anchorOffset);
 		return range.comparePoint(focusNode, selection.focusOffset) < 0;
 	} catch {
@@ -322,7 +327,6 @@ export class EdytorSelection {
 		const start = this.textAt(projection.start);
 		if (start) {
 			this.#lastText = start.text;
-			this.#lastBlock = start.text.parent.id;
 		}
 		if (!changed) return;
 		// A dead view never publishes: its entry went with its teardown.
@@ -810,9 +814,8 @@ export class EdytorSelection {
 		return resolved ? this.textAt({ block: resolved.blockId, offset: resolved.offset }) : null;
 	};
 
-	/** The text and block the selection's start last resolved to (the seam origin once they die). */
+	/** The text the selection's start last resolved to (its block is the seam origin once it dies). */
 	#lastText: Text | null = null;
-	#lastBlock: string | null = null;
 
 	/**
 	 * Displayable (a fact of the rendering layer): the block's own content is mounted
@@ -908,10 +911,9 @@ export class EdytorSelection {
 				// The text it was displayed in died while its anchor moved on: display again.
 				if (this.#lastText !== null && !this.#lastText.isInDocument) this.display();
 				this.#lastText = at.text;
-				this.#lastBlock = at.text.parent.id;
 				return;
 			}
-			dead = this.#lastBlock;
+			dead = this.#lastText?.blockId ?? null;
 		} else {
 			// An emptied document rests the caret in its virtual paragraph (`doc.empty.virtual`).
 			const virtual = facade.virtual();

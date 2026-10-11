@@ -40,8 +40,8 @@ export function catchUp(stored: Uint8Array<ArrayBuffer>, updates: Uint8Array<Arr
 
 **What it ships:**
 
-- documents (`Doc`), nodes, transactions and `UndoManager`;
-- the V1 and V2 update codecs: `applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`, `decodeUpdate`, `diffUpdateV2`, `encodeStateVector`, `decodeStateVector` and their V2 forms;
+- documents (`Doc`), nodes and transactions;
+- one update encoding (the columnar one upstream Yjs calls v2): `applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`, `diffUpdate`, `decodeUpdate`, `UpdateEncoder`, `UpdateDecoder`, `encodeStateVector`, `decodeStateVector`;
 - relative positions in JSON form (`createRelativePositionFromTypeIndex`, `relativePositionToJSON`, `createRelativePositionFromJSON`, `createAbsolutePositionFromRelativePosition`);
 - id sets with their codec, and `RangeCursor`.
 
@@ -61,9 +61,9 @@ export function boldText(node: Y.Node): string[] {
 }
 ```
 
-**What was pruned:** the delta layer (`toDelta`, `applyDelta`, `node.delta`, a node's `'delta'` event, `event.delta`, `Node.from`), the renderers, the schemas (`$doc`, `$nodeAny`, `$idSet`), id maps and content maps, snapshots, the update logging, diffing and obfuscation helpers, the binary relative-position codec, id-set algebra beyond the basics, and the content-id helpers. Edytor never used them at run time; without the delta layer every app ships about 54 KB less JavaScript. A document built from an update is a new document followed by `Y.applyUpdate(doc, update)`: `bindCrdt(Y).createDoc()` when the update holds edytor content (see the keep-replaced rule below), `new Y.Doc()` only for a document that never holds any.
+**What was pruned:** the delta layer (`toDelta`, `applyDelta`, `node.delta`, a node's `'delta'` event, `event.delta`, `Node.from`), the renderers, the schemas (`$doc`, `$nodeAny`, `$idSet`), id maps and content maps, snapshots, the v1 update encoding, the undo manager, the update logging and obfuscation helpers, the binary relative-position codec, id-set algebra beyond the basics, and the content-id helpers. Edytor never used them at run time; without the delta layer every app ships about 54 KB less JavaScript. A document built from an update is a new document followed by `Y.applyUpdate(doc, update)`: `bindCrdt(Y).createDoc()` when the update holds edytor content (see the keep-replaced rule below), `new Y.Doc()` only for a document that never holds any.
 
-**What was added:** undo hooks that let the document decide how deleted text comes back and keep a block a peer wrote into when its creation is undone. They are what make [concurrent undo](/docs/collaboration/concurrent-editing) behave; an `UndoManager` you create yourself over a document does not follow those rules, so use `document.history`.
+**What was added:** the struct primitives edytor's own undo manager replays a step with (`redoItem`, `keepItem`, `followRedone`). The history is edytor's (`document.history`): it decides how deleted text comes back and keeps a block a peer wrote into when its creation is undone, which is what makes [concurrent undo](/docs/collaboration/concurrent-editing) behave.
 
 The fork also lets a document keep the node a concurrent write of the same map key replaced, with its subtree (`doc.keepReplaced`, a predicate, `null` by default). Every edytor document carries edytor's rule (two writers creating one block id at once keep both texts): the documents `createDocument`, `attachDocument` and `bindCrdt(Y).createDoc()` give you, and any document a facade binds. The engine's class default stays `null`, so another document of the same engine in your app keeps the upstream behavior. A document must carry the rule before it integrates edytor content: build it with `createDoc()` rather than `new Y.Doc()` followed by `Y.applyUpdate`.
 

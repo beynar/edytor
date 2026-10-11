@@ -17,5 +17,5 @@ export { ID, createID, compareIDs, findRootTypeKey } from "./utils/ID.js";
 export { createRelativePositionFromTypeIndex, createRelativePositionFromJSON, createAbsolutePositionFromRelativePosition, AbsolutePosition, RelativePosition, relativePositionToJSON } from "./utils/RelativePosition.js";
 export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from "./utils/transaction-helpers.js";
 export { Transaction, transact, cleanupYTextFormatting } from "./utils/Transaction.js";
-export { UndoManager, redoItem } from "./utils/UndoManager.js";
-export { Item, ContentBinary, ContentDeleted, ContentDoc, ContentEmbed, ContentFormat, ContentJSON, ContentAny, ContentString, ContentType } from "./structs/Item.js";
+export { redoItem, keepItem } from "./utils/redo.js";
+export { Item, followRedone, ContentBinary, ContentDeleted, ContentDoc, ContentEmbed, ContentFormat, ContentJSON, ContentAny, ContentString, ContentType } from "./structs/Item.js";

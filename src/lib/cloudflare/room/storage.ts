@@ -487,8 +487,7 @@ export class RoomStorage {
 	 * asynchronous, and the store-before-ack path is not. Its rows are
 	 * rewritten (at their positions) only while it is still the stored
 	 * snapshot and only when that shrinks it; the raw bytes stay in memory
-	 * (`inflated`) for a rebuild's synchronous read. A platform without
-	 * `CompressionStream` keeps it raw.
+	 * (`inflated`) for a rebuild's synchronous read.
 	 */
 	private compressLater(record: number, raw: Uint8Array) {
 		const room = this.room;

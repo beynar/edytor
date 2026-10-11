@@ -47,12 +47,10 @@ const d: unknown[] = child.toArray();
 const update: Uint8Array = Y.encodeStateAsUpdate(doc);
 const doc2: Y.Doc = new Y.Doc();
 Y.applyUpdate(doc2, update);
-const um: Y.UndoManager = new Y.UndoManager(doc);
 const rpos: Y.RelativePosition = Y.createRelativePositionFromTypeIndex(child, 1);
 const json = Y.relativePositionToJSON(rpos);
 void d;
 void doc2;
-void um;
 void json;
 
 // ── public binding surface types ─────────────────────────────────────────

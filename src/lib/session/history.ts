@@ -24,7 +24,6 @@ import { project, sameEnds, textSelection, type SelectionValue } from './selecti
 
 type Entry = { before: SelectionValue; after?: SelectionValue };
 type StackItem = { meta: Map<string, unknown> };
-type StackEvent = { stackItem: StackItem };
 
 const KEY = 'edytor:selection';
 /** A stack item's last dispatched write was an insertion (`wrote`): typing may continue it. */
@@ -58,7 +57,7 @@ export class History {
 			this.#open = null;
 			this.#inserting = null;
 		};
-		const record = ({ stackItem }: StackEvent) => {
+		const record = ({ stackItem }: { stackItem: StackItem }) => {
 			if (um.undoing || um.redoing) {
 				// The replay's item inherits the popped item's entry.
 				const popped = um.currStackItem as StackItem | null;
@@ -75,12 +74,10 @@ export class History {
 			this.#open = { entry, gesture: this.edytor.intentSerial };
 		};
 		doc.on('beforeTransaction', begin);
-		um.on('stack-item-added', record);
-		um.on('stack-item-updated', record);
+		const off = um.observe(record);
 		this.#off = () => {
 			doc.off('beforeTransaction', begin);
-			um.off('stack-item-added', record);
-			um.off('stack-item-updated', record);
+			off();
 		};
 	};
 

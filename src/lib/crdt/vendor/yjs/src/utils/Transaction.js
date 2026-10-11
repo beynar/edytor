@@ -332,7 +332,7 @@ const cleanupTransactions = (transactionCleanups, i) => {
  * Origin of the formatting cleanup that follows a remote transaction. The
  * cleanup is a write this document makes on its own (it deletes format items
  * a remote change made redundant): providers must still broadcast it, like
- * any local write, but no UndoManager tracks it — an origin nobody tracks
+ * any local write, but no undo manager tracks it — an origin nobody tracks
  * instead of `null`, the untyped-local origin every default undo manager
  * captures.
  */

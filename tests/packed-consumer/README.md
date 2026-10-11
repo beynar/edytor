@@ -80,10 +80,10 @@ explicitly (root rejects with `ERR_UNKNOWN_FILE_EXTENSION` under node).
 ## What it proves (smoke.js, runtime)
 
 - `dist/crdt/vendor/yjs/src/index.js` ships and loads — Doc, unified
-  `Y.Node`, maintained delta, update round-trip, relative positions,
-  `UndoManager`.
+  `Y.Node`, update round-trip, relative positions (and no engine
+  `UndoManager`: the history is edytor's).
 - `edytor/crdt/edytor` assembles via `bindCrdt(Y)`: `createDoc`, `Awareness`,
-  the `EdytorDoc` facade, providers, migration, sync protocol.
+  the `EdytorDoc` facade, providers, sync protocol.
 - The real consumer story: Doc + Awareness via public exports →
   `crdt.doc.create` → `init` → `insertBlock`/`insertText`/`formatRange` →
   two docs converge via state-vector update exchange in both directions →

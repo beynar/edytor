@@ -35,6 +35,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
 const REMOTE = { remote: true };
@@ -275,7 +276,7 @@ const deadBoundary = (ids, config: (who: 'A' | 'B') => object = () => ({})) => {
 	const base = seeded([para('x', 'x')]);
 	const A = replica(base, ids.a, config('A'));
 	const B = replica(base, ids.b, config('B'));
-	const um = new Y.UndoManager(A.doc.get('blocks'), { captureTimeout: 0 });
+	const um = new UndoManager(A.doc.get('blocks'), { captureTimeout: 0 });
 	expect(
 		A.ed.insertBlock(
 			{ parent: null, index: 1 },

@@ -13,7 +13,6 @@ import * as V from '../../lib/crdt/vendor/yjs/src/index.js';
 const SYMBOLS = {
 	Doc: 1,
 	Node: 1,
-	UndoManager: 1,
 	Item: 1,
 	RangeCursor: 1,
 	transact: 1,
@@ -41,6 +40,10 @@ const SYMBOLS = {
 	iterateStructsByIdSet: 1,
 	getItemCleanStart: 1,
 	redoItem: 1,
+	keepItem: 1,
+	followRedone: 1,
+	isParentOf: 1,
+	mergeIdSets: 1,
 	// a folded delete record (P4)
 	ContentAny: 1,
 	createID: 1

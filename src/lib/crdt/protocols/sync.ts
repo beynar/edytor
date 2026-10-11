@@ -62,7 +62,7 @@ export type IdSet = Decoded['ds'];
  * is optional). Remote integration MUST always arrive under a non-null,
  * non-tracked origin:
  *
- * - history capture (`document.history` / `Y.UndoManager`) keeps
+ * - history capture (`document.history`, edytor's undo manager) keeps
  *   untracked, non-local transactions out of the local undo stack — a
  *   `null` origin is ambiguous (it is also the untyped-local marker), so
  *   an explicit marker documents intent for `doc.on('update')`

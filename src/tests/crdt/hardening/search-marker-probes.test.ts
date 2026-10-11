@@ -21,6 +21,7 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { toDelta, applyDelta } from '../harness/delta.js';
+import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 900_000;
@@ -154,7 +155,7 @@ describe('gateH-R1 — undo restoring format items with live markers', () => {
 				applyDelta(t, delta.create().retain(60).retain(80, { b: true }));
 			});
 			if (!withMarkers) t._searchMarker = null;
-			const um = new Y.UndoManager(t, { captureTimeout: 0 });
+			const um = new UndoManager(t, { captureTimeout: 0 });
 			return { doc, t, um };
 		};
 		const a = mk(true);
@@ -197,7 +198,7 @@ describe('gateH-R1 — undo restoring format items with live markers', () => {
 				applyDelta(t, delta.create().retain(60).retain(80, { b: true }));
 			});
 			if (!withMarkers) t._searchMarker = null;
-			const um = new Y.UndoManager(t, { captureTimeout: 0 });
+			const um = new UndoManager(t, { captureTimeout: 0 });
 			return { doc, t, um };
 		};
 		const a = mk(true);

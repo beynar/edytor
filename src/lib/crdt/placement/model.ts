@@ -310,7 +310,7 @@ export const liveNodeOf = (doc: EngineDoc, id: BlockId): EngineNode | null => {
 export const isLive = (doc: EngineDoc, id: BlockId): boolean => isLiveIn(view(doc), id);
 
 /**
- * The history's creation rule (fork patch YP12 `withdraw`, `hist.undo.withdraw`): an
+ * The history's creation rule (`doc/history.ts`, `hist.undo.withdraw`): an
  * undo never deletes a block the undone step created. Its node and
  * structure (attrs, placement candidates, the content and claims nodes)
  * stay and the undoer's withdraw mark is written on it; what the step wrote
@@ -320,7 +320,10 @@ export const isLive = (doc: EngineDoc, id: BlockId): boolean => isLiveIn(view(do
  */
 export const withdrawOnUndo =
 	(doc: EngineDoc) =>
-	(item: EngineItemRef, stackItem: { inserts: { hasId(id: unknown): boolean } }): boolean => {
+	(
+		item: EngineItemRef,
+		stackItem: { inserts: { has(client: number, clock: number): boolean } }
+	): boolean => {
 		const registry = registryOf(doc);
 		let below: EngineItemRef = null;
 		let cur = item;
@@ -329,7 +332,7 @@ export const withdrawOnUndo =
 			cur = (cur?.parent as EngineNode | undefined)?._item ?? null;
 			if (cur === null) return false;
 		}
-		if (!stackItem.inserts.hasId(cur.id)) return false;
+		if (!cur.id || !stackItem.inserts.has(cur.id.client, cur.id.clock)) return false;
 		if (below === null) {
 			const node = (cur as { content: { type: EngineNode } }).content.type;
 			node.setAttr(WITHDRAW_PREFIX + doc.clientID, true);

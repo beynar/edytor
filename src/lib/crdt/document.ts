@@ -98,8 +98,8 @@
  *
  * ── History ────────────────────────────────────────────────────────────
  *
- * One registry-scoped `Y.UndoManager` per document (the facade's
- * supported seam). Capture is gated by TWO live checks, both consulted
+ * One registry-scoped undo manager per document (`doc/history.ts`, the
+ * facade's supported seam). Capture is gated by TWO live checks, both consulted
  * on every committing transaction:
  *
  * - `trackedOrigins` — a LIVE per-document set checked by identity: the
@@ -136,9 +136,9 @@
  * History is lazy: it attaches at `sync()`, or on first `history` access
  * once the doc is initialized — it NEVER initializes content itself, so
  * bootstrap/hydration writes all predate capture and are naturally
- * excluded. Stacks are unbounded (the engine prunes nothing); prune
- * explicitly via {@link clearHistory} / `history.clear()`, and tune the
- * merge window via `history.captureTimeout`.
+ * excluded. The undo stack keeps `history.limit` steps; drop them all
+ * via {@link clearHistory} / `history.clear()`, and tune the merge window
+ * via `history.captureTimeout`.
  */
 import type { MarkEdge } from './text/marks.js';
 import { DEV } from 'esm-env';
@@ -769,7 +769,7 @@ export class EdytorDocument {
 	};
 
 	/**
-	 * The default local history (registry-scoped `Y.UndoManager` —
+	 * The default local history (the registry-scoped undo manager —
 	 * `undo`/`redo`/`stopCapturing`/stacks). Lazy: attaches at `sync()`,
 	 * or on first access once the document is decided — it NEVER seeds
 	 * content itself (accessing it on a pending doc throws

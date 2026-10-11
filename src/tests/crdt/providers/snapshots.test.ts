@@ -1,12 +1,11 @@
 /**
  * The IndexedDB store's snapshots (`room.store.v2` in
  * `docs/editor-delete-contract.md`): every row holds an update in the
- * engine's one encoding; a compaction's snapshot row is gzip-compressed
- * where the platform has `CompressionStream`, and raw without it.
+ * engine's one encoding; a compaction's snapshot row is gzip-compressed.
  */
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import 'fake-indexeddb/auto';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import * as idb from 'lib0-v14/indexeddb';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
@@ -52,11 +51,6 @@ const content = (doc) => ({
 
 const isGzip = (bytes) => bytes[0] === 0x1f && bytes[1] === 0x8b;
 
-const saved = globalThis.CompressionStream;
-afterEach(() => {
-	globalThis.CompressionStream = saved;
-});
-
 describe('P5 · IndexedDB snapshots, compressed', () => {
 	test('a compaction writes one compressed snapshot row; later edits are update rows beside it', async () => {
 		const name = uniqueName('compacted');
@@ -85,20 +79,5 @@ describe('P5 · IndexedDB snapshots, compressed', () => {
 		const last = await load(name);
 		expect(content(last.doc).title).toBe('Renamed');
 		await last.provider.destroy();
-	});
-
-	test('without CompressionStream the snapshot row is raw, and loads the same', async () => {
-		globalThis.CompressionStream = undefined;
-		const name = uniqueName('raw');
-		const { doc, provider } = await load(name);
-		doc.get('content').insert(0, ['hello '.repeat(100)]);
-		await providers.storeState(provider);
-		const { rows } = await readStore(name);
-		const row = new Uint8Array(rows[0]);
-		expect(row[0]).toBe(0); // an update's feature flag, not gzip
-		await provider.destroy();
-		const again = await load(name);
-		expect(content(again.doc)).toEqual(content(doc));
-		await again.provider.destroy();
 	});
 });

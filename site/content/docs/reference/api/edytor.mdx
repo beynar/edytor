@@ -3084,7 +3084,7 @@ export declare class EdytorDocument {
 - `rendersContent`: Whether kind `type` renders its own content slot (undeclared kinds do).
 - `adoptSemantics`: Contribute document-level semantics — the seam views use to seed the structural roles implied by their plugin block definitions.
 - `sync`: The readiness transition — decide the document's content state.
-- `history`: The default local history (registry-scoped `Y.UndoManager` — `undo`/`redo`/`stopCapturing`/stacks).
+- `history`: The default local history (the registry-scoped undo manager — `undo`/`redo`/`stopCapturing`/stacks).
 - `trackOrigin`: Track a local-edit transaction origin for history capture — the seam views use to enroll their own `TRANSACTION` instance in this document's history.
 - `untrackOrigin`: Release a previously-tracked origin — the view-teardown counterpart of `trackOrigin`.
 - `clearHistory`: Drop the undo/redo stacks.
@@ -7217,7 +7217,7 @@ export declare class ToolbarController {
     readonly labels: ToolbarLabels;
     private shown;
     linkUrl: string;
-    panel: "link" | "color" | "turn" | null;
+    panel: "color" | "link" | "turn" | null;
     private selectionSnapshot;
     private isRestoringSelection;
     private focusField;

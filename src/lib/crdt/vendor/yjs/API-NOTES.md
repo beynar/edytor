@@ -32,8 +32,12 @@ Source of truth: `src/index.js` exports + JSDoc in `src/ynode.js`.
 > unsuffixed names (`applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`,
 > `diffUpdate`, `decodeUpdate`, `UpdateEncoder`, `UpdateDecoder`, the
 > `update` event): no v1 encoding, no `*V2` names, no `updateV2` event, no
-> format conversion. The table below is the rc.26 probe record; read it
-> against these lists.
+> format conversion.
+>
+> **Since patch YP18 it ships no `UndoManager`:** the history is edytor's
+> (`document.history`, `createUndoManager`); the engine keeps `redoItem`,
+> `keepItem` and `followRedone`. The table below is the rc.26 probe record;
+> read it against these lists.
 
 ## v13 → v14 name map (what's gone, what's renamed)
 

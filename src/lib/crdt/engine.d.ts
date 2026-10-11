@@ -4,7 +4,6 @@ import type * as V from './vendor/yjs/dts/index.js';
 export type EngineSymbol =
 	| 'Doc'
 	| 'Node'
-	| 'UndoManager'
 	| 'Item'
 	| 'RangeCursor'
 	| 'transact'
@@ -29,6 +28,10 @@ export type EngineSymbol =
 	| 'iterateStructsByIdSet'
 	| 'getItemCleanStart'
 	| 'redoItem'
+	| 'keepItem'
+	| 'followRedone'
+	| 'isParentOf'
+	| 'mergeIdSets'
 	| 'ContentAny'
 	| 'createID';
 

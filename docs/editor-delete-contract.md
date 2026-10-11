@@ -2490,7 +2490,7 @@ document's capture listener (`pressOutside`, `events/onFocus.ts`). Pins:
 
 ### `hist.dead-pop` — obsolete undo items
 
-`UndoManager.popStackItem` may consume a dead/obsolete stack item (entries
+The undo manager's replay (`crdt/doc/history.ts`) may consume a dead/obsolete stack item (entries
 neutralized by remote edits) without applying a change or growing the
 opposite stack. The legal oracle is **source stack shrank OR opposite
 grew** — not both. A dead command shows neither and still fails.
@@ -2753,7 +2753,7 @@ content, parent }` from an index the room keeps from every change report.
 writes the inverse as its own transaction — the history undo of exactly
 that frame's transaction (a history on the room's facade whose tracked
 origin is the frame's socket, released after each frame by P6's rule,
-`facade.releaseHistory`, so it keeps no deleted content alive): its inserts
+`history.clear()`, so it keeps no deleted content alive): its inserts
 deleted (its creations withdrawn, `hist.undo.withdraw`), its deletes
 restored (text by copy where no other writer's delete mark holds it,
 YP11; its block delete marks removed), its moves and attr writes reverted

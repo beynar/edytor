@@ -48,6 +48,7 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { toDelta, applyDelta } from '../harness/delta.js';
+import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 100_000;
@@ -180,7 +181,7 @@ const randFormats = (r: () => number): Record<string, unknown> | undefined => {
 	return fmt;
 };
 
-type Side = { doc: InstanceType<typeof Y.Doc>; t: any; um: InstanceType<typeof Y.UndoManager> };
+type Side = { doc: InstanceType<typeof Y.Doc>; t: any; um: UndoManager };
 
 /** Fixture: one long run — sparse formatting (markers must travel far). */
 const buildSparse = (t: any, doc: any) => {
@@ -242,7 +243,7 @@ const replayChecked = (
 		const t = doc.get('t');
 		doc.transact(() => build(t, doc));
 		if (!withMarkers) t._searchMarker = null;
-		const um = new Y.UndoManager(t, { captureTimeout: 0 });
+		const um = new UndoManager(t, { captureTimeout: 0 });
 		return { doc, t, um };
 	};
 	const a = mk(true);
@@ -426,7 +427,7 @@ describe('R1 — bounded randomized replay: patched vs disabled after EVERY op',
 			const t = doc.get('t');
 			doc.transact(() => build(t, doc));
 			if (!withMarkers) t._searchMarker = null;
-			const um = new Y.UndoManager(t, { captureTimeout: 0 });
+			const um = new UndoManager(t, { captureTimeout: 0 });
 			return { doc, t, um };
 		};
 		const a = mk(true);

@@ -39,6 +39,7 @@
  * measures the WORKING-TREE TypeScript, not a stale `dist/` build.
  */
 import * as Y14 from '../../src/lib/crdt/vendor/yjs/src/index.js';
+import { UndoManager } from '../../src/tests/crdt/harness/undo.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { statsOf } from './stats.js';
@@ -654,7 +655,7 @@ const anchors = () => {
 };
 
 /**
- * Selective undo — Y.UndoManager over the registry scope. Per sample: seed
+ * Selective undo — the harness UndoManager over the registry scope. Per sample: seed
  * a doc, perform K tracked ops, undo the LAST one (selective = the undo
  * step rewrites exactly that transaction's items, not a replay).
  */
@@ -665,7 +666,7 @@ const undo = () => {
 	for (let i = 0; i < WARMUP + SAMPLES; i++) {
 		const { doc, ed } = f.restore();
 		const targetId = f.targetId;
-		const um = new Y14.UndoManager(doc.get('blocks'), { captureTimeout: 0 });
+		const um = new UndoManager(doc.get('blocks'), { captureTimeout: 0 });
 		for (let k = 0; k < K; k++) ed.insertText(targetId, caret(k), 'y');
 		// useEvents: um.undo() calls module-level transact() — the doc.transact
 		// method wrap can't see it (this was the zero write/commit attribution).
@@ -1061,7 +1062,7 @@ const memory = async () => {
 	// die when it returns, and the following tick drops them off the stack.
 	const liveDelta = await (async () => {
 		const { doc, ed } = snap(flatDoc(1000)).restore();
-		const um = new Y14.UndoManager(doc.get('blocks'), { captureTimeout: 0 });
+		const um = new UndoManager(doc.get('blocks'), { captureTimeout: 0 });
 		for (let k = 0; k < 200; k++) {
 			ed.insertText('b500', 10, 'q');
 			if (k % 2) um.undo();

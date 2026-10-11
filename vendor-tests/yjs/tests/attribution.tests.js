@@ -15,6 +15,7 @@ import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 import * as t from 'lib0-v14/testing'
 import * as delta from 'lib0-v14/delta'
 import { applyDelta, toDelta } from '../../../src/tests/crdt/harness/delta.js'
+import { UndoManager } from '../../../src/tests/crdt/harness/undo.js'
 
 /**
  * `destroy()` emits the `'destroy'` event, and top-level types are destroyed with their Doc.
@@ -104,7 +105,7 @@ export const testRdtDeletedSubtreeUndoScope = () => {
   )
   Y.applyUpdate(docQ, Y.encodeStateAsUpdate(docP))
   const rootQ = docQ.get('prosemirror')
-  const um = new Y.UndoManager(rootQ)
+  const um = new UndoManager(rootQ)
   applyDelta(rootQ, delta.create().delete(1).done()) // local delete → captured
   t.assert(um.undoStack.length === 1)
   // remote change inside the deleted paragraph with an untracked origin: in scope via the

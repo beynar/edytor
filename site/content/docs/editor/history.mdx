@@ -40,7 +40,7 @@ import { createDocument } from 'edytor';
 const document = createDocument({ value: { children: [] } });
 document.history.undo();
 document.history.redo();
-document.history.canUndo(); // Yjs UndoManager API
+document.history.canUndo(); // edytor's undo manager
 document.clearHistory(); // drop both stacks
 ```
 

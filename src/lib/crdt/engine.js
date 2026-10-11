@@ -15,7 +15,6 @@ import * as V from './vendor/yjs/src/index.js';
 export const Y = {
 	Doc: V.Doc,
 	Node: V.Node,
-	UndoManager: V.UndoManager,
 	Item: V.Item,
 	RangeCursor: V.RangeCursor,
 	transact: V.transact,
@@ -43,6 +42,11 @@ export const Y = {
 	iterateStructsByIdSet: V.iterateStructsByIdSet,
 	getItemCleanStart: V.getItemCleanStart,
 	redoItem: V.redoItem,
+	// the document's undo manager (`doc/history.ts`, fork patch YP18)
+	keepItem: V.keepItem,
+	followRedone: V.followRedone,
+	isParentOf: V.isParentOf,
+	mergeIdSets: V.mergeIdSets,
 	// a folded delete record appended after the one it replaces
 	ContentAny: V.ContentAny,
 	createID: V.createID

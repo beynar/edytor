@@ -34,6 +34,7 @@ import { describe, expect, it } from 'vitest';
 import * as F from '../../lib/crdt/vendor/yjs/src/index.js';
 import { toDelta } from './harness/delta.js';
 import { bool, int, mulberry32, pick } from './harness/rng.js';
+import { undoManagerOf } from './harness/undo.js';
 
 const upstream = async () => {
 	const require = createRequire(import.meta.url);
@@ -96,7 +97,9 @@ const program = (E, seed, gc, exchange, markers) => {
 	docs[1].clientID = 22;
 	// the fork without its search-marker pool: the cursor walks from the start, as upstream does
 	if (!markers) for (const d of docs) d.get('t')._searchMarker = null;
-	const ums = docs.map((d) => new E.UndoManager([d.get('t'), d.get('m')], { captureTimeout: 0 }));
+	const ums = docs.map(
+		(d) => new (E.UndoManager ?? undoManagerOf(E))([d.get('t'), d.get('m')], { captureTimeout: 0 })
+	);
 	/** A detached node with a few writes of its own (lengths tracked here: a detached node has none). */
 	const detached = (depth) => {
 		const n = new E.Node(pick(rng, [null, 'p', 'q']));

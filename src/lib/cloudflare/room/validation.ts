@@ -200,7 +200,7 @@ export class RoomValidation {
 		const frame = v.frame;
 		v.frame = null;
 		if (frame === null || (frame.touched.size === 0 && !frame.data)) {
-			if (v.history) room.facade.releaseHistory(v.history);
+			if (v.history) v.history.clear();
 			return;
 		}
 		const touched = [...frame.touched];
@@ -235,6 +235,6 @@ export class RoomValidation {
 				}
 			}
 		}
-		if (v.history) room.facade.releaseHistory(v.history);
+		if (v.history) v.history.clear();
 	}
 }

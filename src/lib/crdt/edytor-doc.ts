@@ -47,7 +47,7 @@
  * operation).
  */
 import { setMarkEdges } from './text/marks.js';
-import type { EngineApi, EngineDoc, YDoc, YUndoManager } from './engine-api.js';
+import type { EngineApi, EngineDoc, YDoc } from './engine-api.js';
 import { keepingReplaced } from './incarnations.js';
 import { SCHEMA } from './schema.js';
 import {
@@ -187,8 +187,6 @@ type Layers = {
  */
 export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 	const D = bindDeletes(Y);
-	/** Each history's release of all its steps (`releaseHistory`). */
-	const releasers = new WeakMap<YUndoManager, () => void>();
 	// Compact per-block attribution writes (`attribution/block.ts`).
 	// One bound instance per engine binding; its suppression memory is
 	// per-doc (WeakMap-keyed), so facades on the same doc share it.
@@ -279,7 +277,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			funnel.dispose();
 			events.close();
 		};
-		const { createUndoManager } = docHistory({ ...base, ...funnel, D, releasers, init });
+		const { createUndoManager } = docHistory({ ...base, ...funnel, D, init });
 		const { anchorAt, followUndo, resolveAnchor } = docAnchors(reads);
 		const steps = { ...shape, ...planSteps(shape) };
 		const { plan } = steps;
@@ -426,14 +424,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			assertSchema: () => assertSchema(doc),
 			dispose,
 			createUndoManager,
-			/**
-			 * Drop every step of a history `createUndoManager` made (undo and
-			 * redo) and release what they kept for their undo, as the history
-			 * limit does: the engine collects that content now, the doc's
-			 * `gcFilter` still deciding. The room's validation history runs
-			 * it after each frame.
-			 */
-			releaseHistory: (um: YUndoManager): void => releasers.get(um)?.(),
 			// reads — every id argument normalizes at ingress
 			project: () => project(doc),
 			toJSON,

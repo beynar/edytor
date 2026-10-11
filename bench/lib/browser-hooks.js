@@ -349,7 +349,7 @@ export const INSTALL_HOOKS = () => {
 	const txCtor = ed.transaction?.constructor;
 	const rotCtor = ed.remoteOnlyTransaction?.constructor;
 	const docTx = ed.document?.transaction;
-	const UmCtor = Y.UndoManager;
+	const UmCtor = ed.undoManager?.constructor;
 	const classify = (origin, local) => {
 		if (local === false) return 'remote-apply';
 		if (origin === null || origin === undefined) return 'local-untyped';

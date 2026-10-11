@@ -33,6 +33,4 @@ declare type ContentString = import('./structs/Item.js').ContentString
 
 
 // @todo the below should have a separate Y/[mod] export
-declare type StackItem = import('./utils/UndoManager.js').StackItem
-declare type UndoManager = import('./utils/UndoManager.js').UndoManager
 

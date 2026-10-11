@@ -34,6 +34,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 300_000;
@@ -191,7 +192,7 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 		// The repair attaches once per DOC (doc-level update observer), so a
 		// directly-constructed UndoManager — e.g. the peer harness's
 		// `enableUndo` — produces the same ownership as createUndoManager().
-		const um = new Y.UndoManager(doc.get('blocks'), { captureTimeout: 0 });
+		const um = new UndoManager(doc.get('blocks'), { captureTimeout: 0 });
 		ed.block('tail').deleteText(0, 5);
 		um.undo();
 		expect(ed.blockText('b')).toBe('hello ');

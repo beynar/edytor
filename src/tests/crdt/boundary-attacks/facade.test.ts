@@ -24,6 +24,7 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc, SCHEMA_VERSION } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
 import { readData } from '../../../lib/crdt/data.js';
+import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -47,7 +48,7 @@ describe('attack 2: undo scope vs meta/schema', () => {
 		// R13 §2.1 / D-3: init's seed is one update applied with a non-local
 		// origin — it used to be a tracked local write that undo removed.
 		const doc = new Y.Doc();
-		const um = new Y.UndoManager(doc, { captureTimeout: 0 });
+		const um = new UndoManager(doc, { captureTimeout: 0 });
 		const ed = E.create(doc);
 		ed.init();
 		expect(E.schemaVersion(doc)).toBe(SCHEMA_VERSION);
@@ -62,7 +63,7 @@ describe('attack 2: undo scope vs meta/schema', () => {
 
 	test('doc-scoped UM: undo resurrects a stale schema version', () => {
 		const { doc, ed } = freshDoc();
-		const um = new Y.UndoManager(doc, { captureTimeout: 0 });
+		const um = new UndoManager(doc, { captureTimeout: 0 });
 		doc.transact(() => doc.get('meta').setAttr('v', 99)); // a "future" schema bump
 		expect(E.schemaVersion(doc)).toBe(99);
 		um.undo();
@@ -76,7 +77,7 @@ describe('attack 2: undo scope vs meta/schema', () => {
 	test('registry-scoped UM attached BEFORE init cannot reach the seed', () => {
 		const doc = new Y.Doc();
 		const registry = doc.get('blocks');
-		const um = new Y.UndoManager(registry, { captureTimeout: 0 });
+		const um = new UndoManager(registry, { captureTimeout: 0 });
 		const ed = E.create(doc);
 		ed.init();
 		ed.insertBlock(
@@ -97,7 +98,7 @@ describe('attack 2: undo scope vs meta/schema', () => {
 	test('registry-scoped UM attached AFTER init can never reach the bootstrap', () => {
 		const { doc, ed } = freshDoc(false);
 		const registry = doc.get('blocks');
-		const um = new Y.UndoManager(registry, { captureTimeout: 0 });
+		const um = new UndoManager(registry, { captureTimeout: 0 });
 		ed.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'paragraph' });
 		um.undo();
 		// Undo consumed the only captured op — the bootstrap is unreachable.
@@ -108,7 +109,7 @@ describe('attack 2: undo scope vs meta/schema', () => {
 
 	test('provider-applied (remote/untracked-origin) updates never enter the stack', () => {
 		const { doc, ed } = freshDoc();
-		const um = new Y.UndoManager(doc, { captureTimeout: 0 });
+		const um = new UndoManager(doc, { captureTimeout: 0 });
 		const remote = new Y.Doc();
 		const remoteEd = E.create(remote);
 		remoteEd.init();
@@ -368,7 +369,7 @@ describe('attack 7: DocChange mirror', () => {
 		expect(mirror.render()).toEqual(ed.toJSON());
 
 		// undo (doc-scoped UM for coverage)
-		const um = new Y.UndoManager(doc, { captureTimeout: 0 });
+		const um = new UndoManager(doc, { captureTimeout: 0 });
 		ed.insertText('b1', 0, 'X');
 		um.stopCapturing();
 		um.undo();

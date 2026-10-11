@@ -1218,7 +1218,7 @@ export type YTransaction = Y.Transaction;
 
 ```ts
 // crdt/engine-api.d.ts
-export type YUndoManager = InstanceType<typeof Y.UndoManager>;
+export type YUndoManager = import('./doc/history.js').UndoManager;
 ```
 
 ### attachDocument
@@ -1331,7 +1331,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 writePlacement: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, p: import("./index.js").BlockId | null, r: string) => void;
                 withdrawOnUndo: (doc: import("./engine-api.js").EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
                     inserts: {
-                        hasId(id: unknown): boolean;
+                        has(client: number, clock: number): boolean;
                     };
                 }) => boolean;
                 materializeSpec: (doc: import("./engine-api.js").EngineDoc, sp: import("./index.js").BlockSpec, parent: import("./index.js").BlockId | null, rank: string) => void;
@@ -1385,8 +1385,8 @@ declare const bindCrdt: (Y: EngineApi) => {
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => import("./edytor-doc.js").OpResult;
             deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
-            insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").JSONBlock | import("./index.js").BlockSpec)[]) => import("./edytor-doc.js").OpResult;
-            insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").JSONBlock | import("./index.js").BlockSpec) => import("./edytor-doc.js").OpResult;
+            insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").OpResult;
+            insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec | import("./index.js").JSONBlock) => import("./edytor-doc.js").OpResult;
             moveBlocks: (ids: readonly string[], dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
             moveBlock: (id: string, dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
             nestBlock: (id: string, parent: string) => import("./edytor-doc.js").OpResult;
@@ -1435,10 +1435,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             checkSchema: () => import("./edytor-doc.js").SchemaProblem | null;
             assertSchema: () => void;
             dispose: () => void;
-            createUndoManager: (options?: ConstructorParameters<EngineApi["UndoManager"]>[1] & {
-                limit?: number;
-            }) => import("./engine-api.js").YUndoManager;
-            releaseHistory: (um: import("./engine-api.js").YUndoManager) => void;
+            createUndoManager: (options?: import("./doc/history.js").HistoryOptions) => import("./doc/history.js").UndoManager;
             project: () => import("./index.js").ProjectedDoc;
             toJSON: () => import("./index.js").JSONDoc;
             blockJSON: (id: string) => import("./index.js").JSONBlock;
@@ -1546,7 +1543,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             writePlacement: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, p: import("./index.js").BlockId | null, r: string) => void;
             withdrawOnUndo: (doc: import("./engine-api.js").EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
                 inserts: {
-                    hasId(id: unknown): boolean;
+                    has(client: number, clock: number): boolean;
                 };
             }) => boolean;
             materializeSpec: (doc: import("./engine-api.js").EngineDoc, sp: import("./index.js").BlockSpec, parent: import("./index.js").BlockId | null, rank: string) => void;
@@ -1748,11 +1745,11 @@ declare const bindCrdt: (Y: EngineApi) => {
                 destroy(): void;
                 disconnect(): void;
                 connect(): void;
-                emit<N extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<import("./protocol.js").WebsocketProviderEvents[N]>): void;
+                emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<import("./protocol.js").WebsocketProviderEvents[N]>): void;
                 _observers: Map<string, Set<any>>;
-                on<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): import("./protocol.js").WebsocketProviderEvents[NAME];
-                once<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
-                off<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
+                on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): import("./protocol.js").WebsocketProviderEvents[NAME];
+                once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
+                off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
             };
         };
         watchComments: (server: string, roomName: string, listener: (message: import("./protocol.js").CommentMessage) => void) => (() => void);
@@ -2428,7 +2425,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
             writePlacement: (doc: EngineDoc, node: EngineNode, p: BlockId | null, r: string) => void;
             withdrawOnUndo: (doc: EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
                 inserts: {
-                    hasId(id: unknown): boolean;
+                    has(client: number, clock: number): boolean;
                 };
             }) => boolean;
             materializeSpec: (doc: EngineDoc, sp: BlockSpec, parent: BlockId | null, rank: string) => void;
@@ -2482,8 +2479,8 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => OpResult;
         deleteRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
         replaceRange: (from: DocPosition, to: DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => OpResult;
-        insertBlocks: (dest: Destination, specs: readonly (JSONBlock | BlockSpec)[]) => OpResult;
-        insertBlock: (dest: Destination, spec: JSONBlock | BlockSpec) => OpResult;
+        insertBlocks: (dest: Destination, specs: readonly (BlockSpec | JSONBlock)[]) => OpResult;
+        insertBlock: (dest: Destination, spec: BlockSpec | JSONBlock) => OpResult;
         moveBlocks: (ids: readonly string[], dest: Destination) => OpResult;
         moveBlock: (id: string, dest: Destination) => OpResult;
         nestBlock: (id: string, parent: string) => OpResult;
@@ -2532,10 +2529,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         checkSchema: () => import("./edytor-doc.js").SchemaProblem | null;
         assertSchema: () => void;
         dispose: () => void;
-        createUndoManager: (options?: ConstructorParameters<EngineApi["UndoManager"]>[1] & {
-            limit?: number;
-        }) => YUndoManager;
-        releaseHistory: (um: YUndoManager) => void;
+        createUndoManager: (options?: import("./doc/history.js").HistoryOptions) => import("./doc/history.js").UndoManager;
         project: () => import("./index.js").ProjectedDoc;
         toJSON: () => JSONDoc;
         blockJSON: (id: string) => JSONBlock;
@@ -2643,7 +2637,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
         writePlacement: (doc: EngineDoc, node: EngineNode, p: BlockId | null, r: string) => void;
         withdrawOnUndo: (doc: EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
             inserts: {
-                hasId(id: unknown): boolean;
+                has(client: number, clock: number): boolean;
             };
         }) => boolean;
         materializeSpec: (doc: EngineDoc, sp: BlockSpec, parent: BlockId | null, rank: string) => void;
@@ -2700,7 +2694,7 @@ declare const bindEdytorDoc: (Y: EngineApi) => {
 #### crdt/engine.d.ts#EngineSymbol
 
 ```ts
-export type EngineSymbol = 'Doc' | 'Node' | 'UndoManager' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'createRelativePositionFromTypeIndex' | 'createRelativePositionFromJSON' | 'createAbsolutePositionFromRelativePosition' | 'relativePositionToJSON' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'ContentAny' | 'createID';
+export type EngineSymbol = 'Doc' | 'Node' | 'Item' | 'RangeCursor' | 'transact' | 'applyUpdate' | 'encodeStateAsUpdate' | 'encodeStateVector' | 'decodeStateVector' | 'decodeUpdate' | 'UpdateEncoder' | 'writeIdSet' | 'mergeUpdates' | 'Skip' | 'findIndexSS' | 'isKeptReplaced' | 'createRelativePositionFromTypeIndex' | 'createRelativePositionFromJSON' | 'createAbsolutePositionFromRelativePosition' | 'relativePositionToJSON' | 'createIdSet' | 'diffIdSet' | 'insertIntoIdSet' | 'iterateStructsByIdSet' | 'getItemCleanStart' | 'redoItem' | 'keepItem' | 'followRedone' | 'isParentOf' | 'mergeIdSets' | 'ContentAny' | 'createID';
 ```
 
 #### crdt/engine.d.ts#Y
@@ -3018,11 +3012,11 @@ declare const bindProviders: (Y: EngineApi) => {
             destroy(): void;
             disconnect(): void;
             connect(): void;
-            emit<N extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
+            emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<WebsocketProviderEvents[N]>): void;
             _observers: Map<string, Set<any>>;
-            on<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
-            once<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
-            off<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): WebsocketProviderEvents[NAME];
+            once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
+            off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: WebsocketProviderEvents[NAME]): void;
         };
     };
     watchComments: (server: string, roomName: string, listener: (message: import("../protocol.js").CommentMessage) => void) => (() => void);

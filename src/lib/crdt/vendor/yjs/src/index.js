@@ -13,27 +13,21 @@ export { isParentOf } from './utils/isParentOf.js'
 export { createRelativePositionFromTypeIndex, createRelativePositionFromJSON, createAbsolutePositionFromRelativePosition, AbsolutePosition, RelativePosition, relativePositionToJSON } from './utils/RelativePosition.js'
 export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from './utils/transaction-helpers.js' // YP14: isKeptReplaced
 export { Transaction, transact, cleanupYTextFormatting } from './utils/Transaction.js'
-export { UndoManager } from './utils/UndoManager.js'
-export { redoItem } from './utils/UndoManager.js' // YP11
+export { redoItem, keepItem } from './utils/redo.js' // YP11, YP18
 export { decodeUpdate } from './utils/updates.js'
 export { YEvent } from './utils/YEvent.js'
 export { RangeCursor } from './utils/RangeCursor.js'
 export { YNode as Node } from './ynode.js'
 export { AbstractStruct } from './structs/AbstractStruct.js'
 export { GC } from './structs/GC.js'
-export { Item, ContentBinary, ContentDeleted, ContentDoc, ContentEmbed, ContentFormat, ContentJSON, ContentAny, ContentString, ContentType } from './structs/Item.js'
+export { Item, followRedone, ContentBinary, ContentDeleted, ContentDoc, ContentEmbed, ContentFormat, ContentJSON, ContentAny, ContentString, ContentType } from './structs/Item.js'
 export { Skip } from './structs/Skip.js'
 
 /**
  * @typedef {import('./utils/ids.js').ContentIds} ContentIds
  */
 
-const glo = /** @type {any} */ (typeof globalThis !== 'undefined'
-  ? globalThis
-  : typeof window !== 'undefined'
-    ? window
-    // @ts-ignore
-    : typeof global !== 'undefined' ? global : {})
+const glo = /** @type {any} */ (globalThis) // YP18: Baseline 2024 has `globalThis`
 
 const importIdentifier = '__ $YJS14$ __'
 

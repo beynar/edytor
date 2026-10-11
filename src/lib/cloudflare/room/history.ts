@@ -487,7 +487,7 @@ export class RoomHistory {
 		this.restoreStep = null;
 		room.sql.exec(`DELETE FROM ${room.tables.restore}`);
 		const history = this.restoreManager;
-		if (history !== null) room.facade.releaseHistory(history);
+		if (history !== null) history.clear();
 		const doc = room.live;
 		if (doc === null) return;
 		const gc = collects(doc);

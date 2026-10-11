@@ -17,6 +17,7 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { SCHEMA_VERSION, META_KEY } from '../../../lib/crdt/protocol.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { UndoManager } from '../harness/undo.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -86,7 +87,7 @@ describe('ed.createUndoManager — the supported undo seam', () => {
 		// origin, so even a doc-scoped manager attached first never captures
 		// it (it used to leave a versioned-but-empty document).
 		const doc = new Y.Doc();
-		const rawUm = new Y.UndoManager(doc, undoOps);
+		const rawUm = new UndoManager(doc, undoOps);
 		const ed = E.create(doc);
 		ed.init();
 		expect(rawUm.undoStack.length).toBe(0);

@@ -42,13 +42,9 @@ const abs = Y.createAbsolutePositionFromRelativePosition(
 assert.equal(abs.index, 3);
 assert.equal(abs.type, para);
 
-// UndoManager
-const um = new Y.UndoManager(doc);
-doc.transact(() => para.insert(11, '!'));
-um.undo();
-assert.equal(para.toString(), '<paragraph>hello world</paragraph>');
-um.redo();
-assert.equal(para.toString(), '<paragraph>hello world!</paragraph>');
+// The engine ships no undo manager: a document's history is edytor's
+// (`createUndoManager`, `document.history`).
+assert.equal('UndoManager' in Y, false);
 
 // ── package boundary: node-safe subpaths vs the component root ───────────
 //

@@ -233,7 +233,7 @@ declare const bindCrdt: (Y: EngineApi) => {
                 writePlacement: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, p: import("./index.js").BlockId | null, r: string) => void;
                 withdrawOnUndo: (doc: import("./engine-api.js").EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
                     inserts: {
-                        hasId(id: unknown): boolean;
+                        has(client: number, clock: number): boolean;
                     };
                 }) => boolean;
                 materializeSpec: (doc: import("./engine-api.js").EngineDoc, sp: import("./index.js").BlockSpec, parent: import("./index.js").BlockId | null, rank: string) => void;
@@ -287,8 +287,8 @@ declare const bindCrdt: (Y: EngineApi) => {
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => import("./edytor-doc.js").OpResult;
             deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
-            insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").JSONBlock | import("./index.js").BlockSpec)[]) => import("./edytor-doc.js").OpResult;
-            insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").JSONBlock | import("./index.js").BlockSpec) => import("./edytor-doc.js").OpResult;
+            insertBlocks: (dest: import("./index.js").Destination, specs: readonly (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[]) => import("./edytor-doc.js").OpResult;
+            insertBlock: (dest: import("./index.js").Destination, spec: import("./index.js").BlockSpec | import("./index.js").JSONBlock) => import("./edytor-doc.js").OpResult;
             moveBlocks: (ids: readonly string[], dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
             moveBlock: (id: string, dest: import("./index.js").Destination) => import("./edytor-doc.js").OpResult;
             nestBlock: (id: string, parent: string) => import("./edytor-doc.js").OpResult;
@@ -337,10 +337,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             checkSchema: () => import("./edytor-doc.js").SchemaProblem | null;
             assertSchema: () => void;
             dispose: () => void;
-            createUndoManager: (options?: ConstructorParameters<EngineApi["UndoManager"]>[1] & {
-                limit?: number;
-            }) => import("./engine-api.js").YUndoManager;
-            releaseHistory: (um: import("./engine-api.js").YUndoManager) => void;
+            createUndoManager: (options?: import("./doc/history.js").HistoryOptions) => import("./doc/history.js").UndoManager;
             project: () => import("./index.js").ProjectedDoc;
             toJSON: () => import("./index.js").JSONDoc;
             blockJSON: (id: string) => import("./index.js").JSONBlock;
@@ -448,7 +445,7 @@ declare const bindCrdt: (Y: EngineApi) => {
             writePlacement: (doc: import("./engine-api.js").EngineDoc, node: import("./engine-api.js").EngineNode, p: import("./index.js").BlockId | null, r: string) => void;
             withdrawOnUndo: (doc: import("./engine-api.js").EngineDoc) => (item: import("./engine-api.js").EngineItemRef, stackItem: {
                 inserts: {
-                    hasId(id: unknown): boolean;
+                    has(client: number, clock: number): boolean;
                 };
             }) => boolean;
             materializeSpec: (doc: import("./engine-api.js").EngineDoc, sp: import("./index.js").BlockSpec, parent: import("./index.js").BlockId | null, rank: string) => void;
@@ -650,11 +647,11 @@ declare const bindCrdt: (Y: EngineApi) => {
                 destroy(): void;
                 disconnect(): void;
                 connect(): void;
-                emit<N extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<import("./protocol.js").WebsocketProviderEvents[N]>): void;
+                emit<N extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: N, args: Parameters<import("./protocol.js").WebsocketProviderEvents[N]>): void;
                 _observers: Map<string, Set<any>>;
-                on<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): import("./protocol.js").WebsocketProviderEvents[NAME];
-                once<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
-                off<NAME extends "refused" | "failed" | "status" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
+                on<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): import("./protocol.js").WebsocketProviderEvents[NAME];
+                once<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
+                off<NAME extends "refused" | "status" | "failed" | "schema-mismatch" | "message-error" | "protocol-mismatch" | "synced" | "connection-close" | "connection-error" | "saved" | "permission-denied" | "expired" | "unreachable">(name: NAME, f: import("./protocol.js").WebsocketProviderEvents[NAME]): void;
             };
         };
         watchComments: (server: string, roomName: string, listener: (message: import("./protocol.js").CommentMessage) => void) => (() => void);
@@ -1568,7 +1565,7 @@ export declare class EdytorDocument {
 - `rendersContent`: Whether kind `type` renders its own content slot (undeclared kinds do).
 - `adoptSemantics`: Contribute document-level semantics — the seam views use to seed the structural roles implied by their plugin block definitions.
 - `sync`: The readiness transition — decide the document's content state.
-- `history`: The default local history (registry-scoped `Y.UndoManager` — `undo`/`redo`/`stopCapturing`/stacks).
+- `history`: The default local history (the registry-scoped undo manager — `undo`/`redo`/`stopCapturing`/stacks).
 - `trackOrigin`: Track a local-edit transaction origin for history capture — the seam views use to enroll their own `TRANSACTION` instance in this document's history.
 - `untrackOrigin`: Release a previously-tracked origin — the view-teardown counterpart of `trackOrigin`.
 - `clearHistory`: Drop the undo/redo stacks.
@@ -2549,6 +2546,8 @@ export type YTransaction = Y.Transaction;
 
 ## YUndoManager
 
+The document's undo manager (`doc/history.ts`).
+
 ```ts
-export type YUndoManager = InstanceType<typeof Y.UndoManager>;
+export type YUndoManager = import('./doc/history.js').UndoManager;
 ```

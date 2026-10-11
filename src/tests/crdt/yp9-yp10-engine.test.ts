@@ -35,6 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 import { permutations, replica, seedUpdate } from './arch-v2/replica-harness.js';
+import { undoManagerOf } from './harness/undo.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const VENDOR = join(here, '../../lib/crdt/vendor/yjs/src');
@@ -215,7 +216,7 @@ describe('YP10 — the formatting cleanup after a remote change is not an undo s
 			const b = mkDoc(E, 200);
 			a.get('t').insert(0, 'delta');
 			E.applyUpdate(b, E.encodeStateAsUpdate(a), 'remote');
-			const um = new E.UndoManager(a.get('t'), {
+			const um = new (E.UndoManager ?? undoManagerOf(E))(a.get('t'), {
 				captureTimeout: 0,
 				captureTransaction: (tr) => tr.local !== false
 			});

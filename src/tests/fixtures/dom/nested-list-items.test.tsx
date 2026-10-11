@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { rowOf } from '$lib/kinds.js';
 import {
 	dispatchDomBeforeInput,
@@ -161,7 +161,7 @@ describe('Turn into on an item of a list nested right in a list (DR-behavior-2)'
 
 	it('the markdown shortcut on the last item does the same', async () => {
 		const view = await render(
-			[markdownShortcutsPlugin],
+			[createMarkdownShortcutsPlugin()],
 			[ul('u', [ul('u2', [li('b'), li('c')]), li('d')])]
 		);
 		await at(view, 'c', 0);
@@ -234,7 +234,7 @@ describe('Turn into the kind an item already shows as (DR-behavior-3)', () => {
 
 	it('typing "- " or "1. " at an item’s start acts as on a flat item of that kind', async () => {
 		const flat = await render(
-			[markdownShortcutsPlugin],
+			[createMarkdownShortcutsPlugin()],
 			[{ id: 'f', type: 'bulleted-list-item', content: text('f') }]
 		);
 		await at(flat, 'f', 0);
@@ -242,7 +242,7 @@ describe('Turn into the kind an item already shows as (DR-behavior-3)', () => {
 		const flatText = get(flat, 'f').firstText!.stringContent;
 		document.body.innerHTML = '';
 
-		const bullets = await render([markdownShortcutsPlugin], three(ul));
+		const bullets = await render([createMarkdownShortcutsPlugin()], three(ul));
 		await at(bullets, 'b', 0);
 		await type(bullets, '- ');
 		expect(shape(bullets)).toEqual([
@@ -250,7 +250,7 @@ describe('Turn into the kind an item already shows as (DR-behavior-3)', () => {
 		]);
 		document.body.innerHTML = '';
 
-		const numbers = await render([markdownShortcutsPlugin], three(ol));
+		const numbers = await render([createMarkdownShortcutsPlugin()], three(ol));
 		await at(numbers, 'b', 0);
 		await type(numbers, '1. ');
 		expect(shape(numbers)).toEqual([[O, ['list-item "a"', 'list-item "b"', 'list-item "c"']]]);

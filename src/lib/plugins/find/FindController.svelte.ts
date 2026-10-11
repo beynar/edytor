@@ -1,16 +1,15 @@
 import type { Action } from 'svelte/action';
-import type { BlockOperations } from '$lib/block/block.utils.js';
+import type { Commands } from '$lib/plugins.js';
 import type { DocAnchor } from '$lib/crdt/index.js';
 import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { CommandResult } from '$lib/session/commands.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
-import { dispatchPlan, showText } from '../planned.js';
+import { showText } from '../planned.js';
 import { findMatches, type FindMatch } from './search.js';
-import { findEnglish, type FindLabels } from '$lib/labels.js';
 
 /** What `replaceMatches` (one command, one undo step) writes: each match replaced by `replacement`. */
-export type ReplaceMatches = BlockOperations['replaceMatches'];
+export type ReplaceMatches = Commands['replaceMatches'];
 
 /**
  * The find bar's state and actions (`plugins/find`): the query, the matches
@@ -34,11 +33,7 @@ export class FindController {
 	#off: (() => void) | null = null;
 	#field: HTMLInputElement | null = null;
 
-	constructor(
-		private edytor: Edytor,
-		/** The words the bar shows (the plugin's `labels`): read them in your `bar`. */
-		readonly labels: FindLabels = findEnglish
-	) {}
+	constructor(private edytor: Edytor) {}
 
 	/** What the bar searches for; setting it shows the current match. */
 	get query() {
@@ -217,7 +212,7 @@ export class FindController {
 
 	/**
 	 * The one write (`replaceMatches`): admission, hooks (the command, then
-	 * each `deleteContentAtRange` and `insertText` step), one transaction,
+	 * each `deleteText` and `insertText` step), one transaction,
 	 * one undo step. Each replacement takes the marks its match had in
 	 * common, as typing over a selection does (`marksForInsertion`).
 	 */
@@ -242,6 +237,7 @@ export class FindController {
 				})
 			);
 		const payload: ReplaceMatches = { matches, replacement: this.replacement };
-		return dispatchPlan(edytor, 'replaceMatches', payload, matches[0]!.block, prepare);
+		const block = edytor.idToBlock.get(matches[0]!.block);
+		return edytor.dispatcher.plan('replaceMatches', payload, prepare, block).status;
 	};
 }

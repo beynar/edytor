@@ -41,7 +41,7 @@ Most props are read once, when the component is created. Changing them later has
 | `actor` | `DocumentActor` | anonymous | | The local author `{ id, name?, color? }` of the view's own document: per-block attribution and the presence profile peers see. Cannot be combined with `document` (set it in `createDocument`). |
 | `readonly` | `boolean` | `false` | Yes | Render the document without editing. See [Readonly mode](/docs/editor/readonly). |
 | `placeholder` | `string \| (view) => string \| null` | | | Text shown in an empty block. A function receives `{ type, data, focused, empty }` and returns the text or `null`. Falls back to the first plugin that declares a `placeholder`. |
-| `labels` | `PartialLabels<'editor'>` | English | | The words the view says itself: its [announcements](/docs/editor/accessibility#announcements) and a suggestion's accessible name. Each plugin takes its own `labels`. See [Localization](/docs/customization/localization). |
+| `labels` | `PartialLabels` | English | | The words the package shows and says in this view, any entry of any section (the kinds' names, the placeholders, the [announcements](/docs/editor/accessibility#announcements) …), and the commands' slash `keywords` by id. See [Localization](/docs/customization/localization). |
 | `hotkeys` | `Partial<Record<HotKeyCombination, HotKey>>` | | | Key bindings (`'mod+s'`, `'alt+shift+arrowup'`, …) checked before the plugins' and the built-in ones. See [Hotkeys](/docs/customization/hotkeys#chord-syntax). |
 | `onChange` | `(value: JSONDoc) => void` | | | Called after every committed change, local or remote, with the document as a `JSONDoc`, the type `value` takes: `{ data?, children }` (the object also carries `type: 'root'`). `data` holds the document's [properties](/docs/concepts/properties). A stored value opens as `value` as it is. |
 | `onDocChange` | `(change: DocChange) => void` | | | Called after every committed change, local or remote, with what it changed (the change report: blocks added, removed, moved, retyped or edited) and no whole-document export, unlike `onChange`. The report is shared and read-only. A throw is logged and never stops the other consumers. Read `edytor.value` when you need the JSON. See [Reading state reactively](/docs/concepts/editor-instance#reading-state-reactively). |
@@ -75,26 +75,37 @@ A readonly view connects the same way: with `room`, `server` or `sync` it is a l
 
 ### Block handles
 
-The handles are a plugin whose markup is yours: list `createBlockHandlesPlugin({ handle })`, the `+` and the grip drawn by your `handle` snippet ([Block handles](/docs/plugins/block-handles)). Add [`createBlockMenuPlugin({ menu })`](/docs/plugins/block-menu) to open a block menu on a grip click, or pass `onActivate` to open your own:
+The handles are a plugin whose markup is yours: list `createBlockHandlesPlugin({ handle })`, the `+` and the grip drawn by your `handle` snippet ([Block handles](/docs/plugins/block-handles)). Add [`createBlockMenuPlugin({ menu })`](/docs/plugins/block-menu) to open a block menu on a grip click, or listen for its `edytor-block-activate` event to open your own:
 
 ```svelte title="Handles.svelte" check
 <script lang="ts">
 	import {
 		Edytor,
+		BLOCK_ACTIVATE_EVENT,
 		createBlockHandlesPlugin,
-		type BlockHandleActivation,
-		type BlockHandleSnippetPayload
+		type BlockActivation,
+		type BlockHandleSnippetPayload,
+		type Plugin
 	} from 'edytor';
 
 	let menu = $state<{ blockId: string; anchor: HTMLElement } | null>(null);
-	const onActivate = ({ block, anchor }: BlockHandleActivation) => {
-		menu = { blockId: block.id, anchor };
-	};
-	const plugins = [createBlockHandlesPlugin({ handle, onActivate })];
+	/** Your menu answers a grip click (`preventDefault`: it takes the keys). */
+	const myMenu: Plugin = () => ({
+		onEdytorAttached: ({ node }) => {
+			const open = (event: Event) => {
+				const { block, anchor } = (event as CustomEvent<BlockActivation>).detail;
+				event.preventDefault();
+				menu = { blockId: block.id, anchor };
+			};
+			node.addEventListener(BLOCK_ACTIVATE_EVENT, open);
+			return () => node.removeEventListener(BLOCK_ACTIVATE_EVENT, open);
+		}
+	});
+	const plugins = [createBlockHandlesPlugin({ handle }), myMenu];
 </script>
 
-{#snippet handle({ label, grip, labels }: BlockHandleSnippetPayload)}
-	<button use:grip aria-label={labels.grip(label)}>⠿</button>
+{#snippet handle({ label, grip }: BlockHandleSnippetPayload)}
+	<button use:grip aria-label={`${label} block`}>⠿</button>
 {/snippet}
 
 <Edytor {plugins} />

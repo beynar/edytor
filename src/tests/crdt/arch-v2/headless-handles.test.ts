@@ -6,13 +6,12 @@
  * - One command, one update: normalization runs inside the command's
  *   transaction (S1: "one transaction → normalization once per touched
  *   parent"); a peer never sees the un-normalized state.
- * - An operation called inside an outer transaction answers the block (or the
- *   text after an atom) that transaction created — a handle over the index,
- *   not `null`.
+ * - An operation called inside an outer transaction answers the blocks it
+ *   wrote (`ids`), whose handles read what that transaction created — not
+ *   `null`.
  * - Handles: getters read the index (mid-transaction reads see the writes);
  *   one handle per live id; the cache is pruned from `removed`; a handle for
- *   a dead id answers through `isInTree`; insertion takes JSON specs
- *   (`new Block({block})` is gone).
+ *   a dead id answers through `isInTree`; insertion takes JSON specs.
  *
  * Expected values come from the plan rows, never from running the code.
  */
@@ -56,8 +55,8 @@ const noteNormalizer = () => ({
 				const at = text?.stringContent.indexOf('x') ?? -1;
 				if (at < 0) return;
 				return () => {
-					text.deleteAt(at, 1);
-					text.insertAt(at, 'y');
+					block.edytor.deleteText(block.id, text.segStart + at, 1);
+					block.edytor.insertText(block.id, text.segStart + at, 'y');
 				};
 			}
 		}
@@ -72,7 +71,7 @@ describe('one command, one update — normalization inside the transaction', () 
 			const peer = new Y.Doc();
 			Y.applyUpdate(peer, Y.encodeStateAsUpdate(edytor.doc));
 			updates.length = 0;
-			edytor.idToBlock.get('a')!.removeBlock();
+			edytor.deleteBlock('a');
 			expect(updates.length).toBe(1);
 			// Nothing is written for the emptied root (`doc.empty.virtual`): the
 			// peer's document is empty too, and each view shows a virtual paragraph.
@@ -92,7 +91,7 @@ describe('one command, one update — normalization inside the transaction', () 
 			[noteNormalizer]
 		);
 		updates.length = 0;
-		edytor.idToBlock.get('n')!.setBlock({ value: { content: [{ text: 'axb' }] } });
+		edytor.setBlock('n', { content: [{ text: 'axb' }] });
 		expect(texts(edytor)).toEqual([['note', 'ayb']]);
 		expect(updates.length).toBe(1);
 		expect(edytor.document.history.undoStack.length).toBe(1);
@@ -104,7 +103,7 @@ describe('one command, one update — normalization inside the transaction', () 
 			[noteNormalizer]
 		);
 		updates.length = 0;
-		edytor.idToBlock.get('n')!.setBlock({ value: { content: [{ text: 'abc' }] } });
+		edytor.setBlock('n', { content: [{ text: 'abc' }] });
 		expect(texts(edytor)).toEqual([['note', 'abc']]);
 		expect(updates.length).toBe(1);
 	});
@@ -113,11 +112,10 @@ describe('one command, one update — normalization inside the transaction', () 
 describe('an operation inside an outer transaction answers what the transaction created', () => {
 	row('splitBlock answers the split-born block, readable in the transaction', () => {
 		const { edytor } = view();
-		const a = edytor.idToBlock.get('a')!;
 		let born: unknown;
 		let seen: unknown;
 		edytor.transact(() => {
-			born = a.splitBlock({ index: 1, text: a.firstText });
+			born = edytor.idToBlock.get(edytor.splitBlock('a', 1, 's', { type: 'paragraph' }).ids[0]);
 			seen = born && [born.type, born.firstText?.stringContent];
 		});
 		expect(born).toBeTruthy();
@@ -130,36 +128,34 @@ describe('an operation inside an outer transaction answers what the transaction 
 		]);
 	});
 
-	row('insertBlockAfter / insertBlockBefore answer the inserted blocks', () => {
+	row('insertBlocks answers the inserted blocks', () => {
 		const { edytor } = view();
-		const a = edytor.idToBlock.get('a')!;
 		const [after, before] = edytor.transact(() => [
-			a.insertBlockAfter({ block: p('x', 'x') }),
-			a.insertBlockBefore({ block: p('y', 'y') })
+			edytor.insertBlocks({ parent: null, index: 1 }, [p('x', 'x')]),
+			edytor.insertBlocks({ parent: null, index: 0 }, [p('y', 'y')])
 		]);
-		expect(after?.id).toBe('x');
-		expect(before?.id).toBe('y');
+		expect(after.ids).toEqual(['x']);
+		expect(before.ids).toEqual(['y']);
 		expect(texts(edytor).map(([, t]) => t)).toEqual(['y', 'aa', 'x', 'bb']);
 	});
 
-	row('mergeBlockBackward answers a surviving block the transaction created', () => {
+	row('mergeBackward answers a surviving block the transaction created', () => {
 		const { edytor } = view();
-		const a = edytor.idToBlock.get('a')!;
-		const b = edytor.idToBlock.get('b')!;
 		const into = edytor.transact(() => {
-			a.insertBlockAfter({ block: p('x', 'x') });
-			return b.mergeBlockBackward();
+			edytor.insertBlocks({ parent: null, index: 1 }, [p('x', 'x')]);
+			return edytor.idToBlock.get(edytor.mergeBackward('b').ids[0]);
 		});
 		expect(into?.id).toBe('x');
 		expect(texts(edytor).map(([, t]) => t)).toEqual(['aa', 'xbb']);
 	});
 
-	row('addInlineBlock answers the text after the atom', () => {
+	row('insertInline: the text after the atom reads in the transaction', () => {
 		const { edytor } = view();
 		const a = edytor.idToBlock.get('a')!;
-		const after = edytor.transact(() =>
-			a.addInlineBlock({ index: 1, text: a.firstText, block: { type: 'mention', data: {} } })
-		);
+		const after = edytor.transact(() => {
+			edytor.insertInline('a', 1, { type: 'mention', data: {} });
+			return a.content[2];
+		});
 		expect(after?.stringContent).toBe('a');
 		expect(texts(edytor)).toEqual([['paragraph', 'a@a'], ...[['paragraph', 'bb']]]);
 	});
@@ -171,19 +167,20 @@ describe('handles read the index', () => {
 		const a = edytor.idToBlock.get('a')!;
 		const seen: unknown[] = [];
 		edytor.transact(() => {
-			a.model!.insertText(2, 'Z');
+			edytor.insertText('a', 2, 'Z');
 			seen.push(a.firstText!.stringContent);
-			a.insertChildren(0, [p('c', 'child')]);
+			edytor.insertBlocks({ parent: 'a', index: 0 }, [p('c', 'child')]);
 			seen.push(a.children.map((child) => child.id));
 		});
 		expect(seen).toEqual(['aaZ', ['c']]);
 	});
 
 	/** Green since R4a. */
-	test('insertChildren takes JSON specs, beside raw JSON parts', () => {
+	test('insertBlocks takes JSON specs, beside raw JSON parts', () => {
 		const { edytor } = view();
-		const root = edytor.root!;
-		root.insertChildren(1, [{ id: 'j', type: 'paragraph', content: [{ text: 'json' }] }]);
+		edytor.insertBlocks({ parent: null, index: 1 }, [
+			{ id: 'j', type: 'paragraph', content: [{ text: 'json' }] }
+		]);
 		const j = edytor.idToBlock.get('j')!;
 		insertParts(j, 1, [{ type: 'mention', id: 'm', data: {} }, [{ text: '!' }]]);
 		expect(texts(edytor)).toEqual([
@@ -196,7 +193,7 @@ describe('handles read the index', () => {
 	pin('one handle per live id, across commits and after a peer adds a block', () => {
 		const { edytor } = view();
 		const a = edytor.idToBlock.get('a')!;
-		a.firstText!.insertText({ value: 'q', start: 0, end: 0 });
+		edytor.insertText('a', 0, 'q');
 		expect(edytor.idToBlock.get('a')).toBe(a);
 		const peer = new Y.Doc();
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(edytor.doc));
@@ -210,7 +207,7 @@ describe('handles read the index', () => {
 	pin('a handle for a dead id answers through isInTree; the cache is pruned', () => {
 		const { edytor } = view();
 		const b = edytor.idToBlock.get('b')!;
-		b.removeBlock();
+		edytor.deleteBlock('b');
 		expect(b.isInTree).toBe(false);
 		expect(edytor.idToBlock.get('b')).toBeUndefined();
 	});

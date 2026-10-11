@@ -11,7 +11,7 @@
  *   leaves its parent: before/after it), for in (last child of the previous
  *   sibling) and out (after the parent, the siblings after it following as
  *   its children — the outdent, UW-23), for a selected group of siblings.
- * - Capability is the same predicate: `canMoveBlocks` answers exactly when
+ * - Capability is the same predicate: `canMove` answers exactly when
  *   `moveBlocks` moves.
  * - A move vetoed by an extension is a cancel on every path; a move is one
  *   undo step (R7: structural commands cut before they write).
@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import type { RenderedNode } from '../../jsx/types.js';
 import {
@@ -50,7 +50,7 @@ const vetoMoves: Plugin = () => ({
 
 const render = (jsx: RenderedNode, extra: Plugin[] = []) =>
 	renderDomEdytor(jsx, {
-		plugins: [richTextPlugin, mentionPlugin, arrowMovePlugin, blockHandlesPlugin, ...extra]
+		plugins: [richTextPlugin, mentionPlugin, createArrowMovePlugin(), blockHandlesPlugin, ...extra]
 	});
 
 /** `A, B{B1}, C`: each block's own text, its children in braces. */
@@ -88,7 +88,7 @@ const move = async (edytor: Edytor, path: Path, direction: Direction, ...texts: 
 		const key = ARROWS[direction];
 		await dispatchDomKeyDown(handle, { key, code: key, altKey: true });
 	} else {
-		edytor.moveBlocks({ blocks, direction });
+		edytor.move({ blocks, direction });
 		await flushDomUpdates();
 	}
 };
@@ -243,7 +243,7 @@ describe('the same relative meaning on every path', () => {
 	});
 });
 
-describe('capability: canMoveBlocks answers exactly when moveBlocks moves', () => {
+describe('capability: canMove answers exactly when move moves', () => {
 	row('every block × every direction on A{A1, A2}, B', async () => {
 		const expected: Record<string, Record<Direction, boolean>> = {
 			A: { up: false, down: true, in: false, out: false },
@@ -266,7 +266,7 @@ describe('capability: canMoveBlocks answers exactly when moveBlocks moves', () =
 				Object.fromEntries(
 					(['up', 'down', 'in', 'out'] as const).map((direction) => [
 						direction,
-						edytor.canMoveBlocks({ blocks: [find(edytor, text)], direction })
+						edytor.canMove({ blocks: [find(edytor, text)], direction })
 					])
 				)
 			])

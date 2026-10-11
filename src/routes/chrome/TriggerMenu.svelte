@@ -1,4 +1,5 @@
 <script lang="ts" generics="T">
+	import { words } from './words.svelte.js';
 	import type { Snippet } from 'svelte';
 	import type { TriggerMenuController } from '$lib/index.js';
 
@@ -7,8 +8,16 @@
 	 * `menu`: its rows are `row`'s (the item and its index), else the item's
 	 * label.
 	 */
-	let { controller, row }: { controller: TriggerMenuController<T>; row?: Snippet<[T, number]> } =
-		$props();
+	let {
+		controller,
+		row,
+		said = words.trigger
+	}: {
+		controller: TriggerMenuController<T>;
+		row?: Snippet<[T, number]>;
+		/** The menu's name and its empty and pending texts. */
+		said?: { menu: string; searching: string; noResults: string };
+	} = $props();
 	const items = $derived(controller.items);
 </script>
 
@@ -27,7 +36,7 @@
 	<div
 		class="edytor-trigger-items"
 		role="listbox"
-		aria-label={controller.name}
+		aria-label={said.menu}
 		aria-busy={controller.loading}
 		{@attach controller.popup}
 	>
@@ -50,7 +59,7 @@
 		{/each}
 		{#if items.length === 0}
 			<div class="edytor-trigger-empty" data-testid="trigger-menu-empty">
-				{controller.loading ? controller.searching : controller.empty}
+				{controller.loading ? said.searching : said.noResults}
 			</div>
 		{/if}
 	</div>

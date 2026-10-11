@@ -31,7 +31,7 @@ Each page is a document of its own, one [room](/docs/server/room) per page (see 
 <Edytor plugins={[page]} />
 ```
 
-`pagePlugin` is the plugin without options: the block shows the title it stores and opens nothing.
+`createPagePlugin()` is the plugin without options: the block shows the title it stores and opens nothing.
 
 ## Options
 
@@ -54,14 +54,6 @@ Each page is a document of its own, one [room](/docs/server/room) per page (see 
     create: {
       type: "() => string | { pageId: string; title?: string } | null | undefined",
       description: "Create a page and answer its id (and title). Adds the \"Page\" command; without it there is none.",
-    },
-    labels: {
-      type: "PartialLabels<'page'>",
-      description: "The block's and the command's words over the English ones: `page` (the command, \"Page\") and `untitled` (a page without a title, also its plain text and HTML export, \"Untitled\"). See [Localization](/docs/customization/localization).",
-    },
-    keywords: {
-      type: "Partial<Record<string, string[]>>",
-      description: "The slash keywords of `page.new`, which replace its own.",
     },
   }}
 />

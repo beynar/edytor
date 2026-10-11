@@ -14,7 +14,7 @@ import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { HIDDEN } from '$lib/selection/visibility.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
@@ -227,11 +227,9 @@ describe('dragging a block selection by one of its handles', () => {
 		]);
 		const [one, x, m1] = ['one', 'x', 'm1'].map((id) => block(edytor, id));
 		// An item alone may go beside m1; a paragraph may not sit directly in a list.
-		expect(edytor.canMoveBlocks({ blocks: [one!], target: m1!, position: 'before' })).toBe(true);
-		expect(edytor.canMoveBlocks({ blocks: [one!, x!], target: m1!, position: 'before' })).toBe(
-			false
-		);
-		expect(edytor.moveBlocks({ blocks: [one!, x!], target: m1!, position: 'before' })).toEqual([]);
+		expect(edytor.canMove({ blocks: [one!], target: m1!, position: 'before' })).toBe(true);
+		expect(edytor.canMove({ blocks: [one!, x!], target: m1!, position: 'before' })).toBe(false);
+		expect(edytor.move({ blocks: [one!, x!], target: m1!, position: 'before' })).toEqual([]);
 		expect(tree(edytor)).toEqual([['L', ['one']], 'x', ['M', ['m1']]]);
 	});
 });
@@ -341,7 +339,7 @@ describe('the other gestures over a text range across blocks take the same block
 	});
 
 	it('Mod+Shift+ArrowDown moves the blocks the range covers, the range kept', async () => {
-		const { edytor } = await render([p('a'), p('b'), p('c'), p('d')], [arrowMovePlugin]);
+		const { edytor } = await render([p('a'), p('b'), p('c'), p('d')], [createArrowMovePlugin()]);
 		edytor.selection.selectText(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
 		await flushDomUpdates();
 		await dispatchDomKeyDown(document, { key: 'ArrowDown', ctrlKey: true, shiftKey: true });
@@ -377,7 +375,7 @@ describe('Mod+Shift+arrows in a code block', () => {
 					children: [{ id: 'l1', type: 'codeLine', content: [{ text: 'one' }] }]
 				}
 			],
-			[codePlugin, arrowMovePlugin]
+			[codePlugin, createArrowMovePlugin()]
 		);
 		edytor.selection.selectText(block(edytor, 'l1').firstText!, 2);
 		await flushDomUpdates();
@@ -453,7 +451,7 @@ describe('Mod+Shift+arrows on the block selection a grip click makes (DR-handles
 	it('moves a parent and its selected child as one group', async () => {
 		const { edytor } = await render(
 			[p('a', [p('a1')]), p('b'), p('c')],
-			[arrowMovePlugin, blockMenuPlugin]
+			[createArrowMovePlugin(), blockMenuPlugin]
 		);
 		edytor.selection.selectText(block(edytor, 'a').firstText!, 0, block(edytor, 'b').firstText!, 1);
 		await flushDomUpdates();
@@ -534,7 +532,7 @@ describe('a handle gesture over a text range, and its undo (wave-18 lows)', () =
 	});
 
 	it('Alt+arrow over a text range keeps the range, as Mod+Shift+arrow does', async () => {
-		const { edytor } = await render([p('a'), p('b'), p('c'), p('d')], [arrowMovePlugin]);
+		const { edytor } = await render([p('a'), p('b'), p('c'), p('d')], [createArrowMovePlugin()]);
 		edytor.selection.selectText(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
 		await flushDomUpdates();
 		altKey('b', 'ArrowDown');

@@ -1,67 +1,67 @@
+import type { Snippet } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
-import type { MediaKindLabels, MediaLabels } from '$lib/labels.js';
 import type { MediaKind } from './media.js';
 import { fileUploads, type FileUpload, type Uploader } from '../uploads.svelte.js';
-import { linkField } from '../image/empty.svelte.js';
 
-/** Why the last link or upload was not embedded. */
-export type MediaEmptyFailure = 'invalid' | 'upload';
+/** Each media kind's icon (the image's too): its menu row, its empty block, its paste offer. */
+export const MEDIA_ICONS: Record<MediaKind | 'image', string> = {
+	image: '🖼',
+	embed: '⧉',
+	bookmark: '🔖',
+	file: '📎',
+	video: '🎬',
+	audio: '🎵'
+};
 
 /**
- * An empty media block's state (an embed, a bookmark, a file, a video, an
- * audio track: the image's pattern, Notion's): the panel's `open` state,
- * the link field's `draft`, why the last link or upload was not embedded
- * (`failed`), and the upload of a pasted or dropped file (`pending`);
- * `embed` and `upload` set the source. What a media plugin's `empty`
- * snippet receives (one per empty block shown).
+ * Why the last link or upload was not embedded: no source the kind takes
+ * (`invalid`), an inline image over the cap (`inline`), a failed upload.
+ */
+export type MediaEmptyFailure = 'invalid' | 'inline' | 'upload';
+
+/** What an empty block reads of its kind in a view: the app's snippet, its upload, how it stores a source. */
+export type EmptyView = {
+	empty?: Snippet<[MediaEmptyController]>;
+	upload?: Uploader;
+	/** Store a link (or the URL an upload of `file` answered) on `block`: why it did not, or `null`. */
+	store: (block: Block, value: string, file?: File) => MediaEmptyFailure | null;
+};
+
+/**
+ * An empty image or media block's state (an image, an embed, a bookmark, a
+ * file, a video, an audio track: Notion's "Add …"): the panel's `open`
+ * state, the link field's `draft`, why the last link or upload was not
+ * embedded (`failed`), and the upload of a pasted or dropped file
+ * (`pending`); `embed` and `upload` set the source. What an image or media
+ * plugin's `empty` snippet receives (one per empty block shown).
  */
 export class MediaEmptyController {
 	/** The link panel is open. */
 	open = $state(false);
 	/** The link field's text. */
 	draft = $state('');
-	/** Why the last link or upload was not embedded (`false`: it was, or none was tried). */
-	failed = $state<MediaEmptyFailure | false>(false);
+	/** Why the last link or upload was not embedded (`null`: it was, or none was tried). */
+	failed = $state<MediaEmptyFailure | null>(null);
 
 	constructor(
 		/** The empty block; none in a suggestion's preview. */
 		readonly block: Block | undefined,
-		/** Which media kind it is: whose words it shows. */
-		readonly kind: MediaKind,
-		/** The kind's icon (an emoji). */
-		readonly icon: string,
-		private words: () => MediaLabels,
-		private options: {
-			/** The file picker's `accept`. */
-			accept?: string;
-			upload?: Uploader;
-			/** Store a link; answers whether the block took it. */
-			link: (value: string) => boolean;
-			/** Store an uploaded file's URL; answers whether the block took it. */
-			file?: (file: File, src: string) => boolean;
-		}
+		/** Which kind it is (your words for it: its button, placeholder, errors). */
+		readonly kind: MediaKind | 'image',
+		/** The kind in the block's view. */
+		private view: EmptyView | undefined
 	) {}
 
-	/** The words of the view rendering it (a suggestion's preview included). */
-	get labels(): MediaLabels {
-		return this.words();
+	/** The kind's icon (an emoji). */
+	get icon() {
+		return MEDIA_ICONS[this.kind];
 	}
 
-	/** The kind's own words (its button, placeholder, submit and invalid link text). */
-	get kindLabels(): MediaKindLabels & { addOrUpload?: string } {
-		return this.labels[this.kind];
-	}
-
-	/** The button and placeholder text ("Embed a link"; the file's names its upload). */
-	get label() {
-		const words = this.kindLabels;
-		return this.options.upload && words.addOrUpload ? words.addOrUpload : words.add;
-	}
-
-	/** The file picker's `accept`. */
+	/** The file picker's `accept`: `image/*`, `video/*`, `audio/*`, else any file. */
 	get accept() {
-		return this.options.accept;
+		const { kind } = this;
+		return kind === 'image' || kind === 'video' || kind === 'audio' ? `${kind}/*` : undefined;
 	}
 
 	/**
@@ -74,23 +74,22 @@ export class MediaEmptyController {
 
 	/** The plugin has an `upload`: offer Upload. */
 	get canUpload() {
-		return Boolean(this.options.upload);
+		return Boolean(this.view?.upload);
 	}
 
-	/** The upload of a pasted or dropped file into this block, if any (its `status`, `progress`). */
+	/** The upload of a pasted or dropped file into this block, if any (its `status`, `progress`, `preview`). */
 	get pending(): FileUpload | undefined {
 		const { block } = this;
 		return block ? fileUploads(block.edytor)?.of(block.id) : undefined;
 	}
 
-	/** Open or close the link panel. */
-	toggle = () => {
-		this.open = !this.open;
-	};
+	/** Store `value` on the block: why it did not take it, or `null`. */
+	#store = (value: string, file?: File) =>
+		this.block && this.view ? this.view.store(this.block, value, file) : 'invalid';
 
-	/** Embed `value` (default the `draft`): the block takes the link, or `failed` says it did not. */
+	/** Embed `value` (default the `draft`): the block takes the link, or `failed` says why not. */
 	embed = (value: string = this.draft) => {
-		this.failed = this.options.link(value) ? false : 'invalid';
+		this.failed = this.#store(value);
 		if (!this.failed && this.block) fileUploads(this.block.edytor)?.clear(this.block.id);
 	};
 
@@ -101,7 +100,7 @@ export class MediaEmptyController {
 	 */
 	upload = async (picked: File) => {
 		const { block } = this;
-		const { upload, file, link } = this.options;
+		const upload = this.view?.upload;
 		if (!upload || !block || block.edytor.readonly) return;
 		const { edytor, id, type } = block;
 		let src: string;
@@ -114,9 +113,17 @@ export class MediaEmptyController {
 		const live = edytor.idToBlock.get(id);
 		if (!live?.isInTree || live.type !== type || edytor.readonly) return;
 		if (edytor.facade.blockDataOf(id)?.src !== undefined) return;
-		this.failed = (file ? file(picked, src) : link(src)) ? false : 'invalid';
+		this.failed = this.#store(src, picked);
 	};
 
 	/** The link field (`{@attach empty.field}`): Enter embeds its `draft`. */
-	field: Attachment<HTMLInputElement> = linkField(() => this.embed());
+	field: Attachment<HTMLInputElement> = (node) => {
+		const keydown = (event: KeyboardEvent) => {
+			if (event.key !== 'Enter' || event.isComposing) return;
+			event.preventDefault();
+			this.embed();
+		};
+		node.addEventListener('keydown', keydown);
+		return () => node.removeEventListener('keydown', keydown);
+	};
 }

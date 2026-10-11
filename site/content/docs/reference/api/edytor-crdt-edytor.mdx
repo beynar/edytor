@@ -193,20 +193,20 @@ declare const bindCrdt: (Y: EngineApi) => {
                 setBlock: (id: import("./index.js").BlockId, value: {
                     type?: string;
                     data?: Record<string, unknown>;
-                    content?: import("./index.js").ContentItem[];
-                    children?: import("./index.js").BlockSpec[];
+                    content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                    children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
                 }) => import("./edytor-doc.js").Prepared;
                 setBlockType: (id: import("./index.js").BlockId, type: string) => import("./edytor-doc.js").Prepared;
                 patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").Prepared;
                 setBlockData: (id: import("./index.js").BlockId, data: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
-                duplicateBlock: (id: import("./index.js").BlockId, freshId: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").Prepared;
+                duplicateBlock: (id: import("./index.js").BlockId, freshId?: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").Prepared;
                 insertText: (id: import("./index.js").BlockId, offset: number, text: string, marks?: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 deleteText: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
                 formatRange: (id: import("./index.js").BlockId, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 setMark: (id: import("./index.js").BlockId, offset: number, length: number, name: string, value: unknown) => import("./edytor-doc.js").Prepared;
                 unsetMark: (id: import("./index.js").BlockId, offset: number, length: number, name: string) => import("./edytor-doc.js").Prepared;
                 clearMarks: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
-                insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./index.js").InlineSpec) => import("./edytor-doc.js").Prepared;
+                insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").Prepared;
                 removeInline: (id: import("./index.js").BlockId, inlineId: string) => import("./edytor-doc.js").Prepared;
                 setInlineData: (id: import("./index.js").BlockId, inlineId: string, data: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 deleteBlocks: (ids: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
@@ -283,7 +283,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             };
             runsView: import("./text/runs.js").RunView;
             version: number;
-            block: (id: import("./index.js").BlockId) => import("./nodes.js").DocBlock;
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => import("./edytor-doc.js").OpResult;
             deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
@@ -310,20 +309,20 @@ declare const bindCrdt: (Y: EngineApi) => {
             setBlock: (id: string, value: {
                 type?: string;
                 data?: Record<string, unknown>;
-                content?: import("./index.js").ContentItem[];
-                children?: import("./index.js").BlockSpec[];
+                content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
             }) => import("./edytor-doc.js").OpResult;
             setBlockType: (id: string, type: string) => import("./edytor-doc.js").OpResult;
             patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").OpResult;
             setBlockData: (id: string, data: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
-            duplicateBlock: (id: string, freshId: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").OpResult;
+            duplicateBlock: (id: string, freshId?: ((oldId: string, kind: "block" | "inline") => string) | undefined) => import("./edytor-doc.js").OpResult;
             insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => import("./edytor-doc.js").OpResult;
             deleteText: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
             formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
             setMark: (id: string, offset: number, length: number, name: string, value: unknown) => import("./edytor-doc.js").OpResult;
             unsetMark: (id: string, offset: number, length: number, name: string) => import("./edytor-doc.js").OpResult;
             clearMarks: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
-            insertInline: (id: string, offset: number, atom: import("./index.js").InlineSpec) => import("./edytor-doc.js").OpResult;
+            insertInline: (id: string, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").OpResult;
             removeInline: (id: string, inlineId: string) => import("./edytor-doc.js").OpResult;
             setInlineData: (id: string, inlineId: string, data: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
             deleteBlocks: (ids: readonly string[]) => import("./edytor-doc.js").OpResult;
@@ -761,7 +760,7 @@ export type BlockSpec = {
 
 ## codeKinds
 
-`codePlugin`'s structural rows: the code block is an island of `codeLine`s (`lines`).
+`createCodePlugin()`'s structural rows: the code block is an island of `codeLine`s (`lines`).
 
 ```ts
 declare const codeKinds: {
@@ -776,7 +775,7 @@ declare const codeKinds: {
 
 ## codeSemantics
 
-`codePlugin`'s block roles.
+`createCodePlugin()`'s block roles.
 
 ```ts
 declare const codeSemantics: {
@@ -961,76 +960,6 @@ export type DocAnchor = {
 };
 ```
 
-## DocBlock
-
-Typed handle over one document block. Handles are dead-safe: constructing
-one for an absent/merged id is legal — ops are `refused` (the underlying
-facade ops guard the same way).
-
-Read members are getters — every access re-derives from current doc state,
-so a handle obtained before a mutation sees the mutation afterwards
-(including within the same transaction).
-
-```ts
-export type DocBlock = {
-    readonly id: BlockId;
-    readonly document: DocumentOperations;
-    readonly attribution: BlockAttribution | undefined;
-    readonly items: readonly ContentItem[];
-    readonly length: number;
-    readonly runs: readonly ContentRun[];
-    childIds(): BlockId[];
-    insertText(offset: number, text: string, marks?: Record<string, unknown>): OpResult;
-    deleteText(offset: number, length: number): OpResult;
-    format(offset: number, length: number, marks: Record<string, unknown>): OpResult;
-    setMark(offset: number, length: number, name: string, value: unknown): OpResult;
-    unsetMark(offset: number, length: number, name: string): OpResult;
-    clearMarks(offset: number, length: number): OpResult;
-    insertInline(offset: number, spec: InlineSpec): OpResult;
-    removeInline(inlineId: string): OpResult;
-    setInlineData(inlineId: string, data: Record<string, unknown>): OpResult;
-    insertChild(index: number, spec: BlockSpec): OpResult;
-    moveTo(dest: {
-        parent: NodeRef;
-        index: number;
-    }): OpResult;
-    nestUnder(parent: DocBlock | BlockId): OpResult;
-    unNest(): OpResult;
-    split(offset: number, newId: BlockId, tail?: SplitTail): OpResult;
-    mergeBackward(): OpResult;
-    mergeForward(): OpResult;
-    mergeFrom(other: DocBlock | BlockId): OpResult;
-    delete(opts?: {
-        keepChildren?: boolean;
-    }): OpResult;
-    setType(type: string): OpResult;
-    setData(data: Record<string, unknown>): OpResult;
-    set(value: Parameters<DocumentWrites['setBlock']>[1]): OpResult;
-    duplicate(freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
-};
-```
-
-- `id`: Stable caller-assigned block id.
-- `document`: The owning document — cross-node and document-level ops live here.
-- `attribution`: Compact per-block attribution (`{createdBy, contributors, lastChangedBy}` as durable actor ids), or `undefined` for system/foreign blocks carrying no record.
-- `items`: Resolved content items of this block's display (\{kind:'text'\} runs and \{kind:'inline'\} atoms in display order, unmerged across streams).
-- `length`: Display length in atoms (UTF-16 text units + 1 per inline atom).
-- `runs`: The maintained run view for this block — frozen, structurally shared run arrays refreshed at transaction commit.
-- `childIds`: Ordered visible child ids.
-- `format`: Multi-mark format over `[offset, offset+length)`; `null` values unset.
-- `clearMarks`: Remove every mark present anywhere in the range.
-- `insertChild`: Insert a fresh-identity child spec; `ids`: the new block.
-- `moveTo`: Relocate this block — identity preserved; island/void rules apply.
-- `nestUnder`: Move to the last position under `parent`.
-- `unNest`: Move beside the parent (index = parent index + 1).
-- `split`: Split content at display `offset` into a new sibling `newId`; `ids`: the new block.
-- `mergeBackward`: Baseline merge into the previous block in document order (a list's first item lifts out instead); `ids`: the survivor.
-- `mergeForward`: Baseline merge pulling the next block in document order into this (a list passes its first item).
-- `mergeFrom`: Engine merge primitive — `other`'s content+children claim into this.
-- `delete`: Delete (per-writer marks on this block and what it displays); the children take its slot unless `keepChildren: false`.
-- `set`: Baseline `setBlock` — type/data update in place; content/children replace (all-or-nothing).
-- `duplicate`: Fresh-identity copy of this subtree right after it; `freshId` names each copied block and inline atom (an unanswered atom id is minted, an unanswered block id refuses); `ids`: the copy.
-
 ## DocChange
 
 One committed transaction's semantic diff — the payload `EdytorDoc.onChange`
@@ -1168,9 +1097,50 @@ declare const DOCUMENT_OPERATIONS: readonly [
     "apply",
     "compose",
     "transact",
-    "block",
     "onChange",
     "version"
+];
+```
+
+## DOCUMENT_WRITES
+
+Every write of `DocumentWrites`: what a view dispatches under the same names (`edytor.insertBlocks(…)`).
+
+```ts
+declare const DOCUMENT_WRITES: readonly [
+    "insertBlock",
+    "insertBlocks",
+    "moveBlock",
+    "moveBlocks",
+    "nestBlock",
+    "unNestBlock",
+    "unNestBlocks",
+    "liftOut",
+    "wrapInLayout",
+    "placeBeside",
+    "splitBlock",
+    "mergeBlocks",
+    "mergeBackward",
+    "mergeForward",
+    "deleteBlock",
+    "deleteBlocks",
+    "setBlock",
+    "setBlockType",
+    "patchData",
+    "setBlockData",
+    "duplicateBlock",
+    "insertText",
+    "deleteText",
+    "formatRange",
+    "setMark",
+    "unsetMark",
+    "clearMarks",
+    "insertInline",
+    "removeInline",
+    "setInlineData",
+    "deleteRange",
+    "replaceRange",
+    "insertFlow"
 ];
 ```
 
@@ -1235,8 +1205,8 @@ export declare class DocumentNotReadyError extends Error {
 
 The document's public operations: the writes, each also prepared
 (`prepare.<op>(…)`, pure, then `apply(plan)`; `compose` joins plans),
-the reads, a block's handle, `transact`, `onChange` and `version`. See
-the document API reference.
+the reads, `transact`, `onChange` and `version`. See the document API
+reference.
 
 ```ts
 export interface DocumentOperations extends DocumentWrites, DocumentReads {
@@ -1246,7 +1216,6 @@ export interface DocumentOperations extends DocumentWrites, DocumentReads {
     apply(plan: Prepared): OpResult;
     compose(...parts: Prepared[]): Prepared;
     transact<R>(fn: () => R, origin?: unknown): R;
-    block(id: BlockId): DocBlock;
     onChange(listener: (change: DocChange) => void): () => void;
     readonly version: number;
 }
@@ -1256,7 +1225,6 @@ export interface DocumentOperations extends DocumentWrites, DocumentReads {
 - `apply`: Write a prepared plan exactly (a refusal passes through).
 - `compose`: One plan of `parts`, applied in order.
 - `transact`: Group writes in one transaction and one change event (no rollback on a throw).
-- `block`: A handle over block `id`: the same operations bound to it (cached; refused when absent).
 - `onChange`: Hear each transaction's change; answers the unsubscribe.
 - `version`: Changes on every write that changed the tree.
 
@@ -1430,20 +1398,20 @@ export interface DocumentWrites {
     setBlock(id: BlockId, value: {
         type?: string;
         data?: Record<string, unknown>;
-        content?: ContentItem[];
-        children?: BlockSpec[];
+        content?: (ContentItem | JSONText | JSONInlineBlock)[];
+        children?: (BlockSpec | JSONBlock)[];
     }): OpResult;
     setBlockType(id: BlockId, type: string): OpResult;
     patchData(target: DataTarget, patches: readonly DataPatch[]): OpResult;
     setBlockData(id: BlockId, data: Record<string, unknown>): OpResult;
-    duplicateBlock(id: BlockId, freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
+    duplicateBlock(id: BlockId, freshId?: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
     insertText(id: BlockId, offset: number, text: string, marks?: Record<string, unknown>): OpResult;
     deleteText(id: BlockId, offset: number, length: number): OpResult;
     formatRange(id: BlockId, offset: number, length: number, marks: Record<string, unknown>): OpResult;
     setMark(id: BlockId, offset: number, length: number, name: string, value: unknown): OpResult;
     unsetMark(id: BlockId, offset: number, length: number, name: string): OpResult;
     clearMarks(id: BlockId, offset: number, length: number): OpResult;
-    insertInline(id: BlockId, offset: number, atom: InlineSpec): OpResult;
+    insertInline(id: BlockId, offset: number, atom: NewInline): OpResult;
     removeInline(id: BlockId, inlineId: string): OpResult;
     setInlineData(id: BlockId, inlineId: string, data: Record<string, unknown>): OpResult;
     deleteRange(from: DocPosition, to: DocPosition, view?: RangeView): OpResult;
@@ -1451,6 +1419,9 @@ export interface DocumentWrites {
     insertFlow(target: FlowTarget, flow: Flow, view?: FlowView): OpResult;
 }
 ```
+
+- `duplicateBlock`: `freshId` names each copy (fresh ids by default).
+- `insertInline`: An atom without an id gets a fresh one.
 
 ## EdytorDoc
 
@@ -1779,7 +1750,7 @@ export type FlowView = RangeView & {
 
 ## imageKinds
 
-`imagePlugin`'s structural rows: void, its only text is the caption.
+`createImagePlugin()`'s structural rows: void, its only text is the caption.
 
 ```ts
 declare const imageKinds: {
@@ -1791,7 +1762,7 @@ declare const imageKinds: {
 
 ## imageSemantics
 
-`imagePlugin`'s block roles.
+`createImagePlugin()`'s block roles.
 
 ```ts
 declare const imageSemantics: {
@@ -1956,8 +1927,8 @@ declare const markName: (key: string) => string;
 
 ## mediaKinds
 
-The media plugins' structural rows (`embedPlugin`, `bookmarkPlugin`,
-`filePlugin`, `videoPlugin`, `audioPlugin`): void like the image, their
+The media plugins' structural rows (`createEmbedPlugin()`, `createBookmarkPlugin()`,
+`createFilePlugin()`, `createVideoPlugin()`, `createAudioPlugin()`): void like the image, their
 only text is the caption.
 
 ```ts
@@ -2179,7 +2150,7 @@ export type RangeView = {
 
 ## richTextKinds
 
-`richTextPlugin`'s structural rows (its other kinds are plain).
+`createRichTextPlugin()`'s structural rows (its other kinds are plain).
 
 ```ts
 declare const richTextKinds: {
@@ -2204,7 +2175,7 @@ declare const richTextKinds: {
 
 ## richTextMarks
 
-`richTextPlugin`'s mark edges: where a concurrent insert at each end
+`createRichTextPlugin()`'s mark edges: where a concurrent insert at each end
 of a mark lands. A link grows at its start only (typing after it
 stays out of it unless from inside the anchor); the others are inclusive.
 
@@ -2218,7 +2189,7 @@ declare const richTextMarks: {
 
 ## richTextSemantics
 
-`richTextPlugin`'s block roles and mark edges, for `createDocument({ semantics })` and the room.
+`createRichTextPlugin()`'s block roles and mark edges, for `createDocument({ semantics })` and the room.
 
 ```ts
 declare const richTextSemantics: {

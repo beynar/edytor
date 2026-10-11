@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import { tick } from 'svelte';
 	import type { CommentCardPayload } from '$lib/index.js';
 
@@ -10,7 +11,10 @@
 	 */
 	let { card }: { card: CommentCardPayload } = $props();
 	const { thread, comments } = $derived(card);
-	const labels = $derived(comments.labels);
+	const labels = $derived(words.comments);
+	/** A user's name: theirs, else the current user is You and another their id. */
+	const nameOf = (id: string) =>
+		id === comments.user.id && !comments.user.name ? labels.you : comments.userOf(id).name!;
 
 	/** The composer's text: it empties once posted. */
 	let body = $state('');
@@ -99,7 +103,7 @@
 		</div>
 		{#if thread.resolved}
 			<p data-edytor-comment-resolved>
-				{labels.resolvedBy(comments.userOf(thread.resolved.by).name!)}
+				{labels.resolvedBy(nameOf(thread.resolved.by))}
 			</p>
 		{/if}
 		<ol data-edytor-comment-list>
@@ -111,10 +115,10 @@
 							<img data-edytor-comment-avatar src={author.avatar} alt="" />
 						{:else}
 							<span data-edytor-comment-avatar style:background={author.color} aria-hidden="true"
-								>{author.name!.slice(0, 1).toUpperCase()}</span
+								>{nameOf(comment.author).slice(0, 1).toUpperCase()}</span
 							>
 						{/if}
-						<span data-edytor-comment-author>{author.name}</span>
+						<span data-edytor-comment-author>{nameOf(comment.author)}</span>
 						<time data-edytor-comment-time datetime={new Date(comment.createdAt).toISOString()}
 							>{labels.when(comment.createdAt)}</time
 						>

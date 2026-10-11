@@ -6,6 +6,7 @@
 	import type { CommentRun } from '$lib/crdt/protocols/comments.js';
 	import type { CommentsController, PlacedThread } from './CommentsController.svelte.js';
 	import type { CommentCardPayload } from './commentsPlugin.js';
+	import { commentsEnglish, labelsOf } from '$lib/labels.js';
 
 	/**
 	 * The comments' place in the overlay: the threads' highlight, the text of
@@ -28,7 +29,7 @@
 		header?: Snippet<[CommentsController]>;
 	} = $props();
 
-	const labels = $derived(comments.labels);
+	const labels = $derived(labelsOf(edytor, 'comments', commentsEnglish));
 
 	/** The sidebar's width, and the gap between the text and the sidebar, and between cards. */
 	const WIDTH = 288;

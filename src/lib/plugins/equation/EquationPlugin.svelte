@@ -8,14 +8,13 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 	import { equationKinds } from '$lib/crdt/semantics.js';
-	import { equationEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
+	import { equationEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import { id } from '$lib/utils.js';
 	import EquationView from './EquationView.svelte';
 	import EquationEditorPanel from './EquationEditor.svelte';
 	import {
 		EquationEditor,
 		EquationRenderer,
-		equationLabels,
 		equationViews,
 		expressionOf,
 		parseEquation,
@@ -64,11 +63,8 @@
 		const from = startText!.segStart + yStart;
 		const atom = id('i');
 		if (isCollapsed) {
-			const after = block.addInlineBlock({
-				offset: from,
-				block: { id: atom, type: INLINE, data: { expression: '' } }
-			});
-			if (!after) return false;
+			const spec = { id: atom, type: INLINE, data: { expression: '' } };
+			if (edytor.insertInline(block.id, from, spec).status !== 'applied') return false;
 			edytor.selection.setCaret({ block, offset: from + 1 });
 			view.editor.open({ block: block.id, atom });
 			return true;
@@ -89,10 +85,7 @@
 		const { dispatcher, facade } = edytor;
 		const removal = facade.prepare.deleteText(block.id, from, endText!.segStart + yEnd - from);
 		const run = dispatcher.lead(removal, () =>
-			block.addInlineBlock({
-				offset: from,
-				block: { id: atom, type: INLINE, data: { expression } }
-			})
+			edytor.insertInline(block.id, from, { id: atom, type: INLINE, data: { expression } })
 		);
 		const written = run.taken && dispatcher.last?.status === 'applied';
 		if (written) edytor.selection.setCaret({ block, offset: from + 1 });
@@ -102,14 +95,12 @@
 	/** `$$E=mc^2$$` typed in text: an inline equation (Notion). */
 	const dollars: InputRule = {
 		find: /\$\$([^$\n]*[^$\s][^$\n]*)\$\$$/,
-		replace: ([, tex], { block, from, caret, remove }) =>
+		replace: ([, tex], { edytor, block, from, caret, remove }) =>
 			remove(() => {
-				const after = block.addInlineBlock({
-					offset: from,
-					block: { type: INLINE, data: { expression: tex!.trim() } }
-				});
-				if (after) caret(from + 1);
-				return !!after;
+				const atom = { type: INLINE, data: { expression: tex!.trim() } };
+				const written = edytor.insertInline(block.id, from, atom).status === 'applied';
+				if (written) caret(from + 1);
+				return written;
 			})
 	};
 
@@ -144,14 +135,13 @@
 	export const createEquationPlugin =
 		(options: EquationPluginOptions = {}): Plugin =>
 		(edytor) => {
-			const labels = labelsWith(equationEnglish, options.labels);
-			equationLabels.claim(edytor, labels);
+			const labels = labelsOf(edytor, 'equation', equationEnglish);
 			const renderer = new EquationRenderer(katexLoaderOf(options.katex), options.macros);
 			// The records read with no view (`plugin(undefined)`) keep no state.
 			if (edytor && !equationViews.has(edytor))
 				equationViews.set(edytor, {
 					renderer,
-					editor: new EquationEditor(edytor, renderer, labels)
+					editor: new EquationEditor(edytor, renderer)
 				});
 			const owns = () => equationViews.get(edytor)?.renderer === renderer;
 			return {
@@ -166,17 +156,16 @@
 				onAfterOperation: (change) => {
 					const view = equationViews.get(edytor);
 					if (!view || !owns() || edytor.dispatcher.last?.status !== 'applied') return;
-					const created =
-						change.operation === 'setBlock' && change.payload.value.type === 'equation'
-							? change.block
-							: change.operation === 'insertBlockAfter' && change.payload.block.type === 'equation'
-								? change.block.nextBlock
-								: change.operation === 'insertBlockBefore' &&
-									  change.payload.block.type === 'equation'
-									? change.block.previousBlock
-									: null;
-					if (created?.type === 'equation' && !expressionOf(created.data))
-						view.editor.open({ block: created.id });
+					const ids =
+						change.operation === 'setBlock'
+							? [change.block.id]
+							: change.operation === 'insertBlocks'
+								? (change.effect?.creates ?? [])
+								: [];
+					const created = ids
+						.map((id) => edytor.idToBlock.get(id))
+						.find((block) => block?.type === 'equation');
+					if (created && !expressionOf(created.data)) view.editor.open({ block: created.id });
 				},
 				hotkeys: {
 					'mod+shift+e': ({ prevent }) => {
@@ -193,11 +182,14 @@
 						id: 'equation.inline',
 						label: labels.inline,
 						icon: '√x',
-						keywords: keywordsOf(
-							'equation.inline',
-							['math', 'tex', 'latex', 'katex', 'formula', 'inline'],
-							options.keywords
-						),
+						keywords: keywordsOf(edytor, 'equation.inline', [
+							'math',
+							'tex',
+							'latex',
+							'katex',
+							'formula',
+							'inline'
+						]),
 						group: 'Inline',
 						isEnabled: (view) => textBlock(view) !== null,
 						run: () => insertInline(edytor)
@@ -213,11 +205,14 @@
 							{
 								label: labels.block,
 								icon: '√x',
-								keywords: keywordsOf(
-									'block.equation',
-									['math', 'tex', 'latex', 'katex', 'formula', 'equation'],
-									options.keywords
-								),
+								keywords: keywordsOf(edytor, 'block.equation', [
+									'math',
+									'tex',
+									'latex',
+									'katex',
+									'formula',
+									'equation'
+								]),
 								group: 'Advanced blocks'
 							}
 						],

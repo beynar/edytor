@@ -55,8 +55,6 @@ export type MenuItemPayload<T> = {
 	item: T;
 	/** The row's element id (page-unique): the keyboard's owner names the highlighted row by it. */
 	id: string;
-	/** The row's words. */
-	label: string;
 	/** It is the keyboard's row. */
 	selected: boolean;
 	/** Run it (pick the row). */
@@ -131,15 +129,10 @@ export const keepFocus = (event: MouseEvent) => {
 	if (!isField(event.target)) event.preventDefault();
 };
 
-/**
- * Give `node` the id the controller names it by (`aria-controls`), and the
- * role and accessible name it lacks (a snippet's own win).
- */
-export const identify = (node: HTMLElement, id: string, role?: string, label?: string) => {
+/** Give `node` the id the controller names it by (`aria-controls`), and the role it lacks. */
+export const identify = (node: HTMLElement, id: string, role?: string) => {
 	node.id = id;
 	if (role && !node.hasAttribute('role')) node.setAttribute('role', role);
-	if (label && !node.hasAttribute('aria-label') && !node.hasAttribute('aria-labelledby'))
-		node.setAttribute('aria-label', label);
 };
 
 /** Set or remove (`undefined`) an attribute the keyboard's owner carries. */

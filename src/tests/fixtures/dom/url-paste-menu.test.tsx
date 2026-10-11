@@ -148,7 +148,7 @@ describe('pasting a URL on an empty line offers Link / Embed / Bookmark (Notion)
 		const view = await render([createBookmarkPlugin({ unfurl })], [empty()]);
 		await pasteAt(view, 'p', 0, { 'text/plain': PAGE });
 		await choose('bookmark');
-		view.edytor.idToBlock.get('p')!.firstText!.insertText({ value: 'Read', start: 0 });
+		view.edytor.insertText('p', 0, 'Read');
 		await flushDomUpdates();
 		answer({ title: 'Docs' });
 		await vi.waitFor(() => expect(view.edytor.facade.blockDataOf('p')?.title).toBe('Docs'));
@@ -188,7 +188,7 @@ describe('pasting a URL on an empty line offers Link / Embed / Bookmark (Notion)
 		const again = await render([embedPlugin, bookmarkPlugin], [empty('q')]);
 		await pasteAt(again, 'q', 0, { 'text/plain': PAGE });
 		expect(menu()).not.toBeNull();
-		again.edytor.idToBlock.get('q')!.firstText!.insertText({ value: ' ', start: PAGE.length });
+		again.edytor.insertText('q', PAGE.length, ' ');
 		await flushDomUpdates();
 		expect(menu()).toBeNull();
 	});

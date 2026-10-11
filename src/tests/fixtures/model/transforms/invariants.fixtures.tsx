@@ -1,3 +1,4 @@
+import { id } from '$lib/utils.js';
 import { expect } from 'vitest';
 
 import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
@@ -107,11 +108,11 @@ const runRandomOperation = (
 			if (!text) {
 				return;
 			}
-			block.addInlineBlock({
-				index: rng.int(text.length + 1),
-				block: randomInlineBlock(rng),
-				text
-			});
+			edytor.insertInline(
+				block.id,
+				text.segStart + rng.int(text.length + 1),
+				randomInlineBlock(rng)
+			);
 			return;
 		}
 		case 1: {
@@ -119,7 +120,7 @@ const runRandomOperation = (
 			if (!inlineBlock) {
 				return;
 			}
-			block.removeInlineBlock({ index: inlineBlock.index });
+			edytor.removeInline(block.id, inlineBlock.id);
 			return;
 		}
 		case 2: {
@@ -127,40 +128,38 @@ const runRandomOperation = (
 			if (!text) {
 				return;
 			}
-			block.splitBlock({
-				index: rng.int(text.length + 1),
-				text
-			});
+			edytor.splitBlock(block.id, text.segStart + rng.int(text.length + 1), id('b'));
 			return;
 		}
 		case 3:
-			block.mergeBlockBackward();
+			edytor.mergeBackward(block.id);
 			return;
 		case 4:
-			block.mergeBlockForward();
+			edytor.mergeForward(block.id);
 			return;
-		case 5:
-			block.addChildBlock({
-				block: createRandomParagraph(rng, 1),
-				index: rng.bool() ? block.children.length : -1
-			});
+		case 5: {
+			const child = createRandomParagraph(rng, 1);
+			const index = rng.bool() ? block.children.length : -1;
+			edytor.insertBlocks({ parent: block.isRoot ? null : block.id, index }, [child]);
 			return;
+		}
 		case 6:
-			block.removeBlock({ keepChildren: rng.bool() });
+			edytor.deleteBlock(block.id, { keepChildren: rng.bool() });
 			return;
 		case 7:
-			block.moveBlock({ path: [edytor.root!.children.length] });
+			edytor.moveBlocks([block.id], { parent: null, index: edytor.root!.children.length });
 			return;
 		case 8:
 			if (rng.bool()) {
-				block.nestBlock();
+				if (block.previousBlock) edytor.nestBlock(block.id, block.previousBlock.id);
 			} else {
-				block.unNestBlock();
+				edytor.unNestBlock(block.id);
 			}
 			return;
 		case 9:
-			block.setBlock({
-				value: rng.bool()
+			edytor.setBlock(
+				block.id,
+				rng.bool()
 					? {
 							type: block.type,
 							data: { step: rng.int(100) }
@@ -169,7 +168,7 @@ const runRandomOperation = (
 							type: block.type,
 							content: [randomTextNode(rng), randomInlineBlock(rng), randomTextNode(rng)]
 						}
-			});
+			);
 			return;
 		default:
 			return;

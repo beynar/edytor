@@ -5,7 +5,15 @@
  */
 import { randOf } from '../rand.js';
 import { TYPE } from '../schema.js';
-import { sanitizeSpec, sanitizeWireJson } from '../../utils/json.js';
+import {
+	asBlockSpec,
+	asContentItem,
+	sanitizeSpec,
+	sanitizeWireJson,
+	type JSONBlock,
+	type JSONInlineBlock,
+	type JSONText
+} from '../../utils/json.js';
 import { patchWrites, leafKey, isObject, type DataPatch } from '../data.js';
 import {
 	collides,
@@ -210,13 +218,13 @@ export const metaOps = (c: OpsContext) => {
 		value: {
 			type?: string;
 			data?: Record<string, unknown>;
-			content?: ContentItem[];
-			children?: BlockSpec[];
+			content?: (ContentItem | JSONText | JSONInlineBlock)[];
+			children?: (BlockSpec | JSONBlock)[];
 		}
 	): Prepared => {
 		id = ref(id);
-		const content = value.content?.map(sanitizeItem);
-		const children = value.children?.map(sanitizeSpec);
+		const content = value.content?.map((item) => sanitizeItem(asContentItem(item)));
+		const children = value.children?.map((child) => sanitizeSpec(asBlockSpec(child)));
 		if (!live(id) || (content !== undefined && !contentTarget(id))) return REFUSED;
 		const type = value.type === undefined ? undefined : ref(value.type);
 		const toVoid = type === undefined ? isVoid(id) : roles.childless(type);

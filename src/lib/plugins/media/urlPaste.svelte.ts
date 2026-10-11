@@ -3,15 +3,13 @@ import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { PluginDefinitions, PluginOperations } from '$lib/plugins.js';
-import type { SerializableContent } from '$lib/utils/json.js';
-import { dispatchPlan } from '$lib/block/block.utils.js';
+import type { JSONBlock, SerializableContent } from '$lib/utils/json.js';
 import { placeNear } from '$lib/surface/overlay.js';
 import { onPress } from '$lib/events/onFocus.js';
-import { holdsNothing, lineage, placing } from '$lib/kinds.js';
+import { holdsNothing, placing } from '$lib/kinds.js';
 import { id } from '$lib/utils.js';
 import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
-import { mediaEnglish, type MediaLabels } from '$lib/labels.js';
 import { inPage, mountChrome, optionAttributes, type OptionAttributes } from '../chrome.js';
 import { listHotkeys, listPopup } from '../list.svelte.js';
 
@@ -19,8 +17,6 @@ import { listHotkeys, listPopup } from '../list.svelte.js';
 export type UrlPasteOffer = {
 	/** The kind the line becomes. */
 	type: string;
-	/** The menu row. */
-	label: string;
 	icon: string;
 	/** The block's data for `url`, or `null` when this kind takes no such URL (no provider plays it). */
 	data: (url: string) => Record<string, SerializableContent> | null;
@@ -28,8 +24,8 @@ export type UrlPasteOffer = {
 	created?: (block: Block, url: string) => void;
 };
 
-/** One row of the menu: keep the link, or an offer. */
-export type UrlPasteOption = { id: string; label: string; icon: string; offer?: UrlPasteOffer };
+/** One row of the menu: keep the link (`link`), or an offer (its kind). */
+export type UrlPasteOption = { id: string; icon: string; offer?: UrlPasteOffer };
 
 /**
  * Pasting a bare URL on an empty line (Notion): the URL lands as a link at
@@ -50,16 +46,11 @@ export class UrlPasteController {
 	/** The keyboard's row. */
 	index = $state(0);
 
-	constructor(
-		readonly edytor: Edytor,
-		/** The words the menu shows: the labels of the plugin that made the first offer. */
-		readonly labels: MediaLabels = mediaEnglish
-	) {
+	constructor(readonly edytor: Edytor) {
 		this.popup = listPopup(
 			edytor,
 			'url-paste',
 			'listbox',
-			() => labels.pasteAs,
 			(node) => this.open && { active: inPage(node, this.optionId(this.index)) }
 		);
 	}
@@ -93,8 +84,8 @@ export class UrlPasteController {
 		optionAttributes(this.optionId(index), 'option', index === this.index);
 
 	/**
-	 * The listbox (`{@attach controller.popup}`): it takes the menu's id, its
-	 * `listbox` role and name unless it has its own, keeps the editor's focus
+	 * The listbox (`{@attach controller.popup}`, named by your markup): it
+	 * takes the menu's id and its `listbox` role unless it has its own, keeps the editor's focus
 	 * on a press, and is published to the view's root (`edytor.popups`) with
 	 * its highlighted row while the menu is open: the editor keeps the
 	 * keyboard (its keys move and pick).
@@ -103,9 +94,9 @@ export class UrlPasteController {
 
 	/** The rows for `url`: Link, then each offer that takes it. @internal */
 	optionsFor = (url: string): UrlPasteOption[] => [
-		{ id: 'link', label: this.labels.pasteLink, icon: '🔗' },
+		{ id: 'link', icon: '🔗' },
 		...this.offers.flatMap((offer) =>
-			offer.data(url) ? [{ id: offer.type, label: offer.label, icon: offer.icon, offer }] : []
+			offer.data(url) ? [{ id: offer.type, icon: offer.icon, offer }] : []
 		)
 	];
 
@@ -133,7 +124,7 @@ export class UrlPasteController {
 				? { link: { href: url } }
 				: {};
 			edytor.dispatcher.run('insertFromPaste', () => {
-				text.insertText({ value: url, start: 0, end: 0, marks });
+				edytor.insertText(block.id, text.segStart, url, marks);
 				edytor.dispatcher.caret(edytor.idToBlock.get(block.id)?.firstText, url.length);
 			});
 			if (edytor.dispatcher.last?.status !== 'applied') return;
@@ -179,14 +170,13 @@ export class UrlPasteController {
 		const data = offer.data(open.url);
 		if (!block?.isInTree || !block.convertible || !data) return;
 		const value = { type: offer.type, data, content: [] };
-		const applied = dispatchPlan(
-			block,
-			'setBlock',
-			{ value },
-			(p) => placing(block, p.value, false, id('b')),
-			lineage(block)
-		);
-		const converted = applied && edytor.idToBlock.get(block.id);
+		const converted =
+			edytor.dispatcher.plan(
+				'setBlock',
+				[block.id, value] as const,
+				([, value]) => placing(block, value as Partial<JSONBlock>, false, id('b')),
+				block
+			).status === 'applied' && edytor.idToBlock.get(block.id);
 		if (!converted) return;
 		edytor.dispatcher.caret(converted.firstText, 0);
 		offer.created?.(converted, open.url);
@@ -247,7 +237,6 @@ const controllers = new WeakMap<Edytor, UrlPasteController>();
 export const urlPaste = (
 	edytor: Edytor,
 	offer: UrlPasteOffer,
-	labels?: MediaLabels,
 	menu?: Snippet<[UrlPasteController]>
 ): PluginOperations & PluginDefinitions => {
 	const known = controllers.get(edytor);
@@ -256,7 +245,7 @@ export const urlPaste = (
 		known.claimMenu(menu);
 		return {};
 	}
-	const controller = new UrlPasteController(edytor, labels);
+	const controller = new UrlPasteController(edytor);
 	controllers.set(edytor, controller);
 	controller.offers.push(offer);
 	controller.claimMenu(menu);

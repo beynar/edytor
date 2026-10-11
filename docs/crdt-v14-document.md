@@ -255,12 +255,12 @@ carets read. With no actor supplied the document mints an opaque
 
 ```svelte
 <script lang="ts">
-	import { Edytor, createDocument, richTextPlugin } from 'edytor';
+	import { Edytor, createDocument, createRichTextPlugin } from 'edytor';
 
 	const document = createDocument({
 		value: { children: [{ type: 'paragraph', content: [{ text: 'shared' }] }] }
 	});
-	const plugins = [richTextPlugin];
+	const plugins = [createRichTextPlugin()];
 </script>
 
 <Edytor {document} {plugins} />

@@ -28,7 +28,7 @@ import { describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { bannerPlugin } from '../../dom/S6BannerKind.svelte';
 import {
@@ -99,7 +99,7 @@ describe('extension cost: a new kind and a new mark are one record each (§10 (a
 	});
 
 	row('markdown: the kind prefix converts, with the preset data', async () => {
-		const { edytor, editor } = await render([markdownShortcutsPlugin, bannerPlugin]);
+		const { edytor, editor } = await render([createMarkdownShortcutsPlugin(), bannerPlugin]);
 		await type(editor, '!! ');
 		expect(canonicalTree(edytor)).toEqual([{ type: 'banner', data: { tone: 'info' } }]);
 		expect(selectionState(edytor).yStart).toBe(0);
@@ -223,7 +223,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 		['> ', { type: 'toggle' }],
 		['```', { type: 'code', children: [{ type: 'codeLine' }] }]
 	])('"%s" converts to %o', async (typed, expected) => {
-		const { edytor, editor } = await render([codePlugin, markdownShortcutsPlugin]);
+		const { edytor, editor } = await render([codePlugin, createMarkdownShortcutsPlugin()]);
 		await type(editor, typed);
 		expect(canonicalTree(edytor)).toEqual([expected]);
 	});
@@ -231,7 +231,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 	// A divider renders no content: the caret moves to a fresh paragraph after
 	// it (Notion), and typing lands there — never in the divider.
 	row.each([
-		['"---"', [markdownShortcutsPlugin], '---'],
+		['"---"', [createMarkdownShortcutsPlugin()], '---'],
 		['"/divider" + Enter', [slashMenuPlugin], '/divider']
 	] as [string, Plugin[], string][])(
 		'%s converts to a divider with the caret in a paragraph after it',
@@ -299,7 +299,7 @@ describe('markdown shortcuts: generated from kind records', () => {
 	pin(
 		'an unregistered kind has no shortcut: "```" without the code extension types text',
 		async () => {
-			const { edytor, editor } = await render([markdownShortcutsPlugin]);
+			const { edytor, editor } = await render([createMarkdownShortcutsPlugin()]);
 			await type(editor, '```');
 			expect(canonicalTree(edytor)).toEqual([{ type: 'paragraph', content: [{ text: '```' }] }]);
 		}

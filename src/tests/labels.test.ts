@@ -1,9 +1,10 @@
 /**
- * Localization: the chrome's words come from the label dictionary
- * (`src/lib/labels.ts`), never from a literal in a component or a plugin.
+ * Localization: the package's own words come from the label dictionary
+ * (`src/lib/labels.ts`), never from a literal in a component or a plugin
+ * (the chrome's words are the app's markup).
  *
- * - `labelsWith` replaces the entries given, and a nested group's entries
- *   without its others;
+ * - `labelsOf` puts a view's entries over the English ones, and a nested
+ *   group's entries without its others;
  * - no `.svelte` file of the library writes a word in its markup (a text
  *   node, or an `aria-label`, `title`, `placeholder`, `alt` or `label`
  *   attribute), and no plugin names a row, a preset or a hint with a literal.
@@ -11,7 +12,13 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { englishLabels, keywordsOf, labelsWith, type Labels } from '$lib/labels.js';
+import {
+	englishLabels,
+	keywordsOf,
+	labelsOf,
+	type Labels,
+	type PartialLabels
+} from '$lib/labels.js';
 import { fr } from './fixtures/labels.fr.js';
 
 const LIB = join(process.cwd(), 'src/lib');
@@ -19,13 +26,8 @@ const LIB = join(process.cwd(), 'src/lib');
 /** Not chrome a view ships: the engine (vendored included) and the room. */
 const SKIPPED = ['crdt/', 'cloudflare/'];
 
-/**
- * Literals that name something but are not words to translate: the toolbar's
- * color names are keys (its `colors` labels show them), an embed provider's
- * name is a brand.
- */
+/** Literals that name something but are not words to translate: an embed provider's name is a brand. */
 const NOT_WORDS: Array<[file: string, line: RegExp]> = [
-	['plugins/toolbar/ToolbarController.svelte.ts', /^name: '[A-Z][a-z]+', text: /],
 	['plugins/media/media.ts', /^name: '[A-Za-z]+',$/]
 ];
 const notWord = (name: string, line: string) =>
@@ -71,39 +73,40 @@ const markupOf = (source: string) => {
 	return { markup, literals };
 };
 
-describe('labelsWith', () => {
+describe("labelsOf: a view's words over the English ones", () => {
+	const view = (labels: PartialLabels) => ({ labels });
+
 	it('replaces the entries given and keeps the others', () => {
-		const toolbar = labelsWith(englishLabels.toolbar, { link: 'Lien' });
-		expect(toolbar.link).toBe('Lien');
-		expect(toolbar.bar).toBe(englishLabels.toolbar.bar);
+		const table = labelsOf(view({ table: { table: 'Tableau' } }), 'table', englishLabels.table);
+		expect(table.table).toBe('Tableau');
+		expect(table.emptyCell).toBe(englishLabels.table.emptyCell);
 	});
 
 	it('replaces one entry of a nested group without the others', () => {
-		const richText = labelsWith(englishLabels.richText, {
-			placeholders: { quote: 'Citation vide' }
-		});
+		const richText = labelsOf(
+			view({ richText: { placeholders: { quote: 'Citation vide' } } }),
+			'richText',
+			englishLabels.richText
+		);
 		expect(richText.placeholders.quote).toBe('Citation vide');
 		expect(richText.placeholders.list).toBe('List');
 		expect(richText.placeholders.heading(2)).toBe('Heading 2');
-		const slash = labelsWith(englishLabels.slashMenu, { groups: { Media: 'Médias' } });
-		expect(slash.groups).toEqual({
-			'Basic blocks': 'Basic blocks',
-			'Advanced blocks': 'Advanced blocks',
-			Media: 'Médias',
-			Layout: 'Layout',
-			Color: 'Color',
-			Inline: 'Inline'
-		});
+		expect(richText.kinds).toBe(englishLabels.richText.kinds);
 	});
 
-	it('answers English without overrides', () => {
-		expect(labelsWith(englishLabels.find, undefined)).toBe(englishLabels.find);
+	it('answers English without a view or without its section, and one object per view and section', () => {
+		expect(labelsOf(undefined, 'table', englishLabels.table)).toBe(englishLabels.table);
+		expect(labelsOf(view({}), 'table', englishLabels.table)).toBe(englishLabels.table);
+		const french = view({ table: { table: 'Tableau' } });
+		expect(labelsOf(french, 'table', englishLabels.table)).toBe(
+			labelsOf(french, 'table', englishLabels.table)
+		);
 	});
 
 	it('the English dictionary is frozen, its nested groups too: no app edits every view', () => {
 		expect(Object.isFrozen(englishLabels)).toBe(true);
-		expect(Object.isFrozen(englishLabels.toolbar.colors)).toBe(true);
-		expect(Object.isFrozen(englishLabels.media.file)).toBe(true);
+		expect(Object.isFrozen(englishLabels.blockMenu.colors)).toBe(true);
+		expect(Object.isFrozen(englishLabels.richText.placeholders)).toBe(true);
 	});
 
 	it('a complete dictionary has every section and entry of the English one', () => {
@@ -120,13 +123,10 @@ describe('labelsWith', () => {
 
 describe('keywordsOf', () => {
 	it("a command's localized keywords replace its defaults; others keep theirs", () => {
-		expect(keywordsOf('block.heading1', ['h1', 'title'], { 'block.heading1': ['titre'] })).toEqual([
-			'titre'
-		]);
-		expect(keywordsOf('block.quote', ['quote'], { 'block.heading1': ['titre'] })).toEqual([
-			'quote'
-		]);
-		expect(keywordsOf('block.quote', undefined, undefined)).toBeUndefined();
+		const french = { labels: { keywords: { 'block.heading1': ['titre'] } } };
+		expect(keywordsOf(french, 'block.heading1', ['h1', 'title'])).toEqual(['titre']);
+		expect(keywordsOf(french, 'block.quote', ['quote'])).toEqual(['quote']);
+		expect(keywordsOf(undefined, 'block.quote', undefined)).toBeUndefined();
 	});
 });
 
@@ -157,7 +157,7 @@ describe('no hard-coded chrome words', () => {
 					name.startsWith('collaboration/') ||
 					name.startsWith('components/') ||
 					name === 'kinds.ts') &&
-				// Language names (the picker's labels, overridable by `labels.languages`), icons.
+				// Language names (the `languages` option names them), icons.
 				!name.endsWith('code/languages.ts') &&
 				!name.endsWith('plugins/icons.ts')
 		)) {

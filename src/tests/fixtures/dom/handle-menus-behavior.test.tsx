@@ -43,16 +43,16 @@ const todoCommandsPlugin: Plugin = () => ({
 			isEnabled: (edytor) => selectionState(edytor).startBlock?.type === 'todo-item',
 			run: (edytor) => {
 				const block = selectionState(edytor).startBlock;
-				block?.setBlock({ value: { data: { ...block.data, checked: !block.data.checked } } });
+				if (block)
+					edytor.setBlock(block.id, { data: { ...block.data, checked: !block.data.checked } });
 			}
 		}
 	]
 });
 /** An extension that refuses every heading. */
 const noHeadings: Plugin = () => ({
-	onBeforeOperation: ({ operation, payload, prevent }) => {
-		const type = (payload as { value?: { type?: string } } | undefined)?.value?.type;
-		if (operation === 'setBlock' && type === 'heading') prevent();
+	onBeforeOperation: (change) => {
+		if (change.operation === 'setBlock' && change.payload[1].type === 'heading') change.prevent();
 	}
 });
 
@@ -157,7 +157,7 @@ describe('DR-behavior-2: the + menu closes once its block is gone', () => {
 		const a = edytor.idToBlock.get(edytor.value.children![0]!.id!)!;
 		await plus();
 		expect(menu()).not.toBeNull();
-		a.removeBlock();
+		edytor.deleteBlock(a.id);
 		// The menu's placement (and its close) runs in the overlay's next frame.
 		await new Promise((resolve) => requestAnimationFrame(resolve));
 		await flushDomUpdates();

@@ -102,7 +102,7 @@ describe('duplicate', () => {
 		const { edytor } = await render([], source);
 		edytor.undoManager.stopCapturing();
 		const before = edytor.undoManager.undoStack.length;
-		const copy = edytor.idToBlock.get('src')!.duplicateBlock();
+		const copy = edytor.idToBlock.get(edytor.duplicateBlock('src').ids[0]!);
 		await flushDomUpdates();
 
 		const [original, duplicate] = canonicalTree(edytor, true);

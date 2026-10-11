@@ -2,7 +2,7 @@
 	import { getContext } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { BlockView } from '$lib/plugins.js';
-	import { richTextLabels } from './labels.js';
+	import { labelsOf, richTextEnglish } from '$lib/labels.js';
 	import { openBody } from './body.js';
 
 	/**
@@ -16,7 +16,7 @@
 	 */
 	let { block, kind }: { block: BlockView; kind: 'toggle' | 'callout' } = $props();
 	const edytor = getContext<Edytor>('edytor');
-	const labels = richTextLabels.of(edytor);
+	const labels = labelsOf(edytor, 'richText', richTextEnglish);
 </script>
 
 {#if block.handle && !edytor.readonly}

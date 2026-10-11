@@ -10,7 +10,4 @@
 	 */
 	export const createAudioPlugin = (options: MediaPluginOptions = {}): Plugin =>
 		sourcePlugin('audio', options, ['sound', 'music', 'mp3']);
-
-	/** The audio block, links only. */
-	export const audioPlugin = createAudioPlugin();
 </script>

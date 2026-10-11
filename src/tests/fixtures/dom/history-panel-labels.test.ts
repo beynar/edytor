@@ -1,21 +1,23 @@
 /**
  * Localization of the version history (`VersionHistory`, drawn by the demo's
- * panel): its words are the `history` section of the label dictionary (`englishLabels.history`, the French
- * fixture's here), each one a `labels` entry; a word about a count is a
- * function of it. Expected words come from the dictionary, never from a run.
+ * panel): the controller says no word (its `status` is a code), the panel's
+ * words are the demo chrome's `history` words (`englishWords.history`, the
+ * French fixture's here, `setWords`); a word about a count is a function of
+ * it. Expected words come from the dictionary, never from a run.
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import { englishWords, setWords } from '../../../routes/chrome/words.svelte.js';
 import { render } from '@testing-library/svelte';
 import HistoryPanel from '../../../routes/chrome/HistoryPanel.svelte';
 import type { HistoryClient, HistoryVersion } from '$lib/collaboration/history/client.js';
 import { createDocument } from '$lib/crdt/index.js';
-import { englishLabels } from '$lib/labels.js';
 import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
 import { flushDomUpdates } from '../../dom/test.utils.js';
-import { fr } from '../labels.fr.js';
+import { frWords } from '../words.fr.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
+	setWords();
 });
 
 const p = (id: string, text: string): JSONBlock => ({ id, type: 'paragraph', content: [{ text }] });
@@ -69,52 +71,55 @@ const one = (selector: string) => {
 	return found;
 };
 
-const mount = async (labels?: typeof fr.history) => {
+const mount = async (french = false) => {
+	if (french) setWords({ history: frWords.history });
 	render(HistoryPanel, {
-		props: { client, document: createDocument({ value: live }), labels, defaultPlugins: false }
+		props: { client, document: createDocument({ value: live }), defaultPlugins: false }
 	});
 	await settle();
 	one('[data-edytor-history-version="v-pm"]').click();
 	await settle();
 };
 
-describe('the history panel speaks its labels', () => {
-	it('English by default: the dictionary’s history section', async () => {
+describe('the history panel speaks the chrome’s words', () => {
+	it('English by default: the words’ history section', async () => {
 		await mount();
 		expect(one('[data-edytor-history]').getAttribute('aria-label')).toBe(
-			englishLabels.history.title
+			englishWords.history.title
 		);
 	});
 
 	it('French: its name, list, editors, counts and buttons', async () => {
-		await mount(fr.history);
+		await mount(true);
 		const panel = one('[data-edytor-history]');
-		expect(panel.getAttribute('aria-label')).toBe(fr.history.title);
-		expect(one('[data-edytor-history-heading]').textContent).toBe(fr.history.versions);
-		expect(one('[data-edytor-history-list]').getAttribute('aria-label')).toBe(fr.history.versions);
+		expect(panel.getAttribute('aria-label')).toBe(frWords.history.title);
+		expect(one('[data-edytor-history-heading]').textContent).toBe(frWords.history.versions);
+		expect(one('[data-edytor-history-list]').getAttribute('aria-label')).toBe(
+			frWords.history.versions
+		);
 		expect(
 			one('[data-edytor-history-version="v-pm"] [data-edytor-history-version-editors]').textContent
-		).toBe(`ada, bob ${fr.history.moreEditors(2)}`);
+		).toBe(`ada, bob ${frWords.history.moreEditors(2)}`);
 		expect(
 			one('[data-edytor-history-version="v-am"] [data-edytor-history-version-editors]').textContent
-		).toBe(fr.history.noEditors);
-		expect(one('[data-edytor-history-count="added"]').textContent).toBe(fr.history.added(1));
+		).toBe(frWords.history.noEditors);
+		expect(one('[data-edytor-history-count="added"]').textContent).toBe(frWords.history.added(1));
 		expect(one('[data-edytor-history-count="removed"]').textContent?.trim()).toBe(
-			fr.history.removed(1)
+			frWords.history.removed(1)
 		);
 		expect(one('[data-edytor-history-count="changed"]').textContent?.trim()).toBe(
-			fr.history.changed(1)
+			frWords.history.changed(1)
 		);
-		expect(one('[data-edytor-history-restore]').textContent?.trim()).toBe(fr.history.restore);
-		expect(one('[data-edytor-history-title]').textContent).toContain(fr.history.evening);
+		expect(one('[data-edytor-history-restore]').textContent?.trim()).toBe(frWords.history.restore);
+		expect(one('[data-edytor-history-title]').textContent).toContain(frWords.history.evening);
 	});
 
 	it('French: no English word of the section reaches the panel', async () => {
-		await mount(fr.history);
+		await mount(true);
 		const french = new Set(
-			Object.values(fr.history).map((word) => (typeof word === 'function' ? word(3) : word))
+			Object.values(frWords.history).map((word) => (typeof word === 'function' ? word(3) : word))
 		);
-		const english = Object.values(englishLabels.history)
+		const english = Object.values(englishWords.history)
 			.map((word) => (typeof word === 'function' ? word(3) : word))
 			.filter((word) => /[A-Za-z]{3}/.test(word) && !french.has(word));
 		const shown = document.body.textContent ?? '';

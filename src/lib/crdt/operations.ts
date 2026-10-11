@@ -1,12 +1,14 @@
 /**
- * The document's public operations and reads (`DocumentOperations`): the
- * raw path, view-free, with no plugin hook, no view's undo and no readonly
- * check. An `EdytorDocument` carries them itself (`document.insertBlock(…)`),
- * and a room's `transact` callback and `validate` receive them. The
- * facade a document binds has more (the index, the engine hooks): those
- * stay internal. `DOCUMENT_OPERATIONS` lists the names, checked against
- * the interface here and against the facade in `document.ts`. Worker-safe:
- * types and one list.
+ * The document's public operations and reads (`DocumentOperations`). The
+ * writes (`DocumentWrites`) are the one operation set, entered two ways
+ * under the same names and arguments: on a bare `EdytorDocument`
+ * (`document.insertBlocks(…)`, a room's `transact` callback and `validate`)
+ * they are raw — no plugin hook, no view's undo, no readonly check; through
+ * a view (`edytor.insertBlocks(…)`) they are dispatched. The facade a
+ * document binds has more (the index, the engine hooks): those stay
+ * internal. `DOCUMENT_OPERATIONS` lists the names, `DOCUMENT_WRITES` the
+ * writes, checked against the interfaces here and against the facade in
+ * `document.ts`. Worker-safe: types and two lists.
  */
 import type { BlockAttribution } from './attribution/block.js';
 import type {
@@ -20,20 +22,19 @@ import type {
 	Prepared
 } from './doc/types.js';
 import type { DataPatch } from './data.js';
+import type { NewInline } from './doc/content.js';
 import type { Flow, FlowTarget, FlowView } from './flow.js';
-import type { DocBlock } from './nodes.js';
 import type {
 	BlockId,
 	BlockSpec,
 	ContentItem,
 	Destination,
-	InlineSpec,
 	ProjectedDoc,
 	SplitTail
 } from './placement/model.js';
 import type { DocPosition, RangeView } from './rangeDelete.js';
 import type { ContentRun } from './text/runs.js';
-import type { JSONBlock, JSONDoc } from '../utils/json.js';
+import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from '../utils/json.js';
 
 /** The document's writes: each one transaction, answering what it did (`OpResult`). */
 export interface DocumentWrites {
@@ -67,16 +68,17 @@ export interface DocumentWrites {
 		value: {
 			type?: string;
 			data?: Record<string, unknown>;
-			content?: ContentItem[];
-			children?: BlockSpec[];
+			content?: (ContentItem | JSONText | JSONInlineBlock)[];
+			children?: (BlockSpec | JSONBlock)[];
 		}
 	): OpResult;
 	setBlockType(id: BlockId, type: string): OpResult;
 	patchData(target: DataTarget, patches: readonly DataPatch[]): OpResult;
 	setBlockData(id: BlockId, data: Record<string, unknown>): OpResult;
+	/** `freshId` names each copy (fresh ids by default). */
 	duplicateBlock(
 		id: BlockId,
-		freshId: (oldId: string, kind: 'block' | 'inline') => string
+		freshId?: (oldId: string, kind: 'block' | 'inline') => string
 	): OpResult;
 	insertText(id: BlockId, offset: number, text: string, marks?: Record<string, unknown>): OpResult;
 	deleteText(id: BlockId, offset: number, length: number): OpResult;
@@ -89,7 +91,8 @@ export interface DocumentWrites {
 	setMark(id: BlockId, offset: number, length: number, name: string, value: unknown): OpResult;
 	unsetMark(id: BlockId, offset: number, length: number, name: string): OpResult;
 	clearMarks(id: BlockId, offset: number, length: number): OpResult;
-	insertInline(id: BlockId, offset: number, atom: InlineSpec): OpResult;
+	/** An atom without an id gets a fresh one. */
+	insertInline(id: BlockId, offset: number, atom: NewInline): OpResult;
 	removeInline(id: BlockId, inlineId: string): OpResult;
 	setInlineData(id: BlockId, inlineId: string, data: Record<string, unknown>): OpResult;
 	deleteRange(from: DocPosition, to: DocPosition, view?: RangeView): OpResult;
@@ -155,8 +158,8 @@ export interface DocumentReads {
 /**
  * The document's public operations: the writes, each also prepared
  * (`prepare.<op>(…)`, pure, then `apply(plan)`; `compose` joins plans),
- * the reads, a block's handle, `transact`, `onChange` and `version`. See
- * the document API reference.
+ * the reads, `transact`, `onChange` and `version`. See the document API
+ * reference.
  */
 export interface DocumentOperations extends DocumentWrites, DocumentReads {
 	/** Every write, prepared: a plan of named steps and its effect, or `refused`. Writes nothing. */
@@ -169,16 +172,14 @@ export interface DocumentOperations extends DocumentWrites, DocumentReads {
 	compose(...parts: Prepared[]): Prepared;
 	/** Group writes in one transaction and one change event (no rollback on a throw). */
 	transact<R>(fn: () => R, origin?: unknown): R;
-	/** A handle over block `id`: the same operations bound to it (cached; refused when absent). */
-	block(id: BlockId): DocBlock;
 	/** Hear each transaction's change; answers the unsubscribe. */
 	onChange(listener: (change: DocChange) => void): () => void;
 	/** Changes on every write that changed the tree. */
 	readonly version: number;
 }
 
-/** Every name of `DocumentOperations`, for the document's own members (`EdytorDocument`). */
-export const DOCUMENT_OPERATIONS = [
+/** Every write of `DocumentWrites`: what a view dispatches under the same names (`edytor.insertBlocks(…)`). */
+export const DOCUMENT_WRITES = [
 	'insertBlock',
 	'insertBlocks',
 	'moveBlock',
@@ -211,7 +212,12 @@ export const DOCUMENT_OPERATIONS = [
 	'setInlineData',
 	'deleteRange',
 	'replaceRange',
-	'insertFlow',
+	'insertFlow'
+] as const satisfies readonly (keyof DocumentWrites)[];
+
+/** Every name of `DocumentOperations`, for the document's own members (`EdytorDocument`). */
+export const DOCUMENT_OPERATIONS = [
+	...DOCUMENT_WRITES,
 	'toJSON',
 	'docData',
 	'dataItemIds',
@@ -261,12 +267,13 @@ export const DOCUMENT_OPERATIONS = [
 	'apply',
 	'compose',
 	'transact',
-	'block',
 	'onChange',
 	'version'
 ] as const satisfies readonly (keyof DocumentOperations)[];
 
-/** Every member is listed: a name the list lacks is a compile error here. */
-type Unlisted = Exclude<keyof DocumentOperations, (typeof DOCUMENT_OPERATIONS)[number]>;
+/** Every member is listed: a name a list lacks is a compile error here. */
+type Unlisted =
+	| Exclude<keyof DocumentOperations, (typeof DOCUMENT_OPERATIONS)[number]>
+	| Exclude<keyof DocumentWrites, (typeof DOCUMENT_WRITES)[number]>;
 const everyListed: [Unlisted] extends [never] ? true : Unlisted = true;
 void everyListed;

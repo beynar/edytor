@@ -14,7 +14,6 @@ import type { Flow, FlowLine, FlowTarget } from '../crdt/flow.js';
 import type { Prepared } from '../crdt/edytor-doc.js';
 import { REFUSED } from '../crdt/doc/plan.js';
 import type { Edytor } from '../edytor.svelte.js';
-import { applyAt, caretOf } from '../edytor.utils.js';
 import { textToBlocks } from '../clipboard/textBlocks.js';
 import { selectedMembers, viewOf } from '../selection/visibility.js';
 import { project, textSelection } from './selection.js';
@@ -333,15 +332,21 @@ export class Suggestions {
 			payload,
 			{ block },
 			(_payload, plan = prepare()) => {
-				const caret = applyAt.call(edytor, plan);
-				return range && caret ? applyAt.call(edytor, place(caret)) : caret;
+				/** Write a stage in the command; answers the caret it decides. */
+				const write = (plan: Prepared) => {
+					if (!('writes' in plan) || !plan.at) return null;
+					edytor.dispatcher.write(plan);
+					return plan.at;
+				};
+				const caret = write(plan);
+				return range && caret ? write(place(caret)) : caret;
 			},
 			prepare
 		);
 		if (out === undefined || (out === null && edytor.dispatcher.last?.status === 'refused'))
 			return REFUSED;
 		this.drop(suggestion);
-		if (out) edytor.dispatcher.caret(...caretOf.call(edytor, out));
+		if (out) edytor.dispatcher.caret(out);
 		const status = edytor.dispatcher.last?.status === 'applied' ? 'applied' : 'noop';
 		return { status, ids: status === 'applied' ? ids : [] };
 	};

@@ -1,9 +1,6 @@
 import type { Block } from '$lib/block/block.svelte.js';
-import { dispatchPlan, type BlockBeside } from '$lib/block/block.utils.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { revealing } from '$lib/selection/replaceSelection.js';
-import type { Prepared } from '$lib/crdt/edytor-doc.js';
-import { REFUSED } from '$lib/crdt/doc/plan.js';
+import type { OpResult } from '$lib/crdt/edytor-doc.js';
 
 /**
  * Where a move places the blocks relative to its target: `before`, `after`,
@@ -57,12 +54,12 @@ const placement = (edytor: Edytor, request: BlockMoveRequest) => {
 const POSITIONS: readonly BlockMovePosition[] = ['before', 'after', 'inside', ...BESIDE];
 
 /**
- * The move op's payload, or `null` when refused: a well-formed request, then
- * the document's one structural answer (`canPlace` — the predicate the
- * move op applies at execution; an `out` step asks the outdent plan, which
- * places the blocks as the kind they take there: a paragraph outdented into
- * a list is its item; `left`/`right` ask the beside plan,
- * `placeBeside`). Extensions may still veto the command.
+ * The document write a move request is, or `null` when refused: a
+ * well-formed request, then the document's one structural answer
+ * (`canPlace` — the predicate the move applies at execution; an `out` step
+ * asks the outdent plan, which places the blocks as the kind they take
+ * there: a paragraph outdented into a list is its item; `left`/`right` ask
+ * the beside plan, `placeBeside`). Extensions may still veto it.
  */
 const destination = (edytor: Edytor, request: BlockMoveRequest) => {
 	const move = placement(edytor, request);
@@ -80,22 +77,24 @@ const destination = (edytor: Edytor, request: BlockMoveRequest) => {
 	// root or a column) and owns every refusal (fits, its own subtree).
 	if (isBeside(position)) {
 		return 'writes' in edytor.facade.prepare.placeBeside(ids, target.id, position)
-			? { blocks, path: target.path, beside: { target, side: position } }
+			? { blocks, write: () => edytor.placeBeside(ids, target.id, position) }
 			: null;
 	}
 	// Inside a container they are no items of: under its last item (Tab after a list).
 	const nest = () => edytor.idToBlock.get(edytor.facade.nestParent(ids, target.id));
 	const parent = position === 'inside' ? (nest() ?? target) : target.parent;
-	const placeable = (to: Block) =>
-		'direction' in request && request.direction === 'out'
-			? 'writes' in edytor.facade.prepare.unNestBlocks(ids)
-			: edytor.facade.canPlace(ids, to.isRoot ? null : to.id);
-	if (!parent || !placeable(parent)) return null;
+	// The outdent plan: the siblings after the last block follow it.
+	if ('direction' in request && request.direction === 'out')
+		return 'writes' in edytor.facade.prepare.unNestBlocks(ids)
+			? { blocks, write: () => edytor.unNestBlocks(ids) }
+			: null;
+	const to = parent?.isRoot ? null : parent?.id;
+	if (!parent || !edytor.facade.canPlace(ids, to)) return null;
 	const at =
 		position === 'inside' ? parent.children.length : target.index + (position === 'after' ? 1 : 0);
 	// The document counts the destination's children without the moved blocks.
 	const index = at - blocks.filter((block) => block.parent === parent && block.index < at).length;
-	return { blocks, path: [...(parent.isRoot ? [] : parent.path), index] };
+	return { blocks, write: () => edytor.moveBlocks(ids, { parent: to!, index }) };
 };
 
 /**
@@ -118,28 +117,27 @@ const parts = (edytor: Edytor, request: BlockMoveRequest): BlockMoveRequest[] =>
 };
 
 /** Whether the move is allowed: for runs (`parts`), whether one of them may move. */
-export const canMoveBlocks = (edytor: Edytor, request: BlockMoveRequest): boolean =>
+export const canMove = (edytor: Edytor, request: BlockMoveRequest): boolean =>
 	parts(edytor, request).some((part) => destination(edytor, part) !== null);
 
 /**
- * One move command (`moveBlock` for one block, `moveBlocks` for a group; an
- * `out` step plans the outdent, `unNestBlocks`): identity kept, one undo
- * step (the dispatcher cuts before it); `[]` when refused or vetoed.
- * Runs (`parts`) move one by one, a run that cannot move staying, as Tab
- * does (`dispatcher.each`). A closed toggle the blocks land in, or that
- * adopts blocks, opens (`revealing`): every caller — keys, drops, menus,
- * the public command — shows the moved blocks. The view announces what
- * moved (`announcer.moved`).
+ * One move: the document's `moveBlocks`, an `out` step's outdent
+ * (`unNestBlocks`) or a beside placement (`placeBeside`), dispatched as the
+ * view's write — identity kept, one undo step, a closed toggle the blocks
+ * land in or that adopts blocks opening (every caller — keys, drops, menus,
+ * the public command — shows the moved blocks); `[]` when refused or
+ * vetoed. Runs (`parts`) move one by one, a run that cannot move staying, as
+ * Tab does (`dispatcher.each`). The view announces what moved
+ * (`announcer.moved`).
  */
-export const moveBlocks = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
+export const move = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 	const runs = parts(edytor, request);
-	const moved = revealing(request.blocks, () =>
+	const moved =
 		runs.length > 1
 			? edytor.dispatcher
 					.each('moveBlocks', runs, (run) => place(edytor, run))
 					.flatMap((moved) => moved ?? [])
-			: place(edytor, runs[0] ?? request)
-	);
+			: place(edytor, runs[0] ?? request);
 	// Said to assistive technology: what moved, and where (`session/announcer`).
 	edytor.announcer.moved(request, moved);
 	return moved;
@@ -149,48 +147,10 @@ const place = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 	const move = destination(edytor, request);
 	if (!move) {
 		// Refused before any command ran: `last` still reports it (commands#results).
-		const operation = request.blocks.length > 1 ? 'moveBlocks' : 'moveBlock';
-		edytor.dispatcher.record({ operation, status: request.blocks.length ? 'refused' : 'noop' });
+		const status = request.blocks.length ? 'refused' : 'noop';
+		edytor.dispatcher.record({ operation: 'moveBlocks', status });
 		return [];
 	}
-	const [first, ...rest] = move.blocks;
-	const ids = move.blocks.map((block) => block.id);
-	const { beside } = move;
-	/** One move command whose plan `prepare` answers from the payload hooks leave. */
-	const planned = (
-		prepare: (payload: { beside?: BlockBeside }) => Prepared,
-		touched: (Block | null | undefined)[]
-	) =>
-		(
-			rest.length
-				? dispatchPlan(first!, 'moveBlocks', move, prepare, touched)
-				: dispatchPlan(
-						first!,
-						'moveBlock',
-						{ path: move.path, ...(beside && { beside }) },
-						prepare,
-						touched
-					)
-		)
-			? move.blocks
-			: [];
-	// The beside plan: a new column, or a new layout wrapping the target; the
-	// sources cleaned in the same plan.
-	if (beside)
-		return planned(
-			(payload) =>
-				payload.beside
-					? edytor.facade.prepare.placeBeside(ids, payload.beside.target.id, payload.beside.side)
-					: REFUSED,
-			[...new Set([...move.blocks.map((block) => block.parent), beside.target.parent])]
-		);
-	// The outdent plan: the siblings after the last block follow it.
-	if ('direction' in request && request.direction === 'out')
-		return planned(
-			() => edytor.facade.prepare.unNestBlocks(ids),
-			[first!.parent, first!.parent?.parent, move.blocks.at(-1)]
-		);
-	if (rest.length) return first!.moveBlocks(move) ?? [];
-	const moved = first!.moveBlock(move);
-	return moved ? [moved] : [];
+	const result: OpResult = move.write();
+	return result.status === 'applied' ? move.blocks : [];
 };

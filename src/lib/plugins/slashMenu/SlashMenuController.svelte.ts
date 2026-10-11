@@ -6,14 +6,11 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EditorCommand } from '$lib/plugins.js';
 import { noSelection, project, type SelectionValue } from '$lib/session/selection.js';
 import { BASIC_BLOCKS, matchesQuery } from '$lib/kinds.js';
-import { slashMenuEnglish, type SlashMenuLabels } from '$lib/labels.js';
 import type { BlockAddition } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { TextTriggerController } from '$lib/plugins/triggers/TriggerController.svelte.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
 import { attribute, isField, keepFocus } from '../chrome.js';
 import { holdKeys } from '../list.svelte.js';
-
-export type { TextInsertionPayload } from '$lib/plugins/triggers/TriggerController.svelte.js';
 
 /**
  * The view a `+`'s menu asks `isEnabled` of: the editor, its selection a
@@ -81,23 +78,12 @@ export class SlashMenuController extends TextTriggerController {
 	/** The selection when a `+` opened the menu, given back when it closes unpicked. */
 	private held: SelectionValue = { kind: 'none' };
 
-	/** A group's heading: its key in the labels' `groups`, else the key itself. */
-	groupName = (group: string) => this.labels.groups[group] ?? group;
-
-	constructor(
-		edytor: Edytor,
-		/** The words the menu shows (the plugin's `labels`): read them in your `menu`. */
-		readonly labels: SlashMenuLabels = slashMenuEnglish
-	) {
+	constructor(edytor: Edytor) {
 		super(edytor, '/', 'slash-menu');
 	}
 
 	/** A row's element id (page-unique), for `aria-activedescendant` (`option(index)` sets it). */
 	optionId = (command: EditorCommand) => this.edytor.popups.idOf(`slash-menu-${command.id}`);
-
-	protected get listName() {
-		return this.labels.list;
-	}
 
 	protected rowIdAt(index: number) {
 		const command = this.commands[index];

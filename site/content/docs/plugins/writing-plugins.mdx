@@ -233,7 +233,7 @@ export const todoCommandsPlugin: Plugin = () => ({
 			isEnabled: (edytor) => edytor.selection.caret?.block.type === 'todo-item',
 			run: (edytor) => {
 				const block = edytor.selection.caret?.block;
-				block?.setBlock({ value: { data: { ...block.data, checked: !block.data.checked } } });
+				if (block) edytor.patchData(block.id, [{ path: ['checked'], value: !block.data.checked }]);
 			}
 		}
 	]

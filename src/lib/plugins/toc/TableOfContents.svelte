@@ -3,7 +3,8 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { ownText } from '$lib/surface/attributes.js';
 	import { reveal } from '$lib/selection/replaceSelection.js';
-	import { tocLabels, type TocHeadingLevel } from './toc.js';
+	import { labelsOf, tocEnglish } from '$lib/labels.js';
+	import type { TocHeadingLevel } from './toc.js';
 
 	/**
 	 * The document's headings, live, in reading order (Notion's table of
@@ -13,7 +14,7 @@
 	 */
 	let { level }: { level: TocHeadingLevel } = $props();
 	const edytor = getContext<Edytor>('edytor');
-	const labels = tocLabels.of(edytor);
+	const labels = labelsOf(edytor, 'toc', tocEnglish);
 
 	type Entry = { id: string; level: number; text: string };
 	const entries = $derived.by(() => {

@@ -8,9 +8,8 @@
  * back from the engine.
  *
  * Delete paths (the rows say "every path"):
- * - `view`   — an `Edytor` view's `Block.removeBlock()` (the editor's path)
- * - `facade` — `facade.deleteBlock(id)` (headless)
- * - `handle` — `facade.block(id).delete()` (the typed handle)
+ * - `view`   — an `Edytor` view's `edytor.deleteBlock(id)` (dispatched)
+ * - `facade` — `facade.deleteBlock(id)` (headless, raw)
  *
  * §8 multi-replica rules: both delivery orders, duplicate delivery, a binary
  * reload, and at least three client-id assignments; an observer replica
@@ -26,8 +25,8 @@ import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const E = bindEdytorDoc(Y);
 
-type Path = 'view' | 'facade' | 'handle';
-const PATHS: Path[] = ['view', 'facade', 'handle'];
+type Path = 'view' | 'facade';
+const PATHS: Path[] = ['view', 'facade'];
 
 /** Remote transport origin — a provider never applies under the tracked `null` origin. */
 const REMOTE = { remote: true };
@@ -150,10 +149,8 @@ const expectObservers = (seed: Uint8Array, updates: Uint8Array[], expected: unkn
 /** Delete `id` through `path` on replica `r`; returns the op's verdict. */
 const deleteVia = (r: Replica, path: Path, id: string): boolean => {
 	if (path === 'facade') return r.ed.deleteBlock(id).status === 'applied';
-	if (path === 'handle') return r.ed.block(id).delete().status === 'applied';
-	const block = r.view!.idToBlock.get(id);
-	expect(block, `view block ${id}`).toBeDefined();
-	block!.removeBlock();
+	expect(r.view!.idToBlock.get(id), `view block ${id}`).toBeDefined();
+	r.view!.deleteBlock(id);
 	return !r.ed.isVisibleBlock(id);
 };
 
@@ -163,22 +160,14 @@ const splitVia = (r: Replica, path: Path, id: string, offset: number, newId: str
 		expect(r.ed.splitBlock(id, offset, newId).status).toBe('applied');
 		return newId;
 	}
-	if (path === 'handle') {
-		expect(r.ed.block(id).split(offset, newId).status).toBe('applied');
-		return newId;
-	}
-	const before = new Set(r.ed.listBlockIds());
-	const block = r.view!.idToBlock.get(id)!;
-	expect(block.splitBlock({ index: offset, text: block.firstText })).not.toBe(null);
-	const born = r.ed.listBlockIds().filter((x) => !before.has(x));
-	expect(born).toHaveLength(1);
-	return born[0];
+	expect(r.view!.splitBlock(id, offset, newId).status).toBe('applied');
+	return newId;
 };
 
 // ── F-D3 — targetability ────────────────────────────────────────────────
 
 describe('F-D3 — a block hidden under a deleted parent is not a target', () => {
-	for (const via of ['facade', 'handle'] as const) {
+	for (const via of ['facade'] as const) {
 		test(`p > [c]; delete p; insertText/insertBlock/moveBlock/splitBlock on c refused, zero bytes (${via})`, () => {
 			const doc = new Y.Doc();
 			doc.clientID = 10;
@@ -203,16 +192,6 @@ describe('F-D3 — a block hidden under a deleted parent is not a target', () =>
 				unchanged();
 				expect(ed.splitBlock('c', 1, 's').status, 'splitBlock(c)').toBe('refused');
 				unchanged();
-			} else {
-				const c = ed.block('c');
-				expect(c.insertText(0, 'x').status, 'insertText(c)').toBe('refused');
-				unchanged();
-				expect(c.insertChild(0, p('n', 'nn')).status, 'insertBlock(parent: c)').toBe('refused');
-				unchanged();
-				expect(c.moveTo({ parent: null, index: 0 }).status, 'moveBlock(c → root)').toBe('refused');
-				unchanged();
-				expect(c.split(1, 's').status, 'splitBlock(c)').toBe('refused');
-				unchanged();
 			}
 			expect(shapeOf(ed)).toEqual([['z', 'zz']]);
 			expect(ed.isVisibleBlock('c')).toBe(false);
@@ -229,11 +208,11 @@ describe('F-D8 — merge b into a, delete a: the merged block dies with it; undo
 			const r = replica(seed, 20, path === 'view');
 
 			if (path === 'view') {
-				expect(r.view!.idToBlock.get('b')!.mergeBlockBackward()).not.toBe(null);
+				expect(r.view!.mergeBackward('b').status).toBe('applied');
 			} else if (path === 'facade') {
 				expect(r.ed.mergeBlocks('b', 'a').status).toBe('applied');
 			} else {
-				expect(r.ed.block('a').mergeFrom('b').status).toBe('applied');
+				expect(r.ed.mergeBlocks('b', 'a').status).toBe('applied');
 			}
 			expect(shapeOf(r.ed)).toEqual([
 				['a', 'aabb'],

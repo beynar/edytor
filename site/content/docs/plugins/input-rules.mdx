@@ -74,12 +74,10 @@ export const arrowTodo: Plugin = () => ({
 	inputRules: [
 		{
 			find: /^->\s$/,
-			replace: (_match, { block, from, remove }) => {
+			replace: (_match, { edytor, block, from, remove }) => {
 				if (from !== 0) return false;
 				// Answers whether the removal and the retype were written.
-				return remove(() => {
-					block.type = 'todo-item';
-				});
+				return remove(() => edytor.setBlock(block.id, { type: 'todo-item' }));
 			}
 		}
 	]
@@ -104,12 +102,9 @@ export const tagsPlugin: Plugin = () => ({
 	triggers: [
 		{
 			char: '#',
-			name: 'Tags',
 			items: (query) => TAGS.filter((tag) => tag.startsWith(query.toLowerCase())),
-			onPick: (tag: string, { block, from, caret }) => {
-				const at = block.textAtOffset(from);
-				if (!at) return false;
-				at.text.insertText({ value: `#${tag} `, start: at.offset, end: at.offset });
+			onPick: (tag: string, { edytor, block, from, caret }) => {
+				edytor.insertText(block.id, from, `#${tag} `);
 				caret(from + tag.length + 2);
 			}
 		}
@@ -124,10 +119,7 @@ export const tagsPlugin: Plugin = () => ({
     onPick: { type: "(item, ctx) => unknown", required: true, description: "Write the picked row. Return false, running nothing, to keep the text." },
     label: { type: "(item) => string", description: "A row's label. Default: the item when it is a string, else its label, title or name." },
     key: { type: "(item) => string", description: "A row's key, which keeps its markup across queries. Default: its id, else its label. Two rows may share one: element ids come from the row's position." },
-    menu: { type: "Snippet<[TriggerMenuController<T>]>", description: "The menu, at the caret while it is open. Without it, nothing shows: the keys still move and pick. See Markup and accessibility below." },
-    name: { type: "string", description: "The menu's accessible name. Default: the view's `triggerMenu` label (Suggestions)." },
-    empty: { type: "string", description: "The text shown when no row matches. Default: the view's `noResults` label (No results)." },
-    searching: { type: "string", description: "The text shown while a search is pending and no row is shown. Default: the view's `searching` label (Searching…)." },
+    menu: { type: "Snippet<[TriggerMenuController<T>]>", description: "The menu and its words (its name, its empty and pending texts), at the caret while it is open. Without it, nothing shows: the keys still move and pick. See Markup and accessibility below." },
     enabled: { type: "(block) => boolean", description: "Whether the menu may open in block. Default: anywhere but in a code block." },
   }}
 />
@@ -135,8 +127,8 @@ export const tagsPlugin: Plugin = () => ({
 ### When the menu opens and closes
 
 - It opens when `char` is typed at a collapsed caret at the start of a text or after whitespace, as in Notion: `a@b.com` opens nothing. An IME that commits the trigger with more text (`@ad`) opens it with that query.
-- Typing at the query's end filters it: `items(query)` is asked again for each query. While a search is pending the menu keeps the previous query's rows (with none, it reads the `searching` text, "Searching…"), and <kbd>Enter</kbd> waits for the answer and picks its first row: never a row of an older query. An older answer that arrives after a newer one is dropped.
-- It closes when the caret leaves the query, the selection expands, the trigger is deleted, the query starts with a space, or a query that matches nothing is followed by a space (`@zz ` is prose). A query that matches nothing shows the `empty` text. It does not open in a readonly view, and it closes when the view turns readonly.
+- Typing at the query's end filters it: `items(query)` is asked again for each query. While a search is pending the menu keeps the previous query's rows (with none, `controller.loading` and no rows: your menu says it is searching), and <kbd>Enter</kbd> waits for the answer and picks its first row: never a row of an older query. An older answer that arrives after a newer one is dropped.
+- It closes when the caret leaves the query, the selection expands, the trigger is deleted, the query starts with a space, or a query that matches nothing is followed by a space (`@zz ` is prose). A query that matches nothing leaves no rows (your menu's empty state). It does not open in a readonly view, and it closes when the view turns readonly.
 - The query range is anchored in the document, so a collaborator's edits elsewhere in the text do not break it.
 
 ### Keys
@@ -154,7 +146,7 @@ With no row and no search pending, <kbd>Enter</kbd> and the arrows are the edito
 
 ### Picking
 
-`onPick(item, ctx)` receives the context of the trigger's range: `block`, `from` (where the trigger starts), `to` (the query's end), `query` and `caret(offset)`. The trigger and its query are removed in the same plan as the first operation `onPick` runs, so the pick is one undo step and a refusal keeps the text, with the caret back at the query's end. Before `onPick` runs, the caret is where the trigger was; set the caret you want with `ctx.caret`. To insert an inline atom, `block.addInlineBlock({ offset: from, block })` writes it where the trigger was, and the caret goes after it at `from + 1`:
+`onPick(item, ctx)` receives the context of the trigger's range: `block`, `from` (where the trigger starts), `to` (the query's end), `query` and `caret(offset)`. The trigger and its query are removed in the same plan as the first operation `onPick` runs, so the pick is one undo step and a refusal keeps the text, with the caret back at the query's end. Before `onPick` runs, the caret is where the trigger was; set the caret you want with `ctx.caret`. `ctx.edytor` is the view: write with its operations. To insert an inline atom, `edytor.insertInline(block.id, from, atom)` writes it where the trigger was, and the caret goes after it at `from + 1`:
 
 ```ts title="pick.ts" check
 import type { Trigger } from 'edytor';
@@ -162,16 +154,16 @@ import type { Trigger } from 'edytor';
 export const dateTrigger: Trigger<string> = {
 	char: '@',
 	items: (query) => ['today', 'tomorrow'].filter((day) => day.startsWith(query)),
-	onPick: (day, { block, from, caret }) => {
-		const after = block.addInlineBlock({ offset: from, block: { type: 'date', data: { day } } });
-		if (after) caret(from + 1);
-		return !!after;
+	onPick: (day, { edytor, block, from, caret }) => {
+		const atom = edytor.insertInline(block.id, from, { type: 'date', data: { day } });
+		if (atom.status === 'applied') caret(from + 1);
+		return atom.status === 'applied';
 	}
 };
 ```
 
 ### Markup and accessibility
 
-The menu is the trigger's `menu` snippet (`Snippet<[TriggerMenuController<T>]>`), rendered while `controller.isOpen` in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-trigger-menu-host`, below the caret (above it when there is no room). Read `controller.items`, `loading`, `selectedIndex`, `empty`, `searching` and `labelOf(item)`, call `controller.pick(item)`. Put `{@attach controller.popup}` on your list and `{...controller.option(index)}` on each row: the list takes its id, its `listbox` role and its name (`name`), a press in it keeps the caret, and the root names it and its highlighted row. Every snippet's shape is on [Menus and handles](/docs/customization/menus#mention-page-link-and-other-trigger-menus).
+The menu is the trigger's `menu` snippet (`Snippet<[TriggerMenuController<T>]>`), rendered while `controller.isOpen` in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-trigger-menu-host`, below the caret (above it when there is no room). Read `controller.items`, `loading`, `selectedIndex` and `labelOf(item)`, call `controller.pick(item)`. Put `{@attach controller.popup}` on your list (name it with `aria-label`) and `{...controller.option(index)}` on each row: the list takes its id and its `listbox` role, a press in it keeps the caret, and the root names it and its highlighted row. Every snippet's shape is on [Menus and handles](/docs/customization/menus#mention-page-link-and-other-trigger-menus).
 
 Keep a press on a row from moving the caret out of the query: `popup` cancels the `mousedown` of every press in its element but on a field. While the menu is open the editor's root, which holds the keyboard, names the listbox (`aria-controls`, `aria-haspopup="listbox"`) and its highlighted row (`aria-activedescendant`). See [Accessibility](/docs/editor/accessibility#menus-and-popups).

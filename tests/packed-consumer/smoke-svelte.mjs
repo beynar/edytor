@@ -12,7 +12,7 @@
  *      after the render, never leaked per request.
  *   3. Browser mount — the built app is served (vite preview) and driven in a
  *      real browser via the repo's playwright: the packed component mounts,
- *      renders the supported plugin surface (richTextPlugin blocks + marks),
+ *      renders the supported plugin surface (createRichTextPlugin blocks + marks),
  *      edits content through the real input path AND the facade, mounts the
  *      supported readonly surface, and tears down via svelte `unmount()`.
  *
@@ -45,7 +45,7 @@ const indexHtml = readFileSync(new URL('./svelte-app/dist/index.html', import.me
 assert.ok(indexHtml.includes('type="module"'), 'dist index.html must reference the bundle');
 console.log('    client build emitted:', distAssets.join(', '));
 
-// Plugins ship only when imported: this app uses richTextPlugin alone, so
+// Plugins ship only when imported: this app uses createRichTextPlugin alone, so
 // the code block (CodePlugin + TanStack Highlight + code.css) must not be
 // in it. `th-code` is the code plugin's markup/CSS class; the positive
 // control below proves the marker survives minification.
@@ -55,14 +55,14 @@ const shipped = (dir) =>
 			readFileSync(new URL(`./svelte-app/${dir}/assets/${file}`, import.meta.url), 'utf8')
 		)
 		.join('\n');
-assert.ok(!shipped('dist').includes('th-code'), 'an app without codePlugin must not ship it');
-console.log('==> svelte consumer: vite build (codePlugin entry, positive control)');
+assert.ok(!shipped('dist').includes('th-code'), 'an app without createCodePlugin must not ship it');
+console.log('==> svelte consumer: vite build (createCodePlugin entry, positive control)');
 await build({
 	root: appDir,
 	logLevel: 'warn',
 	build: { outDir: 'dist-code', emptyOutDir: true, rollupOptions: { input: 'code-entry.js' } }
 });
-assert.ok(shipped('dist-code').includes('th-code'), 'an app importing codePlugin ships it');
+assert.ok(shipped('dist-code').includes('th-code'), 'an app importing createCodePlugin ships it');
 
 console.log('==> svelte consumer: vite build --ssr (readonly editor render)');
 await build({
@@ -163,11 +163,11 @@ if (!chromium) {
 			2,
 			'editable editor must render both seeded paragraphs'
 		);
-		// Supported plugin surface: bold mark renders through richTextPlugin.
+		// Supported plugin surface: bold mark renders through createRichTextPlugin.
 		assert.equal(
 			await page.locator('[data-edytor-mark="bold"]').count(),
 			1,
-			'richTextPlugin bold mark must render'
+			'createRichTextPlugin bold mark must render'
 		);
 		// Supported readonly surface: contenteditable off + seeded content.
 		const readonlyRoot = page.locator('[data-testid="readonly-root"] [data-edytor]');

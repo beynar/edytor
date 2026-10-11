@@ -135,7 +135,7 @@ describe('collaboration remote presence rendering', () => {
 
 		// A local edit in front of the remote caret shifts its anchor —
 		// the remote cursor must keep rendering at the shifted position.
-		text.insertAt(0, 'XX');
+		edytor.insertText(text.parent.id, text.segStart, 'XX');
 		await flushDomUpdates();
 
 		const resolved = edytor.selection.resolveTextAnchor(remoteSel.start);

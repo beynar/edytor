@@ -265,7 +265,8 @@ export const moveOps = (c: OpsContext) => {
 	 */
 	const duplicateBlock = (
 		id: BlockId,
-		freshId: (oldId: string, kind: 'block' | 'inline') => string
+		freshId: (oldId: string, kind: 'block' | 'inline') => string = (_, kind) =>
+			newId(kind === 'block' ? 'b' : 'i')
 	): Prepared => {
 		id = ref(id);
 		const pos = positionOf(id);

@@ -4,6 +4,7 @@ import { expect } from 'vitest';
 import { mentionPlugin } from '../../../atMention.svelte';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { canonicalValue, runBeforeInput, runHotkey } from '../../../test.utils.js';
+import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
 import { selectionState } from '../../../selection.js';
 import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
@@ -74,12 +75,7 @@ export const fixtures = defineFixtures([
 				throw new Error('Missing startText for marked typing history test');
 			}
 
-			startText.markText({
-				mark: 'bold',
-				toggle: true,
-				start: selectionState(edytor).yStart,
-				end: selectionState(edytor).yStart
-			});
+			richTextOperations(edytor).setMarkAtRange('bold');
 			await runBeforeInput(edytor, { inputType: 'insertText', data: 'a' });
 			await runBeforeInput(edytor, { inputType: 'insertText', data: 'b' });
 			return getHistoryState(edytor);

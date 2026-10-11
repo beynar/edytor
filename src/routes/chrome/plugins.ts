@@ -80,7 +80,7 @@ export const tablePlugin = table();
 export const equation = (options: EquationPluginOptions = {}) =>
 	createEquationPlugin({ panel: chrome.equationPanel, ...options });
 export const image = (options: ImagePluginOptions = {}) =>
-	createImagePlugin({ toolbar: chrome.imageToolbar, empty: chrome.imageEmpty, ...options });
+	createImagePlugin({ toolbar: chrome.imageToolbar, empty: chrome.mediaEmpty, ...options });
 export const imagePlugin = image();
 export const embed = (options: EmbedPluginOptions = {}) =>
 	createEmbedPlugin({ menu: chrome.urlPasteMenu, empty: chrome.mediaEmpty, ...options });

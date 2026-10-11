@@ -1,8 +1,7 @@
 import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { imageEnglish, type ImageLabels } from '$lib/labels.js';
-import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
-import { trackDrag } from '$lib/dnd/track.js';
+import { takeKeys } from '$lib/events/onFocus.js';
+import { BandDrag } from '../bands.svelte.js';
 import { layerBox, pin, sameValues } from '$lib/surface/overlay.js';
 import {
 	imageAlignOf,
@@ -43,9 +42,7 @@ type Drag = {
 
 /** The image element of a shown image block (none while it uploads); an image holds no block. */
 const imageOf = (node: Element | null | undefined) =>
-	node?.querySelector<HTMLImageElement>(
-		'[data-edytor-image]:not([data-edytor-image-uploading]) > img'
-	) ?? null;
+	node?.querySelector<HTMLImageElement>('[data-edytor-image] > img') ?? null;
 
 /**
  * The image chrome (Notion's), in the overlay: on the image under
@@ -67,18 +64,19 @@ export class ImageControls {
 	editing = $state<string | null>(null);
 	/** The measured box of the image the chrome is on. */
 	box = $state<ImageBox | null>(null);
-	/** The handle being dragged. */
-	drag = $state<Drag | null>(null);
 	/** The dragged image's width at the pointer (view only). @internal */
 	preview = $state.raw<{ id: string; width: number } | null>(null);
-	/** Ends the drag in progress without a write. */
-	#cancel: (() => void) | null = null;
+	/** The handles' gesture (a resize band's: press, view-only preview, one write). @internal */
+	readonly band: BandDrag<Drag>;
 
-	constructor(
-		private edytor: Edytor,
-		/** The words the chrome shows (the plugin's `labels`). */
-		readonly labels: ImageLabels = imageEnglish
-	) {}
+	constructor(private edytor: Edytor) {
+		this.band = new BandDrag(edytor);
+	}
+
+	/** The handle being dragged. */
+	get drag() {
+		return this.band.drag;
+	}
 
 	/** The view is readonly (reactive). */
 	get readonly() {
@@ -87,7 +85,7 @@ export class ImageControls {
 
 	/** A text selection is in progress: the chrome takes no pointer. */
 	get selecting() {
-		return this.drag === null && this.edytor.selection.dragging;
+		return this.band.selecting;
 	}
 
 	/** The image block that is the whole block selection, if any (reactive): the keyboard's image. */
@@ -156,7 +154,8 @@ export class ImageControls {
 	/** Set the target image's alignment: one `patchData` command. */
 	align = (align: ImageAlign) => {
 		const block = this.#block();
-		if (block && imageAlignOf(block.data) !== align) block.data.align = align;
+		if (block && imageAlignOf(block.data) !== align)
+			block.edytor.patchData(block.id, [{ path: ['align'], value: align }]);
 	};
 
 	/** The target image's alt text. */
@@ -167,7 +166,8 @@ export class ImageControls {
 	/** Write the alt text as it is typed: the dispatcher groups the keystrokes into one step. */
 	setAlt = (alt: string) => {
 		const block = this.#block();
-		if (block && imageAltOf(block.data) !== alt) block.data.alt = alt;
+		if (block && imageAltOf(block.data) !== alt)
+			block.edytor.patchData(block.id, [{ path: ['alt'], value: alt }]);
 	};
 
 	/** Open (or close) the alt field of the target image. */
@@ -200,14 +200,13 @@ export class ImageControls {
 	};
 
 	/**
-	 * The image's toolbar (`{@attach controls.bar}`): its `toolbar` role and
-	 * name unless it has its own, the mark a press outside the alt field
+	 * The image's toolbar (`{@attach controls.bar}`, named by your markup): its
+	 * `toolbar` role unless it has its own, the mark a press outside the alt field
 	 * reads (a press on the toolbar keeps the field open, so its Alt button
 	 * toggles it), and presses that keep the editor's focus.
 	 */
 	bar: Attachment<HTMLElement> = (node) => {
 		if (!node.hasAttribute('role')) node.setAttribute('role', 'toolbar');
-		if (!node.hasAttribute('aria-label')) node.setAttribute('aria-label', this.labels.toolbar);
 		node.setAttribute('data-edytor-image-toolbar', '');
 		node.addEventListener('mousedown', keepFocus);
 		return () => node.removeEventListener('mousedown', keepFocus);
@@ -221,7 +220,7 @@ export class ImageControls {
 	 * keeps it open. Write its value with `setAlt`.
 	 */
 	altField: Attachment<HTMLInputElement> = (node) => {
-		identify(node, this.edytor.popups.idOf('image-alt'), undefined, this.labels.alt);
+		identify(node, this.edytor.popups.idOf('image-alt'));
 		node.setAttribute('data-edytor-image-alt', '');
 		node.focus({ preventScroll: true });
 		const keydown = (event: KeyboardEvent) => {
@@ -252,29 +251,18 @@ export class ImageControls {
 	};
 
 	/**
-	 * A `mousedown` on a handle: no native selection starts there; the press
-	 * itself when no `pointerdown` came before it (`isLonePress`: WebKit's
-	 * first press after a drag), which starts the drag as one would.
-	 * @internal
-	 */
-	mousedown = (event: MouseEvent, side: Drag['side']) => {
-		event.preventDefault();
-		if (isLonePress(this.edytor, event)) this.start(event, side);
-	};
-
-	/**
-	 * Press on a handle: the drag starts (`trackDrag`), nothing is written
-	 * until the release.
+	 * Press on a handle (`{@attach band.press(…)}`): the drag starts, nothing
+	 * is written until the release.
 	 * @internal
 	 */
 	start = (event: PointerEvent | MouseEvent, side: Drag['side']) => {
 		const { edytor } = this;
 		const box = this.box;
-		if (event.button !== 0 || !edytor.dispatcher.permits() || this.drag || !box) return;
+		if (!edytor.dispatcher.permits() || !box) return;
 		const img = imageOf(edytor.idToBlock.get(box.id)?.node);
 		const frame = img?.parentElement;
 		if (!img || !frame) return;
-		this.drag = {
+		const drag: Drag = {
 			id: box.id,
 			side,
 			from: event.clientX,
@@ -283,29 +271,24 @@ export class ImageControls {
 			max: frame.getBoundingClientRect().width,
 			factor: box.align === 'center' ? 2 : 1
 		};
-		this.#cancel = trackDrag(
-			edytor,
+		this.band.start(
 			event,
-			(x) => {
-				const drag = this.drag;
-				if (!drag) return;
-				drag.at = x;
-				this.preview = { id: drag.id, width: widthAt(drag) };
-			},
-			(x) => {
-				const drag = this.drag;
-				this.drag = null;
-				this.#cancel = null;
-				if (drag && x !== null) this.#release({ ...drag, at: x });
+			drag,
+			(done) => {
+				if (done) this.#release(done);
 				// After the release's write: the stored width replaces the preview in one flush.
 				this.preview = null;
+			},
+			() => {
+				const moving = this.band.drag;
+				if (moving) this.preview = { id: moving.id, width: widthAt(moving) };
 			}
 		);
 	};
 
 	/** The view turned readonly: a drag in progress ends at once, nothing written. @internal */
 	lock = () => {
-		if (this.drag && !this.edytor.dispatcher.permits()) this.#cancel?.();
+		this.band.lock();
 		this.editing = null;
 	};
 
@@ -314,7 +297,8 @@ export class ImageControls {
 		const block = this.edytor.idToBlock.get(drag.id);
 		const width = Math.round(widthAt(drag));
 		if (!block?.isInTree || Math.abs(widthAt(drag) - drag.width) < 1) return;
-		if (imageWidthOf(block.data) !== width) block.data.width = width;
+		if (imageWidthOf(block.data) !== width)
+			block.edytor.patchData(block.id, [{ path: ['width'], value: width }]);
 	}
 }
 

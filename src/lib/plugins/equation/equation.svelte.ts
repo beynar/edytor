@@ -5,12 +5,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
-import {
-	equationEnglish,
-	viewLabels,
-	type EquationLabels,
-	type PartialLabels
-} from '$lib/labels.js';
 import { Anchored } from '../anchored.svelte.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
@@ -42,12 +36,8 @@ export type EquationPluginOptions = {
 	katex?: KatexLoader | string | false;
 	/** TeX macros every equation reads (`{ '\\RR': '\\mathbb{R}' }`). */
 	macros?: Record<string, string>;
-	/** The words the equations and their editor show, over the English ones. */
-	labels?: PartialLabels<'equation'>;
-	/** The slash menu's keywords by command id (`block.equation`, `equation.inline`), which replace its own. */
-	keywords?: Partial<Record<string, string[]>>;
 	/**
-	 * The editor's panel (the source's field, KaTeX's error, Done): it
+	 * The editor's panel and its words (the source's field, KaTeX's error, Done): it
 	 * renders under the edited equation while `editor.target` is set
 	 * (centered under a block equation; without it, nothing shows). Put
 	 * `{@attach editor.field}` on the source's field.
@@ -184,9 +174,6 @@ export const parseEquation = (element: HTMLElement, display: boolean): EquationD
 	return tex?.trim() ? { expression: tex.trim() } : undefined;
 };
 
-/** Each view's equation labels: the first equation plugin listed claims them, as its kinds. */
-export const equationLabels = viewLabels(equationEnglish);
-
 /** The equation being edited: a block equation, or an inline one (`atom`) in block `block`. */
 export type EquationTarget = { block: string; atom?: string };
 
@@ -203,7 +190,7 @@ export type EquationTarget = { block: string; atom?: string };
  *
  * What a `panel` snippet receives: the equation being edited (`target`,
  * `display` for a block one), its source (`expression`, written by
- * `set`), KaTeX's error (`error`), `close()` and the plugin's `labels`.
+ * `set`), KaTeX's error (`error`) and `close()`.
  * Put `{@attach editor.field}` on the source's field: it takes the focus
  * as the editor opens, Enter (Shift+Enter: a newline in a block equation)
  * and Escape close the editor, and focus leaving the panel closes it.
@@ -221,9 +208,7 @@ export class EquationEditor {
 	constructor(
 		private edytor: Edytor,
 		/** @internal */
-		readonly renderer: EquationRenderer,
-		/** The plugin's words (`editor`, `placeholder`, `done`, …). */
-		readonly labels: EquationLabels = equationEnglish
+		readonly renderer: EquationRenderer
 	) {
 		this.panel = new Anchored(
 			edytor,
@@ -283,8 +268,9 @@ export class EquationEditor {
 	set = (expression: string) => {
 		const target = this.target;
 		if (!target || expression === this.expression) return;
-		const data = target.atom ? this.#atom(target)?.data : this.#block(target)?.data;
-		if (data) data.expression = expression;
+		const at = target.atom ? { block: target.block, atom: target.atom } : target.block;
+		if (target.atom ? this.#atom(target) : this.#block(target))
+			this.edytor.patchData(at, [{ path: ['expression'], value: expression }]);
 	};
 
 	/**
@@ -306,7 +292,7 @@ export class EquationEditor {
 			if (!atom) return;
 			const offset = offsetOf(block, atom);
 			if (!expressionOf(atom.data) && this.edytor.dispatcher.permits()) {
-				block.removeInlineBlock({ index: atom.index });
+				this.edytor.removeInline(block.id, atom.id);
 				if (keys) selection.setCaret({ block, offset });
 			} else if (keys) selection.setCaret({ block, offset: offset + 1 });
 		} else if (keys) selection.select(blockSelection([block.id]));

@@ -150,6 +150,7 @@ export {
 } from './edytor-doc.js';
 export {
 	DOCUMENT_OPERATIONS,
+	DOCUMENT_WRITES,
 	type DocumentOperations,
 	type DocumentReads,
 	type DocumentWrites
@@ -167,8 +168,6 @@ export {
 	type ProjectedBlock,
 	type ProjectedDoc
 } from './placement/model.js';
-
-export { type DocBlock } from './nodes.js';
 
 // `ContentRun` — the maintained-runs item the view layer's text values
 // read (`segmentJSON`, `session/handles.ts`). Part of the public
@@ -234,8 +233,8 @@ export {
 
 // Compact per-BLOCK attribution read vocabulary (`b/<blockId>`
 // records + the block-node `l` attr — see `attribution/block.ts`).
-// `document.attribution.block(id)` / `facade.blockAttribution(id)` /
-// `DocBlock.attribution` are the read entry points.
+// `document.attribution.block(id)` / `document.blockAttribution(id)`
+// are the read entry points.
 export { type ActorId, type BlockAttribution } from './attribution/index.js';
 
 // ── 6 · Composition — injecting the engine ─────────────────────────────

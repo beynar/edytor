@@ -594,20 +594,20 @@ declare const bindCrdt: (Y: EngineApi) => {
                 setBlock: (id: import("./index.js").BlockId, value: {
                     type?: string;
                     data?: Record<string, unknown>;
-                    content?: import("./index.js").ContentItem[];
-                    children?: import("./index.js").BlockSpec[];
+                    content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                    children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
                 }) => import("./edytor-doc.js").Prepared;
                 setBlockType: (id: import("./index.js").BlockId, type: string) => import("./edytor-doc.js").Prepared;
                 patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").Prepared;
                 setBlockData: (id: import("./index.js").BlockId, data: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
-                duplicateBlock: (id: import("./index.js").BlockId, freshId: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").Prepared;
+                duplicateBlock: (id: import("./index.js").BlockId, freshId?: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").Prepared;
                 insertText: (id: import("./index.js").BlockId, offset: number, text: string, marks?: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 deleteText: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
                 formatRange: (id: import("./index.js").BlockId, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 setMark: (id: import("./index.js").BlockId, offset: number, length: number, name: string, value: unknown) => import("./edytor-doc.js").Prepared;
                 unsetMark: (id: import("./index.js").BlockId, offset: number, length: number, name: string) => import("./edytor-doc.js").Prepared;
                 clearMarks: (id: import("./index.js").BlockId, offset: number, length: number) => import("./edytor-doc.js").Prepared;
-                insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./index.js").InlineSpec) => import("./edytor-doc.js").Prepared;
+                insertInline: (id: import("./index.js").BlockId, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").Prepared;
                 removeInline: (id: import("./index.js").BlockId, inlineId: string) => import("./edytor-doc.js").Prepared;
                 setInlineData: (id: import("./index.js").BlockId, inlineId: string, data: Record<string, unknown>) => import("./edytor-doc.js").Prepared;
                 deleteBlocks: (ids: readonly import("./index.js").BlockId[]) => import("./edytor-doc.js").Prepared;
@@ -684,7 +684,6 @@ declare const bindCrdt: (Y: EngineApi) => {
             };
             runsView: import("./text/runs.js").RunView;
             version: number;
-            block: (id: import("./index.js").BlockId) => import("./nodes.js").DocBlock;
             insertFlow: (target: import("./flow.js").FlowTarget, flow: import("./flow.js").Flow, view?: import("./flow.js").FlowView | undefined) => import("./edytor-doc.js").OpResult;
             deleteRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
             replaceRange: (from: import("./rangeDelete.js").DocPosition, to: import("./rangeDelete.js").DocPosition, view?: import("./rangeDelete.js").RangeView | undefined) => import("./edytor-doc.js").OpResult;
@@ -711,20 +710,20 @@ declare const bindCrdt: (Y: EngineApi) => {
             setBlock: (id: string, value: {
                 type?: string;
                 data?: Record<string, unknown>;
-                content?: import("./index.js").ContentItem[];
-                children?: import("./index.js").BlockSpec[];
+                content?: (import("./index.js").ContentItem | import("./index.js").JSONText | import("./index.js").JSONInlineBlock)[];
+                children?: (import("./index.js").BlockSpec | import("./index.js").JSONBlock)[];
             }) => import("./edytor-doc.js").OpResult;
             setBlockType: (id: string, type: string) => import("./edytor-doc.js").OpResult;
             patchData: (target: import("./edytor-doc.js").DataTarget, patches: readonly import("./data.js").DataPatch[]) => import("./edytor-doc.js").OpResult;
             setBlockData: (id: string, data: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
-            duplicateBlock: (id: string, freshId: (oldId: string, kind: "block" | "inline") => string) => import("./edytor-doc.js").OpResult;
+            duplicateBlock: (id: string, freshId?: ((oldId: string, kind: "block" | "inline") => string) | undefined) => import("./edytor-doc.js").OpResult;
             insertText: (id: string, offset: number, text: string, marks?: Record<string, unknown> | undefined) => import("./edytor-doc.js").OpResult;
             deleteText: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
             formatRange: (id: string, offset: number, length: number, marks: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
             setMark: (id: string, offset: number, length: number, name: string, value: unknown) => import("./edytor-doc.js").OpResult;
             unsetMark: (id: string, offset: number, length: number, name: string) => import("./edytor-doc.js").OpResult;
             clearMarks: (id: string, offset: number, length: number) => import("./edytor-doc.js").OpResult;
-            insertInline: (id: string, offset: number, atom: import("./index.js").InlineSpec) => import("./edytor-doc.js").OpResult;
+            insertInline: (id: string, offset: number, atom: import("./doc/content.js").NewInline) => import("./edytor-doc.js").OpResult;
             removeInline: (id: string, inlineId: string) => import("./edytor-doc.js").OpResult;
             setInlineData: (id: string, inlineId: string, data: Record<string, unknown>) => import("./edytor-doc.js").OpResult;
             deleteBlocks: (ids: readonly string[]) => import("./edytor-doc.js").OpResult;

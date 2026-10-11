@@ -34,7 +34,8 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		plugins: [richTextPlugin, mentionPlugin, structuralBranchPlugin],
-		run: ({ edytor }) => selectionState(edytor).startBlock?.nestBlock() ?? null,
+		run: ({ edytor }) =>
+			edytor.nestBlock(selectionState(edytor).startBlock!.id, edytor.root!.children[0]!.id),
 		result: { kind: 'null' },
 		output: (
 			<root>
@@ -52,7 +53,8 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		plugins: [richTextPlugin, mentionPlugin, structuralBranchPlugin],
-		run: ({ edytor }) => selectionState(edytor).startBlock?.nestBlock() ?? null,
+		run: ({ edytor }) =>
+			edytor.nestBlock(selectionState(edytor).startBlock!.id, edytor.root!.children[0]!.id),
 		result: { kind: 'null' },
 		output: (
 			<root>
@@ -70,7 +72,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		plugins: [richTextPlugin, mentionPlugin, structuralBranchPlugin],
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward() ?? null,
+		run: ({ edytor }) => edytor.mergeBackward(selectionState(edytor).startBlock!.id),
 		result: { kind: 'null' },
 		output: (
 			<root>
@@ -88,7 +90,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		plugins: [richTextPlugin, mentionPlugin, imagePlugin],
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockBackward() ?? null,
+		run: ({ edytor }) => edytor.mergeBackward(selectionState(edytor).startBlock!.id),
 		result: { kind: 'null' },
 		output: (
 			<root>
@@ -106,7 +108,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		plugins: [richTextPlugin, mentionPlugin, structuralBranchPlugin],
-		run: ({ edytor }) => selectionState(edytor).startBlock?.mergeBlockForward() ?? null,
+		run: ({ edytor }) => edytor.mergeForward(selectionState(edytor).startBlock!.id),
 		result: { kind: 'null' },
 		output: (
 			<root>
@@ -129,7 +131,7 @@ export const fixtures = defineFixtures([
 		},
 		run: ({ edytor }) => {
 			// The veto refuses the command; the dispatcher catches `prevent()` (S1).
-			selectionState(edytor).startBlock?.mergeBlockBackward();
+			edytor.mergeBackward(selectionState(edytor).startBlock!.id);
 			expect(edytor.dispatcher.last).toMatchObject({ status: 'refused' });
 			return null;
 		},
@@ -156,7 +158,7 @@ export const fixtures = defineFixtures([
 			]
 		},
 		run: ({ edytor }) => {
-			selectionState(edytor).startBlock?.mergeBlockForward();
+			edytor.mergeForward(selectionState(edytor).startBlock!.id);
 			expect(edytor.dispatcher.last).toMatchObject({ status: 'refused' });
 			return null;
 		},
@@ -183,11 +185,9 @@ export const fixtures = defineFixtures([
 			]
 		},
 		run: ({ edytor }) =>
-			selectionState(edytor).startBlock?.setBlock({
-				value: {
-					type: 'codeLine',
-					content: [{ text: 'const a = 1;\nconst b = 2;\nconst c = 3;' }]
-				}
+			edytor.setBlock(selectionState(edytor).startBlock!.id, {
+				type: 'codeLine',
+				content: [{ text: 'const a = 1;\nconst b = 2;\nconst c = 3;' }]
 			}),
 		assert: ({ edytor }) => {
 			expect(removeIds(structuredClone(edytor.root?.value.children ?? []))).toEqual([
@@ -213,13 +213,9 @@ export const fixtures = defineFixtures([
 		readonly: true,
 		run: ({ edytor }) => {
 			const { startBlock, startText, yStart } = selectionState(edytor);
-			return startBlock?.addInlineBlock({
-				index: yStart,
-				block: { type: 'mention' },
-				text: startText!
-			});
+			return edytor.insertInline(startBlock!.id, startText!.segStart + yStart, { type: 'mention' });
 		},
-		result: { kind: 'void' },
+		result: { kind: 'refused' },
 		output: (
 			<root>
 				<paragraph>Hello world</paragraph>
@@ -236,7 +232,8 @@ export const fixtures = defineFixtures([
 				<paragraph>Last</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.moveBlock({ path: [1] }) ?? null,
+		run: ({ edytor }) =>
+			edytor.moveBlocks([selectionState(edytor).startBlock!.id], { parent: null, index: 1 }),
 		result: { kind: 'block', path: [1], type: 'paragraph' },
 		output: (
 			<root>

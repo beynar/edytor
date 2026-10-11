@@ -1,6 +1,7 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { RenderedNode } from '../../jsx/types.js';
 import { selectionState } from '../../selection.js';
+import { id } from '$lib/utils.js';
 
 export const emptyFixture = { value: { children: [] } } as unknown as RenderedNode;
 
@@ -10,11 +11,7 @@ export const addMentionAtSelection = (edytor: Edytor) => {
 		throw new Error('Missing selection state for inline-block insertion');
 	}
 
-	return startBlock.addInlineBlock({
-		index: yStart,
-		block: { type: 'mention' },
-		text: startText
-	});
+	return edytor.insertInline(startBlock.id, startText.segStart + yStart, { type: 'mention' });
 };
 
 export const splitAtSelection = (edytor: Edytor) => {
@@ -23,20 +20,19 @@ export const splitAtSelection = (edytor: Edytor) => {
 		throw new Error('Missing selection state for splitBlock');
 	}
 
-	return startBlock.splitBlock({
-		index: yStart,
-		text: startText
-	});
+	// Enter's tail: a continuing kind again, with its first preset's data; else the parent's default.
+	const tail = startBlock.definition.continues
+		? { type: startBlock.type, data: { ...startBlock.definition.presets?.[0]?.data } }
+		: { type: edytor.defaultChild(startBlock.parent!) };
+	return edytor.splitBlock(startBlock.id, startText.segStart + yStart, id('b'), tail);
 };
 
 export const deleteBlockRangeAtSelection = (edytor: Edytor) => {
 	const { startBlock, startText, endText, yStart, yEnd } = selectionState(edytor);
 	if (!startBlock || !startText || !endText) {
-		throw new Error('Missing selection state for deleteContentAtRange');
+		throw new Error('Missing selection state for deleteRange');
 	}
 
-	startBlock.deleteContentAtRange({
-		start: [startText.index, yStart],
-		end: [endText.index, yEnd]
-	});
+	const at = startText.segStart + yStart;
+	edytor.deleteText(startBlock.id, at, endText.segStart + yEnd - at);
 };

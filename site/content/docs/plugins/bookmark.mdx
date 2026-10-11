@@ -4,7 +4,7 @@ description: The bookmark plugin adds Notion's web bookmark, a card linking to a
 icon: bookmark
 ---
 
-`bookmarkPlugin` adds Notion's web bookmark: an "Add a web bookmark" panel (your `empty` snippet) until the block has a link, then a card that opens the page in a new tab, with an editable caption. The card shows the page's title, description, icon and cover image when your `unfurl` function answers them, the URL alone otherwise. It is not a default plugin: list it.
+`createBookmarkPlugin()` adds Notion's web bookmark: an "Add a web bookmark" panel (your `empty` snippet) until the block has a link, then a card that opens the page in a new tab, with an editable caption. The card shows the page's title, description, icon and cover image when your `unfurl` function answers them, the URL alone otherwise. It is not a default plugin: list it.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
@@ -22,7 +22,7 @@ icon: bookmark
 <Edytor plugins={[bookmark]} />
 ```
 
-A [slash menu](/docs/plugins/slash-menu) then lists "Web bookmark" under `Media`, and pasting an `http(s)` link on an empty line offers to make it a bookmark ([Pasting a link on an empty line](/docs/editor/clipboard#pasting-a-link-on-an-empty-line)). `bookmarkPlugin` is the plugin without `unfurl`.
+A [slash menu](/docs/plugins/slash-menu) then lists "Web bookmark" under `Media`, and pasting an `http(s)` link on an empty line offers to make it a bookmark ([Pasting a link on an empty line](/docs/editor/clipboard#pasting-a-link-on-an-empty-line)). `createBookmarkPlugin()` is the plugin without `unfurl`.
 
 ## Options
 
@@ -33,14 +33,6 @@ A [slash menu](/docs/plugins/slash-menu) then lists "Web bookmark" under `Media`
     unfurl: {
       type: "(url: string) => Promise<BookmarkPreview | null | undefined>",
       description: "Read a page's title, description, cover image and icon. Called when a link is set from the panel or the paste menu. Without it, the card shows the URL.",
-    },
-    labels: {
-      type: "PartialLabels<'media'>",
-      description: "The empty panel's and the paste menu's words (bookmark, pasteAs, pasteLink), over the English ones. See Localization.",
-    },
-    keywords: {
-      type: "Partial<Record<string, string[]>>",
-      description: "The slash menu's keywords by command id (block.bookmark); they replace the command's own.",
     },
     menu: {
       type: "Snippet<[UrlPasteController]>",

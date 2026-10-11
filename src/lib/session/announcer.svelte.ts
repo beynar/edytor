@@ -1,7 +1,7 @@
 /**
  * What a view tells assistive technology about a change a screen does not
  * say by itself: a block move or a block delete this view made, in the
- * view's labels (`edytor.labels`).
+ * view's `editor` labels (`labelsOf`).
  * DOM-free: the surface renders `message` in a polite live region beside
  * the host (`components/Announcer.svelte`), a new node per announcement
  * (`serial`), so the same words twice are read twice. Only this view's own
@@ -10,6 +10,7 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { kindLabel } from '$lib/kinds.js';
+import { editorEnglish, labelsOf } from '$lib/labels.js';
 import type { BlockMoveRequest } from './moves.js';
 
 /** The label saying a move, by direction (`to`: a placement, a drop). */
@@ -29,6 +30,10 @@ export class Announcer {
 
 	constructor(private edytor: Edytor) {}
 
+	get #labels() {
+		return labelsOf(this.edytor, 'editor', editorEnglish);
+	}
+
 	/** Announce `message` (politely: after what the screen reader is saying). */
 	say = (message: string) => {
 		this.message = message;
@@ -37,7 +42,7 @@ export class Announcer {
 
 	/** `blocks` (one or several) as words: a kind's label for one, a count for several. */
 	what = (blocks: readonly Block[]) => {
-		const { labels } = this.edytor;
+		const labels = this.#labels;
 		return blocks.length === 1
 			? labels.block(kindLabel(this.edytor, blocks[0]))
 			: labels.blocks(blocks.length);
@@ -47,9 +52,9 @@ export class Announcer {
 	moved = (request: BlockMoveRequest, moved: readonly Block[]) => {
 		if (!moved.length) return;
 		const said = MOVED['direction' in request ? request.direction : 'to'];
-		this.say(this.edytor.labels[said](this.what(moved)));
+		this.say(this.#labels[said](this.what(moved)));
 	};
 
 	/** Blocks were deleted: `what` names them, read before they went. */
-	deleted = (what: string) => this.say(this.edytor.labels.deleted(what));
+	deleted = (what: string) => this.say(this.#labels.deleted(what));
 }

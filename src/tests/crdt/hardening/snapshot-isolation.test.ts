@@ -108,8 +108,6 @@ describe('R4 — mutating a public snapshot must not touch live state', () => {
 		expect(linkHref(contentOf(ed.project(), 'b')), 'project() marks').toBe(ORIGIN);
 		expect(inlineDataLabel(ed.contentItems('b')), 'contentItems()').toBe(ORIG_LABEL);
 		expect(linkHref(ed.contentItems('b')), 'contentItems() marks').toBe(ORIGIN);
-		expect(inlineDataLabel(ed.block('b').items), 'block.items').toBe(ORIG_LABEL);
-		expect(linkHref(ed.block('b').items), 'block.items marks').toBe(ORIGIN);
 		expect(inlineDataLabel(ed.runs('b')), 'runs()').toBe(ORIG_LABEL);
 		expect(linkHref(ed.runs('b')), 'runs() marks').toBe(ORIGIN);
 		expect(inlineDataLabel(ed.contentJSON('b')), 'contentJSON()').toBe(ORIG_LABEL);
@@ -172,7 +170,7 @@ describe('R4 — mutating a public snapshot must not touch live state', () => {
 		// a live alias today.
 		for (const grab of [
 			(e: typeof ed) => e.contentItems('b'),
-			(e: typeof ed) => e.block('b').items
+			(e: typeof ed) => e.contentItems('b')
 		]) {
 			const s = seed();
 			const items = grab(s.ed);

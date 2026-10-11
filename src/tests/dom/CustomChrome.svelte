@@ -18,7 +18,6 @@
 		CodeHeader,
 		EquationEditor,
 		ImageControls,
-		ImageEmptyController,
 		LanguageMenu,
 		MediaEmptyController,
 		MentionItem,
@@ -75,8 +74,7 @@
 	add,
 	readonly,
 	expanded,
-	controls,
-	labels
+	controls
 }: BlockHandleSnippetPayload)}
 	{#if !readonly}
 		<button
@@ -84,7 +82,7 @@
 			class="custom-handle"
 			data-testid="custom-add"
 			data-block-id={block.id}
-			aria-label={labels.add(label)}
+			aria-label={`Add a block below ${label}`}
 			aria-expanded={expanded.add ? 'true' : undefined}
 			aria-controls={controls.add}
 			onmousedown={keep}
@@ -96,7 +94,7 @@
 			data-testid="custom-grip"
 			data-block-id={block.id}
 			use:grip
-			aria-label={labels.grip(label)}
+			aria-label={`${label} block`}
 			aria-expanded={expanded.grip ? 'true' : undefined}
 			aria-controls={controls.grip}>⠿</button
 		>
@@ -128,7 +126,7 @@
 				data-testid="custom-table-row"
 				data-row={item.item.id}
 				onmousemove={item.select}
-				onclick={item.run}>{item.label}</button
+				onclick={item.run}>{item.item.id}</button
 			>
 		{/each}
 	</div>
@@ -140,7 +138,7 @@
 		class="custom-table-add"
 		data-testid="custom-table-add"
 		data-kind={payload.kind}
-		aria-label={payload.label}
+		aria-label={payload.kind === 'row' ? 'Add a row' : 'Add a column'}
 		onclick={payload.add}>+</button
 	>
 {/snippet}
@@ -158,8 +156,7 @@
 			type="button"
 			data-testid="custom-code-copy"
 			onmousedown={keep}
-			onclick={() => void header.copy()}
-			>{header.copied ? header.labels.copied : header.labels.copy}</button
+			onclick={() => void header.copy()}>{header.copied ? 'Copied' : 'Copy'}</button
 		>
 	</div>
 {/snippet}
@@ -168,7 +165,7 @@
 	<div class="custom-language-menu" data-testid="custom-language-menu">
 		<input
 			data-testid="custom-language-field"
-			placeholder={menu.labels.search}
+			placeholder="Search"
 			value={menu.query}
 			oninput={(event) => menu.search(event.currentTarget.value)}
 			{@attach menu.keys}
@@ -183,7 +180,7 @@
 					onmousemove={item.select}
 					onclick={item.run}
 				>
-					{item.label}
+					{item.item.label}
 				</li>
 			{/each}
 		</ul>
@@ -195,18 +192,16 @@
 		class="custom-equation-panel"
 		data-testid="custom-equation-panel"
 		role="dialog"
-		aria-label={editor.labels.editor}
+		aria-label="Equation"
 	>
 		<input
 			data-testid="custom-equation-field"
-			aria-label={editor.labels.editor}
+			aria-label="Equation"
 			value={editor.expression}
 			oninput={(event) => editor.set(event.currentTarget.value)}
 			{@attach editor.field}
 		/>
-		<button type="button" onmousedown={keep} onclick={() => editor.close()}
-			>{editor.labels.done}</button
-		>
+		<button type="button" onmousedown={keep} onclick={() => editor.close()}>Done</button>
 	</div>
 {/snippet}
 
@@ -215,7 +210,7 @@
 		{#if menu.addition}
 			<input
 				data-testid="custom-slash-field"
-				aria-label={menu.labels.filterLabel}
+				aria-label="Filter block commands"
 				role="combobox"
 				aria-expanded="true"
 				aria-controls={menu.listId}
@@ -243,7 +238,7 @@
 	<div class="custom-block-menu" data-testid="custom-block-menu" data-edytor-block-menu>
 		<input
 			data-testid="custom-block-menu-field"
-			aria-label={menu.labels.searchLabel}
+			aria-label="Search actions"
 			value={menu.query}
 			oninput={(event) => menu.search(event.currentTarget.value)}
 			{@attach menu.keys}
@@ -293,11 +288,11 @@
 			<button
 				type="button"
 				data-testid="custom-toolbar-link"
-				onclick={() => toolbar.togglePanel('link')}>{toolbar.labels.link}</button
+				onclick={() => toolbar.togglePanel('link')}>Link</button
 			>
 		</div>
 		{#if toolbar.panel === 'link'}
-			<label for={toolbar.linkFieldId}>{toolbar.labels.linkUrl}</label>
+			<label for={toolbar.linkFieldId}>Link URL</label>
 			<input
 				data-testid="custom-toolbar-link-field"
 				value={toolbar.linkUrl}
@@ -309,9 +304,9 @@
 {/snippet}
 
 {#snippet linkCard(toolbar: ToolbarController)}
-	<div data-testid="custom-link-card" role="toolbar" aria-label={toolbar.labels.card}>
+	<div data-testid="custom-link-card" role="toolbar" aria-label="Link">
 		<span>{toolbar.hoveredHref}</span>
-		<button type="button" onclick={() => toolbar.removeHovered()}>{toolbar.labels.remove}</button>
+		<button type="button" onclick={() => toolbar.removeHovered()}>Remove</button>
 	</div>
 {/snippet}
 
@@ -327,7 +322,7 @@
 	<ul data-testid="custom-paste-menu" {@attach menu.popup}>
 		{#each menu.open?.options ?? [] as option, index (option.id)}
 			<li {...menu.option(index)} data-option={option.id} onclick={() => menu.pick(option)}>
-				{option.label}
+				{option.id}
 			</li>
 		{/each}
 	</ul>
@@ -336,10 +331,10 @@
 {#snippet imageToolbar(controls: ImageControls)}
 	<div data-testid="custom-image-toolbar" {@attach controls.bar}>
 		<button type="button" data-testid="custom-image-left" onclick={() => controls.align('left')}
-			>{controls.labels.alignLeft}</button
+			>Align left</button
 		>
 		<button type="button" data-testid="custom-image-alt" onclick={controls.toggleAlt}
-			>{controls.labels.alt}</button
+			>Alt text</button
 		>
 		{#if controls.editing === controls.box?.id}
 			<input
@@ -352,12 +347,12 @@
 	</div>
 {/snippet}
 
-{#snippet imageEmpty(empty: ImageEmptyController)}
+{#snippet imageEmpty(empty: MediaEmptyController)}
 	<div data-testid="custom-image-empty" data-readonly={empty.readonly}>
 		{#if !empty.readonly}
 			<input
 				data-testid="custom-image-empty-field"
-				aria-label={empty.labels.link}
+				aria-label="Image link"
 				bind:value={empty.draft}
 				{@attach empty.field}
 			/>
@@ -370,7 +365,7 @@
 	<div data-testid="custom-media-empty" data-kind={empty.kind}>
 		<input
 			data-testid="custom-media-empty-field"
-			aria-label={empty.kindLabels.placeholder}
+			aria-label="Paste the link…"
 			bind:value={empty.draft}
 			{@attach empty.field}
 		/>
@@ -378,12 +373,10 @@
 	</div>
 {/snippet}
 
-{#snippet suggestionBar({ suggestion, accept, labels }: SuggestionBarPayload)}
+{#snippet suggestionBar({ suggestion, accept }: SuggestionBarPayload)}
 	<div data-testid="custom-suggestion-bar">
-		<span>{suggestion.label ?? labels.suggestion}</span>
-		<button type="button" data-testid="custom-suggestion-accept" onclick={accept}
-			>{labels.accept}</button
-		>
+		<span>{suggestion.label ?? 'Suggestion'}</span>
+		<button type="button" data-testid="custom-suggestion-accept" onclick={accept}>Accept</button>
 	</div>
 {/snippet}
 

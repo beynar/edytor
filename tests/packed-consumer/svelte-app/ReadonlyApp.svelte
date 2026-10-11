@@ -1,5 +1,5 @@
 <script>
-	import { Edytor, richTextPlugin } from 'edytor';
+	import { Edytor, createRichTextPlugin } from 'edytor';
 
 	const seed = {
 		children: [
@@ -12,4 +12,4 @@
 	};
 </script>
 
-<Edytor readonly value={seed} plugins={[richTextPlugin]} />
+<Edytor readonly value={seed} plugins={[createRichTextPlugin()]} />

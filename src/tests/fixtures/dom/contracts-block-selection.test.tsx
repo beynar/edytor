@@ -184,15 +184,15 @@ describe('del.blocks.promote — deleting a selected parent keeps its unselected
 		assertCanonicalTree(edytor, [p('C', [p('L')])]);
 	});
 
-	test('the block handle action (removeBlock) promotes; keepChildren: false removes the subtree', async () => {
+	test('the view’s deleteBlock promotes; keepChildren: false removes the subtree', async () => {
 		const { edytor } = await renderDomEdytor(family());
-		edytor.root!.children[0]!.removeBlock();
+		edytor.deleteBlock(edytor.root!.children[0]!.id);
 		assertCanonicalTree(edytor, [p('A1'), p('A2'), p('A3'), p('B')]);
 	});
 
-	test('removeBlock({ keepChildren: false }) is the explicit whole-subtree delete', async () => {
+	test('deleteBlock(id, { keepChildren: false }) is the explicit whole-subtree delete', async () => {
 		const { edytor } = await renderDomEdytor(family());
-		edytor.root!.children[0]!.removeBlock({ keepChildren: false });
+		edytor.deleteBlock(edytor.root!.children[0]!.id, { keepChildren: false });
 		assertCanonicalTree(edytor, [p('B')]);
 	});
 });

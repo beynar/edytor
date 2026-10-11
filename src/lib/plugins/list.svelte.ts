@@ -71,31 +71,29 @@ export const menuKey = (
 };
 
 /**
- * A list's element (`{@attach controller.popup}`): it takes the list's id
- * (`edytor.popups.idOf(owner)`), its `role` and name unless it has its own,
- * keeps the focus where it is on a press (a field takes its own), and is
- * published to the view's root (`edytor.popups`, `role` its `aria-haspopup`)
- * while `open` answers the rest of its record (its highlighted row, the
- * control that opened it), withdrawn when it closes or leaves the page.
+ * A list's element (`{@attach controller.popup}`, named by its markup): it
+ * takes the list's id (`edytor.popups.idOf(owner)`) and its `role` unless
+ * it has its own, keeps the focus where it is on a press (a field takes its
+ * own), and is published to the view's root (`edytor.popups`, `role` its
+ * `aria-haspopup`) while `open` answers the rest of its record (its
+ * highlighted row, the control that opened it), withdrawn when it closes or
+ * leaves the page.
  */
 export const listPopup =
 	(
 		edytor: Edytor,
 		owner: string,
 		role: 'listbox' | 'menu',
-		name: () => string,
 		open: (node: HTMLElement) => Omit<Popup, 'id'> | false | null = () => ({})
 	): Attachment<HTMLElement> =>
 	(node) => {
 		const id = edytor.popups.idOf(owner);
 		node.id = id;
 		if (!node.hasAttribute('role')) node.setAttribute('role', role);
-		const named = node.hasAttribute('aria-label') || node.hasAttribute('aria-labelledby');
 		node.addEventListener('mousedown', keepFocus);
 		$effect(() => {
 			const popup = open(node);
 			if (!popup) return;
-			if (!named) attribute(node, 'aria-label', name());
 			edytor.popups.set(owner, { id, haspopup: role, ...popup });
 			return () => edytor.popups.set(owner, null);
 		});

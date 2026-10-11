@@ -14,7 +14,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { tableBlock } from '$lib/crdt/tables.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import {
@@ -32,7 +32,7 @@ afterEach(() => {
 
 const plugins = [
 	codePlugin,
-	columnsPlugin,
+	createColumnsPlugin(),
 	tablePlugin,
 	imagePlugin,
 	createMentionPlugin({ items: () => [] }),

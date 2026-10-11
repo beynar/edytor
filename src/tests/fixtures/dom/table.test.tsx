@@ -757,7 +757,7 @@ describe('table.render.scale — a keystroke in a cell costs the cell, not the t
 			reads++;
 			return get(id);
 		}) as typeof cells.get;
-		edytor.idToBlock.get('X0_0')!.firstText!.insertAt(1, 'y');
+		edytor.insertText('X0_0', 1, 'y');
 		await flushDomUpdates();
 		cells.get = get;
 		document.body.innerHTML = '';

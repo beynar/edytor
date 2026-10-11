@@ -3,10 +3,10 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { pageKinds } from '$lib/crdt/semantics.js';
 	import { convertToKind, type KindRow } from '$lib/kinds.js';
-	import { pageEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
+	import { pageEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 	import PageLink from './PageLink.svelte';
-	import { pageHtml, pageIdOf, pageLabels, pageTitleOf, type PagePluginOptions } from './page.js';
+	import { pageHtml, pageIdOf, pageTitleOf, type PagePluginOptions } from './page.js';
 
 	export type { PagePluginOptions };
 
@@ -37,9 +37,8 @@
 		(edytor) => {
 			// First wins, as for the kind: a second listing never replaces it.
 			if (!optionsOf.has(edytor)) optionsOf.set(edytor, options);
-			pageLabels.claim(edytor, labelsWith(pageEnglish, options.labels));
 			const own = optionsOf.get(edytor)!;
-			const labels = pageLabels.of(edytor);
+			const labels = labelsOf(edytor, 'page', pageEnglish);
 			const { create } = own;
 			return {
 				hotkeys: {
@@ -77,11 +76,12 @@
 								id: 'page.new',
 								label: labels.page,
 								icon: '📄',
-								keywords: keywordsOf(
-									'page.new',
-									['subpage', 'new page', 'document', 'link'],
-									own.keywords
-								),
+								keywords: keywordsOf(edytor, 'page.new', [
+									'subpage',
+									'new page',
+									'document',
+									'link'
+								]),
 								group: 'Basic blocks',
 								// Asked of the view given (a `+`'s menu asks it of the block it adds).
 								isEnabled: (view = edytor) =>
@@ -115,9 +115,6 @@
 					: []
 			};
 		};
-
-	/** The page block without a way to open, name or create pages: a block showing its stored title. */
-	export const pagePlugin = createPagePlugin();
 </script>
 
 {#snippet page({ block }: BlockSnippetPayload<Record<string, unknown>>)}

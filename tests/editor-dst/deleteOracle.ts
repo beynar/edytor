@@ -11,9 +11,9 @@
  *
  *   src/lib/events/beforeInputDeleteCommands.ts  (dispatch + boundaries)
  *   src/lib/crdt/rangeDelete.ts                (prepare.deleteRange, D6)
- *   src/lib/block/block.utils.ts               (removeBlock/removeInlineBlock)
+ *   src/lib/crdt/doc/                          (deleteBlock/removeInline)
  *   src/lib/crdt/edytor-doc.ts                 (mergeBackward/Forward/unNest)
- *   src/lib/text/text.utils.ts                 (grapheme-aware deleteText)
+ *   src/lib/text/wordBoundary.ts               (grapheme-aware deleteText)
  *   src/lib/events/wordBoundary.ts             (word offsets — contract
  *                                               reimplemented below,
  *                                               deliberately NOT
@@ -74,7 +74,7 @@ export type DeleteExpectation =
 	 */
 	| { kind: 'invalid'; reason: string };
 
-// ── grapheme boundaries (mirrors text.utils.ts — kept local so the test
+// ── grapheme boundaries (mirrors wordBoundary.ts — kept local so the test
 // bundle does not pull the svelte wrapper layer) ──────────────────────
 
 type GraphemeSegmenter = { segment(value: string): Iterable<{ index: number; segment: string }> };

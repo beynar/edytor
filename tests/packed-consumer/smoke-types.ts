@@ -14,7 +14,7 @@ import {
 	createIndexeddbSync,
 	createWebsocketSync,
 	clearDocument,
-	richTextPlugin,
+	createRichTextPlugin,
 	type DocumentActor,
 	type DocumentReadiness,
 	type EdytorDocument,
@@ -117,7 +117,7 @@ const IdbProvider: typeof IndexeddbPersistence = IndexeddbPersistence;
 const WsProvider: typeof WebsocketProvider = WebsocketProvider;
 const clearDoc: typeof clearDocument = clearDocument;
 const store: typeof storeState = storeState;
-const plugins: Plugin[] = [richTextPlugin];
+const plugins: Plugin[] = [createRichTextPlugin()];
 void idbSync;
 void wsSync;
 void IdbProvider;

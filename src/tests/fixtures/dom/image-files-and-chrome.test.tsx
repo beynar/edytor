@@ -209,7 +209,7 @@ describe('a pasted image file goes through `upload` (WU-21)', () => {
 		const id = edytor.value.children![1]!.id!;
 		expect(edytor.facade.blockDataOf(id)).toEqual({ src: 'https://example.com/a.png' });
 		// Its source removed, the block is a plain empty image again: no stale error.
-		edytor.idToBlock.get(id)!.setData({});
+		edytor.patchData(id, [{ path: [], value: {} }]);
 		await flushDomUpdates();
 		expect(editor.querySelector('[data-edytor-image-error]')).toBeNull();
 		expect(editor.querySelector('[data-edytor-image-form]')).toBeNull();
@@ -503,7 +503,7 @@ describe('alt, width and alignment (WU-21)', () => {
 	it('renders data.alt as the image alt, and no alt as an empty one', async () => {
 		const { editor, edytor } = await withImage({ alt: 'A red barn' });
 		expect(editor.querySelector('[data-edytor-image] img')?.getAttribute('alt')).toBe('A red barn');
-		edytor.idToBlock.get('img')!.setData({ src });
+		edytor.patchData('img', [{ path: [], value: { src } }]);
 		await flushDomUpdates();
 		expect(editor.querySelector('[data-edytor-image] img')?.getAttribute('alt')).toBe('');
 	});
@@ -513,7 +513,7 @@ describe('alt, width and alignment (WU-21)', () => {
 		const wrapper = editor.querySelector<HTMLElement>('[data-edytor-image]')!;
 		expect(wrapper.getAttribute('data-align')).toBe('right');
 		expect(wrapper.querySelector('img')!.style.width).toBe('240px');
-		edytor.idToBlock.get('img')!.setData({ src, align: 'sideways', width: -3 });
+		edytor.patchData('img', [{ path: [], value: { src, align: 'sideways', width: -3 } }]);
 		await flushDomUpdates();
 		expect(wrapper.getAttribute('data-align')).toBe('center');
 		expect(wrapper.querySelector('img')!.style.width).toBe('');

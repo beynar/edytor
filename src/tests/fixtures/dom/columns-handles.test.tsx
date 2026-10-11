@@ -19,7 +19,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { dispatchCopy, dispatchDomKeyDown, flushDomUpdates } from '../../dom/test.utils.js';
 import {
 	block,
@@ -117,7 +117,7 @@ const dragAfter = async (edytor: Edytor, source: string, target: string) => {
 const linked: string[] = [];
 const menu = createBlockMenuPlugin({ linkTo: (b) => `#${b.id}` });
 const render = (children = contractDoc()) =>
-	renderColumns(children, [blockHandlesPlugin, menu, arrowMovePlugin]);
+	renderColumns(children, [blockHandlesPlugin, menu, createArrowMovePlugin()]);
 
 const selectAll = async (edytor: Edytor, ...ids: string[]) => {
 	selectBlocks(edytor, ...ids.map((id) => block(edytor, id)));

@@ -23,7 +23,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import {
 	canonicalTree,
@@ -104,7 +104,8 @@ describe('F-P16 — extensions keep their interception contract (FP-6)', () => {
 	pin('(a) a hook retargets a grouped move: the replacement lands', async () => {
 		const retarget: Plugin = () => ({
 			onBeforeOperation: (change) => {
-				if (change.operation === 'moveBlocks') return { ...change.payload, path: [3] };
+				if (change.operation === 'moveBlocks')
+					return [change.payload[0], { ...change.payload[1], index: 3 }];
 			}
 		});
 		const { edytor } = await renderDomEdytor(
@@ -117,7 +118,7 @@ describe('F-P16 — extensions keep their interception contract (FP-6)', () => {
 			{ plugins: plugins(retarget), autoSelectFixture: false }
 		);
 		const [one, two] = edytor.root!.children;
-		one!.moveBlocks({ blocks: [one!, two!], path: [1] });
+		edytor.moveBlocks([one!.id, two!.id], { parent: null, index: 1 });
 		await flushDomUpdates();
 		expect(shape(edytor)).toEqual([
 			'paragraph:three',
@@ -173,7 +174,7 @@ describe('F-M3 — a veto inside a composite', () => {
 			<root>
 				<paragraph>|</paragraph>
 			</root>,
-			{ plugins: plugins(markdownShortcutsPlugin, vetoing('setBlock')) }
+			{ plugins: plugins(createMarkdownShortcutsPlugin(), vetoing('setBlock')) }
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '#' });
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: ' ' });
@@ -186,7 +187,7 @@ describe('F-M3 — a veto inside a composite', () => {
 			<root>
 				<paragraph>|</paragraph>
 			</root>,
-			{ plugins: plugins(markdownShortcutsPlugin) }
+			{ plugins: plugins(createMarkdownShortcutsPlugin()) }
 		);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: '#' });
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: ' ' });
@@ -249,7 +250,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 			<root>
 				<paragraph>ab|cd</paragraph>
 			</root>,
-			{ plugins: plugins(vetoing('addChildBlocks')) }
+			{ plugins: plugins(vetoing('insertBlocks')) }
 		);
 		await expectRefusedWhole(edytor, () =>
 			dispatchDomBeforeInput(editor, { inputType: 'insertHorizontalRule' })
@@ -302,7 +303,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 					<paragraph>c</paragraph>
 				</paragraph>
 			</root>,
-			{ plugins: plugins(vetoing('moveBlock', 'c')) }
+			{ plugins: plugins(vetoing('moveBlocks', 'c')) }
 		);
 		await expectRefusedWhole(edytor, () =>
 			dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' })
@@ -317,7 +318,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 					b<paragraph>c</paragraph>
 				</paragraph>
 			</root>,
-			{ plugins: plugins(vetoing('moveBlock', 'c')) }
+			{ plugins: plugins(vetoing('moveBlocks', 'c')) }
 		);
 		await expectRefusedWhole(edytor, () =>
 			dispatchDomBeforeInput(editor, { inputType: 'deleteContentForward' })
@@ -330,7 +331,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 				<paragraph>a</paragraph>
 				<paragraph>b|</paragraph>
 			</root>,
-			{ plugins: plugins(vetoing('moveBlock', 'b')) }
+			{ plugins: plugins(vetoing('moveBlocks', 'b')) }
 		);
 		await expectRefusedWhole(edytor, () => dispatchDomKeyDown(editor, { key: 'Tab' }));
 	});
@@ -342,7 +343,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 					a<paragraph>b|</paragraph>
 				</paragraph>
 			</root>,
-			{ plugins: plugins(vetoing('moveBlock', 'b')) }
+			{ plugins: plugins(vetoing('moveBlocks', 'b')) }
 		);
 		await expectRefusedWhole(edytor, () =>
 			dispatchDomKeyDown(editor, { key: 'Tab', shiftKey: true })

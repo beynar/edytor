@@ -20,12 +20,6 @@ import { inCodeLines } from '$lib/session/inputRules.js';
 import { inPage, optionAttributes, type OptionAttributes } from '../chrome.js';
 import { listPopup } from '../list.svelte.js';
 
-export type TextInsertionPayload = {
-	value: string;
-	start?: number;
-	end?: number;
-};
-
 /** Where the trigger is now: its text, the trigger's start and the query's end in it. */
 export type TriggerRange = { text: Text; triggerStart: number; queryEnd: number };
 
@@ -72,7 +66,6 @@ export abstract class TextTriggerController {
 			edytor,
 			owner,
 			'listbox',
-			() => this.listName,
 			(node) => this.isOpen && this.popupOf(inPage(node, this.rowIdAt(this.selectedIndex)))
 		);
 	}
@@ -91,8 +84,8 @@ export abstract class TextTriggerController {
 	publish = (popup: Popup | null) => this.edytor.popups.set(this.owner, popup);
 
 	/**
-	 * The listbox (`{@attach controller.popup}`): it takes the menu's id, its
-	 * `listbox` role and name unless it has its own, keeps the focus where it
+	 * The listbox (`{@attach controller.popup}`, named by your markup): it
+	 * takes the menu's id and its `listbox` role unless it has its own, keeps the focus where it
 	 * is on a press (the editor's caret, or the menu's field), and is
 	 * published to the view's root (`edytor.popups`) while the menu is open,
 	 * with its highlighted row (`option(index)`) once that row is in the page.
@@ -117,8 +110,6 @@ export abstract class TextTriggerController {
 		return { id: this.listId, haspopup: 'listbox', active };
 	}
 
-	/** The listbox's accessible name. */
-	protected abstract get listName(): string;
 	/** The element id of the row at `index`, if there is such a row. */
 	protected abstract rowIdAt(index: number): string | undefined;
 	/** The rows the keyboard moves through. */
@@ -129,20 +120,15 @@ export abstract class TextTriggerController {
 	protected abstract queried(query: string): void;
 
 	/** After an `insertText`: the trigger opens, the query grows, or the menu closes. */
-	handleTextInsertion(text: Text, block: Block, payload: TextInsertionPayload) {
-		const range = this.edytor.selection.textRange();
-		const start = payload.start ?? range.yStart;
-		const end = payload.end ?? range.yEnd;
+	handleTextInsertion(text: Text, block: Block, start: number, value: string) {
 		if (this.edytor.readonly) return this.close();
 		// A trigger typed alone, or committed by an IME with its query (`/h`).
-		const at =
-			start === end && this.admits(block) ? this.triggerAt(text, start, payload.value) : -1;
-		if (at !== -1) this.open(text, at, start + payload.value.length);
+		const at = this.admits(block) ? this.triggerAt(text, start, value) : -1;
+		if (at !== -1) this.open(text, at, start + value.length);
 		// Typing at the query's end extends it; typing anywhere else closes the menu.
 		else if (this.activeRange) {
 			const range = this.range;
-			if (text === range?.text && start === range.queryEnd)
-				this.setEnd(text, start + payload.value.length);
+			if (text === range?.text && start === range.queryEnd) this.setEnd(text, start + value.length);
 			else this.close();
 		}
 	}
@@ -238,7 +224,7 @@ export abstract class TextTriggerController {
 			const index = text.index;
 			// Nothing took the lead: the trigger goes on its own, unless the body declined.
 			if (!run.taken && run.out !== false && index !== -1)
-				block.deleteContentAtRange({ start: [index, triggerStart], end: [index, end] });
+				edytor.deleteText(block.id, from, to - from);
 			const kept = run.out === false || (run.taken && dispatcher.last?.status === 'refused');
 			const out = await run.out;
 			if (owns(text, held)) dispatcher.caret(text, kept ? end : triggerStart);
@@ -316,27 +302,8 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 		return !inCodeLines(this.edytor, block);
 	}
 
-	/** The menu's accessible name. */
-	get name() {
-		return this.trigger.name ?? this.edytor.labels.triggerMenu;
-	}
-
-	protected get listName() {
-		return this.name;
-	}
-
 	protected rowIdAt(index: number) {
 		return this.items[index] === undefined ? undefined : this.optionId(index);
-	}
-
-	/** The text shown when no row matches. */
-	get empty() {
-		return this.trigger.empty ?? this.edytor.labels.noResults;
-	}
-
-	/** The text shown while a search is pending and no row is shown. */
-	get searching() {
-		return this.trigger.searching ?? this.edytor.labels.searching;
 	}
 
 	labelOf = (item: T) => (this.trigger.label ? this.trigger.label(item) : defaultLabel(item));

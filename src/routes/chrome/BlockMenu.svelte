@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import { iconOf } from './icons.js';
+	import { PALETTE } from './palette.js';
 	import {
-		TOOLBAR_COLORS,
 		type BlockMenuAction,
 		type BlockMenuColor,
 		type BlockMenuController,
@@ -11,7 +12,7 @@
 	/** Notion's block menu, drawn for `createBlockMenuPlugin({ menu })`. */
 	let { controller }: { controller: BlockMenuController } = $props();
 	const rows = $derived(controller.rows);
-	const labels = $derived(controller.labels);
+	const labels = $derived(words.blockMenu);
 
 	type Row = BlockMenuAction | KindRow | BlockMenuColor;
 	/** A row's shape: a colour (`field`), a kind (`value`), or an action. */
@@ -84,7 +85,7 @@
 	 */
 	const swatch = (row: Row) => {
 		if (!('field' in row) || row.value === null) return undefined;
-		const light = TOOLBAR_COLORS.find(({ name }) => name.toLowerCase() === row.value)!;
+		const light = PALETTE.find(({ name }) => name.toLowerCase() === row.value)!;
 		return `var(--edytor-${row.field}-${row.value}, ${row.field === 'color' ? light.text : light.background})`;
 	};
 </script>

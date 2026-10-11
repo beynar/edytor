@@ -18,15 +18,24 @@ import {
 } from './client.js';
 import { versionDiff, type VersionChange } from './diff.js';
 import { versionHighlightsPlugin } from './versionHighlights.js';
-import {
-	historyEnglish,
-	labelsWith,
-	type HistoryPanelLabels,
-	type PartialLabels
-} from '$lib/labels.js';
 import { optionAttributes, type OptionAttributes } from '$lib/plugins/chrome.js';
 
-export type { HistoryPanelLabels };
+/**
+ * The last outcome to announce (`''`: none): a restore in flight or done
+ * (`unchanged`: the page already matched), the previewed version gone
+ * (`unavailable`), an undo done or with nothing to undo, a request refused
+ * (`denied`: a `401` or `403`) or failed. Your panel says it in its words.
+ */
+export type VersionHistoryStatus =
+	| ''
+	| 'restoring'
+	| 'restored'
+	| 'unchanged'
+	| 'unavailable'
+	| 'undone'
+	| 'nothingToUndo'
+	| 'denied'
+	| 'failed';
 
 /** No change highlighted. */
 const NONE: ReadonlyMap<string, VersionChange> = new Map();
@@ -40,15 +49,13 @@ export type VersionHistoryOptions = {
 	plugins?: Plugin[];
 	/** The locale dates and times are written in (default the browser's). */
 	locale?: string | string[];
-	/** Replace any of the history's words. */
-	labels?: PartialLabels<'history'>;
 	/** The id prefix of the list's rows (page-unique: `$props.id()`). */
 	id?: string;
 	/** After a restore the room answered. */
 	onRestore?: (result: HistoryRestoreResult) => void;
 	/** After an undo the room answered. */
 	onUndo?: (result: HistoryUndoResult) => void;
-	/** A request failed (`status` says `labels.denied` or `labels.failed`). */
+	/** A request failed (`status` is `denied` or `failed`). */
 	onError?: (error: unknown) => void;
 };
 
@@ -70,8 +77,8 @@ export class VersionHistory {
 	busy = $state(false);
 	/** A restore this view applied, which `undo` can take back. */
 	undoable = $state(false);
-	/** The last outcome, to announce (`aria-live`). */
-	status = $state('');
+	/** The last outcome, to announce (`aria-live`) in your words. */
+	status = $state<VersionHistoryStatus>('');
 	/** The last outcome failed. */
 	failed = $state(false);
 	/** Highlight the blocks added, removed and changed since the version. */
@@ -81,12 +88,9 @@ export class VersionHistory {
 	/** The request serial: an older answer never replaces a newer one. */
 	#serial = 0;
 	readonly #options: VersionHistoryOptions;
-	/** The history's words. */
-	readonly labels: HistoryPanelLabels;
 
 	constructor(options: VersionHistoryOptions) {
 		this.#options = options;
-		this.labels = labelsWith(historyEnglish, options.labels);
 		$effect(() => {
 			const document = options.document;
 			if (!document) return void (this.#current = null);
@@ -122,8 +126,8 @@ export class VersionHistory {
 		this.failed = true;
 		this.status =
 			error instanceof HistoryRequestError && (error.status === 401 || error.status === 403)
-				? this.labels.denied
-				: this.labels.failed;
+				? 'denied'
+				: 'failed';
 		this.#options.onError?.(error);
 	};
 
@@ -155,7 +159,7 @@ export class VersionHistory {
 			this.shown = json;
 			if (json === null) {
 				this.failed = true;
-				this.status = this.labels.unavailable;
+				this.status = 'unavailable';
 			}
 		} catch (error) {
 			if (mine === this.#serial) this.#fail(error);
@@ -166,11 +170,11 @@ export class VersionHistory {
 
 	/** Restore the previewed version (the room writes it as one change). */
 	restore = async () => {
-		const { selected, labels } = this;
+		const { selected } = this;
 		if (selected === null || this.busy) return;
 		this.busy = true;
 		this.failed = false;
-		this.status = labels.restoring;
+		this.status = 'restoring';
 		try {
 			const result = await this.#options.client.restore(selected);
 			if (result.status === 'applied') this.undoable = true;
@@ -179,10 +183,10 @@ export class VersionHistory {
 			this.failed = result.status === 'refused';
 			this.status =
 				result.status === 'applied'
-					? labels.restored
+					? 'restored'
 					: result.status === 'noop'
-						? labels.unchanged
-						: labels.unavailable;
+						? 'unchanged'
+						: 'unavailable';
 			this.#options.onRestore?.(result);
 		} catch (error) {
 			this.#fail(error);
@@ -199,7 +203,7 @@ export class VersionHistory {
 		try {
 			const result = await this.#options.client.undo();
 			this.undoable = false;
-			this.status = result.status === 'applied' ? this.labels.undone : this.labels.nothingToUndo;
+			this.status = result.status === 'applied' ? 'undone' : 'nothingToUndo';
 			this.#options.onUndo?.(result);
 		} catch (error) {
 			this.#fail(error);
@@ -208,16 +212,15 @@ export class VersionHistory {
 		}
 	};
 
-	/** A version's date and slot (`Oct 8, 2026 · Morning`), in `locale`. */
-	titleOf = (entry: HistoryVersion) => {
+	/** A version's day (`Oct 8, 2026`), in `locale`; its half of the day is `entry.slot`. */
+	dateOf = (entry: HistoryVersion) => {
 		const day = new Date(`${entry.date}T00:00:00Z`);
-		const date = Number.isNaN(day.getTime())
+		return Number.isNaN(day.getTime())
 			? entry.date
 			: new Intl.DateTimeFormat(this.#options.locale, {
 					dateStyle: 'medium',
 					timeZone: 'UTC'
 				}).format(day);
-		return `${date} · ${entry.slot === 'am' ? this.labels.morning : this.labels.evening}`;
 	};
 
 	/** When a version was saved, in `locale`. */
@@ -229,13 +232,6 @@ export class VersionHistory {
 					dateStyle: 'medium',
 					timeStyle: 'short'
 				}).format(at);
-	};
-
-	/** Who edited a version (`Ada, Alan and 2 more`). */
-	editorsOf = (entry: HistoryVersion) => {
-		if (entry.editors.length === 0 && !entry.more) return this.labels.noEditors;
-		const more = entry.more ? ` ${this.labels.moreEditors(entry.more)}` : '';
-		return `${entry.editors.join(', ')}${more}`;
 	};
 
 	/**

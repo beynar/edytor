@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import type { BlockHandleSnippetPayload } from '$lib/index.js';
 
 	/**
@@ -8,7 +9,7 @@
 	 */
 	let { handle }: { handle: BlockHandleSnippetPayload } = $props();
 	const { block, grip } = $derived(handle);
-	const labels = $derived(handle.labels);
+	const labels = $derived(words.blockHandles);
 </script>
 
 <button

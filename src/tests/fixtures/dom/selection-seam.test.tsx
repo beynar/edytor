@@ -401,7 +401,7 @@ describe('sel.seam.* through the view: endpoints this view did not author', () =
 			);
 			const [, bb, cc] = edytor.root!.children;
 			await setNativeSelection(edytor, bb!.firstText!, 1);
-			bb!.removeBlock();
+			edytor.deleteBlock(bb!.id);
 			await flushDomUpdates();
 			expect(caret(edytor)).toMatchObject({ block: cc!.id, offset: 0, isCollapsed: true });
 		}

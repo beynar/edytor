@@ -104,7 +104,7 @@ describe('command-lane oracle sensitivity (U11)', () => {
 		// 'c' sits at offset 2 — via the production format path.
 		const text = edytor.root!.children[0]!.firstText!;
 		expect(text.stringContent).toBe('abcef');
-		text.formatAt(2, 1, { bold: null });
+		edytor.formatRange(text.parent.id, text.segStart + 2, 1, { bold: null });
 		await flushDomUpdates();
 		expect(() => assertCanonicalTree(edytor, contract)).toThrow();
 	});

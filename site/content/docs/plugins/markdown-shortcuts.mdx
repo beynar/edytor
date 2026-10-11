@@ -4,14 +4,14 @@ description: The markdown shortcuts plugin converts a block when you type a pref
 icon: hash
 ---
 
-`markdownShortcutsPlugin` brings Notion's markdown as you type. A prefix at the start of a block converts it: `# ` makes a heading, `- ` a bulleted list item, ` ``` ` a code block. The prefixes come from the `markdown` field of each block kind's presets, so the plugin has no list of its own. Inline, `**bold**`, `*italic*` and the others apply their mark when you type the closing marker.
+`createMarkdownShortcutsPlugin()` brings Notion's markdown as you type. A prefix at the start of a block converts it: `# ` makes a heading, `- ` a bulleted list item, ` ``` ` a code block. The prefixes come from the `markdown` field of each block kind's presets, so the plugin has no list of its own. Inline, `**bold**`, `*italic*` and the others apply their mark when you type the closing marker.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, markdownShortcutsPlugin, codePlugin } from 'edytor';
+	import { Edytor, createMarkdownShortcutsPlugin, createCodePlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[codePlugin, markdownShortcutsPlugin]} />
+<Edytor plugins={[createCodePlugin(), createMarkdownShortcutsPlugin()]} />
 ```
 
 It takes no options. It is two [input rules](/docs/plugins/input-rules), one for the prefixes and one for the inline marks; a plugin of your own adds others the same way (`:smile:` → 😄).
@@ -48,7 +48,7 @@ A conversion happens when the character you type completes a prefix, and all of 
 - the block is convertible (not a void or island block, and not inside one); in a list's item, the new kind takes the item out of the list ([Containers](/docs/concepts/blocks#containers));
 - the typed input is one character.
 
-Removing the prefix and converting the block are one operation (`setBlock`, with a `deleteContentAtRange` step for the prefix): a plugin that refuses either refuses both. When the conversion is refused, the character is inserted as normal text instead. The conversion is its own undo step, separate from the typing before it: undo after `## ` leaves a paragraph `##`. After the conversion the caret is at the start of the converted block, or of its first child when the kind starts with one (a code block's first line).
+Removing the prefix and converting the block are one operation (`setBlock`, with a `deleteText` step for the prefix): a plugin that refuses either refuses both. When the conversion is refused, the character is inserted as normal text instead. The conversion is its own undo step, separate from the typing before it: undo after `## ` leaves a paragraph `##`. After the conversion the caret is at the start of the converted block, or of its first child when the kind starts with one (a code block's first line).
 
 As in Notion, text after the caret is kept: typing `- ` at the start of `hello` makes a bulleted item `hello`, with the caret before it.
 

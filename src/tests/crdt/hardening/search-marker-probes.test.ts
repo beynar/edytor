@@ -338,7 +338,7 @@ describe('gateH-R1 — facade-level randomized differential (markers on vs off)'
 				// split then occasionally merge back
 				const at = 1 + Math.floor(draw() * (lenOf(s, 'b') - 1));
 				const newId = `s${Math.floor(draw() * 1e6)}`;
-				s.ed.block('b').split(at, newId);
+				s.ed.splitBlock('b', at, newId);
 			} else if (roll < 0.96) {
 				if (s.um.undoStack.length > 0) s.um.undo();
 			} else {

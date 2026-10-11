@@ -66,7 +66,6 @@ import { bindDeletes } from './text/deletes.js';
 import { bindPurge, readHorizon } from './purge.js';
 import { restoreDocument } from './restore.js';
 import { bindRuns, indexOf, type DisplayRoles, type RunView } from './text/runs.js';
-import { bindNodes, type DocBlock } from './nodes.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
@@ -396,15 +395,6 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			(id: I, ...rest: A): R =>
 				f(ref(id), ...rest);
 
-		/**
-		 * The typed-node surface (`document.block(id)` handles — see
-		 * `nodes.ts`). Created lazily on first use; `bindNodes` caches one
-		 * handle per block id, so repeated `facade.block(id)` calls return
-		 * the same instance.
-		 */
-		let nodeApi: ReturnType<typeof bindNodes> | undefined;
-		const nodes = () => (nodeApi ??= bindNodes(facade));
-
 		const facade = {
 			// lifecycle
 			init: (opts?: Parameters<typeof init>[1]) => write(() => init(doc, opts)),
@@ -526,7 +516,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			model: layers.model as L['model'],
 			text: layers.text as L['text'],
 			runsView,
-			// ── model-state version + typed node surface ──────────
+			// ── model-state version ─────────────────────────────
 			/**
 			 * The index version — bumps on every fold that changed derived
 			 * state, mid-transaction writes included. Read surfaces that
@@ -535,15 +525,7 @@ export const docFacade = <L extends Layers>(Y: EngineApi, layers: L) => {
 			 */
 			get version() {
 				return runsView.version();
-			},
-			/**
-			 * The typed handle over one document block — the domain command
-			 * surface (see `nodes.ts` for the contract: display offsets,
-			 * transaction-aware reads, dead-safe). Handles are cached per
-			 * id; a handle for an absent id reports `exists`/`live`/`visible`
-			 * false and refuses ops.
-			 */
-			block: (id: BlockId): DocBlock => nodes().block(ref(id))
+			}
 		};
 		return facade;
 	};

@@ -2,7 +2,6 @@ import type { Snippet } from 'svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { ToolbarController } from './ToolbarController.svelte.js';
 import { mountChrome } from '../chrome.js';
-import { toolbarEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
 import { placeNear } from '$lib/surface/overlay.js';
 
 /** A press in a field of the chrome (an input, a select): it takes focus. */
@@ -30,15 +29,13 @@ export type ToolbarOptions = {
 	 * card. A press on it never takes the editor's focus.
 	 */
 	card?: Snippet<[ToolbarController]>;
-	/** The words the toolbar and the link card show, over the English ones. */
-	labels?: PartialLabels<'toolbar'>;
 };
 
 /** The selection toolbar, drawn by your `toolbar` snippet, and the link card by your `card`. */
 export const createToolbarPlugin =
 	(options: ToolbarOptions = {}): Plugin =>
 	(edytor) => {
-		const controller = new ToolbarController(edytor, labelsWith(toolbarEnglish, options.labels));
+		const controller = new ToolbarController(edytor);
 
 		/** Above the selection, kept in the viewport; measured in the overlay's frame, written after. */
 		const positionToolbar = (host: HTMLElement) => {

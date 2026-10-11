@@ -296,7 +296,7 @@ describe('YW-07: a split never writes an explicit empty tail type', () => {
 	it('block.split and transact take the same path', () => {
 		const document = typeless();
 		const ed = document.facade;
-		expect(ed.block('A').split(5, 'B', { type: '' }).status).toBe('applied');
+		expect(ed.splitBlock('A', 5, 'B', { type: '' }).status).toBe('applied');
 		ed.transact(() => ed.splitBlock('B', 0, 'C', { type: '' }));
 		for (const id of ['B', 'C'])
 			expect(M.blockNodeOf(document.doc, id).getAttr('type')).toBe('paragraph');
@@ -417,7 +417,7 @@ describe('SW8-roles-1: a malformed attribution record never breaks reads or edit
 		});
 		const ed = document.facade;
 		document.doc.transact(() => document.doc.get('blockattr').setAttr('b/P', { getAttr: 1 }));
-		expect(() => ed.block('P').attribution).not.toThrow();
+		expect(() => ed.blockAttribution('P')).not.toThrow();
 		expect(ed.insertText('P', 1, 'q').status).toBe('applied');
 		expect(tree(ed)).toBe('P:"pq"');
 		document.destroy();

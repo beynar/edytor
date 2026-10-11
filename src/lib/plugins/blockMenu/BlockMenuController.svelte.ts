@@ -1,4 +1,4 @@
-import { untrack, type Snippet } from 'svelte';
+import type { Snippet } from 'svelte';
 import { blockSelection } from '$lib/session/selection.js';
 import type { Attachment } from 'svelte/attachments';
 import type { EditorCommand } from '$lib/plugins.js';
@@ -23,12 +23,7 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { selectedMembers } from '$lib/selection/visibility.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
-import {
-	blockMenuEnglish,
-	labelsWith,
-	type BlockMenuLabels,
-	type PartialLabels
-} from '$lib/labels.js';
+import { blockMenuEnglish, labelsOf, type BlockMenuLabels } from '$lib/labels.js';
 import { BLOCK_COLORS, colorable, setBlockColor, type BlockColorField } from '$lib/block/colors.js';
 import {
 	attribute,
@@ -43,7 +38,7 @@ export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
 	linkTo?: (block: Block) => string;
 	/**
-	 * The menu's markup; it renders while `controller.isOpen`, placed beside
+	 * The menu's markup and its words; it renders while `controller.isOpen`, placed beside
 	 * the handle (mark your panel `data-edytor-block-menu` for placement;
 	 * without it, nothing shows).
 	 * The controller runs every action; `close()` returns the caret. Keep
@@ -53,8 +48,6 @@ export type BlockMenuOptions = {
 	 * row, `{@attach controller.flyoutMenu}` on an open flyout.
 	 */
 	menu?: Snippet<[BlockMenuController]>;
-	/** The words the menu shows (its actions, search field, headings), over the English ones. */
-	labels?: PartialLabels<'blockMenu'>;
 };
 
 export type BlockMenuAction = {
@@ -75,7 +68,7 @@ export type BlockMenuAction = {
 export type BlockMenuColor = {
 	/** `color.<name>` or `background.<name>` (`color.default`, `background.default`). */
 	id: string;
-	/** Its words in the menu's labels (`colorText`, `colorBackground`): "Red text", "Red background", "Default text". */
+	/** Its words in the view's labels (`colorText`, `colorBackground`): "Red text", "Red background", "Default text". */
 	label: string;
 	field: BlockColorField;
 	value: (typeof BLOCK_COLORS)[number] | null;
@@ -109,8 +102,8 @@ export const colorQueryRow = (row: BlockMenuColor) => ({
  * listed once a query names them (`searchOnly`): each paints the caret's
  * block, as the block menu's Color does (`setBlockColor`).
  */
-export const colorCommands = (edytor: Edytor, labels: BlockMenuLabels): EditorCommand[] =>
-	colorRows(labels).map((row) => ({
+export const colorCommands = (edytor: Edytor): EditorCommand[] =>
+	colorRows(labelsOf(edytor, 'blockMenu', blockMenuEnglish)).map((row) => ({
 		id: row.id,
 		...colorQueryRow(row),
 		icon: 'A',
@@ -147,27 +140,21 @@ export class BlockMenuController {
 	/** The keyboard's row in the open flyout. */
 	flyoutIndex = $state(0);
 
-	/** The words the menu shows (the plugin's `labels`): read them in your `menu`. */
-	readonly labels: BlockMenuLabels;
-	/** The Color flyout's rows, in `labels`. */
+	/** The actions' words: the view's `blockMenu` labels. */
+	readonly #labels: BlockMenuLabels;
+	/** The Color flyout's rows, in those words. */
 	readonly #colors: BlockMenuColor[];
 
 	constructor(
 		private edytor: Edytor,
 		private options: BlockMenuOptions = {}
 	) {
-		this.labels = labelsWith(blockMenuEnglish, options.labels);
-		this.#colors = colorRows(this.labels);
-		this.popup = listPopup(
-			edytor,
-			'block-menu',
-			'menu',
-			() => this.labels.menu,
-			() => {
-				const { block } = this;
-				return block && { opener: { block: block.id, control: 'grip' } };
-			}
-		);
+		this.#labels = labelsOf(edytor, 'blockMenu', blockMenuEnglish);
+		this.#colors = colorRows(this.#labels);
+		this.popup = listPopup(edytor, 'block-menu', 'menu', () => {
+			const { block } = this;
+			return block && { opener: { block: block.id, control: 'grip' } };
+		});
 	}
 
 	get isOpen() {
@@ -206,18 +193,12 @@ export class BlockMenuController {
 	popup: Attachment<HTMLElement>;
 
 	/**
-	 * An open flyout (`{@attach controller.flyoutMenu}`): its id, `menu`
-	 * role and name, the overlay's placement beside the menu, and presses
-	 * that keep the focus.
+	 * An open flyout (`{@attach controller.flyoutMenu}`, named by your
+	 * markup): its id, `menu` role, the overlay's placement beside the menu,
+	 * and presses that keep the focus.
 	 */
 	flyoutMenu: Attachment<HTMLElement> = (node) => {
-		const { color, turnInto } = this.labels;
-		identify(
-			node,
-			this.flyoutId,
-			'menu',
-			untrack(() => this.flyout) === 'color' ? color : turnInto
-		);
+		identify(node, this.flyoutId, 'menu');
 		node.setAttribute('data-edytor-block-menu-flyout', '');
 		node.addEventListener('mousedown', keepFocus);
 		return () => node.removeEventListener('mousedown', keepFocus);
@@ -345,7 +326,8 @@ export class BlockMenuController {
 	}
 
 	get actions(): BlockMenuAction[] {
-		const { block, blocks, labels, edytor } = this;
+		const { block, blocks, edytor } = this;
+		const labels = this.#labels;
 		if (!block) return [];
 		const [mod, shift] = edytor.keymap.isMac ? ['⌘', '⇧'] : [`${labels.ctrl}+`, `${labels.shift}+`];
 		/** An action row, its icon named by its id. */
@@ -362,7 +344,7 @@ export class BlockMenuController {
 		const move = (direction: 'up' | 'down', label: string, arrow: string) =>
 			action(direction, label, {
 				hint: `${mod}${shift}${arrow}`,
-				isEnabled: () => edytor.canMoveBlocks({ blocks: outermost(blocks), direction }),
+				isEnabled: () => edytor.canMove({ blocks: outermost(blocks), direction }),
 				run: () => this.move(direction)
 			});
 		const all: BlockMenuAction[] = [
@@ -460,7 +442,7 @@ export class BlockMenuController {
 
 	move(direction: 'up' | 'down') {
 		if (!this.blocks.length) return;
-		this.edytor.moveBlocks({ blocks: outermost(this.blocks), direction });
+		this.edytor.move({ blocks: outermost(this.blocks), direction });
 		this.close();
 	}
 
@@ -498,7 +480,7 @@ export class BlockMenuController {
 	}
 
 	duplicate(block: Block) {
-		const copy = block.duplicateBlock();
+		const copy = this.edytor.idToBlock.get(this.edytor.duplicateBlock(block.id).ids[0] ?? '');
 		this.close(false);
 		this.caret(copy ?? block);
 	}
@@ -510,11 +492,10 @@ export class BlockMenuController {
 	 */
 	duplicateAll(blocks: Block[]) {
 		const copies = this.edytor.dispatcher
-			.each('insertBlock', outermost(blocks), (block) => block.duplicateBlock())
-			.filter((copy) => copy != null);
+			.each('duplicateBlock', outermost(blocks), (block) => this.edytor.duplicateBlock(block.id))
+			.flatMap((copy) => (copy?.status === 'applied' ? copy.ids : []));
 		this.close(false);
-		if (copies.length)
-			this.edytor.selection.select(blockSelection(copies.map((block) => block.id)));
+		if (copies.length) this.edytor.selection.select(blockSelection(copies));
 	}
 
 	/**

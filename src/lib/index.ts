@@ -53,6 +53,7 @@ export type {
 	Placeholder,
 	PlaceholderView,
 	ChangePayload,
+	Commands,
 	AfterOperationPayload,
 	Prevent,
 	InputRule,
@@ -80,17 +81,13 @@ export type {
 
 // ── The bundled plugins ────────────────────────────────────────────────
 export {
-	richTextPlugin,
 	createRichTextPlugin,
 	richTextOperations,
 	richTextPlaceholder,
-	createRichTextPlaceholder,
 	CALLOUT_ICONS,
 	type CalloutIconPicker,
-	type CalloutIconOption,
 	type RichTextPluginOptions,
-	arrowMovePlugin,
-	codePlugin,
+	createArrowMovePlugin,
 	createCodePlugin,
 	CODE_LANGUAGES,
 	loadCodeLanguage,
@@ -100,7 +97,7 @@ export {
 	type LanguageMenu,
 	type LanguageMenuItem,
 	type LanguageRow,
-	markdownShortcutsPlugin,
+	createMarkdownShortcutsPlugin,
 	createMentionPlugin,
 	type MentionItem,
 	type MentionData,
@@ -115,7 +112,6 @@ export {
 	type BlockActivation,
 	type BlockAddition,
 	createBlockHandlesPlugin,
-	type BlockHandleActivation,
 	type BlockHandlesOptions,
 	type BlockHandleSnippetPayload,
 	type BlockHandleController,
@@ -123,7 +119,6 @@ export {
 	type SlashMenuOptions,
 	type SlashMenuController,
 	createToolbarPlugin,
-	TOOLBAR_COLORS,
 	type ToolbarOptions,
 	type ToolbarController,
 	createBlockMenuPlugin,
@@ -131,22 +126,16 @@ export {
 	type BlockMenuController,
 	type BlockMenuAction,
 	type BlockMenuColor,
-	suggestionsPlugin,
 	createSuggestionsPlugin,
 	type SuggestionsOptions,
 	type SuggestionBarPayload,
-	imagePlugin,
 	createImagePlugin,
-	isImagePlugin,
 	safeImageSrc,
 	storableImageSrc,
 	MAX_INLINE_IMAGE_BYTES,
 	type ImagePluginOptions,
-	columnsPlugin,
 	createColumnsPlugin,
-	isColumnsPlugin,
 	type ColumnsPluginOptions,
-	embedPlugin,
 	createEmbedPlugin,
 	EMBED_PROVIDERS,
 	EMBED_SANDBOX,
@@ -154,15 +143,11 @@ export {
 	embedSourceOf,
 	type EmbedProvider,
 	type EmbedPluginOptions,
-	bookmarkPlugin,
 	createBookmarkPlugin,
 	type BookmarkPluginOptions,
 	type BookmarkPreview,
-	filePlugin,
 	createFilePlugin,
-	videoPlugin,
 	createVideoPlugin,
-	audioPlugin,
 	createAudioPlugin,
 	safeWebUrl,
 	safeMediaSrc,
@@ -175,8 +160,6 @@ export {
 	type UrlPasteOption,
 	type ImageControls,
 	type ImageBox,
-	type ImageEmptyController,
-	type ImageEmptyFailure,
 	type MenuItemPayload,
 	type OptionAttributes,
 	createFindPlugin,
@@ -187,7 +170,6 @@ export {
 	type ReplaceMatches,
 	type FindMatch,
 	type FindOptions,
-	marqueePlugin,
 	createMarqueePlugin,
 	type MarqueePluginOptions,
 	type MarqueeBoxPayload,
@@ -200,16 +182,12 @@ export {
 	type CommentNotice,
 	type CommentUser,
 	type PlacedThread,
-	pagePlugin,
 	createPagePlugin,
 	type PagePluginOptions,
-	tocPlugin,
 	createTocPlugin,
 	type TocPluginOptions,
 	type TocHeadingLevel,
-	tablePlugin,
 	createTablePlugin,
-	isTablePlugin,
 	type TablePluginOptions,
 	insertTableRow,
 	deleteTableRows,
@@ -326,7 +304,7 @@ export {
 	type HistoryRestoreResult,
 	type HistoryUndoResult,
 	type HistoryVersion,
-	type HistoryPanelLabels,
+	type VersionHistoryStatus,
 	type VersionHistoryOptions,
 	type VersionChange,
 	type VersionDiff
@@ -338,26 +316,19 @@ export {
 export type { EdytorProps } from './components/Edytor.svelte';
 export type { EdytorOptions, Snippets } from './edytor.svelte.js';
 export type {
-	BlockHandlesLabels,
 	BlockMenuLabels,
 	CodeLabels,
 	ColumnsLabels,
 	CommentsLabels,
 	EditorLabels,
 	EquationLabels,
-	FindLabels,
 	ImageLabels,
-	MediaKindLabels,
 	MediaLabels,
-	MentionLabels,
 	PageLabels,
 	PageLinkLabels,
 	RichTextLabels,
-	SlashMenuLabels,
-	SuggestionsLabels,
 	TableLabels,
-	TocLabels,
-	ToolbarLabels
+	TocLabels
 } from './labels.js';
 export type {
 	BlockElement,
@@ -377,12 +348,7 @@ export type {
 } from './session/selection.js';
 export type { TextAnchor } from './selection/selection.svelte.js';
 export type { Key, Modifier, Modifiers } from './session/keymap.js';
-export type { TextOperations } from './text/text.utils.js';
-export type { BlockBeside, BlockOperations } from './block/block.utils.js';
-export type {
-	TextInsertionPayload,
-	TriggerRange
-} from './plugins/triggers/TriggerController.svelte.js';
+export type { TriggerRange } from './plugins/triggers/TriggerController.svelte.js';
 export type { RichTextLink, RichTextMark } from './plugins/richtext/richTextOperations.js';
 export type { UploadReport, Uploader } from './plugins/uploads.svelte.js';
 export type { AwarenessLike, PresenceWriter } from './collaboration/awarenessSelection.js';
@@ -404,7 +370,6 @@ export type { DocPosition, RangeView } from './crdt/rangeDelete.js';
 export type { FlowView } from './crdt/flow.js';
 export type { ContentRun } from './crdt/text/runs.js';
 export type { DataTarget, OrderPolicy, PlanEffect, PlanStep } from './crdt/doc/types.js';
-export type { DocBlock, NodeRef } from './crdt/nodes.js';
 export type { MarkEdge } from './crdt/text/marks.js';
 export type { Cell, Cells } from './surface/cells.js';
 export type { Measure, Overlay } from './surface/overlay.js';

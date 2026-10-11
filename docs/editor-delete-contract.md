@@ -463,8 +463,8 @@ gone (DR-behavior-3). Pins: `contracts-block-selection.test.tsx`,
 ### `del.blocks.promote` — only the selected blocks leave
 
 `deleteBlocks(ids)` (a block selection's Backspace/Delete/cut,
-`flow.slot`) and `deleteBlock(id)` (`Block.removeBlock()`, a node's
-`delete()`) mark every member with this writer's delete mark (and what it
+`flow.slot`) and `deleteBlock(id)` (the view's `edytor.deleteBlock(id)`,
+or the bare document's) mark every member with this writer's delete mark (and what it
 displays through merge claims). Each member's unselected children — with
 their own subtrees — take its slot in its parent, in order; a member under
 an unselected child of another member takes its own slot there. A deleted
@@ -586,7 +586,7 @@ items (Notion):
     item — and is refused where it would not fit (an image, a code block
     or a heading under an item: it would sit directly in the list; every path
     agrees — Shift+Tab over a range, the block handle's Alt+ArrowLeft and
-    `canMoveBlocks({direction: 'out'})` ask the outdent plan, DR-crdt-2):
+    `canMove({direction: 'out'})` ask the outdent plan, DR-crdt-2):
     in a layout (`columns > column > paragraph`, `layout.*`), Shift+Tab at
     a column's last or only paragraph does nothing (an outdent into the
     layout is refused): nothing but a column sits directly in a layout
@@ -793,11 +793,11 @@ a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
   its order against a peer's concurrent block follows the client ids.
   Both replicas converge and no text is lost. That covers:
   - a block inserted beside one (`insertBlocks`): Enter at the start or
-    end of a block (`insertBlockBefore`/`insertBlockAfter`; at the end of
+    end of a block (`insertBlocks` before or after it; at the end of
     a block with children and text, not a container header, Enter splits
     it, `liftContent`), a container header's new first child
-    (`addChildBlock`) or its text after the caret when Enter splits it
-    (`prepareSplitKeepingChildren`: an open toggle, a callout or quote
+    (`insertBlocks` at index 0) or its text after the caret when Enter splits it
+    (`splitKeepingChildren`: an open toggle, a callout or quote
     with children), Duplicate (`duplicateBlock`) and the handle's +
     button. Enter at the end of X and typing "foo" ‖ Enter after "hello"
     in X → "foo" can read before " world";
@@ -826,7 +826,7 @@ a3 q`; before, 34 of 40 pairs interleaved), and the lines of one paste
     outdent of `d` → `p|a|b|c|d|e|q` on some pairs, where the serial result
     is `p|b|a|c|d|e|q` (DR-rest-2);
   - moves (`moveBlocks`, `nestBlock`): a drag, the handle's Alt+↑/↓/→
-    (Alt+← is the outdent, ranked), Mod+Shift+↑/↓ (arrowMovePlugin), the
+    (Alt+← is the outdent, ranked), Mod+Shift+↑/↓ (createArrowMovePlugin()), the
     block menu's Move up/down and Tab (`nestBlock` at the parent's end:
     Tab on `y` ‖ Enter at the end of the last child of the block above →
     the new line can read after `y`).
@@ -1078,7 +1078,7 @@ turned into a heading is `{checked: true, color: 'red', level: 'h1'}`, and
 turned back into a to-do `{checked: false, color: 'red', level: 'h1'}` (the
 preset's leaf is set). A peer's concurrent property write survives the
 retype (`retype-keeps-data.test.ts`). Replacing the whole data stays
-`setBlockData` (`block.setData`, a root patch); a flow's join (`redata`)
+`setBlockData` (a `patchData` at the root path); a flow's join (`redata`)
 writes the pasted line's data whole, as before.
 
 ### `data.atomic` — a declared path is one leaf (H8)
@@ -1605,7 +1605,7 @@ lines) or would sit inside an item (D2) or an island, and without a
 layout kind. A peer's edit in a wrapped block lands in its column. The
 view: the block menu's Turn into lists "N columns" over a block selection
 of N sibling blocks, and "2 columns" to "5 columns" over one block
-(`EditorCommand.turnsInto`); hooks see `wrapBlocks`; the blocks stay
+(`EditorCommand.turnsInto`); hooks see `wrapInLayout`; the blocks stay
 selected (one block: no caret moves into the empty columns).
 Pins: `layout.test.ts` (`layout.wrap`), `columns-turn-into.test.tsx`,
 `columns-parity.spec.ts`.
@@ -2041,7 +2041,7 @@ A header's body shows when the block has children, is an open `<details>`
 callout); a closed `<details>` never, whatever it holds (`bodyShows`,
 `selection/visibility.ts`, the one rule Enter and `flow.header` read).
 Enter at the end of such a header creates a first child of the kind's
-default child kind and puts the caret there (`addChildBlock`, one step):
+default child kind and puts the caret there (`insertBlocks`, one step):
 `callout "note"` + Enter → `callout "note" > [""]`, caret in `""`; mid
 header, the text after the caret becomes that first child (`splitHeader`).
 A quote without children, or a closed toggle, keeps its sibling rule (a
@@ -2273,7 +2273,7 @@ rule of its own (the code block's is gone).
   follows the last column, or a later row, is below.
 - **What.** The caret goes to the trailing paragraph (`toTrailingParagraph`):
   an empty block of the root's default kind after the document's last
-  top-level block, inserted by one command (`insertBlockAfter`, its own
+  top-level block, inserted by one command (`insertBlocks`, its own
   undo step) and the command's result caret; the undo removes it and
   restores the caret before the key. An empty top-level paragraph there
   is a stop below, so the key reaches it as any line (nothing is written).

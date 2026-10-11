@@ -68,9 +68,9 @@ const slicesOf = (ed: any, id: string) =>
 describe('gateH-R3 — undo inside an outer transaction', () => {
 	test('ed.transact(() => um.undo()) — repair must still fire', () => {
 		const { ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		expect(ed.blockText('tail')).toBe('');
 		// Batch undo inside an explicit transaction — a documented facade
 		// pattern ('one undo step / one event'). The committed transaction's
@@ -83,9 +83,9 @@ describe('gateH-R3 — undo inside an outer transaction', () => {
 
 	test('doc.transact(() => um.undo(), customOrigin) — same hole via custom origin', () => {
 		const { doc, ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		doc.transact(() => um.undo(), { tag: 'batch' });
 		expect(ed.blockText('b')).toBe('hello ');
 		expect(ed.blockText('tail')).toBe('world');
@@ -95,9 +95,9 @@ describe('gateH-R3 — undo inside an outer transaction', () => {
 describe('gateH-R3 — foreign atoms inside the resurrected span', () => {
 	test('insert between delete and undo lands mid-span — covered or not?', () => {
 		const { doc, ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		// A write into 'tail' AFTER the delete with a NON-tracked origin —
 		// it is a live atom sitting inside the resurrected span's index
 		// range, and it must NOT be popped by the undo (it is not on the
@@ -122,7 +122,7 @@ describe('gateH-R3 — spurious write check', () => {
 		const { ed } = seed();
 		const um = ed.createUndoManager({ captureTimeout: 0 });
 		const before = slicesOf(ed, 'b').length;
-		ed.block('b').deleteText(0, 5);
+		ed.deleteText('b', 0, 5);
 		um.undo();
 		const after = slicesOf(ed, 'b').length;
 		// 'hello' resurrected under 'b' — already owned by 'b' → no claim.
@@ -139,8 +139,8 @@ describe('gateH-R3 — concurrent undo repairs on one text', () => {
 		edA.init({
 			content: [{ id: 'b', type: 'paragraph', content: [{ kind: 'text', text: 'aaaabbbbcccc' }] }]
 		});
-		edA.block('b').split(4, 'm');
-		edA.block('m').split(4, 't'); // b='aaaa' m='bbbb' t='cccc'
+		edA.splitBlock('b', 4, 'm');
+		edA.splitBlock('m', 4, 't'); // b='aaaa' m='bbbb' t='cccc'
 		const docB = new Y.Doc();
 		docB.clientID = cid++;
 		const edB = E.create(docB);
@@ -150,8 +150,8 @@ describe('gateH-R3 — concurrent undo repairs on one text', () => {
 		const umA = edA.createUndoManager({ captureTimeout: 0 });
 		const umB = edB.createUndoManager({ captureTimeout: 0 });
 		// A deletes tail's text, B deletes mid's text — concurrently.
-		edA.block('t').deleteText(0, 4);
-		edB.block('m').deleteText(0, 4);
+		edA.deleteText('t', 0, 4);
+		edB.deleteText('m', 0, 4);
 		push(docA, docB);
 		push(docB, docA);
 		expect(edA.blockText('m')).toBe('');
@@ -176,9 +176,9 @@ describe('gateH-R3 — concurrent undo repairs on one text', () => {
 describe('gateH-R3 — dead-owner fallback and merge interplay', () => {
 	test('delete, merge holder away (untracked), undo — atoms surface under a live record', () => {
 		const { doc, ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		// Merge tail back into b BETWEEN delete and undo under a NON-tracked
 		// origin (not on the undo stack — mimics a remote merge) — the
 		// pre-delete holder is dead when the undo lands.
@@ -196,7 +196,7 @@ describe('gateH-R3 — dead-owner fallback and merge interplay', () => {
 
 	test('undo of a MERGE resurrects block+atoms — repair keeps source ownership', () => {
 		const { doc, ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
 		um.stopCapturing();
 		// Merge tail into b — 'world' atoms now display under b.
@@ -217,11 +217,11 @@ describe('gateH-R3 — torn committed frame (R5-D6 joint finding)', () => {
 
 	test('onChange emits ONE DocChange with repaired content, under the undo origin', () => {
 		const { ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
 		const changes: any[] = [];
 		ed.onChange((c: any) => changes.push(c));
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		changes.length = 0;
 		um.undo();
 		// One semantic change carrying the repaired state — the repair
@@ -237,11 +237,11 @@ describe('gateH-R3 — torn committed frame (R5-D6 joint finding)', () => {
 
 	test('nested undo (custom origin) publishes no torn frame either', () => {
 		const { doc, ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
 		const changes: any[] = [];
 		ed.onChange((c: any) => changes.push(c));
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		changes.length = 0;
 		doc.transact(() => um.undo(), { tag: 'batch' });
 		// One committed frame: 'b' unchanged (absent), 'tail' repaired once.
@@ -256,7 +256,7 @@ describe('gateH-R3 — torn committed frame (R5-D6 joint finding)', () => {
 describe('gateH-R3 — redo resurrection + mixed transactions', () => {
 	test('redo of undo-of-insert resurrects atoms — detected, zero claims needed', () => {
 		const { ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
 		const before = slicesOf(ed, 'tail').length;
 		ed.insertText('tail', 5, 'X'); // tail='worldX'
@@ -272,9 +272,9 @@ describe('gateH-R3 — redo resurrection + mixed transactions', () => {
 
 	test('resurrection + normal writes in one transaction — copies repaired, writes kept', () => {
 		const { ed } = seed();
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		ed.transact(() => {
 			ed.insertText('b', 0, 'Q');
 			um.undo();

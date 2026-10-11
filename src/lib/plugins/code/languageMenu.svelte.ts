@@ -2,7 +2,6 @@ import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
-import type { CodeLabels } from '$lib/labels.js';
 import {
 	attribute,
 	optionAttributes,
@@ -11,7 +10,7 @@ import {
 } from '../chrome.js';
 import { holdKeys, listPopup } from '../list.svelte.js';
 import { Anchored } from '../anchored.svelte.js';
-import { labeledLanguages, languageOf, type CodeSettings } from './languages.js';
+import { languageOf, type CodeSettings } from './languages.js';
 
 /** A row of the language list: a language id and its label as shown. */
 export type LanguageRow = { id: string; label: string };
@@ -38,7 +37,7 @@ export type LanguageMenuItem = MenuItemPayload<LanguageRow> & {
  *
  * What a `menu` snippet receives: the open list (`open`), the query
  * and its rows (`query`, `items`, each a `MenuItemPayload`), the keyboard's
- * row (`index`), `search`, `pick` and `close`, the plugin's `labels`, and
+ * row (`index`), `search`, `pick` and `close`, and
  * the attachments that give it the keys and the ARIA: `keys` on the
  * search field, `popup` on the list, `option(index)` spread on each row.
  */
@@ -62,18 +61,13 @@ export class LanguageMenu {
 		/** @internal */
 		readonly settings: CodeSettings
 	) {
-		this.popup = listPopup(edytor, 'code-languages', 'listbox', () => this.labels.language);
+		this.popup = listPopup(edytor, 'code-languages', 'listbox');
 		this.panel = new Anchored(
 			edytor,
 			'edytor-code-language-host',
 			() => (this.open ? this.#button(this.open.block) : undefined),
 			() => this.close()
 		);
-	}
-
-	/** The plugin's words (`language`, `search`, `noResults`, …). */
-	get labels(): CodeLabels {
-		return this.settings.labels;
 	}
 
 	/** The view is readonly (reactive): the list closes. */
@@ -89,9 +83,9 @@ export class LanguageMenu {
 	}
 
 	/** The rows the query keeps: a language the plugin does not list first (the block's own), then the list. */
-	get rows(): LanguageRow[] {
+	get rows(): readonly LanguageRow[] {
 		const current = this.current;
-		const listed = labeledLanguages(this.settings);
+		const listed = this.settings.languages;
 		const all =
 			current && !listed.some((row) => row.id === current)
 				? [{ id: current, label: current }, ...listed]
@@ -116,7 +110,6 @@ export class LanguageMenu {
 			return {
 				item: row,
 				id,
-				label: row.label,
 				selected,
 				current: row.id === current,
 				run: () => this.pick(row),
@@ -165,7 +158,8 @@ export class LanguageMenu {
 		const open = this.open;
 		if (!open || !row) return;
 		const block = this.edytor.idToBlock.get(open.block);
-		if (block?.isInTree && row.id !== this.current) block.data.language = row.id;
+		if (block?.isInTree && row.id !== this.current)
+			block.edytor.patchData(block.id, [{ path: ['language'], value: row.id }]);
 		this.close(open.keys ? 'button' : 'editor');
 	};
 
@@ -215,8 +209,6 @@ export class LanguageMenu {
 			node.setAttribute('aria-expanded', 'true');
 			node.setAttribute('aria-autocomplete', 'list');
 			attribute(node, 'aria-controls', this.listId);
-			if (!node.hasAttribute('aria-label') && !node.hasAttribute('aria-labelledby'))
-				node.setAttribute('aria-label', this.labels.language);
 			node.addEventListener('focusout', this.panel.blurred);
 			const off = holdKeys(node, this.#keydown, () => {
 				const row = this.rows[this.index];

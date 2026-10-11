@@ -1,41 +1,53 @@
 /**
  * The command dispatcher: one per view.
  *
- * An operation is admitted (readonly, `document.writable`), prepared, shown
- * to every extension hook before any write — the command itself, then each
- * planned step under its documented operation name — applied in one
- * transaction, normalized once per requested block at the end of that
- * transaction (normalizers read handles over the index), and reported (`refused | noop | applied | failed`). A user command (`run`) wraps the
- * operations one gesture issues and closes the undo policy table. `prevent()`
- * is caught here, once (`prevented`).
+ * Every write a view makes is one of the document's operations
+ * (`DocumentWrites`, dispatched under its own name and arguments:
+ * `edytor.insertBlocks(…)`), or a named command that is one prepared plan of
+ * them (`plan`: a table row, a find-and-replace). It is admitted (readonly,
+ * `document.writable`), prepared, shown to every extension hook before any
+ * write — the command itself, then each planned step as the operation it
+ * performs — applied in one transaction, normalized once per touched block at
+ * the end of that transaction (normalizers read handles over the index), and
+ * reported (`refused | noop | applied | failed`). A user command (`run`)
+ * wraps the operations one gesture issues and closes the undo policy table.
+ * `prevent()` is caught here, once (`prevented`).
  */
 import type { Block } from '$lib/block/block.svelte.js';
-import type { BlockId, BlockSpec } from '$lib/crdt/index.js';
-import type { Plan, PlanStep, Prepared } from '$lib/crdt/edytor-doc.js';
+import type { BlockId } from '$lib/crdt/index.js';
+import type { DocumentWrites } from '$lib/crdt/operations.js';
+import type { OpResult, Plan, PlanStep, Prepared } from '$lib/crdt/edytor-doc.js';
+import type { DocPosition } from '$lib/crdt/rangeDelete.js';
+import { refused } from '$lib/crdt/doc/plan.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { AfterOperationPayload, ChangePayload, InitializedPlugin } from '$lib/plugins.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { Caret } from '$lib/selection/selection.svelte.js';
+import { viewOf } from '$lib/selection/visibility.js';
+import { reveal } from '$lib/selection/replaceSelection.js';
 import { DEV } from 'esm-env';
 import { PreventionError, vetoable } from '$lib/utils.js';
 import { kindOf } from './attempt.js';
+import { insertionMarksAt } from './editing/text.js';
 
 /**
  * The result of the last command a view ran (`edytor.dispatcher.last`): its
- * operation, its status and, for a handle mutator (`block.insertBlockAfter`,
- * `text.insertText`, …), the `value` the mutator returned — `undefined`
- * when the command was refused or did not run.
+ * operation and its status.
  */
-export type CommandResult<T = unknown> = {
+export type CommandResult = {
 	operation: string;
 	status: 'refused' | 'noop' | 'applied' | 'failed';
-	/** What the command answered: a handle mutator's return value. */
-	value?: T;
 	error?: unknown;
 	/** The result selection the command authored, selected once. */
 	selection?: SelectionValue;
 };
+
+/** A document write's name. */
+export type Write = keyof DocumentWrites;
+
+/** A command the view refused (readonly, a read-only document) or a hook prevented. */
+const PREVENTED = refused('view');
 
 /**
  * What a hook sees: an operation name, its payload, the block (and text) it
@@ -84,7 +96,7 @@ const OUTSIDE_HISTORY = Symbol('edytor.outsideHistory');
  * (`insertText`, the operation too), a soft break, an atom and a link.
  */
 const insertion = (kind: string) =>
-	kindOf(kind) === 'text' || ['insertLineBreak', 'addInlineBlock', 'insertLink'].includes(kind);
+	kindOf(kind) === 'text' || ['insertLineBreak', 'insertInline', 'insertLink'].includes(kind);
 type Policy = 'before' | 'both' | 'continue' | undefined;
 /**
  * Whether a `kind` command's writes are text editing an insertion may
@@ -112,12 +124,12 @@ type TextPatch = { key: string; values: string[] };
  * be typing into a bound field; a flag, a number, a delete or an object is a
  * discrete edit, its own step.
  */
-const textPatch = (block: Block, payload: unknown): TextPatch | null => {
-	const { ops, atom } = payload as { ops?: { path?: unknown; value?: unknown }[]; atom?: string };
+const textPatch = (args: unknown): TextPatch | null => {
+	const [target, ops] = args as [unknown, { path?: unknown; value?: unknown }[]];
 	if (!Array.isArray(ops) || ops.length === 0 || ops.some((o) => typeof o?.value !== 'string'))
 		return null;
 	return {
-		key: JSON.stringify([block.id, atom, ops.map((o) => o.path)]),
+		key: JSON.stringify([target, ops.map((o) => o.path)]),
 		values: ops.map((o) => o.value as string)
 	};
 };
@@ -147,22 +159,43 @@ const continuesTyping = (previous: TextPatch | null, patch: TextPatch | null) =>
 	patch.key === previous.key &&
 	patch.values.every((value, i) => typedFrom(previous.values[i]!, value));
 
-type Normalizer = (this: Block) => void;
+/** A kind's normalizer (`BlockDefinition.normalizeContent`/`normalizeChildren`). */
+export type Normalizer = 'normalizeContent' | 'normalizeChildren';
 type Pass = [id: string, normalize: Normalizer];
 /** Passes one normalizer may take on one block per command: the first and 50 re-requests. */
 const MAX_PASSES = 51;
 
-const specJSON = (spec: BlockSpec): unknown => ({
-	id: spec.id,
-	type: spec.type,
-	data: spec.data ?? {},
-	content: (spec.content ?? []).map((item) =>
-		item.kind === 'text'
-			? { text: item.text, ...(item.marks ? { marks: item.marks } : {}) }
-			: { id: item.id, type: item.type, data: item.data ?? {} }
-	),
-	children: (spec.children ?? []).map(specJSON)
-});
+/**
+ * The block a write's first argument names: a block, a list's first, a
+ * destination's parent, a position's or a target's block (`null`: the root).
+ */
+const subjectOf = (arg: unknown): BlockId | null => {
+	if (typeof arg === 'string') return arg;
+	if (Array.isArray(arg)) return subjectOf(arg[0]);
+	if (arg === null || typeof arg !== 'object') return null;
+	const at = arg as { block?: unknown; parent?: unknown; replace?: unknown; slot?: unknown };
+	return subjectOf(at.block ?? at.parent ?? at.replace ?? at.slot);
+};
+
+type Step<K extends PlanStep['op']> = Extract<PlanStep, { op: K }>;
+/** A planned step as the operation it performs, with that operation's arguments. */
+const ARGS: { [K in PlanStep['op']]: (w: Step<K>, keepChildren: boolean) => unknown[] } = {
+	insertBlocks: (w) => [{ parent: w.parent, index: w.index }, w.specs],
+	moveBlocks: (w) => [w.ids, { parent: w.parent, index: w.index }],
+	deleteBlock: (w, keepChildren) => [w.id, { keepChildren }],
+	splitBlock: (w) => [w.id, w.offset, w.newId, w.tail],
+	mergeBlocks: (w) => [w.from, w.into],
+	setBlockType: (w) => [w.id, w.type],
+	patchData: (w) => [
+		w.inlineId !== undefined ? { block: w.id, atom: w.inlineId } : (w.id ?? null),
+		w.ops
+	],
+	insertText: (w) => [w.id, w.offset, w.text, w.marks],
+	insertInline: (w) => [w.id, w.offset, w.atom],
+	deleteText: (w) => [w.id, w.offset, w.length],
+	removeInline: (w) => [w.id, w.inlineId],
+	formatRange: (w) => [w.id, w.offset, w.length, w.marks]
+};
 
 export class Dispatcher {
 	#last: CommandResult | null = null;
@@ -192,11 +225,6 @@ export class Dispatcher {
 	private kind: string | null = null;
 	/** The running user command's last step that applied. */
 	private applied: CommandResult | null = null;
-	/**
-	 * The result the last top-level `dispatch` produced (its own `last`), for
-	 * `answer`: a replacement that ran the same operation recorded another.
-	 */
-	#produced: CommandResult | null = null;
 	/** Open prevention scopes: a veto inside one aborts it. */
 	private depth = 0;
 	/** Extensions whose replacement is running (a command is replaced at most once per extension). */
@@ -204,8 +232,6 @@ export class Dispatcher {
 	/** Requested normalization passes: (block id, normalizer). */
 	private queue: Pass[] = [];
 	private current: Pass | null = null;
-	/** The drain is entering `current`'s normalizer (its own request runs it). */
-	private entering = false;
 	private draining = false;
 	/** A plan the next dispatched operation composes before its own (`lead`). */
 	private leading: Plan | null = null;
@@ -371,7 +397,7 @@ export class Dispatcher {
 		const led = !!lead || this.#alone;
 		this.#alone = false;
 		if (!this.permits()) {
-			this.#produced = this.#refused(operation);
+			this.#refused(operation);
 			return undefined;
 		}
 		const original = payload;
@@ -410,10 +436,9 @@ export class Dispatcher {
 							continue;
 						}
 						stop.by = plugin;
-						const refused = this.#refused(operation);
+						this.#refused(operation);
 						if (this.depth > 0) throw stop;
 						this.replace(stop);
-						this.#produced = refused;
 						return undefined;
 					}
 					if (!out) continue;
@@ -432,16 +457,14 @@ export class Dispatcher {
 		}
 		// Refused at preparation, and no extension replaced it.
 		if (plan && !('writes' in plan)) {
-			const refused = this.#refused(operation);
-			const out = body(payload, plan);
-			this.#produced = refused;
-			return out;
+			this.#refused(operation);
+			return body(payload, plan);
 		}
 		const version = this.edytor.facade.version;
 		// A text patch typing into the strings the previous command set on the
 		// same paths (a bound field) continues its step, within the capture
 		// window, as typing does; another value of them is its own step.
-		const patch = operation === 'patchData' ? textPatch(context.block as Block, payload) : null;
+		const patch = operation === 'patchData' ? textPatch(payload) : null;
 		const again = continuesTyping(this.patched, patch) && this.last?.operation === operation;
 		// A write outside the history continues nothing and leaves the typing's record.
 		if (!this.untracked) this.patched = patch;
@@ -473,33 +496,119 @@ export class Dispatcher {
 		};
 		this.#last = own;
 		if (this.running && own.status === 'applied') this.applied = own;
-		const change = { operation, payload: original, ...context } as AfterOperationPayload;
+		const effect = plan && 'writes' in plan ? plan.effect : undefined;
+		const change = { operation, payload: original, ...context, effect } as AfterOperationPayload;
 		for (const plugin of this.edytor.plugins) plugin.onAfterOperation?.(change);
-		this.#produced = own;
 		return result;
 	};
 
 	/**
-	 * Record what a handle mutator answered on its result (`last.value`), and
-	 * answer it. Only on the result its own `dispatch` produced: a nested
-	 * operation (a step of the running command) has none, and a vetoed call
-	 * whose replacement ran the same operation leaves the replacement's
-	 * result (and value) as `last`.
-	 * @internal
+	 * Dispatch `operation` as the plan `prepare` makes of `payload` (a hook's
+	 * replacement payload is prepared again), about `block` (the root by
+	 * default): hooks see it and each planned step before any write; one
+	 * transaction; the blocks it touched normalized and the blocks it moved
+	 * shown (closed toggles open); the caret it decides (`plan.at`: a range
+	 * deletion, a placed flow) selected. Answers its result: `refused` when
+	 * the document refused it, `refused` with the reason `'view'` when the
+	 * view did (readonly, a read-only document) or a hook prevented it.
 	 */
-	answer = <R>(value: R): R => {
-		const own = this.#produced;
-		this.#produced = null;
-		if (!this.active && own && this.last === own) this.#amend({ value });
-		return value;
+	plan = <P>(
+		operation: string,
+		payload: P,
+		prepare: (payload: P) => Prepared,
+		block?: Block,
+		text?: Text
+	): OpResult => {
+		let at: DocPosition | undefined;
+		const out = this.dispatch(
+			operation,
+			payload,
+			{ block: block ?? this.edytor.root, ...(text && { text }) },
+			(p, plan = prepare(p)) => {
+				at = 'writes' in plan ? plan.at : undefined;
+				return this.write(plan);
+			},
+			prepare
+		);
+		if (at && !this.active && out && out.status !== 'refused') this.caret(at);
+		return out ?? PREVENTED;
 	};
 
-	/** Amend `last` in place of a new result, keeping it the one its `dispatch` produced. */
-	#amend(patch: Partial<CommandResult>) {
-		if (!this.last) return;
-		const next = { ...this.last, ...patch };
-		if (this.#produced === this.last) this.#produced = next;
-		this.#last = next;
+	/**
+	 * Dispatch the document write `operation` with `args` (`edytor.<op>(…)`):
+	 * the view's own arguments filled in — an insertion without marks takes
+	 * the insertion's (`marksForInsertion`), a range or a flow is read in
+	 * this view (`viewOf`) — then {@link plan}.
+	 * @internal
+	 */
+	operate = <K extends Write>(operation: K, args: Parameters<DocumentWrites[K]>): OpResult => {
+		const { edytor } = this;
+		const own = (edytor.facade.prepare as unknown as Record<string, (...a: unknown[]) => Prepared>)[
+			operation
+		]!;
+		const prepare = (a: unknown[]) => {
+			if (operation === 'insertText' && a[3] === undefined)
+				return own(a[0], a[1], a[2], insertionMarksAt(edytor, a[0] as BlockId, a[1] as number));
+			if (/^(deleteRange|replaceRange|insertFlow)$/.test(operation) && a[2] === undefined)
+				return own(a[0], a[1], viewOf(edytor));
+			return own(...a);
+		};
+		const block = edytor.idToBlock.block(subjectOf(args[0]) ?? 'root');
+		const text =
+			typeof args[0] === 'string' && typeof args[1] === 'number'
+				? block.textAtOffset(args[1])?.text
+				: undefined;
+		return this.plan(operation, args as unknown[], prepare, block, text);
+	};
+
+	/**
+	 * Write `plan` in the running command's transaction (a composed command's
+	 * body writes its stages here): request the normalization of what its
+	 * steps touch (read before the write), apply it, and show the blocks it
+	 * moved. The caret's pending marks are a text insertion's at the caret,
+	 * which consumes them; an atom inserted at the caret passes them to the
+	 * caret after it. A refusal passes through.
+	 * @internal
+	 */
+	write = (plan: Prepared): OpResult => {
+		if (!('writes' in plan)) return plan;
+		const { facade, idToBlock, selection } = this.edytor;
+		const touched = plan.writes.flatMap((w) => this.#touched(w));
+		const { caret, pending } = selection;
+		const at = (op: 'insertText' | 'insertInline') =>
+			!!pending &&
+			!!caret &&
+			plan.writes.some((w) => w.op === op && w.id === caret.block.id && w.offset === caret.offset);
+		const [typed, atom] = [at('insertText'), at('insertInline')];
+		const result = facade.apply(plan);
+		for (const [id, hook] of touched) this.request(id, hook);
+		if (typed) selection.stage(undefined);
+		const after = atom ? caret!.block.textAtOffset(caret!.offset + 1) : null;
+		const value = after ? selection.textValue(after.text, after.offset) : null;
+		if (value?.kind === 'text') selection.select(Object.freeze({ ...value, pending }));
+		for (const id of plan.effect.moves) {
+			const block = idToBlock.get(id);
+			if (block) reveal(block);
+		}
+		return result;
+	};
+
+	/** The normalization a step asks for: the blocks whose content it writes, the parents whose children it changes. */
+	#touched(w: PlanStep): Pass[] {
+		const { facade } = this.edytor;
+		const parent = (id: BlockId) => facade.parentOf(id);
+		const children = (...ids: (BlockId | null)[]): Pass[] =>
+			ids.map((id) => [id ?? 'root', 'normalizeChildren']);
+		if (w.op === 'insertBlocks')
+			return [...children(w.parent), ...w.specs.map(({ id }): Pass => [id, 'normalizeContent'])];
+		if (w.op === 'moveBlocks') return children(w.parent, ...w.ids.map(parent));
+		if (w.op === 'deleteBlock') return children(parent(w.id));
+		if (w.op === 'splitBlock')
+			return [[w.id, 'normalizeContent'], ...children(w.parent, parent(w.id))];
+		if (w.op === 'mergeBlocks') return [[w.into, 'normalizeContent'], ...children(parent(w.from))];
+		if (w.op === 'setBlockType') return [[w.id, 'normalizeContent'], ...children(w.id)];
+		if (w.op === 'patchData') return w.id === undefined ? [] : [[w.id, 'normalizeContent']];
+		return [[w.id, 'normalizeContent']];
 	}
 
 	/**
@@ -547,32 +656,30 @@ export class Dispatcher {
 	 * block offsets (an inline atom counting 1).
 	 */
 	caret: {
-		<T>(text: Text | null | undefined, offset: number, ops?: () => T): T | undefined;
-		<T>(caret: Caret | null | undefined, ops?: () => T): T | undefined;
-	} = <T>(
-		target: Text | Caret | null | undefined,
-		...rest: [number, (() => T)?] | [(() => T)?]
-	): T | undefined => {
+		(text: Text | null | undefined, offset: number, ops?: () => OpResult): OpResult | undefined;
+		(caret: Caret | DocPosition | null | undefined, ops?: () => OpResult): OpResult | undefined;
+	} = (
+		target: Text | Caret | DocPosition | null | undefined,
+		...rest: [number, (() => OpResult)?] | [(() => OpResult)?]
+	): OpResult | undefined => {
 		// The form is the arguments', not the target's: a nullish caret still runs its `ops`.
 		if (typeof rest[0] === 'number') {
-			return this.#caret(
-				target as Text | null | undefined,
-				rest[0],
-				rest[1] as (() => T) | undefined
-			);
+			return this.#caret(target as Text | null | undefined, rest[0], rest[1]);
 		}
-		const ops = rest[0] as (() => T) | undefined;
-		const caret = target as Caret | null | undefined;
-		// `{ block, offset }`: block offsets, mapped to the text segment that shows the offset.
-		const at = caret?.block?.textAtOffset(Math.max(0, caret.offset));
+		const ops = rest[0] as (() => OpResult) | undefined;
+		const caret = target as Caret | DocPosition | null | undefined;
+		// `{ block, offset }`: block offsets (a handle or an id), mapped to the text segment that shows the offset.
+		const block =
+			typeof caret?.block === 'string' ? this.edytor.idToBlock.get(caret.block) : caret?.block;
+		const at = block?.textAtOffset(Math.max(0, caret!.offset));
 		return this.#caret(at?.text, at?.offset ?? 0, ops);
 	};
 
-	#caret = <T>(text: Text | null | undefined, offset: number, ops?: () => T): T | undefined => {
+	#caret = (text: Text | null | undefined, offset: number, ops?: () => OpResult) => {
 		const selection = this.edytor.selection;
 		const at = text ? Math.max(0, Math.min(offset, text.length)) : 0;
 		const value = text ? selection.textValue(text, at) : null;
-		let out: T | undefined;
+		let out: OpResult | undefined;
 		if (ops) {
 			const outer = this.authoring;
 			this.authoring = value;
@@ -581,39 +688,19 @@ export class Dispatcher {
 			} finally {
 				this.authoring = outer;
 			}
-			if (!out) return out;
+			if (out.status === 'refused') return out;
 		}
 		if (!text || !value || value.kind === 'none') return out;
 		selection.select(value);
 		// Declared before its operations: gone with them after all, the seam.
 		if (!selection.projection.start) selection.restoreDeadSelectionEndpoints();
-		this.#amend({ selection: selection.value });
+		if (this.#last) this.#last = { ...this.#last, selection: selection.value };
 		return out;
 	};
 
 	/**
-	 * Inside an operation (or a normalization pass), normalization is
-	 * requested, not run: each (block, normalizer) runs once per request, at
-	 * the end of the command's transaction. Answers whether the request was
-	 * queued.
-	 * @internal
-	 */
-	defer = (block: Block, normalize: Normalizer): boolean => {
-		const [id, fn] = this.current ?? [];
-		if (this.entering && id === block.id && fn === normalize) return (this.entering = false);
-		if (!this.active) return false;
-		this.request(block.id, normalize);
-		return true;
-	};
-
-	/**
-	 * A normalizer's work: part of the command's transaction (its operations are steps).
-	 * @internal
-	 */
-	write = (work: () => void) => this.edytor.transact(work);
-
-	/**
-	 * Request a normalization pass of block `id` (deduped against the pending ones).
+	 * Request a normalization pass of block `id` (deduped against the pending
+	 * ones): it runs at the end of the command's transaction, inside it.
 	 * @internal
 	 */
 	request = (id: string, normalize: Normalizer) => {
@@ -623,9 +710,12 @@ export class Dispatcher {
 
 	/**
 	 * Run the requested normalization at the end of the outermost transaction,
-	 * inside it, also when the transaction's callback threw: its writes stay. A pass reads handles over the index, so a normalizer sees what
-	 * the command (and the previous pass) wrote; a pass that asks for its
-	 * block again runs again, at most {@link MAX_PASSES} times.
+	 * inside it, also when the transaction's callback threw: its writes stay.
+	 * A pass is the block's kind's normalizer, over handles that read the
+	 * index, so it sees what the command (and the previous pass) wrote; the
+	 * work it answers runs in the same transaction (its operations are
+	 * steps), and the block is normalized again, at most {@link MAX_PASSES}
+	 * times.
 	 * @internal
 	 */
 	drain = () => {
@@ -649,18 +739,20 @@ export class Dispatcher {
 				if (count > MAX_PASSES) {
 					if (count === MAX_PASSES + 1)
 						console.warn(
-							`edytor: ${normalize.name} on block "${id}" exceeded ${MAX_PASSES - 1} passes — a plugin normalizer is not converging; skipping further passes`
+							`edytor: ${normalize} on block "${id}" exceeded ${MAX_PASSES - 1} passes — a plugin normalizer is not converging; skipping further passes`
 						);
 					continue;
 				}
 				this.current = entry;
-				this.entering = true;
 				this.active = true;
 				try {
-					normalize.call(block);
+					const work = edytor.definitionOf(block.type)[normalize]?.({ block });
+					if (work) {
+						edytor.transact(work);
+						this.request(id, normalize);
+					}
 				} finally {
 					this.active = false;
-					this.entering = false;
 				}
 			}
 		} finally {
@@ -725,80 +817,31 @@ export class Dispatcher {
 	}
 
 	/**
-	 * The planned steps as hooks see them, under the documented
-	 * operation names. A step that is the command itself (same name, same
-	 * block) is not repeated; a write into a block the plan creates is part
-	 * of that creation. (A `removeInline` step is only ever its own command,
-	 * `removeInlineBlock`; `formatRange` steps belong to no dispatched plan
-	 * yet: no mapping. A document data patch shows on the root.)
+	 * The planned steps as hooks see them: each as the operation it performs,
+	 * with that operation's arguments (`ARGS`), about the block it writes
+	 * (the root for the document's data). A step that is the command itself
+	 * (same name, same block) is not repeated; a write into a block the plan
+	 * creates is part of that creation.
 	 */
 	private steps(
 		writes: readonly PlanStep[],
 		creates: readonly BlockId[],
 		command: Change
 	): Change[] {
-		const { idToBlock, root } = this.edytor;
+		const { idToBlock, root, facade } = this.edytor;
 		const created = new Set(creates);
-		const block = (id: BlockId | null) => (id === null ? root : idToBlock.get(id));
-		const path = (parent: BlockId | null, index: number) =>
-			parent === null ? [index] : [...(block(parent)?.path ?? []), index];
 		const out: Change[] = [];
-		const show = (operation: string, block: unknown, payload: unknown, text?: Text) =>
-			out.push({ operation, block, payload, ...(text ? { text } : {}) });
 		for (const w of writes) {
-			const target =
-				w.op === 'patchData'
-					? (w.id ?? null)
-					: 'id' in w
-						? w.id
-						: w.op === 'mergeBlocks'
-							? w.from
-							: w.parent;
-			const b = block(target);
-			if ((target !== null && created.has(target)) || !b) continue;
-			const at = (offset: number) => {
-				const hit = b.textAtOffset(offset);
-				return { index: hit?.text.index ?? 0, offset: hit?.offset ?? 0, part: hit?.text };
-			};
-			// A text step shows on a text: a block without one shows none.
-			const t = 'offset' in w && w.offset !== undefined ? at(w.offset) : undefined;
-			const text = t?.part as Text;
-			if (/^(insertText|insertInline|splitBlock)$/.test(w.op) && !text) continue;
-			if (w.op === 'insertBlocks')
-				show('addChildBlocks', b, { blocks: w.specs.map(specJSON), index: w.index });
-			else if (w.op === 'moveBlocks' && w.ids.length === 1)
-				show('moveBlock', block(w.ids[0]!), { path: path(w.parent, w.index) });
-			else if (w.op === 'moveBlocks')
-				show('moveBlocks', block(w.ids[0]!), {
-					blocks: w.ids.map(block),
-					path: path(w.parent, w.index)
-				});
-			else if (w.op === 'deleteBlock')
-				show('removeBlock', b, {
-					keepChildren: b.children.some((child) => !w.removes.includes(child.id))
-				});
-			else if (w.op === 'splitBlock') show('splitBlock', b, { index: t!.offset, text });
-			else if (w.op === 'mergeBlocks') show('mergeBlockBackward', b, {});
-			else if (w.op === 'setBlockType') show('setBlock', b, { value: { type: w.type } });
-			else if (w.op === 'patchData')
-				show('patchData', b, { ops: w.ops, ...(w.inlineId !== undefined && { atom: w.inlineId }) });
-			else if (w.op === 'insertText') {
-				const [start, end, value, marks] = [t!.offset, t!.offset, w.text, w.marks];
-				show('insertText', b, { value, start, end, marks }, text);
-			} else if (w.op === 'insertInline')
-				show('addInlineBlock', b, {
-					index: t!.offset,
-					text,
-					block: { ...w.atom, data: w.atom.data ?? {} }
-				});
-			else if (w.op === 'deleteText') {
-				const end = at(w.offset + w.length);
-				show('deleteContentAtRange', b, {
-					start: [t!.index, t!.offset],
-					end: [end.index, end.offset]
-				});
-			}
+			const keeps =
+				w.op === 'deleteBlock' && facade.childrenIds(w.id).some((c) => !w.removes.includes(c));
+			const args = (ARGS[w.op] as (w: PlanStep, keeps: boolean) => unknown[])(w, keeps);
+			const target = subjectOf(args[0]);
+			const block = target === null ? root : idToBlock.get(target);
+			if ((target !== null && created.has(target)) || !block) continue;
+			if (w.op === command.operation && block === command.block) continue;
+			const text = typeof args[1] === 'number' ? block.textAtOffset(args[1])?.text : undefined;
+			out.push({ operation: w.op, block, payload: args, ...(text && { text }) });
 		}
-		return out.filter((c) => c.operation !== command.operation || c.block !== command.block);
+		return out;
 	}
 }

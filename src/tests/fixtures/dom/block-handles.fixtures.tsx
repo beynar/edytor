@@ -11,7 +11,7 @@ import { blockHandlesPlugin, richTextPlugin } from '../../../routes/chrome/plugi
 const blockHandlePlugins = [richTextPlugin, mentionPlugin, blockHandlesPlugin];
 const preventMovePlugin: Plugin = () => ({
 	onBeforeOperation: ({ operation, prevent }) => {
-		if (operation === 'moveBlock') {
+		if (operation === 'moveBlocks') {
 			prevent();
 		}
 	}
@@ -130,7 +130,7 @@ export const fixtures = defineFixtures([
 			const leadCrdtId = edytor.facade!.crdtId(lead.id);
 			const noteCrdtId = edytor.facade!.crdtId(note.id);
 			selectBlocks(edytor, lead, note);
-			const moved = edytor.moveBlocks({ blocks: [lead, note], target: tail, position: 'after' });
+			const moved = edytor.move({ blocks: [lead, note], target: tail, position: 'after' });
 			await flushDomUpdates();
 			return { moved, lead, note, leadCrdtId, noteCrdtId };
 		},
@@ -168,7 +168,7 @@ export const fixtures = defineFixtures([
 		run: async ({ edytor }) => {
 			const [parent, lead, note] = edytor.root!.children;
 			selectBlocks(edytor, lead, note);
-			edytor.moveBlocks({ blocks: [lead, note], target: parent, position: 'inside' });
+			edytor.move({ blocks: [lead, note], target: parent, position: 'inside' });
 			await flushDomUpdates();
 		},
 		output: (

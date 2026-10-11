@@ -3,33 +3,27 @@ import type { InitializedPlugin, Plugin } from '$lib/plugins.js';
 import { caretRect } from '../triggers/place.js';
 import { placeNear } from '$lib/surface/overlay.js';
 import { SlashMenuController } from './SlashMenuController.svelte.js';
-import { slashMenuEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
 import { handleMenuEvents, mountChrome } from '../chrome.js';
 import { withTriggerMenus } from '../triggers/triggers.js';
 
 export type SlashMenuOptions = {
 	/**
-	 * The menu's markup; it renders while `controller.isOpen` (without it,
-	 * nothing shows). Keys and placement stay the plugin's. Keep its ARIA
-	 * with `{@attach controller.popup}` on the list and
+	 * The menu's markup and its words; it renders while `controller.isOpen`
+	 * (without it, nothing shows). Keys and placement stay the plugin's. Keep
+	 * its ARIA with `{@attach controller.popup}` on the list (name it) and
 	 * `{...controller.option(index)}` on each row; in a `+`'s menu (while
 	 * `controller.addition`), `{@attach controller.keys}` on the element that
 	 * holds the keyboard (your field, or the menu itself: typing then edits
 	 * the query).
 	 */
 	menu?: Snippet<[SlashMenuController]>;
-	/** The words the menu shows (its field, headings, empty state), over the English ones. */
-	labels?: PartialLabels<'slashMenu'>;
 };
 
 /** The slash menu, drawn by your `menu` snippet. */
 export const createSlashMenuPlugin =
 	(options: SlashMenuOptions = {}): Plugin =>
 	(edytor) => {
-		const controller = new SlashMenuController(
-			edytor,
-			labelsWith(slashMenuEnglish, options.labels)
-		);
+		const controller = new SlashMenuController(edytor);
 
 		/**
 		 * Beside the caret (below a `+` it was opened from), kept in the

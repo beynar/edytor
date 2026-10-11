@@ -7,11 +7,10 @@
 import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
-import type { CodeLabels } from '$lib/labels.js';
 import type { BlockView } from '$lib/plugins.js';
 import { Text } from '$lib/text/text.svelte.js';
 import { attribute } from '../chrome.js';
-import { labeledLanguages, languageOf, type CodeSettings } from './languages.js';
+import { languageOf, type CodeSettings } from './languages.js';
 import type { LanguageMenu, LanguageRow } from './languageMenu.svelte.js';
 
 /** How long Copy reads Copied after a copy, in milliseconds. */
@@ -74,14 +73,9 @@ export class CodeHeader {
 		return this.languages.find((row) => row.id === language)?.label ?? language;
 	}
 
-	/** The languages the plugin lists, labeled, in order. */
-	get languages(): LanguageRow[] {
-		return labeledLanguages(this.settings);
-	}
-
-	/** The plugin's words (`language`, `copy`, `copied`, …). */
-	get labels(): CodeLabels {
-		return this.settings.labels;
+	/** The languages the plugin lists, in order. */
+	get languages(): readonly LanguageRow[] {
+		return this.settings.languages;
 	}
 
 	/** The view is readonly (reactive). */
@@ -104,7 +98,7 @@ export class CodeHeader {
 	setLanguage = (id: string) => {
 		const block = this.view().handle;
 		if (!this.editable || !block?.isInTree || id === this.language) return;
-		block.data.language = id;
+		block.edytor.patchData(block.id, [{ path: ['language'], value: id }]);
 	};
 
 	/**
@@ -140,7 +134,6 @@ export class CodeHeader {
 		untrack(() => {
 			node.setAttribute('data-edytor-code-language-button', '');
 			node.setAttribute('aria-haspopup', 'listbox');
-			const named = node.hasAttribute('aria-label') || node.hasAttribute('aria-labelledby');
 			const mousedown = (event: MouseEvent) => event.preventDefault();
 			// A click from Enter or Space has no pointer (`detail` 0): the keys opened it.
 			const click = (event: MouseEvent) => this.toggle(event.detail === 0);
@@ -158,7 +151,6 @@ export class CodeHeader {
 				const expanded = this.expanded;
 				attribute(node, 'aria-expanded', String(expanded));
 				attribute(node, 'aria-controls', expanded ? this.menu?.listId : undefined);
-				if (!named) attribute(node, 'aria-label', `${this.labels.language}: ${this.label}`);
 			});
 			return () => {
 				node.removeEventListener('mousedown', mousedown);

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import TriggerMenu from './TriggerMenu.svelte';
 	import type { PageLinkItem, TriggerMenuController } from '$lib/index.js';
 
@@ -6,7 +7,7 @@
 	let { controller }: { controller: TriggerMenuController<PageLinkItem> } = $props();
 </script>
 
-<TriggerMenu {controller}>
+<TriggerMenu {controller} said={words.pageLink}>
 	{#snippet row(item: PageLinkItem, index: number)}
 		<button
 			type="button"

@@ -550,13 +550,21 @@ export class Composition {
 			this.#hold();
 			if (at && value) {
 				const text = at.text;
-				const payload = { value, start: at.offset, end: at.offset, marks: this.marks };
+				const args = [text.parent.id, text.segStart + at.offset, value, this.marks] as const;
+				const prepare = (a: typeof args) => edytor.facade.prepare.insertText(...a);
+				// The preview goes first, in the command: the insertion is prepared over what it leaves.
 				dispatcher.run('insertFromComposition', () =>
-					dispatcher.dispatch('insertText', payload, { block: text.parent, text }, (p) => {
-						this.#erase();
-						text.insertAt(p.start, p.value, p.marks ?? this.marks);
-						if (selection.pending) selection.stage(undefined);
-					})
+					dispatcher.dispatch(
+						'insertText',
+						args,
+						{ block: text.parent, text },
+						(a) => {
+							this.#erase();
+							dispatcher.write(prepare(a));
+							if (selection.pending) selection.stage(undefined);
+						},
+						prepare
+					)
 				);
 			}
 			// A refused commit, or a cancel: the preview goes.

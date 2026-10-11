@@ -22,9 +22,9 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { d3KindsPlugin } from '../../dom/D3KindsPlugin.svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** `[type, text]` of each child of the first root block. */
 const listShape = (edytor: Edytor) =>

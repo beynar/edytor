@@ -21,10 +21,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { englishLabels } from '$lib/labels.js';
 import {
@@ -35,6 +31,12 @@ import {
 	type RenderDomEdytorOptions
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	blockMenuPlugin,
+	richTextPlugin,
+	slashMenuPlugin,
+	toolbarPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

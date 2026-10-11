@@ -1,13 +1,12 @@
 /** @jsxImportSource ../../jsx */
 import { expect } from 'vitest';
 
-import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { dispatchDomKeyDown, flushDomUpdates } from '../../dom/test.utils.js';
 import { defineDomFixture, defineFixtures } from '../types.js';
 import { selectBlocks } from '../../selection.js';
+import { blockHandlesPlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const blockHandlePlugins = [richTextPlugin, mentionPlugin, blockHandlesPlugin];
 const preventMovePlugin: Plugin = () => ({

@@ -43,8 +43,9 @@ export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
 	linkTo?: (block: Block) => string;
 	/**
-	 * Replace the menu; it renders while `controller.isOpen`, placed beside
-	 * the handle (mark your panel `data-edytor-block-menu` for placement).
+	 * The menu's markup; it renders while `controller.isOpen`, placed beside
+	 * the handle (mark your panel `data-edytor-block-menu` for placement;
+	 * without it, nothing shows).
 	 * The controller runs every action; `close()` returns the caret. Keep
 	 * the built-in keyboard and ARIA with its attachments: `{@attach
 	 * controller.keys}` on the field that holds the keyboard, `{@attach

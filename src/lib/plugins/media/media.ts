@@ -147,10 +147,10 @@ export type MediaPluginOptions = {
 	/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
 	keywords?: Partial<Record<string, string[]>>;
 	/**
-	 * Replace an empty block's markup (its "Add …" button and link panel, its
-	 * upload's progress, or a readonly view's placeholder): it receives the
+	 * An empty block's markup (its "Add …" button and link panel, its upload's
+	 * progress, or a readonly view's placeholder; without it, nothing): the
 	 * block's `MediaEmptyController` (`open`, `draft`, `failed`, `pending`,
-	 * `embed`, `upload`, `readonly`).
+	 * `embed`, `upload`, `readonly`) is its argument.
 	 */
 	empty?: Snippet<[MediaEmptyController]>;
 };

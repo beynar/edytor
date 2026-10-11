@@ -32,7 +32,6 @@ import { Y } from '$lib/crdt/engine.js';
 import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { d3KindsPlugin } from '../../dom/D3KindsPlugin.svelte';
 import {
 	dispatchCut,
@@ -41,6 +40,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since V3. */
 const row = it;

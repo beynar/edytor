@@ -13,10 +13,19 @@ import {
 	type PlacedThread
 } from './CommentsController.svelte.js';
 
-/** What a `card` snippet receives: one thread, the view's comments controller, and whether it is the active one. */
+/**
+ * What a `card` snippet receives: one thread (`null`: the comment being
+ * written, `comments.draft`), the view's comments controller, and whether
+ * it is the active one.
+ */
 export type CommentCardPayload = {
-	/** The thread, placed beside its text (its comments, its anchor's text, `resolved`). */
-	thread: PlacedThread;
+	/**
+	 * The thread, placed beside its text (its comments, its anchor's text,
+	 * `resolved`); `null` for the comment being written (its text
+	 * `comments.draft.quote`: post it with `comments.submit(body)`, give it
+	 * up with `comments.cancel()`).
+	 */
+	thread: PlacedThread | null;
 	/** The view's comments: the actions (reply, resolve, delete, `activate`), the user, `labels`. */
 	comments: CommentsController;
 	/** It is the active thread (its text is selected, or its card was pressed). */
@@ -43,9 +52,19 @@ export type CommentsPluginOptions = {
 	 * it (in this view or another).
 	 */
 	onComment?: (change: CommentChange, notice: CommentNotice) => void;
-	/** Replace a thread card's markup (the sidebar still places it). */
+	/**
+	 * A card's markup: a thread's (its comments, a reply field, Resolve) or
+	 * the comment being written (`thread: null`). The sidebar places each
+	 * card beside its text; without it, no sidebar shows (the threads are
+	 * still highlighted and kept).
+	 */
 	card?: Snippet<[CommentCardPayload]>;
-	/** The words the sidebar and the toolbar button show, over the English ones. */
+	/**
+	 * The top of the sidebar's margin (Notion's "Show resolved"): the cards
+	 * stack under it. Not shown on a narrow screen.
+	 */
+	header?: Snippet<[CommentsController]>;
+	/** The words the sidebar and the toolbar button say, over the English ones. */
 	labels?: PartialLabels<'comments'>;
 };
 
@@ -62,7 +81,7 @@ export const commentsController = (edytor: Edytor): CommentsController | undefin
  * merges and that copy and cut leave behind; its comments live in the
  * client's store (the room's `threads` and `comments` tables). Open threads
  * are highlighted, and a sidebar beside the text (under it, on a narrow
- * screen) shows each one with its replies, a composer, Resolve and Re-open.
+ * screen) places a `card` for each one.
  */
 export const createCommentsPlugin =
 	(options: CommentsPluginOptions): Plugin =>
@@ -97,13 +116,16 @@ export const createCommentsPlugin =
 			onSelectionChange: () => comments.follow(),
 			onEdytorAttached: () => {
 				comments.connect();
-				const sidebar = mount(CommentsSidebar, {
-					target: edytor.overlay.layer!,
-					props: { edytor, comments, card: options.card }
-				});
+				const { card, header } = options;
+				const sidebar =
+					card &&
+					mount(CommentsSidebar, {
+						target: edytor.overlay.layer!,
+						props: { edytor, comments, card, header }
+					});
 				return () => {
 					comments.destroy();
-					void unmount(sidebar);
+					if (sidebar) void unmount(sidebar);
 				};
 			}
 		};

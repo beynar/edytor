@@ -16,11 +16,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DocChange } from '$lib/crdt/index.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { Text } from '$lib/text/text.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { watch } from '../../dom/watch.svelte.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const stops: (() => void)[] = [];
 afterEach(() => {

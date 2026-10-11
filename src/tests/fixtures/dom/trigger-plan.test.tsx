@@ -7,9 +7,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { Plugin, Prepared } from '$lib/index.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { dispatchDomBeforeInput, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const EMOJI: Record<string, string> = { smile: '😄' };
 

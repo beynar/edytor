@@ -1,15 +1,13 @@
 /** @jsxImportSource ../../../jsx */
 import { expect } from 'vitest';
 
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../../atMention.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { expectOperationResult, removeIds } from '../../../test.utils.js';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { selectionState } from '../../../selection.js';
+import { codePlugin, imagePlugin, richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 const noopSnippet = (() => null) as never;
 

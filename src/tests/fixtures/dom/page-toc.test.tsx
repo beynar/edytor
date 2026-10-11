@@ -19,7 +19,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { createPagePlugin, pagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 import { createTocPlugin, tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 import { defaultSemantics } from '$lib/crdt/semantics.js';
@@ -31,6 +30,7 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

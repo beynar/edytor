@@ -25,8 +25,8 @@ import { describe, expect, it } from 'vitest';
 import type { JSONDoc } from '$lib/utils/json.js';
 import { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { CLOSE, validRoomId } from '$lib/crdt/providers/room.js';
+import { richTextPlugin } from '../routes/chrome/plugins.js';
 
 const root = join(import.meta.dirname, '../..');
 

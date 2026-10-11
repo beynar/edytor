@@ -28,9 +28,7 @@ import { Y } from '$lib/crdt/engine.js';
 import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONDoc } from '$lib/utils/json.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	dispatchComposition,
 	dispatchDomBeforeInput,
@@ -41,6 +39,7 @@ import {
 } from '../../dom/test.utils.js';
 import { endSuggestion, suggestEnd } from '../../test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since V2. */
 const row = it;

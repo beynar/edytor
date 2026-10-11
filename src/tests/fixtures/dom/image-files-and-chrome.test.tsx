@@ -27,8 +27,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { BlockDefinition } from '$lib/plugins.js';
 import { runBeforeInputCommand } from '$lib/events/beforeInputCommands.js';
 import { attemptOf } from '$lib/session/attempt.js';
-import { createImagePlugin, imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
 import {
 	canonicalTree,
@@ -40,6 +38,11 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
+import {
+	image as createImagePlugin,
+	imagePlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

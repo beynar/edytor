@@ -2,23 +2,28 @@
 	import { onMount } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import type { JSONDoc } from '$lib/utils/json.js';
-	import { richTextPlugin, richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-	import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
-	import { createPageLinkPlugin } from '$lib/plugins/pageLink/PageLinkPlugin.svelte';
-	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+	import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
-	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-	import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-	import { findPlugin } from '$lib/plugins/find/findPlugin.js';
 	import { createMarqueePlugin } from '$lib/plugins/marquee/marqueePlugin.js';
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
-	import { tablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
 	import { tableBlock } from '$lib/crdt/tables.js';
-	import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
+	import {
+		blockHandlesPlugin,
+		blockMenu,
+		codePlugin,
+		equation,
+		findPlugin,
+		imagePlugin,
+		mention,
+		pageLink,
+		richTextPlugin,
+		slashMenuPlugin,
+		suggestionsPlugin,
+		tablePlugin,
+		toolbarPlugin
+	} from './chrome/plugins.js';
 	import type { Plugin } from '$lib/plugins.js';
 	import { page } from '$app/state';
 	import { createIndexeddbSync } from '$lib/collaboration/providers.js';
@@ -59,14 +64,16 @@
 	];
 	const matching = (query: string, text: string) =>
 		text.toLowerCase().includes(query.trim().toLowerCase());
-	const mentionPlugin = createMentionPlugin({
+	const mentionPlugin = mention({
 		items: (query) => PEOPLE.filter((person) => matching(query, person.label))
 	});
-	const pageLinkPlugin = createPageLinkPlugin({
+	const pageLinkPlugin = pageLink({
 		search: (query) => PAGES.filter((page) => matching(query, page.title)),
 		href: (page) => `#${page.id}`
 	});
+	// The handles unless `?handles=0`; the demo's chrome draws every menu (`./chrome`).
 	const plugins = [
+		...(page.url.searchParams.get('handles') === '0' ? [] : [blockHandlesPlugin]),
 		arrowMovePlugin,
 		imagePlugin,
 		codePlugin,
@@ -75,7 +82,7 @@
 		pageLinkPlugin,
 		slashMenuPlugin,
 		toolbarPlugin,
-		createBlockMenuPlugin({
+		blockMenu({
 			linkTo: (block) => `${location.origin}${location.pathname}#block-${block.id}`
 		}),
 		demoPagePlugin,
@@ -86,7 +93,8 @@
 		tocPlugin,
 		tablePlugin,
 		// KaTeX loads from jsDelivr the first time an equation shows.
-		createEquationPlugin(),
+		equation(),
+		suggestionsPlugin,
 		richTextPlugin
 	];
 	const demoValue: JSONDoc = {
@@ -350,7 +358,6 @@
 							{sync}
 							class="demo-edytor"
 							aria-label="A calmer place to think"
-							blockHandles={page.url.searchParams.get('handles') === '0' ? false : undefined}
 							placeholder={richTextPlaceholder}
 							bind:edytor
 						/>

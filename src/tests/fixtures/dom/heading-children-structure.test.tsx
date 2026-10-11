@@ -15,7 +15,6 @@ import { ownBlock } from './HeadingQuoteOverride.svelte';
 import type { Edytor as EdytorRuntime } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	canonicalTree,
 	dispatchClipboardPaste,
@@ -26,6 +25,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

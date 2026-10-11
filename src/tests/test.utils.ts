@@ -9,7 +9,6 @@
  */
 import type { RenderedNode } from './jsx/types.js';
 import { Edytor } from '../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import { jsonContentToItems } from '$lib/utils/json.js';
 import { expect } from 'vitest';
@@ -23,6 +22,7 @@ import { onKeyDown } from '$lib/events/onKeyDown.js';
 import type { Awareness, YDoc } from '$lib/crdt/index.js';
 import { blocksBetween } from './order.helpers.js';
 import { selectionState } from './selection.js';
+import { richTextPlugin } from '../routes/chrome/plugins.js';
 
 type CursorPosition = {
 	path: number[];

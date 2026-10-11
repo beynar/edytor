@@ -11,10 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import { rowOf } from '$lib/kinds.js';
 import {
 	dispatchDomBeforeInput,
@@ -23,6 +20,7 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import { richTextPlugin, slashMenuPlugin, toolbarPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

@@ -2,7 +2,8 @@
  * Every chrome snippet is typed by an exported payload (the `test:typecheck`
  * and `test:dom:typecheck` lanes compile this file; the unit lane runs it):
  * `Snippet<[Payload]>` with one object argument, a whole surface's payload
- * its controller, a row's the shape every menu shares (`MenuItemPayload`).
+ * its controller; a controller's rows the shape every menu shares
+ * (`MenuItemPayload`). Without a snippet a surface renders nothing.
  * A snippet typed against its payload compiles; a wrong field, or another
  * surface's payload, does not (`@ts-expect-error`). Expected types come from
  * the pattern the site's `customization/menus` page states.
@@ -34,11 +35,8 @@ import type {
 	BookmarkPluginOptions,
 	CommentCardPayload,
 	CommentsPluginOptions,
-	EditorCommand,
+	CommentsController,
 	EmbedPluginOptions,
-	HistoryPanelProps,
-	HistoryVersion,
-	HistoryVersionItem,
 	ImageControls,
 	ImageEmptyController,
 	ImagePluginOptions,
@@ -53,14 +51,12 @@ import type {
 	PageLinkItem,
 	PageLinkPluginOptions,
 	SlashMenuController,
-	SlashMenuItem,
 	SlashMenuOptions,
 	SuggestionBarPayload,
 	SuggestionsOptions,
 	ToolbarController,
 	ToolbarOptions,
 	Trigger,
-	TriggerItemPayload,
 	TriggerMenuController,
 	UrlPasteController
 } from '$lib/index.js';
@@ -91,8 +87,8 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<Payload<EmbedPluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
 		expectTypeOf<Payload<BookmarkPluginOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
 		expectTypeOf<Payload<CommentsPluginOptions['card']>>().toEqualTypeOf<CommentCardPayload>();
+		expectTypeOf<Payload<CommentsPluginOptions['header']>>().toEqualTypeOf<CommentsController>();
 		expectTypeOf<Payload<SuggestionsOptions['bar']>>().toEqualTypeOf<SuggestionBarPayload>();
-		expectTypeOf<Payload<HistoryPanelProps['item']>>().toEqualTypeOf<HistoryVersionItem>();
 		expectTypeOf<Payload<TablePluginOptions['menu']>>().toEqualTypeOf<TableChrome>();
 		expectTypeOf<Payload<CodePluginOptions['header']>>().toEqualTypeOf<CodeHeader>();
 		expectTypeOf<Payload<CodePluginOptions['menu']>>().toEqualTypeOf<LanguageMenu>();
@@ -128,6 +124,11 @@ describe('each chrome snippet takes its exported payload', () => {
 			grip: string | undefined;
 		}>();
 		expectTypeOf<BlockHandleSnippetPayload['labels']>().toEqualTypeOf<BlockHandlesLabels>();
+		expectTypeOf<BlockHandleSnippetPayload['beside']>().toEqualTypeOf<boolean>();
+		expectTypeOf<BlockHandleSnippetPayload['haspopup']>().toEqualTypeOf<{
+			add: 'listbox' | 'menu' | 'dialog' | undefined;
+			grip: 'listbox' | 'menu' | 'dialog' | undefined;
+		}>();
 		expectTypeOf<BlockHandleSnippetPayload['add']>().toEqualTypeOf<
 			(alt?: boolean, anchor?: HTMLElement | null) => void
 		>();
@@ -196,39 +197,27 @@ describe('each chrome snippet takes its exported payload', () => {
 
 describe('one row shape', () => {
 	it('every row payload is a MenuItemPayload of what it stands for', () => {
-		expectTypeOf<SlashMenuItem>().toExtend<MenuItemPayload<EditorCommand>>();
-		expectTypeOf<TriggerItemPayload<MentionItem>>().toExtend<MenuItemPayload<MentionItem>>();
-		expectTypeOf<HistoryVersionItem>().toExtend<MenuItemPayload<HistoryVersion>>();
 		expectTypeOf<TableMenuItem>().toExtend<MenuItemPayload<TableMenuRow>>();
 		expectTypeOf<LanguageMenuItem>().toExtend<MenuItemPayload<LanguageRow>>();
 		expectTypeOf<TableChrome['items']>().toEqualTypeOf<TableMenuItem[]>();
 		expectTypeOf<LanguageMenu['items']>().toEqualTypeOf<LanguageMenuItem[]>();
-		expectTypeOf<Payload<SlashMenuOptions['item']>>().toEqualTypeOf<SlashMenuItem>();
-		expectTypeOf<Payload<MentionPluginOptions['item']>>().toEqualTypeOf<
-			TriggerItemPayload<MentionItem>
-		>();
 	});
 
-	it('the names a row had before stay: a slash row’s `command`, a trigger row’s `pick`', () => {
-		expectTypeOf<SlashMenuItem['command']>().toEqualTypeOf<EditorCommand>();
-		expectTypeOf<SlashMenuItem['icon']>().toEqualTypeOf<string | undefined>();
-		expectTypeOf<TriggerItemPayload['pick']>().toEqualTypeOf<TriggerItemPayload['run']>();
+	it('a whole surface is one snippet: no row snippet beside it', () => {
+		// @ts-expect-error the slash menu takes its `menu`, no `item`
+		void ({ item: undefined } satisfies SlashMenuOptions);
+		// @ts-expect-error a mention menu takes its `menu`, no `item`
+		void ({ items: () => [], item: undefined } satisfies MentionPluginOptions);
 	});
 });
 
 describe('a snippet typed against another payload, or reading a wrong field, does not compile', () => {
 	it('wrong fields', () => {
-		const rows = (
-			slash: SlashMenuItem,
-			trigger: TriggerItemPayload,
-			version: HistoryVersionItem
-		) => {
-			// @ts-expect-error a slash row has no `pick` (its `run` runs the command)
-			void slash.pick;
-			// @ts-expect-error a trigger row has no `command`
-			void trigger.command;
-			// @ts-expect-error a version row has no `key` (its `version.key`)
-			void version.key;
+		const rows = (table: TableMenuItem, language: LanguageMenuItem) => {
+			// @ts-expect-error a table row has no `command` (its `item` is the row)
+			void table.command;
+			// @ts-expect-error a language row has no `key` (its `item.id`)
+			void language.key;
 		};
 		const surfaces = (
 			menu: BlockMenuController,
@@ -250,13 +239,13 @@ describe('a snippet typed against another payload, or reading a wrong field, doe
 	});
 
 	it('another surface’s payload', () => {
-		const options = (slash: Snippet<[SlashMenuController]>, item: Snippet<[SlashMenuItem]>) => {
+		const options = (slash: Snippet<[SlashMenuController]>) => {
 			// @ts-expect-error the block menu's `menu` takes a BlockMenuController
 			const blockMenu: BlockMenuOptions = { menu: slash };
 			// @ts-expect-error the toolbar's `toolbar` takes a ToolbarController
 			const toolbar: ToolbarOptions = { toolbar: slash };
-			// @ts-expect-error a mention row is a TriggerItemPayload<MentionItem>
-			const mention: Partial<MentionPluginOptions> = { item };
+			// @ts-expect-error a mention menu takes its TriggerMenuController<MentionItem>
+			const mention: Partial<MentionPluginOptions> = { menu: slash };
 			// @ts-expect-error a table's `menu` takes its TableChrome
 			const table: TablePluginOptions = { menu: slash };
 			// @ts-expect-error a code block's `menu` takes its LanguageMenu

@@ -16,12 +16,12 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { createMarqueePlugin, marqueePlugin } from '$lib/plugins/marquee/marqueePlugin.js';
 import type { MarqueeBoxPayload } from '$lib/plugins/marquee/MarqueeController.svelte.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

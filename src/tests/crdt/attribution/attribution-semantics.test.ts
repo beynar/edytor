@@ -32,7 +32,6 @@ import {
 } from '../../../lib/crdt/index.js';
 import { checkSchema, inspectAdmission } from '../../../lib/crdt/protocol.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	applyUpdate,
 	docValue,
@@ -47,6 +46,7 @@ import {
 	authoredDocument
 } from './helpers.js';
 import type { EngineDoc, EngineNode, YDoc } from '../../../lib/crdt/engine-api.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const E = bindEdytorDoc(Y);
 

@@ -52,18 +52,18 @@
 		 */
 		keywords?: Partial<Record<string, string[]>>;
 		/**
-		 * Replace the toolbar over the hovered image (the alignments and the alt
-		 * field); it renders while `controls.shown` and no handle drags, at the
-		 * image's top right (`controls.box`). The resize handles stay the
-		 * plugin's. Keep its behaviour with `{@attach controls.bar}` on the
+		 * The toolbar over the hovered image (the alignments and the alt field);
+		 * it renders while `controls.shown` and no handle drags, at the image's
+		 * top right (`controls.box`; without it, no toolbar). The resize handles
+		 * are the plugin's. Keep its behaviour with `{@attach controls.bar}` on the
 		 * toolbar and `{@attach controls.altField}` on the alt field.
 		 */
 		toolbar?: Snippet<[ImageControls]>;
 		/**
-		 * Replace an empty image's markup (Notion's "Add an image" and its link
-		 * panel, or the placeholder of a readonly view): it receives the
-		 * block's `ImageEmptyController` (`open`, `draft`, `failed`, `embed`,
-		 * `upload`, `readonly`).
+		 * An empty image's markup (Notion's "Add an image" and its link panel,
+		 * or the placeholder of a readonly view; without it, nothing): it
+		 * receives the block's `ImageEmptyController` (`open`, `draft`,
+		 * `failed`, `embed`, `upload`, `readonly`).
 		 */
 		empty?: Snippet<[ImageEmptyController]>;
 	};
@@ -240,7 +240,7 @@
 				uploads={view?.uploads}
 				error={upload?.status === 'failed' ? 'upload' : null}
 				landed={upload?.status === 'landed'}
-				empty={view?.empty}
+				emptyOf={(edytor) => views.get(edytor)?.empty}
 			/>
 		</div>
 	{/if}<!--

@@ -24,10 +24,10 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { createDocument } from '../../../lib/crdt/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
 
 import * as selection from '$lib/session/selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const S = () => selection;
 

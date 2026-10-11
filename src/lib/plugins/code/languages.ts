@@ -166,14 +166,15 @@ export type CodePluginOptions = {
 	/** The slash menu's keywords of the code command (`block.code`), which replace its own. */
 	keywords?: Partial<Record<string, string[]>>;
 	/**
-	 * Replace a code block's header (the language's button and Copy): it
-	 * renders above the code, in the block's non-editable part. Put
-	 * `{@attach header.button}` on the element that opens the language list.
+	 * A code block's header (the language's button and Copy): it renders
+	 * above the code, in the block's non-editable part (without it, no
+	 * header). Put `{@attach header.button}` on the element that opens the
+	 * language list.
 	 */
 	header?: Snippet<[CodeHeader]>;
 	/**
-	 * Replace the language list: it renders under the header's button while
-	 * `menu.open` is set. Put `{@attach menu.keys}` on its search field,
+	 * The language list: it renders under the header's button while
+	 * `menu.open` is set (without it, nothing shows). Put `{@attach menu.keys}` on its search field,
 	 * `{@attach menu.popup}` on the list, and spread `item.option` (or
 	 * `menu.option(index)`) on each row of `menu.items`. The first code
 	 * plugin listed in a view owns its list.

@@ -10,8 +10,8 @@
 	 * the drop line of a grip's drag, and a resize band on each column's
 	 * right edge. Over a table wider than its box, only what its box shows
 	 * (`table.overflow`). A grip, a menu and a `+` are the plugin's `grip`,
-	 * `menu` and `add` snippets when it has them: placed by the hosts here,
-	 * their keys and ARIA the controller's attachments, as this markup's.
+	 * `menu` and `add` snippets (none without them): placed by the hosts
+	 * here, their keys and ARIA the controller's attachments.
 	 */
 	let {
 		chrome,
@@ -44,7 +44,7 @@
 	data-selecting={chrome.band.selecting ? 'true' : undefined}
 >
 	{#if chrome.shown && layout}
-		{#each chrome.grips as place (place.kind)}
+		{#each grip ? chrome.grips : [] as place (place.kind)}
 			{@const label = labels[`${place.kind}Menu`]}
 			<!-- Centered on where the grip stands: its flex host is a point. -->
 			<div
@@ -65,13 +65,6 @@
 						labels,
 						chrome
 					})}
-				{:else}
-					<button
-						type="button"
-						data-edytor-table-grip={place.kind}
-						aria-label={label}
-						{@attach chrome.gripOf(place.kind)}
-					></button>
 				{/if}
 			</div>
 		{/each}
@@ -86,7 +79,7 @@
 				style:height={px(line.height)}
 			></div>
 		{/if}
-		{#each chrome.bars as bar (bar.kind)}
+		{#each add ? chrome.bars : [] as bar (bar.kind)}
 			{@const label = bar.kind === 'row' ? labels.addRow : labels.addColumn}
 			<div
 				data-edytor-table-add-host={bar.kind}
@@ -99,14 +92,6 @@
 			>
 				{#if add}
 					{@render add({ kind: bar.kind, label, add: () => chrome.add(bar.kind), labels })}
-				{:else}
-					<button
-						type="button"
-						data-edytor-table-add={bar.kind}
-						aria-label={label}
-						title={label}
-						onclick={() => chrome.add(bar.kind)}
-					></button>
 				{/if}
 			</div>
 		{/each}
@@ -132,27 +117,9 @@
 			{/if}
 		{/each}
 	{/if}
-	{#if chrome.menu && menuPlace}
+	{#if menu && chrome.menu && menuPlace}
 		<div data-edytor-table-menu-host style:left={px(menuPlace.left)} style:top={px(menuPlace.top)}>
-			{#if menu}
-				{@render menu(chrome)}
-			{:else}
-				<div class="edytor-table-menu" {@attach chrome.popup} {@attach chrome.keys}>
-					{#each chrome.items as item (item.item.id)}
-						<button
-							type="button"
-							class="edytor-table-menu-row"
-							class:danger={item.danger}
-							{...item.option}
-							disabled={item.disabled}
-							data-testid={`table-menu-${item.item.id}`}
-							style:--table-menu-icon={item.icon}
-							onmousemove={item.select}
-							onclick={item.run}>{item.label}</button
-						>
-					{/each}
-				</div>
-			{/if}
+			{@render menu(chrome)}
 		</div>
 	{/if}
 </div>

@@ -57,7 +57,7 @@ export const CALLOUT_ICONS: readonly string[] = [
 	'🤔'
 ];
 
-/** The choices on a row of the default picker: the arrows up and down move by a row. */
+/** The choices on a row of the picker: the arrows up and down move by a row (`picker.columns`). */
 export const ICON_COLUMNS = 8;
 
 /** The callout icon picker of each view (the first rich text plugin listed claims it). */
@@ -104,6 +104,8 @@ export class CalloutIconPicker {
 	target = $state<string | null>(null);
 	/** The keyboard's row: an index in `icons`, `icons.length` for Remove icon. */
 	index = $state(0);
+	/** The choices on a row: ArrowUp and ArrowDown move by a row, so lay the icons out in as many columns. */
+	readonly columns = ICON_COLUMNS;
 	/**
 	 * Where the picker shows, layer-relative: under the target's icon.
 	 * @internal

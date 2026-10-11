@@ -30,8 +30,8 @@ import {
 } from '../../../lib/collaboration/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { noSelection } from '../../../lib/session/selection.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONDoc } from '../../../lib/utils/json.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const docValue = (text = 'shared'): JSONDoc => ({
 	children: [{ type: 'paragraph', content: [{ text }] }]

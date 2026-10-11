@@ -47,10 +47,10 @@ export type EquationPluginOptions = {
 	/** The slash menu's keywords by command id (`block.equation`, `equation.inline`), which replace its own. */
 	keywords?: Partial<Record<string, string[]>>;
 	/**
-	 * Replace the editor's panel (the source's field, KaTeX's error, Done):
-	 * it renders under the edited equation while `editor.target` is set
-	 * (centered under a block equation). Put `{@attach editor.field}` on the
-	 * source's field.
+	 * The editor's panel (the source's field, KaTeX's error, Done): it
+	 * renders under the edited equation while `editor.target` is set
+	 * (centered under a block equation; without it, nothing shows). Put
+	 * `{@attach editor.field}` on the source's field.
 	 */
 	panel?: Snippet<[EquationEditor]>;
 };

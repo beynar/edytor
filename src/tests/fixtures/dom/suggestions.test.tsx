@@ -16,12 +16,14 @@ import { createDocument } from '$lib/crdt/index.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { selectionState, selectBlocks } from '../../selection.js';
+import {
+	codePlugin,
+	imagePlugin,
+	richTextPlugin,
+	suggestionsPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

@@ -1,15 +1,16 @@
 import { mount, unmount, type Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import FindBar from './FindBar.svelte';
 import FindHighlights from './FindHighlights.svelte';
 import { FindController } from './FindController.svelte.js';
 import { findEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
+import { mountChrome } from '../chrome.js';
 
 export type FindPluginOptions = {
 	/**
-	 * Replace the bar's markup; it renders while `find.isOpen`, placed at the
-	 * editor's top right. Put `use:find.field` on your query input (focused
+	 * The bar's markup; it renders while `find.isOpen`, placed at the
+	 * editor's top right (without it, Mod+F searches and highlights, and
+	 * nothing else shows). Put `use:find.field` on your query input (focused
 	 * on each Mod+F; Enter, Shift+Enter, Escape) and `use:find.replaceField`
 	 * on your replacement input.
 	 */
@@ -65,13 +66,11 @@ export const createFindPlugin =
 			onEdytorAttached: () => {
 				const layer = edytor.overlay.layer!;
 				const highlights = mount(FindHighlights, { target: layer, props: { edytor, find } });
-				const unmountBar = edytor.overlay.mount(
-					FindBar,
-					{ find, bar: options.bar },
-					'edytor-find-host',
-					55,
-					place(edytor, find)
-				);
+				const unmountBar = mountChrome(edytor, options.bar, find, () => find.isOpen, {
+					name: 'edytor-find-host',
+					zIndex: 55,
+					measure: place(edytor, find)
+				});
 				return () => {
 					find.destroy();
 					unmountBar();
@@ -80,6 +79,3 @@ export const createFindPlugin =
 			}
 		};
 	};
-
-/** Find and replace with the built-in bar. */
-export const findPlugin = createFindPlugin();

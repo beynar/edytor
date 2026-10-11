@@ -3,7 +3,6 @@ import { expect, vi } from 'vitest';
 
 import { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../../atMention.svelte';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
@@ -17,6 +16,7 @@ import {
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { selectionState } from '../../../selection.js';
+import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 const serializeChildren = (children: JSONBlock[]) =>
 	removeIds(JSON.parse(JSON.stringify(children)) as JSONBlock[]);

@@ -1,10 +1,10 @@
 /** @jsxImportSource ../../../jsx */
 import { mentionPlugin } from '../../../atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { findBlockAndTextAtPath } from '../../../test.utils.js';
 import { selectionState } from '../../../selection.js';
+import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 const noopSnippet = (() => null) as never;
 

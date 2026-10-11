@@ -9,10 +9,10 @@
  * them once.
  */
 import { describe, expect, it } from 'vitest';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { attributeProbePlugin } from '../../dom/AttributeProbeKind.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const BLOCKS = 20;
 const ids = Array.from({ length: BLOCKS }, (_, i) => `p${i}`);

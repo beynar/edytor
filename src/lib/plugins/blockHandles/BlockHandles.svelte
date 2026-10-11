@@ -34,8 +34,8 @@
 		near: ReadonlySet<string>;
 		/** Blocks under the pointer; reactive. */
 		hovered: ReadonlySet<string>;
-		/** A custom handle (`BlockHandlesOptions.handle`). */
-		handle?: Snippet<[BlockHandleSnippetPayload]>;
+		/** The app's handle (`BlockHandlesOptions.handle`). */
+		handle: Snippet<[BlockHandleSnippetPayload]>;
 	} = $props();
 
 	/** The block whose handle holds focus: its handle stays while focused. */
@@ -216,10 +216,6 @@
 		padding-inline-end: 0;
 	}
 
-	[data-edytor-block-handle-host][data-over-gap='true'] :global(.edytor-block-add) {
-		width: 18px;
-	}
-
 	[data-edytor-block-handle-host][data-over-gap='true']::before {
 		content: '';
 		position: absolute;
@@ -241,5 +237,23 @@
 			opacity: 1;
 			padding-inline-end: 0;
 		}
+	}
+
+	/* Where a handle's drag lands (`DropIndicator`): the bar (4px) and the nest
+	 * backdrop, placed in the overlay; their look is the app's. */
+	:global([data-edytor-drop-indicator]),
+	:global([data-edytor-drop-backdrop]) {
+		position: absolute;
+		pointer-events: none;
+	}
+
+	:global([data-edytor-drop-indicator]) {
+		z-index: 100;
+		box-sizing: border-box;
+		height: 4px;
+	}
+
+	:global([data-edytor-drop-backdrop]) {
+		z-index: 99;
 	}
 </style>

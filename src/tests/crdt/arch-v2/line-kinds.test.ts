@@ -11,10 +11,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { converge, tree } from './replica-harness.js';
 import { createDocument, defaultSemantics } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../oracles/model-ops.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const M = bindModel(Y);
 

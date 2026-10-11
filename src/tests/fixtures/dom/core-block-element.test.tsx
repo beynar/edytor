@@ -17,9 +17,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createRawSnippet } from 'svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import {
 	dispatchDomBeforeInput,
@@ -27,6 +25,7 @@ import {
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { codePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference (`arch-v2/ref-r5`); green since R5. */
 const row = it;

@@ -19,12 +19,17 @@ export type SuggestionBarPayload = {
 	/** Ask for another answer (`onRetry`); `undefined` without one. */
 	retry: (() => void) | undefined;
 	readonly: boolean;
-	/** The words the built-in bar shows (the plugin's `labels`), for yours. */
+	/** The view's keys are a Mac's: Mod is ⌘ (name the Accept key with it). */
+	mac: boolean;
+	/** The plugin's words (`labels`), for your bar. */
 	labels: SuggestionsLabels;
 };
 
 export type SuggestionsOptions = {
-	/** Replace the bar under each block suggestion; placement and keys stay the plugin's. */
+	/**
+	 * The bar under each block suggestion (without it, none: the keys still
+	 * accept and discard); placement and keys are the plugin's.
+	 */
 	bar?: Snippet<[SuggestionBarPayload]>;
 	/** The words the bar shows, over the English ones. */
 	labels?: PartialLabels<'suggestions'>;
@@ -48,7 +53,7 @@ const endAtCaret = (edytor: Edytor) => {
 };
 
 /**
- * The default UI of `edytor.suggestions` (Notion AI's): a bar under each
+ * The UI of `edytor.suggestions` (Notion AI's): the app's `bar` under each
  * block suggestion (Accept, Discard, and Try again when the app passed
  * `onRetry`), and keys for the latest one: Mod+Enter accepts, Escape
  * discards; Tab accepts an `end` suggestion at the caret.
@@ -71,9 +76,11 @@ export const createSuggestionsPlugin = (options: SuggestionsOptions = {}): Plugi
 			}
 		},
 		onEdytorAttached: () => {
+			const { bar } = options;
+			if (!bar) return;
 			const bars = mount(SuggestionBars, {
 				target: edytor.overlay.layer!,
-				props: { edytor, bar: options.bar, labels }
+				props: { edytor, bar, labels }
 			});
 			return () => void unmount(bars);
 		}
@@ -82,5 +89,5 @@ export const createSuggestionsPlugin = (options: SuggestionsOptions = {}): Plugi
 	return plugin;
 };
 
-/** The default suggestion UI. */
+/** The suggestions' keys, with no bar. */
 export const suggestionsPlugin = createSuggestionsPlugin();

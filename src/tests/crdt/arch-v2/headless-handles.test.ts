@@ -22,9 +22,9 @@ import { createDocument } from '../../../lib/crdt/index.js';
 import { Y } from '../../../lib/crdt/engine.js';
 import { attachDocument } from '../../../lib/crdt/document.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '../../atMention.svelte';
 import { insertParts } from '../../test.utils.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference (`arch-v2/ref-r4`); green since R4. */
 const row = test;

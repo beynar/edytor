@@ -31,9 +31,9 @@ import { attachDocument, createDocument, loadDocument } from '../../../lib/crdt/
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { project, type SelectionValue } from '$lib/session/selection.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONDoc } from '../../../lib/utils/json.js';
 import { selectionState } from '../../selection.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const syncProtocol = bindSync(Y);
 

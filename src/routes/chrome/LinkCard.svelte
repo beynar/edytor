@@ -1,9 +1,9 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
-	import { linkIcon } from '../icons.js';
-	import type { ToolbarController } from './ToolbarController.svelte.js';
-	let { controller, card }: { controller: ToolbarController; card?: Snippet<[ToolbarController]> } =
-		$props();
+	import { linkIcon } from './icons.js';
+	import type { ToolbarController } from '$lib/index.js';
+
+	/** The card under a hovered link, drawn for `createToolbarPlugin({ card })`. */
+	let { controller }: { controller: ToolbarController } = $props();
 	const labels = $derived(controller.labels);
 </script>
 
@@ -12,39 +12,35 @@
 	Edit and Remove, just below the link. No press on it takes the editor's
 	focus (its host cancels each `mousedown`).
 -->
-{#if controller.card && card}
-	{@render card(controller)}
-{:else if controller.card}
-	<div
-		class="link-card"
-		data-testid="link-card"
-		data-edytor-link-card
-		role="toolbar"
-		aria-label={labels.card}
+<div
+	class="link-card"
+	data-testid="link-card"
+	data-edytor-link-card
+	role="toolbar"
+	aria-label={labels.card}
+>
+	<span class="link-card-url" style:--link-card-icon={linkIcon} title={controller.hoveredHref}
+		>{controller.hoveredHref}</span
 	>
-		<span class="link-card-url" style:--link-card-icon={linkIcon} title={controller.hoveredHref}
-			>{controller.hoveredHref}</span
-		>
-		<button
-			type="button"
-			data-testid="link-card-open"
-			title={labels.openLink}
-			onclick={() => controller.openHovered()}>{labels.open}</button
-		>
-		<button
-			type="button"
-			data-testid="link-card-edit"
-			title={labels.editLink}
-			onclick={() => controller.editHovered()}>{labels.edit}</button
-		>
-		<button
-			type="button"
-			data-testid="link-card-remove"
-			title={labels.removeLink}
-			onclick={() => controller.removeHovered()}>{labels.remove}</button
-		>
-	</div>
-{/if}
+	<button
+		type="button"
+		data-testid="link-card-open"
+		title={labels.openLink}
+		onclick={() => controller.openHovered()}>{labels.open}</button
+	>
+	<button
+		type="button"
+		data-testid="link-card-edit"
+		title={labels.editLink}
+		onclick={() => controller.editHovered()}>{labels.edit}</button
+	>
+	<button
+		type="button"
+		data-testid="link-card-remove"
+		title={labels.removeLink}
+		onclick={() => controller.removeHovered()}>{labels.remove}</button
+	>
+</div>
 
 <style>
 	/* Its host's top padding bridges the link and the card for the pointer. */

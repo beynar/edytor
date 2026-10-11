@@ -159,7 +159,8 @@
 					const view = equationViews.get(edytor);
 					if (!view || !owns()) return;
 					const { editor } = view;
-					return editor.panel.mount(node, EquationEditorPanel, { editor, panel: options.panel });
+					const { panel } = options;
+					return panel && editor.panel.mount(node, EquationEditorPanel, { editor, panel });
 				},
 				// A block equation this view just created empty (a slash pick, Turn into) opens its editor.
 				onAfterOperation: (change) => {

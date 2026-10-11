@@ -19,7 +19,6 @@ import { expect, vi } from 'vitest';
 import { createDocument } from '$lib/crdt/index.js';
 import { Edytor } from '$lib/edytor.svelte.js';
 import type { ChangePayload, Plugin } from '$lib/plugins.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { Text } from '$lib/text/text.svelte.js';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
@@ -29,6 +28,7 @@ import {
 	insertParts
 } from '../../../test.utils.js';
 import { selectBlocks } from '../../../selection.js';
+import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
 type RecordedCall = {
 	phase: 'before' | 'after';

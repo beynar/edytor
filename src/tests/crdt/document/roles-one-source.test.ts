@@ -30,9 +30,7 @@ import {
 	type JSONDoc
 } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+import { codePlugin, imagePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 const value: JSONDoc = {
 	children: [

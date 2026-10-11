@@ -5,7 +5,7 @@
  * names the new form.
  *
  * - `hotKeys` (the `Edytor` option and the `<Edytor>` prop): `hotkeys`.
- * - `blockDnd` (the `<Edytor>` prop): `blockHandles`.
+ * - `blockDnd` (the `<Edytor>` prop): `createBlockHandlesPlugin({ handle })`.
  * - `serverUrl`/`roomName` (`createWebsocketSync`, `prefetch`,
  *   `lastUpdated`, `documentSnapshot`): `server`/`room`.
  * - A bare KV namespace as `history.store`: `kvHistory(namespace)`
@@ -37,7 +37,7 @@ import { Edytor, type EdytorOptions } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { MigrateOptions } from '$lib/crdt/migration/migrate.js';
 import type { WebsocketSyncOptions } from '$lib/collaboration/providers.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { richTextPlugin } from '../../routes/chrome/plugins.js';
 
 const value: JSONDoc = { children: [{ id: 'a', type: 'paragraph', content: [{ text: 'aa' }] }] };
 
@@ -67,7 +67,7 @@ describe('retired aliases', () => {
 		});
 		expect(read()).toEqual([
 			expect.stringMatching(/`hotKeys`.*removed.*`hotkeys`/),
-			expect.stringMatching(/`blockDnd`.*removed.*`blockHandles`/)
+			expect.stringMatching(/`blockDnd`.*removed.*`createBlockHandlesPlugin/)
 		]);
 	});
 
@@ -85,9 +85,9 @@ describe('retired aliases', () => {
 		expect(calls).toEqual([]);
 	});
 
-	test('`blockDnd` is no prop', () => {
+	test('`blockDnd` and `blockHandles` are no props: the handles are a plugin the app draws', () => {
 		expectTypeOf<EdytorProps>().not.toHaveProperty('blockDnd');
-		expectTypeOf<EdytorProps>().toHaveProperty('blockHandles');
+		expectTypeOf<EdytorProps>().not.toHaveProperty('blockHandles');
 	});
 
 	test('`serverUrl`/`roomName` are no websocket target, and are refused by name', () => {

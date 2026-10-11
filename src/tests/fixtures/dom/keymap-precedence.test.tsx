@@ -29,14 +29,13 @@ import type { HotKey } from '$lib/session/keymap.js';
 import type { Plugin } from '$lib/plugins.js';
 import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+import { richTextPlugin, slashMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since S4. */
 const row = it;

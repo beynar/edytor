@@ -15,12 +15,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { createImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-import { createVideoPlugin } from '$lib/plugins/media/VideoPlugin.svelte';
-import { createAudioPlugin } from '$lib/plugins/media/AudioPlugin.svelte';
-import { createFilePlugin } from '$lib/plugins/media/FilePlugin.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import {
+	audio as createAudioPlugin,
+	file as createFilePlugin,
+	image as createImagePlugin,
+	richTextPlugin,
+	video as createVideoPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

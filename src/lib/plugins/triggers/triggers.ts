@@ -17,10 +17,10 @@ import {
 	type TextInsertionPayload,
 	type TextTriggerController
 } from './TriggerController.svelte.js';
-import TriggerMenu from './TriggerMenu.svelte';
 import { caretRect } from './place.js';
 import { placeNear } from '$lib/surface/overlay.js';
 import { listHotkeys, type HeldList } from '../list.svelte.js';
+import { mountChrome } from '../chrome.js';
 
 type Keys = Partial<Record<HotKeyCombination, HotKey>>;
 
@@ -74,11 +74,22 @@ export const withRulesAndTriggers = (
 		}),
 		// Below the caret (above it when there is no room), kept in the viewport.
 		(controller) =>
-			edytor.overlay.mount(TriggerMenu, { controller }, 'edytor-trigger-menu-host', 50, (host) => {
-				if (!controller.isOpen) return;
-				const rect = caretRect(edytor);
-				return rect && placeNear(host, rect, [280, 240]);
-			})
+			mountChrome(
+				edytor,
+				controller.trigger.menu,
+				controller,
+				() => controller.isOpen,
+				{
+					name: 'edytor-trigger-menu-host',
+					zIndex: 50,
+					measure: (host) => {
+						if (!controller.isOpen) return;
+						const rect = caretRect(edytor);
+						return rect && placeNear(host, rect, [280, 240]);
+					}
+				},
+				() => controller.close()
+			)
 	);
 };
 

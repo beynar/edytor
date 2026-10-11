@@ -1,13 +1,12 @@
 /**
- * Localization of the version history panel: its words are the `history`
- * section of the label dictionary (`englishLabels.history`, the French
+ * Localization of the version history (`VersionHistory`, drawn by the demo's
+ * panel): its words are the `history` section of the label dictionary (`englishLabels.history`, the French
  * fixture's here), each one a `labels` entry; a word about a count is a
  * function of it. Expected words come from the dictionary, never from a run.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { render } from '@testing-library/svelte';
-import HistoryPanel from '$lib/collaboration/history/HistoryPanel.svelte';
-import { defaultHistoryLabels } from '$lib/collaboration/history/panel.js';
+import HistoryPanel from '../../../routes/chrome/HistoryPanel.svelte';
 import type { HistoryClient, HistoryVersion } from '$lib/collaboration/history/client.js';
 import { createDocument } from '$lib/crdt/index.js';
 import { englishLabels } from '$lib/labels.js';
@@ -80,8 +79,11 @@ const mount = async (labels?: typeof fr.history) => {
 };
 
 describe('the history panel speaks its labels', () => {
-	it('the English words are the dictionary’s history section', () => {
-		expect(defaultHistoryLabels).toBe(englishLabels.history);
+	it('English by default: the dictionary’s history section', async () => {
+		await mount();
+		expect(one('[data-edytor-history]').getAttribute('aria-label')).toBe(
+			englishLabels.history.title
+		);
 	});
 
 	it('French: its name, list, editors, counts and buttons', async () => {

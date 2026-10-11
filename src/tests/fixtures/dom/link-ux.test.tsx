@@ -23,9 +23,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import {
 	dispatchClipboardPaste,
 	dispatchDomBeforeInput,
@@ -35,6 +32,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import { codePlugin, richTextPlugin, toolbarPlugin } from '../../../routes/chrome/plugins.js';
 
 const URL = 'https://edytor.dev/docs';
 const link = (href = URL) => ({ link: { href } });

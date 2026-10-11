@@ -12,6 +12,7 @@ import {
 	type PartialLabels
 } from '$lib/labels.js';
 import { hidden } from '$lib/selection/visibility.js';
+import type { Popup } from '$lib/surface/popups.svelte.js';
 
 export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
 
@@ -30,8 +31,11 @@ export type BlockHandleSnippetPayload = {
 	 * block.
 	 */
 	add: (alt?: boolean, anchor?: HTMLElement | null) => void;
-	/** Whether the block takes a `+`: always `true` (a block in a column too, as Notion). */
-	addable: boolean;
+	/**
+	 * Alt+click on the `+` adds a column right of the block's (a block
+	 * directly in a layout's column): name your `+` with it.
+	 */
+	beside: boolean;
 	readonly: boolean;
 	draggable: boolean;
 	/**
@@ -44,6 +48,8 @@ export type BlockHandleSnippetPayload = {
 	 * `aria-controls`.
 	 */
 	controls: { add: string | undefined; grip: string | undefined };
+	/** What the menu the `+` or the grip opened is, while it is open: their `aria-haspopup`. */
+	haspopup: { add: Popup['haspopup']; grip: Popup['haspopup'] };
 	/** The handles' words (`add(label)`, `grip(label)`, their hints). */
 	labels: BlockHandlesLabels;
 };
@@ -52,16 +58,14 @@ export type BlockHandlesOptions = {
 	/** Keep the handle and its keyboard actions, but omit pointer dragging and drop targets. */
 	draggable?: boolean;
 	onActivate?: (activation: BlockHandleActivation) => void;
-	/** Replace the `+` and ⋮⋮ beside each block; placement and hover stay the plugin's. */
+	/**
+	 * The `+` and ⋮⋮ beside each block (without it, no handle shows and no
+	 * block drags); placement and hover are the plugin's.
+	 */
 	handle?: Snippet<[BlockHandleSnippetPayload]>;
 	/** The handles' accessible names and tooltips, over the English ones. */
 	labels?: PartialLabels<'blockHandles'>;
 };
-
-const handlePlugins = new WeakSet<Plugin>();
-
-/** Recognize both the default and configured handle plugins during component composition. */
-export const isBlockHandlesPlugin = (plugin: Plugin) => handlePlugins.has(plugin);
 
 /**
  * Block handles in the overlay, created lazily: a handle mounts
@@ -71,8 +75,9 @@ export const isBlockHandlesPlugin = (plugin: Plugin) => handlePlugins.has(plugin
  * during our own drag. Hover is one delegated listener on the editor and
  * one on the overlay (a block's handle keeps it hovered).
  */
-export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plugin => {
-	const plugin: Plugin = (edytor) => {
+export const createBlockHandlesPlugin =
+	(options: BlockHandlesOptions = {}): Plugin =>
+	(edytor) => {
 		const controller = new BlockHandleController(edytor, {
 			draggable: options.draggable !== false,
 			onActivate: options.onActivate,
@@ -161,10 +166,13 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				layer.addEventListener('pointerover', hoverOverlay);
 				layer.addEventListener('pointerleave', unhover);
 				const offNear = measured ? edytor.overlay.add(measureNear) : undefined;
-				const component = mount(BlockHandles, {
-					target: layer,
-					props: { edytor, controller, blocks, near, hovered, handle: options.handle }
-				});
+				const { handle } = options;
+				const component =
+					handle &&
+					mount(BlockHandles, {
+						target: layer,
+						props: { edytor, controller, blocks, near, hovered, handle }
+					});
 				return () => {
 					node.removeEventListener('pointerover', hover);
 					node.removeEventListener('pointerleave', unhover);
@@ -174,7 +182,7 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 					clearTimeout(afterPaint);
 					afterPaint = undefined;
 					gained = null;
-					void unmount(component);
+					if (component) void unmount(component);
 				};
 			},
 			onBlockAttached: ({ node, block }) => {
@@ -199,9 +207,3 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 			}
 		};
 	};
-	handlePlugins.add(plugin);
-	return plugin;
-};
-
-/** Default handles for consumers that add the plugin directly. */
-export const blockHandlesPlugin = createBlockHandlesPlugin();

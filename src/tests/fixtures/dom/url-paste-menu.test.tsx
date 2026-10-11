@@ -16,9 +16,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { createEmbedPlugin, embedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
-import { bookmarkPlugin, createBookmarkPlugin } from '$lib/plugins/media/BookmarkPlugin.svelte';
 import {
 	canonicalTree,
 	dispatchClipboardPaste,
@@ -28,6 +25,13 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectionState } from '../../selection.js';
+import {
+	bookmark as createBookmarkPlugin,
+	bookmarkPlugin,
+	embed as createEmbedPlugin,
+	embedPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

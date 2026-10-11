@@ -10,7 +10,6 @@
  * them. Expected states are hand-authored.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { dispatchDomBeforeInput, flushDomUpdates } from '../../dom/test.utils.js';
 import {
@@ -26,6 +25,7 @@ import {
 	tree
 } from './columns.helpers.js';
 import { selectionState } from '../../selection.js';
+import { slashMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

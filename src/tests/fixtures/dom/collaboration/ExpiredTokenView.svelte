@@ -1,7 +1,7 @@
 <script lang="ts">
+	import { richTextPlugin } from '../../../../routes/chrome/plugins.js';
 	// The documented refresh: `onSyncExpired` fetches a token, `params` carries it to the redial.
 	import Edytor from '$lib/components/Edytor.svelte';
-	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 
 	type Expired = { reason: string; attempts: number; nextRetryMs: number };
 	let { expired, getToken }: { expired: Expired[]; getToken: () => Promise<string> } = $props();

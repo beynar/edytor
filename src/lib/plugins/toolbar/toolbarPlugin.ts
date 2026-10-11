@@ -1,8 +1,7 @@
-import type { Component, Snippet } from 'svelte';
+import type { Snippet } from 'svelte';
 import type { Plugin } from '$lib/plugins.js';
-import Toolbar from './Toolbar.svelte';
-import LinkCard from './LinkCard.svelte';
 import { ToolbarController } from './ToolbarController.svelte.js';
+import { mountChrome } from '../chrome.js';
 import { toolbarEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
 import { placeNear } from '$lib/surface/overlay.js';
 
@@ -14,8 +13,8 @@ const isNativeFieldEvent = (event: Event) =>
 
 export type ToolbarOptions = {
 	/**
-	 * Replace the toolbar; it renders while `controller.isVisible`, placed
-	 * above the selection. A press on it never takes the editor's focus (its
+	 * The toolbar's markup; it renders while `controller.isVisible`, placed
+	 * above the selection (without it, nothing shows). A press on it never takes the editor's focus (its
 	 * fields, an input or a select, take their own). Keep the built-in
 	 * keyboard and ARIA with its attachments: `{@attach controller.popup}`
 	 * and `{@attach controller.keys}` on the bar (its id, role, placement and
@@ -25,22 +24,17 @@ export type ToolbarOptions = {
 	 */
 	toolbar?: Snippet<[ToolbarController]>;
 	/**
-	 * The card shown under a hovered link, with its URL, Open, Edit (the link
-	 * panel) and Remove (`link.card`). `false` shows none. Default `true`.
-	 */
-	linkCard?: boolean;
-	/**
-	 * Replace the link card's markup; it renders while `controller.card`,
-	 * just below the hovered link (`controller.hoveredHref`, and
-	 * `openHovered`, `editHovered`, `removeHovered`). A press on it never
-	 * takes the editor's focus.
+	 * The card shown under a hovered link (`link.card`): it renders while
+	 * `controller.card`, just below the hovered link (`controller.hoveredHref`,
+	 * and `openHovered`, `editHovered`, `removeHovered`); without it, no
+	 * card. A press on it never takes the editor's focus.
 	 */
 	card?: Snippet<[ToolbarController]>;
 	/** The words the toolbar and the link card show, over the English ones. */
 	labels?: PartialLabels<'toolbar'>;
 };
 
-/** The selection toolbar, with your own markup through a `toolbar` snippet. */
+/** The selection toolbar, drawn by your `toolbar` snippet, and the link card by your `card`. */
 export const createToolbarPlugin =
 	(options: ToolbarOptions = {}): Plugin =>
 	(edytor) => {
@@ -146,44 +140,39 @@ export const createToolbarPlugin =
 				const keep = (event: Event) => {
 					if (!isNativeFieldEvent(event)) event.preventDefault();
 				};
-				/** Mount `component` in the overlay, its host keeping the focus on a press. */
-				const mount = <P extends Record<string, unknown>>(
-					component: Component<P>,
-					props: P,
+				/** Mount `snippet` in the overlay while `shown`, its host keeping the focus on a press. */
+				const mount = (
+					snippet: Snippet<[ToolbarController]> | undefined,
+					shown: () => unknown,
 					name: string,
 					zIndex: number,
-					place: (host: HTMLElement) => (() => void) | void
+					measure: (host: HTMLElement) => (() => void) | void
 				) => {
-					offs.push(edytor.overlay.mount(component, props, name, zIndex, place));
-					const host = edytor.overlay.layer?.querySelector(`[data-${name}]`);
+					offs.push(mountChrome(edytor, snippet, controller, shown, { name, zIndex, measure }));
+					const host = snippet && edytor.overlay.layer?.querySelector(`[data-${name}]`);
 					host?.addEventListener('mousedown', keep);
 					offs.push(() => host?.removeEventListener('mousedown', keep));
 					return host;
 				};
 				mount(
-					Toolbar,
-					{ controller, toolbar: options.toolbar },
+					options.toolbar,
+					() => controller.isVisible,
 					'edytor-toolbar-host',
 					60,
 					positionToolbar
 				);
-				if (options.linkCard !== false) {
-					const card = mount(
-						LinkCard,
-						{ controller, card: options.card },
-						'edytor-link-card-host',
-						61,
-						positionCard
-					);
-					if (edytor.node && card) offs.push(trackLinks(edytor.node, card));
-					offs.push(() => controller.hover(null));
-				}
+				const card = mount(
+					options.card,
+					() => controller.card,
+					'edytor-link-card-host',
+					61,
+					positionCard
+				);
+				if (edytor.node && card) offs.push(trackLinks(edytor.node, card));
+				offs.push(() => controller.hover(null));
 				return () => {
 					for (const off of offs.reverse()) off();
 				};
 			}
 		};
 	};
-
-/** The Notion-style selection toolbar. */
-export const toolbarPlugin = createToolbarPlugin();

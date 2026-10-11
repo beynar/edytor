@@ -36,9 +36,6 @@ import { Y } from '$lib/crdt/engine.js';
 import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -47,6 +44,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { selectBlocks } from '../../selection.js';
+import { richTextPlugin, slashMenuPlugin, toolbarPlugin } from '../../../routes/chrome/plugins.js';
 
 /** Red on the reference; green since V4. */
 const row = it;

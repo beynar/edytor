@@ -12,11 +12,10 @@
  * hand-authored.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
-import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { dispatchDomKeyDown, flushDomUpdates } from '../../dom/test.utils.js';
 import { block, contractDoc, renderColumns, selected, tree } from './columns.helpers.js';
 import { selectBlocks } from '../../selection.js';
+import { blockHandlesPlugin, blockMenuPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

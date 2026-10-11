@@ -114,7 +114,8 @@
 			return {
 				onEdytorAttached: ({ node }) => {
 					const menu = ownMenu();
-					return menu?.panel.mount(node, LanguageMenuPanel, { menu });
+					const snippet = menu?.settings.menu;
+					return snippet && menu.panel.mount(node, LanguageMenuPanel, { menu, snippet });
 				},
 				hotkeys: {
 					// Alt+F10 at a caret in a code line: the keys go to its language button

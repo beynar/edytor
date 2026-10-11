@@ -13,9 +13,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createDocument, layoutSemantics } from '$lib/crdt/index.js';
 import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { renderDomEdytor } from '../../dom/test.utils.js';
 import { column, columns, contractDoc, p, renderColumns, tree } from './columns.helpers.js';
+import { richTextPlugin } from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

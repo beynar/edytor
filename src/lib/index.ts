@@ -59,7 +59,6 @@ export type {
 	InputRuleContext,
 	Trigger,
 	TriggerContext,
-	TriggerItemPayload,
 	TextRuleContext
 } from './plugins.js';
 export type { Caret } from './selection/selection.svelte.js';
@@ -115,23 +114,18 @@ export {
 	BLOCK_ADD_EVENT,
 	type BlockActivation,
 	type BlockAddition,
-	blockHandlesPlugin,
 	createBlockHandlesPlugin,
 	type BlockHandleActivation,
 	type BlockHandlesOptions,
 	type BlockHandleSnippetPayload,
 	type BlockHandleController,
-	slashMenuPlugin,
 	createSlashMenuPlugin,
 	type SlashMenuOptions,
-	type SlashMenuItem,
 	type SlashMenuController,
-	toolbarPlugin,
 	createToolbarPlugin,
 	TOOLBAR_COLORS,
 	type ToolbarOptions,
 	type ToolbarController,
-	blockMenuPlugin,
 	createBlockMenuPlugin,
 	type BlockMenuOptions,
 	type BlockMenuController,
@@ -185,7 +179,6 @@ export {
 	type ImageEmptyFailure,
 	type MenuItemPayload,
 	type OptionAttributes,
-	findPlugin,
 	createFindPlugin,
 	findController,
 	findMatches,
@@ -324,18 +317,17 @@ export {
 
 // ── Version history ────────────────────────────────────────────────────
 export {
-	HistoryPanel,
+	VersionHistory,
 	createHistoryClient,
 	HistoryRequestError,
 	versionDiff,
-	defaultHistoryLabels,
 	type HistoryClient,
 	type HistoryClientOptions,
 	type HistoryRestoreResult,
 	type HistoryUndoResult,
 	type HistoryVersion,
 	type HistoryPanelLabels,
-	type HistoryPanelProps,
+	type VersionHistoryOptions,
 	type VersionChange,
 	type VersionDiff
 } from './collaboration/history/index.js';
@@ -345,7 +337,6 @@ export {
 // callback above, exported so an app can name them.
 export type { EdytorProps } from './components/Edytor.svelte';
 export type { EdytorOptions, Snippets } from './edytor.svelte.js';
-export type { HistoryVersionItem } from './collaboration/history/index.js';
 export type {
 	BlockHandlesLabels,
 	BlockMenuLabels,

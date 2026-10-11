@@ -27,8 +27,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { createEquationPlugin } from '$lib/plugins/equation/EquationPlugin.svelte';
 import { defaultSemantics } from '$lib/crdt/semantics.js';
 import {
 	serializeClipboardFragmentToHtml,
@@ -43,6 +41,10 @@ import {
 	renderDomEdytor,
 	setNativeSelection
 } from '../../dom/test.utils.js';
+import {
+	equation as createEquationPlugin,
+	richTextPlugin
+} from '../../../routes/chrome/plugins.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';

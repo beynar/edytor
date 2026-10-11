@@ -5,8 +5,10 @@
  * controllers' attachments apply (a press that keeps the focus, an
  * element given its id, role and name).
  */
+import type { Snippet } from 'svelte';
 import { createAttachmentKey, type Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import Chrome from './Chrome.svelte';
 import { onPress } from '$lib/events/onFocus.js';
 import {
 	BLOCK_ACTIVATE_EVENT,
@@ -14,6 +16,35 @@ import {
 	type BlockActivation,
 	type BlockAddition
 } from './blockHandles/BlockHandleController.svelte.js';
+
+/**
+ * Mount the app's `snippet` for a chrome surface in a fixed host of the
+ * overlay (`data-<name>`, placed by `measure`), rendered with `payload`
+ * while `shown` holds and closed (`close`) when the view turns readonly.
+ * Without a snippet the surface renders nothing (its controller still
+ * works): nothing is mounted. Answers the teardown.
+ */
+export const mountChrome = <T>(
+	edytor: Edytor,
+	snippet: Snippet<[T]> | undefined,
+	payload: T,
+	shown: () => unknown,
+	place: {
+		name: string;
+		zIndex: number;
+		measure: (host: HTMLElement, origin: DOMRect) => (() => void) | void;
+	},
+	close?: () => void
+) =>
+	snippet
+		? edytor.overlay.mount(
+				Chrome<T>,
+				{ edytor, snippet, payload, shown, close },
+				place.name,
+				place.zIndex,
+				place.measure
+			)
+		: () => {};
 
 /**
  * One row of a chrome list, for an `item` snippet: the same shape in every

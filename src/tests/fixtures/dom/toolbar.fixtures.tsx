@@ -4,8 +4,6 @@ import { expect } from 'vitest';
 
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { flushDomUpdates } from '../../dom/test.utils.js';
 import {
@@ -14,6 +12,7 @@ import {
 	type SelectionExpectation
 } from '../../test.utils.js';
 import { defineDomFixture, defineFixtures } from '../types.js';
+import { richTextPlugin, toolbarPlugin } from '../../../routes/chrome/plugins.js';
 
 const toolbarPlugins = [richTextPlugin, mentionPlugin, toolbarPlugin];
 const emptyFixture = <root></root>;

@@ -18,7 +18,7 @@ import { createRawSnippet } from 'svelte';
 import { createDocument, type EdytorInstance, type JSONDoc, type Plugin } from '$lib/index.js';
 import type { EdytorProps } from '$lib/components/Edytor.svelte';
 import { Edytor, type EdytorOptions } from '$lib/edytor.svelte.js';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { richTextPlugin } from '../../routes/chrome/plugins.js';
 
 afterEach(() => vi.restoreAllMocks());
 

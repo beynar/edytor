@@ -11,9 +11,8 @@ import { holdsNothing, lineage, placing } from '$lib/kinds.js';
 import { id } from '$lib/utils.js';
 import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
-import UrlPasteMenu from './UrlPasteMenu.svelte';
 import { mediaEnglish, type MediaLabels } from '$lib/labels.js';
-import { inPage, optionAttributes, type OptionAttributes } from '../chrome.js';
+import { inPage, mountChrome, optionAttributes, type OptionAttributes } from '../chrome.js';
 import { listHotkeys, listPopup } from '../list.svelte.js';
 
 /** A kind a pasted URL can turn its line into (the embed's, the bookmark's). */
@@ -209,12 +208,13 @@ export class UrlPasteController {
 				if (!target?.closest?.('[data-edytor-url-paste-host]')) this.close();
 			};
 			const offPress = onPress(this.edytor, node.ownerDocument, outside, true);
-			const unmount = this.edytor.overlay.mount(
-				UrlPasteMenu,
-				{ controller: this, menu: this.#menu },
-				'edytor-url-paste-host',
-				50,
-				this.measure
+			const unmount = mountChrome(
+				this.edytor,
+				this.#menu,
+				this,
+				() => this.open,
+				{ name: 'edytor-url-paste-host', zIndex: 50, measure: this.measure },
+				this.close
 			);
 			return () => {
 				offPress();

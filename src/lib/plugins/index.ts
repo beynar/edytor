@@ -19,7 +19,6 @@ export {
 } from './blockHandles/BlockHandleController.svelte.js';
 export { TOOLBAR_COLORS } from './toolbar/ToolbarController.svelte.js';
 export {
-	blockHandlesPlugin,
 	createBlockHandlesPlugin,
 	type BlockHandleActivation,
 	type BlockHandlesOptions,
@@ -49,20 +48,11 @@ export {
 	type PageLinkPluginOptions
 } from './pageLink/PageLinkPlugin.svelte';
 export type { TriggerMenuController } from './triggers/TriggerController.svelte.js';
-export {
-	slashMenuPlugin,
-	createSlashMenuPlugin,
-	type SlashMenuOptions,
-	type SlashMenuItem
-} from './slashMenu/slashMenuPlugin.js';
+export { createSlashMenuPlugin, type SlashMenuOptions } from './slashMenu/slashMenuPlugin.js';
 export type { SlashMenuController } from './slashMenu/SlashMenuController.svelte.js';
-export {
-	toolbarPlugin,
-	createToolbarPlugin,
-	type ToolbarOptions
-} from './toolbar/toolbarPlugin.js';
+export { createToolbarPlugin, type ToolbarOptions } from './toolbar/toolbarPlugin.js';
 export type { ToolbarController } from './toolbar/ToolbarController.svelte.js';
-export { blockMenuPlugin, createBlockMenuPlugin } from './blockMenu/blockMenuPlugin.js';
+export { createBlockMenuPlugin } from './blockMenu/blockMenuPlugin.js';
 export {
 	suggestionsPlugin,
 	createSuggestionsPlugin,
@@ -125,12 +115,7 @@ export {
 	isColumnsPlugin,
 	type ColumnsPluginOptions
 } from './columns/ColumnsPlugin.svelte';
-export {
-	findPlugin,
-	createFindPlugin,
-	findController,
-	type FindPluginOptions
-} from './find/findPlugin.js';
+export { createFindPlugin, findController, type FindPluginOptions } from './find/findPlugin.js';
 export type { FindController, ReplaceMatches } from './find/FindController.svelte.js';
 export {
 	marqueePlugin,

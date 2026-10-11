@@ -77,7 +77,7 @@ A command is refused when:
 Check `last.status` after a command you issue when the next step depends on it:
 
 ```ts title="check-todo.ts" check
-block.setData({ ...block.data, checked: true });
+edytor.patchData(block.id, [{ path: ['checked'], value: true }]);
 if (edytor.dispatcher.last?.status === 'refused') alert('This note is read-only.');
 ```
 

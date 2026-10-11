@@ -44,8 +44,8 @@ export const replaceSelectedAtom = (edytor: Edytor, value = '') => {
 	// removal joins the text after the atom to it.
 	const text = parent.content[index - 1] as Text;
 	const offset = text.length;
-	parent.removeInlineBlock({ index });
-	if (value) text.insertText({ value, start: offset, end: offset });
+	edytor.removeInline(parent.id, selected.id);
+	if (value) edytor.insertText(parent.id, text.segStart + offset, value);
 	edytor.dispatcher.caret(text, offset + value.length);
 	return true;
 };
@@ -139,7 +139,7 @@ const voidAfter = (edytor: Edytor) => {
  * Move `blocks` one level, one group of siblings at a time (Notion: over
  * several nesting levels, each group that can move does, a vetoed one too:
  * `dispatcher.each`), as one undo step. A block inside another of them
- * moves with it; `edytor.moveBlocks` moves siblings with an unselected block
+ * moves with it; `edytor.move` moves siblings with an unselected block
  * between them apart, so no key reorders the text. Answers
  * the moved blocks.
  */
@@ -148,9 +148,7 @@ const moveRoots = (edytor: Edytor, blocks: Block[], direction: 'in' | 'out') => 
 	for (const block of outermost(blocks).toSorted(edytor.compareBlocks))
 		groups.set(block.parent, [...(groups.get(block.parent) ?? []), block]);
 	return edytor.dispatcher
-		.each('moveBlocks', [...groups.values()], (group) =>
-			edytor.moveBlocks({ blocks: group, direction })
-		)
+		.each('moveBlocks', [...groups.values()], (group) => edytor.move({ blocks: group, direction }))
 		.flatMap((moved) => moved ?? []);
 };
 
@@ -174,9 +172,17 @@ const nest =
 			}
 			const [selected] = selection.selectedBlocks;
 			const at = selection.textAt(selection.projection.start);
-			// The block's command reveals a closed toggle it lands in or that adopts.
-			const block = (selected ?? at?.text.parent)?.[operation]();
+			const block = selected ?? at?.text.parent;
 			if (!block) return;
+			// Into the block before it; the view's move reveals a closed toggle it lands in or that adopts.
+			const into = block.previousBlock;
+			if (operation === 'nestBlock' && !into)
+				return edytor.dispatcher.record({ operation, status: 'refused' });
+			const result =
+				operation === 'unNestBlock'
+					? edytor.unNestBlock(block.id)
+					: edytor.nestBlock(block.id, into!.id);
+			if (result.status !== 'applied') return;
 			edytor.announcer.moved({ blocks: [block], direction }, [block]);
 			if (selected) selection.select(blockSelection([block.id]));
 			else if (at) caretAt(edytor, block.content[at.text.index] as Text, at.offset);

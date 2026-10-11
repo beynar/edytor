@@ -3,10 +3,14 @@
  * inside voids — the caption contract), and marks over a range.
  */
 import { sanitizeWireJson, jsonEquals } from '../../utils/json.js';
+import { id as newId } from '../../utils.js';
 import type { BlockId, InlineSpec } from '../placement/model.js';
 import { ref, sanitizeInline } from './plan.js';
 import type { Prepared, JsonObj } from './types.js';
 import type { OpsContext } from './steps.js';
+
+/** An inline atom to insert: its id is minted when it names none. */
+export type NewInline = Omit<InlineSpec, 'id'> & { id?: string };
 
 /** The content ops of one facade, prepared. */
 export const contentOps = (c: OpsContext) => {
@@ -74,9 +78,10 @@ export const contentOps = (c: OpsContext) => {
 		return formatRange(id, offset, length, clears);
 	};
 
-	const insertInline = (id: BlockId, offset: number, atom: InlineSpec): Prepared => {
+	/** An atom without an id gets a fresh one. */
+	const insertInline = (id: BlockId, offset: number, atom: NewInline): Prepared => {
 		id = ref(id);
-		const clean = sanitizeInline(atom);
+		const clean = sanitizeInline({ ...atom, id: atom.id ?? newId('i') });
 		if (!contentTarget(id)) return REFUSED;
 		return plan([id], [{ op: 'insertInline', id, offset: clamp(id, offset, 0)[0], atom: clean }]);
 	};

@@ -1,14 +1,24 @@
 /** @jsxImportSource ../../../jsx */
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { expect } from 'vitest';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import {
 	expectBlockInvariantSnapshot,
 	expectMarksState,
 	expectTextValue,
-	findBlockAndTextAtPath
+	findBlockAndTextAtPath,
+	runBeforeInput
 } from '../../../test.utils.js';
+import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
 
 const getStartText = (edytor: Edytor) => findBlockAndTextAtPath(edytor)([0, 0]).text;
+
+/** Type `data` at the selection, as the browser's `beforeinput` does. */
+const type = (edytor: Edytor, data: string) =>
+	runBeforeInput(edytor, { inputType: 'insertText', data });
+
+/** Toggle `mark` over the selection (at a caret: stage it), as the toolbar does. */
+const toggle = (edytor: Edytor, mark: string) => richTextOperations(edytor).setMarkAtRange(mark);
 
 export const fixtures = defineFixtures([
 	defineModelOperationFixture({
@@ -18,9 +28,9 @@ export const fixtures = defineFixtures([
 				<paragraph>Hel|lo</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => {
+		run: async ({ edytor }) => {
 			const text = getStartText(edytor);
-			text.insertText({ value: 'p' });
+			await type(edytor, 'p');
 			expectTextValue(text, [{ text: 'Helplo' }]);
 			expectBlockInvariantSnapshot(edytor);
 		},
@@ -37,9 +47,9 @@ export const fixtures = defineFixtures([
 				<paragraph>He|ll|o</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => {
+		run: async ({ edytor }) => {
 			const text = getStartText(edytor);
-			text.insertText({ value: 'y' });
+			await type(edytor, 'y');
 			expectTextValue(text, [{ text: 'Heyo' }]);
 		},
 		output: (
@@ -55,11 +65,11 @@ export const fixtures = defineFixtures([
 				<paragraph>Hello|</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => {
+		run: async ({ edytor }) => {
 			const text = getStartText(edytor);
-			text.markText({ mark: 'bold', toggle: true });
+			toggle(edytor, 'bold');
 			expectMarksState(text, { pending: { bold: true } });
-			text.insertText({ value: '!' });
+			await type(edytor, '!');
 			expectTextValue(text, [{ text: 'Hello' }, { text: '!', marks: { bold: true } }]);
 			expectMarksState(text, { pending: undefined });
 		},
@@ -78,11 +88,11 @@ export const fixtures = defineFixtures([
 				<paragraph>|</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => {
+		run: async ({ edytor }) => {
 			const text = getStartText(edytor);
-			text.markText({ mark: 'bold', toggle: true });
+			toggle(edytor, 'bold');
 			expectMarksState(text, { pending: { bold: true } });
-			text.insertText({ value: 'X' });
+			await type(edytor, 'X');
 			expectTextValue(text, [{ text: 'X', marks: { bold: true } }]);
 			expectMarksState(text, { pending: undefined });
 		},
@@ -95,14 +105,16 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelOperationFixture({
-		description: 'honors explicit start and end overrides',
+		description: 'replaces a range through the view: its deletion, then the insertion',
 		input: (
 			<root>
 				<paragraph>Hello|</paragraph>
 			</root>
 		),
 		run: ({ edytor }) => {
-			getStartText(edytor).insertText({ value: 'XX', start: 1, end: 4 });
+			const { id } = getStartText(edytor).parent;
+			edytor.deleteText(id, 1, 3);
+			edytor.insertText(id, 1, 'XX');
 		},
 		output: (
 			<root>
@@ -119,7 +131,7 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const text = getStartText(edytor);
-			text.insertText({ value: '' });
+			expect(edytor.insertText(text.parent.id, 3, '').status).toBe('noop');
 			expectTextValue(text, [{ text: 'Hello' }]);
 			expectBlockInvariantSnapshot(edytor);
 		},
@@ -136,8 +148,8 @@ export const fixtures = defineFixtures([
 				<paragraph>Hello.|</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => {
-			getStartText(edytor).insertText({ value: '. ', isAutoDot: true });
+		run: async ({ edytor }) => {
+			await type(edytor, '. ');
 		},
 		output: (
 			<root>
@@ -152,8 +164,8 @@ export const fixtures = defineFixtures([
 				<paragraph>Hello| world</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => {
-			getStartText(edytor).deleteText({ direction: 'BACKWARD', length: 1 });
+		run: async ({ edytor }) => {
+			await runBeforeInput(edytor, { inputType: 'deleteContentBackward' });
 		},
 		output: (
 			<root>
@@ -168,8 +180,8 @@ export const fixtures = defineFixtures([
 				<paragraph>Hello| world</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => {
-			getStartText(edytor).deleteText({ direction: 'FORWARD', length: 1 });
+		run: async ({ edytor }) => {
+			await runBeforeInput(edytor, { inputType: 'deleteContentForward' });
 		},
 		output: (
 			<root>
@@ -178,14 +190,14 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelOperationFixture({
-		description: 'deletes a ranged selection with the supplied length',
+		description: 'deletes a ranged selection',
 		input: (
 			<root>
 				<paragraph>He|ll|o</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => {
-			getStartText(edytor).deleteText({ direction: 'FORWARD', length: 2 });
+		run: async ({ edytor }) => {
+			await runBeforeInput(edytor, { inputType: 'deleteContentForward' });
 		},
 		output: (
 			<root>
@@ -200,28 +212,12 @@ export const fixtures = defineFixtures([
 				<paragraph>|</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => {
-			getStartText(edytor).deleteText({ direction: 'BACKWARD', length: 1 });
+		run: async ({ edytor }) => {
+			await runBeforeInput(edytor, { inputType: 'deleteContentBackward' });
 		},
 		output: (
 			<root>
 				<paragraph></paragraph>
-			</root>
-		)
-	}),
-	defineModelOperationFixture({
-		description: 'clamps backward delete length to the text start',
-		input: (
-			<root>
-				<paragraph>He|llo</paragraph>
-			</root>
-		),
-		run: ({ edytor }) => {
-			getStartText(edytor).deleteText({ direction: 'BACKWARD', length: 5 });
-		},
-		output: (
-			<root>
-				<paragraph>llo</paragraph>
 			</root>
 		)
 	}),
@@ -232,9 +228,9 @@ export const fixtures = defineFixtures([
 				<paragraph>Hello|</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => {
+		run: async ({ edytor }) => {
 			const text = getStartText(edytor);
-			text.deleteText({ direction: 'FORWARD', length: 1 });
+			await runBeforeInput(edytor, { inputType: 'deleteContentForward' });
 			expectTextValue(text, [{ text: 'Hello' }]);
 			expectBlockInvariantSnapshot(edytor);
 		},
@@ -253,7 +249,7 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const text = getStartText(edytor);
-			text.deleteText({ direction: 'BACKWARD', length: 0 });
+			expect(edytor.deleteText(text.parent.id, 2, 0).status).toBe('noop');
 			expectTextValue(text, [{ text: 'Hello' }]);
 			expectBlockInvariantSnapshot(edytor);
 		},
@@ -272,9 +268,9 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const text = getStartText(edytor);
-			text.markText({ mark: 'bold', toggle: true });
+			toggle(edytor, 'bold');
 			expectMarksState(text, { pending: { bold: true } });
-			text.markText({ mark: 'bold', toggle: true });
+			toggle(edytor, 'bold');
 			expectMarksState(text, { pending: {} });
 		}
 	}),
@@ -286,7 +282,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) => {
-			getStartText(edytor).markText({ mark: 'bold', toggle: true });
+			toggle(edytor, 'bold');
 		},
 		output: (
 			<root>
@@ -306,7 +302,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) => {
-			getStartText(edytor).markText({ mark: 'bold', toggle: true });
+			toggle(edytor, 'bold');
 		},
 		output: (
 			<root>
@@ -324,7 +320,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) => {
-			getStartText(edytor).markText({ mark: 'bold', toggle: true });
+			toggle(edytor, 'bold');
 		},
 		output: (
 			<root>
@@ -347,106 +343,12 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const text = getStartText(edytor);
-			text.removeMarksFromText({});
+			richTextOperations(edytor).removeAllMarksAtRange();
 			expectTextValue(text, [{ text: 'hello' }]);
 		},
 		output: (
 			<root>
 				<paragraph>hello</paragraph>
-			</root>
-		)
-	}),
-	defineModelOperationFixture({
-		description: 'splits plain text at the selection offset and returns the trailing content',
-		input: (
-			<root>
-				<paragraph>he|llo</paragraph>
-			</root>
-		),
-		run: ({ edytor }) => {
-			const text = getStartText(edytor);
-			const result = text.splitText({});
-			if (JSON.stringify(result) !== JSON.stringify([{ text: 'llo', marks: undefined }])) {
-				throw new Error('Unexpected splitText result for plain text');
-			}
-			expectTextValue(text, [{ text: 'he' }]);
-		},
-		output: (
-			<root>
-				<paragraph>he</paragraph>
-			</root>
-		)
-	}),
-	defineModelOperationFixture({
-		description: 'splits text at the start boundary and returns all content',
-		input: (
-			<root>
-				<paragraph>|hello</paragraph>
-			</root>
-		),
-		run: ({ edytor }) => {
-			const text = getStartText(edytor);
-			const result = text.splitText({});
-			if (JSON.stringify(result) !== JSON.stringify([{ text: 'hello', marks: undefined }])) {
-				throw new Error('Unexpected splitText result at text start');
-			}
-			expectTextValue(text, []);
-			expectBlockInvariantSnapshot(edytor);
-		},
-		output: (
-			<root>
-				<paragraph></paragraph>
-			</root>
-		)
-	}),
-	defineModelOperationFixture({
-		description: 'splits text at the end boundary and returns an empty fragment',
-		input: (
-			<root>
-				<paragraph>hello|</paragraph>
-			</root>
-		),
-		run: ({ edytor }) => {
-			const text = getStartText(edytor);
-			const result = text.splitText({});
-			if (JSON.stringify(result) !== JSON.stringify([{ text: '', marks: undefined }])) {
-				throw new Error('Unexpected splitText result at text end');
-			}
-			expectTextValue(text, [{ text: 'hello' }]);
-			expectBlockInvariantSnapshot(edytor);
-		},
-		output: (
-			<root>
-				<paragraph>hello</paragraph>
-			</root>
-		)
-	}),
-	defineModelOperationFixture({
-		description: 'splits marked text and preserves mark attributes in the returned content',
-		input: (
-			<root>
-				<paragraph>
-					<bold>he|llo</bold> world
-				</paragraph>
-			</root>
-		),
-		run: ({ edytor }) => {
-			const result = getStartText(edytor).splitText({});
-			if (
-				JSON.stringify(result) !==
-				JSON.stringify([
-					{ text: 'llo', marks: { bold: true } },
-					{ text: ' world', marks: undefined }
-				])
-			) {
-				throw new Error('Unexpected splitText result for marked text');
-			}
-		},
-		output: (
-			<root>
-				<paragraph>
-					<bold>he</bold>
-				</paragraph>
 			</root>
 		)
 	}),
@@ -459,8 +361,8 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const text = getStartText(edytor);
-			text.setText({
-				value: [{ text: 'Hi' }, { text: ' there', marks: { italic: true } }]
+			edytor.setBlock(text.parent.id, {
+				content: [{ text: 'Hi' }, { text: ' there', marks: { italic: true } }]
 			});
 			expectTextValue(text, [{ text: 'Hi' }, { text: ' there', marks: { italic: true } }]);
 		},
@@ -481,7 +383,7 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const text = getStartText(edytor);
-			text.setText({ value: [] });
+			edytor.setBlock(text.parent.id, { content: [] });
 			expectTextValue(text, []);
 			expectBlockInvariantSnapshot(edytor);
 		},

@@ -1,51 +1,9 @@
 import { Text } from '../text/text.svelte.js';
 import type { Edytor } from '../edytor.svelte.js';
-import type { JSONBlock, JSONInlineBlock } from '$lib/utils/json.js';
-import {
-	batch,
-	planned,
-	blockOf,
-	firstId,
-	createdId,
-	written,
-	contentWritten,
-	patched,
-	addChildBlock,
-	addChildBlocks,
-	pushContentIntoBlock,
-	addInlineBlock,
-	textAfterAtom,
-	normalizeContent,
-	normalizeChildren,
-	prepareInsertAfter,
-	prepareInsertBefore,
-	prepareSplit,
-	prepareDuplicate,
-	prepareRemove,
-	prepareMergeBackward,
-	prepareMergeForward,
-	prepareUnNest,
-	unNestBlock,
-	prepareNest,
-	nestBlock,
-	prepareSet,
-	setBlock,
-	prepareMove,
-	moveBlock,
-	prepareMoves,
-	moveBlocks,
-	prepareRemoveInline,
-	preparePatch,
-	prepareDeleteRange,
-	type BlockOperations
-} from './block.utils.js';
-import { jsonBlockToSpec } from '$lib/utils/json.js';
+import type { JSONBlock } from '$lib/utils/json.js';
 import type { BlockDefinition } from '$lib/plugins.js';
-import { InlineBlock } from './inlineBlock.svelte.js';
-import type { DocBlock } from '$lib/crdt/index.js';
+import type { InlineBlock } from './inlineBlock.svelte.js';
 import type { Owned } from '$lib/surface/attributes.js';
-import { revealed } from '$lib/selection/replaceSelection.js';
-import { propsProxy } from '$lib/session/props.js';
 
 /** Mark an element inside a block's markup as non-editable chrome (`block.void`, a preview's too). */
 export const voidChrome = (node: HTMLElement) => {
@@ -55,9 +13,10 @@ export const voidChrome = (node: HTMLElement) => {
 };
 
 /**
- * An id-only block handle: every getter reads the document index
- * (transaction-aware), every mutator issues a command. The view keeps one per
- * id (`edytor.idToBlock`); `node` is the element the core renders for it.
+ * An id-only, read-only block handle: every getter reads the document index
+ * (transaction-aware). Writes are the view's operations, with the block's id
+ * (`edytor.splitBlock(block.id, …)`). The view keeps one handle per id
+ * (`edytor.idToBlock`); `node` is the element the core renders for it.
  *
  * A reactive reader (a template, a `$derived`, an `$effect`) of a getter
  * depends on the cells the answer comes from (this block's, its parent's,
@@ -89,11 +48,6 @@ export class Block {
 		const cells = this.edytor.cells;
 		if (id === 'root') void cells?.rootIds;
 		else cells?.get(id);
-	}
-
-	/** The typed document node — `null` for the root. */
-	get model(): DocBlock | null {
-		return this.isRoot ? null : this.edytor.facade.block(this.id);
 	}
 
 	/** The display parent (the root for a top-level block); none for the root or a dead block. */
@@ -131,26 +85,15 @@ export class Block {
 		this.#track();
 		return this.edytor.facade.blockTypeOf(this.id) ?? '';
 	}
-	/** Retype the block — the `setBlock` command (readonly, hooks, `dispatcher.last`). */
-	set type(value: string) {
-		this.setBlock({ value: { type: value } });
-	}
 
-	#data?: { version: number; value: Record<string, unknown> };
-	#props?: Record<string, any>;
+	#data?: { version: number; value: Record<string, any> };
 	/**
-	 * The block's `data` as a live proxy (`session/props.ts`): reads follow the
-	 * document (reactive through the block's cell), writes are `patchData`
-	 * commands. The root's is the document's data (`edytor.data`).
+	 * The block's `data`, read-your-writes; a reactive reader depends on the
+	 * block's cell. The root's is the document's data (`edytor.data`). Write
+	 * it with `edytor.patchData(block.id, patches)`.
 	 */
-	get data(): Record<string, any> {
-		return (this.#props ??= propsProxy(
-			() => (this.isRoot ? this.edytor.docData() : this.#current()),
-			(ops) => this.patchData({ ops }),
-			(path) => this.edytor.facade.dataItemIds(this.isRoot ? null : this.id, path)
-		));
-	}
-	#current() {
+	get data(): Readonly<Record<string, any>> {
+		if (this.isRoot) return this.edytor.docData();
 		const { facade, cells } = this.edytor;
 		cells?.get(this.id);
 		const version = facade.version;
@@ -162,15 +105,6 @@ export class Block {
 	get definition(): BlockDefinition {
 		return this.edytor.definitionOf(this.type);
 	}
-
-	/**
-	 * Replace the block's `data` — a `patchData` command of its root (readonly,
-	 * hooks, `dispatcher.last`); `block.model.setData` is the raw document write.
-	 */
-	setData = (data: Record<string, unknown>): void => {
-		// Non-JSON values are coerced at the document boundary (`sanitizeWireJson`).
-		this.patchData({ ops: [{ path: [], value: data }] });
-	};
 
 	get selected() {
 		return this.edytor.selection.isSelected(this);
@@ -377,42 +311,6 @@ export class Block {
 		return this.rendersContent ? this.content.findLast((p) => p instanceof Text) : undefined;
 	}
 
-	addChildBlock = batch('addChildBlock', addChildBlock);
-	addChildBlocks = batch('addChildBlocks', addChildBlocks);
-	insertBlockAfter = planned('insertBlockAfter', prepareInsertAfter, firstId, blockOf);
-	insertBlockBefore = planned('insertBlockBefore', prepareInsertBefore, firstId, blockOf);
-	splitBlock = planned('splitBlock', prepareSplit, createdId, blockOf);
-	duplicateBlock = planned('duplicateBlock', prepareDuplicate, firstId, blockOf);
-	removeBlock = planned('removeBlock', prepareRemove, written);
-	unNestBlock = revealed(planned('unNestBlock', prepareUnNest, unNestBlock));
-	mergeBlockBackward = planned('mergeBlockBackward', prepareMergeBackward, firstId, blockOf);
-	mergeBlockForward = planned('mergeBlockForward', prepareMergeForward, firstId, blockOf);
-	nestBlock = revealed(planned('nestBlock', prepareNest, nestBlock));
-	setBlock = planned('setBlock', prepareSet, setBlock);
-	moveBlock = revealed(planned('moveBlock', prepareMove, moveBlock));
-	moveBlocks = revealed(planned('moveBlocks', prepareMoves, moveBlocks));
-	pushContentIntoBlock = batch('pushContentIntoBlock', pushContentIntoBlock);
-	removeInlineBlock = planned('removeInlineBlock', prepareRemoveInline, contentWritten);
-	patchData = planned('patchData', preparePatch, patched);
-	#addInline = batch('addInlineBlock', addInlineBlock, textAfterAtom);
-	/**
-	 * Insert an inline atom: at `offset` of the block's content (block
-	 * offsets, an inline atom counting 1; a caret's), or at `index` of the
-	 * text segment `text`. One `addInlineBlock` operation (its payload names
-	 * the segment). Answers the text segment right after the atom, where a
-	 * caret goes (`null` when it was not written, `undefined` when refused).
-	 */
-	addInlineBlock = (
-		payload: BlockOperations['addInlineBlock'] | { offset: number; block: JSONInlineBlock }
-	) => {
-		if (!('offset' in payload)) return this.#addInline(payload);
-		const at = this.textAtOffset(Math.max(0, payload.offset));
-		return at ? this.#addInline({ index: at.offset, text: at.text, block: payload.block }) : null;
-	};
-	normalizeContent = batch('normalizeContent', normalizeContent);
-	normalizeChildren = batch('normalizeChildren', normalizeChildren);
-	deleteContentAtRange = planned('deleteContentAtRange', prepareDeleteRange, contentWritten);
-
 	/** Mark an element inside the block's markup as non-editable chrome (a header, a caption bar). */
 	void = voidChrome;
 
@@ -437,25 +335,6 @@ export class Block {
 			}
 		}
 		return hit;
-	};
-
-	// ── JSON insertion (specs are data; `new Block({block})` is gone) ──
-
-	/**
-	 * Insert children at `index`: a JSON spec is created (its id kept, minted
-	 * when missing); a block handle moves there with its identity. A raw
-	 * write for the editor's own commands: nothing on a view whose dispatcher
-	 * refuses writes (readonly, a read-only document).
-	 * @internal
-	 */
-	insertChildren = (index: number, blocks: (JSONBlock | Block)[]): void => {
-		if (!this.edytor.dispatcher.permits()) return;
-		const { facade } = this.edytor;
-		const parent = this.isRoot ? null : this.id;
-		blocks.forEach((block, k) => {
-			if (block instanceof Block) block.model?.moveTo({ parent: this.model, index: index + k });
-			else facade.insertBlock({ parent, index: index + k }, jsonBlockToSpec(block));
-		});
 	};
 
 	/** The declared view state (`open` on a `details`) the block's last element held. */

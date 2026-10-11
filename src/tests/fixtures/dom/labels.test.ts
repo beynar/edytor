@@ -453,7 +453,7 @@ describe('each chrome in its labels', () => {
 
 	it('the announcements: a move and a delete', async () => {
 		const { edytor, editor } = await setup([p('a', 'un'), p('b', 'deux')]);
-		edytor.moveBlocks({ blocks: [edytor.idToBlock.get('a')!], direction: 'down' });
+		edytor.move({ blocks: [edytor.idToBlock.get('a')!], direction: 'down' });
 		await flushDomUpdates();
 		const what = fr.editor.block(fr.richText.kinds.paragraph);
 		expect(one('[data-edytor-live]').textContent).toBe(fr.editor.movedDown(what));

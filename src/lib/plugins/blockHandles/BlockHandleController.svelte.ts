@@ -32,6 +32,7 @@ import {
 import { takeKeys } from '$lib/events/onFocus.js';
 import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { kindLabel } from '$lib/kinds.js';
+import { siblingSlot } from '$lib/session/handles.js';
 import type { Popup, PopupOpener } from '$lib/surface/popups.svelte.js';
 import { dragPreview } from './dragPreview.js';
 import { DropIndicator } from './dropIndicator.js';
@@ -278,16 +279,15 @@ export class BlockHandleController {
 					edytor.transact(() => {
 						const type = block.parent && edytor.defaultChild(block.parent);
 						if (!type) return;
-						const spec = { block: { type } };
 						const reused = !column && block.type === type && block.isEmpty;
 						const target = reused
 							? block
-							: above
-								? block.insertBlockBefore(spec)
-								: block.insertBlockAfter(spec);
+							: edytor.idToBlock.get(
+									edytor.insertBlocks(siblingSlot(block, !above), [{ type }]).ids[0] ?? ''
+								);
 						// A new column right of the block's: the one move path places it.
 						if (target && column)
-							edytor.moveBlocks({ blocks: [target], target: block, position: 'right' });
+							edytor.move({ blocks: [target], target: block, position: 'right' });
 						// The caret is the model's: the projector shows it once the block mounts.
 						if (target?.firstText) dispatcher.caret(target.firstText, 0);
 						if (!target || !then) return;
@@ -502,7 +502,7 @@ export class BlockHandleController {
 				if (!dragSource || !placement) return;
 				const { target, position } = placement;
 				const request = { blocks: this.moving(dragSource), target, position };
-				if (!this.edytor.canMoveBlocks(request)) return;
+				if (!this.edytor.canMove(request)) return;
 				const moved = this.moveAndSelect(request);
 				if (moved.length && this.held) this.edytor.history.began(this.held);
 			}
@@ -663,7 +663,7 @@ export class BlockHandleController {
 		event.preventDefault();
 		event.stopPropagation();
 		const request = { blocks: this.dragBlocks(block), direction };
-		if (this.inRange(block)) this.edytor.moveBlocks(request);
+		if (this.inRange(block)) this.edytor.move(request);
 		else this.moveAndSelect(request);
 	}
 
@@ -677,7 +677,7 @@ export class BlockHandleController {
 		// A layout the selection covers whole counts as held: its blocks stay selected.
 		const holds = holdsBlocks(selectedBlocks, request.blocks);
 		const before = holds ? [...selectedBlocks] : [];
-		const moved = this.edytor.moveBlocks(request);
+		const moved = this.edytor.move(request);
 		if (moved.length) selectMoved(this.edytor, moved, before);
 		return moved;
 	}
@@ -738,7 +738,7 @@ export class BlockHandleController {
 	private fits =
 		(source: Block) =>
 		({ target, position }: DropPlacement) =>
-			this.edytor.canMoveBlocks({ blocks: this.moving(source), target, position });
+			this.edytor.canMove({ blocks: this.moving(source), target, position });
 
 	/**
 	 * The block whose row the pointer is on over `node`: the last shown drop

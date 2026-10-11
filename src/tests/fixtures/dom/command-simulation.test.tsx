@@ -163,7 +163,7 @@ describe('headless command simulation (U2)', () => {
 		);
 		await setNativeSelection(b.edytor, b.edytor.root!.children[0]!.firstText!, 7);
 		// A formats [0,4) as bold — splitting the text part before the caret.
-		a.edytor.root!.children[0]!.firstText!.formatAt(0, 4, { bold: {} });
+		a.edytor.formatRange(a.edytor.root!.children[0]!.id, 0, 4, { bold: {} });
 		await flushDomUpdates();
 		await deliver(a, b);
 		await flushDomUpdates();

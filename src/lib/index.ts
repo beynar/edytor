@@ -53,6 +53,7 @@ export type {
 	Placeholder,
 	PlaceholderView,
 	ChangePayload,
+	Commands,
 	AfterOperationPayload,
 	Prevent,
 	InputRule,
@@ -347,12 +348,7 @@ export type {
 } from './session/selection.js';
 export type { TextAnchor } from './selection/selection.svelte.js';
 export type { Key, Modifier, Modifiers } from './session/keymap.js';
-export type { TextOperations } from './text/text.utils.js';
-export type { BlockBeside, BlockOperations } from './block/block.utils.js';
-export type {
-	TextInsertionPayload,
-	TriggerRange
-} from './plugins/triggers/TriggerController.svelte.js';
+export type { TriggerRange } from './plugins/triggers/TriggerController.svelte.js';
 export type { RichTextLink, RichTextMark } from './plugins/richtext/richTextOperations.js';
 export type { UploadReport, Uploader } from './plugins/uploads.svelte.js';
 export type { AwarenessLike, PresenceWriter } from './collaboration/awarenessSelection.js';
@@ -374,7 +370,6 @@ export type { DocPosition, RangeView } from './crdt/rangeDelete.js';
 export type { FlowView } from './crdt/flow.js';
 export type { ContentRun } from './crdt/text/runs.js';
 export type { DataTarget, OrderPolicy, PlanEffect, PlanStep } from './crdt/doc/types.js';
-export type { DocBlock, NodeRef } from './crdt/nodes.js';
 export type { MarkEdge } from './crdt/text/marks.js';
 export type { Cell, Cells } from './surface/cells.js';
 export type { Measure, Overlay } from './surface/overlay.js';

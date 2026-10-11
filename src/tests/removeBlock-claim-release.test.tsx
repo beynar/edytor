@@ -19,18 +19,19 @@ describe('removeBlock claim release', () => {
 		);
 		const root = edytor.root!;
 		const b0 = root.children[0];
-		const b1 = b0.splitBlock({ index: 3, text: b0.firstText })!;
+		edytor.splitBlock(b0.id, 3, 'b1');
+		const b1 = edytor.idToBlock.get('b1')!;
 		expect(b0.firstText.stringContent).toBe('abc');
 		expect(b1.firstText.stringContent).toBe('de');
 
 		// Head-of-slice typing prepends into the shared backing text, inside
 		// b0's covering claim window (b1's higher-generation record wins it
 		// while b1 lives).
-		b1.firstText.insertAt(0, 'X');
+		edytor.facade.insertText(b1.id, 0, 'X');
 		expect(b1.firstText.stringContent).toBe('Xde');
 		expect(b0.firstText.stringContent).toBe('abc');
 
-		b1.removeBlock();
+		edytor.deleteBlock(b1.id);
 		// 'X' was b1's content — it must die with the block, not fall back
 		// into b0's covering claim.
 		expect(b0.firstText.stringContent).toBe('abc');
@@ -45,14 +46,15 @@ describe('removeBlock claim release', () => {
 		);
 		const root = edytor.root!;
 		const b0 = root.children[0];
-		const b1 = b0.splitBlock({ index: 3, text: b0.firstText })!;
+		edytor.splitBlock(b0.id, 3, 'b1');
+		const b1 = edytor.idToBlock.get('b1')!;
 
 		// Several head inserts — every one lands inside b0's window.
-		b1.firstText.insertAt(0, '!');
-		b1.firstText.insertAt(0, 'Q');
+		edytor.facade.insertText(b1.id, 0, '!');
+		edytor.facade.insertText(b1.id, 0, 'Q');
 		expect(b1.firstText.stringContent).toBe('Q!de');
 
-		b1.removeBlock();
+		edytor.deleteBlock(b1.id);
 		expect(b0.firstText.stringContent).toBe('abc');
 		expect(root.children).toHaveLength(1);
 	});
@@ -65,11 +67,12 @@ describe('removeBlock claim release', () => {
 		);
 		const root = edytor.root!;
 		const b0 = root.children[0];
-		const b1 = b0.splitBlock({ index: 3, text: b0.firstText })!;
-		b1.firstText.insertAt(0, 'X');
+		edytor.splitBlock(b0.id, 3, 'b1');
+		const b1 = edytor.idToBlock.get('b1')!;
+		edytor.facade.insertText(b1.id, 0, 'X');
 		edytor.undoManager.stopCapturing();
 
-		b1.removeBlock();
+		edytor.deleteBlock(b1.id);
 		expect(root.children).toHaveLength(1);
 		expect(b0.firstText.stringContent).toBe('abc');
 

@@ -444,7 +444,7 @@ describe('XW-11: line kinds come from the roles config', () => {
 /**
  * XW-12: a code block never renders its own content, so merging its first
  * line into it would hide the line's text. The facade refuses it (one line
- * or several), and so does the view's `mergeBlockBackward`.
+ * or several), and so does the view's `mergeBackward`.
  */
 describe('XW-12: a first code line never merges into its code block', () => {
 	const seeds = {
@@ -478,7 +478,7 @@ describe('XW-12: a first code line never merges into its code block', () => {
 			}
 		});
 
-		it(`view (${name}): block.mergeBlockBackward() on the first line changes nothing`, () => {
+		it(`view (${name}): mergeBackward on the first line changes nothing`, () => {
 			const children = seed.map(function toJSON(b) {
 				return {
 					id: b.id,
@@ -490,7 +490,7 @@ describe('XW-12: a first code line never merges into its code block', () => {
 			const document = createDocument({ value: { children } });
 			const view = new Edytor({ document, plugins: [richTextPlugin, codePlugin] });
 			const before = tree(document.facade);
-			view.idToBlock.get('L1')!.mergeBlockBackward();
+			view.mergeBackward('L1');
 			expect(tree(document.facade)).toBe(before);
 			view.destroy();
 			document.destroy();
@@ -600,10 +600,10 @@ describe('DR-crdt-1: a duplicate never copies a missing type', () => {
 		document.destroy();
 	});
 
-	it('view block.duplicateBlock() → no block with an empty type', () => {
+	it('view duplicateBlock → no block with an empty type', () => {
 		const document = typeless(false);
 		const view = new Edytor({ document, plugins: [richTextPlugin, codePlugin] });
-		view.idToBlock.get('A')!.duplicateBlock();
+		view.duplicateBlock('A');
 		for (const id of document.facade.order())
 			if (id !== 'A' && id !== 'A1')
 				expect(M.blockNodeOf(document.doc, id).getAttr('type')).toMatch(/^.+$/);
@@ -618,7 +618,7 @@ describe('DR-crdt-1: a duplicate never copies a missing type', () => {
  * renders no content", not only into an island root. The first item of a
  * list or the first cell of a table merged its text into its container,
  * where no snippet shows it. Headless, room (same facade, defaultSemantics)
- * and the view's `mergeBlockBackward` all refuse it.
+ * and the view's `mergeBackward` all refuse it.
  */
 describe('DR-crdt-2: nothing merges into a block that renders no content', () => {
 	const list = [
@@ -653,10 +653,10 @@ describe('DR-crdt-2: nothing merges into a block that renders no content', () =>
 		});
 	}
 
-	it('view: block.mergeBlockBackward() on the first list item lifts it out (YW-02)', () => {
+	it('view: mergeBackward on the first list item lifts it out (YW-02)', () => {
 		const document = createDocument({ value: { children: structuredClone(list) } });
 		const view = new Edytor({ document, plugins: [richTextPlugin, codePlugin] });
-		view.idToBlock.get('I1')!.mergeBlockBackward();
+		view.mergeBackward('I1');
 		expect(tree(document.facade)).toBe('P:"p" I1:"a" U:""[I2:"b"]');
 		expect(document.facade.toJSON().children[1].type).toBe('paragraph');
 		view.destroy();

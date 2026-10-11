@@ -187,9 +187,9 @@ export const imagePastePlugin: Plugin = (edytor) => ({
 		prevent(async () => {
 			const src = await upload(file); // your upload
 			// Add an image block (the bundled image plugin) after the caret's block.
-			edytor.selection.caret?.block.insertBlockAfter({
-				block: { type: 'image', data: { src } }
-			});
+			const block = edytor.selection.caret?.block;
+			const at = block && edytor.document.positionOf(block.id);
+			if (at) edytor.insertBlocks({ ...at, index: at.index + 1 }, [{ type: 'image', data: { src } }]);
 		});
 	}
 });

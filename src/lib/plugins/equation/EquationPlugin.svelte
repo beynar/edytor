@@ -63,11 +63,8 @@
 		const from = startText!.segStart + yStart;
 		const atom = id('i');
 		if (isCollapsed) {
-			const after = block.addInlineBlock({
-				offset: from,
-				block: { id: atom, type: INLINE, data: { expression: '' } }
-			});
-			if (!after) return false;
+			const spec = { id: atom, type: INLINE, data: { expression: '' } };
+			if (edytor.insertInline(block.id, from, spec).status !== 'applied') return false;
 			edytor.selection.setCaret({ block, offset: from + 1 });
 			view.editor.open({ block: block.id, atom });
 			return true;
@@ -88,10 +85,7 @@
 		const { dispatcher, facade } = edytor;
 		const removal = facade.prepare.deleteText(block.id, from, endText!.segStart + yEnd - from);
 		const run = dispatcher.lead(removal, () =>
-			block.addInlineBlock({
-				offset: from,
-				block: { id: atom, type: INLINE, data: { expression } }
-			})
+			edytor.insertInline(block.id, from, { id: atom, type: INLINE, data: { expression } })
 		);
 		const written = run.taken && dispatcher.last?.status === 'applied';
 		if (written) edytor.selection.setCaret({ block, offset: from + 1 });
@@ -101,14 +95,12 @@
 	/** `$$E=mc^2$$` typed in text: an inline equation (Notion). */
 	const dollars: InputRule = {
 		find: /\$\$([^$\n]*[^$\s][^$\n]*)\$\$$/,
-		replace: ([, tex], { block, from, caret, remove }) =>
+		replace: ([, tex], { edytor, block, from, caret, remove }) =>
 			remove(() => {
-				const after = block.addInlineBlock({
-					offset: from,
-					block: { type: INLINE, data: { expression: tex!.trim() } }
-				});
-				if (after) caret(from + 1);
-				return !!after;
+				const atom = { type: INLINE, data: { expression: tex!.trim() } };
+				const written = edytor.insertInline(block.id, from, atom).status === 'applied';
+				if (written) caret(from + 1);
+				return written;
 			})
 	};
 
@@ -164,17 +156,16 @@
 				onAfterOperation: (change) => {
 					const view = equationViews.get(edytor);
 					if (!view || !owns() || edytor.dispatcher.last?.status !== 'applied') return;
-					const created =
-						change.operation === 'setBlock' && change.payload.value.type === 'equation'
-							? change.block
-							: change.operation === 'insertBlockAfter' && change.payload.block.type === 'equation'
-								? change.block.nextBlock
-								: change.operation === 'insertBlockBefore' &&
-									  change.payload.block.type === 'equation'
-									? change.block.previousBlock
-									: null;
-					if (created?.type === 'equation' && !expressionOf(created.data))
-						view.editor.open({ block: created.id });
+					const ids =
+						change.operation === 'setBlock'
+							? [change.block.id]
+							: change.operation === 'insertBlocks'
+								? (change.effect?.creates ?? [])
+								: [];
+					const created = ids
+						.map((id) => edytor.idToBlock.get(id))
+						.find((block) => block?.type === 'equation');
+					if (created && !expressionOf(created.data)) view.editor.open({ block: created.id });
 				},
 				hotkeys: {
 					'mod+shift+e': ({ prevent }) => {

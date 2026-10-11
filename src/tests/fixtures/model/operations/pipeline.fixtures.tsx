@@ -75,19 +75,20 @@ export const fixtures = defineFixtures([
 			edytor.plugins.push(makeRecorder(calls)(edytor));
 
 			const [one, two] = edytor.root!.children;
-			// `path`'s tail is the final index in the destination parent with
-			// the moved members already excluded — reduced children are
+			// The index is the final one in the destination parent with the
+			// moved members already excluded — reduced children are
 			// [three, four], so index 1 lands [three, one, two, four].
-			const moved = one.moveBlocks({ blocks: [one, two], path: [1] });
+			const args = [[one.id, two.id], { parent: null, index: 1 }] as const;
+			const moved = edytor.moveBlocks(...args);
 
-			expect(moved).toEqual([one, two]);
+			expect(moved).toMatchObject({ status: 'applied', ids: [one.id, two.id] });
 
 			const moveCalls = calls.filter((call) => call.operation === 'moveBlocks');
 			expect(moveCalls.map((call) => call.phase)).toEqual(['before', 'after']);
-			// The anchor block reported to plugins is the first moved block.
+			// The block reported to plugins is the first moved block.
 			expect(moveCalls[0].block).toBe(one);
-			expect(moveCalls[0].payload).toEqual({ blocks: [one, two], path: [1] });
-			expect(moveCalls[1].payload).toEqual({ blocks: [one, two], path: [1] });
+			expect(moveCalls[0].payload).toEqual(args);
+			expect(moveCalls[1].payload).toEqual(args);
 
 			expectBlockInvariantSnapshot(edytor);
 		},
@@ -117,15 +118,15 @@ export const fixtures = defineFixtures([
 					if (change.operation !== 'moveBlocks') {
 						return;
 					}
-					// Retarget the drop index — the op resolves the normalized
-					// path like `moveBlock` does.
-					return { ...change.payload, path: [3] };
+					// Retarget the drop index (clamped to the end).
+					const [ids, dest] = change.payload;
+					return [ids, { ...dest, index: 3 }];
 				}
 			});
 			edytor.plugins.push(retarget(edytor));
 
 			const [one, two] = edytor.root!.children;
-			one.moveBlocks({ blocks: [one, two], path: [1] });
+			edytor.moveBlocks([one.id, two.id], { parent: null, index: 1 });
 		},
 		output: (
 			<root>
@@ -148,8 +149,8 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const [one, two] = edytor.root!.children;
-			const moved = one.moveBlocks({ blocks: [one, two], path: [2] });
-			expect(moved).toBeUndefined();
+			const moved = edytor.moveBlocks([one.id, two.id], { parent: null, index: 2 });
+			expect(moved).toMatchObject({ status: 'refused', reason: 'view' });
 		},
 		output: (
 			<root>
@@ -176,8 +177,8 @@ export const fixtures = defineFixtures([
 
 			const [one, two, three] = edytor.root!.children;
 			const request = { blocks: [one, two], target: three, position: 'after' as const };
-			expect(edytor.canMoveBlocks(request)).toBe(true);
-			const moved = edytor.moveBlocks(request);
+			expect(edytor.canMove(request)).toBe(true);
+			const moved = edytor.move(request);
 
 			expect(moved).toEqual([one, two]);
 			expect(edytor.selection.selectedBlocks.size).toBe(0);
@@ -215,8 +216,8 @@ export const fixtures = defineFixtures([
 					target: edytor.root!.children[1],
 					position: 'before' as const
 				};
-				expect(edytor.canMoveBlocks(request)).toBe(false);
-				expect(edytor.moveBlocks(request)).toEqual([]);
+				expect(edytor.canMove(request)).toBe(false);
+				expect(edytor.move(request)).toEqual([]);
 				expect(foreign.root!.children[0].firstText?.stringContent).toBe('foreign');
 			} finally {
 				foreign.destroy();
@@ -246,8 +247,8 @@ export const fixtures = defineFixtures([
 			const parent = edytor.root!.children[0];
 			const [one, two] = parent.children;
 			const request = { blocks: [one, two], target: parent, position: 'inside' as const };
-			expect(edytor.canMoveBlocks(request)).toBe(true);
-			expect(edytor.moveBlocks(request)).toEqual([one, two]);
+			expect(edytor.canMove(request)).toBe(true);
+			expect(edytor.move(request)).toEqual([one, two]);
 		},
 		output: (
 			<root>
@@ -276,8 +277,8 @@ export const fixtures = defineFixtures([
 			expect(divider.children).toEqual([]);
 			expect(child.parent).toBe(edytor.root);
 			const request = { blocks: [source], target: divider, position: 'inside' as const };
-			expect(edytor.canMoveBlocks(request)).toBe(false);
-			expect(edytor.moveBlocks(request)).toEqual([]);
+			expect(edytor.canMove(request)).toBe(false);
+			expect(edytor.move(request)).toEqual([]);
 		},
 		output: (
 			<root>
@@ -311,11 +312,10 @@ export const fixtures = defineFixtures([
 			edytor.clear();
 			expect(edytor.root!.children.map((block) => block.type)).toEqual(['heading']);
 
-			// The empty-root bootstrap in `normalizeChildren` reseeds the
-			// semantic default rather than a hardcoded paragraph.
+			// The emptied document's virtual paragraph is of the semantic
+			// default rather than a hardcoded paragraph.
 			for (const id of edytor.facade.childrenIds(null))
-				edytor.facade.block(id).delete({ keepChildren: false });
-			edytor.root!.normalizeChildren();
+				edytor.facade.deleteBlock(id, { keepChildren: false });
 			expect(edytor.root!.children[0].type).toBe('heading');
 			expectBlockInvariantSnapshot(edytor);
 		}

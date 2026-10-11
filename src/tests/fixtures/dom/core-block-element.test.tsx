@@ -182,7 +182,7 @@ describe('R5 — the core renders the block element', () => {
 			}
 		);
 		const block = edytor.idToBlock.get('t')!;
-		block.setBlock({ value: { data: { tag: 'aside' } } });
+		edytor.setBlock(block.id, { data: { tag: 'aside' } });
 		await flushDomUpdates();
 		const element = editor.querySelector('[data-edytor-id="t"]');
 		expect(element?.tagName).toBe('ASIDE');
@@ -197,7 +197,7 @@ describe('R5 — the core renders the block element', () => {
 		);
 		const heading = edytor.root!.children[0]!;
 		const element = editor.querySelector(`[data-edytor-id="${heading.id}"]`);
-		heading.setBlock({ value: { data: { level: 'h2' } } });
+		edytor.setBlock(heading.id, { data: { level: 'h2' } });
 		await flushDomUpdates();
 		expect(editor.querySelector(`[data-edytor-id="${heading.id}"]`)).toBe(element);
 		expect(element?.querySelector(':scope > h2')?.contains(heading.firstText!.node!)).toBe(true);

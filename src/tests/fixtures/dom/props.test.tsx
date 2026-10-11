@@ -1,10 +1,10 @@
 /** @jsxImportSource ../../jsx */
 /**
- * Properties (0.1.0-next.6): `block.data`, `atom.data` and `edytor.data` are
- * live proxies. A write is one `patchData` command (readonly admission,
- * hooks and veto, `dispatcher.last`, one undo step; rapid writes of the same
- * paths group like typing); reads re-render snippets on local and remote
- * changes; `bind:value`/`bind:checked` edit synced data. Expected values
+ * Properties: `block.data`, `atom.data` and `edytor.data` read the
+ * document (reactively); a write is the view's `patchData` (readonly
+ * admission, hooks and veto, `dispatcher.last`, one undo step; rapid writes
+ * of the same paths group like typing); reads re-render snippets on local
+ * and remote changes; function bindings edit synced data. Expected values
  * come from the properties page, never from running the code.
  */
 import { describe, expect, it } from 'vitest';
@@ -13,6 +13,7 @@ import { snapshot } from '../../dom/snapshot.svelte.js';
 import { Y } from '$lib/crdt/engine.js';
 import { createDocument, loadDocument, type EdytorDocument } from '$lib/crdt/index.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import type { DataTarget } from '$lib/crdt/index.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { propsPlugin } from '../../dom/PropsKind.svelte';
@@ -59,12 +60,15 @@ const bytesOf = (edytor: Edytor) => {
 	return () => n;
 };
 const q = (root: ParentNode, selector: string) => root.querySelector<HTMLInputElement>(selector)!;
+/** Set (or, with `undefined`, delete) data key `key` of `target` through the view. */
+const set = (edytor: Edytor, target: DataTarget, key: string, value?: unknown) =>
+	edytor.patchData(target, [{ path: [key], ...(value !== undefined && { value }) }]);
 
-describe('block.data: a live proxy whose writes are patchData commands', () => {
+describe('block.data: read from the document, written with patchData', () => {
 	it('a set is one command, one undo step; undo and redo restore it', async () => {
 		const { edytor } = await renderDomEdytor(<root />, { value, plugins });
 		const block = edytor.idToBlock.block('c');
-		block.data.title = 'Two';
+		set(edytor, 'c', 'title', 'Two');
 		expect(edytor.dispatcher.last).toMatchObject({ operation: 'patchData', status: 'applied' });
 		expect(block.data.title).toBe('Two');
 		expect(edytor.value.children![0]!.data).toEqual({ title: 'Two', tags: ['a'] });
@@ -78,8 +82,8 @@ describe('block.data: a live proxy whose writes are patchData commands', () => {
 		const [document] = pair(60_000);
 		const { edytor } = await renderDomEdytor(<root />, { document, value, plugins });
 		const block = edytor.idToBlock.block('c');
-		for (const title of ['T', 'Ti', 'Tit']) block.data.title = title;
-		block.data.done = true;
+		for (const title of ['T', 'Ti', 'Tit']) set(edytor, 'c', 'title', title);
+		set(edytor, 'c', 'done', true);
 		edytor.historyUndo();
 		expect({ ...block.data }).toEqual({ title: 'Tit', tags: ['a'] });
 		edytor.historyUndo();
@@ -98,10 +102,10 @@ describe('block.data: a live proxy whose writes are patchData commands', () => {
 		expect(edytor.facade.blockDataOf('c')?.done).toBe(true);
 		edytor.historyUndo();
 		expect(edytor.facade.blockDataOf('c')).toEqual({ title: 'One', tags: ['a'] });
-		// The same with the proxy: a number, a delete and an object are their own steps too.
+		// The same through the view: a number, a delete and an object are their own steps too.
 		const block = edytor.idToBlock.block('c');
-		block.data.n = 1;
-		block.data.n = 2;
+		set(edytor, 'c', 'n', 1);
+		set(edytor, 'c', 'n', 2);
 		edytor.historyUndo();
 		expect(block.data.n).toBe(1);
 	});
@@ -120,67 +124,22 @@ describe('block.data: a live proxy whose writes are patchData commands', () => {
 		expect(edytor.facade.blockDataOf('c')?.status).toBe('done');
 		edytor.historyUndo();
 		expect(edytor.facade.blockDataOf('c')).toEqual({ title: 'One', tags: ['a'] });
-		// Through the proxy: a value sharing only a prefix is another value, not an edit of it.
+		// Through the view: a value sharing only a prefix is another value, not an edit of it.
 		const block = edytor.idToBlock.block('c');
-		block.data.status = 'doing';
-		block.data.status = 'done';
+		set(edytor, 'c', 'status', 'doing');
+		set(edytor, 'c', 'status', 'done');
 		edytor.historyUndo();
 		expect(block.data.status).toBe('doing');
 	});
 
-	it('typing and deleting in a bound text field is one undo step', async () => {
-		const [document] = pair(60_000);
-		const { edytor, editor } = await renderDomEdytor(<root />, { document, value, plugins });
-		const title = q(editor, '[data-card-title]');
-		for (const typed of ['One ', 'One t', 'One tw', 'One t', 'One to']) {
-			title.value = typed;
-			await fireEvent.input(title);
-		}
-		await flushDomUpdates();
-		expect(edytor.facade.blockDataOf('c')?.title).toBe('One to');
-		edytor.historyUndo();
-		expect(edytor.facade.blockDataOf('c')).toEqual({ title: 'One', tags: ['a'] });
-		edytor.historyRedo();
-		expect(edytor.facade.blockDataOf('c')?.title).toBe('One to');
-	});
-
-	it('nested objects and arrays read as proxies and write their path', async () => {
-		const { edytor } = await renderDomEdytor(<root />, { value, plugins });
-		const block = edytor.idToBlock.block('c');
-		block.data.meta = { a: 1 };
-		const meta = block.data.meta;
-		expect(block.data.meta).toBe(meta);
-		meta.b = 2;
-		expect(block.data.meta).toEqual({ a: 1, b: 2 });
-		delete meta.a;
-		expect({ ...block.data.meta }).toEqual({ b: 2 });
-		const tags = block.data.tags;
-		expect(Array.isArray(tags)).toBe(true);
-		expect(tags.push('b', 'c')).toBe(3);
-		expect(edytor.dispatcher.last?.operation).toBe('patchData');
-		expect(tags.map((t: string) => t.toUpperCase())).toEqual(['A', 'B', 'C']);
-		tags.splice(0, 1);
-		tags[1] = 'z';
-		tags.sort();
-		expect([...tags]).toEqual(['b', 'z']);
-		tags.length = 1;
-		expect(JSON.stringify(block.data)).toBe('{"meta":{"b":2},"tags":["b"],"title":"One"}');
-		expect(structuredClone(snapshot(block.data))).toEqual({
-			meta: { b: 2 },
-			tags: ['b'],
-			title: 'One'
-		});
-		expect(edytor.facade.blockDataOf('c')).toEqual({ meta: { b: 2 }, tags: ['b'], title: 'One' });
-	});
-
-	it('atom.data and setData write the atom; setData replaces the block data', async () => {
+	it('a patch of an atom writes the atom; a patch of the root replaces the block data', async () => {
 		const { edytor } = await renderDomEdytor(<root />, { value, plugins });
 		const atom = edytor.atomAt('p', 'm')!;
-		atom.data.name = 'bob';
+		set(edytor, { block: 'p', atom: 'm' }, 'name', 'bob');
 		expect(edytor.dispatcher.last).toMatchObject({ operation: 'patchData', status: 'applied' });
 		expect(atom.data.name).toBe('bob');
 		expect(atom.value).toEqual({ id: 'm', type: 'mention', data: { name: 'bob' } });
-		edytor.idToBlock.block('c').setData({ fresh: true });
+		edytor.patchData('c', [{ path: [], value: { fresh: true } }]);
 		expect({ ...edytor.idToBlock.block('c').data }).toEqual({ fresh: true });
 	});
 
@@ -190,13 +149,13 @@ describe('block.data: a live proxy whose writes are patchData commands', () => {
 		await flushDomUpdates();
 		const block = edytor.root!.children[0]!;
 		expect(edytor.facade.virtual()).toBe(block.id);
-		block.data.title = 'first';
+		set(edytor, block.id, 'title', 'first');
 		expect(edytor.dispatcher.last).toMatchObject({ operation: 'patchData', status: 'applied' });
 		expect(edytor.facade.virtual()).toBeNull();
 		expect(edytor.document.facade.blockDataOf(block.id)).toEqual({ title: 'first' });
 		// The document's own data writes no block.
 		edytor.historyUndo();
-		edytor.data.title = 'Doc';
+		set(edytor, null, 'title', 'Doc');
 		expect(edytor.facade.virtual()).not.toBeNull();
 		expect(edytor.facade.toJSON()).toEqual({ data: { title: 'Doc' }, children: [] });
 	});
@@ -206,7 +165,7 @@ describe('block.data: a live proxy whose writes are patchData commands', () => {
 		edytor.document.facade.deleteBlocks(['c', 'p']);
 		await flushDomUpdates();
 		const block = edytor.root!.children[0]!;
-		block.patchData({ ops: [{ path: ['tags'], splice: [0, 0, 'x'] }] });
+		edytor.patchData(block.id, [{ path: ['tags'], splice: [0, 0, 'x'] }]);
 		expect(edytor.dispatcher.last).toMatchObject({ operation: 'patchData', status: 'refused' });
 		expect(edytor.facade.virtual()).toBe(block.id);
 		expect(edytor.document.facade.toJSON()).toEqual({ children: [] });
@@ -216,10 +175,10 @@ describe('block.data: a live proxy whose writes are patchData commands', () => {
 		const { edytor } = await renderDomEdytor(<root />, { value, plugins, readonly: true });
 		const bytes = bytesOf(edytor);
 		const block = edytor.idToBlock.block('c');
-		block.data.title = 'x';
+		set(edytor, 'c', 'title', 'x');
 		expect(edytor.dispatcher.last).toMatchObject({ operation: 'patchData', status: 'refused' });
-		edytor.data.title = 'x';
-		block.data.tags.push('b');
+		set(edytor, null, 'title', 'x');
+		edytor.patchData('c', [{ path: ['tags'], splice: [1, 0, 'b'] }]);
 		expect(bytes()).toBe(0);
 		expect(block.data.title).toBe('One');
 		expect(edytor.data.title).toBeUndefined();
@@ -231,19 +190,19 @@ describe('block.data: a live proxy whose writes are patchData commands', () => {
 			onBeforeOperation: ({ operation, payload, prevent }) => {
 				if (operation !== 'patchData') return;
 				seen.push(payload);
-				if ((payload as { ops: { path: string[] }[] }).ops[0]!.path[0] === 'locked') prevent();
+				if (payload[1][0]!.path[0] === 'locked') prevent();
 			}
 		});
 		const { edytor } = await renderDomEdytor(<root />, { value, plugins: [lock, ...plugins] });
 		const block = edytor.idToBlock.block('c');
-		block.data.locked = true;
+		set(edytor, 'c', 'locked', true);
 		expect(edytor.dispatcher.last?.status).toBe('refused');
 		expect(block.data.locked).toBeUndefined();
-		block.data.title = 'ok';
+		set(edytor, 'c', 'title', 'ok');
 		expect(block.data.title).toBe('ok');
 		expect(seen).toEqual([
-			{ ops: [{ path: ['locked'], value: true }] },
-			{ ops: [{ path: ['title'], value: 'ok' }] }
+			['c', [{ path: ['locked'], value: true }]],
+			['c', [{ path: ['title'], value: 'ok' }]]
 		]);
 	});
 });
@@ -252,17 +211,17 @@ describe('the properties page’s validation hook (DR-props-4)', () => {
 	// Copied from site/content/docs/concepts/properties.mdx (`src/lib/locked.ts`).
 	const locked: Plugin = () => ({
 		onBeforeOperation: ({ operation, payload, block, prevent }) => {
-			if (operation !== 'patchData' || payload.atom !== undefined) return;
+			if (operation !== 'patchData' || typeof payload[0] !== 'string') return;
 			const was = block.data.locked;
-			const changes = (op: (typeof payload.ops)[number]) =>
+			const changes = (op: (typeof payload)[1][number]) =>
 				op.path.length === 0
 					? (op.value as { locked?: unknown } | undefined)?.locked !== was
 					: op.path[0] === 'locked';
-			if (payload.ops.some(changes)) prevent();
+			if (payload[1].some(changes)) prevent();
 		}
 	});
 
-	it('refuses every write that changes `locked`: a set, setData, setBlock', async () => {
+	it('refuses every write that changes `locked`: a set, a delete, a replacement, setBlock', async () => {
 		const locking = { children: [{ ...value.children[0]!, data: { title: 'One', locked: 1 } }] };
 		const { edytor } = await renderDomEdytor(<root />, {
 			value: locking,
@@ -273,33 +232,34 @@ describe('the properties page’s validation hook (DR-props-4)', () => {
 			write();
 			return edytor.dispatcher.last?.status;
 		};
-		expect(refused(() => (block.data.locked = 2))).toBe('refused');
-		expect(refused(() => delete block.data.locked)).toBe('refused');
-		expect(refused(() => block.setData({ title: 'Two' }))).toBe('refused');
-		expect(refused(() => block.setData({ title: 'Two', locked: 3 }))).toBe('refused');
-		expect(refused(() => block.setBlock({ value: { data: { locked: 4 } } }))).toBe('refused');
+		const replace = (data: Record<string, unknown>) =>
+			edytor.patchData('c', [{ path: [], value: data }]);
+		expect(refused(() => set(edytor, 'c', 'locked', 2))).toBe('refused');
+		expect(refused(() => set(edytor, 'c', 'locked'))).toBe('refused');
+		expect(refused(() => replace({ title: 'Two' }))).toBe('refused');
+		expect(refused(() => replace({ title: 'Two', locked: 3 }))).toBe('refused');
+		expect(refused(() => edytor.setBlock('c', { data: { locked: 4 } }))).toBe('refused');
 		expect(edytor.facade.blockDataOf('c')).toEqual({ title: 'One', locked: 1 });
 		// A write that keeps it applies.
-		expect(refused(() => block.setData({ title: 'Two', locked: 1 }))).toBe('applied');
-		expect(refused(() => (block.data.title = 'Three'))).toBe('applied');
+		expect(refused(() => replace({ title: 'Two', locked: 1 }))).toBe('applied');
+		expect(refused(() => set(edytor, 'c', 'title', 'Three'))).toBe('applied');
 		expect(edytor.facade.blockDataOf('c')).toEqual({ title: 'Three', locked: 1 });
 	});
 });
 
-describe('creations carry their properties in addChildBlocks (DR-props-4)', () => {
+describe('creations carry their properties in insertBlocks (DR-props-4)', () => {
 	it('Duplicate and a block paste show the new blocks’ data to hooks', async () => {
 		const seen: unknown[] = [];
 		const spy: Plugin = () => ({
 			onBeforeOperation: ({ operation, payload }) => {
-				if (operation === 'addChildBlocks')
-					seen.push(...(payload as { blocks: { data?: unknown }[] }).blocks.map((b) => b.data));
+				if (operation === 'insertBlocks') seen.push(...payload[1].map((b) => b.data));
 			}
 		});
 		const { edytor, editor } = await renderDomEdytor(<root />, {
 			value,
 			plugins: [spy, ...plugins]
 		});
-		edytor.idToBlock.block('c').duplicateBlock();
+		edytor.duplicateBlock('c');
 		expect(seen).toEqual([{ title: 'One', tags: ['a'] }]);
 		selectBlocks(edytor, edytor.idToBlock.block('c'));
 		await flushDomUpdates();
@@ -342,12 +302,12 @@ describe('the snippet re-renders and bound inputs edit synced data', () => {
 		const [a, b] = pair();
 		const one = await renderDomEdytor(<root />, { document: a, value, plugins });
 		const two = await renderDomEdytor(<root />, { document: b, value, plugins });
-		one.edytor.data.title = 'Notes';
+		set(one.edytor, null, 'title', 'Notes');
 		expect(one.edytor.dispatcher.last).toMatchObject({ operation: 'patchData', status: 'applied' });
 		await flushDomUpdates();
 		expect(q(two.editor, '[data-card-doc]').textContent).toBe('Notes');
 		expect(two.edytor.data.title).toBe('Notes');
-		expect(two.edytor.root!.data).toBe(two.edytor.data);
+		expect(two.edytor.root!.data).toEqual(two.edytor.data);
 		expect(two.edytor.value.data).toEqual({ title: 'Notes' });
 		one.edytor.historyUndo();
 		await flushDomUpdates();

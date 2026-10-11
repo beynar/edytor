@@ -130,7 +130,7 @@ describe('a readonly view is a live viewer (D3)', () => {
 		await tick();
 		expect(edytor!.readonly).toBe(false);
 		// The provider is the same: a local edit reaches the peer.
-		edytor!.root!.children[0]!.firstText!.insertText({ value: '!', start: 6, end: 6 });
+		edytor!.insertText(edytor!.root!.children[0]!.id, 6, '!');
 		await waitFor(() =>
 			expect(peer.facade.toJSON().children[0]?.content).toEqual([{ text: 'shared!' }])
 		);

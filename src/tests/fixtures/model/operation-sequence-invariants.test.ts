@@ -84,13 +84,16 @@ describe('phase 10 deterministic operation sequence checks', () => {
 		assertSequenceProperty(edytor);
 
 		const alphaText = getText(root.children[0], 'initial insert');
-		alphaText.insertText({ value: ' one', start: alphaText.length, end: alphaText.length });
+		edytor.insertText(root.children[0].id, alphaText.length, ' one');
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
 		expect(root.children[0].firstText!.stringContent).toBe('Alpha one');
 
 		const splitText = getText(root.children[0], 'split');
-		const splitBlock = root.children[0].splitBlock({ index: 6, text: splitText });
+		const split = edytor.splitBlock(root.children[0].id, splitText.segStart + 6, 'b-one', {
+			type: 'paragraph'
+		});
+		const splitBlock = edytor.idToBlock.get(split.ids[0]!);
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
 		expect(splitBlock?.firstText!.stringContent).toBe('one');
@@ -102,7 +105,7 @@ describe('phase 10 deterministic operation sequence checks', () => {
 			'Epsilon'
 		]);
 
-		const mergedBlock = splitBlock?.mergeBlockBackward();
+		const mergedBlock = edytor.idToBlock.get(edytor.mergeBackward(splitBlock!.id).ids[0]!);
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
 		expect(mergedBlock?.firstText!.stringContent).toBe('Alpha one');
@@ -115,29 +118,35 @@ describe('phase 10 deterministic operation sequence checks', () => {
 
 		const mixedContentBlock = root.children[2];
 		expect(mixedContentBlock.content.some((part) => part instanceof InlineBlock)).toBe(true);
-		mixedContentBlock.deleteContentAtRange({
-			start: [0, 2],
-			end: [2, 2]
-		});
+		const [from, to] = [mixedContentBlock.content[0]!, mixedContentBlock.content[2]!] as Text[];
+		edytor.deleteText(
+			mixedContentBlock.id,
+			from.segStart + 2,
+			to.segStart + 2 - (from.segStart + 2)
+		);
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
 		expect(mixedContentBlock.content.some((part) => part instanceof InlineBlock)).toBe(false);
 		expect(mixedContentBlock.firstText!.stringContent).toBe('Galta');
 
-		const nestedBlock = root.children[3].nestBlock();
+		const nesting = root.children[3];
+		edytor.nestBlock(nesting.id, root.children[2].id);
+		const nestedBlock = nesting;
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
 		expect(nestedBlock?.path).toEqual([2, 0]);
 		expect(root.children).toHaveLength(3);
 		expect(root.children[2].children).toHaveLength(1);
 
-		const unnestedBlock = nestedBlock?.unNestBlock();
+		edytor.unNestBlock(nestedBlock.id);
+		const unnestedBlock = nestedBlock;
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
 		expect(unnestedBlock?.path).toEqual([3]);
 		expect(root.children).toHaveLength(4);
 
-		const movedBlock = root.children[3].moveBlock({ path: [0] });
+		const movedBlock = root.children[3];
+		edytor.moveBlocks([movedBlock.id], { parent: null, index: 0 });
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
 		expect(movedBlock?.path).toEqual([0]);
@@ -149,7 +158,7 @@ describe('phase 10 deterministic operation sequence checks', () => {
 		]);
 
 		const movedText = getText(root.children[0], 'mark toggle');
-		movedText.markText({ mark: 'bold', start: 0, end: 3, toggle: true });
+		edytor.formatRange(root.children[0].id, movedText.segStart, 3, { bold: true });
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
 		expectTextValue(movedText, [{ text: 'Eps', marks: { bold: true } }, { text: 'ilon' }]);

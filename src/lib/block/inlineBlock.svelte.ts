@@ -2,7 +2,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { InlineBlockDefinition } from '$lib/plugins.js';
 import type { JSONInlineBlock } from '$lib/utils/json.js';
 import type { Block } from './block.svelte.js';
-import { propsProxy } from '$lib/session/props.js';
 import type { Text } from '$lib/text/text.svelte.js';
 
 const INLINE_EDGE_CARET_THRESHOLD_PX = 4;
@@ -10,10 +9,12 @@ const isTextPart = (part: Block['content'][number] | undefined): part is Text =>
 	part !== undefined && !(part instanceof InlineBlock);
 
 /**
- * An id-only inline-atom handle: atom `id`, shown in
- * block `blockId`. Getters read the document index; `node` is the element
- * that renders it (a Surface fact). A reactive reader of a getter depends on
- * the block's cell, so it re-runs when a commit changes the block's content.
+ * An id-only, read-only inline-atom handle: atom `id`, shown in block
+ * `blockId`. Getters read the document index; writes are the view's
+ * operations (`edytor.patchData({ block: atom.blockId, atom: atom.id }, …)`).
+ * `node` is the element that renders it (a Surface fact). A reactive reader
+ * of a getter depends on the block's cell, so it re-runs when a commit
+ * changes the block's content.
  */
 export class InlineBlock {
 	_def = 'inline' as const;
@@ -50,17 +51,9 @@ export class InlineBlock {
 		return this.#item?.type ?? '';
 	}
 
-	#props?: Record<string, any>;
-	/** The atom's `data` as a live proxy (`session/props.ts`): writes are its block's `patchData` commands. */
-	get data(): Record<string, any> {
-		return (this.#props ??= propsProxy(
-			() => {
-				this.edytor.cells?.get(this.blockId);
-				return this.#item?.data ?? {};
-			},
-			(ops) => this.parent.patchData({ atom: this.id, ops }),
-			(path) => this.edytor.facade.dataItemIds({ block: this.blockId, atom: this.id }, path)
-		));
+	/** The atom's `data`; a reactive reader depends on its block's cell. */
+	get data(): Readonly<Record<string, any>> {
+		return this.#item?.data ?? {};
 	}
 
 	get definition(): InlineBlockDefinition {
@@ -71,11 +64,6 @@ export class InlineBlock {
 	get index(): number {
 		return this.parent.content.indexOf(this);
 	}
-
-	/** Replace the atom's `data` — its block's `patchData` command (readonly, hooks). */
-	setData = (data: Record<string, unknown>): void => {
-		this.parent.patchData({ atom: this.id, ops: [{ path: [], value: data }] });
-	};
 
 	/** The atom is shown by a live block. */
 	get isInDocument(): boolean {

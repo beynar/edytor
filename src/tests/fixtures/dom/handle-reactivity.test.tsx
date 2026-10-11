@@ -13,6 +13,7 @@
  * Expected values come from the rule (what the document holds after each
  * commit), never from running the code.
  */
+import { siblingSlot } from '$lib/session/handles.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DocChange } from '$lib/crdt/index.js';
 import type { Plugin } from '$lib/plugins.js';
@@ -43,7 +44,7 @@ describe('handle getters are reactive', () => {
 		);
 		const block = edytor.root!.children[0]!;
 		const seen = watched(() => block.type);
-		block.type = 'quote';
+		edytor.setBlock(block.id, { type: 'quote' });
 		await flushDomUpdates();
 		expect(seen).toEqual(['paragraph', 'quote']);
 	});
@@ -57,10 +58,10 @@ describe('handle getters are reactive', () => {
 		);
 		const ids = watched(() => edytor.root!.children.map((child) => child.id));
 		const [first, second] = edytor.root!.children;
-		first!.insertBlockAfter({ block: { type: 'paragraph', content: [{ text: 'New' }] } });
+		edytor.insertBlocks(siblingSlot(first!), [{ type: 'paragraph', content: [{ text: 'New' }] }]);
 		await flushDomUpdates();
 		const added = edytor.root!.children[1]!.id;
-		second!.removeBlock();
+		edytor.deleteBlock(second!.id);
 		await flushDomUpdates();
 		expect(ids.at(0)).toEqual([first!.id, second!.id]);
 		expect(ids.at(-1)).toEqual([first!.id, added]);
@@ -77,10 +78,10 @@ describe('handle getters are reactive', () => {
 		const text = block.content[0] as Text;
 		const strings = watched(() => text.stringContent);
 		const lengths = watched(() => block.content.length);
-		block.model!.insertText(3, '!');
+		edytor.insertText(block.id, 3, '!');
 		await flushDomUpdates();
 		expect(strings).toEqual(['One', 'One!']);
-		block.addInlineBlock({ offset: 4, block: { type: 'mention', data: { name: 'Ada' } } });
+		edytor.insertInline(block.id, 4, { type: 'mention', data: { name: 'Ada' } });
 		await flushDomUpdates();
 		// text, atom, text
 		expect(lengths.at(-1)).toBe(3);
@@ -96,7 +97,7 @@ describe('handle getters are reactive', () => {
 		);
 		const [one, two, three] = edytor.root!.children;
 		const places = watched(() => [three!.parent?.id, three!.index]);
-		three!.nestBlock();
+		edytor.nestBlock(three!.id, two!.id);
 		await flushDomUpdates();
 		expect(places).toEqual([
 			['root', 2],
@@ -114,7 +115,7 @@ describe('handle getters are reactive', () => {
 		);
 		const two = edytor.root!.children[1]!;
 		const live = watched(() => two.isInTree);
-		two.removeBlock();
+		edytor.deleteBlock(two.id);
 		await flushDomUpdates();
 		edytor.historyUndo();
 		await flushDomUpdates();
@@ -131,8 +132,8 @@ describe('handle getters are reactive', () => {
 		const types = watched(() => block.type);
 		const texts = watched(() => (block.content[0] as Text).stringContent);
 		// A raw document write, outside the view's commands (as a remote update lands).
-		edytor.facade.block(block.id).setType('heading');
-		edytor.facade.block(block.id).insertText(0, '> ');
+		edytor.facade.setBlockType(block.id, 'heading');
+		edytor.facade.insertText(block.id, 0, '> ');
 		await flushDomUpdates();
 		expect(types).toEqual(['paragraph', 'heading']);
 		expect(texts).toEqual(['One', '> One']);
@@ -146,7 +147,7 @@ describe('handle getters are reactive', () => {
 		);
 		const block = edytor.root!.children[0]!;
 		edytor.transact(() => {
-			block.type = 'quote';
+			edytor.setBlock(block.id, { type: 'quote' });
 			// Inside the command, before any commit: the document's answer.
 			expect(block.type).toBe('quote');
 		});
@@ -165,8 +166,8 @@ describe('onDocChange', () => {
 		);
 		const exports = vi.spyOn(edytor.facade, 'toJSON');
 		const [one, two] = edytor.root!.children;
-		one!.model!.insertText(3, '!');
-		two!.type = 'quote';
+		edytor.insertText(one!.id, 3, '!');
+		edytor.setBlock(two!.id, { type: 'quote' });
 		await flushDomUpdates();
 		expect(reports).toHaveLength(2);
 		expect([...reports[0]!.content.keys()]).toEqual([one!.id]);
@@ -196,7 +197,7 @@ describe('onDocChange', () => {
 				]
 			}
 		);
-		edytor.root!.children[0]!.model!.insertText(0, 'A');
+		edytor.insertText(edytor.root!.children[0]!.id, 0, 'A');
 		await flushDomUpdates();
 		expect(seen).toHaveLength(1);
 		expect(seen[0]!.content.size).toBe(1);
@@ -231,7 +232,7 @@ describe('onDocChange', () => {
 				]
 			}
 		);
-		edytor.root!.children[0]!.model!.insertText(0, 'A');
+		edytor.insertText(edytor.root!.children[0]!.id, 0, 'A');
 		await flushDomUpdates();
 		expect(calls).toEqual([
 			'prop onDocChange',

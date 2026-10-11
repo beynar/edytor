@@ -1204,7 +1204,7 @@
 				return;
 			}
 
-			text.insertText({ value, start: offset, end: offset });
+			edytor.insertText(text.parent.id, text.segStart + offset, value);
 			edytor.selection.selectText(text, offset + value.length);
 		};
 

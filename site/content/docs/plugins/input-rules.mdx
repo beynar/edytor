@@ -74,12 +74,10 @@ export const arrowTodo: Plugin = () => ({
 	inputRules: [
 		{
 			find: /^->\s$/,
-			replace: (_match, { block, from, remove }) => {
+			replace: (_match, { edytor, block, from, remove }) => {
 				if (from !== 0) return false;
 				// Answers whether the removal and the retype were written.
-				return remove(() => {
-					block.type = 'todo-item';
-				});
+				return remove(() => edytor.setBlock(block.id, { type: 'todo-item' }));
 			}
 		}
 	]
@@ -105,10 +103,8 @@ export const tagsPlugin: Plugin = () => ({
 		{
 			char: '#',
 			items: (query) => TAGS.filter((tag) => tag.startsWith(query.toLowerCase())),
-			onPick: (tag: string, { block, from, caret }) => {
-				const at = block.textAtOffset(from);
-				if (!at) return false;
-				at.text.insertText({ value: `#${tag} `, start: at.offset, end: at.offset });
+			onPick: (tag: string, { edytor, block, from, caret }) => {
+				edytor.insertText(block.id, from, `#${tag} `);
 				caret(from + tag.length + 2);
 			}
 		}
@@ -150,7 +146,7 @@ With no row and no search pending, <kbd>Enter</kbd> and the arrows are the edito
 
 ### Picking
 
-`onPick(item, ctx)` receives the context of the trigger's range: `block`, `from` (where the trigger starts), `to` (the query's end), `query` and `caret(offset)`. The trigger and its query are removed in the same plan as the first operation `onPick` runs, so the pick is one undo step and a refusal keeps the text, with the caret back at the query's end. Before `onPick` runs, the caret is where the trigger was; set the caret you want with `ctx.caret`. To insert an inline atom, `block.addInlineBlock({ offset: from, block })` writes it where the trigger was, and the caret goes after it at `from + 1`:
+`onPick(item, ctx)` receives the context of the trigger's range: `block`, `from` (where the trigger starts), `to` (the query's end), `query` and `caret(offset)`. The trigger and its query are removed in the same plan as the first operation `onPick` runs, so the pick is one undo step and a refusal keeps the text, with the caret back at the query's end. Before `onPick` runs, the caret is where the trigger was; set the caret you want with `ctx.caret`. `ctx.edytor` is the view: write with its operations. To insert an inline atom, `edytor.insertInline(block.id, from, atom)` writes it where the trigger was, and the caret goes after it at `from + 1`:
 
 ```ts title="pick.ts" check
 import type { Trigger } from 'edytor';
@@ -158,10 +154,10 @@ import type { Trigger } from 'edytor';
 export const dateTrigger: Trigger<string> = {
 	char: '@',
 	items: (query) => ['today', 'tomorrow'].filter((day) => day.startsWith(query)),
-	onPick: (day, { block, from, caret }) => {
-		const after = block.addInlineBlock({ offset: from, block: { type: 'date', data: { day } } });
-		if (after) caret(from + 1);
-		return !!after;
+	onPick: (day, { edytor, block, from, caret }) => {
+		const atom = edytor.insertInline(block.id, from, { type: 'date', data: { day } });
+		if (atom.status === 'applied') caret(from + 1);
+		return atom.status === 'applied';
 	}
 };
 ```

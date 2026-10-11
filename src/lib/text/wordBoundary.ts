@@ -1,6 +1,7 @@
 /**
- * One semantic rule for word boundaries, shared by caret word jumps
- * (session/navigation.ts) and word deletion (beforeInputDeleteCommands.ts):
+ * One semantic rule for grapheme and word boundaries, shared by caret jumps
+ * (session/navigation.ts) and deletion (beforeInputDeleteCommands.ts): a
+ * character at a caret is one grapheme (`Intl.Segmenter`);
  * a word is a run of Unicode letters, numbers, or `_`; whitespace and
  * punctuation are boundaries. When no word run remains in the direction,
  * the boundary is the boundary run's far edge — a trailing `· ` is still
@@ -28,4 +29,24 @@ export const getNextWordEndOffset = (value: string, offset: number) => {
 	const tail = value.slice(Math.max(0, offset));
 	const word = AFTER.exec(tail);
 	return word ? value.length - tail.length + word[0].length : tail ? value.length : offset;
+};
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+/** The offsets where `value`'s graphemes start, then its length. */
+const graphemeEdges = (value: string): number[] => [
+	...Array.from(graphemes.segment(value), (s) => s.index),
+	value.length
+];
+
+const clamp = (value: string, offset: number) => Math.min(Math.max(offset, 0), value.length);
+
+/** The start of the grapheme before `offset` (0 at the start). */
+export const getPreviousGraphemeStart = (value: string, offset: number) =>
+	graphemeEdges(value).findLast((edge) => edge < clamp(value, offset)) ?? 0;
+
+/** The end of the grapheme after `offset` (`offset`, clamped, at the end). */
+export const getNextGraphemeEnd = (value: string, offset: number) => {
+	const at = clamp(value, offset);
+	return graphemeEdges(value).find((edge) => edge > at) ?? at;
 };

@@ -71,7 +71,7 @@ With a URL, allow its host instead. A policy that allows no other host (or that 
 ## Creating equations
 
 - **Block equation**: the slash menu's "Block equation" (group `Advanced blocks`, keywords `math`, `tex`, `latex`, `katex`, `formula`, `equation`). Like a divider it replaces an empty line and goes after a line that holds text; its editor opens at once.
-- **Inline equation**: the slash menu's "Inline equation" (group `Inline`), or <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd>. Over selected text in one block, the text becomes the equation's source, in one undo step: the text's removal leads the `addInlineBlock` command in one plan, so a hook that refuses either keeps the text; at a caret, an empty equation is inserted and its editor opens.
+- **Inline equation**: the slash menu's "Inline equation" (group `Inline`), or <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd>. Over selected text in one block, the text becomes the equation's source, in one undo step: the text's removal leads the `insertInline` operation in one plan, so a hook that refuses either keeps the text; at a caret, an empty equation is inserted and its editor opens.
 - **Typed**: `$$E=mc^2$$` in text becomes an inline equation when you type the last `$`, the caret after it. One undo step gives the typed text back. Input rules do not run in code blocks.
 
 ## Editing

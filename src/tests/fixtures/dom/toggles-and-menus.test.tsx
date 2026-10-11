@@ -388,7 +388,7 @@ describe('markdown shortcuts read the insertion point, not the caret (SW8-plugin
 		const text = view.edytor.idToBlock.get('x')!.firstText!;
 		view.edytor.selection.selectText(text, 4);
 		await flushDomUpdates();
-		text.insertText({ value: '*', start: 1, end: 1 });
+		view.edytor.insertText(text.parent.id, text.segStart + 1, '*');
 		await flushDomUpdates();
 		expect(canonicalTree(view.edytor)).toEqual([
 			{ type: 'paragraph', content: [{ text: 'a* *b' }] }
@@ -403,7 +403,7 @@ describe('markdown shortcuts read the insertion point, not the caret (SW8-plugin
 		const text = view.edytor.idToBlock.get('x')!.firstText!;
 		view.edytor.selection.selectText(text, 1);
 		await flushDomUpdates();
-		text.insertText({ value: ' ', start: 4, end: 4 });
+		view.edytor.insertText(text.parent.id, text.segStart + 4, ' ');
 		await flushDomUpdates();
 		expect(canonicalTree(view.edytor)).toEqual([
 			{ type: 'paragraph', content: [{ text: '# ab ' }] }

@@ -185,7 +185,8 @@ export class CalloutIconPicker {
 	/** Write `icon` on the callout (one undo step), then close. */
 	set = (icon: string) => {
 		const block = this.block;
-		if (block && block.data.icon !== icon) block.data.icon = icon;
+		if (block && block.data.icon !== icon)
+			block.edytor.patchData(block.id, [{ path: ['icon'], value: icon }]);
 		this.close();
 	};
 

@@ -43,13 +43,14 @@ export const inputRulesHook = (
 		// Typed text only: a paste or a drop (a URL pasted at the caret) completes no rule.
 		if (dispatcher.command?.startsWith('insertFrom')) return;
 		const { payload, block, prevent, text } = change;
+		const [, offset, value] = payload;
 		const { startText, yStart } = selection.textRange();
 		// Only text typed at the caret: an insertion elsewhere completes no rule.
 		if (!selection.caret || !text || text !== startText) return;
-		if ((payload.start ?? yStart) !== yStart || (payload.end ?? yStart) !== yStart) return;
-		if (!payload.value || inCodeLines(edytor, block)) return;
+		if (offset !== text.segStart + yStart) return;
+		if (!value || inCodeLines(edytor, block)) return;
 		const before = text.stringContent.slice(0, yStart);
-		const subject = before + payload.value;
+		const subject = before + value;
 		// The rules that match, with the typed text inside their match.
 		const matches = rules.flatMap((rule) => {
 			const match = matchAtEnd(rule.find, subject);
@@ -59,8 +60,8 @@ export const inputRulesHook = (
 
 		/** The typed text lands as typed, the caret after it. */
 		const typeAsIs = () => {
-			text.insertText(payload);
-			dispatcher.caret(text, yStart + payload.value.length);
+			edytor.insertText(...payload);
+			dispatcher.caret(text, yStart + value.length);
 		};
 
 		/**
@@ -81,10 +82,7 @@ export const inputRulesHook = (
 					const run = dispatcher.lead(removal, () => then?.());
 					// Nothing took the lead: the matched text goes on its own, unless `then` declined.
 					if (!run.taken && run.out !== false && text.index !== -1)
-						block.deleteContentAtRange({
-							start: [text.index, start],
-							end: [text.index, yStart]
-						});
+						edytor.deleteText(block.id, from, to - from);
 				} else dispatcher.alone(() => then?.());
 				removed = dispatcher.last !== last && dispatcher.last?.status === 'applied';
 				return removed;
@@ -94,7 +92,7 @@ export const inputRulesHook = (
 				block,
 				from,
 				to,
-				typed: payload.value,
+				typed: value,
 				caret: (offset) => void dispatcher.caret({ block, offset }),
 				remove
 			};
@@ -103,7 +101,7 @@ export const inputRulesHook = (
 			const out = dispatcher.alone(() => rule.replace(match, ctx));
 			if (typeof out === 'string') {
 				const written = remove(() =>
-					dispatcher.alone(() => text.insertText({ value: out, start, end: start }))
+					dispatcher.alone(() => edytor.insertText(block.id, from, out))
 				);
 				if (written) dispatcher.caret({ block, offset: from + out.length });
 				return written;

@@ -68,7 +68,7 @@ test.describe('blurred editor programmatic update behavior', () => {
 			}
 
 			edytor.doc.transact(() => {
-				text.insertAt(text.length, '!');
+				edytor.facade.insertText(text.parent.id, text.segStart + text.length, '!');
 			}, 'remote-programmatic-update');
 		});
 

@@ -181,9 +181,10 @@ describe('Turn into places the kind a plugin’s replacement names (BW-03)', () 
 	const replacing =
 		(from: string, to: JSONBlock): Plugin =>
 		() => ({
-			onBeforeOperation: ({ operation, payload }) => {
-				const value = (payload as { value?: JSONBlock }).value;
-				if (operation === 'setBlock' && value?.type === from) return { value: { ...value, ...to } };
+			onBeforeOperation: (change) => {
+				if (change.operation !== 'setBlock') return;
+				const [id, value] = change.payload;
+				if (value.type === from) return [id, { ...value, ...to }];
 			}
 		});
 
@@ -216,7 +217,7 @@ describe('A list split by Turn into stays split (BW-05)', () => {
 		expect(convertToKind(view.edytor, get(view, 'b'), row(view, 'Divider'))).toBe(true);
 		await flushDomUpdates();
 		const [, divider, paragraph] = view.edytor.root!.children;
-		view.edytor.deleteBlocks({ blocks: [divider!, paragraph!] });
+		view.edytor.deleteBlocks([divider!.id, paragraph!.id]);
 		await flushDomUpdates();
 		expect(shape(view)).toEqual([
 			[O, ['list-item "a"', 'list-item "b"']],
@@ -393,7 +394,8 @@ describe('Turn into runs the new kind’s normalizeContent (DR-code-1)', () => {
 				normalizeContent: ({ block }) => {
 					const text = block.firstText;
 					const at = text?.stringContent.indexOf('\n') ?? -1;
-					if (text && at !== -1) return () => text.deleteAt(at, 1);
+					if (text && at !== -1)
+						return () => block.edytor.deleteText(block.id, text.segStart + at, 1);
 				}
 			}
 		}
@@ -430,10 +432,9 @@ describe('Turn into runs the new kind’s normalizeContent (DR-code-1)', () => {
 
 describe('Turn into puts the caret in the block a plugin’s replacement names (DR-code-4)', () => {
 	const retarget: Plugin = () => ({
-		onBeforeOperation: ({ operation, payload }) => {
-			const block = (payload as { block?: JSONBlock }).block;
-			if (operation === 'insertBlockAfter' && block?.type === 'code')
-				return { block: { type: 'quote', content: [{ text: '' }], children: [] } };
+		onBeforeOperation: (change) => {
+			if (change.operation !== 'insertBlocks' || change.payload[1][0]?.type !== 'code') return;
+			return [change.payload[0], [{ type: 'quote', content: [{ text: '' }], children: [] }]];
 		}
 	});
 

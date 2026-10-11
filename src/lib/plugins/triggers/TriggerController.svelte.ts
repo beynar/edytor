@@ -20,12 +20,6 @@ import { inCodeLines } from '$lib/session/inputRules.js';
 import { inPage, optionAttributes, type OptionAttributes } from '../chrome.js';
 import { listPopup } from '../list.svelte.js';
 
-export type TextInsertionPayload = {
-	value: string;
-	start?: number;
-	end?: number;
-};
-
 /** Where the trigger is now: its text, the trigger's start and the query's end in it. */
 export type TriggerRange = { text: Text; triggerStart: number; queryEnd: number };
 
@@ -126,20 +120,15 @@ export abstract class TextTriggerController {
 	protected abstract queried(query: string): void;
 
 	/** After an `insertText`: the trigger opens, the query grows, or the menu closes. */
-	handleTextInsertion(text: Text, block: Block, payload: TextInsertionPayload) {
-		const range = this.edytor.selection.textRange();
-		const start = payload.start ?? range.yStart;
-		const end = payload.end ?? range.yEnd;
+	handleTextInsertion(text: Text, block: Block, start: number, value: string) {
 		if (this.edytor.readonly) return this.close();
 		// A trigger typed alone, or committed by an IME with its query (`/h`).
-		const at =
-			start === end && this.admits(block) ? this.triggerAt(text, start, payload.value) : -1;
-		if (at !== -1) this.open(text, at, start + payload.value.length);
+		const at = this.admits(block) ? this.triggerAt(text, start, value) : -1;
+		if (at !== -1) this.open(text, at, start + value.length);
 		// Typing at the query's end extends it; typing anywhere else closes the menu.
 		else if (this.activeRange) {
 			const range = this.range;
-			if (text === range?.text && start === range.queryEnd)
-				this.setEnd(text, start + payload.value.length);
+			if (text === range?.text && start === range.queryEnd) this.setEnd(text, start + value.length);
 			else this.close();
 		}
 	}
@@ -235,7 +224,7 @@ export abstract class TextTriggerController {
 			const index = text.index;
 			// Nothing took the lead: the trigger goes on its own, unless the body declined.
 			if (!run.taken && run.out !== false && index !== -1)
-				block.deleteContentAtRange({ start: [index, triggerStart], end: [index, end] });
+				edytor.deleteText(block.id, from, to - from);
 			const kept = run.out === false || (run.taken && dispatcher.last?.status === 'refused');
 			const out = await run.out;
 			if (owns(text, held)) dispatcher.caret(text, kept ? end : triggerStart);

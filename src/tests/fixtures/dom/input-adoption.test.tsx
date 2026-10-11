@@ -280,8 +280,8 @@ describe('adoption runs through the dispatcher', () => {
 		return () => ({
 			onBeforeOperation: ({ operation, payload, prevent }) => {
 				if (operation !== 'insertText') return;
-				const { value, start, end } = payload as { value: string; start: number; end: number };
-				log.push(`${value}@${start}-${end}`);
+				const [, offset, value] = payload;
+				log.push(`${value}@${offset}`);
 				if (veto) prevent();
 			}
 		});
@@ -307,7 +307,7 @@ describe('adoption runs through the dispatcher', () => {
 		);
 		await typeNatively(edytor);
 		expect(firstText(edytor).stringContent).toBe('hexllo');
-		expect(log).toEqual(['x@2-2']);
+		expect(log).toEqual(['x@2']);
 	});
 
 	row('a hook vetoes the adoption: the text re-renders from the model', async () => {
@@ -319,7 +319,7 @@ describe('adoption runs through the dispatcher', () => {
 			{ plugins: [hooked(log, true), richTextPlugin, mentionPlugin] }
 		);
 		await typeNatively(edytor);
-		expect(log).toEqual(['x@2-2']);
+		expect(log).toEqual(['x@2']);
 		expect(firstText(edytor).stringContent).toBe('hello');
 		expect(domText(edytor)).toBe('hello');
 	});

@@ -86,7 +86,7 @@ describe('snippets receive declared view objects', () => {
 		expect([view.selected, view.focused]).toEqual([false, false]);
 		expect(view.handle).toBe(note);
 
-		note.setBlock({ value: { data: { level: 2 } } });
+		note.edytor.setBlock(note.id, { data: { level: 2 } });
 		await flushDomUpdates();
 		expect(view.data).toEqual({ level: 2 });
 	});

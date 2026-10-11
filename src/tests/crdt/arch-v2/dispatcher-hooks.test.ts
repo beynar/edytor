@@ -5,9 +5,9 @@
  *
  * - F-M1 — `[a "aa", b "bb", c "cc", d "dd"]`, range a@1 → d@1, an after-hook
  *   throws: `[a "ad"]`, one undo step, the error surfaces.
- * - F-M2 — same range, an extension refuses the `removeBlock` step for `c`
- *   (old-style hook, matched by operation name): the whole range delete is
- *   refused before any write — document unchanged, zero bytes, no undo step.
+ * - F-M2 — same range, an extension refuses the `deleteBlock` step for `c`
+ *   (matched by operation name): the whole range delete is refused before
+ *   any write — document unchanged, zero bytes, no undo step.
  * - D-10 — a payload returned for a nested step is ignored with a dev warning;
  *   a payload returned for the command replaces it and the replacement is
  *   prepared again and shown to every hook; `prevent(() => …)` replaces the
@@ -50,13 +50,9 @@ const view = (plugins = [], { readonly = false, children = abcd() } = {}) => {
 const texts = (edytor: Edytor) =>
 	edytor.facade.toJSON().children.map((b) => [b.id, (b.content ?? []).map((x) => x.text).join('')]);
 
-const text = (edytor: Edytor, id: string) => edytor.idToBlock.get(id)!.firstText!;
-
-/** Select a@1 → d@1 and delete it through the view op. */
+/** Delete a@1 → d@1 through the view op. */
 const rangeDelete = (edytor: Edytor) =>
-	edytor.deleteContentWithinSelection({
-		selection: { startText: text(edytor, 'a'), yStart: 1, endText: text(edytor, 'd'), yEnd: 1 }
-	});
+	edytor.deleteRange({ block: 'a', offset: 1 }, { block: 'd', offset: 1 });
 
 const ORIGINAL = [
 	['a', 'aa'],
@@ -87,11 +83,11 @@ describe('F-M1 — an after-hook throws', () => {
 });
 
 describe('F-M2 — veto of a nested step', () => {
-	row('refusing the removeBlock step for c refuses the whole range delete', () => {
+	row('refusing the deleteBlock step for c refuses the whole range delete', () => {
 		const { edytor, bytes, undo } = view([
 			() => ({
 				onBeforeOperation: ({ operation, block }) => {
-					if (operation === 'removeBlock' && block.id === 'c') prevent();
+					if (operation === 'deleteBlock' && block.id === 'c') prevent();
 				}
 			})
 		]);
@@ -109,7 +105,7 @@ describe('D-10 — hook semantics', () => {
 		const { edytor } = view([
 			() => ({
 				onBeforeOperation: ({ operation, payload }) => {
-					if (operation === 'removeBlock') return { ...payload, keepChildren: true };
+					if (operation === 'deleteBlock') return [payload[0], { keepChildren: true }];
 				}
 			})
 		]);
@@ -124,17 +120,16 @@ describe('D-10 — hook semantics', () => {
 		const { edytor } = view([
 			() => ({
 				onBeforeOperation: ({ operation, payload }) => {
-					if (operation === 'splitBlock' && payload.index === 1) return { ...payload, index: 0 };
+					if (operation === 'splitBlock' && payload[1] === 1) return [payload[0], 0, payload[2]];
 				}
 			}),
 			() => ({
 				onBeforeOperation: ({ operation, payload }) => {
-					if (operation === 'splitBlock') seen.push(payload.index);
+					if (operation === 'splitBlock') seen.push(payload[1]);
 				}
 			})
 		]);
-		const a = edytor.idToBlock.get('a')!;
-		a.splitBlock({ index: 1, text: a.firstText! });
+		edytor.splitBlock('a', 1, 'a2');
 		// The split lands at the replaced offset, and the second hook saw the
 		// replacement (the command it lets through), not the original.
 		expect(texts(edytor)[0]).toEqual(['a', '']);
@@ -150,8 +145,7 @@ describe('D-10 — hook semantics', () => {
 				}
 			})
 		]);
-		const a = edytor.idToBlock.get('a')!;
-		expect(() => a.splitBlock({ index: 1, text: a.firstText! })).not.toThrow();
+		expect(() => edytor.splitBlock('a', 1, 'a2')).not.toThrow();
 		expect(ran).toHaveBeenCalledTimes(1);
 		expect(texts(edytor)).toEqual(ORIGINAL);
 		expect(bytes()).toBe(0);
@@ -162,13 +156,13 @@ describe('D-10 — hook semantics', () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const { edytor } = view([
 			(editor) => ({
-				onBeforeOperation: ({ operation, payload, text: t }) => {
-					if (operation === 'insertText' && payload.value === 'x')
-						prevent(() => t.insertText({ value: 'x', start: 0, end: 0 }));
+				onBeforeOperation: ({ operation, payload }) => {
+					if (operation === 'insertText' && payload[2] === 'x')
+						prevent(() => editor.insertText('a', 0, 'x'));
 				}
 			})
 		]);
-		text(edytor, 'a').insertText({ value: 'x', start: 2, end: 2 });
+		edytor.insertText('a', 2, 'x');
 		expect(texts(edytor)[0]).toEqual(['a', 'xaa']);
 		expect(warn).toHaveBeenCalled();
 	});
@@ -176,39 +170,36 @@ describe('D-10 — hook semantics', () => {
 
 describe('readonly refuses every mutating command', () => {
 	const blockOps = (edytor: Edytor) => {
-		const [a, b, c] = ['a', 'b', 'c'].map((id) => edytor.idToBlock.get(id)!);
-		const t = a.firstText!;
-		a.addChildBlock({ block: { type: 'paragraph' }, index: 0 });
-		a.addChildBlocks({ blocks: [{ type: 'paragraph' }], index: 0 });
-		a.insertBlockAfter({ block: { type: 'paragraph' } });
-		a.insertBlockBefore({ block: { type: 'paragraph' } });
-		a.splitBlock({ index: 1, text: t });
-		c.removeBlock({ keepChildren: false });
-		b.nestBlock({});
-		b.unNestBlock({});
-		b.mergeBlockBackward({});
-		b.mergeBlockForward({});
-		a.setBlock({ value: { type: 'heading' } });
-		a.moveBlock({ path: [2] });
-		a.moveBlocks({ blocks: [a], path: [2] });
-		a.deleteContentAtRange({ start: [0, 0], end: [0, 1] });
-		a.addInlineBlock({ index: 1, text: t, block: { type: 'mention', data: {} } });
+		edytor.insertBlocks({ parent: 'a', index: 0 }, [{ type: 'paragraph' }]);
+		edytor.insertBlocks({ parent: null, index: 1 }, [{ type: 'paragraph' }]);
+		edytor.splitBlock('a', 1, 'a2');
+		edytor.deleteBlock('c', { keepChildren: false });
+		edytor.deleteBlocks(['c']);
+		edytor.nestBlock('b', 'a');
+		edytor.unNestBlock('b');
+		edytor.mergeBackward('b');
+		edytor.mergeForward('b');
+		edytor.setBlock('a', { type: 'heading' });
+		edytor.moveBlocks(['a'], { parent: null, index: 2 });
+		edytor.duplicateBlock('a');
+		edytor.wrapInLayout(['a', 'b']);
+		edytor.patchData('a', [{ path: ['x'], value: 1 }]);
+		edytor.insertInline('a', 1, { type: 'mention', data: {} });
 	};
 	const textOps = (edytor: Edytor) => {
-		const t = text(edytor, 'a');
-		t.insertText({ value: 'x', start: 0, end: 0 });
-		t.deleteText({ direction: 'FORWARD', length: 1 });
-		t.setText({ value: [{ text: 'zz' }] });
-		t.markText({ mark: 'bold', start: 0, end: 1 });
-		t.removeMarksFromText({ start: 0, end: 1 });
+		edytor.insertText('a', 0, 'x');
+		edytor.deleteText('a', 0, 1);
+		edytor.setBlock('a', { content: [{ text: 'zz' }] });
+		edytor.formatRange('a', 0, 1, { bold: true });
+		edytor.clearMarks('a', 0, 1);
 	};
 	const viewOps = (edytor: Edytor) => {
 		rangeDelete(edytor);
-		edytor.insertFlow({
-			flow: { lines: [{ id: 'nx', content: [{ kind: 'text', text: 'x' }] }] },
-			target: { block: 'a', offset: 0 }
-		});
-		edytor.moveBlocks({
+		edytor.insertFlow(
+			{ block: 'a', offset: 0 },
+			{ lines: [{ id: 'nx', content: [{ kind: 'text', text: 'x' }] }] }
+		);
+		edytor.move({
 			blocks: [edytor.idToBlock.get('a')!],
 			target: edytor.idToBlock.get('c')!,
 			position: 'after'
@@ -232,19 +223,6 @@ describe('readonly refuses every mutating command', () => {
 	pin('view operations (range delete, flow, relative move): zero writes, zero undo steps', () => {
 		const { edytor, bytes, undo } = view([], { readonly: true });
 		viewOps(edytor);
-		expect(texts(edytor)).toEqual(ORIGINAL);
-		expect([bytes(), undo()]).toEqual([0, 0]);
-	});
-
-	row("the handles' segment and child primitives write nothing on a readonly view", () => {
-		const { edytor, bytes, undo } = view([], { readonly: true });
-		const a = text(edytor, 'a');
-		expect(a.insertAt(0, 'X')).toBe(false);
-		expect(a.deleteAt(0, 1)).toBe(false);
-		expect(a.formatAt(0, 1, { bold: true })).toBe(false);
-		const root = edytor.root!;
-		root.insertChildren(0, [{ type: 'paragraph', content: [{ text: 'new' }] }]);
-
 		expect(texts(edytor)).toEqual(ORIGINAL);
 		expect([bytes(), undo()]).toEqual([0, 0]);
 	});

@@ -1,78 +1,81 @@
 ---
 title: Properties
-description: Block, inline block and document properties (data), read and written like plain objects, synced per property, with undo, hooks and typing.
+description: Block, inline block and document properties (data), read like plain objects, written with patchData, synced per property, with undo, hooks and typing.
 icon: sliders-horizontal
 ---
 
-Every block, every inline block and the document itself carry `data`: a JSON object of properties, such as a to-do's `checked`, an image's `src` or a document's `title`. You read and write it like a plain object. Each write is a command (undoable, visible to plugins, refused in a readonly view), and the document syncs it property by property, so two people editing different properties of the same block both keep their change.
+Every block, every inline block and the document itself carry `data`: a JSON object of properties, such as a to-do's `checked`, an image's `src` or a document's `title`. You read it like a plain object and write it with the `patchData` operation (undoable, visible to plugins, refused in a readonly view). The document syncs it property by property, so two people editing different properties of the same block both keep their change.
 
 ## Read and write
 
-`block.data`, `atom.data` and `edytor.data` are live proxies over the current value:
+`block.data`, `atom.data` and `edytor.data` read the current value; `edytor.patchData(target, patches)` writes it, where `target` is the block's id, `{ block, atom }` for an inline block, or `null` for the document:
 
 ```ts title="src/lib/properties.ts" check
-block.data.title = 'Launch plan'; // set one property
-block.data.meta.owner = 'ada'; // nested objects read as proxies too
-delete block.data.draft; // delete one
-block.data.tags.push('q3'); // one item added
-block.data.tasks[0].done = true; // one property of one item
-edytor.data.title = 'Notes'; // the document's own properties
-atom.data.name = 'Ada'; // an inline block (a mention)
-block.setData({ title: 'Fresh' }); // replace the whole object
+const read = block.data.title; // read one property
+edytor.patchData(block.id, [{ path: ['title'], value: 'Launch plan' }]); // set one property
+edytor.patchData(block.id, [{ path: ['meta', 'owner'], value: 'ada' }]); // a nested one
+edytor.patchData(block.id, [{ path: ['draft'] }]); // delete one
+edytor.patchData(block.id, [{ path: ['tags'], splice: [1, 0, 'q3'] }]); // one item added
+edytor.patchData(block.id, [{ path: ['tasks', '0', 'done'], value: true }]); // one property of one item
+edytor.patchData(null, [{ path: ['title'], value: 'Notes' }]); // the document's own properties
+edytor.patchData({ block: block.id, atom: 'm1' }, [{ path: ['name'], value: 'Ada' }]); // an inline block
+edytor.patchData(block.id, [{ path: [], value: { title: 'Fresh' } }]); // replace the whole object
+void read;
 ```
 
-- A read always returns the current value: a nested object reads as a proxy of its own (the same one each time), an array as an array proxy, anything else as the value itself. Copy it (`{ ...block.data }`, `$state.snapshot(block.data)`, `JSON.parse(JSON.stringify(block.data))`) to keep what it was at one moment. `JSON.stringify` and `$state.snapshot` give plain JSON.
-- A write is one `patchData` command on the block (the root block for the document, with `atom` set for an inline block), and it writes only what it changes: a property set or `delete`, a write inside an array item (`tasks[0].done = true`, `tags[1] = 'b'`), an array method (`push`, `pop`, `shift`, `unshift` and `splice` add and remove items, `sort` and `reverse` move them, `fill` and `copyWithin` replace their values), or a `length` assignment (it removes items from the end, or adds `null`s). `delete tags[1]` removes the item. Values are JSON: a `Date` becomes a string, `undefined` removes the property (see [the document model](/docs/concepts/document-model)). The proxies convert a value silently; `patchData` given a value that is not JSON converts it too and logs a warning in development.
+- A read returns the current value, which you must not mutate: copy it (`{ ...block.data }`, `structuredClone(block.data)`) to change a copy or to keep what it was at one moment.
+- A write writes only what its patches change (the [patches](#commands-hooks-and-undo) below). Values are JSON: a `Date` becomes a string and `undefined` removes the property (see [the document model](/docs/concepts/document-model)); a value that is not JSON is converted and logged as a warning in development.
 - Reads in a template are reactive: a snippet that reads `block.data.title` re-renders when anyone changes the block, you, a plugin or a collaborator. `edytor.data` is reactive too, anywhere in your app.
 - `edytor.root.data` is `edytor.data`.
 
 ## Bind to inputs
 
-Because a write is an assignment, Svelte bindings work on properties. A kind whose snippet edits its own data:
+Bind a property through a getter and a setter that writes it. A kind whose snippet edits its own data:
 
 ```svelte title="CardPlugin.svelte" check
 <script module lang="ts">
-	import type { BlockSnippetPayload, Plugin } from 'edytor';
+	import type { BlockSnippetPayload, BlockView, Plugin } from 'edytor';
 
-	type Card = {
-		title?: string;
-		done?: boolean;
-		tags?: string[];
-		tasks?: { title: string; done: boolean }[];
-	};
+	type Card = { title?: string; done?: boolean; tags?: string[] };
 
 	export const cardPlugin: Plugin = () => ({
 		blocks: {
 			card: {
 				snippet: card,
-				presets: [
-					{ label: 'Card', icon: '▤', data: { title: '', done: false, tags: [], tasks: [] } }
-				]
+				presets: [{ label: 'Card', icon: '▤', data: { title: '', done: false, tags: [] } }]
 			}
 		}
 	});
+
+	/** Write property `key` of the card: one `patchData`. */
+	const set = (block: BlockView<Card>, key: keyof Card, value: unknown) =>
+		block.handle?.edytor.patchData(block.id, [{ path: [key], value }]);
 </script>
 
 {#snippet card({ block, content }: BlockSnippetPayload<Card>)}
 	<div use:block.void>
-		<input placeholder="Title" bind:value={block.data.title} />
+		<input
+			placeholder="Title"
+			bind:value={() => block.data.title ?? '', (title) => set(block, 'title', title)}
+		/>
 		<input
 			type="checkbox"
-			bind:checked={() => block.data.done ?? false, (done) => (block.data.done = done)}
+			bind:checked={() => block.data.done ?? false, (done) => set(block, 'done', done)}
 		/>
-		<button onclick={() => block.data.tags?.push('new')}>Tag</button>
+		<button
+			onclick={() =>
+				block.handle?.edytor.patchData(block.id, [
+					{ path: ['tags'], splice: [block.data.tags?.length ?? 0, 0, 'new'] }
+				])}>Tag</button
+		>
 		{block.data.tags?.join(', ')}
-		{#each block.data.tasks ?? [] as task (task)}
-			<label><input type="checkbox" bind:checked={task.done} /><input bind:value={task.title} /></label>
-		{/each}
-		<button onclick={() => block.data.tasks?.push({ title: '', done: false })}>Add a task</button>
 	</div>
 	<div>{@render content()}</div>
 {/snippet}
 ```
 
-- Each row of an `{#each}` over an array binds into its own item: checking one task and typing in another's title are two writes of two items, which merge with a collaborator's edits of the others. Key the rows by the item (`(task)`): an object or array read from an item is that item's (the same proxy each time, wherever collaborators move it), so a focused field stays on its item when a collaborator inserts, removes or sorts items above it, and once the item is removed, or its array is deleted or replaced, its writes are refused and write nothing (an item held across an `await` never brings back the array it was in). An unkeyed `{#each}` keeps rows by position, so the field under the cursor would show, and write, the item that took its place. Items that are strings or numbers have no identity to key on: bind them by index only where nobody else reorders the array, or store objects (`{ name: 'q3' }`).
-- Give bound properties a default in the kind's presets, or bind through a getter and setter as the checkbox does: a plain `bind:checked` on a missing property writes `false` when the input mounts, which is an edit (and an undo step) in every editable view that renders it.
+- An absent property reads as empty through the getter, so nothing is written when the input mounts; a plain `bind:` would write it, an edit (and an undo step) in every editable view that renders it.
+- A row of an `{#each}` over an array writes its own item by id, so its write merges with a collaborator's edits of the others and stays on its item wherever they move it: `document.dataItemIds(block.id, ['tasks'])` lists the items' ids in order, and a patch names an item by its id (`['tasks', '~k3f9xq2a', 'done']`). A patch naming an item that is gone writes nothing.
 - A kind's own controls own their events. Any form control in a kind's markup (an `<input>` of any type: text, date, time, number, range, color, a checkbox; a `<textarea>`, a `<select>`, a `<button>`) and any nested editable element that is not the editor's own text receives its keys, `beforeinput`, paste, copy, cut, drops and selection gestures from the browser, whatever the editor's selection: <kbd>Backspace</kbd>, <kbd>Enter</kbd> or <kbd>Tab</kbd> there never act on selected blocks, a paste never lands in the document, and the editor never moves its caret over a focused control while each change writes the block. Only a file dropped on one is swallowed (the browser would open it in place of the page), and <kbd>Backspace</kbd> or <kbd>Delete</kbd> on a focused `<select>` or `<button>` does nothing, so the browser deletes nothing around it.
 - A readonly view refuses the writes, so the field would show what was typed until the next render: disable it there (`disabled={block.handle?.edytor.readonly}`; a [suggestion](/docs/editor/suggestions)'s preview has no handle).
 
@@ -100,15 +103,15 @@ document.toJSON().data; // the same; `data` is absent when the document has none
 
 - A `value` with `data` seeds it with the content. The same seed on two replicas writes the same properties, whatever order its keys come in (a database may reorder them), like the content (see [Documents](/docs/collaboration/documents)).
 - `edytor.value` (and `onChange`'s value) carries it as the root's `data`; `JSONDoc.data` round-trips through `toJSON`, the room's `read()`, `onSave` and `onLoad`.
-- Augment `EdytorDocData` to type `edytor.data`, as above. Block data is typed per kind with `BlockSnippetPayload<T>` (`block.data` is `T` in the snippet).
+- Augment `EdytorDocData` to type `edytor.data`, as above. Block data is typed per kind with `BlockSnippetPayload<T>` (`block.data` is a read-only `T` in the snippet).
 
 ## Commands, hooks and undo
 
-A property write is the `patchData` operation. Its payload is `{ ops, atom? }`: `ops` is a list of patches, applied in order. `path` is the list of keys from the root, an array item's being its index as a string (`['tasks', '0', 'done']`) or its id (`['tasks', '~k3f9xq2a', 'done']`, what the proxy of an object or array in an item writes; `document.dataItemIds(target, path)` lists an array's ids in order). An id is `~` and a lowercase letter, so a key that starts with `~` is written with that `~` as `~0`, as in a JSON pointer (`['~0abc']` for the key `~abc`); the proxies do this for you. A patch is one of:
+A property write is the `patchData` operation: `patchData(target, patches)`, a hook's payload being `[target, patches]`. `patches` is a list, applied in order. `path` is the list of keys from the root, an array item's being its index as a string (`['tasks', '0', 'done']`) or its id (`['tasks', '~k3f9xq2a', 'done']`; `document.dataItemIds(target, path)` lists an array's ids in order). An id is `~` and a lowercase letter, so a key that starts with `~` is written with that `~` as `~0`, as in a JSON pointer (`['~0abc']` for the key `~abc`). A patch is one of:
 
 - `{ path, value }` sets the value there; without `value` it deletes the property, or removes the item.
-- `{ path, splice: [start, deleteCount, ...items] }` removes and inserts items of the array at `path`, as `Array.prototype.splice` does (`push`, `pop`, `shift`, `unshift`, `splice` and `length` write one).
-- `{ path, order }` moves the array's items: `order` lists the current indexes in their new order (`sort` and `reverse` write one).
+- `{ path, splice: [start, deleteCount, ...items] }` removes and inserts items of the array at `path`, as `Array.prototype.splice` does.
+- `{ path, order }` moves the array's items: `order` lists the current indexes in their new order.
 
 Indexes are resolved against the document when the command runs, ids wherever the item is then (a patch naming an item that is gone, removed or with its array deleted or replaced, is refused and writes nothing); the stored write names each item by its id, so it merges with what collaborators did meanwhile. The `block` is the edited block, the root block for the document.
 
@@ -116,28 +119,30 @@ Indexes are resolved against the document when the command runs, ids wherever th
 import type { Plugin } from 'edytor';
 
 // Validation lives in a hook. Only the app sets `locked`: refuse any write that
-// would change it, a whole-object replace (`setData`) included.
+// would change it, a whole-object replace included.
 export const locked: Plugin = () => ({
-	onBeforeOperation: ({ operation, payload, block, prevent }) => {
-		if (operation !== 'patchData' || payload.atom !== undefined) return;
-		const was = block.data.locked;
-		const changes = (op: (typeof payload.ops)[number]) =>
-			op.path.length === 0
-				? (op.value as { locked?: unknown } | undefined)?.locked !== was
-				: op.path[0] === 'locked';
-		if (payload.ops.some(changes)) prevent();
+	onBeforeOperation: (change) => {
+		if (change.operation !== 'patchData') return;
+		const [target, patches] = change.payload;
+		if (typeof target !== 'string') return; // an inline block's, or the document's
+		const was = change.block.data.locked;
+		const changes = (patch: (typeof patches)[number]) =>
+			patch.path.length === 0
+				? (patch.value as { locked?: unknown } | undefined)?.locked !== was
+				: patch.path[0] === 'locked';
+		if (patches.some(changes)) change.prevent();
 	}
 });
 ```
 
-A patch with an empty `path` replaces the whole object (`setData`), so a check must look inside its `value`, not only at `path[0]`: a replace that leaves `locked` out deletes it.
+A patch with an empty `path` replaces the whole object, so a check must look inside its `value`, not only at `path[0]`: a replace that leaves `locked` out deletes it.
 
 - A readonly view (or a read-only document) refuses every write, and `edytor.dispatcher.last` records `refused`.
 - A vetoed write writes nothing. Edytor has no property schema: validate or normalize in `onBeforeOperation` (return a replacement payload to rewrite a patch).
-- A block created with its properties is not a `patchData`: a paste, Duplicate and `insertBlocks` show as `addChildBlocks` with the new blocks' JSON (`payload.blocks`, `data` included), and a split's second half takes a copy of the first half's properties. A hook that guards a property checks `addChildBlocks` too.
+- A block created with its properties is not a `patchData`: a paste, Duplicate and `insertBlocks` show as `insertBlocks` with the new blocks (`payload[1]`, `data` included), and a split's second half takes a copy of the first half's properties. A hook that guards a property checks `insertBlocks` too.
 - Each write is one undo step. Typing into a property joins one step: a write of the same properties whose new strings each insert or delete one run of characters in the previous ones (`'Pla'` → `'Plan'`, `'Plan'` → `'Pan'`) continues the step while it comes within the history's capture window (`history.captureTimeout`, 500 ms by default), as typing text does. Any other write is its own step however fast it comes: a checkbox's `true`/`false`, a number, a delete, an object, and a string that is another value rather than an edit of it (`'todo'` → `'done'`, `'doing'` → `'done'`, a `<select>` changed twice). So checking and unchecking a to-do, or picking two statuses in a row, is two steps. To make several writes one step, run them in `edytor.transact(() => …)`.
-- `block.setData(obj)` and `atom.setData(obj)` are `patchData` commands that replace the whole object. `block.setBlock({ value: { data } })` (and Turn into) writes data as a `patchData` step, which hooks also see: one patch per property it names (`{ path: ['level'], value: 'h1' }`), never a replace.
-- **A change of kind keeps the properties.** Turn into, a markdown shortcut, the slash menu, <kbd>Backspace</kbd> at the start of a heading or a to-do and `block.setBlock({ value: { type, data } })` set the properties the new kind's preset names and keep every other one, as Notion does: a checked red to-do turned into a heading keeps `checked` and `color` (a heading ignores them) and gains `level`; turned back into a to-do, the preset's `checked: false` unchecks it. A nested preset property sets its own keys inside an object the block holds there. To drop properties, write them (`delete block.data.checked`) or replace the object with `setData`.
+- A patch with an empty `path` replaces the whole object (`setBlockData(id, data)` and `setInlineData(id, atom, data)` are such patches). `setBlock(id, { data })` (and Turn into) writes data as a `patchData` step, which hooks also see: one patch per property it names (`{ path: ['level'], value: 'h1' }`), never a replace.
+- **A change of kind keeps the properties.** Turn into, a markdown shortcut, the slash menu, <kbd>Backspace</kbd> at the start of a heading or a to-do and `setBlock(id, { type, data })` set the properties the new kind's preset names and keep every other one, as Notion does: a checked red to-do turned into a heading keeps `checked` and `color` (a heading ignores them) and gains `level`; turned back into a to-do, the preset's `checked: false` unchecks it. A nested preset property sets its own keys inside an object the block holds there. To drop properties, delete them (`{ path: ['checked'] }`) or replace the object.
 - Undo gives back exactly the properties the step changed; a collaborator's change to another property stays.
 
 ## How concurrent edits merge
@@ -149,13 +154,13 @@ Each leaf of the data (a string, number, boolean, `null`, an empty object or an 
 - **Arrays merge item by item**, like a `Y.Array`. Edits inside different items are all kept (`tasks[0].title` and `tasks[1].done`), and so are both items of two concurrent pushes: concurrent inserts at the same place come in the same order on every replica, and what one person inserts right after an item they inserted in the same session stays right after it, even across separate writes (two `push` calls, two clicks on Add): a collaborator's insert made at that place before seeing them never lands between them. An insert lands between the items it was made between.
 - **A removed item stays removed.** When one person removes an item while another edits inside it, the item is gone for both; the edit never brings it back.
 - **A moved item keeps its edits.** `sort` and `reverse` move items: an edit made meanwhile inside one of them follows it to its new place, and an item removed meanwhile stays removed. Two people moving the same item at once leave it at one of the two places.
-- **A whole array assignment keeps what stays.** `block.data.tasks = next` (or a `setData` holding the array) keeps every item of the longest run that `next` keeps equal and in order; between two of them, old and new items pair up by position, each keeping its item and taking the new value; the rest are removed or inserted. So the immutable-update pattern (`tasks = [...tasks, task]`, `tasks.map(…)`, `tasks.filter(…)`) appends, edits or removes only those items, and a collaborator's edit inside the others is kept.
+- **A whole array assignment keeps what stays.** `{ path: ['tasks'], value: next }` (or a replace of the object holding the array) keeps every item of the longest run that `next` keeps equal and in order; between two of them, old and new items pair up by position, each keeping its item and taking the new value; the rest are removed or inserted. So the immutable-update pattern (`tasks = [...tasks, task]`, `tasks.map(…)`, `tasks.filter(…)`) appends, edits or removes only those items, and a collaborator's edit inside the others is kept.
   - Two people reassigning the same array at once each pair their values with the same old items, so where both changed one, the last writer's value wins, and the items each inserted past them are both kept.
   - An array assigned where there was none (or only an empty one) gets items derived from its value: two people assigning the same one at once (a default every open view writes, `options ??= ['A', 'B']`) leave one copy, and two different ones are both kept, one after the other.
 - **A whole assignment costs time linear in the array's length.** The items equal at the start and at the end are kept first; between them, the longest run is exact whenever the old items' values are all different (rows with their own ids or titles, `sort`'s order) or few of them repeat. When many values repeat (thousands of `true`/`false` flags, say), and more than 262,144 pairs of equal values would have to be compared, the items between the kept start and end pair up by position instead: each keeps its item and takes the new value at its index. Reassigning a 6,000-item array with one insert, one edit and one removal writes those three items and takes about 0.2 s in Node; set or splice one item (`tasks[i].done = true`, `tasks.splice(i, 1)`) when you know which one changed.
 - **An object beats a value.** When one person sets `meta` to `5` while another sets `meta.b`, everyone ends with `meta` as an object: `{ b: … }`.
-- **An atomic path is one value.** Key-by-key merging can mix two objects set at the same time: one person sets `link` to `{ url: a, title: A }` while another sets it to `{ url: b, kind: 'video' }`, and both end with `{ url: b, title: A, kind: 'video' }`, a link neither of them wrote. A kind that declares `atomic: ['link']` (in its block definition and in the document's `semantics`, so every replica agrees) stores `link` as one value: everyone ends with one of the two links, whole. A write inside it (`block.data.link.title = 'X'`) writes the whole `link` too, so it can lose to a concurrent write of `link` as a whole. Declare the paths whose parts only make sense together (a link, an embed's source); leave the rest per key.
-- **A set beats a concurrent delete** of the same property, and a replace (`setData`, or setting an object) removes only the properties its writer saw: a property a collaborator added meanwhile stays.
+- **An atomic path is one value.** Key-by-key merging can mix two objects set at the same time: one person sets `link` to `{ url: a, title: A }` while another sets it to `{ url: b, kind: 'video' }`, and both end with `{ url: b, title: A, kind: 'video' }`, a link neither of them wrote. A kind that declares `atomic: ['link']` (in its block definition and in the document's `semantics`, so every replica agrees) stores `link` as one value: everyone ends with one of the two links, whole. A write inside it (`{ path: ['link', 'title'], value: 'X' }`) writes the whole `link` too, so it can lose to a concurrent write of `link` as a whole. Declare the paths whose parts only make sense together (a link, an embed's source); leave the rest per key.
+- **A set beats a concurrent delete** of the same property, and a replace (of the whole object, or setting an object) removes only the properties its writer saw: a property a collaborator added meanwhile stays.
 - Deleting the last property of an object keeps the object, empty.
 
 For text that several people type into at once, use the block's content, which merges character by character.
@@ -176,5 +181,5 @@ How properties are stored:
 How older documents are read:
 
 - **Arrays written by the previous pre-release** are one attribute holding the whole array. Edytor reads them unchanged and keeps them while a write only adds, changes or moves items, splitting them into items at the first write that removes one (both peers then write the same items, so concurrent first writes merge as usual).
-- **Documents written before properties were stored per leaf** store a block's data as one attribute. Edytor reads it unchanged, writes a set property over it, and splits it into leaves at the first write it would otherwise show through (a delete, an object replacing its object, `setData`).
+- **Documents written before properties were stored per leaf** store a block's data as one attribute. Edytor reads it unchanged, writes a set property over it, and splits it into leaves at the first write it would otherwise show through (a delete, an object replacing its object, a replace of the whole object).
 - **Edge case.** When two people make such a first write to the same old block or array at the same moment, a property the other one set, or an item the other one removed, can come back.

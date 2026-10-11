@@ -44,7 +44,7 @@ The replace row has a **Replace with** field and two buttons:
 
 Each is one command, `replaceMatches`, and one undo step: <kbd>Mod</kbd> + <kbd>Z</kbd> after Replace all brings every match back at once. The replacement takes the marks the replaced text had in common, as typing over a selection does: replacing a bold word gives a bold word.
 
-`onBeforeOperation` sees the command, with the payload `{ matches, replacement }` (`matches` as `{ block, offset, length }`, block display offsets), then each step it plans: a `deleteContentAtRange` and an `insertText` per match. A hook can refuse it with `prevent()`; nothing is then written. See [Operations](/docs/plugins/operations).
+`onBeforeOperation` sees the command, with the payload `{ matches, replacement }` (`matches` as `{ block, offset, length }`, block display offsets), then each step it plans: a `deleteText` and an `insertText` per match. A hook can refuse it with `prevent()`; nothing is then written. See [Operations](/docs/plugins/operations).
 
 A readonly view, or a view of a read-only document, shows no replace row and refuses a replacement. In a readonly view the keymap does not run, so <kbd>Mod</kbd> + <kbd>F</kbd> stays the browser's find; open the bar from code with `findController(edytor).open()`.
 

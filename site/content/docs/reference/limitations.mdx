@@ -21,7 +21,7 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 - **Suggestions stay in one view.** A [suggestion](/docs/editor/suggestions) (text, blocks or a rewrite proposed by your AI) shows only in the view that made it until it is accepted: another tab or a collaborator cannot review it, and a reload loses it.
 - **No property schema.** [Properties](/docs/concepts/properties) take any JSON; validate or normalize in `onBeforeOperation`.
 - **Columns have no colours of their own.** A [columns layout](/docs/plugins/columns#resizing) resizes with the pointer or, on a focused gap, with the arrow keys.
-- **Array items that are strings or numbers have no key.** An object item's proxy follows its item, so a keyed `{#each}` row stays on it; a row bound to a string item by index (`bind:value={tags[i]}`) writes whatever item is at that index when a collaborator inserts or removes one above it. Store objects for rows several people edit.
+- **An array item written by index is the item at that index.** A patch that names an item by index (`['tags', '2']`) writes whatever item is there when it runs, after a collaborator inserted or removed one above it; name it by its id (`document.dataItemIds(id, ['tags'])`) for rows several people edit. See [Properties](/docs/concepts/properties).
 
 ## Localization
 

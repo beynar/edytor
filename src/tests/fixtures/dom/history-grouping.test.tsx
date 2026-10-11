@@ -32,7 +32,7 @@
  *   paragraph `hi /h2`.
  * - H-G7 (UW-16) — block commands called directly (no user command around
  *   them) cut by the table, one step each; one `edytor.transact` around two
- *   of them is one step. NW-06: so do direct `markText`, `addChildBlock` and
+ *   of them is one step. NW-06: so do direct `formatRange`, `insertBlocks` and
  *   an atom's `patchData` (outside a user command only an insertion continues);
  *   `run('format')` around two `markText` calls is one step. RW-12: `run`
  *   with a kind the table does not list (`myConvert`) cuts like a bare
@@ -43,6 +43,7 @@
  * inside `captureTimeout`.
  * Expected values come from the policy rows, never from running the code.
  */
+import { siblingSlot } from '$lib/session/handles.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
@@ -366,12 +367,12 @@ describe('direct block commands follow the table (UW-16)', () => {
 		edytor.undoManager.stopCapturing();
 		await type(editor, 'a');
 		const [first, second] = edytor.root!.children;
-		first!.insertBlockAfter({ block: { type: 'paragraph', content: [{ text: 'x' }] } });
-		second!.removeBlock();
+		edytor.insertBlocks(siblingSlot(first!), [{ type: 'paragraph', content: [{ text: 'x' }] }]);
+		edytor.deleteBlock(second!.id);
 		expect(edytor.undoManager.undoStack.length).toBe(3);
 		edytor.transact(() => {
-			first!.insertBlockAfter({ block: { type: 'paragraph', content: [{ text: 'y' }] } });
-			first!.setBlock({ value: { type: 'quote' } });
+			edytor.insertBlocks(siblingSlot(first!), [{ type: 'paragraph', content: [{ text: 'y' }] }]);
+			edytor.setBlock(first!.id, { type: 'quote' });
 		});
 		await flushDomUpdates();
 		expect(blocks(edytor)).toEqual([
@@ -385,7 +386,7 @@ describe('direct block commands follow the table (UW-16)', () => {
 		expect(blocks(edytor)).toEqual([typed, { type: 'paragraph', text: 'x' }]);
 	});
 
-	it('H-G7 (NW-06): direct markText, addChildBlock and an atom patchData each start a step', async () => {
+	it('H-G7 (NW-06): direct formatRange, insertBlocks and an atom patchData each start a step', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>
 				<paragraph>
@@ -400,11 +401,13 @@ describe('direct block commands follow the table (UW-16)', () => {
 		const atom = edytor.value.children![0]!.content!.find((part) => !('text' in part)) as {
 			id: string;
 		};
-		block.firstText!.markText({ mark: 'bold', start: 0, end: 5 });
+		edytor.formatRange(block.id, 0, 5, { bold: true });
 		expect(edytor.undoManager.undoStack.length).toBe(2);
-		block.addChildBlock({ block: { type: 'paragraph', content: [{ text: 'c' }] }, index: 0 });
+		edytor.insertBlocks({ parent: block.id, index: 0 }, [
+			{ type: 'paragraph', content: [{ text: 'c' }] }
+		]);
 		expect(edytor.undoManager.undoStack.length).toBe(3);
-		block.patchData({ atom: atom.id, ops: [{ path: ['name'], value: 'x' }] });
+		edytor.patchData({ block: block.id, atom: atom.id }, [{ path: ['name'], value: 'x' }]);
 		expect(edytor.undoManager.undoStack.length).toBe(4);
 		for (let i = 0; i < 3; i++) edytor.historyUndo();
 		await flushDomUpdates();
@@ -416,13 +419,13 @@ describe('direct block commands follow the table (UW-16)', () => {
 		]);
 	});
 
-	it('H-G7 (NW-06): `run("format")` around two markText calls is one step', async () => {
+	it('H-G7 (NW-06): `run("format")` around two formatRange calls is one step', async () => {
 		const { edytor, editor } = await mount();
 		await type(editor, 'a');
-		const text = edytor.root!.children[0]!.firstText!;
+		const { id } = edytor.root!.children[0]!;
 		edytor.dispatcher.run('format', () => {
-			text.markText({ mark: 'bold', start: 0, end: 2 });
-			text.markText({ mark: 'italic', start: 3, end: 5 });
+			edytor.formatRange(id, 0, 2, { bold: true });
+			edytor.formatRange(id, 3, 2, { italic: true });
 		});
 		expect(edytor.undoManager.undoStack.length).toBe(2);
 		edytor.historyUndo();
@@ -434,7 +437,7 @@ describe('direct block commands follow the table (UW-16)', () => {
 		const { edytor, editor } = await mount();
 		await type(editor, 'a');
 		const block = edytor.root!.children[0]!;
-		edytor.dispatcher.run('myConvert', () => block.setBlock({ value: { type: 'quote' } }));
+		edytor.dispatcher.run('myConvert', () => edytor.setBlock(block.id, { type: 'quote' }));
 		expect(edytor.undoManager.undoStack.length).toBe(2);
 		edytor.historyUndo();
 		await flushDomUpdates();

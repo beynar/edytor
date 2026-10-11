@@ -26,6 +26,7 @@ import type { JSONDoc } from '$lib/utils/json.js';
 import { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { CLOSE, validRoomId } from '$lib/crdt/providers/room.js';
+import { DOCUMENT_WRITES } from '$lib/crdt/operations.js';
 import { richTextPlugin } from '../routes/chrome/plugins.js';
 
 const root = join(import.meta.dirname, '../..');
@@ -512,7 +513,10 @@ describe('docs drift', () => {
 
 	it('every `edytor.<member>` a doc names exists, unless the doc says it is gone (SW8-docs-1)', () => {
 		const source = readFileSync(join(root, 'src/lib/edytor.svelte.ts'), 'utf8');
+		// The document's writes are the view's members too, under the same names.
+		const writes = new Set<string>(DOCUMENT_WRITES);
 		const member = (name: string) =>
+			writes.has(name) ||
 			new RegExp(`^\\t(?:readonly |get |set |static )*${name}\\b\\s*[=:(!?<]`, 'm').test(source);
 		const gone = /removed|is gone|are gone|no longer|replaced|→/;
 		const stale = docs.flatMap((path) =>
@@ -655,20 +659,15 @@ describe('docs drift', () => {
 		expect(quickStart).toMatch(/actor id `guest:<id>`/);
 	});
 
-	it('the operations page has a payload row for every dispatched operation', () => {
+	it('the operations page has a row for every operation and every command', () => {
 		const page = readFileSync(join(root, 'site/content/docs/plugins/operations.mdx'), 'utf8');
-		const names = new Set(
-			['src/lib/block', 'src/lib/text']
-				.flatMap((dir) => sources(join(root, dir)))
-				.concat(join(root, 'src/lib/edytor.svelte.ts'))
-				.flatMap((path) => [
-					...readFileSync(path, 'utf8').matchAll(/\b(?:batch|planned)\(\s*'(\w+)'/g)
-				])
-				.map(([, name]) => name)
-				// Normalization runs inside the command that requested it; hooks never see it.
-				.filter((name) => !name.startsWith('normalize'))
-		);
-		expect(names.size).toBeGreaterThan(20);
+		const plugins = readFileSync(join(root, 'src/lib/plugins.ts'), 'utf8');
+		const commands = /export interface Commands \{([\s\S]*?)\n\}/.exec(plugins)![1]!;
+		const names = new Set([
+			...DOCUMENT_WRITES,
+			...[...commands.matchAll(/^\t(\w+):/gm)].map(([, name]) => name!)
+		]);
+		expect(names.size).toBeGreaterThan(30);
 		const rows = page.split('\n').filter((line) => line.startsWith('| `'));
 		expect([...names].filter((name) => !rows.some((row) => row.includes(`\`${name}\``)))).toEqual(
 			[]
@@ -851,8 +850,8 @@ describe('docs drift', () => {
 				'contract',
 				notClaimed,
 				[
-					'insertBlockBefore',
-					'prepareSplitKeepingChildren',
+					'`insertBlocks` before or after it',
+					'splitKeepingChildren',
 					'duplicateBlock',
 					'`whole`',
 					'`replace`',
@@ -978,7 +977,7 @@ describe('docs drift', () => {
 		const read = (path: string) => readFileSync(join(root, `site/content/docs/${path}`), 'utf8');
 		const members = 'a selected list or code block with';
 		expect(read('editor/commands.mdx')).toContain(
-			'edytor.deleteBlocks({ blocks: edytor.selection.selectedMembers });'
+			'edytor.deleteBlocks(edytor.selection.selectedMembers.map((block) => block.id));'
 		);
 		expect(read('plugins/block-handles.mdx')).toContain(
 			"await edytor.runCommand('block.heading2');"
@@ -1425,23 +1424,26 @@ describe('documented command results (editor/commands)', () => {
 		new Edytor({ value: structuredClone(value), plugins: [...plugins, richTextPlugin] });
 	const ids = (edytor: Edytor) => edytor.root!.children.map((block) => block.id);
 
-	it('a creating command answers null when the document refuses, undefined when it never ran', () => {
+	it('a creating operation answers refused when the document refuses or the view never ran it', () => {
 		const edytor = view();
-		const a = edytor.idToBlock.get('a')!;
 		// The document refuses a reused id.
-		expect(a.insertBlockAfter({ block: { id: 'b', type: 'paragraph' } })).toBeNull();
+		expect(
+			edytor.insertBlocks({ parent: null, index: 1 }, [{ id: 'b', type: 'paragraph' }]).status
+		).toBe('refused');
 		expect(edytor.dispatcher.last?.status).toBe('refused');
 		edytor.readonly = true;
-		expect(a.insertBlockAfter({ block: { type: 'paragraph' } })).toBeUndefined();
+		expect(edytor.insertBlocks({ parent: null, index: 1 }, [{ type: 'paragraph' }]).status).toBe(
+			'refused'
+		);
 		expect(edytor.dispatcher.last?.status).toBe('refused');
 		const vetoed = view([
 			() => ({
-				onBeforeOperation: ({ operation, prevent }) => operation === 'insertBlockAfter' && prevent()
+				onBeforeOperation: ({ operation, prevent }) => operation === 'insertBlocks' && prevent()
 			})
 		]);
-		expect(
-			vetoed.idToBlock.get('a')!.insertBlockAfter({ block: { type: 'paragraph' } })
-		).toBeUndefined();
+		expect(vetoed.insertBlocks({ parent: null, index: 1 }, [{ type: 'paragraph' }]).status).toBe(
+			'refused'
+		);
 		expect(vetoed.dispatcher.last?.status).toBe('refused');
 		expect(ids(vetoed)).toEqual(['a', 'b', 'c', 'd']);
 	});
@@ -1449,26 +1451,26 @@ describe('documented command results (editor/commands)', () => {
 	it('a direction move keeps document order; a target move keeps the order given', () => {
 		const edytor = view();
 		const [a, b, c, d] = ['a', 'b', 'c', 'd'].map((id) => edytor.idToBlock.get(id)!);
-		edytor.moveBlocks({ blocks: [c!, b!], direction: 'up' });
+		edytor.move({ blocks: [c!, b!], direction: 'up' });
 		expect(ids(edytor)).toEqual(['b', 'c', 'a', 'd']);
-		edytor.moveBlocks({ blocks: [a!, b!], target: d!, position: 'after' });
+		edytor.move({ blocks: [a!, b!], target: d!, position: 'after' });
 		expect(ids(edytor)).toEqual(['c', 'd', 'a', 'b']);
-		edytor.moveBlocks({ blocks: [b!, a!], target: c!, position: 'before' });
+		edytor.move({ blocks: [b!, a!], target: c!, position: 'before' });
 		expect(ids(edytor)).toEqual(['b', 'a', 'c', 'd']);
 	});
 
 	it('a refused move sets `dispatcher.last`, as every command does (SW8-docs-2)', () => {
 		const edytor = view();
 		const [a, b] = ['a', 'b'].map((id) => edytor.idToBlock.get(id)!);
-		edytor.moveBlocks({ blocks: [b!], direction: 'up' });
-		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlock', status: 'applied' });
+		edytor.move({ blocks: [b!], direction: 'up' });
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'applied' });
 		// No previous sibling to nest under: the move is structurally refused.
-		expect(edytor.moveBlocks({ blocks: [b!], direction: 'in' })).toEqual([]);
-		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlock', status: 'refused' });
-		edytor.moveBlocks({ blocks: [a!, b!], direction: 'down' });
+		expect(edytor.move({ blocks: [b!], direction: 'in' })).toEqual([]);
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'refused' });
+		edytor.move({ blocks: [a!, b!], direction: 'down' });
 		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'applied' });
 		edytor.readonly = true;
-		expect(edytor.moveBlocks({ blocks: [a!, b!], direction: 'up' })).toEqual([]);
+		expect(edytor.move({ blocks: [a!, b!], direction: 'up' })).toEqual([]);
 		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'refused' });
 		expect(ids(edytor)).toEqual(['c', 'b', 'a', 'd']);
 	});

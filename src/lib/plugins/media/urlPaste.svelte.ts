@@ -3,11 +3,10 @@ import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { PluginDefinitions, PluginOperations } from '$lib/plugins.js';
-import type { SerializableContent } from '$lib/utils/json.js';
-import { dispatchPlan } from '$lib/block/block.utils.js';
+import type { JSONBlock, SerializableContent } from '$lib/utils/json.js';
 import { placeNear } from '$lib/surface/overlay.js';
 import { onPress } from '$lib/events/onFocus.js';
-import { holdsNothing, lineage, placing } from '$lib/kinds.js';
+import { holdsNothing, placing } from '$lib/kinds.js';
 import { id } from '$lib/utils.js';
 import { pastedLink } from '../richtext/richTextOperations.js';
 import { safeWebUrl } from './media.js';
@@ -125,7 +124,7 @@ export class UrlPasteController {
 				? { link: { href: url } }
 				: {};
 			edytor.dispatcher.run('insertFromPaste', () => {
-				text.insertText({ value: url, start: 0, end: 0, marks });
+				edytor.insertText(block.id, text.segStart, url, marks);
 				edytor.dispatcher.caret(edytor.idToBlock.get(block.id)?.firstText, url.length);
 			});
 			if (edytor.dispatcher.last?.status !== 'applied') return;
@@ -171,14 +170,13 @@ export class UrlPasteController {
 		const data = offer.data(open.url);
 		if (!block?.isInTree || !block.convertible || !data) return;
 		const value = { type: offer.type, data, content: [] };
-		const applied = dispatchPlan(
-			block,
-			'setBlock',
-			{ value },
-			(p) => placing(block, p.value, false, id('b')),
-			lineage(block)
-		);
-		const converted = applied && edytor.idToBlock.get(block.id);
+		const converted =
+			edytor.dispatcher.plan(
+				'setBlock',
+				[block.id, value] as const,
+				([, value]) => placing(block, value as Partial<JSONBlock>, false, id('b')),
+				block
+			).status === 'applied' && edytor.idToBlock.get(block.id);
 		if (!converted) return;
 		edytor.dispatcher.caret(converted.firstText, 0);
 		offer.created?.(converted, open.url);

@@ -154,7 +154,8 @@ export class ImageControls {
 	/** Set the target image's alignment: one `patchData` command. */
 	align = (align: ImageAlign) => {
 		const block = this.#block();
-		if (block && imageAlignOf(block.data) !== align) block.data.align = align;
+		if (block && imageAlignOf(block.data) !== align)
+			block.edytor.patchData(block.id, [{ path: ['align'], value: align }]);
 	};
 
 	/** The target image's alt text. */
@@ -165,7 +166,8 @@ export class ImageControls {
 	/** Write the alt text as it is typed: the dispatcher groups the keystrokes into one step. */
 	setAlt = (alt: string) => {
 		const block = this.#block();
-		if (block && imageAltOf(block.data) !== alt) block.data.alt = alt;
+		if (block && imageAltOf(block.data) !== alt)
+			block.edytor.patchData(block.id, [{ path: ['alt'], value: alt }]);
 	};
 
 	/** Open (or close) the alt field of the target image. */
@@ -295,7 +297,8 @@ export class ImageControls {
 		const block = this.edytor.idToBlock.get(drag.id);
 		const width = Math.round(widthAt(drag));
 		if (!block?.isInTree || Math.abs(widthAt(drag) - drag.width) < 1) return;
-		if (imageWidthOf(block.data) !== width) block.data.width = width;
+		if (imageWidthOf(block.data) !== width)
+			block.edytor.patchData(block.id, [{ path: ['width'], value: width }]);
 	}
 }
 

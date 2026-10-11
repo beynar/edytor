@@ -344,7 +344,7 @@ describe('ZW-01: the keys never leave a non-item directly in a list', () => {
 /**
  * DR-crdt-1/2 (follow-up review of ZW-01): the outdent's answer is one —
  * the move command's `out` step (a text range plus Shift+Tab, the block
- * handle's Alt+ArrowLeft, `canMoveBlocks`) asks the outdent plan itself, so
+ * handle's Alt+ArrowLeft, `canMove`) asks the outdent plan itself, so
  * a paragraph under an item outdents into the list as its item on every
  * path. An image nested under a bullet stays an image when a key sheds it
  * into the list. Hand-authored.
@@ -371,11 +371,11 @@ describe('DR-crdt-1/2: outdent and shed blocks next to a list, on every path', (
 		expect(shape(edytor)).toEqual(outdented);
 	});
 
-	it('canMoveBlocks/moveBlocks `out` agree with Shift+Tab on one such paragraph', async () => {
+	it('canMove/move `out` agree with Shift+Tab on one such paragraph', async () => {
 		const { edytor } = await render([p('p'), ul(li('a', [p('x')]))]);
 		const x = edytor.root!.children[1]!.children[0]!.children[0]!;
-		expect(edytor.canMoveBlocks({ blocks: [x], direction: 'out' })).toBe(true);
-		expect(edytor.moveBlocks({ blocks: [x], direction: 'out' })).toHaveLength(1);
+		expect(edytor.canMove({ blocks: [x], direction: 'out' })).toBe(true);
+		expect(edytor.move({ blocks: [x], direction: 'out' })).toHaveLength(1);
 		await flushDomUpdates();
 		expect(shape(edytor)).toEqual([
 			'paragraph "p"',

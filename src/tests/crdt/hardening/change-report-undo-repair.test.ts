@@ -23,7 +23,7 @@ describe('gateH-R5 — DocChange surface during undo+repair', () => {
 		ed.init({
 			content: [{ id: 'b', type: 'paragraph', content: [{ kind: 'text', text: 'hello world' }] }]
 		});
-		ed.block('b').split(6, 'tail');
+		ed.splitBlock('b', 6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
 		const changes: {
 			origin: string;
@@ -42,7 +42,7 @@ describe('gateH-R5 — DocChange surface during undo+repair', () => {
 				])
 			})
 		);
-		ed.block('tail').deleteText(0, 5);
+		ed.deleteText('tail', 0, 5);
 		changes.length = 0;
 		um.undo();
 		for (const [i, c] of changes.entries()) {

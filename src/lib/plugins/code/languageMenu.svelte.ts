@@ -158,7 +158,8 @@ export class LanguageMenu {
 		const open = this.open;
 		if (!open || !row) return;
 		const block = this.edytor.idToBlock.get(open.block);
-		if (block?.isInTree && row.id !== this.current) block.data.language = row.id;
+		if (block?.isInTree && row.id !== this.current)
+			block.edytor.patchData(block.id, [{ path: ['language'], value: row.id }]);
 		this.close(open.keys ? 'button' : 'editor');
 	};
 

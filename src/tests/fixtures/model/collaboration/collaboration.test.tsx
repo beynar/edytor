@@ -43,19 +43,11 @@ describe('collaboration provider lifecycle model contracts', () => {
 	it('propagates shared Y.Doc updates in both directions', () => {
 		const { first, second } = createSharedDocEditors();
 
-		first.edytor.root?.children[0]?.firstText!.insertText({
-			value: '!',
-			start: 5,
-			end: 5
-		});
+		first.edytor.insertText(first.edytor.root!.children[0]!.id, 5, '!');
 		first.expect(output('Hello!'));
 		second.expect(output('Hello!'));
 
-		second.edytor.root?.children[0]?.firstText!.insertText({
-			value: 'Say ',
-			start: 0,
-			end: 0
-		});
+		second.edytor.insertText(second.edytor.root!.children[0]!.id, 0, 'Say ');
 		first.expect(output('Say Hello!'));
 		second.expect(output('Say Hello!'));
 	});
@@ -70,11 +62,7 @@ describe('collaboration provider lifecycle model contracts', () => {
 		expect(first.edytor.document).toBe(second.edytor.document);
 		expect(first.edytor.undoManager).toBe(second.edytor.undoManager);
 
-		first.edytor.root?.children[0]?.firstText!.insertText({
-			value: '!',
-			start: 5,
-			end: 5
-		});
+		first.edytor.insertText(first.edytor.root!.children[0]!.id, 5, '!');
 		first.expect(output('Hello!'));
 		second.expect(output('Hello!'));
 
@@ -91,11 +79,7 @@ describe('collaboration provider lifecycle model contracts', () => {
 		const first = createOperationEdytor(input);
 		const second = createOperationEdytor(input);
 
-		first.edytor.root?.children[0]?.firstText!.insertText({
-			value: '!',
-			start: 5,
-			end: 5
-		});
+		first.edytor.insertText(first.edytor.root!.children[0]!.id, 5, '!');
 
 		expect(first.edytor.undoManager.canUndo()).toBe(true);
 		expect(second.edytor.undoManager.canUndo()).toBe(false);

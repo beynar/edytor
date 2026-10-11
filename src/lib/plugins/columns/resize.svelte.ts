@@ -312,7 +312,7 @@ export class ColumnResize {
 		if (!weights || !left.isInTree || !right.isInTree) return;
 		this.edytor.transact(() => {
 			for (const column of [left, right])
-				column.setData({ ...column.data, width: weights[column.id]! });
+				this.edytor.patchData(column.id, [{ path: ['width'], value: weights[column.id]! }]);
 		});
 	}
 }

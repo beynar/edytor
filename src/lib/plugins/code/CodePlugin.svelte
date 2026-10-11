@@ -6,6 +6,7 @@
 	import { codeKinds } from '$lib/crdt/semantics.js';
 	import { shown } from '$lib/selection/visibility.js';
 	import { caretBeside } from '$lib/selection/replaceSelection.js';
+	import { siblingSlot } from '$lib/session/handles.js';
 	import CodeHeader from './CodeHeader.svelte';
 	import LanguageMenuPanel from './LanguageMenu.svelte';
 	import { LanguageMenu, languageMenus } from './languageMenu.svelte.js';
@@ -90,12 +91,12 @@
 					const text = line.firstText;
 					if (!text) return;
 					if (step > 0) {
-						text.insertText({ value: '\t', start: 0, end: 0 });
+						edytor.insertText(line.id, text.segStart, '\t');
 						return shifts.set(text, 1);
 					}
 					const removed = /^(\t| {1,2})/.exec(text.stringContent)?.[0].length ?? 0;
 					if (!removed) return;
-					line.deleteContentAtRange({ start: [text.index, 0], end: [text.index, removed] });
+					edytor.deleteText(line.id, text.segStart, removed);
 					shifts.set(text, -removed);
 				});
 				const moved = (text: Text | null, offset: number) =>
@@ -153,7 +154,7 @@
 						if (ghost) return prevent(() => ghost.accept());
 						if (isCollapsed) {
 							return prevent(() => {
-								startText.insertText({ value: '\t', start: yStart, end: yStart });
+								edytor.insertText(startText.parent.id, startText.segStart + yStart, '\t');
 								edytor.selection.selectText(startText, yStart + 1);
 							});
 						}
@@ -169,7 +170,10 @@
 						const line = startText?.parent;
 						if (line?.type !== 'codeLine') return;
 						if (isCollapsed && line.isEmpty) {
-							const next = () => line.insertBlockAfter({ block: { type: 'codeLine' } });
+							const next = () =>
+								edytor.idToBlock.get(
+									edytor.insertBlocks(siblingSlot(line), [{ type: 'codeLine' }]).ids[0] ?? ''
+								);
 							return prevent(() => edytor.dispatcher.caret(next()?.firstText, 0));
 						}
 						prevent(() => runIntent(edytor, 'insertParagraph'));
@@ -179,34 +183,34 @@
 					// Delete before a code block: an empty block is removed, the caret at
 					// the end of the text before it (else the start of the code); any other
 					// is refused.
-					const code = operation === 'mergeBlockForward' ? shown(block, 'blockAfter') : null;
+					const code = operation === 'mergeForward' ? shown(block, 'blockAfter') : null;
 					if (code?.type === 'code') {
 						if (!block.isEmpty) prevent();
 						prevent(() => {
 							const before = caretBeside(block, 'blockBefore', new Set([block]));
-							block.removeBlock();
+							edytor.deleteBlock(block.id);
 							edytor.dispatcher.caret(before?.text ?? code.firstEditableText, before?.offset ?? 0);
 						});
 					}
 					// Backspace in an empty block right after a code block removes it; the
 					// caret goes to the end of the code (the merge would be refused).
 					const previous =
-						operation === 'mergeBlockBackward' && block.type !== 'codeLine' && block.isEmpty
+						operation === 'mergeBackward' && block.type !== 'codeLine' && block.isEmpty
 							? shown(block, 'blockBefore')
 							: null;
 					if (previous?.type === 'codeLine') {
 						prevent(() => {
-							block.removeBlock();
+							edytor.deleteBlock(block.id);
 							const text = previous.lastText;
 							edytor.dispatcher.caret(text, text?.length ?? 0);
 						});
 					}
 					if (block.type !== 'codeLine') return;
-					const { startText, yStart } = edytor.selection.textRange();
+					const { startText } = edytor.selection.textRange();
 					const { isCollapsed } = edytor.selection.projection;
 					if (operation === 'insertText' && isCollapsed && startText) {
-						const { value } = payload;
-						const [at, line] = [payload.start ?? yStart, startText.stringContent];
+						const [id, offset, value, marks] = payload;
+						const [at, line] = [offset - startText.segStart, startText.stringContent];
 						// A closer typed before the same character steps over it.
 						if (CLOSERS.has(value) && line[at] === value) {
 							prevent(() => edytor.dispatcher.caret(startText, at + 1));
@@ -214,14 +218,14 @@
 						// Quotes pair only at a word boundary: the apostrophe in `don't` stays single.
 						const inWord = QUOTES.has(value) && /\w/.test((line[at - 1] ?? '') + (line[at] ?? ''));
 						if (Object.hasOwn(PAIRS, value) && !inWord) {
-							return { ...payload, value: value + PAIRS[value] };
+							return [id, offset, value + PAIRS[value], marks];
 						}
 					}
 					// A code line never merges out of its island's first or last slot
 					// (the code block renders no content of its own).
 					const siblings = block.parent?.children.length ?? 0;
-					if (operation === 'mergeBlockBackward' && block.index === 0) prevent();
-					if (operation === 'mergeBlockForward' && block.index === siblings - 1) prevent();
+					if (operation === 'mergeBackward' && block.index === 0) prevent();
+					if (operation === 'mergeForward' && block.index === siblings - 1) prevent();
 				},
 
 				blocks: {
@@ -250,12 +254,14 @@
 							if (!(text instanceof Text)) return;
 							const [first, ...rest] = text.stringContent.split('\n');
 							if (!rest.length) return;
-							text.deleteAt(0, text.stringContent.length);
-							text.insertAt(0, first!);
-							block.parent?.insertChildren(
-								block.index + 1,
-								rest.map((line) => ({ type: 'codeLine', content: [{ text: line }] }))
-							);
+							return () => {
+								const { edytor } = block;
+								edytor.deleteText(block.id, first!.length, text.length - first!.length);
+								edytor.insertBlocks(
+									siblingSlot(block),
+									rest.map((line) => ({ type: 'codeLine', content: [{ text: line }] }))
+								);
+							};
 						}
 					}
 				},

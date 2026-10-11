@@ -245,8 +245,7 @@ describe('F-O5 (end to end) — 1,000 paragraphs through the mounted editor', ()
 				const m = meter(edytor);
 				reads = 0;
 				edytor.transact(() => {
-					for (let i = 0; i < n; i++)
-						text.insertText({ value: 'x', start: from + i, end: from + i });
+					for (let i = 0; i < n; i++) edytor.insertText(text.parent.id, from + i, 'x');
 				});
 				m.stop();
 				return { m, reads };
@@ -355,7 +354,7 @@ describe('operations never read the mirror mid-transaction', () => {
 		const text = edytor.root!.children[0]!.firstText!;
 		await setNativeSelection(edytor, text, 1, text, 4);
 		const m = meter(edytor);
-		text.markText({ mark: 'bold', start: 1, end: 4, toggle: true });
+		edytor.formatRange(text.parent.id, 1, 3, { bold: true });
 		m.stop();
 		expect(edytor.value.children?.[0]?.content).toEqual([
 			{ text: 'a' },
@@ -391,8 +390,8 @@ describe('sel.ride.* with the mirror patched at the commit', () => {
 		await setNativeSelection(edytor, block.firstText, 5);
 		const m = meter(edytor);
 		edytor.transact(() => {
-			block.firstText!.insertText({ value: 'A', start: 0, end: 0 });
-			block.firstText!.insertText({ value: 'BC', start: 0, end: 0 });
+			edytor.insertText(block.id, 0, 'A');
+			edytor.insertText(block.id, 0, 'BC');
 		});
 		m.stop();
 
@@ -467,8 +466,8 @@ describe('sel.ride.* with the mirror patched at the commit', () => {
 			await setNativeSelection(edytor, beta!.firstText, 2);
 			const m = meter(edytor);
 			edytor.transact(() => {
-				beta!.mergeBlockBackward();
-				alpha!.firstText!.insertText({ value: '>', start: 0, end: 0 });
+				edytor.mergeBackward(beta!.id);
+				edytor.insertText(alpha!.id, 0, '>');
 			});
 			m.stop();
 

@@ -436,6 +436,10 @@ const isSpecNode = (block: BlockSpec | JSONBlock): block is BlockSpec =>
 		(item) => typeof item === 'object' && item !== null && 'kind' in item
 	);
 
+/** A content item from JSON content (a text run, an atom) or a facade item, as it is. */
+export const asContentItem = (part: ContentItem | JSONText | JSONInlineBlock): ContentItem =>
+	'kind' in part ? part : jsonContentToItems([part])[0]!;
+
 /** A `BlockSpec`, or the `JSONBlock` shape as one (ids kept, minted where missing). */
 export const asBlockSpec = (block: BlockSpec | JSONBlock): BlockSpec => {
 	if (!isSpecNode(block)) return jsonBlockToSpec(block as JSONBlock);

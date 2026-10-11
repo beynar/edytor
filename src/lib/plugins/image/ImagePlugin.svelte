@@ -92,7 +92,7 @@
 					const src = safeImageSrc(value);
 					if (!src) return 'invalid';
 					if (oversizedInlineImage(src)) return 'inline';
-					block.data.src = src;
+					block.edytor.patchData(block.id, [{ path: ['src'], value: src }]);
 					return null;
 				}
 			};

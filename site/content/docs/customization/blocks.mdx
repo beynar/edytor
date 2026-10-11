@@ -199,17 +199,17 @@ A block snippet receives `{ block, content, children }`:
   type={{
     "block.id": { type: "string", description: "The block's id." },
     "block.type": { type: "string", description: "The kind name." },
-    "block.data": { type: "object", description: "The block's data, a live proxy: reads are reactive, and an assignment (block.data.done = true, bind:value={block.data.title}) is a patchData command. See Properties." },
+    "block.data": { type: "object", description: "The block's data, read-only and reactive; write it with patchData. See Properties." },
     "block.selected": { type: "boolean", description: "Part of a block selection. Reactive." },
     "block.focused": { type: "boolean", description: "Holds the caret or part of a text selection, and is not block-selected. Reactive." },
-    "block.handle": { type: "Block | undefined", description: "The block's handle, for commands and document reads. Not reactive. undefined in a suggestion's preview, which is no block of the document." },
+    "block.handle": { type: "Block | undefined", description: "The block's read-only handle, for its reads and its edytor (handle.edytor). Not reactive. undefined in a suggestion's preview, which is no block of the document." },
     "block.void": { type: "action", description: "use:block.void marks an element as non-editable chrome." },
     content: { type: "Snippet", description: "Renders the block's inline content: text, marks and inline atoms." },
     children: { type: "Snippet | null", description: "Renders the nested blocks, or null when there are none." },
   }}
 />
 
-Read values from `block` in the template, they update on every change. Run commands through `block.handle`, for example `block.handle?.setBlock(...)`; its getters read the document at call time and do not trigger re-renders. A [suggestion](/docs/editor/suggestions)'s preview renders your snippet with no handle: guard what reads or writes through it.
+Read values from `block` in the template, they update on every change. Write through the view, `block.handle?.edytor`, with the block's id, for example `block.handle?.edytor.setBlock(block.id, { type: 'quote' })`; the handle's getters read the document at call time and do not trigger re-renders. A [suggestion](/docs/editor/suggestions)'s preview renders your snippet with no handle: guard what reads or writes through it.
 
 Render `content()` once, unless the kind declares `rendersContent: false`. Render `children()` in its own element, so nested blocks start on a new row:
 
@@ -230,7 +230,7 @@ Anything a snippet renders besides `content()` and `children()` is chrome: icons
 {#snippet section({ block, content, children }: BlockSnippetPayload)}
 	<header use:block.void>
 		<span>Section</span>
-		<button type="button" onclick={() => block.handle?.removeBlock()}>Remove</button>
+		<button type="button" onclick={() => block.handle?.edytor.deleteBlock(block.id)}>Remove</button>
 	</header>
 	<div>{@render content()}</div>
 	{@render children?.()}
@@ -313,7 +313,7 @@ Set `container: true` on a kind whose text is a header over its children, as the
 
 ## Normalization
 
-`normalizeContent` and `normalizeChildren` run at the end of an operation's transaction, inside it, for the blocks the operation touched. `normalizeContent` runs after operations that rewrite a block's content (`setBlock`, Turn into from any menu, key or markdown shortcut, adding or removing an inline atom, `deleteContentAtRange`, a soft line break); plain typing does not trigger it. `normalizeChildren` runs on the parents whose children changed.
+`normalizeContent` and `normalizeChildren` run at the end of an operation's transaction, inside it, for the blocks the operation touched. `normalizeContent` runs on every block whose content, kind or data an operation wrote (typing included, and a block it inserted); `normalizeChildren` runs on the parents whose children changed (an insertion, a move, a deletion, a split or a merge). Keep both cheap: they run on every keystroke in the block.
 
 Write directly, or return a function: it runs in the same transaction, and the normalizer runs again on the block until it returns nothing (at most 50 more passes). The work is part of the same undo step, and peers never see the unnormalized state.
 
@@ -349,7 +349,8 @@ A task with a checkbox that writes `data.done`, a markdown prefix, clipboard for
 	import type { BlockSnippetPayload } from 'edytor';
 
 	// One property written: a collaborator's concurrent edit of another is kept.
-	const toggle = (task: Block) => (task.data.done = !task.data.done);
+	const toggle = (task: Block) =>
+		task.edytor.patchData(task.id, [{ path: ['done'], value: !task.data.done }]);
 
 	export const taskPlugin: Plugin = () => ({
 		blocks: {
@@ -372,8 +373,7 @@ A task with a checkbox that writes `data.done`, a markdown prefix, clipboard for
 					const text = block.firstText;
 					const at = text?.stringContent.indexOf('\n') ?? -1;
 					if (text && at !== -1)
-						return () =>
-							block.deleteContentAtRange({ start: [text.index, at], end: [text.index, at + 1] });
+						return () => block.edytor.deleteText(block.id, text.segStart + at, 1);
 				}
 			}
 		}

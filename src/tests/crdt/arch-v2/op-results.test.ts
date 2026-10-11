@@ -97,8 +97,8 @@ describe('F-D5 — empty inputs are noop, one result shape, nothing leaves the d
 		['empty delete', (ed) => ed.deleteText('a', 1, 0)],
 		['empty format', (ed) => ed.formatRange('a', 1, 0, { bold: true })],
 		['empty setMark', (ed) => ed.setMark('a', 1, 0, 'bold', true)],
-		['handle: empty delete', (ed) => ed.block('a').deleteText(1, 0)],
-		["handle: insertText('')", (ed) => ed.block('a').insertText(0, '')]
+		['handle: empty delete', (ed) => ed.deleteText('a', 1, 0)],
+		["handle: insertText('')", (ed) => ed.insertText('a', 0, '')]
 	];
 
 	for (const [name, run] of EMPTY) {
@@ -142,9 +142,8 @@ describe('F-D5 — empty inputs are noop, one result shape, nothing leaves the d
 describe('F-D6 — setBlock with a reused child id refuses before any write; the retry applies', () => {
 	const seed = () => make([p('b', 'bb', [p('c1', 'one')]), p('z', 'zz')]);
 
-	for (const via of ['facade', 'handle'] as const) {
-		const set = (ed, value) =>
-			via === 'facade' ? ed.setBlock('b', value) : ed.block('b').set(value);
+	for (const via of ['facade'] as const) {
+		const set = (ed, value) => ed.setBlock('b', value);
 
 		test(`reused child id → refused (id-collision), zero bytes, c1 intact; fresh ids → applied (${via})`, () => {
 			const { doc, ed, um } = seed();
@@ -241,14 +240,12 @@ describe('F-D7 — one ingress normalization for writes and lookups', () => {
 		expect(ed.listBlockIds()).toEqual(['a', stored]);
 	});
 
-	test('the typed handle resolves the same string to the stored block', () => {
+	test('an op resolves the same string to the stored block', () => {
 		const { ed } = make([p('a', 'aa')]);
 		const stored = ed.insertBlock({ parent: null, index: 1 }, { id: 'x\uD800', type: 'paragraph' })
 			.ids[0];
-		const handle = ed.block('x\uD800');
-		expect(handle.id).toBe(stored);
-		expect(handle.insertText(0, 'ab').status).toBe('applied');
-		expect(ed.block(stored).length).toBe(2);
+		expect(ed.insertText('x\uD800', 0, 'ab').status).toBe('applied');
+		expect(ed.displayLength(stored)).toBe(2);
 	});
 
 	test('a split-born id and a move target are normalized the same way', () => {
@@ -371,12 +368,12 @@ describe('F-O4 — every op over a randomized corpus has one of three results, o
 						return ed.setInlineData(b, inlineIn(b), pick([{}, { v: 1 }]));
 					}
 				],
-				['handle.insertText', () => ed.block(id()).insertText(off(), pick(['', 'h']))],
-				['handle.deleteText', () => ed.block(id()).deleteText(off(), len())],
-				['handle.split', () => ed.block(id()).split(off(), freshId())],
-				['handle.moveTo', () => ed.block(id()).moveTo(dest())],
-				['handle.delete', () => ed.block(id()).delete()],
-				['handle.setType', () => ed.block(id()).setType(pick(['paragraph', 'heading']))]
+				['handle.insertText', () => ed.insertText(id(), off(), pick(['', 'h']))],
+				['handle.deleteText', () => ed.deleteText(id(), off(), len())],
+				['handle.split', () => ed.splitBlock(id(), off(), freshId())],
+				['handle.moveTo', () => ed.moveBlock(id(), dest())],
+				['handle.delete', () => ed.deleteBlock(id())],
+				['handle.setType', () => ed.setBlockType(id(), pick(['paragraph', 'heading']))]
 			];
 
 			const seen = { refused: 0, noop: 0, applied: 0 };

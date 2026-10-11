@@ -3,8 +3,16 @@ import { expect } from 'vitest';
 
 import { expectBlockInvariantSnapshot } from '../../../test.utils.js';
 import { addMentionAtSelection } from '../../helpers/model.js';
+import type { Edytor } from '$lib/edytor.svelte.js';
+import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { selectionState } from '../../../selection.js';
+
+/** Remove the inline atom at `index` of the selection's block's content. */
+const removeAtom = (edytor: Edytor, index: number) => {
+	const block = selectionState(edytor).startBlock!;
+	return edytor.removeInline(block.id, block.content[index]!.id);
+};
 
 export const fixtures = defineFixtures([
 	defineModelTransformFixture({
@@ -97,14 +105,14 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelTransformFixture({
-		description: 'adds an inline block into an empty text node and returns the trailing caret text',
+		description: 'adds an inline block into an empty text node',
 		input: (
 			<root>
 				<paragraph>|</paragraph>
 			</root>
 		),
 		run: ({ edytor }) => addMentionAtSelection(edytor),
-		result: { kind: 'text', path: [0, 2], content: '' },
+		result: { kind: 'applied' },
 		output: (
 			<root>
 				<paragraph>
@@ -123,7 +131,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 1 }),
+		run: ({ edytor }) => removeAtom(edytor, 1),
 		output: (
 			<root>
 				<paragraph>Hello world!</paragraph>
@@ -139,7 +147,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 1 }),
+		run: ({ edytor }) => removeAtom(edytor, 1),
 		output: (
 			<root>
 				<paragraph>world</paragraph>
@@ -155,7 +163,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 1 }),
+		run: ({ edytor }) => removeAtom(edytor, 1),
 		output: (
 			<root>
 				<paragraph>Hello</paragraph>
@@ -171,7 +179,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 1 }),
+		run: ({ edytor }) => removeAtom(edytor, 1),
 		output: (
 			<root>
 				<paragraph></paragraph>
@@ -189,7 +197,7 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 1 }),
+		run: ({ edytor }) => removeAtom(edytor, 1),
 		output: (
 			<root>
 				<paragraph>
@@ -199,21 +207,7 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelTransformFixture({
-		description: 'is a no-op when the requested content index is text instead of an inline block',
-		input: (
-			<root>
-				<paragraph>Hello| world</paragraph>
-			</root>
-		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 0 }),
-		output: (
-			<root>
-				<paragraph>Hello world</paragraph>
-			</root>
-		)
-	}),
-	defineModelTransformFixture({
-		description: 'is a no-op when the requested content index is out of range',
+		description: 'is refused when the block shows no such inline atom',
 		input: (
 			<root>
 				<paragraph>
@@ -221,7 +215,8 @@ export const fixtures = defineFixtures([
 				</paragraph>
 			</root>
 		),
-		run: ({ edytor }) => selectionState(edytor).startBlock?.removeInlineBlock({ index: 99 }),
+		run: ({ edytor }) => edytor.removeInline(selectionState(edytor).startBlock!.id, 'no-such-atom'),
+		result: { kind: 'refused' },
 		output: (
 			<root>
 				<paragraph>
@@ -248,10 +243,20 @@ export const fixtures = defineFixtures([
 			const targetBlock = selectionState(edytor).startBlock;
 			const sourceBlock = edytor.root?.children[1];
 			if (!targetBlock || !sourceBlock) {
-				throw new Error('Missing block fixtures for pushContentIntoBlock');
+				throw new Error('Missing block fixtures for the append');
 			}
 
-			targetBlock.pushContentIntoBlock({ value: sourceBlock.content });
+			let at = edytor.document.displayLength(targetBlock.id);
+			for (const part of sourceBlock.content) {
+				if (part instanceof InlineBlock) {
+					edytor.insertInline(targetBlock.id, at++, { type: part.type, data: { ...part.data } });
+					continue;
+				}
+				for (const { text, marks } of part.value) {
+					edytor.insertText(targetBlock.id, at, text, marks ?? {});
+					at += text.length;
+				}
+			}
 		},
 		output: (
 			<root>

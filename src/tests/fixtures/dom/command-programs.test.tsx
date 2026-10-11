@@ -143,7 +143,7 @@ describe('golden command programs — flat range deletion (del.range.flat)', () 
 
 	it('whole document keeps the head, emptied (del.range.whole-doc)', async () => {
 		let head = '';
-		const { edytor } = await program(threeFlat, {
+		const edytor = await program(threeFlat, {
 			select: (e) => ((head = e.root!.children[0]!.id), [at(e, 0), 0, at(e, 2), 2]),
 			expectTree: [p('')],
 			expectCaret: { text: '', at: 0 },

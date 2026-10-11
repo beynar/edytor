@@ -4,7 +4,7 @@
  * contract's `layout.place-beside`): dragging blocks to the left or right
  * edge of another block puts them beside it.
  *
- * - The move positions: `edytor.moveBlocks`/`canMoveBlocks` take `left` and
+ * - The move positions: `edytor.move`/`canMove` take `left` and
  *   `right`, routed to `prepare.placeBeside`: the one move path (one command,
  *   one undo step, `dispatcher.last` on a refusal, hooks see `moveBlock(s)`).
  * - The bands, only while the pointer is within the row's height, the
@@ -266,8 +266,8 @@ describe('move positions left and right (one move path)', () => {
 	it('right of a root block wraps it and the moved blocks in a new layout, one undo step', async () => {
 		const { edytor } = await render(withX());
 		const request = { blocks: [block(edytor, 'X')], target: block(edytor, 'P'), position: 'right' };
-		expect(edytor.canMoveBlocks(request as never)).toBe(true);
-		const moved = edytor.moveBlocks(request as never);
+		expect(edytor.canMove(request as never)).toBe(true);
+		const moved = edytor.move(request as never);
 		await flushDomUpdates();
 		expect(moved.map((b) => b.id)).toEqual(['X']);
 		expect(shape(edytor)).toEqual([
@@ -281,7 +281,7 @@ describe('move positions left and right (one move path)', () => {
 			C,
 			'Z'
 		]);
-		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlock', status: 'applied' });
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'placeBeside', status: 'applied' });
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(shape(edytor)).toEqual(['P', C, 'Z', 'X']);
@@ -289,7 +289,7 @@ describe('move positions left and right (one move path)', () => {
 
 	it('left of a root block puts the moved blocks first', async () => {
 		const { edytor } = await render(withX());
-		edytor.moveBlocks({
+		edytor.move({
 			blocks: [block(edytor, 'X')],
 			target: block(edytor, 'P'),
 			position: 'left'
@@ -310,7 +310,7 @@ describe('move positions left and right (one move path)', () => {
 
 	it("beside a column's block: a new column next to that column", async () => {
 		const { edytor } = await render(withX());
-		edytor.moveBlocks({
+		edytor.move({
 			blocks: [block(edytor, 'X')],
 			target: block(edytor, 'A2'),
 			position: 'right'
@@ -332,7 +332,7 @@ describe('move positions left and right (one move path)', () => {
 
 	it('right of a column (the gap after it): a new column between', async () => {
 		const { edytor } = await render(withX());
-		edytor.moveBlocks({
+		edytor.move({
 			blocks: [block(edytor, 'X')],
 			target: block(edytor, 'K1'),
 			position: 'right'
@@ -354,7 +354,7 @@ describe('move positions left and right (one move path)', () => {
 
 	it("moving a column's only block out dissolves the layout it leaves", async () => {
 		const { edytor } = await render(withX());
-		edytor.moveBlocks({
+		edytor.move({
 			blocks: [block(edytor, 'B')],
 			target: block(edytor, 'Z'),
 			position: 'right'
@@ -380,7 +380,7 @@ describe('move positions left and right (one move path)', () => {
 
 	it('beside a list item: the layout wraps the whole list', async () => {
 		const { edytor } = await render([list('L', 'i1', 'i2'), p('X')]);
-		edytor.moveBlocks({
+		edytor.move({
 			blocks: [block(edytor, 'X')],
 			target: block(edytor, 'i2'),
 			position: 'right'
@@ -400,9 +400,9 @@ describe('move positions left and right (one move path)', () => {
 	it('a layout beside a block is refused (no layout in a column, D2): nothing moves, last reads refused', async () => {
 		const { edytor } = await render(withX());
 		const request = { blocks: [block(edytor, 'C')], target: block(edytor, 'X'), position: 'right' };
-		expect(edytor.canMoveBlocks(request as never)).toBe(false);
-		expect(edytor.moveBlocks(request as never)).toEqual([]);
-		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlock', status: 'refused' });
+		expect(edytor.canMove(request as never)).toBe(false);
+		expect(edytor.move(request as never)).toEqual([]);
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'refused' });
 		expect(shape(edytor)).toEqual(['P', C, 'Z', 'X']);
 	});
 
@@ -410,8 +410,8 @@ describe('move positions left and right (one move path)', () => {
 		const { edytor } = await render([p('P', 'p', [p('P1')]), p('X')]);
 		const self = { blocks: [block(edytor, 'P')], target: block(edytor, 'P'), position: 'left' };
 		const inner = { blocks: [block(edytor, 'P')], target: block(edytor, 'P1'), position: 'right' };
-		expect(edytor.canMoveBlocks(self as never)).toBe(false);
-		expect(edytor.canMoveBlocks(inner as never)).toBe(false);
+		expect(edytor.canMove(self as never)).toBe(false);
+		expect(edytor.canMove(inner as never)).toBe(false);
 	});
 
 	it('an extension veto of the move cancels it', async () => {
@@ -421,7 +421,7 @@ describe('move positions left and right (one move path)', () => {
 			}
 		});
 		const { edytor } = await renderColumns(withX(), [veto]);
-		edytor.moveBlocks({
+		edytor.move({
 			blocks: [block(edytor, 'X')],
 			target: block(edytor, 'P'),
 			position: 'right'
@@ -438,8 +438,8 @@ describe('move positions left and right (one move path)', () => {
 			{ plugins: [richTextPlugin], value: { children: [p('P'), p('X')] } }
 		);
 		const request = { blocks: [block(edytor, 'X')], target: block(edytor, 'P'), position: 'right' };
-		expect(edytor.canMoveBlocks(request as never)).toBe(false);
-		expect(edytor.moveBlocks(request as never)).toEqual([]);
+		expect(edytor.canMove(request as never)).toBe(false);
+		expect(edytor.move(request as never)).toEqual([]);
 		expect(edytor.dispatcher.last?.status).toBe('refused');
 	});
 });

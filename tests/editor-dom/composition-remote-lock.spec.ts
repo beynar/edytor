@@ -292,7 +292,7 @@ test.describe('composition node lock against remote/model edits', () => {
 		await page.evaluate(() => {
 			const edytor = (window as EdytorWindow).__EDYTOR__;
 			const text = edytor?.root?.children?.[1]?.content?.[0];
-			text?.markText({ mark: 'bold', start: 0, end: 2 });
+			if (text) edytor!.formatRange(text.parent.id, text.segStart, 2, { bold: true });
 		});
 		await page.waitForTimeout(30);
 

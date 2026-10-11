@@ -70,7 +70,7 @@
 				store: (block, value) => {
 					const url = safeWebUrl(value);
 					if (!url || !embedSourceOf(url, allowed)) return 'invalid';
-					block.data.url = url;
+					block.edytor.patchData(block.id, [{ path: ['url'], value: url }]);
 					return null;
 				},
 				hooks: urlPaste(

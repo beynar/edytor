@@ -58,12 +58,12 @@ describe('diffSnaps oracle agrees with the facade change report', () => {
 			]
 		});
 		const steps = [
-			() => ed.block('a').insertText(5, '!'),
-			() => ed.block('b').setType('heading'),
-			() => ed.block('c').nestUnder('b'),
-			() => ed.block('a').split(2, 'a2'),
-			() => ed.block('b').delete(),
-			() => ed.block('a').setMark(0, 2, 'bold', true)
+			() => ed.insertText('a', 5, '!'),
+			() => ed.setBlockType('b', 'heading'),
+			() => ed.nestBlock('c', 'b'),
+			() => ed.splitBlock('a', 2, 'a2'),
+			() => ed.deleteBlock('b'),
+			() => ed.setMark('a', 0, 2, 'bold', true)
 		];
 		for (const step of steps) {
 			const before = snapOf(ed);

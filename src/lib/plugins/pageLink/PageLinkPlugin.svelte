@@ -67,7 +67,7 @@
 						label: (page: PageLinkItem) => page.title,
 						key: (page: PageLinkItem) => page.id,
 						menu: options.menu,
-						onPick: (page: PageLinkItem, { block, from, caret }) => {
+						onPick: (page: PageLinkItem, { edytor, block, from, caret }) => {
 							const href = sanitizeLinkHref(page.href ?? options.href?.(page)) ?? undefined;
 							const data: PageLinkData = {
 								id: page.id,
@@ -75,12 +75,10 @@
 								...(href ? { href } : {}),
 								...(page.icon ? { icon: page.icon } : {})
 							};
-							const after = block.addInlineBlock({
-								offset: from,
-								block: { type: 'pageLink', data }
-							});
-							if (after) caret(from + 1);
-							return !!after;
+							const atom = { type: 'pageLink', data };
+							const written = edytor.insertInline(block.id, from, atom).status === 'applied';
+							if (written) caret(from + 1);
+							return written;
 						}
 					}
 				]

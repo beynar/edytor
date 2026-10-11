@@ -288,7 +288,7 @@ describe('The table of contents', () => {
 			[createTocPlugin()]
 		);
 		await setNativeSelection(view.edytor, get(view, 'a').firstText!, 3);
-		get(view, 'a').firstText!.insertText({ value: '!' });
+		view.edytor.insertText('a', 3, '!');
 		await flushDomUpdates();
 		expect(entries('t')).toEqual([['One!', '2']]);
 		expect(
@@ -303,7 +303,7 @@ describe('The table of contents', () => {
 			['One!', '2'],
 			['x', '1']
 		]);
-		get(view, 'a').removeBlock();
+		view.edytor.deleteBlock('a');
 		await flushDomUpdates();
 		expect(entries('t')).toEqual([['x', '1']]);
 	});

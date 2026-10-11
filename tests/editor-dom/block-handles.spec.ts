@@ -346,7 +346,7 @@ test.describe('browser block handles and DnD', () => {
 		await settleHandles(page);
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.root.children[0].setBlock({ value: { type: 'toggle' } });
+			edytor.setBlock(edytor.root.children[0].id, { type: 'toggle' });
 		});
 		const toggle = page.locator('details[data-edytor-block="true"]').first();
 		await expect(toggle).not.toHaveAttribute('open');
@@ -390,7 +390,10 @@ test.describe('browser block handles and DnD', () => {
 		await settleHandles(page);
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.root.children[1].moveBlock({ path: [0, 2] });
+			edytor.moveBlocks([edytor.root.children[1].id], {
+				parent: edytor.root.children[0].id,
+				index: 2
+			});
 		});
 		await expect.poll(() => readRootTexts(page)).toEqual(['Hello']);
 		expect((await readBlocks(page))[0].children?.map(textOf)).toEqual([
@@ -433,9 +436,9 @@ test.describe('browser block handles and DnD', () => {
 				content: [{ text }],
 				...(children && { children })
 			});
-			edytor.root.children[0].insertBlockBefore({
-				block: block('L1', [block('L2', [block('L3', [block('L4')])])])
-			});
+			edytor.insertBlocks({ parent: null, index: 0 }, [
+				block('L1', [block('L2', [block('L3', [block('L4')])])])
+			]);
 		});
 		await expect.poll(() => readRootTexts(page)).toEqual(['L1', 'Hello', 'After']);
 		await settleHandles(page);
@@ -505,7 +508,9 @@ test.describe('browser block handles and DnD', () => {
 				content: [{ text }],
 				...(children && { children })
 			});
-			edytor.root.children.at(-1).insertBlockAfter({ block: block('Last', [block('Only')]) });
+			edytor.insertBlocks({ parent: null, index: edytor.root.children.length }, [
+				block('Last', [block('Only')])
+			]);
 		});
 		await expect.poll(() => readRootTexts(page)).toEqual(['Hello', 'After', 'Last']);
 		await settleHandles(page);
@@ -566,7 +571,9 @@ test.describe('browser block handles and DnD', () => {
 					content: [{ text }],
 					...(children && { children })
 				});
-				edytor.root.children.at(-1).insertBlockAfter({ block: block('Last', [block('Only')]) });
+				edytor.insertBlocks({ parent: null, index: edytor.root.children.length }, [
+					block('Last', [block('Only')])
+				]);
 			});
 			await expect.poll(() => readRootTexts(page)).toEqual(['Hello', 'After', 'Last']);
 			await settleHandles(page);

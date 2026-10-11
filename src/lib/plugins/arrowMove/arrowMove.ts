@@ -28,9 +28,9 @@ const move =
 			outermost(movable(isCollapsed ? (at ? [at] : []) : getSelectionBlocks(edytor)));
 		// A selected block's selected descendants travel with it (`outermost`), as the menu's Move does.
 		const blocks = selected.length ? outermost(movable(selected)) : caret ? spanned() : [];
-		if (!blocks.length || !edytor.canMoveBlocks({ blocks, direction })) return;
+		if (!blocks.length || !edytor.canMove({ blocks, direction })) return;
 		prevent(() => {
-			const moved = edytor.moveBlocks({ blocks, direction });
+			const moved = edytor.move({ blocks, direction });
 			if (moved.length && selected.length) selectMoved(edytor, moved, selected);
 		});
 	};

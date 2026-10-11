@@ -885,7 +885,7 @@ export class TableChrome {
 					? []
 					: [{ path: ['columns', item, 'width'], value: width }];
 		});
-		if (ops.length) table.patchData({ ops });
+		if (ops.length) this.edytor.patchData(table.id, ops);
 	}
 
 	/** What the row grip or the column grip stands for now: its table, the row's or column's id, its position. */

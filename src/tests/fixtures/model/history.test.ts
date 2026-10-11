@@ -19,7 +19,8 @@ await runFixtureEntries(modules, async ({ fixture }) => {
 	if (fixture.result) {
 		expectOperationResult(
 			result as Parameters<typeof expectOperationResult>[0],
-			fixture.result as OperationResultExpectation
+			fixture.result as OperationResultExpectation,
+			edytor
 		);
 	}
 

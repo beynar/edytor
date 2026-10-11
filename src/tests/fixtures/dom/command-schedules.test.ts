@@ -73,7 +73,8 @@ describe('generated command schedules', () => {
 		const corrupting: typeof runCommand = (edytor, inputType, data) => {
 			runCommand(edytor, inputType, data);
 			setTimeout(() => {
-				edytor.root?.children[0]?.firstText.insertAt(0, 'CORRUPTION');
+				const first = edytor.root?.children[0];
+				if (first) edytor.facade.insertText(first.id, 0, 'CORRUPTION');
 			}, 100);
 		};
 		const err = await runSchedule(11, 4, { runOp: corrupting }).then(

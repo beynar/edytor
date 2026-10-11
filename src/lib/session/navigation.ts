@@ -23,8 +23,12 @@
  * lands it on no caret stop (`landed`).
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { getNextGraphemeEnd, getPreviousGraphemeStart } from '$lib/text/text.utils.js';
-import { getNextWordEndOffset, getPreviousWordStartOffset } from '$lib/text/wordBoundary.js';
+import {
+	getNextGraphemeEnd,
+	getNextWordEndOffset,
+	getPreviousGraphemeStart,
+	getPreviousWordStartOffset
+} from '$lib/text/wordBoundary.js';
 import { getSelectedBlocksInDocumentOrder, shownText } from '$lib/selection/replaceSelection.js';
 import type { HotKey } from './keymap.js';
 import {
@@ -34,6 +38,7 @@ import {
 	type SelectionValue
 } from './selection.js';
 import { untargeted } from './attempt.js';
+import { siblingSlot } from './handles.js';
 
 /**
  * With no target (`untargeted`: the value is `none`, no gesture placed the
@@ -352,9 +357,10 @@ export const toTrailingParagraph = (edytor: Edytor): boolean => {
 		edytor.selection.selectText(last.firstText, 0);
 		return true;
 	}
-	const after = last.insertBlockAfter({ block: { type: kind } });
-	if (!after?.firstText) return false;
-	edytor.dispatcher.caret(after.firstText, 0);
+	const { ids } = edytor.insertBlocks(siblingSlot(last), [{ type: kind }]);
+	const text = edytor.idToBlock.get(ids[0] ?? '')?.firstText;
+	if (!text) return false;
+	edytor.dispatcher.caret(text, 0);
 	return true;
 };
 

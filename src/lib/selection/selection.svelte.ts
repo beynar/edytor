@@ -24,7 +24,7 @@ import type { Block } from '../block/block.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { EdgeSide, PendingMarks } from '$lib/session/editing/text.js';
-import type { RangeEndpoints } from '$lib/edytor.utils.js';
+import type { RangeEndpoints } from './replaceSelection.js';
 import {
 	isKindControl,
 	isNativeInteractiveControl,

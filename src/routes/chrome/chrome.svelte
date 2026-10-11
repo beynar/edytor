@@ -18,6 +18,7 @@
 		ImageControls,
 		ImageEmptyController,
 		LanguageMenu as LanguageMenuController,
+		MarqueeBoxPayload,
 		MediaEmptyController,
 		MentionItem,
 		PageLinkItem,
@@ -91,7 +92,8 @@
 		commentCard,
 		commentsHeader,
 		findBar,
-		suggestionBar
+		suggestionBar,
+		marqueeBox
 	};
 </script>
 
@@ -259,6 +261,10 @@
 
 {#snippet suggestionBar(bar: SuggestionBarPayload)}
 	<SuggestionBar {bar} />
+{/snippet}
+
+{#snippet marqueeBox({ adding }: MarqueeBoxPayload)}
+	<div class="marquee" data-edytor-marquee data-adding={adding ? 'true' : undefined}></div>
 {/snippet}
 
 <style>
@@ -433,6 +439,15 @@
 	}
 	.table-menu-row.danger:hover:not(:disabled)::before {
 		background: #cf5148;
+	}
+
+	.marquee {
+		box-sizing: border-box;
+		width: 100%;
+		height: 100%;
+		background: var(--edytor-marquee-background, rgba(35, 131, 226, 0.14));
+		border: var(--edytor-marquee-border, 1px solid rgba(35, 131, 226, 0.4));
+		border-radius: var(--edytor-marquee-radius, 2px);
 	}
 
 	.comments-toggle {

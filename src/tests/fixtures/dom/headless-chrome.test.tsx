@@ -13,6 +13,7 @@ import {
 	createCodePlugin,
 	createFindPlugin,
 	createImagePlugin,
+	createMarqueePlugin,
 	createRichTextPlugin,
 	createSlashMenuPlugin,
 	createSuggestionsPlugin,
@@ -38,7 +39,8 @@ const HOSTS = [
 	'[data-edytor-suggestion-bar]',
 	'[data-edytor-code-language-panel]',
 	'[data-edytor-callout-icons]',
-	'[data-edytor-equation-panel]'
+	'[data-edytor-equation-panel]',
+	'[data-edytor-marquee-host]'
 ];
 const shown = () => HOSTS.filter((selector) => document.querySelector(selector));
 
@@ -60,6 +62,7 @@ const render = (value?: { children: JSONBlock[] }) =>
 				createCodePlugin(),
 				createTablePlugin(),
 				createImagePlugin(),
+				createMarqueePlugin(),
 				createRichTextPlugin()
 			]
 		}

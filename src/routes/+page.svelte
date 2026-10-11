@@ -6,7 +6,6 @@
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-	import { createMarqueePlugin } from '$lib/plugins/marquee/marqueePlugin.js';
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 	import { tableBlock } from '$lib/crdt/tables.js';
 	import {
@@ -16,6 +15,7 @@
 		equation,
 		findPlugin,
 		imagePlugin,
+		marquee,
 		mention,
 		pageLink,
 		richTextPlugin,
@@ -89,7 +89,7 @@
 		columnsPlugin,
 		findPlugin,
 		// Drag from the page's margins or below the last block to select blocks (Notion).
-		createMarqueePlugin({ container: '.demo-main' }),
+		marquee({ container: '.demo-main' }),
 		tocPlugin,
 		tablePlugin,
 		// KaTeX loads from jsDelivr the first time an equation shows.

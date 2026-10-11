@@ -14,6 +14,8 @@ import {
 	createEquationPlugin,
 	createFindPlugin,
 	createImagePlugin,
+	createMarqueePlugin,
+	type MarqueePluginOptions,
 	createMentionPlugin,
 	createPageLinkPlugin,
 	createFilePlugin,
@@ -113,3 +115,6 @@ export const audio = (options: MediaPluginOptions = {}) =>
 export const filePlugin = file();
 export const videoPlugin = video();
 export const audioPlugin = audio();
+export const marquee = (options: MarqueePluginOptions = {}) =>
+	createMarqueePlugin({ box: chrome.marqueeBox, ...options });
+export const marqueePlugin = marquee();

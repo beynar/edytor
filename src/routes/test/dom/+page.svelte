@@ -6,7 +6,6 @@
 	import { mentionPlugin } from '../../../tests/atMention.svelte';
 	import type { Plugin } from '$lib/plugins.js';
 	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-	import { createMarqueePlugin } from '$lib/plugins/marquee/marqueePlugin.js';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
@@ -21,6 +20,7 @@
 		findPlugin,
 		image,
 		imagePlugin,
+		marquee,
 		mention,
 		pageLink,
 		richTextPlugin,
@@ -561,7 +561,7 @@
 	// KaTeX from the CDN, the default (the Playwright fixture serves it offline).
 	const equationPlugin = equation();
 	// The shell's padding is the page margin a marquee starts in, as the host's own area.
-	const marqueePlugin = createMarqueePlugin({ container: '[data-testid="editor-shell"]' });
+	const marqueePlugin = marquee({ container: '[data-testid="editor-shell"]' });
 	const emojiRules: Plugin = () => ({
 		inputRules: [{ find: /:smile:$/, replace: () => '😄' }]
 	});

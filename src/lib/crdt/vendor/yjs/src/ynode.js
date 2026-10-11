@@ -1882,7 +1882,7 @@ export class YNode extends ObservableV2 {
    *
    * This is called when this Item is sent to a remote peer.
    *
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder The encoder to write data to.
+   * @param {UpdateEncoder} encoder The encoder to write data to.
    */
   _write (encoder) {
     encoder.writeTypeRef(this._legacyTypeRef)
@@ -2093,7 +2093,7 @@ export const createMapIterator = type => {
 /**
  * @private
  *
- * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+ * @param {UpdateDecoder} decoder
  * @return {ContentType}
  */
 export const readContentType = decoder => new ContentType(readYNode(decoder))
@@ -2101,7 +2101,7 @@ export const readContentType = decoder => new ContentType(readYNode(decoder))
 /**
  * @private
  *
- * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+ * @param {UpdateDecoder} decoder
  * @return {ContentString}
  */
 export const readContentString = decoder => new ContentString(decoder.readString())
@@ -2109,7 +2109,7 @@ export const readContentString = decoder => new ContentString(decoder.readString
 /**
  * @private
  *
- * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+ * @param {UpdateDecoder} decoder
  * @return {ContentJSON}
  */
 export const readContentJSON = decoder => {
@@ -2127,7 +2127,7 @@ export const readContentJSON = decoder => {
 }
 
 /**
- * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+ * @param {UpdateDecoder} decoder
  * @return {ContentFormat}
  */
 export const readContentFormat = decoder => new ContentFormat(decoder.readKey(), decoder.readJSON())
@@ -2135,7 +2135,7 @@ export const readContentFormat = decoder => new ContentFormat(decoder.readKey(),
 /**
  * @private
  *
- * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+ * @param {UpdateDecoder} decoder
  * @return {ContentEmbed}
  */
 export const readContentEmbed = decoder => new ContentEmbed(decoder.readJSON())
@@ -2143,13 +2143,13 @@ export const readContentEmbed = decoder => new ContentEmbed(decoder.readJSON())
 /**
  * @private
  *
- * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+ * @param {UpdateDecoder} decoder
  * @return {ContentDoc}
  */
 export const readContentDoc = decoder => new ContentDoc(decoder.readString(), decoder.readAny())
 
 /**
- * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+ * @param {UpdateDecoder} decoder
  * @return {ContentAny}
  */
 export const readContentAny = decoder => {
@@ -2162,7 +2162,7 @@ export const readContentAny = decoder => {
 }
 
 /**
- * @param {UpdateDecoderV1 | UpdateDecoderV2 } decoder
+ * @param {UpdateDecoder} decoder
  * @return {ContentBinary}
  */
 export const readContentBinary = decoder => new ContentBinary(decoder.readBuf())
@@ -2170,7 +2170,7 @@ export const readContentBinary = decoder => new ContentBinary(decoder.readBuf())
 /**
  * @private
  *
- * @param {UpdateDecoderV1 | UpdateDecoderV2 } decoder
+ * @param {UpdateDecoder} decoder
  * @return {ContentDeleted}
  */
 export const readContentDeleted = decoder => new ContentDeleted(decoder.readLen())
@@ -2178,7 +2178,7 @@ export const readContentDeleted = decoder => new ContentDeleted(decoder.readLen(
 /**
  * A lookup map for reading Item content.
  *
- * @type {Array<function(UpdateDecoderV1 | UpdateDecoderV2):AbstractContent>}
+ * @type {Array<function(UpdateDecoder):AbstractContent>}
  */
 export const contentRefs = [
   () => { error.unexpectedCase() }, // GC is not ItemContent
@@ -2195,13 +2195,13 @@ export const contentRefs = [
 ]
 
 /**
- * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+ * @param {UpdateDecoder} decoder
  * @param {number} info
  */
 export const readItemContent = (decoder, info) => contentRefs[info & binary.BITS5](decoder)
 
 /**
- * @param {UpdateDecoderV1 | UpdateDecoderV2} decoder
+ * @param {UpdateDecoder} decoder
  * @return {YNode}
  *
  * @private

@@ -530,7 +530,7 @@ export const INSTALL_HOOKS = () => {
 	const txRecs = new WeakMap(); // engine Transaction → record entry
 	const emitStack = []; // [{name, txr}]
 	const txOf = (name, args) => {
-		if (name === 'update' || name === 'updateV2') return args?.[3];
+		if (name === 'update') return args?.[3];
 		if (name === 'afterAllTransactions' || name === 'beforeAllTransactions') return null;
 		return args?.[0];
 	};

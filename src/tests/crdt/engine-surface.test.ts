@@ -22,8 +22,7 @@ const SYMBOLS = {
 	encodeStateVector: 1,
 	decodeStateVector: 1,
 	decodeUpdate: 1,
-	decodeUpdateV2: 1,
-	UpdateEncoderV1: 1,
+	UpdateEncoder: 1,
 	writeIdSet: 1,
 	findIndexSS: 1,
 	// a concurrent creation of one block id keeps the losing node (fork P14, H13)
@@ -37,12 +36,6 @@ const SYMBOLS = {
 	insertIntoIdSet: 1,
 	// used by the Durable Object room (P5): compaction and struct checks
 	mergeUpdates: 1,
-	// storage in the v2 encoding (Phase 2 P5)
-	applyUpdateV2: 1,
-	encodeStateAsUpdateV2: 1,
-	convertUpdateFormatV2ToV1: 1,
-	UpdateDecoderV1: 1,
-	UpdateEncoderV2: 1,
 	Skip: 1,
 	// text delete marks (P11)
 	iterateStructsByIdSet: 1,

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 // Shared-document fixtures run on the vendored v14 engine — a live doc must
 // be a unified-node `Y.Doc` (a v13 `yjs` Doc is rejected at the facade
-// boundary; stored v13 updates migrate via `crdt.migration`).
+// boundary).
 import { Y } from '$lib/crdt/engine.js';
 
 import { createOperationEdytor } from '../../../test.utils.js';

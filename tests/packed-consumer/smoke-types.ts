@@ -65,14 +65,12 @@ const v: number | undefined = ed.schemaVersion();
 const undo = ed.createUndoManager({ captureTimeout: 0 });
 const awareness: bindings.Awareness = new crdt.Awareness(crdtDoc);
 const providers: bindings.ProviderStack = crdt.providers;
-const migration: bindings.Migration = crdt.migration;
 const sync: SyncProtocol = crdt.sync;
 void ids;
 void v;
 void undo;
 void awareness;
 void providers;
-void migration;
 void sync;
 
 // ── the real consumer story must be fully typed ──────────────────────────

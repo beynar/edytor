@@ -462,14 +462,7 @@ class Coordinator {
 			// 2 · Admission: the inbound refusal of a foreign schema stamp.
 			// `ws` is the transaction origin, so the doc's `update` handler
 			// persists + relays to everyone else.
-			// A SyncStep2 is v2 on the wire (P5): converted to the v1 every path reads.
-			const payload = E.readVarUint8Array(decoder);
-			let update;
-			try {
-				update = syncType === E.messageYjsSyncStep2 ? sync.step2Update(payload) : payload;
-			} catch {
-				return this.refuse(ws, { reason: 'malformed', detail: 'undecodable update' });
-			}
+			const update = E.readVarUint8Array(decoder);
 			const { applied, problem } = sync.applyRemote(this.doc, update, ws);
 			if (problem !== null) return this.refuse(ws, { reason: 'schema', detail: problem });
 			if (!applied) return this.refuse(ws, { reason: 'malformed', detail: 'undecodable update' });

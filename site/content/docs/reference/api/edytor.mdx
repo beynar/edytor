@@ -7502,15 +7502,14 @@ export declare class UndecodableUpdateError extends Error {
 
 ## UnsupportedDocError
 
-Error raised by `assertUsableDoc` — the doc cannot host a v14 facade.
-`kind` distinguishes a foreign engine object (a real v13 `yjs` Doc — a
-different CRDT implementation entirely) from a v14 doc that decodes the
-legacy v13 Edytor schema (applied v13 update rows awaiting migration).
+Error raised by `assertUsableDoc` — the doc cannot host a v14 facade:
+a foreign engine object (a v13 `yjs` Doc — a different CRDT implementation
+entirely).
 
 ```ts
 export declare class UnsupportedDocError extends Error {
-    readonly kind: 'foreign' | 'legacy';
-    constructor(kind: 'foreign' | 'legacy');
+    readonly kind: 'foreign';
+    constructor(kind: 'foreign');
 }
 ```
 

@@ -172,9 +172,12 @@ const program = (E, seed, gc, exchange, markers) => {
 	};
 };
 
+/** A document's state in the fork's one encoding: upstream's v2 (YP17), the baselines' `…V2`. */
+const stateOf = (E, d) => (E.encodeStateAsUpdateV2 ?? E.encodeStateAsUpdate)(d);
+
 const snapshot = (E, docs) =>
 	docs.map((d) => ({
-		bytes: Buffer.from(E.encodeStateAsUpdate(d)).toString('hex'),
+		bytes: Buffer.from(stateOf(E, d)).toString('hex'),
 		t: JSON.stringify(toDelta(d.get('t'), { deep: true }).toJSON()),
 		m: JSON.stringify(toDelta(d.get('m'), { deep: true }).toJSON())
 	}));
@@ -227,7 +230,7 @@ describe('YP16 — writes without the delta layer store what the delta layer sto
 			n.format(0, 2, { italic: true });
 			n.delete(2, 1);
 			doc.get('r').insert(0, [n]);
-			return Buffer.from(E.encodeStateAsUpdate(doc)).toString('hex');
+			return Buffer.from(stateOf(E, doc)).toString('hex');
 		};
 		expect(run(F)).toBe(run(U));
 	});

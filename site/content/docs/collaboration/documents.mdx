@@ -49,7 +49,7 @@ const copy = loadDocument(bytes); // readiness 'hydrated'
 copy.toJSON(); // same JSON as the source
 ```
 
-`loadDocument` checks the bytes on a scratch copy first. Corrupt bytes throw `UndecodableUpdateError`, a schema this build cannot own throws `SchemaMismatchError`, and a v13 (`yjs`) document throws `UnsupportedDocError` with reason `legacy`; see [importing v13 documents](/docs/reference/v13-import). Your bytes are never modified.
+`loadDocument` checks the bytes on a scratch copy first. Corrupt bytes (a v13 `yjs` document's among them) throw `UndecodableUpdateError`, and a schema this build cannot own throws `SchemaMismatchError`. Your bytes are never modified.
 
 ## The document object
 
@@ -198,5 +198,5 @@ Documents seeded by an older build used a full 32-bit writer id. A template with
 | `DocumentDestroyedError` | The document is used after `destroy()`, or `attachSync` runs on a destroyed document. |
 | `SemanticConflictError` | A view or option declares a block rule that contradicts one the document already adopted. |
 | `UndecodableUpdateError` | `loadDocument` bytes cannot be decoded. |
-| `UnsupportedDocError` | A foreign object, or a v13 document (reason `legacy`). |
+| `UnsupportedDocError` | A foreign object (a v13 `yjs` document, for one). |
 | `SchemaMismatchError` | The content claims a schema this build cannot own. |

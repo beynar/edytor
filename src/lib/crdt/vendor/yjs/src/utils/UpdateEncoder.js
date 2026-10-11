@@ -1,126 +1,7 @@
 import * as error from 'lib0-v14/error'
 import * as encoding from 'lib0-v14/encoding'
 
-export class IdSetEncoderV1 {
-  constructor () {
-    this.restEncoder = encoding.createEncoder()
-  }
-
-  toUint8Array () {
-    return encoding.toUint8Array(this.restEncoder)
-  }
-
-  resetIdSetCurVal () {
-    // nop
-  }
-
-  /**
-   * @param {number} clock
-   */
-  writeIdSetClock (clock) {
-    encoding.writeVarUint(this.restEncoder, clock)
-  }
-
-  /**
-   * @param {number} len
-   */
-  writeIdSetLen (len) {
-    encoding.writeVarUint(this.restEncoder, len)
-  }
-}
-
-export class UpdateEncoderV1 extends IdSetEncoderV1 {
-  /**
-   * @param {ID} id
-   */
-  writeLeftID (id) {
-    encoding.writeVarUint(this.restEncoder, id.client)
-    encoding.writeVarUint(this.restEncoder, id.clock)
-  }
-
-  /**
-   * @param {ID} id
-   */
-  writeRightID (id) {
-    encoding.writeVarUint(this.restEncoder, id.client)
-    encoding.writeVarUint(this.restEncoder, id.clock)
-  }
-
-  /**
-   * Use writeClient and writeClock instead of writeID if possible.
-   * @param {number} client
-   */
-  writeClient (client) {
-    encoding.writeVarUint(this.restEncoder, client)
-  }
-
-  /**
-   * @param {number} info An unsigned 8-bit integer
-   */
-  writeInfo (info) {
-    encoding.writeUint8(this.restEncoder, info)
-  }
-
-  /**
-   * @param {string} s
-   */
-  writeString (s) {
-    encoding.writeVarString(this.restEncoder, s)
-  }
-
-  /**
-   * @param {boolean} isYKey
-   */
-  writeParentInfo (isYKey) {
-    encoding.writeVarUint(this.restEncoder, isYKey ? 1 : 0)
-  }
-
-  /**
-   * @param {number} info An unsigned 8-bit integer
-   */
-  writeTypeRef (info) {
-    encoding.writeVarUint(this.restEncoder, info)
-  }
-
-  /**
-   * Write len of a struct - well suited for Opt RLE encoder.
-   *
-   * @param {number} len
-   */
-  writeLen (len) {
-    encoding.writeVarUint(this.restEncoder, len)
-  }
-
-  /**
-   * @param {any} any
-   */
-  writeAny (any) {
-    encoding.writeAny(this.restEncoder, any)
-  }
-
-  /**
-   * @param {Uint8Array} buf
-   */
-  writeBuf (buf) {
-    encoding.writeVarUint8Array(this.restEncoder, buf)
-  }
-
-  /**
-   * @param {any} embed
-   */
-  writeJSON (embed) {
-    encoding.writeVarString(this.restEncoder, JSON.stringify(embed))
-  }
-
-  /**
-   * @param {string} key
-   */
-  writeKey (key) {
-    encoding.writeVarString(this.restEncoder, key)
-  }
-}
-
-export class IdSetEncoderV2 {
+export class IdSetEncoder {
   constructor () {
     this.restEncoder = encoding.createEncoder() // encodes all the rest / non-optimized
     this.dsCurrVal = 0
@@ -155,7 +36,7 @@ export class IdSetEncoderV2 {
   }
 }
 
-export class UpdateEncoderV2 extends IdSetEncoderV2 {
+export class UpdateEncoder extends IdSetEncoder {
   constructor () {
     super()
     /**
@@ -272,10 +153,6 @@ export class UpdateEncoderV2 extends IdSetEncoderV2 {
   }
 
   /**
-   * This is mainly here for legacy purposes.
-   *
-   * Initial we incoded objects using JSON. Now we use the much faster lib0-v14/any-encoder. This method mainly exists for legacy purposes for the v1 encoder.
-   *
    * @param {any} embed
    */
   writeJSON (embed) {
@@ -314,10 +191,3 @@ export class UpdateEncoderV2 extends IdSetEncoderV2 {
     }
   }
 }
-
-/**
- * @typedef {IdSetEncoderV1 | IdSetEncoderV2} IdSetEncoder
- */
-/**
- * @typedef {UpdateEncoderV1 | UpdateEncoderV2} UpdateEncoder
- */

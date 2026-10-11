@@ -5,9 +5,9 @@
 
 export { IdSet, equalIdSets, createDeleteSetFromStructStore, diffIdSet, createIdSet, mergeIdSets, insertIntoIdSet, iterateStructsByIdSet, readIdSet, writeIdSet, intersectSets } from './utils/ids.js'
 export { Doc } from './utils/Doc.js'
-export { UpdateDecoderV1, UpdateDecoderV2 } from './utils/UpdateDecoder.js'
-export { UpdateEncoderV1, UpdateEncoderV2 } from './utils/UpdateEncoder.js'
-export { applyUpdate, applyUpdateV2, readUpdateV2, encodeStateAsUpdate, encodeStateAsUpdateV2, encodeStateVector, decodeStateVector, diffUpdateV2, mergeUpdates, mergeUpdatesV2 } from './utils/encoding.js'
+export { UpdateDecoder } from './utils/UpdateDecoder.js'
+export { UpdateEncoder } from './utils/UpdateEncoder.js'
+export { applyUpdate, encodeStateAsUpdate, encodeStateVector, decodeStateVector, diffUpdate, mergeUpdates } from './utils/encoding.js'
 export { ID, createID, compareIDs, findRootTypeKey } from './utils/ID.js'
 export { isParentOf } from './utils/isParentOf.js'
 export { createRelativePositionFromTypeIndex, createRelativePositionFromJSON, createAbsolutePositionFromRelativePosition, AbsolutePosition, RelativePosition, relativePositionToJSON } from './utils/RelativePosition.js'
@@ -15,7 +15,7 @@ export { findIndexSS, getItemCleanStart, getItemCleanEnd, isKeptReplaced } from 
 export { Transaction, transact, cleanupYTextFormatting } from './utils/Transaction.js'
 export { UndoManager } from './utils/UndoManager.js'
 export { redoItem } from './utils/UndoManager.js' // YP11
-export { decodeUpdate, decodeUpdateV2, convertUpdateFormatV2ToV1 } from './utils/updates.js'
+export { decodeUpdate } from './utils/updates.js'
 export { YEvent } from './utils/YEvent.js'
 export { RangeCursor } from './utils/RangeCursor.js'
 export { YNode as Node } from './ynode.js'

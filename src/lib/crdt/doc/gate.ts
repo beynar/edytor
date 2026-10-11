@@ -26,7 +26,6 @@
  */
 import type { EngineDoc } from '../engine-api.js';
 import { isNodeLike, SCHEMA } from '../schema.js';
-import { isLegacyDoc } from '../migration/legacy-schema.js';
 
 export const SCHEMA_VERSION = SCHEMA.version;
 export const SCHEMA_NAME = SCHEMA.name;
@@ -137,21 +136,15 @@ export const assertSchema = (doc: EngineDoc, docName = 'doc'): void => {
 };
 
 /**
- * Error raised by {@link assertUsableDoc} — the doc cannot host a v14 facade.
- * `kind` distinguishes a foreign engine object (a real v13 `yjs` Doc — a
- * different CRDT implementation entirely) from a v14 doc that decodes the
- * legacy v13 Edytor schema (applied v13 update rows awaiting migration).
+ * Error raised by {@link assertUsableDoc} — the doc cannot host a v14 facade:
+ * a foreign engine object (a v13 `yjs` Doc — a different CRDT implementation
+ * entirely).
  */
 export class UnsupportedDocError extends Error {
-	constructor(public readonly kind: 'foreign' | 'legacy') {
+	constructor(public readonly kind: 'foreign') {
 		super(
-			kind === 'legacy'
-				? 'Document carries the legacy v13 Edytor schema (`content` root) — ' +
-						'migrate it via `crdt.migration` before attaching an editor.'
-				: 'Document is not a v14 engine doc — the `blocks` registry is not a ' +
-						'unified Y.Node. Use `crdt.createDoc()` (or `new Y.Doc()` from ' +
-						'`edytor/crdt`); a v13 `yjs` Doc must be migrated via ' +
-						'`crdt.migration` (from its stored updates), not passed to the runtime.'
+			'Document is not a v14 engine doc — the `blocks` registry is not a ' +
+				'unified Y.Node. Use `crdt.createDoc()` (or `new Y.Doc()` from `edytor/crdt`).'
 		);
 		this.name = 'UnsupportedDocError';
 	}
@@ -161,8 +154,8 @@ export class UnsupportedDocError extends Error {
  * Document-boundary guard run by {@link EdytorDocBinding.create} before the
  * runs view attaches. The facade only speaks the v14 unified-node surface —
  * without this gate a foreign doc dies obscurely inside `buildView`
- * (`registry.forEachAttr is not a function`), and a legacy-schema doc would be
- * silently misread. Both fail fast with an actionable error instead.
+ * (`registry.forEachAttr is not a function`); it fails fast with an
+ * actionable error instead.
  */
 export const assertUsableDoc = (doc: EngineDoc): void => {
 	let registry: unknown;
@@ -173,8 +166,5 @@ export const assertUsableDoc = (doc: EngineDoc): void => {
 	}
 	if (!isNodeLike(registry) || typeof registry.forEachAttr !== 'function') {
 		throw new UnsupportedDocError('foreign');
-	}
-	if (isLegacyDoc(doc)) {
-		throw new UnsupportedDocError('legacy');
 	}
 };

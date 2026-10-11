@@ -34,7 +34,6 @@
 	} from '$lib/crdt/protocol.js';
 	import { Y } from '$lib/crdt/engine.js';
 	import { createDocument } from '$lib/crdt/index.js';
-	import { bindMigration } from '$lib/crdt/migration/migrate.js';
 	import {
 		GENERATION_KEY,
 		GENERATION_RECORD,
@@ -601,8 +600,6 @@
 		IndexeddbPersistence,
 		clearDocument,
 		storeState,
-		/** The v13 → v14 migrator, so specs can drive it from two tabs of one origin (F-T16). */
-		migration: bindMigration(Y),
 		/**
 		 * Persist `doc` directly into the room's IndexedDB store — bypasses
 		 * the application-schema boundary (`storeState` refuses to snapshot

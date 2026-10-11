@@ -10,7 +10,7 @@ import { createIdSet, iterateStructsByIdSet } from './ids.js'
 import { GC } from '../structs/GC.js'
 import { YEvent } from './YEvent.js'
 import { writeUpdateMessageFromTransaction } from './encoding-helpers.js'
-import { UpdateEncoderV1, UpdateEncoderV2 } from './UpdateEncoder.js'
+import { UpdateEncoder } from './UpdateEncoder.js'
 import { findIndexSS, updateCurrentFormats, cleanupFormattingGap, tryGcDeleteSet, tryMerge, tryToMergeWithLefts, cleanupContextlessFormattingGap } from './transaction-helpers.js'
 import * as random from 'lib0-v14/random'
 
@@ -297,17 +297,10 @@ const cleanupTransactions = (transactionCleanups, i) => {
       // @todo Merge all the transactions into one and provide send the data as a single update message
       doc.emit('afterTransactionCleanup', [transaction, doc])
       if (doc._observers.has('update')) {
-        const encoder = new UpdateEncoderV1()
+        const encoder = new UpdateEncoder()
         const hasContent = writeUpdateMessageFromTransaction(encoder, transaction)
         if (hasContent) {
           doc.emit('update', [encoder.toUint8Array(), transaction.origin, doc, transaction])
-        }
-      }
-      if (doc._observers.has('updateV2')) {
-        const encoder = new UpdateEncoderV2()
-        const hasContent = writeUpdateMessageFromTransaction(encoder, transaction)
-        if (hasContent) {
-          doc.emit('updateV2', [encoder.toUint8Array(), transaction.origin, doc, transaction])
         }
       }
       const { subdocsAdded, subdocsLoaded, subdocsRemoved } = transaction

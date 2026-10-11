@@ -1,131 +1,8 @@
-import * as buffer from 'lib0-v14/buffer'
 import * as decoding from 'lib0-v14/decoding'
 
-import { ID, createID } from './ID.js'
+import { ID } from './ID.js'
 
-/**
- * @typedef {IdSetDecoderV1 | IdSetDecoderV2} IdSetDecoder
- */
-
-export class IdSetDecoderV1 {
-  /**
-   * @param {decoding.Decoder} decoder
-   */
-  constructor (decoder) {
-    this.restDecoder = decoder
-  }
-
-  resetDsCurVal () {
-    // nop
-  }
-
-  /**
-   * @return {number}
-   */
-  readDsClock () {
-    return decoding.readVarUint(this.restDecoder)
-  }
-
-  /**
-   * @return {number}
-   */
-  readDsLen () {
-    return decoding.readVarUint(this.restDecoder)
-  }
-}
-
-export class UpdateDecoderV1 extends IdSetDecoderV1 {
-  /**
-   * @return {ID}
-   */
-  readLeftID () {
-    return createID(decoding.readVarUint(this.restDecoder), decoding.readVarUint(this.restDecoder))
-  }
-
-  /**
-   * @return {ID}
-   */
-  readRightID () {
-    return createID(decoding.readVarUint(this.restDecoder), decoding.readVarUint(this.restDecoder))
-  }
-
-  /**
-   * Read the next client id.
-   * Use this in favor of readID whenever possible to reduce the number of objects created.
-   */
-  readClient () {
-    return decoding.readVarUint(this.restDecoder)
-  }
-
-  /**
-   * @return {number} info An unsigned 8-bit integer
-   */
-  readInfo () {
-    return decoding.readUint8(this.restDecoder)
-  }
-
-  /**
-   * @return {string}
-   */
-  readString () {
-    return decoding.readVarString(this.restDecoder)
-  }
-
-  /**
-   * @return {boolean} isKey
-   */
-  readParentInfo () {
-    return decoding.readVarUint(this.restDecoder) === 1
-  }
-
-  /**
-   * @return {number} info An unsigned 8-bit integer
-   */
-  readTypeRef () {
-    return decoding.readVarUint(this.restDecoder)
-  }
-
-  /**
-   * Write len of a struct - well suited for Opt RLE encoder.
-   *
-   * @return {number} len
-   */
-  readLen () {
-    return decoding.readVarUint(this.restDecoder)
-  }
-
-  /**
-   * @return {any}
-   */
-  readAny () {
-    return decoding.readAny(this.restDecoder)
-  }
-
-  /**
-   * @return {Uint8Array}
-   */
-  readBuf () {
-    return buffer.copyUint8Array(decoding.readVarUint8Array(this.restDecoder))
-  }
-
-  /**
-   * Legacy implementation uses JSON parse. We use any-decoding in v2.
-   *
-   * @return {any}
-   */
-  readJSON () {
-    return JSON.parse(decoding.readVarString(this.restDecoder))
-  }
-
-  /**
-   * @return {string}
-   */
-  readKey () {
-    return decoding.readVarString(this.restDecoder)
-  }
-}
-
-export class IdSetDecoderV2 {
+export class IdSetDecoder {
   /**
    * @param {decoding.Decoder} decoder
    */
@@ -159,7 +36,7 @@ export class IdSetDecoderV2 {
   }
 }
 
-export class UpdateDecoderV2 extends IdSetDecoderV2 {
+export class UpdateDecoder extends IdSetDecoder {
   /**
    * @param {decoding.Decoder} decoder
    */
@@ -258,10 +135,6 @@ export class UpdateDecoderV2 extends IdSetDecoderV2 {
   }
 
   /**
-   * This is mainly here for legacy purposes.
-   *
-   * Initial we incoded objects using JSON. Now we use the much faster lib0-v14/any-encoder. This method mainly exists for legacy purposes for the v1 encoder.
-   *
    * @return {any}
    */
   readJSON () {

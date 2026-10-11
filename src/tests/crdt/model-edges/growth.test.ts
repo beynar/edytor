@@ -43,7 +43,7 @@ describe('G1-G: wire growth ceilings', () => {
 		const atNode = M.blockNodeOf(A.doc, 'b1').getAttr('at');
 		let live = 0;
 		atNode.forEachAttr(() => live++);
-		const stateBytes = Y.encodeStateAsUpdateV2(A.doc).byteLength;
+		const stateBytes = Y.encodeStateAsUpdate(A.doc).byteLength;
 		console.log(
 			`500 moves: ${bytes}B (${(bytes / 500).toFixed(1)}B/move), live candidates=${live}, doc=${stateBytes}B`
 		);

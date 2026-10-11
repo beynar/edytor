@@ -104,14 +104,14 @@ describe('gateH-R1 — remote apply inside a LOCAL transaction bypasses the mark
 		docC.transact(() => applyDelta(tC, delta.create().retain(50).insert('Z')));
 
 		expect(deltaJson(tA)).toBe(deltaJson(tC));
-		// readUpdateV2 forces `transaction.local = false` even when joining an
+		// readUpdate forces `transaction.local = false` even when joining an
 		// outer local transaction — so the observer-time pool clear still runs.
 		// Pin that invariant: if it regresses, the differential above is the
 		// only thing standing between this and silent format corruption.
 		expect(
 			seededBefore,
 			'nested applyUpdate must still clear seeded marker snapshots ' +
-				'(readUpdateV2 sets transaction.local=false on the outer tr)'
+				'(readUpdate sets transaction.local=false on the outer tr)'
 		).toBe(0);
 	});
 

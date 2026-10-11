@@ -5,8 +5,7 @@
  * gate here, in the same order, with the same refusal semantics:
  *
  *   1. **`assertUsableDoc`** — is this a v14 engine doc at all
- *      ({@link UnsupportedDocError} `'foreign'`), and is it a v13-era
- *      layout that must be migrated rather than adopted (`'legacy'`)?
+ *      ({@link UnsupportedDocError} `'foreign'`)?
  *   2. **`assertSchema`** — does the committed schema manifest allow
  *      this build to own the doc ({@link SchemaMismatchError}:
  *      `'unversioned'` content with no version stamp, `'unsupported'`
@@ -43,8 +42,6 @@
  *                             from the engine's pending store         pending store discarded; a
  *                                                                      stamp that got in anyway (raw
  *                                                                      apply) makes the doc read-only
- *   v13 migration             `bindLegacyReader` gate → rebuild via    legacy DB byte-identical; no
- *                             document-level `init` → `loadDocument`   v14 generation activated
  *
  * TWO LAYERS. The transport layer (`providers/*`, `protocols/*`) proves
  * the generation of every frame and container and refuses updates that
@@ -135,8 +132,6 @@ export class UndecodableUpdateError extends Error {
  * - {@link UnsupportedDocError} `'foreign'` — not a v14 engine doc
  *   (foreign roots/engines may still attach *content* later; this is
  *   about doc shape);
- * - {@link UnsupportedDocError} `'legacy'` — v13-era layout present;
- *   route through `crdt/migration` instead of attaching;
  * - {@link SchemaMismatchError} `'unversioned' | 'unsupported' |
  *   'foreign'` — a schema claim this build cannot own.
  *
@@ -180,7 +175,7 @@ export const bindAdmission = (Y: EngineApi) => ({
 	 * decode/integrate at all, then the usual typed refusals.
 	 */
 	admitUpdate: (
-		update: Uint8Array | ReadonlyArray<Uint8Array | { v2: Uint8Array }>,
+		update: Uint8Array | ReadonlyArray<Uint8Array>,
 		docName = 'loaded document',
 		options: {
 			/** Prepare the scratch doc before anything is applied (e.g. its `gcFilter`). */
@@ -189,11 +184,9 @@ export const bindAdmission = (Y: EngineApi) => ({
 	): YDoc => {
 		const doc = keepingReplaced(new Y.Doc());
 		options.prepare?.(doc);
-		const apply = (part: Uint8Array | { v2: Uint8Array }) =>
-			part instanceof Uint8Array ? Y.applyUpdate(doc, part) : Y.applyUpdateV2(doc, part.v2);
+		const apply = (part: Uint8Array) => Y.applyUpdate(doc, part);
 		try {
-			// Several updates (`{ v2 }`: in the v2 encoding) are applied in one
-			// transaction, with no merge pass.
+			// Several updates are applied in one transaction, with no merge pass.
 			if (update instanceof Uint8Array) apply(update);
 			else Y.transact(doc, () => update.forEach(apply));
 		} catch (cause) {

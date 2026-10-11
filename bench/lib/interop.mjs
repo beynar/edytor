@@ -38,11 +38,12 @@ const fragmented = (Y, doc, n) => {
 };
 
 const sync = (a, b) => {
-	// state-vector-diffed update exchange, both directions
+	// state-vector-diffed update exchange, both directions; the fork's one
+	// encoding is upstream's v2 (YP17)
 	const ua = YPatched.encodeStateAsUpdate(a, YBaseline.encodeStateVector(b));
-	const ub = YBaseline.encodeStateAsUpdate(b, YPatched.encodeStateVector(a));
+	const ub = YBaseline.encodeStateAsUpdateV2(b, YPatched.encodeStateVector(a));
 	YPatched.applyUpdate(a, ub);
-	YBaseline.applyUpdate(b, ua);
+	YBaseline.applyUpdateV2(b, ua);
 };
 
 console.log('== interop: baseline -> patched bootstrap ==');

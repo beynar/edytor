@@ -162,13 +162,11 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 
 	test('a local BigInt mark cannot poison reads; facade refuses pre-commit (R4 fixed)', () => {
 		// `text.format` accepts a BigInt mark (unlike `insert`,
-		// which validates). The format item integrates; then the commit's
-		// own update payload is encoded for 'update' listeners →
-		// ContentFormat.write's JSON.stringify throws mid-commit — the raw
-		// store keeps the hostile item (vendored write path, out of scope).
-		// FIXED side: `runs()` projects the mark through `cloneJsonSafe`
-		// instead of crashing (residual: full-store encode still throws —
-		// the poisoned ITEM is inside vendored serialization).
+		// which validates). The format item integrates, and the commit's
+		// own update payload encodes it (the engine's one encoding writes
+		// any value) — the raw store keeps the hostile item (vendored write
+		// path, out of scope). FIXED side: `runs()` projects the mark
+		// through `cloneJsonSafe` instead of crashing.
 		const doc = new Y.Doc();
 		doc.clientID = cid++;
 		const ed = E.create(doc);
@@ -177,7 +175,7 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		cn.insert(0, 'hi');
 		// An `update` listener (a provider) makes the commit encode its payload.
 		doc.on('update', () => {});
-		expect(() => cn.format(0, 2, { big: 5n })).toThrow(/BigInt/i); // throws at commit
+		expect(() => cn.format(0, 2, { big: 5n })).not.toThrow();
 		// Reads survive: the hostile mark projects as its JSON value.
 		const runs = ed.runs(BOOTSTRAP_BLOCK);
 		expect(runs.find((r: any) => r.text === 'hi')?.marks).toEqual({ big: 5 });

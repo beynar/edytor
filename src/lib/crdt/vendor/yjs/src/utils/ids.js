@@ -5,7 +5,7 @@ import * as decoding from 'lib0-v14/decoding'
 import * as array from 'lib0-v14/array'
 
 import { iterateStructs, findIndexSS } from './transaction-helpers.js'
-import { UpdateEncoderV2 } from './UpdateEncoder.js'
+import { UpdateEncoder } from './UpdateEncoder.js'
 
 /**
  * @typedef {{ inserts: IdSet, deletes: IdSet }} ContentIds
@@ -681,7 +681,7 @@ export const createDeleteSetFromStructStore = ss => {
 }
 
 /**
- * @param {IdSetEncoderV1 | IdSetEncoderV2} encoder
+ * @param {IdSetEncoder} encoder
  * @param {IdSet} idSet
  *
  * @private
@@ -707,7 +707,7 @@ export const writeIdSet = (encoder, idSet) => {
 }
 
 /**
- * @param {IdSetDecoderV1 | IdSetDecoderV2} decoder
+ * @param {IdSetDecoder} decoder
  * @return {IdSet}
  *
  * @private
@@ -739,7 +739,7 @@ export const readIdSet = decoder => {
  */
 
 /**
- * @param {IdSetDecoderV1 | IdSetDecoderV2} decoder
+ * @param {IdSetDecoder} decoder
  * @param {Transaction} transaction
  * @param {StructStore} store
  * @return {Uint8Array<ArrayBuffer>|null} Returns a v2 update containing all deletes that couldn't be applied yet; or null if all deletes were applied successfully.
@@ -799,7 +799,7 @@ export const readAndApplyDeleteSet = (decoder, transaction, store) => {
     }
   }
   if (unappliedDS.clients.size > 0) {
-    const ds = new UpdateEncoderV2()
+    const ds = new UpdateEncoder()
     encoding.writeVarUint(ds.restEncoder, 0) // encode 0 structs
     writeIdSet(ds, unappliedDS)
     return ds.toUint8Array()

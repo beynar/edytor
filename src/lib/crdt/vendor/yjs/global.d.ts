@@ -7,14 +7,10 @@ declare type ContentIds = import('./src/utils/ids.js').ContentIds
 
 
 declare type BlockSet = import('./src/utils/BlockSet.js').BlockSet
-declare type UpdateDecoderV1 = import('./src/utils/UpdateDecoder.js').UpdateDecoderV1
-declare type UpdateDecoderV2 = import('./src/utils/UpdateDecoder.js').UpdateDecoderV2
-declare type UpdateEncoderV1 = import('./src/utils/UpdateEncoder.js').UpdateEncoderV1
-declare type UpdateEncoderV2 = import('./src/utils/UpdateEncoder.js').UpdateEncoderV2
-declare type IdSetEncoderV1 = import('./src/utils/UpdateEncoder.js').IdSetEncoderV1
-declare type IdSetEncoderV2 = import('./src/utils/UpdateEncoder.js').IdSetEncoderV2
-declare type IdSetDecoderV1 = import('./src/utils/UpdateDecoder.js').IdSetDecoderV1
-declare type IdSetDecoderV2 = import('./src/utils/UpdateDecoder.js').IdSetDecoderV2
+declare type UpdateDecoder = import('./src/utils/UpdateDecoder.js').UpdateDecoder
+declare type UpdateEncoder = import('./src/utils/UpdateEncoder.js').UpdateEncoder
+declare type IdSetEncoder = import('./src/utils/UpdateEncoder.js').IdSetEncoder
+declare type IdSetDecoder = import('./src/utils/UpdateDecoder.js').IdSetDecoder
 
 declare type ID = import('./src/utils/ID.js').ID
 declare type Transaction = import('./src/utils/Transaction.js').Transaction

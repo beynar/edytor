@@ -31,7 +31,7 @@
  * via `'protocol-mismatch'`. A v13
  * y-websocket server in the room therefore cannot feed updates to this
  * provider (and vice versa) — see docs/crdt-v14-providers.md §server
- * classification: only an OPAQUE v1-update relay stays compatible; a server
+ * classification: only an OPAQUE relay stays compatible; a server
  * that participates in sync (like upstream `y-websocket-server`) must itself
  * run the vendored v14 engine + v14 protocol modules.
  *

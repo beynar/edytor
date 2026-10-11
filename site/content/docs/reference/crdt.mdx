@@ -11,7 +11,7 @@ Most apps never import the CRDT engine: `createDocument`, the sync factories and
 | Import | Contents | Runs in |
 | --- | --- | --- |
 | `edytor` | The `<Edytor>` component, plugins, the document API with its errors and JSON types, and the sync factories. | A Svelte bundler |
-| `edytor/crdt/edytor` | The document API (`createDocument`, `loadDocument`, `attachDocument`), the document's full vocabulary, `bindCrdt`, attribution and migration. No Svelte. | Browser, Node, SSR, Workers |
+| `edytor/crdt/edytor` | The document API (`createDocument`, `loadDocument`, `attachDocument`), the document's full vocabulary, `bindCrdt` and attribution. No Svelte. | Browser, Node, SSR, Workers |
 | `edytor/protocol` | The wire vocabulary: `bindCrdt`, frames, message types, codecs, generation records, the admission gates, the raw provider classes. No Svelte. | Browser, Node, SSR, Workers |
 | `edytor/crdt` | The CRDT engine itself: edytor's fork of Yjs v14. Import it as a namespace. | Anywhere |
 | `edytor/cloudflare` | `DocumentRoom`, `attachRoom(this, options)` (a document in your own Durable Object) and `routeDocumentSocket`. See [the server](/docs/server/quick-start). | Cloudflare Workers |
@@ -36,7 +36,7 @@ export function catchUp(stored: Uint8Array<ArrayBuffer>, updates: Uint8Array<Arr
 }
 ```
 
-`edytor/crdt` is edytor's own fork of Yjs v14, based on `@y/y` 14.0.0-rc.26. It is not the `yjs` package from npm: v13 documents and peers are not compatible with it (see [importing v13 documents](/docs/reference/v13-import)), and you should not install `yjs` next to it expecting the two to share documents.
+`edytor/crdt` is edytor's own fork of Yjs v14, based on `@y/y` 14.0.0-rc.26. It is not the `yjs` package from npm: v13 documents and peers are not compatible with it, and you should not install `yjs` next to it expecting the two to share documents.
 
 **What it ships:**
 
@@ -89,7 +89,7 @@ import { IndexeddbPersistence, inspectAdmission } from 'edytor/protocol';
 
 ## `bindCrdt(Y)`
 
-`bindCrdt` binds edytor's CRDT services to an engine namespace. Use it when you need the provider classes, migration or the sync protocol on documents you manage yourself.
+`bindCrdt` binds edytor's CRDT services to an engine namespace. Use it when you need the provider classes or the sync protocol on documents you manage yourself.
 
 ```ts title="src/lib/local.ts" check
 import * as Y from 'edytor/crdt';
@@ -108,7 +108,6 @@ await provider.whenSynced;
 | `Awareness` | The presence class. |
 | `.doc` | The document-model layer over a raw doc: `create(doc, config?)` returns a bare facade with no history and no attribution, plus `init`, `seed`, `restore`, `isInitialized`, `schemaVersion`, `checkSchema`, `assertSchema` and the schema constants. |
 | `.providers` | `IndexeddbPersistence`, `WebsocketProvider`, `createIndexeddbSync`, `createWebsocketSync`, `clearDocument`, `storeState`. |
-| `.migration` | `migrate`, `status`, `waitForSettled`, `rollback`. See [importing v13 documents](/docs/reference/v13-import). |
 | `.sync` | The sync protocol readers and writers, `applyRemote`, `lacks`, `writeSaved`, `readSaved`. See [the protocol](/docs/server/protocol). |
 | `.admission` | `admitUpdate(update, name?)`: decode bytes onto a scratch document, check them, and return the document, or throw. |
 | `.attribution` | The attribution service that documents attach automatically. |
@@ -122,7 +121,6 @@ await provider.whenSynced;
 | Persist or sync a raw doc outside the document API | `bindCrdt(Y).providers`, or the provider classes of `edytor/protocol`. |
 | Store, merge or inspect updates on a server | `edytor/crdt` (`mergeUpdates`, `encodeStateVector`, …) with `bindCrdt(Y).sync`. |
 | Run the collaboration server | `edytor/cloudflare`, or `edytor/protocol` ([the protocol](/docs/server/protocol)) for another platform. |
-| Import v13 documents | `bindCrdt(Y).migration`. |
 
 :::warning
 Do not create an `EdytorDocument` (`createDocument`, `loadDocument`, `attachDocument`) on the document a sync server holds; it would record the server as an author. See [the protocol](/docs/server/protocol#never-attach-a-document-on-the-server).

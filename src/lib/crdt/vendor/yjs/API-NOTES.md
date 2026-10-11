@@ -26,8 +26,14 @@ Source of truth: `src/index.js` exports + JSDoc in `src/ynode.js`.
 > `$idSet`, `$idMapAny`, `$contentIds`, `$contentMap`) and no id/content maps
 > (`IdMap`, `ContentAttribute`, `ContentMap` and their codecs). Text reads:
 > `toArray()` (a run of text under one set of formats is one string),
-> `toJSON()`, `RangeCursor#read`. The table below is the rc.26 probe record;
-> read it against these lists.
+> `toJSON()`, `RangeCursor#read`.
+>
+> **Since patch YP17 it has one update encoding,** upstream's v2 under the
+> unsuffixed names (`applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`,
+> `diffUpdate`, `decodeUpdate`, `UpdateEncoder`, `UpdateDecoder`, the
+> `update` event): no v1 encoding, no `*V2` names, no `updateV2` event, no
+> format conversion. The table below is the rc.26 probe record; read it
+> against these lists.
 
 ## v13 → v14 name map (what's gone, what's renamed)
 

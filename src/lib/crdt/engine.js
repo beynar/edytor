@@ -24,18 +24,10 @@ export const Y = {
 	encodeStateVector: V.encodeStateVector,
 	decodeStateVector: V.decodeStateVector,
 	decodeUpdate: V.decodeUpdate,
-	// the engine's pending store is V2-encoded (admission of pending structs)
-	decodeUpdateV2: V.decodeUpdateV2,
 	// the store-before-ack body carries the acknowledged deletes (`sync.writeSaved`)
-	UpdateEncoderV1: V.UpdateEncoderV1,
+	UpdateEncoder: V.UpdateEncoder,
 	writeIdSet: V.writeIdSet,
 	mergeUpdates: V.mergeUpdates,
-	// storage in the v2 (columnar) encoding: room rows and the IndexedDB store
-	applyUpdateV2: V.applyUpdateV2,
-	encodeStateAsUpdateV2: V.encodeStateAsUpdateV2,
-	convertUpdateFormatV2ToV1: V.convertUpdateFormatV2ToV1,
-	UpdateDecoderV1: V.UpdateDecoderV1,
-	UpdateEncoderV2: V.UpdateEncoderV2,
 	Skip: V.Skip,
 	findIndexSS: V.findIndexSS,
 	// a concurrent creation of one block id keeps the losing node (fork patch YP14)

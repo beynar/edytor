@@ -209,8 +209,7 @@ const startRoguePeer = async (relay: OpaqueRelay, room: string) => {
 	marker.setAttr('id', 'evil-v99');
 	marker.setAttr('type', 'paragraph');
 	rogue.get('blocks').setAttr('evil-v99', marker);
-	// A SyncStep2 is v2 on the wire (P5).
-	const rogueState = Y.encodeStateAsUpdateV2(rogue);
+	const rogueState = Y.encodeStateAsUpdate(rogue);
 	rogue.destroy();
 
 	// SyncStep2 frame: envelope(GENERATION) | messageSync(0) | subtype SyncStep2(1)

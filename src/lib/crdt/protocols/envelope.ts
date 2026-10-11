@@ -7,7 +7,7 @@
  *
  * ```
  *   varuint GENERATION | varuint messageType | payload
- *   GENERATION = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION   (14005 at schema 5)
+ *   GENERATION = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION   (14006 at schema 6)
  * ```
  *
  * The word names the whole generation — engine and wire (the protocol,
@@ -40,64 +40,40 @@ export const GENERATION = generationWord(SCHEMA_VERSION);
 
 /**
  * Storage-generation prefix for the v14 IndexedDB databases: one database
- * per schema generation since generation 5, so a generation-4 store is
- * left as it was (rollback) beside its successor.
+ * per schema generation, so an earlier generation's store is left as it
+ * was beside its successor (and never read).
  */
-export const GENERATION_PREFIX = 'edytor-v14-g5:';
+export const GENERATION_PREFIX = `edytor-v14-g${SCHEMA_VERSION}:`;
 
 /** The IndexedDB name a v14 provider uses for logical document `name`. */
 export const generationDbName = (name: string): string => GENERATION_PREFIX + name;
 
 /**
- * How a container stores its snapshots: `'v1'` (the
- * update encoding, every container before it) or `'v2'` (the columnar
- * encoding, gzip-compressed where the platform has `CompressionStream`;
- * a compressed snapshot starts with gzip's `1f 8b`, a v2 update with
- * `00`). Update rows stay v1 in both: a keystroke's update is smaller in
- * v1 (24 bytes against 28, a one-character delete 13 against 24).
+ * Record written to the `custom` store marking a DB as this generation's.
+ * Every row of a container holds an update in the engine's one encoding;
+ * a snapshot row may be gzip-compressed (`crdt/storage.ts`).
  */
-export type StorageFormat = 'v1' | 'v2';
-
-/** Record written to the `custom` store marking a DB as this generation's. */
 export type GenerationRecord = {
 	engine: 'yjs-v14';
 	protocol: number;
 	schema: number;
-	/** Absent: `'v1'` (written before the v2 snapshots). */
-	storage?: StorageFormat;
 };
 
 export const GENERATION_KEY = 'generation';
-/** This generation's wire and schema (the storage format aside: {@link STORED_GENERATION_RECORD}). */
+/** This generation's record. */
 export const GENERATION_RECORD: GenerationRecord = {
 	engine: 'yjs-v14',
 	protocol: PROTOCOL_VERSION,
 	schema: SCHEMA_VERSION
 };
-/** The storage format this build writes its snapshots in. */
-export const STORAGE_FORMAT: StorageFormat = 'v2';
-/** The record this build stamps a container with (its generation and its storage format). */
-export const STORED_GENERATION_RECORD: GenerationRecord = {
-	...GENERATION_RECORD,
-	storage: STORAGE_FORMAT
-};
 
-/**
- * Is `v` this generation's container record? A record without `schema` was
- * written before the schema joined the generation, by builds that spoke
- * schema 1 only — it is a schema-1 record. A storage format this build
- * does not read (a later one) is another generation's.
- */
+/** Is `v` this generation's container record? Any other is refused, never read. */
 export const isGenerationRecord = (v: unknown): v is GenerationRecord =>
 	typeof v === 'object' &&
 	v !== null &&
 	(v as GenerationRecord).engine === GENERATION_RECORD.engine &&
 	(v as GenerationRecord).protocol === GENERATION_RECORD.protocol &&
-	((v as Partial<GenerationRecord>).schema ?? 1) === SCHEMA_VERSION &&
-	[undefined, 'v1', 'v2'].includes((v as GenerationRecord).storage);
-
-/** The storage format of a container record ({@link isGenerationRecord} first). */
-export const storageOf = (record: GenerationRecord): StorageFormat => record.storage ?? 'v1';
+	(v as GenerationRecord).schema === SCHEMA_VERSION;
 
 export class GenerationMismatchError extends Error {
 	constructor(
@@ -107,7 +83,7 @@ export class GenerationMismatchError extends Error {
 		super(
 			`Stored document "${dbName}" is not a v14 document generation of this schema (found ${JSON.stringify(
 				found
-			)}). It is never applied — run the migration path, or re-import the document from JSON.`
+			)}). It is never applied — re-import the document from JSON.`
 		);
 		this.name = 'GenerationMismatchError';
 	}

@@ -41,7 +41,6 @@ const undo = ed.createUndoManager({ captureTimeout: 0 });
 const storyJson: ReturnType<typeof ed.toJSON> = ed.toJSON();
 const awareness: bindings.Awareness = new crdt.Awareness(crdtDoc);
 const providers: bindings.ProviderStack = crdt.providers;
-const migration: bindings.Migration = crdt.migration;
 const sync: protocol.SyncProtocol = crdt.sync;
 const sv: Uint8Array = Y.encodeStateVector(crdtDoc);
 const delta: Uint8Array = Y.encodeStateAsUpdate(crdtDoc, sv);
@@ -57,7 +56,6 @@ void undo;
 void storyJson;
 void awareness;
 void providers;
-void migration;
 void sync;
 
 // `<Edytor {sync}>` factories are reachable through the bound stack too —

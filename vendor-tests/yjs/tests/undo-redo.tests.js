@@ -150,7 +150,7 @@ export const testRejectUpdateExample = _tc => {
       ydoc.store.pendingDs = beforePendingDs
       ydoc.store.pendingStructs = null
       if (beforePendingStructs) {
-        Y.applyUpdateV2(ydoc, beforePendingStructs)
+        Y.applyUpdate(ydoc, beforePendingStructs)
       }
     }
   }

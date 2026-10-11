@@ -96,11 +96,7 @@ const containerDoc = async (name) => {
 		db.close();
 	}
 	const doc = new Y.Doc();
-	for (const row of rows) {
-		const update = await readRow(row);
-		if (update instanceof Uint8Array) Y.applyUpdate(doc, update);
-		else Y.applyUpdateV2(doc, update.v2);
-	}
+	for (const row of rows) Y.applyUpdate(doc, await readRow(row));
 	return doc;
 };
 

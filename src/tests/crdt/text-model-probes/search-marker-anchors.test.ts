@@ -216,7 +216,7 @@ describe('gateF2/WU9 — wire interop', () => {
 		// v14 list content surfaces as a v13 YText (`doc.get` returns a bare
 		// AbstractType; the typed getter binds the decoded ref correctly).
 		const d13 = new Y13.Doc();
-		Y13.applyUpdate(d13, update);
+		Y13.applyUpdateV2(d13, update);
 		const t13 = d13.getText('t');
 		const s13 = t13.toString();
 		expect(s13).toContain('mid');
@@ -228,7 +228,7 @@ describe('gateF2/WU9 — wire interop', () => {
 		const t13 = d13.getText('t');
 		t13.insert(0, 'hello ');
 		t13.insert(6, 'world', { bold: true });
-		const update = Y13.encodeStateAsUpdate(d13);
+		const update = Y13.encodeStateAsUpdateV2(d13);
 		const doc = newDoc();
 		Y.applyUpdate(doc, update);
 		const t = doc.get('t');

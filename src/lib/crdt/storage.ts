@@ -1,12 +1,10 @@
 /**
  * The storage codec — what the room's rows and the IndexedDB store
- * hold, apart from the wire (which stays v1 until the schema generation
- * that changes it). Snapshots are written in the v2 (columnar) encoding
- * and gzip-compressed where the platform has `CompressionStream`; update
- * rows stay v1 (smaller for one keystroke). A compressed record starts
- * with gzip's magic `1f 8b`, which no v2 update does (its first byte is
- * the encoder's feature flag, `00`), so a v2 container's snapshot says
- * itself whether it is compressed. Worker-safe: no timers, every
+ * hold: updates in the engine's one encoding, snapshots gzip-compressed
+ * where the platform has `CompressionStream` and that makes them smaller.
+ * A compressed record starts with gzip's magic `1f 8b`, which no update
+ * does (its first byte is the encoder's feature flag, `00`), so a record
+ * says itself whether it is compressed. Worker-safe: no timers, every
  * platform API feature-detected.
  */
 

@@ -7,31 +7,26 @@
  * (`applyRemote`) and are stamped with a non-null `remoteApplyOrigin` so
  * echo suppression + undo exclusion keep working.
  *
- * Wire format (y-protocols' layout; SyncStep2 in the v2 encoding since
- * schema generation 5):
+ * Wire format (y-protocols' layout; every update in the engine's one
+ * encoding, the columnar one upstream calls v2, since schema generation 6):
  *
  * ```
  *   varuint messageType | payload
  *   messageType 0 (SyncStep1):   varuint8array stateVector
- *   messageType 1 (SyncStep2):   varuint8array update (v2, columnar)
- *   messageType 2 (Update):      varuint8array update (v1)
+ *   messageType 1 (SyncStep2):   varuint8array update
+ *   messageType 2 (Update):      varuint8array update
  * ```
  *
- * A SyncStep2 carries a state — a document's or what a peer lacks — and
- * the v2 encoding is smaller on any such batch (a 1,000-block document:
- * 280,557 → 220,444 bytes, gzip 55,016 → 28,476). An Update carries one
- * transaction, and v1 is smaller for most of those (a one-character
- * delete 13 vs 24 bytes, a block move 62 vs 84, a block delete 43 vs 65),
- * so updates stay v1: what the engine emits on `doc.on('update')` is
- * relayed as it is. A receiver converts a SyncStep2 to v1
- * ({@link step2Update}) and applies it through the one inbound path. That does NOT mean v13 and v14 peers are interchangeable — the
- * provider layer (`providers/*`) wraps every message in the protocol-version
- * envelope (`protocols/envelope.ts`) so engines that do not speak v14 never
- * reach `readSyncMessage`.
+ * What the engine emits on `doc.on('update')` is relayed as it is, and a
+ * SyncStep2 is applied through the same inbound path as an Update. That
+ * does NOT mean v13 and v14 peers are interchangeable — the provider layer
+ * (`providers/*`) wraps every message in the protocol-version envelope
+ * (`protocols/envelope.ts`) so engines that do not speak v14 never reach
+ * `readSyncMessage`.
  *
  * API boundary — two tiers:
  *
- * - RAW readers (`readSyncStep1`, `readSyncStep2`, `readUpdate`,
+ * - RAW readers (`readSyncStep1`, `readUpdate` — a SyncStep2's payload too —
  *   `readSyncMessage`) apply through the inbound refusal but report
  *   nothing, and `readSyncMessage` THROWS on an unknown message type. They
  *   exist for harnesses/custom transports; the shipped providers do not
@@ -111,35 +106,12 @@ export const bindSync = (Y: EngineApi) => {
 		encodedStateVector?: Uint8Array
 	): void => {
 		encoding.writeVarUint(encoder, messageYjsSyncStep2);
-		encoding.writeVarUint8Array(encoder, Y.encodeStateAsUpdateV2(doc, encodedStateVector));
+		encoding.writeVarUint8Array(encoder, Y.encodeStateAsUpdate(doc, encodedStateVector));
 	};
-
-	/** A SyncStep2 payload (v2) as the v1 update every inbound path applies. */
-	const step2Update = (payload: Uint8Array): Uint8Array => Y.convertUpdateFormatV2ToV1(payload);
 
 	/** Read SyncStep1 message and reply with SyncStep2. */
 	const readSyncStep1 = (decoder: decoding.Decoder, encoder: encoding.Encoder, doc: YDoc): void =>
 		writeSyncStep2(encoder, doc, decoding.readVarUint8Array(decoder));
-
-	/**
-	 * Read and apply structs + delete set to a doc — through the same
-	 * inbound refusal as the providers ({@link applyRemote}), which report
-	 * a refused stamp; this raw reader reports only decode/apply errors.
-	 */
-	const readSyncStep2 = (
-		decoder: decoding.Decoder,
-		doc: YDoc,
-		transactionOrigin: unknown,
-		errorHandler?: (error: Error) => unknown
-	): void => {
-		let update: Uint8Array;
-		try {
-			update = step2Update(decoding.readVarUint8Array(decoder));
-		} catch (error) {
-			return reportUpdateError(error, errorHandler);
-		}
-		applyRemote(doc, update, transactionOrigin, errorHandler);
-	};
 
 	/**
 	 * The state-vector coverage test of the join rule: does the encoded
@@ -158,7 +130,11 @@ export const bindSync = (Y: EngineApi) => {
 		encoding.writeVarUint8Array(encoder, update);
 	};
 
-	/** Read and apply an Update (v1) through the inbound refusal. */
+	/**
+	 * Read and apply an Update's or a SyncStep2's payload — through the same
+	 * inbound refusal as the providers ({@link applyRemote}), which report
+	 * a refused stamp; this raw reader reports only decode/apply errors.
+	 */
 	const readUpdate = (
 		decoder: decoding.Decoder,
 		doc: YDoc,
@@ -231,7 +207,7 @@ export const bindSync = (Y: EngineApi) => {
 	/** What the engine holds pending on `doc` (structs and deletes waiting for a dependency). */
 	const held = (doc: YDoc): Decoded[] => {
 		const pending = [doc.store.pendingStructs?.update, doc.store.pendingDs];
-		return pending.flatMap((bytes) => (bytes ? [Y.decodeUpdateV2(bytes)] : []));
+		return pending.flatMap((bytes) => (bytes ? [Y.decodeUpdate(bytes)] : []));
 	};
 
 	/**
@@ -293,12 +269,12 @@ export const bindSync = (Y: EngineApi) => {
 		encoder: encoding.Encoder,
 		doc: YDoc,
 		deletes?: IdSet,
-		unstored: IdSet | null = doc.store.pendingDs && Y.decodeUpdateV2(doc.store.pendingDs).ds
+		unstored: IdSet | null = doc.store.pendingDs && Y.decodeUpdate(doc.store.pendingDs).ds
 	): void => {
 		encoding.writeVarUint8Array(encoder, Y.encodeStateVector(doc));
 		const held = deletes && unstored ? Y.diffIdSet(deletes, unstored) : deletes;
 		if (!held || held.isEmpty()) return;
-		const body = new Y.UpdateEncoderV1();
+		const body = new Y.UpdateEncoder();
 		encoding.writeVarUint(body.restEncoder, 0); // no structs
 		Y.writeIdSet(body, held);
 		encoding.writeVarUint8Array(encoder, body.toUint8Array());
@@ -335,8 +311,6 @@ export const bindSync = (Y: EngineApi) => {
 				readSyncStep1(decoder, encoder, doc);
 				break;
 			case messageYjsSyncStep2:
-				readSyncStep2(decoder, doc, transactionOrigin, errorHandler);
-				break;
 			case messageYjsUpdate:
 				readUpdate(decoder, doc, transactionOrigin, errorHandler);
 				break;
@@ -353,9 +327,7 @@ export const bindSync = (Y: EngineApi) => {
 		remoteApplyOrigin,
 		writeSyncStep1,
 		writeSyncStep2,
-		step2Update,
 		readSyncStep1,
-		readSyncStep2,
 		writeUpdate,
 		readUpdate,
 		readSyncMessage,

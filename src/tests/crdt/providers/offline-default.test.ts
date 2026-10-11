@@ -66,12 +66,7 @@ class Server {
 			}
 			return;
 		}
-		// A SyncStep2 is v2 on the wire (P5).
-		Y.applyUpdate(
-			this.doc,
-			type === sync.messageYjsSyncStep2 ? sync.step2Update(payload) : payload,
-			socket
-		);
+		Y.applyUpdate(this.doc, payload, socket);
 	}
 
 	down() {

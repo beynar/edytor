@@ -393,8 +393,7 @@ export const defaultSemantics = withMarks(
 
 /**
  * The facade configuration (`EdytorDocConfig`) a document with no view
- * reads `semantics` with — the room's, and a generation cutover's
- * (`migration/generation.ts`): roles, default children, content-less kinds
+ * reads `semantics` with — the room's: roles, default children, content-less kinds
  * and mark edges, each answered only for a kind the tables name.
  */
 export const facadeConfigOf = (semantics: DocumentSemanticsConfig) => {

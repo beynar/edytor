@@ -8,14 +8,9 @@
  */
 import { Y } from '../../crdt/engine.js';
 import * as E from '../../crdt/protocol.js';
-import {
-	isGenerationRecord,
-	STORED_GENERATION_RECORD,
-	storageOf,
-	type StorageFormat
-} from '../../crdt/protocols/envelope.js';
+import { GENERATION_RECORD, isGenerationRecord } from '../../crdt/protocols/envelope.js';
 import { gunzip, isGzip, packed } from '../../crdt/storage.js';
-import type { JSONBlock, JSONDoc, YDoc } from '../../crdt/index.js';
+import type { JSONDoc, YDoc } from '../../crdt/index.js';
 import type { Attachment, LoadedDocument, ReplicaOwner, StoredRecord } from '../DocumentRoom.js';
 import { SOCKET_TAG, noTimers } from './shared.js';
 import { parseReplica } from './access.js';
@@ -83,10 +78,6 @@ const loadedUpdate = (
 	}
 	throw new TypeError('onLoad returned neither a JSONDoc, a v14 update nor { update, replicas }');
 };
-
-/** How many blocks `children` holds, nested ones included. */
-const countBlocks = (children: readonly JSONBlock[]): number =>
-	children.reduce((n, block) => n + 1 + countBlocks(block.children ?? []), 0);
 
 /** Rows grouped into their records, in write order; a record missing rows throws. */
 const reassemble = (
@@ -391,17 +382,13 @@ export class RoomStorage {
 			}
 			const [generation, ...rest] = records;
 			const found = JSON.parse(new TextDecoder().decode(generation.bytes));
-			// A container of generation 4 converts through its JSON (`room.generation.convert`).
-			if (generation.kind === 'generation' && E.isPreviousGenerationRecord(found)) {
-				return this.convert(rest);
-			}
 			if (generation.kind !== 'generation' || !isGenerationRecord(found)) {
 				throw new E.GenerationMismatchError(`room ${room.ctx.id}`, found);
 			}
 			// Applied in one transaction, never merged first: a merge of the
 			// records keeps every keystroke's struct and the deleted content.
 			const doc = admit(
-				rest.map((record) => (record.v2 ? { v2: record.bytes } : record.bytes)),
+				rest.map((record) => record.bytes),
 				`room ${room.ctx.id}`,
 				() => room.history.restoreKeep
 			);
@@ -417,66 +404,6 @@ export class RoomStorage {
 		}
 	}
 
-	/**
-	 * The generation cutover at load (`room.generation.convert`): the
-	 * records of a generation-4 container are read as JSON
-	 * (`crdt.generations.previousJSON`), which this generation seeds as
-	 * `onLoad`'s JSON is (deterministic: every replica converting the same
-	 * state writes the same update), and the container is replaced by it in
-	 * one storage transaction: rows, replicas, purge epochs, slot editors
-	 * and the stored restore go; the document data, the alarm's due tasks
-	 * and `lastUpdated` stay. What a generation-4 client never sent is not
-	 * in it; history, attribution and CRDT identity do not cross.
-	 */
-	private convert(records: StoredRecord[]) {
-		const room = this.room;
-		const { sql, tables } = room;
-		const json = crdt.generations.previousJSON(
-			records.map((record) => (record.v2 ? { v2: record.bytes } : record.bytes)),
-			(doc) => room.facadeOf(doc)
-		);
-		const scratch = crdt.createDoc();
-		const facade = room.facadeOf(scratch);
-		facade.seed(json.children, json.data);
-		facade.dispose();
-		const update = Y.encodeStateAsUpdate(scratch);
-		scratch.destroy();
-		const doc = admit(update, `room ${room.ctx.id} conversion`, () => room.history.restoreKeep);
-		const snapshot = liveState(doc);
-		room.ctx.storage.transactionSync(() => {
-			for (const table of [
-				tables.rows,
-				tables.replicas,
-				tables.epochs,
-				tables.editors,
-				tables.restore
-			])
-				sql.exec(`DELETE FROM ${table}`);
-			this.nextRecord = 0;
-			this.insert('snapshot', snapshot);
-			this.touch();
-			for (const replica of stateVector(doc).keys())
-				sql.exec(
-					`INSERT OR IGNORE INTO ${tables.replicas} (replica, user) VALUES (?, '')`,
-					replica
-				);
-		});
-		room.history.clearRestore();
-		this.documentBytes = snapshot.length;
-		this.watch();
-		this.updates = 0;
-		this.storedWaiting = Y.createIdSet();
-		this.adopt(doc);
-		room.state.origin = { kind: 'converted', from: E.PREVIOUS_SCHEMA, records: records.length };
-		room.log({
-			edytor: 'convert',
-			from: E.PREVIOUS_SCHEMA,
-			to: E.SCHEMA_VERSION,
-			blocks: countBlocks(json.children),
-			bytes: snapshot.length
-		});
-	}
-
 	/** The bytes of the stored `pending` records (uncompressed, as every record but a snapshot). */
 	pendingBytes(): number {
 		return (
@@ -490,8 +417,8 @@ export class RoomStorage {
 
 	/**
 	 * Reassembled logical records in write order (of one kind, with
-	 * `only`); a torn record throws. A v2 container's snapshot is v2
-	 * (`v2`), inflated when it is stored compressed.
+	 * `only`); a torn record throws. A snapshot stored compressed is
+	 * inflated (gzip's magic never starts an update nor the record's JSON).
 	 */
 	records(only?: RowKind): StoredRecord[] {
 		const rows = this.room.sql
@@ -501,23 +428,10 @@ export class RoomStorage {
 			)
 			.toArray();
 		for (const row of rows) this.nextRecord = Math.max(this.nextRecord, row.record + 1);
-		const records = reassemble(rows);
-		// The container's storage format, from its generation record.
-		let format: StorageFormat = 'v1';
-		if (records[0]?.kind === 'generation') {
-			try {
-				const found = JSON.parse(new TextDecoder().decode(records[0].bytes));
-				if (isGenerationRecord(found) || E.isPreviousGenerationRecord(found))
-					format = storageOf(found);
-			} catch {
-				// `load` refuses it
-			}
-		}
-		return records.map((record) => {
-			const v2 = format === 'v2' && record.kind === 'snapshot';
-			if (!v2 || !isGzip(record.bytes)) return { ...record, v2 };
+		return reassemble(rows).map((record) => {
+			if (!isGzip(record.bytes)) return record;
 			if (this.inflated?.record !== record.record) throw new CompressedRecord();
-			return { ...record, bytes: this.inflated.bytes, v2 };
+			return { ...record, bytes: this.inflated.bytes };
 		});
 	}
 
@@ -528,7 +442,7 @@ export class RoomStorage {
 	 */
 	insert(kind: RowKind, bytes: Uint8Array): number {
 		if (this.nextRecord === 0 && kind !== 'generation') {
-			this.insert('generation', encodeJSON(STORED_GENERATION_RECORD));
+			this.insert('generation', encodeJSON(GENERATION_RECORD));
 		}
 		const record = this.nextRecord++;
 		this.writeRecord(kind, record, bytes);
@@ -651,8 +565,7 @@ export class RoomStorage {
 				room.ctx.storage.transactionSync(() => {
 					sql.exec(`DELETE FROM ${tables.rows}`);
 					this.documentBytes = 0;
-					// The container is now this build's format (a v1 one migrates here).
-					this.insert('generation', encodeJSON(STORED_GENERATION_RECORD));
+					this.insert('generation', encodeJSON(GENERATION_RECORD));
 					record = this.insert('snapshot', snapshot);
 					if (!still.isEmpty()) this.insert('pending', deletesUpdate(still));
 					for (const replica of registered) {

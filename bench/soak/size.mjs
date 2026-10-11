@@ -11,7 +11,7 @@
  * `insert` mix only types; `--without` leaves edit kinds out), a random
  * replica each, and exchange what they
  * wrote every `--sync` edits. Then {@link measure} reads the converged
- * document as the room stores it (`encodeStateAsUpdateV2`, the size
+ * document as the room stores it (`encodeStateAsUpdate`, the size
  * `metrics().documentBytes` reports) against:
  *
  * - the same JSON seeded fresh (what the visible content costs);
@@ -68,7 +68,7 @@ const structBytes = (Y, doc, top = 15) => {
 	let total = 0;
 	for (const structs of doc.store.clients.values()) {
 		for (const struct of structs) {
-			const encoder = new Y.UpdateEncoderV1();
+			const encoder = new Y.UpdateEncoder();
 			struct.write(encoder, 0);
 			const bytes = encoder.toUint8Array().length;
 			total += bytes;
@@ -158,17 +158,17 @@ export const measure = ({ E, Y, crdt }, update) => {
 				0
 			);
 		const count = (blocks) => blocks.reduce((n, b) => n + 1 + count(b.children ?? []), 0);
-		const stored = Y.encodeStateAsUpdateV2(doc).length;
+		const stored = Y.encodeStateAsUpdate(doc).length;
 		const before = census(doc);
 		const bytes = structBytes(Y, doc);
 		const fresh = E.createDocument({ value: json, semantics: E.defaultSemantics });
-		const freshBytes = Y.encodeStateAsUpdateV2(fresh.doc).length;
+		const freshBytes = Y.encodeStateAsUpdate(fresh.doc).length;
 		fresh.destroy();
 		let report = null;
 		facade.transact(() => {
 			report = crdt.doc.purge(doc, facade, { at: Date.now(), sv: Y.encodeStateVector(doc) });
 		}, PURGE);
-		const purged = Y.encodeStateAsUpdateV2(doc).length;
+		const purged = Y.encodeStateAsUpdate(doc).length;
 		return {
 			blocks: count(json.children),
 			chars: chars(json.children),

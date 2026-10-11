@@ -42,7 +42,7 @@ export class Skip extends AbstractStruct {
   }
 
   /**
-   * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+   * @param {UpdateEncoder} encoder
    * @param {number} offset
    */
   write (encoder, offset) {

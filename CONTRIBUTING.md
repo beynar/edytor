@@ -44,7 +44,7 @@ pnpm test:do:typecheck
 
 ```bash
 pnpm exec vitest --run     # unit and model fixtures (the JSX fixture DSL is src/tests/jsx)
-pnpm test:crdt             # engine, facade, sync, migration
+pnpm test:crdt             # engine, facade, sync
 pnpm test:dom              # editors mounted in jsdom (a Svelte dev warning fails the test)
 pnpm test:do               # the edytor/cloudflare room in workerd
 ```

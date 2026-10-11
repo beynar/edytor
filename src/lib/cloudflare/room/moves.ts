@@ -462,7 +462,7 @@ export class RoomMoves {
 		moves: readonly { watched: string; marker: number; c0: number; c1: number }[]
 	): JSONBlock[] {
 		const copy = crdt.createDoc();
-		Y.applyUpdateV2(copy, Y.encodeStateAsUpdateV2(this.room.requireDoc()));
+		Y.applyUpdate(copy, Y.encodeStateAsUpdate(this.room.requireDoc()));
 		const facade = this.room.facadeOf(copy);
 		try {
 			const registry = asEngineDoc(copy).get(REGISTRY_KEY);

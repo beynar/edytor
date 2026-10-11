@@ -10,10 +10,10 @@ export class Skip extends AbstractStruct {
      */
     mergeWith(right: Skip): boolean;
     /**
-     * @param {UpdateEncoderV1 | UpdateEncoderV2} encoder
+     * @param {UpdateEncoder} encoder
      * @param {number} offset
      */
-    write(encoder: UpdateEncoderV1 | UpdateEncoderV2, offset: number): void;
+    write(encoder: UpdateEncoder, offset: number): void;
     /**
      * @param {number} diff
      */

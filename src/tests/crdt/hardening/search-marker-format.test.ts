@@ -583,7 +583,12 @@ describe('R1 — differential oracle: patched engine vs markers disabled', () =>
 				expect(dj(patched.t), `delta diverged from baseline at op ${i}`).toBe(dj(base.t));
 				expect(
 					Buffer.from(Y.encodeStateAsUpdate(patched.doc)).equals(
-						Buffer.from((YB as unknown as typeof Y).encodeStateAsUpdate(base.doc))
+						// The fork's one encoding is upstream's v2 (YP17).
+						Buffer.from(
+							(
+								YB as unknown as { encodeStateAsUpdateV2: typeof Y.encodeStateAsUpdate }
+							).encodeStateAsUpdateV2(base.doc)
+						)
 					),
 					`encoded state diverged from baseline at op ${i}`
 				).toBe(true);

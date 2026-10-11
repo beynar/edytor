@@ -64,7 +64,7 @@ const measure = (make) => {
 const stored = (() => {
 	const doc = crdt.createDoc();
 	Y.applyUpdate(doc, update, REMOTE);
-	const out = { v2: Y.encodeStateAsUpdateV2(doc).length, structs: 0 };
+	const out = { v2: Y.encodeStateAsUpdate(doc).length, structs: 0 };
 	for (const structs of doc.store.clients.values()) out.structs += structs.length;
 	doc.destroy();
 	return out;

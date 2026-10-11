@@ -33,7 +33,7 @@ is no longer a dependency of any kind: `tests/packed-consumer/smoke.js` and
 ## Layout
 
 ```text
-src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15 and YP16 (no delta layer)
+src/        upstream src/, plus patches YP1 (import specifiers), YP4, YP5, YP7, YP8 (pruning), YP9–YP15, YP16 (no delta layer) and YP17 (one update encoding)
 global.d.ts upstream global.d.ts, plus patches YP1 and YP8
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
@@ -795,6 +795,46 @@ from upstream, unchanged by YP16 and pinned by (2): remote integration, and
 the YP4 seeded cursor, which in one seed (an array insert with formats at a
 seeded position) places an item differently from upstream's walk (equal
 content, different bytes).
+
+### YP17 — one update encoding: upstream's v2, under the unsuffixed names (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js`, `src/utils/encoding.js`, `src/utils/updates.js`, `src/utils/Transaction.js`, `src/utils/ids.js`, `src/utils/Doc.js`, `src/index.js`, `global.d.ts`)
+
+Reason: the fork carried two update encodings (v1 and the columnar v2) and
+every producer and consumer chose one: the wire sent a SyncStep2 in v2 and
+converted it to v1 on receipt, updates in v1, the room and the browser
+store kept v1 update rows beside v2 snapshots, tagged by a storage format
+in their generation record. The engine already kept its pending structs
+and deletes in v2. One encoding is v2: smaller for any state (2,000
+blocks: 720,855 → 544,410 bytes, gzip 150,174 → 75,475) and for structural
+edits (an Enter 472 → 388), equal for a keystroke (133 / 134). Edytor's
+schema generation 6 is the cutover; nothing converts the other encoding.
+
+Patch:
+
+- `UpdateEncoderV1`/`UpdateDecoderV1` and `IdSetEncoderV1`/`IdSetDecoderV1`
+  are removed; the v2 classes are renamed `UpdateEncoder`, `UpdateDecoder`,
+  `IdSetEncoder`, `IdSetDecoder` (the `…V1 | …V2` JSDoc unions with them).
+- `applyUpdate`, `readUpdate`, `encodeStateAsUpdate`, `mergeUpdates`,
+  `diffUpdate` and `decodeUpdate` are the v2 functions (`applyUpdateV2`,
+  `readUpdateV2`, `encodeStateAsUpdateV2`, `mergeUpdatesV2`, `diffUpdateV2`,
+  `decodeUpdateV2` renamed, their encoder/decoder parameters removed);
+  `convertUpdateFormat`/`convertUpdateFormatV2ToV1` and the leftover
+  obfuscator typedef are removed. `readUpdate` is not exported.
+- `encodeStateVector`/`decodeStateVector` write and read the state vector
+  with a plain lib0 encoder (byte-identical: a state vector only ever used
+  the rest encoder); `readStateVector`, `writeStateVector`,
+  `writeDocumentStateVector` and `encodeStateVectorV2` are folded into them.
+- The `update` event carries the update in the one encoding; the `updateV2`
+  event is removed.
+- `edytor/crdt` exports `UpdateEncoder`, `UpdateDecoder` and `diffUpdate`
+  in place of the V1/V2 pairs (see `src/tests/crdt/yp8-surface.test.ts`).
+
+Interop: an upstream engine reads the fork's bytes with its `…V2`
+functions (`bench/lib/interop.mjs`, the baseline legs of
+`search-marker-format.test.ts` and `yp16-writes.test.ts` compare against
+upstream's `encodeStateAsUpdateV2`). Vendored execution lines 5,123 →
+4,872. Test side: `compatibility.tests.js` (v1 documents of Yjs 13) is
+removed; the upstream suite's helpers run every program in the one
+encoding (`testHelper.js`, `updates.tests.js`).
 
 ## Generated declarations (`dts/`)
 

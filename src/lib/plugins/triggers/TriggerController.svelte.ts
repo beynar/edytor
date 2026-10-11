@@ -66,7 +66,6 @@ export abstract class TextTriggerController {
 			edytor,
 			owner,
 			'listbox',
-			() => this.listName,
 			(node) => this.isOpen && this.popupOf(inPage(node, this.rowIdAt(this.selectedIndex)))
 		);
 	}
@@ -85,8 +84,8 @@ export abstract class TextTriggerController {
 	publish = (popup: Popup | null) => this.edytor.popups.set(this.owner, popup);
 
 	/**
-	 * The listbox (`{@attach controller.popup}`): it takes the menu's id, its
-	 * `listbox` role and name unless it has its own, keeps the focus where it
+	 * The listbox (`{@attach controller.popup}`, named by your markup): it
+	 * takes the menu's id and its `listbox` role unless it has its own, keeps the focus where it
 	 * is on a press (the editor's caret, or the menu's field), and is
 	 * published to the view's root (`edytor.popups`) while the menu is open,
 	 * with its highlighted row (`option(index)`) once that row is in the page.
@@ -111,8 +110,6 @@ export abstract class TextTriggerController {
 		return { id: this.listId, haspopup: 'listbox', active };
 	}
 
-	/** The listbox's accessible name. */
-	protected abstract get listName(): string;
 	/** The element id of the row at `index`, if there is such a row. */
 	protected abstract rowIdAt(index: number): string | undefined;
 	/** The rows the keyboard moves through. */
@@ -305,27 +302,8 @@ export class TriggerMenuController<T = unknown> extends TextTriggerController {
 		return !inCodeLines(this.edytor, block);
 	}
 
-	/** The menu's accessible name. */
-	get name() {
-		return this.trigger.name ?? this.edytor.labels.triggerMenu;
-	}
-
-	protected get listName() {
-		return this.name;
-	}
-
 	protected rowIdAt(index: number) {
 		return this.items[index] === undefined ? undefined : this.optionId(index);
-	}
-
-	/** The text shown when no row matches. */
-	get empty() {
-		return this.trigger.empty ?? this.edytor.labels.noResults;
-	}
-
-	/** The text shown while a search is pending and no row is shown. */
-	get searching() {
-		return this.trigger.searching ?? this.edytor.labels.searching;
 	}
 
 	labelOf = (item: T) => (this.trigger.label ? this.trigger.label(item) : defaultLabel(item));

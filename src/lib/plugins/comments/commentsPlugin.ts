@@ -4,7 +4,7 @@ import type { Plugin } from '$lib/plugins.js';
 import type { CommentChange } from '$lib/crdt/protocols/comments.js';
 import { commentMarks } from '$lib/crdt/semantics.js';
 import type { CommentsClient } from '$lib/collaboration/comments/client.js';
-import { commentsEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
+import { commentsEnglish, labelsOf } from '$lib/labels.js';
 import CommentsSidebar from './CommentsSidebar.svelte';
 import {
 	CommentsController,
@@ -26,7 +26,7 @@ export type CommentCardPayload = {
 	 * up with `comments.cancel()`).
 	 */
 	thread: PlacedThread | null;
-	/** The view's comments: the actions (reply, resolve, delete, `activate`), the user, `labels`. */
+	/** The view's comments: the actions (reply, resolve, delete, `activate`), the user. */
 	comments: CommentsController;
 	/** It is the active thread (its text is selected, or its card was pressed). */
 	active: boolean;
@@ -64,8 +64,6 @@ export type CommentsPluginOptions = {
 	 * stack under it. Not shown on a narrow screen.
 	 */
 	header?: Snippet<[CommentsController]>;
-	/** The words the sidebar and the toolbar button say, over the English ones. */
-	labels?: PartialLabels<'comments'>;
 };
 
 const controllers = new WeakMap<Edytor, CommentsController>();
@@ -86,14 +84,13 @@ export const commentsController = (edytor: Edytor): CommentsController | undefin
 export const createCommentsPlugin =
 	(options: CommentsPluginOptions): Plugin =>
 	(edytor) => {
-		const labels = labelsWith(commentsEnglish, options.labels);
+		const labels = labelsOf(edytor, 'comments', commentsEnglish);
 		const user = typeof options.user === 'string' ? { id: options.user } : options.user;
 		const comments = new CommentsController(edytor, {
 			client: options.client,
 			user,
 			users: options.users,
-			onComment: options.onComment,
-			labels
+			onComment: options.onComment
 		});
 		controllers.set(edytor, comments);
 		return {

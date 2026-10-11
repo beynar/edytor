@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import type { FindController } from '$lib/index.js';
 
 	/** Notion's find bar, drawn for `createFindPlugin({ bar })`: the query, the count, the steps, Replace. */
 	let { find }: { find: FindController } = $props();
 
-	const labels = $derived(find.labels);
+	const labels = $derived(words.find);
 	const count = $derived(
 		find.matches.length ? labels.count(find.current + 1, find.matches.length) : labels.noResults
 	);

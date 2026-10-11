@@ -45,7 +45,7 @@ the consumer's own `vite-plugin-svelte`, the documented bundler boundary:
   path instead (`ssr.noExternal: ['edytor']` so the bundle compiles it).
 - **Browser mount** — `vite preview` serves the built app; the repo's
   playwright drives a real browser: editable + readonly editors mount,
-  seeded paragraphs/marks render through `richTextPlugin`, a real
+  seeded paragraphs/marks render through `createRichTextPlugin()`, a real
   click+type edit reaches the model, `facade.insertText` edits reach the
   model, and svelte `unmount()` tears the tree down (zero `[data-edytor]`
   nodes left). Requires the playwright browsers used by the editor-dom

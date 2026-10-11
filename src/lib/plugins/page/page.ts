@@ -1,5 +1,4 @@
 import type { Block } from '$lib/block/block.svelte.js';
-import { pageEnglish, viewLabels, type PartialLabels } from '$lib/labels.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
@@ -28,14 +27,7 @@ export type PagePluginOptions = {
 	 * it. Without it there is no such command; insert page blocks yourself.
 	 */
 	create?: () => string | { pageId: string; title?: string } | null | undefined;
-	/** The words the block and its command show, over the English ones. */
-	labels?: PartialLabels<'page'>;
-	/** The slash menu's keywords of the "Page" command (`page.new`), which replace its own. */
-	keywords?: Partial<Record<string, string[]>>;
 };
-
-/** Each view's page labels: the first page plugin listed claims them, as its kind. */
-export const pageLabels = viewLabels(pageEnglish);
 
 /** A stored page id: a non-empty string of at most 256 characters (a room id's bounds), else `null`. */
 export const pageIdOf = (value: unknown): string | null =>

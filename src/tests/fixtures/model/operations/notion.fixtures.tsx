@@ -1,12 +1,12 @@
 /** @jsxImportSource ../../../jsx */
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts';
 import { mentionPlugin } from '../../../atMention.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { runBeforeInput } from '../../../test.utils.js';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
 import { codePlugin, richTextPlugin } from '../../../../routes/chrome/plugins.js';
 
-const notionPlugins = [richTextPlugin, mentionPlugin, markdownShortcutsPlugin];
+const notionPlugins = [richTextPlugin, mentionPlugin, createMarkdownShortcutsPlugin()];
 const noopSnippet = (() => null) as never;
 
 const structuralBranchPlugin: Plugin = () => ({
@@ -384,7 +384,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineModelOperationFixture({
 		description: 'does not trigger markdown shortcuts in code lines',
-		plugins: [richTextPlugin, mentionPlugin, codePlugin, markdownShortcutsPlugin],
+		plugins: [richTextPlugin, mentionPlugin, codePlugin, createMarkdownShortcutsPlugin()],
 		input: <root></root>,
 		value: {
 			children: [
@@ -477,7 +477,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineModelOperationFixture({
 		description: 'converts triple backtick to a code block when the code plugin is installed',
-		plugins: [richTextPlugin, mentionPlugin, codePlugin, markdownShortcutsPlugin],
+		plugins: [richTextPlugin, mentionPlugin, codePlugin, createMarkdownShortcutsPlugin()],
 		input: (
 			<root>
 				<paragraph>``|</paragraph>

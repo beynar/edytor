@@ -19,7 +19,10 @@ import { createRawSnippet } from 'svelte';
 import EdytorComponent from '$lib/components/Edytor.svelte';
 import { createDocument } from '$lib/crdt/index.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { type BlockHandleActivation } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
+import {
+	BLOCK_ACTIVATE_EVENT,
+	type BlockActivation
+} from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import type { InlineBlockSnippetPayload } from '$lib/plugins.js';
 import { renderDomEdytor } from '../../dom/test.utils.js';
 import {
@@ -89,11 +92,11 @@ describe('component defaults and overrides', () => {
 		).toBe(false);
 	});
 
-	test('non-draggable handles retain typed activation and block selection', async () => {
-		const onActivate = vi.fn((activation: BlockHandleActivation) => activation);
+	test('non-draggable handles dispatch the activation event and select the block', async () => {
+		const onActivate = vi.fn((event: Event) => (event as CustomEvent<BlockActivation>).detail);
 		const rendered = render(EdytorComponent, {
 			props: {
-				plugins: [richTextPlugin, createBlockHandlesPlugin({ draggable: false, onActivate })]
+				plugins: [richTextPlugin, createBlockHandlesPlugin({ draggable: false })]
 			}
 		});
 		const handle = await waitFor(() => {
@@ -110,11 +113,15 @@ describe('component defaults and overrides', () => {
 		expect(handle.dataset.draggable).toBeUndefined();
 		let legacyMenuEvents = 0;
 		rendered.container.addEventListener('edytor:block-menu', () => legacyMenuEvents++);
+		// Dispatched on the editor's root, which the block menu (or the app) listens on.
+		rendered.container
+			.querySelector('[data-edytor]')!
+			.addEventListener(BLOCK_ACTIVATE_EVENT, onActivate);
 
 		await fireEvent.click(handle);
 
 		expect(onActivate).toHaveBeenCalledOnce();
-		const { block, anchor } = onActivate.mock.calls[0][0];
+		const { block, anchor } = onActivate.mock.results[0]!.value as BlockActivation;
 		expect(anchor).toBe(handle);
 		expect(block.type).toBe('paragraph');
 		expect(block.edytor.selection.selectedBlocks.has(block)).toBe(true);

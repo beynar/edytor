@@ -13,11 +13,11 @@ import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextEnglish, type RichTextLabels } from '$lib/labels.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { holdKeys, listPopup, menuKey } from '../list.svelte.js';
-import { layerBox } from '$lib/surface/overlay.js';
+import { optionAttributes, type OptionAttributes } from '../chrome.js';
+import { Anchored } from '../anchored.svelte.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 
 /** A new callout's icon unless `createRichTextPlugin({ callout: { icon } })` names another. */
@@ -75,20 +75,6 @@ export const iconOf = (data: Record<string, unknown> | undefined, fallback: stri
 export const calloutHtml = (icon: string, content: string, children: string) =>
 	`<div data-edytor-callout="${escapeHtml(icon)}"><p>${content}</p>${children}</div>`;
 
-/** What `picker.option(index)` spreads on a row: its id, role, state and handlers. */
-export type CalloutIconOption = {
-	id: string;
-	role: 'menuitemradio' | 'menuitem';
-	'aria-checked'?: boolean;
-	/** The keyboard's row. */
-	'data-active'?: '';
-	'data-edytor-callout-icon-choice'?: '';
-	'data-edytor-callout-icon-remove'?: '';
-	onmousedown: (event: MouseEvent) => void;
-	onmouseenter: () => void;
-	onclick: () => void;
-};
-
 /**
  * A view's callout icon picker: what a `callout.picker` snippet receives.
  * The callout it is open on (`block`), the choices (`icons`) and the icon
@@ -96,8 +82,8 @@ export type CalloutIconOption = {
  * close, `close()` closes with nothing written. Put `{@attach picker.keys}`
  * and `{@attach picker.popup}` on the picker's element (it takes the focus
  * and the keys, names the keyboard's row and is published to the view's
- * root), and spread `picker.option(i)` on each row: `i` in `icons`,
- * `icons.length` for Remove icon.
+ * root), spread `picker.option(i)` on each row (`i` in `icons`,
+ * `icons.length` for Remove icon) and run `picker.pick(i)` on its click.
  */
 export class CalloutIconPicker {
 	/** The callout the picker is open on (its id), `null` when closed. */
@@ -107,14 +93,14 @@ export class CalloutIconPicker {
 	/** The choices on a row: ArrowUp and ArrowDown move by a row, so lay the icons out in as many columns. */
 	readonly columns = ICON_COLUMNS;
 	/**
-	 * Where the picker shows, layer-relative: under the target's icon.
+	 * The picker's panel under the target's icon (its block without one): its
+	 * place, and what closes it (a press or focus outside, the icon gone,
+	 * readonly).
 	 * @internal
 	 */
-	box = $state.raw<{ x: number; y: number } | null>(null);
+	readonly panel: Anchored;
 	/** The selection the picker gives back when it closes. */
 	#before: SelectionValue | null = null;
-	/** The view's rich text words (`labels` is the picker's part). */
-	readonly #words: RichTextLabels;
 
 	constructor(
 		/** @internal */
@@ -122,16 +108,22 @@ export class CalloutIconPicker {
 		/** A new callout's icon, and the one a callout without `data.icon` shows. */
 		readonly icon: string = DEFAULT_CALLOUT_ICON,
 		/** The picker's choices. */
-		readonly icons: readonly string[] = CALLOUT_ICONS,
-		labels: RichTextLabels = richTextEnglish
+		readonly icons: readonly string[] = CALLOUT_ICONS
 	) {
-		this.#words = labels;
-		this.popup = listPopup(edytor, 'callout-icons', 'menu', () => this.labels.picker);
-	}
-
-	/** The picker's words: Change icon, Add icon, its name, Remove icon. */
-	get labels(): RichTextLabels['calloutIcon'] {
-		return this.#words.calloutIcon;
+		this.popup = listPopup(edytor, 'callout-icons', 'menu');
+		this.panel = new Anchored(
+			edytor,
+			'edytor-callout-icons-host',
+			() => {
+				if (this.target === null) return undefined;
+				const node = this.block?.node;
+				const icon = [...(node?.querySelectorAll('[data-edytor-callout-icon]') ?? [])].find(
+					(element) => element.closest('[data-edytor-block="true"]') === node
+				);
+				return icon ?? node ?? null;
+			},
+			() => this.close(false)
+		);
 	}
 
 	/** Whether the picker is open (reactive). */
@@ -182,7 +174,7 @@ export class CalloutIconPicker {
 		if (this.target === null) return;
 		const before = this.#before;
 		this.target = null;
-		this.box = null;
+		this.panel.box = null;
 		this.#before = null;
 		this.edytor.overlay.invalidate();
 		if (!keys) return;
@@ -204,31 +196,30 @@ export class CalloutIconPicker {
 	/** Row `index`'s element id. */
 	optionId = (index: number) => `${this.id}-${index}`;
 
-	/** What row `index` spreads (`icons.length`: Remove icon): its id, role, state and handlers. */
-	option = (index: number): CalloutIconOption => {
+	/** Pick row `index`: its icon, or Remove icon (`icons.length`). */
+	pick = (index: number) => {
 		const icon = this.icons[index];
-		const handlers = {
-			onmousedown: (event: MouseEvent) => event.preventDefault(),
-			onmouseenter: () => void (this.index = index),
-			onclick: () => (icon === undefined ? this.remove() : this.set(icon))
-		};
-		const active = index === this.index ? ({ 'data-active': '' } as const) : {};
+		if (icon === undefined) this.remove();
+		else this.set(icon);
+	};
+
+	/**
+	 * What row `index` spreads (`icons.length`: Remove icon), as every menu's
+	 * rows: its id, `menuitemradio` role and `aria-checked` (`menuitem` for
+	 * Remove icon), `data-selected` on the keyboard's row.
+	 */
+	option = (index: number): OptionAttributes => {
+		const icon = this.icons[index];
+		const selected = index === this.index;
 		return icon === undefined
-			? {
-					id: this.optionId(index),
-					role: 'menuitem',
-					'data-edytor-callout-icon-remove': '',
-					...active,
-					...handlers
-				}
-			: {
-					id: this.optionId(index),
-					role: 'menuitemradio',
-					'aria-checked': icon === this.current,
-					'data-edytor-callout-icon-choice': '',
-					...active,
-					...handlers
-				};
+			? optionAttributes(this.optionId(index), 'menuitem', selected, {}, false)
+			: optionAttributes(
+					this.optionId(index),
+					'menuitemradio',
+					selected,
+					{ 'aria-checked': icon === this.current },
+					false
+				);
 	};
 
 	/**
@@ -250,7 +241,7 @@ export class CalloutIconPicker {
 					at,
 					count: this.icons.length + 1,
 					to: (index) => (this.index = index),
-					pick: () => this.option(at).onclick(),
+					pick: () => this.pick(at),
 					close: this.close
 				},
 				// Left and right wrap; up and down stop at the first and last rows.
@@ -258,19 +249,15 @@ export class CalloutIconPicker {
 			);
 		};
 		// Focus leaving for somewhere else closes it (the window going to the background does not).
-		const focusout = (event: FocusEvent) => {
-			const to = event.relatedTarget;
-			if (to instanceof Node && !node.contains(to)) this.close(false);
-		};
 		node.tabIndex = -1;
-		node.addEventListener('focusout', focusout);
+		node.addEventListener('focusout', this.panel.blurred);
 		// It gives back the editor's selection as it is now: a block menu that
 		// opened it gave its caret back first.
 		this.#before ??= this.edytor.selection.value;
 		const off = holdKeys(node, keydown, () => this.optionId(this.index));
 		return () => {
 			off();
-			node.removeEventListener('focusout', focusout);
+			node.removeEventListener('focusout', this.panel.blurred);
 		};
 	};
 
@@ -280,40 +267,4 @@ export class CalloutIconPicker {
 	 * publication to the view's root (`edytor.popups`) while it is in the page.
 	 */
 	popup: Attachment<HTMLElement>;
-
-	/**
-	 * A press anywhere (`onPress`): one outside the picker and the target's icon closes it.
-	 * @internal
-	 */
-	pressed = (event: MouseEvent) => {
-		if (this.target === null) return;
-		const target = event.target as Element | null;
-		if (target?.closest?.('[data-edytor-callout-icons-host]')) return;
-		const icon = target?.closest?.('[data-edytor-callout-icon]');
-		if (icon && icon.closest('[data-edytor-block="true"]') === this.block?.node) return;
-		this.close(false);
-	};
-
-	/**
-	 * The overlay measure: under the target callout's icon (its block's start without one).
-	 * @internal
-	 */
-	measure = (host: HTMLElement, origin: DOMRect) => {
-		const node = this.block?.node;
-		const icon = [...(node?.querySelectorAll('[data-edytor-callout-icon]') ?? [])].find(
-			(element) => element.closest('[data-edytor-block="true"]') === node
-		);
-		const rect = layerBox(icon ?? node, origin);
-		const box = rect && { x: rect.x, y: rect.y + rect.height + 4 };
-		return () => {
-			// Never `display: none`: the picker takes the focus before its first measure.
-			Object.assign(host.style, {
-				position: 'absolute',
-				left: `${box?.x ?? 0}px`,
-				top: `${box?.y ?? 0}px`
-			});
-			if (box?.x !== this.box?.x || box?.y !== this.box?.y) this.box = box;
-			if (!box && this.target !== null) this.close(false);
-		};
-	};
 }

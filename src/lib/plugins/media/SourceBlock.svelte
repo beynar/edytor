@@ -1,14 +1,15 @@
 <script module lang="ts">
 	import type { BlockDefinition, BlockSnippetPayload, Plugin } from '$lib/plugins.js';
 	import MediaEmpty from './MediaEmpty.svelte';
+	import { labelsOf, mediaEnglish } from '$lib/labels.js';
 	import { fileUploads } from '../uploads.svelte.js';
 	import {
 		claimed,
 		escapeHtml,
 		fileNameOf,
-		mediaLabelsOf,
 		mediaPlugin,
 		mediaSourceOf,
+		mediaView,
 		safeMediaSrc,
 		type MediaPluginOptions
 	} from './media.js';
@@ -63,7 +64,7 @@
 			}
 		}
 	): Plugin =>
-		mediaPlugin(kind, options, keywords, (_labels, edytor, claims) => {
+		mediaPlugin(kind, options, keywords, (edytor, claims) => {
 			const { upload } = options;
 			const uploads = claims && upload ? fileUploads(edytor) : undefined;
 			if (upload)
@@ -78,10 +79,10 @@
 			return {
 				store: (block, value, file) => {
 					const data = sourceData(kind, value, file);
-					if (!data) return false;
+					if (!data) return 'invalid';
 					if (kind === 'file') block.edytor.patchData(block.id, [{ path: [], value: data }]);
 					else block.edytor.patchData(block.id, [{ path: ['src'], value: data.src }]);
-					return true;
+					return null;
 				},
 				hooks: uploads ? { onPaste: uploads.paste } : {},
 				record: { snippet: source, ...record }
@@ -101,7 +102,7 @@
 			typeof block.data.name === 'string' && block.data.name ? block.data.name : fileNameOf(src)}
 		{@const size =
 			typeof block.data.size === 'number'
-				? mediaLabelsOf(block.handle?.edytor, 'file').fileSize(block.data.size)
+				? labelsOf(block.handle?.edytor, 'media', mediaEnglish).fileSize(block.data.size)
 				: ''}
 		<div use:block.void data-edytor-file>
 			<a
@@ -134,7 +135,11 @@
 		</div>
 	{:else}
 		<div use:block.void data-edytor-media-empty>
-			<MediaEmpty block={block.handle} kind={block.type as SourceKind} />
+			<MediaEmpty
+				block={block.handle}
+				kind={block.type as SourceKind}
+				viewOf={(edytor) => mediaView(edytor, block.type as SourceKind)}
+			/>
 		</div>
 	{/if}
 	<!-- The core renders the kind's <figure> around this markup. -->

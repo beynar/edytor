@@ -30,6 +30,5 @@
 	draggable: controller.draggable,
 	expanded: { add: added !== undefined, grip: gripped !== undefined },
 	controls: { add: added?.id, grip: gripped?.id },
-	haspopup: { add: added?.haspopup, grip: gripped?.haspopup },
-	labels: controller.labels
+	haspopup: { add: added?.haspopup, grip: gripped?.haspopup }
 })}

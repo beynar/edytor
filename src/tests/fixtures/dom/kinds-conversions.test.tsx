@@ -15,7 +15,7 @@ import { mentionPlugin } from '../../atMention.svelte';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { convertBlocks, convertToKind } from '$lib/kinds.js';
 import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import {
 	dispatchCut,
 	dispatchDomBeforeInput,
@@ -421,7 +421,7 @@ describe('Turn into runs the new kind’s normalizeContent (DR-code-1)', () => {
 	});
 
 	it('the markdown shortcut does the same', async () => {
-		const view = await render([task, markdownShortcutsPlugin], [broken('paragraph', 'a')]);
+		const view = await render([task, createMarkdownShortcutsPlugin()], [broken('paragraph', 'a')]);
 		await at(view, 'a', 0);
 		for (const data of ['>', '>', ' '])
 			await dispatchDomBeforeInput(view.editor, { inputType: 'insertText', data });

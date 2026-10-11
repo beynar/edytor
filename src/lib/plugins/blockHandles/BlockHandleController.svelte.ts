@@ -33,7 +33,6 @@ import { takeKeys } from '$lib/events/onFocus.js';
 import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { kindLabel } from '$lib/kinds.js';
 import { siblingSlot } from '$lib/session/handles.js';
-import { blockHandlesEnglish, type BlockHandlesLabels } from '$lib/labels.js';
 import type { Popup, PopupOpener } from '$lib/surface/popups.svelte.js';
 import { dragPreview } from './dragPreview.js';
 import { DropIndicator } from './dropIndicator.js';
@@ -51,8 +50,8 @@ import {
 import { stacks } from '../columns/stacking.js';
 
 /**
- * The DOM event a handle click dispatches on the editor when no `onActivate`
- * is set. A menu that takes the keyboard answers it with `preventDefault()`
+ * The DOM event a grip click dispatches on the editor (the one way to
+ * answer it: the block menu's, or your own). A menu that takes the keyboard answers it with `preventDefault()`
  * (the block menu does); unanswered, the editor takes the focus, so the keys
  * act on the selected block (Backspace deletes it, Shift+arrows extend it).
  */
@@ -110,8 +109,6 @@ const HANDLE_COLUMN = 50;
 
 type BlockHandleControllerOptions = {
 	draggable: boolean;
-	onActivate?: (activation: BlockActivation) => void;
-	labels?: BlockHandlesLabels;
 };
 
 /**
@@ -179,11 +176,6 @@ export class BlockHandleController {
 		return this.options.draggable;
 	}
 
-	/** The words the handles say (the plugin's `labels`): read them in your `handle`. */
-	get labels(): BlockHandlesLabels {
-		return this.options.labels ?? blockHandlesEnglish;
-	}
-
 	/**
 	 * The block's kind as people read it (`kindLabel`: "Heading 1"), its
 	 * handle's name; reactive through the block's cell (a Turn into renames it).
@@ -234,9 +226,8 @@ export class BlockHandleController {
 		const before = selection.value;
 		if (!selection.selectedBlocks.has(block)) this.select(block);
 		this.gripped = { before, after: selection.value };
-		if (this.options.onActivate) return this.options.onActivate({ block, anchor });
-		// Without a callback, a block menu plugin may answer the activation; with
-		// none answering, the keys go to the editor, over the block selection
+		// A block menu plugin (or the app) may answer the activation; with none
+		// answering, the keys go to the editor, over the block selection
 		// (Notion), not to the grip (its own focus: not a user gesture).
 		const event = new CustomEvent<BlockActivation>(BLOCK_ACTIVATE_EVENT, {
 			cancelable: true,

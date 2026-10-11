@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import type { RenderedNode } from '../../jsx/types.js';
 import {
@@ -50,7 +50,7 @@ const vetoMoves: Plugin = () => ({
 
 const render = (jsx: RenderedNode, extra: Plugin[] = []) =>
 	renderDomEdytor(jsx, {
-		plugins: [richTextPlugin, mentionPlugin, arrowMovePlugin, blockHandlesPlugin, ...extra]
+		plugins: [richTextPlugin, mentionPlugin, createArrowMovePlugin(), blockHandlesPlugin, ...extra]
 	});
 
 /** `A, B{B1}, C`: each block's own text, its children in braces. */

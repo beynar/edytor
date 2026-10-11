@@ -1,8 +1,3 @@
-import { imageEnglish, viewLabels } from '$lib/labels.js';
-
-/** Each view's image labels: the first image plugin listed claims them, as its kind. */
-export const imageLabels = viewLabels(imageEnglish);
-
 /** An image source the block may render: http(s), blob, or an inline image. */
 export const safeImageSrc = (value: unknown): string | null => {
 	if (typeof value !== 'string') return null;

@@ -19,8 +19,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { createPagePlugin, pagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
-import { createTocPlugin, tocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
+import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
+import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
 import { defaultSemantics } from '$lib/crdt/semantics.js';
 import { convertToKind } from '$lib/kinds.js';
 import { serializeClipboardFragmentToHtml } from '$lib/clipboard/serializeClipboardFragment.js';
@@ -179,7 +179,7 @@ describe('The page block', () => {
 	});
 
 	it('without options the block shows its title and opens nothing', async () => {
-		await render([page('a', { pageId: 'p-1', title: 'T' })], [pagePlugin]);
+		await render([page('a', { pageId: 'p-1', title: 'T' })], [createPagePlugin()]);
 		expect(titleOf('a')).toBe('T');
 		expect((link('a') as HTMLButtonElement).disabled).toBe(true);
 	});
@@ -219,7 +219,7 @@ describe('The page block', () => {
 	});
 
 	it('no create, no "Page" command', async () => {
-		const view = await render([p('a')], [pagePlugin]);
+		const view = await render([p('a')], [createPagePlugin()]);
 		expect(view.edytor.commands.has('page.new')).toBe(false);
 	});
 
@@ -270,7 +270,7 @@ describe('The table of contents', () => {
 					content: [{ text: 'FAQ' }]
 				}
 			],
-			[tocPlugin]
+			[createTocPlugin()]
 		);
 		expect(element('t').localName).toBe('nav');
 		expect(element('t').getAttribute('aria-label')).toBe('Table of contents');
@@ -283,7 +283,10 @@ describe('The table of contents', () => {
 	});
 
 	it('follows the document live: a typed heading, a new one, a removed one', async () => {
-		const view = await render([{ id: 't', type: 'toc' }, h('a', 'h2', 'One'), p('x')], [tocPlugin]);
+		const view = await render(
+			[{ id: 't', type: 'toc' }, h('a', 'h2', 'One'), p('x')],
+			[createTocPlugin()]
+		);
 		await setNativeSelection(view.edytor, get(view, 'a').firstText!, 3);
 		view.edytor.insertText('a', 3, '!');
 		await flushDomUpdates();
@@ -308,7 +311,7 @@ describe('The table of contents', () => {
 	it('indents by level under the shallowest shown', async () => {
 		await render(
 			[{ id: 't', type: 'toc' }, h('a', 'h2', 'A'), h('b', 'h3', 'B'), h('c', 'h2', 'C')],
-			[tocPlugin]
+			[createTocPlugin()]
 		);
 		const depths = [...element('t').querySelectorAll<HTMLElement>('[data-edytor-toc-entry]')].map(
 			(entry) => entry.style.getPropertyValue('--edytor-toc-depth')
@@ -328,7 +331,7 @@ describe('The table of contents', () => {
 					children: [h('a', 'h2', 'Hidden')]
 				}
 			],
-			[tocPlugin]
+			[createTocPlugin()]
 		);
 		(element('g') as HTMLDetailsElement).open = false;
 		const before = view.edytor.selection.value;
@@ -340,14 +343,14 @@ describe('The table of contents', () => {
 	});
 
 	it('no heading: Notion’s hint', async () => {
-		await render([{ id: 't', type: 'toc' }, p('x')], [tocPlugin]);
+		await render([{ id: 't', type: 'toc' }, p('x')], [createTocPlugin()]);
 		expect(element('t').querySelector('[data-edytor-toc-empty]')?.textContent).toBe(
 			'Add headings to create a table of contents.'
 		);
 	});
 
 	it('the preset replaces an empty line, and goes after a line with text', async () => {
-		const view = await render([p('a', 'text')], [tocPlugin]);
+		const view = await render([p('a', 'text')], [createTocPlugin()]);
 		const row = view.edytor.kinds.find((kind) => kind.label === 'Table of contents')!;
 		expect(row.replaces).toBe(true);
 		expect(convertToKind(view.edytor, get(view, 'a'), row)).toBe(true);

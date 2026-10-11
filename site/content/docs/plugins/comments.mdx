@@ -162,4 +162,4 @@ The client merges what it hears by `rev`, so an answer and a change arriving in 
 
 ## Localization
 
-`createCommentsPlugin({ labels })` takes the `comments` section of the [labels](/docs/customization/localization): the toolbar button, the fields, the buttons, `resolvedBy(name)`, `showResolved(count)` and `when(at)`, the time a comment shows.
+The toolbar's Comment button and the sidebar's and a card's accessible names are the view's `comments` [labels](/docs/customization/localization); your `card` and `header` write their own words (the fields, the buttons, who resolved a thread, when a comment was written). A user without a `name` is named by their id: your card says "You" for `comments.user` if you like.

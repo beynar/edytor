@@ -21,7 +21,6 @@ import type {
 	CommentResult,
 	CommentsClient
 } from '$lib/collaboration/comments/client.js';
-import { commentsEnglish, type CommentsLabels } from '$lib/labels.js';
 
 /** Who a comment's author is, as the sidebar shows them. */
 export type CommentUser = {
@@ -57,7 +56,6 @@ export type CommentsControllerOptions = {
 	user: CommentUser;
 	users?: (id: string) => Omit<CommentUser, 'id'> | undefined;
 	onComment?: (change: CommentChange, notice: CommentNotice) => void;
-	labels?: CommentsLabels;
 };
 
 const avatarColors = ['#e16259', '#d9730d', '#cb912f', '#448361', '#337ea9', '#9065b0', '#c14c8a'];
@@ -88,7 +86,6 @@ export class CommentsController {
 	#off: Array<() => void> = [];
 	readonly client: CommentsClient;
 	readonly user: CommentUser;
-	readonly labels: CommentsLabels;
 
 	constructor(
 		private edytor: Edytor,
@@ -96,7 +93,6 @@ export class CommentsController {
 	) {
 		this.client = options.client;
 		this.user = options.user;
-		this.labels = options.labels ?? commentsEnglish;
 	}
 
 	/**
@@ -170,10 +166,10 @@ export class CommentsController {
 		return this.threads.find((thread) => thread.id === id);
 	}
 
-	/** A user as the sidebar shows them: their name, avatar and color. */
+	/** A user as the sidebar shows them: their name (else their id), avatar and color. */
 	userOf = (id: string): CommentUser => {
 		const known = id === this.user.id ? this.user : { id, ...this.options.users?.(id) };
-		const name = known.name ?? (id === this.user.id ? this.labels.you : id);
+		const name = known.name ?? id;
 		let hash = 0;
 		for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
 		const color = known.color ?? avatarColors[Math.abs(hash) % avatarColors.length]!;

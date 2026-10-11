@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { hidden } from '$lib/selection/visibility.js';
 import { convertToKind } from '$lib/kinds.js';
@@ -184,7 +184,7 @@ describe('Turn into over a selection holding a list container (ZW-02)', () => {
 	});
 
 	it('a markdown shortcut in an item makes the kind outside the list', async () => {
-		const view = await render([markdownShortcutsPlugin], [ul('u', [li('b'), li('c')])]);
+		const view = await render([createMarkdownShortcutsPlugin()], [ul('u', [li('b'), li('c')])]);
 		view.edytor.selection.selectText(get(view, 'b').firstText!, 0);
 		await flushDomUpdates();
 		for (const data of '# ')

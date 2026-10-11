@@ -9,10 +9,18 @@
 	<div data-testid="custom-picker" {@attach picker.keys} {@attach picker.popup}>
 		<p data-testid="custom-picker-current">{picker.current}</p>
 		{#each picker.icons as icon, index (index)}
-			<button type="button" data-testid="custom-icon" {...picker.option(index)}>{icon}</button>
+			<button
+				type="button"
+				data-testid="custom-icon"
+				{...picker.option(index)}
+				onclick={() => picker.pick(index)}>{icon}</button
+			>
 		{/each}
-		<button type="button" data-testid="custom-remove" {...picker.option(picker.icons.length)}
-			>{picker.labels.remove}</button
+		<button
+			type="button"
+			data-testid="custom-remove"
+			{...picker.option(picker.icons.length)}
+			onclick={() => picker.pick(picker.icons.length)}>Remove icon</button
 		>
 		<button type="button" data-testid="custom-close" onclick={() => picker.close()}>×</button>
 	</div>

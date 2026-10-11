@@ -27,7 +27,7 @@ import type { Snippet } from 'svelte';
 import { Edytor, type EdytorOptions } from '$lib/edytor.svelte.js';
 import type { HotKey } from '$lib/session/keymap.js';
 import type { Plugin } from '$lib/plugins.js';
-import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import {
 	dispatchDomBeforeInput,
@@ -238,7 +238,7 @@ describe('F-P12 — a claimed key does not also run the built-in binding', () =>
 					<paragraph>C</paragraph>
 					<paragraph>D</paragraph>
 				</root>,
-				{ plugins: plugins(arrowMovePlugin) }
+				{ plugins: plugins(createArrowMovePlugin()) }
 			);
 			// Select A as a block (the select-all ladder), then extend to B.
 			await dispatchDomKeyDown(document, { key: 'a', code: 'KeyA', metaKey: true });

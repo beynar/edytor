@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import type { CodeHeader } from '$lib/index.js';
 
 	/**
@@ -6,7 +7,7 @@
 	 * language's button (or its label where it cannot change) and Copy.
 	 */
 	let { header }: { header: CodeHeader } = $props();
-	const labels = $derived(header.labels);
+	const labels = $derived(words.code);
 </script>
 
 {#if header.editable}

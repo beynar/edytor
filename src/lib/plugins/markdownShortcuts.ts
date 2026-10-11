@@ -66,7 +66,7 @@ const shortcutRow = (kinds: KindRow[], block: Block, typed: string) => {
 };
 
 /** Markdown prefixes come from the kind catalogue: a row whose shortcut the typed character completes. */
-export const markdownShortcutsPlugin: Plugin = (edytor) => {
+export const createMarkdownShortcutsPlugin = (): Plugin => (edytor) => {
 	/** The catalogue's prefixes as one pattern, from a text's start (built once the catalogue is). */
 	let prefixes: { kinds: readonly KindRow[]; find: RegExp } | null = null;
 	const prefixPattern = () => {

@@ -3,20 +3,17 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import FindHighlights from './FindHighlights.svelte';
 import { FindController } from './FindController.svelte.js';
-import { findEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
 import { mountChrome } from '../chrome.js';
 
 export type FindPluginOptions = {
 	/**
-	 * The bar's markup; it renders while `find.isOpen`, placed at the
+	 * The bar's markup and its words; it renders while `find.isOpen`, placed at the
 	 * editor's top right (without it, Mod+F searches and highlights, and
 	 * nothing else shows). Put `use:find.field` on your query input (focused
 	 * on each Mod+F; Enter, Shift+Enter, Escape) and `use:find.replaceField`
 	 * on your replacement input.
 	 */
 	bar?: Snippet<[FindController]>;
-	/** The words the bar shows, over the English ones. */
-	labels?: PartialLabels<'find'>;
 };
 
 const controllers = new WeakMap<Edytor, FindController>();
@@ -48,7 +45,7 @@ const place = (edytor: Edytor, find: FindController) => (host: HTMLElement) => {
 export const createFindPlugin =
 	(options: FindPluginOptions = {}): Plugin =>
 	(edytor) => {
-		const find = new FindController(edytor, labelsWith(findEnglish, options.labels));
+		const find = new FindController(edytor);
 		controllers.set(edytor, find);
 		return {
 			hotkeys: {

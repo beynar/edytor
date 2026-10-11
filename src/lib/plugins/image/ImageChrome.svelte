@@ -41,8 +41,7 @@
 				style:height="{box.height}px"
 				data-dragging={controls.drag ? 'true' : undefined}
 				data-selecting={controls.selecting ? 'true' : undefined}
-				onpointerdown={(event) => controls.start(event, side)}
-				onmousedown={(event) => controls.mousedown(event, side)}
+				{@attach controls.band.press((event) => controls.start(event, side))}
 			></div>
 		{/each}
 		{#if !controls.drag && toolbar}

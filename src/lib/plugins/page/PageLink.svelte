@@ -2,10 +2,10 @@
 	import { getContext, untrack } from 'svelte';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
+	import { labelsOf, pageEnglish } from '$lib/labels.js';
 	import {
 		pageHref,
 		pageIdOf,
-		pageLabels,
 		pageTitleOf,
 		storePageTitle,
 		type PagePluginOptions
@@ -29,7 +29,7 @@
 		options: PagePluginOptions;
 	} = $props();
 	/** The view's words (a suggestion's preview, with no handle, speaks them too). */
-	const labels = pageLabels.of(getContext<Edytor>('edytor'));
+	const labels = labelsOf(getContext<Edytor>('edytor'), 'page', pageEnglish);
 
 	const pageId = $derived(pageIdOf(data.pageId));
 	const stored = $derived(pageTitleOf(data.title));

@@ -14,7 +14,6 @@ import { jsx } from '@tanstack/highlight/languages/jsx';
 import { SvelteMap } from 'svelte/reactivity';
 import type { JSONText } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { codeEnglish, type CodeLabels, type PartialLabels } from '$lib/labels.js';
 import type { Snippet } from 'svelte';
 import type { CodeHeader } from './header.svelte.js';
 import type { LanguageMenu } from './languageMenu.svelte.js';
@@ -154,19 +153,12 @@ export const tokenizeCode = (code: string, language: CodeLanguage | undefined): 
 };
 
 export type CodePluginOptions = {
-	/** The languages a code block may be in, in the header's order. Default `CODE_LANGUAGES`. */
+	/** The languages a code block may be in, in the header's order, with their names. Default `CODE_LANGUAGES`. */
 	languages?: readonly CodeLanguage[];
 	/** The language of a code block whose `data.language` is unset. Default `'javascript'`. */
 	defaultLanguage?: string;
 	/**
-	 * The words the code block shows (its menu row, header, a language's
-	 * label by id), over the English ones.
-	 */
-	labels?: PartialLabels<'code'>;
-	/** The slash menu's keywords of the code command (`block.code`), which replace its own. */
-	keywords?: Partial<Record<string, string[]>>;
-	/**
-	 * A code block's header (the language's button and Copy): it renders
+	 * A code block's header (the language's button and Copy) and its words: it renders
 	 * above the code, in the block's non-editable part (without it, no
 	 * header). Put `{@attach header.button}` on the element that opens the
 	 * language list.
@@ -185,7 +177,6 @@ export type CodePluginOptions = {
 export type CodeSettings = {
 	languages: readonly CodeLanguage[];
 	defaultLanguage: string;
-	labels: CodeLabels;
 	/** The app's header markup, if any. */
 	header?: Snippet<[CodeHeader]>;
 	/** The app's language list markup, if any. */
@@ -194,16 +185,8 @@ export type CodeSettings = {
 
 export const DEFAULT_CODE_SETTINGS: CodeSettings = {
 	languages: CODE_LANGUAGES,
-	defaultLanguage: 'javascript',
-	labels: codeEnglish
+	defaultLanguage: 'javascript'
 };
-
-/**
- * The languages `settings` lists, each with its label as shown (the
- * labels' `languages` entry for its id, else its own), in order.
- */
-export const labeledLanguages = ({ languages, labels }: CodeSettings) =>
-	languages.map(({ id, label }) => ({ id, label: labels.languages[id] ?? label }));
 
 /** Each view's code options, for its code blocks' header (which reads them through its view). */
 export const codeSettings = new WeakMap<Edytor, CodeSettings>();

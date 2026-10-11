@@ -13,12 +13,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
-import {
-	createRichTextPlaceholder,
-	richTextPlaceholder
-} from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	dispatchClipboardPaste,
 	dispatchCopy,
@@ -173,7 +170,7 @@ describe('body.open: a toggle this view creates opens', () => {
 	it('`> ` typed on a new line makes an open toggle; Enter after its title goes into the body', async () => {
 		const { edytor, editor } = await render(
 			[{ id: 'a', type: 'paragraph', content: [] }],
-			[markdownShortcutsPlugin, richTextPlugin]
+			[createMarkdownShortcutsPlugin(), richTextPlugin]
 		);
 		edytor.selection.selectText(edytor.idToBlock.get('a')!.firstText!, 0);
 		await flushDomUpdates();
@@ -280,11 +277,12 @@ describe('callout: an icon, a title and a content', () => {
 			'Callout title'
 		);
 		expect(
-			createRichTextPlaceholder({ placeholders: { callout: 'Titre' } })({
-				type: 'callout',
-				data: {},
-				focused: true
-			} as never)
+			richTextPlaceholder(
+				{ type: 'callout', data: {}, focused: true } as never,
+				{
+					labels: { richText: { placeholders: { callout: 'Titre' } } }
+				} as never
+			)
 		).toBe('Titre');
 	});
 
@@ -374,7 +372,7 @@ describe('callout.icon: the icon picker', () => {
 		expect(active().getAttribute('aria-checked')).toBe('true');
 		await dispatchDomKeyDown(menu()!, { key: 'ArrowRight' });
 		expect(active()).toBe(choices()[1]);
-		expect(active().hasAttribute('data-active')).toBe(true);
+		expect(active().getAttribute('data-selected')).toBe('true');
 		await dispatchDomKeyDown(menu()!, { key: 'ArrowDown' });
 		expect(active()).toBe(choices()[9]);
 		await dispatchDomKeyDown(menu()!, { key: 'Escape' });

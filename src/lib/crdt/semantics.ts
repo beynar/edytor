@@ -90,7 +90,7 @@ const frozen = <T>(value: T): T => {
 	return value;
 };
 
-/** `richTextPlugin`'s structural rows (its other kinds are plain). */
+/** `createRichTextPlugin()`'s structural rows (its other kinds are plain). */
 export const richTextKinds = frozen({
 	divider: { void: true, rendersContent: false },
 	horizontalRule: { void: true, rendersContent: false },
@@ -99,7 +99,7 @@ export const richTextKinds = frozen({
 } satisfies Record<string, KindSemantics>);
 
 /**
- * `richTextPlugin`'s mark edges: where a concurrent insert at each end
+ * `createRichTextPlugin()`'s mark edges: where a concurrent insert at each end
  * of a mark lands. A link grows at its start only (typing after it
  * stays out of it unless from inside the anchor); the others are inclusive.
  */
@@ -116,17 +116,17 @@ export const commentMarks = frozen({
 	comment: { edge: 'exclusive' }
 } satisfies Record<string, { edge: MarkEdge }>);
 
-/** `codePlugin`'s structural rows: the code block is an island of `codeLine`s (`lines`). */
+/** `createCodePlugin()`'s structural rows: the code block is an island of `codeLine`s (`lines`). */
 export const codeKinds = frozen({
 	code: { island: true, lines: true, rendersContent: false, defaultChild: 'codeLine' }
 } satisfies Record<string, KindSemantics>);
 
-/** `imagePlugin`'s structural rows: void, its only text is the caption. */
+/** `createImagePlugin()`'s structural rows: void, its only text is the caption. */
 export const imageKinds = frozen({ image: { void: true } } satisfies Record<string, KindSemantics>);
 
 /**
- * The media plugins' structural rows (`embedPlugin`, `bookmarkPlugin`,
- * `filePlugin`, `videoPlugin`, `audioPlugin`): void like the image, their
+ * The media plugins' structural rows (`createEmbedPlugin()`, `createBookmarkPlugin()`,
+ * `createFilePlugin()`, `createVideoPlugin()`, `createAudioPlugin()`): void like the image, their
  * only text is the caption.
  */
 export const mediaKinds = frozen({
@@ -346,14 +346,14 @@ export const semanticsMismatch = (ours: Record<string, string>, theirs: unknown)
 const withMarks = <C extends object>(config: C, marks: Record<string, { edge: MarkEdge }>) =>
 	frozen(Object.assign({}, config, { marks }));
 
-/** `richTextPlugin`'s block roles and mark edges, for `createDocument({ semantics })` and the room. */
+/** `createRichTextPlugin()`'s block roles and mark edges, for `createDocument({ semantics })` and the room. */
 export const richTextSemantics = /* @__PURE__ */ withMarks(
 	/* @__PURE__ */ semanticsOf(richTextKinds),
 	richTextMarks
 );
-/** `codePlugin`'s block roles. */
+/** `createCodePlugin()`'s block roles. */
 export const codeSemantics = /* @__PURE__ */ semanticsOf(codeKinds);
-/** `imagePlugin`'s block roles. */
+/** `createImagePlugin()`'s block roles. */
 export const imageSemantics = /* @__PURE__ */ semanticsOf(imageKinds);
 /** The media plugins' block roles (embed, bookmark, file, video, audio). */
 export const mediaSemantics = /* @__PURE__ */ semanticsOf(mediaKinds);

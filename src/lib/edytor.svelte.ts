@@ -34,7 +34,7 @@ import { Popups } from './surface/popups.svelte.js';
 import { onOneLine } from './surface/lines.js';
 import { withRulesAndTriggers } from './plugins/triggers/triggers.js';
 import { Announcer as AnnouncerState } from './session/announcer.svelte.js';
-import { editorEnglish, labelsWith, type EditorLabels, type PartialLabels } from './labels.js';
+import type { PartialLabels } from './labels.js';
 import Announcer from './components/Announcer.svelte';
 import RemoteSelections from './collaboration/RemoteSelections.svelte';
 import SuggestionRanges from './components/SuggestionRanges.svelte';
@@ -167,8 +167,12 @@ export type EdytorOptions = {
 	onDocChange?: (change: DocChange) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: Placeholder;
-	/** The words this view says itself (its announcements, a suggestion's name); English by default. */
-	labels?: PartialLabels<'editor'>;
+	/**
+	 * The words the package shows and says in this view, over the English
+	 * ones: any entry of any section (`richText`, `table`, `editor`…), and
+	 * the commands' slash `keywords` by id.
+	 */
+	labels?: PartialLabels;
 };
 
 /**
@@ -291,8 +295,8 @@ export class Edytor {
 	readonly popups = new Popups();
 	/** What this view announces to assistive technology (`session/announcer`): its block moves and deletes. */
 	readonly announcer: AnnouncerState = new AnnouncerState(this);
-	/** The words this view says itself (`<Edytor labels>`): its announcements, a suggestion's name. */
-	readonly labels: EditorLabels = editorEnglish;
+	/** The words the view was given (`<Edytor labels>`); its plugins read their section through `labelsOf`. */
+	readonly labels: PartialLabels = {};
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONDoc) => void;
 	private onDocChange?: (change: DocChange) => void;
@@ -471,7 +475,7 @@ export class Edytor {
 			Object.defineProperty(this, name, {
 				value: (...args: never) => this.dispatcher.operate(name, args)
 			});
-		this.labels = labelsWith(editorEnglish, labels);
+		if (labels) this.labels = labels;
 		if (document !== undefined) {
 			if (
 				doc !== undefined ||
@@ -780,7 +784,7 @@ export class Edytor {
 		if (typeof placeholder === 'string') return placeholder;
 		const { type, data = {} } = cell;
 		const focused = this.idToBlock.block(id).focused;
-		return placeholder({ type, data, focused, empty: true }) || null;
+		return placeholder({ type, data, focused, empty: true }, this) || null;
 	};
 
 	/** @internal */

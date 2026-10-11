@@ -47,17 +47,19 @@ const APPS = {
 	all: `<script>
 	import {
 		Edytor, createBlockHandlesPlugin, createBlockMenuPlugin, createSlashMenuPlugin, createToolbarPlugin,
-		codePlugin, columnsPlugin, tablePlugin, markdownShortcutsPlugin, createFindPlugin, tocPlugin,
-		createEquationPlugin, createMentionPlugin, createPageLinkPlugin, marqueePlugin, embedPlugin,
-		bookmarkPlugin, filePlugin, videoPlugin, audioPlugin, pagePlugin, createCommentsPlugin, arrowMovePlugin
+		createCodePlugin, createColumnsPlugin, createTablePlugin, createMarkdownShortcutsPlugin, createFindPlugin,
+		createTocPlugin, createEquationPlugin, createMentionPlugin, createPageLinkPlugin, createMarqueePlugin,
+		createEmbedPlugin, createBookmarkPlugin, createFilePlugin, createVideoPlugin, createAudioPlugin,
+		createPagePlugin, createCommentsPlugin, createArrowMovePlugin
 	} from 'edytor';
 	const plugins = [
 		createBlockHandlesPlugin(), createBlockMenuPlugin(), createSlashMenuPlugin(), createToolbarPlugin(),
-		codePlugin, columnsPlugin, tablePlugin, markdownShortcutsPlugin, createFindPlugin(), tocPlugin,
-		createEquationPlugin(),
+		createCodePlugin(), createColumnsPlugin(), createTablePlugin(), createMarkdownShortcutsPlugin(),
+		createFindPlugin(), createTocPlugin(), createEquationPlugin(),
 		createMentionPlugin({ search: () => [] }), createPageLinkPlugin({ search: () => [] }),
-		marqueePlugin, embedPlugin, bookmarkPlugin, filePlugin, videoPlugin, audioPlugin, pagePlugin,
-		createCommentsPlugin({}), arrowMovePlugin
+		createMarqueePlugin(), createEmbedPlugin(), createBookmarkPlugin(), createFilePlugin(),
+		createVideoPlugin(), createAudioPlugin(), createPagePlugin(), createCommentsPlugin({}),
+		createArrowMovePlugin()
 	];
 </script>
 <Edytor {plugins} />`

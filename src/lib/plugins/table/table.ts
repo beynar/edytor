@@ -14,7 +14,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Commands } from '$lib/plugins.js';
 import type { Prepared } from '$lib/crdt/index.js';
 import * as ops from './ops.js';
-import type { PartialLabels } from '$lib/labels.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { caretBox, sameLine } from '$lib/surface/lines.js';
 
@@ -27,10 +26,6 @@ export type TablePluginOptions = {
 	columnWidth?: number;
 	/** The narrowest a column may be resized to, in pixels (default 48). */
 	minColumnWidth?: number;
-	/** The words the table's command and controls say, over the English ones. */
-	labels?: PartialLabels<'table'>;
-	/** The slash menu's keywords of the table command (`block.table`), which replace its own. */
-	keywords?: Partial<Record<string, string[]>>;
 	/**
 	 * A row's or a column's grip: it renders centered where the grip stands
 	 * (left of the hovered row, above the hovered column; without it, no

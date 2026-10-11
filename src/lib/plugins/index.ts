@@ -1,15 +1,12 @@
 export {
-	richTextPlugin,
 	createRichTextPlugin,
 	richTextOperations,
 	richTextPlaceholder,
-	createRichTextPlaceholder,
 	CALLOUT_ICONS,
 	type CalloutIconPicker,
-	type CalloutIconOption,
 	type RichTextPluginOptions
 } from './richtext/RichTextPlugin.svelte';
-export { arrowMovePlugin } from './arrowMove/arrowMove.js';
+export { createArrowMovePlugin } from './arrowMove/arrowMove.js';
 export type { MenuItemPayload, OptionAttributes } from './chrome.js';
 export {
 	BLOCK_ACTIVATE_EVENT,
@@ -17,15 +14,12 @@ export {
 	type BlockActivation,
 	type BlockAddition
 } from './blockHandles/BlockHandleController.svelte.js';
-export { TOOLBAR_COLORS } from './toolbar/ToolbarController.svelte.js';
 export {
 	createBlockHandlesPlugin,
-	type BlockHandleActivation,
 	type BlockHandlesOptions,
 	type BlockHandleSnippetPayload
 } from './blockHandles/blockHandlesPlugin.js';
 export {
-	codePlugin,
 	createCodePlugin,
 	CODE_LANGUAGES,
 	loadCodeLanguage,
@@ -34,7 +28,7 @@ export {
 } from './code/CodePlugin.svelte';
 export type { CodeHeader } from './code/header.svelte.js';
 export type { LanguageMenu, LanguageMenuItem, LanguageRow } from './code/languageMenu.svelte.js';
-export { markdownShortcutsPlugin } from './markdownShortcuts.js';
+export { createMarkdownShortcutsPlugin } from './markdownShortcuts.js';
 export {
 	createMentionPlugin,
 	type MentionItem,
@@ -54,9 +48,7 @@ export { createToolbarPlugin, type ToolbarOptions } from './toolbar/toolbarPlugi
 export type { ToolbarController } from './toolbar/ToolbarController.svelte.js';
 export { createBlockMenuPlugin } from './blockMenu/blockMenuPlugin.js';
 export {
-	suggestionsPlugin,
 	createSuggestionsPlugin,
-	isSuggestionsPlugin,
 	type SuggestionsOptions,
 	type SuggestionBarPayload
 } from './suggestions/suggestionsPlugin.js';
@@ -67,9 +59,7 @@ export type {
 	BlockMenuColor
 } from './blockMenu/BlockMenuController.svelte.js';
 export {
-	imagePlugin,
 	createImagePlugin,
-	isImagePlugin,
 	safeImageSrc,
 	storableImageSrc,
 	oversizedInlineImage,
@@ -80,7 +70,6 @@ export {
 	type ImageAlign
 } from './image/ImagePlugin.svelte';
 export {
-	embedPlugin,
 	createEmbedPlugin,
 	EMBED_PROVIDERS,
 	EMBED_SANDBOX,
@@ -90,14 +79,13 @@ export {
 	type EmbedPluginOptions
 } from './media/EmbedPlugin.svelte';
 export {
-	bookmarkPlugin,
 	createBookmarkPlugin,
 	type BookmarkPluginOptions,
 	type BookmarkPreview
 } from './media/BookmarkPlugin.svelte';
-export { filePlugin, createFilePlugin } from './media/FilePlugin.svelte';
-export { videoPlugin, createVideoPlugin } from './media/VideoPlugin.svelte';
-export { audioPlugin, createAudioPlugin } from './media/AudioPlugin.svelte';
+export { createFilePlugin } from './media/FilePlugin.svelte';
+export { createVideoPlugin } from './media/VideoPlugin.svelte';
+export { createAudioPlugin } from './media/AudioPlugin.svelte';
 export {
 	safeWebUrl,
 	safeMediaSrc,
@@ -107,21 +95,11 @@ export {
 export type { MediaEmptyController, MediaEmptyFailure } from './media/empty.svelte.js';
 export type { UrlPasteController, UrlPasteOffer, UrlPasteOption } from './media/urlPaste.svelte.js';
 export type { ImageControls, ImageBox } from './image/controls.svelte.js';
-export type { ImageEmptyController, ImageEmptyFailure } from './image/empty.svelte.js';
 export type { BlockHandleController } from './blockHandles/BlockHandleController.svelte.js';
-export {
-	columnsPlugin,
-	createColumnsPlugin,
-	isColumnsPlugin,
-	type ColumnsPluginOptions
-} from './columns/ColumnsPlugin.svelte';
+export { createColumnsPlugin, type ColumnsPluginOptions } from './columns/ColumnsPlugin.svelte';
 export { createFindPlugin, findController, type FindPluginOptions } from './find/findPlugin.js';
 export type { FindController, ReplaceMatches } from './find/FindController.svelte.js';
-export {
-	marqueePlugin,
-	createMarqueePlugin,
-	type MarqueePluginOptions
-} from './marquee/marqueePlugin.js';
+export { createMarqueePlugin, type MarqueePluginOptions } from './marquee/marqueePlugin.js';
 export type { MarqueeBoxPayload } from './marquee/MarqueeController.svelte.js';
 export { findMatches, type FindMatch, type FindOptions } from './find/search.js';
 export {
@@ -137,19 +115,13 @@ export type {
 	CommentUser,
 	PlacedThread
 } from './comments/CommentsController.svelte.js';
-export { pagePlugin, createPagePlugin, type PagePluginOptions } from './page/PagePlugin.svelte';
+export { createPagePlugin, type PagePluginOptions } from './page/PagePlugin.svelte';
 export {
-	tocPlugin,
 	createTocPlugin,
 	type TocPluginOptions,
 	type TocHeadingLevel
 } from './toc/TocPlugin.svelte';
-export {
-	tablePlugin,
-	createTablePlugin,
-	isTablePlugin,
-	type TablePluginOptions
-} from './table/TablePlugin.svelte';
+export { createTablePlugin, type TablePluginOptions } from './table/TablePlugin.svelte';
 // The table ops, prepared over any document (`document.apply(insertTableRow(document, …))`).
 export {
 	insertTableRow,

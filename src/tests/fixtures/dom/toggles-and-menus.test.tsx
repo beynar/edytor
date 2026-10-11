@@ -11,7 +11,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '../../atMention.svelte';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { bareTogglePlugin } from './BareToggle.svelte';
-import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { createDocument } from '$lib/crdt/index.js';
 import {
 	canonicalTree,
@@ -382,7 +382,7 @@ describe('the block menu’s “Turn into” flyout opened with the mouse (SW8-p
 describe('markdown shortcuts read the insertion point, not the caret (SW8-plugins-2)', () => {
 	it('an insertText away from the caret never completes a shortcut at the caret', async () => {
 		const view = await render(
-			[markdownShortcutsPlugin],
+			[createMarkdownShortcutsPlugin()],
 			[{ id: 'x', type: 'paragraph', content: [{ text: 'a *b' }] }]
 		);
 		const text = view.edytor.idToBlock.get('x')!.firstText!;
@@ -397,7 +397,7 @@ describe('markdown shortcuts read the insertion point, not the caret (SW8-plugin
 
 	it('nor a block prefix: `#` inserted mid-block keeps the paragraph', async () => {
 		const view = await render(
-			[markdownShortcutsPlugin],
+			[createMarkdownShortcutsPlugin()],
 			[{ id: 'x', type: 'paragraph', content: [{ text: '# ab' }] }]
 		);
 		const text = view.edytor.idToBlock.get('x')!.firstText!;

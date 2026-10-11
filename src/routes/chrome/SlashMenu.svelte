@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import { iconOf } from './icons.js';
 	import { keepFocus } from './keepFocus.js';
 	import type { EditorCommand, SlashMenuController } from '$lib/index.js';
@@ -6,7 +7,7 @@
 	/** The slash menu and the `+`'s menu (Notion's), drawn for `createSlashMenuPlugin({ menu })`. */
 	let { controller }: { controller: SlashMenuController } = $props();
 	const commands = $derived(controller.commands);
-	const labels = $derived(controller.labels);
+	const labels = $derived(words.slashMenu);
 
 	/** The rows by group, in order (Notion's headings): a `group` per run of one group's rows. */
 	const groups = $derived.by(() => {
@@ -57,9 +58,12 @@
 			<div class="slash-empty" data-testid="slash-menu-empty">{labels.noResults}</div>
 		{/if}
 		{#each groups as group, at (`${at}:${group.name}`)}
-			<div role="group" aria-label={group.name ? controller.groupName(group.name) : undefined}>
+			<div
+				role="group"
+				aria-label={group.name ? (labels.groups[group.name] ?? group.name) : undefined}
+			>
 				{#if group.name}<div class="slash-heading" aria-hidden="true">
-						{controller.groupName(group.name)}
+						{labels.groups[group.name] ?? group.name}
 					</div>{/if}
 				{#each group.rows as { command, index } (command.id)}
 					<button

@@ -4,7 +4,7 @@
 	import type { Snippet } from 'svelte';
 	import type { InlineBlockSnippetPayload, Plugin, TriggerContext } from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
-	import { pageLinkEnglish, labelsWith, viewLabels, type PartialLabels } from '$lib/labels.js';
+	import { pageLinkEnglish, labelsOf } from '$lib/labels.js';
 	import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 
 	/** A page the page-link menu offers: what your app's search answers. */
@@ -33,18 +33,13 @@
 		/** The text that opens the menu (default `[[`). */
 		char?: string;
 		/**
-		 * The menu's markup; it renders while `controller.isOpen`, at the caret
-		 * (without it, nothing shows). Keep its ARIA with `{@attach
-		 * controller.popup}` on the list and `{...controller.option(index)}` on
-		 * each row.
+		 * The menu's markup and its words; it renders while `controller.isOpen`,
+		 * at the caret (without it, nothing shows). Keep its ARIA with `{@attach
+		 * controller.popup}` on the list (name it) and
+		 * `{...controller.option(index)}` on each row.
 		 */
 		menu?: Snippet<[TriggerMenuController<PageLinkItem>]>;
-		/** The words the menu and the atom show, over the English ones. */
-		labels?: PartialLabels<'pageLink'>;
 	};
-
-	/** Each view's page link labels: the first page link plugin listed claims them, as its atom. */
-	const pageLinkLabels = viewLabels(pageLinkEnglish);
 
 	/**
 	 * Links to your app's pages, as Notion's `[[`: it opens a menu of the pages
@@ -54,9 +49,7 @@
 	 */
 	export const createPageLinkPlugin =
 		(options: PageLinkPluginOptions): Plugin =>
-		(edytor) => {
-			const labels = labelsWith(pageLinkEnglish, options.labels);
-			pageLinkLabels.claim(edytor, labels);
+		() => {
 			return {
 				inlineBlocks: {
 					pageLink: {
@@ -70,14 +63,11 @@
 				triggers: [
 					{
 						char: options.char ?? '[[',
-						name: labels.menu,
-						empty: labels.noResults,
-						searching: labels.searching,
 						items: (query, ctx) => options.search(query, ctx),
 						label: (page: PageLinkItem) => page.title,
 						key: (page: PageLinkItem) => page.id,
 						menu: options.menu,
-						onPick: (page: PageLinkItem, { block, from, caret }) => {
+						onPick: (page: PageLinkItem, { edytor, block, from, caret }) => {
 							const href = sanitizeLinkHref(page.href ?? options.href?.(page)) ?? undefined;
 							const data: PageLinkData = {
 								id: page.id,
@@ -104,7 +94,8 @@
 		data-edytor-page-link
 		data-page-id={block.data.id}
 		><span class="icon" aria-hidden="true">{block.data.icon ?? '📄'}</span><span class="title"
-			>{block.data.title ?? pageLinkLabels.of(block.handle?.edytor).untitled}</span
+			>{block.data.title ??
+				labelsOf(block.handle?.edytor, 'pageLink', pageLinkEnglish).untitled}</span
 		></a
 	>
 {/snippet}

@@ -11,7 +11,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { pin } from '$lib/surface/overlay.js';
-import type { TableLabels } from '$lib/labels.js';
 import {
 	attribute,
 	optionAttributes,
@@ -19,7 +18,7 @@ import {
 	type OptionAttributes
 } from '../chrome.js';
 import { holdKeys, listPopup, menuKey } from '../list.svelte.js';
-import { BandDrag, listen } from '../bands.svelte.js';
+import { BandDrag, bandKey, listen } from '../bands.svelte.js';
 import { tablePreview } from './dragPreview.js';
 import {
 	caretCell,
@@ -134,8 +133,6 @@ export type TableMenuRow = {
 	 * `insert-left`, `insert-right`, `move-left`, `move-right`, `delete-column`.
 	 */
 	id: string;
-	/** Its words, in the plugin's labels. */
-	label: string;
 	/** It deletes. */
 	danger?: boolean;
 	/** Whether it can run now (Move up on the first row cannot). */
@@ -161,7 +158,7 @@ export type TableMenuItem = MenuItemPayload<TableMenuRow> & {
  * `button`): it drags the row or the column, a click opens its menu,
  * ArrowDown opens it too and Escape closes it, and it carries the ARIA
  * (`aria-haspopup`, `aria-expanded`, `aria-controls` while its menu is
- * open, its name unless you set one). The plugin centers it where the
+ * open; name it). The plugin centers it where the
  * grip stands.
  */
 export type TableGripPayload = {
@@ -174,14 +171,10 @@ export type TableGripPayload = {
 	expanded: boolean;
 	/** It is being dragged. */
 	dragging: boolean;
-	/** Its accessible name (`labels.rowMenu`, `labels.columnMenu`). */
-	label: string;
 	/** Open its menu, or close it when it is open (what a click does). */
 	toggle: () => void;
 	/** The grip's behavior and ARIA: `{@attach grip}`. */
 	grip: Attachment<HTMLElement>;
-	/** The plugin's words. */
-	labels: TableLabels;
 	/** The table's chrome (its menu, its actions). */
 	chrome: TableChrome;
 };
@@ -194,12 +187,8 @@ export type TableGripPayload = {
  */
 export type TableAddPayload = {
 	kind: 'row' | 'column';
-	/** Its accessible name (`labels.addRow`, `labels.addColumn`). */
-	label: string;
 	/** Add the row or the column. */
 	add: () => void;
-	/** The plugin's words. */
-	labels: TableLabels;
 };
 
 /** Where a grip stands, layer-relative: the point it centers on. */
@@ -267,8 +256,6 @@ export class TableChrome {
 	constructor(
 		/** @internal */
 		readonly edytor: Edytor,
-		/** The words the chrome shows and says (the plugin's `labels`). */
-		readonly labels: TableLabels,
 		/**
 		 * A column's width when it sets none, and the narrowest a resize leaves.
 		 * @internal
@@ -278,18 +265,12 @@ export class TableChrome {
 		readonly minColumnWidth: number
 	) {
 		this.band = new BandDrag(edytor);
-		this.popup = listPopup(
-			edytor,
-			'table-menu',
-			'menu',
-			() => (this.menu?.kind === 'row' ? labels.rowMenu : labels.columnMenu),
-			(node) => {
-				const kind = this.menu?.kind;
-				if (!kind) return null;
-				node.setAttribute('data-edytor-table-menu', kind);
-				return {};
-			}
-		);
+		this.popup = listPopup(edytor, 'table-menu', 'menu', (node) => {
+			const kind = this.menu?.kind;
+			if (!kind) return null;
+			node.setAttribute('data-edytor-table-menu', kind);
+			return {};
+		});
 	}
 
 	/** The view is readonly (reactive): the chrome shows nothing. */
@@ -660,7 +641,6 @@ export class TableChrome {
 			return {
 				item: row,
 				id: this.rowId(row),
-				label: row.label,
 				selected: index === this.index,
 				disabled,
 				danger: Boolean(row.danger),
@@ -747,8 +727,6 @@ export class TableChrome {
 	#grips: Partial<Record<TableMenu['kind'], Attachment<HTMLElement>>> = {};
 
 	#grip = (node: HTMLElement, kind: TableMenu['kind']) => {
-		if (!node.hasAttribute('aria-label') && !node.hasAttribute('aria-labelledby'))
-			node.setAttribute('aria-label', this.labels[`${kind}Menu`]);
 		node.setAttribute('aria-haspopup', 'menu');
 		$effect(() => {
 			const open = this.menu?.kind === kind;
@@ -817,7 +795,6 @@ export class TableChrome {
 			] as const
 		).map(([key, enabled, run], at) => ({
 			id: kebab(key),
-			label: this.labels[key as keyof TableLabels] as string,
 			...(at === 4 && { danger: true }),
 			isEnabled: () => enabled,
 			run
@@ -880,7 +857,7 @@ export class TableChrome {
 	 * @internal
 	 */
 	key = (event: KeyboardEvent, column: number) => {
-		const step = this.band.key(event, { ArrowLeft: -1, ArrowRight: 1 });
+		const step = bandKey(this.edytor, this.band, event, { ArrowLeft: -1, ArrowRight: 1 });
 		const drag = step && this.#resize(column, 0, step * (event.shiftKey ? 32 : 8));
 		if (drag) this.#release(drag);
 	};

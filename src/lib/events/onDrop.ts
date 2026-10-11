@@ -79,8 +79,7 @@ const isControlDrop = (root: Element, event: DragEvent) =>
  * The view's own text drag: a selected text range dragged from
  * inside the host, the block handles' drags excluded (their payload's MIME).
  */
-const isTextDrag = (edytor: Edytor | undefined, root: Element, dataTransfer: DataTransfer | null) =>
-	edytor !== undefined &&
+const isTextDrag = (edytor: Edytor, root: Element, dataTransfer: DataTransfer | null) =>
 	textDragOf(edytor) !== undefined &&
 	!typesOf(dataTransfer).includes(EDYTOR_BLOCK_DRAG_MIME) &&
 	fromHost(root);
@@ -186,17 +185,13 @@ const insertFromDrop = (edytor: Edytor, root: Element, event: DragEvent) => {
  *   exception is a foreign drop other than a file on a kind's own control,
  *   which is the control's (`isControlDrop`).
  */
-export const preventUnsupportedDrop = (event: DragEvent, edytor?: Edytor) => {
-	const root = event.currentTarget;
-	if (!(root instanceof Element)) {
-		event.preventDefault();
-		event.stopPropagation();
-		return;
-	}
+export const preventUnsupportedDrop = (event: DragEvent, edytor: Edytor) => {
+	// Listened on the host.
+	const root = event.currentTarget as Element;
 
 	// The view's own text drag: a move (a copy with Alt) where it may land.
 	if (isTextDrag(edytor, root, event.dataTransfer)) {
-		const takes = takesTextDrop(edytor!, root, event);
+		const takes = takesTextDrop(edytor, root, event);
 		if (event.type === 'dragover') {
 			if (!takes) return;
 			event.preventDefault();
@@ -206,12 +201,12 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor?: Edytor) => {
 		}
 		event.preventDefault();
 		event.stopPropagation();
-		const drag = textDragOf(edytor!)!;
+		const drag = textDragOf(edytor)!;
 		if (!takes) return;
 		drag.copy = event.altKey;
 		// Its occurrence's handler takes it (`dropText`): the drop is the paste of a move.
 		drag.dropping = true;
-		return insertFromDrop(edytor!, root, event);
+		return insertFromDrop(edytor, root, event);
 	}
 
 	if (event.type === 'dragover') {
@@ -239,5 +234,5 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor?: Edytor) => {
 		return;
 	}
 	// Mid-composition drops are swallowed: the preview owns the write path.
-	if (edytor && !edytor.isComposing) return insertFromDrop(edytor, root, event);
+	if (!edytor.isComposing) return insertFromDrop(edytor, root, event);
 };

@@ -101,8 +101,6 @@ const shown = (text: Text, node: Node) => {
 export class Projector {
 	/** What the last display left in the DOM, and the selection epoch it showed. */
 	#displayed: (Points & { epoch: number }) | null = null;
-	/** The observer holds DOM records it has not reconciled yet (set at attach). */
-	recordsPending: () => boolean = () => false;
 	/** The (request, render, remount) key the last completed pass answered. */
 	#done = '';
 	#request = -1;
@@ -216,14 +214,11 @@ export class Projector {
 	 * removal re-rendering the text under a range) runs now. The flag is no
 	 * reactive source, so no later flush is owed: without this, the range the
 	 * render moved (Firefox keeps it where the removed element stood) would be
-	 * adopted as the gesture's when its `selectionchange` lands.
+	 * adopted as the gesture's when its `selectionchange` lands. The observer
+	 * calls it too once it processed DOM records: a display that waits gets a
+	 * pass.
 	 */
 	inputHandled = () => {
-		if (this.#pending) this.edytor.surface.update();
-	};
-
-	/** The observer processed DOM records: a display that waits gets a pass. */
-	recordsChanged = () => {
 		if (this.#pending) this.edytor.surface.update();
 	};
 
@@ -264,7 +259,7 @@ export class Projector {
 		if (edytor.intentSerial === this.#serial && (this.#snapBack(dom) || this.#jump()))
 			return 'drift';
 		if (edytor.intentSerial !== this.#serial || selection.dragging) return this.#observed('intent');
-		return this.#seen !== this.#flushes || this.recordsPending()
+		return this.#seen !== this.#flushes || this.edytor.surface.pending()
 			? 'drift'
 			: this.#observed('foreign');
 	};

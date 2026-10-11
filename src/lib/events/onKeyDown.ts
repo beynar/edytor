@@ -8,7 +8,7 @@ import {
 import { replaceSelectedAtom } from '$lib/session/bindings.js';
 import { admitKeyAttempt, isTrailingSoftBreakBackward } from './onBeforeInput.js';
 import { INTENTS, intentSnapshot, keyIntentOf, targetless } from '$lib/session/attempt.js';
-import { getDomSelection } from '$lib/selection/domSelection.js';
+import { selectionIsInside } from './onFocus.js';
 
 const isEventFromEditor = (edytor: Edytor, event: KeyboardEvent) => {
 	const { node, selection } = edytor;
@@ -29,11 +29,7 @@ const isEventFromEditor = (edytor: Edytor, event: KeyboardEvent) => {
 		return true;
 	if (event.composedPath().includes(node)) return true;
 	if (event.target instanceof Node && node.contains(event.target)) return true;
-	const dom = getDomSelection(node);
-	return Boolean(
-		dom?.anchorNode &&
-		(node.contains(dom.anchorNode) || (dom.focusNode && node.contains(dom.focusNode)))
-	);
+	return selectionIsInside(node);
 };
 
 const hasCommandModifier = (event: KeyboardEvent) => event.metaKey || event.ctrlKey || event.altKey;

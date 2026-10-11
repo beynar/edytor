@@ -34,7 +34,7 @@
  *   flip back. A kind's own markup around its slots is the kind's.
  */
 import { tick, untrack } from 'svelte';
-import type { DocAnchor, YTransaction } from '../crdt/index.js';
+import type { DocAnchor } from '../crdt/index.js';
 import type { Edytor } from '../edytor.svelte.js';
 import type { Text } from '../text/text.svelte.js';
 import { diffText } from '../utils/diffText.js';
@@ -248,11 +248,6 @@ export class SurfaceObserver {
 		return this.#dirty.size > 0 || this.#removed.length > 0;
 	};
 
-	/** Before a transaction: pending records name their contents while the model equals the render. */
-	before = (transaction: YTransaction) => {
-		void transaction;
-		if (this.#take()) this.signal();
-	};
 
 	/**
 	 * Compare and act now (an `input` event, a composition's end, a context
@@ -503,7 +498,7 @@ export class SurfaceObserver {
 		}
 		if (this.#fresh) {
 			this.#fresh = false;
-			void settle(work).then(edytor.projector.recordsChanged);
+			void settle(work).then(edytor.projector.inputHandled);
 		}
 		return work;
 	};

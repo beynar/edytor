@@ -83,7 +83,7 @@ export const createBlockMenuPlugin =
 
 		return {
 			// Colours by name in the slash menu (`/red`), as in Notion.
-			commands: colorCommands(edytor, controller.labels),
+			commands: colorCommands(edytor),
 			hotkeys: {
 				'mod+d': ({ prevent }) => {
 					if (edytor.readonly) return;

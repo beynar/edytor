@@ -1,6 +1,5 @@
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
-import type { ImageLabels } from '$lib/labels.js';
 import { MAX_INLINE_IMAGE_BYTES, oversizedInlineImage, safeImageSrc } from './image.js';
 import type { FileUploads, Uploader } from '../uploads.svelte.js';
 
@@ -39,8 +38,6 @@ export class ImageEmptyController {
 	constructor(
 		/** The empty block; none in a suggestion's preview. */
 		readonly block: Block | undefined,
-		/** The words of the view rendering it (a suggestion's preview included). */
-		readonly labels: ImageLabels,
 		private options: {
 			upload?: Uploader;
 			uploads?: FileUploads;

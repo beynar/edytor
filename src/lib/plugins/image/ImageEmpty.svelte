@@ -2,7 +2,6 @@
 	import { getContext, untrack, type Snippet } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { Block } from '$lib/block/block.svelte.js';
-	import { imageLabels } from './image.js';
 	import { ImageEmptyController } from './empty.svelte.js';
 	import type { FileUploads, Uploader } from '../uploads.svelte.js';
 
@@ -38,11 +37,10 @@
 			untrack(() => uploads?.fill(id));
 		}
 	});
-	/** The view rendering it (a suggestion's preview included): its words and its `empty`. */
+	/** The view rendering it (a suggestion's preview included): its `empty`. */
 	const view = getContext<Edytor>('edytor');
-	const labels = imageLabels.of(view);
 	const empty = untrack(() => emptyOf(block?.edytor ?? view));
-	const panel = untrack(() => new ImageEmptyController(block, labels, { upload, uploads, error }));
+	const panel = untrack(() => new ImageEmptyController(block, { upload, uploads, error }));
 </script>
 
 {#if empty}{@render empty(panel)}{/if}

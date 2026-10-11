@@ -15,6 +15,7 @@
 </script>
 
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import { iconOf } from './icons.js';
 	import { keepFocus } from './keepFocus.js';
 	import type { TableAddPayload, TableChrome, TableGripPayload } from '$lib/index.js';
@@ -33,11 +34,16 @@
 		type="button"
 		class="table-grip"
 		data-edytor-table-grip={grip.kind}
-		aria-label={grip.label}
+		aria-label={words.table[`${grip.kind}Menu`]}
 		{@attach grip.grip}
 	></button>
 {:else if menu}
-	<div class="table-menu" {@attach menu.popup} {@attach menu.keys}>
+	<div
+		class="table-menu"
+		aria-label={words.table[`${menu.menu?.kind ?? 'row'}Menu`]}
+		{@attach menu.popup}
+		{@attach menu.keys}
+	>
 		{#each menu.items as item (item.item.id)}
 			<button
 				type="button"
@@ -48,7 +54,8 @@
 				data-testid={`table-menu-${item.item.id}`}
 				style:--table-menu-icon={iconOf(TABLE_ICONS[item.item.id] ?? '')}
 				onmousemove={item.select}
-				onclick={item.run}>{item.label}</button
+				onclick={item.run}
+				>{words.table[item.item.id.replace(/-./g, (m) => m[1]!.toUpperCase())]}</button
 			>
 		{/each}
 	</div>
@@ -57,8 +64,8 @@
 		type="button"
 		class="table-add"
 		data-edytor-table-add={add.kind}
-		aria-label={add.label}
-		title={add.label}
+		aria-label={add.kind === 'row' ? words.table.addRow : words.table.addColumn}
+		title={add.kind === 'row' ? words.table.addRow : words.table.addColumn}
 		onmousedown={keepFocus}
 		onclick={add.add}
 	></button>

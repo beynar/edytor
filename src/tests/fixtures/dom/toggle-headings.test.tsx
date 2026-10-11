@@ -13,7 +13,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { createRichTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { convertToKind } from '$lib/kinds.js';
 import { hidden } from '$lib/selection/visibility.js';
@@ -39,7 +39,7 @@ const render = (children: JSONBlock[]) =>
 		{
 			plugins: [
 				createMarkdownShortcutsPlugin(),
-				() => ({ placeholder: createRichTextPlaceholder() }),
+				() => ({ placeholder: richTextPlaceholder }),
 				richTextPlugin
 			],
 			value: { children }

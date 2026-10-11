@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import type { JSONDoc } from '$lib/utils/json.js';
-	import { createRichTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+	import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
@@ -358,7 +358,7 @@
 							{sync}
 							class="demo-edytor"
 							aria-label="A calmer place to think"
-							placeholder={createRichTextPlaceholder()}
+							placeholder={richTextPlaceholder}
 							bind:edytor
 						/>
 					{/if}

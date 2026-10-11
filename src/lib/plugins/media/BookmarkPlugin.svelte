@@ -6,7 +6,6 @@
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
 	import type { MediaEmptyController } from './empty.svelte.js';
 	import { MEDIA_ICONS, escapeHtml, mediaPlugin, safeWebUrl } from './media.js';
-	import type { PartialLabels } from '$lib/labels.js';
 
 	/** What an `unfurl` answers about a page; every field optional. */
 	export type BookmarkPreview = {
@@ -25,10 +24,6 @@
 		 * set from the panel or the paste menu; without it the card shows the URL.
 		 */
 		unfurl?: (url: string) => Promise<BookmarkPreview | null | undefined>;
-		/** The words the block shows (its empty panel, its menu row), over the English ones. */
-		labels?: PartialLabels<'media'>;
-		/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
-		keywords?: Partial<Record<string, string[]>>;
 		/**
 		 * The menu a URL pasted on an empty line opens (Link, Embed, Bookmark);
 		 * it renders while `controller.open`, under the line (without it, the
@@ -77,7 +72,7 @@
 	 * `http(s)` link on an empty line offers "Bookmark".
 	 */
 	export const createBookmarkPlugin = (options: BookmarkPluginOptions = {}): Plugin =>
-		mediaPlugin('bookmark', options, ['link', 'url', 'preview', 'unfurl'], (labels, edytor) => {
+		mediaPlugin('bookmark', options, ['link', 'url', 'preview', 'unfurl'], (edytor) => {
 			/**
 			 * Ask `unfurl` about `url` and store its answer on `block`, as one
 			 * data write outside the undo history (`UNFURL_ORIGIN`), when the
@@ -117,12 +112,10 @@
 					edytor,
 					{
 						type: 'bookmark',
-						label: labels.bookmark.offer,
 						icon: MEDIA_ICONS.bookmark,
 						data: (url) => ({ url }),
 						created: (block, url) => void fill(block, url)
 					},
-					labels,
 					options.menu
 				),
 				record: {

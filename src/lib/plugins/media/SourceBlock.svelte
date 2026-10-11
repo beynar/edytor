@@ -1,12 +1,12 @@
 <script module lang="ts">
 	import type { BlockDefinition, BlockSnippetPayload, Plugin } from '$lib/plugins.js';
 	import MediaEmpty from './MediaEmpty.svelte';
+	import { labelsOf, mediaEnglish } from '$lib/labels.js';
 	import { fileUploads } from '../uploads.svelte.js';
 	import {
 		claimed,
 		escapeHtml,
 		fileNameOf,
-		mediaLabelsOf,
 		mediaPlugin,
 		mediaSourceOf,
 		safeMediaSrc,
@@ -63,7 +63,7 @@
 			}
 		}
 	): Plugin =>
-		mediaPlugin(kind, options, keywords, (_labels, edytor, claims) => {
+		mediaPlugin(kind, options, keywords, (edytor, claims) => {
 			const { upload } = options;
 			const uploads = claims && upload ? fileUploads(edytor) : undefined;
 			if (upload)
@@ -101,7 +101,7 @@
 			typeof block.data.name === 'string' && block.data.name ? block.data.name : fileNameOf(src)}
 		{@const size =
 			typeof block.data.size === 'number'
-				? mediaLabelsOf(block.handle?.edytor, 'file').fileSize(block.data.size)
+				? labelsOf(block.handle?.edytor, 'media', mediaEnglish).fileSize(block.data.size)
 				: ''}
 		<div use:block.void data-edytor-file>
 			<a

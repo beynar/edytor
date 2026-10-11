@@ -9,7 +9,7 @@
 	import CodeHeader from './CodeHeader.svelte';
 	import LanguageMenuPanel from './LanguageMenu.svelte';
 	import { LanguageMenu, languageMenus } from './languageMenu.svelte.js';
-	import { codeEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
+	import { codeEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import {
 		DEFAULT_CODE_SETTINGS,
 		codeSettings,
@@ -43,7 +43,6 @@
 			const own: CodeSettings = {
 				languages: options.languages ?? DEFAULT_CODE_SETTINGS.languages,
 				defaultLanguage: options.defaultLanguage ?? DEFAULT_CODE_SETTINGS.defaultLanguage,
-				labels: labelsWith(codeEnglish, options.labels),
 				header: options.header,
 				menu: options.menu
 			};
@@ -231,9 +230,9 @@
 						snippet: code,
 						presets: [
 							{
-								label: own.labels.code,
+								label: labelsOf(edytor, 'code', codeEnglish).code,
 								icon: '</>',
-								keywords: keywordsOf('block.code', ['code block', 'snippet'], options.keywords),
+								keywords: keywordsOf(edytor, 'block.code', ['code block', 'snippet']),
 								markdown: ['```'],
 								group: 'Media'
 							}

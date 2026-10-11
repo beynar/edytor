@@ -82,7 +82,7 @@ export type {
 export {
 	createRichTextPlugin,
 	richTextOperations,
-	createRichTextPlaceholder,
+	richTextPlaceholder,
 	CALLOUT_ICONS,
 	type CalloutIconPicker,
 	type CalloutIconOption,
@@ -120,7 +120,6 @@ export {
 	type SlashMenuOptions,
 	type SlashMenuController,
 	createToolbarPlugin,
-	TOOLBAR_COLORS,
 	type ToolbarOptions,
 	type ToolbarController,
 	createBlockMenuPlugin,
@@ -308,7 +307,7 @@ export {
 	type HistoryRestoreResult,
 	type HistoryUndoResult,
 	type HistoryVersion,
-	type HistoryPanelLabels,
+	type VersionHistoryStatus,
 	type VersionHistoryOptions,
 	type VersionChange,
 	type VersionDiff
@@ -320,26 +319,19 @@ export {
 export type { EdytorProps } from './components/Edytor.svelte';
 export type { EdytorOptions, Snippets } from './edytor.svelte.js';
 export type {
-	BlockHandlesLabels,
 	BlockMenuLabels,
 	CodeLabels,
 	ColumnsLabels,
 	CommentsLabels,
 	EditorLabels,
 	EquationLabels,
-	FindLabels,
 	ImageLabels,
-	MediaKindLabels,
 	MediaLabels,
-	MentionLabels,
 	PageLabels,
 	PageLinkLabels,
 	RichTextLabels,
-	SlashMenuLabels,
-	SuggestionsLabels,
 	TableLabels,
-	TocLabels,
-	ToolbarLabels
+	TocLabels
 } from './labels.js';
 export type {
 	BlockElement,

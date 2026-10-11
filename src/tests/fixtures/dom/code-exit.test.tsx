@@ -17,7 +17,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { createRichTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -153,10 +153,8 @@ describe('ArrowDown in a code block', () => {
 });
 
 it('an empty code line shows no placeholder', () => {
+	expect(richTextPlaceholder({ type: 'codeLine', data: {}, focused: true } as never)).toBeNull();
 	expect(
-		createRichTextPlaceholder()({ type: 'codeLine', data: {}, focused: true } as never)
-	).toBeNull();
-	expect(
-		createRichTextPlaceholder()({ type: 'paragraph', data: {}, focused: true } as never)
+		richTextPlaceholder({ type: 'paragraph', data: {}, focused: true } as never)
 	).not.toBeNull();
 });

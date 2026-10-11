@@ -32,7 +32,6 @@ import {
 import { takeKeys } from '$lib/events/onFocus.js';
 import { EDYTOR_BLOCK_DRAG_MIME } from '$lib/events/onDrop.js';
 import { kindLabel } from '$lib/kinds.js';
-import { blockHandlesEnglish, type BlockHandlesLabels } from '$lib/labels.js';
 import type { Popup, PopupOpener } from '$lib/surface/popups.svelte.js';
 import { dragPreview } from './dragPreview.js';
 import { DropIndicator } from './dropIndicator.js';
@@ -110,7 +109,6 @@ const HANDLE_COLUMN = 50;
 type BlockHandleControllerOptions = {
 	draggable: boolean;
 	onActivate?: (activation: BlockActivation) => void;
-	labels?: BlockHandlesLabels;
 };
 
 /**
@@ -176,11 +174,6 @@ export class BlockHandleController {
 
 	get draggable() {
 		return this.options.draggable;
-	}
-
-	/** The words the handles say (the plugin's `labels`): read them in your `handle`. */
-	get labels(): BlockHandlesLabels {
-		return this.options.labels ?? blockHandlesEnglish;
 	}
 
 	/**

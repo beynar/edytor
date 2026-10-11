@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import type { MediaEmptyController } from '$lib/index.js';
 
 	/**
@@ -8,8 +9,11 @@
 	 * progress; a readonly view's (or a suggestion preview's) placeholder.
 	 */
 	let { panel }: { panel: MediaEmptyController } = $props();
-	const labels = $derived(panel.labels);
-	const { placeholder, submit, invalid } = $derived(panel.kindLabels);
+	const labels = $derived(words.media);
+	const own = $derived(labels[panel.kind]);
+	const { placeholder, submit, invalid } = $derived(own);
+	/** The button and placeholder text ("Embed a link"; the file's names its upload). */
+	const label = $derived(panel.canUpload && 'addOrUpload' in own ? own.addOrUpload : own.add);
 	const pending = $derived(panel.pending);
 </script>
 
@@ -22,14 +26,14 @@
 {:else if panel.readonly}
 	<div data-edytor-media-placeholder>
 		<span aria-hidden="true">{panel.icon}</span>
-		{panel.label}
+		{label}
 	</div>
 {:else}
 	<button
 		type="button"
 		data-edytor-media-add
 		onmousedown={(event) => event.preventDefault()}
-		onclick={panel.toggle}><span aria-hidden="true">{panel.icon}</span> {panel.label}</button
+		onclick={panel.toggle}><span aria-hidden="true">{panel.icon}</span> {label}</button
 	>
 	{#if panel.open}
 		<div data-edytor-media-form>

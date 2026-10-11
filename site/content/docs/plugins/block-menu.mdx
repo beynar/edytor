@@ -16,12 +16,12 @@ icon: menu
 {#snippet menu(controller: BlockMenuController)}
 	<div class="menu" data-edytor-block-menu>
 		<input
-			aria-label={controller.labels.searchLabel}
+			aria-label="Search actions"
 			value={controller.query}
 			oninput={(event) => controller.search(event.currentTarget.value)}
 			{@attach controller.keys}
 		/>
-		<div {@attach controller.popup}>
+		<div aria-label="Block actions" {@attach controller.popup}>
 			{#each controller.rows as row, index (`${index}:${row.id}`)}
 				<button
 					{...controller.option(index)}
@@ -74,10 +74,6 @@ const blockMenu = createBlockMenuPlugin({
     menu: {
       type: "Snippet<[BlockMenuController]>",
       description: "The menu's markup. Without it, nothing shows. See Markup below.",
-    },
-    labels: {
-      type: "PartialLabels<'blockMenu'>",
-      description: "The menu's words: its actions, search field, headings, the Color flyout (`color`, `textColor`, `backgroundColor`, `colors` by palette name, `colorText`, `colorBackground`) and shortcut key names, over the English ones. See Localization.",
     },
   }}
 />

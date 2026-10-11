@@ -7,13 +7,7 @@
 	import { listedColumns, tableBlock, unlistedOrder } from '$lib/crdt/tables.js';
 	import { onPress } from '$lib/events/onFocus.js';
 	import type { HotKey } from '$lib/session/keymap.js';
-	import {
-		tableEnglish,
-		keywordsOf,
-		labelsWith,
-		viewLabels,
-		type TableLabels
-	} from '$lib/labels.js';
+	import { tableEnglish, keywordsOf, labelsOf, type TableLabels } from '$lib/labels.js';
 	import { hoverChrome } from '../bands.svelte.js';
 	import TableChromeLayer from './TableChrome.svelte';
 	import { TableChrome } from './chrome.svelte.js';
@@ -39,7 +33,6 @@
 
 	/** Each view's chrome (the first table plugin listed in it claims the view). */
 	const chromes = new WeakMap<Edytor, TableChrome>();
-	const labelsOf = viewLabels(tableEnglish);
 
 	/**
 	 * The column ids `table`'s rows show, read from the cells (reactive), as
@@ -105,10 +98,8 @@
 		const minColumnWidth = options.minColumnWidth ?? 48;
 		const fresh = tableBlock({ rows: options.rows ?? 3, columns: options.columns ?? 3 });
 		const plugin: Plugin = (edytor) => {
-			const labels = labelsWith(tableEnglish, options.labels);
-			labelsOf.claim(edytor, labels);
-			const chrome =
-				chromes.get(edytor) ?? new TableChrome(edytor, labels, columnWidth, minColumnWidth);
+			const labels = labelsOf(edytor, 'table', tableEnglish);
+			const chrome = chromes.get(edytor) ?? new TableChrome(edytor, columnWidth, minColumnWidth);
 			chromes.set(edytor, chrome);
 			/** A cell's element: its role, its column, and whether a header row or column holds it. */
 			const cellElement = (_: unknown, id?: string) => {
@@ -206,11 +197,13 @@
 							{
 								label: labels.table,
 								data: fresh.data,
-								keywords: keywordsOf(
-									'block.table',
-									['table', 'grid', 'simple table', 'rows', 'columns'],
-									options.keywords
-								),
+								keywords: keywordsOf(edytor, 'block.table', [
+									'table',
+									'grid',
+									'simple table',
+									'rows',
+									'columns'
+								]),
 								group: 'Advanced blocks'
 							}
 						],
@@ -384,7 +377,7 @@
 
 <!-- A row: its cells, then a placeholder in each column it shows none of (`table.pad`). -->
 {#snippet row({ block, children }: BlockSnippetPayload)}
-	{@const labels = labelsOf.of(block.handle?.edytor)}
+	{@const labels = labelsOf(block.handle?.edytor, 'table', tableEnglish)}
 	<div data-edytor-children data-edytor-table-cells>
 		{@render children?.()}<!--
 		-->{#each padsOf(block) as column (column)}

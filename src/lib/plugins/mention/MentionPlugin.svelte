@@ -4,7 +4,6 @@
 	import type { Snippet } from 'svelte';
 	import type { InlineBlockSnippetPayload, Plugin, TriggerContext } from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
-	import { mentionEnglish, labelsWith, type PartialLabels } from '$lib/labels.js';
 
 	/** A person the mention menu offers: what your app's directory answers. */
 	export type MentionItem = {
@@ -30,14 +29,12 @@
 		/** The character that opens the menu (default `@`). */
 		char?: string;
 		/**
-		 * The menu's markup; it renders while `controller.isOpen`, at the caret
-		 * (without it, nothing shows). Keep its ARIA with `{@attach
-		 * controller.popup}` on the list and `{...controller.option(index)}` on
-		 * each row.
+		 * The menu's markup and its words; it renders while `controller.isOpen`,
+		 * at the caret (without it, nothing shows). Keep its ARIA with `{@attach
+		 * controller.popup}` on the list (name it) and
+		 * `{...controller.option(index)}` on each row.
 		 */
 		menu?: Snippet<[TriggerMenuController<MentionItem>]>;
-		/** The words the menu shows and says, over the English ones. */
-		labels?: PartialLabels<'mention'>;
 	};
 
 	/**
@@ -45,9 +42,9 @@
 	 * `items(query)` answers; picking one replaces `@query` with a `mention`
 	 * atom (`{ id, label }`) and puts the caret after it, in one undo step.
 	 */
-	export const createMentionPlugin = (options: MentionPluginOptions): Plugin => {
-		const labels = labelsWith(mentionEnglish, options.labels);
-		return () => ({
+	export const createMentionPlugin =
+		(options: MentionPluginOptions): Plugin =>
+		() => ({
 			inlineBlocks: {
 				mention: {
 					snippet: mention,
@@ -60,9 +57,6 @@
 			triggers: [
 				{
 					char: options.char ?? '@',
-					name: labels.menu,
-					empty: labels.noResults,
-					searching: labels.searching,
 					items: (query, ctx) => options.items(query, ctx),
 					label: (person: MentionItem) => person.label,
 					key: (person: MentionItem) => person.id,
@@ -76,7 +70,6 @@
 				}
 			]
 		});
-	};
 </script>
 
 {#snippet mention({ block }: InlineBlockSnippetPayload<Partial<MentionData>>)}

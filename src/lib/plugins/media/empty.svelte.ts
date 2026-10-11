@@ -1,6 +1,5 @@
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
-import type { MediaKindLabels, MediaLabels } from '$lib/labels.js';
 import type { MediaKind } from './media.js';
 import { fileUploads, type FileUpload, type Uploader } from '../uploads.svelte.js';
 import { linkField } from '../image/empty.svelte.js';
@@ -27,11 +26,10 @@ export class MediaEmptyController {
 	constructor(
 		/** The empty block; none in a suggestion's preview. */
 		readonly block: Block | undefined,
-		/** Which media kind it is: whose words it shows. */
+		/** Which media kind it is (your words for it: its button, placeholder, errors). */
 		readonly kind: MediaKind,
 		/** The kind's icon (an emoji). */
 		readonly icon: string,
-		private words: () => MediaLabels,
 		private options: {
 			/** The file picker's `accept`. */
 			accept?: string;
@@ -42,22 +40,6 @@ export class MediaEmptyController {
 			file?: (file: File, src: string) => boolean;
 		}
 	) {}
-
-	/** The words of the view rendering it (a suggestion's preview included). */
-	get labels(): MediaLabels {
-		return this.words();
-	}
-
-	/** The kind's own words (its button, placeholder, submit and invalid link text). */
-	get kindLabels(): MediaKindLabels & { addOrUpload?: string } {
-		return this.labels[this.kind];
-	}
-
-	/** The button and placeholder text ("Embed a link"; the file's names its upload). */
-	get label() {
-		const words = this.kindLabels;
-		return this.options.upload && words.addOrUpload ? words.addOrUpload : words.add;
-	}
 
 	/** The file picker's `accept`. */
 	get accept() {

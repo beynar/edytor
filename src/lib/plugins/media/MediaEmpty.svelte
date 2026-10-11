@@ -2,7 +2,7 @@
 	import { getContext, untrack } from 'svelte';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
-	import { MEDIA_ICONS, mediaLabelsOf, mediaView, type MediaKind } from './media.js';
+	import { MEDIA_ICONS, mediaView, type MediaKind } from './media.js';
 	import { MediaEmptyController } from './empty.svelte.js';
 	import { fileUploads } from '../uploads.svelte.js';
 
@@ -22,27 +22,20 @@
 		kind
 	}: {
 		block: Block | undefined;
-		/** Whose words it shows, in the labels of the view rendering it (a suggestion's preview included). */
 		kind: MediaKind;
 	} = $props();
-	/** The view rendering it (a suggestion's preview included): whose labels it shows. */
+	/** The view rendering it (a suggestion's preview included): whose `empty` it draws. */
 	const view = getContext<Edytor>('edytor');
 	const panel = untrack(() => {
 		/** The kind in the block's view: its `upload`, how it stores a source. */
 		const own = mediaView(block?.edytor, kind);
 		const store = (value: string, file?: File) => Boolean(block && own?.store(block, value, file));
-		return new MediaEmptyController(
-			block,
-			kind,
-			MEDIA_ICONS[kind],
-			() => mediaLabelsOf(view, kind),
-			{
-				accept: kind === 'video' || kind === 'audio' ? `${kind}/*` : undefined,
-				upload: own?.upload,
-				link: (value) => store(value),
-				file: (picked, src) => store(src, picked)
-			}
-		);
+		return new MediaEmptyController(block, kind, MEDIA_ICONS[kind], {
+			accept: kind === 'video' || kind === 'audio' ? `${kind}/*` : undefined,
+			upload: own?.upload,
+			link: (value) => store(value),
+			file: (picked, src) => store(src, picked)
+		});
 	});
 	const empty = untrack(() => mediaView(block?.edytor ?? view, kind)?.empty);
 	/** The upload of a pasted or dropped file into this block, if any. */

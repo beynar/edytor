@@ -1,7 +1,7 @@
 export {
 	createRichTextPlugin,
 	richTextOperations,
-	createRichTextPlaceholder,
+	richTextPlaceholder,
 	CALLOUT_ICONS,
 	type CalloutIconPicker,
 	type CalloutIconOption,
@@ -15,7 +15,6 @@ export {
 	type BlockActivation,
 	type BlockAddition
 } from './blockHandles/BlockHandleController.svelte.js';
-export { TOOLBAR_COLORS } from './toolbar/ToolbarController.svelte.js';
 export {
 	createBlockHandlesPlugin,
 	type BlockHandleActivation,

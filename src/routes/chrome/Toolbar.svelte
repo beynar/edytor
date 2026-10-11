@@ -1,11 +1,13 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import { iconOf, linkIcon } from './icons.js';
-	import { TOOLBAR_COLORS, type ToolbarController } from '$lib/index.js';
+	import type { ToolbarController } from '$lib/index.js';
+	import { PALETTE } from './palette.js';
 
 	/** Notion's selection toolbar, drawn for `createToolbarPlugin({ toolbar })`. */
 	let { controller }: { controller: ToolbarController } = $props();
 
-	const labels = $derived(controller.labels);
+	const labels = $derived(words.toolbar);
 </script>
 
 <!--
@@ -117,8 +119,8 @@
 				{@const text = mark === 'color'}
 				<div class="toolbar-heading">{text ? labels.textColor : labels.backgroundColor}</div>
 				<div class="toolbar-swatches">
-					{#each TOOLBAR_COLORS as color (color.name)}
-						{@const name = controller.colorName(color.name)}
+					{#each PALETTE as color (color.name)}
+						{@const name = labels.colors[color.name] ?? color.name}
 						<button
 							type="button"
 							role="menuitem"

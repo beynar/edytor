@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import type { CalloutIconPicker } from '$lib/index.js';
 
 	/**
@@ -8,7 +9,12 @@
 	let { picker }: { picker: CalloutIconPicker } = $props();
 </script>
 
-<div class="callout-icons" {@attach picker.keys} {@attach picker.popup}>
+<div
+	class="callout-icons"
+	aria-label={words.calloutIcons.picker}
+	{@attach picker.keys}
+	{@attach picker.popup}
+>
 	<div class="callout-icons-grid" role="none" style:--callout-icon-columns={picker.columns}>
 		{#each picker.icons as icon, index (index)}
 			<button type="button" tabindex="-1" {...picker.option(index)}>{icon}</button>
@@ -18,7 +24,7 @@
 		type="button"
 		class="callout-icons-remove"
 		tabindex="-1"
-		{...picker.option(picker.icons.length)}>{picker.labels.remove}</button
+		{...picker.option(picker.icons.length)}>{words.calloutIcons.remove}</button
 	>
 </div>
 

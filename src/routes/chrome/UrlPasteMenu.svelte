@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import type { UrlPasteController } from '$lib/index.js';
 
 	/** The menu a URL pasted on an empty line opens, drawn for an embed or bookmark plugin's `menu`. */
@@ -15,7 +16,7 @@
 	class="url-paste-menu"
 	data-edytor-url-paste-menu
 	role="listbox"
-	aria-label={controller.labels.pasteAs}
+	aria-label={words.urlPaste.menu}
 	tabindex="-1"
 	{@attach controller.popup}
 >
@@ -27,7 +28,7 @@
 			data-edytor-url-paste-option={option.id}
 			onmousemove={() => (controller.index = index)}
 			onclick={() => controller.pick(option)}
-			><span aria-hidden="true">{option.icon}</span>{option.label}</button
+			><span aria-hidden="true">{option.icon}</span>{words.urlPaste[option.id] ?? option.id}</button
 		>
 	{/each}
 </div>

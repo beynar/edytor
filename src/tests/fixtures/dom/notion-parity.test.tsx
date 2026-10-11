@@ -9,7 +9,7 @@ import type { JSONBlock, SerializableContent } from '$lib/utils/json.js';
 import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { mentionPlugin } from '../../atMention.svelte';
-import { createRichTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import {
 	type CanonicalBlock,
@@ -630,7 +630,7 @@ describe('lists on Backspace', () => {
 		const { edytor, editor } = await renderDomEdytor(empty, {
 			plugins: [richTextPlugin, mentionPlugin],
 			// The harness types the prop as a string; `<Edytor>` takes a function too.
-			placeholder: createRichTextPlaceholder() as unknown as string,
+			placeholder: richTextPlaceholder as unknown as string,
 			value: { children: [{ type: 'bulleted-list-item', content: [{ text: '' }] }] }
 		});
 		await backspaceAtStartOf(edytor, editor, [0]);
@@ -939,7 +939,7 @@ describe('menus', () => {
 describe('placeholders', () => {
 	it('names each kind as Notion does', () => {
 		const at = (type: string, data = {}, focused = false) =>
-			createRichTextPlaceholder()({ type, data, focused, empty: true });
+			richTextPlaceholder({ type, data, focused, empty: true });
 		expect([
 			at('heading', { level: 'h2' }),
 			at('bulleted-list-item'),

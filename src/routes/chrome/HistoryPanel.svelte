@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { untrack, type Snippet } from 'svelte';
+	import { words } from './words.svelte.js';
 	import {
 		Edytor,
 		VersionHistory,
 		type EdytorDocument,
 		type HistoryClient,
 		type HistoryVersion,
-		type PartialLabels,
 		type Plugin
 	} from '$lib/index.js';
 
@@ -22,7 +22,6 @@
 		defaultPlugins = true,
 		readonly = false,
 		locale,
-		labels: words,
 		class: className,
 		previewClass,
 		row
@@ -33,7 +32,6 @@
 		defaultPlugins?: boolean;
 		readonly?: boolean;
 		locale?: string | string[];
-		labels?: PartialLabels<'history'>;
 		class?: string;
 		previewClass?: string;
 		/** A version's row content, in place of its date, editors and time. */
@@ -49,11 +47,18 @@
 				document: live,
 				plugins,
 				locale,
-				labels: words,
 				id: uid
 			})
 	);
-	const labels = history.labels;
+	const labels = $derived(words.history);
+	/** A version's day and half of the day (`Oct 8, 2026 · Morning`). */
+	const titleOf = (entry: HistoryVersion) =>
+		`${history.dateOf(entry)} · ${entry.slot === 'am' ? labels.morning : labels.evening}`;
+	/** Who edited a version (`Ada, Alan +2`). */
+	const editorsOf = (entry: HistoryVersion) =>
+		entry.editors.length === 0 && !entry.more
+			? labels.noEditors
+			: `${entry.editors.join(', ')}${entry.more ? ` ${labels.moreEditors(entry.more)}` : ''}`;
 	const diff = $derived(history.diff);
 </script>
 
@@ -62,7 +67,7 @@
 		<div data-edytor-history-preview>
 			<header data-edytor-history-header>
 				<h2 data-edytor-history-title>
-					{history.selectedVersion ? history.titleOf(history.selectedVersion) : labels.title}
+					{history.selectedVersion ? titleOf(history.selectedVersion) : labels.title}
 				</h2>
 				{#if diff}
 					<div data-edytor-history-legend>
@@ -130,8 +135,8 @@
 								{#if row}
 									{@render row(entry, { selected: entry.key === history.selected })}
 								{:else}
-									<span data-edytor-history-version-title>{history.titleOf(entry)}</span>
-									<span data-edytor-history-version-editors>{history.editorsOf(entry)}</span>
+									<span data-edytor-history-version-title>{titleOf(entry)}</span>
+									<span data-edytor-history-version-editors>{editorsOf(entry)}</span>
 									<span data-edytor-history-version-time>
 										{labels.saved}
 										<time datetime={new Date(entry.at).toISOString()}>{history.timeOf(entry)}</time>
@@ -149,7 +154,7 @@
 					aria-live="polite"
 					data-failed={history.failed || undefined}
 				>
-					{history.status}
+					{history.status && labels[history.status]}
 				</p>
 				{#if !readonly}
 					<div data-edytor-history-buttons>

@@ -41,14 +41,6 @@ List it in every view that may open a document holding tables. A view without it
       default: "48",
       description: "The narrowest a resize leaves a column, in pixels.",
     },
-    labels: {
-      type: "PartialLabels<'table'>",
-      description: "The command's, the switches', the menus' and the controls' words, over the English ones. See Localization.",
-    },
-    keywords: {
-      type: "Partial<Record<string, string[]>>",
-      description: "The slash menu's keywords of the Table command (block.table); they replace its own.",
-    },
     grip: {
       type: "Snippet<[TableGripPayload]>",
       description: "A row's and a column's grip, centered where the grip stands (without it, no grip); {@attach payload.grip} keeps its drag, its menu, its keys and its ARIA. See Menus and handles.",

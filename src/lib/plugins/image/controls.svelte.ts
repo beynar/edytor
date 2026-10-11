@@ -1,6 +1,5 @@
 import type { Attachment } from 'svelte/attachments';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { imageEnglish, type ImageLabels } from '$lib/labels.js';
 import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
 import { trackDrag } from '$lib/dnd/track.js';
 import { layerBox, pin, sameValues } from '$lib/surface/overlay.js';
@@ -74,11 +73,7 @@ export class ImageControls {
 	/** Ends the drag in progress without a write. */
 	#cancel: (() => void) | null = null;
 
-	constructor(
-		private edytor: Edytor,
-		/** The words the chrome shows (the plugin's `labels`). */
-		readonly labels: ImageLabels = imageEnglish
-	) {}
+	constructor(private edytor: Edytor) {}
 
 	/** The view is readonly (reactive). */
 	get readonly() {
@@ -200,14 +195,13 @@ export class ImageControls {
 	};
 
 	/**
-	 * The image's toolbar (`{@attach controls.bar}`): its `toolbar` role and
-	 * name unless it has its own, the mark a press outside the alt field
+	 * The image's toolbar (`{@attach controls.bar}`, named by your markup): its
+	 * `toolbar` role unless it has its own, the mark a press outside the alt field
 	 * reads (a press on the toolbar keeps the field open, so its Alt button
 	 * toggles it), and presses that keep the editor's focus.
 	 */
 	bar: Attachment<HTMLElement> = (node) => {
 		if (!node.hasAttribute('role')) node.setAttribute('role', 'toolbar');
-		if (!node.hasAttribute('aria-label')) node.setAttribute('aria-label', this.labels.toolbar);
 		node.setAttribute('data-edytor-image-toolbar', '');
 		node.addEventListener('mousedown', keepFocus);
 		return () => node.removeEventListener('mousedown', keepFocus);
@@ -221,7 +215,7 @@ export class ImageControls {
 	 * keeps it open. Write its value with `setAlt`.
 	 */
 	altField: Attachment<HTMLInputElement> = (node) => {
-		identify(node, this.edytor.popups.idOf('image-alt'), undefined, this.labels.alt);
+		identify(node, this.edytor.popups.idOf('image-alt'));
 		node.setAttribute('data-edytor-image-alt', '');
 		node.focus({ preventScroll: true });
 		const keydown = (event: KeyboardEvent) => {

@@ -12,7 +12,7 @@
 			<button type="button" data-testid="custom-icon" {...picker.option(index)}>{icon}</button>
 		{/each}
 		<button type="button" data-testid="custom-remove" {...picker.option(picker.icons.length)}
-			>{picker.labels.remove}</button
+			>Remove icon</button
 		>
 		<button type="button" data-testid="custom-close" onclick={() => picker.close()}>×</button>
 	</div>

@@ -26,14 +26,6 @@ A [slash menu](/docs/plugins/slash-menu) then lists "Embed" under `Media`, and p
       type: "readonly EmbedProvider[]",
       description: "The allowlist. Default EMBED_PROVIDERS. A link none of them plays shows no frame.",
     },
-    labels: {
-      type: "PartialLabels<'media'>",
-      description: "The empty panel's and the paste menu's words (embed, pasteAs, pasteLink), over the English ones. See Localization.",
-    },
-    keywords: {
-      type: "Partial<Record<string, string[]>>",
-      description: "The slash menu's keywords by command id (block.embed); they replace the command's own.",
-    },
     menu: {
       type: "Snippet<[UrlPasteController]>",
       description: "The menu a URL pasted on an empty line opens (Link, Embed, Bookmark); the view's one menu takes the first menu its embed and bookmark plugins pass; without one, the link stays and nothing shows. Keep its ARIA with {@attach controller.popup} and {...controller.option(index)}. See Menus and handles.",

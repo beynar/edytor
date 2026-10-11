@@ -110,11 +110,11 @@
 		value?: JSONDoc;
 		placeholder?: Placeholder;
 		/**
-		 * The words the view says itself, over the English ones: its
-		 * announcements to assistive technology and a suggestion's name. Each
-		 * plugin takes its own `labels`. Read once.
+		 * The words the package shows and says in this view, over the English
+		 * ones: any entry of any section (`editor`, `richText`, `table`…) and
+		 * the commands' slash `keywords` by id. Read once.
 		 */
-		labels?: PartialLabels<'editor'>;
+		labels?: PartialLabels;
 		translate?: 'yes' | 'no';
 		spellcheck?: boolean;
 		autocorrect?: 'on' | 'off';

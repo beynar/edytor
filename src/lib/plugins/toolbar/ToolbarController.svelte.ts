@@ -20,25 +20,10 @@ import type { Text } from '$lib/text/text.svelte.js';
 import { convertBlocks, convertibleKinds, rowOf, type KindRow } from '$lib/kinds.js';
 import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
 import type { Popup } from '$lib/surface/popups.svelte.js';
-import { toolbarEnglish, type ToolbarLabels } from '$lib/labels.js';
 import { identify } from '../chrome.js';
 
 /** The bar's controls the arrows walk (a disabled one is skipped). */
 const STOPS = 'button:not([disabled]), input:not([disabled]), select:not([disabled])';
-
-/** Notion's palette: text colors and their backgrounds, by name (shown through the labels' `colors`). */
-export const TOOLBAR_COLORS = [
-	{ name: 'Default', text: null, background: null },
-	{ name: 'Gray', text: '#7d7a75', background: '#f0efed' },
-	{ name: 'Brown', text: '#9f765a', background: '#f5ede9' },
-	{ name: 'Orange', text: '#d27b2d', background: '#fbebde' },
-	{ name: 'Yellow', text: '#cb9434', background: '#f9f3dc' },
-	{ name: 'Green', text: '#50946e', background: '#e8f1ec' },
-	{ name: 'Blue', text: '#387dc9', background: '#e5f2fc' },
-	{ name: 'Purple', text: '#9a6bb4', background: '#f3ebf9' },
-	{ name: 'Pink', text: '#c14c8a', background: '#fae9f1' },
-	{ name: 'Red', text: '#cf5148', background: '#fce9e7' }
-] as const;
 
 const getLinkHref = (value: SerializableContent | undefined) =>
 	isRecord(value) && typeof value.href === 'string' ? value.href : null;
@@ -57,14 +42,7 @@ export class ToolbarController {
 	/** The link under the pointer, for the link card (`link.card`). */
 	hovered = $state.raw<HTMLAnchorElement | null>(null);
 
-	constructor(
-		private edytor: Edytor,
-		/** The words the toolbar shows (the plugin's `labels`): read them in your `toolbar`. */
-		readonly labels: ToolbarLabels = toolbarEnglish
-	) {}
-
-	/** A palette color's name as shown (`labels.colors`). */
-	colorName = (name: string) => this.labels.colors[name] ?? name;
+	constructor(private edytor: Edytor) {}
 
 	get isVisible() {
 		return this.shown && !this.edytor.readonly;
@@ -87,14 +65,14 @@ export class ToolbarController {
 	#stop: string | number = 0;
 
 	/**
-	 * The bar (`{@attach controller.popup}`): it takes the bar's id, its
-	 * `toolbar` role and name unless it has its own, the placement's mark
+	 * The bar (`{@attach controller.popup}`, named by your markup): it takes
+	 * the bar's id, its `toolbar` role unless it has its own, the placement's mark
 	 * (`data-edytor-toolbar-bar`, which the toolbar's shortcut also reads),
 	 * and is published to the view's root (`edytor.popups`, with that
 	 * shortcut as its `aria-keyshortcuts`) while it is in the page.
 	 */
 	popup: Attachment<HTMLElement> = (node) => {
-		identify(node, this.barId, 'toolbar', this.labels.bar);
+		identify(node, this.barId, 'toolbar');
 		node.setAttribute('data-edytor-toolbar-bar', '');
 		this.publish({ id: this.barId, keys: 'Alt+F10' });
 		return () => this.publish(null);

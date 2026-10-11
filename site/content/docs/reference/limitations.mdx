@@ -25,7 +25,7 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 
 ## Localization
 
-The chrome's words (menus, toolbar, handles, panels, placeholders, announcements) come from a [labels dictionary](/docs/customization/localization), English by default: each plugin takes its `labels`, and `<Edytor labels>` the view's own. Edytor ships no translation of its own: write the dictionary for your language, typed as `Labels`, so a release that adds a label fails your build until you translate it.
+The package's words (the kinds' names, placeholders, announcements) come from a [labels dictionary](/docs/customization/localization), English by default, which `<Edytor labels>` replaces entry by entry; your chrome's words are your markup's. Edytor ships no translation of its own: write the dictionary for your language, typed as `Labels`, so a release that adds a label fails your build until you translate it.
 
 - **Your own kinds, marks, commands and groups** are named by what you write in their records.
 - **Mac key symbols** (⌘, ⇧, ↵) show on a Mac whatever the labels.

@@ -13,7 +13,6 @@ import { untrack } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { richTextEnglish, type RichTextLabels } from '$lib/labels.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { takeKeys } from '$lib/events/onFocus.js';
 import { holdKeys, listPopup, menuKey } from '../list.svelte.js';
@@ -113,8 +112,6 @@ export class CalloutIconPicker {
 	box = $state.raw<{ x: number; y: number } | null>(null);
 	/** The selection the picker gives back when it closes. */
 	#before: SelectionValue | null = null;
-	/** The view's rich text words (`labels` is the picker's part). */
-	readonly #words: RichTextLabels;
 
 	constructor(
 		/** @internal */
@@ -122,16 +119,9 @@ export class CalloutIconPicker {
 		/** A new callout's icon, and the one a callout without `data.icon` shows. */
 		readonly icon: string = DEFAULT_CALLOUT_ICON,
 		/** The picker's choices. */
-		readonly icons: readonly string[] = CALLOUT_ICONS,
-		labels: RichTextLabels = richTextEnglish
+		readonly icons: readonly string[] = CALLOUT_ICONS
 	) {
-		this.#words = labels;
-		this.popup = listPopup(edytor, 'callout-icons', 'menu', () => this.labels.picker);
-	}
-
-	/** The picker's words: Change icon, Add icon, its name, Remove icon. */
-	get labels(): RichTextLabels['calloutIcon'] {
-		return this.#words.calloutIcon;
+		this.popup = listPopup(edytor, 'callout-icons', 'menu');
 	}
 
 	/** Whether the picker is open (reactive). */

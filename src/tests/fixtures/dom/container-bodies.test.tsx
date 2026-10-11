@@ -15,7 +15,7 @@ import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
-import { createRichTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	dispatchClipboardPaste,
 	dispatchCopy,
@@ -273,15 +273,16 @@ describe('callout: an icon, a title and a content', () => {
 	});
 
 	it('its empty title shows its placeholder, focused or not', () => {
+		expect(richTextPlaceholder({ type: 'callout', data: {}, focused: false } as never)).toBe(
+			'Callout title'
+		);
 		expect(
-			createRichTextPlaceholder()({ type: 'callout', data: {}, focused: false } as never)
-		).toBe('Callout title');
-		expect(
-			createRichTextPlaceholder({ placeholders: { callout: 'Titre' } })({
-				type: 'callout',
-				data: {},
-				focused: true
-			} as never)
+			richTextPlaceholder(
+				{ type: 'callout', data: {}, focused: true } as never,
+				{
+					labels: { richText: { placeholders: { callout: 'Titre' } } }
+				} as never
+			)
 		).toBe('Titre');
 	});
 

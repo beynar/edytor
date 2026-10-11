@@ -1,14 +1,14 @@
 /**
- * Localization: a view whose plugins (and `<Edytor labels>`) take the
- * French dictionary (`fixtures/labels.fr.ts`) shows and says French only.
- * Expected words come from that dictionary, never from a run:
+ * Localization: a view whose `<Edytor labels>` take the French dictionary
+ * (`fixtures/labels.fr.ts`: the package's words, `fr`) and whose demo
+ * chrome takes its French words (`frWords`, the app's) shows and says
+ * French only. Expected words come from those dictionaries, never from a run:
  *
  * - each chrome (slash menu, toolbar, block menu, handles, image, media,
  *   code header, find bar, suggestion bar, comments sidebar, columns, announcements,
  *   placeholders, the to-do checkbox, the block menu's Color flyout, the
- *   page and table of contents blocks) names itself in its plugin's labels;
- * - the slash keywords of `createRichTextPlugin({ keywords })` replace the
- *   English ones;
+ *   page and table of contents blocks) speaks the view's labels or the chrome's words;
+ * - the view's `keywords` replace the English slash keywords;
  * - a listed `createRichTextPlugin` replaces the default rich text plugin;
  * - across those states, no English word of the dictionary reaches the page.
  */
@@ -17,7 +17,8 @@ import { render } from '@testing-library/svelte';
 import Localized from '../../dom/Localized.svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { englishLabels, type Labels } from '$lib/labels.js';
+import { englishLabels } from '$lib/labels.js';
+import { englishWords } from '../../../routes/chrome/words.svelte.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import { findController } from '$lib/plugins/find/findPlugin.js';
 import { commentsController } from '$lib/plugins/comments/commentsPlugin.js';
@@ -26,7 +27,8 @@ import {
 	dispatchDomBeforeInput,
 	flushDomUpdates
 } from '../../dom/test.utils.js';
-import { fr } from '../labels.fr.js';
+import { fr, frLanguages } from '../labels.fr.js';
+import { frWords } from '../words.fr.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -112,7 +114,7 @@ const says = (page: string, word: string) =>
 const VALUE = '\u0000';
 
 /** The dictionary's words: each string, and the words a function says around its values. */
-const wordsOf = (labels: Labels) => {
+const wordsOf = (...dictionaries: object[]) => {
 	const out: string[] = [];
 	const visit = (value: unknown) => {
 		if (typeof value === 'string') out.push(value);
@@ -121,13 +123,13 @@ const wordsOf = (labels: Labels) => {
 			if (typeof said === 'string') out.push(...said.split(VALUE).map((part) => part.trim()));
 		} else if (value && typeof value === 'object') Object.values(value).forEach(visit);
 	};
-	visit(labels);
+	dictionaries.forEach(visit);
 	return out.filter((word) => /[A-Za-z]{2}/.test(word));
 };
 /** The English words French says otherwise (`Code` and `Image` are both). */
 const english = () => {
-	const french = new Set(wordsOf(fr));
-	return [...new Set(wordsOf(englishLabels))].filter(
+	const french = new Set(wordsOf(fr, frWords));
+	return [...new Set(wordsOf(englishLabels, englishWords))].filter(
 		(word) => word.length > 2 && !french.has(word)
 	);
 };
@@ -138,7 +140,7 @@ const english = () => {
  */
 const leaked = (page: string) => {
 	let rest = page;
-	for (const said of [...new Set(wordsOf(fr))].sort((a, b) => b.length - a.length))
+	for (const said of [...new Set(wordsOf(fr, frWords))].sort((a, b) => b.length - a.length))
 		rest = rest.replace(
 			new RegExp(`(?<![\\p{L}])${said.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}])`, 'gu'),
 			'\n'
@@ -198,13 +200,13 @@ describe('each chrome in its labels', () => {
 		await caretIn(edytor, 'a');
 		await type(editor, '/');
 		const headings = texts('.slash-heading');
-		expect(headings).toContain(fr.slashMenu.groups['Basic blocks']);
-		expect(headings).toContain(fr.slashMenu.groups.Media);
-		expect(headings).toContain(fr.slashMenu.groups.Layout);
-		expect(headings[0]).toBe(fr.slashMenu.groups['Basic blocks']);
+		expect(headings).toContain(frWords.slashMenu.groups['Basic blocks']);
+		expect(headings).toContain(frWords.slashMenu.groups.Media);
+		expect(headings).toContain(frWords.slashMenu.groups.Layout);
+		expect(headings[0]).toBe(frWords.slashMenu.groups['Basic blocks']);
 		expect(texts('[data-testid="slash-menu-item"]')).toContain(fr.columns.columns(2));
-		expect(one('.slash-items').getAttribute('aria-label')).toBe(fr.slashMenu.list);
-		expect(one('.slash-footer span').textContent).toBe(fr.slashMenu.close);
+		expect(one('.slash-items').getAttribute('aria-label')).toBe(frWords.slashMenu.list);
+		expect(one('.slash-footer span').textContent).toBe(frWords.slashMenu.close);
 	});
 
 	it('the toolbar: the bar, the kind, the marks, the color panel', async () => {
@@ -213,19 +215,22 @@ describe('each chrome in its labels', () => {
 		edytor.selection.selectText(text, 0, text, 7);
 		await flushDomUpdates();
 		const bar = one('[data-testid="selection-toolbar"]');
-		expect(bar.getAttribute('aria-label')).toBe(fr.toolbar.bar);
+		expect(bar.getAttribute('aria-label')).toBe(frWords.toolbar.bar);
 		expect(one('.toolbar-type').textContent).toBe(fr.richText.kinds.paragraph);
-		expect(one('[data-testid="toolbar-link"]').textContent).toBe(fr.toolbar.link);
+		expect(one('[data-testid="toolbar-link"]').textContent).toBe(frWords.toolbar.link);
 		expect(one('[data-testid="toolbar-bold"]').getAttribute('aria-label')).toBe(
 			fr.richText.marks.bold
 		);
 		await click(one('.toolbar-color'));
-		expect(texts('.toolbar-heading')).toEqual([fr.toolbar.textColor, fr.toolbar.backgroundColor]);
+		expect(texts('.toolbar-heading')).toEqual([
+			frWords.toolbar.textColor,
+			frWords.toolbar.backgroundColor
+		]);
 		const swatches = [...document.querySelectorAll('.toolbar-swatch')].map((s) =>
 			s.getAttribute('title')
 		);
-		expect(swatches).toContain(fr.toolbar.colorText(fr.toolbar.colors.Red!));
-		expect(swatches).toContain(fr.toolbar.colorBackground(fr.toolbar.colors.Red!));
+		expect(swatches).toContain(frWords.toolbar.colorText(frWords.toolbar.colors.Red!));
+		expect(swatches).toContain(frWords.toolbar.colorBackground(frWords.toolbar.colors.Red!));
 	});
 
 	it('the block menu: its actions, search and headings', async () => {
@@ -235,7 +240,9 @@ describe('each chrome in its labels', () => {
 		]);
 		await activate(edytor, editor, 'h');
 		const menu = one('[data-testid="block-menu"]');
-		expect(one<HTMLInputElement>('.block-menu-search input').placeholder).toBe(fr.blockMenu.search);
+		expect(one<HTMLInputElement>('.block-menu-search input').placeholder).toBe(
+			frWords.blockMenu.search
+		);
 		expect(texts('[data-testid="block-menu"] .block-menu-heading')[0]).toBe(
 			fr.richText.kinds.heading1
 		);
@@ -262,8 +269,8 @@ describe('each chrome in its labels', () => {
 			fr.blockMenu.color
 		);
 		expect(texts('[data-edytor-block-menu-flyout] .block-menu-heading')).toEqual([
-			fr.blockMenu.textColor,
-			fr.blockMenu.backgroundColor
+			frWords.blockMenu.textColor,
+			frWords.blockMenu.backgroundColor
 		]);
 		expect(one('[data-testid="block-menu-color.red"]').textContent).toBe(
 			fr.blockMenu.colorText(fr.blockMenu.colors.red!)
@@ -287,7 +294,7 @@ describe('each chrome in its labels', () => {
 		const rows = texts('[data-testid="slash-menu-item"]');
 		expect(rows).toContain(fr.page.page);
 		expect(rows).toContain(fr.toc.toc);
-		expect(texts('.slash-heading')).toContain(fr.slashMenu.groups['Advanced blocks']);
+		expect(texts('.slash-heading')).toContain(frWords.slashMenu.groups['Advanced blocks']);
 	});
 
 	it('the trigger menus: mentions, page links, and a trigger that names nothing', async () => {
@@ -300,24 +307,27 @@ describe('each chrome in its labels', () => {
 				empty: one('[data-testid="trigger-menu-empty"]').textContent?.trim()
 			};
 		};
-		expect(await menu('a', '@')).toEqual({ name: fr.mention.menu, empty: fr.mention.noResults });
+		expect(await menu('a', '@')).toEqual({
+			name: frWords.mention.menu,
+			empty: frWords.mention.noResults
+		});
 		expect(await menu('b', '[[')).toEqual({
-			name: fr.pageLink.menu,
-			empty: fr.pageLink.noResults
+			name: frWords.pageLink.menu,
+			empty: frWords.pageLink.noResults
 		});
 		expect(await menu('c', '%')).toEqual({
-			name: fr.editor.triggerMenu,
-			empty: fr.editor.noResults
+			name: frWords.trigger.menu,
+			empty: frWords.trigger.noResults
 		});
 	});
 
 	it('the handles: named after the kind, in the labels', async () => {
 		await setup([{ id: 'h', type: 'heading', data: { level: 'h1' }, content: [{ text: 'T' }] }]);
 		expect(one('[data-testid="block-handle"][data-block-id="h"]').getAttribute('aria-label')).toBe(
-			fr.blockHandles.grip(fr.richText.kinds.heading1)
+			frWords.blockHandles.grip(fr.richText.kinds.heading1)
 		);
 		expect(one('[data-testid="block-add"]').getAttribute('aria-label')).toBe(
-			fr.blockHandles.add(fr.richText.kinds.heading1)
+			frWords.blockHandles.add(fr.richText.kinds.heading1)
 		);
 	});
 
@@ -336,30 +346,32 @@ describe('each chrome in its labels', () => {
 				content: [{ text: '' }]
 			}
 		]);
-		expect(words('[data-edytor-image-add]')).toEqual([fr.image.add]);
+		expect(words('[data-edytor-image-add]')).toEqual([frWords.image.add]);
 		expect(words('[data-edytor-media-add]')).toEqual([
-			fr.media.embed.add,
-			fr.media.bookmark.add,
-			fr.media.file.addOrUpload,
-			fr.media.video.add,
-			fr.media.audio.add
+			frWords.media.embed.add,
+			frWords.media.bookmark.add,
+			frWords.media.file.addOrUpload,
+			frWords.media.video.add,
+			frWords.media.audio.add
 		]);
 		expect(one('[data-edytor-file-size]').textContent).toBe(fr.media.fileSize(1536));
 		await click(one('[data-edytor-id="v"] [data-edytor-media-add]'));
 		expect(one<HTMLInputElement>('[data-edytor-media-form] input').placeholder).toBe(
-			fr.media.video.placeholder
+			frWords.media.video.placeholder
 		);
-		expect(one('[data-edytor-media-upload]').textContent?.trim()).toBe(fr.media.upload);
+		expect(one('[data-edytor-media-upload]').textContent?.trim()).toBe(frWords.media.upload);
 	});
 
 	it('a pasted link: the menu and its rows', async () => {
 		const { edytor, editor } = await setup([p('a')]);
 		await caretIn(edytor, 'a');
 		await dispatchClipboardPaste(editor, { 'text/plain': 'https://example.com/page' });
-		expect(one('[data-edytor-url-paste-menu]').getAttribute('aria-label')).toBe(fr.media.pasteAs);
+		expect(one('[data-edytor-url-paste-menu]').getAttribute('aria-label')).toBe(
+			frWords.urlPaste.menu
+		);
 		expect(words('[data-edytor-url-paste-option]')).toEqual([
-			fr.media.pasteLink,
-			fr.media.bookmark.offer
+			frWords.urlPaste.link,
+			frWords.urlPaste.bookmark
 		]);
 	});
 
@@ -374,42 +386,48 @@ describe('each chrome in its labels', () => {
 		]);
 		const picker = one<HTMLButtonElement>('button[data-edytor-code-language]');
 		expect(picker.getAttribute('aria-label')).toBe(
-			`${fr.code.language}: ${fr.code.languages.plaintext}`
+			`${frWords.code.language}: ${frLanguages.find((l) => l.id === 'plaintext')!.label}`
 		);
-		expect(picker.textContent?.trim()).toBe(fr.code.languages.plaintext);
-		expect(one('[data-edytor-code-copy]').textContent).toBe(fr.code.copy);
+		expect(picker.textContent?.trim()).toBe(frLanguages.find((l) => l.id === 'plaintext')!.label);
+		expect(one('[data-edytor-code-copy]').textContent).toBe(frWords.code.copy);
 		await click(picker);
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		await flushDomUpdates();
 		const field = one<HTMLInputElement>('[data-edytor-code-language-menu] input');
-		expect(field.placeholder).toBe(fr.code.search);
-		expect(field.getAttribute('aria-label')).toBe(fr.code.language);
-		expect(words('[data-edytor-code-language-option]')[0]).toBe(fr.code.languages.plaintext);
+		expect(field.placeholder).toBe(frWords.code.search);
+		expect(field.getAttribute('aria-label')).toBe(frWords.code.language);
+		expect(words('[data-edytor-code-language-option]')[0]).toBe(
+			frLanguages.find((l) => l.id === 'plaintext')!.label
+		);
 		field.value = 'zzz';
 		field.dispatchEvent(new Event('input', { bubbles: true }));
 		await flushDomUpdates();
-		expect(one('[data-edytor-code-language-empty]').textContent).toBe(fr.code.noResults);
+		expect(one('[data-edytor-code-language-empty]').textContent).toBe(frWords.code.noResults);
 	});
 
 	it('the find bar: fields, count, buttons', async () => {
 		const { edytor } = await setup([p('a', 'un deux un')]);
 		findController(edytor)!.open('un');
 		await flushDomUpdates();
-		expect(one('[data-edytor-find]').getAttribute('aria-label')).toBe(fr.find.bar);
+		expect(one('[data-edytor-find]').getAttribute('aria-label')).toBe(frWords.find.bar);
 		expect(one<HTMLInputElement>('[data-edytor-find-query]').placeholder).toBe(
-			fr.find.queryPlaceholder
+			frWords.find.queryPlaceholder
 		);
-		expect(one('[data-edytor-find-count]').textContent).toBe(fr.find.count(1, 2));
-		expect(one('[data-edytor-find-replace-all]').textContent).toBe(fr.find.replaceAll);
+		expect(one('[data-edytor-find-count]').textContent).toBe(frWords.find.count(1, 2));
+		expect(one('[data-edytor-find-replace-all]').textContent).toBe(frWords.find.replaceAll);
 	});
 
 	it('the suggestion bar and its preview', async () => {
 		const { edytor } = await setup([p('a', 'texte')]);
 		edytor.suggestions.add({ after: 'a' }, [p('s', 'proposé')]);
 		await flushDomUpdates();
-		expect(one('[data-edytor-suggestion-accept]').textContent).toContain(fr.suggestions.accept);
-		expect(one('[data-edytor-suggestion-discard]').textContent).toContain(fr.suggestions.discard);
-		expect(one('[data-edytor-suggestion-label]').textContent).toBe(fr.suggestions.suggestion);
+		expect(one('[data-edytor-suggestion-accept]').textContent).toContain(
+			frWords.suggestions.accept
+		);
+		expect(one('[data-edytor-suggestion-discard]').textContent).toContain(
+			frWords.suggestions.discard
+		);
+		expect(one('[data-edytor-suggestion-label]').textContent).toBe(frWords.suggestions.suggestion);
 		expect(one('[data-edytor-suggestion]').getAttribute('aria-label')).toBe(fr.editor.suggestion);
 	});
 
@@ -427,7 +445,7 @@ describe('each chrome in its labels', () => {
 		);
 		expect(
 			preview.querySelector('[data-edytor-media-placeholder]')?.textContent?.replace(/^\S+\s*/, '')
-		).toBe(fr.media.video.add);
+		).toBe(frWords.media.video.add);
 		expect(
 			preview.querySelector('[data-edytor-image-placeholder]')?.textContent?.replace(/^\S+\s*/, '')
 		).toBe(fr.image.image);

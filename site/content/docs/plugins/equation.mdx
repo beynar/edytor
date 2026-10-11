@@ -100,14 +100,6 @@ A press or a focus outside the editor closes it too. After it closes, a block eq
       type: "Record<string, string>",
       description: "TeX macros every equation reads: `{ '\\\\RR': '\\\\mathbb{R}' }`.",
     },
-    labels: {
-      type: "PartialLabels<'equation'>",
-      description: "The words over the English ones: `block` (\"Block equation\"), `inline` (\"Inline equation\"), `blockPlaceholder` (\"Add a TeX equation\"), `inlinePlaceholder` (\"New equation\"), `editor`, `placeholder`, `done` and `invalid`. See [Localization](/docs/customization/localization).",
-    },
-    keywords: {
-      type: "Partial<Record<string, string[]>>",
-      description: "The slash keywords of `block.equation` and `equation.inline`, which replace their own.",
-    },
     panel: {
       type: "Snippet<[EquationEditor]>",
       description: "The editor's panel, under the edited equation (without it, nothing opens); `{@attach editor.field}` on your source field keeps its focus and keys. See [Menus and handles](/docs/customization/menus#equation-editor).",
@@ -121,8 +113,7 @@ KaTeX runs untrusted (`trust: false`): `\href`, `\url`, `\includegraphics` and t
 import { createEquationPlugin } from 'edytor';
 
 export const equations = createEquationPlugin({
-	macros: { '\\RR': '\\mathbb{R}' },
-	labels: { blockPlaceholder: 'Add a formula' }
+	macros: { '\\RR': '\\mathbb{R}' }
 });
 ```
 

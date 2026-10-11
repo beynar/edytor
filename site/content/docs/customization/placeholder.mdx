@@ -61,14 +61,14 @@ The `<Edytor>` prop wins over plugins; among plugins, the first one that declare
 
 ## Notion placeholders
 
-`createRichTextPlaceholder()` is a ready-made function with Notion's hints for the rich text and image kinds:
+`richTextPlaceholder` is a ready-made function with Notion's hints for the rich text and image kinds:
 
 ```svelte title="RichEditor.svelte" check
 <script lang="ts">
-	import { Edytor, createRichTextPlaceholder } from 'edytor';
+	import { Edytor, richTextPlaceholder } from 'edytor';
 </script>
 
-<Edytor placeholder={createRichTextPlaceholder()} />
+<Edytor placeholder={richTextPlaceholder} />
 ```
 
 | Kind                                          | Placeholder                                   |
@@ -83,7 +83,7 @@ The `<Edytor>` prop wins over plugins; among plugins, the first one that declare
 | `image`, `embed`, `bookmark`, `file`, `video`, `audio` (the caption) | "Write a caption…", only while focused |
 | any other kind, such as `paragraph`           | "Type '/' for commands", only while focused   |
 
-`createRichTextPlaceholder(labels)` builds the same function in another language, from the rich text labels' `placeholders` (`heading` is a function of the level): `placeholder={createRichTextPlaceholder({ placeholders: { quote: 'Citation vide' } })}`. See [Localization](/docs/customization/localization). To change one case, wrap it: `placeholder={(view) => (view.type === 'quote' ? 'Quote' : createRichTextPlaceholder()(view))}`.
+Its words are the view's `richText` labels' `placeholders` (`heading` is a function of the level): `<Edytor placeholder={richTextPlaceholder} labels={{ richText: { placeholders: { quote: 'Citation vide' } } }} />`. See [Localization](/docs/customization/localization). A placeholder function receives the empty block's values and the view; to change one case, wrap it: `placeholder={(view, edytor) => (view.type === 'quote' ? 'Quote' : richTextPlaceholder(view, edytor))}`.
 
 ## When it shows
 

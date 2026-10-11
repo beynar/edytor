@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { words } from './words.svelte.js';
 	import type { ImageEmptyController } from '$lib/index.js';
 
 	/**
@@ -7,7 +8,7 @@
 	 * view, or a suggestion's preview, shows a passive placeholder.
 	 */
 	let { panel }: { panel: ImageEmptyController } = $props();
-	const labels = $derived(panel.labels);
+	const labels = $derived(words.image);
 </script>
 
 {#if panel.readonly}

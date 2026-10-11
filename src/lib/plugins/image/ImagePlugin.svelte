@@ -11,7 +11,6 @@
 		imageAlignOf,
 		imageAltOf,
 		imageWidthOf,
-		imageLabels,
 		imgData,
 		isImageFile,
 		MAX_INLINE_IMAGE_BYTES,
@@ -25,7 +24,7 @@
 	import type { ImageEmptyController } from './empty.svelte.js';
 	import { fileUploads, type FileUploads, type Uploader } from '../uploads.svelte.js';
 	import { onPress } from '$lib/events/onFocus.js';
-	import { imageEnglish, keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
+	import { imageEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 
 	export {
 		MAX_INLINE_IMAGE_BYTES,
@@ -45,13 +44,6 @@
 		 * links are embedded.
 		 */
 		upload?: Uploader;
-		/** The words the block, its empty panel and its chrome show, over the English ones. */
-		labels?: PartialLabels<'image'>;
-		/**
-		 * The slash menu's keywords of the image command (`block.image`), which
-		 * replace its own.
-		 */
-		keywords?: Partial<Record<string, string[]>>;
 		/**
 		 * The toolbar over the hovered image (the alignments and the alt field);
 		 * it renders while `controls.shown` and no handle drags, at the image's
@@ -92,12 +84,11 @@
 	 */
 	export const createImagePlugin = (pluginOptions: ImagePluginOptions = {}): Plugin => {
 		const { upload } = pluginOptions;
-		const labels = labelsWith(imageEnglish, pluginOptions.labels);
 		const plugin: Plugin = (edytor) => {
-			imageLabels.claim(edytor, labels);
+			const labels = labelsOf(edytor, 'image', imageEnglish);
 			const own: View = {
 				upload,
-				controls: new ImageControls(edytor, labels),
+				controls: new ImageControls(edytor),
 				uploads: upload ? fileUploads(edytor) : undefined,
 				empty: pluginOptions.empty
 			};
@@ -163,11 +154,7 @@
 							{
 								label: labels.image,
 								icon: '🖼',
-								keywords: keywordsOf(
-									'block.image',
-									['picture', 'photo', 'img'],
-									pluginOptions.keywords
-								),
+								keywords: keywordsOf(edytor, 'block.image', ['picture', 'photo', 'img']),
 								group: 'Media'
 							}
 						],
@@ -222,7 +209,7 @@
 			{#if upload.preview}<img src={upload.preview} alt="" draggable="false" />{/if}
 			<span data-edytor-image-progress role="status">
 				<progress value={upload.progress ?? undefined} max="1"></progress>
-				{imageLabels.of(block.handle?.edytor).uploading}
+				{labelsOf(block.handle?.edytor, 'image', imageEnglish).uploading}
 			</span>
 		</div>
 	{:else}

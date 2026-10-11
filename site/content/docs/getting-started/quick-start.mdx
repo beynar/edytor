@@ -34,7 +34,7 @@ This page builds a Notion-style editor: rich text blocks and marks, images, code
 	createSlashMenuPlugin,
 	createToolbarPlugin,
 	createMarkdownShortcutsPlugin,
-	createRichTextPlaceholder,
+	richTextPlaceholder,
 	type EdytorInstance,
 	type JSONDoc,
 	type SlashMenuController,
@@ -93,7 +93,7 @@ This page builds a Notion-style editor: rich text blocks and marks, images, code
 {/snippet}
 
 <div class="edytor-notion">
-	<Edytor {plugins} {value} {onChange} bind:edytor class="editor" placeholder={createRichTextPlaceholder()} />
+	<Edytor {plugins} {value} {onChange} bind:edytor class="editor" placeholder={richTextPlaceholder} />
 </div>
 
 <style>
@@ -112,7 +112,7 @@ This page builds a Notion-style editor: rich text blocks and marks, images, code
 </style>
 ```
 
-The `edytor-notion` class applies the imported theme to the document, and `createRichTextPlaceholder()` shows Notion's placeholders ("Heading 1", "To-do", "Type '/' for commands"…). The menus are your markup: the plugins place them, open and close them, and give them their keys and ARIA through the controller (`popup`, `keys`, `option(index)`). Block handles (a `+` and a drag grip beside each block) and a block menu on the grip are two more plugins drawn by your snippets, `createBlockHandlesPlugin({ handle })` and `createBlockMenuPlugin({ menu })`. The demo's complete Notion-style chrome, every surface with its styles, is in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome): copy it to start from Notion's look.
+The `edytor-notion` class applies the imported theme to the document, and `richTextPlaceholder` shows Notion's placeholders ("Heading 1", "To-do", "Type '/' for commands"…). The menus are your markup: the plugins place them, open and close them, and give them their keys and ARIA through the controller (`popup`, `keys`, `option(index)`). Block handles (a `+` and a drag grip beside each block) and a block menu on the grip are two more plugins drawn by your snippets, `createBlockHandlesPlugin({ handle })` and `createBlockMenuPlugin({ menu })`. The demo's complete Notion-style chrome, every surface with its styles, is in the repository's [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome): copy it to start from Notion's look.
 
 What each plugin adds:
 

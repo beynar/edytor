@@ -3,6 +3,7 @@
 	import type { Edytor } from '../edytor.svelte.js';
 	import type { Suggestion } from '../session/suggestions.svelte.js';
 	import { previewCells } from '../surface/cells.js';
+	import { editorEnglish, labelsOf } from '../labels.js';
 	import Block from './Block.svelte';
 
 	/**
@@ -28,7 +29,7 @@
 	data-edytor-suggestion={suggestion.id}
 	data-status={suggestion.status}
 	contenteditable="false"
-	aria-label={suggestion.label ?? edytor.labels.suggestion}
+	aria-label={suggestion.label ?? labelsOf(edytor, 'editor', editorEnglish).suggestion}
 	role="group"
 	use:edytor.surface.preview={suggestion.id}
 	onmousedown={cancel}

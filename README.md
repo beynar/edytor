@@ -28,7 +28,7 @@ Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable 
 - **Mentions, page links and your own triggers.** `createMentionPlugin` (`@` people) and `createPageLinkPlugin` (`[[` pages) take your app's search; a plugin's `inputRules` (`:smile:` → 😄) and `triggers` (a menu on a typed character) declare the rest ([Input rules and triggers](https://edytor.dev/docs/plugins/input-rules)).
 - **Comments, opt-in.** `createCommentsPlugin` adds Notion's comment threads: select text, press Comment, and the thread shows in a sidebar beside it with replies, Resolve and Re-open. The room keeps the threads beside the document and sends each change live; the anchor follows the text through edits and is not copied ([Comments](https://edytor.dev/docs/plugins/comments)).
 - **Your markup.** Blocks, marks and inline atoms render through your Svelte snippets; the slash menu, toolbar, block menu and handles take a snippet and keep their behavior.
-- **Your language.** Every word the chrome shows or says, slash keywords included, comes from a labels dictionary each plugin takes; English by default ([Localization](https://edytor.dev/docs/customization/localization)).
+- **Your language.** Every word the package shows or says, slash keywords included, comes from one labels dictionary the view takes (`<Edytor labels>`); your chrome's words are your markup's; English by default ([Localization](https://edytor.dev/docs/customization/localization)).
 - **Synced properties.** `block.data`, `atom.data` and `edytor.data` read and write like plain objects (`bind:value={block.data.title}`); each property and each array item syncs on its own, so concurrent edits of different properties, or of different items of one array, merge.
 - **AI suggestions.** `edytor.suggestions.add(position, content)` proposes text, paragraphs, lists, to-dos or images after, before or inside a block, at the end of its text, or in place of the selection; it streams in, shows only on your screen, and becomes one undo step when accepted ([Suggestions](https://edytor.dev/docs/editor/suggestions)).
 - **Plugins that can veto anything.** Every command is prepared before it writes; plugins see the command and each planned step and can refuse or replace it.
@@ -56,7 +56,7 @@ pnpm add edytor
 		createCodePlugin,
 		createSlashMenuPlugin,
 		createMarkdownShortcutsPlugin,
-		createRichTextPlaceholder,
+		richTextPlaceholder,
 		type JSONDoc,
 		type SlashMenuController
 	} from 'edytor';
@@ -85,7 +85,7 @@ pnpm add edytor
 	<Edytor
 		{value}
 		{plugins}
-		placeholder={createRichTextPlaceholder()}
+		placeholder={richTextPlaceholder}
 		onChange={(root) => console.log(root)}
 	/>
 </div>

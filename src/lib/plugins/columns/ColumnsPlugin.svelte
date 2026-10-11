@@ -12,7 +12,7 @@
 	import ColumnResizeStrips from './ColumnResize.svelte';
 	import { ColumnResize, weightOf } from './resize.svelte.js';
 	import { hoverChrome, listen } from '../bands.svelte.js';
-	import { columnsEnglish, keywordsOf, labelsWith, type PartialLabels } from '$lib/labels.js';
+	import { columnsEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 
 	export type ColumnsPluginOptions = {
 		/**
@@ -20,13 +20,6 @@
 		 * width (default `0.1`). View-only: the document stores weights.
 		 */
 		minWidth?: number;
-		/** The words the layout commands and the resize bands say, over the English ones. */
-		labels?: PartialLabels<'columns'>;
-		/**
-		 * The slash menu's keywords of a layout command, by id (`columns.2` to
-		 * `columns.5`), which replace its own.
-		 */
-		keywords?: Partial<Record<string, string[]>>;
 	};
 
 	/** A weight read back from HTML (`data-width`), when it is one. */
@@ -47,19 +40,22 @@
 	};
 
 	/** The kind row of a layout of `n` columns, each holding one empty block of the column's default kind. */
-	const layoutRow = (edytor: Edytor, n: number, options: ColumnsPluginOptions): KindRow => {
+	const layoutRow = (edytor: Edytor, n: number): KindRow => {
 		const kid = edytor.document.defaultChild('column');
 		const id = `columns.${n}`;
 		return {
 			id,
-			label: labelsWith(columnsEnglish, options.labels).columns(n),
+			label: labelsOf(edytor, 'columns', columnsEnglish).columns(n),
 			group: 'Layout',
 			// Notion's `/col3`, `/columns3` and `/column 3` too (query words match in order).
-			keywords: keywordsOf(
-				id,
-				['columns', 'layout', 'side by side', `col${n}`, `columns${n}`, `column ${n}`],
-				options.keywords
-			),
+			keywords: keywordsOf(edytor, id, [
+				'columns',
+				'layout',
+				'side by side',
+				`col${n}`,
+				`columns${n}`,
+				`column ${n}`
+			]),
 			value: {
 				type: 'columns',
 				data: {},
@@ -84,12 +80,8 @@
 	 * block column 1 of `n`, each other column holding an empty paragraph
 	 * (`wrapBlocks`, `layout.wrap`, Notion); the blocks stay selected.
 	 */
-	const layoutCommand = (
-		edytor: Edytor,
-		n: number,
-		options: ColumnsPluginOptions
-	): EditorCommand => {
-		const { id, label, group, keywords } = layoutRow(edytor, n, options);
+	const layoutCommand = (edytor: Edytor, n: number): EditorCommand => {
+		const { id, label, group, keywords } = layoutRow(edytor, n);
 		return {
 			id,
 			label,
@@ -115,7 +107,7 @@
 					edytor.dispatcher.record({ operation: 'setBlock', status: 'refused' });
 					return false;
 				}
-				return convertToKind(edytor, block, layoutRow(edytor, n, options));
+				return convertToKind(edytor, block, layoutRow(edytor, n));
 			}
 		};
 	};
@@ -144,13 +136,9 @@
 	 */
 	export const createColumnsPlugin = (options: ColumnsPluginOptions = {}): Plugin => {
 		const plugin: Plugin = (edytor) => {
-			const resize = new ColumnResize(
-				edytor,
-				options.minWidth ?? 0.1,
-				labelsWith(columnsEnglish, options.labels)
-			);
+			const resize = new ColumnResize(edytor, options.minWidth ?? 0.1);
 			return {
-				commands: [2, 3, 4, 5].map((n) => layoutCommand(edytor, n, options)),
+				commands: [2, 3, 4, 5].map((n) => layoutCommand(edytor, n)),
 				// The layout holding the caret shows its bands (the keyboard's way to them).
 				onSelectionChange: () => edytor.overlay.invalidate(),
 				// The resize bands: in the overlay, for the layout under the pointer.

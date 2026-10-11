@@ -12,12 +12,12 @@ The core ships almost no visual styles: you style the document with CSS, through
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createRichTextPlaceholder } from 'edytor';
+	import { Edytor, richTextPlaceholder } from 'edytor';
 	import 'edytor/themes/notion.css';
 </script>
 
 <div class="edytor-notion">
-	<Edytor placeholder={createRichTextPlaceholder()} />
+	<Edytor placeholder={richTextPlaceholder} />
 </div>
 ```
 
@@ -34,7 +34,7 @@ What it sets:
 - Notion's page row for a [page block](/docs/plugins/page) and muted entries for a [table of contents](/docs/plugins/table-of-contents);
 - the block colour tokens (below): a callout given a background shows it in place of its panel.
 
-It styles the document only. The block handles, menus, toolbar and panels are your markup, with your styles (see [Menus and handles](/docs/customization/menus); the demo's Notion-style chrome carries its own). Pair it with [`createRichTextPlaceholder()`](/docs/customization/placeholder#notion-placeholders) for Notion's placeholders.
+It styles the document only. The block handles, menus, toolbar and panels are your markup, with your styles (see [Menus and handles](/docs/customization/menus); the demo's Notion-style chrome carries its own). Pair it with [`richTextPlaceholder`](/docs/customization/placeholder#notion-placeholders) for Notion's placeholders.
 
 Adapt it by overriding its custom properties on `.edytor-notion`:
 

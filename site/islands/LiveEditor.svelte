@@ -8,7 +8,7 @@
 	Edytor,
 	createColumnsPlugin,
 	createMarkdownShortcutsPlugin,
-	createRichTextPlaceholder,
+	richTextPlaceholder,
 	tableBlock,
 	type EdytorInstance,
 	type JSONDoc
@@ -192,7 +192,7 @@
 			{room}
 			params={{ guest }}
 			{plugins}
-			placeholder={createRichTextPlaceholder()}
+			placeholder={richTextPlaceholder}
 		/>
 	</div>
 </div>

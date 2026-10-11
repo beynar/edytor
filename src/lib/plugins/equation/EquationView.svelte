@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';
-	import { equationLabels, equationViews } from './equation.svelte.js';
+	import { equationEnglish, labelsOf } from '$lib/labels.js';
+	import { equationViews } from './equation.svelte.js';
 
 	/**
 	 * An equation as drawn: KaTeX's markup, its source while KaTeX loads (or
@@ -13,7 +14,7 @@
 
 	const edytor = getContext<Edytor | undefined>('edytor');
 	const view = $derived(edytor ? equationViews.get(edytor) : undefined);
-	const labels = $derived(equationLabels.of(edytor));
+	const labels = $derived(labelsOf(edytor, 'equation', equationEnglish));
 	const drawn = $derived(expression ? (view?.renderer.draw(expression, display) ?? null) : null);
 </script>
 

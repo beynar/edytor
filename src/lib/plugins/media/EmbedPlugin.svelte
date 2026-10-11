@@ -5,7 +5,6 @@
 	import type { Snippet } from 'svelte';
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
 	import type { MediaEmptyController } from './empty.svelte.js';
-	import type { PartialLabels } from '$lib/labels.js';
 	import {
 		EMBED_ALLOW,
 		EMBED_PROVIDERS,
@@ -25,10 +24,6 @@
 	export type EmbedPluginOptions = {
 		/** The allowlist (default {@link EMBED_PROVIDERS}); a link none of them plays shows no frame. */
 		providers?: readonly EmbedProvider[];
-		/** The words the block shows (its empty panel, its menu row), over the English ones. */
-		labels?: PartialLabels<'media'>;
-		/** The slash menu's keywords of its command (`block.<kind>`), which replace its own. */
-		keywords?: Partial<Record<string, string[]>>;
 		/**
 		 * The menu a URL pasted on an empty line opens (Link, Embed, Bookmark);
 		 * it renders while `controller.open`, under the line (without it, the
@@ -69,7 +64,7 @@
 			'embed',
 			options,
 			['iframe', 'youtube', 'vimeo', 'loom', 'figma', 'codepen', 'spotify'],
-			(labels, edytor) => ({
+			(edytor) => ({
 				providers: allowed,
 				// The block's link, when a provider plays it.
 				store: (block, value) => {
@@ -82,11 +77,9 @@
 					edytor,
 					{
 						type: 'embed',
-						label: labels.embed.offer,
 						icon: MEDIA_ICONS.embed,
 						data: (url) => (embedSourceOf(url, allowed) ? { url } : null)
 					},
-					labels,
 					options.menu
 				),
 				record: {

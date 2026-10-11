@@ -37,14 +37,6 @@ An image plugin you list (any `createImagePlugin(...)`) replaces the default one
       type: "(file: File) => Promise<string>",
       description: "Upload a file and answer its URL. Adds an Upload button to the empty block, and claims pasted and dropped image files (see below). Without it, images are embedded from links only.",
     },
-    labels: {
-      type: "PartialLabels<'image'>",
-      description: "The empty panel's, the upload's and the chrome's words, over the English ones. See Localization.",
-    },
-    keywords: {
-      type: "Partial<Record<string, string[]>>",
-      description: "The slash menu's keywords by command id (block.image); they replace the command's own.",
-    },
     toolbar: {
       type: "Snippet<[ImageControls]>",
       description: "The alignment buttons and the alt field over the hovered image, placed at its top right (without it, the resize handles alone). Keep their behavior with {@attach controls.bar} and {@attach controls.altField}. See Menus and handles.",
@@ -114,7 +106,7 @@ A readonly view shows none of this, and a drag in progress ends when the view tu
 
 ## Image and caption
 
-With a source, the block renders the image (its `alt`, its `width`, not draggable) in a wrapper that places it by `align`, then the caption in a `<figcaption>`. With [`createRichTextPlaceholder()`](/docs/customization/placeholder#notion-placeholders), an empty caption shows "Write a caption…" while focused.
+With a source, the block renders the image (its `alt`, its `width`, not draggable) in a wrapper that places it by `align`, then the caption in a `<figcaption>`. With [`richTextPlaceholder`](/docs/customization/placeholder#notion-placeholders), an empty caption shows "Write a caption…" while focused.
 
 To set the source from code:
 

@@ -22,7 +22,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { createArrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-import { englishLabels } from '$lib/labels.js';
+import { englishWords } from '../../../routes/chrome/words.svelte.js';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -239,7 +239,7 @@ describe('the toolbar: named by the root, reached with Alt+F10', () => {
 			)!;
 			expect(document.activeElement).toBe(field);
 			expect(document.querySelector(`label[for="${field.id}"]`)?.textContent).toBe(
-				englishLabels.toolbar.linkUrl
+				englishWords.toolbar.linkUrl
 			);
 			fields.push(field);
 		}

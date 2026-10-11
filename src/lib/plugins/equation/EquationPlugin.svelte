@@ -8,14 +8,13 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 	import { equationKinds } from '$lib/crdt/semantics.js';
-	import { equationEnglish, keywordsOf, labelsWith } from '$lib/labels.js';
+	import { equationEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import { id } from '$lib/utils.js';
 	import EquationView from './EquationView.svelte';
 	import EquationEditorPanel from './EquationEditor.svelte';
 	import {
 		EquationEditor,
 		EquationRenderer,
-		equationLabels,
 		equationViews,
 		expressionOf,
 		parseEquation,
@@ -144,14 +143,13 @@
 	export const createEquationPlugin =
 		(options: EquationPluginOptions = {}): Plugin =>
 		(edytor) => {
-			const labels = labelsWith(equationEnglish, options.labels);
-			equationLabels.claim(edytor, labels);
+			const labels = labelsOf(edytor, 'equation', equationEnglish);
 			const renderer = new EquationRenderer(katexLoaderOf(options.katex), options.macros);
 			// The records read with no view (`plugin(undefined)`) keep no state.
 			if (edytor && !equationViews.has(edytor))
 				equationViews.set(edytor, {
 					renderer,
-					editor: new EquationEditor(edytor, renderer, labels)
+					editor: new EquationEditor(edytor, renderer)
 				});
 			const owns = () => equationViews.get(edytor)?.renderer === renderer;
 			return {
@@ -193,11 +191,14 @@
 						id: 'equation.inline',
 						label: labels.inline,
 						icon: '√x',
-						keywords: keywordsOf(
-							'equation.inline',
-							['math', 'tex', 'latex', 'katex', 'formula', 'inline'],
-							options.keywords
-						),
+						keywords: keywordsOf(edytor, 'equation.inline', [
+							'math',
+							'tex',
+							'latex',
+							'katex',
+							'formula',
+							'inline'
+						]),
 						group: 'Inline',
 						isEnabled: (view) => textBlock(view) !== null,
 						run: () => insertInline(edytor)
@@ -213,11 +214,14 @@
 							{
 								label: labels.block,
 								icon: '√x',
-								keywords: keywordsOf(
-									'block.equation',
-									['math', 'tex', 'latex', 'katex', 'formula', 'equation'],
-									options.keywords
-								),
+								keywords: keywordsOf(edytor, 'block.equation', [
+									'math',
+									'tex',
+									'latex',
+									'katex',
+									'formula',
+									'equation'
+								]),
 								group: 'Advanced blocks'
 							}
 						],

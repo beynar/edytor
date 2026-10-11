@@ -16,7 +16,7 @@ Every element is customized the same way:
 
 - **Where.** A snippet option in the plugin's factory options (`createBlockMenuPlugin({ menu })`). The version history is a controller you make in your component (`new VersionHistory(…)`).
 - **Naming.** A whole surface is named by what it is: `menu`, `toolbar`, `card`, `bar`, `empty`, `header`, `panel`, `box`, `picker`; a control by what it is: `grip`, `add`, `handle`. One surface, one snippet: your snippet draws its rows.
-- **Typing.** A snippet takes one object argument whose type is exported from `edytor`: `Snippet<[BlockMenuController]>`. A whole surface receives its controller: its state, its actions, its words (`labels`), `readonly`, and a way to close it. A controller that builds its rows hands them in the shape every list shares, `MenuItemPayload`: `{ item, id, label, selected, run, select, option }` (a table menu's `items`, a code language list's `items`).
+- **Typing.** A snippet takes one object argument whose type is exported from `edytor`: `Snippet<[BlockMenuController]>`. A whole surface receives its controller: its state, its actions, `readonly`, and a way to close it; the words are your markup's. A controller that builds its rows hands them in the shape every list shares, `MenuItemPayload`: `{ item, id, selected, run, select, option }` (a table menu's `items`, a code language list's `items`).
 - **Accessibility.** The keyboard and the ARIA live on the controller as [attachments](https://svelte.dev/docs/svelte/@attach) and row attributes: a snippet that uses them gets the keys and the ARIA the accessibility tests prove (the demo's markup is the one they run).
 
 | Attachment | Put it on | What it does |
@@ -57,7 +57,7 @@ Two rules hold for every snippet:
 | [Block handle](#block-handle) | `createBlockHandlesPlugin({ handle })` | `BlockHandleSnippetPayload` | `use:grip`; `expanded`, `controls`, `haspopup` |
 | [Marquee rectangle](#marquee-rectangle) | `createMarqueePlugin({ box })` | `MarqueeBoxPayload` | |
 
-Each factory also takes `labels`, the words its controller carries for your markup (`controller.labels`) and says itself (a list's accessible name): see [Localization](/docs/customization/localization). Your markup renders in the plugin's host, placed by the plugin; its look is all yours.
+Your markup writes its own words and names its menus, bars and fields (`aria-label`): the controllers carry no words and name none of your elements; the words the package itself shows are the view's `labels` ([Localization](/docs/customization/localization)). Your markup renders in the plugin's host, placed by the plugin; its look is all yours.
 
 A snippet declared at the top level of a component's markup can be used in its `<script>`, so you build the plugins there, as every example below does.
 
@@ -80,8 +80,8 @@ A snippet declared at the top level of a component's markup can be used in its `
 				role="combobox"
 				aria-expanded="true"
 				aria-controls={slash.listId}
-				aria-label={slash.labels.filterLabel}
-				placeholder={slash.labels.filter}
+				aria-label="Filter block commands"
+				placeholder="Type to filter…"
 				value={slash.query}
 				oninput={(event) => slash.search(event.currentTarget.value)}
 				{@attach slash.keys}
@@ -98,7 +98,7 @@ A snippet declared at the top level of a component's markup can be used in its `
 					{#if command.hint}<kbd>{command.hint}</kbd>{/if}
 				</li>
 			{:else}
-				<li role="presentation">{slash.labels.noResults}</li>
+				<li role="presentation">No results</li>
 			{/each}
 		</ul>
 	</div>
@@ -141,7 +141,7 @@ A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugin
 				{person.label}
 			</li>
 		{:else}
-			<li role="presentation">{mentions.loading ? mentions.searching : mentions.empty}</li>
+			<li role="presentation">{mentions.loading ? 'Searching…' : 'No results'}</li>
 		{/each}
 	</ul>
 {/snippet}
@@ -163,8 +163,8 @@ A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugin
 {#snippet menu(blockMenu: BlockMenuController)}
 	<div class="panel" data-edytor-block-menu>
 		<input
-			aria-label={blockMenu.labels.searchLabel}
-			placeholder={blockMenu.labels.search}
+			aria-label="Search actions"
+			placeholder="Search actions…"
 			value={blockMenu.query}
 			oninput={(event) => blockMenu.search(event.currentTarget.value)}
 			{@attach blockMenu.keys}
@@ -224,13 +224,13 @@ A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugin
 				>
 			{/each}
 			<button aria-expanded={bar.panel === 'link'} onclick={() => bar.togglePanel('link')}
-				>{bar.labels.link}</button
+				>Link</button
 			>
 		</div>
 		{#if bar.panel === 'link'}
-			<label for={bar.linkFieldId}>{bar.labels.linkUrl}</label>
+			<label for={bar.linkFieldId}>Link URL</label>
 			<input
-				placeholder={bar.labels.linkPlaceholder}
+				placeholder="Paste link"
 				value={bar.linkUrl}
 				oninput={(event) => bar.setLinkUrl(event.currentTarget.value)}
 				{@attach bar.linkField}
@@ -240,10 +240,10 @@ A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugin
 {/snippet}
 
 {#snippet card(links: ToolbarController)}
-	<div class="card" role="toolbar" aria-label={links.labels.card}>
+	<div class="card" role="toolbar" aria-label="Link">
 		<span>{links.hoveredHref}</span>
-		<button onclick={() => links.editHovered()}>{links.labels.edit}</button>
-		<button onclick={() => links.removeHovered()}>{links.labels.remove}</button>
+		<button onclick={() => links.editHovered()}>Edit</button>
+		<button onclick={() => links.removeHovered()}>Remove</button>
 	</div>
 {/snippet}
 
@@ -271,7 +271,7 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 				onmousemove={() => (paste.index = index)}
 				onclick={() => paste.pick(option)}
 			>
-				{option.icon} {option.label}
+				{option.icon} {option.id}
 			</li>
 		{/each}
 	</ul>
@@ -294,16 +294,16 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 {#snippet toolbar(image: ImageControls)}
 	<div class="image-toolbar" {@attach image.bar}>
 		<button aria-pressed={image.box?.align === 'left'} onclick={() => image.align('left')}
-			>{image.labels.alignLeft}</button
+			>Align left</button
 		>
 		<button aria-pressed={image.box?.align === 'center'} onclick={() => image.align('center')}
-			>{image.labels.alignCenter}</button
+			>Align center</button
 		>
-		<button aria-expanded={image.editing !== null} onclick={image.toggleAlt}>{image.labels.alt}</button>
+		<button aria-expanded={image.editing !== null} onclick={image.toggleAlt}>Alt text</button>
 		{#if image.editing !== null && image.editing === image.box?.id}
 			<input
-				aria-label={image.labels.alt}
-				placeholder={image.labels.altPlaceholder}
+				aria-label="Alt text"
+				placeholder="Describe the image…"
 				value={image.alt}
 				oninput={(event) => image.setAlt(event.currentTarget.value)}
 				{@attach image.altField}
@@ -337,14 +337,14 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 
 {#snippet emptyImage(image: ImageEmptyController)}
 	{#if image.readonly}
-		<p>{image.labels.image}</p>
+		<p>Image</p>
 	{:else}
-		<input aria-label={image.labels.link} bind:value={image.draft} {@attach image.field} />
-		<button onclick={() => image.embed()}>{image.labels.embed}</button>
+		<input aria-label="Image link" bind:value={image.draft} {@attach image.field} />
+		<button onclick={() => image.embed()}>Embed image</button>
 		{#if image.failed === 'inline'}
-			<small>{image.labels.tooLarge(image.inlineLimit, image.canUpload)}</small>
+			<small>Inline images are limited to {image.inlineLimit}.</small>
 		{:else if image.failed}
-			<small>{image.labels.invalid}</small>
+			<small>That doesn't look like an image link.</small>
 		{/if}
 	{/if}
 {/snippet}
@@ -353,10 +353,10 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 	{#if media.pending?.status === 'uploading'}
 		<progress value={media.pending.progress ?? undefined} max="1"></progress>
 	{:else if media.readonly}
-		<p>{media.icon} {media.label}</p>
+		<p>{media.icon} Embed a {media.kind}</p>
 	{:else}
-		<input aria-label={media.kindLabels.placeholder} bind:value={media.draft} {@attach media.field} />
-		<button onclick={() => media.embed()}>{media.kindLabels.submit}</button>
+		<input aria-label="Paste the link…" bind:value={media.draft} {@attach media.field} />
+		<button onclick={() => media.embed()}>Embed</button>
 		{#if media.canUpload}
 			<input
 				type="file"
@@ -367,7 +367,7 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 				}}
 			/>
 		{/if}
-		{#if media.failed}<small>{media.failed === 'upload' ? media.labels.uploadFailed : media.kindLabels.invalid}</small>{/if}
+		{#if media.failed}<small>{media.failed === 'upload' ? 'The upload failed.' : 'That link is not one.'}</small>{/if}
 	{/if}
 {/snippet}
 
@@ -409,14 +409,14 @@ The [table](/docs/plugins/table) plugin's chrome shows over the hovered table (i
 				{...item.option}
 				class:danger={item.danger}
 				onmousemove={item.select}
-				onclick={item.run}>{item.label}</button
+				onclick={item.run}>{item.item.id}</button
 			>
 		{/each}
 	</div>
 {/snippet}
 
-{#snippet plus({ kind, label, add }: TableAddPayload)}
-	<button type="button" class="add {kind}" aria-label={label} onclick={add}>+</button>
+{#snippet plus({ kind, add }: TableAddPayload)}
+	<button type="button" class="add {kind}" aria-label="Add a {kind}" onclick={add}>+</button>
 {/snippet}
 
 <Edytor {plugins} />
@@ -461,14 +461,14 @@ The [code](/docs/plugins/code) plugin's `header` draws the header above each cod
 		<span>{code.label}</span>
 	{/if}
 	<button type="button" onmousedown={(event) => event.preventDefault()} onclick={() => void code.copy()}
-		>{code.copied ? code.labels.copied : code.labels.copy}</button
+		>{code.copied ? 'Copied' : 'Copy'}</button
 	>
 {/snippet}
 
 {#snippet menu(languages: LanguageMenu)}
 	<div class="languages">
 		<input
-			placeholder={languages.labels.search}
+			placeholder="Search for a language…"
 			value={languages.query}
 			oninput={(event) => languages.search(event.currentTarget.value)}
 			{@attach languages.keys}
@@ -476,11 +476,11 @@ The [code](/docs/plugins/code) plugin's `header` draws the header above each cod
 		<ul {@attach languages.popup}>
 			{#each languages.items as item (item.item.id)}
 				<li {...item.option} onmousemove={item.select} onclick={item.run}>
-					{item.label}{#if item.current}&nbsp;✓{/if}
+					{item.item.label}{#if item.current}&nbsp;✓{/if}
 				</li>
 			{/each}
 		</ul>
-		{#if languages.items.length === 0}<p role="status">{languages.labels.noResults}</p>{/if}
+		{#if languages.items.length === 0}<p role="status">No results</p>{/if}
 	</div>
 {/snippet}
 
@@ -505,7 +505,7 @@ A callout's icon opens the view's icon picker (the first rich text plugin listed
 				<button type="button" tabindex="-1" {...icons.option(index)}>{icon}</button>
 			{/each}
 		</div>
-		<button type="button" tabindex="-1" {...icons.option(icons.icons.length)}>{icons.labels.remove}</button>
+		<button type="button" tabindex="-1" {...icons.option(icons.icons.length)}>Remove icon</button>
 	</div>
 {/snippet}
 
@@ -521,7 +521,7 @@ A callout's icon opens the view's icon picker (the first rich text plugin listed
 
 ## Equation editor
 
-The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that opens under an equation (its TeX source, KaTeX's error, Done). It renders while `editor.target` is set, under the equation (centered under a block one). It receives the view's `EquationEditor`: `expression` and `set(value)` (each keystroke one write, the typing one undo step), `display` (a block equation), `error`, `close()` and `labels`. `{@attach editor.field}` on the source's field gives it the focus when the editor opens and its keys: <kbd>Enter</kbd> and <kbd>Escape</kbd> close the editor (<kbd>Shift</kbd>+<kbd>Enter</kbd> is a newline in a block equation), as does the focus leaving the panel.
+The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that opens under an equation (its TeX source, KaTeX's error, Done). It renders while `editor.target` is set, under the equation (centered under a block one). It receives the view's `EquationEditor`: `expression` and `set(value)` (each keystroke one write, the typing one undo step), `display` (a block equation), `error` and `close()`. `{@attach editor.field}` on the source's field gives it the focus when the editor opens and its keys: <kbd>Enter</kbd> and <kbd>Escape</kbd> close the editor (<kbd>Shift</kbd>+<kbd>Enter</kbd> is a newline in a block equation), as does the focus leaving the panel.
 
 ```svelte title="EquationPanel.svelte" check
 <script lang="ts">
@@ -531,10 +531,10 @@ The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that op
 </script>
 
 {#snippet panel(equation: EquationEditor)}
-	<div class="panel" role="dialog" aria-label={equation.labels.editor}>
+	<div class="panel" role="dialog" aria-label="Equation">
 		<textarea
-			aria-label={equation.labels.editor}
-			placeholder={equation.labels.placeholder}
+			aria-label="Equation"
+			placeholder="E = mc^2"
 			rows={equation.display ? 3 : 1}
 			value={equation.expression}
 			oninput={(event) => equation.set(event.currentTarget.value)}
@@ -542,7 +542,7 @@ The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that op
 		></textarea>
 		{#if equation.error}<p role="status">{equation.error}</p>{/if}
 		<button type="button" onmousedown={(event) => event.preventDefault()} onclick={() => equation.close()}
-			>{equation.labels.done}</button
+			>Done</button
 		>
 	</div>
 {/snippet}
@@ -552,7 +552,7 @@ The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that op
 
 ## Comment cards
 
-`card` draws a card of the comments sidebar; the plugin places each card beside its text (under it, on a narrow screen). It receives a `CommentCardPayload`: the `thread` (its `comments`, `quote`, `resolved`), or `null` for the comment being written (its text `comments.draft.quote`: post it with `comments.submit(body)`, give it up with `comments.cancel()`), the view's `comments` controller (`reply`, `resolve`, `reopen`, `remove`, `mayDelete`, `userOf`, `labels`) and whether the thread is the `active` one. `header` draws the top of the margin (Notion's "Resolved (2)" toggle: `comments.resolved`, `comments.showResolved`); the cards stack under it. Without `card`, no sidebar shows: the threads are still highlighted and kept. See [Comments](/docs/plugins/comments).
+`card` draws a card of the comments sidebar; the plugin places each card beside its text (under it, on a narrow screen). It receives a `CommentCardPayload`: the `thread` (its `comments`, `quote`, `resolved`), or `null` for the comment being written (its text `comments.draft.quote`: post it with `comments.submit(body)`, give it up with `comments.cancel()`), the view's `comments` controller (`reply`, `resolve`, `reopen`, `remove`, `mayDelete`, `userOf`) and whether the thread is the `active` one. `header` draws the top of the margin (Notion's "Resolved (2)" toggle: `comments.resolved`, `comments.showResolved`); the cards stack under it. Without `card`, no sidebar shows: the threads are still highlighted and kept. See [Comments](/docs/plugins/comments).
 
 ```svelte title="CommentsEditor.svelte" check
 <script lang="ts">
@@ -576,9 +576,9 @@ The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that op
 				<p><strong>{comments.userOf(comment.author).name ?? comment.author}</strong> {comment.body}</p>
 			{/each}
 			{#if thread.resolved}
-				<button onclick={() => void comments.reopen(thread.id)}>{comments.labels.reopen}</button>
+				<button onclick={() => void comments.reopen(thread.id)}>Re-open</button>
 			{:else}
-				<button onclick={() => void comments.resolve(thread.id)}>{comments.labels.resolve}</button>
+				<button onclick={() => void comments.resolve(thread.id)}>Resolve</button>
 			{/if}
 		</article>
 	{:else}
@@ -589,9 +589,9 @@ The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that op
 				void comments.submit(String(field ?? ''));
 			}}
 		>
-			<textarea name="body" aria-label={comments.labels.placeholder}></textarea>
-			<button type="button" onclick={() => comments.cancel()}>{comments.labels.cancel}</button>
-			<button>{comments.labels.post}</button>
+			<textarea name="body" aria-label="Add a comment…"></textarea>
+			<button type="button" onclick={() => comments.cancel()}>Cancel</button>
+			<button>Comment</button>
 		</form>
 	{/if}
 {/snippet}
@@ -610,12 +610,12 @@ The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that op
 	const plugins = [createSuggestionsPlugin({ bar })];
 </script>
 
-{#snippet bar({ suggestion, accept, discard, retry, readonly, labels }: SuggestionBarPayload)}
+{#snippet bar({ suggestion, accept, discard, retry, readonly }: SuggestionBarPayload)}
 	<div class="bar">
-		<span>{suggestion.label ?? labels.suggestion}</span>
-		{#if !readonly}<button onmousedown={(e) => e.preventDefault()} onclick={accept}>{labels.accept}</button>{/if}
-		<button onmousedown={(e) => e.preventDefault()} onclick={discard}>{labels.discard}</button>
-		{#if retry}<button onclick={retry}>{labels.retry}</button>{/if}
+		<span>{suggestion.label ?? 'Suggestion'}</span>
+		{#if !readonly}<button onmousedown={(e) => e.preventDefault()} onclick={accept}>Accept</button>{/if}
+		<button onmousedown={(e) => e.preventDefault()} onclick={discard}>Discard</button>
+		{#if retry}<button onclick={retry}>Try again</button>{/if}
 	</div>
 {/snippet}
 
@@ -624,7 +624,7 @@ The [equation](/docs/plugins/equation) plugin's `panel` draws the editor that op
 
 ## Version history
 
-The [version history](/docs/server/history-panel) is a controller you make in your component: `new VersionHistory({ client, document })` lists the room's versions (`versions`, newest first), previews one (`select(key)`, `selected`, `preview`, `previewPlugins`, `diff` against the live `document`), restores it (`restore()`, `undo()`, `busy`, `undoable`, `status`, `failed`) and writes their words in its `labels` (`titleOf(version)`, `editorsOf`, `timeOf`). Each row spreads `option(index)`: an `option` of your listbox, its one tab stop when selected; the list's `onkeydown={history.keys}` walks them (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd>, <kbd>End</kbd>). Make it in the component's script: its effects list the versions and follow the document.
+The [version history](/docs/server/history-panel) is a controller you make in your component: `new VersionHistory({ client, document })` lists the room's versions (`versions`, newest first), previews one (`select(key)`, `selected`, `preview`, `previewPlugins`, `diff` against the live `document`), restores it (`restore()`, `undo()`, `busy`, `undoable`, `status`, `failed`) in your words (`status` is a code; `dateOf(version)` and `timeOf(version)` format a version's day and time, `version.slot` its half of the day, `version.editors` who edited it). Each row spreads `option(index)`: an `option` of your listbox, its one tab stop when selected; the list's `onkeydown={history.keys}` walks them (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd>, <kbd>End</kbd>). Make it in the component's script: its effects list the versions and follow the document.
 
 ```svelte title="Versions.svelte" check
 <script lang="ts">
@@ -636,11 +636,11 @@ The [version history](/docs/server/history-panel) is a controller you make in yo
 	const history = untrack(() => new VersionHistory({ client, document }));
 </script>
 
-<ul role="listbox" aria-label={history.labels.versions} onkeydown={history.keys}>
+<ul role="listbox" aria-label="Versions" onkeydown={history.keys}>
 	{#each history.versions ?? [] as version, index (version.key)}
 		<li role="presentation">
 			<button type="button" {...history.option(index)} onclick={() => void history.select(version.key)}>
-				{history.titleOf(version)} <small>{history.editorsOf(version)}</small>
+				{history.dateOf(version)} <small>{version.editors.join(', ')}</small>
 			</button>
 		</li>
 	{/each}
@@ -651,14 +651,14 @@ The [version history](/docs/server/history-panel) is a controller you make in yo
 	{/key}
 {/if}
 <button disabled={history.busy || !history.shown} onclick={() => void history.restore()}>
-	{history.labels.restore}
+	Restore version
 </button>
 <p role="status">{history.status}</p>
 ```
 
 ## Block handle
 
-`handle` draws the `+` and the grip beside each block: list `createBlockHandlesPlugin({ handle })` (without a `handle`, no handle shows). `use:grip` gives any element the grip's behavior: dragging (every block the selection covers when it covers this one, with the count preview), a click that selects the block and opens the block menu (or calls `onActivate`), and the <kbd>Alt</kbd>+arrow moves. `add(alt?, anchor?)` is what the `+` does: it opens the slash menu under `anchor` (pass your button, `event.currentTarget`; else under the block), and adds nothing until a row is picked. `expanded`, `controls` and `haspopup` say which menu the `+` or the grip opened while it is open (their `aria-expanded`, `aria-controls` and `aria-haspopup`), `beside` that Alt+click adds a column (a block in a column), and `labels` are the handles' words (`labels.add(label)`, `labels.addBeside(label)`, `labels.grip(label)`). Placement beside the block's first line and the hover fade are the plugin's.
+`handle` draws the `+` and the grip beside each block: list `createBlockHandlesPlugin({ handle })` (without a `handle`, no handle shows). `use:grip` gives any element the grip's behavior: dragging (every block the selection covers when it covers this one, with the count preview), a click that selects the block and opens the block menu (or calls `onActivate`), and the <kbd>Alt</kbd>+arrow moves. `add(alt?, anchor?)` is what the `+` does: it opens the slash menu under `anchor` (pass your button, `event.currentTarget`; else under the block), and adds nothing until a row is picked. `expanded`, `controls` and `haspopup` say which menu the `+` or the grip opened while it is open (their `aria-expanded`, `aria-controls` and `aria-haspopup`), `beside` that Alt+click adds a column (a block in a column); name the buttons in your words after `label`. Placement beside the block's first line and the hover fade are the plugin's.
 
 A drag's drop indicator is placed by the plugin too: style `[data-edytor-drop-indicator]` (the 4px bar where the blocks land) and `[data-edytor-drop-backdrop]` (the future parent's row; `data-shown` while the drop nests). See [Block handles](/docs/plugins/block-handles#the-handle).
 
@@ -676,13 +676,12 @@ A drag's drop indicator is placed by the plugin too: style `[data-edytor-drop-in
 	add,
 	readonly,
 	expanded,
-	controls,
-	labels
+	controls
 }: BlockHandleSnippetPayload)}
 	{#if !readonly}
 		<button
 			class="add"
-			aria-label={labels.add(label)}
+			aria-label={`Add a block below ${label}`}
 			aria-expanded={expanded.add || undefined}
 			aria-controls={controls.add}
 			onmousedown={keep}
@@ -691,7 +690,7 @@ A drag's drop indicator is placed by the plugin too: style `[data-edytor-drop-in
 		<button
 			class="grip"
 			use:grip
-			aria-label={labels.grip(label)}
+			aria-label={`${label} block`}
 			aria-expanded={expanded.grip || undefined}
 			aria-controls={controls.grip}>⠿</button
 		>

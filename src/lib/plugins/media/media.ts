@@ -181,20 +181,11 @@ export const EMBED_SANDBOX =
 export const EMBED_ALLOW = 'fullscreen; picture-in-picture; encrypted-media; clipboard-write';
 
 const ID = /^[\w-]{1,128}$/;
-const hostIs =
-	(...hosts: string[]) =>
-	(url: URL) =>
-		hosts.includes(url.hostname.toLowerCase());
-/** `segments` of `url`'s path, empty ones dropped. */
-const path = (url: URL) => url.pathname.split('/').filter(Boolean);
+const HASH = /^[\da-f]{1,32}$/i;
+/** `url`'s path segments (empty ones dropped) when its host is one of `hosts`, else none. */
+const on = (url: URL, ...hosts: string[]) =>
+	hosts.includes(url.hostname.toLowerCase()) ? url.pathname.split('/').filter(Boolean) : [];
 
-const youtubeHost = hostIs(
-	'youtube.com',
-	'www.youtube.com',
-	'm.youtube.com',
-	'music.youtube.com',
-	'www.youtube-nocookie.com'
-);
 /** A YouTube start time (`t=42`, `t=42s`, `start=42`) in seconds. */
 const youtubeStart = (url: URL) => {
 	const t = url.searchParams.get('t') ?? url.searchParams.get('start');
@@ -203,17 +194,23 @@ const youtubeStart = (url: URL) => {
 const youtube: EmbedProvider = {
 	name: 'YouTube',
 	embed: (url) => {
-		const [first, second] = path(url);
+		const [first, second] = on(
+			url,
+			'youtu.be',
+			'youtube.com',
+			'www.youtube.com',
+			'm.youtube.com',
+			'music.youtube.com',
+			'www.youtube-nocookie.com'
+		);
 		const id =
 			url.hostname.toLowerCase() === 'youtu.be'
 				? first
-				: !youtubeHost(url)
-					? undefined
-					: first === 'watch'
-						? url.searchParams.get('v')
-						: first && ['shorts', 'embed', 'live'].includes(first)
-							? second
-							: undefined;
+				: first === 'watch'
+					? url.searchParams.get('v')
+					: first && ['shorts', 'embed', 'live'].includes(first)
+						? second
+						: undefined;
 		return id && /^[\w-]{11}$/.test(id)
 			? `https://www.youtube-nocookie.com/embed/${id}${youtubeStart(url)}`
 			: null;
@@ -223,26 +220,19 @@ const youtube: EmbedProvider = {
 const vimeo: EmbedProvider = {
 	name: 'Vimeo',
 	embed: (url) => {
-		const parts = path(url);
-		const [id, hash] = hostIs('vimeo.com', 'www.vimeo.com')(url)
-			? parts
-			: hostIs('player.vimeo.com')(url) && parts[0] === 'video'
-				? parts.slice(1)
-				: [];
+		const [player, ...video] = on(url, 'player.vimeo.com');
+		const [id, hash] = player === 'video' ? video : on(url, 'vimeo.com', 'www.vimeo.com');
 		if (!id || !/^\d{1,12}$/.test(id)) return null;
-		const h = hash && /^[\da-f]{1,32}$/i.test(hash) ? hash : url.searchParams.get('h');
-		return `https://player.vimeo.com/video/${id}${h && /^[\da-f]{1,32}$/i.test(h) ? `?h=${h}` : ''}`;
+		const h = hash && HASH.test(hash) ? hash : url.searchParams.get('h');
+		return `https://player.vimeo.com/video/${id}${h && HASH.test(h) ? `?h=${h}` : ''}`;
 	}
 };
 
 const loom: EmbedProvider = {
 	name: 'Loom',
 	embed: (url) => {
-		const [kind, id] = path(url);
-		return hostIs('loom.com', 'www.loom.com')(url) &&
-			(kind === 'share' || kind === 'embed') &&
-			id &&
-			/^[\da-f]{32}$/i.test(id)
+		const [kind, id] = on(url, 'loom.com', 'www.loom.com');
+		return (kind === 'share' || kind === 'embed') && id && /^[\da-f]{32}$/i.test(id)
 			? `https://www.loom.com/embed/${id}`
 			: null;
 	}
@@ -251,23 +241,20 @@ const loom: EmbedProvider = {
 const figma: EmbedProvider = {
 	name: 'Figma',
 	embed: (url) => {
-		const [kind, key] = path(url);
-		if (!hostIs('figma.com', 'www.figma.com')(url) || !key || !ID.test(key)) return null;
-		if (!['file', 'design', 'proto', 'board', 'slides', 'deck'].includes(kind!)) return null;
-		return `https://www.figma.com/embed?embed_host=edytor&url=${encodeURIComponent(url.href)}`;
+		const [kind, key] = on(url, 'figma.com', 'www.figma.com');
+		return key &&
+			ID.test(key) &&
+			['file', 'design', 'proto', 'board', 'slides', 'deck'].includes(kind!)
+			? `https://www.figma.com/embed?embed_host=edytor&url=${encodeURIComponent(url.href)}`
+			: null;
 	}
 };
 
 const codepen: EmbedProvider = {
 	name: 'CodePen',
 	embed: (url) => {
-		const [user, kind, id] = path(url);
-		return hostIs('codepen.io')(url) &&
-			user &&
-			ID.test(user) &&
-			(kind === 'pen' || kind === 'embed') &&
-			id &&
-			ID.test(id)
+		const [user, kind, id] = on(url, 'codepen.io');
+		return user && ID.test(user) && (kind === 'pen' || kind === 'embed') && id && ID.test(id)
 			? `https://codepen.io/${user}/embed/${id}?default-tab=result`
 			: null;
 	},
@@ -277,8 +264,7 @@ const codepen: EmbedProvider = {
 const spotify: EmbedProvider = {
 	name: 'Spotify',
 	embed: (url) => {
-		let parts = path(url);
-		if (!hostIs('open.spotify.com')(url)) return null;
+		let parts = on(url, 'open.spotify.com');
 		if (parts[0] === 'embed' || /^intl-[a-z-]+$/i.test(parts[0] ?? '')) parts = parts.slice(1);
 		const [kind, id] = parts;
 		return ['track', 'album', 'playlist', 'episode', 'show', 'artist'].includes(kind!) &&

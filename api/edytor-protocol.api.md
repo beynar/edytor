@@ -899,7 +899,7 @@ declare const bindCrdt: (Y: EngineApi) => {
         };
     };
     providers: {
-        prefetch: (options: import("./index.js").PrefetchOptions) => Promise<import("./index.js").PrefetchResult>;
+        prefetch: (options: PrefetchOptions) => Promise<import("./index.js").PrefetchResult>;
         lastUpdated: (options: import("./index.js").LastUpdatedOptions) => Promise<number | null>;
         documentSnapshot: (options: import("./index.js").LastUpdatedOptions) => Promise<import("./index.js").JSONDoc | null>;
         IndexeddbPersistence: {
@@ -1522,28 +1522,11 @@ export type EdytorSyncPayload = {
 };
 ```
 
-#### crdt/providers/index.d.ts#LastUpdatedOptions
-
-```ts
-export type LastUpdatedOptions = WebsocketTarget & {
-    params?: Record<string, string>;
-    fetch?: typeof fetch;
-};
-```
-
 #### crdt/providers/index.d.ts#PrefetchOptions
 
 ```ts
 export type PrefetchOptions = (WebsocketSyncOptions extends infer O ? O extends unknown ? Omit<O, 'onExpired' | 'persist' | 'disableBc'> : never : never) & {
     timeout?: number;
-};
-```
-
-#### crdt/providers/index.d.ts#PrefetchResult
-
-```ts
-export type PrefetchResult = {
-    updated: boolean;
 };
 ```
 
@@ -1584,9 +1567,6 @@ export type WebsocketTarget = {
 
 ```ts
 declare const bindProviders: (Y: EngineApi) => {
-    prefetch: (options: PrefetchOptions) => Promise<PrefetchResult>;
-    lastUpdated: (options: LastUpdatedOptions) => Promise<number | null>;
-    documentSnapshot: (options: LastUpdatedOptions) => Promise<JSONDoc | null>;
     IndexeddbPersistence: {
         new (name: string, doc: YDoc, options?: import("./indexeddb.js").IndexeddbPersistenceOptions): {
             doc: YDoc;
@@ -1897,52 +1877,4 @@ export declare class SyncRefusedError extends Error {
     reason: string;
     constructor(code: number, reason?: string);
 }
-```
-
-#### utils/json.d.ts#JSONBlock
-
-```ts
-export type JSONBlock = {
-    type: string;
-    id?: string;
-    data?: Record<string, SerializableContent>;
-    children?: JSONBlock[];
-    content?: (JSONText | JSONInlineBlock)[];
-};
-```
-
-#### utils/json.d.ts#JSONDoc
-
-```ts
-export type JSONDoc = {
-    data?: Record<string, SerializableContent>;
-    children: JSONBlock[];
-} & Partial<Record<string, unknown>>;
-```
-
-#### utils/json.d.ts#JSONInlineBlock
-
-```ts
-export type JSONInlineBlock = {
-    id?: string;
-    data?: any;
-    type: string;
-};
-```
-
-#### utils/json.d.ts#JSONText
-
-```ts
-export type JSONText = {
-    text: string;
-    marks?: Record<string, SerializableContent>;
-};
-```
-
-#### utils/json.d.ts#SerializableContent
-
-```ts
-export type SerializableContent = {
-    [key: string]: SerializableContent;
-} | SerializableContent[] | string | boolean | number | null;
 ```

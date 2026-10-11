@@ -5439,7 +5439,7 @@ declare const deleteTableRows: (doc: Omit<DocumentOperations, "transact">, rows:
 
 ```ts
 // collaboration/providers.d.ts
-declare const documentSnapshot: ProviderStack['documentSnapshot'];
+declare const documentSnapshot: typeof snapshotOf;
 ```
 
 ### embedPlugin
@@ -5547,7 +5547,7 @@ declare const isTablePlugin: (plugin: Plugin) => boolean;
 
 ```ts
 // collaboration/providers.d.ts
-declare const lastUpdated: ProviderStack['lastUpdated'];
+declare const lastUpdated: typeof lastUpdatedOf;
 ```
 
 ### loadCodeLanguage
@@ -5610,7 +5610,7 @@ declare const pagePlugin: Plugin;
 
 ```ts
 // collaboration/providers.d.ts
-declare const prefetch: ProviderStack['prefetch'];
+declare const prefetch: typeof prefetchStack;
 ```
 
 ### richTextOperations
@@ -5877,6 +5877,12 @@ export declare class IsolatedObservable<E extends Events<E>> extends ObservableV
 }
 ```
 
+#### crdt/providers/bound.d.ts#prefetch
+
+```ts
+declare const prefetch: (options: PrefetchOptions) => Promise<import("./index.js").PrefetchResult>;
+```
+
 #### crdt/providers/index.d.ts#IndexeddbSyncOptions
 
 ```ts
@@ -5911,9 +5917,6 @@ export type WebsocketSyncOptions = WebsocketTarget & {
 
 ```ts
 declare const bindProviders: (Y: EngineApi) => {
-    prefetch: (options: PrefetchOptions) => Promise<PrefetchResult>;
-    lastUpdated: (options: LastUpdatedOptions) => Promise<number | null>;
-    documentSnapshot: (options: LastUpdatedOptions) => Promise<JSONDoc | null>;
     IndexeddbPersistence: {
         new (name: string, doc: YDoc, options?: import("./indexeddb.js").IndexeddbPersistenceOptions): {
             doc: YDoc;
@@ -6081,6 +6084,18 @@ declare const bindProviders: (Y: EngineApi) => {
     createIndexeddbSync: (name: string) => EdytorSync;
     createWebsocketSync: (options: WebsocketSyncOptions) => WebsocketSync;
 };
+```
+
+#### crdt/providers/index.d.ts#documentSnapshot
+
+```ts
+declare const documentSnapshot: (options: LastUpdatedOptions) => Promise<JSONDoc | null>;
+```
+
+#### crdt/providers/index.d.ts#lastUpdated
+
+```ts
+declare const lastUpdated: (options: LastUpdatedOptions) => Promise<number | null>;
 ```
 
 #### crdt/providers/websocket.d.ts#WebsocketProviderEvents

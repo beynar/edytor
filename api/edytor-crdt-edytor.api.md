@@ -1580,7 +1580,7 @@ declare const bindCrdt: (Y: EngineApi) => {
         };
     };
     providers: {
-        prefetch: (options: import("./index.js").PrefetchOptions) => Promise<import("./index.js").PrefetchResult>;
+        prefetch: (options: PrefetchOptions) => Promise<import("./index.js").PrefetchResult>;
         lastUpdated: (options: import("./index.js").LastUpdatedOptions) => Promise<number | null>;
         documentSnapshot: (options: import("./index.js").LastUpdatedOptions) => Promise<import("./index.js").JSONDoc | null>;
         IndexeddbPersistence: {
@@ -2844,9 +2844,6 @@ export type WebsocketTarget = {
 
 ```ts
 declare const bindProviders: (Y: EngineApi) => {
-    prefetch: (options: PrefetchOptions) => Promise<PrefetchResult>;
-    lastUpdated: (options: LastUpdatedOptions) => Promise<number | null>;
-    documentSnapshot: (options: LastUpdatedOptions) => Promise<JSONDoc | null>;
     IndexeddbPersistence: {
         new (name: string, doc: YDoc, options?: import("./indexeddb.js").IndexeddbPersistenceOptions): {
             doc: YDoc;

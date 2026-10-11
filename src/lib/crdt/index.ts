@@ -262,18 +262,30 @@ import { Awareness as _Awareness } from './protocols/awareness.js';
 import { bindAdmission } from './admission.js';
 import { bindAttribution } from './attribution/index.js';
 import { bindEdytorDoc } from './edytor-doc.js';
-import { bindProviders } from './providers/index.js';
+import {
+	bindProviders,
+	documentSnapshot,
+	lastUpdated,
+	prefetchWith,
+	type PrefetchOptions
+} from './providers/index.js';
 import { bindSync } from './protocols/sync.js';
 
 export const bindCrdt = (Y: EngineApi) => {
 	const doc = bindEdytorDoc(Y);
+	const providers = bindProviders(Y);
 	return {
 		/** Create a v14 edytor document — `new Y.Doc(opts)` on the bound engine, with the document's rules (`doc.newDoc`). */
 		createDoc: (opts?: ConstructorParameters<EngineApi['Doc']>[0]): YDoc => doc.newDoc(opts),
 		/** Engine-free — same class for every engine instance. */
 		Awareness: _Awareness,
 		doc,
-		providers: bindProviders(Y),
+		providers: {
+			...providers,
+			prefetch: (options: PrefetchOptions) => prefetchWith(Y, providers, options),
+			lastUpdated,
+			documentSnapshot
+		},
 		sync: bindSync(Y),
 		/** The document-admission boundary (`admitUpdate` staged restore + the shared gate vocabulary). */
 		admission: bindAdmission(Y),

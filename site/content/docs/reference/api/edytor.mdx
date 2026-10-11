@@ -2861,7 +2861,7 @@ export type DocumentSemanticsConfig = {
 A room's document as JSON (one authorized HTTP request), for `<Edytor snapshot>`.
 
 ```ts
-declare const documentSnapshot: ProviderStack['documentSnapshot'];
+declare const documentSnapshot: typeof snapshotOf;
 ```
 
 ## DocumentWrites
@@ -4622,7 +4622,7 @@ export type LanguageRow = {
 When a room last stored a change: one authorized HTTP request, no document opened.
 
 ```ts
-declare const lastUpdated: ProviderStack['lastUpdated'];
+declare const lastUpdated: typeof lastUpdatedOf;
 ```
 
 ## LastUpdatedOptions
@@ -5618,7 +5618,7 @@ export declare class Popups {
 Keep a document's local copy fresh without opening it (sync once, then close).
 
 ```ts
-declare const prefetch: ProviderStack['prefetch'];
+declare const prefetch: typeof prefetchStack;
 ```
 
 ## PrefetchOptions

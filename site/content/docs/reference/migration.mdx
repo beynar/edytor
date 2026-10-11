@@ -14,6 +14,7 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+- **Breaking: `prefetch`, `lastUpdated` and `documentSnapshot` are no longer members of the `ProviderStack` type** (the bound provider stack an app ships with collaboration on); import them from `edytor` as before, or read them from `bindCrdt(Y).providers`, which still carries them. An app that calls none of them no longer ships them (about 1.5 KB less minified JavaScript).
 - **Breaking: the CRDT engine ships only what the editor calls; about 16 KB less JavaScript in every app.** `edytor/crdt` keeps documents, nodes, transactions, the update encoding, id sets and `RangeCursor`; what the editor never called is gone. If your code calls the raw engine:
   - Formats are marks: `node.format(…)` and `insert`'s format argument are removed (write a mark with `node.mark(index, length, name, value, startSide, endSide)`; read marks with `new Y.RangeCursor(node).read(from, to)`), and so is the formatting cleanup (`Y.cleanupYTextFormatting`). A plain format item another engine writes is ignored.
   - Nodes have no observers: `observe`, `observeDeep`, `unobserve`, `unobserveDeep` and `Y.YEvent` are removed. Listen to the document: `doc.on('commit', (transaction) => …)` fires once per transaction, before `afterTransaction`, and `transaction.changed` maps each node it changed to the keys (`null`: its content) that changed. The `beforeObserverCalls` and `afterTransactionCleanup` events are removed.

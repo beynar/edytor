@@ -17,8 +17,7 @@ import {
 	itemOf,
 	queuedTransactions,
 	sequenceLength,
-	walkIdSetRanges,
-	walkIdSetStructs
+	walkIdSet
 } from '../../structs.js';
 import { DEAD, isBoundary } from '../model.js';
 import {
@@ -122,7 +121,7 @@ export const indexFold = (
 			if (ins === undefined || del === undefined) return (built = null);
 			const out = new Map<EngineNode, TextEdits>();
 			const visit = (idSet: IdSetLike, deleted: boolean): boolean =>
-				walkIdSetRanges(Y, doc, idSet, (s, from, to) => {
+				walkIdSet(Y, doc, idSet, (s, from, to) => {
 					const parent = s.parent as EngineNode;
 					if (s.parentSub !== null || !isNodeLike(parent)) return;
 					let e = out.get(parent);
@@ -491,8 +490,8 @@ export const indexFold = (
 			if (subs === undefined) changed.set(s.parent, (subs = new Set()));
 			subs.add(s.parentSub);
 		};
-		walkIdSetStructs(Y, doc, ins, note);
-		walkIdSetStructs(Y, doc, del, note);
+		walkIdSet(Y, doc, ins, note);
+		walkIdSet(Y, doc, del, note);
 		fold(changed, makeEditIndex(ins, del));
 		return true;
 	};

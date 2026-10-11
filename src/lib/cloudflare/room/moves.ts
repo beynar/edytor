@@ -9,17 +9,15 @@ import { DEL_PREFIX, REGISTRY_KEY } from '../../crdt/schema.js';
 import { asEngineDoc, attrItems } from '../../crdt/structs.js';
 import type { EngineNode } from '../../crdt/engine-api.js';
 import type { EdytorDoc, JSONBlock, YDoc } from '../../crdt/index.js';
-import { toBlockSpec } from '../../utils/json.js';
+import { jsonContentToItems, toBlockSpec } from '../../utils/json.js';
+import { rewriteContent, unitsOf } from '../../crdt/restore.js';
 import { noTimers } from './shared.js';
 import {
 	DEFAULT_MOVE_GRACE_DAYS,
-	contentOf,
 	flattenMoved,
-	hunk,
 	mergeData,
 	subtreesOf,
 	threeWay,
-	unitsOf,
 	type CommitResult,
 	type ExportedBlocks,
 	type ImportReceipt,
@@ -276,39 +274,11 @@ export class RoomMoves {
 	/** One block's late edit, merged into what it holds (inside a room transaction). */
 	private mergeLateEdit(f: EdytorDoc, edit: LateEdit) {
 		const id = edit.block;
-		const dst = unitsOf(
-			f.contentItems(id).map((item) =>
-				item.kind === 'text'
-					? { text: item.text, ...(item.marks === undefined ? {} : { marks: item.marks }) }
-					: {
-							id: item.id,
-							type: item.type,
-							...(item.data === undefined ? {} : { data: item.data })
-						}
-			) as JSONBlock['content']
-		);
-		const merged = threeWay(unitsOf(edit.base.content), unitsOf(edit.src.content), dst);
-		const { p, e, mid } = hunk(dst, merged);
-		const width = (u: (typeof dst)[number]) => (u.text === undefined ? 1 : u.text.length);
-		let at = dst.slice(0, p).reduce((n, u) => n + width(u), 0);
-		const gone = dst.slice(p, e).reduce((n, u) => n + width(u), 0);
-		if (gone > 0) f.apply(f.prepare.deleteText(id, at, gone));
-		for (const item of contentOf(mid)) {
-			if ('text' in item && typeof item.text === 'string') {
-				f.apply(f.prepare.insertText(id, at, item.text, item.marks as Record<string, unknown>));
-				at += item.text.length;
-			} else {
-				const atom = item as { id?: string; type: string; data?: Record<string, unknown> };
-				f.apply(
-					f.prepare.insertInline(id, at, {
-						id: atom.id ?? crypto.randomUUID(),
-						type: atom.type,
-						...(atom.data === undefined ? {} : { data: atom.data })
-					})
-				);
-				at += 1;
-			}
-		}
+		const dst = unitsOf(f.contentItems(id));
+		// An atom the late edit names no id of keys as the empty id.
+		const units = (content: JSONBlock['content']) =>
+			unitsOf(jsonContentToItems(content ?? [], false, () => ''));
+		rewriteContent(f, id, dst, threeWay(units(edit.base.content), units(edit.src.content), dst));
 		const now = subtreesOf(f.toJSON().children, new Set([id]))[0];
 		const data = (now?.data ?? {}) as Record<string, unknown>;
 		const next = mergeData(edit.base.data, edit.src.data, data);

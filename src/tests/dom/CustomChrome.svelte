@@ -108,6 +108,7 @@
 		data-testid="custom-table-grip"
 		data-kind={payload.kind}
 		data-index={payload.index}
+		aria-label={payload.kind === 'row' ? 'Row options' : 'Column options'}
 		{@attach payload.grip}>{payload.kind === 'row' ? '⋮' : '⋯'}</button
 	>
 {/snippet}
@@ -116,6 +117,7 @@
 	<div
 		class="custom-table-menu"
 		data-testid="custom-table-menu"
+		aria-label={chrome.menu?.kind === 'column' ? 'Column options' : 'Row options'}
 		{@attach chrome.popup}
 		{@attach chrome.keys}
 	>
@@ -146,8 +148,11 @@
 {#snippet codeHeader(header: CodeHeader)}
 	<div data-testid="custom-code-header">
 		{#if header.editable}
-			<button type="button" data-testid="custom-code-language" {@attach header.button}
-				>{header.label}</button
+			<button
+				type="button"
+				data-testid="custom-code-language"
+				aria-label="Code language: {header.label}"
+				{@attach header.button}>{header.label}</button
 			>
 		{:else}
 			<span data-testid="custom-code-language">{header.label}</span>
@@ -165,12 +170,13 @@
 	<div class="custom-language-menu" data-testid="custom-language-menu">
 		<input
 			data-testid="custom-language-field"
+			aria-label="Code language"
 			placeholder="Search"
 			value={menu.query}
 			oninput={(event) => menu.search(event.currentTarget.value)}
 			{@attach menu.keys}
 		/>
-		<ul {@attach menu.popup}>
+		<ul aria-label="Code language" {@attach menu.popup}>
 			{#each menu.items as item (item.item.id)}
 				<li
 					{...item.option}
@@ -219,7 +225,7 @@
 				{@attach menu.keys}
 			/>
 		{/if}
-		<ul {@attach menu.popup}>
+		<ul aria-label="Block commands" {@attach menu.popup}>
 			{#each menu.commands as command, index (command.id)}
 				<li
 					{...menu.option(index)}

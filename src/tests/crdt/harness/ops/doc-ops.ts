@@ -31,6 +31,7 @@ import {
 	deadCause
 } from './model-ops.js';
 import { tables as tableOps } from '../table-ops.js';
+import { blockNodeOf } from '../../../../lib/crdt/placement/model.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -184,8 +185,7 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 	const tableKinds = new Set([...tables].flatMap(([table, k]) => [table, k.row, k.cell]));
 	/** A live block of a table's kind the table rules hide: its text is hidden with it (`table.cell`). */
 	const tableHidden = (peer: Peer, id: string) =>
-		tableKinds.has(ed(peer).model.blockNodeOf(peer.doc, id)?.getAttr('type')) &&
-		ed(peer).runsView.dissolved(id);
+		tableKinds.has(blockNodeOf(peer.doc, id)?.getAttr('type')) && ed(peer).runsView.dissolved(id);
 
 	const islandKinds = new Map(
 		Object.entries(roles?.defaultChild ?? {})
@@ -224,7 +224,7 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 			...(tables.size > 0 && {
 				tables,
 				withdrawn: (peer, id) => {
-					const node = ed(peer).model.blockNodeOf(peer.doc, id);
+					const node = blockNodeOf(peer.doc, id);
 					return node != null && hasWithdrawMark(node) && !hasDeleteMark(node);
 				},
 				tableOf: (peer, id) => {
@@ -338,10 +338,7 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 			if (layoutKinds.size === 0) return expected;
 			const f = ed(peer);
 			for (const id of [...expected])
-				if (
-					layoutKinds.has(f.model.blockNodeOf(peer.doc, id)?.getAttr('type')) &&
-					f.runsView.dissolved(id)
-				)
+				if (layoutKinds.has(blockNodeOf(peer.doc, id)?.getAttr('type')) && f.runsView.dissolved(id))
 					expected.delete(id);
 			return expected;
 		},

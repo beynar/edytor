@@ -4,7 +4,16 @@
  * transaction, its result read from what the transaction wrote, and the
  * frame's one attribution pass.
  */
-import type { BlockId } from '../placement/model.js';
+import {
+	blockNodeOf,
+	buildInline,
+	materializeSpec,
+	ownText,
+	view as modelView,
+	writePlacement,
+	writeSplit,
+	type BlockId
+} from '../placement/model.js';
 import type { BlockAttributionApi } from '../attribution/block.js';
 import type { AttributionActor } from '../attribution/index.js';
 import { ENTRY_FACET, type Folded } from '../text/runs.js';
@@ -13,6 +22,7 @@ import { writeLeaves } from '../data.js';
 import { NOOP } from './plan.js';
 import type { EdytorDocConfig, OpResult, PlanStep, Prepared } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
+import { claimInto, deleteRange, formatRangeIn, insertIntoText } from '../text/model.js';
 
 /**
  * Raised when a mutating facade op runs after `dispose()` — disposal is
@@ -34,7 +44,7 @@ export type FunnelContext = DocBase &
 
 /** The write funnel of one facade. */
 export const writeFunnel = (c: FunnelContext) => {
-	const { doc, M, T, runsView, dataNode, BA, config } = c;
+	const { doc, runsView, dataNode, BA, config } = c;
 
 	/**
 	 * Terminal flag — set by `dispose()`. Mutating ops funnel through
@@ -85,7 +95,7 @@ export const writeFunnel = (c: FunnelContext) => {
 		const created = new Set<BlockId>();
 		const changed = new Set<BlockId>();
 		for (const [id, facets] of folded.touched) {
-			if (facets.has(ENTRY_FACET) && M.blockNodeOf(doc, id) !== null) created.add(id);
+			if (facets.has(ENTRY_FACET) && blockNodeOf(doc, id) !== null) created.add(id);
 			else
 				for (const facet of facets)
 					if (
@@ -95,11 +105,11 @@ export const writeFunnel = (c: FunnelContext) => {
 						changed.add(id);
 		}
 		for (const id of created) {
-			const node = M.blockNodeOf(doc, id);
+			const node = blockNodeOf(doc, id);
 			if (node !== null) BA.stampCreated(doc, node, id, actor.id, f.inherit.get(id));
 		}
 		for (const id of changed) {
-			const node = created.has(id) ? null : M.blockNodeOf(doc, id);
+			const node = created.has(id) ? null : blockNodeOf(doc, id);
 			if (node !== null) BA.stampChange(doc, node, id, actor.id);
 		}
 		for (const [into, from] of f.unions) BA.unionContributors(doc, into, from);
@@ -107,12 +117,12 @@ export const writeFunnel = (c: FunnelContext) => {
 
 	/**
 	 * A streamless block gets its own text before the first write that
-	 * needs a stream (`M.ownText`: a writer derived from its dead
+	 * needs a stream (`ownText`: a writer derived from its dead
 	 * incarnation); its attribution record follows the re-minted nonce.
 	 */
 	const needStream = (id: BlockId): void => {
-		if ((M.view(doc).own.display(id) ?? []).length > 0) return;
-		const { from, to } = M.ownText(doc, id);
+		if ((modelView(doc).own.display(id) ?? []).length > 0) return;
+		const { from, to } = ownText(doc, id);
 		BA.retarget(doc, id, from, to);
 	};
 
@@ -121,35 +131,35 @@ export const writeFunnel = (c: FunnelContext) => {
 		// Structural steps need no view: delete marks and placements write one node.
 		if (w.op === 'deleteBlock')
 			return w.marks.forEach((id) =>
-				M.blockNodeOf(doc, id)!.setAttr(DEL_PREFIX + doc.clientID, true)
+				blockNodeOf(doc, id)!.setAttr(DEL_PREFIX + doc.clientID, true)
 			);
 		if (w.op === 'splitBlock' || w.op === 'insertText' || w.op === 'insertInline') needStream(w.id);
-		const { blocks, own } = M.view(doc);
-		const node = (id: BlockId) => M.blockNodeOf(doc, id)!;
+		const { blocks, own } = modelView(doc);
+		const node = (id: BlockId) => blockNodeOf(doc, id)!;
 		switch (w.op) {
 			case 'insertBlocks':
-				return w.specs.forEach((sp, i) => M.materializeSpec(doc, sp, w.parent, w.ranks[i]!));
+				return w.specs.forEach((sp, i) => materializeSpec(doc, sp, w.parent, w.ranks[i]!));
 			case 'moveBlocks':
-				return w.ids.forEach((id, i) => M.writePlacement(doc, node(id), w.parent, w.ranks[i]!));
+				return w.ids.forEach((id, i) => writePlacement(doc, node(id), w.parent, w.ranks[i]!));
 			case 'splitBlock':
 				f.inherit.set(w.newId, w.id);
-				return M.writeSplit(doc, w.id, w.offset, w.newId, w.tail, { p: w.parent, r: w.rank });
+				return writeSplit(doc, w.id, w.offset, w.newId, w.tail, { p: w.parent, r: w.rank });
 			case 'mergeBlocks':
 				f.unions.push([w.into, w.from]);
-				return T.claimInto(blocks, own, w.from, w.into);
+				return claimInto(blocks, own, w.from, w.into);
 			case 'setBlockType':
 				return void node(w.id).setAttr(TYPE, w.type);
 			case 'patchData':
 				return writeLeaves(dataNode(w.id, w.inlineId)!, w.leaves);
 			case 'insertText':
-				return T.insertIntoText(doc, blocks, own, w.id, w.offset, w.text, w.marks);
+				return insertIntoText(doc, blocks, own, w.id, w.offset, w.text, w.marks);
 			case 'insertInline':
-				return T.insertIntoText(doc, blocks, own, w.id, w.offset, M.buildInline(w.atom));
+				return insertIntoText(doc, blocks, own, w.id, w.offset, buildInline(w.atom));
 			case 'deleteText':
 			case 'removeInline':
-				return T.deleteRange(doc, blocks, own, w.id, w.offset, 'length' in w ? w.length : 1);
+				return deleteRange(doc, blocks, own, w.id, w.offset, 'length' in w ? w.length : 1);
 			case 'formatRange':
-				return T.formatRangeIn(doc, blocks, own, w.id, w.offset, w.length, w.marks);
+				return formatRangeIn(doc, blocks, own, w.id, w.offset, w.length, w.marks);
 		}
 	};
 

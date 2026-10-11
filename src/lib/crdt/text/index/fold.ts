@@ -4,6 +4,7 @@
  * pending part of every transaction whose commit fold has not run.
  */
 import { readData } from '../../data.js';
+import { Y } from '../../engine.js';
 import type { EngineDeepEvent, EngineNode } from '../../engine-api.js';
 import { LIVE_WRITERS, baseIdOf, incarnationId } from '../../incarnations.js';
 import { type BlockId, candidatesOf } from '../../placement/model.js';
@@ -61,7 +62,6 @@ export const indexFold = (
 		IndexCache
 ) => {
 	const {
-		Y,
 		doc,
 		registry,
 		dataRoot,

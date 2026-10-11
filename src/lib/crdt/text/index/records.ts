@@ -4,6 +4,7 @@
  * the maintained facts must re-decide.
  */
 import { readData } from '../../data.js';
+import { Y } from '../../engine.js';
 import type { EngineNode } from '../../engine-api.js';
 import { baseIdOf, incarnationNode, incarnationsOf, isIncarnationId } from '../../incarnations.js';
 import { type BlockId, type BlockRec, candidatesOf } from '../../placement/model.js';
@@ -26,7 +27,6 @@ import type { IndexState } from './state.js';
 /** The block records of one doc's index. */
 export const indexRecords = (ix: IndexState & IndexClaims & IndexAnchored & IndexPlacement) => {
 	const {
-		Y,
 		registry,
 		blocks,
 		shells,

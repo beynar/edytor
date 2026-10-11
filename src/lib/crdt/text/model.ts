@@ -29,9 +29,13 @@
  *
  * The item guards are `text/items.ts`, the range reads `text/ranges.ts` and
  * the stream table `text/streams.ts` (re-exported here); this module declares
- * the text model's types and binds its reads and writes to an engine.
+ * the text model's types and its reads and writes, each a function edytor's
+ * modules import (the public binding's `text` lists them, `bindText`). The
+ * from-scratch ownership (`computeOwnership`) is the oracle the index is
+ * checked against: only the public binding and the tests reach it.
  */
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
+import { Y } from '../engine.js';
 import {
 	asYDoc,
 	asYNode,
@@ -323,431 +327,435 @@ export type Ownership = {
 	claimsOf?: (b: BlockId) => readonly Claim[];
 };
 
-export const bindText = (Y: EngineApi) => {
-	const D = bindDeletes(Y);
-	const newNode = (name: string): EngineNode => makeNode(Y, name);
-	const ops = engineOps(Y);
+const D = bindDeletes(Y);
+const ops = engineOps(Y);
+/** Construct a detached v14 node, viewed through the structural interface. */
+export const newNode = (name: string): EngineNode => makeNode(Y, name);
 
-	/** Anchor → live index in `text`, or `null` when its item is not integrated here. */
-	const resolveAnchor = (doc: EngineDoc, text: EngineNode, anchor: Anchor): number | null => {
+/** Anchor → live index in `text`, or `null` when its item is not integrated here. */
+export const resolveAnchor = (doc: EngineDoc, text: EngineNode, anchor: Anchor): number | null => {
+	const itemId = (text._item as { id?: { client: number; clock: number } } | null)?.id;
+	if (!itemId) return anchor.i === null ? (anchor.a < 0 ? 0 : text.length) : null;
+	const abs = Y.createAbsolutePositionFromRelativePosition(
+		Y.createRelativePositionFromJSON({
+			type: { client: itemId.client, clock: itemId.clock },
+			item: anchor.i === null ? null : { client: anchor.i.c, clock: anchor.i.k },
+			assoc: anchor.a
+		}),
+		asYDoc(doc),
+		false
+	);
+	return abs === null ? null : abs.index;
+};
+
+/**
+ * Live index → anchor bound on the `assoc` side: `assoc < 0` binds the unit
+ * before `index` (an insert at `index` lands right of it; `i: null` at the
+ * text start), `assoc >= 0` the unit at `index` (`i: null` at the text end).
+ */
+export const anchorAt = (text: EngineNode, index: number, assoc: number): Anchor => {
+	const json = Y.relativePositionToJSON(
+		Y.createRelativePositionFromTypeIndex(asYNode(text), index, assoc)
+	) as { item?: { client: number; clock: number } };
+	return {
+		i: json.item ? { c: json.item.client, k: json.item.clock } : null,
+		a: assoc < 0 ? -1 : 0
+	};
+};
+
+/** A bounded read cursor on `text` (live-content space). */
+export const openRangeCursor = (text: EngineNode): RangeCursor =>
+	rangeCursorOf<RangeCursor>(Y, text);
+
+export const itemsOfRange = (text: EngineNode, i0: number, i1: number): RangeItem[] =>
+	readRange(openRangeCursor(text), i0, i1);
+
+/** The items of `segs`, one cursor per backing text. */
+export const readSegs = (segs: readonly Seg[], stats?: RangeReadStats): RangeItem[] => {
+	const out: RangeItem[] = [];
+	const cursors = new Map<EngineNode, RangeCursor>();
+	for (const seg of segs) {
+		let cur = cursors.get(seg.text);
+		if (cur === undefined) cursors.set(seg.text, (cur = openRangeCursor(seg.text)));
+		readRange(cur, seg.i0, seg.i1, stats, out);
+	}
+	return out;
+};
+
+/** A from-scratch ownership context over `blocks` (every text scanned). */
+/**
+ * The effective claims of every block, from scratch (`merge.claim.anchor`;
+ * the index keeps them incrementally, `text/runs.ts`): an anchored claim
+ * goes to the block of the segment just before its `r` (the text's last
+ * segment when `r` is null) in the row of its holder's stream, when that
+ * segment is the holder's or a later one.
+ */
+const effectiveClaims = (
+	doc: EngineDoc,
+	blocks: ReadonlyMap<BlockId, TextBlockRec>,
+	rows: ReadonlyMap<EngineNode, TextRow>,
+	delim: ReadonlyMap<BlockId, string>,
+	streams: ReadonlyMap<BlockId, Stream>
+): Map<BlockId, Claim[]> => {
+	/** Live index of unit `ref` (assoc 0) in `text`, or `null` when it is not `text`'s. */
+	const indexIn = (text: EngineNode, ref: ItemRef): number | null => {
 		const itemId = (text._item as { id?: { client: number; clock: number } } | null)?.id;
-		if (!itemId) return anchor.i === null ? (anchor.a < 0 ? 0 : text.length) : null;
+		if (!itemId) return null;
 		const abs = Y.createAbsolutePositionFromRelativePosition(
 			Y.createRelativePositionFromJSON({
 				type: { client: itemId.client, clock: itemId.clock },
-				item: anchor.i === null ? null : { client: anchor.i.c, clock: anchor.i.k },
-				assoc: anchor.a
+				item: { client: ref.c, clock: ref.k },
+				assoc: 0
 			}),
 			asYDoc(doc),
 			false
-		);
-		return abs === null ? null : abs.index;
+		) as { type: unknown; index: number } | null;
+		return abs === null || abs.type !== text ? null : abs.index;
 	};
-
-	/**
-	 * Live index → anchor bound on the `assoc` side: `assoc < 0` binds the unit
-	 * before `index` (an insert at `index` lands right of it; `i: null` at the
-	 * text start), `assoc >= 0` the unit at `index` (`i: null` at the text end).
-	 */
-	const anchorAt = (text: EngineNode, index: number, assoc: number): Anchor => {
-		const json = Y.relativePositionToJSON(
-			Y.createRelativePositionFromTypeIndex(asYNode(text), index, assoc)
-		) as { item?: { client: number; clock: number } };
-		return {
-			i: json.item ? { c: json.item.client, k: json.item.clock } : null,
-			a: assoc < 0 ? -1 : 0
-		};
-	};
-
-	/** A bounded read cursor on `text` (live-content space). */
-	const openRangeCursor = (text: EngineNode): RangeCursor => rangeCursorOf<RangeCursor>(Y, text);
-
-	const itemsOfRange = (text: EngineNode, i0: number, i1: number): RangeItem[] =>
-		readRange(openRangeCursor(text), i0, i1);
-
-	/** The items of `segs`, one cursor per backing text. */
-	const readSegs = (segs: readonly Seg[], stats?: RangeReadStats): RangeItem[] => {
-		const out: RangeItem[] = [];
-		const cursors = new Map<EngineNode, RangeCursor>();
-		for (const seg of segs) {
-			let cur = cursors.get(seg.text);
-			if (cur === undefined) cursors.set(seg.text, (cur = openRangeCursor(seg.text)));
-			readRange(cur, seg.i0, seg.i1, stats, out);
-		}
-		return out;
-	};
-
-	/** A from-scratch ownership context over `blocks` (every text scanned). */
-	/**
-	 * The effective claims of every block, from scratch (`merge.claim.anchor`;
-	 * the index keeps them incrementally, `text/runs.ts`): an anchored claim
-	 * goes to the block of the segment just before its `r` (the text's last
-	 * segment when `r` is null) in the row of its holder's stream, when that
-	 * segment is the holder's or a later one.
-	 */
-	const effectiveClaims = (
-		doc: EngineDoc,
-		blocks: ReadonlyMap<BlockId, TextBlockRec>,
-		rows: ReadonlyMap<EngineNode, TextRow>,
-		delim: ReadonlyMap<BlockId, string>,
-		streams: ReadonlyMap<BlockId, Stream>
-	): Map<BlockId, Claim[]> => {
-		/** Live index of unit `ref` (assoc 0) in `text`, or `null` when it is not `text`'s. */
-		const indexIn = (text: EngineNode, ref: ItemRef): number | null => {
-			const itemId = (text._item as { id?: { client: number; clock: number } } | null)?.id;
-			if (!itemId) return null;
-			const abs = Y.createAbsolutePositionFromRelativePosition(
-				Y.createRelativePositionFromJSON({
-					type: { client: itemId.client, clock: itemId.clock },
-					item: { client: ref.c, clock: ref.k },
-					assoc: 0
-				}),
-				asYDoc(doc),
-				false
-			) as { type: unknown; index: number } | null;
-			return abs === null || abs.type !== text ? null : abs.index;
-		};
-		const targetOf = (holder: BlockId, c: Claim): BlockId => {
-			if (c.a === undefined) return holder;
-			const s = streams.get(holder);
-			const row = s && rows.get(s.text);
-			if (row === undefined || indexIn(row.text, c.a) === null) return holder;
-			const cuts: number[] = [];
-			row.bounds.forEach((b, j) => {
-				if (delim.get(b.s) === b.key) cuts.push(j);
-			});
-			const head = delim.has(row.home) ? null : row.home;
-			// The gap before `r`: a live boundary's own index, else the boundaries before it.
-			let gap = row.bounds.length;
-			if (c.r != null) {
-				const key = `${c.r.c}:${c.r.k}`;
-				const at = row.bounds.findIndex((b) => b.key === key);
-				if (at >= 0) gap = at;
-				else {
-					const p = indexIn(row.text, c.r);
-					if (p === null) return holder;
-					gap = row.bounds.filter((b) => b.at < p).length;
-				}
-			}
-			const segment = (g: number) => cuts.filter((j) => j < g).length;
-			const k = segment(gap);
-			// The holder's own segment: the one its stream starts in.
-			const k0 = segment(row.bounds.filter((b) => b.at < s!.start).length);
-			if (k < k0) return holder;
-			return (k === 0 ? head : row.bounds[cuts[k - 1]].s) ?? holder;
-		};
-		const own = new Map<BlockId, Claim[]>();
-		const moved = new Map<BlockId, Claim[]>();
-		for (const [h, rec] of blocks) {
-			const stays: Claim[] = [];
-			for (const c of rec.listClaims ?? rec.claims) {
-				const t = targetOf(h, c);
-				if (t === h) stays.push(c);
-				else {
-					let into = moved.get(t);
-					if (into === undefined) moved.set(t, (into = []));
-					into.push({ ...c, holder: h });
-				}
-			}
-			own.set(h, stays);
-		}
-		for (const [t, list] of moved) {
-			if (!own.has(t)) continue;
-			list.sort((x, y) => cmpStamp(x.stamp, y.stamp));
-			own.set(t, [...own.get(t)!, ...list]);
-		}
-		return own;
-	};
-
-	const computeOwnership = (doc: EngineDoc, given: ReadonlyMap<BlockId, TextBlockRec>) => {
-		const rows: TextRow[] = [];
-		for (const rec of given.values()) if (rec.content) rows.push(scanText(rec.id, rec.content));
-		const delim = delimiters(given, rows);
-		const streams = new Map<BlockId, Stream>();
-		const inText = new Map<BlockId, Stream[]>();
-		for (const row of rows) {
-			const list = placeText(row, delim);
-			inText.set(row.home, list);
-			for (const s of list) streams.set(s.block, s);
-		}
-		// The records with their effective claims (`merge.claim.anchor`).
-		const effective = effectiveClaims(
-			doc,
-			given,
-			new Map(rows.map((row) => [row.text, row])),
-			delim,
-			streams
-		);
-		const blocks = new Map<BlockId, TextBlockRec>();
-		for (const [id, rec] of given)
-			blocks.set(id, {
-				...rec,
-				listClaims: rec.listClaims ?? rec.claims,
-				claims: effective.get(id) ?? rec.claims
-			});
-		const { owners, top } = claimGraph(blocks);
-		const ownerOf = (b: BlockId): Owner => owners.get(b) ?? DEAD;
-		const own: Ownership = {
-			ownerOf,
-			hidden: (b) => ownerOf(b) !== b,
-			top: (m) => top.get(m),
-			streamOf: (b) => streams.get(b),
-			streamsIn: (home) => inText.get(home) ?? [],
-			streamAt: (home, i) => (inText.get(home) ?? []).find((x) => x.start <= i && i <= x.end),
-			display: (b) => displayOf(b, blocks, own),
-			claimsOf: (b) => blocks.get(b)?.claims ?? []
-		};
-		return own;
-	};
-
-	/** `b`'s display pieces (`[]` when hidden or streamless and claimless). */
-	const flatten = (b: BlockId, blocks: unknown, own: Ownership): Seg[] => {
-		void blocks;
-		return own.display(b) ?? [];
-	};
-
-	const contentItemsOf = (b: BlockId, blocks: unknown, own: Ownership): RangeItem[] =>
-		readSegs(flatten(b, blocks, own));
-
-	const blockTextOf = (b: BlockId, blocks: unknown, own: Ownership): string =>
-		contentItemsOf(b, blocks, own)
-			.map((i) => (i.kind === 'text' ? i.text : ''))
-			.join('');
-
-	// ── writes (inside doc.transact; the plan clamped offsets) ────────
-
-	/**
-	 * Insert at a display offset, beside the boundary the engine walk and the
-	 * left side choose. The display must be non-empty: a streamless block gets
-	 * its own text first ({@link ownText}). The content goes in its gap
-	 * (`insertInGap`, fork patch YP13: after the marks attached to the text before it,
-	 * before those attached to the text after it); text then shows exactly
-	 * `marks` (an operation for each mark its gap gave it otherwise).
-	 */
-	const insertIntoText = (
-		doc: EngineDoc,
-		blocks: unknown,
-		own: Ownership,
-		b: BlockId,
-		offset: number,
-		payload: string | EngineNode,
-		marks?: Record<string, unknown>
-	): void => {
-		const segs = flatten(b, blocks, own);
-		const hit = locate(segs, Math.max(0, Math.min(offset, ownedLength(segs))));
-		if (hit === null) throw new Error(`insertIntoText: "${b}" has no stream`);
-		const text = hit.seg.text as EngineNode & {
-			insertInGap(index: number, content: string | unknown[]): void;
-		};
-		if (typeof payload !== 'string') return text.insertInGap(hit.idx, [payload]);
-		text.insertInGap(hit.idx, payload);
-		const at = openRangeCursor(text).read(hit.idx, hit.idx + payload.length);
-		const have = at.find((p) => !p.deleted && p.len > 0)?.formats;
-		fitMarks(doc, text, hit.idx, payload.length, have, marks);
-	};
-
-	/** The per-stream delete: each range lies inside one stream's pieces, so no boundary is ever removed. */
-	const deleteRange = (
-		doc: EngineDoc,
-		blocks: unknown,
-		own: Ownership,
-		b: BlockId,
-		offset: number,
-		length: number
-	): void => {
-		const spans: Span[] = [];
-		for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length)) {
-			for (const p of openRangeCursor(r.text).read(r.a, r.b))
-				if (!p.deleted && p.len > 0 && (p.content.str !== undefined || 'type' in p.content))
-					spans.push({ c: p.id.client, k: p.id.clock, n: p.len });
-			r.text.delete(r.a, r.b - r.a);
-		}
-		D.markDeleted(doc, spans);
-	};
-
-	const formatRangeIn = (
-		doc: EngineDoc,
-		blocks: unknown,
-		own: Ownership,
-		b: BlockId,
-		offset: number,
-		length: number,
-		formats: Record<string, unknown>
-	): void => {
-		for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length))
-			writeMarks(doc, r.text, r.a, r.b - r.a, formats);
-	};
-
-	/**
-	 * Delete the content of streams `streams` (the room's purge of a
-	 * block deleted past the horizon): every piece, so no boundary goes and
-	 * each stream still delimits, writing no delete mark.
-	 * Streams of one text are deleted from its end, so the indices the
-	 * caller read stay valid.
-	 */
-	const purgeStreams = (streams: readonly Stream[]): void => {
-		const ordered = [...streams].sort((a, b) => b.start - a.start);
-		for (const s of ordered) {
-			const parts = pieces(s).filter(([a, b]) => b > a);
-			for (let i = parts.length - 1; i >= 0; i--) {
-				const [a, b] = parts[i];
-				s.text.delete(a, b - a);
+	const targetOf = (holder: BlockId, c: Claim): BlockId => {
+		if (c.a === undefined) return holder;
+		const s = streams.get(holder);
+		const row = s && rows.get(s.text);
+		if (row === undefined || indexIn(row.text, c.a) === null) return holder;
+		const cuts: number[] = [];
+		row.bounds.forEach((b, j) => {
+			if (delim.get(b.s) === b.key) cuts.push(j);
+		});
+		const head = delim.has(row.home) ? null : row.home;
+		// The gap before `r`: a live boundary's own index, else the boundaries before it.
+		let gap = row.bounds.length;
+		if (c.r != null) {
+			const key = `${c.r.c}:${c.r.k}`;
+			const at = row.bounds.findIndex((b) => b.key === key);
+			if (at >= 0) gap = at;
+			else {
+				const p = indexIn(row.text, c.r);
+				if (p === null) return holder;
+				gap = row.bounds.filter((b) => b.at < p).length;
 			}
 		}
+		const segment = (g: number) => cuts.filter((j) => j < g).length;
+		const k = segment(gap);
+		// The holder's own segment: the one its stream starts in.
+		const k0 = segment(row.bounds.filter((b) => b.at < s!.start).length);
+		if (k < k0) return holder;
+		return (k === 0 ? head : row.bounds[cuts[k - 1]].s) ?? holder;
 	};
-
-	/** The inline atom `inlineId` in `b`'s display: its text, engine index and node. */
-	const findAtom = (own: Ownership, b: BlockId, inlineId: string) => {
-		for (const s of own.display(b) ?? []) {
-			let at = 0;
-			for (let it = nodeStart(s.text); it !== null && at < s.i1; it = it.right) {
-				if (it.deleted || it.countable === false) continue;
-				const node = it.content.type;
-				if (node !== undefined && at >= s.i0 && node.getAttr(ID) === inlineId)
-					return { text: s.text, at, node };
-				at += it.length;
+	const own = new Map<BlockId, Claim[]>();
+	const moved = new Map<BlockId, Claim[]>();
+	for (const [h, rec] of blocks) {
+		const stays: Claim[] = [];
+		for (const c of rec.listClaims ?? rec.claims) {
+			const t = targetOf(h, c);
+			if (t === h) stays.push(c);
+			else {
+				let into = moved.get(t);
+				if (into === undefined) moved.set(t, (into = []));
+				into.push({ ...c, holder: h });
 			}
 		}
-		return null;
-	};
-
-	/**
-	 * Split `b`'s display at `offset` for the new block `newId` (incarnation
-	 * `n`): one boundary through fork patch YP7 at the end of the gap, and the claims that
-	 * follow the split point — every claim of the stream's own block, then each
-	 * holder's claims after the one that led down — returned for re-insertion
-	 * on the new block and deleted from their holders. No text is copied.
-	 */
-	const splitAt = (
-		blocks: ReadonlyMap<BlockId, TextBlockRec>,
-		own: Ownership,
-		b: BlockId,
-		offset: number,
-		newId: BlockId,
-		n: number
-	): MergeClaim[] => {
-		const segs = flatten(b, blocks, own);
-		const hit = locate(segs, Math.max(0, Math.min(offset, ownedLength(segs))));
-		if (hit === null) throw new Error(`splitAt: "${b}" has no stream`);
-		const { seg, idx } = hit;
-		const moved: { holder: BlockId; claim: Claim }[] = [];
-		// A claim another block stores (its anchor moved it here) is deleted from that list.
-		const after = (holder: BlockId, from: number) =>
-			blocks
-				.get(holder)!
-				.claims.slice(from)
-				.forEach((c) => moved.push({ holder: c.holder ?? holder, claim: c }));
-		after(seg.block, 0);
-		for (let i = seg.path.length - 1; i >= 0; i--) after(seg.path[i].holder, seg.path[i].entry + 1);
-		const text = seg.text as EngineNode & { insertAtGapEnd(i: number, c: unknown[]): void };
-		text.insertAtGapEnd(idx, [{ s: newId, n } satisfies Boundary]);
-		const byHolder = new Map<BlockId, number[]>();
-		// An implicit claim (a losing incarnation) has no list entry: it is
-		// only written, explicitly, on the new block, whose claim outranks it.
-		for (const { holder, claim } of moved)
-			if (claim.seqIndex >= 0)
-				byHolder.set(holder, [...(byHolder.get(holder) ?? []), claim.seqIndex]);
-		for (const [holder, idxs] of byHolder) {
-			const list = blocks.get(holder)!.claimsNode!;
-			for (const i of idxs.sort((x, y) => y - x)) list.delete(i, 1);
-		}
-		// Re-inserted with their anchors: the region they end is the new block's now.
-		return moved.map(({ claim: c }) =>
-			c.a === undefined ? { m: c.m } : { m: c.m, a: c.a, r: c.r ?? null }
-		);
-	};
-
-	/**
-	 * Append a merge claim `{m: from}` to `into`'s claims list, anchored to
-	 * the end of `into`'s stream (`merge.claim.anchor`): its last unit (its
-	 * opening boundary when empty; none at an own text's start) and the item
-	 * after it.
-	 */
-	const claimInto = (
-		blocks: ReadonlyMap<BlockId, TextBlockRec>,
-		own: Pick<Ownership, 'streamOf'>,
-		from: BlockId,
-		into: BlockId
-	): void => {
-		const list = blocks.get(into)!.claimsNode!;
-		const claim: MergeClaim = { m: from };
-		const s = own.streamOf(into);
-		if (s !== undefined) {
-			const a = anchorAt(s.text, s.end, -1).i;
-			if (a !== null) {
-				claim.a = a;
-				claim.r = anchorAt(s.text, s.end, 0).i;
-			}
-		}
-		list.insert(list.length, [claim]);
-	};
-
-	/**
-	 * Give streamless block `rec` its own text and re-mint its nonce, so a late
-	 * copy of its old boundary is inert. Both writes carry a writer id
-	 * derived from the block's node and its dead incarnation, so replicas that
-	 * type into the block concurrently write the SAME items and both typings
-	 * land in one text (the seed writer's mechanism). Returns the nonce
-	 * change (the caller moves the block's attribution record with it).
-	 */
-	const ownText = (doc: EngineDoc, rec: TextBlockRec): { from: unknown; to: number } => {
-		const map = attrItems(rec.node);
-		const idOf = (x: unknown) => {
-			const it = (x as { id?: { client: number; clock: number } } | null | undefined)?.id;
-			return it === undefined ? '-' : `${it.client}:${it.clock}`;
-		};
-		const seed = [
-			`own/${SCHEMA.name}@${SCHEMA.version}`,
-			rec.id,
-			String(rec.n),
-			idOf(rec.node._item),
-			idOf(map.get(NONCE)),
-			idOf(map.get(CONTENT))
-		].join('|');
-		const writer = hash53(seed) || 1;
-		const to = hash32(`${seed}|n`);
-		const store = storeOf(doc);
-		// The derivation is fresh per incarnation: a writer that already wrote
-		// here is another block's (a hash collision, the known residual class).
-		if (DEV && store.getClock(writer) !== 0)
-			console.warn(`[edytor] own-text writer ${writer} of block ${rec.id} collides`);
-		const local = doc.clientID;
-		doc.clientID = writer;
-		try {
-			rec.node.setAttr(CONTENT, newNode(CONTENT_NODE));
-			rec.node.setAttr(NONCE, to);
-		} finally {
-			doc.clientID = local;
-		}
-		const ids = ownTextIds.get(doc) ?? ops.idSet();
-		ownTextIds.set(doc, ids);
-		const clock = store.getClock(writer);
-		ids.add(writer, clock - 2, 2);
-		return { from: rec.n, to };
-	};
-
-	return {
-		newNode,
-		resolveAnchor,
-		anchorAt,
-		openRangeCursor,
-		itemsOfRange,
-		readSegs,
-		computeOwnership,
-		flatten,
-		ownedLength,
-		contentItemsOf,
-		blockTextOf,
-		insertIntoText,
-		deleteRange,
-		formatRangeIn,
-		purgeStreams,
-		findAtom,
-		splitAt,
-		claimInto,
-		ownText
-	};
+		own.set(h, stays);
+	}
+	for (const [t, list] of moved) {
+		if (!own.has(t)) continue;
+		list.sort((x, y) => cmpStamp(x.stamp, y.stamp));
+		own.set(t, [...own.get(t)!, ...list]);
+	}
+	return own;
 };
+
+export const computeOwnership = (doc: EngineDoc, given: ReadonlyMap<BlockId, TextBlockRec>) => {
+	const rows: TextRow[] = [];
+	for (const rec of given.values()) if (rec.content) rows.push(scanText(rec.id, rec.content));
+	const delim = delimiters(given, rows);
+	const streams = new Map<BlockId, Stream>();
+	const inText = new Map<BlockId, Stream[]>();
+	for (const row of rows) {
+		const list = placeText(row, delim);
+		inText.set(row.home, list);
+		for (const s of list) streams.set(s.block, s);
+	}
+	// The records with their effective claims (`merge.claim.anchor`).
+	const effective = effectiveClaims(
+		doc,
+		given,
+		new Map(rows.map((row) => [row.text, row])),
+		delim,
+		streams
+	);
+	const blocks = new Map<BlockId, TextBlockRec>();
+	for (const [id, rec] of given)
+		blocks.set(id, {
+			...rec,
+			listClaims: rec.listClaims ?? rec.claims,
+			claims: effective.get(id) ?? rec.claims
+		});
+	const { owners, top } = claimGraph(blocks);
+	const ownerOf = (b: BlockId): Owner => owners.get(b) ?? DEAD;
+	const own: Ownership = {
+		ownerOf,
+		hidden: (b) => ownerOf(b) !== b,
+		top: (m) => top.get(m),
+		streamOf: (b) => streams.get(b),
+		streamsIn: (home) => inText.get(home) ?? [],
+		streamAt: (home, i) => (inText.get(home) ?? []).find((x) => x.start <= i && i <= x.end),
+		display: (b) => displayOf(b, blocks, own),
+		claimsOf: (b) => blocks.get(b)?.claims ?? []
+	};
+	return own;
+};
+
+/** `b`'s display pieces (`[]` when hidden or streamless and claimless). */
+export const flatten = (b: BlockId, blocks: unknown, own: Ownership): Seg[] => {
+	void blocks;
+	return own.display(b) ?? [];
+};
+
+export const contentItemsOf = (b: BlockId, blocks: unknown, own: Ownership): RangeItem[] =>
+	readSegs(flatten(b, blocks, own));
+
+export const blockTextOf = (b: BlockId, blocks: unknown, own: Ownership): string =>
+	contentItemsOf(b, blocks, own)
+		.map((i) => (i.kind === 'text' ? i.text : ''))
+		.join('');
+
+// ── writes (inside doc.transact; the plan clamped offsets) ────────
+
+/**
+ * Insert at a display offset, beside the boundary the engine walk and the
+ * left side choose. The display must be non-empty: a streamless block gets
+ * its own text first ({@link ownText}). The content goes in its gap
+ * (`insertInGap`, fork patch YP13: after the marks attached to the text before it,
+ * before those attached to the text after it); text then shows exactly
+ * `marks` (an operation for each mark its gap gave it otherwise).
+ */
+export const insertIntoText = (
+	doc: EngineDoc,
+	blocks: unknown,
+	own: Ownership,
+	b: BlockId,
+	offset: number,
+	payload: string | EngineNode,
+	marks?: Record<string, unknown>
+): void => {
+	const segs = flatten(b, blocks, own);
+	const hit = locate(segs, Math.max(0, Math.min(offset, ownedLength(segs))));
+	if (hit === null) throw new Error(`insertIntoText: "${b}" has no stream`);
+	const text = hit.seg.text as EngineNode & {
+		insertInGap(index: number, content: string | unknown[]): void;
+	};
+	if (typeof payload !== 'string') return text.insertInGap(hit.idx, [payload]);
+	text.insertInGap(hit.idx, payload);
+	const at = openRangeCursor(text).read(hit.idx, hit.idx + payload.length);
+	const have = at.find((p) => !p.deleted && p.len > 0)?.formats;
+	fitMarks(doc, text, hit.idx, payload.length, have, marks);
+};
+
+/** The per-stream delete: each range lies inside one stream's pieces, so no boundary is ever removed. */
+export const deleteRange = (
+	doc: EngineDoc,
+	blocks: unknown,
+	own: Ownership,
+	b: BlockId,
+	offset: number,
+	length: number
+): void => {
+	const spans: Span[] = [];
+	for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length)) {
+		for (const p of openRangeCursor(r.text).read(r.a, r.b))
+			if (!p.deleted && p.len > 0 && (p.content.str !== undefined || 'type' in p.content))
+				spans.push({ c: p.id.client, k: p.id.clock, n: p.len });
+		r.text.delete(r.a, r.b - r.a);
+	}
+	D.markDeleted(doc, spans);
+};
+
+export const formatRangeIn = (
+	doc: EngineDoc,
+	blocks: unknown,
+	own: Ownership,
+	b: BlockId,
+	offset: number,
+	length: number,
+	formats: Record<string, unknown>
+): void => {
+	for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length))
+		writeMarks(doc, r.text, r.a, r.b - r.a, formats);
+};
+
+/**
+ * Delete the content of streams `streams` (the room's purge of a
+ * block deleted past the horizon): every piece, so no boundary goes and
+ * each stream still delimits, writing no delete mark.
+ * Streams of one text are deleted from its end, so the indices the
+ * caller read stay valid.
+ */
+export const purgeStreams = (streams: readonly Stream[]): void => {
+	const ordered = [...streams].sort((a, b) => b.start - a.start);
+	for (const s of ordered) {
+		const parts = pieces(s).filter(([a, b]) => b > a);
+		for (let i = parts.length - 1; i >= 0; i--) {
+			const [a, b] = parts[i];
+			s.text.delete(a, b - a);
+		}
+	}
+};
+
+/** The inline atom `inlineId` in `b`'s display: its text, engine index and node. */
+export const findAtom = (own: Ownership, b: BlockId, inlineId: string) => {
+	for (const s of own.display(b) ?? []) {
+		let at = 0;
+		for (let it = nodeStart(s.text); it !== null && at < s.i1; it = it.right) {
+			if (it.deleted || it.countable === false) continue;
+			const node = it.content.type;
+			if (node !== undefined && at >= s.i0 && node.getAttr(ID) === inlineId)
+				return { text: s.text, at, node };
+			at += it.length;
+		}
+	}
+	return null;
+};
+
+/**
+ * Split `b`'s display at `offset` for the new block `newId` (incarnation
+ * `n`): one boundary through fork patch YP7 at the end of the gap, and the claims that
+ * follow the split point — every claim of the stream's own block, then each
+ * holder's claims after the one that led down — returned for re-insertion
+ * on the new block and deleted from their holders. No text is copied.
+ */
+export const splitAt = (
+	blocks: ReadonlyMap<BlockId, TextBlockRec>,
+	own: Ownership,
+	b: BlockId,
+	offset: number,
+	newId: BlockId,
+	n: number
+): MergeClaim[] => {
+	const segs = flatten(b, blocks, own);
+	const hit = locate(segs, Math.max(0, Math.min(offset, ownedLength(segs))));
+	if (hit === null) throw new Error(`splitAt: "${b}" has no stream`);
+	const { seg, idx } = hit;
+	const moved: { holder: BlockId; claim: Claim }[] = [];
+	// A claim another block stores (its anchor moved it here) is deleted from that list.
+	const after = (holder: BlockId, from: number) =>
+		blocks
+			.get(holder)!
+			.claims.slice(from)
+			.forEach((c) => moved.push({ holder: c.holder ?? holder, claim: c }));
+	after(seg.block, 0);
+	for (let i = seg.path.length - 1; i >= 0; i--) after(seg.path[i].holder, seg.path[i].entry + 1);
+	const text = seg.text as EngineNode & { insertAtGapEnd(i: number, c: unknown[]): void };
+	text.insertAtGapEnd(idx, [{ s: newId, n } satisfies Boundary]);
+	const byHolder = new Map<BlockId, number[]>();
+	// An implicit claim (a losing incarnation) has no list entry: it is
+	// only written, explicitly, on the new block, whose claim outranks it.
+	for (const { holder, claim } of moved)
+		if (claim.seqIndex >= 0)
+			byHolder.set(holder, [...(byHolder.get(holder) ?? []), claim.seqIndex]);
+	for (const [holder, idxs] of byHolder) {
+		const list = blocks.get(holder)!.claimsNode!;
+		for (const i of idxs.sort((x, y) => y - x)) list.delete(i, 1);
+	}
+	// Re-inserted with their anchors: the region they end is the new block's now.
+	return moved.map(({ claim: c }) =>
+		c.a === undefined ? { m: c.m } : { m: c.m, a: c.a, r: c.r ?? null }
+	);
+};
+
+/**
+ * Append a merge claim `{m: from}` to `into`'s claims list, anchored to
+ * the end of `into`'s stream (`merge.claim.anchor`): its last unit (its
+ * opening boundary when empty; none at an own text's start) and the item
+ * after it.
+ */
+export const claimInto = (
+	blocks: ReadonlyMap<BlockId, TextBlockRec>,
+	own: Pick<Ownership, 'streamOf'>,
+	from: BlockId,
+	into: BlockId
+): void => {
+	const list = blocks.get(into)!.claimsNode!;
+	const claim: MergeClaim = { m: from };
+	const s = own.streamOf(into);
+	if (s !== undefined) {
+		const a = anchorAt(s.text, s.end, -1).i;
+		if (a !== null) {
+			claim.a = a;
+			claim.r = anchorAt(s.text, s.end, 0).i;
+		}
+	}
+	list.insert(list.length, [claim]);
+};
+
+/**
+ * Give streamless block `rec` its own text and re-mint its nonce, so a late
+ * copy of its old boundary is inert. Both writes carry a writer id
+ * derived from the block's node and its dead incarnation, so replicas that
+ * type into the block concurrently write the SAME items and both typings
+ * land in one text (the seed writer's mechanism). Returns the nonce
+ * change (the caller moves the block's attribution record with it).
+ */
+export const ownText = (doc: EngineDoc, rec: TextBlockRec): { from: unknown; to: number } => {
+	const map = attrItems(rec.node);
+	const idOf = (x: unknown) => {
+		const it = (x as { id?: { client: number; clock: number } } | null | undefined)?.id;
+		return it === undefined ? '-' : `${it.client}:${it.clock}`;
+	};
+	const seed = [
+		`own/${SCHEMA.name}@${SCHEMA.version}`,
+		rec.id,
+		String(rec.n),
+		idOf(rec.node._item),
+		idOf(map.get(NONCE)),
+		idOf(map.get(CONTENT))
+	].join('|');
+	const writer = hash53(seed) || 1;
+	const to = hash32(`${seed}|n`);
+	const store = storeOf(doc);
+	// The derivation is fresh per incarnation: a writer that already wrote
+	// here is another block's (a hash collision, the known residual class).
+	if (DEV && store.getClock(writer) !== 0)
+		console.warn(`[edytor] own-text writer ${writer} of block ${rec.id} collides`);
+	const local = doc.clientID;
+	doc.clientID = writer;
+	try {
+		rec.node.setAttr(CONTENT, newNode(CONTENT_NODE));
+		rec.node.setAttr(NONCE, to);
+	} finally {
+		doc.clientID = local;
+	}
+	const ids = ownTextIds.get(doc) ?? ops.idSet();
+	ownTextIds.set(doc, ids);
+	const clock = store.getClock(writer);
+	ids.add(writer, clock - 2, 2);
+	return { from: rec.n, to };
+};
+
+/**
+ * The text engine as one object (the public binding's `text`): the reads
+ * and writes above. Edytor's own modules import them directly.
+ */
+export const bindText = (_Y: EngineApi) => ({
+	newNode,
+	resolveAnchor,
+	anchorAt,
+	openRangeCursor,
+	itemsOfRange,
+	readSegs,
+	computeOwnership,
+	flatten,
+	ownedLength,
+	contentItemsOf,
+	blockTextOf,
+	insertIntoText,
+	deleteRange,
+	formatRangeIn,
+	purgeStreams,
+	findAtom,
+	splitAt,
+	claimInto,
+	ownText
+});
 
 /**
  * The items this replica wrote with a derived own-text writer (local only): a

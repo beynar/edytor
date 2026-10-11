@@ -21,6 +21,7 @@ import {
 } from '../../dom/test.utils.js';
 import type { EngineDoc, EngineNode } from '$lib/crdt/engine-api.js';
 import { selectionState } from '../../selection.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 const empty = (
 	<root>
@@ -190,7 +191,7 @@ describe('YW-07: Enter at the end of a typeless block with children', () => {
 		]);
 		// The transient state: the attr's current value deleted, its replacement not yet here.
 		const nodeOf = (id: string): EngineNode => {
-			const node = edytor.facade.model.blockNodeOf(edytor.doc as unknown as EngineDoc, id);
+			const node = blockNodeOf(edytor.doc as unknown as EngineDoc, id);
 			if (node === null) throw new Error(`no block node for ${id}`);
 			return node;
 		};

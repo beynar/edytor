@@ -5,7 +5,7 @@
  * children index and document order, and each block's visible content as
  * ordered, immutable runs.
  *
- * Lifetime: the engine doc's. `bindRuns(Y).attach(doc)` returns the doc's
+ * Lifetime: the engine doc's. `indexOf(doc)` returns the doc's
  * one index (built on first use, torn down on the doc's `destroy`); every
  * binding, facade and model read on that doc goes through it.
  *
@@ -64,7 +64,6 @@
  */
 import type { EngineApi, EngineDeepEvent, EngineDoc } from '../engine-api.js';
 import type { BlockId, ContentItem, ModelView, ProjectedBlock } from '../placement/model.js';
-import { bindText } from './model.js';
 import { isNodeLike } from '../schema.js';
 import { cloneJsonSafe } from '../../utils/json.js';
 import { indexState, type Tx } from './index/state.js';
@@ -264,179 +263,176 @@ export type DisplayRoles = {
 /** One index per engine doc, shared by every binding (the doc's lifetime). */
 const indexes = new WeakMap<EngineDoc, RunView>();
 
-export const bindRuns = (Y: EngineApi) => {
-	const T = bindText(Y);
+/** The doc's index — built on first use, torn down when the doc is destroyed. */
+export const indexOf = (doc: EngineDoc): RunView => {
+	let index = indexes.get(doc);
+	if (index === undefined) indexes.set(doc, (index = buildView(doc)));
+	return index;
+};
 
-	/** The doc's index — built on first use, torn down when the doc is destroyed. */
-	const attach = (doc: EngineDoc): RunView => {
-		let index = indexes.get(doc);
-		if (index === undefined) indexes.set(doc, (index = buildView(doc)));
-		return index;
+/** The index binding (the public binding's `runs`): {@link indexOf}. */
+export const bindRuns = (_Y: EngineApi) => ({ attach: indexOf });
+
+const buildView = (doc: EngineDoc): RunView => {
+	// The index's parts, each over the state and the parts before it (`index/*`).
+	const ix0 = indexState(doc);
+	const ix1 = Object.assign(ix0, indexClaims(ix0));
+	const ix2 = Object.assign(ix1, indexStreams(ix1));
+	const ix3 = Object.assign(ix2, indexAnchored(ix2));
+	const ix4 = Object.assign(ix3, indexLayout(ix3));
+	const ix5 = Object.assign(ix4, indexPlacement(ix4));
+	const ix6 = Object.assign(ix5, indexRecords(ix5));
+	const ix7 = Object.assign(ix6, indexCache(ix6));
+	const ix8 = Object.assign(ix7, indexFold(ix7));
+	const ix = Object.assign(ix8, indexReporter(ix8));
+	const {
+		registry,
+		blocks,
+		rows,
+		homeOfText,
+		shells,
+		placementsMap,
+		frames,
+		displays,
+		ownShim,
+		ensurePlacements,
+		typeOf,
+		order,
+		rebuildTable,
+		scanRow,
+		applyRetargets,
+		updateBlockRec,
+		syncIncarnations,
+		intern,
+		debug,
+		runs,
+		settle,
+		syncPending,
+		syncAll,
+		openTx,
+		onCommit,
+		committed,
+		itemsOf,
+		projectBlock,
+		publish,
+		onUpdate,
+		onReport,
+		hasSubscribers
+	} = ix;
+
+	const ctx: ModelView = {
+		blocks,
+		own: ownShim,
+		get placements() {
+			ensurePlacements();
+			return placementsMap;
+		},
+		get kids() {
+			ensurePlacements();
+			return ix.kidsMap;
+		},
+		get order() {
+			ensurePlacements();
+			return order();
+		},
+		// The publication boundary shares THIS interner, so a payload
+		// emitted by `project()`/`contentItems()` is `===` the runs' one.
+		intern,
+		displays
 	};
 
-	const buildView = (doc: EngineDoc): RunView => {
-		// The index's parts, each over the state and the parts before it (`index/*`).
-		const ix0 = indexState(Y, T, doc);
-		const ix1 = Object.assign(ix0, indexClaims(ix0));
-		const ix2 = Object.assign(ix1, indexStreams(ix1));
-		const ix3 = Object.assign(ix2, indexAnchored(ix2));
-		const ix4 = Object.assign(ix3, indexLayout(ix3));
-		const ix5 = Object.assign(ix4, indexPlacement(ix4));
-		const ix6 = Object.assign(ix5, indexRecords(ix5));
-		const ix7 = Object.assign(ix6, indexCache(ix6));
-		const ix8 = Object.assign(ix7, indexFold(ix7));
-		const ix = Object.assign(ix8, indexReporter(ix8));
-		const {
-			registry,
-			blocks,
-			rows,
-			homeOfText,
-			shells,
-			placementsMap,
-			frames,
-			displays,
-			ownShim,
-			ensurePlacements,
-			typeOf,
-			order,
-			rebuildTable,
-			scanRow,
-			applyRetargets,
-			updateBlockRec,
-			syncIncarnations,
-			intern,
-			debug,
-			runs,
-			settle,
-			syncPending,
-			syncAll,
-			openTx,
-			onCommit,
-			committed,
-			itemsOf,
-			projectBlock,
-			publish,
-			onUpdate,
-			onReport,
-			hasSubscribers
-		} = ix;
-
-		const ctx: ModelView = {
-			blocks,
-			own: ownShim,
-			get placements() {
-				ensurePlacements();
-				return placementsMap;
-			},
-			get kids() {
-				ensurePlacements();
-				return ix.kidsMap;
-			},
-			get order() {
-				ensurePlacements();
-				return order();
-			},
-			// The publication boundary shares THIS interner, so a payload
-			// emitted by `project()`/`contentItems()` is `===` the runs' one.
-			intern,
-			displays
-		};
-
-		// ── initial scan: index every existing block ────────────────────
-		registry.forEachAttr((v: unknown, id: string) => {
-			if (!isNodeLike(v)) return;
-			updateBlockRec(id);
-			for (const b of [id, ...syncIncarnations(id)]) {
-				const row = scanRow(b);
-				if (row !== undefined) {
-					rows.set(b, row);
-					homeOfText.set(row.text, b);
-				}
+	// ── initial scan: index every existing block ────────────────────
+	registry.forEachAttr((v: unknown, id: string) => {
+		if (!isNodeLike(v)) return;
+		updateBlockRec(id);
+		for (const b of [id, ...syncIncarnations(id)]) {
+			const row = scanRow(b);
+			if (row !== undefined) {
+				rows.set(b, row);
+				homeOfText.set(row.text, b);
 			}
-		});
-		rebuildTable(new Set());
-		applyRetargets(null);
-		settle(shells, null);
+		}
+	});
+	rebuildTable(new Set());
+	applyRetargets(null);
+	settle(shells, null);
 
-		const observer = (e: EngineDeepEvent): void => onCommit(e);
-		registry.observeDeep(observer);
-		/** Derived state lives exactly as long as the doc. */
-		const teardown = (): void => {
-			registry.unobserveDeep(observer);
-			doc.off('destroy', teardown);
-			doc.off('update', onUpdate);
-			indexes.delete(doc);
-		};
-		doc.on('destroy', teardown);
-
-		// ── public surface ───────────────────────────────────────────────
-		const view: RunView = {
-			version: () => {
-				syncAll();
-				return ix.version;
-			},
-			runs,
-			contentItems: (b: BlockId): ContentItem[] => {
-				syncAll();
-				return blocks.get(b)?.deleted === false ? itemsOf(b) : [];
-			},
-			// Inline atoms always carry `data` (`{}` when absent) — the public
-			// `JSONInlineBlock` shape of `edytor.value`.
-			contentJSON: (b: BlockId) =>
-				runs(b).map((r) =>
-					r.kind === 'text'
-						? { text: r.text, ...(r.marks !== undefined && { marks: cloneJsonSafe(r.marks) }) }
-						: { id: r.id, type: r.type, data: r.data === undefined ? {} : cloneJsonSafe(r.data) }
-				),
-			view: (tr?: unknown): ModelView => {
-				syncAll();
-				if (tr !== undefined && !committed.has(tr as Tx)) syncPending(tr as Tx);
-				return ctx;
-			},
-			displayType: (id) => {
-				if (ix.roles === null) return undefined;
-				syncAll();
-				ensurePlacements();
-				const shown = blocks.has(id) ? typeOf(id) : undefined;
-				return shown === blocks.get(id)?.type ? undefined : shown;
-			},
-			dissolved: (id) => {
-				syncAll();
-				ensurePlacements();
-				return ix.dissolved.has(id);
-			},
-			project: (root?: BlockId): ProjectedBlock[] => {
-				syncAll();
-				ensurePlacements();
-				return root === undefined
-					? (ix.kidsMap.get(null) ?? []).map((k) => projectBlock(k.id))
-					: [projectBlock(root)];
-			},
-			roles: (next) => {
-				ix.roles = next;
-				ix.placementFull = true;
-				ix.version++;
-				// No commit carries a role change: report it now (not inside a
-				// transaction, whose commit reports it), so every view follows.
-				if (hasSubscribers() && !openTx()) publish(null, false);
-			},
-			track: () => {
-				syncAll();
-				const f: Folded = { touched: new Map(), wrote: false };
-				frames.add(f);
-				return {
-					end: () => {
-						syncAll();
-						frames.delete(f);
-						return f;
-					}
-				};
-			},
-			onReport,
-			debug
-		};
-		return view;
+	const observer = (e: EngineDeepEvent): void => onCommit(e);
+	registry.observeDeep(observer);
+	/** Derived state lives exactly as long as the doc. */
+	const teardown = (): void => {
+		registry.unobserveDeep(observer);
+		doc.off('destroy', teardown);
+		doc.off('update', onUpdate);
+		indexes.delete(doc);
 	};
+	doc.on('destroy', teardown);
 
-	return { attach };
+	// ── public surface ───────────────────────────────────────────────
+	const view: RunView = {
+		version: () => {
+			syncAll();
+			return ix.version;
+		},
+		runs,
+		contentItems: (b: BlockId): ContentItem[] => {
+			syncAll();
+			return blocks.get(b)?.deleted === false ? itemsOf(b) : [];
+		},
+		// Inline atoms always carry `data` (`{}` when absent) — the public
+		// `JSONInlineBlock` shape of `edytor.value`.
+		contentJSON: (b: BlockId) =>
+			runs(b).map((r) =>
+				r.kind === 'text'
+					? { text: r.text, ...(r.marks !== undefined && { marks: cloneJsonSafe(r.marks) }) }
+					: { id: r.id, type: r.type, data: r.data === undefined ? {} : cloneJsonSafe(r.data) }
+			),
+		view: (tr?: unknown): ModelView => {
+			syncAll();
+			if (tr !== undefined && !committed.has(tr as Tx)) syncPending(tr as Tx);
+			return ctx;
+		},
+		displayType: (id) => {
+			if (ix.roles === null) return undefined;
+			syncAll();
+			ensurePlacements();
+			const shown = blocks.has(id) ? typeOf(id) : undefined;
+			return shown === blocks.get(id)?.type ? undefined : shown;
+		},
+		dissolved: (id) => {
+			syncAll();
+			ensurePlacements();
+			return ix.dissolved.has(id);
+		},
+		project: (root?: BlockId): ProjectedBlock[] => {
+			syncAll();
+			ensurePlacements();
+			return root === undefined
+				? (ix.kidsMap.get(null) ?? []).map((k) => projectBlock(k.id))
+				: [projectBlock(root)];
+		},
+		roles: (next) => {
+			ix.roles = next;
+			ix.placementFull = true;
+			ix.version++;
+			// No commit carries a role change: report it now (not inside a
+			// transaction, whose commit reports it), so every view follows.
+			if (hasSubscribers() && !openTx()) publish(null, false);
+		},
+		track: () => {
+			syncAll();
+			const f: Folded = { touched: new Map(), wrote: false };
+			frames.add(f);
+			return {
+				end: () => {
+					syncAll();
+					frames.delete(f);
+					return f;
+				}
+			};
+		},
+		onReport,
+		debug
+	};
+	return view;
 };

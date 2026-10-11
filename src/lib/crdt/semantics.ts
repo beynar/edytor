@@ -347,23 +347,26 @@ const withMarks = <C extends object>(config: C, marks: Record<string, { edge: Ma
 	frozen(Object.assign({}, config, { marks }));
 
 /** `richTextPlugin`'s block roles and mark edges, for `createDocument({ semantics })` and the room. */
-export const richTextSemantics = withMarks(semanticsOf(richTextKinds), richTextMarks);
+export const richTextSemantics = /* @__PURE__ */ withMarks(
+	/* @__PURE__ */ semanticsOf(richTextKinds),
+	richTextMarks
+);
 /** `codePlugin`'s block roles. */
-export const codeSemantics = semanticsOf(codeKinds);
+export const codeSemantics = /* @__PURE__ */ semanticsOf(codeKinds);
 /** `imagePlugin`'s block roles. */
-export const imageSemantics = semanticsOf(imageKinds);
+export const imageSemantics = /* @__PURE__ */ semanticsOf(imageKinds);
 /** The media plugins' block roles (embed, bookmark, file, video, audio). */
-export const mediaSemantics = semanticsOf(mediaKinds);
+export const mediaSemantics = /* @__PURE__ */ semanticsOf(mediaKinds);
 /** The columns plugin's block roles (a layout of columns). */
-export const layoutSemantics = semanticsOf(layoutKinds);
+export const layoutSemantics = /* @__PURE__ */ semanticsOf(layoutKinds);
 /** The page plugin's block role (a link to another document). */
-export const pageSemantics = semanticsOf(pageKinds);
+export const pageSemantics = /* @__PURE__ */ semanticsOf(pageKinds);
 /** The table of contents plugin's block role. */
-export const tocSemantics = semanticsOf(tocKinds);
+export const tocSemantics = /* @__PURE__ */ semanticsOf(tocKinds);
 /** The table plugin's block roles (a table of rows of cells). */
-export const tableSemantics = semanticsOf(tableKinds);
+export const tableSemantics = /* @__PURE__ */ semanticsOf(tableKinds);
 /** The equation plugin's block role. */
-export const equationSemantics = semanticsOf(equationKinds);
+export const equationSemantics = /* @__PURE__ */ semanticsOf(equationKinds);
 /**
  * The rich-text, code, image, media, columns, page, table of contents,
  * table and equation plugins' block roles together (and the rich-text and

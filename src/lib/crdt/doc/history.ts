@@ -31,6 +31,7 @@ import {
 import { isInitialized } from './gate.js';
 import { EdytorDocDisposedError, type WriteFunnel } from './funnel.js';
 import type { DocBase } from './reads.js';
+import { registryOf, withdrawOnUndo } from '../placement/model.js';
 
 /** The undo steps a document's history keeps by default: older ones are released. */
 export const DEFAULT_HISTORY_LIMIT = 200;
@@ -49,7 +50,7 @@ export type HistoryContext = DocBase &
 
 /** The history factory of one facade. */
 export const docHistory = (c: HistoryContext) => {
-	const { Y, doc, M, D, releasers, init, write, disposed } = c;
+	const { Y, doc, D, releasers, init, write, disposed } = c;
 	const ops = engineOps(Y);
 
 	/**
@@ -131,7 +132,7 @@ export const docHistory = (c: HistoryContext) => {
 		// An undone creation withdraws the block instead of deleting it (fork patch YP12, `hist.undo.withdraw`).
 		const marks = D.history(doc, () => um);
 		const um: YUndoManager = new Y.UndoManager(
-			[M.registryOf(doc), D.scope(doc), doc.get(DOC_DATA_ROOT)].map(asYNode),
+			[registryOf(doc), D.scope(doc), doc.get(DOC_DATA_ROOT)].map(asYNode),
 			{
 				...opts,
 				...marks,
@@ -139,7 +140,7 @@ export const docHistory = (c: HistoryContext) => {
 					marks.onApply(tr, step);
 					repairAttrs(step);
 				},
-				withdraw: M.withdrawOnUndo(doc)
+				withdraw: withdrawOnUndo(doc)
 			} as never
 		) as YUndoManager;
 		// A streamless block's own text is shared by every replica that

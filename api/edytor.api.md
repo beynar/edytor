@@ -1944,7 +1944,6 @@ export declare class EdytorDocument {
     private _pendingSyncs;
     private _healOff;
     private _readyListeners;
-    private _advertise;
     get clientID(): number;
     get ready(): boolean;
     get readiness(): DocumentReadiness;
@@ -1962,7 +1961,6 @@ export declare class EdytorDocument {
     defaultChild: (parentType: string | null) => string;
     rendersContent: (type: string) => boolean;
     adoptSemantics: (config: DocumentSemanticsConfig) => void;
-    private _warnLines;
     sync: (value?: JSONDoc) => void;
     get history(): YUndoManager;
     trackOrigin: (origin: unknown) => void;

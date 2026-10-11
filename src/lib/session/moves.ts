@@ -3,6 +3,7 @@ import { dispatchPlan, type BlockBeside } from '$lib/block/block.utils.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { revealing } from '$lib/selection/replaceSelection.js';
 import type { Prepared } from '$lib/crdt/edytor-doc.js';
+import { REFUSED } from '$lib/crdt/doc/plan.js';
 
 /**
  * Where a move places the blocks relative to its target: `before`, `after`,
@@ -180,7 +181,7 @@ const place = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 			(payload) =>
 				payload.beside
 					? edytor.facade.prepare.placeBeside(ids, payload.beside.target.id, payload.beside.side)
-					: { status: 'refused', ids: [] },
+					: REFUSED,
 			[...new Set([...move.blocks.map((block) => block.parent), beside.target.parent])]
 		);
 	// The outdent plan: the siblings after the last block follow it.

@@ -36,6 +36,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 import type { TextOperations } from '$lib/text/text.utils.js';
 import type { Flow, FlowTarget } from '$lib/crdt/flow.js';
 import type { Plan, Prepared } from '$lib/crdt/edytor-doc.js';
+import { REFUSED } from '$lib/crdt/doc/plan.js';
 import type { DataPatch } from '$lib/crdt/data.js';
 import type { ResolvedAt } from '$lib/session/suggestions.svelte.js';
 import { id } from '$lib/utils.js';
@@ -255,8 +256,6 @@ export type PayloadOf<A extends unknown[]> = A extends []
 export function blockOf(this: Block, id: string | null | undefined): Block | null | undefined {
 	return id === undefined ? undefined : (id && this.edytor.idToBlock.get(id)) || null;
 }
-
-const REFUSED: Prepared = { status: 'refused', ids: [] };
 
 /**
  * An op's body over its prepared plan: write it and request normalization of
@@ -605,29 +604,22 @@ export function textAfterAtom(this: Block, atom: string | undefined): Text | nul
  * Normalization runs at the end of the command's transaction
  * (`Dispatcher.drain`): a normalizer reads handles over the index; when a
  * plugin hook answers work, the work runs in the same transaction and the
- * block is requested again (bounded by the dispatcher's pass limit).
+ * block is requested again (bounded by the dispatcher's pass limit). The
+ * v14 content model maintains the part invariants by construction, so the
+ * only normalization left is the kind's hook; an emptied root writes nothing
+ * (the view shows its virtual paragraph, `doc.empty.virtual`).
  */
-export function normalizeContent(this: Block): void {
-	if (this.edytor.dispatcher.defer(this, normalizeContent)) return;
-	// The v14 content model maintains the part invariants by construction —
-	// projected content always derives to text-first/text-last/non-adjacent
-	// parts — so the only remaining normalization is the plugin hook.
-	const work = this.definition?.normalizeContent?.({ block: this });
-	if (work) {
-		this.edytor.dispatcher.write(work);
-		this.normalizeContent();
-	}
-}
-
-export function normalizeChildren(this: Block): void {
-	if (this.edytor.dispatcher.defer(this, normalizeChildren)) return;
-	// An emptied root writes nothing: the view shows its virtual paragraph (`doc.empty.virtual`).
-	const work = this.definition?.normalizeChildren?.({ block: this });
-	if (work) {
-		this.edytor.dispatcher.write(work);
-		this.normalizeChildren();
-	}
-}
+const normalizer = (hook: 'normalizeContent' | 'normalizeChildren') =>
+	function normalize(this: Block): void {
+		if (this.edytor.dispatcher.defer(this, normalize)) return;
+		const work = this.definition[hook]?.({ block: this });
+		if (work) {
+			this.edytor.dispatcher.write(work);
+			this[hook]();
+		}
+	};
+export const normalizeContent = normalizer('normalizeContent');
+export const normalizeChildren = normalizer('normalizeChildren');
 
 export function prepareDeleteRange(
 	this: Block,

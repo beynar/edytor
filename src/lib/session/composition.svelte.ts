@@ -52,8 +52,8 @@
  * — until the next non-composition occurrence, or `TAIL_MS` compared at use.
  *
  * The facts a display gate reads: `host` (the text whose element a live
- * session owns), `owns(node)`, and `ended(fn)` (the session end, after its
- * writes: where the catch-up display runs).
+ * session owns; the pin answers which nodes it holds) and `ended(fn)` (the
+ * session end, after its writes: where the catch-up display runs).
  */
 import type { DocChange } from '$lib/crdt/index.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -141,9 +141,6 @@ export class Composition {
 	get live() {
 		return this.phase === 'live';
 	}
-
-	/** `node` lies inside the element a live session owns (the pinned element). */
-	owns = (node: Node | null | undefined) => this.host !== null && this.edytor.pin.owns(node);
 
 	/** Run `fn` once the live session has ended (after its writes), or now when none is live. */
 	ended = (fn: () => void) => {

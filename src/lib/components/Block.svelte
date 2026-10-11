@@ -193,9 +193,11 @@
 
 	// The kind `content()` last rendered under — read after each render.
 	let contentRenderedFor: string | undefined;
-	$effect(() => {
-		if (DEV && block?.handle) checkRendersContent(block.handle, contentRenderedFor === cell?.type);
-	});
+	// Development only: production keeps no effect per block for it.
+	if (DEV)
+		$effect(() => {
+			if (block?.handle) checkRendersContent(block.handle, contentRenderedFor === cell?.type);
+		});
 </script>
 
 <!--

@@ -3,6 +3,7 @@ import type { Block } from './block/block.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
 import type { Flow, FlowTarget } from './crdt/flow.js';
 import type { Prepared } from './crdt/edytor-doc.js';
+import { REFUSED } from './crdt/doc/plan.js';
 import { normalizeChildren, normalizeContent } from './block/block.utils.js';
 import { viewOf } from './selection/visibility.js';
 
@@ -13,8 +14,6 @@ export type RangeEndpoints = {
 	yStart: number;
 	yEnd: number;
 };
-
-const REFUSED: Prepared = { status: 'refused', ids: [] };
 
 type At = { block: string; offset: number };
 

@@ -18,13 +18,12 @@ import type { DocAnchor, DocFacade, EdytorDoc, Prepared } from '../crdt/edytor-d
 import { placedEnd, type Flow, type FlowTarget } from '../crdt/flow.js';
 import { bindNodes } from '../crdt/nodes.js';
 import { applyPatch } from '../crdt/data.js';
+import { REFUSED } from '../crdt/doc/plan.js';
 import { id } from '../utils.js';
 import { asBlockSpec } from '../utils/json.js';
 
 /** A virtual paragraph's id (materialized blocks keep theirs): what a peer's caret names. */
 export const isVirtualId = (value: string): boolean => value.startsWith('v_');
-
-const REFUSED: Prepared = Object.freeze({ status: 'refused', ids: [] });
 
 /** The document as a view reads it: `virtual()` names the shown virtual paragraph, if any. */
 export type ViewDoc = DocFacade & { virtual: () => BlockId | null };

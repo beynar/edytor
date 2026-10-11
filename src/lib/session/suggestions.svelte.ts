@@ -12,6 +12,7 @@
 import type { BlockId, DocAnchor, OpResult } from '../crdt/index.js';
 import type { Flow, FlowLine, FlowTarget } from '../crdt/flow.js';
 import type { Prepared } from '../crdt/edytor-doc.js';
+import { REFUSED } from '../crdt/doc/plan.js';
 import type { Edytor } from '../edytor.svelte.js';
 import { applyAt, caretOf } from '../edytor.utils.js';
 import { textToBlocks } from '../clipboard/textBlocks.js';
@@ -49,8 +50,6 @@ export type SuggestionOptions = {
 	/** Offer "Try again": called by `retry()` once the content is emptied. */
 	onRetry?: (suggestion: Suggestion) => void;
 };
-
-const REFUSED: OpResult = Object.freeze({ status: 'refused', ids: [] });
 
 /** What a block position shows: before it, after it, as its last children, after its text. */
 export type SuggestionsAt = {

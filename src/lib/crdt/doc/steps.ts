@@ -17,7 +17,7 @@ import {
 	type BlockId,
 	type ContentItem
 } from '../placement/model.js';
-import { refused, effectOf } from './plan.js';
+import { REFUSED, effectOf } from './plan.js';
 import type { Plan, PlanStep } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
 import type { DocCapability } from './capability.js';
@@ -59,7 +59,6 @@ export const planSteps = (c: StepsContext) => {
 	// Each prepare normalizes its inputs once, here at ingress: ids
 	// and strings as the wire would deliver them, payloads cloned.
 
-	const REFUSED = refused(null);
 	/** `exitRanks` parts, in their order at one block. */
 	const [HEAD, KEPT, WITH, SELF, AFTER] = [0, 1, 2, 3, 5];
 	const plan = (ids: readonly BlockId[], writes: PlanStep[]): Plan => ({

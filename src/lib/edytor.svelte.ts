@@ -137,7 +137,7 @@ const RETIRED: Record<string, string> = {
 	blockDnd: '`blockHandles` (`blockHandles={false}` hides the handles)'
 };
 const warnRetired = (source: object | undefined) => {
-	if (!DEV || !source) return;
+	if (!source) return;
 	for (const [name, use] of Object.entries(RETIRED))
 		if (Object.hasOwn(source, name))
 			console.warn(`[edytor] \`${name}\` was removed and is ignored: use ${use}.`);
@@ -462,8 +462,10 @@ export class Edytor {
 			onChange,
 			onDocChange
 		} = options;
-		warnRetired(options);
-		warnRetired(snippets);
+		if (DEV) {
+			warnRetired(options);
+			warnRetired(snippets);
+		}
 		this.labels = labelsWith(editorEnglish, labels);
 		if (document !== undefined) {
 			if (
@@ -530,7 +532,8 @@ export class Edytor {
 				['Block', this.blocks]
 			] as const;
 			for (const [key, snippet] of Object.entries(snippets || {})) {
-				if (Object.hasOwn(RETIRED, key)) continue;
+				// A retired key (warned above) is no override, which a production view ignores too.
+				if (DEV && Object.hasOwn(RETIRED, key)) continue;
 				const override = overrides.find(([suffix]) => key.endsWith(suffix));
 				const name = override && key.slice(0, -override[0].length);
 				if (override && name && override[1].has(name)) {

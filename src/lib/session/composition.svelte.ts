@@ -188,8 +188,11 @@ export class Composition {
 					? 'block'
 					: 'blocks'
 				: false;
+		// With no target, the caret the browser parked for the IME.
+		const parked = targetless && dom?.anchorNode;
+		const point = parked ? this.edytor.ports.surface.pointAt(parked, dom.anchorOffset) : null;
 		const at = targetless
-			? this.#parkedAt(dom)
+			? point && { text: point.text, from: point.offset, to: point.offset }
 			: shown === 'blocks' || shown === 'atom'
 				? this.#rangeless()
 				: startText && {
@@ -307,13 +310,11 @@ export class Composition {
 		}
 		const tail = this.tail();
 		this.occurred();
-		const { projection, selectedBlocks, selectedInlineBlock } = this.edytor.selection;
+		// A caret: a block or atom selection is no collapsed projection.
 		const phantom =
 			tail &&
 			(event.key === 'Enter' || (event.key === 'Backspace' && isAppleWebKit())) &&
-			projection.isCollapsed &&
-			!selectedBlocks.size &&
-			!selectedInlineBlock.size;
+			this.edytor.selection.projection.isCollapsed;
 		if (!phantom) return false;
 		this.swallows++;
 		event.preventDefault();
@@ -379,13 +380,6 @@ export class Composition {
 		if (!at.text.node) return null;
 		edytor.ports.surface.park(at.text, at.offset);
 		return { text: at.text, from: at.offset, to: at.offset };
-	}
-
-	/** The text and offset of the caret the browser parked for a session with no target. */
-	#parkedAt(dom: DomSelectionSnapshot | null) {
-		const node = dom?.anchorNode;
-		const at = node ? this.edytor.ports.surface.pointAt(node, dom.anchorOffset) : null;
-		return at && { text: at.text, from: at.offset, to: at.offset };
 	}
 
 	/**
@@ -463,17 +457,14 @@ export class Composition {
 		const start = this.#region && facade.resolveAnchor(this.#region.start);
 		const end = this.#region && facade.resolveAnchor(this.#region.end);
 		if (!start || !end || !this.#own.size) return [];
-		const spans =
-			start.blockId === end.blockId
-				? [{ blockId: start.blockId, from: start.offset, to: end.offset }]
-				: [
-						{ blockId: start.blockId, from: start.offset, to: facade.displayLength(start.blockId) },
-						{ blockId: end.blockId, from: 0, to: end.offset }
-					];
 		const units: { blockId: string; offset: number }[] = [];
-		for (const { blockId, from, to } of spans)
-			for (let offset = from; offset < to; offset++)
+		for (const { blockId, offset: from } of start.blockId === end.blockId
+			? [start]
+			: [start, end]) {
+			const to = blockId === end.blockId ? end.offset : facade.displayLength(blockId);
+			for (let offset = blockId === start.blockId ? from : 0; offset < to; offset++)
 				if (this.#own.has(this.#unit(blockId, offset))) units.push({ blockId, offset });
+		}
 		return units;
 	}
 

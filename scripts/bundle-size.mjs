@@ -166,6 +166,11 @@ for (const [app, svelteSource] of Object.entries(APPS)) {
 		loc.files++;
 	}
 	totals.loc = loc;
+	// The Svelte runtime ships with any Svelte app: edytor's own cost is the rest.
+	totals.svelte = Object.entries(sources)
+		.filter(([name]) => name.startsWith('svelte/'))
+		.reduce((sum, [, bytes]) => sum + bytes, 0);
+	totals.own = totals.min - totals.svelte;
 	const groups = {};
 	for (const [name, bytes] of Object.entries(sources)) {
 		const group = groupOf(name);
@@ -174,7 +179,7 @@ for (const [app, svelteSource] of Object.entries(APPS)) {
 	report[app] = { totals, groups };
 
 	console.log(
-		`\n${app}: ${kb(totals.min)} min (${kb(totals.entry)} entry, ${kb(totals.lazy)} lazy in ${totals.chunks - 1} chunks), ${kb(totals.gzip)} gzip, ${kb(totals.brotli)} brotli; source lines shipped: ${loc.edytor} edytor + ${loc.vendor} vendored (${loc.files} files)`
+		`\n${app}: edytor's own ${kb(totals.own)} min (without the Svelte runtime ${kb(totals.svelte)}, which a Svelte app ships anyway); total ${kb(totals.min)} min (${kb(totals.entry)} entry, ${kb(totals.lazy)} lazy in ${totals.chunks - 1} chunks), ${kb(totals.gzip)} gzip, ${kb(totals.brotli)} brotli; source lines shipped: ${loc.edytor} edytor + ${loc.vendor} vendored (${loc.files} files)`
 	);
 	for (const [group, bytes] of Object.entries(groups)
 		.sort((a, b) => b[1] - a[1])

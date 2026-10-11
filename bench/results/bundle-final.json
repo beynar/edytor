@@ -11,7 +11,9 @@
 				"edytor": 30642,
 				"vendor": 7090,
 				"files": 268
-			}
+			},
+			"svelte": 49361,
+			"own": 562969
 		},
 		"groups": {
 			"svelte/src/internal/shared/utils.js": 451,
@@ -378,7 +380,9 @@
 				"edytor": 40139,
 				"vendor": 7090,
 				"files": 335
-			}
+			},
+			"svelte": 51311,
+			"own": 766744
 		},
 		"groups": {
 			"@tanstack/highlight/dist/languages/cpp.js": 1779,

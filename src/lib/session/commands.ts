@@ -52,30 +52,26 @@ type Change = {
 /**
  * The undo policy, owned here: a user command (`run`) applies it
  * by its kind, and an operation dispatched outside one (a menu action, a
- * plugin, a headless call) by its name. Deletions, paste, drop, formatting
- * and structural operations cut the capture before they write; a paragraph
- * split also cuts after; an insertion (`INSERTIONS`) coalesces within
- * `captureTimeout` when it continues the step before it (that step is an
- * insertion's, `inserts`, and it starts where that step left this view's
- * selection, `history.continues`), else it cuts: an
- * insertion after the caret moved is its own step whatever the pause, so the
- * grouping never depends on timing alone. Every other kind or operation —
- * one the table does not list included (`run('myConvert')`) — cuts before
- * it writes, so a plugin's write never joins the typing before it. A
- * conversion (a markdown or slash trigger with the kind it completes,
- * `lead`) is its own step, so undo gives the typed trigger back. A composition session groups like an insertion and is
- * one capture group: `session/composition` holds it open between its writes,
+ * plugin, a headless call) by its name. Every kind cuts the capture before
+ * it writes — deletions, paste, drop, formatting and structural operations,
+ * and any kind this table does not list (`run('myConvert')`), so a plugin's
+ * write never joins the typing before it — except an insertion
+ * (`insertion`), which coalesces within `captureTimeout` when it continues
+ * the step before it (that step is an insertion's, `inserts`, and it starts
+ * where that step left this view's selection, `history.continues`), else it
+ * cuts: an insertion after the caret moved is its own step whatever the
+ * pause, so the grouping never depends on timing alone. The kinds listed
+ * here also cut after them. A conversion (a markdown or slash trigger with
+ * the kind it completes, `lead`) is its own step, so undo gives the typed
+ * trigger back. A composition session groups like an insertion and is one
+ * capture group: `session/composition` holds it open between its writes,
  * and no operation cuts while it is live.
  */
-const CUT: Record<string, 'before' | 'both'> = {
+const CUT: Record<string, 'both'> = {
+	// A paragraph split.
 	insertParagraph: 'both',
-	insertFromPaste: 'before',
-	insertFromPasteAsQuotation: 'before',
-	insertFromDrop: 'before',
 	// A text drag's drop: typing after it is a step of its own.
 	moveText: 'both',
-	insertBlock: 'before',
-	format: 'before',
 	// An accepted suggestion: typing after it is a step of its own.
 	acceptSuggestion: 'both',
 	// A DOM change no input occurrence owns (a foreign script): its own step.
@@ -84,20 +80,11 @@ const CUT: Record<string, 'before' | 'both'> = {
 /** The origin of `Dispatcher.outside`'s transactions: no history tracks it. */
 const OUTSIDE_HISTORY = Symbol('edytor.outsideHistory');
 /**
- * The kinds that may continue a step: the insertion operations (`insertText`,
- * `addInlineBlock`) and the input types that insert text. Any other kind — a
- * structural or formatting input type, a kind the table does not list
- * (`run('myConvert')`) — cuts before it writes.
+ * The kinds that may continue a step: the input types that insert text
+ * (`insertText`, the operation too), a soft break, an atom and a link.
  */
-const INSERTIONS = new Set([
-	'insertText',
-	'addInlineBlock',
-	'insertReplacementText',
-	'insertLineBreak',
-	'insertFromYank',
-	'insertTranspose',
-	'insertLink'
-]);
+const insertion = (kind: string) =>
+	kindOf(kind) === 'text' || ['insertLineBreak', 'addInlineBlock', 'insertLink'].includes(kind);
 type Policy = 'before' | 'both' | 'continue' | undefined;
 /**
  * Whether a `kind` command's writes are text editing an insertion may
@@ -107,10 +94,9 @@ type Policy = 'before' | 'both' | 'continue' | undefined;
  * column resize — ends the step for the typing after it.
  */
 const inserts = (kind: string, led: boolean) =>
-	!led && (kind.includes('Composition') || INSERTIONS.has(kind) || kindOf(kind) === 'delete');
+	!led && (kind.includes('Composition') || insertion(kind) || kindOf(kind) === 'delete');
 const policyOf = (kind: string): Policy =>
-	CUT[kind] ??
-	(kind.includes('Composition') ? undefined : INSERTIONS.has(kind) ? 'continue' : 'before');
+	CUT[kind] ?? (kind.includes('Composition') ? undefined : insertion(kind) ? 'continue' : 'before');
 
 /** The one place a `prevent()` is recognized; anything else propagates. */
 const prevented = (error: unknown): PreventionError => {

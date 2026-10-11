@@ -14,6 +14,7 @@ import { SCHEMA_NAME, SCHEMA_VERSION } from '../../../lib/crdt/edytor-doc.js';
 import { jsonBlockToSpec } from '../../../lib/utils/json.js';
 import type { EngineDoc, EngineNode, YDoc } from '../../../lib/crdt/engine-api.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 export const docValue = (text = 'hello'): JSONDoc => ({
 	children: [{ type: 'paragraph', content: [{ text }] }]
@@ -46,7 +47,7 @@ export const authoredDocument = (
 
 /** The block's backing `content` node (physical sequence: atoms, markers, inlines). */
 export const contentNodeOf = (document: EdytorDocument, blockId: string): EngineNode => {
-	const block = document.facade.model.blockNodeOf(document.doc as unknown as EngineDoc, blockId);
+	const block = blockNodeOf(document.doc as unknown as EngineDoc, blockId);
 	if (block === null) throw new Error(`no block node for ${blockId}`);
 	return block.getAttr('content') as EngineNode;
 };

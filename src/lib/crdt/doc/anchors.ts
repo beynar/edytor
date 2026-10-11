@@ -4,14 +4,21 @@
  * resolved to the block that displays it now (`resolveAnchor`).
  */
 import { isLiveIn, type BlockId } from '../placement/model.js';
-import { DEAD, displayOf, locate, ownedLength } from '../text/model.js';
+import {
+	anchorAt as textAnchorAt,
+	DEAD,
+	displayOf,
+	locate,
+	ownedLength,
+	resolveAnchor as textResolveAnchor
+} from '../text/model.js';
 import { followRedone } from '../structs.js';
 import type { AnchorAffinity, DocAnchor } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
 
 /** The anchors of one facade. */
 export const docAnchors = (c: DocBase & DocReads) => {
-	const { Y, doc, T, view } = c;
+	const { Y, doc, view } = c;
 
 	// ── anchors ─────────────────────────────────────────────────
 	// An anchor is the home text id plus a relative position; the stream
@@ -38,7 +45,7 @@ export const docAnchors = (c: DocBase & DocReads) => {
 		const assoc = affinity === 'left' ? -1 : 0;
 		const hit = locate(segs, Math.max(0, Math.min(offset, ownedLength(segs))), affinity);
 		if (hit === null) return { b: blockId, a: { i: null, a: assoc } };
-		return { b: hit.seg.t, a: T.anchorAt(hit.seg.text, hit.idx, assoc) };
+		return { b: hit.seg.t, a: textAnchorAt(hit.seg.text, hit.idx, assoc) };
 	};
 
 	/**
@@ -72,7 +79,7 @@ export const docAnchors = (c: DocBase & DocReads) => {
 				? { blockId: anchor.b, offset: 0 }
 				: null;
 		}
-		const i = T.resolveAnchor(doc, text, anchor.a);
+		const i = textResolveAnchor(doc, text, anchor.a);
 		if (i === null) return null;
 		const s = own.streamAt(anchor.b, i);
 		const owner = s === undefined ? DEAD : own.ownerOf(s.block);

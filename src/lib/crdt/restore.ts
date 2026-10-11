@@ -24,12 +24,17 @@
  * 6. the document's data, patched to the snapshot's.
  */
 import type { EngineDoc, EngineNode } from './engine-api.js';
-import type {
-	BlockId,
-	BlockSpec,
-	ContentItem,
-	InlineSpec,
-	PlacementModel
+import {
+	blockNodeOf,
+	materializeSpec,
+	ranksAt,
+	view as modelView,
+	writePlacement,
+	type BlockId,
+	type BlockSpec,
+	type ContentItem,
+	type InlineSpec,
+	type PlacementModel
 } from './placement/model.js';
 import type { DataPatch } from './data.js';
 import { DEL_PREFIX, TYPE, WITHDRAW_PREFIX } from './schema.js';
@@ -152,11 +157,10 @@ export const restoreDocument = <Plan>(
 	facade: RestoreFacade<Plan>,
 	json: JSONDoc
 ): RestoreReport => {
-	const M = facade.model;
 	const report: RestoreReport = { revived: 0, moved: 0, rewritten: 0, created: 0, deleted: 0 };
 	const specs = json.children.map((block) => toBlockSpec(block));
 	const all = walk(specs, null, new Map());
-	const node = (id: BlockId): EngineNode | null => M.blockNodeOf(doc, id);
+	const node = (id: BlockId): EngineNode | null => blockNodeOf(doc, id);
 
 	// 1 · Revive, and free every snapshot block from the claims on it.
 	for (const id of all.keys()) {
@@ -169,7 +173,7 @@ export const restoreDocument = <Plan>(
 		if (marks.length > 0) report.revived++;
 	}
 	{
-		const { blocks } = M.view(doc);
+		const { blocks } = modelView(doc);
 		for (const rec of blocks.values()) {
 			// A deleted holder's claims are void (and stay so): only the others.
 			if (rec.deleted || rec.claimsNode === undefined) continue;
@@ -217,13 +221,13 @@ export const restoreDocument = <Plan>(
 				...(prev === undefined ? [] : [{ rank: prev }]),
 				...(next === undefined ? [] : [{ rank: next }])
 			];
-			const [rank] = M.ranksAt(bounds, prev === undefined ? 0 : 1, 1, doc.clientID, randOf(doc));
+			const [rank] = ranksAt(bounds, prev === undefined ? 0 : 1, 1, doc.clientID, randOf(doc));
 			const n = node(spec.id);
 			if (n === null) {
-				M.materializeSpec(doc, { ...spec, children: [] }, parent, rank);
+				materializeSpec(doc, { ...spec, children: [] }, parent, rank);
 				report.created++;
 			} else {
-				M.writePlacement(doc, n, parent, rank);
+				writePlacement(doc, n, parent, rank);
 				report.moved++;
 			}
 			prev = rank;
@@ -235,7 +239,7 @@ export const restoreDocument = <Plan>(
 		const want = unitsOf(spec.content ?? []);
 		let have = unitsOf(facade.contentItems(id));
 		if (have.length === want.length && have.every((u, i) => u.key === want[i].key)) continue;
-		const rec = M.view(doc).blocks.get(id);
+		const rec = modelView(doc).blocks.get(id);
 		const claims = rec?.claimsNode;
 		if (claims !== undefined && claims.length > 0) {
 			claims.delete(0, claims.length);
@@ -269,7 +273,7 @@ export const restoreDocument = <Plan>(
 
 	// 5 · Every visible block outside the snapshot is deleted, with what it displays.
 	for (let round = 0; round < 8; round++) {
-		const view = M.view(doc);
+		const view = modelView(doc);
 		const extra = view.order.ids.filter((id) => !all.has(id));
 		if (extra.length === 0) break;
 		for (const id of extra) {

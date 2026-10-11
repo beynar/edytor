@@ -24,7 +24,7 @@
  */
 import type { BlockId, BlockSpec, ContentItem, InlineSpec, SplitTail } from './placement/model.js';
 import type { ContentRun } from './text/runs.js';
-import type { EdytorDoc, OpResult } from './edytor-doc.js';
+import type { DocFacade, OpResult } from './edytor-doc.js';
 import type { DocumentOperations, DocumentWrites } from './operations.js';
 import type { BlockAttribution } from './attribution/block.js';
 
@@ -131,7 +131,7 @@ export type DocBlock = {
  * one cached handle per id (the facade normalized it at ingress), all
  * delegating to the facade's semantic ops.
  */
-export const bindNodes = (doc: EdytorDoc) => {
+export const bindNodes = (doc: DocFacade) => {
 	const cache = new Map<BlockId, DocBlock>();
 
 	const block = (id: BlockId): DocBlock => {

@@ -31,6 +31,7 @@
 import { describe, expect, test } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -111,7 +112,7 @@ describe('F-D5 — empty inputs are noop, one result shape, nothing leaves the d
 			um.stopCapturing();
 			const undoDepth = um.undoStack.length;
 			const attribution = ed.blockAttribution('a');
-			const l = ed.model.blockNodeOf(doc, 'a').getAttr('l');
+			const l = blockNodeOf(doc, 'a').getAttr('l');
 
 			const seen = observe(doc, () => run(ed));
 			expectShape(seen.result);
@@ -122,7 +123,7 @@ describe('F-D5 — empty inputs are noop, one result shape, nothing leaves the d
 			expect(seen.sameBytes, 'zero bytes').toBe(true);
 			expect(um.undoStack.length, 'no undo step').toBe(undoDepth);
 			expect(ed.blockAttribution('a'), 'no stamp').toEqual(attribution);
-			expect(ed.model.blockNodeOf(doc, 'a').getAttr('l')).toBe(l);
+			expect(blockNodeOf(doc, 'a').getAttr('l')).toBe(l);
 			expect(ed.toJSON().children.map((b) => b.id)).toEqual(['a', 'b']);
 		});
 	}

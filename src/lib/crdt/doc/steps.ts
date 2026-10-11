@@ -7,7 +7,15 @@
  */
 import { randOf } from '../rand.js';
 import { TYPE } from '../schema.js';
-import { promotedRank, sourceRank, SOURCE_SIDE, type BlockId } from '../placement/model.js';
+import {
+	blockNodeOf,
+	positionInView,
+	promotedRank,
+	ranksAt,
+	SOURCE_SIDE,
+	sourceRank,
+	type BlockId
+} from '../placement/model.js';
 import { refused, effectOf } from './plan.js';
 import type { Plan, PlanStep } from './types.js';
 import type { DocBase, DocReads } from './reads.js';
@@ -20,7 +28,6 @@ export type StepsContext = DocBase & DocReads & DocCapability;
 export const planSteps = (c: StepsContext) => {
 	const {
 		doc,
-		M,
 		runsView,
 		roles,
 		rendersContentOf,
@@ -80,7 +87,7 @@ export const planSteps = (c: StepsContext) => {
 		const all = v.kids.get(parent) ?? [];
 		// The moving blocks' own slots left out: index → the list's index past them.
 		const gone = exclude
-			.map((id) => M.positionInView(v, id))
+			.map((id) => positionInView(v, id))
 			.filter((p) => p !== null && p.parent === parent)
 			.map((p) => p!.index)
 			.sort((a, b) => a - b);
@@ -90,7 +97,7 @@ export const planSteps = (c: StepsContext) => {
 		};
 		const at = Math.max(0, Math.min(index, all.length - gone.length));
 		const pair = [at > 0 ? all[raw(at - 1)] : undefined, all[raw(at)]];
-		return M.ranksAt(pair as readonly { rank: string }[], 1, count, doc.clientID, randOf(doc), run);
+		return ranksAt(pair as readonly { rank: string }[], 1, count, doc.clientID, randOf(doc), run);
 	};
 	/**
 	 * Move `ids` to `ranks` under `parent` (`index`: the slot hooks see).
@@ -211,7 +218,7 @@ export const planSteps = (c: StepsContext) => {
 	 * an outdent settles back to a paragraph is written back.
 	 */
 	const attr = (id: BlockId, key: typeof TYPE, value: string): PlanStep[] => {
-		const same = M.blockNodeOf(doc, id)!.getAttr(key) === value;
+		const same = blockNodeOf(doc, id)!.getAttr(key) === value;
 		if (same && (runsView.displayType(id) ?? value) === value) return [];
 		return [{ op: 'setBlockType', id, type: value }];
 	};

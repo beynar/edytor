@@ -16,6 +16,7 @@ import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
 import { mulberry32 } from '../harness/rng.js';
 import { CLIENT_IDS, converge, LIVE, replica, seedUpdate } from './replica-harness.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 const dataOf = (o, id = 'A') => o.ed.blockDataOf(id);
 const settled = (outcomes, check: (o) => void) => {
@@ -406,7 +407,7 @@ describe('one replica', () => {
 
 	it('stores an array as its marker, each item’s value and its rank', () => {
 		const { document, ed } = make({ tags: ['p'], m: { k: [{ a: 1 }] } });
-		const node = ed.model.blockNodeOf(document.doc, 'A');
+		const node = blockNodeOf(document.doc, 'A');
 		const leaves = leavesOf(node);
 		expect(leaves['d/tags']).toEqual([]);
 		const items = Object.keys(leaves).filter((k) => /^d\/tags\/~[a-z][a-z0-9.]*$/.test(k));
@@ -424,7 +425,7 @@ describe('one replica', () => {
 				ed.patchData('A', [{ path: ['tags'], splice: [i % 3 ? n : Math.floor(n / 2), 0, i] }])
 			);
 		}
-		const node = ed.model.blockNodeOf(document.doc, 'A');
+		const node = blockNodeOf(document.doc, 'A');
 		const ranks = Object.entries(leavesOf(node)).filter(([k]) => /[#>]$/.test(k));
 		expect(ranks).toHaveLength(300);
 		expect(Math.max(...ranks.map(([, r]) => r.length))).toBeLessThanOrEqual(16 * 6);
@@ -502,7 +503,7 @@ describe('one replica', () => {
 describe('arrays written by 0.1.0-next.6 (one leaf)', () => {
 	const legacy = (write: (node) => void) => {
 		const base = replica('base', seedUpdate([{ id: 'A', text: 'a' }]), 2 ** 30);
-		const node = base.ed.model.blockNodeOf(base.doc, 'A');
+		const node = blockNodeOf(base.doc, 'A');
 		base.doc.transact(() => write(node), 'legacy');
 		return Y.encodeStateAsUpdate(base.doc);
 	};
@@ -565,7 +566,7 @@ describe('an insert never runs out of room (RankSpaceExhausted, 2026-10-01 revie
 	// inserts, from one peer or two at once, and the ranks stay short.
 	const legacyLeaf = (tags: string[]) => {
 		const base = replica('base', seedUpdate([{ id: 'A', text: 'a' }]), 2 ** 30);
-		const node = base.ed.model.blockNodeOf(base.doc, 'A');
+		const node = blockNodeOf(base.doc, 'A');
 		base.doc.transact(() => node.setAttr('d/tags', tags), 'legacy');
 		return Y.encodeStateAsUpdate(base.doc);
 	};
@@ -595,7 +596,7 @@ describe('an insert never runs out of room (RankSpaceExhausted, 2026-10-01 revie
 				loadDocument(legacyLeaf(['p', 'x', 'q']), { history: { captureTimeout: 0 } })
 			);
 			applied(document.facade.patchData('A', [{ path: ['tags'], splice: [1, 1] }]));
-			const node = document.facade.model.blockNodeOf(document.doc, 'A');
+			const node = blockNodeOf(document.doc, 'A');
 			expect(leavesOf(node)['d/tags'], 'exploded into items').toEqual([]);
 			return document;
 		},
@@ -620,7 +621,7 @@ describe('an insert never runs out of room (RankSpaceExhausted, 2026-10-01 revie
 		anywhere: (n) => Math.floor(rnd() * (n + 1))
 	};
 	const rankLengths = (document) =>
-		Object.entries(leavesOf(document.facade.model.blockNodeOf(document.doc, 'A')))
+		Object.entries(leavesOf(blockNodeOf(document.doc, 'A')))
 			.filter(([k]) => /[#>]$/.test(k))
 			.map(([, r]) => r.length);
 	// A rank is 16 characters a segment. Inserts that keep landing in one gap

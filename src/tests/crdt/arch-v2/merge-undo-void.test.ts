@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDocument } from '../../../lib/crdt/index.js';
 import { converge, replica, seedUpdate, tree } from './replica-harness.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 /** Every outcome converged, well-formed, and shows `expected`. */
 const expectTree = (outcomes, expected: string) => {
@@ -224,7 +225,7 @@ describe('UW-01: undo/redo of a raced type/data write keeps a defined value', ()
 describe('UW-01: the serializer never emits a typeless registered block', () => {
 	it('blockJSON asserts in DEV instead of emitting type ""', () => {
 		const r = replica('A', seedUpdate([{ id: 'P', text: 'p' }]), 20);
-		r.doc.transact(() => r.ed.model.blockNodeOf(r.doc, 'P').deleteAttr('type'));
+		r.doc.transact(() => blockNodeOf(r.doc, 'P').deleteAttr('type'));
 		expect(() => r.ed.toJSON()).toThrow(/block P has no type/);
 		expect(r.ed.blockJSON('ghost').type).toBe('');
 		r.destroy();

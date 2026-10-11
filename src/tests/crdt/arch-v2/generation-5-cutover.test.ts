@@ -44,6 +44,7 @@ import {
 } from '../../../lib/crdt/protocols/envelope.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 const crdt = bindCrdt(Y);
 const fixture = (name: string) =>
@@ -123,8 +124,8 @@ describe('pre-release data formats reach generation 5 through the cutover', () =
 		Y.applyUpdate(doc, V1);
 		const facade = bindEdytorDoc(Y).create(doc);
 		doc.transact(() => {
-			facade.model.blockNodeOf(doc, 'n').setAttr('d/labels', ['x', 'y']);
-			facade.model.blockNodeOf(doc, 'p').setAttr('data', { tags: ['p', 'q'], k: 1 });
+			blockNodeOf(doc, 'n').setAttr('d/labels', ['x', 'y']);
+			blockNodeOf(doc, 'p').setAttr('data', { tags: ['p', 'q'], k: 1 });
 		}, 'next.6');
 		facade.dispose();
 		const update = Y.encodeStateAsUpdate(doc);
@@ -143,7 +144,7 @@ describe('pre-release data formats reach generation 5 through the cutover', () =
 		});
 		expect(document.facade.toJSON()).toEqual(value);
 		for (const id of ['n', 'p']) {
-			const node = document.facade.model.blockNodeOf(document.doc, id);
+			const node = blockNodeOf(document.doc, id);
 			const keys = [...node.attrKeys()];
 			expect(keys, id).not.toContain('data');
 			for (const key of keys.filter((k) => k.startsWith('d/')))

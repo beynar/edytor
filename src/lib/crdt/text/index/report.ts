@@ -7,7 +7,7 @@ import { readData } from '../../data.js';
 import type { EngineDoc } from '../../engine-api.js';
 import type { BlockId, ContentItem, ProjectedBlock } from '../../placement/model.js';
 import { callEach } from '../../protocols/observable.js';
-import { protectItems } from '../model.js';
+import { protectItems, readSegs } from '../model.js';
 import type { IndexReport } from '../runs.js';
 import type { IndexCache } from './cache.js';
 import type { IndexFold } from './fold.js';
@@ -18,7 +18,6 @@ import type { IndexState, Published, Tx } from './state.js';
 /** The change report of one doc's index. */
 export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & IndexFold) => {
 	const {
-		T,
 		doc,
 		dataRoot,
 		blocks,
@@ -41,7 +40,7 @@ export const indexReporter = (ix: IndexState & IndexPlacement & IndexCache & Ind
 
 	/** `id`'s visible content items, canonical and frozen. */
 	const itemsOf = (id: BlockId): ContentItem[] =>
-		protectItems(T.readSegs(ownShim.display(id) ?? []), intern) as ContentItem[];
+		protectItems(readSegs(ownShim.display(id) ?? []), intern) as ContentItem[];
 
 	const projectBlock = (id: BlockId): ProjectedBlock => {
 		const rec = blocks.get(id)!;

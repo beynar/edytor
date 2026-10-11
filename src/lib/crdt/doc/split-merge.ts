@@ -7,7 +7,12 @@
 import { isIncarnationId } from '../incarnations.js';
 import { sanitizeWireJson } from '../../utils/json.js';
 import { readData } from '../data.js';
-import type { BlockId, SplitTail } from '../placement/model.js';
+import {
+	blockNodeOf,
+	isSelfOrDescendant,
+	type BlockId,
+	type SplitTail
+} from '../placement/model.js';
 import { ref } from './plan.js';
 import type { Prepared, PlanStep } from './types.js';
 import type { OpsContext } from './steps.js';
@@ -16,7 +21,6 @@ import type { OpsContext } from './steps.js';
 export const splitMergeOps = (c: OpsContext) => {
 	const {
 		doc,
-		M,
 		view,
 		childrenIds,
 		positionOf,
@@ -67,7 +71,7 @@ export const splitMergeOps = (c: OpsContext) => {
 		if (pos === null || isVoid(id) || !rendersContent(id) || !rec?.claimsNode) return REFUSED;
 		// A table's cell holds its lines as line breaks: it never splits (`table.split`).
 		if (isCellKind(blockTypeOf(id))) return REFUSED;
-		if (isIncarnationId(born) || M.blockNodeOf(doc, born) !== null) return REFUSED;
+		if (isIncarnationId(born) || blockNodeOf(doc, born) !== null) return REFUSED;
 		const [at] = clamp(id, offset, 0);
 		// An empty tail type is the one a view reads mid-retype: copy the kind.
 		const type = tail?.type ? ref(tail.type) : kindToCopy(id);
@@ -105,7 +109,7 @@ export const splitMergeOps = (c: OpsContext) => {
 		const into = ref(intoId);
 		const v = view();
 		if (!canMerge(from, into) || !contentTarget(into)) return REFUSED;
-		if (M.isSelfOrDescendant(v.placements, v.own, into, from)) return REFUSED;
+		if (isSelfOrDescendant(v.placements, v.own, into, from)) return REFUSED;
 		const kids = childrenIds(from);
 		const retype = settle(from, kids, into);
 		const adopt = moveTo(kids, from, kids.length, ranksFor(into, Infinity, kids.length, kids));

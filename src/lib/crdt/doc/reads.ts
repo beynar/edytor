@@ -8,16 +8,19 @@ import { DEV } from 'esm-env';
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
 import { DOC_DATA_ROOT, TYPE } from '../schema.js';
 import {
+	blockNodeOf,
 	displayParentOf,
 	displaySlotOf,
+	isLive,
 	isLiveIn,
+	positionInView,
+	positionOf as modelPositionOf,
 	type BlockId,
 	type ContentItem,
 	type Destination,
-	type ModelView,
-	type PlacementModel
+	type ModelView
 } from '../placement/model.js';
-import { DEAD, ownedLength, type TextEngine } from '../text/model.js';
+import { DEAD, findAtom, ownedLength } from '../text/model.js';
 import type { DisplayRoles, RunView } from '../text/runs.js';
 import { holdsPending } from '../structs.js';
 import { itemIds, readData } from '../data.js';
@@ -30,8 +33,6 @@ import type { BlockRole, DataTarget, JsonObj, OrderPolicy } from './types.js';
 export type DocBase = {
 	Y: EngineApi;
 	doc: EngineDoc;
-	M: PlacementModel;
-	T: TextEngine;
 	/** The doc's index (`text/runs.ts`): the one owner of derived state. */
 	runsView: RunView;
 	/** The role table the display and every guard ask of a block's shown kind. */
@@ -44,22 +45,22 @@ export type DocBase = {
 
 /** The reads of the facade over `c.doc`. */
 export const docReads = (c: DocBase) => {
-	const { doc, M, T, runsView, roles } = c;
+	const { doc, runsView, roles } = c;
 
 	/** The node a data patch writes: block `id`, its atom `inlineId`, or the document's data root. */
 	const dataNode = (id?: BlockId, inlineId?: string): EngineNode | undefined =>
 		id === undefined
 			? doc.get(DOC_DATA_ROOT)
 			: inlineId === undefined
-				? (M.blockNodeOf(doc, id) ?? undefined)
-				: (T.findAtom(view().own, id, inlineId)?.node as EngineNode | undefined);
+				? (blockNodeOf(doc, id) ?? undefined)
+				: (findAtom(view().own, id, inlineId)?.node as EngineNode | undefined);
 
 	/** The one serializer: `id`'s subtree in the public `JSONBlock` shape. */
 	const blockJSON = (id: BlockId): JSONBlock => {
 		const type = blockTypeOf(id);
 		// A registered block always has a type once its updates are all in:
 		// `''` is the absent-id shape, or an out-of-order delivery's transient.
-		if (DEV && type === undefined && M.blockNodeOf(doc, id) !== null && !holdsPending(doc))
+		if (DEV && type === undefined && blockNodeOf(doc, id) !== null && !holdsPending(doc))
 			throw new Error(`[edytor-doc] block ${id} has no type`);
 		const block: JSONBlock = {
 			type: type ?? '',
@@ -80,12 +81,12 @@ export const docReads = (c: DocBase) => {
 	// ── reads ────────────────────────────────────────────────────────
 
 	const blockTypeOf = (id: BlockId): string | undefined => {
-		const t = runsView.displayType(id) ?? M.blockNodeOf(doc, id)?.getAttr(TYPE);
+		const t = runsView.displayType(id) ?? blockNodeOf(doc, id)?.getAttr(TYPE);
 		return typeof t === 'string' ? t : undefined;
 	};
 
 	const blockDataOf = (id: BlockId): Record<string, unknown> | undefined => {
-		const node = M.blockNodeOf(doc, id);
+		const node = blockNodeOf(doc, id);
 		const d = node && readData(node);
 		// `cloneJsonSafe`: the read path stays total even when the stored
 		// attr holds a non-JSON value that bypassed boundary validation
@@ -110,7 +111,7 @@ export const docReads = (c: DocBase) => {
 	const childrenIds = (parent: BlockId | null): BlockId[] =>
 		(view().kids.get(parent) ?? []).map((k) => k.id);
 
-	const positionOf = (id: BlockId): Destination | null => M.positionOf(doc, id);
+	const positionOf = (id: BlockId): Destination | null => modelPositionOf(doc, id);
 
 	/** Index path from the root (`[i, j, …]`), or null when hidden/absent. */
 	const pathOf = (id: BlockId): number[] | null => {
@@ -118,7 +119,7 @@ export const docReads = (c: DocBase) => {
 		const path: number[] = [];
 		let cur: BlockId | null = id;
 		while (cur !== null) {
-			const pos = M.positionInView(v, cur);
+			const pos = positionInView(v, cur);
 			if (!pos) return null;
 			path.unshift(pos.index);
 			cur = pos.parent;
@@ -345,10 +346,10 @@ export const docReads = (c: DocBase) => {
 	const contentItems = (id: BlockId): ContentItem[] => runsView.contentItems(id);
 
 	/** Registry membership — the block exists (may be delete-marked or merged away). */
-	const hasBlock = (id: BlockId): boolean => M.blockNodeOf(doc, id) !== null;
+	const hasBlock = (id: BlockId): boolean => blockNodeOf(doc, id) !== null;
 
-	/** The one liveness answer (`M.isLive`): `id` renders in `project()`. O(depth). */
-	const live = (id: BlockId): boolean => M.isLive(doc, id);
+	/** The one liveness answer (`isLive`): `id` renders in `project()`. O(depth). */
+	const live = (id: BlockId): boolean => isLive(doc, id);
 	/** A live block that can hold content: it has a claims list (a streamless block gets its own text on first write). */
 	const contentTarget = (id: BlockId): boolean =>
 		live(id) && view().blocks.get(id)?.claimsNode !== undefined;

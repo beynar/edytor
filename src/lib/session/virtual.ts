@@ -14,7 +14,7 @@
  * through to the document; its JSON never shows the virtual paragraph.
  */
 import type { BlockId, BlockSpec, DocChange, ProjectedBlock } from '../crdt/index.js';
-import type { DocAnchor, EdytorDoc, Prepared } from '../crdt/edytor-doc.js';
+import type { DocAnchor, DocFacade, EdytorDoc, Prepared } from '../crdt/edytor-doc.js';
 import { placedEnd, type Flow, type FlowTarget } from '../crdt/flow.js';
 import { bindNodes } from '../crdt/nodes.js';
 import { applyPatch } from '../crdt/data.js';
@@ -27,10 +27,10 @@ export const isVirtualId = (value: string): boolean => value.startsWith('v_');
 const REFUSED: Prepared = Object.freeze({ status: 'refused', ids: [] });
 
 /** The document as a view reads it: `virtual()` names the shown virtual paragraph, if any. */
-export type ViewDoc = EdytorDoc & { virtual: () => BlockId | null };
+export type ViewDoc = DocFacade & { virtual: () => BlockId | null };
 
 export const virtualLens = (
-	base: EdytorDoc,
+	base: DocFacade,
 	/** The document decided its content (a pending document shows nothing). */
 	ready: () => boolean,
 	/** The root's default child type. */

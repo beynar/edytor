@@ -4,9 +4,9 @@
  * The vendored v14 engine is plain JSDoc-typed JS that is deliberately
  * excluded from `tsconfig.json` type-checking. The model works against the
  * STRUCTURAL interfaces below — the exact
- * subset of the v14 Node/Doc surface it uses — and receives the engine
- * module by injection (`bindModel(Y)`). Only `engine.js` (declared by
- * `engine.d.ts`) imports vendor `.js`, so `pnpm check` never traverses
+ * subset of the v14 Node/Doc surface it uses — and reads the engine
+ * through `engine.js` (its `Y`, declared by `engine.d.ts`), the only
+ * module that imports vendor `.js`, so `pnpm check` never traverses
  * vendored sources.
  */
 import type * as Y from './vendor/yjs/dts/index.js';

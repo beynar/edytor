@@ -35,6 +35,7 @@ import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { diffSnaps, type DocSnap } from '../../oracles/doc-change.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -465,7 +466,7 @@ describe('F-O9 — a read inside a transaction sees the edits before it', () => 
 			ed.insertText('a', 0, '1');
 			expect(ed.blockText('a')).toBe('1abc');
 			// The same backing text, written below every facade funnel.
-			const content = ed.model.blockNodeOf(doc, 'a').getAttr('content');
+			const content = blockNodeOf(doc, 'a').getAttr('content');
 			content.insert(content.length, '2');
 			expect(ed.blockText('a')).toBe('1abc2');
 			expect(

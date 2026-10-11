@@ -5,7 +5,7 @@
  * indexes, the counters and flags) are read through `ix` at every use.
  * What one part alone keeps stays in that part.
  */
-import type { EngineApi, EngineDoc, EngineTransaction } from '../../engine-api.js';
+import type { EngineDoc, EngineTransaction } from '../../engine-api.js';
 import {
 	REGISTRY_KEY,
 	type BlockId,
@@ -15,7 +15,6 @@ import {
 } from '../../placement/model.js';
 import { DOC_DATA_ROOT } from '../../schema.js';
 import type { IdSetLike } from '../../structs.js';
-import type { TextEngine } from '../model.js';
 import type { LiveRow, RowItem } from '../rows.js';
 import type { ContentRun, DisplayRoles, Folded } from '../runs.js';
 import type { Cached } from './shared.js';
@@ -80,13 +79,11 @@ export type Tx = {
 export type SelfChecks = { check: () => void; checkPublished: (pub: Published) => void };
 
 /** Build the empty state of `doc`'s index. */
-export const indexState = (Y: EngineApi, T: TextEngine, doc: EngineDoc) => {
+export const indexState = (doc: EngineDoc) => {
 	// The children index starts as the one without the layout rules (no layout yet).
 	const kids0 = new Map<BlockId | null, ChildSlot[]>();
 	const slots0 = new Map<BlockId, Slot>();
 	return {
-		Y,
-		T,
 		doc,
 		registry: doc.get(REGISTRY_KEY),
 		/** The document's own data (`crdt/data.ts`): outside the registry, reported apart. */

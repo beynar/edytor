@@ -40,52 +40,13 @@
  *   (`table.range`);
  * - the plan's `at` is where the caret lands (`del.range.caret`).
  */
-import type { BlockId, Destination } from './placement/model.js';
-import type { Plan, PlanStep, Prepared } from './edytor-doc.js';
+import type { BlockId } from './placement/model.js';
+import type { PlanStep, Prepared } from './edytor-doc.js';
+import { ref } from './doc/plan.js';
+import type { OpsContext } from './doc/steps.js';
 
 /** A position in one document version: a block and a display offset. */
 export type DocPosition = { block: BlockId; offset: number };
-
-/** What range deletion reads from the document and the step writers it composes. */
-export type RangeDeleteContext = {
-	ref: (id: BlockId) => BlockId;
-	refused: Prepared;
-	plan: (ids: readonly BlockId[], writes: PlanStep[]) => Plan;
-	order: () => { ids: readonly BlockId[]; at: ReadonlyMap<BlockId, number> };
-	positionOf: (id: BlockId) => Destination | null;
-	/** Display ancestors, nearest first (the root excluded). */
-	ancestorsOf: (id: BlockId) => BlockId[];
-	childrenIds: (parent: BlockId | null) => BlockId[];
-	displayLength: (id: BlockId) => number;
-	/** Live, with its own content node. */
-	contentTarget: (id: BlockId) => boolean;
-	rendersContent: (id: BlockId) => boolean;
-	canMerge: (from: BlockId, into: BlockId) => boolean;
-	isIsland: (id: BlockId) => boolean;
-	/** An island declared `lines` (a code block): it holds only lines. */
-	isLines: (id: BlockId) => boolean;
-	move: (ids: BlockId[], parent: BlockId | null, index: number) => PlanStep[];
-	/** A block that shows only its children: a list, a table row, a column. */
-	isContainer: (id: BlockId) => boolean;
-	/** A container that goes once it loses every child (it holds no text of its own). */
-	emptiable: (id: BlockId) => boolean;
-	/** The kind steps for `from`'s children `kids` landing under `parent` (island and container rules). */
-	settle: (from: BlockId | null, kids: readonly BlockId[], parent: BlockId | null) => PlanStep[];
-	remove: (id: BlockId, kept: readonly BlockId[]) => PlanStep;
-	/**
-	 * The steps that dissolve each layout the plan leaves with one item or
-	 * none (`layout.dissolving`): `gone` it removes, `leaving` it moves.
-	 */
-	dissolving: (
-		gone: readonly BlockId[],
-		leaving: readonly BlockId[],
-		writes: readonly PlanStep[]
-	) => PlanStep[];
-	/** The table `id` is, or whose row or cell it is; `null` for any other block (`table.*`). */
-	tableOf: (id: BlockId) => BlockId | null;
-	/** `id` is a table's cell. */
-	isTableCell: (id: BlockId) => boolean;
-};
 
 /**
  * What the view knows of a range (view state the document does not hold):
@@ -95,7 +56,7 @@ export type RangeDeleteContext = {
 export type RangeView = { hidden?: (id: BlockId, removed?: ReadonlySet<BlockId>) => boolean };
 
 /** `deleteRange` and `replaceRange` (the head kept), prepared. */
-export const rangeDeleteOps = (c: RangeDeleteContext) => {
+export const rangeDeleteOps = (c: OpsContext) => {
 	// `headSpent`: a whole-doc retry keeps the head, but what it hid goes as if it went.
 	const prepare =
 		(keepHead: boolean, headSpent = false) =>
@@ -103,13 +64,13 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			// A position names shown text: a live block that renders its own content.
 			const holds = (id: BlockId) => c.contentTarget(id) && c.rendersContent(id);
 			const pos = (p: DocPosition): DocPosition => {
-				const block = c.ref(p.block);
+				const block = ref(p.block);
 				const len = holds(block) ? c.displayLength(block) : -1;
 				return { block, offset: Math.max(0, Math.min(p.offset, len)) };
 			};
 			let [s, e] = [pos(from), pos(to)];
-			if (!holds(s.block) || !holds(e.block)) return c.refused;
-			const { ids, at } = c.order();
+			if (!holds(s.block) || !holds(e.block)) return c.REFUSED;
+			const { ids, at } = c.view().order;
 			if (at.get(s.block)! > at.get(e.block)! || (s.block === e.block && s.offset > e.offset))
 				[s, e] = [e, s];
 			const S = s.block;
@@ -200,7 +161,7 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			const kept = [...rescued, ...(merges ? [E] : [])];
 			for (const id of doomed) if (!doomed.has(parent(id)!)) writes.push(c.remove(id, kept));
 			// A layout the range leaves with one column dissolves (`layout.dissolving`).
-			writes.push(...c.dissolving([...doomed, ...(merges ? [E] : [])], rescued, writes));
+			writes.push(...c.dissolving(new Set([...doomed, ...(merges ? [E] : [])]), rescued, writes));
 
 			const caret = ((): DocPosition | null => {
 				if (!doomed.has(S)) return s;
@@ -229,7 +190,7 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 	 * come after the start in reading order); the caret lands at the start.
 	 */
 	const inTables = (s: DocPosition, e: DocPosition, view: RangeView): Prepared => {
-		const { ids, at } = c.order();
+		const { ids, at } = c.view().order;
 		const [S, E] = [s.block, e.block];
 		const kept = new Set(c.ancestorsOf(E));
 		const between = ids.slice(at.get(S)! + 1, at.get(E)!).filter((id) => !view.hidden?.(id));
@@ -250,7 +211,7 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 		const parentOf = (id: BlockId) => c.ancestorsOf(id)[0] ?? null;
 		const roots = [...doomed].filter((id) => !doomed.has(parentOf(id)!));
 		for (const id of roots) writes.push(c.remove(id, []));
-		writes.push(...c.dissolving(roots, [], writes));
+		writes.push(...c.dissolving(new Set(roots), [], writes));
 		return { ...c.plan([S], writes), at: s };
 	};
 

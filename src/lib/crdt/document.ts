@@ -143,7 +143,7 @@
 import type { MarkEdge } from './text/marks.js';
 import { DEV } from 'esm-env';
 import { Y } from './engine.js';
-import type { EngineApi, YDoc, YUndoManager } from './engine-api.js';
+import type { EngineApi, EngineDoc, YDoc, YUndoManager } from './engine-api.js';
 import { asEngineDoc } from './structs.js';
 import { DOCUMENT_OPERATIONS, type DocumentOperations } from './operations.js';
 import {
@@ -153,12 +153,12 @@ import {
 	type DocumentAttribution
 } from './attribution/index.js';
 import {
-	bindDocModel,
+	docFacade,
 	DEFAULT_HISTORY_LIMIT,
 	isInitialized,
 	type BlockRole,
-	type EdytorDoc,
-	type DocModelBinding
+	type DocFacade,
+	type EdytorDocConfig
 } from './edytor-doc.js';
 import { assertAdmission, assertSchema, bindAdmission, checkSchema } from './admission.js';
 import { Awareness } from './protocols/awareness.js';
@@ -335,13 +335,69 @@ const anonymousActor = (): DocumentActor => ({
 	id: `anon-${crypto.randomUUID()}`
 });
 
+/**
+ * DEV: publish the digest of a document's roles in its presence
+ * (`semantics`, {@link semanticsDigest}), so a room reading other roles
+ * logs the kinds they differ on (`semanticsMismatch`). Re-published at
+ * each adoption; a production build advertises nothing.
+ */
+const advertise = (
+	awareness: Awareness,
+	config: ReturnType<typeof mergeSemantics>,
+	defaultType: string
+): void => awareness.setLocalStateField('semantics', semanticsDigest({ ...config, defaultType }));
+
+/**
+ * DEV: `layout` needs a default child (its item kind); `lines` needs an
+ * island with a default child (its line kind), and
+ * the line kind belongs to it — outside such an island a block of that
+ * kind shows as its parent's default child, so a kind other blocks use
+ * (the default type, another kind's default child) would be recast.
+ */
+const warnLines = (
+	capability: {
+		config: ReturnType<typeof mergeSemantics>;
+		of: ReturnType<typeof facadeConfigOf>;
+	},
+	defaultType: string
+): void => {
+	const { roles, defaultChild } = capability.config;
+	for (const [type, role] of Object.entries(roles)) {
+		if (role.layout && !Object.hasOwn(defaultChild, type))
+			console.warn(
+				`[edytor] "${type}" declares \`layout\` without a \`defaultChild\` (its column kind): it is no layout.`
+			);
+		if (role.table && !Object.hasOwn(defaultChild, type))
+			console.warn(
+				`[edytor] "${type}" declares \`table\` without a \`defaultChild\` (its row kind): it is no table.`
+			);
+		if (!role.lines) continue;
+		const line = capability.of.defaultChildOf(type);
+		if (!role.island || line === undefined) {
+			console.warn(
+				`[edytor] "${type}" declares \`lines\` without \`island\` and a \`defaultChild\`: it holds no lines.`
+			);
+			continue;
+		}
+		const shared =
+			line === defaultType ||
+			Object.entries(defaultChild).some(
+				([other, child]) => child === line && !capability.of.roleOf(other)?.lines
+			);
+		if (shared)
+			console.warn(
+				`[edytor] "${type}" holds lines of "${line}", a kind other blocks use: outside "${type}" they show as their parent's default child. Give its lines a kind of their own.`
+			);
+	}
+};
+
 /** Internal constructor bag — use {@link createDocument}/{@link loadDocument}/{@link attachDocument}. */
 export type EdytorDocumentInit = {
 	doc: YDoc;
 	/** Whether `destroy()` may `doc.destroy()` — true only for document-allocated docs. */
 	ownsDoc: boolean;
-	/** The bound facade binding this document composes (injected by `bindDocument`). */
-	binding: DocModelBinding;
+	/** The facade factory this document composes (injected by `bindDocument`). */
+	facade: (doc: EngineDoc, config: EdytorDocConfig) => DocFacade;
 	/** The bound attribution service (injected by `bindDocument`). */
 	attribution: AttributionBinding;
 	/** The engine this document's doc belongs to (for `encode`). */
@@ -376,7 +432,7 @@ export class EdytorDocument {
 	 * the document's lease on the maintained runs view.
 	 * @internal
 	 */
-	readonly facade: EdytorDoc;
+	readonly facade: DocFacade;
 	/** One shared awareness instance for every view/provider of this document. */
 	readonly awareness: Awareness;
 	/** The local actor identity (anonymous opaque id when none was supplied). */
@@ -475,7 +531,7 @@ export class EdytorDocument {
 		this._ownsDoc = init.ownsDoc;
 		this._defaultType = init.semantics?.defaultType ?? 'paragraph';
 		const of = () => this._capability.of;
-		this.facade = init.binding.create(asEngineDoc(this.doc), {
+		this.facade = init.facade(asEngineDoc(this.doc), {
 			roleOf: (type) => of().roleOf(type),
 			kinds: () => of().kinds(),
 			defaultType: this._defaultType,
@@ -520,21 +576,7 @@ export class EdytorDocument {
 		});
 		if (init.semantics) {
 			this.adoptSemantics({ ...init.semantics, defaultType: undefined });
-		} else this._advertise();
-	}
-
-	/**
-	 * DEV: publish the digest of this document's roles in its presence
-	 * (`semantics`, {@link semanticsDigest}), so a room reading other roles
-	 * logs the kinds they differ on (`semanticsMismatch`). Re-published at
-	 * each adoption; a production build advertises nothing.
-	 */
-	private _advertise(): void {
-		if (!DEV) return;
-		this.awareness.setLocalStateField(
-			'semantics',
-			semanticsDigest({ ...this._capability.config, defaultType: this._defaultType })
-		);
+		} else if (DEV) advertise(this.awareness, this._capability.config, this._defaultType);
 	}
 
 	/** The replica id (`doc.clientID`) — identifies the replica, not the actor. */
@@ -665,8 +707,10 @@ export class EdytorDocument {
 		}
 		const merged = mergeSemantics(this._capability.config, { ...config, defaultType: undefined });
 		Object.assign(this._capability, { config: merged, of: facadeConfigOf(merged) });
-		this._advertise();
-		if (DEV) this._warnLines();
+		if (DEV) {
+			advertise(this.awareness, merged, this._defaultType);
+			warnLines(this._capability, this._defaultType);
+		}
 		// A newly void kind sheds its children at read time; a block
 		// promoted out of a newly island kind displays as a default child; a
 		// newly layout kind displays only its items (`layout.*`), a newly
@@ -678,44 +722,6 @@ export class EdytorDocument {
 		)
 			this.facade.rolesChanged();
 	};
-
-	/**
-	 * DEV: `layout` needs a default child (its item kind); `lines` needs an
-	 * island with a default child (its line kind), and
-	 * the line kind belongs to it — outside such an island a block of that
-	 * kind shows as its parent's default child, so a kind other blocks use
-	 * (the default type, another kind's default child) would be recast.
-	 */
-	private _warnLines(): void {
-		const { roles, defaultChild } = this._capability.config;
-		for (const [type, role] of Object.entries(roles)) {
-			if (role.layout && !Object.hasOwn(defaultChild, type))
-				console.warn(
-					`[edytor] "${type}" declares \`layout\` without a \`defaultChild\` (its column kind): it is no layout.`
-				);
-			if (role.table && !Object.hasOwn(defaultChild, type))
-				console.warn(
-					`[edytor] "${type}" declares \`table\` without a \`defaultChild\` (its row kind): it is no table.`
-				);
-			if (!role.lines) continue;
-			const line = this._capability.of.defaultChildOf(type);
-			if (!role.island || line === undefined) {
-				console.warn(
-					`[edytor] "${type}" declares \`lines\` without \`island\` and a \`defaultChild\`: it holds no lines.`
-				);
-				continue;
-			}
-			const shared =
-				line === this._defaultType ||
-				Object.entries(defaultChild).some(
-					([other, child]) => child === line && !this._capability.of.roleOf(other)?.lines
-				);
-			if (shared)
-				console.warn(
-					`[edytor] "${type}" holds lines of "${line}", a kind other blocks use: outside "${type}" they show as their parent's default child. Give its lines a kind of their own.`
-				);
-		}
-	}
 
 	/**
 	 * The readiness transition — decide the document's content state. This
@@ -1168,7 +1174,7 @@ export type DocumentBinding = ReturnType<typeof bindDocument>;
  * their own surface here.
  */
 export const bindDocument = (Y: EngineApi) => {
-	const binding = bindDocModel(Y);
+	const facade = docFacade(Y, { model: undefined, text: undefined });
 	const attribution = bindAttribution(Y);
 	const admission = bindAdmission(Y);
 	/**
@@ -1192,7 +1198,7 @@ export const bindDocument = (Y: EngineApi) => {
 			doc,
 			ownsDoc,
 			semantics,
-			binding,
+			facade,
 			attribution,
 			engine: Y,
 			awarenessCtor: Awareness

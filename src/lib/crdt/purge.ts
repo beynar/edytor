@@ -13,8 +13,13 @@
  * held), a text delete mark record, a placement candidate.
  */
 import type { EngineApi, EngineDoc, EngineNode } from './engine-api.js';
-import type { BlockId, BlockRec, PlacementModel } from './placement/model.js';
-import type { Claim, Stream, TextEngine } from './text/model.js';
+import {
+	view as modelView,
+	type BlockId,
+	type BlockRec,
+	type PlacementModel
+} from './placement/model.js';
+import { purgeStreams, type Claim, type Stream, type TextEngine } from './text/model.js';
 import {
 	AT,
 	BLOCK_ATTR_ROOT,
@@ -154,8 +159,6 @@ export const bindPurge = (Y: EngineApi) => {
 		facade: { model: PlacementModel; text: TextEngine },
 		horizon: Horizon
 	): PurgeReport => {
-		const M = facade.model;
-		const T = facade.text;
 		const report: PurgeReport = {
 			removed: 0,
 			emptied: 0,
@@ -169,7 +172,7 @@ export const bindPurge = (Y: EngineApi) => {
 		const old = (client: number, clock: number) => clock < (vector.get(client) ?? 0);
 		const oldItem = (item: Item | undefined) =>
 			item !== undefined && !item.deleted && old(item.id.client, item.id.clock);
-		const view = M.view(doc);
+		const view = modelView(doc);
 		const { blocks, own, placements } = view;
 		const marks = (node: EngineNode, prefix: string) =>
 			[...node.attrKeys()]
@@ -276,7 +279,7 @@ export const bindPurge = (Y: EngineApi) => {
 		// A deleted block that stays: its stream's text (boundaries kept), its
 		// data leaves and its claims.
 		const emptied = [...dead].filter((id) => !removable.has(id));
-		T.purgeStreams(
+		purgeStreams(
 			emptied.flatMap((id) => {
 				const s = own.streamOf(id);
 				return s === undefined || s.end - s.start <= s.inert.length ? [] : [s];

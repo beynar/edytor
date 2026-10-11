@@ -24,6 +24,7 @@ import { Y } from '$lib/crdt/engine.js';
 import { bindCrdt, defaultSemantics } from '$lib/crdt/index.js';
 import { packed } from '$lib/crdt/storage.js';
 import { replica, seedUpdate, syncAll, wellFormed, LIVE } from './replica-harness.js';
+import { blockNodeOf, candidatesOf, view as modelView } from '../../../lib/crdt/placement/model.js';
 
 const crdt = bindCrdt(Y);
 const PURGE = Symbol('purge');
@@ -61,7 +62,7 @@ const healthy = (...reps) => {
 	}
 };
 
-const registryHas = (r, id: string) => r.ed.model.blockNodeOf(r.doc, id) !== null;
+const registryHas = (r, id: string) => blockNodeOf(r.doc, id) !== null;
 /** Whether `text` appears in the bytes a replica would store. */
 const holdsText = (r, text: string) =>
 	new TextDecoder('utf-8', { fatal: false }).decode(Y.encodeStateAsUpdate(r.doc)).includes(text);
@@ -174,10 +175,10 @@ describe('H7: purge what was deleted before the horizon', () => {
 		purge(room, epoch(room));
 		syncAll([room, ada]);
 		expect(room.canonical()).toBe(before);
-		const node = room.ed.model.blockNodeOf(room.doc, 'p1b');
+		const node = blockNodeOf(room.doc, 'p1b');
 		expect(node).not.toBe(null);
 		expect([...node.attrKeys()].filter((k) => k.startsWith('d/') || k === 'data')).toEqual([]);
-		expect(room.ed.model.view(room.doc).blocks.get('p1b').claims).toEqual([]);
+		expect(modelView(room.doc).blocks.get('p1b').claims).toEqual([]);
 		expect(ada.ed.blockText('p1')).toBe('live ');
 		healthy(room, ada);
 		room.destroy();
@@ -196,7 +197,7 @@ describe('H7: purge what was deleted before the horizon', () => {
 		ok(ada.ed.moveBlocks(['p4'], { parent: null, index: 0 }));
 		ok(ada.ed.moveBlocks(['p4'], { parent: null, index: 3 }));
 		syncAll([room, ada]);
-		const candidates = (r) => r.ed.model.candidatesOf(r.ed.model.blockNodeOf(r.doc, 'p4')).length;
+		const candidates = (r) => candidatesOf(blockNodeOf(r.doc, 'p4')).length;
 		const held = candidates(room);
 		expect(held).toBeGreaterThanOrEqual(2);
 		expect(registryHas(room, 'x')).toBe(true);

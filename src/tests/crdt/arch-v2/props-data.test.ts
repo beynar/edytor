@@ -13,6 +13,7 @@ import { Y } from '../../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import { converge, replica, seedUpdate } from './replica-harness.js';
+import { blockNodeOf } from '../../../lib/crdt/placement/model.js';
 
 const dataOf = (o, id = 'A') => o.ed.blockDataOf(id);
 const settled = (outcomes, check: (o) => void) => {
@@ -135,7 +136,7 @@ describe('block data: per-leaf last writer wins', () => {
 		const document = createDocument({ value: { children: [{ id: 'A', type: 'p' }] } });
 		const ed = document.facade;
 		ed.patchData('A', [{ path: ['__proto__', 'polluted'], value: 'local' }]);
-		const node = ed.model.blockNodeOf(document.doc, 'A');
+		const node = blockNodeOf(document.doc, 'A');
 		document.doc.transact(() => {
 			node.setAttr('d/__proto__/hostile', true);
 			node.setAttr('d/constructor/prototype/hostile', true);
@@ -165,7 +166,7 @@ describe('a whole-data attribute (before 0.1.0-next.6)', () => {
 	it('is not read: the leaves are the only format', () => {
 		const document = createDocument({ value: { children: [{ id: 'A', type: 'p' }] } });
 		const ed = document.facade;
-		const node = ed.model.blockNodeOf(document.doc, 'A');
+		const node = blockNodeOf(document.doc, 'A');
 		document.doc.transact(() => node.setAttr('data', { a: 1 }), 'legacy');
 		expect(ed.blockDataOf('A') ?? {}).toEqual({});
 		ed.patchData('A', [{ path: ['b'], value: 2 }]);

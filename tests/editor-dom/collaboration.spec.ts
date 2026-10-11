@@ -72,7 +72,10 @@ test.describe('collaboration presence and persistence', () => {
 			const secondDoc = new Doc();
 			const secondProvider = new IndexeddbPersistence(name, secondDoc);
 			await secondProvider.whenSynced;
-			const storedValue = secondDoc.get('note').toArray().join('');
+			// The engine ships no node renderings: read the live text items.
+			let storedValue = '';
+			for (let item = secondDoc.get('note')._start; item; item = item.right)
+				if (!item.deleted && typeof item.content.str === 'string') storedValue += item.content.str;
 			await secondProvider.destroy();
 			await clearDocument(name);
 			return storedValue;

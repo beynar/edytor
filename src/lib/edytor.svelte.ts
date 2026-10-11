@@ -87,7 +87,7 @@ import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import {
 	caretOf,
 	deleteBlocks,
-	caretWritten,
+	applyAt,
 	rangeCaret,
 	prepareDeleteBlocks,
 	prepareDeleteContent,
@@ -931,12 +931,12 @@ export class Edytor {
 	deleteContentWithinSelection = planned(
 		'deleteContentWithinSelection',
 		prepareDeleteContent,
-		caretWritten,
+		applyAt,
 		rangeCaret
 	);
 
 	/** @internal */
-	insertFlow = planned('insertFlow', prepareFlow, caretWritten, caretOf);
+	insertFlow = planned('insertFlow', prepareFlow, applyAt, caretOf);
 
 	deleteBlocks = planned('deleteBlocks', prepareDeleteBlocks, deleteBlocks);
 

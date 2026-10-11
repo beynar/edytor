@@ -42,34 +42,24 @@ export const batch = <T extends (payload: any) => any>(
 
 export function insertText(
 	this: Text,
-	{
-		value,
-		isAutoDot,
-		start = this.edytor.selection.textRange().yStart,
-		end = this.edytor.selection.textRange().yEnd,
-		marks
-	}: TextOperations['insertText']
+	{ value, isAutoDot, start, end, marks }: TextOperations['insertText']
 ) {
-	const isCollapsed = start === end || !end;
 	// The caret's pending marks apply to an insertion at the caret, which consumes them.
 	const { selection } = this.edytor;
-	const { startText, yStart } = selection.textRange();
+	const { startText, yStart, yEnd } = selection.textRange();
+	start ??= yStart;
+	end ??= yEnd;
+	const isCollapsed = start === end || !end;
 	const pending = startText === this && yStart === start ? selection.pending : undefined;
 	marks ??= marksForInsertion(this, start, {
 		replaced: isCollapsed ? undefined : this.getMarksAtRange(start, end),
 		pending
 	});
+	// Autocorrect replaces the character before the inserted value.
+	const [from, length] = isAutoDot ? [start - 1, 1] : [start, isCollapsed ? 0 : end - start];
 	this.edytor.transact(() => {
-		if (isAutoDot) {
-			// Replace the previous char with the inserted value (autocorrect).
-			this.deleteAt(start - 1, 1);
-			this.insertAt(start - 1, value, marks);
-		} else if (!isCollapsed) {
-			this.deleteAt(start, end - start);
-			this.insertAt(start, value, marks);
-		} else {
-			this.insertAt(start, value, marks);
-		}
+		if (length) this.deleteAt(from, length);
+		this.insertAt(from, value, marks);
 	});
 	if (pending) selection.stage(undefined);
 }
@@ -127,33 +117,22 @@ export const getNextGraphemeEnd = (value: string, offset: number) => {
 export function deleteText(this: Text, { direction, length = 1 }: TextOperations['deleteText']) {
 	const { yStart } = this.edytor.selection.textRange();
 	const { isCollapsed } = this.edytor.selection.projection;
-	const requestedLength = Math.max(0, length);
-	const textLength = this.length;
-
-	if (requestedLength === 0 || textLength === 0) {
-		return;
-	}
-
-	const shouldDeleteSingleGrapheme = isCollapsed && requestedLength === 1;
-	const start =
-		shouldDeleteSingleGrapheme && direction === 'BACKWARD'
-			? getPreviousGraphemeStart(this.stringContent, yStart)
-			: direction === 'BACKWARD' && isCollapsed
-				? Math.max(0, yStart - requestedLength)
-				: Math.max(0, yStart);
-	const end =
-		shouldDeleteSingleGrapheme && direction === 'FORWARD'
-			? getNextGraphemeEnd(this.stringContent, yStart)
-			: direction === 'BACKWARD' && isCollapsed
-				? Math.min(textLength, yStart)
-				: Math.min(textLength, start + requestedLength);
-	const deleteLength = end - start;
-
-	if (deleteLength <= 0) {
-		return;
-	}
-
-	this.deleteAt(start, deleteLength);
+	const count = Math.max(0, length);
+	if (!count || !this.length) return;
+	// At a caret one character is one grapheme; backward deletes before it.
+	const back = isCollapsed && direction === 'BACKWARD';
+	const one = isCollapsed && count === 1;
+	const value = this.stringContent;
+	const start = Math.max(
+		0,
+		back ? (one ? getPreviousGraphemeStart(value, yStart) : yStart - count) : yStart
+	);
+	const end = Math.min(
+		this.length,
+		back ? yStart : one ? getNextGraphemeEnd(value, yStart) : start + count
+	);
+	if (end <= start) return;
+	this.deleteAt(start, end - start);
 	return { start, end };
 }
 
@@ -196,32 +175,17 @@ export function markText(
 	this.formatAt(start, end - start, { [mark]: spreadOnAllRange && toggle ? null : value });
 }
 
-// This function split a Y.Text at an index, delete what is after the index and returns the deleted content as a JSONText[]
+/** Delete what follows `index` and answer it (one run per run of the text, cut at `index`). */
 export function splitText(
 	this: Text,
 	{ index = this.edytor.selection.textRange().yStart }: TextOperations['splitText']
-) {
+): JSONText[] {
 	let offset = 0;
-	let content: JSONText[] = [];
-
-	for (const child of this.value) {
-		const textLength = child.text.length;
-		const nextOffset = offset + textLength;
-
-		if (offset < index) {
-			content.push({
-				text: child.text.slice(index - offset),
-				marks: child.marks
-			});
-		} else {
-			// Text fully after split point
-			content.push({
-				text: child.text,
-				marks: child.marks
-			});
-		}
-		offset = nextOffset;
-	}
+	const content = this.value.map(({ text, marks }) => {
+		const part = { text: text.slice(Math.max(0, index - offset)), marks };
+		offset += text.length;
+		return part;
+	});
 	this.deleteAt(index, this.length - index);
 	return content;
 }

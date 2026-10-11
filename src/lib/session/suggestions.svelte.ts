@@ -334,8 +334,8 @@ export class Suggestions {
 			payload,
 			{ block },
 			(_payload, plan = prepare()) => {
-				const caret = applyAt(edytor, plan);
-				return range && caret ? applyAt(edytor, place(caret)) : caret;
+				const caret = applyAt.call(edytor, plan);
+				return range && caret ? applyAt.call(edytor, place(caret)) : caret;
 			},
 			prepare
 		);

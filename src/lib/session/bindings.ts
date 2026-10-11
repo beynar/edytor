@@ -7,9 +7,15 @@
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { blockSelection } from './selection.js';
-import { Text } from '$lib/text/text.svelte.js';
+import type { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import { extendVertically, navigationBindings, stayWithoutTarget, vertical } from './navigation.js';
+import {
+	extendVertically,
+	navigationBindings,
+	stayWithoutTarget,
+	vertical,
+	type Dir
+} from './navigation.js';
 import { caretAt, intentSnapshot } from './attempt.js';
 import {
 	flipToggles,
@@ -28,41 +34,25 @@ import type { HotKey } from './keymap.js';
  * was selected.
  */
 export const replaceSelectedAtom = (edytor: Edytor, value = '') => {
-	const selected =
-		edytor.selection.selectedInlineBlock.values().next().value ??
-		edytor.selection.inlineBlockDeletionTarget;
+	const selected = edytor.selection.inlineBlockDeletionTarget;
 	if (!selected) return false;
 	edytor.selection.clearInlineBlockSelection();
 	const { parent } = selected;
 	const index = parent.content.indexOf(selected);
 	if (index === -1) return true;
-	const [before, after] = [parent.content[index - 1], parent.content[index + 1]];
-	const caret = before instanceof Text ? before : after instanceof Text ? after : parent.firstText;
-	const offset = before instanceof Text ? before.length : 0;
+	// The text before the atom (a block's content starts with a text): the
+	// removal joins the text after the atom to it.
+	const text = parent.content[index - 1] as Text;
+	const offset = text.length;
 	parent.removeInlineBlock({ index });
-	if (value) caret?.insertText({ value, start: offset, end: offset });
-	edytor.dispatcher.caret(caret, offset + value.length);
+	if (value) text.insertText({ value, start: offset, end: offset });
+	edytor.dispatcher.caret(text, offset + value.length);
 	return true;
 };
 
-const selectNextVoidBlockFromCaret = (edytor: Edytor) => {
-	const { startText, yStart } = edytor.selection.textRange();
-	const { isCollapsed } = edytor.selection.projection;
-	if (!startText || !isCollapsed || yStart !== startText.length) {
-		return false;
-	}
-
-	const nextBlock = shown(startText.parent, 'blockAfter');
-	if (!nextBlock?.definition.void) {
-		return false;
-	}
-
-	edytor.selection.select(blockSelection([nextBlock.id]));
-	return true;
-};
-
-const ownsDeleteSelection = (edytor: Edytor) =>
-	edytor.selection.selectedBlocks.size > 0 || edytor.selection.selectedInlineBlock.size > 0;
+/** The selection is the editor's own: an inline atom or blocks (no DOM range shows it). */
+const owned = ({ selection }: Edytor) =>
+	selection.selectedBlocks.size > 0 || selection.inlineBlockDeletionTarget !== null;
 
 const history =
 	(direction: 'undo' | 'redo'): HotKey =>
@@ -81,8 +71,9 @@ const SEALED = { sealed: true } as const;
  * no line and no highlight of their own (Notion): a selection holding every
  * block of a layout stands for it (`liftLayouts`).
  */
-const stepOnto = (block: Block, step: 'blockBefore' | 'blockAfter') => {
+const stepOnto = (block: Block, dir: Dir) => {
 	const { facade } = block.edytor;
+	const step = dir > 0 ? 'blockAfter' : 'blockBefore';
 	let next = shown(block, step, SEALED);
 	while (next && (facade.isLayout(next.id) || facade.isLayoutItem(next.id)))
 		next = shown(next, step, SEALED);
@@ -91,20 +82,17 @@ const stepOnto = (block: Block, step: 'blockBefore' | 'blockAfter') => {
 
 /** Move a single block selection to its sealed neighbour in document order. */
 const moveBlockSelection =
-	(step: 'blockBefore' | 'blockAfter'): HotKey =>
+	(dir: Dir): HotKey =>
 	({ edytor, prevent }) => {
-		const selectedBlocks = edytor.selection.selectedBlocks;
-		if (selectedBlocks.size === 1) {
-			prevent(() => {
-				const target = stepOnto(selectedBlocks.values().next().value as Block, step);
-				if (target) {
-					edytor.selection.select(blockSelection([target.id]));
-				}
-			});
-		}
+		const [block, ...rest] = edytor.selection.selectedBlocks;
+		if (!block || rest.length) return;
+		prevent(() => {
+			const target = stepOnto(block, dir);
+			if (target) edytor.selection.select(blockSelection([target.id]));
+		});
 	};
-const arrowUp = vertical(-1, moveBlockSelection('blockBefore'));
-const arrowDown = vertical(1, moveBlockSelection('blockAfter'));
+const arrowUp = vertical(-1, moveBlockSelection(-1));
+const arrowDown = vertical(1, moveBlockSelection(1));
 
 /**
  * Shift+ArrowUp/Down over a block selection. Its first member is the
@@ -112,23 +100,39 @@ const arrowDown = vertical(1, moveBlockSelection('blockAfter'));
  * back toward the anchor shrinks the selection, otherwise it extends past
  * the selection's edge in document order, one block at a time — a
  * parent and its children are separate members (`sel.blocks.exact`).
+ * Without a block selection the editor owns vertical extension (Shift+ArrowDown
+ * at the end of a text right before a void selects the void).
  */
-const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void => {
-	const members = Array.from(edytor.selection.selectedBlocks);
-	const { value } = edytor.selection;
-	const ids = value.kind === 'blocks' ? value.ids : [];
-	const focus = members.at(-1)!;
-	const sign = Math.sign(edytor.compareBlocks(focus, members[0]!));
-	if (sign === (direction === 'up' ? 1 : -1)) {
-		edytor.selection.select(blockSelection(ids.filter((id) => id !== focus.id)));
-		return;
-	}
-	const sorted = members.toSorted(edytor.compareBlocks);
-	const next =
-		direction === 'up'
-			? stepOnto(sorted[0]!, 'blockBefore')
-			: stepOnto(sorted.at(-1)!, 'blockAfter');
-	if (next && !ids.includes(next.id)) edytor.selection.select(blockSelection([...ids, next.id]));
+const extend =
+	(dir: Dir): HotKey =>
+	({ edytor, prevent }) => {
+		const { selection } = edytor;
+		const members = [...selection.selectedBlocks];
+		if (!members.length) {
+			stayWithoutTarget(edytor, prevent);
+			if ((dir > 0 && voidAfter(edytor)) || extendVertically(edytor, dir)) prevent();
+			return;
+		}
+		prevent(() => {
+			const { value } = selection;
+			const ids = value.kind === 'blocks' ? value.ids : [];
+			const focus = members.at(-1)!;
+			if (Math.sign(edytor.compareBlocks(focus, members[0]!)) === -dir)
+				return selection.select(blockSelection(ids.filter((id) => id !== focus.id)));
+			const sorted = members.toSorted(edytor.compareBlocks);
+			const next = stepOnto((dir > 0 ? sorted.at(-1) : sorted[0])!, dir);
+			if (next && !ids.includes(next.id)) selection.select(blockSelection([...ids, next.id]));
+		});
+	};
+
+/** A caret at the end of a text whose block a void follows selects that void. */
+const voidAfter = (edytor: Edytor) => {
+	const { start, isCollapsed, isAtEndOfText } = edytor.selection.projection;
+	const block = isCollapsed && isAtEndOfText && start && edytor.idToBlock.get(start.block);
+	const next = block ? shown(block, 'blockAfter') : null;
+	if (!next?.definition.void) return false;
+	edytor.selection.select(blockSelection([next.id]));
+	return true;
 };
 
 /**
@@ -154,47 +158,38 @@ const moveRoots = (edytor: Edytor, blocks: Block[], direction: 'in' | 'out') => 
  * Tab / Shift+Tab: nest or unnest the selected block, or the caret's block.
  * Selected blocks, or the blocks a text range spans, move one level per
  * group of siblings, a selected block's selected descendants with it, as
- * one command; the selection stays.
+ * one command; the selection stays (its anchors moved with the blocks).
  */
 const nest =
 	(operation: 'nestBlock' | 'unNestBlock'): HotKey =>
 	({ edytor, prevent }) =>
 		prevent(() => {
-			const selectedBlocks = edytor.selection.selectedBlocks;
+			const { selection } = edytor;
+			const { value } = selection;
 			const direction = operation === 'nestBlock' ? 'in' : 'out';
 			const blocks = getSelectionBlocks(edytor);
 			if (blocks.length > 1) {
-				const members = [...selectedBlocks];
-				const { startText, endText, yStart, yEnd } = edytor.selection.textRange();
-				const { isReversed } = edytor.selection.projection;
-				if (!moveRoots(edytor, blocks, direction).length) return;
-				if (members.length)
-					edytor.selection.select(blockSelection(members.map((block) => block.id)));
-				else if (startText && endText)
-					edytor.selection.selectText(startText, yStart, endText, yEnd, isReversed);
+				if (moveRoots(edytor, blocks, direction).length) selection.select(value);
 				return;
 			}
-			const selectedBlock = selectedBlocks.values().next().value as Block | undefined;
-			const { yStart, startText } = edytor.selection.textRange();
-			const startBlock = startText?.parent;
-			const index = startText?.index;
+			const [selected] = selection.selectedBlocks;
+			const at = selection.textAt(selection.projection.start);
 			// The block's command reveals a closed toggle it lands in or that adopts.
-			const block = (selectedBlock || startBlock)?.[operation]();
-			if (block) edytor.announcer.moved({ blocks: [block], direction }, [block]);
-			if (block && selectedBlock) edytor.selection.select(blockSelection([block.id]));
-			else if (block && index !== undefined) caretAt(edytor, block.content[index] as Text, yStart);
+			const block = (selected ?? at?.text.parent)?.[operation]();
+			if (!block) return;
+			edytor.announcer.moved({ blocks: [block], direction }, [block]);
+			if (selected) selection.select(blockSelection([block.id]));
+			else if (at) caretAt(edytor, block.content[at.text.index] as Text, at.offset);
 		});
 
 /**
  * Backspace/Delete over an editor-owned selection: the selected atom, or
  * the selected blocks (the caret lands at the end of the block before them).
+ * The command runs the hooks and authors its caret; the projector displays it.
  */
 const deleteSelection: HotKey = ({ edytor, prevent }) => {
-	if (edytor.selection.selectedInlineBlock.size || edytor.selection.inlineBlockDeletionTarget)
-		return prevent(() => replaceSelectedAtom(edytor));
-	if (!edytor.selection.selectedBlocks.size) return;
-	// The command runs the hooks and authors its caret; the projector displays it.
-	prevent(() => deleteSelectedBlocks(edytor));
+	if (edytor.selection.inlineBlockDeletionTarget) prevent(() => replaceSelectedAtom(edytor));
+	else if (edytor.selection.selectedBlocks.size) prevent(() => deleteSelectedBlocks(edytor));
 };
 
 /** An Emacs kill (ctrl+h/d/k): a delete intent, or the owned selection's delete. */
@@ -202,9 +197,9 @@ const kill =
 	(inputType: (projection: Edytor['selection']['projection']) => string): HotKey =>
 	(payload) => {
 		const { edytor, prevent } = payload;
-		if (ownsDeleteSelection(edytor)) return deleteSelection(payload);
+		if (owned(edytor)) return deleteSelection(payload);
 		const { projection } = edytor.selection;
-		if (edytor.selection.textRange(projection).startText)
+		if (edytor.selection.textAt(projection.start))
 			prevent(() => edytor.ports.input.runIntent(inputType(projection)));
 	};
 
@@ -217,10 +212,7 @@ const kill =
  */
 const wordAndLineDeletes: Record<string, HotKey> = Object.fromEntries(
 	['alt', 'mod', 'ctrl'].flatMap((modifier) =>
-		['backspace', 'delete'].map((key): [string, HotKey] => [
-			`${modifier}+${key}`,
-			(payload) => (ownsDeleteSelection(payload.edytor) ? deleteSelection(payload) : undefined)
-		])
+		['backspace', 'delete'].map((key) => [`${modifier}+${key}`, deleteSelection])
 	)
 );
 
@@ -240,7 +232,7 @@ const emacs: Record<string, HotKey> = {
 	),
 	// Open-line: a soft break with the caret kept before it.
 	'ctrl+o': ({ edytor, prevent }) => {
-		if (ownsDeleteSelection(edytor) || !edytor.selection.textRange().startText) return;
+		if (owned(edytor) || !edytor.selection.textAt(edytor.selection.projection.start)) return;
 		prevent(() =>
 			edytor.dispatcher.run('insertBlock', () =>
 				edytor.ports.input.insertLineBreak(intentSnapshot(edytor, 'insertLineBreak'), 'before')
@@ -263,43 +255,21 @@ export const builtInBindings: Record<string, HotKey> = {
 	'mod+enter': ({ edytor, prevent }) => prevent(() => flipToggles(shownSelectionBlocks(edytor))),
 	// The select-all ladder: the block's text, then the block, then every block
 	// (at once with no selection at all, as Notion).
-	'mod+a': ({ edytor, prevent }) => {
+	'mod+a': ({ edytor, prevent }) =>
 		prevent(() => {
-			const { startText } = edytor.selection.textRange();
-			const { islandRoot, isAtStartOfBlock, isAtEndOfBlock } = edytor.selection.projection;
+			const { selection, idToBlock } = edytor;
+			const { start, islandRoot, isAtStartOfBlock, isAtEndOfBlock } = selection.projection;
+			const block = selection.textAt(start)?.text.parent;
 			// Every block, nested ones included: a block selection is exactly its members.
-			const every = () =>
-				edytor.selection.select(
-					blockSelection(edytor.facade.order().filter((id) => edytor.idToBlock.has(id)))
-				);
-			if (!startText) {
-				if (edytor.selection.value.kind === 'none') every();
-				return;
-			}
-			if (edytor.selection.selectedBlocks.size) {
-				every();
-			} else if (isAtStartOfBlock && isAtEndOfBlock) {
-				const block = edytor.idToBlock.get(islandRoot ?? '') ?? startText.parent;
-				edytor.selection.select(blockSelection([block.id]));
-			} else {
-				edytor.selection.selectLines(startText.parent);
-			}
-		});
-	},
+			if (block ? selection.selectedBlocks.size : selection.value.kind === 'none')
+				selection.select(blockSelection(edytor.facade.order().filter((id) => idToBlock.has(id))));
+			else if (block && isAtStartOfBlock && isAtEndOfBlock)
+				selection.select(blockSelection([(idToBlock.get(islandRoot ?? '') ?? block).id]));
+			else selection.selectLines(block);
+		}),
 	...navigationBindings,
-	// Without a block selection the editor owns vertical extension.
-	'shift+arrowup': ({ edytor, prevent }) => {
-		if (edytor.selection.selectedBlocks.size)
-			return prevent(() => extendBlockSelection(edytor, 'up'));
-		stayWithoutTarget(edytor, prevent);
-		if (extendVertically(edytor, -1)) prevent();
-	},
-	'shift+arrowdown': ({ edytor, prevent }) => {
-		if (edytor.selection.selectedBlocks.size)
-			return prevent(() => extendBlockSelection(edytor, 'down'));
-		stayWithoutTarget(edytor, prevent);
-		if (selectNextVoidBlockFromCaret(edytor) || extendVertically(edytor, 1)) prevent();
-	},
+	'shift+arrowup': extend(-1),
+	'shift+arrowdown': extend(1),
 	arrowup: arrowUp,
 	arrowdown: arrowDown,
 	tab: nest('nestBlock'),

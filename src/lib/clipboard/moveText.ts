@@ -88,12 +88,12 @@ export const dropText = (edytor: Edytor, drag: TextDrag, to: SelectionPoint): bo
 			const first = facade.anchorAt(from.start.block, from.start.offset, 'right');
 			const last = facade.anchorAt(from.end.block, from.end.offset, 'left');
 			placed.from = facade.anchorAt(to.block, to.offset, 'left');
-			const at = applyAt(edytor, place(to));
+			const at = applyAt.call(edytor, place(to));
 			placed.to = at && facade.anchorAt(at.block, at.offset, 'left');
 			if (copy || !at) return;
 			const [a, b] = [first && facade.resolveAnchor(first), last && facade.resolveAnchor(last)];
 			if (!a || !b) return;
-			applyAt(
+			applyAt.call(
 				edytor,
 				remove({
 					start: { block: a.blockId, offset: a.offset },

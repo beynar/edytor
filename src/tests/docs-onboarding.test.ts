@@ -245,4 +245,40 @@ describe('onboarding truth (WU-18)', () => {
 		expect(script.match(/'fragments\.d\.ts'/g)).toHaveLength(1);
 		expect(script).toContain('tsconfig.fragments.json');
 	});
+
+	it("a plugin page's live demo runs the code the page shows, byte for byte", () => {
+		const demos = join(root, 'site/demos');
+		const folders = readdirSync(demos, { withFileTypes: true }).filter((entry) =>
+			entry.isDirectory()
+		);
+		expect(folders.length).toBeGreaterThan(0);
+		const titleOf = (meta: string) =>
+			/title="([^"]+)"/.exec(meta)?.[1] ??
+			meta.split(/\s+/).find((token) => token && token !== 'check');
+		for (const { name } of folders) {
+			const page = `site/content/docs/plugins/${name}.mdx`;
+			const text = read(page);
+			expect(text, page).toContain(`<PluginDemo plugin="${name}" />`);
+			const index = read(`site/demos/${name}/index.ts`);
+			if (/^\s*custom:/m.test(index))
+				expect(text, page).toContain(`<PluginDemo plugin="${name}" variant="custom" />`);
+			// Every file but `index.ts` is code a reader copies: a checked fence titled with its name.
+			const shown = fences(text).filter((block) => checked(block.meta));
+			for (const file of readdirSync(join(demos, name))) {
+				if (file === 'index.ts') continue;
+				const fence = shown.find((block) => titleOf(block.meta)?.split('/').pop() === file);
+				expect(fence, `${page} shows site/demos/${name}/${file} in a check fence`).toBeDefined();
+				expect(fence!.code.trimEnd(), `${page}: ${file}`).toBe(
+					read(`site/demos/${name}/${file}`).trimEnd()
+				);
+			}
+		}
+		// A page names only a demo that exists.
+		for (const path of docs)
+			for (const [, name] of readFileSync(path, 'utf8').matchAll(/<PluginDemo plugin="([^"]+)"/g))
+				expect(
+					folders.some((folder) => folder.name === name),
+					`${relative(root, path)}: site/demos/${name}/`
+				).toBe(true);
+	});
 });

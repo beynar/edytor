@@ -42,7 +42,7 @@ export class RoomMoves {
 		this.watched = null;
 	}
 
-	private ensureMoves() {
+	#ensureMoves() {
 		const { sql, tables } = this.room;
 		sql.exec(
 			`CREATE TABLE IF NOT EXISTS ${tables.moves} (
@@ -68,8 +68,8 @@ export class RoomMoves {
 	}
 
 	/** One move's row. */
-	private moveRow(id: string, role: 'out' | 'in') {
-		this.ensureMoves();
+	#moveRow(id: string, role: 'out' | 'in') {
+		this.#ensureMoves();
 		return this.room.sql
 			.exec<{
 				id: string;
@@ -103,7 +103,7 @@ export class RoomMoves {
 			const blocks = subtreesOf(room.facade.toJSON().children, new Set(ids));
 			if (blocks.length === 0) throw new Error('exportBlocks: none of these blocks shows');
 			const moveId = crypto.randomUUID();
-			this.ensureMoves();
+			this.#ensureMoves();
 			room.sql.exec(
 				`INSERT INTO ${room.tables.moves} (id, role, state, roots, sent, at) VALUES (?, 'out', 'exported', ?, ?, ?)`,
 				moveId,
@@ -119,7 +119,7 @@ export class RoomMoves {
 	importBlocks(request: ImportRequest): ImportReceipt {
 		const room = this.room;
 		return noTimers(() => {
-			const known = this.moveRow(request.moveId, 'in');
+			const known = this.#moveRow(request.moveId, 'in');
 			if (known !== undefined)
 				return { moveId: request.moveId, status: 'applied', ids: JSON.parse(known.map) };
 			const facade = room.facade;
@@ -169,7 +169,7 @@ export class RoomMoves {
 	commitMove(moveId: string, receipt: { to: string; ids: Record<string, string> }): CommitResult {
 		const room = this.room;
 		return noTimers(() => {
-			const row = this.moveRow(moveId, 'out');
+			const row = this.#moveRow(moveId, 'out');
 			if (row === undefined) return { moveId, status: 'refused', reason: 'unknown move' };
 			if (row.state === 'moved' || row.state === 'done') return { moveId, status: 'applied' };
 			if (row.state !== 'exported') return { moveId, status: 'refused', reason: row.state };
@@ -182,7 +182,7 @@ export class RoomMoves {
 					if (f.isVisibleBlock(id)) f.apply(f.prepare.deleteBlock(id, { keepChildren: false }));
 			});
 			const c1 = doc.store.getClock(marker);
-			const watched = this.markedBetween(room.requireDoc(), marker, c0, c1);
+			const watched = this.#markedBetween(room.requireDoc(), marker, c0, c1);
 			room.sql.exec(
 				`UPDATE ${room.tables.moves} SET state = 'moved', peer = ?, map = ?, marker = ?, c0 = ?, c1 = ?, watched = ?, at = ?, dirty = 1 WHERE id = ? AND role = 'out'`,
 				receipt.to,
@@ -203,8 +203,8 @@ export class RoomMoves {
 
 	/** Drop an export that was not committed (`AttachedDocument.abortMove`). */
 	abortMove(moveId: string): { moveId: string; status: 'applied' | 'noop' } {
-		this.ensureMoves();
-		const row = this.moveRow(moveId, 'out');
+		this.#ensureMoves();
+		const row = this.#moveRow(moveId, 'out');
 		if (row?.state !== 'exported') return { moveId, status: 'noop' };
 		this.room.sql.exec(
 			`UPDATE ${this.room.tables.moves} SET state = 'aborted', sent = '[]' WHERE id = ? AND role = 'out'`,
@@ -216,7 +216,7 @@ export class RoomMoves {
 	/** The late edits waiting to reach their destination, oldest first. */
 	lateEdits(): LateEditBatch[] {
 		const { sql, tables } = this.room;
-		this.ensureMoves();
+		this.#ensureMoves();
 		return sql
 			.exec<{
 				move: string;
@@ -238,7 +238,7 @@ export class RoomMoves {
 
 	/** The destination applied a move's late edits through `seq`: they are dropped here. */
 	ackLateEdits(moveId: string, seq: number): void {
-		this.ensureMoves();
+		this.#ensureMoves();
 		this.room.sql.exec(
 			`DELETE FROM ${this.room.tables.late} WHERE move = ? AND seq <= ?`,
 			moveId,
@@ -249,7 +249,7 @@ export class RoomMoves {
 	/** Apply a batch of late edits (`AttachedDocument.applyLateEdits`). */
 	applyLateEdits(batch: LateEditBatch): { applied: number; skipped: string[] } {
 		return noTimers(() => {
-			const row = this.moveRow(batch.moveId, 'in');
+			const row = this.#moveRow(batch.moveId, 'in');
 			if (row === undefined) return { applied: 0, skipped: batch.edits.map((e) => e.block) };
 			if (row.seq >= batch.seq) return { applied: row.seq, skipped: [] };
 			const skipped: string[] = [];
@@ -259,7 +259,7 @@ export class RoomMoves {
 						skipped.push(edit.block);
 						continue;
 					}
-					this.mergeLateEdit(f, edit);
+					this.#mergeLateEdit(f, edit);
 				}
 			});
 			this.room.sql.exec(
@@ -272,7 +272,7 @@ export class RoomMoves {
 	}
 
 	/** One block's late edit, merged into what it holds (inside a room transaction). */
-	private mergeLateEdit(f: EdytorDoc, edit: LateEdit) {
+	#mergeLateEdit(f: EdytorDoc, edit: LateEdit) {
 		const id = edit.block;
 		const dst = unitsOf(f.contentItems(id));
 		// An atom the late edit names no id of keys as the empty id.
@@ -287,7 +287,7 @@ export class RoomMoves {
 	}
 
 	/** The registry entries carrying a `del.<marker>` mark written between clocks `c0` and `c1`. */
-	private markedBetween(doc: YDoc, marker: number, c0: number, c1: number): string[] {
+	#markedBetween(doc: YDoc, marker: number, c0: number, c1: number): string[] {
 		const out: string[] = [];
 		const key = `${DEL_PREFIX}${marker}`;
 		asEngineDoc(doc)
@@ -308,9 +308,9 @@ export class RoomMoves {
 	}
 
 	/** The moved-out blocks watched for late edits (`room.move.late`), by id → their move. */
-	private watchedBlocks(): Map<string, string> {
+	#watchedBlocks(): Map<string, string> {
 		if (this.watched !== null) return this.watched;
-		this.ensureMoves();
+		this.#ensureMoves();
 		const out = new Map<string, string>();
 		for (const row of this.room.sql
 			.exec<{
@@ -334,7 +334,7 @@ export class RoomMoves {
 			let key: string | null = null;
 			if (type === registry) {
 				for (const sub of subs) {
-					watched ??= this.watchedBlocks();
+					watched ??= this.#watchedBlocks();
 					const move = sub === null ? undefined : watched.get(sub);
 					if (move !== undefined) dirty.add(move);
 				}
@@ -353,7 +353,7 @@ export class RoomMoves {
 				t = it.parent as typeof t;
 			}
 			if (key === null) continue;
-			watched ??= this.watchedBlocks();
+			watched ??= this.#watchedBlocks();
 			if (watched.size === 0) return;
 			const move = watched.get(key);
 			if (move !== undefined) dirty.add(move);
@@ -378,7 +378,7 @@ export class RoomMoves {
 		const room = this.room;
 		const { scheduler, sql, tables } = room;
 		scheduler.unschedule('forward');
-		this.ensureMoves();
+		this.#ensureMoves();
 		const now = room.clock();
 		// Past the grace period: no longer watched.
 		sql.exec(
@@ -402,8 +402,8 @@ export class RoomMoves {
 			)
 			.toArray();
 		if (dirty.length > 0 && room.live !== null) {
-			const children = noTimers(() => this.withoutMoveDeletes(dirty));
-			for (const row of dirty) this.collectLateEdits(row, children);
+			const children = noTimers(() => this.#withoutMoveDeletes(dirty));
+			for (const row of dirty) this.#collectLateEdits(row, children);
 		}
 		const rooms = room.options.rooms?.();
 		let retry = false;
@@ -429,7 +429,7 @@ export class RoomMoves {
 	}
 
 	/** The document's blocks as they show without the deletes of `moves`' commits: a copy, read once. */
-	private withoutMoveDeletes(
+	#withoutMoveDeletes(
 		moves: readonly { watched: string; marker: number; c0: number; c1: number }[]
 	): JSONBlock[] {
 		const copy = crdt.createDoc();
@@ -463,7 +463,7 @@ export class RoomMoves {
 	}
 
 	/** One dirty move's changes since its last batch, as a new batch of late edits (or a report). */
-	private collectLateEdits(
+	#collectLateEdits(
 		row: { id: string; roots: string; sent: string; map: string; seq: number },
 		children: JSONBlock[]
 	) {

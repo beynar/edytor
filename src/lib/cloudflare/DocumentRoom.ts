@@ -54,7 +54,7 @@
  *   `dropWaitingDeletes()` every one.
  * - storage format: every record holds an update in the engine's one
  *   encoding; a snapshot is compressed in place after it is stored
- *   (`compressLater`) and inflated at start (`inflate`).
+ *   (`#compressLater`) and inflated at start (`inflate`).
  * - a Step2 serves the STORED state: the engine's pending structs (waiting
  *   for a dependency, never stored) are not served.
  * - a frame larger than `maxFrameBytes` (32 MiB) goes out as chunks the

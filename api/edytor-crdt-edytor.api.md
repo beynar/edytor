@@ -56,11 +56,11 @@ export type AttributionController = {
 ```ts
 // crdt/protocols/awareness.d.ts
 export declare class Awareness extends IsolatedObservable<AwarenessEvents> {
+    #private;
     doc: AwarenessDoc;
     clientID: number;
     states: AwarenessStates;
     meta: Map<number, MetaClientState>;
-    private _checkInterval;
     private _destroyed;
     constructor(doc: AwarenessDoc);
     destroy(): void;
@@ -636,28 +636,14 @@ export interface EdytorDocument extends Omit<DocumentOperations, 'transact'> {
 }
 // crdt/document.d.ts
 export declare class EdytorDocument {
+    #private;
     readonly doc: YDoc;
     readonly awareness: Awareness;
     readonly actor: DocumentActor;
     get attribution(): DocumentAttribution;
     readonly transaction: TRANSACTION;
-    private readonly _trackedOrigins;
-    private readonly _engine;
-    private readonly _ownsDoc;
-    private readonly _ownsAwareness;
-    private _history;
-    private readonly _attributionCtl;
-    private _readiness;
     private _destroyed;
-    private _refs;
-    private readonly _capability;
-    private _defaultType;
-    private readonly _historyOptions;
     readonly requireHydration: boolean;
-    private _providers;
-    private _pendingSyncs;
-    private _healOff;
-    private _readyListeners;
     get clientID(): number;
     get ready(): boolean;
     get readiness(): DocumentReadiness;
@@ -679,13 +665,10 @@ export declare class EdytorDocument {
     get history(): YUndoManager;
     trackOrigin: (origin: unknown) => void;
     untrackOrigin: (origin: unknown) => void;
-    private _attachHistory;
     clearHistory: () => void;
     transact: <T>(cb: () => T, origin?: unknown) => T;
     onReady: (listener: () => void) => (() => void);
     get syncPending(): boolean;
-    private _refusals;
-    private _refusalListeners;
     get syncRefusal(): SyncRefusedError | undefined;
     onSyncRefused: (listener: (refusal: SyncRefusedError) => void) => (() => void);
     private _decide;
@@ -695,7 +678,6 @@ export declare class EdytorDocument {
     encode: () => Uint8Array;
     retain: () => (() => void);
     destroy: () => void;
-    private _releaseReference;
 }
 ```
 

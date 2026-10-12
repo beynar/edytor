@@ -28,7 +28,7 @@
  * owns: `destroy()` releases the document-created services but never
  * `doc.destroy()`s the borrowed doc (borrowing grants no destruction
  * authority). The same rule applies to an injected
- * `awareness` (the `_ownsAwareness` convention already used by
+ * `awareness` (the `#ownsAwareness` convention already used by
  * `IndexeddbPersistence`).
  *
  * ── Readiness ──────────────────────────────────────────────────────────
@@ -454,7 +454,7 @@ export class EdytorDocument {
 	 */
 	get attribution(): DocumentAttribution {
 		alive(this, 'attribution');
-		return this._attributionCtl.view;
+		return this.#attributionCtl.view;
 	}
 	/**
 	 * The document's own local-edit transaction origin — headless edits via
@@ -486,20 +486,20 @@ export class EdytorDocument {
 	 * (their commits remain undoable), only FUTURE commits from the dead
 	 * origin stop capturing.
 	 */
-	private readonly _trackedOrigins = new Set<unknown>([this.transaction, null]);
+	readonly #trackedOrigins = new Set<unknown>([this.transaction, null]);
 
-	private readonly _engine: EngineApi;
-	private readonly _ownsDoc: boolean;
-	private readonly _ownsAwareness: boolean;
-	private _history: YUndoManager | undefined;
-	private readonly _attributionCtl: AttributionController;
+	readonly #engine: EngineApi;
+	readonly #ownsDoc: boolean;
+	readonly #ownsAwareness: boolean;
+	#_history: YUndoManager | undefined;
+	readonly #attributionCtl: AttributionController;
 	/**
 	 * `true` when the attached manager was destroyed by something other
 	 * than this document — its `destroy()` is a public engine surface, so
 	 * an external caller can kill it while the document lives. The getter
 	 * reattaches a fresh manager rather than handing back the corpse.
 	 */
-	private _readiness: DocumentReadiness = 'pending';
+	#_readiness: DocumentReadiness = 'pending';
 	private _destroyed = false;
 	/**
 	 * Attach references — every `createDocument`/`loadDocument`/
@@ -509,33 +509,33 @@ export class EdytorDocument {
 	 * lands (deduplicated `attachDocument` shares this instance across
 	 * callers/views).
 	 */
-	private _refs = 1;
+	#refs = 1;
 	/**
 	 * The adopted semantics (every contribution, merged: `mergeSemantics`)
 	 * and their lookups (`facadeConfigOf`, as the room reads its own).
 	 */
-	private readonly _capability = { config: mergeSemantics(), of: facadeConfigOf({}) };
-	private _defaultType: string;
-	private readonly _historyOptions: { captureTimeout?: number; limit?: number } | undefined;
+	readonly #capability = { config: mergeSemantics(), of: facadeConfigOf({}) };
+	#defaultType: string;
+	readonly #historyOptions: { captureTimeout?: number; limit?: number } | undefined;
 	/** {@link DocumentOptions.requireHydration}: an empty document waits for a provider's `synced`. */
 	readonly requireHydration: boolean;
 	/** Attached providers keyed by transport target: one per target. */
-	private _providers = new Map<unknown, EdytorSyncCleanup | undefined>();
-	private _pendingSyncs = 0;
-	private _healOff: (() => void) | undefined;
-	private _readyListeners = new Set<() => void>();
+	#providers = new Map<unknown, EdytorSyncCleanup | undefined>();
+	#pendingSyncs = 0;
+	#healOff: (() => void) | undefined;
+	#readyListeners = new Set<() => void>();
 
 	/** @internal Construct through {@link createDocument}/{@link loadDocument}/{@link attachDocument}. */
 	constructor(init: EdytorDocumentInit) {
-		this._engine = init.engine;
+		this.#engine = init.engine;
 		this.doc = init.doc;
-		this._ownsDoc = init.ownsDoc;
-		this._defaultType = init.semantics?.defaultType ?? 'paragraph';
-		const of = () => this._capability.of;
+		this.#ownsDoc = init.ownsDoc;
+		this.#defaultType = init.semantics?.defaultType ?? 'paragraph';
+		const of = () => this.#capability.of;
 		this.facade = init.facade(asEngineDoc(this.doc), {
 			roleOf: (type) => of().roleOf(type),
 			kinds: () => of().kinds(),
-			defaultType: this._defaultType,
+			defaultType: this.#defaultType,
 			defaultChildOf: (type) => of().defaultChildOf(type),
 			rendersContent: (type) => of().rendersContent(type),
 			markEdge: (mark) => of().markEdge(mark),
@@ -553,8 +553,8 @@ export class EdytorDocument {
 			Object.defineProperty(this, name, { get: () => this.facade[name], configurable: true });
 		}
 		this.awareness = init.awareness ?? new init.awarenessCtor(this.doc);
-		this._ownsAwareness = init.awareness === undefined;
-		this._historyOptions = init.history;
+		this.#ownsAwareness = init.awareness === undefined;
+		this.#historyOptions = init.history;
 		this.requireHydration = init.requireHydration === true;
 		this.actor = init.actor ?? anonymousActor();
 		// Durable actor identity is separate from the presence profile: the
@@ -568,12 +568,12 @@ export class EdytorDocument {
 		// replica's actor dictionary entries (`c/`+`u/`) once; ordinary
 		// edits perform no attribution work and per-block records are
 		// written inside the owning op's transaction by the facade.
-		this._attributionCtl = init.attribution.attach(asEngineDoc(this.doc), {
+		this.#attributionCtl = init.attribution.attach(asEngineDoc(this.doc), {
 			actor: this.actor
 		});
 		if (init.semantics) {
 			this.adoptSemantics({ ...init.semantics, defaultType: undefined });
-		} else if (DEV) advertise(this.awareness, this._capability.config, this._defaultType);
+		} else if (DEV) advertise(this.awareness, this.#capability.config, this.#defaultType);
 	}
 
 	/** The replica id (`doc.clientID`) — identifies the replica, not the actor. */
@@ -588,7 +588,7 @@ export class EdytorDocument {
 	 * WHICH kind of ready.
 	 */
 	get ready(): boolean {
-		return this._readiness !== 'pending';
+		return this.#_readiness !== 'pending';
 	}
 
 	/**
@@ -597,7 +597,7 @@ export class EdytorDocument {
 	 * need to tell "I decided this content" from "sync brought it").
 	 */
 	get readiness(): DocumentReadiness {
-		return this._readiness;
+		return this.#_readiness;
 	}
 
 	get destroyed(): boolean {
@@ -639,7 +639,7 @@ export class EdytorDocument {
 	 * @internal
 	 */
 	get historyCaptureTimeout(): number | undefined {
-		return this._historyOptions?.captureTimeout;
+		return this.#historyOptions?.captureTimeout;
 	}
 
 	/**
@@ -648,7 +648,7 @@ export class EdytorDocument {
 	 * dedupe check reads it (a reattach naming another limit is a conflict).
 	 */
 	get historyLimit(): number {
-		return this._historyOptions?.limit ?? DEFAULT_HISTORY_LIMIT;
+		return this.#historyOptions?.limit ?? DEFAULT_HISTORY_LIMIT;
 	}
 
 	/**
@@ -656,11 +656,11 @@ export class EdytorDocument {
 	 * copies — mutation is not supported; contribute via {@link adoptSemantics}.
 	 */
 	get semantics() {
-		const { roles, rendersContent, defaultChild, marks } = this._capability.config;
+		const { roles, rendersContent, defaultChild, marks } = this.#capability.config;
 		const entries = <T, U>(table: Record<string, T>, f: (value: T) => U) =>
 			new Map(Object.entries(table).map(([key, value]) => [key, f(value)]));
 		return {
-			defaultType: this._defaultType,
+			defaultType: this.#defaultType,
 			roles: entries<BlockRole, BlockRole>(roles, normalizeRole),
 			rendersContent: new Map(Object.entries(rendersContent)),
 			defaultChild: new Map(Object.entries(defaultChild)),
@@ -674,11 +674,11 @@ export class EdytorDocument {
 	 * and root normalization apply against the new block's actual parent.
 	 */
 	defaultChild = (parentType: string | null): string =>
-		(parentType !== null ? this._capability.of.defaultChildOf(parentType) : undefined) ??
-		this._defaultType;
+		(parentType !== null ? this.#capability.of.defaultChildOf(parentType) : undefined) ??
+		this.#defaultType;
 
 	/** Whether kind `type` renders its own content slot (undeclared kinds do). */
-	rendersContent = (type: string): boolean => this._capability.of.rendersContent(type);
+	rendersContent = (type: string): boolean => this.#capability.of.rendersContent(type);
 
 	/**
 	 * Contribute document-level semantics — the seam views use to seed the
@@ -699,14 +699,14 @@ export class EdytorDocument {
 	 */
 	adoptSemantics = (config: DocumentSemanticsConfig): void => {
 		alive(this, 'adoptSemantics');
-		if (config.defaultType !== undefined && config.defaultType !== this._defaultType) {
-			throw new SemanticConflictError('defaultType', this._defaultType, config.defaultType);
+		if (config.defaultType !== undefined && config.defaultType !== this.#defaultType) {
+			throw new SemanticConflictError('defaultType', this.#defaultType, config.defaultType);
 		}
-		const merged = mergeSemantics(this._capability.config, { ...config, defaultType: undefined });
-		Object.assign(this._capability, { config: merged, of: facadeConfigOf(merged) });
+		const merged = mergeSemantics(this.#capability.config, { ...config, defaultType: undefined });
+		Object.assign(this.#capability, { config: merged, of: facadeConfigOf(merged) });
 		if (DEV) {
-			advertise(this.awareness, merged, this._defaultType);
-			warnLines(this._capability, this._defaultType);
+			advertise(this.awareness, merged, this.#defaultType);
+			warnLines(this.#capability, this.#defaultType);
 		}
 		// A newly void kind sheds its children at read time; a block
 		// promoted out of a newly island kind displays as a default child; a
@@ -746,25 +746,25 @@ export class EdytorDocument {
 	 */
 	sync = (value: JSONDoc = { children: [] }): void => {
 		alive(this, 'sync');
-		if (this._readiness !== 'pending') {
+		if (this.#_readiness !== 'pending') {
 			return;
 		}
 		const verdict = assertAdmission(asEngineDoc(this.doc), 'document');
 		if (verdict === 'initialized') {
 			// Hydrated/loaded doc — asserted above; content is left alone.
-			this._readiness = 'hydrated';
+			this.#_readiness = 'hydrated';
 		} else {
 			this.facade.seed(value.children, value.data);
-			this._readiness = 'local';
+			this.#_readiness = 'local';
 		}
-		this._attachHistory();
+		this.#attachHistory();
 		// Readiness decided — wake waiters synchronously. The hydrated
 		// branch writes nothing to the doc, so `update`-based observation
 		// misses it; polling alone would leave sibling views stale for
 		// ~50 ms. Isolated per the listener-isolation convention: one
 		// throwing waiter must not starve the rest or break `sync()`.
-		const listeners = Array.from(this._readyListeners);
-		this._readyListeners.clear();
+		const listeners = Array.from(this.#readyListeners);
+		this.#readyListeners.clear();
 		callEach('[edytor-document] ready', listeners);
 	};
 
@@ -777,23 +777,23 @@ export class EdytorDocument {
 	 */
 	get history(): YUndoManager {
 		alive(this, 'history');
-		let history = this._history;
+		let history = this.#_history;
 		// A manager enrolls itself in its tracked origins and leaves them on
 		// `destroy()` — an external teardown (misuse, or the engine's own
 		// `doc.destroy` cascade) shows there.
-		if (history !== undefined && !this._trackedOrigins.has(history)) {
+		if (history !== undefined && !this.#trackedOrigins.has(history)) {
 			// The manager was destroyed externally — it no longer observes
 			// transactions or emits stack events, so returning it would
 			// silently disable capture. Reattach a fresh one (the dead
 			// manager's stacks are unrecoverable by definition).
-			this._history = undefined;
+			this.#_history = undefined;
 			history = undefined;
 		}
 		if (history === undefined) {
-			if (this._readiness === 'pending') {
+			if (this.#_readiness === 'pending') {
 				throw new DocumentNotReadyError('history');
 			}
-			history = this._attachHistory();
+			history = this.#attachHistory();
 		}
 		return history;
 	}
@@ -810,7 +810,7 @@ export class EdytorDocument {
 	 */
 	trackOrigin = (origin: unknown): void => {
 		alive(this, 'trackOrigin');
-		this._trackedOrigins.add(origin);
+		this.#trackedOrigins.add(origin);
 	};
 
 	/**
@@ -825,12 +825,12 @@ export class EdytorDocument {
 		if (this._destroyed) {
 			return;
 		}
-		this._trackedOrigins.delete(origin);
+		this.#trackedOrigins.delete(origin);
 	};
 
-	private _attachHistory = (): YUndoManager => {
-		if (this._history !== undefined) {
-			return this._history;
+	#attachHistory = (): YUndoManager => {
+		if (this.#_history !== undefined) {
+			return this.#_history;
 		}
 		// Two-layer capture rule (see the module header):
 		// - `trackedOrigins` — identity tracking: the document's headless
@@ -843,13 +843,13 @@ export class EdytorDocument {
 		//   `applyUpdate` — stamped or originless — can enter the local undo
 		//   stack. This is the actual remote-exclusion contract; untracked
 		//   remote origins are belt-and-suspenders on top of it.
-		this._history = this.facade.createUndoManager({
-			trackedOrigins: this._trackedOrigins,
-			captureTimeout: this._historyOptions?.captureTimeout,
+		this.#_history = this.facade.createUndoManager({
+			trackedOrigins: this.#trackedOrigins,
+			captureTimeout: this.#historyOptions?.captureTimeout,
 			limit: this.historyLimit,
 			captureTransaction: (transaction: { local?: boolean }) => transaction.local !== false
 		});
-		return this._history;
+		return this.#_history;
 	};
 
 	/**
@@ -861,7 +861,7 @@ export class EdytorDocument {
 	 */
 	clearHistory = (): void => {
 		alive(this, 'clearHistory');
-		this._history?.clear();
+		this.#_history?.clear();
 	};
 
 	/**
@@ -887,9 +887,9 @@ export class EdytorDocument {
 		if (this._destroyed) {
 			return () => {};
 		}
-		this._readyListeners.add(listener);
+		this.#readyListeners.add(listener);
 		return () => {
-			this._readyListeners.delete(listener);
+			this.#readyListeners.delete(listener);
 		};
 	};
 
@@ -898,12 +898,12 @@ export class EdytorDocument {
 	 * bound. An editable view decides a pending document only when none is.
 	 */
 	get syncPending(): boolean {
-		return this._pendingSyncs > 0;
+		return this.#pendingSyncs > 0;
 	}
 
 	/** The standing refusal of each attached target that reported one, oldest first. */
-	private _refusals = new Map<unknown, SyncRefusedError>();
-	private _refusalListeners = new Set<(refusal: SyncRefusedError) => void>();
+	#refusals = new Map<unknown, SyncRefusedError>();
+	#refusalListeners = new Set<(refusal: SyncRefusedError) => void>();
 
 	/**
 	 * The server's refusal of a provider (a `1008`/`4xxx` close — see
@@ -914,7 +914,7 @@ export class EdytorDocument {
 	 * after a refreshed token), lifts it.
 	 */
 	get syncRefusal(): SyncRefusedError | undefined {
-		return Array.from(this._refusals.values()).at(-1);
+		return Array.from(this.#refusals.values()).at(-1);
 	}
 
 	/**
@@ -923,8 +923,8 @@ export class EdytorDocument {
 	 */
 	onSyncRefused = (listener: (refusal: SyncRefusedError) => void): (() => void) => {
 		if (this._destroyed) return () => {};
-		this._refusalListeners.add(listener);
-		return () => this._refusalListeners.delete(listener);
+		this.#refusalListeners.add(listener);
+		return () => this.#refusalListeners.delete(listener);
 	};
 
 	/**
@@ -940,15 +940,15 @@ export class EdytorDocument {
 		if (this._destroyed || this.ready) return;
 		// An empty document waits for a provider that synced.
 		if (this.requireHydration && !synced && !isInitialized(asEngineDoc(this.doc))) return;
-		const waiting = this._pendingSyncs > 0 || this._refusals.size > 0;
+		const waiting = this.#pendingSyncs > 0 || this.#refusals.size > 0;
 		if (waiting && !isInitialized(asEngineDoc(this.doc))) return;
 		try {
 			this.sync(value);
 		} catch (error) {
-			this._healOff ??= this.onWritableChange((writable) => {
+			this.#healOff ??= this.onWritableChange((writable) => {
 				if (!writable) return;
-				this._healOff?.();
-				this._healOff = undefined;
+				this.#healOff?.();
+				this.#healOff = undefined;
 				this._decide(value);
 			});
 			if (report) throw error;
@@ -980,14 +980,14 @@ export class EdytorDocument {
 	attachSync = (sync: EdytorSync, opts: { value?: JSONDoc } = {}): EdytorSyncCleanup | void => {
 		alive(this, 'attachSync');
 		const target = sync.target ?? sync;
-		if (this._providers.has(target)) return;
-		this._pendingSyncs += 1;
+		if (this.#providers.has(target)) return;
+		this.#pendingSyncs += 1;
 		let pending = true;
 		const settle = (): boolean => {
 			if (!pending) return false;
 			pending = false;
 			clearTimeout(bound);
-			this._pendingSyncs -= 1;
+			this.#pendingSyncs -= 1;
 			return true;
 		};
 		const decide = () => settle() && this._decide(opts.value);
@@ -997,9 +997,9 @@ export class EdytorDocument {
 			if (!(error instanceof SyncRefusedError)) return void decide();
 			settle();
 			if (this._destroyed) return;
-			this._refusals.delete(target);
-			this._refusals.set(target, error);
-			callEach('[edytor-document] refusal', Array.from(this._refusalListeners), error);
+			this.#refusals.delete(target);
+			this.#refusals.set(target, error);
+			callEach('[edytor-document] refusal', Array.from(this.#refusalListeners), error);
 			// A document that already holds content is decided (hydrated); an
 			// empty one stays pending while the refusal stands.
 			this._decide(opts.value);
@@ -1011,7 +1011,7 @@ export class EdytorDocument {
 				awareness: this.awareness,
 				synced: () => {
 					settle();
-					this._refusals.delete(target);
+					this.#refusals.delete(target);
 					this._decide(opts.value, true, true);
 				},
 				failed,
@@ -1028,7 +1028,7 @@ export class EdytorDocument {
 			throw error;
 		}
 		if (typeof cleanup !== 'function') {
-			this._providers.set(target, undefined);
+			this.#providers.set(target, undefined);
 			return cleanup;
 		}
 		// The returned cleanup runs once and frees the target; tearing down
@@ -1037,20 +1037,20 @@ export class EdytorDocument {
 		// next attach or `sync()` does). After the cleanup, which releases
 		// the provider's own companions.
 		const release = (): ReturnType<EdytorSyncCleanup> => {
-			if (this._providers.get(target) !== release) return;
-			this._providers.delete(target);
-			const refused = this._refusals.delete(target);
+			if (this.#providers.get(target) !== release) return;
+			this.#providers.delete(target);
+			const refused = this.#refusals.delete(target);
 			decide();
 			const result = cleanup();
-			if (refused && this._providers.size > 0) this._decide(opts.value);
+			if (refused && this.#providers.size > 0) this._decide(opts.value);
 			return result;
 		};
-		this._providers.set(target, release);
+		this.#providers.set(target, release);
 		return release;
 	};
 
 	/** Full replicated state as a v14 update — `loadDocument` restores it on a fresh replica. */
-	encode = (): Uint8Array => this._engine.encodeStateAsUpdate(this.doc);
+	encode = (): Uint8Array => this.#engine.encodeStateAsUpdate(this.doc);
 
 	/**
 	 * Acquire one more attach reference and return its ONE-SHOT release
@@ -1066,14 +1066,14 @@ export class EdytorDocument {
 	 */
 	retain = (): (() => void) => {
 		alive(this, 'retain');
-		this._refs += 1;
+		this.#refs += 1;
 		let released = false;
 		return () => {
 			if (released) {
 				return;
 			}
 			released = true;
-			this._releaseReference();
+			this.#releaseReference();
 		};
 	};
 
@@ -1097,26 +1097,26 @@ export class EdytorDocument {
 	 * grants no destruction authority). Post-teardown calls are a no-op.
 	 */
 	destroy = (): void => {
-		this._releaseReference();
+		this.#releaseReference();
 	};
 
 	/** Shared reference release — `destroy()` and `retain()` closures land here. */
-	private _releaseReference = (): void => {
+	#releaseReference = (): void => {
 		if (this._destroyed) {
 			return;
 		}
-		this._refs -= 1;
-		if (this._refs > 0) {
+		this.#refs -= 1;
+		if (this.#refs > 0) {
 			return;
 		}
-		this._refs = 0;
+		this.#refs = 0;
 		this._destroyed = true;
 
 		// Waiters parked on the readiness transition are dropped silently —
 		// a destroyed document never decides, and their views check
 		// `destroyed` before binding anyway.
-		this._readyListeners.clear();
-		this._healOff?.();
+		this.#readyListeners.clear();
+		this.#healOff?.();
 
 		// Provider/sync cleanups registered through `attachSync`.
 		const rethrowAsyncCleanupError = (error: unknown) => {
@@ -1124,7 +1124,7 @@ export class EdytorDocument {
 				throw error;
 			});
 		};
-		for (const release of [...this._providers.values()]) {
+		for (const release of [...this.#providers.values()]) {
 			try {
 				const result = release?.();
 				if (result && typeof result === 'object' && 'catch' in result) {
@@ -1136,11 +1136,11 @@ export class EdytorDocument {
 		}
 
 		// Doc observers held by the undo manager (absent before readiness).
-		this._history?.destroy();
+		this.#_history?.destroy();
 
 		// The attribution service controller — the view stays readable
 		// after release (a borrowed raw doc can outlive the document).
-		this._attributionCtl.destroy();
+		this.#attributionCtl.destroy();
 
 		// The facade's doc `update` subscriptions + this document's lease on
 		// the doc-shared run view (the view itself survives while another
@@ -1149,13 +1149,13 @@ export class EdytorDocument {
 
 		// Awareness is document-shared — destroy it only when the document
 		// created it (an injected instance belongs to its caller).
-		if (this._ownsAwareness) {
+		if (this.#ownsAwareness) {
 			this.awareness.destroy();
 		}
 
 		// `doc.destroy()` only for document-allocated docs — a borrowed raw
 		// doc outlives this document by contract.
-		if (this._ownsDoc) {
+		if (this.#ownsDoc) {
 			this.doc.destroy();
 		}
 	};

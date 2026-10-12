@@ -49,7 +49,7 @@ export abstract class TextTriggerController extends ChromeList {
 	isOpen = $state(false);
 	query = $state('');
 	/** The trigger's start and the query's end, held as anchors so peers' edits move them. */
-	protected activeRange: { trigger: TextAnchor; end: TextAnchor } | null = null;
+	#activeRange: { trigger: TextAnchor; end: TextAnchor } | null = null;
 	/** A pick is running: its own selection changes close nothing. */
 	protected picking = false;
 
@@ -87,10 +87,10 @@ export abstract class TextTriggerController extends ChromeList {
 	handleTextInsertion(text: Text, block: Block, start: number, value: string) {
 		if (this.edytor.readonly) return this.close();
 		// A trigger typed alone, or committed by an IME with its query (`/h`).
-		const at = this.admits(block) ? this.triggerAt(text, start, value) : -1;
+		const at = this.admits(block) ? this.#triggerAt(text, start, value) : -1;
 		if (at !== -1) this.open(text, at, start + value.length);
 		// Typing at the query's end extends it; typing anywhere else closes the menu.
-		else if (this.activeRange) {
+		else if (this.#activeRange) {
 			const range = this.range;
 			if (text === range?.text && start === range.queryEnd) this.setEnd(text, start + value.length);
 			else this.close();
@@ -102,7 +102,7 @@ export abstract class TextTriggerController extends ChromeList {
 	 * the trigger: its start, or -1. A trigger of several characters (`[[`)
 	 * completes with its last one.
 	 */
-	private triggerAt(text: Text, start: number, value: string) {
+	#triggerAt(text: Text, start: number, value: string) {
 		const content = text.stringContent;
 		const { char } = this;
 		for (let at = Math.max(0, start - char.length + 1); at <= start; at++) {
@@ -114,7 +114,7 @@ export abstract class TextTriggerController extends ChromeList {
 
 	/** The caret moved: it stays after the trigger, in its text, and marks the query's end. */
 	reconcileSelection() {
-		if (!this.activeRange || this.picking) return;
+		if (!this.#activeRange || this.picking) return;
 		const range = this.range;
 		const { startText, yStart } = this.edytor.selection.textRange();
 		const { isCollapsed } = this.edytor.selection.projection;
@@ -133,14 +133,14 @@ export abstract class TextTriggerController extends ChromeList {
 		this.isOpen = false;
 		this.query = '';
 		this.index = 0;
-		this.activeRange = null;
+		this.#activeRange = null;
 	}
 
 	/** The range where its anchors resolve now: one text, the trigger before the query end. */
 	protected get range(): TriggerRange | null {
 		const { selection } = this.edytor;
-		const trigger = this.activeRange && selection.resolveTextAnchor(this.activeRange.trigger);
-		const end = this.activeRange && selection.resolveTextAnchor(this.activeRange.end);
+		const trigger = this.#activeRange && selection.resolveTextAnchor(this.#activeRange.trigger);
+		const end = this.#activeRange && selection.resolveTextAnchor(this.#activeRange.end);
 		if (!trigger || !end || trigger.text !== end.text) return null;
 		if (end.offset < trigger.offset + this.char.length) return null;
 		return { text: trigger.text, triggerStart: trigger.offset, queryEnd: end.offset };
@@ -191,8 +191,8 @@ export abstract class TextTriggerController extends ChromeList {
 
 	protected setEnd(text: Text, queryEnd: number) {
 		const end = this.edytor.selection.createTextAnchor(text, queryEnd, 'left');
-		if (this.activeRange && end) this.activeRange.end = end;
-		this.syncQueryFromText();
+		if (this.#activeRange && end) this.#activeRange.end = end;
+		this.#syncQueryFromText();
 	}
 
 	protected open(text: Text, triggerStart: number, queryEnd: number) {
@@ -200,14 +200,14 @@ export abstract class TextTriggerController extends ChromeList {
 		const trigger = selection.createTextAnchor(text, triggerStart, 'right');
 		const end = selection.createTextAnchor(text, queryEnd, 'left');
 		if (!trigger || !end) return;
-		this.activeRange = { trigger, end };
+		this.#activeRange = { trigger, end };
 		this.isOpen = true;
 		this.query = '';
 		this.index = 0;
-		this.syncQueryFromText(true);
+		this.#syncQueryFromText(true);
 	}
 
-	private syncQueryFromText(opened = false) {
+	#syncQueryFromText(opened = false) {
 		const range = this.range;
 		if (!range) return;
 		const { text, triggerStart, queryEnd } = range;

@@ -35,10 +35,10 @@ export class ToolbarController {
 	/** The open panel: the kind menu, the link field or the colors. */
 	panel = $state<null | 'turn' | 'link' | 'color'>(null);
 	/** The selection the toolbar acts on: a value (anchors), so peers' edits move it. */
-	private selectionSnapshot: SelectionValue | null = null;
-	private isRestoringSelection = false;
+	#selectionSnapshot: SelectionValue | null = null;
+	#isRestoringSelection = false;
 	/** The link panel's field takes the focus when it next mounts (it was opened, not re-rendered). */
-	private focusField = false;
+	#focusField = false;
 	/** The link under the pointer, for the link card (`link.card`). */
 	hovered = $state.raw<HTMLAnchorElement | null>(null);
 
@@ -148,25 +148,25 @@ export class ToolbarController {
 
 	/** Give the keyboard back to the editor (Escape in the bar), over the held selection. */
 	release() {
-		const snapshot = this.selectionSnapshot;
+		const snapshot = this.#selectionSnapshot;
 		this.panel = null;
-		if (snapshot) this.restoreSelection(snapshot);
+		if (snapshot) this.#restoreSelection(snapshot);
 		this.edytor.expectInternalFocus();
 		this.edytor.node?.focus({ preventScroll: true });
 	}
 
 	updateFromSelection(selection = this.edytor.selection) {
-		if (!this.canShowForSelection(selection)) {
+		if (!this.#canShowForSelection(selection)) {
 			this.shown = false;
 			this.linkUrl = '';
 			this.panel = null;
-			this.selectionSnapshot = null;
+			this.#selectionSnapshot = null;
 			return;
 		}
 
 		this.shown = true;
-		if (!this.isRestoringSelection) this.linkUrl = this.getSelectedLinkUrl();
-		this.selectionSnapshot = selection.value.kind === 'text' ? selection.value : null;
+		if (!this.#isRestoringSelection) this.linkUrl = this.#getSelectedLinkUrl();
+		this.#selectionSnapshot = selection.value.kind === 'text' ? selection.value : null;
 	}
 
 	setLinkUrl(value: string) {
@@ -200,13 +200,13 @@ export class ToolbarController {
 
 	togglePanel(panel: 'turn' | 'link' | 'color') {
 		this.panel = this.panel === panel ? null : panel;
-		this.focusField = this.panel === 'link';
+		this.#focusField = this.panel === 'link';
 	}
 
 	/** Whether the link field mounting now takes the focus (once per opening). */
 	takeFieldFocus() {
-		const focus = this.focusField;
-		this.focusField = false;
+		const focus = this.#focusField;
+		this.#focusField = false;
 		return focus;
 	}
 
@@ -235,7 +235,7 @@ export class ToolbarController {
 		this.updateFromSelection();
 		if (!this.isVisible) return false;
 		this.panel = 'link';
-		return (this.focusField = true);
+		return (this.#focusField = true);
 	}
 
 	/**
@@ -244,11 +244,11 @@ export class ToolbarController {
 	 */
 	closePanel(focus = false) {
 		this.panel = null;
-		const snapshot = this.selectionSnapshot;
+		const snapshot = this.#selectionSnapshot;
 		if (!focus || this.edytor.readonly) return;
 		this.edytor.expectInternalFocus();
 		this.edytor.node?.focus({ preventScroll: true });
-		if (snapshot) this.restoreSelection(snapshot);
+		if (snapshot) this.#restoreSelection(snapshot);
 	}
 
 	/** The link card shows: a link is hovered in an editable view. */
@@ -276,7 +276,7 @@ export class ToolbarController {
 
 	/** The card's Edit: select the hovered link and open the link panel on it. */
 	editHovered() {
-		const link = this.hoveredLink();
+		const link = this.#hoveredLink();
 		this.hover(null);
 		if (!link) return;
 		this.edytor.selection.selectText(link.text, link.start, link.text, link.end);
@@ -285,13 +285,13 @@ export class ToolbarController {
 
 	/** The card's Remove: unlink the whole hovered link (one undo step); the selection stays. */
 	removeHovered() {
-		const link = this.hoveredLink();
+		const link = this.#hoveredLink();
 		this.hover(null);
 		if (link) richTextOperations(this.edytor).unlinkText(link.text, link.start, link.end);
 	}
 
 	/** The hovered link element's text and link run, read from the model (never from the DOM). */
-	private hoveredLink(): (LinkRun & { text: Text }) | null {
+	#hoveredLink(): (LinkRun & { text: Text }) | null {
 		const anchor = this.hovered;
 		if (!anchor?.isConnected || anchor.closest(`${SUGGESTION}, ${SYNTHETIC_TEXT_OVERLAY_SELECTOR}`))
 			return null;
@@ -305,13 +305,13 @@ export class ToolbarController {
 	/** Convert every block the selection touches (Notion), as one undo step. */
 	turnInto(kind: KindRow) {
 		this.panel = null;
-		this.runWithSelection(() => convertBlocks(this.edytor, getSelectionBlocks(this.edytor), kind));
+		this.#runWithSelection(() => convertBlocks(this.edytor, getSelectionBlocks(this.edytor), kind));
 	}
 
 	/** Set (or clear, with `null`) the text color or background of the selection. */
 	setColor(mark: 'color' | 'highlight', value: string | null) {
 		this.panel = null;
-		this.runWithSelection(() => {
+		this.#runWithSelection(() => {
 			const operations = richTextOperations(this.edytor);
 			if (value) operations.setMarkValueAtRange(mark, value);
 			else operations.removeMarkAtRange(mark);
@@ -321,7 +321,7 @@ export class ToolbarController {
 	toggleMark(mark: string) {
 		const run = this.edytor.marks.get(mark)?.toolbar?.run;
 		if (run) return run(this.edytor);
-		this.runWithSelection(() => {
+		this.#runWithSelection(() => {
 			richTextOperations(this.edytor).setMarkAtRange(mark as RichTextMark);
 		});
 	}
@@ -330,20 +330,20 @@ export class ToolbarController {
 		const href = this.linkUrl.trim();
 		if (!href) this.removeLink();
 		else
-			this.runWithSelection(() => {
+			this.#runWithSelection(() => {
 				richTextOperations(this.edytor).setLinkAtRange({ href });
 				this.linkUrl = href;
 			});
 	}
 
 	removeLink() {
-		this.runWithSelection(() => {
+		this.#runWithSelection(() => {
 			richTextOperations(this.edytor).removeLinkAtRange();
 			this.linkUrl = '';
 		});
 	}
 
-	private canShowForSelection(selection: EdytorSelection) {
+	#canShowForSelection(selection: EdytorSelection) {
 		const range = selection.textRange();
 		return (
 			!selection.projection.isCollapsed &&
@@ -357,7 +357,7 @@ export class ToolbarController {
 		);
 	}
 
-	private getSelectedLinkUrl() {
+	#getSelectedLinkUrl() {
 		for (const { text, start, end } of selectedTextSpans(this.edytor)) {
 			for (const segment of text.getMarksAtRange(start, end)) {
 				const href = getLinkHref(segment.marks?.link);
@@ -368,20 +368,20 @@ export class ToolbarController {
 	}
 
 	/** Act on the held selection, then select it again (the projector displays it). */
-	private runWithSelection(callback: () => void) {
-		const snapshot = this.selectionSnapshot;
+	#runWithSelection(callback: () => void) {
+		const snapshot = this.#selectionSnapshot;
 		if (!this.isVisible || !snapshot) return;
-		this.restoreSelection(snapshot);
+		this.#restoreSelection(snapshot);
 		callback();
-		this.restoreSelection(snapshot);
+		this.#restoreSelection(snapshot);
 	}
 
-	private restoreSelection(snapshot: SelectionValue) {
-		this.isRestoringSelection = true;
+	#restoreSelection(snapshot: SelectionValue) {
+		this.#isRestoringSelection = true;
 		try {
 			this.edytor.selection.select(snapshot);
 		} finally {
-			this.isRestoringSelection = false;
+			this.#isRestoringSelection = false;
 		}
 	}
 }

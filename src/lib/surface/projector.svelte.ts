@@ -209,7 +209,7 @@ export class Projector {
 	};
 
 	/**
-	 * The user-input window closed (`withUserInput`): a pass it held back (a
+	 * The user-input window closed (`#withUserInput`): a pass it held back (a
 	 * render under the handler that asked for no display, such as a mark
 	 * removal re-rendering the text under a range) runs now. The flag is no
 	 * reactive source, so no later flush is owed: without this, the range the

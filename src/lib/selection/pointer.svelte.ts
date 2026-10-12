@@ -66,7 +66,7 @@ export class SelectionPointer {
 		this.#held = true;
 	};
 
-	private chromeBlock = (node: Node | null) => {
+	#chromeBlock = (node: Node | null) => {
 		const element = getElementFromNode(node);
 		const nonEditableElement = element?.closest('[contenteditable="false"]');
 		if (
@@ -200,7 +200,7 @@ export class SelectionPointer {
 		}
 		const box = host.getBoundingClientRect();
 		const x = Math.min(Math.max(at.clientX, box.left + 1), box.right - 1);
-		const point = this.pointAt(x, at.clientY);
+		const point = this.#pointAt(x, at.clientY);
 		if (!point) return;
 		edytor.expectInternalFocus();
 		host.focus({ preventScroll: true });
@@ -210,7 +210,7 @@ export class SelectionPointer {
 	/** @internal */
 	chromePress = (event: MouseEvent) => {
 		const targetNode = event.target instanceof Node ? event.target : null;
-		const targetBlock = this.chromeBlock(targetNode);
+		const targetBlock = this.#chromeBlock(targetNode);
 		const targetText = targetBlock?.firstText;
 		// A native control inside the chrome (a void block's input) owns its press.
 		if (!targetText || isNativeInteractiveEvent(event)) {
@@ -254,7 +254,7 @@ export class SelectionPointer {
 	};
 
 	/** The text point under the pointer, if any. */
-	pointAt = (clientX: number, clientY: number) => {
+	#pointAt = (clientX: number, clientY: number) => {
 		const at = caretAtPoint(
 			this.selection.edytor.node?.ownerDocument ?? document,
 			clientX,
@@ -264,13 +264,13 @@ export class SelectionPointer {
 		return text ? { text, offset: offsetIn(text, at.node, at.offset), clientX, clientY } : null;
 	};
 
-	offsetAt = (text: Text, clientX: number, clientY: number) => {
+	#offsetAt = (text: Text, clientX: number, clientY: number) => {
 		const ownerDocument = text.node?.ownerDocument;
 		if (!text.node || !ownerDocument) {
 			return 0;
 		}
 
-		const caretPoint = this.pointAt(clientX, clientY);
+		const caretPoint = this.#pointAt(clientX, clientY);
 		if (caretPoint?.text === text) {
 			return caretPoint.offset;
 		}
@@ -298,7 +298,7 @@ export class SelectionPointer {
 
 	/** @internal */
 	placeAt = (text: Text, clientX: number, clientY: number) => {
-		this.selection.selectText(text, this.offsetAt(text, clientX, clientY));
+		this.selection.selectText(text, this.#offsetAt(text, clientX, clientY));
 	};
 
 	/** @internal */
@@ -308,7 +308,7 @@ export class SelectionPointer {
 			return;
 		}
 
-		this.dragStart = this.pointAt(event.clientX, event.clientY);
+		this.dragStart = this.#pointAt(event.clientX, event.clientY);
 		this.#across = false;
 		this.#extending = event.shiftKey;
 	};
@@ -384,7 +384,7 @@ export class SelectionPointer {
 		}
 		this.selection.placedOver = this.selection.value;
 
-		const point = this.pointAt(event.clientX, event.clientY);
+		const point = this.#pointAt(event.clientX, event.clientY);
 		if (!point) {
 			return;
 		}
@@ -402,7 +402,7 @@ export class SelectionPointer {
 			return;
 		}
 
-		const dragEnd = this.pointAt(event.clientX, event.clientY);
+		const dragEnd = this.#pointAt(event.clientX, event.clientY);
 		if (!dragEnd) {
 			return;
 		}

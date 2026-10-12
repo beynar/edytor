@@ -394,7 +394,7 @@ export class BlockMenuController {
 	 * With a query, the kinds it names join the list (Notion's "Turn into"
 	 * results), matched as the slash menu matches them (`matchesQuery`).
 	 */
-	get matchingKinds(): KindRow[] {
+	get #matchingKinds(): KindRow[] {
 		if (!this.query.trim()) return [];
 		const kinds = convertedBlocks(this.members).length
 			? this.kinds
@@ -414,7 +414,7 @@ export class BlockMenuController {
 
 	/** Every keyboard row: actions, then the matching kinds, then the matching colours. */
 	get rows(): Array<BlockMenuAction | KindRow | BlockMenuColor> {
-		return [...this.actions, ...this.matchingKinds, ...this.matchingColors];
+		return [...this.actions, ...this.#matchingKinds, ...this.matchingColors];
 	}
 
 	open(block: Block, anchor: HTMLElement) {

@@ -199,10 +199,10 @@ export class BlockHandleController {
 			listen(node, 'click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();
-				this.activateBlock(block, node);
+				this.#activateBlock(block, node);
 			}),
 			listen(node, 'pointerdown', (event) => event.stopPropagation()),
-			listen(node, 'keydown', (event: KeyboardEvent) => this.handleKeyDown(event, block)),
+			listen(node, 'keydown', (event: KeyboardEvent) => this.#handleKeyDown(event, block)),
 			this.registerHandle(node, block)
 		);
 		return { destroy: off };
@@ -213,7 +213,7 @@ export class BlockHandleController {
 	 * range across blocks, the blocks it covers (`select`) — and open its
 	 * menu.
 	 */
-	activateBlock(block: Block, anchor: HTMLElement) {
+	#activateBlock(block: Block, anchor: HTMLElement) {
 		if (this.edytor.readonly || !block.movable) return;
 		const { selection } = this.edytor;
 		const before = selection.value;
@@ -252,7 +252,7 @@ export class BlockHandleController {
 	addBlock(block: Block, alt = false, anchor: HTMLElement | null = block.node ?? null) {
 		const { edytor } = this;
 		if (edytor.readonly || !block.parent) return;
-		this.ungrip();
+		this.#ungrip();
 		const column = alt && this.addsColumn(block);
 		const above = alt && !column;
 		const insert = (then?: () => unknown) => {
@@ -319,7 +319,7 @@ export class BlockHandleController {
 	 * block's first line — and the `+` holds that one (its menu's Escape
 	 * gives it back).
 	 */
-	private ungrip() {
+	#ungrip() {
 		const { gripped } = this;
 		this.gripped = null;
 		const { selection, facade } = this.edytor;
@@ -360,8 +360,8 @@ export class BlockHandleController {
 						render: ({ container }) => container.append(preview.element)
 					});
 				}
-				for (const [node, target] of this.targets) this.registerDropTarget(node, target);
-				this.registerDropTarget(element.ownerDocument.body, null);
+				for (const [node, target] of this.targets) this.#registerDropTarget(node, target);
+				this.#registerDropTarget(element.ownerDocument.body, null);
 				this.scrolling?.();
 				this.scrolling = root ? autoScrollFor(root, (data) => data.owner === this.owner) : null;
 				this.indicator.begin(element.ownerDocument);
@@ -398,7 +398,7 @@ export class BlockHandleController {
 	addDropTarget(node: HTMLElement, target: Block) {
 		if (!this.options.draggable) return () => {};
 		this.targets.set(node, target);
-		if (this.dragging) this.registerDropTarget(node, target);
+		if (this.dragging) this.#registerDropTarget(node, target);
 		return () => {
 			if (this.targets.get(node) === target) this.targets.delete(node);
 			this.registered.get(node)?.();
@@ -417,10 +417,10 @@ export class BlockHandleController {
 	 * stickiness) stand, and a block target holding the pointer (its sticky
 	 * slop) answers before the page.
 	 */
-	private registerDropTarget(node: HTMLElement, target: Block | null) {
+	#registerDropTarget(node: HTMLElement, target: Block | null) {
 		if (this.registered.has(node)) return;
 		type Event = { location: DragLocation; source: { data: Record<string, unknown> } };
-		const show = ({ location, source }: Event) => this.showIndicator(node, location, source.data);
+		const show = ({ location, source }: Event) => this.#showIndicator(node, location, source.data);
 		const cleanup = dropTargetForElements({
 			element: node,
 			// A beside band counts: a row whose halves are both refused still takes it.
@@ -429,10 +429,10 @@ export class BlockHandleController {
 			// row at the pointer's height (`margin`): never a placement held from
 			// a row passed on the way.
 			canDrop: ({ source, input }) => {
-				const dragSource = this.getDragSource(source.data);
+				const dragSource = this.#getDragSource(source.data);
 				if (!dragSource) return false;
 				if (!target) return Boolean(this.margin(dragSource, input));
-				if (this.inHandleColumn(input.clientX)) return false;
+				if (this.#inHandleColumn(input.clientX)) return false;
 				const row = this.rowAt(dragSource, target, node, input);
 				const { before, after } = this.zones(dragSource, row, input);
 				return (
@@ -444,7 +444,7 @@ export class BlockHandleController {
 			// the pointer is in: held while the target is sticky (the drag library
 			// keeps a sticky record's data).
 			getData: ({ source, input }) => {
-				const dragSource = this.getDragSource(source.data);
+				const dragSource = this.#getDragSource(source.data);
 				if (!target || !dragSource) return { [MARGIN]: true };
 				const row = this.rowAt(dragSource, target, node, input);
 				const rect = ownRow(row.node!);
@@ -457,7 +457,7 @@ export class BlockHandleController {
 			// which the drag library would otherwise let it keep), nor over another column.
 			getIsSticky: ({ source, input }) => {
 				const active = this.indicator.target;
-				if (!target || !this.getDragSource(source.data) || !active || !node.contains(active))
+				if (!target || !this.#getDragSource(source.data) || !active || !node.contains(active))
 					return false;
 				const rect = node.getBoundingClientRect();
 				return (
@@ -465,7 +465,7 @@ export class BlockHandleController {
 					input.clientX <= rect.right + SLOP_X &&
 					input.clientY >= rect.top - SLOP_Y &&
 					(input.clientY <= rect.bottom + SLOP_Y || endsDocument(target)) &&
-					!this.overOtherColumn(target, input.clientX) &&
+					!this.#overOtherColumn(target, input.clientX) &&
 					!overOtherRow(
 						node,
 						input,
@@ -481,12 +481,12 @@ export class BlockHandleController {
 				if (this.indicator.target !== node) return;
 				this.indicator.clear();
 				const [current] = location.current.dropTargets;
-				if (current) this.showIndicator(current.element as HTMLElement, location, source.data);
+				if (current) this.#showIndicator(current.element as HTMLElement, location, source.data);
 			},
 			onDrop: ({ location, source }: Event) => {
 				const [current] = location.current.dropTargets;
 				if (current?.element !== node) return;
-				const dragSource = this.getDragSource(source.data);
+				const dragSource = this.#getDragSource(source.data);
 				const placement =
 					this.indicator.target === node && this.indicator.placement
 						? this.indicator.placement
@@ -496,7 +496,7 @@ export class BlockHandleController {
 				const { target, position } = placement;
 				const request = { blocks: this.moving(dragSource), target, position };
 				if (!this.edytor.canMove(request)) return;
-				const moved = this.moveAndSelect(request);
+				const moved = this.#moveAndSelect(request);
 				if (moved.length && this.held) this.edytor.history.began(this.held);
 			}
 		});
@@ -521,7 +521,7 @@ export class BlockHandleController {
 	}
 
 	/** Whether `x` is in the handle column left of the editor's blocks (`gutter`): the page target's. */
-	private inHandleColumn(x: number) {
+	#inHandleColumn(x: number) {
 		const root = this.edytor.node;
 		return !!root && marginAt(x, this.gutter(root))?.zone === 'handles';
 	}
@@ -648,16 +648,16 @@ export class BlockHandleController {
 	/**
 	 * Alt+arrow: one step for the blocks a drag of this handle moves. A text
 	 * range over them stays, as Mod+Shift+arrow keeps it; else they end
-	 * selected as after a drop (`moveAndSelect`).
+	 * selected as after a drop (`#moveAndSelect`).
 	 */
-	handleKeyDown(event: KeyboardEvent, block: Block) {
+	#handleKeyDown(event: KeyboardEvent, block: Block) {
 		const direction = event.altKey ? keyMoves[event.key] : undefined;
 		if (this.edytor.readonly || !direction) return;
 		event.preventDefault();
 		event.stopPropagation();
 		const request = { blocks: this.dragBlocks(block), direction };
 		if (this.#covered(block)?.range) this.edytor.move(request);
-		else this.moveAndSelect(request);
+		else this.#moveAndSelect(request);
 	}
 
 	/**
@@ -665,7 +665,7 @@ export class BlockHandleController {
 	 * the block selection holds keeps it (a moved block's selected children
 	 * too); any other group ends selected alone.
 	 */
-	private moveAndSelect(request: BlockMoveRequest) {
+	#moveAndSelect(request: BlockMoveRequest) {
 		const { selectedBlocks } = this.edytor.selection;
 		// A layout the selection covers whole counts as held: its blocks stay selected.
 		const holds = holdsBlocks(selectedBlocks, request.blocks);
@@ -789,7 +789,7 @@ export class BlockHandleController {
 	 * Whether `x` is over a column other than one holding `block`: a sticky
 	 * target never holds the pointer across a column boundary.
 	 */
-	private overOtherColumn(block: Block, x: number) {
+	#overOtherColumn(block: Block, x: number) {
 		const { facade } = this.edytor;
 		for (let at: Block | undefined = block; at && !at.isRoot; at = at.parent) {
 			if (!facade.isLayoutItem(at.id)) continue;
@@ -978,16 +978,16 @@ export class BlockHandleController {
 	}
 
 	/** The block our drag moves from (none in a read-only view). */
-	private getDragSource(data: Record<string, unknown>) {
+	#getDragSource(data: Record<string, unknown>) {
 		if (data.owner !== this.owner || typeof data.blockId !== 'string' || this.edytor.readonly)
 			return null;
 		return this.edytor.idToBlock.get(data.blockId) ?? null;
 	}
 
-	private showIndicator(node: HTMLElement, location: DragLocation, data: Record<string, unknown>) {
+	#showIndicator(node: HTMLElement, location: DragLocation, data: Record<string, unknown>) {
 		const [current] = location.current.dropTargets;
 		if (current?.element !== node) return;
-		const source = this.getDragSource(data);
+		const source = this.#getDragSource(data);
 		const placement = source && this.placement(current, source, location.current.input);
 		// A refused beside band shows nothing.
 		if (placement === false) return this.indicator.clear();

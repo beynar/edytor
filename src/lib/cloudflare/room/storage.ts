@@ -120,7 +120,7 @@ export class RoomStorage {
 	/** What the records hold, uncompressed (the generation record aside): the document quota's measure. */
 	documentBytes = 0;
 	/** The size passed `documentWarning` of the quota and was logged (memory: a wake logs it again). */
-	private warned = false;
+	#warned = false;
 
 	/**
 	 * Log the document's size when it passes `documentWarning` of its quota
@@ -131,11 +131,11 @@ export class RoomStorage {
 		const room = this.room;
 		const { maxDocumentBytes: limit, documentWarning: share } = room.limits;
 		if (this.documentBytes < limit * share) {
-			this.warned = false;
+			this.#warned = false;
 			return;
 		}
-		if (this.warned) return;
-		this.warned = true;
+		if (this.#warned) return;
+		this.#warned = true;
 		room.log({ edytor: 'size', bytes: this.documentBytes, limit, share });
 	}
 	/** The waiting deletes stored as `pending` records (the engine may hold more, in memory). */
@@ -146,13 +146,13 @@ export class RoomStorage {
 	 * would write is closed before it is applied, so an outage rebuilds once.
 	 */
 	outage: unknown = null;
-	private nextRecord = 0;
+	#nextRecord = 0;
 	/** The snapshot compression in flight (`compressed()`). */
-	private compressing: Promise<unknown> = Promise.resolve();
+	#compressing: Promise<unknown> = Promise.resolve();
 	/** The raw bytes of the compressed snapshot record (`records` reads it; only `start` can inflate). */
 	private inflated: { record: number; bytes: Uint8Array<ArrayBuffer> } | null = null;
 	/** Alarms in a row that found the rows unreadable: each re-arms later. */
-	private saveRetries = 0;
+	#saveRetries = 0;
 
 	constructor(private readonly room: RoomContext) {}
 
@@ -316,7 +316,7 @@ export class RoomStorage {
 			room.live?.destroy();
 			this.adopt(doc);
 			this.storedWaiting = waiting;
-			this.compressLater(record, snapshot);
+			this.#compressLater(record, snapshot);
 		});
 	}
 
@@ -366,7 +366,7 @@ export class RoomStorage {
 			);
 			room.scheduler.readDues();
 			room.history.loadRestore();
-			this.nextRecord = 0;
+			this.#nextRecord = 0;
 			records = this.records();
 		} catch (error) {
 			return this.fail(error, !(error instanceof TornRecord));
@@ -427,7 +427,7 @@ export class RoomStorage {
 				...(only ? [only] : [])
 			)
 			.toArray();
-		for (const row of rows) this.nextRecord = Math.max(this.nextRecord, row.record + 1);
+		for (const row of rows) this.#nextRecord = Math.max(this.#nextRecord, row.record + 1);
 		return reassemble(rows).map((record) => {
 			if (!isGzip(record.bytes)) return record;
 			if (this.inflated?.record !== record.record) throw new CompressedRecord();
@@ -441,11 +441,11 @@ export class RoomStorage {
 	 * generation record with it.
 	 */
 	insert(kind: RowKind, bytes: Uint8Array): number {
-		if (this.nextRecord === 0 && kind !== 'generation') {
+		if (this.#nextRecord === 0 && kind !== 'generation') {
 			this.insert('generation', encodeJSON(GENERATION_RECORD));
 		}
-		const record = this.nextRecord++;
-		this.writeRecord(kind, record, bytes);
+		const record = this.#nextRecord++;
+		this.#writeRecord(kind, record, bytes);
 		if (kind !== 'generation') {
 			this.documentBytes += bytes.length;
 			this.watch();
@@ -454,7 +454,7 @@ export class RoomStorage {
 	}
 
 	/** Record `record`'s rows (at the row positions `seqs`, when given). */
-	private writeRecord(kind: RowKind, record: number, bytes: Uint8Array, seqs?: number[]) {
+	#writeRecord(kind: RowKind, record: number, bytes: Uint8Array, seqs?: number[]) {
 		const { sql, tables, limits } = this.room;
 		const parts = Math.max(1, Math.ceil(bytes.length / limits.maxRowBytes));
 		for (let part = 0; part < parts; part++) {
@@ -489,7 +489,7 @@ export class RoomStorage {
 	 * snapshot and only when that shrinks it; the raw bytes stay in memory
 	 * (`inflated`) for a rebuild's synchronous read.
 	 */
-	private compressLater(record: number, raw: Uint8Array) {
+	#compressLater(record: number, raw: Uint8Array) {
 		const room = this.room;
 		const job = packed(raw)
 			.then((bytes) =>
@@ -507,7 +507,7 @@ export class RoomStorage {
 					if (rows.length !== Math.max(1, Math.ceil(raw.length / room.limits.maxRowBytes))) return;
 					room.ctx.storage.transactionSync(() => {
 						room.sql.exec(`DELETE FROM ${room.tables.rows} WHERE record = ?`, record);
-						this.writeRecord(
+						this.#writeRecord(
 							'snapshot',
 							record,
 							bytes,
@@ -518,13 +518,13 @@ export class RoomStorage {
 				})
 			)
 			.catch((error) => room.note({ reason: 'storage', detail: `compression: ${String(error)}` }));
-		this.compressing = job;
+		this.#compressing = job;
 		room.ctx.waitUntil?.(job);
 	}
 
 	/** Resolves once the snapshot compression in flight, if any, is stored. */
 	async compressed(): Promise<void> {
-		await this.compressing;
+		await this.#compressing;
 	}
 
 	/** Compaction (`AttachedDocument.compact`). */
@@ -551,7 +551,7 @@ export class RoomStorage {
 				.map(({ replica }) => replica);
 			const known = new Set([...registered, ...sockets]);
 			// Waiting deletes stay apart (a discarded forgery drops them,
-			// `settleDeletes`): the stored ones the engine still holds waiting.
+			// `#settleDeletes`): the stored ones the engine still holds waiting.
 			const all = pendingDeletes(doc);
 			const stored = storedPending(pending);
 			const waiting = Y.diffIdSet(stored, Y.diffIdSet(stored, all));
@@ -579,7 +579,7 @@ export class RoomStorage {
 			}
 			this.updates = 0;
 			this.storedWaiting = still;
-			this.compressLater(record, snapshot);
+			this.#compressLater(record, snapshot);
 			// Unknown ids' deletes go, the ones waiting in memory with a rewrite too.
 			forgetWaiting(
 				doc,
@@ -793,10 +793,10 @@ export class RoomStorage {
 		if (!room.options.onSave) return scheduler.unschedule('save');
 		if (room.live === null) {
 			if (!this.retryable) return scheduler.unschedule('save');
-			const wait = Math.min(room.limits.saveAfter * 2 ** ++this.saveRetries, MAX_SAVE_RETRY);
+			const wait = Math.min(room.limits.saveAfter * 2 ** ++this.#saveRetries, MAX_SAVE_RETRY);
 			return scheduler.schedule('save', room.clock() + wait, 'replace');
 		}
-		this.saveRetries = 0;
+		this.#saveRetries = 0;
 		const due = scheduler.due('save')!;
 		// Cleared first: a change during `onSave` arms the next one.
 		scheduler.unschedule('save');

@@ -232,7 +232,7 @@ export class Dispatcher {
 	/** Requested normalization passes: (block id, normalizer). */
 	private queue: Pass[] = [];
 	private current: Pass | null = null;
-	private draining = false;
+	#draining = false;
 	/** A plan the next dispatched operation composes before its own (`lead`). */
 	private leading: Plan | null = null;
 	/** The next dispatched operation is a step of its own, as a led one is (`alone`). */
@@ -719,8 +719,8 @@ export class Dispatcher {
 	 * @internal
 	 */
 	drain = () => {
-		if (this.draining) return;
-		this.draining = true;
+		if (this.#draining) return;
+		this.#draining = true;
 		const passes = new Map<Normalizer, Map<string, number>>();
 		const { edytor } = this;
 		try {
@@ -758,7 +758,7 @@ export class Dispatcher {
 		} finally {
 			this.queue = [];
 			this.current = null;
-			this.draining = false;
+			this.#draining = false;
 		}
 	};
 

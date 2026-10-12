@@ -17,14 +17,13 @@ const isTextPart = (part: Block['content'][number] | undefined): part is Text =>
  * changes the block's content.
  */
 export class InlineBlock {
-	_def = 'inline' as const;
 	readonly = false;
 	readonly edytor: Edytor;
 	readonly id: string;
 	/** The block that shows the atom (the view updates it when the atom moves). */
 	blockId: string;
 	node: HTMLElement | undefined;
-	private attachedNodes = new Set<HTMLElement>();
+	#attachedNodes = new Set<HTMLElement>();
 
 	constructor(edytor: Edytor, blockId: string, id: string) {
 		this.edytor = edytor;
@@ -79,7 +78,7 @@ export class InlineBlock {
 		node.setAttribute('contenteditable', 'false');
 		node.dataset.edytorId = this.id;
 		node.dataset.edytorInlineBlock = this.type;
-		this.attachedNodes.add(node);
+		this.#attachedNodes.add(node);
 		this.edytor.nodeToInlineBlock.set(node, this);
 		this.node = node;
 		const release = this.edytor.surface.register(node, 'atom', this.blockId);
@@ -111,9 +110,9 @@ export class InlineBlock {
 		return {
 			destroy: () => {
 				node.removeEventListener('pointerdown', selectInlineBlock);
-				this.attachedNodes.delete(node);
+				this.#attachedNodes.delete(node);
 				if (this.node === node) {
-					this.node = this.attachedNodes.values().next().value;
+					this.node = this.#attachedNodes.values().next().value;
 				}
 				this.edytor.nodeToInlineBlock.delete(node);
 				release();

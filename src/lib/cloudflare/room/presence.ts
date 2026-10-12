@@ -37,7 +37,7 @@ const verifiedPresence = (entry: AwarenessEntry, user: string): AwarenessEntry =
 
 export class RoomPresence {
 	/** Each socket's presence allowance, a bucket of its own. */
-	private readonly allowances: Allowances = new WeakMap();
+	readonly #allowances: Allowances = new WeakMap();
 	/** Sockets in a burst past their presence rate, logged once (`overRate`). */
 	private readonly bursts = new WeakSet<WebSocket>();
 	/**
@@ -72,7 +72,7 @@ export class RoomPresence {
 	 * on a bucket of the socket's own. `false`: over it.
 	 */
 	allow(ws: WebSocket): boolean {
-		if (!allowance(this.allowances, ws, this.room.limits.maxPresencePerSecond)) return false;
+		if (!allowance(this.#allowances, ws, this.room.limits.maxPresencePerSecond)) return false;
 		this.bursts.delete(ws);
 		return true;
 	}
@@ -115,7 +115,7 @@ export class RoomPresence {
 				});
 			}
 		}
-		this.compareSemantics(attachment.user, known, entry);
+		this.#compareSemantics(attachment.user, known, entry);
 		if (entry.state === null) this.entries.delete(replica);
 		else this.entries.set(replica, entry);
 		ws.serializeAttachment({
@@ -215,7 +215,7 @@ export class RoomPresence {
 	 * refusal: a client without a plugin, or with roles the room lacks, is
 	 * the host's to fix, in `semantics`.
 	 */
-	private compareSemantics(user: string, known: AwarenessEntry | undefined, entry: AwarenessEntry) {
+	#compareSemantics(user: string, known: AwarenessEntry | undefined, entry: AwarenessEntry) {
 		const advertised = entry.state?.semantics;
 		if (advertised === undefined) return;
 		if (JSON.stringify(known?.state?.semantics) === JSON.stringify(advertised)) return;

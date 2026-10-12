@@ -68,7 +68,7 @@ export class RoomPurge {
 				.toArray()[0];
 			let result: (PurgeReport & { horizon: number }) | null = null;
 			if (horizon !== undefined && horizon.at > purged) {
-				result = this.purgeTo({ at: horizon.at, sv: new Uint8Array(horizon.sv) });
+				result = this.#purgeTo({ at: horizon.at, sv: new Uint8Array(horizon.sv) });
 			}
 			// The next epoch to pass the horizon, or the next change, arms it again.
 			const next = sql
@@ -86,7 +86,7 @@ export class RoomPurge {
 	}
 
 	/** Purge what was deleted before `horizon`, as the room's own transaction, then compact. */
-	private purgeTo(horizon: { at: number; sv: Uint8Array }): PurgeReport & { horizon: number } {
+	#purgeTo(horizon: { at: number; sv: Uint8Array }): PurgeReport & { horizon: number } {
 		const room = this.room;
 		const doc = room.requireDoc();
 		// A restore past the horizon can no longer be undone (`room.history.undo`).

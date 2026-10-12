@@ -236,10 +236,10 @@ export class Edytor {
 	/** What the components render: one cell per visible block, patched from change reports. */
 	cells = $state.raw<Cells>();
 	/** Bumped by each commit that changed the document's data: what `docData()` readers track. */
-	private dataRevision = $state(0);
+	#dataRevision = $state(0);
 	/** @internal The document's data, read-your-writes and reactive (`{}` when none). */
 	docData = (): Record<string, unknown> => {
-		void this.dataRevision;
+		void this.#dataRevision;
 		return this.facade.docData();
 	};
 	/**
@@ -279,7 +279,7 @@ export class Edytor {
 	 * @internal
 	 */
 	get isHandlingUserInput(): boolean {
-		return this.userInputHandlingDepth > 0;
+		return this.#userInputHandlingDepth > 0;
 	}
 	/**
 	 * Depth counter suppressing caret scroll during programmatic DOM
@@ -349,7 +349,7 @@ export class Edytor {
 	readonly dispatcher: Dispatcher = new Dispatcher(this);
 
 	/** An outermost `transact` of this view is running. */
-	private transacting = false;
+	#transacting = false;
 	/**
 	 * One transaction of this view. The outermost call runs the normalization
 	 * its operations requested at its end, inside the same transaction (one transaction, normalization once per touched parent): normalizers read
@@ -360,8 +360,8 @@ export class Edytor {
 	 * logged.
 	 */
 	transact = <T>(cb: () => T): T => {
-		if (this.transacting) return this.doc.transact(cb, this.transaction);
-		this.transacting = true;
+		if (this.#transacting) return this.doc.transact(cb, this.transaction);
+		this.#transacting = true;
 		try {
 			return this.doc.transact(() => {
 				let out: T;
@@ -379,7 +379,7 @@ export class Edytor {
 				return out;
 			}, this.transaction);
 		} finally {
-			this.transacting = false;
+			this.#transacting = false;
 		}
 	};
 
@@ -532,7 +532,7 @@ export class Edytor {
 			if (this.ownsDocument && !sync) {
 				this.sync(value || { children: [] });
 			} else {
-				this._readinessRelease = whenDocumentReady(this.document, () => {
+				this.#readinessRelease = whenDocumentReady(this.document, () => {
 					if (!this.destroyed) this.sync(value || { children: [] });
 				});
 			}
@@ -556,7 +556,7 @@ export class Edytor {
 	}
 
 	/** Kinds already reported missing (DEV, once each). */
-	private unknownKinds = new Set<string>();
+	#unknownKinds = new Set<string>();
 
 	/**
 	 * The definition of block kind `type` — the one lookup (render, surface,
@@ -567,8 +567,8 @@ export class Edytor {
 	definitionOf = (type: string): BlockDefinition => {
 		const definition = this.blocks.get(type);
 		if (definition) return definition;
-		if (DEV && type && type !== 'root' && !this.unknownKinds.has(type)) {
-			this.unknownKinds.add(type);
+		if (DEV && type && type !== 'root' && !this.#unknownKinds.has(type)) {
+			this.#unknownKinds.add(type);
 			console.warn(
 				`[edytor] block kind "${type}" is not registered by any plugin: it renders as a plain block.`
 			);
@@ -634,7 +634,7 @@ export class Edytor {
 		this.document.defaultChild(parent.isRoot ? null : parent.type);
 
 	/** Releases the readiness wait of a view bound before its document decided. */
-	private _readinessRelease: (() => void) | undefined;
+	#readinessRelease: (() => void) | undefined;
 
 	/** @internal */
 	sync = ({ children = [], data }: JSONDoc = { children: [] }) => {
@@ -649,21 +649,21 @@ export class Edytor {
 		this.history.bind();
 		this.cells = createCells(this.facade, this.surface.patched);
 		this.root = this.idToBlock.root;
-		this.offCommit = this.facade.onChange(this.onCommit);
+		this.#offCommit = this.facade.onChange(this.#onCommit);
 		// A document that is already empty shows its virtual paragraph with the caret in it.
 		this.selection?.restoreDeadSelectionEndpoints();
 	};
 
 	/** The commit subscription: editor-lifetime (a remount's `off` drain never releases it). */
-	private offCommit?: () => void;
+	#offCommit?: () => void;
 
 	/**
 	 * One commit (local, remote, undo/redo): prune the handles of the removed
 	 * blocks, then the selection's seam and the value consumers.
 	 */
-	private onCommit = (change: DocChange) => {
+	#onCommit = (change: DocChange) => {
 		this.valueRevision++;
-		if (change.data) this.dataRevision++;
+		if (change.data) this.#dataRevision++;
 		this.overlay.invalidate();
 		// A commit this view did not issue re-renders under the caret: the
 		// projector displays the current value after that flush.
@@ -740,8 +740,8 @@ export class Edytor {
 	 * runs with the flag cleared so async restores can't trigger typing
 	 * affordances long after the gesture ended.
 	 */
-	private userInputHandlingDepth = 0;
-	private withUserInput = <A extends unknown[]>(
+	#userInputHandlingDepth = 0;
+	#withUserInput = <A extends unknown[]>(
 		handler: (...args: A) => unknown,
 		opts: { bumpSerial?: boolean } = {}
 	) => {
@@ -749,13 +749,13 @@ export class Edytor {
 			// Depth-counted: a synchronous wrapped listener landing inside an
 			// awaited handler's hold window must not end the window the outer
 			// handler still needs.
-			this.userInputHandlingDepth++;
+			this.#userInputHandlingDepth++;
 			if (opts.bumpSerial !== false) {
 				this.markUserGesture();
 			}
 			const clear = () => {
 				// A display the window held back gets its pass now.
-				if (--this.userInputHandlingDepth === 0) this.projector.inputHandled();
+				if (--this.#userInputHandlingDepth === 0) this.projector.inputHandled();
 			};
 			try {
 				const result = handler(...args);
@@ -801,18 +801,18 @@ export class Edytor {
 	 * consumed there; the microtask reset covers a focus that never
 	 * fires (element already focused).
 	 */
-	private expectInternalFocusArmed = false;
+	#expectInternalFocusArmed = false;
 	/** @internal */
 	expectInternalFocus = () => {
-		this.expectInternalFocusArmed = true;
+		this.#expectInternalFocusArmed = true;
 		queueMicrotask(() => {
-			this.expectInternalFocusArmed = false;
+			this.#expectInternalFocusArmed = false;
 		});
 	};
 	/** @internal A `focusin` consumes the armed flag: `true` when the editor focused itself. */
 	consumeInternalFocus = (): boolean => {
-		const armed = this.expectInternalFocusArmed;
-		this.expectInternalFocusArmed = false;
+		const armed = this.#expectInternalFocusArmed;
+		this.#expectInternalFocusArmed = false;
 		return armed;
 	};
 	/**
@@ -835,7 +835,7 @@ export class Edytor {
 	 */
 	lastUserGestureOutsideEditor = false;
 	/** @internal Run `body` as part of the user's input (deferred work of an occurrence). */
-	userInput = <T>(body: () => T) => this.withUserInput(body, { bumpSerial: false })();
+	userInput = <T>(body: () => T) => this.#withUserInput(body, { bumpSerial: false })();
 	/**
 	 * A commit's caret: select it (the projector displays it once the pin's
 	 * render lands) and arm the IME post-commit jump rule — a move right after
@@ -861,17 +861,17 @@ export class Edytor {
 		this.selection.selectText(text, Math.min(offset, text.length));
 	};
 	/** An event of this view's own composition (not a native control's, not a nested island's). */
-	private ownComposition = (event?: Event) => !event || !isControlEvent(this.node, event);
+	#ownComposition = (event?: Event) => !event || !isControlEvent(this.node, event);
 
 	/** @internal */
 	onCompositionStart = (event?: CompositionEvent) => {
-		if (!this.ownComposition(event)) return;
+		if (!this.#ownComposition(event)) return;
 		this.composition.start(() => getDomSelectionSnapshot(this.node));
 	};
 
 	/** @internal `compositionend`: the live session's commit, or its explicit cancel; the tail swallows a late one. */
 	onCompositionEnd = (event?: CompositionEvent) => {
-		if (!this.ownComposition(event) || this.readonly) return;
+		if (!this.#ownComposition(event) || this.readonly) return;
 		const value = event?.data ?? this.composition.preview;
 		if (value) this.composition.commit(value);
 		else this.composition.cancel();
@@ -955,7 +955,7 @@ export class Edytor {
 		// composition-phantom swallow — a swallowed trailing Enter/Backspace
 		// is a browser artifact, not a gesture, and must not disarm pending
 		// composition caret restores.
-		const keydown = this.withUserInput(onKeyDown.bind(this), { bumpSerial: false });
+		const keydown = this.#withUserInput(onKeyDown.bind(this), { bumpSerial: false });
 		const detachSurface = this.surface.attach(node);
 		this.off.push(
 			// One handler per keyboard occurrence: keys inside the editor at
@@ -974,20 +974,20 @@ export class Edytor {
 			// moment (PM flushes its DOM observer on contextmenu for the
 			// same reason).
 			on(node, 'contextmenu', () => void this.surface.flush()),
-			on(node, 'beforeinput', this.withUserInput(this.onBeforeInput)),
+			on(node, 'beforeinput', this.#withUserInput(this.onBeforeInput)),
 			// An `input` records what the browser did; it says nothing new about
 			// where the user wants the selection (a display still to land wins).
-			on(node, 'input', this.withUserInput(this.onInput, { bumpSerial: false })),
+			on(node, 'input', this.#withUserInput(this.onInput, { bumpSerial: false })),
 			on(node, 'copy', this.onCopy),
-			on(node, 'cut', this.withUserInput(this.onCut)),
-			on(node, 'paste', this.withUserInput(this.onPaste)),
+			on(node, 'cut', this.#withUserInput(this.onCut)),
+			on(node, 'paste', this.#withUserInput(this.onPaste)),
 			on(node, 'dragstart', (event: DragEvent) => onTextDragStart(this, event)),
 			on(node, 'dragend', () => onTextDragEnd(this)),
 			on(node, 'dragover', (event: DragEvent) => preventUnsupportedDrop(event, this)),
 			on(
 				node,
 				'drop',
-				this.withUserInput((event: DragEvent) => preventUnsupportedDrop(event, this))
+				this.#withUserInput((event: DragEvent) => preventUnsupportedDrop(event, this))
 			),
 			on(node, 'compositionstart', this.onCompositionStart),
 			on(node, 'compositionend', this.onCompositionEnd),
@@ -1063,13 +1063,13 @@ export class Edytor {
 		this.presence.clear();
 
 		// A pending readiness binding must not resurrect a dead view.
-		this._readinessRelease?.();
-		this._readinessRelease = undefined;
+		this.#readinessRelease?.();
+		this.#readinessRelease = undefined;
 
 		// Runs the whole attach-lifetime batch — DOM listeners, the mutation
 		// observer, plugin actions — and empties the array.
 		this.off.splice(0).forEach((off) => off());
-		this.offCommit?.();
+		this.#offCommit?.();
 		this.history.unbind();
 
 		// `selectionchange` listener + the published remote caret.

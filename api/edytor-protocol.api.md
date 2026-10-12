@@ -1368,11 +1368,11 @@ declare const Y: Pick<typeof V, EngineSymbol>;
 
 ```ts
 export declare class Awareness extends IsolatedObservable<AwarenessEvents> {
+    #private;
     doc: AwarenessDoc;
     clientID: number;
     states: AwarenessStates;
     meta: Map<number, MetaClientState>;
-    private _checkInterval;
     private _destroyed;
     constructor(doc: AwarenessDoc);
     destroy(): void;

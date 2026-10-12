@@ -187,7 +187,7 @@ export type AttributionWrites = {
  * user's own replica to another actor is applied, and rebound to the user
  * by the room. A relayed id's binding to another actor is collected too
  * (the room cannot tell its author): the author's claim of the id binds
- * it again (`bindOrphan`).
+ * it again (`#bindOrphan`).
  */
 export const attributionWrites = (
 	doc: YDoc,

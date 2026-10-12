@@ -89,7 +89,7 @@ export class FileUploads {
 	}
 
 	/** The kind that takes `file`, if any. */
-	kindOf = (file: File): UploadKind | undefined =>
+	#kindOf = (file: File): UploadKind | undefined =>
 		this.#kinds.find((kind) => !kind.fallback && kind.accepts(file)) ??
 		this.#kinds.find((kind) => kind.fallback && kind.accepts(file));
 
@@ -103,7 +103,7 @@ export class FileUploads {
 	 */
 	paste: NonNullable<PluginOperations['onPaste']> = ({ e, prevent }) => {
 		if (this.edytor.readonly) return;
-		const files = Array.from(e.clipboardData?.files ?? []).filter((file) => this.kindOf(file));
+		const files = Array.from(e.clipboardData?.files ?? []).filter((file) => this.#kindOf(file));
 		if (files.length && !showsText(e.clipboardData?.getData('text/html')))
 			prevent(() => this.insert(files));
 	};
@@ -112,7 +112,7 @@ export class FileUploads {
 	insert = (files: readonly File[]) => {
 		const { edytor } = this;
 		const placed = files.flatMap((file) => {
-			const kind = this.kindOf(file);
+			const kind = this.#kindOf(file);
 			return kind ? [{ file, kind, id: mint('b') }] : [];
 		});
 		if (!placed.length) return;

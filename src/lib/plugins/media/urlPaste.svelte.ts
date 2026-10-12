@@ -68,7 +68,7 @@ export class UrlPasteController extends ChromeList {
 	}
 
 	/** The rows for `url`: Link, then each offer that takes it. @internal */
-	optionsFor = (url: string): UrlPasteOption[] => [
+	#optionsFor = (url: string): UrlPasteOption[] => [
 		{ id: 'link', icon: '🔗' },
 		...this.offers.flatMap((offer) =>
 			offer.data(url) ? [{ id: offer.type, icon: offer.icon, offer }] : []
@@ -91,7 +91,7 @@ export class UrlPasteController extends ChromeList {
 		const block = text?.parent;
 		if (!block?.convertible || !text || !holdsNothing(edytor, block)) return;
 		const url = safeWebUrl(pastedLink(e.clipboardData?.getData('text/plain')));
-		const options = url ? this.optionsFor(url) : [];
+		const options = url ? this.#optionsFor(url) : [];
 		if (!url || options.length < 2) return;
 		prevent(() => {
 			this.close();

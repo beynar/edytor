@@ -57,7 +57,7 @@ const chord = (parts: string[]) => {
 
 /**
  * Why a chord never fires (a development hint), or null: a part that is no
- * token a keydown's chord can carry (`chordOf`); a character Shift types
+ * token a keydown's chord can carry (`#chordOf`); a character Shift types
  * needs `shift` (`mod+shift+?`), Shift turns a key into another character
  * (`shift+/` arrives as `?`: US-layout keys, a keydown reports the
  * character typed; the numeric keypad types `+` and `*` unshifted), and on
@@ -138,7 +138,10 @@ export class Keymap {
 	 * Apple bare Ctrl stays `ctrl` (the Emacs rows); a reverse tab is Shift+Tab;
 	 * the space bar is `space`.
 	 */
-	chordOf = (event: KeyboardEvent, key = event.key === ' ' ? 'space' : event.key.toLowerCase()) => {
+	#chordOf = (
+		event: KeyboardEvent,
+		key = event.key === ' ' ? 'space' : event.key.toLowerCase()
+	) => {
 		const back = key === 'iso_left_tab' || key === 'backtab';
 		const mac = this.isMac;
 		return chord([
@@ -154,7 +157,7 @@ export class Keymap {
 	handle = (event: KeyboardEvent): boolean => {
 		if (composesText(event)) return false;
 		const fallback = layoutKey(event);
-		const chords = [this.chordOf(event), ...(fallback ? [this.chordOf(event, fallback)] : [])];
+		const chords = [this.#chordOf(event), ...(fallback ? [this.#chordOf(event, fallback)] : [])];
 		this.offered = chords[0]!;
 		const claimed = chords.some((at) => this.run(at, event));
 		if (claimed) this.offered = null;

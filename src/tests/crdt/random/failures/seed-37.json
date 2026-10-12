@@ -1811,17 +1811,23 @@
     }
   ],
   "minimized": {
-    "stepCount": 11,
-    "transcript": "seed 37 — 11 steps\n  0. peer 2: {\"kind\":\"insertText\",\"idIndex\":5,\"offset\":12,\"text\":\"µ37x68\",\"tag\":\"µ37x68\"}\n  1. peer 0: {\"kind\":\"insertInline\",\"idIndex\":4,\"offset\":9,\"atomId\":\"in37-71\"}\n  2. peer 0: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":2,\"b\":0}\n  3. peer 0: {\"kind\":\"deleteBlock\",\"idIndex\":2}\n  4. peer 1: {\"kind\":\"net\",\"action\":\"reloadLog\",\"a\":1,\"b\":2}\n  5. peer 0: {\"kind\":\"merge\",\"fromIndex\":5,\"intoIndex\":4}\n  6. peer 0: {\"kind\":\"net\",\"action\":\"duplicate\",\"a\":0,\"b\":1}\n  7. peer 2: {\"kind\":\"net\",\"action\":\"drop\",\"a\":0,\"b\":2}\n  8. peer 0: {\"kind\":\"setMark\",\"idIndex\":6,\"offset\":13,\"length\":7,\"name\":\"bold\"}\n  9. peer 0: {\"kind\":\"deleteBlock\",\"idIndex\":7}\n  10. peer 0: {\"kind\":\"net\",\"action\":\"reloadSnap\",\"a\":1,\"b\":0}",
+    "stepCount": 21,
+    "transcript": "seed 37 — 21 steps\n  0. peer 2: {\"kind\":\"deleteBlock\",\"idIndex\":3}\n  1. peer 2: {\"kind\":\"split\",\"idIndex\":1,\"offset\":15,\"newId\":\"sp37-64\"}\n  2. peer 0: {\"kind\":\"insertInline\",\"idIndex\":4,\"offset\":9,\"atomId\":\"in37-71\"}\n  3. peer 0: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":2,\"b\":0}\n  4. peer 1: {\"kind\":\"insertText\",\"idIndex\":4,\"offset\":16,\"text\":\"µ37x75\",\"tag\":\"µ37x75\"}\n  5. peer 0: {\"kind\":\"deleteBlock\",\"idIndex\":2}\n  6. peer 2: {\"kind\":\"nest\",\"idIndex\":2,\"parentIndex\":5}\n  7. peer 1: {\"kind\":\"net\",\"action\":\"deliver\",\"a\":0,\"b\":1}\n  8. peer 0: {\"kind\":\"split\",\"idIndex\":5,\"offset\":10,\"newId\":\"sp37-84\"}\n  9. peer 1: {\"kind\":\"split\",\"idIndex\":4,\"offset\":8,\"newId\":\"sp37-85\"}\n  10. peer 1: {\"kind\":\"insertInline\",\"idIndex\":4,\"offset\":9,\"atomId\":\"in37-86\"}\n  11. peer 0: {\"kind\":\"moveBlock\",\"idIndex\":3,\"parentIndex\":0,\"destIndex\":5}\n  12. peer 1: {\"kind\":\"insertText\",\"idIndex\":1,\"offset\":8,\"text\":\"µ37x90\",\"tag\":\"µ37x90\"}\n  13. peer 1: {\"kind\":\"insertInline\",\"idIndex\":7,\"offset\":2,\"atomId\":\"in37-98\"}\n  14. peer 1: {\"kind\":\"net\",\"action\":\"batch\",\"a\":1,\"b\":2}\n  15. peer 2: {\"kind\":\"net\",\"action\":\"reloadSnap\",\"a\":0,\"b\":1}\n  16. peer 1: {\"kind\":\"net\",\"action\":\"reloadLog\",\"a\":1,\"b\":2}\n  17. peer 2: {\"kind\":\"moveBlock\",\"idIndex\":2,\"parentIndex\":5,\"destIndex\":5}\n  18. peer 1: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":1,\"b\":2}\n  19. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":4,\"parentIndex\":5,\"destIndex\":6}\n  20. peer 0: {\"kind\":\"net\",\"action\":\"syncSV\",\"a\":0,\"b\":1}",
     "steps": [
       {
         "peer": 2,
         "op": {
-          "kind": "insertText",
-          "idIndex": 5,
-          "offset": 12,
-          "text": "µ37x68",
-          "tag": "µ37x68"
+          "kind": "deleteBlock",
+          "idIndex": 3
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "split",
+          "idIndex": 1,
+          "offset": 15,
+          "newId": "sp37-64"
         }
       },
       {
@@ -1843,10 +1849,110 @@
         }
       },
       {
+        "peer": 1,
+        "op": {
+          "kind": "insertText",
+          "idIndex": 4,
+          "offset": 16,
+          "text": "µ37x75",
+          "tag": "µ37x75"
+        }
+      },
+      {
         "peer": 0,
         "op": {
           "kind": "deleteBlock",
           "idIndex": 2
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "nest",
+          "idIndex": 2,
+          "parentIndex": 5
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "net",
+          "action": "deliver",
+          "a": 0,
+          "b": 1
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "split",
+          "idIndex": 5,
+          "offset": 10,
+          "newId": "sp37-84"
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "split",
+          "idIndex": 4,
+          "offset": 8,
+          "newId": "sp37-85"
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "insertInline",
+          "idIndex": 4,
+          "offset": 9,
+          "atomId": "in37-86"
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "moveBlock",
+          "idIndex": 3,
+          "parentIndex": 0,
+          "destIndex": 5
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "insertText",
+          "idIndex": 1,
+          "offset": 8,
+          "text": "µ37x90",
+          "tag": "µ37x90"
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "insertInline",
+          "idIndex": 7,
+          "offset": 2,
+          "atomId": "in37-98"
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "net",
+          "action": "batch",
+          "a": 1,
+          "b": 2
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "net",
+          "action": "reloadSnap",
+          "a": 0,
+          "b": 1
         }
       },
       {
@@ -1859,55 +1965,39 @@
         }
       },
       {
-        "peer": 0,
-        "op": {
-          "kind": "merge",
-          "fromIndex": 5,
-          "intoIndex": 4
-        }
-      },
-      {
-        "peer": 0,
-        "op": {
-          "kind": "net",
-          "action": "duplicate",
-          "a": 0,
-          "b": 1
-        }
-      },
-      {
         "peer": 2,
         "op": {
+          "kind": "moveBlock",
+          "idIndex": 2,
+          "parentIndex": 5,
+          "destIndex": 5
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
           "kind": "net",
-          "action": "drop",
-          "a": 0,
+          "action": "deliverAll",
+          "a": 1,
           "b": 2
         }
       },
       {
-        "peer": 0,
+        "peer": 1,
         "op": {
-          "kind": "setMark",
-          "idIndex": 6,
-          "offset": 13,
-          "length": 7,
-          "name": "bold"
-        }
-      },
-      {
-        "peer": 0,
-        "op": {
-          "kind": "deleteBlock",
-          "idIndex": 7
+          "kind": "moveBlock",
+          "idIndex": 4,
+          "parentIndex": 5,
+          "destIndex": 6
         }
       },
       {
         "peer": 0,
         "op": {
           "kind": "net",
-          "action": "reloadSnap",
-          "a": 1,
-          "b": 0
+          "action": "syncSV",
+          "a": 0,
+          "b": 1
         }
       }
     ]

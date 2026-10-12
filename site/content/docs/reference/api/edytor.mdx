@@ -104,11 +104,11 @@ outdated, and remote states expire after `outdatedTimeout`.
 
 ```ts
 export declare class Awareness extends IsolatedObservable<AwarenessEvents> {
+    #private;
     doc: AwarenessDoc;
     clientID: number;
     states: AwarenessStates;
     meta: Map<number, MetaClientState>;
-    private _checkInterval;
     private _destroyed;
     constructor(doc: AwarenessDoc);
     destroy(): void;
@@ -429,21 +429,15 @@ export declare class BlockHandleController {
     grip: (block: Block) => (node: HTMLElement) => {
         destroy: () => void;
     };
-    activateBlock(block: Block, anchor: HTMLElement): void;
     addsColumn(block: Block): boolean;
     addBlock(block: Block, alt?: boolean, anchor?: HTMLElement | null): void;
-    private ungrip;
     registerHandle(element: HTMLElement, block: Block): () => void;
     addDropTarget(node: HTMLElement, target: Block): () => void;
-    private registerDropTarget;
     private gutter;
-    private inHandleColumn;
     private margin;
     private halves;
     private pick;
     private reorder;
-    handleKeyDown(event: KeyboardEvent, block: Block): void;
-    private moveAndSelect;
     private moving;
     private covered;
     dragBlocks(source: Block): Block[];
@@ -453,7 +447,6 @@ export declare class BlockHandleController {
     private get layouts();
     private besideOf;
     private layoutOf;
-    private overOtherColumn;
     private beside;
     private inside;
     private shown;
@@ -461,8 +454,6 @@ export declare class BlockHandleController {
     private zones;
     private placement;
     private carrier;
-    private getDragSource;
-    private showIndicator;
 }
 ```
 
@@ -470,11 +461,9 @@ export declare class BlockHandleController {
 - `labelOf`: The block's kind as people read it (`kindLabel`: "Heading 1"), its handle's name; reactive through the block's cell (a Turn into renames it).
 - `opened`: The popup the `+` or the grip of `block` opened, while it is open (`edytor.popups`).
 - `grip`: Make `node` the block's grip: dragging (when draggable), a click that selects the block and opens its menu, and the Alt+arrow moves.
-- `activateBlock`: Select the block — a block selection holding it stays; over a text range across blocks, the blocks it covers (`select`) — and open its menu.
 - `addsColumn`: Whether the `+`'s Alt+click on `block` adds a column right of its column (a block directly in a layout's column, as Notion) rather than a block above it.
 - `addBlock`: The `+`: offers the new block to a menu (`BLOCK_ADD_EVENT`), which adds it once the user picks what to insert; with none answering, adds it now (`BlockAddition.insert`).
 - `addDropTarget`: A candidate drop target; registered at once when our drag is in progress.
-- `handleKeyDown`: Alt+arrow: one step for the blocks a drag of this handle moves.
 - `dragBlocks`: The blocks a drag (or an Alt+arrow) from `source`'s handle moves (Notion): the outermost of those the selection covers (`covered`), in document order — a block's children and a closed toggle's hidden body travel with it; else `source` alone.
 
 ## BlockHandleSnippetPayload
@@ -605,7 +594,6 @@ export declare class BlockMenuController {
     get flyoutRows(): Array<KindRow | BlockMenuColor>;
     get currentKind(): KindRow | undefined;
     get actions(): BlockMenuAction[];
-    get matchingKinds(): KindRow[];
     get matchingColors(): BlockMenuColor[];
     get rows(): Array<BlockMenuAction | KindRow | BlockMenuColor>;
     open(block: Block, anchor: HTMLElement): void;
@@ -645,7 +633,6 @@ export declare class BlockMenuController {
 - `isCurrentColor`: Whether every block the flyout paints holds `row`'s colour (its ✓).
 - `flyoutRows`: The rows of the open flyout.
 - `currentKind`: The row naming the open block.
-- `matchingKinds`: With a query, the kinds it names join the list (Notion's "Turn into" results), matched as the slash menu matches them (`matchesQuery`).
 - `matchingColors`: With a query, the colours it names join the list after the kinds (Notion's "Color" results: `red` lists "Red text" and "Red background"), when the blocks take one (`colorable`).
 - `rows`: Every keyboard row: actions, then the matching kinds, then the matching colours.
 - `turnInto`: Convert the open block, or every member (a list's items) as one undo step (they stay selected); one block's conversion places the caret (refused: the caret returns).
@@ -2183,7 +2170,6 @@ export declare class Dispatcher {
     private replacing;
     private queue;
     private current;
-    private draining;
     private leading;
     private patched;
     private untracked;
@@ -2639,28 +2625,14 @@ The document's operations and reads are its own members
 export interface EdytorDocument extends Omit<DocumentOperations, 'transact'> {
 }
 export declare class EdytorDocument {
+    #private;
     readonly doc: YDoc;
     readonly awareness: Awareness;
     readonly actor: DocumentActor;
     get attribution(): DocumentAttribution;
     readonly transaction: TRANSACTION;
-    private readonly _trackedOrigins;
-    private readonly _engine;
-    private readonly _ownsDoc;
-    private readonly _ownsAwareness;
-    private _history;
-    private readonly _attributionCtl;
-    private _readiness;
     private _destroyed;
-    private _refs;
-    private readonly _capability;
-    private _defaultType;
-    private readonly _historyOptions;
     readonly requireHydration: boolean;
-    private _providers;
-    private _pendingSyncs;
-    private _healOff;
-    private _readyListeners;
     get clientID(): number;
     get ready(): boolean;
     get readiness(): DocumentReadiness;
@@ -2682,13 +2654,10 @@ export declare class EdytorDocument {
     get history(): YUndoManager;
     trackOrigin: (origin: unknown) => void;
     untrackOrigin: (origin: unknown) => void;
-    private _attachHistory;
     clearHistory: () => void;
     transact: <T>(cb: () => T, origin?: unknown) => T;
     onReady: (listener: () => void) => (() => void);
     get syncPending(): boolean;
-    private _refusals;
-    private _refusalListeners;
     get syncRefusal(): SyncRefusedError | undefined;
     onSyncRefused: (listener: (refusal: SyncRefusedError) => void) => (() => void);
     private _decide;
@@ -2698,7 +2667,6 @@ export declare class EdytorDocument {
     encode: () => Uint8Array;
     retain: () => (() => void);
     destroy: () => void;
-    private _releaseReference;
 }
 ```
 
@@ -2761,7 +2729,6 @@ export declare class Edytor {
     get synced(): boolean;
     selection: EdytorSelection;
     cells: Cells | undefined;
-    private dataRevision;
     get data(): Readonly<EdytorDocData>;
     readonly overlay: Overlay;
     readonly popups: Popups;
@@ -2781,26 +2748,17 @@ export declare class Edytor {
     compareBlocks: (a: Block, b: Block) => number;
     get awareness(): Awareness;
     readonly dispatcher: Dispatcher;
-    private transacting;
     transact: <T>(cb: () => T) => T;
     canMove: (request: BlockMoveRequest) => boolean;
     move: (request: BlockMoveRequest) => Block[];
     historyUndo: () => void;
     historyRedo: () => void;
     constructor(options: EdytorOptions);
-    private unknownKinds;
     definitionOf: (type: string) => BlockDefinition;
     private _valueCache;
     get value(): JSONDoc;
     runCommand: (id: string) => Promise<boolean>;
     defaultChild: (parent: Block) => string;
-    private _readinessRelease;
-    private offCommit?;
-    private onCommit;
-    private userInputHandlingDepth;
-    private withUserInput;
-    private expectInternalFocusArmed;
-    private ownComposition;
     focus: () => void;
     clear: () => boolean;
     presence: PresenceWriter;
@@ -3662,13 +3620,11 @@ changes the block's content.
 ```ts
 export declare class InlineBlock {
     #private;
-    _def: "inline";
     readonly: boolean;
     readonly edytor: Edytor;
     readonly id: string;
     blockId: string;
     node: HTMLElement | undefined;
-    private attachedNodes;
     constructor(edytor: Edytor, blockId: string, id: string);
     get parent(): Block;
     get selected(): boolean;
@@ -6133,9 +6089,6 @@ export declare class ToolbarController {
     private shown;
     linkUrl: string;
     panel: "color" | "link" | "turn" | null;
-    private selectionSnapshot;
-    private isRestoringSelection;
-    private focusField;
     hovered: HTMLAnchorElement | null;
     constructor(edytor: Edytor);
     get isVisible(): boolean;
@@ -6166,16 +6119,11 @@ export declare class ToolbarController {
     openHovered(): void;
     editHovered(): void;
     removeHovered(): void;
-    private hoveredLink;
     turnInto(kind: KindRow): void;
     setColor(mark: 'color' | 'highlight', value: string | null): void;
     toggleMark(mark: string): void;
     applyLink(): void;
     removeLink(): void;
-    private canShowForSelection;
-    private getSelectedLinkUrl;
-    private runWithSelection;
-    private restoreSelection;
 }
 ```
 

@@ -65,7 +65,7 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 	/** Maps from client id to client state */
 	states: AwarenessStates;
 	meta: Map<number, MetaClientState>;
-	private _checkInterval: ReturnType<typeof setInterval>;
+	#checkInterval: ReturnType<typeof setInterval>;
 	/**
 	 * Idempotence guard — `destroy()` is reachable twice through the
 	 * OWNED-doc + OWNED-awareness composition: `EdytorDocument.destroy()`
@@ -82,7 +82,7 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 		this.clientID = doc.clientID;
 		this.states = new Map();
 		this.meta = new Map();
-		this._checkInterval = setInterval(
+		this.#checkInterval = setInterval(
 			() => {
 				const now = time.getUnixTime();
 				const localMeta = this.meta.get(this.clientID);
@@ -113,7 +113,7 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 		// Node returns a `Timeout` (has `unref`), browsers a number — a stale-
 		// state sweep must never be the thing keeping a node/SSR process alive
 		// (a server-rendered component can't run its client teardown path).
-		(this._checkInterval as { unref?: () => void }).unref?.();
+		(this.#checkInterval as { unref?: () => void }).unref?.();
 		doc.on('destroy', () => {
 			this.destroy();
 		});
@@ -128,7 +128,7 @@ export class Awareness extends IsolatedObservable<AwarenessEvents> {
 		this.emit('destroy', [this]);
 		this.setLocalState(null);
 		super.destroy();
-		clearInterval(this._checkInterval);
+		clearInterval(this.#checkInterval);
 	}
 
 	getLocalState(): Record<string, unknown> | null {

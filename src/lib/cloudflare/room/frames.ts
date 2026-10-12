@@ -53,7 +53,7 @@ export const presenceFrameOf = (entries: Map<number, Uint8Array>): Uint8Array =>
 /**
  * The store-before-ack frame, sent only once what `doc` holds is stored:
  * its state vector, and the message's `deletes` the room stored (see
- * `Admission.storedDeletes`).
+ * `Admission.#storedDeletes`).
  */
 export const savedFrame = (doc: YDoc, deletes?: Decoded['ds']): Uint8Array =>
 	E.frame(E.messageSaved, (e) => sync.writeSaved(e, doc, deletes, null));

@@ -69,11 +69,11 @@ export type AttributionActor = {
 ```ts
 // crdt/protocols/awareness.d.ts
 export declare class Awareness extends IsolatedObservable<AwarenessEvents> {
+    #private;
     doc: AwarenessDoc;
     clientID: number;
     states: AwarenessStates;
     meta: Map<number, MetaClientState>;
-    private _checkInterval;
     private _destroyed;
     constructor(doc: AwarenessDoc);
     destroy(): void;
@@ -320,21 +320,15 @@ export declare class BlockHandleController {
     grip: (block: Block) => (node: HTMLElement) => {
         destroy: () => void;
     };
-    activateBlock(block: Block, anchor: HTMLElement): void;
     addsColumn(block: Block): boolean;
     addBlock(block: Block, alt?: boolean, anchor?: HTMLElement | null): void;
-    private ungrip;
     registerHandle(element: HTMLElement, block: Block): () => void;
     addDropTarget(node: HTMLElement, target: Block): () => void;
-    private registerDropTarget;
     private gutter;
-    private inHandleColumn;
     private margin;
     private halves;
     private pick;
     private reorder;
-    handleKeyDown(event: KeyboardEvent, block: Block): void;
-    private moveAndSelect;
     private moving;
     private covered;
     dragBlocks(source: Block): Block[];
@@ -344,7 +338,6 @@ export declare class BlockHandleController {
     private get layouts();
     private besideOf;
     private layoutOf;
-    private overOtherColumn;
     private beside;
     private inside;
     private shown;
@@ -352,8 +345,6 @@ export declare class BlockHandleController {
     private zones;
     private placement;
     private carrier;
-    private getDragSource;
-    private showIndicator;
 }
 ```
 
@@ -468,7 +459,6 @@ export declare class BlockMenuController {
     get flyoutRows(): Array<KindRow | BlockMenuColor>;
     get currentKind(): KindRow | undefined;
     get actions(): BlockMenuAction[];
-    get matchingKinds(): KindRow[];
     get matchingColors(): BlockMenuColor[];
     get rows(): Array<BlockMenuAction | KindRow | BlockMenuColor>;
     open(block: Block, anchor: HTMLElement): void;
@@ -1275,7 +1265,6 @@ export declare class Dispatcher {
     private replacing;
     private queue;
     private current;
-    private draining;
     private leading;
     private patched;
     private untracked;
@@ -1634,28 +1623,14 @@ export interface EdytorDocument extends Omit<DocumentOperations, 'transact'> {
 }
 // crdt/document.d.ts
 export declare class EdytorDocument {
+    #private;
     readonly doc: YDoc;
     readonly awareness: Awareness;
     readonly actor: DocumentActor;
     get attribution(): DocumentAttribution;
     readonly transaction: TRANSACTION;
-    private readonly _trackedOrigins;
-    private readonly _engine;
-    private readonly _ownsDoc;
-    private readonly _ownsAwareness;
-    private _history;
-    private readonly _attributionCtl;
-    private _readiness;
     private _destroyed;
-    private _refs;
-    private readonly _capability;
-    private _defaultType;
-    private readonly _historyOptions;
     readonly requireHydration: boolean;
-    private _providers;
-    private _pendingSyncs;
-    private _healOff;
-    private _readyListeners;
     get clientID(): number;
     get ready(): boolean;
     get readiness(): DocumentReadiness;
@@ -1677,13 +1652,10 @@ export declare class EdytorDocument {
     get history(): YUndoManager;
     trackOrigin: (origin: unknown) => void;
     untrackOrigin: (origin: unknown) => void;
-    private _attachHistory;
     clearHistory: () => void;
     transact: <T>(cb: () => T, origin?: unknown) => T;
     onReady: (listener: () => void) => (() => void);
     get syncPending(): boolean;
-    private _refusals;
-    private _refusalListeners;
     get syncRefusal(): SyncRefusedError | undefined;
     onSyncRefused: (listener: (refusal: SyncRefusedError) => void) => (() => void);
     private _decide;
@@ -1693,7 +1665,6 @@ export declare class EdytorDocument {
     encode: () => Uint8Array;
     retain: () => (() => void);
     destroy: () => void;
-    private _releaseReference;
 }
 ```
 
@@ -1718,7 +1689,6 @@ export declare class Edytor {
     get synced(): boolean;
     selection: EdytorSelection;
     cells: Cells | undefined;
-    private dataRevision;
     get data(): Readonly<EdytorDocData>;
     readonly overlay: Overlay;
     readonly popups: Popups;
@@ -1738,26 +1708,17 @@ export declare class Edytor {
     compareBlocks: (a: Block, b: Block) => number;
     get awareness(): Awareness;
     readonly dispatcher: Dispatcher;
-    private transacting;
     transact: <T>(cb: () => T) => T;
     canMove: (request: BlockMoveRequest) => boolean;
     move: (request: BlockMoveRequest) => Block[];
     historyUndo: () => void;
     historyRedo: () => void;
     constructor(options: EdytorOptions);
-    private unknownKinds;
     definitionOf: (type: string) => BlockDefinition;
     private _valueCache;
     get value(): JSONDoc;
     runCommand: (id: string) => Promise<boolean>;
     defaultChild: (parent: Block) => string;
-    private _readinessRelease;
-    private offCommit?;
-    private onCommit;
-    private userInputHandlingDepth;
-    private withUserInput;
-    private expectInternalFocusArmed;
-    private ownComposition;
     focus: () => void;
     clear: () => boolean;
     presence: PresenceWriter;
@@ -2300,13 +2261,11 @@ export type InitializedPlugin = ReturnType<Plugin>;
 // block/inlineBlock.svelte.d.ts
 export declare class InlineBlock {
     #private;
-    _def: "inline";
     readonly: boolean;
     readonly edytor: Edytor;
     readonly id: string;
     blockId: string;
     node: HTMLElement | undefined;
-    private attachedNodes;
     constructor(edytor: Edytor, blockId: string, id: string);
     get parent(): Block;
     get selected(): boolean;
@@ -4054,9 +4013,6 @@ export declare class ToolbarController {
     private shown;
     linkUrl: string;
     panel: "color" | "link" | "turn" | null;
-    private selectionSnapshot;
-    private isRestoringSelection;
-    private focusField;
     hovered: HTMLAnchorElement | null;
     constructor(edytor: Edytor);
     get isVisible(): boolean;
@@ -4087,16 +4043,11 @@ export declare class ToolbarController {
     openHovered(): void;
     editHovered(): void;
     removeHovered(): void;
-    private hoveredLink;
     turnInto(kind: KindRow): void;
     setColor(mark: 'color' | 'highlight', value: string | null): void;
     toggleMark(mark: string): void;
     applyLink(): void;
     removeLink(): void;
-    private canShowForSelection;
-    private getSelectedLinkUrl;
-    private runWithSelection;
-    private restoreSelection;
 }
 ```
 
@@ -5404,13 +5355,10 @@ type Kind = 'row' | 'column';
 
 ```ts
 export declare abstract class TextTriggerController extends ChromeList {
+    #private;
     readonly char: string;
     isOpen: boolean;
     query: string;
-    protected activeRange: {
-        trigger: TextAnchor;
-        end: TextAnchor;
-    } | null;
     protected picking: boolean;
     constructor(edytor: Edytor, char: string, owner: string);
     get readonly(): boolean;
@@ -5418,14 +5366,12 @@ export declare abstract class TextTriggerController extends ChromeList {
     protected abstract admits(block: Block): boolean;
     protected abstract queried(query: string): void;
     handleTextInsertion(text: Text, block: Block, start: number, value: string): void;
-    private triggerAt;
     reconcileSelection(): void;
     close(): void;
     protected get range(): TriggerRange | null;
     protected replaceTrigger<R>(body: (ctx: TriggerContext) => R, owns?: (text: Text, held: SelectionValue) => boolean): Promise<Awaited<R> | undefined>;
     protected setEnd(text: Text, queryEnd: number): void;
     protected open(text: Text, triggerStart: number, queryEnd: number): void;
-    private syncQueryFromText;
 }
 ```
 

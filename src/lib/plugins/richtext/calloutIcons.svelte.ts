@@ -1,15 +1,15 @@
 /**
- * A callout's icon (`callout.icon` in the delete contract): its
- * `data.icon`, the view's default when it has none of its own, no icon when
- * it is `''`. The picker is a menu in the overlay, under the icon of the
- * callout it is open on: a choice writes `data.icon` (one `patchData`
- * command, one undo step) and gives the keys back to the editor, with the
- * selection it held; Escape, a press outside or focus leaving closes it
- * with nothing written. Its markup is the default one or the app's
- * `callout.picker` snippet; both take the keys and publish the popup
- * through the controller's attachments (`keys`, `popup`) and rows (`option`).
+ * The callout icon picker (`callout.icon` in the delete contract), its own
+ * plugin: a menu in the overlay, under the icon of the callout it is open
+ * on: a choice writes `data.icon` (one `patchData` command, one undo step)
+ * and gives the keys back to the editor, with the selection it held;
+ * Escape, a press outside or focus leaving closes it with nothing written.
+ * Its markup is the app's `picker` snippet, which takes the keys and
+ * publishes the popup through the controller's attachments (`keys`,
+ * `popup`) and rows (`option`). A view without the plugin shows each
+ * callout's icon, which opens nothing.
  */
-import { untrack } from 'svelte';
+import { untrack, type Snippet } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -18,12 +18,12 @@ import { takeKeys } from '$lib/events/onFocus.js';
 import { ChromeList, holdKeys, menuKey } from '../list.svelte.js';
 import { optionAttributes, type OptionAttributes } from '../chrome.js';
 import { Anchored } from '../anchored.svelte.js';
-import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
+import type { Plugin } from '$lib/plugins.js';
+import { labelsOf, richTextEnglish } from '$lib/labels.js';
+import { calloutPickers, iconOf } from './callouts.js';
+import CalloutIconHost from './CalloutIconPicker.svelte';
 
-/** A new callout's icon unless `createRichTextPlugin({ callout: { icon } })` names another. */
-export const DEFAULT_CALLOUT_ICON = '💡';
-
-/** The picker's choices unless `createRichTextPlugin({ callout: { icons } })` names others. */
+/** The picker's choices unless `createCalloutIconsPlugin({ icons })` names others. */
 export const CALLOUT_ICONS: readonly string[] = [
 	'💡',
 	'⚠️',
@@ -60,21 +60,6 @@ export const CALLOUT_ICONS: readonly string[] = [
 /** The choices on a row of the picker: the arrows up and down move by a row (`picker.columns`). */
 export const ICON_COLUMNS = 8;
 
-/** The callout icon picker of each view (the first rich text plugin listed claims it). */
-export const calloutIconViews = new WeakMap<object, CalloutIconPicker>();
-
-/** What `data.icon` shows: its own (`''`: none), else `fallback`. */
-export const iconOf = (data: Record<string, unknown> | undefined, fallback: string) =>
-	typeof data?.icon === 'string' ? data.icon : fallback;
-
-/**
- * A callout's HTML: a `div` naming its icon (`data-edytor-callout`), its
- * title, then its content. A generic tag: only its attribute claims it back
- * (`parse`), never a tag another kind may export.
- */
-export const calloutHtml = (icon: string, content: string, children: string) =>
-	`<div data-edytor-callout="${escapeHtml(icon)}"><p>${content}</p>${children}</div>`;
-
 /**
  * A view's callout icon picker: what a `callout.picker` snippet receives.
  * The callout it is open on (`block`), the choices (`icons`) and the icon
@@ -102,8 +87,6 @@ export class CalloutIconPicker extends ChromeList {
 
 	constructor(
 		edytor: Edytor,
-		/** A new callout's icon, and the one a callout without `data.icon` shows. */
-		readonly icon: string = DEFAULT_CALLOUT_ICON,
 		/** The picker's choices. */
 		readonly icons: readonly string[] = CALLOUT_ICONS
 	) {
@@ -137,7 +120,7 @@ export class CalloutIconPicker extends ChromeList {
 	/** The icon that callout shows (`''`: none; reactive). */
 	get current(): string | undefined {
 		const block = this.block;
-		return block ? this.iconOf(block.data) : undefined;
+		return block ? iconOf(block.data, this.edytor) : undefined;
 	}
 
 	/** The keyboard's rows: the icons, then Remove icon. */
@@ -150,16 +133,13 @@ export class CalloutIconPicker extends ChromeList {
 		return this.edytor.readonly;
 	}
 
-	/** The icon a callout with `data` shows. */
-	iconOf = (data: Record<string, unknown> | undefined) => iconOf(data, this.icon);
-
 	/** Open the picker on `block`, or close it when it is open there. */
 	toggle = (block: Block) => (this.target === block.id ? this.close() : this.open(block));
 
 	/** Open the picker on the callout `block`, its icon the keyboard's row (refused in a view that may not write). */
 	open = (block: Block) => {
 		if (!this.edytor.dispatcher.permits() || !block.isInTree) return;
-		const at = this.icons.indexOf(this.iconOf(block.data));
+		const at = this.icons.indexOf(iconOf(block.data, this.edytor));
 		this.index = at === -1 ? 0 : at;
 		this.#before = null;
 		this.target = block.id;
@@ -252,3 +232,45 @@ export class CalloutIconPicker extends ChromeList {
 		};
 	};
 }
+
+export type CalloutIconsOptions = {
+	/**
+	 * The icon picker's markup and its words: it renders while the picker is
+	 * open, placed under the icon (without it, the icon opens nothing). Put
+	 * `{@attach picker.keys}` and `{@attach picker.popup}` on its element and
+	 * spread `picker.option(i)` on each row (`picker.icons.length`: Remove icon).
+	 */
+	picker?: Snippet<[CalloutIconPicker]>;
+	/** The picker's choices (`CALLOUT_ICONS` by default). */
+	icons?: readonly string[];
+};
+
+/**
+ * Callout icons (Notion's): a callout's icon opens the view's picker, and
+ * its block menu has a Change icon row, the keyboard's way to it. The first
+ * plugin listed claims the view's picker.
+ */
+export const createCalloutIconsPlugin =
+	({ picker: menu, icons }: CalloutIconsOptions = {}): Plugin =>
+	(edytor) => {
+		const picker = edytor && !calloutPickers.has(edytor) && new CalloutIconPicker(edytor, icons);
+		if (!picker) return {};
+		calloutPickers.set(edytor, picker);
+		return {
+			blocks: {
+				callout: {
+					menu: (block) => [
+						{
+							id: 'callout.icon',
+							label: labelsOf(edytor, 'richText', richTextEnglish).calloutIcon.change,
+							icon: 'block.callout',
+							run: () => picker.open(block)
+						}
+					]
+				}
+			},
+			// With the menus: above the handles and the image chrome.
+			onEdytorAttached: ({ node }) =>
+				menu && picker.panel.mount(node, CalloutIconHost, { picker, menu }, 70)
+		};
+	};

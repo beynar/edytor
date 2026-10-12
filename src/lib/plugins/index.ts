@@ -2,10 +2,14 @@ export {
 	createRichTextPlugin,
 	richTextOperations,
 	richTextPlaceholder,
-	CALLOUT_ICONS,
-	type CalloutIconPicker,
 	type RichTextPluginOptions
 } from './richtext/RichTextPlugin.svelte';
+export {
+	CALLOUT_ICONS,
+	createCalloutIconsPlugin,
+	type CalloutIconPicker,
+	type CalloutIconsOptions
+} from './richtext/calloutIcons.svelte.js';
 export { createArrowMovePlugin } from './arrowMove/arrowMove.js';
 export type { MenuItemPayload, OptionAttributes } from './chrome.js';
 export {

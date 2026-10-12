@@ -3,7 +3,7 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { BlockView } from '$lib/plugins.js';
 	import { labelsOf, richTextEnglish } from '$lib/labels.js';
-	import { DEFAULT_CALLOUT_ICON, calloutIconViews, iconOf } from './calloutIcons.svelte.js';
+	import { calloutPickers, iconOf } from './callouts.js';
 
 	/**
 	 * A callout's icon (`callout.icon`): its `data.icon`, the view's default
@@ -15,8 +15,8 @@
 	let { block }: { block: BlockView<{ icon?: string }> } = $props();
 	const edytor = getContext<Edytor>('edytor');
 	const labels = labelsOf(edytor, 'richText', richTextEnglish).calloutIcon;
-	const picker = calloutIconViews.get(edytor);
-	const icon = $derived(iconOf(block.data, picker?.icon ?? DEFAULT_CALLOUT_ICON));
+	const picker = calloutPickers.get(edytor);
+	const icon = $derived(iconOf(block.data, edytor));
 	const open = $derived(picker?.target === block.id);
 </script>
 

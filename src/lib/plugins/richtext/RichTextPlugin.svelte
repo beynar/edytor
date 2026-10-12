@@ -7,7 +7,6 @@
 	import type { Text } from '$lib/text/text.svelte.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
 	import type { HotKey } from '$lib/session/keymap.js';
-	import type { Snippet } from 'svelte';
 	import {
 		openLink,
 		pastedLink,
@@ -25,17 +24,9 @@
 	import TodoCheckbox from './TodoCheckbox.svelte';
 	import EmptyBody from './EmptyBody.svelte';
 	import CalloutIcon from './CalloutIcon.svelte';
-	import CalloutIconHost from './CalloutIconPicker.svelte';
-	import {
-		CALLOUT_ICONS,
-		CalloutIconPicker,
-		DEFAULT_CALLOUT_ICON,
-		calloutHtml,
-		calloutIconViews,
-		iconOf
-	} from './calloutIcons.svelte.js';
+	import { DEFAULT_CALLOUT_ICON, calloutHtml, calloutIcons, iconOf } from './callouts.js';
 
-	export { richTextOperations, CALLOUT_ICONS, CalloutIconPicker };
+	export { richTextOperations };
 
 	const nativeFormatMarks = {
 		formatBold: 'bold',
@@ -139,22 +130,13 @@
 	};
 
 	export type RichTextPluginOptions = {
-		/** Callouts' icons. */
+		/** Callouts' icons (their picker is `createCalloutIconsPlugin`'s). */
 		callout?: {
 			/**
 			 * A new callout's icon, and the one a callout whose `data.icon` is
 			 * unset shows (`💡` by default).
 			 */
 			icon?: string;
-			/** The icon picker's choices (`CALLOUT_ICONS` by default). */
-			icons?: readonly string[];
-			/**
-			 * The icon picker's markup and its words: it renders while the picker is open,
-			 * placed under the icon (without it, the icon opens nothing). Put `{@attach picker.keys}` and
-			 * `{@attach picker.popup}` on its element and spread
-			 * `picker.option(i)` on each row (`picker.icons.length`: Remove icon).
-			 */
-			picker?: Snippet<[CalloutIconPicker]>;
 		};
 	};
 
@@ -182,16 +164,10 @@
 	export const createRichTextPlugin = (options: RichTextPluginOptions = {}): Plugin => {
 		const plugin: Plugin = (edytor) => {
 			const labels = labelsOf(edytor, 'richText', richTextEnglish);
-			// The view's callout icons: the first rich text plugin listed claims them.
-			const picker = calloutIconViews.has(edytor)
-				? undefined
-				: new CalloutIconPicker(
-						edytor,
-						options.callout?.icon ?? DEFAULT_CALLOUT_ICON,
-						options.callout?.icons ?? CALLOUT_ICONS
-					);
-			if (picker) calloutIconViews.set(edytor, picker);
-			return richText(edytor, labels, options, picker);
+			// The view's default callout icon: the first rich text plugin listed sets it.
+			if (edytor && !calloutIcons.has(edytor))
+				calloutIcons.set(edytor, options.callout?.icon ?? DEFAULT_CALLOUT_ICON);
+			return richText(edytor, labels, options);
 		};
 		return branded('richText', plugin);
 	};
@@ -200,9 +176,7 @@
 	const richText = (
 		edytor: Edytor,
 		labels: RichTextLabels,
-		{ callout: calloutOptions }: RichTextPluginOptions,
-		/** The view's callout icon picker, when this plugin claimed it (the first listed). */
-		picker: CalloutIconPicker | undefined
+		{ callout: calloutOptions }: RichTextPluginOptions
 	): ReturnType<Plugin> => {
 		const { kinds, marks: words } = labels;
 		/** A new callout's icon. */
@@ -352,7 +326,7 @@
 			},
 			// Mod+click on a link opens it in a new tab (`link.mod-click`): a plain
 			// click places the caret, as in Notion. Mod is read as the keymap reads
-			// it: Meta, or Ctrl off a Mac. The callout icon picker is in the overlay.
+			// it: Meta, or Ctrl off a Mac.
 			onEdytorAttached: ({ node }) => {
 				const click = (event: MouseEvent) => {
 					if (!event.metaKey && !(event.ctrlKey && !edytor.keymap.isMac)) return;
@@ -364,14 +338,7 @@
 					openLink(href, node.ownerDocument.defaultView);
 				};
 				node.addEventListener('click', click);
-				const menu = calloutOptions?.picker;
-				// With the menus: above the handles and the image chrome.
-				const unmount =
-					picker && menu && picker.panel.mount(node, CalloutIconHost, { picker, menu }, 70);
-				return () => {
-					node.removeEventListener('click', click);
-					unmount?.();
-				};
+				return () => node.removeEventListener('click', click);
 			},
 			onBeforeInput: ({ e, prevent }) => {
 				const { inputType, data } = e;
@@ -601,25 +568,13 @@
 					presets: presets('callout', [
 						{ label: kinds.callout, icon: '✦', keywords: ['note', 'tip'], data: { icon } }
 					]),
-					// The block menu's Change icon: the keyboard's way to the picker.
-					menu: (block) =>
-						picker
-							? [
-									{
-										id: 'callout.icon',
-										label: labels.calloutIcon.change,
-										icon: 'block.callout',
-										run: () => picker.open(block)
-									}
-								]
-							: [],
 					// HTML import: its own export, the icon in its attribute.
 					parse: (el) => {
 						const own = el.getAttribute('data-edytor-callout');
 						return own === null ? undefined : { icon: own };
 					},
 					html: (block, content, children) =>
-						calloutHtml(iconOf(block.data, icon), content, children)
+						calloutHtml(iconOf(block.data, edytor), content, children)
 				},
 				quote: {
 					container: true,

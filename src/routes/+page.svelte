@@ -19,6 +19,7 @@
 		mention,
 		pageLink,
 		richTextPlugin,
+		calloutIconsPlugin,
 		slashMenuPlugin,
 		suggestionsPlugin,
 		tablePlugin,
@@ -97,6 +98,7 @@
 		// KaTeX loads from jsDelivr the first time an equation shows.
 		equation(),
 		suggestionsPlugin,
+		calloutIconsPlugin,
 		richTextPlugin
 	];
 	const demoValue: JSONDoc = {

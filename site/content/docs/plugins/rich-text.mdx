@@ -63,28 +63,27 @@ A callout is Notion's: an icon, a title and a content.
 - Its title is its own text, semibold (`[data-edytor-callout-title]`), with the placeholder "Callout title" while empty ([placeholders](#placeholders)). <kbd>Enter</kbd> at the end of the title, or in the middle of it, goes into the content, whether or not it has blocks yet.
 - Its content is its children, any blocks. Copied, a callout is `<div data-edytor-callout="💡"><p>Title</p>…</div>`, which pastes back as the callout, its icon kept; as plain text, its title then its content.
 - Its icon is `data.icon`: the editor's default when the callout has none (`💡`, or the `callout.icon` option), no icon when it is `''`. A new callout takes the default. Set it from code as any data, `edytor.patchData(block.id, [{ path: ['icon'], value: '🔥' }])`.
-- Clicking the icon (`[data-edytor-callout-icon]`, a button named "Change icon", "Add icon" when the callout has none) opens the view's icon picker under it: your `callout.picker` snippet (without one, nothing shows). Picking an icon, or Remove icon, is one undo step; Escape, <kbd>Tab</kbd> or a click elsewhere closes it unchanged. The arrows move through the icons (up and down by a row), Home and End go to the ends, <kbd>Enter</kbd> or <kbd>Space</kbd> picks, and the editor gets the keys back with its caret. The block menu of a callout has a Change icon row, the keyboard's way to the picker. A readonly editor shows the icon only.
+- With the callout icons plugin listed (`createCalloutIconsPlugin({ picker, icons })`), clicking the icon (`[data-edytor-callout-icon]`, a button named "Change icon", "Add icon" when the callout has none) opens the view's icon picker under it: your `picker` snippet (without one, nothing shows; without the plugin, the icon is no button). Picking an icon, or Remove icon, is one undo step; Escape, <kbd>Tab</kbd> or a click elsewhere closes it unchanged. The arrows move through the icons (up and down by a row), Home and End go to the ends, <kbd>Enter</kbd> or <kbd>Space</kbd> picks, and the editor gets the keys back with its caret. The block menu of a callout has a Change icon row, the keyboard's way to the picker. A readonly editor shows the icon only.
 
 ```svelte title="CalloutIcons.svelte" check
 <script lang="ts">
-	import { CALLOUT_ICONS, Edytor, createRichTextPlugin } from 'edytor';
+	import { CALLOUT_ICONS, Edytor, createCalloutIconsPlugin, createRichTextPlugin } from 'edytor';
 
 	// New callouts take 📌; the picker offers the default icons and a unicorn.
-	const richText = createRichTextPlugin({
-		callout: { icon: '📌', icons: [...CALLOUT_ICONS, '🦄'] }
-	});
+	const richText = createRichTextPlugin({ callout: { icon: '📌' } });
+	const icons = createCalloutIconsPlugin({ icons: [...CALLOUT_ICONS, '🦄'] });
 </script>
 
-<Edytor plugins={[richText]} />
+<Edytor plugins={[icons, richText]} />
 ```
 
-`callout.picker` is the picker's markup. It receives the picker (`CalloutIconPicker`): the callout it is open on (`block`), the choices (`icons`), the icon the callout shows (`current`), `set(icon)`, `remove()` and `close()`, and `readonly`; the words are your markup's. Put `{@attach picker.keys}` and `{@attach picker.popup}` on its element, which then takes the focus and the keys and is announced to assistive technology, spread `picker.option(i)` on each row, as every menu's rows (its id, role, `data-selected` on the keyboard's row, `aria-checked` on the current icon), and run `picker.pick(i)` on its click; `i === picker.icons.length` is Remove icon. Lay the icons out `picker.columns` to a row (the arrows move up and down by that many). The editor places it under the icon.
+`picker` is the picker's markup. It receives the picker (`CalloutIconPicker`): the callout it is open on (`block`), the choices (`icons`), the icon the callout shows (`current`), `set(icon)`, `remove()` and `close()`, and `readonly`; the words are your markup's. Put `{@attach picker.keys}` and `{@attach picker.popup}` on its element, which then takes the focus and the keys and is announced to assistive technology, spread `picker.option(i)` on each row, as every menu's rows (its id, role, `data-selected` on the keyboard's row, `aria-checked` on the current icon), and run `picker.pick(i)` on its click; `i === picker.icons.length` is Remove icon. Lay the icons out `picker.columns` to a row (the arrows move up and down by that many). The editor places it under the icon.
 
 ```svelte title="IconPicker.svelte" check
 <script lang="ts">
-	import { Edytor, createRichTextPlugin, type CalloutIconPicker } from 'edytor';
+	import { Edytor, createCalloutIconsPlugin, type CalloutIconPicker } from 'edytor';
 
-	const richText = createRichTextPlugin({ callout: { picker: iconPicker } });
+	const icons = createCalloutIconsPlugin({ picker: iconPicker });
 </script>
 
 {#snippet iconPicker(picker: CalloutIconPicker)}
@@ -100,7 +99,7 @@ A callout is Notion's: an icon, a title and a content.
 	</div>
 {/snippet}
 
-<Edytor plugins={[richText]} />
+<Edytor plugins={[icons]} />
 ```
 
 ## Marks

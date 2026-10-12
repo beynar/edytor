@@ -25,6 +25,8 @@ import {
 	type PageLinkPluginOptions,
 	type MediaPluginOptions,
 	createRichTextPlugin,
+	createCalloutIconsPlugin,
+	type CalloutIconsOptions,
 	createSlashMenuPlugin,
 	createSuggestionsPlugin,
 	createTablePlugin,
@@ -88,12 +90,11 @@ export const embedPlugin = embed();
 export const bookmark = (options: BookmarkPluginOptions = {}) =>
 	createBookmarkPlugin({ menu: chrome.urlPasteMenu, empty: chrome.mediaEmpty, ...options });
 export const bookmarkPlugin = bookmark();
-export const richText = (options: RichTextPluginOptions = {}) =>
-	createRichTextPlugin({
-		...options,
-		callout: { picker: chrome.calloutIcons, ...options.callout }
-	});
+export const richText = (options: RichTextPluginOptions = {}) => createRichTextPlugin(options);
 export const richTextPlugin = richText();
+export const calloutIcons = (options: CalloutIconsOptions = {}) =>
+	createCalloutIconsPlugin({ picker: chrome.calloutIcons, ...options });
+export const calloutIconsPlugin = calloutIcons();
 export const find = (options: FindPluginOptions = {}) =>
 	createFindPlugin({ bar: chrome.findBar, ...options });
 export const findPlugin = find();

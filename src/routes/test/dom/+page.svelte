@@ -25,6 +25,7 @@
 		mention,
 		pageLink,
 		richTextPlugin,
+		calloutIconsPlugin,
 		slashMenuPlugin,
 		suggestionsPlugin,
 		tablePlugin,
@@ -598,6 +599,7 @@
 		toolbarPlugin,
 		suggestionsPlugin,
 		...(data.columns ? [createColumnsPlugin()] : []),
+		calloutIconsPlugin,
 		richTextPlugin,
 		propsPlugin
 	]);

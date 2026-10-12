@@ -28,6 +28,8 @@ import { customPicker } from '../../dom/CustomCalloutPicker.svelte';
 import { selectionState, selectBlocks } from '../../selection.js';
 import {
 	blockMenuPlugin,
+	calloutIcons,
+	calloutIconsPlugin,
 	richText as createRichTextPlugin,
 	richTextPlugin
 } from '../../../routes/chrome/plugins.js';
@@ -44,7 +46,7 @@ const empty = (
 
 const render = (
 	children: JSONBlock[],
-	plugins: Plugin[] = [richTextPlugin],
+	plugins: Plugin[] = [calloutIconsPlugin, richTextPlugin],
 	options: { readonly?: boolean } = {}
 ) => renderDomEdytor(empty, { plugins, value: { children }, ...options });
 
@@ -408,14 +410,15 @@ describe('callout.icon: the icon picker', () => {
 		expect(picker()).toBeNull();
 	});
 
-	it('createRichTextPlugin({ callout }) sets the default icon and the choices', async () => {
-		const plugin = createRichTextPlugin({ callout: { icon: '📌', icons: ['📌', '✅', '❗'] } });
+	it('createRichTextPlugin({ callout }) sets the default icon, the picker plugin the choices', async () => {
+		const plugin = createRichTextPlugin({ callout: { icon: '📌' } });
+		const icons = calloutIcons({ icons: ['📌', '✅', '❗'] });
 		const { edytor } = await render(
 			[
 				{ id: 'c', type: 'callout', content: [{ text: 'note' }] },
 				{ id: 'p', type: 'paragraph', content: [{ text: 'x' }] }
 			],
-			[plugin]
+			[icons, plugin]
 		);
 		// No icon of its own: the view's default.
 		expect(iconButton(edytor).textContent?.trim()).toBe('📌');
@@ -432,7 +435,11 @@ describe('callout.icon: the icon picker', () => {
 	});
 
 	it('the block menu of a callout opens the picker (the keyboard way)', async () => {
-		const { edytor, editor } = await render(callout(), [blockMenuPlugin, richTextPlugin]);
+		const { edytor, editor } = await render(callout(), [
+			blockMenuPlugin,
+			calloutIconsPlugin,
+			richTextPlugin
+		]);
 		const block = edytor.idToBlock.get('c')!;
 		selectBlocks(edytor, block);
 		editor.dispatchEvent(
@@ -447,10 +454,8 @@ describe('callout.icon: the icon picker', () => {
 	});
 
 	it("an app's `callout.picker` snippet replaces the markup, with the controller's keys and rows", async () => {
-		const plugin = createRichTextPlugin({
-			callout: { icons: ['🅰️', '🅱️'], picker: customPicker }
-		});
-		const { edytor } = await render(callout(), [plugin]);
+		const plugin = calloutIcons({ icons: ['🅰️', '🅱️'], picker: customPicker });
+		const { edytor } = await render(callout(), [plugin, richTextPlugin]);
 		await press(iconButton(edytor));
 		const custom = document.querySelector<HTMLElement>('[data-testid="custom-picker"]')!;
 		expect(custom).not.toBeNull();

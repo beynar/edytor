@@ -27,7 +27,7 @@ icon: menu
 					{...controller.option(index)}
 					onclick={() => {
 						controller.selectedIndex = index;
-						controller.runSelected();
+						controller.run(row);
 					}}>{row.label}</button
 				>
 			{/each}
@@ -39,7 +39,7 @@ icon: menu
 						{...controller.option(index, true)}
 						onclick={() => {
 							controller.flyoutIndex = index;
-							controller.runFlyout();
+							controller.run(row);
 						}}>{row.label}</button
 					>
 				{/each}
@@ -194,8 +194,7 @@ The snippet receives the `BlockMenuController`:
     colorable: { type: "Block[]", description: "The members that take a colour (no void, code block or code line)." },
     "isCurrentColor(row)": { type: "(row: BlockMenuColor) => boolean", description: "Whether every colourable member holds the row's colour (its ✓)." },
     "paint(row)": { type: "(row: BlockMenuColor) => void", description: "Paint the colourable members with the row's colour, as one undo step; the menu closes and the blocks stay selected." },
-    "duplicate(block)": { type: "(block: Block) => void", description: "Insert a copy after the block (block.duplicateBlock(): fresh ids, one undo step)." },
-    "duplicateAll(blocks)": { type: "(blocks: Block[]) => void", description: "Copy each block after itself as one undo step, and select the copies. The Duplicate action calls it for several blocks." },
+    "duplicate(blocks, select)": { type: "(blocks: Block[], select: boolean) => void", description: "Copy each block after itself as one undo step (fresh ids); select the copies, or, with select false, put the caret in the first copy. The Duplicate action selects them for several blocks." },
     "move(direction)": { type: "('up' | 'down') => void", description: "Move the blocks one step." },
     "remove()": { type: "() => void", description: "Delete the members; unselected children take their parent's place." },
     "copyLink()": { type: "() => Promise<void>", description: "Write linkTo(block) to the clipboard." },
@@ -206,9 +205,8 @@ The snippet receives the `BlockMenuController`:
     flyoutRows: { type: "Array<KindRow | BlockMenuColor>", description: "The open flyout's rows: kinds, or colours." },
     flyoutIndex: { type: "number", description: "The keyboard's row in the open flyout. Writable." },
     "openFlyout(which?)": { type: "(which?: 'turn' | 'color') => void", description: "Open a flyout (Turn into by default) on its first row; that flyout already open stays as it is." },
-    "runFlyout()": { type: "() => void", description: "Run the open flyout's keyboard row: convert to its kind, or paint its colour." },
     rows: { type: "Array<BlockMenuAction | KindRow | BlockMenuColor>", description: "Every keyboard row: the actions, then the kinds and the colours the query names." },
-    "runSelected()": { type: "() => void", description: "Run the keyboard's row, or open its flyout." },
+    "run(row)": { type: "(row) => void", description: "Run a row of the menu or of its flyout: paint a colour, convert to a kind, open an action's flyout or run it." },
     "search(query)": { type: "(query: string) => void", description: "What the search field's input does: set query, highlight the first row, close the flyout." },
     keys: { type: "Attachment<HTMLElement>", description: "On the field that holds the keyboard: focused when it mounts, it takes the keys in the table above and names the menu (or the open flyout) and its highlighted row (aria-controls, aria-activedescendant)." },
     popup: { type: "Attachment<HTMLElement>", description: "On the element holding the rows: its id, menu role and name, presses that keep the focus, and its publication to the editor's root while it is in the page (the grip is told it opened it)." },

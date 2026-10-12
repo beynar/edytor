@@ -151,7 +151,7 @@ A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugin
 
 ## Block menu
 
-`menu` renders while `controller.isOpen`, beside the grip that opened it. Its field holds the keyboard: `keys` gives it the menu's keys (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>→</kbd> opens a row's flyout and <kbd>←</kbd> closes it, <kbd>Enter</kbd> runs the row, <kbd>Delete</kbd> removes the blocks while the query is empty, <kbd>Escape</kbd> closes the flyout, then the menu) and makes it name the menu, or the open flyout, and its highlighted row. `controller.rows` are the keyboard's rows (the actions, then the kinds and the colours a query names); `runSelected()` runs the highlighted one, `runFlyout()` the flyout's. See [Block menu](/docs/plugins/block-menu#markup).
+`menu` renders while `controller.isOpen`, beside the grip that opened it. Its field holds the keyboard: `keys` gives it the menu's keys (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>→</kbd> opens a row's flyout and <kbd>←</kbd> closes it, <kbd>Enter</kbd> runs the row, <kbd>Delete</kbd> removes the blocks while the query is empty, <kbd>Escape</kbd> closes the flyout, then the menu) and makes it name the menu, or the open flyout, and its highlighted row. `controller.rows` are the keyboard's rows (the actions, then the kinds and the colours a query names); `run(row)` runs a row of either (<kbd>Enter</kbd> runs the highlighted one). See [Block menu](/docs/plugins/block-menu#markup).
 
 ```svelte title="BlockMenuEditor.svelte" check
 <script lang="ts">
@@ -177,7 +177,7 @@ A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugin
 					onmousemove={() => (blockMenu.selectedIndex = index)}
 					onclick={() => {
 						blockMenu.selectedIndex = index;
-						blockMenu.runSelected();
+						blockMenu.run(row);
 					}}>{row.label}</button
 				>
 			{/each}
@@ -190,7 +190,7 @@ A [trigger](/docs/plugins/input-rules#triggers) (`@` for [mentions](/docs/plugin
 						{...blockMenu.option(index, true)}
 						onclick={() => {
 							blockMenu.flyoutIndex = index;
-							blockMenu.runFlyout();
+							blockMenu.run(row);
 						}}>{row.label}</button
 					>
 				{/each}
@@ -443,7 +443,7 @@ The [table](/docs/plugins/table) plugin's chrome shows over the hovered table (i
 
 ## Code header and language list
 
-The [code](/docs/plugins/code) plugin's `header` draws the header above each code block (the language's button and Copy), inside the block's non-editable part (the plugin places it at the block's top). It receives the block's `CodeHeader`: `language` (its id) and `label`, the plugin's `languages`, `editable` (false in a readonly view and a suggestion's preview: show the label only), `expanded`, `setLanguage(id)`, `toggle()`, `copy()` and `copied` (true for a moment after a copy), and `labels`. `{@attach header.button}` makes your button open the view's language list under it, with the keys and the ARIA.
+The [code](/docs/plugins/code) plugin's `header` draws the header above each code block (the language's button and Copy), inside the block's non-editable part (the plugin places it at the block's top). It receives the block's `CodeHeader`: `language` (its id) and `label`, `editable` (false in a readonly view and a suggestion's preview: show the label only), `expanded`, `toggle()`, `copy()` and `copied` (true for a moment after a copy), and `labels`. `{@attach header.button}` makes your button open the view's language list under it, with the keys and the ARIA.
 
 `menu` draws that list (the first code plugin listed in a view owns it). It renders under the button while `menu.open` is set; `keys` on its search field makes it the `combobox` that holds the keys (<kbd>↓</kbd>/<kbd>↑</kbd> move the highlighted row, <kbd>Enter</kbd> picks it, <kbd>Escape</kbd> closes: the keys go back to the button when they opened the list, else to the editor), `popup` on the list makes it the `listbox` the root names, and each row of `menu.items` spreads its `option` (`current` marks the block's language).
 

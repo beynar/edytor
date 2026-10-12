@@ -44,8 +44,7 @@
 			...controller.option(index, flyout),
 			onclick: () => {
 				select();
-				if (flyout) controller.runFlyout();
-				else controller.runSelected();
+				controller.run(row);
 			}
 		};
 		if ('field' in row)

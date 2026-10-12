@@ -88,9 +88,9 @@ export const createBlockMenuPlugin =
 				'mod+d': ({ prevent }) => {
 					if (edytor.readonly) return;
 					const selected = getSelectedBlocksInDocumentOrder(edytor).filter((b) => b.movable);
-					if (selected.length) return prevent(() => controller.duplicateAll(selected));
+					if (selected.length) return prevent(() => controller.duplicate(selected, true));
 					const block = edytor.selection.textRange().startText?.parent;
-					if (block?.movable) prevent(() => controller.duplicate(block));
+					if (block?.movable) prevent(() => controller.duplicate([block], false));
 				}
 			},
 			onEdytorAttached: ({ node }) => {

@@ -22,7 +22,6 @@ import {
 	shownText
 } from '$lib/selection/replaceSelection.js';
 import { selectedMembers } from '$lib/selection/visibility.js';
-import type { Popup } from '$lib/surface/popups.svelte.js';
 import { blockMenuEnglish, labelsOf, type BlockMenuLabels } from '$lib/labels.js';
 import { BLOCK_COLORS, colorable, setBlockColor, type BlockColorField } from '$lib/block/colors.js';
 import {
@@ -180,9 +179,6 @@ export class BlockMenuController {
 			`block-menu-${flyout ? 'flyout-' : ''}${'field' in row ? 'color-' : 'value' in row ? 'kind-' : ''}${row.id}`
 		);
 
-	/** Publish the open menu to the view's root (`edytor.popups`), or withdraw it with `null`. */
-	publish = (popup: Popup | null) => this.edytor.popups.set('block-menu', popup);
-
 	/**
 	 * The menu element (`{@attach controller.popup}`, the one with the rows):
 	 * it takes the menu's id, its `menu` role and name unless it has its
@@ -272,14 +268,14 @@ export class BlockMenuController {
 		} else if (flyout && (key === 'ArrowDown' || key === 'ArrowUp'))
 			// In a flyout, the arrows walk its rows.
 			this.flyoutIndex = stepRow(key, this.flyoutIndex, this.flyoutRows.length)!;
-		else if (flyout && key === 'Enter') this.runFlyout();
+		else if (flyout && key === 'Enter') this.run(this.flyoutRows[this.flyoutIndex]);
 		else if (key === 'Delete' && !this.query) this.remove();
 		else if (to !== undefined) {
 			this.selectedIndex = to;
 			this.flyout = false;
 		} else if (key === 'ArrowRight' && submenu) this.openFlyout(submenu);
 		else if (key === 'ArrowLeft' && flyout) this.flyout = false;
-		else if (key === 'Enter') this.runSelected();
+		else if (key === 'Enter') this.run(row);
 		else return;
 		event.preventDefault();
 	};
@@ -378,7 +374,7 @@ export class BlockMenuController {
 				: []),
 			action('duplicate', labels.duplicate, {
 				hint: `${mod}D`,
-				run: () => (blocks.length > 1 ? this.duplicateAll(blocks) : this.duplicate(block))
+				run: () => this.duplicate(blocks, blocks.length > 1)
 			}),
 			move('up', labels.moveUp, '↑'),
 			move('down', labels.moveDown, '↓'),
@@ -479,23 +475,19 @@ export class BlockMenuController {
 		this.focus();
 	}
 
-	duplicate(block: Block) {
-		const copy = this.edytor.idToBlock.get(this.edytor.duplicateBlock(block.id).ids[0] ?? '');
-		this.close(false);
-		this.caret(copy ?? block);
-	}
-
 	/**
-	 * Duplicate several blocks as one undo step, each copy after its block (a
-	 * block inside another of them is copied with it; a vetoed one is skipped,
-	 * `dispatcher.each`); the copies are selected.
+	 * Duplicate `blocks` as one undo step, each copy after its block (a
+	 * block inside another of them is copied with it; a vetoed one is
+	 * skipped, `dispatcher.each`); the copies are selected (`select`), else
+	 * the first copy takes the caret (refused: its block keeps it).
 	 */
-	duplicateAll(blocks: Block[]) {
+	duplicate(blocks: Block[], select: boolean) {
 		const copies = this.edytor.dispatcher
 			.each('duplicateBlock', outermost(blocks), (block) => this.edytor.duplicateBlock(block.id))
 			.flatMap((copy) => (copy?.status === 'applied' ? copy.ids : []));
 		this.close(false);
-		if (copies.length) this.edytor.selection.select(blockSelection(copies));
+		if (!select) this.caret(this.edytor.idToBlock.get(copies[0] ?? '') ?? blocks[0]);
+		else if (copies.length) this.edytor.selection.select(blockSelection(copies));
 	}
 
 	/**
@@ -530,18 +522,12 @@ export class BlockMenuController {
 		this.close();
 	}
 
-	/** Run the keyboard row (or open its flyout). */
-	runSelected() {
-		this.#run(this.rows[this.selectedIndex]);
-	}
-
-	/** Run the open flyout's keyboard row: convert to its kind, or paint its colour. */
-	runFlyout() {
-		this.#run(this.flyoutRows[this.flyoutIndex]);
-	}
-
-	/** Run a row: paint a colour, convert to a kind, open an action's flyout or run it. */
-	#run(row: BlockMenuAction | KindRow | BlockMenuColor | undefined) {
+	/**
+	 * Run a row of the menu or of its open flyout (a click; Enter runs the
+	 * keyboard's): paint a colour, convert to a kind, open an action's
+	 * flyout or run it.
+	 */
+	run(row: BlockMenuAction | KindRow | BlockMenuColor | undefined) {
 		if (!row) return;
 		if ('field' in row) this.paint(row);
 		else if ('value' in row) this.turnInto(row);

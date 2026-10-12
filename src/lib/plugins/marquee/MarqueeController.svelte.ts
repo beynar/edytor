@@ -73,11 +73,6 @@ export class MarqueeController {
 		private readonly threshold: number
 	) {}
 
-	/** Whether a press is down that may still become (or is) a marquee. */
-	get pressing() {
-		return this.#press !== null;
-	}
-
 	/** What a `box` snippet receives. */
 	get payload(): MarqueeBoxPayload | null {
 		const { rect } = this;

@@ -257,7 +257,7 @@
 					data-testid="custom-block-menu-row"
 					onclick={() => {
 						menu.selectedIndex = index;
-						menu.runSelected();
+						menu.run(row);
 					}}>{row.label}</button
 				>
 			{/each}
@@ -270,7 +270,7 @@
 						{...menu.option(index, true)}
 						onclick={() => {
 							menu.flyoutIndex = index;
-							menu.runFlyout();
+							menu.run(row);
 						}}>{row.label}</button
 					>
 				{/each}

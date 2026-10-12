@@ -11,7 +11,7 @@ import type { BlockView } from '$lib/plugins.js';
 import { Text } from '$lib/text/text.svelte.js';
 import { attribute } from '../chrome.js';
 import { languageOf, type CodeSettings } from './languages.js';
-import type { LanguageMenu, LanguageRow } from './languageMenu.svelte.js';
+import type { LanguageMenu } from './languageMenu.svelte.js';
 
 /** How long Copy reads Copied after a copy, in milliseconds. */
 const COPIED_FOR = 1200;
@@ -26,10 +26,9 @@ const codeText = (code: Block) =>
 
 /**
  * What a code plugin's `header` snippet receives: the code block's
- * language (`language`, its id; `label`, as shown), the languages the
- * plugin lists (`languages`), whether the language may be changed here
+ * language (`language`, its id; `label`, as shown), whether the language may be changed here
  * (`editable`: an editable view, not a suggestion's preview), the list's
- * state (`expanded`), the actions (`setLanguage`, `toggle`, `copy`, and
+ * state (`expanded`), the actions (`toggle`, the list's own `pick`, `copy`, and
  * `copied` for a moment after a copy) and the plugin's `labels`. Put
  * `{@attach header.button}` on the element that opens the language list:
  * it opens it on a click, ArrowDown or ArrowUp, Escape gives the keys back
@@ -70,12 +69,7 @@ export class CodeHeader {
 	/** The language's label; a language the plugin does not list shows its id (reactive). */
 	get label(): string {
 		const language = this.language;
-		return this.languages.find((row) => row.id === language)?.label ?? language;
-	}
-
-	/** The languages the plugin lists, in order. */
-	get languages(): readonly LanguageRow[] {
-		return this.settings.languages;
+		return this.settings.languages.find((row) => row.id === language)?.label ?? language;
 	}
 
 	/** The view is readonly (reactive). */
@@ -93,13 +87,6 @@ export class CodeHeader {
 		const block = this.view().handle;
 		return Boolean(block && this.menu?.isOpenFor(block.id));
 	}
-
-	/** Set the block's language (one undo step); nothing where it is not `editable`. */
-	setLanguage = (id: string) => {
-		const block = this.view().handle;
-		if (!this.editable || !block?.isInTree || id === this.language) return;
-		block.edytor.patchData(block.id, [{ path: ['language'], value: id }]);
-	};
 
 	/**
 	 * Open the language list under the header's button, or close it (`keys`:

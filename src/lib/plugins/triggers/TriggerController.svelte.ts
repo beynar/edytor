@@ -80,9 +80,6 @@ export abstract class TextTriggerController {
 		return this.edytor.popups.idOf(this.owner);
 	}
 
-	/** Publish the open menu to the view's root (`edytor.popups`), or withdraw it with `null`. */
-	publish = (popup: Popup | null) => this.edytor.popups.set(this.owner, popup);
-
 	/**
 	 * The listbox (`{@attach controller.popup}`, named by your markup): it
 	 * takes the menu's id and its `listbox` role unless it has its own, keeps the focus where it

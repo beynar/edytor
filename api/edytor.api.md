@@ -298,6 +298,7 @@ export type BlockElement = string | {
 ```ts
 // plugins/blockHandles/BlockHandleController.svelte.d.ts
 export declare class BlockHandleController {
+    #private;
     private edytor;
     private options;
     private readonly owner;
@@ -335,7 +336,6 @@ export declare class BlockHandleController {
     private moveAndSelect;
     private moving;
     private covered;
-    private inRange;
     dragBlocks(source: Block): Block[];
     private select;
     private fits;
@@ -454,7 +454,6 @@ export declare class BlockMenuController {
     get menuId(): string;
     get flyoutId(): string;
     rowId: (row: BlockMenuAction | KindRow | BlockMenuColor, flyout?: boolean) => string;
-    publish: (popup: Popup | null) => void;
     popup: Attachment<HTMLElement>;
     flyoutMenu: Attachment<HTMLElement>;
     keys: Attachment<HTMLElement>;
@@ -476,13 +475,11 @@ export declare class BlockMenuController {
     move(direction: 'up' | 'down'): void;
     turnInto(kind: KindRow): void;
     paint(row: BlockMenuColor): void;
-    duplicate(block: Block): void;
-    duplicateAll(blocks: Block[]): void;
+    duplicate(blocks: Block[], select: boolean): void;
     remove(): void;
     get linked(): Block | undefined;
     copyLink(): Promise<void>;
-    runSelected(): void;
-    runFlyout(): void;
+    run(row: BlockMenuAction | KindRow | BlockMenuColor | undefined): void;
     openFlyout(which?: 'turn' | 'color'): void;
     private restore;
     private caret;
@@ -735,11 +732,9 @@ export declare class CodeHeader {
     get block(): Block | undefined;
     get language(): string;
     get label(): string;
-    get languages(): readonly LanguageRow[];
     get readonly(): boolean;
     get editable(): boolean;
     get expanded(): boolean;
-    setLanguage: (id: string) => void;
     toggle: (keys?: boolean) => void;
     copy: () => Promise<void>;
     button: Attachment<HTMLElement>;
@@ -4057,7 +4052,6 @@ export declare class ToolbarController {
     constructor(edytor: Edytor);
     get isVisible(): boolean;
     get barId(): string;
-    publish: (popup: Popup | null) => void;
     get linkFieldId(): string;
     popup: Attachment<HTMLElement>;
     keys: Attachment<HTMLElement>;
@@ -5366,7 +5360,6 @@ export declare abstract class TextTriggerController {
     constructor(edytor: Edytor, char: string, owner: string);
     get readonly(): boolean;
     get listId(): string;
-    publish: (popup: Popup | null) => void;
     popup: Attachment<HTMLElement>;
     option: (index: number) => OptionAttributes;
     protected popupOf(active: string | undefined): Popup;

@@ -48,6 +48,7 @@ import {
 	type DropPlacement
 } from './geometry.js';
 import { stacks } from '../columns/stacking.js';
+import { listen } from '../bands.svelte.js';
 
 /**
  * The DOM event a grip click dispatches on the editor (the one way to
@@ -194,25 +195,17 @@ export class BlockHandleController {
 	 * selects the block and opens its menu, and the Alt+arrow moves.
 	 */
 	grip = (block: Block) => (node: HTMLElement) => {
-		const click = (event: MouseEvent) => {
-			event.preventDefault();
-			event.stopPropagation();
-			this.activateBlock(block, node);
-		};
-		const pointerdown = (event: PointerEvent) => event.stopPropagation();
-		const keydown = (event: KeyboardEvent) => this.handleKeyDown(event, block);
-		node.addEventListener('click', click);
-		node.addEventListener('pointerdown', pointerdown);
-		node.addEventListener('keydown', keydown);
-		const unregister = this.registerHandle(node, block);
-		return {
-			destroy: () => {
-				node.removeEventListener('click', click);
-				node.removeEventListener('pointerdown', pointerdown);
-				node.removeEventListener('keydown', keydown);
-				unregister();
-			}
-		};
+		const offs = [
+			listen(node, 'click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				this.activateBlock(block, node);
+			}),
+			listen(node, 'pointerdown', (event) => event.stopPropagation()),
+			listen(node, 'keydown', (event: KeyboardEvent) => this.handleKeyDown(event, block)),
+			this.registerHandle(node, block)
+		];
+		return { destroy: () => offs.forEach((off) => off()) };
 	};
 
 	/**
@@ -663,7 +656,7 @@ export class BlockHandleController {
 		event.preventDefault();
 		event.stopPropagation();
 		const request = { blocks: this.dragBlocks(block), direction };
-		if (this.inRange(block)) this.edytor.move(request);
+		if (this.#covered(block)?.range) this.edytor.move(request);
 		else this.moveAndSelect(request);
 	}
 
@@ -693,25 +686,19 @@ export class BlockHandleController {
 	 * The blocks the selection covers — a block selection's blocks as
 	 * clicked (a selected list is one block: its item's handle drags the
 	 * item), or the blocks a text range spans (`getSelectionBlocks`, the
-	 * resolver Tab and Turn into read), a code line as its code block
-	 * (`movable`) — when `source` is one of them; else `source` alone.
+	 * resolver Tab and Turn into read; `range`), a code line as its code
+	 * block (`movable`) — when `source` is one of them; else none.
 	 */
-	private covered(source: Block) {
+	#covered(source: Block) {
 		const { selectedBlocks, projection } = this.edytor.selection;
-		if (!selectedBlocks.size && projection.isCollapsed) return [source];
-		const covered = movable(selectedBlocks.size ? selectedBlocks : getSelectionBlocks(this.edytor));
-		return covered.includes(source) ? covered : [source];
+		const range = !selectedBlocks.size;
+		if (range && projection.isCollapsed) return null;
+		const covered = movable(range ? getSelectionBlocks(this.edytor) : selectedBlocks);
+		return covered.includes(source) ? { covered, range } : null;
 	}
 
-	/** Whether a text range (no block selection) covers `source` (`covered`). */
-	private inRange(source: Block) {
-		const { selectedBlocks, projection } = this.edytor.selection;
-		return (
-			!selectedBlocks.size &&
-			!projection.isCollapsed &&
-			movable(getSelectionBlocks(this.edytor)).includes(source)
-		);
-	}
+	/** The blocks the selection covers when `source` is one of them, else `source` alone. */
+	private covered = (source: Block) => this.#covered(source)?.covered ?? [source];
 
 	/**
 	 * The blocks a drag (or an Alt+arrow) from `source`'s handle moves

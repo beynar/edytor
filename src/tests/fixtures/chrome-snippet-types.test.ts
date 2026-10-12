@@ -149,8 +149,6 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<CodeHeader['readonly']>().toEqualTypeOf<boolean>();
 		expectTypeOf<CodeHeader['editable']>().toEqualTypeOf<boolean>();
 		expectTypeOf<CodeHeader['copied']>().toEqualTypeOf<boolean>();
-		expectTypeOf<CodeHeader['languages']>().toEqualTypeOf<readonly LanguageRow[]>();
-		expectTypeOf<CodeHeader['setLanguage']>().toEqualTypeOf<(id: string) => void>();
 		expectTypeOf<LanguageMenu>().not.toHaveProperty('labels');
 		expectTypeOf<LanguageMenu['readonly']>().toEqualTypeOf<boolean>();
 		expectTypeOf<LanguageMenu['close']>().toBeFunction();

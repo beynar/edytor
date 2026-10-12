@@ -19,7 +19,6 @@ import {
 import type { Text } from '$lib/text/text.svelte.js';
 import { convertBlocks, convertibleKinds, rowOf, type KindRow } from '$lib/kinds.js';
 import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
-import type { Popup } from '$lib/surface/popups.svelte.js';
 import { identify } from '../chrome.js';
 
 /** The bar's controls the arrows walk (a disabled one is skipped). */
@@ -53,9 +52,6 @@ export class ToolbarController {
 		return this.edytor.popups.idOf('toolbar');
 	}
 
-	/** Publish the shown bar to the view's root (`edytor.popups`), or withdraw it with `null`. */
-	publish = (popup: Popup | null) => this.edytor.popups.set('toolbar', popup);
-
 	/** The link panel's field id (page-unique): a `label`'s `for`. */
 	get linkFieldId() {
 		return this.edytor.popups.idOf('toolbar-link');
@@ -74,8 +70,8 @@ export class ToolbarController {
 	popup: Attachment<HTMLElement> = (node) => {
 		identify(node, this.barId, 'toolbar');
 		node.setAttribute('data-edytor-toolbar-bar', '');
-		this.publish({ id: this.barId, keys: 'Alt+F10' });
-		return () => this.publish(null);
+		this.edytor.popups.set('toolbar', { id: this.barId, keys: 'Alt+F10' });
+		return () => this.edytor.popups.set('toolbar', null);
 	};
 
 	/**

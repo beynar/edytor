@@ -406,6 +406,7 @@ export type BlockElement = string | {
 
 ```ts
 export declare class BlockHandleController {
+    #private;
     private edytor;
     private options;
     private readonly owner;
@@ -443,7 +444,6 @@ export declare class BlockHandleController {
     private moveAndSelect;
     private moving;
     private covered;
-    private inRange;
     dragBlocks(source: Block): Block[];
     private select;
     private fits;
@@ -590,7 +590,6 @@ export declare class BlockMenuController {
     get menuId(): string;
     get flyoutId(): string;
     rowId: (row: BlockMenuAction | KindRow | BlockMenuColor, flyout?: boolean) => string;
-    publish: (popup: Popup | null) => void;
     popup: Attachment<HTMLElement>;
     flyoutMenu: Attachment<HTMLElement>;
     keys: Attachment<HTMLElement>;
@@ -612,13 +611,11 @@ export declare class BlockMenuController {
     move(direction: 'up' | 'down'): void;
     turnInto(kind: KindRow): void;
     paint(row: BlockMenuColor): void;
-    duplicate(block: Block): void;
-    duplicateAll(blocks: Block[]): void;
+    duplicate(blocks: Block[], select: boolean): void;
     remove(): void;
     get linked(): Block | undefined;
     copyLink(): Promise<void>;
-    runSelected(): void;
-    runFlyout(): void;
+    run(row: BlockMenuAction | KindRow | BlockMenuColor | undefined): void;
     openFlyout(which?: 'turn' | 'color'): void;
     private restore;
     private caret;
@@ -633,7 +630,6 @@ export declare class BlockMenuController {
 - `readonly`: The editor is readonly: the menu closes.
 - `menuId`: The menu's and the Turn into flyout's element ids (page-unique), for `aria-controls`.
 - `rowId`: A row's element id (page-unique; a flyout's with `flyout`), for `aria-activedescendant`.
-- `publish`: Publish the open menu to the view's root (`edytor.popups`), or withdraw it with `null`.
 - `popup`: The menu element (`{@attach controller.popup}`, the one with the rows): it takes the menu's id, its `menu` role and name unless it has its own, keeps the focus where it is on a press (a field takes its own), and is published to the view's root (`edytor.popups`) while it is in the page, the grip that opened it told so.
 - `flyoutMenu`: An open flyout (`{@attach controller.flyoutMenu}`, named by your markup): its id, `menu` role, the overlay's placement beside the menu, and presses that keep the focus.
 - `keys`: The element that holds the keyboard (`{@attach controller.keys}`: the search field): focused when it mounts, it takes every key of the menu (the arrows, Home and End walk the rows, → opens a row's flyout and ← closes it, Enter runs the row, Delete removes the blocks while the query is empty, Escape closes the flyout, then the menu), and names the open menu and its highlighted row (`aria-controls`, `aria-activedescendant`, once that row is in the page).
@@ -651,11 +647,10 @@ export declare class BlockMenuController {
 - `rows`: Every keyboard row: actions, then the matching kinds, then the matching colours.
 - `turnInto`: Convert the open block, or every member (a list's items) as one undo step (they stay selected); one block's conversion places the caret (refused: the caret returns).
 - `paint`: Paint the open blocks (`colorable`, a list's items too) with `row`'s colour or background as one undo step (`setBlockColor`); the menu closes and the blocks stay selected, as in Notion.
-- `duplicateAll`: Duplicate several blocks as one undo step, each copy after its block (a block inside another of them is copied with it; a vetoed one is skipped, `dispatcher.each`); the copies are selected.
+- `duplicate`: Duplicate `blocks` as one undo step, each copy after its block (a block inside another of them is copied with it; a vetoed one is skipped, `dispatcher.each`); the copies are selected (`select`), else the first copy takes the caret (refused: its block keeps it).
 - `remove`: Delete the open blocks' `members` (a list with its items) as the keyboard's block delete does (`deleteSelectedBlocks`): `onDeleteSelectedBlocks` may keep them, then one command (`deleteBlocks`, one plan, so a veto keeps them all), unselected children taking their parent's place, the caret where that delete puts it (kept or refused: the caret or the selection returns).
 - `linked`: The one block "Copy link" names: the open block, or the layout its block selection covers whole (`liftLayouts`); none for several.
-- `runSelected`: Run the keyboard row (or open its flyout).
-- `runFlyout`: Run the open flyout's keyboard row: convert to its kind, or paint its colour.
+- `run`: Run a row of the menu or of its open flyout (a click; Enter runs the keyboard's): paint a colour, convert to a kind, open an action's flyout or run it.
 - `openFlyout`: Open a flyout on its first row (keyboard or mouse): the "Turn into" kinds (default) or the colours; that flyout already open stays as it is.
 
 ## BlockMenuLabels
@@ -985,10 +980,9 @@ declare const CODE_LANGUAGES: readonly CodeLanguage[];
 ## CodeHeader
 
 What a code plugin's `header` snippet receives: the code block's
-language (`language`, its id; `label`, as shown), the languages the
-plugin lists (`languages`), whether the language may be changed here
+language (`language`, its id; `label`, as shown), whether the language may be changed here
 (`editable`: an editable view, not a suggestion's preview), the list's
-state (`expanded`), the actions (`setLanguage`, `toggle`, `copy`, and
+state (`expanded`), the actions (`toggle`, the list's own `pick`, `copy`, and
 `copied` for a moment after a copy) and the plugin's `labels`. Put
 `{@attach header.button}` on the element that opens the language list:
 it opens it on a click, ArrowDown or ArrowUp, Escape gives the keys back
@@ -1002,11 +996,9 @@ export declare class CodeHeader {
     get block(): Block | undefined;
     get language(): string;
     get label(): string;
-    get languages(): readonly LanguageRow[];
     get readonly(): boolean;
     get editable(): boolean;
     get expanded(): boolean;
-    setLanguage: (id: string) => void;
     toggle: (keys?: boolean) => void;
     copy: () => Promise<void>;
     button: Attachment<HTMLElement>;
@@ -1017,11 +1009,9 @@ export declare class CodeHeader {
 - `block`: The code block; `undefined` in a suggestion's preview.
 - `language`: The block's language id: its `data.language`, else the plugin's default (reactive).
 - `label`: The language's label; a language the plugin does not list shows its id (reactive).
-- `languages`: The languages the plugin lists, in order.
 - `readonly`: The view is readonly (reactive).
 - `editable`: The language may be changed here: an editable view, not a suggestion's preview (reactive).
 - `expanded`: The language list is open on this block (reactive).
-- `setLanguage`: Set the block's language (one undo step); nothing where it is not `editable`.
 - `toggle`: Open the language list under the header's button, or close it (`keys`: the keyboard opened it, so the keys go back to the button after).
 - `copy`: Copy the block's code to the clipboard; `copied` reads true for a moment.
 - `button`: The element that opens the language list (`{@attach header.button}`, a `button`): a click opens or closes it (from Enter or Space, the keys opened it and get it back), ArrowDown or ArrowUp opens it, Escape gives the keys back to the editor; a press keeps the editor's selection.
@@ -6092,7 +6082,6 @@ export declare class ToolbarController {
     constructor(edytor: Edytor);
     get isVisible(): boolean;
     get barId(): string;
-    publish: (popup: Popup | null) => void;
     get linkFieldId(): string;
     popup: Attachment<HTMLElement>;
     keys: Attachment<HTMLElement>;
@@ -6135,7 +6124,6 @@ export declare class ToolbarController {
 - `panel`: The open panel: the kind menu, the link field or the colors.
 - `hovered`: The link under the pointer, for the link card (`link.card`).
 - `barId`: The bar's element id (page-unique), for the root's `aria-controls`.
-- `publish`: Publish the shown bar to the view's root (`edytor.popups`), or withdraw it with `null`.
 - `linkFieldId`: The link panel's field id (page-unique): a `label`'s `for`.
 - `popup`: The bar (`{@attach controller.popup}`, named by your markup): it takes the bar's id, its `toolbar` role unless it has its own, the placement's mark (`data-edytor-toolbar-bar`, which the toolbar's shortcut also reads), and is published to the view's root (`edytor.popups`, with that shortcut as its `aria-keyshortcuts`) while it is in the page.
 - `keys`: The bar's keys (`{@attach controller.keys}`, WAI-ARIA toolbar): one tab stop, the control it last held (`tabindex="0"`, every other `-1`); the arrows, Home and End walk its controls, Escape gives the focus back to the editor over the held selection (`release`).

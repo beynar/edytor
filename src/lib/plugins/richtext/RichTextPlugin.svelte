@@ -32,6 +32,9 @@
 		iconOf
 	} from './callouts.js';
 	import { listen } from '$lib/utils/listen.js';
+	import { onLastLine } from '$lib/session/navigation.js';
+	import { bodyShows } from '$lib/selection/visibility.js';
+	import { openBody } from './body.js';
 	import type { Snippet } from 'svelte';
 	import {
 		richTextControls,
@@ -262,6 +265,16 @@
 				'mod+shift+s': setMarkAndSelect('strike'),
 				'mod+shift+x': setMarkAndSelect('strike'),
 				'mod+shift+h': setMarkAndSelect('color', 'red'),
+				// ArrowDown on the last line of a header whose body shows and is empty
+				// (an open toggle, a callout) goes into that body, as its hint's click
+				// does (`body.down`): one command, one undo step. Elsewhere the key
+				// moves as usual.
+				arrowdown: ({ prevent }) => {
+					const header = onLastLine(edytor);
+					if (!header || header.hasChildren || !bodyShows(header)) return;
+					if (!edytor.dispatcher.permits()) return;
+					prevent(() => void openBody(header));
+				},
 				// Mod+Enter checks or unchecks each shown to-do it is in (Notion): the
 				// selected blocks', else the caret's; the toggles among them open or
 				// close as with the built-in binding, in the same key.

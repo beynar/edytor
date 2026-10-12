@@ -150,10 +150,13 @@ describe('ArrowDown at the last stop leaves a nested block (nav.trailing.exit)',
 	});
 
 	it("a callout's own text, and its child", async () => {
+		// Its empty body shows (`body.down`): ArrowDown goes into it first, then out.
 		const first = await render([block('callout', 'K', 'note')]);
 		await caretIn(first.edytor, 'K');
 		await arrowDown(first.editor);
-		expect(shape(first.edytor)).toEqual(['callout:note', 'paragraph:']);
+		expect(shape(first.edytor)).toEqual(['callout:note[paragraph:]']);
+		await arrowDown(first.editor);
+		expect(shape(first.edytor)).toEqual(['callout:note[paragraph:]', 'paragraph:']);
 		atTrailing(first.edytor, 2);
 		document.body.innerHTML = '';
 

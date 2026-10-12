@@ -155,7 +155,7 @@ Behavior worth knowing:
 
 ## Toggles and callouts
 
-A toggle's and a callout's own text is a header; their children are a body that holds any blocks, nested any way. In an open toggle, and in a callout, an empty body shows a hint ("Empty toggle. Click or drop blocks inside.", "Empty callout. Click or drop blocks inside."). Clicking it starts the body: an empty paragraph as its first child, the caret in it, one undo step. A block dragged by its handle onto the hint goes inside. From the keyboard, <kbd>Enter</kbd> at the end of the header goes into the body. The hint is not content: it is not editable, not copied, not read by assistive technology, and a readonly editor does not show it (`[data-edytor-empty-body]` styles it; the `emptyBody` option replaces its markup, see [Your markup for its controls](#your-markup-for-its-controls)).
+A toggle's and a callout's own text is a header; their children are a body that holds any blocks, nested any way. In an open toggle, and in a callout, an empty body shows a hint ("Empty toggle. Click or drop blocks inside.", "Empty callout. Click or drop blocks inside."). Clicking it starts the body: an empty paragraph as its first child, the caret in it, one undo step. A block dragged by its handle onto the hint goes inside. From the keyboard, <kbd>Enter</kbd> at the end of the header, or <kbd>ArrowDown</kbd> on its last line, goes into the body. The hint is not content: it is not editable, not copied, not read by assistive technology, and a readonly editor does not show it (`[data-edytor-empty-body]` styles it; the `emptyBody` option replaces its markup, see [Your markup for its controls](#your-markup-for-its-controls)).
 
 A callout is Notion's: an icon, a title and a content.
 

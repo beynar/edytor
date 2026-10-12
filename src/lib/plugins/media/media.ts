@@ -1,11 +1,10 @@
-import type { Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { BlockDefinition, Plugin, PluginDefinitions, PluginOperations } from '$lib/plugins.js';
 import { mediaKinds } from '$lib/crdt/semantics.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 import { keywordsOf, labelsOf, mediaEnglish } from '$lib/labels.js';
-import { MEDIA_ICONS, type EmptyView, type MediaEmptyController } from './empty.svelte.js';
+import { MEDIA_ICONS, type EmptyView } from './empty.svelte.js';
 
 /** The media kinds. */
 export type MediaKind = 'embed' | 'bookmark' | 'file' | 'video' | 'audio';
@@ -104,7 +103,6 @@ export const safeMediaSrc = (value: unknown): string | null => {
 	const origin = blob && safeWebUrl(blob[1]);
 	return origin ? `blob:${origin}` : safeWebUrl(value);
 };
-
 
 /** One allowlisted embed provider: which links it plays, and its player. */
 export type EmbedProvider = {

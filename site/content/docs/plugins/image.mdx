@@ -29,16 +29,7 @@ An image plugin you list (any `createImagePlugin(...)`) replaces the default one
 
 ## Options
 
-`createImagePlugin(options)` takes an `ImagePluginOptions`:
-
-<TypeTable
-  type={{
-    toolbar: {
-      type: "Snippet<[ImageControls]>",
-      description: "The alignment buttons and the alt field over the hovered image, placed at its top right (without it, the resize handles alone). Keep their behavior with {@attach controls.bar} and {@attach controls.altField}. See Menus and handles.",
-    },
-  }}
-/>
+`createImagePlugin()` takes no options. Its chrome's parts that draw your markup are their own plugins: the empty block's panel (`createMediaEmptyPlugin({ empty })`), the toolbar over the hovered image (`createImageToolbarPlugin({ toolbar })`: the alignment buttons and the alt field at its top right, their behavior `{@attach toolbar.bar}` and `{@attach toolbar.altField}`; without it, the resize handles alone) and the uploader (`createUploadsPlugin({ upload })`). See [Menus and handles](/docs/customization/menus#image-toolbar).
 
 ## The kind
 
@@ -129,7 +120,7 @@ The [Notion theme](/docs/customization/styling#notion-theme) styles the block. W
 | `[data-edytor-image-empty]`       | Where the empty state (your `empty` snippet) renders |
 | `[data-edytor-image-resize]`      | A resize handle in the overlay (`="left"`, `="right"`) |
 | `[data-edytor-image-toolbar-slot]` | Where your `toolbar` renders, at the image's top right |
-| `[data-edytor-image-toolbar]`     | Your toolbar's bar (`controls.bar` marks it) |
+| `[data-edytor-image-toolbar]`     | Your toolbar's bar (`toolbar.bar` marks it) |
 | `[data-edytor-image-alt]`         | Your alt text field (`controls.altField` marks it) |
 
 The resize handles read `--edytor-image-handle-color`. An `empty` failure is `"invalid"`, `"upload"` for a failed upload, or `"inline"` for an inline image over 1 MiB.

@@ -16,7 +16,7 @@
 		CommentsController,
 		EquationEditor,
 		FindController,
-		ImageControls,
+		ImageToolbar as ImageToolbarController,
 		LanguageMenu as LanguageMenuController,
 		MarqueeBoxPayload,
 		MediaEmptyController,
@@ -140,7 +140,7 @@
 	<EquationPanel {editor} />
 {/snippet}
 
-{#snippet imageToolbar(controls: ImageControls)}
+{#snippet imageToolbar(controls: ImageToolbarController)}
 	<ImageToolbar {controls} />
 {/snippet}
 

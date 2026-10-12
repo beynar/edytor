@@ -1,6 +1,5 @@
 <script module lang="ts">
 	import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
-	import type { Snippet } from 'svelte';
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import { branded } from '../brand.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
@@ -20,9 +19,8 @@
 		storableImageSrc,
 		type ImageAlign
 	} from './image.js';
-	import { ImageControls } from './controls.svelte.js';
-	import { MEDIA_ICONS, type EmptyView, type MediaEmptyController } from '../media/empty.svelte.js';
-	import { onPress } from '$lib/events/onFocus.js';
+	import { ImageControls, imageControls } from './controls.svelte.js';
+	import { MEDIA_ICONS, type EmptyView } from '../media/empty.svelte.js';
 	import { imageEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import { listen } from '$lib/utils/listen.js';
 
@@ -33,17 +31,6 @@
 		safeImageSrc,
 		storableImageSrc,
 		type ImageAlign
-	};
-
-	export type ImagePluginOptions = {
-		/**
-		 * The toolbar over the hovered image (the alignments and the alt field);
-		 * it renders while `controls.shown` and no handle drags, at the image's
-		 * top right (`controls.box`; without it, no toolbar). The resize handles
-		 * are the plugin's. Keep its behaviour with `{@attach controls.bar}` on the
-		 * toolbar and `{@attach controls.altField}` on the alt field.
-		 */
-		toolbar?: Snippet<[ImageControls]>;
 	};
 
 	/** The data an image block reads (all optional). */
@@ -62,7 +49,7 @@
 	 * an editable caption, its alt text, width and alignment set from the
 	 * chrome the plugin shows over it. Void: its only text is the caption.
 	 */
-	export const createImagePlugin = (pluginOptions: ImagePluginOptions = {}): Plugin => {
+	export const createImagePlugin = (): Plugin => {
 		const plugin: Plugin = (edytor) => {
 			const labels = labelsOf(edytor, 'image', imageEnglish);
 			const own: View = {
@@ -77,7 +64,10 @@
 				}
 			};
 			// The records read with no view (`plugin(undefined)`) keep no state.
-			if (edytor && !views.has(edytor)) views.set(edytor, own);
+			if (edytor && !views.has(edytor)) {
+				views.set(edytor, own);
+				imageControls.set(edytor, own.controls);
+			}
 			const owns = () => views.get(edytor) === own;
 			return {
 				// The chrome: in the overlay, for the image under the pointer.
@@ -88,14 +78,12 @@
 					const leave = (event: PointerEvent) =>
 						!controls.drag && controls.leave(event.relatedTarget);
 					const layer = edytor.overlay.layer;
-					// A press outside the alt panel closes it (WebKit's lone `mousedown` too).
-					const offPress = onPress(edytor, node.ownerDocument, controls.pressed, true);
 					const off = listen(node, 'pointerover', over);
 					const off2 = listen(node, 'pointerleave', leave);
 					const off3 = listen(layer, 'pointerleave', leave);
 					const unmount = edytor.overlay.mount(
 						ImageChrome,
-						{ controls, toolbar: pluginOptions.toolbar },
+						{ controls },
 						'edytor-image-chrome',
 						// Above the block handles (5) and the column bands (6): it sits on the image.
 						7,
@@ -105,7 +93,6 @@
 						off();
 						off2();
 						off3();
-						offPress();
 						unmount();
 					};
 				},

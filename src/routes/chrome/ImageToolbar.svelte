@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { words } from './words.svelte.js';
 	import { alignIcons, altIcon } from './icons.js';
-	import type { ImageControls } from '$lib/index.js';
+	import type { ImageToolbar } from '$lib/index.js';
 
 	/**
-	 * Notion's image toolbar, drawn for `createImagePlugin({ toolbar })`: the
+	 * Notion's image toolbar, drawn for `createImageToolbarPlugin({ toolbar })`: the
 	 * three alignments and the alt text's button, and the alt text field
 	 * under them. A press on the toolbar keeps the editor's focus; the alt
 	 * field takes it.
 	 */
-	let { controls }: { controls: ImageControls } = $props();
+	let { controls }: { controls: ImageToolbar } = $props();
 	const labels = $derived(words.image);
 	/** The toolbar's buttons: the three alignments, then the alt text's (no `align`). */
 	const buttons = $derived([

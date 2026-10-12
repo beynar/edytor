@@ -26,7 +26,7 @@ Every element is customized the same way:
 | `{...controller.option(index)}` | Each row | Its id, `role`, `aria-selected` (or `aria-checked`), `tabindex="-1"`, `data-selected`, and scrolls the keyboard's row into view. A row payload carries it as `option` |
 | `{@attach controller.flyoutMenu}` | The block menu's open flyout | Its id, role, name and placement beside the menu |
 | `{@attach controller.linkField}` | The toolbar's link field | Its id (unique per editor, for a `label`'s `for`), the focus when the panel opens, <kbd>Enter</kbd> applies, <kbd>Escape</kbd> closes |
-| `{@attach controls.bar}`, `{@attach controls.altField}` | The image toolbar and its alt field | The toolbar's role and name; the alt field's focus, keys, and closing when the focus leaves |
+| `{@attach toolbar.bar}`, `{@attach toolbar.altField}` | The image toolbar and its alt field | The toolbar's role and name; the alt field's focus, keys, and closing when the focus leaves |
 | `{@attach empty.field}` | An empty block's link field | <kbd>Enter</kbd> embeds the link |
 | `{@attach payload.grip}` | A table's row or column grip | The drag (the row or the column moves where it is dropped), the click that opens its menu, <kbd>↓</kbd> opens it too and <kbd>Escape</kbd> gives the keys back to the editor; its name, `aria-haspopup`, `aria-expanded` and `aria-controls` |
 | `{@attach header.button}` | A code block's language button | Opens the language list on a click, <kbd>↓</kbd> or <kbd>↑</kbd> (<kbd>Alt</kbd>+<kbd>F10</kbd> at a caret in the block reaches it), <kbd>Escape</kbd> gives the keys back to the code; its name, `aria-haspopup`, `aria-expanded` and `aria-controls` |
@@ -45,7 +45,7 @@ Two rules hold for every snippet:
 | [Block menu](#block-menu) | `createBlockMenuPlugin({ menu })` | `BlockMenuController` | `keys`, `popup`, `option(index)`, `flyoutMenu` |
 | [Toolbar and link card](#toolbar-and-link-card) | `createToolbarPlugin({ toolbar, card })` | `ToolbarController` | `popup`, `keys`, `linkField` |
 | [URL paste menu](#url-paste-menu) | `createEmbedPlugin({ menu })`, `createBookmarkPlugin({ menu })` | `UrlPasteController` | `popup`, `option(index)` |
-| [Image toolbar](#image-toolbar) | `createImagePlugin({ toolbar })` | `ImageControls` | `bar`, `altField` |
+| [Image toolbar](#image-toolbar) | `createImageToolbarPlugin({ toolbar })` | `ImageToolbar` | `bar`, `altField` |
 | [Empty image and media blocks](#empty-image-and-media-blocks) | `createMediaEmptyPlugin({ empty })` | `MediaEmptyController` | `field` |
 | [Table grips, menu and `+`](#table-grips-menu-and-) | `createTablePlugin({ grip, menu, add })` | `TableGripPayload`, `TableChrome` (rows: `TableMenuItem`), `TableAddPayload` | `grip`; `popup`, `keys`, `option(index)` |
 | [Code header and language list](#code-header-and-language-list) | `createCodePlugin({ header, menu })` | `CodeHeader`, `LanguageMenu` (rows: `LanguageMenuItem`) | `button`; `keys`, `popup`, `option(index)` |
@@ -282,16 +282,16 @@ With the [embed](/docs/plugins/embed) or [bookmark](/docs/plugins/bookmark) plug
 
 ## Image toolbar
 
-`toolbar` draws the alignment buttons and the alt text field over the hovered (or selected) image; it renders at the image's top right while the chrome shows and no resize handle drags. The resize handles are the plugin's. `bar` marks it so a press on it keeps the alt field open (its Alt button toggles it); `altField` focuses the field when it opens, closes it on <kbd>Enter</kbd> or <kbd>Escape</kbd> (the editor takes its keys back) and when the focus leaves it. See [Image](/docs/plugins/image).
+`createImageToolbarPlugin({ toolbar })`: `toolbar` draws the alignment buttons and the alt text field over the hovered (or selected) image; it renders at the image's top right while the chrome shows and no resize handle drags. The resize handles are the plugin's. `bar` marks it so a press on it keeps the alt field open (its Alt button toggles it); `altField` focuses the field when it opens, closes it on <kbd>Enter</kbd> or <kbd>Escape</kbd> (the editor takes its keys back) and when the focus leaves it. See [Image](/docs/plugins/image).
 
 ```svelte title="ImageEditor.svelte" check
 <script lang="ts">
-	import { Edytor, createImagePlugin, type ImageControls } from 'edytor';
+	import { Edytor, createImageToolbarPlugin, type ImageToolbar } from 'edytor';
 
-	const plugins = [createImagePlugin({ toolbar })];
+	const plugins = [createImageToolbarPlugin({ toolbar })];
 </script>
 
-{#snippet toolbar(image: ImageControls)}
+{#snippet toolbar(image: ImageToolbar)}
 	<div class="image-toolbar" {@attach image.bar}>
 		<button aria-pressed={image.box?.align === 'left'} onclick={() => image.align('left')}
 			>Align left</button

@@ -4,7 +4,6 @@
 	import EmptySlot from './EmptySlot.svelte';
 	import type { Snippet } from 'svelte';
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
-	import type { MediaEmptyController } from './empty.svelte.js';
 	import {
 		EMBED_ALLOW,
 		EMBED_PROVIDERS,

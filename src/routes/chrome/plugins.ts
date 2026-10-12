@@ -24,6 +24,7 @@ import {
 	type MentionPluginOptions,
 	type PageLinkPluginOptions,
 	createMediaEmptyPlugin,
+	createImageToolbarPlugin,
 	createRichTextPlugin,
 	createCalloutIconsPlugin,
 	type CalloutIconsOptions,
@@ -37,7 +38,6 @@ import {
 	type CommentsPluginOptions,
 	type EmbedPluginOptions,
 	type EquationPluginOptions,
-	type ImagePluginOptions,
 	type RichTextPluginOptions,
 	type TablePluginOptions,
 	type CodePluginOptions,
@@ -81,8 +81,9 @@ export const table = (options: TablePluginOptions = {}) =>
 export const tablePlugin = table();
 export const equation = (options: EquationPluginOptions = {}) =>
 	createEquationPlugin({ panel: chrome.equationPanel, ...options });
-export const image = (options: ImagePluginOptions = {}) =>
-	createImagePlugin({ toolbar: chrome.imageToolbar, ...options });
+export const image = () => createImagePlugin();
+/** The image toolbar (alignments, alt text) over the hovered image. */
+export const imageToolbarPlugin = createImageToolbarPlugin({ toolbar: chrome.imageToolbar });
 export const imagePlugin = image();
 export const embed = (options: EmbedPluginOptions = {}) =>
 	createEmbedPlugin({ menu: chrome.urlPasteMenu, ...options });

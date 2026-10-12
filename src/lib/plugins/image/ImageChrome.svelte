@@ -1,16 +1,12 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
 	import type { ImageControls } from './controls.svelte.js';
 
 	/**
 	 * The image chrome (`ImageControls`), in the overlay: a resize handle on
-	 * each side of the hovered image (Notion's pill, at mid-height), and the
-	 * plugin's `toolbar` snippet at its top right (the alignments, the alt
-	 * text field). The toolbar's role and marks (`bar`) and the alt field's
-	 * keys and focus (`altField`) are the controller's attachments.
+	 * each side of the hovered image (Notion's pill, at mid-height). The
+	 * toolbar is the image toolbar plugin's.
 	 */
-	let { controls, toolbar }: { controls: ImageControls; toolbar?: Snippet<[ImageControls]> } =
-		$props();
+	let { controls }: { controls: ImageControls } = $props();
 
 	// The view turning readonly mid-drag drops the preview at once.
 	$effect(() => {
@@ -29,8 +25,6 @@
 <div role="presentation">
 	{#if controls.shown && controls.box}
 		{@const box = controls.box}
-		<!-- The toolbar and the alt panel hang from the image's top right corner. -->
-		{@const right = `${box.x + box.width - 6}px`}
 		{#each ['left', 'right'] as const as side (side)}
 			<div
 				data-edytor-image-resize={side}
@@ -44,16 +38,6 @@
 				{@attach controls.band.press((event) => controls.start(event, side))}
 			></div>
 		{/each}
-		{#if !controls.drag && toolbar}
-			<div
-				data-edytor-image-toolbar-slot
-				style:left={right}
-				style:top="{box.y + 6}px"
-				data-selecting={controls.selecting ? 'true' : undefined}
-			>
-				{@render toolbar(controls)}
-			</div>
-		{/if}
 	{/if}
 </div>
 
@@ -87,12 +71,5 @@
 	[data-edytor-image-resize]:hover::after,
 	[data-edytor-image-resize][data-dragging='true']::after {
 		opacity: 1;
-	}
-
-	/* The toolbar's place: the image's top right, sized to its markup. */
-	[data-edytor-image-toolbar-slot] {
-		position: absolute;
-		width: max-content;
-		transform: translateX(-100%);
 	}
 </style>

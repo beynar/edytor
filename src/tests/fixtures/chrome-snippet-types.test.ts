@@ -34,7 +34,8 @@ import type {
 	CommentsController,
 	EmbedPluginOptions,
 	ImageControls,
-	ImagePluginOptions,
+	ImageToolbar,
+	ImageToolbarOptions,
 	MarqueeBoxPayload,
 	MarqueePluginOptions,
 	MediaEmptyController,
@@ -76,7 +77,7 @@ describe('each chrome snippet takes its exported payload', () => {
 		>();
 		expectTypeOf<Payload<EmbedPluginOptions['menu']>>().toEqualTypeOf<UrlPasteController>();
 		expectTypeOf<Payload<BookmarkPluginOptions['menu']>>().toEqualTypeOf<UrlPasteController>();
-		expectTypeOf<Payload<ImagePluginOptions['toolbar']>>().toEqualTypeOf<ImageControls>();
+		expectTypeOf<Payload<ImageToolbarOptions['toolbar']>>().toEqualTypeOf<ImageToolbar>();
 		expectTypeOf<Payload<MediaEmptyOptions['empty']>>().toEqualTypeOf<MediaEmptyController>();
 		expectTypeOf<Payload<CommentsPluginOptions['card']>>().toEqualTypeOf<CommentCardPayload>();
 		expectTypeOf<Payload<CommentsPluginOptions['header']>>().toEqualTypeOf<CommentsController>();
@@ -165,8 +166,8 @@ describe('each chrome snippet takes its exported payload', () => {
 		expectTypeOf<ToolbarController['keys']>().toEqualTypeOf<Attachment<HTMLElement>>();
 		expectTypeOf<ToolbarController['linkField']>().toEqualTypeOf<Attachment<HTMLInputElement>>();
 		expectTypeOf<UrlPasteController['popup']>().toEqualTypeOf<Attachment<HTMLElement>>();
-		expectTypeOf<ImageControls['bar']>().toEqualTypeOf<Attachment<HTMLElement>>();
-		expectTypeOf<ImageControls['altField']>().toEqualTypeOf<Attachment<HTMLInputElement>>();
+		expectTypeOf<ImageToolbar['bar']>().toEqualTypeOf<Attachment<HTMLElement>>();
+		expectTypeOf<ImageToolbar['altField']>().toEqualTypeOf<Attachment<HTMLInputElement>>();
 		expectTypeOf<BlockMenuController['option']>().returns.toEqualTypeOf<OptionAttributes>();
 		expectTypeOf<SlashMenuController['option']>().returns.toEqualTypeOf<OptionAttributes>();
 		expectTypeOf<UrlPasteController['option']>().returns.toEqualTypeOf<OptionAttributes>();

@@ -8,6 +8,5 @@
 	 * A YouTube or Vimeo link is an embed (`createEmbedPlugin()`). Void: its only
 	 * text is the caption.
 	 */
-	export const createVideoPlugin = (): Plugin =>
-		sourcePlugin('video', ['movie', 'mp4', 'clip']);
+	export const createVideoPlugin = (): Plugin => sourcePlugin('video', ['movie', 'mp4', 'clip']);
 </script>

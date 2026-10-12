@@ -7,6 +7,7 @@
 	import { createMentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 	import { createEmbedPlugin } from '$lib/plugins/media/EmbedPlugin.svelte';
 	import { createImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+	import { createImageToolbarPlugin } from '$lib/plugins/image/toolbar.svelte.js';
 	import { createMediaEmptyPlugin } from '$lib/plugins/media/MediaEmpty.svelte';
 	import { createSuggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 	import { createTablePlugin } from '$lib/plugins/table/TablePlugin.svelte';
@@ -18,7 +19,7 @@
 		BlockMenuController,
 		CodeHeader,
 		EquationEditor,
-		ImageControls,
+		ImageToolbar,
 		LanguageMenu,
 		MediaEmptyController,
 		MentionItem,
@@ -59,7 +60,8 @@
 			menu: mentionMenu
 		}),
 		createEmbedPlugin({ menu: pasteMenu }),
-		createImagePlugin({ toolbar: imageToolbar }),
+		createImagePlugin(),
+		createImageToolbarPlugin({ toolbar: imageToolbar }),
 		// One snippet for every empty image and media block, by its kind.
 		createMediaEmptyPlugin({ empty: anyEmpty }),
 		createSuggestionsPlugin({ bar: suggestionBar }),
@@ -337,7 +339,7 @@
 	</ul>
 {/snippet}
 
-{#snippet imageToolbar(controls: ImageControls)}
+{#snippet imageToolbar(controls: ImageToolbar)}
 	<div data-testid="custom-image-toolbar" {@attach controls.bar}>
 		<button type="button" data-testid="custom-image-left" onclick={() => controls.align('left')}
 			>Align left</button

@@ -4,7 +4,6 @@
 	import EmptySlot from './EmptySlot.svelte';
 	import type { Snippet } from 'svelte';
 	import { urlPaste, type UrlPasteController } from './urlPaste.svelte.js';
-	import type { MediaEmptyController } from './empty.svelte.js';
 	import { MEDIA_ICONS, escapeHtml, mediaPlugin, mediaView, safeWebUrl } from './media.js';
 
 	/** What an `unfurl` answers about a page; every field optional. */

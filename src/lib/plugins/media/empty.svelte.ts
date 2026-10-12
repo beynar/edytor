@@ -1,4 +1,3 @@
-import type { Snippet } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { MediaKind } from './media.js';

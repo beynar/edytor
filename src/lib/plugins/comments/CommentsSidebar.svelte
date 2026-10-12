@@ -2,6 +2,7 @@
 	import { onMount, type Snippet } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { rangeRects } from '$lib/collaboration/remoteSelection.js';
+	import Ranges, { runOf } from '$lib/components/Ranges.svelte';
 	import { hidden } from '$lib/selection/visibility.js';
 	import type { CommentRun } from '$lib/crdt/protocols/comments.js';
 	import type { CommentsController, PlacedThread } from './CommentsController.svelte.js';
@@ -45,25 +46,19 @@
 		left: number;
 		/** Each placed card's position, by thread id (the draft's: `DRAFT`). */
 		cards: Record<string, { top: number; left: number }>;
-		/** The draft's text, highlighted until it is posted. */
-		draft: Rect[];
 		/** Where the header sits. */
 		header: number;
 	};
 
-	let layout: Layout = $state.raw({ mode: 'margin', left: 0, cards: {}, draft: [], header: 0 });
+	let layout: Layout = $state.raw({ mode: 'margin', left: 0, cards: {}, header: 0 });
 	let container: HTMLElement | undefined = $state();
 	let top: HTMLElement | undefined = $state();
 
 	/** A run's text boxes, relative to the overlay. */
-	const rectsOf = (run: CommentRun, origin: DOMRect): Rect[] => {
-		const block = edytor.idToBlock.get(run.block);
-		const [start, end] = [
-			block?.textAtOffset(run.offset),
-			block?.textAtOffset(run.offset + run.length)
-		];
-		return start && end ? rangeRects(edytor, start, end, origin) : [];
-	};
+	const rectsOf = (run: CommentRun, origin: DOMRect): Rect[] =>
+		runOf(edytor, run.block, run.offset, run.length).flatMap(({ start, end }) =>
+			rangeRects(edytor, start, end, origin)
+		);
 
 	/** The runs' first line box, relative to the overlay: the text's own, else its block's, else the host's top. */
 	const anchorOf = (runs: CommentRun[], origin: DOMRect, top: number): Rect => {
@@ -148,7 +143,6 @@
 			mode: margin ? 'margin' : 'popover',
 			left: margin ? hostRect.right - origin.left + GAP : 0,
 			cards,
-			draft: draftRuns.flatMap((run) => rectsOf(run, origin)),
 			header: hostTop
 		};
 		if (JSON.stringify(next) === JSON.stringify(layout)) return;
@@ -184,17 +178,14 @@
 	<svelte:element this={'style'} data-edytor-comments-style>{comments.css}</svelte:element>
 </svelte:head>
 
-<div data-edytor-comment-ranges aria-hidden="true">
-	{#each layout.draft as rect, index (index)}
-		<span
-			data-edytor-comment-draft
-			style:left={`${rect.left}px`}
-			style:top={`${rect.top}px`}
-			style:width={`${rect.width}px`}
-			style:height={`${rect.height}px`}
-		></span>
-	{/each}
-</div>
+<!-- The text of the comment being written, highlighted until it is posted. -->
+<Ranges
+	{edytor}
+	name="comment-draft"
+	z={17}
+	ranges={() =>
+		comments.draftRuns().flatMap((run) => runOf(edytor, run.block, run.offset, run.length))}
+/>
 
 <div
 	bind:this={container}
@@ -237,18 +228,6 @@
 </div>
 
 <style>
-	[data-edytor-comment-ranges] {
-		position: absolute;
-		left: 0;
-		top: 0;
-		pointer-events: none;
-		z-index: 17;
-	}
-	[data-edytor-comment-draft] {
-		position: absolute;
-		background: var(--edytor-comment-active, rgb(255 212 0 / 0.42));
-		mix-blend-mode: multiply;
-	}
 	[data-edytor-comments] {
 		position: absolute;
 		top: 0;

@@ -13,7 +13,7 @@ import { textPointAt } from './selection/selection.utils.js';
 import type { SessionPorts } from './session/ports.js';
 import { Attempts } from './session/attempt.js';
 import { Composition } from './session/composition.svelte.js';
-import { Suggestions } from './session/suggestions.svelte.js';
+import { Suggestions, type SuggestionRange } from './session/suggestions.svelte.js';
 import { type JSONDoc } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
@@ -36,7 +36,7 @@ import { Announcer as AnnouncerState } from './session/announcer.svelte.js';
 import type { PartialLabels } from './labels.js';
 import Announcer from './components/Announcer.svelte';
 import RemoteSelections from './collaboration/RemoteSelections.svelte';
-import SuggestionRanges from './components/SuggestionRanges.svelte';
+import Ranges from './components/Ranges.svelte';
 import type { Block } from './block/block.svelte.js';
 import type { Text } from './text/text.svelte.js';
 import { Handles } from './session/handles.js';
@@ -695,6 +695,17 @@ export class Edytor {
 		if (values.length > 0) callEach('[edytor] onChange', values, this.value);
 	};
 
+	/** The text each range `replace` suggestion removes when accepted (`Ranges`). */
+	#replaced = () => {
+		void this.suggestions.revision;
+		return this.suggestions.list.flatMap(({ at }) => {
+			if (!('replace' in at) || Array.isArray(at.replace)) return [];
+			const { anchor, focus } = at.replace as SuggestionRange;
+			const [start, end] = [anchor, focus].map(this.selection.resolveTextAnchor);
+			return start && end ? [{ start, end }] : [];
+		});
+	};
+
 	/**
 	 * The placeholder block `id` shows: its cell has one empty
 	 * text and no live composition in it; a function answers per block.
@@ -990,9 +1001,9 @@ export class Edytor {
 			props: { edytor: this }
 		});
 		// The text a `replace` suggestion removes, marked beside the host.
-		const ranges = mount(SuggestionRanges, {
+		const ranges = mount(Ranges, {
 			target: this.overlay.layer!,
-			props: { edytor: this }
+			props: { edytor: this, name: 'suggestion-range', z: 19, ranges: this.#replaced }
 		});
 		// The polite live region: what this view's block moves and deletes did.
 		const live = mount(Announcer, {

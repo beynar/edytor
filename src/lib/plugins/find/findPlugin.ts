@@ -1,7 +1,8 @@
 import { mount, unmount, type Snippet } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import FindHighlights from './FindHighlights.svelte';
+import Ranges, { runOf } from '$lib/components/Ranges.svelte';
+import { hidden } from '$lib/selection/visibility.js';
 import { FindController } from './FindController.svelte.js';
 import { mountChrome } from '../chrome.js';
 
@@ -17,6 +18,9 @@ export type FindPluginOptions = {
 };
 
 const controllers = new WeakMap<Edytor, FindController>();
+
+/** Matches highlighted at most: past it, the count still tells. */
+const MAX_HIGHLIGHTS = 1000;
 
 /** The find plugin's controller of `edytor`; `undefined` when the plugin is not listed. */
 export const findController = (edytor: Edytor): FindController | undefined =>
@@ -62,7 +66,23 @@ export const createFindPlugin =
 			},
 			onEdytorAttached: () => {
 				const layer = edytor.overlay.layer!;
-				const highlights = mount(FindHighlights, { target: layer, props: { edytor, find } });
+				// Each shown match (at most `MAX_HIGHLIGHTS`: past it, the count still tells); one
+				// in a closed toggle's body shows none until it is current, which opens the toggle.
+				const highlights = mount(Ranges, {
+					target: layer,
+					props: {
+						edytor,
+						name: 'find-match',
+						z: 18,
+						ranges: () =>
+							find.matches.slice(0, MAX_HIGHLIGHTS).flatMap(({ block, offset, length }, index) => {
+								const shown = edytor.idToBlock.get(block);
+								return shown && !hidden(shown)
+									? runOf(edytor, block, offset, length, index === find.current)
+									: [];
+							})
+					}
+				});
 				const unmountBar = mountChrome(edytor, options.bar, find, () => find.isOpen, {
 					name: 'edytor-find-host',
 					zIndex: 55,

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mentionPlugin } from '../../atMention.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { image as createImagePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -21,7 +22,12 @@ const mount = async (readonly: boolean) => {
 			<paragraph>|</paragraph>
 		</root>,
 		{
-			plugins: [richTextPlugin, mentionPlugin, createImagePlugin({ upload })],
+			plugins: [
+				createUploadsPlugin({ upload }),
+				richTextPlugin,
+				mentionPlugin,
+				createImagePlugin()
+			],
 			readonly,
 			value: { children: [{ type: 'image', content: [{ text: '' }] }] }
 		}

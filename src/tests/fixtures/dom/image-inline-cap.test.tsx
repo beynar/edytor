@@ -10,6 +10,7 @@ import { MAX_INLINE_IMAGE_BYTES, storableImageSrc } from '$lib/plugins/image/Ima
 import type { BlockDefinition } from '$lib/plugins.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { image as createImagePlugin, richTextPlugin } from '../../../routes/chrome/plugins.js';
+import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -26,7 +27,11 @@ const mount = async (upload?: (file: File) => Promise<string>) =>
 			<paragraph>|</paragraph>
 		</root>,
 		{
-			plugins: [richTextPlugin, createImagePlugin({ upload })],
+			plugins: [
+				...(upload ? [createUploadsPlugin({ upload })] : []),
+				richTextPlugin,
+				createImagePlugin()
+			],
 			value: { children: [{ id: 'img', type: 'image', content: [{ text: '' }] }] }
 		}
 	);

@@ -1,14 +1,14 @@
 /** @jsxImportSource ../../jsx */
 /**
- * Pasted and dropped files (`media.files`): every kind given an `upload`
+ * Pasted and dropped files (`media.files`), with the uploads plugin: every kind whose record takes files
  * (image, video, audio, file) claims the files it takes, and the view
  * places one block per file, in the clipboard's order, each of its own
  * kind, as one paste (one undo step): a video or audio file to its kind, an
  * image to the image kind, any other file to the file kind, which takes a
  * file only no other kind takes. Each block shows its upload (its progress
  * when `upload` reports one) until the URL fills it outside the history; a
- * failed upload leaves the empty block with its error. A kind with no
- * `upload`, or a readonly view, claims nothing.
+ * failed upload leaves the empty block with its error. A view without the
+ * uploads plugin, or a readonly view, claims nothing.
  *
  * Expected values come from Notion and the image block's rows (WU-21).
  */
@@ -23,6 +23,7 @@ import {
 	richTextPlugin,
 	video as createVideoPlugin
 } from '../../../routes/chrome/plugins.js';
+import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -82,7 +83,7 @@ const shape = (edytor: Edytor) =>
 describe('media.files', () => {
 	it('a video file becomes a video block that uploads, then plays its URL: one undo step', async () => {
 		const { upload, calls } = deferred();
-		const { edytor, editor } = await mount([createVideoPlugin({ upload })]);
+		const { edytor, editor } = await mount([createUploadsPlugin({ upload }), createVideoPlugin()]);
 		expect(await pasteFiles(editor, [file('clip.mp4', 'video/mp4')])).toBe(true);
 		expect(calls.map((call) => call.file.name)).toEqual(['clip.mp4']);
 		expect(shape(edytor).map((block) => block.type)).toEqual(['paragraph', 'video', 'paragraph']);
@@ -105,7 +106,7 @@ describe('media.files', () => {
 
 	it('a file of no other kind becomes a file block with its name and size', async () => {
 		const { upload, calls } = deferred();
-		const { edytor, editor } = await mount([createFilePlugin({ upload })]);
+		const { edytor, editor } = await mount([createUploadsPlugin({ upload }), createFilePlugin()]);
 		expect(await pasteFiles(editor, [file('notes.pdf', 'application/pdf', 10)])).toBe(true);
 		calls[0]!.resolve('https://cdn.example.com/notes.pdf');
 		await settle();
@@ -119,10 +120,11 @@ describe('media.files', () => {
 		const { upload, calls } = deferred();
 		// The file kind is listed first: it still takes only what no other kind takes.
 		const { edytor, editor } = await mount([
-			createFilePlugin({ upload }),
-			createImagePlugin({ upload }),
-			createVideoPlugin({ upload }),
-			createAudioPlugin({ upload })
+			createUploadsPlugin({ upload }),
+			createFilePlugin(),
+			createImagePlugin(),
+			createVideoPlugin(),
+			createAudioPlugin()
 		]);
 		await pasteFiles(editor, [
 			file('a.png', 'image/png'),
@@ -146,7 +148,7 @@ describe('media.files', () => {
 
 	it('the block shows the progress `upload` reports', async () => {
 		const { upload, calls } = deferred();
-		const { editor } = await mount([createAudioPlugin({ upload })]);
+		const { editor } = await mount([createUploadsPlugin({ upload }), createAudioPlugin()]);
 		await pasteFiles(editor, [file('talk.mp3', 'audio/mpeg')]);
 		const bar = () =>
 			editor.querySelector<HTMLProgressElement>('[data-edytor-media-uploading] progress');
@@ -158,7 +160,7 @@ describe('media.files', () => {
 
 	it('the image block shows its progress too', async () => {
 		const { upload, calls } = deferred();
-		const { editor } = await mount([createImagePlugin({ upload })]);
+		const { editor } = await mount([createUploadsPlugin({ upload }), createImagePlugin()]);
 		await pasteFiles(editor, [file('a.png', 'image/png')]);
 		calls[0]!.report!.progress(0.75);
 		await flushDomUpdates();
@@ -169,7 +171,7 @@ describe('media.files', () => {
 
 	it('a failed upload leaves the empty block with its error', async () => {
 		const { upload, calls } = deferred();
-		const { edytor, editor } = await mount([createVideoPlugin({ upload })]);
+		const { edytor, editor } = await mount([createUploadsPlugin({ upload }), createVideoPlugin()]);
 		await pasteFiles(editor, [file('clip.mp4', 'video/mp4')]);
 		calls[0]!.reject(new Error('offline'));
 		await settle();
@@ -178,13 +180,13 @@ describe('media.files', () => {
 		expect(editor.querySelector('[data-edytor-media-error]')).not.toBeNull();
 	});
 
-	it('a kind with no upload, or a readonly view, claims nothing', async () => {
+	it('a view with no uploads plugin, or a readonly view, claims nothing', async () => {
 		const plain = await mount([createVideoPlugin()]);
 		expect(await pasteFiles(plain.editor, [file('clip.mp4', 'video/mp4')])).toBe(true);
 		expect(shape(plain.edytor).map((block) => block.type)).toEqual(['paragraph']);
 		document.body.innerHTML = '';
 		const { upload } = deferred();
-		const readonly = await mount([createVideoPlugin({ upload })], true);
+		const readonly = await mount([createUploadsPlugin({ upload }), createVideoPlugin()], true);
 		await pasteFiles(readonly.editor, [file('clip.mp4', 'video/mp4')]);
 		expect(upload).not.toHaveBeenCalled();
 		expect(shape(readonly.edytor).map((block) => block.type)).toEqual(['paragraph']);

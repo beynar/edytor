@@ -8,9 +8,10 @@ icon: video
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createVideoPlugin } from 'edytor';
+	import { Edytor, createVideoPlugin, createUploadsPlugin } from 'edytor';
 
-	const video = createVideoPlugin({
+	// Optional: the view's uploader (an Upload button, and pasted or dropped files).
+	const uploads = createUploadsPlugin({
 		upload: async (file) => {
 			const body = new FormData();
 			body.append('file', file);
@@ -20,10 +21,10 @@ icon: video
 	});
 </script>
 
-<Edytor plugins={[video]} />
+<Edytor plugins={[uploads, createVideoPlugin()]} />
 ```
 
-A [slash menu](/docs/plugins/slash-menu) then lists "Video" under `Media`. `createVideoPlugin()` is the plugin without `upload`: links only. A YouTube or Vimeo link is not a video file: it plays in an [embed](/docs/plugins/embed).
+A [slash menu](/docs/plugins/slash-menu) then lists "Video" under `Media`. Without the uploads plugin (`createUploadsPlugin({ upload })`), files are linked only. A YouTube or Vimeo link is not a video file: it plays in an [embed](/docs/plugins/embed).
 
 ## Options
 

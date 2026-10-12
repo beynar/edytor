@@ -2,7 +2,6 @@
 	import type { BlockDefinition, BlockSnippetPayload, Plugin } from '$lib/plugins.js';
 	import MediaEmpty from './MediaEmpty.svelte';
 	import { labelsOf, mediaEnglish } from '$lib/labels.js';
-	import { fileUploads } from '../uploads.svelte.js';
 	import {
 		claimed,
 		escapeHtml,
@@ -64,18 +63,7 @@
 			}
 		}
 	): Plugin =>
-		mediaPlugin(kind, options, keywords, (edytor, claims) => {
-			const { upload } = options;
-			const uploads = claims && upload ? fileUploads(edytor) : undefined;
-			if (upload)
-				uploads?.register({
-					type: kind,
-					accepts: ACCEPTS[kind],
-					fallback: kind === 'file',
-					upload,
-					data: (file, answer) => sourceData(kind, answer, file),
-					filled: (data) => safeMediaSrc(data.src) !== null
-				});
+		mediaPlugin(kind, options, keywords, () => {
 			return {
 				store: (block, value, file) => {
 					const data = sourceData(kind, value, file);
@@ -84,8 +72,17 @@
 					else block.edytor.patchData(block.id, [{ path: ['src'], value: data.src }]);
 					return null;
 				},
-				hooks: uploads ? { onPaste: uploads.paste } : {},
-				record: { snippet: source, ...record }
+				record: {
+					snippet: source,
+					// Its files: with the uploads plugin, an Upload and pasted or dropped files.
+					upload: {
+						accepts: ACCEPTS[kind],
+						fallback: kind === 'file',
+						data: (file, answer) => sourceData(kind, answer, file),
+						filled: (data) => safeMediaSrc(data.src) !== null
+					},
+					...record
+				}
 			};
 		});
 </script>

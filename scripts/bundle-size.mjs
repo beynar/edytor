@@ -50,7 +50,8 @@ const APPS = {
 		createCodePlugin, createColumnsPlugin, createTablePlugin, createMarkdownShortcutsPlugin, createFindPlugin,
 		createTocPlugin, createEquationPlugin, createMentionPlugin, createPageLinkPlugin, createMarqueePlugin,
 		createEmbedPlugin, createBookmarkPlugin, createFilePlugin, createVideoPlugin, createAudioPlugin,
-		createPagePlugin, createCommentsPlugin, createArrowMovePlugin, createCalloutIconsPlugin
+		createPagePlugin, createCommentsPlugin, createArrowMovePlugin, createCalloutIconsPlugin,
+		createUploadsPlugin
 	} from 'edytor';
 	const plugins = [
 		createBlockHandlesPlugin(), createBlockMenuPlugin(), createSlashMenuPlugin(), createToolbarPlugin(),
@@ -59,7 +60,7 @@ const APPS = {
 		createMentionPlugin({ search: () => [] }), createPageLinkPlugin({ search: () => [] }),
 		createMarqueePlugin(), createEmbedPlugin(), createBookmarkPlugin(), createFilePlugin(),
 		createVideoPlugin(), createAudioPlugin(), createPagePlugin(), createCommentsPlugin({}),
-		createArrowMovePlugin(), createCalloutIconsPlugin()
+		createArrowMovePlugin(), createCalloutIconsPlugin(), createUploadsPlugin({ upload: async () => '' })
 	];
 </script>
 <Edytor {plugins} />`

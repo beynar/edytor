@@ -121,7 +121,7 @@ What each plugin adds:
 | Plugin | Adds |
 | --- | --- |
 | `createRichTextPlugin()` (default) | The rich text block kinds and marks, their keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, …) and HTML import rules. List, to-do and toggle items continue on <kbd>Enter</kbd>. |
-| `createImagePlugin()` (default) | An image block: embed from a link (or your upload, with `createImagePlugin({ upload })`), with an editable caption. |
+| `createImagePlugin()` (default) | An image block: embed from a link (or your upload, with `createUploadsPlugin({ upload })`), with an editable caption. |
 | `createArrowMovePlugin()` (default) | <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move the caret's block; <kbd>Mod</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move selected blocks. |
 | `createCodePlugin()` | A `code` block (an island of `codeLine` children) with syntax highlighting. |
 | `createMarkdownShortcutsPlugin()` | Typing `# `, `- `, `1. `, `[] `, `" `, `> `, `---` or ```` ``` ```` at the start of a block converts it; `**bold**`, `*italic*` and friends format inline. |

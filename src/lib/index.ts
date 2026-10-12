@@ -86,6 +86,8 @@ export {
 	richTextPlaceholder,
 	CALLOUT_ICONS,
 	createCalloutIconsPlugin,
+	createUploadsPlugin,
+	type UploadsOptions,
 	type CalloutIconPicker,
 	type CalloutIconsOptions,
 	type RichTextPluginOptions,
@@ -353,7 +355,7 @@ export type { TextAnchor } from './selection/selection.svelte.js';
 export type { Key, Modifier, Modifiers } from './session/keymap.js';
 export type { TriggerRange } from './plugins/triggers/TriggerController.svelte.js';
 export type { RichTextLink, RichTextMark } from './plugins/richtext/richTextOperations.js';
-export type { UploadReport, Uploader } from './plugins/uploads.svelte.js';
+export type { KindUpload, UploadReport, Uploader } from './plugins/uploads.svelte.js';
 export type { AwarenessLike, PresenceWriter } from './collaboration/awarenessSelection.js';
 export type { DataPatch } from './crdt/data.js';
 export type { AnchorAffinity, BlockRole, DocAnchor, TextRange } from './crdt/doc/types.js';

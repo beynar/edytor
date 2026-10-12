@@ -14,6 +14,7 @@ import type { DocChange, PlanEffect } from './crdt/edytor-doc.js';
 import type { MarkEdge } from './session/editing/text.js';
 import type { Prevent } from './utils.js';
 import type { TriggerMenuController } from './plugins/triggers/TriggerController.svelte.js';
+import type { KindUpload } from './plugins/uploads.svelte.js';
 
 /** What a placeholder function receives: the empty block's declared values. */
 export type PlaceholderView = {
@@ -444,6 +445,12 @@ export type BlockDefinition = {
 	 * Adopted by the document; checked in development against the snippet.
 	 */
 	rendersContent?: boolean;
+	/**
+	 * The files the kind takes (the image's `image/*`, the file block's any):
+	 * with the uploads plugin listed, an empty block's Upload sends one and a
+	 * pasted or dropped file becomes a block of this kind (`media.files`).
+	 */
+	upload?: KindUpload;
 	/**
 	 * A list-like kind (Notion's bullets, numbers, to-dos, toggles): Enter at
 	 * the start or end of a non-empty block opens another block of this kind

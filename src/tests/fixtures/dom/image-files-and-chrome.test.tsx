@@ -43,6 +43,7 @@ import {
 	imagePlugin,
 	richTextPlugin
 } from '../../../routes/chrome/plugins.js';
+import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -67,7 +68,13 @@ const mount = (upload?: (file: File) => Promise<string>) =>
 			<paragraph>hello|</paragraph>
 			<paragraph>after</paragraph>
 		</root>,
-		{ plugins: [richTextPlugin, createImagePlugin({ upload })] }
+		{
+			plugins: [
+				...(upload ? [createUploadsPlugin({ upload })] : []),
+				richTextPlugin,
+				createImagePlugin()
+			]
+		}
 	);
 
 const shape = (edytor: Edytor) =>

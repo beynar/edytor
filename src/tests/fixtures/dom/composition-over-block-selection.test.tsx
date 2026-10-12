@@ -31,6 +31,7 @@ import {
 	image as createImagePlugin,
 	richTextPlugin
 } from '../../../routes/chrome/plugins.js';
+import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -71,7 +72,8 @@ const render = (children: JSONBlock[]) =>
 				mentionPlugin,
 				codePlugin,
 				blockMenuPlugin,
-				createImagePlugin({ upload: async () => 'https://example.com/a.png' })
+				createUploadsPlugin({ upload: async () => 'https://example.com/a.png' }),
+				createImagePlugin()
 			],
 			value: { children }
 		}

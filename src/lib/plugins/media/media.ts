@@ -4,7 +4,6 @@ import type { BlockDefinition, Plugin, PluginDefinitions, PluginOperations } fro
 import { mediaKinds } from '$lib/crdt/semantics.js';
 import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
-import type { Uploader } from '../uploads.svelte.js';
 import { keywordsOf, labelsOf, mediaEnglish } from '$lib/labels.js';
 import { MEDIA_ICONS, type EmptyView, type MediaEmptyController } from './empty.svelte.js';
 
@@ -56,7 +55,7 @@ export const mediaPlugin =
 		if (claims)
 			views.set(edytor, {
 				...kinds,
-				[kind]: { empty: options.empty, upload: options.upload, ...view }
+				[kind]: { empty: options.empty, ...view }
 			});
 		return {
 			...hooks,
@@ -107,15 +106,8 @@ export const safeMediaSrc = (value: unknown): string | null => {
 	return origin ? `blob:${origin}` : safeWebUrl(value);
 };
 
-/** The file, video and audio plugins' options. */
+/** The file, video and audio plugins' options (uploads: `createUploadsPlugin`). */
 export type MediaPluginOptions = {
-	/**
-	 * Upload a file and answer its URL: the empty block's Upload button, and
-	 * the pasted and dropped files the kind takes (`media.files`), each shown
-	 * uploading with the progress it reports. Without it only links are
-	 * embedded.
-	 */
-	upload?: Uploader;
 	/**
 	 * An empty block's markup and its words (its "Add …" button and link panel, its upload's
 	 * progress, or a readonly view's placeholder; without it, nothing): the

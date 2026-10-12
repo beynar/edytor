@@ -6,6 +6,7 @@
 	import { mentionPlugin } from '../../../tests/atMention.svelte';
 	import type { Plugin } from '$lib/plugins.js';
 	import { withRulesAndTriggers } from '$lib/plugins/triggers/triggers.js';
+	import { createUploadsPlugin } from '$lib/plugins/uploads.svelte.js';
 	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
@@ -509,28 +510,23 @@
 	};
 
 	/**
-	 * The `image` scenario's upload (WU-21): the file back as an inline image,
-	 * after a short wait, so a spec sees the placeholder, then the image.
+	 * The `image` scenario's uploader (WU-21, `media.files`): an image back as
+	 * an inline image after a short wait, so a spec sees the placeholder, then
+	 * the image; any other file a local `blob:` URL after a short wait, its
+	 * progress reported half way.
 	 */
-	const uploadingImagePlugin = image({
-		upload: (file) =>
+	const uploadsPlugin = createUploadsPlugin({
+		upload: (file, report) =>
 			new Promise((resolve, reject) => {
+				if (!file.type.startsWith('image/')) {
+					report.progress(0.5);
+					setTimeout(() => resolve(URL.createObjectURL(file)), 150);
+					return;
+				}
 				const reader = new FileReader();
 				reader.onload = () => setTimeout(() => resolve(String(reader.result)), 150);
 				reader.onerror = () => reject(reader.error);
 				reader.readAsDataURL(file);
-			})
-	});
-
-	/**
-	 * The `image` scenario's file upload (`media.files`): a local `blob:` URL
-	 * after a short wait, its progress reported half way.
-	 */
-	const uploadingFilePlugin = file({
-		upload: (file, report) =>
-			new Promise((resolve) => {
-				report.progress(0.5);
-				setTimeout(() => resolve(URL.createObjectURL(file)), 150);
 			})
 	});
 
@@ -588,8 +584,9 @@
 				]
 			: []),
 		createArrowMovePlugin(),
-		data.scenario === 'image' ? uploadingImagePlugin : imagePlugin,
-		...(data.scenario === 'image' ? [uploadingFilePlugin] : []),
+		...(data.scenario === 'image' ? [uploadsPlugin] : []),
+		imagePlugin,
+		...(data.scenario === 'image' ? [file()] : []),
 		codePlugin,
 		createMarkdownShortcutsPlugin(),
 		// `triggers=1`: the shipped mention and page-link menus and an input rule, in place of

@@ -8,22 +8,23 @@ icon: paperclip
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">
-	import { Edytor, createFilePlugin } from 'edytor';
+	import { Edytor, createFilePlugin, createUploadsPlugin } from 'edytor';
 
-	const file = createFilePlugin({
-		upload: async (picked) => {
+	// Optional: the view's uploader (an Upload button, and pasted or dropped files).
+	const uploads = createUploadsPlugin({
+		upload: async (file) => {
 			const body = new FormData();
-			body.append('file', picked);
+			body.append('file', file);
 			const response = await fetch('/api/uploads', { method: 'POST', body });
 			return (await response.json()).url;
 		}
 	});
 </script>
 
-<Edytor plugins={[file]} />
+<Edytor plugins={[uploads, createFilePlugin()]} />
 ```
 
-A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. `createFilePlugin()` is the plugin without `upload`: links only.
+A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. Without the uploads plugin (`createUploadsPlugin({ upload })`), files are linked only.
 
 ## Options
 
@@ -31,10 +32,6 @@ A [slash menu](/docs/plugins/slash-menu) then lists "File" under `Media`. `creat
 
 <TypeTable
   type={{
-    upload: {
-      type: "(file: File) => Promise<string>",
-      description: "Upload a file and answer its URL (`report.progress(fraction)` draws the block's bar). Adds an Upload button to the empty block and takes pasted and dropped files no other kind takes. Without it, files are linked only.",
-    },
     empty: {
       type: "Snippet<[MediaEmptyController]>",
       description: "The empty block's markup (its button, link panel and upload, a pasted file's progress, a readonly view's placeholder); without it, an empty block shows nothing. See Menus and handles.",

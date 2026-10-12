@@ -2,7 +2,7 @@ import type { Snippet } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { MediaKind } from './media.js';
-import { fileUploads, type FileUpload, type Uploader } from '../uploads.svelte.js';
+import { fileUploads, type FileUpload } from '../uploads.svelte.js';
 import { listen } from '$lib/utils/listen.js';
 
 /** Each media kind's icon (the image's too): its menu row, its empty block, its paste offer. */
@@ -21,10 +21,9 @@ export const MEDIA_ICONS: Record<MediaKind | 'image', string> = {
  */
 export type MediaEmptyFailure = 'invalid' | 'inline' | 'upload';
 
-/** What an empty block reads of its kind in a view: the app's snippet, its upload, how it stores a source. */
+/** What an empty block reads of its kind in a view: the app's snippet, how it stores a source. */
 export type EmptyView = {
 	empty?: Snippet<[MediaEmptyController]>;
-	upload?: Uploader;
 	/** Store a link (or the URL an upload of `file` answered) on `block`: why it did not, or `null`. */
 	store: (block: Block, value: string, file?: File) => MediaEmptyFailure | null;
 };
@@ -73,9 +72,10 @@ export class MediaEmptyController {
 		return !this.block || this.block.edytor.readonly;
 	}
 
-	/** The plugin has an `upload`: offer Upload. */
+	/** The view lists the uploads plugin and the kind takes files: offer Upload. */
 	get canUpload() {
-		return Boolean(this.view?.upload);
+		const { block } = this;
+		return Boolean(block && fileUploads(block.edytor) && block.definition.upload);
 	}
 
 	/** The upload of a pasted or dropped file into this block, if any (its `status`, `progress`, `preview`). */
@@ -95,13 +95,13 @@ export class MediaEmptyController {
 	};
 
 	/**
-	 * Upload `file` with the plugin's `upload` and store the URL it answers,
+	 * Upload `file` with the view's uploader (`createUploadsPlugin`) and store the URL it answers,
 	 * only on the block as it was picked from: still in the tree, of its kind
 	 * and empty (a peer may have set a source, or deleted it, meanwhile).
 	 */
 	upload = async (picked: File) => {
 		const { block } = this;
-		const upload = this.view?.upload;
+		const upload = this.canUpload && fileUploads(block?.edytor)?.upload;
 		if (!upload || !block || block.edytor.readonly) return;
 		const { edytor, id, type } = block;
 		let src: string;

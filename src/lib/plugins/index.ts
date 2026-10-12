@@ -10,6 +10,7 @@ export {
 	type CalloutIconPicker,
 	type CalloutIconsOptions
 } from './richtext/calloutIcons.svelte.js';
+export { createUploadsPlugin, type UploadsOptions } from './uploads.svelte.js';
 export { createArrowMovePlugin } from './arrowMove/arrowMove.js';
 export type { MenuItemPayload, OptionAttributes } from './chrome.js';
 export {

@@ -22,7 +22,6 @@
 	} from './image.js';
 	import { ImageControls } from './controls.svelte.js';
 	import { MEDIA_ICONS, type EmptyView, type MediaEmptyController } from '../media/empty.svelte.js';
-	import { fileUploads, type FileUploads, type Uploader } from '../uploads.svelte.js';
 	import { onPress } from '$lib/events/onFocus.js';
 	import { imageEnglish, keywordsOf, labelsOf } from '$lib/labels.js';
 	import { listen } from '$lib/utils/listen.js';
@@ -37,14 +36,6 @@
 	};
 
 	export type ImagePluginOptions = {
-		/**
-		 * Upload a file and answer its URL. Adds an Upload button to the empty
-		 * block, and claims pasted and dropped image files: each is placed as an
-		 * image block at once (one undo step) and filled with the URL this
-		 * answers (the block shows the progress it reports). Without it only
-		 * links are embedded.
-		 */
-		upload?: Uploader;
 		/**
 		 * The toolbar over the hovered image (the alignments and the alt field);
 		 * it renders while `controls.shown` and no handle drags, at the image's
@@ -68,8 +59,8 @@
 
 	const px = (width: number | undefined) => (width === undefined ? undefined : `${width}px`);
 
-	/** One view's image state: its plugin's `upload`, `empty` and source rule, the chrome, the uploads in flight. */
-	type View = EmptyView & { controls: ImageControls; uploads?: FileUploads };
+	/** One view's image state: its plugin's `empty` and source rule, the chrome. */
+	type View = EmptyView & { controls: ImageControls };
 	/** By view; the first image plugin of a view owns it, as its kind's definition (first wins). */
 	const views = new WeakMap<Edytor, View>();
 
@@ -80,13 +71,10 @@
 	 * chrome the plugin shows over it. Void: its only text is the caption.
 	 */
 	export const createImagePlugin = (pluginOptions: ImagePluginOptions = {}): Plugin => {
-		const { upload } = pluginOptions;
 		const plugin: Plugin = (edytor) => {
 			const labels = labelsOf(edytor, 'image', imageEnglish);
 			const own: View = {
-				upload,
 				controls: new ImageControls(edytor),
-				uploads: upload ? fileUploads(edytor) : undefined,
 				empty: pluginOptions.empty,
 				// An accepted source; an inline image over the cap is never stored.
 				store: (block, value) => {
@@ -98,28 +86,9 @@
 				}
 			};
 			// The records read with no view (`plugin(undefined)`) keep no state.
-			if (edytor && !views.has(edytor)) {
-				views.set(edytor, own);
-				if (upload)
-					own.uploads?.register({
-						type: 'image',
-						accepts: isImageFile,
-						upload,
-						data: (_file, answer) => {
-							const src = storableImageSrc(answer);
-							return src ? { src } : null;
-						},
-						filled: (data) => safeImageSrc(data.src) !== null,
-						preview: true
-					});
-			}
+			if (edytor && !views.has(edytor)) views.set(edytor, own);
 			const owns = () => views.get(edytor) === own;
 			return {
-				// Pasted or dropped files (a drop replays the paste hooks): the
-				// view's uploads place a block per file of every kind that uploads.
-				onPaste: (payload) => {
-					if (owns()) own.uploads?.paste(payload);
-				},
 				// The chrome: in the overlay, for the image under the pointer.
 				onEdytorAttached: ({ node }) => {
 					if (!owns()) return;
@@ -147,7 +116,6 @@
 						off3();
 						offPress();
 						unmount();
-						own.uploads?.destroy();
 					};
 				},
 				blocks: {
@@ -155,6 +123,16 @@
 						...imageKinds.image,
 						snippet: image,
 						element: 'figure',
+						// Image files: with the uploads plugin, an Upload and pasted or dropped files.
+						upload: {
+							accepts: isImageFile,
+							data: (_file, answer) => {
+								const src = storableImageSrc(answer);
+								return src ? { src } : null;
+							},
+							filled: (data) => safeImageSrc(data.src) !== null,
+							preview: true
+						},
 						presets: [
 							{
 								label: labels.image,

@@ -3800,7 +3800,7 @@ export declare class SyncRefusedError extends Error {
 ```ts
 // plugins/table/chrome.svelte.d.ts
 export type TableAddPayload = {
-    kind: 'row' | 'column';
+    kind: Kind;
     add: () => void;
 };
 ```
@@ -3829,21 +3829,15 @@ export declare class TableChrome {
     index: number;
     constructor(edytor: Edytor, columnWidth: number, minColumnWidth: number);
     get readonly(): boolean;
-    open: (menu: TableMenu) => void;
-    toggle: (kind: TableMenu["kind"]) => void;
+    toggle: (kind: Kind) => void;
     get isOpen(): boolean;
     close: () => void;
     get menuId(): string;
-    rowId: (row: TableMenuRow) => string;
     get items(): TableMenuItem[];
     option: (index: number) => OptionAttributes;
     popup: Attachment<HTMLElement>;
     keys: Attachment<HTMLElement>;
-    gripOf: (kind: TableMenu["kind"]) => Attachment<HTMLElement>;
-    get rows(): TableMenuRow[];
-    runRow: (row: TableMenuRow) => void;
-    addRow: () => void;
-    addColumn: () => void;
+    gripOf: (kind: Kind) => Attachment<HTMLElement>;
 }
 ```
 
@@ -3852,7 +3846,7 @@ export declare class TableChrome {
 ```ts
 // plugins/table/chrome.svelte.d.ts
 export type TableGripPayload = {
-    kind: 'row' | 'column';
+    kind: Kind;
     id: string;
     index: number;
     expanded: boolean;
@@ -3887,13 +3881,9 @@ export type TableLabels = {
 ```ts
 // plugins/table/chrome.svelte.d.ts
 export type TableMenu = {
-    kind: 'row';
+    kind: Kind;
     table: string;
-    row: string;
-} | {
-    kind: 'column';
-    table: string;
-    column: number;
+    id: string;
 };
 ```
 
@@ -3913,9 +3903,6 @@ export type TableMenuItem = MenuItemPayload<TableMenuRow> & {
 // plugins/table/chrome.svelte.d.ts
 export type TableMenuRow = {
     id: string;
-    danger?: boolean;
-    isEnabled: () => boolean;
-    run: () => unknown;
 };
 ```
 
@@ -5353,6 +5340,12 @@ export type EmptyView = {
     upload?: Uploader;
     store: (block: Block, value: string, file?: File) => MediaEmptyFailure | null;
 };
+```
+
+#### plugins/table/chrome.svelte.d.ts#Kind
+
+```ts
+type Kind = 'row' | 'column';
 ```
 
 #### plugins/triggers/TriggerController.svelte.d.ts#TextTriggerController

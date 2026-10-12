@@ -5690,7 +5690,7 @@ the editor's selection.
 
 ```ts
 export type TableAddPayload = {
-    kind: 'row' | 'column';
+    kind: Kind;
     add: () => void;
 };
 ```
@@ -5751,8 +5751,8 @@ when the view is readonly.
 What a `menu` snippet receives: the open menu (`menu`), its rows
 (`items`, each a `MenuItemPayload`), the keyboard's row (`index`), the
 attachments that give it the keys and the ARIA (`popup` and `keys` on
-the menu's element, `option(index)` spread on each row), `close()` and
-the plugin's `labels`. A grip's own attachment is its payload's `grip`.
+the menu's element, `option(index)` spread on each row) and `close()`.
+A grip's own attachment is its payload's `grip`.
 
 ```ts
 export declare class TableChrome {
@@ -5761,42 +5761,30 @@ export declare class TableChrome {
     index: number;
     constructor(edytor: Edytor, columnWidth: number, minColumnWidth: number);
     get readonly(): boolean;
-    open: (menu: TableMenu) => void;
-    toggle: (kind: TableMenu["kind"]) => void;
+    toggle: (kind: Kind) => void;
     get isOpen(): boolean;
     close: () => void;
     get menuId(): string;
-    rowId: (row: TableMenuRow) => string;
     get items(): TableMenuItem[];
     option: (index: number) => OptionAttributes;
     popup: Attachment<HTMLElement>;
     keys: Attachment<HTMLElement>;
-    gripOf: (kind: TableMenu["kind"]) => Attachment<HTMLElement>;
-    get rows(): TableMenuRow[];
-    runRow: (row: TableMenuRow) => void;
-    addRow: () => void;
-    addColumn: () => void;
+    gripOf: (kind: Kind) => Attachment<HTMLElement>;
 }
 ```
 
 - `menu`: What the open grip menu acts on (`null`: none is open).
-- `index`: The keyboard's row of the open menu, in `rows` (never a disabled one).
+- `index`: The keyboard's row of the open menu, in `items` (never a disabled one).
 - `readonly`: The view is readonly (reactive): the chrome shows nothing.
-- `open`: Open the menu of a row's or a column's grip (a second press on it closes it), its first row that can run the keyboard's.
-- `toggle`: Open the `kind` grip's menu on the row or column it stands for, or close it (a grip's click).
+- `toggle`: Open the `kind` grip's menu on the row or column it stands for, its first row that can run the keyboard's, or close it when it is open there (a grip's click).
 - `isOpen`: Whether a menu is open (reactive).
 - `close`: Close the menu; the editor takes the keys back.
 - `menuId`: The menu element's id (page-unique), for `aria-controls`.
-- `rowId`: A row's element id (page-unique), for `aria-activedescendant`.
 - `items`: The open menu's rows for your `menu`: each the row shape every menu shares (`run` runs it and closes the menu, `select` makes it the keyboard's, `option` its attributes), whether it can run now (`disabled`) and whether it deletes (`danger`).
 - `option`: The attributes of the open menu's row at `index`: spread them on its element (`{...chrome.option(index)}`).
 - `popup`: The menu's element (`{@attach chrome.popup}`): its id, `menu` role and name (Row options, Column options) unless it has its own, presses that keep the focus, and its publication to the view's root (`edytor.popups`: `aria-controls`, `aria-haspopup`) while it is in the page; `data-edytor-table-menu` names the kind it is open on.
 - `keys`: The element that holds the menu's keyboard (`{@attach chrome.keys}`, the menu's own): it takes the focus when it mounts and names the keyboard's row (`aria-activedescendant`); ArrowDown and ArrowUp walk the rows that can run (around the ends), Home and End reach the first and last, Enter or Space runs the row, Escape and Tab close the menu and give the keys back to the editor.
 - `gripOf`: The `kind` grip's attachment (`{@attach}` it on a grip's element; a `grip` snippet's payload carries it): in an editable view, dragging it moves its row or column within its table (`table.drag`); a click with no drag opens or closes its menu; ArrowDown opens the menu, Escape closes it and gives the keys back to the editor.
-- `rows`: The rows of the open menu: insert before and after, move back and forth, delete.
-- `runRow`: Run a menu row, then close the menu.
-- `addRow`: The `+` under the table: a row at its end, the caret in its first cell.
-- `addColumn`: The `+` beside the table: a column at its end.
 
 ## TableGripPayload
 
@@ -5805,12 +5793,11 @@ table) or column (above it). Put `{@attach grip}` on its element (a
 `button`): it drags the row or the column, a click opens its menu,
 ArrowDown opens it too and Escape closes it, and it carries the ARIA
 (`aria-haspopup`, `aria-expanded`, `aria-controls` while its menu is
-open; name it). The plugin centers it where the
-grip stands.
+open; name it). The plugin centers it where the grip stands.
 
 ```ts
 export type TableGripPayload = {
-    kind: 'row' | 'column';
+    kind: Kind;
     id: string;
     index: number;
     expanded: boolean;
@@ -5857,17 +5844,13 @@ export type TableLabels = {
 
 ## TableMenu
 
-What a grip's menu acts on: a row of a table (its block id), or a column (its position).
+What a grip's menu acts on: a row (its block id) or a column (its id) of a table.
 
 ```ts
 export type TableMenu = {
-    kind: 'row';
+    kind: Kind;
     table: string;
-    row: string;
-} | {
-    kind: 'column';
-    table: string;
-    column: number;
+    id: string;
 };
 ```
 
@@ -5886,20 +5869,15 @@ export type TableMenuItem = MenuItemPayload<TableMenuRow> & {
 
 ## TableMenuRow
 
-A row of a grip's menu (insert, move, delete).
+A row of a grip's menu: `insert-above`, `insert-below`, `move-up`,
+`move-down`, `delete-row`; `insert-left`, `insert-right`, `move-left`,
+`move-right`, `delete-column`.
 
 ```ts
 export type TableMenuRow = {
     id: string;
-    danger?: boolean;
-    isEnabled: () => boolean;
-    run: () => unknown;
 };
 ```
-
-- `id`: `insert-above`, `insert-below`, `move-up`, `move-down`, `delete-row`; `insert-left`, `insert-right`, `move-left`, `move-right`, `delete-column`.
-- `danger`: It deletes.
-- `isEnabled`: Whether it can run now (Move up on the first row cannot).
 
 ## TablePluginOptions
 

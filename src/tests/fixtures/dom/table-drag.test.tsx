@@ -290,7 +290,7 @@ const drag = async (
 	await flushDomUpdates();
 	// Set by the data transfer's `setDragImage`, which the drag library calls.
 	const recorded = dragImage as HTMLElement | null;
-	const ghost = recorded?.querySelector('[data-edytor-table-drag-preview]')?.textContent ?? null;
+	const ghost = recorded?.querySelector('[data-edytor-drag-preview]')?.textContent ?? null;
 	return { indicator, ghost };
 };
 

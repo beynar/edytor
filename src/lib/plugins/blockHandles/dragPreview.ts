@@ -171,25 +171,35 @@ export type DragPreview = {
  * The ghost of `nodes` (the dragged blocks' elements, in document order),
  * grabbed at `pointer`: a copy of each block laid out at its own width (the
  * widest of them; `MAX_WIDTH` when none is laid out), scaled by `SCALE` from its top left, cut at `MAX_HEIGHT`.
- * Nothing is added (no card, background, shadow, opacity, fade or count
- * badge): the blocks' own look. The pointer
- * keeps its place on the first block (a handle is left of it: a transparent
- * gutter keeps the offset positive, which every browser supports).
+ * With `columns` (a table row's or column's cells, `table.drag`), the copies
+ * are laid out in a grid of columns that wide, row after row. Nothing is
+ * added (no card, background, shadow, opacity, fade or count badge): the
+ * blocks' own look. The pointer keeps its place on the first block (a
+ * handle is left of it: a transparent gutter keeps the offset positive,
+ * which every browser supports).
  */
 export const dragPreview = (
 	root: HTMLElement,
 	nodes: HTMLElement[],
-	pointer: { clientX: number; clientY: number }
+	pointer: { clientX: number; clientY: number },
+	columns?: number[]
 ): DragPreview => {
 	const { ownerDocument: document } = root;
 	const first = nodes[0]?.getBoundingClientRect();
 	const dx = first ? pointer.clientX - first.left : 0;
 	const dy = first ? pointer.clientY - first.top : 0;
 	// Each block at its own width (a column's block at its column's), capped (the cap where none is laid out).
-	const own = Math.max(0, ...nodes.map((node) => node.getBoundingClientRect().width));
+	const own = columns
+		? columns.reduce((sum, w) => sum + w, 0)
+		: Math.max(0, ...nodes.map((node) => node.getBoundingClientRect().width));
 	const width = Math.min(own || MAX_WIDTH, MAX_WIDTH);
 
 	const list = document.createElement('div');
+	if (columns)
+		Object.assign(list.style, {
+			display: 'grid',
+			gridTemplateColumns: columns.map((w) => `${w}px`).join(' ')
+		});
 	let shown = 0;
 	for (const node of nodes) {
 		// Past the cap nothing more shows: the rest is not cloned.

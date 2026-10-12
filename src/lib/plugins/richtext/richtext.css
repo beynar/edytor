@@ -1,0 +1,6 @@
+/* Loaded by the plugin's module (a component's own <style> is dropped when only
+   its module is used: the plugin factory, never the component). */
+/* An empty body's hint: chrome, not text (`body.hint`); its look is a theme's. */
+[data-edytor-empty-body] {
+	user-select: none;
+}

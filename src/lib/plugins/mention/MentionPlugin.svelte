@@ -1,6 +1,7 @@
 <svelte:options runes />
 
 <script module lang="ts">
+	import './mention.css';
 	import type { Snippet } from 'svelte';
 	import type { InlineBlockSnippetPayload, Plugin, TriggerContext } from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
@@ -89,10 +90,3 @@
 		data-mention-id={block.data.id}>@{block.data.label ?? ''}</span
 	>
 {/snippet}
-
-<style>
-	/* One unit, on one line; its look is a theme's. */
-	.edytor-mention {
-		white-space: nowrap;
-	}
-</style>

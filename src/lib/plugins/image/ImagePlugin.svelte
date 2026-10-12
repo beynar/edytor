@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import './image.css';
 	import { escapeHtml } from '$lib/clipboard/serializeClipboardFragment.js';
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import { branded } from '../brand.js';
@@ -176,21 +177,3 @@
 	The core renders the kind's <figure> around this markup.
 	--><!-- svelte-ignore a11y_figcaption_parent --><figcaption>{@render content()}</figcaption>
 {/snippet}
-
-<style>
-	/* Where an image narrower than its block sits (Notion's alignment). */
-	[data-edytor-image] {
-		display: flex;
-		position: relative;
-		justify-content: center;
-	}
-	[data-edytor-image][data-align='left'] {
-		justify-content: flex-start;
-	}
-	[data-edytor-image][data-align='right'] {
-		justify-content: flex-end;
-	}
-	[data-edytor-image] img {
-		max-width: 100%;
-	}
-</style>

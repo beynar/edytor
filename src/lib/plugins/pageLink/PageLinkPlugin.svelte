@@ -1,6 +1,7 @@
 <svelte:options runes />
 
 <script module lang="ts">
+	import './pageLink.css';
 	import type { Snippet } from 'svelte';
 	import type { InlineBlockSnippetPayload, Plugin, TriggerContext } from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
@@ -104,10 +105,3 @@
 		></a
 	>
 {/snippet}
-
-<style>
-	/* One unit, on one line; its look is a theme's. */
-	.edytor-page-link {
-		white-space: nowrap;
-	}
-</style>

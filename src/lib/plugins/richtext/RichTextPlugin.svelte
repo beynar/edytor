@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import './richtext.css';
 	import type { Plugin, BlockSnippetPayload, KindPreset, PlaceholderView } from '$lib/plugins.js';
 	import { branded } from '../brand.js';
 	import type { Edytor } from '$lib/edytor.svelte.js';
@@ -773,10 +774,3 @@
 {#snippet list({ children }: BlockSnippetPayload)}<!--
 -->{#if children}<div>{@render children()}</div>{/if}<!--
 -->{/snippet}
-
-<style>
-	/* An empty body's hint: chrome, not text (`body.hint`); its look is a theme's. */
-	:global([data-edytor-empty-body]) {
-		user-select: none;
-	}
-</style>

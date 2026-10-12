@@ -125,14 +125,16 @@ export const todoCheckbox = (
 		get control(): Attachment<HTMLElement> {
 			const on = checked();
 			return (node) => {
-				// Any other element than a native checkbox (a `button`) is one to assistive technology.
 				const native = node instanceof HTMLInputElement && node.type === 'checkbox';
+				// Another element than a native checkbox is one to assistive technology,
+				// unless the markup gave it its own role.
+				const role = native ? {} : { role: node.getAttribute('role') ?? 'checkbox' };
 				return attach(
 					{
 						contenteditable: 'false',
 						'aria-label': label,
 						'data-edytor-todo-checkbox': '',
-						role: native ? undefined : 'checkbox',
+						...role,
 						'aria-checked': native ? undefined : on
 					},
 					{

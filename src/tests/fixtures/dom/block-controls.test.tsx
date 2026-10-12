@@ -93,6 +93,17 @@ describe('rich text: the to-do checkbox', () => {
 		expect(box().getAttribute('aria-checked')).toBe('false');
 	});
 
+	it('a control with a role of its own keeps it; the attachment keeps its state in step', async () => {
+		const { edytor } = await render(todo, [createRichTextPlugin({ checkbox: custom.switchBox })]);
+		const box = () => testId(nodeOf(edytor, 't'), 'custom-switch')!;
+		expect(box().getAttribute('role')).toBe('switch');
+		expect(box().getAttribute('aria-checked')).toBe('false');
+		await press(box());
+		expect(edytor.idToBlock.get('t')!.data.checked).toBe(true);
+		expect(box().getAttribute('role')).toBe('switch');
+		expect(box().getAttribute('aria-checked')).toBe('true');
+	});
+
 	it('a readonly view refuses the write: the box stays unchecked', async () => {
 		const { edytor } = await render(todo, [], true);
 		await press(testId(nodeOf(edytor, 't'), 'custom-checkbox')!);

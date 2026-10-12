@@ -210,7 +210,7 @@ The snippet receives the `BlockMenuController`:
     "search(query)": { type: "(query: string) => void", description: "What the search field's input does: set query, highlight the first row, close the flyout." },
     keys: { type: "Attachment<HTMLElement>", description: "On the field that holds the keyboard: focused when it mounts, it takes the keys in the table above and names the menu (or the open flyout) and its highlighted row (aria-controls, aria-activedescendant)." },
     popup: { type: "Attachment<HTMLElement>", description: "On the element holding the rows: its id, menu role and name, presses that keep the focus, and its publication to the editor's root while it is in the page (the grip is told it opened it)." },
-    "option(index, flyout?)": { type: "(index: number, flyout?: boolean) => OptionAttributes", description: "A row's attributes, to spread: its id, role (menuitem, menuitemcheckbox, menuitemradio), aria-checked, aria-haspopup and aria-expanded, data-selected." },
+    "option(index, flyout?)": { type: "(index: number, flyout?: boolean) => Attachment<HTMLElement>", description: "A row's attachment ({@attach controller.option(index)}): its id, role (menuitem, menuitemcheckbox, menuitemradio), aria-checked, aria-haspopup and aria-expanded; the keyboard's row scrolls into view. Draw its highlight from index (flyoutIndex)." },
     flyoutMenu: { type: "Attachment<HTMLElement>", description: "On an open flyout: its id, menu role and name, and its placement beside the menu." },
   }}
 />

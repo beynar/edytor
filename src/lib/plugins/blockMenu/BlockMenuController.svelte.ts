@@ -219,8 +219,8 @@ export class BlockMenuController {
 	 * `flyout`): `{@attach controller.option(index)}` on its element.
 	 * Its id, its role (`menuitem`, a switch's `menuitemcheckbox`, a colour's
 	 * `menuitemradio` with its ✓ as `aria-checked`, a flyout's opener with
-	 * `aria-haspopup` and `aria-expanded`), `data-selected` for the keyboard's
-	 * row, which scrolls into view.
+	 * `aria-haspopup` and `aria-expanded`); the keyboard's row scrolls into
+	 * view. Its look is the markup's (`index`, `flyoutIndex`).
 	 */
 	option = (index: number, flyout = false): Attachment<HTMLElement> => {
 		const row = (flyout ? this.flyoutRows : this.rows)[index];

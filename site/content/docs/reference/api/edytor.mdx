@@ -871,7 +871,7 @@ that callout shows (`current`); `set(icon)` and `remove()` write it and
 close, `close()` closes with nothing written. Put `{@attach picker.keys}`
 and `{@attach picker.popup}` on the picker's element (it takes the focus
 and the keys, names the keyboard's row and is published to the view's
-root), spread `picker.option(i)` on each row (`i` in `icons`,
+root), attach `picker.option(i)` to each row (`i` in `icons`,
 `icons.length` for Remove icon) and run `picker.pick(i)` on its click.
 
 ```ts
@@ -911,7 +911,7 @@ export declare class CalloutIconPicker extends ChromeList {
 - `set`: Write `icon` on the callout (one undo step), then close.
 - `remove`: Leave the callout without an icon (`data.icon` is `''`), then close.
 - `pick`: Pick row `index`: its icon, or Remove icon (`icons.length`).
-- `option`: Row `index`'s attachment (`icons.length`: Remove icon), as every menu's rows: its id, `menuitemradio` role and `aria-checked` (`menuitem` for Remove icon), `data-selected` on the keyboard's row.
+- `option`: Row `index`'s attachment (`icons.length`: Remove icon), as every menu's rows: its id, `menuitemradio` role and `aria-checked` (`menuitem` for Remove icon); its highlight is the markup's (`index`).
 - `keys`: The picker's element (`{@attach picker.keys}`): it takes the focus as it opens and names the keyboard's row (`aria-activedescendant`).
 
 ## CalloutIconsOptions
@@ -4119,7 +4119,7 @@ What a `menu` snippet receives: the open list (`open`), the query
 and its rows (`query`, `items`, each a `MenuItemPayload`), the keyboard's
 row (`index`), `search`, `pick` and `close`, and
 the attachments that give it the keys and the ARIA: `keys` on the
-search field, `popup` on the list, `option(index)` spread on each row.
+search field, `popup` on the list, `option(index)` on each row.
 
 ```ts
 export declare class LanguageMenu extends ChromeList {
@@ -5927,7 +5927,7 @@ when the view is readonly.
 What a `menu` snippet receives: the open menu (`menu`), its rows
 (`items`, each a `MenuItemPayload`), the keyboard's row (`index`), the
 attachments that give it the keys and the ARIA (`popup` and `keys` on
-the menu's element, `option(index)` spread on each row) and `close()`.
+the menu's element, `option(index)` on each row) and `close()`.
 A grip's own attachment is its payload's `grip`.
 
 ```ts

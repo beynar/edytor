@@ -37,8 +37,8 @@ export type TablePluginOptions = {
 	/**
 	 * A grip's menu: it renders under its grip while `chrome.menu` is set
 	 * (without it, nothing shows). Put `{@attach chrome.popup}` and
-	 * `{@attach chrome.keys}` on its element and spread `item.option` (or
-	 * `chrome.option(index)`) on each row of `chrome.items`.
+	 * `{@attach chrome.keys}` on its element and `{@attach item.option}` on
+	 * each row of `chrome.items` (its highlight from `item.selected`).
 	 */
 	menu?: Snippet<[TableChrome]>;
 	/**

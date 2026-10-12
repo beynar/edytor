@@ -35,7 +35,7 @@ export type LanguageMenuItem = MenuItemPayload<LanguageRow> & {
  * and its rows (`query`, `items`, each a `MenuItemPayload`), the keyboard's
  * row (`index`), `search`, `pick` and `close`, and
  * the attachments that give it the keys and the ARIA: `keys` on the
- * search field, `popup` on the list, `option(index)` spread on each row.
+ * search field, `popup` on the list, `option(index)` on each row.
  */
 export class LanguageMenu extends ChromeList {
 	/** The code block whose list is open, and whether the keys opened it (reactive). */

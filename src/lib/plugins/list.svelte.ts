@@ -261,8 +261,8 @@ export abstract class ChromeList {
 
 	/**
 	 * Row `index`'s attachment (`{@attach controller.option(index)}`): its
-	 * id, its role, `aria-selected` (a `listbox`'s) and `data-selected` for
-	 * the keyboard's row, which scrolls into view.
+	 * id, its role and `aria-selected` (a `listbox`'s); the keyboard's row
+	 * scrolls into view. Its look is the markup's (`index === this.index`).
 	 */
 	option(index: number): Attachment<HTMLElement> {
 		const role = this.role === 'menu' ? 'menuitem' : 'option';

@@ -167,8 +167,8 @@ export type CodePluginOptions = {
 	/**
 	 * The language list: it renders under the header's button while
 	 * `menu.open` is set (without it, nothing shows). Put `{@attach menu.keys}` on its search field,
-	 * `{@attach menu.popup}` on the list, and spread `item.option` (or
-	 * `menu.option(index)`) on each row of `menu.items`. The first code
+	 * `{@attach menu.popup}` on the list, and `{@attach item.option}` on each
+	 * row of `menu.items` (its highlight from `item.selected`). The first code
 	 * plugin listed in a view owns its list.
 	 */
 	menu?: Snippet<[LanguageMenu]>;

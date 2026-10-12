@@ -21,6 +21,7 @@
 	 */
 	export {
 		checkbox,
+		switchBox,
 		calloutIcon,
 		emptyBody,
 		equationPlaceholder,
@@ -37,6 +38,14 @@
 {#snippet checkbox(box: TodoCheckboxPayload)}
 	<button type="button" data-testid="custom-checkbox" {@attach box.control}
 		>{box.checked ? '☑' : '☐'}</button
+	>
+{/snippet}
+
+{#snippet switchBox(box: TodoCheckboxPayload)}
+	<!-- `aria-checked` is the attachment's. -->
+	<!-- svelte-ignore a11y_role_has_required_aria_props -->
+	<button type="button" role="switch" data-testid="custom-switch" {@attach box.control}
+		>{box.checked ? 'on' : 'off'}</button
 	>
 {/snippet}
 

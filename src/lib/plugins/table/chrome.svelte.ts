@@ -188,7 +188,7 @@ export type TableAddPayload = {
  * What a `menu` snippet receives: the open menu (`menu`), its rows
  * (`items`, each a `MenuItemPayload`), the keyboard's row (`index`), the
  * attachments that give it the keys and the ARIA (`popup` and `keys` on
- * the menu's element, `option(index)` spread on each row) and `close()`.
+ * the menu's element, `option(index)` on each row) and `close()`.
  * A grip's own attachment is its payload's `grip`.
  */
 export class TableChrome extends ChromeList {
@@ -665,8 +665,8 @@ export class TableChrome extends ChromeList {
 	/**
 	 * The attachment of the open menu's row at `index`
 	 * (`{@attach chrome.option(index)}`). Its id, `menuitem` role,
-	 * `aria-disabled` when it cannot run now, `data-selected` for the
-	 * keyboard's row, which scrolls into view. The menu's element takes
+	 * `aria-disabled` when it cannot run now; the keyboard's row scrolls into
+	 * view. The menu's element takes
 	 * `data-edytor-table-menu` (the kind it is open on) from `popup`.
 	 */
 	option(index: number): Attachment<HTMLElement> {

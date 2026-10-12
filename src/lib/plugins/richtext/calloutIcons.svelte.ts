@@ -66,7 +66,7 @@ export const ICON_COLUMNS = 8;
  * close, `close()` closes with nothing written. Put `{@attach picker.keys}`
  * and `{@attach picker.popup}` on the picker's element (it takes the focus
  * and the keys, names the keyboard's row and is published to the view's
- * root), spread `picker.option(i)` on each row (`i` in `icons`,
+ * root), attach `picker.option(i)` to each row (`i` in `icons`,
  * `icons.length` for Remove icon) and run `picker.pick(i)` on its click.
  */
 export class CalloutIconPicker extends ChromeList {
@@ -179,7 +179,7 @@ export class CalloutIconPicker extends ChromeList {
 	/**
 	 * Row `index`'s attachment (`icons.length`: Remove icon), as every menu's
 	 * rows: its id, `menuitemradio` role and `aria-checked` (`menuitem` for
-	 * Remove icon), `data-selected` on the keyboard's row.
+	 * Remove icon); its highlight is the markup's (`index`).
 	 */
 	option(index: number): Attachment<HTMLElement> {
 		const icon = this.icons[index];
@@ -234,7 +234,7 @@ export type CalloutIconsOptions = {
 	 * The icon picker's markup and its words: it renders while the picker is
 	 * open, placed under the icon (without it, the icon opens nothing). Put
 	 * `{@attach picker.keys}` and `{@attach picker.popup}` on its element and
-	 * spread `picker.option(i)` on each row (`picker.icons.length`: Remove icon).
+	 * attach `picker.option(i)` to each row (`picker.icons.length`: Remove icon).
 	 */
 	picker?: Snippet<[CalloutIconPicker]>;
 	/** The picker's choices (`CALLOUT_ICONS` by default). */

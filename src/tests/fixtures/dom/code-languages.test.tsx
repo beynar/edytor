@@ -15,6 +15,9 @@
  *   highlight. Tokens are decorations: never stored.
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import { createRawSnippet } from 'svelte';
+import { createCodePlugin as codeFactory } from '$lib/plugins/code/CodePlugin.svelte';
+import type { CodeHeader } from '$lib/plugins/code/header.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { CODE_LANGUAGES, loadCodeLanguage } from '$lib/plugins/code/languages.js';
@@ -272,5 +275,27 @@ describe('code.language.picker: the header picks the language', () => {
 		await click(picker(editor)!);
 		expect(rowLabels()[0]).toBe('rust');
 		expect(rows()[0]!.hasAttribute('data-current')).toBe(true);
+	});
+});
+
+describe('code.first-listed: two code plugins, the first listed draws the block', () => {
+	/** A header naming its plugin and the language it shows. */
+	const header = (name: string) =>
+		createRawSnippet((payload: () => CodeHeader) => ({
+			render: () => `<span data-header="${name}">${name} ${payload().label}</span>`
+		}));
+
+	it("the header is the first plugin's, with the first plugin's languages", async () => {
+		const first = codeFactory({
+			header: header('first'),
+			languages: [{ id: 'sql', label: 'SQL (first)', load: language('sql').load }]
+		});
+		const second = codeFactory({ header: header('second') });
+		const { editor } = await render(code(['select 1'], { language: 'sql' }), {
+			plugins: [first, second]
+		});
+		const shown = editor.querySelector<HTMLElement>('[data-edytor-code-header] [data-header]');
+		expect(shown?.dataset.header).toBe('first');
+		expect(shown?.textContent).toBe('first SQL (first)');
 	});
 });

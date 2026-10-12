@@ -37,7 +37,7 @@
  * leave to the reader (`// your storage`, your backend, the `Env` that
  * `wrangler types` writes), so the rest of each block is checked as written.
  *
- * `$lib/chrome/…` is the demo's chrome as the quick start has the reader
+ * `$lib/chrome/…` is the demo's chrome as the ready-made menus page has the reader
  * copy it (`src/routes/chrome` into `src/lib/chrome`, its `$lib/index.js`
  * imports naming `edytor`): it is written beside the examples that way and
  * checked with them, against the package as a consumer installs it.
@@ -183,7 +183,7 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'])
 for (const legacy of ['src/routes/__docexamples', '.svelte-kit/types/src/routes/__docexamples'])
 	rmSync(path.join(ROOT, legacy), { recursive: true, force: true });
 rmSync(OUT, { recursive: true, force: true });
-// The demo's chrome, copied as the quick start says (`$lib/chrome/…`).
+// The demo's chrome, copied as the ready-made menus page says (`$lib/chrome/…`).
 mkdirSync(CHROME, { recursive: true });
 for (const name of readdirSync(path.join(ROOT, 'src/routes/chrome')))
 	writeFileSync(

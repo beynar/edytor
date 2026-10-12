@@ -1,10 +1,10 @@
 ---
 title: SvelteKit
-description: Use Edytor in SvelteKit, with readonly server rendering, client-only editable editors and headless document work on the server.
+description: Use Edytor in SvelteKit, with server rendering, readonly pages, editors connected to a room and headless document work on the server.
 icon: server
 ---
 
-Edytor works in SvelteKit with no extra configuration: SvelteKit's Vite plugin compiles the `.svelte` files the package ships. This page covers what the component renders during server-side rendering (SSR) and how to mount an editable editor in the browser only.
+Edytor works in SvelteKit with no extra configuration: SvelteKit's Vite plugin compiles the `.svelte` files the package ships. This page covers what the component renders during server-side rendering (SSR) and when an editor's content waits for the browser.
 
 ## What renders on the server
 
@@ -15,7 +15,7 @@ Edytor works in SvelteKit with no extra configuration: SvelteKit's Vite plugin c
 | `readonly` with a `value` | The full document: every block element, its text and marks, with `contenteditable="false"` and `aria-readonly="true"`. |
 | `sync` (editable) | Nothing. The provider attaches only in the browser, and the document stays pending until it answers. |
 | `document` that is not ready yet | Nothing, for the same reason. |
-| `value` only (editable) | The block tree, with `contenteditable="true"`. This path is not tested; mount editable editors in the browser (below). |
+| `value` only (editable), or no props | The block tree, with `contenteditable="true"`. It hydrates in the browser and edits from there. |
 
 A view releases the document it created when the server render ends, so a server-rendered editor keeps no document or presence timer alive after the request.
 
@@ -23,7 +23,7 @@ Some things never run on the server: event listeners, the selection, block handl
 
 ## Readonly pages
 
-A readonly editor is the supported way to server-render a document. Load the JSON on the server and pass it as `value`:
+To show a document nobody edits on the page, render a readonly editor. Load the JSON on the server and pass it as `value`:
 
 ```ts title="src/routes/notes/[id]/+page.server.ts" check
 import type { JSONDoc } from 'edytor';
@@ -51,9 +51,9 @@ A readonly view given `room` and `server` (or `sync`) is a live viewer instead: 
 
 See [Readonly mode](/docs/editor/readonly) for what still works in the browser.
 
-## Editable editors: mount after hydration
+## Editors connected to a room
 
-The demo app renders its editable editor only after the page has mounted:
+An editable editor needs no guard: it server-renders its `value` and hydrates. An editor connected to a room (`room` and `server`, or `sync`) is the exception: its content is the room's, in IndexedDB or on the server, so its server render is empty until the browser loads it. Pass the content you loaded as `snapshot` to paint it at once, or render the editor after the page has mounted:
 
 ```svelte title="src/routes/+page.svelte" check
 <script lang="ts">
@@ -74,13 +74,7 @@ The demo app renders its editable editor only after the page has mounted:
 </div>
 ```
 
-Why:
-
-- An editable editor's content is decided in the browser. With `sync`, IndexedDB or the server has the latest state, not your server render.
-- The live editor creates state that belongs to one browser view: its presence entry, its overlay layer after the root, its provider connection. Rendering it after hydration keeps the server HTML and the first client render identical, so Svelte hydrates the rest of the page without mismatches.
-- The page shell around the editor still server-renders, so layout and headings show immediately.
-
-You can also turn SSR off for an editor route with `export const ssr = false;` in its `+page.ts`. The `onMount` pattern keeps SSR for the rest of the page.
+The page shell around the editor still server-renders, so layout and headings show immediately. To render a whole route in the browser only, set `export const ssr = false;` in its `+page.ts`.
 
 ## Working with documents on the server
 

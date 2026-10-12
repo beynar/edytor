@@ -14,6 +14,10 @@ Edytor is pre-1.0: a release keeps no compatibility shim beyond the deprecated a
 
 ### Unreleased
 
+#### New
+
+- **An editable editor renders on the server (documentation).** `<Edytor>` given a `value`, or nothing, server-renders its blocks and hydrates in the browser, so it needs no `onMount` guard and no `export const ssr = false;`; an editor connected to a room still renders its content once the room answers ([SvelteKit](/docs/getting-started/sveltekit#editors-connected-to-a-room)). The [quick start](/docs/getting-started/quick-start) is shorter: one plugin, and the document kept in a `$state` from `onChange`. Copying the demo's menus and handles has its own page, [Ready-made menus](/docs/customization/ready-made-menus). Nothing in the package changed.
+
 #### Fixed
 
 - **ArrowDown from the title of an open toggle, or of a callout, goes into its empty body** (a first block inside, the caret in it, one undo step), as clicking the "Empty toggle" hint does. It used to skip the body and go to the block after it.
@@ -606,7 +610,7 @@ No package change: 0.1.0-next.39 was tagged but not published (a test of its CI 
 - **A dropped file over a block selection** is offered to the plugins at the drop point; before, a plugin placing it at the selection replaced the selected blocks.
 - **HTML import: emoji drawn as images stay text.** An `img` whose `alt` is emoji only, whose class names an emoji or that has `data-emoji`, or whose `width` and `height` are 32 px or less, is imported as its `alt` text in the line, so a paste from X, Gmail, Slack or WordPress keeps each paragraph whole (and an email's tracking pixel adds nothing). Other images inside a line still end it ([HTML import](/docs/editor/clipboard#html-import)).
 - **HTML import of voids.** A void kind with a `parse` hook (the image and the media kinds) is found by its hook only, never by its tag alone: a pasted `figure` with no `img` is no longer an empty image block, its caption pastes as text. A claimed void takes only its `figcaption`'s text as its caption. `iframe`, `video` and `audio` are imported when the embed, video or audio plugin claims them, and dropped otherwise, as before.
-- **Mount editable editors in the browser (documentation).** The [quick start](/docs/getting-started/quick-start#mount-it-in-a-page) and [installation](/docs/getting-started#verify-the-install) pages now mount the editable editor after hydration, or turn SSR off for the route, as [SvelteKit](/docs/getting-started/sveltekit#editable-editors-mount-after-hydration) always advised: server-rendering an editable `<Edytor>` is not tested. If you copied the earlier quick start into a server-rendered route, wrap the editor in the `onMount` guard. Nothing in the package changed.
+- **Mount editable editors in the browser (documentation).** The quick start and installation pages now mount the editable editor after hydration, or turn SSR off for the route, as [SvelteKit](/docs/getting-started/sveltekit) always advised: server-rendering an editable `<Edytor>` is not tested. If you copied the earlier quick start into a server-rendered route, wrap the editor in the `onMount` guard. Nothing in the package changed.
 - **Corrections (documentation).** The version history is kept in the store you choose (KV, R2, the room's own storage or yours), not only KV, as the limitations and room pages said; `tablePrefix` prefixes every room table, not two.
 
 ### From 0.1.0-next.31

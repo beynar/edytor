@@ -49,83 +49,25 @@ pnpm add edytor
 
 ## Quick start
 
-The package draws no menu, toolbar or block handle: each is a snippet you pass its plugin. Without them the editor works but shows none. The demo's ready-made, Notion-style ones are one copy away: copy [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome) into your app, make its imports name the package, and pass its plugins ([quick start](https://edytor.dev/docs/getting-started/quick-start#the-ready-made-menus-and-handles)):
-
-```bash
-npx degit beynar/edytor/src/routes/chrome src/lib/chrome
-sed -i.bak 's#\$lib/index\.js#edytor#' src/lib/chrome/*.ts src/lib/chrome/*.svelte && rm src/lib/chrome/*.bak
-```
-
-Take the folder of the version you install, by its tag (`beynar/edytor/src/routes/chrome#v1.0.0`): without one you get `master`'s, which follows the next release.
-
 ```svelte
 <script lang="ts">
-	import { Edytor } from 'edytor';
-	import 'edytor/themes/notion.css';
-	import {
-		slashMenuPlugin,
-		toolbarPlugin,
-		blockHandlesPlugin,
-		blockMenuPlugin,
-		codePlugin
-	} from '$lib/chrome/plugins';
-</script>
+	import { Edytor, createCodePlugin, type JSONDoc } from 'edytor';
 
-<div class="edytor-notion">
-	<Edytor
-		plugins={[slashMenuPlugin, toolbarPlugin, blockHandlesPlugin, blockMenuPlugin, codePlugin]}
-	/>
-</div>
-```
-
-Or draw a menu yourself: your snippet draws it, the plugin gives it its keys and ARIA.
-
-```svelte
-<script lang="ts">
-	import {
-		Edytor,
-		createCodePlugin,
-		createSlashMenuPlugin,
-		createMarkdownShortcutsPlugin,
-		richTextPlaceholder,
-		type JSONDoc,
-		type SlashMenuController
-	} from 'edytor';
-	import 'edytor/themes/notion.css';
-
-	const value: JSONDoc = {
+	let value = $state<JSONDoc>({
 		children: [{ type: 'paragraph', content: [{ text: 'Hello, World!' }] }]
-	};
-	const plugins = [
-		// Notion's hints in empty blocks.
-		() => ({ placeholder: richTextPlaceholder }),
-		createCodePlugin(),
-		createMarkdownShortcutsPlugin(),
-		createSlashMenuPlugin({ menu })
-	];
+	});
 </script>
 
-<!-- Your snippet draws the menu; the plugin's attachments give it its keys and ARIA. -->
-{#snippet menu(slash: SlashMenuController)}
-	<ul {@attach slash.popup}>
-		{#each slash.commands as command, index (command.id)}
-			<li
-				data-selected={slash.index === index}
-				{@attach slash.option(index)}
-				onclick={() => void slash.run(command)}
-			>
-				{command.label}
-			</li>
-		{/each}
-	</ul>
-{/snippet}
+<Edytor {value} plugins={[createCodePlugin()]} onChange={(next) => (value = next)} />
 
-<div class="edytor-notion">
-	<Edytor {value} {plugins} onChange={(root) => console.log(root)} />
-</div>
+<p>{value.children?.length ?? 0} blocks</p>
 ```
 
-An editable editor is client-only: in SvelteKit, mount it once the page has hydrated ([quick start](https://edytor.dev/docs/getting-started/quick-start#mount-it-in-a-page)). `<Edytor>` adds the rich text, image, arrow-move and suggestions plugins after yours. Every menu, toolbar, handle and panel is drawn by a snippet, yours or the demo's ([menus and handles](https://edytor.dev/docs/customization/menus)). To collaborate, name a room and a server running the [`edytor/cloudflare` room](https://edytor.dev/docs/server/quick-start):
+`<Edytor>` renders on the server and hydrates, so it works in any route. It includes rich text, images and keyboard block moves; each other block kind is a plugin you add, here code blocks. `onChange` hands you the document after every change ([quick start](https://edytor.dev/docs/getting-started/quick-start)).
+
+The package draws no menu, toolbar or block handle: each is a snippet you pass its plugin ([menus and handles](https://edytor.dev/docs/customization/menus)). The demo's Notion-style ones are in [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome), ready to copy into your app ([ready-made menus](https://edytor.dev/docs/customization/ready-made-menus)).
+
+To collaborate, name a room and a server running the [`edytor/cloudflare` room](https://edytor.dev/docs/server/quick-start):
 
 ```svelte
 <Edytor

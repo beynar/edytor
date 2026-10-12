@@ -1,288 +1,98 @@
 ---
 title: Quick start
-description: Build a working Edytor editor with the bundled plugins, an initial document, change handling and your own styles.
+description: Render an Edytor editor, add a plugin, give it a document and read the document as it changes.
 icon: zap
 ---
 
-This page builds a Notion-style editor: rich text blocks and marks, images, code blocks, markdown shortcuts, a slash menu, a selection toolbar, block handles, and the Notion theme. It mounts it in a SvelteKit page, reads the document as it changes and styles the result.
+This page renders an editor, adds one plugin to it and reads the document as it changes. It assumes you have [installed](/docs/getting-started) `edytor`.
 
-<Steps>
-  <Step title="Copy the menus and handles">
-    The package draws no menu, toolbar or handle: each is a snippet you pass its plugin. Copy the demo's Notion-style ones into your app and pass its plugins ([below](#the-ready-made-menus-and-handles)). Without them the editor works, but shows no menus and no handles.
-  </Step>
-  <Step title="Pick the plugins">
-    Every block kind and mark comes from a plugin. `<Edytor>` already includes rich text (paragraphs, headings, lists, to-dos, toggles, callouts, quotes, dividers and the text marks), images and keyboard block moves. Add the others for menus, code and shortcuts.
-  </Step>
-  <Step title="Give it a document">
-    Pass the initial content as `value`, a JSON tree of blocks.
-  </Step>
-  <Step title="Mount it in the browser">
-    Render the editable editor after the page has hydrated, so the server never renders it.
-  </Step>
-  <Step title="Read the changes">
-    Use `onChange`, or bind the editor instance with `bind:edytor` and read `edytor.value`.
-  </Step>
-  <Step title="Style it">
-    Import the Notion theme, or target the `data-edytor-*` attributes the editor renders.
-  </Step>
-</Steps>
-
-## The ready-made menus and handles
-
-The demo's chrome, every menu, toolbar, handle and panel drawn the Notion way with its styles, is a folder of the repository, [`src/routes/chrome`](https://github.com/beynar/edytor/tree/master/src/routes/chrome): `chrome.svelte` holds the snippets, its components the markup, and `plugins.ts` passes them to each plugin. Copy it into your app, then make its imports name the package (they name `$lib/index.js`, the package's own sources):
-
-```bash
-npx degit beynar/edytor/src/routes/chrome src/lib/chrome
-sed -i.bak 's#\$lib/index\.js#edytor#' src/lib/chrome/*.ts src/lib/chrome/*.svelte && rm src/lib/chrome/*.bak
-```
-
-Take the folder of the version you install, by its tag (`beynar/edytor/src/routes/chrome#v1.0.0`): without one you get `master`'s, which follows the next release.
-
-Then pass its plugins: each is the package's factory given the demo's snippets (`slashMenu(options)` and the others take the factory's options too).
-
-```svelte title="src/lib/NotionEditor.svelte" check
-<script lang="ts">
-	import { Edytor } from 'edytor';
-	import 'edytor/themes/notion.css';
-	import {
-		blockHandlesPlugin,
-		blockMenuPlugin,
-		calloutIconsPlugin,
-		codePlugin,
-		imageToolbarPlugin,
-		mediaEmptyPlugin,
-		slashMenuPlugin,
-		toolbarPlugin
-	} from '$lib/chrome/plugins';
-
-	const plugins = [
-		slashMenuPlugin,
-		toolbarPlugin,
-		blockHandlesPlugin,
-		blockMenuPlugin,
-		codePlugin,
-		imageToolbarPlugin,
-		mediaEmptyPlugin,
-		calloutIconsPlugin
-	];
-</script>
-
-<div class="edytor-notion">
-	<Edytor {plugins} />
-</div>
-```
-
-That is the whole editor of the [demo](/): a `/` menu, a toolbar over a selection, a `+` and a grip beside each block with its block menu, a code block with its language list, the image toolbar and the empty image's panel, and the callout's icon picker. Without these plugins, or with a plugin given no snippet, the editor still edits, its keys still run, and nothing shows. The files are yours to change: their words are in `words.svelte.ts`, their icons in `icons.ts`.
-
-## The editor
-
-To draw a menu yourself instead, give its plugin your snippet: the plugin opens and places it, and gives it its keys and ARIA through attachments ([Menus and handles](/docs/customization/menus)).
-
-```svelte title="src/lib/Editor.svelte" check
-<script lang="ts">
-	import {
-	Edytor,
-	createCodePlugin,
-	createSlashMenuPlugin,
-	createToolbarPlugin,
-	createMarkdownShortcutsPlugin,
-	richTextPlaceholder,
-	type EdytorInstance,
-	type JSONDoc,
-	type SlashMenuController,
-	type ToolbarController
-} from 'edytor';
-	import 'edytor/themes/notion.css';
-
-	// Rich text, images and arrow moves are included by default.
-	const plugins = [
-		// Notion's hints in empty blocks.
-		() => ({ placeholder: richTextPlaceholder }),
-		createCodePlugin(),
-		createMarkdownShortcutsPlugin(),
-		createSlashMenuPlugin({ menu }),
-		createToolbarPlugin({ toolbar })
-	];
-
-	const value: JSONDoc = {
-		children: [
-			{ type: 'heading', data: { level: 'h1' }, content: [{ text: 'Meeting notes' }] },
-			{
-				type: 'paragraph',
-				content: [
-					{ text: 'Type ' },
-					{ text: '/', marks: { code: true } },
-					{ text: ' to turn a line into another block.' }
-				]
-			},
-			{ type: 'todo-item', data: { checked: false }, content: [{ text: 'Send the recap' }] }
-		]
-	};
-
-	let edytor = $state<EdytorInstance>();
-
-	const onChange = (next: JSONDoc) => {
-		console.log('changed', next.children);
-	};
-</script>
-
-<!-- The slash menu: its rows are the commands, its keys and ARIA the controller's. -->
-{#snippet menu(slash: SlashMenuController)}
-	<ul class="menu" {@attach slash.popup}>
-		{#each slash.commands as command, index (command.id)}
-			<li
-				data-selected={slash.index === index}
-				{@attach slash.option(index)}
-				onclick={() => void slash.run(command)}
-			>
-				{command.label}
-			</li>
-		{/each}
-	</ul>
-{/snippet}
-
-<!-- The selection toolbar: a button per mark. -->
-{#snippet toolbar(bar: ToolbarController)}
-	<div class="bar" {@attach bar.popup} {@attach bar.keys}>
-		{#each bar.marks as { mark, label, icon } (mark)}
-			<button aria-label={label} aria-pressed={bar.isActive(mark)} onclick={() => bar.toggleMark(mark)}
-				>{icon}</button
-			>
-		{/each}
-	</div>
-{/snippet}
-
-<div class="edytor-notion">
-	<Edytor {plugins} {value} {onChange} bind:edytor class="editor" />
-</div>
-
-<style>
-	.menu,
-	.bar {
-		margin: 0;
-		padding: 4px;
-		border-radius: 8px;
-		background: #fff;
-		box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
-		list-style: none;
-	}
-	.menu [data-selected='true'] {
-		background: #f1f1ef;
-	}
-</style>
-```
-
-The `edytor-notion` class applies the imported theme to the document, and `richTextPlaceholder` shows Notion's placeholders ("Heading 1", "To-do", "Type '/' for commands"…). The menus are your markup: the plugins place them, open and close them, and give them their keys and ARIA through the controller's attachments (`popup`, `keys`, `option(index)`), while your markup draws the highlighted row from its value. Block handles (a `+` and a drag grip beside each block) and a block menu on the grip are two more plugins drawn by your snippets, `createBlockHandlesPlugin({ handle })` and `createBlockMenuPlugin({ menu })`, or the [ready-made ones](#the-ready-made-menus-and-handles) above.
-
-What each plugin adds:
-
-| Plugin | Adds |
-| --- | --- |
-| `createRichTextPlugin()` (default) | The rich text block kinds and marks, their keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, …) and HTML import rules. List, to-do and toggle items continue on <kbd>Enter</kbd>. |
-| `createImagePlugin()` (default) | An image block: embed from a link (or your upload, with `createUploadsPlugin({ upload })`), with an editable caption. |
-| `createArrowMovePlugin()` (default) | <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move the caret's block; <kbd>Mod</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move selected blocks. |
-| `createCodePlugin()` | A `code` block (an island of `codeLine` children) with syntax highlighting. |
-| `createMarkdownShortcutsPlugin()` | Typing `# `, `- `, `1. `, `[] `, `" `, `> `, `---` or ```` ``` ```` at the start of a block converts it; `**bold**`, `*italic*` and friends format inline. |
-| `createSlashMenuPlugin({ menu })` | A menu of block kinds, opened by typing `/`. |
-| `createToolbarPlugin({ toolbar })` | A floating toolbar over a text selection: Turn into, link, marks and colors. |
-| `createBlockHandlesPlugin({ handle })` | A `+` and a drag grip beside each block: drag and drop, keyboard moves. |
-| `createBlockMenuPlugin({ menu })` | The menu of a block handle's grip: Turn into, Duplicate, Move, Delete. |
-
-Plugin order matters: when two plugins define the same block kind, mark or command, the first one wins. Rich text is added after your plugins so they can override it; `defaultPlugins={false}` turns the defaults off. See [Plugins](/docs/plugins#default-plugins).
-
-Every menu, toolbar, handle and panel takes the snippet that draws it, and draws nothing without one. See [Menus and handles](/docs/customization/menus).
-
-## Mount it in a page
-
-An editable editor is client-only: mount it once the page has hydrated. The page shell around it still renders on the server.
+## Render an editor
 
 ```svelte title="src/routes/+page.svelte" check
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import Editor from '$lib/Editor.svelte';
-
-	let mounted = $state(false);
-	onMount(() => {
-		mounted = true;
-	});
+	import { Edytor } from 'edytor';
 </script>
 
-<main>
-	<h1>Notes</h1>
-	{#if mounted}
-		<Editor />
-	{/if}
-</main>
+<Edytor />
 ```
 
-:::note[Editable editors are client-only]
-An editable editor's content and selection belong to the browser: with a room, the latest state is in IndexedDB or on the server, not in your server render. Server-rendering an editable `<Edytor>` is not tested and not supported; mount it after hydration as above, or turn SSR off for the route (`export const ssr = false;` in its `+page.ts`). To server-render a document, use a `readonly` view. See [SvelteKit](/docs/getting-started/sveltekit#editable-editors-mount-after-hydration).
-:::
+You see one empty paragraph: an empty document always starts with one block of the default type. `<Edytor>` includes the rich text, image, arrow move and suggestions plugins, so this is already a rich text editor with its keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, …).
+
+`<Edytor>` renders on the server and hydrates in the browser, so it works in any route. An editor connected to a room renders its content once the room answers; see [SvelteKit](/docs/getting-started/sveltekit).
+
+## Add a plugin
+
+Every other block kind comes from a plugin. Import its factory from `edytor` and pass it in `plugins`. Here, code blocks, with a first document passed as `value`:
+
+```svelte title="src/lib/Editor.svelte" check
+<script lang="ts">
+	import { Edytor, createCodePlugin, type JSONDoc } from 'edytor';
+
+	const value: JSONDoc = {
+		children: [
+			{ type: 'heading', data: { level: 'h1' }, content: [{ text: 'Notes' }] },
+			{
+				type: 'code',
+				data: { language: 'javascript' },
+				children: [{ type: 'codeLine', content: [{ text: 'console.log("hello");' }] }]
+			}
+		]
+	};
+</script>
+
+<Edytor {value} plugins={[createCodePlugin()]} />
+```
+
+The code block highlights its lines, and typing ```` ``` ```` on an empty line, or <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>8</kbd>, makes a new one. `value` is a `JSONDoc`, a tree of blocks ([Document model](/docs/concepts/document-model)). The editor reads it once, when it mounts.
+
+[Plugins](/docs/plugins) lists the others: tables, columns, images and media, mentions, comments, markdown shortcuts…
 
 ## Read the document
 
-`onChange` receives the whole document after every committed change: local edits, remote edits and undo. Its argument is a `JSONDoc`, `{ data?, children }`, the type `value` takes, so you can store it and open it again as `value`.
+`onChange` receives the whole document after every change: a local edit, a remote edit or an undo. Keep it in a `$state` and use it in your markup:
 
-With the instance bound, `edytor.value` returns the same JSON and is reactive, so it works in `$derived`. Pass the bound instance to a component of yours, `<BlockCount {edytor} />`:
-
-```svelte title="src/lib/BlockCount.svelte" check
+```svelte title="src/lib/EditorWithPreview.svelte" check
 <script lang="ts">
-	import type { EdytorInstance } from 'edytor';
+	import { Edytor, createCodePlugin, type JSONDoc } from 'edytor';
 
-	let { edytor }: { edytor?: EdytorInstance } = $props();
-	const blockCount = $derived(edytor?.value.children?.length ?? 0);
+	let value = $state<JSONDoc>({
+		children: [{ type: 'heading', data: { level: 'h1' }, content: [{ text: 'Notes' }] }]
+	});
+	// The first heading's text: its content is text runs (and inline blocks, which have none).
+	const heading = $derived(value.children?.find((block) => block.type === 'heading'));
+	const title = $derived(
+		heading?.content?.map((run) => ('text' in run ? run.text : '')).join('') || 'Untitled'
+	);
 </script>
 
-<p>{blockCount} blocks</p>
+<Edytor {value} plugins={[createCodePlugin()]} onChange={(next) => (value = next)} />
+
+<p>{title}: {value.children?.length ?? 0} blocks</p>
+<pre>{JSON.stringify(value, null, 2)}</pre>
 ```
 
-`edytor.value` returns the same object until the next change. Clone it before you mutate it. Computing it serializes the whole document, so prefer `onChange` (or a debounced save) over reading it in many places.
+The document you receive is the same shape `value` takes, so you can store it and open it again as `value`. The editor reads `value` only when it mounts: assigning it afterwards does not replace the content, and `value` is not bindable (write `onChange`, not `bind:value`). To change the content from code, use [commands](/docs/editor/commands).
 
-`value` is the initial content only. Updating the prop later does not replace the document, and `value` is not bindable (`bind:value` fails type-checking). To change content after mount, use [commands](/docs/editor/commands).
+## Style it
 
-## Style the editor
+Import the Notion theme and put the editor in an element with its class:
 
-The Notion theme above styles every bundled kind; its colors and fonts are custom properties you can override (see [Styling](/docs/customization/styling#notion-theme)). To style the editor yourself instead, drop the import and the `edytor-notion` class.
+```svelte title="src/lib/StyledEditor.svelte" check
+<script lang="ts">
+	import { Edytor } from 'edytor';
+	import 'edytor/themes/notion.css';
+</script>
 
-The editor renders a `div` with `data-edytor` (and your `class`). Each block is an element with data attributes you can target:
-
-| Selector | Matches |
-| --- | --- |
-| `[data-edytor]` | The editable root. |
-| `[data-edytor-block]` | Every block element. |
-| `[data-edytor-type="heading"]` | Blocks of one kind. `data-edytor-id` holds the block id. |
-| `[data-edytor-selected]` | Blocks in a block selection. |
-| `[data-edytor-focused]` | Blocks the text selection is in. |
-| `[data-edytor-void]` | Void blocks, and chrome marked non-editable. |
-| `[data-edytor-text]` | Text segments. `data-edytor-text-empty="true"` when empty. |
-| `[data-edytor-mark="bold"]` | A mark element (`<strong>`, `<em>`, `<a>`, …). |
-| `[data-edytor-inline-block]` | Inline blocks. |
-| `[data-placeholder]::before` | The placeholder of an empty block. |
-| `[data-edytor-overlay]` | The layer after the root that holds your handles and menus, and remote carets. |
-
-The block element's tag comes from its kind: list items render `li`, a toggle `details`. A `heading` is a `div` holding its text in an `h1`–`h3`, and a `quote` holds its text in a `blockquote`; their nested blocks follow that tag. A few styles to start from:
-
-```css title="src/app.css"
-.editor {
-	outline: none;
-	line-height: 1.6;
-}
-.editor :is(p, blockquote) {
-	margin: 0;
-}
-.editor [data-edytor-type='quote'] {
-	border-left: 3px solid currentColor;
-	padding-left: 12px;
-}
-.editor [data-edytor-selected] {
-	background: #e8e6df;
-	border-radius: 3px;
-}
+<div class="edytor-notion">
+	<Edytor />
+</div>
 ```
 
-The placeholder is drawn by a `::before` rule the library ships, at 45% opacity. Override `[data-edytor-text][data-placeholder]::before` to restyle it.
+Or style it yourself: every block carries `data-edytor-*` attributes. See [Styling](/docs/customization/styling).
 
-To change a kind's markup rather than its styles, restyle it with a plugin's snippet (see [Restyling a kind](/docs/editor/edytor-component#restyling-a-kind)) or define your own kind in [Custom blocks](/docs/customization/blocks).
+## Menus and handles
+
+The editor shows no slash menu, toolbar or block handle until you give their plugins a snippet that draws them: see [Menus and handles](/docs/customization/menus). To start from the demo's Notion-style ones, copy them from the repository: see [Ready-made menus](/docs/customization/ready-made-menus).
 
 ## Next steps
 

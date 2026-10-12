@@ -296,10 +296,6 @@ export type PluginDefinitions = {
 	inlineBlocks?: Record<string, InlineBlockDefinition | Snippet<[InlineBlockSnippetPayload<any>]>>;
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
 	commands?: EditorCommand[];
-	/** Text typed at the caret that a rule replaces (markdown, `:smile:` → 😄). */
-	inputRules?: InputRule[];
-	/** Characters that open a menu of rows at the caret (`@` mentions). */
-	triggers?: Trigger[];
 };
 
 /**

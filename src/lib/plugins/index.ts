@@ -42,6 +42,7 @@ export {
 	type PageLinkPluginOptions
 } from './pageLink/PageLinkPlugin.svelte';
 export type { TriggerMenuController } from './triggers/TriggerController.svelte.js';
+export { withRulesAndTriggers } from './triggers/triggers.js';
 export { createSlashMenuPlugin, type SlashMenuOptions } from './slashMenu/slashMenuPlugin.js';
 export type { SlashMenuController } from './slashMenu/SlashMenuController.svelte.js';
 export { createToolbarPlugin, type ToolbarOptions } from './toolbar/toolbarPlugin.js';

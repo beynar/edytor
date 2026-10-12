@@ -4,6 +4,7 @@
 	import type { Snippet } from 'svelte';
 	import type { InlineBlockSnippetPayload, Plugin, TriggerContext } from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
+	import { withRulesAndTriggers } from '../triggers/triggers.js';
 	import { pageLinkEnglish, labelsOf } from '$lib/labels.js';
 	import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 
@@ -49,41 +50,45 @@
 	 */
 	export const createPageLinkPlugin =
 		(options: PageLinkPluginOptions): Plugin =>
-		() => {
-			return {
-				inlineBlocks: {
-					pageLink: {
-						snippet: pageLink,
-						plain: (data) => {
-							const title = (data as Partial<PageLinkData> | undefined)?.title;
-							return typeof title === 'string' ? title : '';
+		(edytor) =>
+			withRulesAndTriggers(
+				edytor,
+				{
+					inlineBlocks: {
+						pageLink: {
+							snippet: pageLink,
+							plain: (data) => {
+								const title = (data as Partial<PageLinkData> | undefined)?.title;
+								return typeof title === 'string' ? title : '';
+							}
 						}
 					}
 				},
-				triggers: [
-					{
-						char: options.char ?? '[[',
-						items: (query, ctx) => options.search(query, ctx),
-						label: (page: PageLinkItem) => page.title,
-						key: (page: PageLinkItem) => page.id,
-						menu: options.menu,
-						onPick: (page: PageLinkItem, { edytor, block, from, caret }) => {
-							const href = sanitizeLinkHref(page.href ?? options.href?.(page)) ?? undefined;
-							const data: PageLinkData = {
-								id: page.id,
-								title: page.title,
-								...(href ? { href } : {}),
-								...(page.icon ? { icon: page.icon } : {})
-							};
-							const atom = { type: 'pageLink', data };
-							const written = edytor.insertInline(block.id, from, atom).status === 'applied';
-							if (written) caret(from + 1);
-							return written;
+				{
+					triggers: [
+						{
+							char: options.char ?? '[[',
+							items: (query, ctx) => options.search(query, ctx),
+							label: (page: PageLinkItem) => page.title,
+							key: (page: PageLinkItem) => page.id,
+							menu: options.menu,
+							onPick: (page: PageLinkItem, { edytor, block, from, caret }) => {
+								const href = sanitizeLinkHref(page.href ?? options.href?.(page)) ?? undefined;
+								const data: PageLinkData = {
+									id: page.id,
+									title: page.title,
+									...(href ? { href } : {}),
+									...(page.icon ? { icon: page.icon } : {})
+								};
+								const atom = { type: 'pageLink', data };
+								const written = edytor.insertInline(block.id, from, atom).status === 'applied';
+								if (written) caret(from + 1);
+								return written;
+							}
 						}
-					}
-				]
-			};
-		};
+					]
+				}
+			);
 </script>
 
 {#snippet pageLink({ block }: InlineBlockSnippetPayload<Partial<PageLinkData>>)}

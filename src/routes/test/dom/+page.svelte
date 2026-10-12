@@ -5,6 +5,7 @@
 	import { createMarkdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { mentionPlugin } from '../../../tests/atMention.svelte';
 	import type { Plugin } from '$lib/plugins.js';
+	import { withRulesAndTriggers } from '$lib/plugins/triggers/triggers.js';
 	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
@@ -561,9 +562,8 @@
 	const equationPlugin = equation();
 	// The shell's padding is the page margin a marquee starts in, as the host's own area.
 	const marqueePlugin = marquee({ container: '[data-testid="editor-shell"]' });
-	const emojiRules: Plugin = () => ({
-		inputRules: [{ find: /:smile:$/, replace: () => '😄' }]
-	});
+	const emojiRules: Plugin = (edytor) =>
+		withRulesAndTriggers(edytor, {}, { inputRules: [{ find: /:smile:$/, replace: () => '😄' }] });
 
 	const plugins = $derived([
 		...(data.handles ? [blockHandlesPlugin] : []),

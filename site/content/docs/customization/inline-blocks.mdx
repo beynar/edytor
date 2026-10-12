@@ -61,7 +61,12 @@ For people mentions, use the [mention plugin](/docs/plugins/mention): `@` opens 
 
 ```svelte title="DatePlugin.svelte" check
 <script module lang="ts">
-	import type { InlineBlockSnippetPayload, Plugin, Trigger } from 'edytor';
+	import {
+		withRulesAndTriggers,
+		type InlineBlockSnippetPayload,
+		type Plugin,
+		type Trigger
+	} from 'edytor';
 
 	const days: Trigger<string> = {
 		char: '@',
@@ -74,12 +79,12 @@ For people mentions, use the [mention plugin](/docs/plugins/mention): `@` opens 
 		}
 	};
 
-	export const datePlugin: Plugin = () => ({
-		inlineBlocks: {
-			date: { snippet: date, plain: (data) => `@${data?.day ?? ''}` }
-		},
-		triggers: [days]
-	});
+	export const datePlugin: Plugin = (edytor) =>
+		withRulesAndTriggers(
+			edytor,
+			{ inlineBlocks: { date: { snippet: date, plain: (data) => `@${data?.day ?? ''}` } } },
+			{ triggers: [days] }
+		);
 </script>
 
 {#snippet date({ block }: InlineBlockSnippetPayload)}

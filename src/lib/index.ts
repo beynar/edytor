@@ -107,6 +107,7 @@ export {
 	type PageLinkData,
 	type PageLinkPluginOptions,
 	type TriggerMenuController,
+	withRulesAndTriggers,
 	BLOCK_ACTIVATE_EVENT,
 	BLOCK_ADD_EVENT,
 	type BlockActivation,

@@ -32,7 +32,6 @@ import { Pin } from './surface/pin.svelte.js';
 import { Overlay } from './surface/overlay.js';
 import { Popups } from './surface/popups.svelte.js';
 import { onOneLine } from './surface/lines.js';
-import { withRulesAndTriggers } from './plugins/triggers/triggers.js';
 import { Announcer as AnnouncerState } from './session/announcer.svelte.js';
 import type { PartialLabels } from './labels.js';
 import Announcer from './components/Announcer.svelte';
@@ -510,9 +509,8 @@ export class Edytor {
 			// before definition precedence applies: two extensions declaring
 			// different default children for one parent type is an error.
 			const defaultChild: Record<string, string> = {};
-			this.plugins = (plugins || []).map((plugin, at) => {
-				// Its input rules and triggers run through its own hooks, at its place in the list.
-				const initializedPlugin = withRulesAndTriggers(this, plugin(this), at);
+			this.plugins = (plugins || []).map((plugin) => {
+				const initializedPlugin = plugin(this);
 				for (const [type, definition] of Object.entries(initializedPlugin.blocks ?? {})) {
 					const child = typeof definition === 'object' ? definition.defaultChild : undefined;
 					if (child !== undefined && (defaultChild[type] ??= child) !== child) {

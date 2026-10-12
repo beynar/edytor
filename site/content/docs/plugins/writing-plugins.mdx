@@ -19,8 +19,6 @@ export const myPlugin: Plugin = (edytor) => {
 		inlineBlocks: {},
 		hotkeys: {},
 		commands: [],
-		inputRules: [],
-		triggers: [],
 		onBeforeOperation: (change) => {},
 		onChange: (value) => {}
 	};
@@ -55,16 +53,6 @@ export const myPlugin: Plugin = (edytor) => {
       type: "EditorCommand[]",
       description: "Named commands. The slash menu lists them next to the block kinds.",
     },
-    inputRules: {
-      type: "InputRule[]",
-      description: "Text typed at the caret that a rule replaces: markdown, :smile: to an emoji. See Input rules and triggers.",
-      typeDescriptionLink: "/docs/plugins/input-rules",
-    },
-    triggers: {
-      type: "Trigger[]",
-      description: "Characters that open a menu at the caret, such as @ for people. See Input rules and triggers.",
-      typeDescriptionLink: "/docs/plugins/input-rules#triggers",
-    },
     placeholder: {
       type: "string | ((view) => string | null)",
       description: "Text shown in empty blocks. The <Edytor> prop wins over a plugin's. See Placeholder.",
@@ -72,6 +60,8 @@ export const myPlugin: Plugin = (edytor) => {
     },
   }}
 />
+
+Input rules and triggers are wired into the plugin's own hooks: return `withRulesAndTriggers(edytor, definitions, { inputRules, triggers })` ([Input rules and triggers](/docs/plugins/input-rules)).
 
 ### Hooks
 

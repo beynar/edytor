@@ -1,14 +1,15 @@
 /**
- * A plugin's `inputRules` and `triggers`, turned into its hooks: the rules
- * run in its `onBeforeOperation` (after its own hook), each trigger is a
- * `TriggerMenuController` fed by its `onAfterOperation` and
- * `onSelectionChange`, rendered in the overlay, and keyed through its
- * `hotkeys` (before its own bindings of the same keys), as the slash menu
- * is (`withTriggerMenus`). The precedence of both is the plugin's place in
- * the list.
+ * Input rules and triggers, wired into a plugin's own hooks
+ * (`withRulesAndTriggers`): the rules run in its `onBeforeOperation`
+ * (after its own hook), each trigger is a `TriggerMenuController` fed by
+ * its `onAfterOperation` and `onSelectionChange`, rendered in the overlay,
+ * and keyed through its `hotkeys` (before its own bindings of the same
+ * keys), as the slash menu is (`withTriggerMenus`). The precedence of both
+ * is the plugin's place in the list. A view without such a plugin ships
+ * none of it.
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { ChangePayload, InitializedPlugin } from '$lib/plugins.js';
+import type { ChangePayload, InitializedPlugin, InputRule, Trigger } from '$lib/plugins.js';
 import type { HotKey, HotKeyCombination } from '$lib/session/keymap.js';
 import { inputRulesHook } from '$lib/session/inputRules.js';
 import { TriggerMenuController, type TextTriggerController } from './TriggerController.svelte.js';
@@ -27,20 +28,26 @@ const both =
 		then?.(payload);
 	};
 
-/** `plugin` with its input rules and triggers wired into its hooks; `at` is its place in the list. */
+/** The triggers each view numbered so far: a trigger's popup owner name. */
+const counts = new WeakMap<Edytor, number>();
+
+/**
+ * `plugin` with `inputRules` (text typed at the caret that a rule
+ * replaces: markdown, `:smile:` → 😄) and `triggers` (characters that open
+ * a menu of rows at the caret: `@` mentions) run through its own hooks.
+ * A plugin declares them by returning this:
+ * `(edytor) => withRulesAndTriggers(edytor, { inlineBlocks }, { triggers: [mention] })`.
+ */
 export const withRulesAndTriggers = (
 	edytor: Edytor,
 	plugin: InitializedPlugin,
-	at: number
+	{ inputRules = [], triggers = [] }: { inputRules?: InputRule[]; triggers?: Trigger[] }
 ): InitializedPlugin => {
-	const rules = plugin.inputRules ?? [];
-	const triggers = plugin.triggers ?? [];
-	if (!rules.length && !triggers.length) return plugin;
 	const extended: InitializedPlugin = { ...plugin };
 
-	if (rules.length) {
+	if (inputRules.length) {
 		const own = plugin.onBeforeOperation;
-		const run = inputRulesHook(edytor, rules);
+		const run = inputRulesHook(edytor, inputRules);
 		// Both run, whatever the plugin's hook answers (a prevent in it throws and
 		// ends the hook): the rules read the payload it replaced the command's with.
 		extended.onBeforeOperation = <C extends ChangePayload>(change: C) => {
@@ -49,11 +56,14 @@ export const withRulesAndTriggers = (
 			return out;
 		};
 	}
-	if (!triggers.length) return extended;
+	// The records read with no view (`plugin(undefined)`) keep no menus.
+	if (!triggers.length || !edytor) return extended;
 
-	const controllers = triggers.map(
-		(trigger, index) => new TriggerMenuController(edytor, trigger, `trigger-${at}-${index}`)
-	);
+	const controllers = triggers.map((trigger) => {
+		const n = counts.get(edytor) ?? 0;
+		counts.set(edytor, n + 1);
+		return new TriggerMenuController(edytor, trigger, `trigger-${n}`);
+	});
 	return withTriggerMenus(
 		edytor,
 		extended,

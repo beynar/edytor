@@ -2,6 +2,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import { convertToKind, type KindRow } from '$lib/kinds.js';
 import type { InputRule, Plugin } from '$lib/plugins.js';
 import { jsonEquals } from '$lib/utils/json.js';
+import { withRulesAndTriggers } from './triggers/triggers.js';
 
 /**
  * Notion's inline markdown, completed by the typed closing character: the
@@ -140,5 +141,5 @@ export const createMarkdownShortcutsPlugin = (): Plugin => (edytor) => {
 		}
 	};
 
-	return { inputRules: [inline, prefix] };
+	return withRulesAndTriggers(edytor, {}, { inputRules: [inline, prefix] });
 };

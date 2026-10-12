@@ -25,6 +25,7 @@
 		type KatexLoader
 	} from './equation.svelte.js';
 	import { katexLoaderOf } from './katex.js';
+	import { withRulesAndTriggers } from '../triggers/triggers.js';
 
 	export type {
 		EquationData,
@@ -144,93 +145,96 @@
 					editor: new EquationEditor(edytor, renderer)
 				});
 			const owns = () => equationViews.get(edytor)?.renderer === renderer;
-			return {
-				onEdytorAttached: ({ node }) => {
-					const view = equationViews.get(edytor);
-					if (!view || !owns()) return;
-					const { editor } = view;
-					const { panel } = options;
-					return panel && editor.panel.mount(node, EquationEditorPanel, { editor, panel });
-				},
-				// A block equation this view just created empty (a slash pick, Turn into) opens its editor.
-				onAfterOperation: (change) => {
-					const view = equationViews.get(edytor);
-					if (!view || !owns() || edytor.dispatcher.last?.status !== 'applied') return;
-					const ids =
-						change.operation === 'setBlock'
-							? [change.block.id]
-							: change.operation === 'insertBlocks'
-								? (change.effect?.creates ?? [])
-								: [];
-					const created = ids
-						.map((id) => edytor.idToBlock.get(id))
-						.find((block) => block?.type === 'equation');
-					if (created && !expressionOf(created.data)) view.editor.open({ block: created.id });
-				},
-				hotkeys: {
-					'mod+shift+e': ({ prevent }) => {
-						if (textBlock(edytor)) prevent(() => insertInline(edytor));
+			return withRulesAndTriggers(
+				edytor,
+				{
+					onEdytorAttached: ({ node }) => {
+						const view = equationViews.get(edytor);
+						if (!view || !owns()) return;
+						const { editor } = view;
+						const { panel } = options;
+						return panel && editor.panel.mount(node, EquationEditorPanel, { editor, panel });
 					},
-					enter: ({ prevent }) => {
-						const target = selectedEquation(edytor);
-						if (target && edytor.dispatcher.permits())
-							prevent(() => equationViews.get(edytor)?.editor.open(target));
+					// A block equation this view just created empty (a slash pick, Turn into) opens its editor.
+					onAfterOperation: (change) => {
+						const view = equationViews.get(edytor);
+						if (!view || !owns() || edytor.dispatcher.last?.status !== 'applied') return;
+						const ids =
+							change.operation === 'setBlock'
+								? [change.block.id]
+								: change.operation === 'insertBlocks'
+									? (change.effect?.creates ?? [])
+									: [];
+						const created = ids
+							.map((id) => edytor.idToBlock.get(id))
+							.find((block) => block?.type === 'equation');
+						if (created && !expressionOf(created.data)) view.editor.open({ block: created.id });
+					},
+					hotkeys: {
+						'mod+shift+e': ({ prevent }) => {
+							if (textBlock(edytor)) prevent(() => insertInline(edytor));
+						},
+						enter: ({ prevent }) => {
+							const target = selectedEquation(edytor);
+							if (target && edytor.dispatcher.permits())
+								prevent(() => equationViews.get(edytor)?.editor.open(target));
+						}
+					},
+					commands: [
+						{
+							id: 'equation.inline',
+							label: labels.inline,
+							icon: '√x',
+							keywords: keywordsOf(edytor, 'equation.inline', [
+								'math',
+								'tex',
+								'latex',
+								'katex',
+								'formula',
+								'inline'
+							]),
+							group: 'Inline',
+							isEnabled: (view) => textBlock(view) !== null,
+							run: () => insertInline(edytor)
+						}
+					],
+					blocks: {
+						equation: {
+							...equationKinds.equation,
+							snippet: equation,
+							empty: { content: [], children: [] },
+							presets: [
+								{
+									label: labels.block,
+									icon: '√x',
+									keywords: keywordsOf(edytor, 'block.equation', [
+										'math',
+										'tex',
+										'latex',
+										'katex',
+										'formula',
+										'equation'
+									]),
+									group: 'Advanced blocks'
+								}
+							],
+							html: (block) =>
+								`<div data-edytor-equation>${renderer.mathml(expressionOf(block.data), true)}</div>`,
+							plain: (block) => expressionOf(block.data),
+							parse: (element) => parseEquation(element, true)
+						}
+					},
+					inlineBlocks: {
+						[INLINE]: {
+							snippet: inlineEquation,
+							plain: (data) => expressionOf(data),
+							html: (data) => renderer.mathml(expressionOf(data), false),
+							parse: (element) => parseEquation(element, false)
+						}
 					}
 				},
-				commands: [
-					{
-						id: 'equation.inline',
-						label: labels.inline,
-						icon: '√x',
-						keywords: keywordsOf(edytor, 'equation.inline', [
-							'math',
-							'tex',
-							'latex',
-							'katex',
-							'formula',
-							'inline'
-						]),
-						group: 'Inline',
-						isEnabled: (view) => textBlock(view) !== null,
-						run: () => insertInline(edytor)
-					}
-				],
-				inputRules: [dollars],
-				blocks: {
-					equation: {
-						...equationKinds.equation,
-						snippet: equation,
-						empty: { content: [], children: [] },
-						presets: [
-							{
-								label: labels.block,
-								icon: '√x',
-								keywords: keywordsOf(edytor, 'block.equation', [
-									'math',
-									'tex',
-									'latex',
-									'katex',
-									'formula',
-									'equation'
-								]),
-								group: 'Advanced blocks'
-							}
-						],
-						html: (block) =>
-							`<div data-edytor-equation>${renderer.mathml(expressionOf(block.data), true)}</div>`,
-						plain: (block) => expressionOf(block.data),
-						parse: (element) => parseEquation(element, true)
-					}
-				},
-				inlineBlocks: {
-					[INLINE]: {
-						snippet: inlineEquation,
-						plain: (data) => expressionOf(data),
-						html: (data) => renderer.mathml(expressionOf(data), false),
-						parse: (element) => parseEquation(element, false)
-					}
-				}
-			};
+				{ inputRules: [dollars] }
+			);
 		};
 </script>
 

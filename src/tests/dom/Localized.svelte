@@ -23,6 +23,7 @@
 	import { setWords } from '../../routes/chrome/words.svelte.js';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+	import { withRulesAndTriggers } from '$lib/plugins/triggers/triggers.js';
 	import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { createPagePlugin } from '$lib/plugins/page/PagePlugin.svelte';
 	import { createTocPlugin } from '$lib/plugins/toc/TocPlugin.svelte';
@@ -63,9 +64,14 @@
 		createMentionPlugin({ items: () => [] }),
 		createPageLinkPlugin({ search: () => [] }),
 		// An app's own trigger naming nothing: the chrome's words for it.
-		(() => ({
-			triggers: [{ char: '%', items: () => [], onPick: () => true, menu: chrome.triggerMenu }]
-		})) as Plugin,
+		((edytor) =>
+			withRulesAndTriggers(
+				edytor,
+				{},
+				{
+					triggers: [{ char: '%', items: () => [], onPick: () => true, menu: chrome.triggerMenu }]
+				}
+			)) as Plugin,
 		createRichTextPlugin()
 	];
 </script>

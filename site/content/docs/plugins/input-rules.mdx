@@ -4,7 +4,7 @@ description: "Replace typed text as you type (markdown, :smile: to an emoji) wit
 icon: keyboard
 ---
 
-A plugin declares two kinds of typing behavior as data:
+A plugin declares two kinds of typing behavior as data, wired into its own hooks by `withRulesAndTriggers(edytor, definitions, { inputRules, triggers })`, which it returns:
 
 - `inputRules` replace text when what you type completes a pattern: `## ` makes a heading, `:smile:` becomes 😄. The [markdown shortcuts](/docs/plugins/markdown-shortcuts) are input rules.
 - `triggers` open a menu at the caret when you type a character, and replace that character and the text typed after it with the row you pick: `@` mentions a person ([Mention](/docs/plugins/mention)), `[[` links a page ([Page link](/docs/plugins/page-link)). The [slash menu](/docs/plugins/slash-menu) is a trigger too.
@@ -14,14 +14,17 @@ Both read and write positions as block offsets: an offset in the block's content
 ## Input rules
 
 ```ts title="emoji.ts" check
-import type { Plugin } from 'edytor';
+import { withRulesAndTriggers, type Plugin } from 'edytor';
 
 const EMOJI: Record<string, string> = { smile: '😄', heart: '❤️' };
 
 /** Typing the closing `:` of `:smile:` replaces it with its emoji. */
-export const emojiPlugin: Plugin = () => ({
-	inputRules: [{ find: /:(\w+):$/, replace: ([, name]) => EMOJI[name!] ?? null }]
-});
+export const emojiPlugin: Plugin = (edytor) =>
+	withRulesAndTriggers(
+		edytor,
+		{},
+		{ inputRules: [{ find: /:(\w+):$/, replace: ([, name]) => EMOJI[name!] ?? null }] }
+	);
 ```
 
 <TypeTable
@@ -68,20 +71,25 @@ When the replacement is refused or every matching rule declines, the typed text 
 For anything other than text, write it and return `true`. `ctx.remove(then)` removes the matched text in the same plan as the first operation `then` runs, which keeps the pair one refusable command. This rule turns `-> ` at a block's start into a to-do:
 
 ```ts title="arrowTodo.ts" check
-import type { Plugin } from 'edytor';
+import { withRulesAndTriggers, type Plugin } from 'edytor';
 
-export const arrowTodo: Plugin = () => ({
-	inputRules: [
+export const arrowTodo: Plugin = (edytor) =>
+	withRulesAndTriggers(
+		edytor,
+		{},
 		{
-			find: /^->\s$/,
-			replace: (_match, { edytor, block, from, remove }) => {
-				if (from !== 0) return false;
-				// Answers whether the removal and the retype were written.
-				return remove(() => edytor.setBlock(block.id, { type: 'todo-item' }));
-			}
+			inputRules: [
+				{
+					find: /^->\s$/,
+					replace: (_match, { edytor, block, from, remove }) => {
+						if (from !== 0) return false;
+						// Answers whether the removal and the retype were written.
+						return remove(() => edytor.setBlock(block.id, { type: 'todo-item' }));
+					}
+				}
+			]
 		}
-	]
-});
+	);
 ```
 
 When `then` runs no operation (a command that writes later), the matched text is removed on its own; when it answers `false`, nothing is removed. Without `then`, `remove()` only removes the text.
@@ -93,23 +101,28 @@ The rules of one plugin run in their list order, and the plugins in theirs: the 
 ## Triggers
 
 ```ts title="tags.ts" check
-import type { Plugin } from 'edytor';
+import { withRulesAndTriggers, type Plugin } from 'edytor';
 
 const TAGS = ['design', 'engineering', 'research'];
 
 /** `#` opens a menu of tags; picking one writes it as text. */
-export const tagsPlugin: Plugin = () => ({
-	triggers: [
+export const tagsPlugin: Plugin = (edytor) =>
+	withRulesAndTriggers(
+		edytor,
+		{},
 		{
-			char: '#',
-			items: (query) => TAGS.filter((tag) => tag.startsWith(query.toLowerCase())),
-			onPick: (tag: string, { edytor, block, from, caret }) => {
-				edytor.insertText(block.id, from, `#${tag} `);
-				caret(from + tag.length + 2);
-			}
+			triggers: [
+				{
+					char: '#',
+					items: (query) => TAGS.filter((tag) => tag.startsWith(query.toLowerCase())),
+					onPick: (tag: string, { edytor, block, from, caret }) => {
+						edytor.insertText(block.id, from, `#${tag} `);
+						caret(from + tag.length + 2);
+					}
+				}
+			]
 		}
-	]
-});
+	);
 ```
 
 <TypeTable

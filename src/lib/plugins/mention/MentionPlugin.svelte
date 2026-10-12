@@ -4,6 +4,7 @@
 	import type { Snippet } from 'svelte';
 	import type { InlineBlockSnippetPayload, Plugin, TriggerContext } from '$lib/plugins.js';
 	import type { TriggerMenuController } from '../triggers/TriggerController.svelte.js';
+	import { withRulesAndTriggers } from '../triggers/triggers.js';
 
 	/** A person the mention menu offers: what your app's directory answers. */
 	export type MentionItem = {
@@ -44,33 +45,40 @@
 	 */
 	export const createMentionPlugin =
 		(options: MentionPluginOptions): Plugin =>
-		() => ({
-			inlineBlocks: {
-				mention: {
-					snippet: mention,
-					plain: (data) => {
-						const label = (data as Partial<MentionData> | undefined)?.label;
-						return typeof label === 'string' && label ? `@${label}` : '@';
-					}
-				}
-			},
-			triggers: [
+		(edytor) =>
+			withRulesAndTriggers(
+				edytor,
 				{
-					char: options.char ?? '@',
-					items: (query, ctx) => options.items(query, ctx),
-					label: (person: MentionItem) => person.label,
-					key: (person: MentionItem) => person.id,
-					menu: options.menu,
-					onPick: (person: MentionItem, { edytor, block, from, caret }) => {
-						const data: MentionData = { id: person.id, label: person.label };
-						const written =
-							edytor.insertInline(block.id, from, { type: 'mention', data }).status === 'applied';
-						if (written) caret(from + 1);
-						return written;
+					inlineBlocks: {
+						mention: {
+							snippet: mention,
+							plain: (data) => {
+								const label = (data as Partial<MentionData> | undefined)?.label;
+								return typeof label === 'string' && label ? `@${label}` : '@';
+							}
+						}
 					}
+				},
+				{
+					triggers: [
+						{
+							char: options.char ?? '@',
+							items: (query, ctx) => options.items(query, ctx),
+							label: (person: MentionItem) => person.label,
+							key: (person: MentionItem) => person.id,
+							menu: options.menu,
+							onPick: (person: MentionItem, { edytor, block, from, caret }) => {
+								const data: MentionData = { id: person.id, label: person.label };
+								const written =
+									edytor.insertInline(block.id, from, { type: 'mention', data }).status ===
+									'applied';
+								if (written) caret(from + 1);
+								return written;
+							}
+						}
+					]
 				}
-			]
-		});
+			);
 </script>
 
 {#snippet mention({ block }: InlineBlockSnippetPayload<Partial<MentionData>>)}
